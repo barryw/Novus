@@ -59,6 +59,7 @@ Desktop.ini
 a.out
 test_*
 !Novus.Tests/
+!Novus.Tests/Examples/test_*.novus
 
 # Assembly temporary files
 *.s.bak

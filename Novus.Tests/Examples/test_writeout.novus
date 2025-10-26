@@ -1,0 +1,29 @@
+from dos import Output, Write
+
+extern fn strlen(str: i32) -> i32
+
+fn WriteOut(message: i32) -> i32 {
+    let stdout = Output()
+    if stdout == 0 {
+        return -1
+    }
+    let len = strlen(message)
+    return Write(stdout, message, len)
+}
+
+fn WriteErr(message: i32) -> i32 {
+    let stdout = Output()
+    if stdout == 0 {
+        return -1
+    }
+    let len = strlen(message)
+    return Write(stdout, message, len)
+}
+
+pub fn main() -> u32 {
+    WriteOut((i32)"Testing WriteOut...\n")
+    WriteErr((i32)"Testing WriteErr (goes to stdout for now)...\n")
+    WriteOut((i32)"No manual length counting!\n")
+    WriteOut((i32)"Success!\n")
+    return 0
+}
