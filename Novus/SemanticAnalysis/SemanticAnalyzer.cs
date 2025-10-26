@@ -81,22 +81,31 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var moduleName = context.IDENTIFIER().GetText();
         var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
 
-        // Resolve module path - for now, only support std/ffi modules
-        var modulePath = System.IO.Path.Combine(_stdLibPath, "ffi", moduleName + ".novus");
+        // Resolve module path - search order:
+        // 1. std/{moduleName}.novus (wrappers)
+        // 2. std/ffi/{moduleName}.novus (raw FFI)
+        var modulePath = System.IO.Path.Combine(_stdLibPath, moduleName + ".novus");
 
         if (!System.IO.File.Exists(modulePath))
         {
-            _diagnostics.ReportError(
-                "E0026",
-                $"module '{moduleName}' not found",
-                location,
-                helpTexts: new List<string>
-                {
-                    $"expected module at: {modulePath}",
-                    "only std/ffi modules are currently supported"
-                }
-            );
-            return;
+            // Try ffi subdirectory
+            modulePath = System.IO.Path.Combine(_stdLibPath, "ffi", moduleName + ".novus");
+
+            if (!System.IO.File.Exists(modulePath))
+            {
+                _diagnostics.ReportError(
+                    "E0026",
+                    $"module '{moduleName}' not found",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        $"searched in: std/{moduleName}.novus",
+                        $"searched in: std/ffi/{moduleName}.novus",
+                        "create one of these files to define the module"
+                    }
+                );
+                return;
+            }
         }
 
         // Load and parse the module

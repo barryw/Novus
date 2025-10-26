@@ -135,12 +135,20 @@ public class IrBuilder : NovusBaseVisitor<object?>
     {
         var moduleName = context.IDENTIFIER().GetText();
 
-        // Resolve module path - for now, only support std/ffi modules
-        var modulePath = System.IO.Path.Combine(_stdLibPath, "ffi", moduleName + ".novus");
+        // Resolve module path - search order:
+        // 1. std/{moduleName}.novus (wrappers)
+        // 2. std/ffi/{moduleName}.novus (raw FFI)
+        var modulePath = System.IO.Path.Combine(_stdLibPath, moduleName + ".novus");
 
         if (!System.IO.File.Exists(modulePath))
         {
-            throw new Exception($"Module '{moduleName}' not found at {modulePath}");
+            // Try ffi subdirectory
+            modulePath = System.IO.Path.Combine(_stdLibPath, "ffi", moduleName + ".novus");
+
+            if (!System.IO.File.Exists(modulePath))
+            {
+                throw new Exception($"Module '{moduleName}' not found. Searched in std/{moduleName}.novus and std/ffi/{moduleName}.novus");
+            }
         }
 
         // Load and parse the module

@@ -1,0 +1,196 @@
+// Exec.library FFI Bindings
+// The Amiga operating system kernel
+//
+// See: NDK 3.9 autodocs/exec.doc for full documentation
+//
+// Type mappings from C to Novus:
+// APTR, struct * → *u8 (generic/opaque pointers)
+// ULONG → u32, LONG → i32
+// UWORD → u16, WORD → i16
+// UBYTE → u8, BYTE → i8
+// BOOL → i32 (BOOL is LONG on Amiga)
+// CONST_STRPTR → *u8
+
+// ============================================================================
+// Memory Allocation
+// ============================================================================
+
+// Allocate memory with requirements
+// requirements flags: MEMF_PUBLIC=1, MEMF_CHIP=2, MEMF_FAST=4, MEMF_CLEAR=65536
+extern fn AllocMem(byteSize: u32, requirements: u32) -> *u8
+
+// Allocate memory at a specific address
+extern fn AllocAbs(byteSize: u32, location: *u8) -> *u8
+
+// Free previously allocated memory
+extern fn FreeMem(memoryBlock: *u8, byteSize: u32)
+
+// Check available memory of a given type
+extern fn AvailMem(requirements: u32) -> u32
+
+// Get the type of memory at an address (returns requirements flags)
+extern fn TypeOfMem(address: *u8) -> u32
+
+// ============================================================================
+// Critical Sections (Multitasking Control)
+// ============================================================================
+
+// Disable multitasking (forbid task switches)
+extern fn Forbid()
+
+// Re-enable multitasking
+extern fn Permit()
+
+// Disable interrupts (use sparingly!)
+extern fn Disable()
+
+// Re-enable interrupts
+extern fn Enable()
+
+// ============================================================================
+// Task Management
+// ============================================================================
+
+// Find a task by name (NULL = current task)
+extern fn FindTask(name: *u8) -> *u8
+
+// Set task priority (-128 to 127, higher = more priority)
+extern fn SetTaskPri(task: *u8, priority: i32) -> i8
+
+// Allocate a signal bit (-1 = any available)
+extern fn AllocSignal(signalNum: i32) -> i8
+
+// Free a signal bit
+extern fn FreeSignal(signalNum: i32)
+
+// Wait for one or more signals
+extern fn Wait(signalSet: u32) -> u32
+
+// Send signals to a task
+extern fn Signal(task: *u8, signalSet: u32)
+
+// Set signals (modify current task's signals)
+extern fn SetSignal(newSignals: u32, signalSet: u32) -> u32
+
+// Set exception signals
+extern fn SetExcept(newSignals: u32, signalSet: u32) -> u32
+
+// ============================================================================
+// Message Ports and Messages
+// ============================================================================
+
+// Add a public message port
+extern fn AddPort(port: *u8)
+
+// Remove a public message port
+extern fn RemPort(port: *u8)
+
+// Find a public message port by name
+extern fn FindPort(name: *u8) -> *u8
+
+// Send a message to a port
+extern fn PutMsg(port: *u8, message: *u8)
+
+// Get a message from a port (NULL if none)
+extern fn GetMsg(port: *u8) -> *u8
+
+// Reply to a message
+extern fn ReplyMsg(message: *u8)
+
+// Wait for a message to arrive at port
+extern fn WaitPort(port: *u8) -> *u8
+
+// ============================================================================
+// Library Management
+// ============================================================================
+
+// Open a library (returns NULL on failure)
+extern fn OpenLibrary(libName: *u8, version: u32) -> *u8
+
+// Close a library
+extern fn CloseLibrary(library: *u8)
+
+// ============================================================================
+// Device I/O
+// ============================================================================
+
+// Open a device
+// Returns 0 on success, error code on failure
+extern fn OpenDevice(devName: *u8, unit: u32, ioRequest: *u8, flags: u32) -> i8
+
+// Close a device
+extern fn CloseDevice(ioRequest: *u8)
+
+// Perform synchronous I/O (waits for completion)
+extern fn DoIO(ioRequest: *u8) -> i8
+
+// Send asynchronous I/O request
+extern fn SendIO(ioRequest: *u8)
+
+// Check if I/O is complete (NULL = still pending)
+extern fn CheckIO(ioRequest: *u8) -> *u8
+
+// Wait for I/O to complete
+extern fn WaitIO(ioRequest: *u8) -> i8
+
+// Abort a pending I/O request
+extern fn AbortIO(ioRequest: *u8)
+
+// ============================================================================
+// List Management
+// ============================================================================
+
+// Add node to head of list
+extern fn AddHead(list: *u8, node: *u8)
+
+// Add node to tail of list
+extern fn AddTail(list: *u8, node: *u8)
+
+// Remove node from list
+extern fn Remove(node: *u8)
+
+// Remove and return head node (NULL if empty)
+extern fn RemHead(list: *u8) -> *u8
+
+// Remove and return tail node (NULL if empty)
+extern fn RemTail(list: *u8) -> *u8
+
+// Insert node into list by priority
+extern fn Enqueue(list: *u8, node: *u8)
+
+// Find a node by name (NULL if not found)
+extern fn FindName(list: *u8, name: *u8) -> *u8
+
+// ============================================================================
+// Semaphores
+// ============================================================================
+
+// Initialize a signal semaphore
+extern fn InitSemaphore(sigSem: *u8)
+
+// Obtain exclusive access (waits if needed)
+extern fn ObtainSemaphore(sigSem: *u8)
+
+// Release semaphore
+extern fn ReleaseSemaphore(sigSem: *u8)
+
+// Try to obtain semaphore (returns immediately)
+// Returns non-zero on success
+extern fn AttemptSemaphore(sigSem: *u8) -> i32
+
+// Obtain shared (read) access
+extern fn ObtainSemaphoreShared(sigSem: *u8)
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+// System diagnostic alert
+extern fn Alert(alertNum: u32)
+
+// Printf-style formatting (advanced, use carefully)
+// putChProc is called for each character
+extern fn RawDoFmt(formatString: *u8, dataStream: *u8, putChProc: *u8, putChData: *u8) -> *u8
+
+// Get condition codes
+extern fn GetCC() -> u32
