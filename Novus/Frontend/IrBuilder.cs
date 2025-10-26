@@ -19,6 +19,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
     private readonly Stack<string> _loopExitLabels = new(); // Track loop exit labels for break
     private readonly Dictionary<string, IrLocalVariable> _localVariables = new(); // Track local variables in current function
     private readonly Dictionary<string, IrStructType> _structs = new(); // Track struct types
+    private readonly Dictionary<string, IrEnumType> _enums = new(); // Track enum types
+    private readonly Dictionary<string, IrGenericType> _genericParams = new(); // Track generic type parameters
     public readonly List<IrStringLiteral> StringLiterals = new(); // Track all string literals for data section
     private string _stdLibPath = "."; // Path to standard library
 
@@ -52,13 +54,19 @@ public class IrBuilder : NovusBaseVisitor<object?>
             ProcessImport(importDecl);
         }
 
-        // Pass 1: Register all struct types
+        // Pass 1: Register all enum types
+        foreach (var enumContext in context.enumDeclaration())
+        {
+            RegisterEnum(enumContext);
+        }
+
+        // Pass 2: Register all struct types
         foreach (var structContext in context.structDeclaration())
         {
             RegisterStruct(structContext);
         }
 
-        // Pass 2: Collect all function signatures
+        // Pass 3: Collect all function signatures
         foreach (var funcContext in context.functionDeclaration())
         {
             var name = funcContext.IDENTIFIER().GetText();
@@ -90,7 +98,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             _module.AddFunction(function);
         }
 
-        // Pass 3: Build function bodies
+        // Pass 4: Build function bodies
         foreach (var funcContext in context.functionDeclaration())
         {
             var funcName = funcContext.IDENTIFIER().GetText();
@@ -228,6 +236,58 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             _module.AddFunction(function);
         }
+    }
+
+    private void RegisterEnum(NovusParser.EnumDeclarationContext context)
+    {
+        var name = context.IDENTIFIER().GetText();
+
+        // Handle generic parameters if present
+        var genericParams = new List<string>();
+        if (context.genericParams() != null)
+        {
+            foreach (var paramId in context.genericParams().IDENTIFIER())
+            {
+                var paramName = paramId.GetText();
+                genericParams.Add(paramName);
+                _genericParams[paramName] = new IrGenericType(paramName);
+            }
+        }
+
+        // Parse enum variants
+        var variants = new List<IrEnumVariant>();
+        int tag = 0;
+
+        foreach (var variantCtx in context.enumVariant())
+        {
+            var variantName = variantCtx.IDENTIFIER().GetText();
+            var associatedData = new List<IrType>();
+
+            if (variantCtx.typeList() != null)
+            {
+                foreach (var typeCtx in variantCtx.typeList().type())
+                {
+                    var dataType = ParseType(typeCtx);
+                    associatedData.Add(dataType);
+                }
+            }
+
+            variants.Add(new IrEnumVariant(variantName, tag++, associatedData));
+        }
+
+        var enumType = new IrEnumType(name, variants, genericParams.Count > 0 ? genericParams : null);
+
+        // Force size calculation for non-generic enums
+        if (genericParams.Count == 0)
+        {
+            _ = enumType.SizeInBytes;
+        }
+
+        _enums[name] = enumType;
+        _module.AddEnum(enumType);
+
+        // Clear generic parameters after enum registration
+        _genericParams.Clear();
     }
 
     private void RegisterStruct(NovusParser.StructDeclarationContext context)
@@ -638,6 +698,32 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     arguments.Add(argValue);
                 }
             }
+        }
+
+        // Check if this is an enum constructor call
+        if (funcExpr is IrEnumConstructor enumCtor)
+        {
+            // Create an enum value with the provided arguments
+            var enumType = enumCtor.Type as IrEnumType;
+            if (enumType == null)
+            {
+                throw new Exception("Enum constructor must have enum type");
+            }
+
+            var variant = enumType.GetVariant(enumCtor.VariantName);
+            if (variant == null)
+            {
+                throw new Exception($"Variant '{enumCtor.VariantName}' not found in enum '{enumType.EnumName}'");
+            }
+
+            // Validate argument count
+            if (arguments.Count != variant.AssociatedData.Count)
+            {
+                throw new Exception($"Variant '{enumCtor.VariantName}' expects {variant.AssociatedData.Count} arguments, got {arguments.Count}");
+            }
+
+            // Create the enum value
+            return new IrEnumValue(enumType, enumCtor.VariantName, enumCtor.VariantTag, arguments);
         }
 
         string? resultName;
@@ -1174,6 +1260,180 @@ public class IrBuilder : NovusBaseVisitor<object?>
         return new IrVariable(resultName, field.Type);
     }
 
+    public override object? VisitPathExpr([NotNull] NovusParser.PathExprContext context)
+    {
+        // Handle enum variant path expressions like Option::Some, Result::Ok
+        // This returns an IrEnumValue which can then be called with arguments
+        var baseExpr = context.expression();
+        var variantName = context.IDENTIFIER().GetText();
+
+        // The base expression should be an identifier for the enum type
+        string? enumName = null;
+        if (baseExpr is NovusParser.PrimaryExprContext primaryCtx &&
+            primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext identCtx)
+        {
+            enumName = identCtx.IDENTIFIER().GetText();
+        }
+
+        if (enumName == null || !_enums.ContainsKey(enumName))
+        {
+            throw new Exception($"Path expression must reference an enum type, got '{enumName}'");
+        }
+
+        var enumType = _enums[enumName];
+        var variant = enumType.GetVariant(variantName);
+
+        if (variant == null)
+        {
+            throw new Exception($"Enum '{enumName}' has no variant '{variantName}'");
+        }
+
+        // For now, we'll return a special marker value
+        // The actual construction will happen when this is called as a function
+        // This is a placeholder that indicates "this is an enum constructor"
+        return new IrEnumConstructor(enumType, variantName, variant.Tag);
+    }
+
+    public override object? VisitMatchStatement([NotNull] NovusParser.MatchStatementContext context)
+    {
+        var matchValue = (IrValue?)Visit(context.expression());
+        if (matchValue == null)
+        {
+            throw new Exception("Match expression requires a value");
+        }
+
+        if (matchValue.Type is not IrEnumType enumType)
+        {
+            throw new Exception($"Match can only be used with enum types, got '{matchValue.Type.Name}'");
+        }
+
+        // Generate labels for match arms and end
+        var matchEndLabel = $"match_end_{_labelCounter}";
+        var armLabels = new List<string>();
+
+        for (int i = 0; i < context.matchArm().Length; i++)
+        {
+            armLabels.Add($"match_arm_{_labelCounter}_{i}");
+        }
+        _labelCounter++;
+
+        // Extract tag from enum value
+        var tagName = $"%t{_tempCounter++}";
+        _currentBlock!.AddInstruction(new IrExtractTag(tagName, matchValue));
+        var tagVar = new IrVariable(tagName, IrIntType.I32);
+
+        // Generate comparisons and branches for each arm
+        for (int i = 0; i < context.matchArm().Length; i++)
+        {
+            var armCtx = context.matchArm()[i];
+            var pattern = armCtx.pattern();
+
+            // Check if this is a wildcard pattern
+            if (pattern is NovusParser.WildcardPatternContext)
+            {
+                // Wildcard always matches, jump directly
+                _currentBlock!.AddInstruction(new IrBranch(armLabels[i]));
+                break;
+            }
+
+            // Handle variant patterns
+            string? variantName = null;
+            if (pattern is NovusParser.VariantPatternContext variantPattern)
+            {
+                variantName = variantPattern.IDENTIFIER().GetText();
+            }
+            else if (pattern is NovusParser.IdentifierPatternContext identPattern)
+            {
+                variantName = identPattern.IDENTIFIER().GetText();
+            }
+
+            if (variantName != null)
+            {
+                var variant = enumType.GetVariant(variantName);
+                if (variant == null)
+                {
+                    throw new Exception($"Enum '{enumType.EnumName}' has no variant '{variantName}'");
+                }
+
+                // Compare tag with variant tag
+                var cmpName = $"%t{_tempCounter++}";
+                var tagConst = new IrConstant(variant.Tag, IrIntType.I32);
+                _currentBlock!.AddInstruction(new IrBinaryOp(cmpName, IrBinaryOp.OpKind.Eq, tagVar, tagConst, IrBoolType.Instance));
+                var cmpVar = new IrVariable(cmpName, IrBoolType.Instance);
+
+                // Branch: if match, go to arm, otherwise continue to next pattern
+                var nextLabel = i < armLabels.Count - 1 ? armLabels[i + 1] : matchEndLabel;
+                _currentBlock!.AddInstruction(new IrConditionalBranch(cmpVar, armLabels[i], nextLabel));
+            }
+        }
+
+        // Generate code for each arm
+        for (int i = 0; i < context.matchArm().Length; i++)
+        {
+            var armCtx = context.matchArm()[i];
+            var pattern = armCtx.pattern();
+
+            _currentBlock!.AddInstruction(new IrLabel(armLabels[i]));
+
+            // Extract associated data for variant patterns
+            if (pattern is NovusParser.VariantPatternContext variantPattern)
+            {
+                var variantName = variantPattern.IDENTIFIER().GetText();
+                var variant = enumType.GetVariant(variantName);
+
+                // Extract associated data and bind to pattern variables
+                if (variantPattern.patternList() != null)
+                {
+                    var bindingPatterns = variantPattern.patternList().pattern();
+                    for (int dataIdx = 0; dataIdx < bindingPatterns.Length; dataIdx++)
+                    {
+                        var bindingPattern = bindingPatterns[dataIdx];
+
+                        // Only handle identifier bindings for now
+                        if (bindingPattern is NovusParser.IdentifierPatternContext idPattern)
+                        {
+                            var bindingName = idPattern.IDENTIFIER().GetText();
+                            var dataType = variant!.AssociatedData[dataIdx];
+
+                            // Extract the data
+                            var extractName = $"%t{_tempCounter++}";
+                            _currentBlock!.AddInstruction(new IrExtractVariantData(extractName, matchValue, dataIdx, dataType));
+
+                            // Store in a local variable
+                            var localVar = new IrLocalVariable(bindingName, dataType, false);
+                            _currentFunction!.LocalVariables.Add(localVar);
+                            _localVariables[bindingName] = localVar;
+
+                            var extractedValue = new IrVariable(extractName, dataType);
+                            _currentBlock!.AddInstruction(new IrLocalDecl(bindingName, dataType, false, extractedValue));
+                        }
+                    }
+                }
+            }
+
+            // Visit the arm body
+            if (armCtx.expression() != null)
+            {
+                Visit(armCtx.expression());
+            }
+            else if (armCtx.block() != null)
+            {
+                Visit(armCtx.block());
+            }
+
+            // Jump to end (if not already terminated)
+            if (!CurrentBlockHasTerminator())
+            {
+                _currentBlock!.AddInstruction(new IrBranch(matchEndLabel));
+            }
+        }
+
+        // End label
+        _currentBlock!.AddInstruction(new IrLabel(matchEndLabel));
+
+        return null;
+    }
+
     private IrType ParseType(NovusParser.TypeContext context)
     {
         return context switch
@@ -1197,10 +1457,38 @@ public class IrBuilder : NovusBaseVisitor<object?>
     {
         var typeName = context.IDENTIFIER().GetText();
 
+        // Check if it's a generic type parameter (T, E, etc.)
+        if (_genericParams.ContainsKey(typeName))
+        {
+            return _genericParams[typeName];
+        }
+
         // Check if it's a struct type
         if (_structs.ContainsKey(typeName))
         {
             return _structs[typeName];
+        }
+
+        // Check if it's an enum type
+        if (_enums.ContainsKey(typeName))
+        {
+            var enumType = _enums[typeName];
+
+            // Handle generic instantiation (e.g., Option<i32>)
+            if (context.typeList() != null)
+            {
+                var typeArgs = new List<IrType>();
+                foreach (var typeCtx in context.typeList().type())
+                {
+                    typeArgs.Add(ParseType(typeCtx));
+                }
+
+                // For now, return the base enum type
+                // Monomorphization will happen during code generation
+                return enumType;
+            }
+
+            return enumType;
         }
 
         throw new Exception($"Unknown type '{typeName}'");

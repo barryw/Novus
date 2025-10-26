@@ -97,6 +97,23 @@ public class IrEnumVariant
 }
 
 /// <summary>
+/// Enum constructor - represents a partially applied enum variant (e.g., Option::Some)
+/// This is returned by path expressions and can be "called" to create an IrEnumValue
+/// </summary>
+public class IrEnumConstructor : IrValue
+{
+    public string VariantName { get; set; }
+    public int VariantTag { get; set; }
+
+    public IrEnumConstructor(IrEnumType enumType, string variantName, int tag)
+        : base(enumType)
+    {
+        VariantName = variantName;
+        VariantTag = tag;
+    }
+}
+
+/// <summary>
 /// Enum value construction (e.g., Option::Some(42))
 /// </summary>
 public class IrEnumValue : IrValue

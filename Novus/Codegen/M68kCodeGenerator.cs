@@ -437,6 +437,12 @@ public partial class M68kCodeGenerator
             case IrMemberStore memberStore:
                 GenerateMemberStore(memberStore);
                 break;
+            case IrExtractTag extractTag:
+                GenerateExtractTag(extractTag);
+                break;
+            case IrExtractVariantData extractData:
+                GenerateExtractVariantData(extractData);
+                break;
             default:
                 throw new Exception($"Unknown instruction type: {instruction.GetType().Name}");
         }
@@ -1511,6 +1517,56 @@ public partial class M68kCodeGenerator
                 }
                 break;
             }
+            case IrEnumValue enumValue:
+            {
+                // Construct an enum value on the stack
+                // Enum layout: [tag (4 bytes)][data (variable)]
+                EmitComment($"Constructing enum {enumValue.Type.Name}::{enumValue.VariantName}");
+
+                var enumType = enumValue.Type as IrEnumType;
+                if (enumType == null)
+                {
+                    throw new Exception("Enum value must have enum type");
+                }
+
+                // Calculate total size needed
+                var enumSize = enumType.SizeInBytes;
+
+                // Allocate space on stack (subtract from sp)
+                if (enumSize > 0)
+                {
+                    Emit($"\tsub.l\t#{enumSize},sp\t\t; Allocate space for enum");
+                }
+
+                // Store tag at offset 0 (sp)
+                Emit($"\tmove.l\t#{enumValue.VariantTag},(sp)\t\t; Store variant tag");
+
+                // Store associated values starting at offset 4
+                int dataOffset = 4;
+                for (int i = 0; i < enumValue.AssociatedValues.Count; i++)
+                {
+                    var assocValue = enumValue.AssociatedValues[i];
+                    LoadOperand(assocValue, "d0");
+
+                    var valueSize = GetSizeSuffix(assocValue.Type);
+                    Emit($"\tmove{valueSize}\td0,{dataOffset}(sp)\t\t; Store associated value {i}");
+                    dataOffset += assocValue.Type.SizeInBytes;
+                }
+
+                // If targetReg is an address register, load the address
+                // If it's a data register, we can't load the whole struct - error
+                if (targetReg.StartsWith('a'))
+                {
+                    Emit($"\tmove.l\tsp,{targetReg}\t\t; Load enum address");
+                }
+                else
+                {
+                    // For data register, this is likely being stored somewhere - leave it on stack
+                    // The calling code will need to handle copying it
+                    throw new Exception("Enum values cannot be loaded directly into data registers - use address registers");
+                }
+                break;
+            }
         }
     }
 
@@ -1605,6 +1661,75 @@ public partial class M68kCodeGenerator
             Emit($"\tjmp\t_{funcName}_fpu");
             Emit("");
         }
+    }
+
+    private void GenerateExtractTag(IrExtractTag extractTag)
+    {
+        // Extract the discriminant tag from an enum value
+        // Enum memory layout: [tag (4 bytes)][data (variable)]
+        // Tag is always at offset 0
+
+        EmitComment($"Extract tag from enum value");
+
+        // Get the address of the enum value
+        var enumValue = extractTag.EnumValue;
+
+        if (enumValue is IrVariable enumVar)
+        {
+            // Load tag from variable location (offset 0)
+            var offset = _localVariableOffsets[enumVar.Name];
+            Emit($"\tmove.l\t{offset}(a6),d0\t\t; Load enum tag");
+        }
+        else if (enumValue is IrEnumValue enumVal)
+        {
+            // Direct enum value - just load the tag
+            Emit($"\tmove.l\t#{enumVal.VariantTag},d0\t\t; Load enum tag");
+        }
+        else
+        {
+            throw new Exception($"Unsupported enum value type for tag extraction: {enumValue.GetType().Name}");
+        }
+
+        // Store result in temp
+        _savedTemps.Add(extractTag.ResultName);
+        _tempStackOffset += 4;
+    }
+
+    private void GenerateExtractVariantData(IrExtractVariantData extractData)
+    {
+        // Extract associated data from an enum variant
+        // Enum memory layout: [tag (4 bytes)][data (variable)]
+        // Data starts at offset 4
+
+        EmitComment($"Extract variant data[{extractData.DataIndex}]");
+
+        var enumValue = extractData.EnumValue;
+        int dataOffset = 4; // Tag is 4 bytes
+
+        // Calculate offset for the specific data index
+        if (enumValue.Type is IrEnumType enumType)
+        {
+            // Find the variant to get data types
+            // We need to calculate the offset based on previous data items
+            // For now, assume each data item is 4 bytes (simplification)
+            dataOffset += extractData.DataIndex * 4;
+        }
+
+        if (enumValue is IrVariable enumVar)
+        {
+            // Load data from variable location
+            var varOffset = _localVariableOffsets[enumVar.Name];
+            var dataSize = GetSizeSuffix(extractData.DataType);
+            Emit($"\tmove{dataSize}\t{varOffset + dataOffset}(a6),d0\t\t; Load variant data");
+        }
+        else
+        {
+            throw new Exception($"Unsupported enum value type for data extraction: {enumValue.GetType().Name}");
+        }
+
+        // Store result in temp
+        _savedTemps.Add(extractData.ResultName);
+        _tempStackOffset += 4;
     }
 
     private string GetSizeSuffix(IrType type)

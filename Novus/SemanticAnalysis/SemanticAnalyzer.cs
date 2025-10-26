@@ -1118,10 +1118,224 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return null;
     }
 
+    public override IrType? VisitMatchStatement([NotNull] NovusParser.MatchStatementContext context)
+    {
+        // Analyze the value being matched
+        var matchValueType = Visit(context.expression());
+        if (matchValueType == null)
+        {
+            return null;
+        }
+
+        // Ensure we're matching on an enum type
+        if (matchValueType is not IrEnumType enumType)
+        {
+            var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0035",
+                $"match expression can only be used with enum types, got '{matchValueType.Name}'",
+                location,
+                helpTexts: new List<string>
+                {
+                    "match is used for pattern matching on enum variants"
+                }
+            );
+            return null;
+        }
+
+        // Track which variants are covered
+        var coveredVariants = new HashSet<string>();
+        bool hasWildcard = false;
+
+        // Analyze each match arm
+        foreach (var armCtx in context.matchArm())
+        {
+            var pattern = armCtx.pattern();
+            AnalyzePattern(pattern, enumType, coveredVariants, ref hasWildcard);
+
+            // Analyze the arm body (expression or block)
+            if (armCtx.expression() != null)
+            {
+                Visit(armCtx.expression());
+            }
+            else if (armCtx.block() != null)
+            {
+                AnalyzeBlock(armCtx.block());
+            }
+        }
+
+        // Check exhaustiveness - either all variants covered or wildcard present
+        if (!hasWildcard)
+        {
+            var uncoveredVariants = enumType.Variants
+                .Select(v => v.Name)
+                .Where(v => !coveredVariants.Contains(v))
+                .ToList();
+
+            if (uncoveredVariants.Any())
+            {
+                var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0036",
+                    "match is not exhaustive",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        $"missing patterns: {string.Join(", ", uncoveredVariants)}",
+                        "add missing patterns or use a wildcard pattern '_'"
+                    }
+                );
+            }
+        }
+
+        return null;
+    }
+
+    private void AnalyzePattern(NovusParser.PatternContext pattern, IrEnumType enumType,
+        HashSet<string> coveredVariants, ref bool hasWildcard)
+    {
+        switch (pattern)
+        {
+            case NovusParser.WildcardPatternContext:
+                hasWildcard = true;
+                break;
+
+            case NovusParser.VariantPatternContext variantPattern:
+            {
+                var variantName = variantPattern.IDENTIFIER().GetText();
+
+                // Check if this variant exists
+                var variant = enumType.GetVariant(variantName);
+                if (variant == null)
+                {
+                    var location = SourceLocationHelper.FromToken(variantPattern.IDENTIFIER().Symbol, _filePath, _sourceLines);
+                    _diagnostics.ReportError(
+                        "E0037",
+                        $"enum '{enumType.EnumName}' has no variant '{variantName}'",
+                        location,
+                        helpTexts: new List<string>
+                        {
+                            $"available variants: {string.Join(", ", enumType.Variants.Select(v => v.Name))}"
+                        }
+                    );
+                    return;
+                }
+
+                // Check if pattern bindings match associated data count
+                var patternList = variantPattern.patternList();
+                int bindingCount = patternList?.pattern()?.Length ?? 0;
+
+                if (bindingCount != variant.AssociatedData.Count)
+                {
+                    var location = SourceLocationHelper.FromToken(variantPattern.IDENTIFIER().Symbol, _filePath, _sourceLines);
+                    _diagnostics.ReportError(
+                        "E0038",
+                        $"variant '{variantName}' expects {variant.AssociatedData.Count} values but pattern has {bindingCount}",
+                        location
+                    );
+                }
+
+                coveredVariants.Add(variantName);
+                break;
+            }
+
+            case NovusParser.IdentifierPatternContext identPattern:
+            {
+                var variantName = identPattern.IDENTIFIER().GetText();
+                var variant = enumType.GetVariant(variantName);
+                if (variant == null)
+                {
+                    var location = SourceLocationHelper.FromToken(identPattern.IDENTIFIER().Symbol, _filePath, _sourceLines);
+                    _diagnostics.ReportError(
+                        "E0037",
+                        $"enum '{enumType.EnumName}' has no variant '{variantName}'",
+                        location
+                    );
+                    return;
+                }
+
+                // Identifier pattern should only be used for variants without data
+                if (variant.HasAssociatedData)
+                {
+                    var location = SourceLocationHelper.FromToken(identPattern.IDENTIFIER().Symbol, _filePath, _sourceLines);
+                    _diagnostics.ReportError(
+                        "E0039",
+                        $"variant '{variantName}' has associated data and requires a pattern with bindings",
+                        location,
+                        helpTexts: new List<string>
+                        {
+                            $"use pattern: {variantName}({string.Join(", ", Enumerable.Range(0, variant.AssociatedData.Count).Select(i => $"_"))})"
+                        }
+                    );
+                }
+
+                coveredVariants.Add(variantName);
+                break;
+            }
+        }
+    }
+
     public override IrType? VisitCallExpr([NotNull] NovusParser.CallExprContext context)
     {
-        // Get the function name from the expression (should be an identifier from primary expression)
+        // Get the function name from the expression (should be an identifier or path expression)
         var funcExpr = context.expression();
+
+        // Handle path expressions (enum constructors like Option::Some)
+        if (funcExpr is NovusParser.PathExprContext pathCtx)
+        {
+            // Visit the path expression to get the enum type
+            var enumType = Visit(pathCtx);
+            if (enumType == null || enumType is not IrEnumType)
+            {
+                // Error already reported by VisitPathExpr
+                return null;
+            }
+
+            // Validate arguments match the variant's associated data
+            var variantName = pathCtx.IDENTIFIER().GetText();
+            var variant = ((IrEnumType)enumType).GetVariant(variantName);
+
+            if (variant != null)
+            {
+                var variantArgCount = context.argumentList()?.expression().Length ?? 0;
+                if (variantArgCount != variant.AssociatedData.Count)
+                {
+                    var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                    _diagnostics.ReportError(
+                        "E0040",
+                        $"variant '{variantName}' expects {variant.AssociatedData.Count} argument(s), but {variantArgCount} were provided",
+                        location
+                    );
+                }
+
+                // Validate argument types
+                if (context.argumentList() != null)
+                {
+                    var arguments = context.argumentList().expression();
+                    for (int i = 0; i < Math.Min(arguments.Length, variant.AssociatedData.Count); i++)
+                    {
+                        var argType = Visit(arguments[i]);
+                        var expectedType = variant.AssociatedData[i];
+
+                        if (argType != null && !TypesCompatible(expectedType, argType))
+                        {
+                            var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
+                            _diagnostics.ReportError(
+                                "E0041",
+                                $"argument {i + 1} type mismatch",
+                                location,
+                                helpTexts: new List<string>
+                                {
+                                    $"expected '{TypeToString(expectedType)}', got '{TypeToString(argType)}'"
+                                }
+                            );
+                        }
+                    }
+                }
+            }
+
+            return enumType;
+        }
 
         // The function name should be in a primary expression (identifier)
         if (funcExpr is not NovusParser.PrimaryExprContext primaryCtx)
@@ -1129,7 +1343,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             var location = SourceLocationHelper.FromContext(funcExpr, _filePath, _sourceLines);
             _diagnostics.ReportError(
                 "E0012",
-                "function call target must be an identifier",
+                "function call target must be an identifier or path expression",
                 location
             );
             return null;
@@ -1142,7 +1356,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             var location = SourceLocationHelper.FromContext(primaryCtx, _filePath, _sourceLines);
             _diagnostics.ReportError(
                 "E0012",
-                "function call target must be an identifier",
+                "function call target must be an identifier or path expression",
                 location
             );
             return null;
@@ -1539,6 +1753,74 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     public override IrType? VisitParenExpr([NotNull] NovusParser.ParenExprContext context)
     {
         return Visit(context.expression());
+    }
+
+    public override IrType? VisitPathExpr([NotNull] NovusParser.PathExprContext context)
+    {
+        // Handle enum variant path expressions like Option::Some, Result::Ok
+        var baseExpr = context.expression();
+        var variantName = context.IDENTIFIER().GetText();
+
+        // The base expression should be a primary expression containing an identifier
+        string? enumName = null;
+        if (baseExpr is NovusParser.PrimaryExprContext primaryCtx &&
+            primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext identCtx)
+        {
+            enumName = identCtx.IDENTIFIER().GetText();
+        }
+
+        if (enumName == null)
+        {
+            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0032",
+                "path expression base must be an enum type identifier",
+                location,
+                helpTexts: new List<string>
+                {
+                    "expected format: EnumName::VariantName"
+                }
+            );
+            return null;
+        }
+
+        // Look up the enum type
+        if (!_enums.ContainsKey(enumName))
+        {
+            var location = SourceLocationHelper.FromContext(baseExpr, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0033",
+                $"'{enumName}' is not an enum type",
+                location,
+                helpTexts: new List<string>
+                {
+                    "path expressions can only be used with enum types"
+                }
+            );
+            return null;
+        }
+
+        var enumType = _enums[enumName];
+
+        // Check if the variant exists
+        var variant = enumType.GetVariant(variantName);
+        if (variant == null)
+        {
+            var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0034",
+                $"enum '{enumName}' has no variant '{variantName}'",
+                location,
+                helpTexts: new List<string>
+                {
+                    $"available variants: {string.Join(", ", enumType.Variants.Select(v => v.Name))}"
+                }
+            );
+            return null;
+        }
+
+        // Return the enum type - this will be used when constructing the variant
+        return enumType;
     }
 
     public override IrType? VisitArrayLiteral([NotNull] NovusParser.ArrayLiteralContext context)
