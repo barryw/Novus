@@ -16,7 +16,9 @@
       "Bash(objdump:*)",
       "Read(//usr/local/**)",
       "WebSearch",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []

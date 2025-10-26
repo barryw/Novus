@@ -20,10 +20,14 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     private readonly Dictionary<string, FunctionSymbol> _functions = new();
     private readonly Dictionary<string, VariableSymbol> _variables = new();
     private readonly Dictionary<string, IrStructType> _structs = new();
+    private readonly Dictionary<string, IrEnumType> _enums = new();
     private readonly Dictionary<string, string> _importedNames = new(); // Maps imported name -> module name
     private FunctionSymbol? _currentFunction;
     private int _loopDepth = 0; // Track loop nesting for break validation
     private readonly string _stdLibPath; // Path to standard library
+
+    // Generic type parameters in scope (for generic enum/struct definitions)
+    private readonly Dictionary<string, IrGenericType> _genericParams = new();
 
     public DiagnosticBag Diagnostics => _diagnostics;
 
@@ -42,19 +46,25 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             ProcessImport(importDecl);
         }
 
-        // First pass: collect all struct declarations
+        // First pass: collect all enum declarations
+        foreach (var enumDecl in context.enumDeclaration())
+        {
+            RegisterEnum(enumDecl);
+        }
+
+        // Second pass: collect all struct declarations
         foreach (var structDecl in context.structDeclaration())
         {
             RegisterStruct(structDecl);
         }
 
-        // Second pass: collect all function declarations
+        // Third pass: collect all function declarations
         foreach (var funcDecl in context.functionDeclaration())
         {
             RegisterFunction(funcDecl);
         }
 
-        // Third pass: analyze function bodies
+        // Fourth pass: analyze function bodies
         foreach (var funcDecl in context.functionDeclaration())
         {
             Visit(funcDecl);
@@ -348,6 +358,76 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         _ = structType.SizeInBytes;
 
         _structs[name] = structType;
+    }
+
+    private void RegisterEnum(NovusParser.EnumDeclarationContext context)
+    {
+        var name = context.IDENTIFIER().GetText();
+        var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+
+        // Check for duplicate enum names
+        if (_enums.ContainsKey(name))
+        {
+            _diagnostics.ReportError(
+                "E0030",
+                $"enum '{name}' is defined multiple times",
+                location,
+                helpTexts: new List<string>
+                {
+                    "consider renaming one of the enums"
+                }
+            );
+            return;
+        }
+
+        // Handle generic parameters if present
+        var genericParams = new List<string>();
+        if (context.genericParams() != null)
+        {
+            foreach (var paramId in context.genericParams().IDENTIFIER())
+            {
+                var paramName = paramId.GetText();
+                genericParams.Add(paramName);
+
+                // Add to generic param scope for variant parsing
+                _genericParams[paramName] = new IrGenericType(paramName);
+            }
+        }
+
+        // Parse enum variants
+        var variants = new List<IrEnumVariant>();
+        int tag = 0;
+
+        foreach (var variantCtx in context.enumVariant())
+        {
+            var variantName = variantCtx.IDENTIFIER().GetText();
+            var associatedData = new List<IrType>();
+
+            // Parse associated data types if present
+            if (variantCtx.typeList() != null)
+            {
+                foreach (var typeCtx in variantCtx.typeList().type())
+                {
+                    var dataType = ParseType(typeCtx);
+                    associatedData.Add(dataType);
+                }
+            }
+
+            variants.Add(new IrEnumVariant(variantName, tag++, associatedData));
+        }
+
+        var enumType = new IrEnumType(name, variants, genericParams.Count > 0 ? genericParams : null);
+
+        // Force size calculation
+        if (genericParams.Count == 0)
+        {
+            _ = enumType.SizeInBytes;
+        }
+
+        _enums[name] = enumType;
+
+        // Clear generic param scope
+        _genericParams.Clear();
     }
 
     public override IrType? VisitFunctionDeclaration([NotNull] NovusParser.FunctionDeclarationContext context)
@@ -1784,10 +1864,51 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     {
         var typeName = context.IDENTIFIER().GetText();
 
+        // Check if it's a generic type parameter (T, E, etc.)
+        if (_genericParams.ContainsKey(typeName))
+        {
+            return _genericParams[typeName];
+        }
+
         // Check if it's a struct type
         if (_structs.ContainsKey(typeName))
         {
             return _structs[typeName];
+        }
+
+        // Check if it's an enum type
+        if (_enums.ContainsKey(typeName))
+        {
+            var enumType = _enums[typeName];
+
+            // Handle generic instantiation (e.g., Option<i32>)
+            if (context.typeList() != null)
+            {
+                var typeArgs = new List<IrType>();
+                foreach (var typeCtx in context.typeList().type())
+                {
+                    typeArgs.Add(ParseType(typeCtx));
+                }
+
+                // Validate number of type arguments matches generic parameters
+                if (typeArgs.Count != enumType.GenericParameters.Count)
+                {
+                    var loc = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+                    _diagnostics.ReportError(
+                        "E0031",
+                        $"enum '{typeName}' expects {enumType.GenericParameters.Count} type arguments but got {typeArgs.Count}",
+                        loc
+                    );
+                    return IrIntType.I32;
+                }
+
+                // For now, we'll need to create a monomorphized version
+                // This will be handled in the IR builder phase
+                // Return a placeholder for semantic analysis
+                return enumType;
+            }
+
+            return enumType;
         }
 
         // Unknown type - report error and return i32 as fallback
@@ -1799,7 +1920,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             helpTexts: new List<string>
             {
                 "this type has not been defined",
-                "consider defining a struct with this name or using a primitive type"
+                "consider defining a struct, enum with this name or using a primitive type"
             }
         );
         return IrIntType.I32;
