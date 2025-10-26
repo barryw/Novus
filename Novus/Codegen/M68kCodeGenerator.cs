@@ -640,6 +640,43 @@ public partial class M68kCodeGenerator
                 }
                 break;
 
+            case IrBinaryOp.OpKind.Or:
+                EmitComment($"{binOp.ResultName} = or");
+                LoadOperand(binOp.Left, "d0");
+                LoadOperand(binOp.Right, "d1");
+                Emit($"\tor{size}\td1,d0");
+                break;
+
+            case IrBinaryOp.OpKind.And:
+                EmitComment($"{binOp.ResultName} = and");
+                LoadOperand(binOp.Left, "d0");
+                LoadOperand(binOp.Right, "d1");
+                Emit($"\tand{size}\td1,d0");
+                break;
+
+            case IrBinaryOp.OpKind.Xor:
+                EmitComment($"{binOp.ResultName} = xor");
+                LoadOperand(binOp.Left, "d0");
+                LoadOperand(binOp.Right, "d1");
+                Emit($"\teor{size}\td1,d0");
+                break;
+
+            case IrBinaryOp.OpKind.Shl:
+                EmitComment($"{binOp.ResultName} = shl");
+                LoadOperand(binOp.Right, "d0");  // Shift amount
+                LoadOperand(binOp.Left, "d1");   // Value to shift
+                Emit($"\tlsl{size}\td0,d1");
+                Emit($"\tmove{size}\td1,d0");
+                break;
+
+            case IrBinaryOp.OpKind.Shr:
+                EmitComment($"{binOp.ResultName} = shr");
+                LoadOperand(binOp.Right, "d0");  // Shift amount
+                LoadOperand(binOp.Left, "d1");   // Value to shift
+                Emit($"\tlsr{size}\td0,d1");
+                Emit($"\tmove{size}\td1,d0");
+                break;
+
             case IrBinaryOp.OpKind.Eq:
             case IrBinaryOp.OpKind.Ne:
             case IrBinaryOp.OpKind.Lt:

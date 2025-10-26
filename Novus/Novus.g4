@@ -3,7 +3,7 @@ grammar Novus;
 // Parser Rules
 
 compilationUnit
-    : importDeclaration* (structDeclaration | enumDeclaration | functionDeclaration)* EOF
+    : importDeclaration* (constDeclaration | structDeclaration | enumDeclaration | functionDeclaration)* EOF
     ;
 
 importDeclaration
@@ -17,6 +17,10 @@ importList
 
 importName
     : IDENTIFIER ('as' IDENTIFIER)?
+    ;
+
+constDeclaration
+    : 'pub'? 'const' IDENTIFIER ':' type '=' expression
     ;
 
 functionDeclaration
@@ -156,9 +160,13 @@ expression
     | expression '[' expression ']'                        # IndexExpr
     | '(' type ')' expression                              # CastExpr
     | '&' IDENTIFIER                                       # AddressOfExpr
-    | '!' expression                                       # LogicalNotExpr
+    | ('!' | '~' | '-') expression                         # UnaryExpr
     | expression ('*' | '/' | '%') expression              # MultiplicativeExpr
     | expression ('+' | '-') expression                     # AdditiveExpr
+    | expression ('<<' | '>>') expression                  # ShiftExpr
+    | expression '&' expression                            # BitwiseAndExpr
+    | expression '^' expression                            # BitwiseXorExpr
+    | expression '|' expression                            # BitwiseOrExpr
     | expression ('==' | '!=' | '<' | '>' | '<=' | '>=') expression  # ComparisonExpr
     | expression '&&' expression                           # LogicalAndExpr
     | expression '||' expression                           # LogicalOrExpr

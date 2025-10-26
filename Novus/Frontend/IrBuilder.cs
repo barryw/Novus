@@ -21,6 +21,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
     private readonly Dictionary<string, IrStructType> _structs = new(); // Track struct types
     private readonly Dictionary<string, IrEnumType> _enums = new(); // Track enum types
     private readonly Dictionary<string, IrGenericType> _genericParams = new(); // Track generic type parameters
+    private readonly Dictionary<string, (IrType Type, object Value)> _constants = new(); // Track constant values
     public readonly List<IrStringLiteral> StringLiterals = new(); // Track all string literals for data section
     private string _stdLibPath = "."; // Path to standard library
 
@@ -48,25 +49,34 @@ public class IrBuilder : NovusBaseVisitor<object?>
     public IrModule BuildModule(NovusParser.CompilationUnitContext context)
     {
         // Multi-pass approach to handle forward references:
-        // Pass 0: Process imports
+        // Pass 0a: Implicitly import all of core module
+        ImportModule("core", importAll: true);
+
+        // Pass 0b: Process explicit imports
         foreach (var importDecl in context.importDeclaration())
         {
             ProcessImport(importDecl);
         }
 
-        // Pass 1: Register all enum types
+        // Pass 1: Register all constant values
+        foreach (var constContext in context.constDeclaration())
+        {
+            RegisterConstant(constContext);
+        }
+
+        // Pass 2: Register all enum types
         foreach (var enumContext in context.enumDeclaration())
         {
             RegisterEnum(enumContext);
         }
 
-        // Pass 2: Register all struct types
+        // Pass 3: Register all struct types
         foreach (var structContext in context.structDeclaration())
         {
             RegisterStruct(structContext);
         }
 
-        // Pass 3: Collect all function signatures
+        // Pass 4: Collect all function signatures
         foreach (var funcContext in context.functionDeclaration())
         {
             var name = funcContext.IDENTIFIER().GetText();
@@ -98,7 +108,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             _module.AddFunction(function);
         }
 
-        // Pass 4: Build function bodies
+        // Pass 5: Build function bodies
         foreach (var funcContext in context.functionDeclaration())
         {
             var funcName = funcContext.IDENTIFIER().GetText();
@@ -135,6 +145,16 @@ public class IrBuilder : NovusBaseVisitor<object?>
     {
         var moduleName = context.IDENTIFIER().GetText();
 
+        // Get the list of names to import
+        var importList = context.importList();
+        bool importAll = importList.GetText() == "*";
+
+        ImportModule(moduleName, importAll, importList);
+    }
+
+    private void ImportModule(string moduleName, bool importAll, NovusParser.ImportListContext? importList = null)
+    {
+
         // Resolve module path - search order:
         // 1. std/{moduleName}.novus (wrappers)
         // 2. std/ffi/{moduleName}.novus (raw FFI)
@@ -164,9 +184,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             throw new Exception($"Module '{moduleName}' has syntax errors");
         }
 
-        // Get the list of names to import
-        var importList = context.importList();
-        bool importAll = importList.GetText() == "*";
+        // Build the list of names to import
         var namesToImport = new HashSet<string>();
 
         if (importAll)
@@ -188,6 +206,26 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 if (isPub)
                 {
                     namesToImport.Add(enumDecl.IDENTIFIER().GetText());
+                }
+            }
+
+            // Import all pub constants from the module
+            foreach (var constDecl in moduleContext.constDeclaration())
+            {
+                // Only import pub constants
+                var isPub = false;
+                for (int i = 0; i < Math.Min(3, constDecl.ChildCount); i++)
+                {
+                    if (constDecl.GetChild(i)?.GetText() == "pub")
+                    {
+                        isPub = true;
+                        break;
+                    }
+                }
+
+                if (isPub)
+                {
+                    namesToImport.Add(constDecl.IDENTIFIER().GetText());
                 }
             }
 
@@ -235,7 +273,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 }
             }
         }
-        else
+        else if (importList != null)
         {
             // Import specific names
             foreach (var importNameCtx in importList.importName())
@@ -257,6 +295,21 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             // Register the enum from the imported module
             RegisterEnum(enumDecl);
+        }
+
+        // Register imported constants in the module
+        foreach (var constDecl in moduleContext.constDeclaration())
+        {
+            var constName = constDecl.IDENTIFIER().GetText();
+
+            // Skip if not in the import list
+            if (!namesToImport.Contains(constName))
+            {
+                continue;
+            }
+
+            // Register the constant from the imported module
+            RegisterConstant(constDecl);
         }
 
         // Register imported structs in the module
@@ -321,6 +374,29 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
 
             _module.AddFunction(function);
+        }
+    }
+
+    private void RegisterConstant(NovusParser.ConstDeclarationContext context)
+    {
+        var name = context.IDENTIFIER().GetText();
+        var type = ParseType(context.type());
+
+        // Evaluate the constant expression using the evaluator
+        var valueExpr = context.expression();
+
+        // Convert constants dict to use object values for evaluator
+        var constantValues = _constants.ToDictionary(
+            kvp => kvp.Key,
+            kvp => kvp.Value.Value
+        );
+
+        var evaluator = new SemanticAnalysis.ConstantExpressionEvaluator(constantValues);
+        int? value = evaluator.Visit(valueExpr);
+
+        if (value != null)
+        {
+            _constants[name] = (type, value);
         }
     }
 
@@ -864,6 +940,43 @@ public class IrBuilder : NovusBaseVisitor<object?>
             throw new Exception($"Function {functionName} expects {function.Parameters.Count} arguments, got {arguments.Count}");
         }
 
+        // Insert implicit casts for arguments where needed
+        // (e.g., u32 -> i32 for same-bit-width conversions)
+        for (int i = 0; i < arguments.Count; i++)
+        {
+            var argType = arguments[i].Type;
+            var paramType = function.Parameters[i].Type;
+
+            // If types don't exactly match but are compatible integer types of same width
+            if (!argType.Equals(paramType) &&
+                argType is IrIntType argInt &&
+                paramType is IrIntType paramInt &&
+                argInt.BitWidth == paramInt.BitWidth)
+            {
+                // Same-size integer cast - just reinterpret the bits
+                if (arguments[i] is IrConstant constant)
+                {
+                    // For constants, create new constant with target type
+                    arguments[i] = new IrConstant(constant.Value, paramType);
+                }
+                else if (arguments[i] is IrVariable variable)
+                {
+                    // For variables, create new variable reference with target type (zero-cost cast)
+                    arguments[i] = new IrVariable(variable.Name, paramType);
+                }
+                else
+                {
+                    // For other expressions, create a temp variable with the target type
+                    // The value is already computed, we just need to reference it with the new type
+                    var castTempName = $"%t{_tempCounter++}";
+                    var moveOp = new IrBinaryOp(castTempName, IrBinaryOp.OpKind.Add,
+                        arguments[i], new IrConstant(0, arguments[i].Type), arguments[i].Type);
+                    _currentBlock!.AddInstruction(moveOp);
+                    arguments[i] = new IrVariable(castTempName, paramType);
+                }
+            }
+        }
+
         // Create the call instruction
         returnType = function.ReturnType;
         resultName = returnType is not IrVoidType ? $"%t{_tempCounter++}" : null;
@@ -968,6 +1081,55 @@ public class IrBuilder : NovusBaseVisitor<object?>
         return new IrVariable(tempName, left.Type);
     }
 
+    public override object? VisitShiftExpr([NotNull] NovusParser.ShiftExprContext context)
+    {
+        var left = (IrValue)Visit(context.expression(0))!;
+        var right = (IrValue)Visit(context.expression(1))!;
+        var op = context.GetChild(1).GetText() == "<<" ? IrBinaryOp.OpKind.Shl : IrBinaryOp.OpKind.Shr;
+
+        var tempName = $"%t{_tempCounter++}";
+        var binOp = new IrBinaryOp(tempName, op, left, right, left.Type);
+        _currentBlock!.AddInstruction(binOp);
+
+        return new IrVariable(tempName, left.Type);
+    }
+
+    public override object? VisitBitwiseAndExpr([NotNull] NovusParser.BitwiseAndExprContext context)
+    {
+        var left = (IrValue)Visit(context.expression(0))!;
+        var right = (IrValue)Visit(context.expression(1))!;
+
+        var tempName = $"%t{_tempCounter++}";
+        var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.And, left, right, left.Type);
+        _currentBlock!.AddInstruction(binOp);
+
+        return new IrVariable(tempName, left.Type);
+    }
+
+    public override object? VisitBitwiseXorExpr([NotNull] NovusParser.BitwiseXorExprContext context)
+    {
+        var left = (IrValue)Visit(context.expression(0))!;
+        var right = (IrValue)Visit(context.expression(1))!;
+
+        var tempName = $"%t{_tempCounter++}";
+        var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Xor, left, right, left.Type);
+        _currentBlock!.AddInstruction(binOp);
+
+        return new IrVariable(tempName, left.Type);
+    }
+
+    public override object? VisitBitwiseOrExpr([NotNull] NovusParser.BitwiseOrExprContext context)
+    {
+        var left = (IrValue)Visit(context.expression(0))!;
+        var right = (IrValue)Visit(context.expression(1))!;
+
+        var tempName = $"%t{_tempCounter++}";
+        var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Or, left, right, left.Type);
+        _currentBlock!.AddInstruction(binOp);
+
+        return new IrVariable(tempName, left.Type);
+    }
+
     public override object? VisitCastExpr([NotNull] NovusParser.CastExprContext context)
     {
         var targetType = ParseType(context.type());
@@ -1044,17 +1206,38 @@ public class IrBuilder : NovusBaseVisitor<object?>
         return new IrVariable(tempName, IrBoolType.Instance);
     }
 
-    public override object? VisitLogicalNotExpr([NotNull] NovusParser.LogicalNotExprContext context)
+    public override object? VisitUnaryExpr([NotNull] NovusParser.UnaryExprContext context)
     {
         var operand = (IrValue)Visit(context.expression())!;
+        var op = context.GetChild(0).GetText();
 
-        // Logical NOT: false becomes true, true becomes false
-        // Implemented as: result = (operand == false)
-        var tempName = $"%t{_tempCounter++}";
-        var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Eq, operand, new IrBoolConstant(false), IrBoolType.Instance);
-        _currentBlock!.AddInstruction(binOp);
+        if (op == "!")
+        {
+            // Logical NOT: false becomes true, true becomes false
+            // Implemented as: result = (operand == false)
+            var tempName = $"%t{_tempCounter++}";
+            var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Eq, operand, new IrBoolConstant(false), IrBoolType.Instance);
+            _currentBlock!.AddInstruction(binOp);
+            return new IrVariable(tempName, IrBoolType.Instance);
+        }
+        else if (op == "~")
+        {
+            // Bitwise NOT: XOR with -1 (all bits set)
+            var tempName = $"%t{_tempCounter++}";
+            var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Xor, operand, new IrConstant(-1, operand.Type), operand.Type);
+            _currentBlock!.AddInstruction(binOp);
+            return new IrVariable(tempName, operand.Type);
+        }
+        else if (op == "-")
+        {
+            // Unary minus: subtract from 0
+            var tempName = $"%t{_tempCounter++}";
+            var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Sub, new IrConstant(0, operand.Type), operand, operand.Type);
+            _currentBlock!.AddInstruction(binOp);
+            return new IrVariable(tempName, operand.Type);
+        }
 
-        return new IrVariable(tempName, IrBoolType.Instance);
+        throw new Exception($"Unknown unary operator: {op}");
     }
 
     public override object? VisitLogicalAndExpr([NotNull] NovusParser.LogicalAndExprContext context)
@@ -1250,6 +1433,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
     public override object? VisitIdentifierExpr([NotNull] NovusParser.IdentifierExprContext context)
     {
         var name = context.IDENTIFIER().GetText();
+
+        // Check if it's a constant - inline the value
+        if (_constants.ContainsKey(name))
+        {
+            var (type, value) = _constants[name];
+            return new IrConstant((int)value, type);
+        }
 
         // Check if it's a local variable
         if (_localVariables.ContainsKey(name))

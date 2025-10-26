@@ -21,6 +21,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     private readonly Dictionary<string, VariableSymbol> _variables = new();
     private readonly Dictionary<string, IrStructType> _structs = new();
     private readonly Dictionary<string, IrEnumType> _enums = new();
+    private readonly Dictionary<string, ConstantSymbol> _constants = new();
     private readonly Dictionary<string, string> _importedNames = new(); // Maps imported name -> module name
     private FunctionSymbol? _currentFunction;
     private int _loopDepth = 0; // Track loop nesting for break validation
@@ -43,31 +44,40 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public bool Analyze(NovusParser.CompilationUnitContext context)
     {
-        // Pass 0: Process imports
+        // Pass 0a: Implicitly import all of core module
+        ImportModule("core", importAll: true);
+
+        // Pass 0b: Process explicit imports
         foreach (var importDecl in context.importDeclaration())
         {
             ProcessImport(importDecl);
         }
 
-        // First pass: collect all enum declarations
+        // First pass: collect all constant declarations
+        foreach (var constDecl in context.constDeclaration())
+        {
+            RegisterConstant(constDecl);
+        }
+
+        // Second pass: collect all enum declarations
         foreach (var enumDecl in context.enumDeclaration())
         {
             RegisterEnum(enumDecl);
         }
 
-        // Second pass: collect all struct declarations
+        // Third pass: collect all struct declarations
         foreach (var structDecl in context.structDeclaration())
         {
             RegisterStruct(structDecl);
         }
 
-        // Third pass: collect all function declarations
+        // Fourth pass: collect all function declarations
         foreach (var funcDecl in context.functionDeclaration())
         {
             RegisterFunction(funcDecl);
         }
 
-        // Fourth pass: analyze function bodies
+        // Fifth pass: analyze function bodies
         foreach (var funcDecl in context.functionDeclaration())
         {
             Visit(funcDecl);
@@ -80,6 +90,21 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     {
         var moduleName = context.IDENTIFIER().GetText();
         var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+
+        // Get the list of names to import
+        var importList = context.importList();
+        bool importAll = importList.GetText() == "*";
+
+        ImportModule(moduleName, importAll, importList, location);
+    }
+
+    private void ImportModule(string moduleName, bool importAll, NovusParser.ImportListContext? importList = null, SourceLocation? location = null)
+    {
+        // Use dummy location for implicit imports
+        if (location == null)
+        {
+            location = new SourceLocation(_filePath, 0, 0, 0, "");
+        }
 
         // Resolve module path - search order:
         // 1. std/{moduleName}.novus (wrappers)
@@ -130,9 +155,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return;
         }
 
-        // Get the list of names to import
-        var importList = context.importList();
-        bool importAll = importList.GetText() == "*";
+        // Build the list of names to import
         var namesToImport = new HashSet<string>();
 
         if (importAll)
@@ -154,6 +177,26 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 if (isPub)
                 {
                     namesToImport.Add(enumDecl.IDENTIFIER().GetText());
+                }
+            }
+
+            // Import all pub constants from the module
+            foreach (var constDecl in moduleContext.constDeclaration())
+            {
+                // Only import pub constants
+                var isPub = false;
+                for (int i = 0; i < Math.Min(3, constDecl.ChildCount); i++)
+                {
+                    if (constDecl.GetChild(i)?.GetText() == "pub")
+                    {
+                        isPub = true;
+                        break;
+                    }
+                }
+
+                if (isPub)
+                {
+                    namesToImport.Add(constDecl.IDENTIFIER().GetText());
                 }
             }
 
@@ -201,7 +244,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 }
             }
         }
-        else
+        else if (importList != null)
         {
             // Import specific names
             foreach (var importNameCtx in importList.importName())
@@ -248,6 +291,38 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             // Register the enum from the imported module
             RegisterEnum(enumDecl);
             _importedNames[enumName] = moduleName;
+        }
+
+        // Register imported constants in symbol table
+        foreach (var constDecl in moduleContext.constDeclaration())
+        {
+            var constName = constDecl.IDENTIFIER().GetText();
+
+            // Skip if not in the import list
+            if (!namesToImport.Contains(constName))
+            {
+                continue;
+            }
+
+            // Check for duplicate constant names
+            if (_constants.ContainsKey(constName))
+            {
+                var constLocation = SourceLocationHelper.FromToken(constDecl.IDENTIFIER().Symbol, modulePath, new string[] { });
+                _diagnostics.ReportError(
+                    "E0033",
+                    $"imported constant '{constName}' conflicts with existing constant",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        $"use an alias to avoid the conflict: import {constName} as Another{constName}"
+                    }
+                );
+                continue;
+            }
+
+            // Register the constant from the imported module
+            RegisterConstant(constDecl);
+            _importedNames[constName] = moduleName;
         }
 
         // Register imported structs in symbol table
@@ -362,6 +437,75 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             _functions[funcName] = new FunctionSymbol(funcName, returnType, parameters, funcLocation, IsExtern: true);
             _importedNames[funcName] = moduleName;
         }
+    }
+
+    private void RegisterConstant(NovusParser.ConstDeclarationContext context)
+    {
+        var name = context.IDENTIFIER().GetText();
+        var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+
+        // Check for duplicate constant names
+        if (_constants.ContainsKey(name))
+        {
+            var originalLocation = _constants[name].Location;
+            _diagnostics.ReportError(
+                "E0031",
+                $"constant '{name}' is defined multiple times",
+                location,
+                helpTexts: new List<string>
+                {
+                    $"consider renaming one of the constants"
+                },
+                relatedLocations: new List<(SourceLocation, string)>
+                {
+                    (originalLocation, $"previous definition of '{name}' here")
+                }
+            );
+            return;
+        }
+
+        // Parse the type
+        var type = ParseType(context.type());
+
+        // Evaluate the constant expression using the evaluator
+        var valueExpr = context.expression();
+
+        // Convert constants dict to use object values for evaluator
+        var constantValues = _constants.ToDictionary(
+            kvp => kvp.Key,
+            kvp => kvp.Value.Value
+        );
+
+        var evaluator = new ConstantExpressionEvaluator(
+            constantValues,
+            error => _diagnostics.ReportError(
+                "E0034",
+                error,
+                location,
+                helpTexts: new List<string>
+                {
+                    "constants can only reference other constants defined earlier"
+                }
+            )
+        );
+
+        int? value = evaluator.Visit(valueExpr);
+
+        if (value == null)
+        {
+            _diagnostics.ReportError(
+                "E0032",
+                $"constant value must be a compile-time constant expression",
+                location,
+                helpTexts: new List<string>
+                {
+                    "supported: integer/hex/binary literals, constant references, bitwise ops (|, &, ^, <<, >>, ~), arithmetic"
+                }
+            );
+            return;
+        }
+
+        _constants[name] = new ConstantSymbol(name, type, value, location);
     }
 
     private void RegisterFunction(NovusParser.FunctionDeclarationContext context)
@@ -1019,6 +1163,98 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         return leftType; // Use left operand's type as result type
+    }
+
+    public override IrType? VisitShiftExpr([NotNull] NovusParser.ShiftExprContext context)
+    {
+        var leftType = Visit(context.expression(0));
+        var rightType = Visit(context.expression(1));
+
+        if (leftType == null || rightType == null)
+            return null;
+
+        // Both operands must be numeric types
+        if (!IsNumericType(leftType) || !IsNumericType(rightType))
+        {
+            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0004",
+                $"shift operators require numeric types",
+                location
+            );
+            return null;
+        }
+
+        return leftType;
+    }
+
+    public override IrType? VisitBitwiseAndExpr([NotNull] NovusParser.BitwiseAndExprContext context)
+    {
+        var leftType = Visit(context.expression(0));
+        var rightType = Visit(context.expression(1));
+
+        if (leftType == null || rightType == null)
+            return null;
+
+        // Both operands must be numeric types
+        if (!IsNumericType(leftType) || !IsNumericType(rightType))
+        {
+            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0004",
+                $"bitwise AND requires numeric types",
+                location
+            );
+            return null;
+        }
+
+        return leftType;
+    }
+
+    public override IrType? VisitBitwiseXorExpr([NotNull] NovusParser.BitwiseXorExprContext context)
+    {
+        var leftType = Visit(context.expression(0));
+        var rightType = Visit(context.expression(1));
+
+        if (leftType == null || rightType == null)
+            return null;
+
+        // Both operands must be numeric types
+        if (!IsNumericType(leftType) || !IsNumericType(rightType))
+        {
+            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0004",
+                $"bitwise XOR requires numeric types",
+                location
+            );
+            return null;
+        }
+
+        return leftType;
+    }
+
+    public override IrType? VisitBitwiseOrExpr([NotNull] NovusParser.BitwiseOrExprContext context)
+    {
+        var leftType = Visit(context.expression(0));
+        var rightType = Visit(context.expression(1));
+
+        if (leftType == null || rightType == null)
+            return null;
+
+        // Both operands must be numeric types
+        if (!IsNumericType(leftType) || !IsNumericType(rightType))
+        {
+            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0004",
+                $"bitwise OR requires numeric types",
+                location
+            );
+            return null;
+        }
+
+        return leftType;
     }
 
     public override IrType? VisitMultiplicativeExpr([NotNull] NovusParser.MultiplicativeExprContext context)
@@ -1805,7 +2041,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     public override IrType? VisitIdentifierExpr([NotNull] NovusParser.IdentifierExprContext context)
     {
         var name = context.IDENTIFIER().GetText();
-        if (!_variables.ContainsKey(name) && !_functions.ContainsKey(name))
+        if (!_variables.ContainsKey(name) && !_functions.ContainsKey(name) && !_constants.ContainsKey(name))
         {
             var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
             _diagnostics.ReportError(
@@ -1821,6 +2057,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 }.Where(h => h != null).ToList()
             );
             return null;
+        }
+
+        // If it's a constant, return its type
+        if (_constants.ContainsKey(name))
+        {
+            return _constants[name].Type;
         }
 
         // If it's a function name, it will be handled by CallExpr
@@ -2002,25 +2244,44 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return IrBoolType.Instance;
     }
 
-    public override IrType? VisitLogicalNotExpr([NotNull] NovusParser.LogicalNotExprContext context)
+    public override IrType? VisitUnaryExpr([NotNull] NovusParser.UnaryExprContext context)
     {
         var operandType = Visit(context.expression());
+        var op = context.GetChild(0).GetText();
 
         if (operandType == null)
-            return IrBoolType.Instance;
+            return IrIntType.I32;
 
-        // Check that operand is boolean or numeric type
-        if (!IsBoolOrNumericType(operandType))
+        if (op == "!")
         {
-            var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
-            _diagnostics.ReportError(
-                "E0024",
-                $"logical operator '!' requires boolean or numeric type, found '{TypeToString(operandType)}'",
-                location
-            );
+            // Logical NOT: requires boolean or numeric type
+            if (!IsBoolOrNumericType(operandType))
+            {
+                var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0024",
+                    $"logical operator '!' requires boolean or numeric type, found '{TypeToString(operandType)}'",
+                    location
+                );
+            }
+            return IrBoolType.Instance;
+        }
+        else if (op == "~" || op == "-")
+        {
+            // Bitwise NOT and unary minus: require numeric type
+            if (!IsNumericType(operandType))
+            {
+                var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0024",
+                    $"unary operator '{op}' requires numeric type, found '{TypeToString(operandType)}'",
+                    location
+                );
+            }
+            return operandType;
         }
 
-        return IrBoolType.Instance;
+        throw new Exception($"Unknown unary operator: {op}");
     }
 
     public override IrType? VisitParenExpr([NotNull] NovusParser.ParenExprContext context)
@@ -2640,6 +2901,14 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 return true;
             }
 
+            // Allow implicit conversion between signed/unsigned of same bit width
+            // This is safe as it's just a reinterpretation of bits (e.g., u32 -> i32)
+            // Common use case: passing unsigned flags to C APIs that take signed int
+            if (expectedInt.BitWidth == actualInt.BitWidth)
+            {
+                return true;
+            }
+
             // Allow default i32 literals to be compatible with any integer type
             // This matches common behavior where literal 42 can be u32, u8, i32, etc.
             // We already validate that the literal value fits in the range during literal validation
@@ -2765,3 +3034,4 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 public record FunctionSymbol(string Name, IrType ReturnType, List<ParameterSymbol> Parameters, SourceLocation Location, bool IsExtern = false);
 public record ParameterSymbol(string Name, IrType Type, SourceLocation Location);
 public record VariableSymbol(string Name, IrType Type, bool IsMutable, SourceLocation Location);
+public record ConstantSymbol(string Name, IrType Type, object Value, SourceLocation Location);
