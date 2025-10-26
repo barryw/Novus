@@ -330,7 +330,7 @@ modify(&mut data)  // Explicit &mut at call site
 
 ## Error Messages Guide Users
 
-### Error 1: Trying to Modify Implicit Reference
+### Error 1: Trying to Modify Implicit Reference (Large Type)
 
 ```novus
 fn bad(buf: Buffer) {
@@ -351,10 +351,104 @@ error: cannot modify 'buf' through implicit reference
 help: if you want to modify 'buf', use an explicit mutable reference:
   |
 1 | fn bad(buf: &mut Buffer) {
-  |             ^^^^
+  |             ^^^^^^^^^^^^
+  |
+  and at the call site:
+  |
+  | bad(&mut buffer)
+  |     ^^^^^^^^^^^
 ```
 
-### Error 2: Mixing Implicit and Explicit at Call Site
+### Error 2: Trying to Modify Explicit Immutable Reference
+
+```novus
+fn bad(buf: &Buffer) {
+    buf.width = 100  // ERROR!
+}
+```
+
+**Error:**
+```
+error: cannot assign to 'buf.width' because 'buf' is an immutable reference
+ --> test.novus:2:5
+  |
+1 | fn bad(buf: &Buffer) {
+  |        --- 'buf' is declared as an immutable reference (&Buffer)
+2 |     buf.width = 100
+  |     ^^^^^^^^^^^^^^^ cannot assign through immutable reference
+  |
+help: change the parameter to be mutable:
+  |
+1 | fn bad(buf: &mut Buffer) {
+  |             ^^^^
+  |
+  and at the call site:
+  |
+  | bad(&mut buffer)
+  |     ^^^^^^^^^^^
+```
+
+### Error 3: Trying to Modify Small Type Passed by Value
+
+```novus
+fn increment(x: i32) {
+    x = x + 1  // ERROR!
+}
+```
+
+**Error:**
+```
+error: cannot assign to 'x' because it is not declared as mutable
+ --> test.novus:2:5
+  |
+1 | fn increment(x: i32) {
+  |              - 'x' is passed by value and is immutable
+2 |     x = x + 1
+  |     ^^^^^^^^^ cannot assign to immutable parameter
+  |
+help: if you want to modify the caller's value, use a mutable reference:
+  |
+1 | fn increment(x: &mut i32) {
+  |              ^^^^^^^^^^^
+2 |     *x = *x + 1
+  |     ^^^^^^^^^^^
+  |
+  and at the call site:
+  |
+  | increment(&mut value)
+  |           ^^^^^^^^^^
+  |
+note: function parameters are immutable by default in Novus
+```
+
+### Error 4: Forgetting `&mut` at Call Site
+
+```novus
+fn modify(buf: &mut Buffer) {
+    buf.width = 100
+}
+
+var buffer = Buffer { /* ... */ }
+modify(buffer)  // ERROR - need &mut at call site!
+```
+
+**Error:**
+```
+error: expected mutable reference, found value
+ --> test.novus:6:8
+  |
+5 | fn modify(buf: &mut Buffer) {
+  |                ------------ function expects '&mut Buffer'
+6 | modify(buffer)
+  |        ^^^^^^ expected '&mut Buffer', found 'Buffer'
+  |
+help: use a mutable reference at the call site:
+  |
+6 | modify(&mut buffer)
+  |        ^^^^^^^^^^^
+```
+
+### Error 5: Mixing Implicit and Explicit at Call Site
 
 ```novus
 fn process(data: LargeStruct) { /* ... */ }
