@@ -68,6 +68,15 @@ _Output:
 	movem.l	(sp)+,a6
 	rts
 
+; Error()
+	xdef	_Error
+_Error:
+	movem.l	a6,-(sp)
+	move.l	_DOSBase,a6
+	jsr	-276(a6)	; Error()
+	movem.l	(sp)+,a6
+	rts
+
 ; Seek(file, position, offset)
 	xdef	_Seek
 _Seek:

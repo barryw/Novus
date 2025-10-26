@@ -735,6 +735,7 @@ extern fn Read(file: i32, buffer: i32, length: i32) -> i32
 extern fn Write(file: i32, buffer: i32, length: i32) -> i32
 extern fn Input() -> i32
 extern fn Output() -> i32
+extern fn Error() -> i32
 extern fn Seek(file: i32, position: i32, offset: i32) -> i32
 extern fn DeleteFile(name: i32) -> i32
 extern fn Rename(oldName: i32, newName: i32) -> i32
