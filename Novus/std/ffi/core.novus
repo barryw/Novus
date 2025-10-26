@@ -1,0 +1,40 @@
+// Novus Standard Library - Core Types
+// Generic enums for safe error handling and optional values
+
+// Option<T> - represents an optional value
+// Use this instead of null pointers!
+pub enum Option<T> {
+    Some(T),
+    None,
+}
+
+// Result<T, E> - represents success or failure
+// Use this for functions that can fail!
+pub enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+
+// Common error codes for Amiga development
+pub enum IoError {
+    NotFound,           // File or resource not found
+    PermissionDenied,   // Access denied
+    AlreadyExists,      // File already exists
+    InvalidInput,       // Invalid input data
+    OutOfMemory,        // Memory allocation failed
+    Interrupted,        // Operation interrupted
+    Unknown,            // Unknown error
+}
+
+// Convert IoError to error code
+pub fn io_error_code(err: IoError) -> i32 {
+    match err {
+        NotFound => -1,
+        PermissionDenied => -2,
+        AlreadyExists => -3,
+        InvalidInput => -4,
+        OutOfMemory => -5,
+        Interrupted => -6,
+        Unknown => -999,
+    }
+}
