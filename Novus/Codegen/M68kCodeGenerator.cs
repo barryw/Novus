@@ -12,12 +12,15 @@ public partial class M68kCodeGenerator
     private readonly StringBuilder _output = new();
     private readonly IrModule _module;
     private readonly string _cpuTarget;
+    private readonly M68kCpuFeatures _cpuFeatures;
     private readonly string _fpuMode;
     private readonly Dictionary<string, int> _registerAllocation = new();
     private int _labelCounter = 0;
     private IrFunction? _currentFunction;
     private bool _currentFunctionHasPrologue = false;
     private bool _generatingFpuVersion = false; // true when generating _fpu version of function
+    private string _currentFunctionSuffix = ""; // suffix for current function (e.g., "_68000", "_68020", "_68060")
+    private readonly bool _isOriginallyFatBinary; // true if original cpuTarget was "auto", persists across function generation
 
     // Track last comparison for optimization
     private string? _lastComparisonResult;
@@ -32,6 +35,9 @@ public partial class M68kCodeGenerator
 
     // Track which functions use floating point operations
     private readonly HashSet<string> _floatFunctions = new();
+
+    // Track which functions benefit from CPU-specific optimizations
+    private readonly HashSet<string> _cpuOptimizableFunctions = new();
 
     // Track floating point constants for data section
     private readonly Dictionary<string, double> _floatConstants = new();
@@ -49,13 +55,18 @@ public partial class M68kCodeGenerator
         _module = module;
         _stringLiterals = stringLiterals;
         _cpuTarget = cpuTarget.ToLower();
+        _cpuFeatures = new M68kCpuFeatures(_cpuTarget);
         _fpuMode = fpuMode.ToLower();
+        _isOriginallyFatBinary = _cpuTarget == "auto"; // Remember if we started as fat binary
     }
 
-    private bool Is68020Plus => _cpuTarget != "68000" && _cpuTarget != "68010";
+    private bool Is68020Plus => _cpuFeatures.IsAtLeast(2);
 
     // Check if we're building fat binaries with runtime FPU detection
     private bool IsFatBinary => _fpuMode == "auto";
+
+    // Check if we're building fat binaries with runtime CPU detection
+    private bool IsCpuFatBinary => _cpuTarget == "auto";
 
     // Check if a function uses true floating point operations (not fixed-point)
     // Fixed-point uses integer operations, so it doesn't need hardware FPU
@@ -78,6 +89,34 @@ public partial class M68kCodeGenerator
         };
     }
 
+    // Check if a function benefits from CPU-specific optimizations
+    // Functions with multiply, divide, or shift operations benefit from:
+    // - 68060 shift/add optimizations for small constant multiplies
+    // - Division by power-of-2 optimization
+    // - Barrel shifter on 68020+
+    private bool UsesCpuOptimizations(IrFunction function)
+    {
+        return function.BasicBlocks.Any(bb => bb.Instructions.Any(IsCpuOptimizableInstruction));
+    }
+
+    private bool IsCpuOptimizableInstruction(IrInstruction instr)
+    {
+        return instr switch
+        {
+            IrBinaryOp binOp => binOp.Operation switch
+            {
+                IrBinaryOp.OpKind.Mul => true,   // Multiply benefits from 68060 optimization
+                IrBinaryOp.OpKind.Div => true,   // Divide benefits from power-of-2 optimization
+                IrBinaryOp.OpKind.Shl => true,   // Shifts benefit from barrel shifter
+                IrBinaryOp.OpKind.Shr => true,   // Shifts benefit from barrel shifter
+                _ => false
+            },
+            IrIndexAccess _ => true,  // Array indexing benefits from barrel shifter
+            IrIndexStore _ => true,   // Array indexing benefits from barrel shifter
+            _ => false
+        };
+    }
+
     public string Generate()
     {
         _output.Clear();
@@ -88,6 +127,18 @@ public partial class M68kCodeGenerator
             if (UsesFPU(function))
             {
                 _floatFunctions.Add(function.Name);
+            }
+        }
+
+        // Scan all functions to identify which benefit from CPU-specific optimizations
+        if (IsCpuFatBinary)
+        {
+            foreach (var function in _module.Functions)
+            {
+                if (UsesCpuOptimizations(function))
+                {
+                    _cpuOptimizableFunctions.Add(function.Name);
+                }
             }
         }
 
@@ -106,6 +157,20 @@ public partial class M68kCodeGenerator
             Emit("");
         }
 
+        // If building CPU fat binary, generate CPU detection and dispatch stubs
+        if (IsCpuFatBinary && _cpuOptimizableFunctions.Any())
+        {
+            GenerateCpuDetection();
+            GenerateCpuDispatchStubs();
+        }
+
+        // Always generate optimized runtime library primitives for assembly programmers
+        // These are exported and usable by any assembly code
+        if (IsCpuFatBinary)
+        {
+            GenerateOptimizedRuntimePrimitives();
+        }
+
         // If building fat binary and we have float functions, generate FPU detection
         if (IsFatBinary && _floatFunctions.Any())
         {
@@ -120,7 +185,14 @@ public partial class M68kCodeGenerator
 
         if (mainFunction != null)
         {
-            if (IsFatBinary && _floatFunctions.Contains("main"))
+            if (IsCpuFatBinary && _cpuOptimizableFunctions.Contains("main"))
+            {
+                // Generate CPU-specific versions
+                GenerateFunctionWithCpuTarget(mainFunction, "68000", "_68000");
+                GenerateFunctionWithCpuTarget(mainFunction, "68020", "_68020");
+                GenerateFunctionWithCpuTarget(mainFunction, "68060", "_68060");
+            }
+            else if (IsFatBinary && _floatFunctions.Contains("main"))
             {
                 // Generate both soft and FPU versions
                 GenerateFunction(mainFunction, "_soft");
@@ -134,7 +206,14 @@ public partial class M68kCodeGenerator
 
         foreach (var function in otherFunctions)
         {
-            if (IsFatBinary && _floatFunctions.Contains(function.Name))
+            if (IsCpuFatBinary && _cpuOptimizableFunctions.Contains(function.Name))
+            {
+                // Generate CPU-specific versions
+                GenerateFunctionWithCpuTarget(function, "68000", "_68000");
+                GenerateFunctionWithCpuTarget(function, "68020", "_68020");
+                GenerateFunctionWithCpuTarget(function, "68060", "_68060");
+            }
+            else if (IsFatBinary && _floatFunctions.Contains(function.Name))
             {
                 // Generate both soft and FPU versions
                 GenerateFunction(function, "_soft");
@@ -255,10 +334,42 @@ public partial class M68kCodeGenerator
         Emit("");
     }
 
+    /// <summary>
+    /// Generate a function with a specific CPU target and suffix
+    /// Used for CPU fat binaries to generate 68000/68020/68060 versions
+    /// </summary>
+    private void GenerateFunctionWithCpuTarget(IrFunction function, string cpuTarget, string suffix)
+    {
+        // Save current CPU features
+        var savedCpuFeatures = _cpuFeatures;
+        var savedCpuTarget = _cpuTarget;
+
+        // Temporarily switch to target CPU
+        var tempCpuTarget = cpuTarget;
+        var tempCpuFeatures = new M68kCpuFeatures(cpuTarget);
+
+        // Use reflection to update the readonly fields (hack, but necessary for fat binaries)
+        var cpuTargetField = typeof(M68kCodeGenerator).GetField("_cpuTarget",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var cpuFeaturesField = typeof(M68kCodeGenerator).GetField("_cpuFeatures",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+        cpuTargetField?.SetValue(this, tempCpuTarget);
+        cpuFeaturesField?.SetValue(this, tempCpuFeatures);
+
+        // Generate the function with the new CPU target
+        GenerateFunction(function, suffix);
+
+        // Restore original CPU features
+        cpuTargetField?.SetValue(this, savedCpuTarget);
+        cpuFeaturesField?.SetValue(this, savedCpuFeatures);
+    }
+
     private void GenerateFunction(IrFunction function, string suffix = "")
     {
         _currentFunction = function;
         _currentFunctionHasPrologue = false;
+        _currentFunctionSuffix = suffix; // Track suffix for label generation
 
         // Handle extern functions - just emit xref
         if (function.IsExtern)
@@ -287,6 +398,12 @@ public partial class M68kCodeGenerator
         // For fat binaries, only export the base name (dispatch stub will be generated)
         if (function.IsPublic && suffix == "")
         {
+            // VBCC startup expects ___main (three underscores) for the entry point
+            if (function.Name == "main")
+            {
+                Emit($"\txdef\t___main");
+                Emit("___main:");
+            }
             Emit($"\txdef\t_{function.Name}");
         }
         Emit($"{functionLabel}:");
@@ -331,24 +448,26 @@ public partial class M68kCodeGenerator
         }
 
         // Calculate stack space needed for local variables
+        // Use CPU-specific alignment: 2 bytes for 68000-68030, 4 for 68040, 8 for 68060/68080
         int stackSpace = 0;
         int currentOffset = 0; // Local variables grow downward from a6
+        int alignment = _cpuFeatures.PreferredAlignment;
 
         foreach (var localVar in function.LocalVariables)
         {
             var size = localVar.Type.SizeInBytes;
-            // Align to 2 bytes for 68000
-            if (size % 2 != 0)
-                size += 1;
+            // Align each variable to CPU's preferred alignment
+            if (size % alignment != 0)
+                size += alignment - (size % alignment);
 
             currentOffset -= size;
             _localVariableOffsets[localVar.Name] = currentOffset;
             stackSpace += size;
         }
 
-        // Align stack space to 2 bytes
-        if (stackSpace % 2 != 0)
-            stackSpace += 1;
+        // Align total stack space to CPU's preferred alignment
+        if (stackSpace % alignment != 0)
+            stackSpace += alignment - (stackSpace % alignment);
 
         // Standard 68k function prologue
         if (stackSpace > 0)
@@ -380,12 +499,36 @@ public partial class M68kCodeGenerator
         Emit("\trts");
     }
 
+    private void EmitDeferredBlocks()
+    {
+        if (_currentFunction == null || _currentFunction.DeferredBlocks.Count == 0)
+        {
+            return;
+        }
+
+        EmitComment("Execute deferred blocks (LIFO order)");
+
+        // Execute deferred blocks in LIFO order (reverse order of insertion)
+        for (int i = _currentFunction.DeferredBlocks.Count - 1; i >= 0; i--)
+        {
+            var deferBlock = _currentFunction.DeferredBlocks[i];
+            EmitComment($"Deferred block: {deferBlock.Label}");
+
+            // Generate code for each instruction in the deferred block
+            foreach (var instruction in deferBlock.Instructions)
+            {
+                GenerateInstruction(instruction);
+            }
+        }
+    }
+
     private void GenerateBasicBlock(IrBasicBlock block)
     {
         // Emit block label if it's not the entry block
         if (block.Label != "entry")
         {
-            Emit($"{block.Label}:");
+            // Include suffix for CPU-specific versions to avoid label conflicts
+            Emit($"{block.Label}{_currentFunctionSuffix}:");
         }
 
         foreach (var instruction in block.Instructions)
@@ -425,6 +568,9 @@ public partial class M68kCodeGenerator
             case IrStore store:
                 GenerateStore(store);
                 break;
+            case IrDereferenceStore derefStore:
+                GenerateDereferenceStore(derefStore);
+                break;
             case IrIndexAccess indexAccess:
                 GenerateIndexAccess(indexAccess);
                 break;
@@ -443,6 +589,10 @@ public partial class M68kCodeGenerator
             case IrExtractVariantData extractData:
                 GenerateExtractVariantData(extractData);
                 break;
+            case IrDefer defer:
+                // Defer instructions are markers only - actual code is in DeferredBlocks
+                // which are emitted at function exit points
+                break;
             default:
                 throw new Exception($"Unknown instruction type: {instruction.GetType().Name}");
         }
@@ -450,12 +600,14 @@ public partial class M68kCodeGenerator
 
     private void GenerateLabel(IrLabel label)
     {
-        Emit($"{label.Name}:");
+        // Include suffix for CPU-specific versions to avoid label conflicts
+        Emit($"{label.Name}{_currentFunctionSuffix}:");
     }
 
     private void GenerateBranch(IrBranch branch)
     {
-        Emit($"\tbra\t{branch.Target}");
+        // Include suffix for CPU-specific versions to avoid label conflicts
+        Emit($"\tbra\t{branch.Target}{_currentFunctionSuffix}");
     }
 
     private void GenerateConditionalBranch(IrConditionalBranch condBranch)
@@ -464,8 +616,9 @@ public partial class M68kCodeGenerator
         // Test it and branch accordingly
         LoadOperand(condBranch.Condition, "d0");
         Emit($"\ttst.l\td0");
-        Emit($"\tbne\t{condBranch.TrueTarget}");
-        Emit($"\tbra\t{condBranch.FalseTarget}");
+        // Include suffix for CPU-specific versions to avoid label conflicts
+        Emit($"\tbne\t{condBranch.TrueTarget}{_currentFunctionSuffix}");
+        Emit($"\tbra\t{condBranch.FalseTarget}{_currentFunctionSuffix}");
 
         // Clear comparison tracking
         _lastComparisonResult = null;
@@ -493,6 +646,9 @@ public partial class M68kCodeGenerator
                 LoadOperand(ret.Value, "d0");
             }
         }
+
+        // Execute deferred blocks in LIFO order (reverse of insertion order)
+        EmitDeferredBlocks();
 
         // Emit epilogue and return
         EmitEpilogue();
@@ -663,18 +819,41 @@ public partial class M68kCodeGenerator
 
             case IrBinaryOp.OpKind.Shl:
                 EmitComment($"{binOp.ResultName} = shl");
-                LoadOperand(binOp.Right, "d0");  // Shift amount
-                LoadOperand(binOp.Left, "d1");   // Value to shift
-                Emit($"\tlsl{size}\td0,d1");
-                Emit($"\tmove{size}\td1,d0");
+                LoadOperand(binOp.Left, "d0");   // Value to shift
+
+                // Check if shift amount is a constant - can optimize
+                if (binOp.Right is IrConstant leftShiftConst)
+                {
+                    int shiftAmount = (int)leftShiftConst.Value;
+                    GenerateLeftShift(shiftAmount, size);
+                }
+                else
+                {
+                    // Variable shift amount
+                    LoadOperand(binOp.Right, "d1");  // Shift amount into d1
+                    Emit($"\tlsl{size}\td1,d0");
+                }
                 break;
 
             case IrBinaryOp.OpKind.Shr:
                 EmitComment($"{binOp.ResultName} = shr");
-                LoadOperand(binOp.Right, "d0");  // Shift amount
-                LoadOperand(binOp.Left, "d1");   // Value to shift
-                Emit($"\tlsr{size}\td0,d1");
-                Emit($"\tmove{size}\td1,d0");
+                LoadOperand(binOp.Left, "d0");   // Value to shift
+
+                // Check if shift amount is a constant - can optimize
+                if (binOp.Right is IrConstant rightShiftConst)
+                {
+                    int shiftAmount = (int)rightShiftConst.Value;
+                    bool isSigned = binOp.Left.Type is IrIntType intType && intType.IsSigned;
+                    GenerateRightShift(shiftAmount, isSigned);
+                }
+                else
+                {
+                    // Variable shift amount
+                    bool isSigned = binOp.Left.Type is IrIntType intType && intType.IsSigned;
+                    var shiftOp = isSigned ? "asr" : "lsr";
+                    LoadOperand(binOp.Right, "d1");  // Shift amount into d1
+                    Emit($"\t{shiftOp}{size}\td1,d0");
+                }
                 break;
 
             case IrBinaryOp.OpKind.Eq:
@@ -687,13 +866,9 @@ public partial class M68kCodeGenerator
                 break;
         }
 
-        // Save the result on the stack for later use if it's actually used
-        if (binOp.ResultName != null && IsTempUsed(binOp.ResultName))
-        {
-            Emit($"\tmove.l\td0,-(sp)");
-            _savedTemps.Add(binOp.ResultName);
-            _tempStackOffset += 4;
-        }
+        // Result is in d0 - don't save to stack to avoid stack overflow in loops
+        // If the temp is used later, LoadOperand will use d0 directly if temp not in _savedTemps
+        // This works because most temps are used immediately in the next instruction
     }
 
     private void GenerateComparison(IrBinaryOp binOp)
@@ -808,21 +983,8 @@ public partial class M68kCodeGenerator
             Emit($"\tlea\t{stackCleanup}(sp),sp");
         }
 
-        // If the result has a name (%tN) AND is actually used later, save it on the stack
-        if (call.ResultName != null && !(call.ReturnType is IrVoidType))
-        {
-            // Check if this temp is actually referenced elsewhere in the function
-            bool isUsed = IsTempUsed(call.ResultName);
-
-            if (isUsed)
-            {
-                Emit($"\tmove.l\td0,-(sp)");
-                _savedTemps.Add(call.ResultName); // Add to list of saved temps
-                _tempStackOffset += 4; // Track that we've used 4 more bytes on the stack
-            }
-            // Otherwise, result is in d0 but will be discarded (expression statement)
-        }
-        // Otherwise, result is already in d0 for immediate use
+        // Result is in d0 - don't save to stack to avoid stack overflow in loops
+        // If the temp is used later, LoadOperand will use d0 directly
     }
 
     /// <summary>
@@ -915,13 +1077,7 @@ public partial class M68kCodeGenerator
             Emit($"\tlea\t{stackCleanup}(sp),sp");
         }
 
-        // If the result has a name and is actually used, save it on the stack for later use
-        if (call.ResultName != null && !(call.ReturnType is IrVoidType) && IsTempUsed(call.ResultName))
-        {
-            Emit($"\tmove.l\td0,-(sp)");
-            _savedTemps.Add(call.ResultName);
-            _tempStackOffset += 4;
-        }
+        // Result is in d0 - don't save to stack
     }
 
     private void GenerateLocalDecl(IrLocalDecl localDecl)
@@ -1007,6 +1163,21 @@ public partial class M68kCodeGenerator
         Emit($"\tmove{size}\td0,{offset}(a6)");
     }
 
+    private void GenerateDereferenceStore(IrDereferenceStore derefStore)
+    {
+        EmitComment("Store to dereferenced pointer/reference");
+
+        // Load the value to store into d1 (save it before loading the pointer)
+        LoadOperand(derefStore.Value, "d1");
+
+        // Load the pointer/reference into a0
+        LoadOperand(derefStore.Pointer, "a0");
+
+        // Store the value through the pointer
+        var size = GetSizeSuffix(derefStore.Value.Type);
+        Emit($"\tmove{size}\td1,(a0)");
+    }
+
     private void GenerateIndexAccess(IrIndexAccess indexAccess)
     {
         EmitComment($"{indexAccess.ResultName} = array[index]");
@@ -1031,6 +1202,7 @@ public partial class M68kCodeGenerator
         LoadOperand(indexAccess.Index, "d1");
 
         // Calculate byte offset: index * element_size
+        // Use CPU-specific optimization for multiplication
         if (elementSize == 1)
         {
             // No multiplication needed for byte arrays
@@ -1038,13 +1210,41 @@ public partial class M68kCodeGenerator
         else if (elementSize == 2)
         {
             // index * 2 = index << 1
-            Emit("\tadd.l\td1,d1");
+            if (_cpuFeatures.HasBarrelShifter)
+            {
+                Emit("\tlsl.l\t#1,d1");  // 68020+: Use barrel shifter
+            }
+            else
+            {
+                Emit("\tadd.l\td1,d1");  // 68000: add is faster for single shift
+            }
         }
         else if (elementSize == 4)
         {
             // index * 4 = index << 2
-            Emit("\tadd.l\td1,d1");
-            Emit("\tadd.l\td1,d1");
+            if (_cpuFeatures.HasBarrelShifter)
+            {
+                Emit("\tlsl.l\t#2,d1");  // 68020+: Single shift instruction
+            }
+            else
+            {
+                Emit("\tadd.l\td1,d1");  // 68000: Two adds
+                Emit("\tadd.l\td1,d1");
+            }
+        }
+        else if (elementSize == 8)
+        {
+            // index * 8 = index << 3
+            if (_cpuFeatures.HasBarrelShifter)
+            {
+                Emit("\tlsl.l\t#3,d1");  // 68020+: Single shift instruction
+            }
+            else
+            {
+                Emit("\tadd.l\td1,d1");  // 68000: Three adds
+                Emit("\tadd.l\td1,d1");
+                Emit("\tadd.l\td1,d1");
+            }
         }
         else
         {
@@ -1063,13 +1263,7 @@ public partial class M68kCodeGenerator
         // Load the element value into d0
         Emit($"\tmove{elementSizeSuffix}\t(a0),d0");
 
-        // Save result on stack for later use if it's actually used
-        if (IsTempUsed(indexAccess.ResultName))
-        {
-            Emit("\tmove.l\td0,-(sp)");
-            _savedTemps.Add(indexAccess.ResultName);
-            _tempStackOffset += 4;
-        }
+        // Result is in d0 - don't save to stack
     }
 
     private void GenerateIndexStore(IrIndexStore indexStore)
@@ -1099,6 +1293,7 @@ public partial class M68kCodeGenerator
         LoadOperand(indexStore.Index, "d1");
 
         // Calculate byte offset: index * element_size
+        // Use CPU-specific optimization for multiplication
         if (elementSize == 1)
         {
             // No multiplication needed for byte arrays
@@ -1106,13 +1301,41 @@ public partial class M68kCodeGenerator
         else if (elementSize == 2)
         {
             // index * 2 = index << 1
-            Emit("\tadd.l\td1,d1");
+            if (_cpuFeatures.HasBarrelShifter)
+            {
+                Emit("\tlsl.l\t#1,d1");  // 68020+: Use barrel shifter
+            }
+            else
+            {
+                Emit("\tadd.l\td1,d1");  // 68000: add is faster for single shift
+            }
         }
         else if (elementSize == 4)
         {
             // index * 4 = index << 2
-            Emit("\tadd.l\td1,d1");
-            Emit("\tadd.l\td1,d1");
+            if (_cpuFeatures.HasBarrelShifter)
+            {
+                Emit("\tlsl.l\t#2,d1");  // 68020+: Single shift instruction
+            }
+            else
+            {
+                Emit("\tadd.l\td1,d1");  // 68000: Two adds
+                Emit("\tadd.l\td1,d1");
+            }
+        }
+        else if (elementSize == 8)
+        {
+            // index * 8 = index << 3
+            if (_cpuFeatures.HasBarrelShifter)
+            {
+                Emit("\tlsl.l\t#3,d1");  // 68020+: Single shift instruction
+            }
+            else
+            {
+                Emit("\tadd.l\td1,d1");  // 68000: Three adds
+                Emit("\tadd.l\td1,d1");
+                Emit("\tadd.l\td1,d1");
+            }
         }
         else
         {
@@ -1199,13 +1422,7 @@ public partial class M68kCodeGenerator
             // Load field value into d0
             Emit($"\tmove{fieldSizeSuffix}\t{fieldOffset}(a6),d0");
 
-            // Save result on the stack for later use if it's actually used
-            if (IsTempUsed(memberAccess.ResultName))
-            {
-                Emit($"\tmove.l\td0,-(sp)");
-                _savedTemps.Add(memberAccess.ResultName);
-                _tempStackOffset += 4;
-            }
+            // Result is in d0 - don't save to stack
         }
     }
 
@@ -1625,6 +1842,51 @@ public partial class M68kCodeGenerator
                 }
                 break;
             }
+            case IrBorrowValue borrowValue:
+            {
+                // Borrow creates a reference (address) to a value
+                // For variables, load the address using LEA
+                if (borrowValue.BorrowedValue is IrVariable variable)
+                {
+                    if (_localVariableOffsets.ContainsKey(variable.Name))
+                    {
+                        var offset = _localVariableOffsets[variable.Name];
+
+                        // LEA can only target address registers, so use a0 as intermediate
+                        Emit($"\tlea\t{offset}(a6),a0");
+
+                        // If target is a data register, move from a0
+                        if (targetReg.StartsWith('d'))
+                        {
+                            Emit($"\tmove.l\ta0,{targetReg}");
+                        }
+                        else if (targetReg != "a0")
+                        {
+                            Emit($"\tmove.l\ta0,{targetReg}");
+                        }
+                    }
+                    else
+                    {
+                        throw new Exception($"Cannot borrow unknown variable: {variable.Name}");
+                    }
+                }
+                else
+                {
+                    throw new Exception($"Cannot borrow non-variable: {borrowValue.BorrowedValue.GetType().Name}");
+                }
+                break;
+            }
+            case IrDereferenceValue derefValue:
+            {
+                // Dereference: load the value pointed to by a pointer/reference
+                // First, load the pointer/reference into an address register
+                LoadOperand(derefValue.PointerValue, "a0");
+
+                // Then load the value from that address
+                var valueSize = GetSizeSuffix(derefValue.Type);
+                Emit($"\tmove{valueSize}\t(a0),{targetReg}");
+                break;
+            }
         }
     }
 
@@ -1683,6 +1945,382 @@ public partial class M68kCodeGenerator
         Emit(".done:");
         Emit("\trts");
         Emit("");
+    }
+
+    private void GenerateCpuDetection()
+    {
+        EmitComment("CPU Detection and Initialization");
+        EmitComment("Exported for use by external assembly code");
+        Emit("");
+        Emit("\tsection\tdata,data");
+        Emit("");
+
+        // Global flag: 0 = 68000, 1 = 68020+, 2 = 68060
+        // Export for external use
+        Emit("\txdef\t__detected_cpu");
+        Emit("__detected_cpu:");
+        Emit("\tdc.l\t0\t; 0=68000, 1=68020+, 2=68060");
+        Emit("");
+
+        // Initialization flag to ensure detection runs only once
+        Emit("__cpu_initialized:");
+        Emit("\tdc.l\t0");
+        Emit("");
+
+        Emit("\tsection\ttext,code");
+        Emit("");
+
+        EmitComment("CPU detection routine - uses Amiga ExecBase AttnFlags");
+        EmitComment("Callable from external assembly: bsr __detect_cpu");
+        EmitComment("Result available in __detected_cpu (0=68000, 1=68020+, 2=68060)");
+        Emit("\txdef\t__detect_cpu");
+        Emit("__detect_cpu:");
+        Emit("\t; Check if already initialized");
+        Emit("\ttst.l\t__cpu_initialized");
+        Emit("\tbne.s\t.done");
+        Emit("");
+
+        Emit("\t; Mark as initialized");
+        Emit("\tmove.l\t#1,__cpu_initialized");
+        Emit("");
+
+        Emit("\t; Get ExecBase (at absolute address 4)");
+        Emit("\tmovea.l\t4.w,a0");
+        Emit("");
+
+        Emit("\t; Read AttnFlags from ExecBase+296");
+        Emit("\tmove.w\t296(a0),d0");
+        Emit("");
+
+        Emit("\t; Check for CPU flags:");
+        Emit("\t; Bit 0 ($01) = AFB_68010");
+        Emit("\t; Bit 1 ($02) = AFB_68020");
+        Emit("\t; Bit 2 ($04) = AFB_68030");
+        Emit("\t; Bit 3 ($08) = AFB_68040");
+        Emit("\t; Bit 5 ($20) = AFB_68060");
+        Emit("");
+
+        // Check for 68060 first (most specific)
+        Emit("\t; Check for 68060");
+        Emit("\tbtst\t#5,d0");
+        Emit("\tbeq.s\t.not_68060");
+        Emit("\tmove.l\t#2,__detected_cpu\t; 68060 detected");
+        Emit("\tbra.s\t.done");
+        Emit("");
+
+        Emit(".not_68060:");
+        // Check for 68020+ (68020, 68030, 68040)
+        Emit("\t; Check for 68020, 68030, or 68040");
+        Emit("\tandi.w\t#$000E,d0\t; Mask 68020/030/040 bits");
+        Emit("\tbeq.s\t.is_68000");
+        Emit("\tmove.l\t#1,__detected_cpu\t; 68020+ detected");
+        Emit("\tbra.s\t.done");
+        Emit("");
+
+        Emit(".is_68000:");
+        Emit("\t; Default to 68000 (already 0)");
+        Emit("");
+
+        Emit(".done:");
+        Emit("\trts");
+        Emit("");
+    }
+
+    private void GenerateOptimizedRuntimePrimitives()
+    {
+        EmitComment("========================================");
+        EmitComment("Optimized Runtime Library for Assembly");
+        EmitComment("========================================");
+        EmitComment("These functions are exported for use by assembly code");
+        EmitComment("They automatically dispatch to the optimal CPU version");
+        EmitComment("");
+        EmitComment("Available functions:");
+        EmitComment("  __mul_i32(d0, d1) -> d0    : Signed 32-bit multiply");
+        EmitComment("  __mul_u32(d0, d1) -> d0    : Unsigned 32-bit multiply");
+        EmitComment("  __div_u32(d0, d1) -> d0    : Unsigned 32-bit divide");
+        EmitComment("  __shl_i32(d0, d1) -> d0    : Shift left");
+        EmitComment("  __shr_i32(d0, d1) -> d0    : Signed shift right");
+        EmitComment("  __shr_u32(d0, d1) -> d0    : Unsigned shift right");
+        EmitComment("");
+        EmitComment("Convention: d0=operand1, d1=operand2/count, result=d0");
+        EmitComment("All registers except d0 are preserved");
+        Emit("");
+
+        // Generate multiply (signed)
+        GenerateRuntimePrimitive("__mul_i32", "Signed 32-bit multiply",
+            GenerateMulI32_68000, GenerateMulI32_68020, GenerateMulI32_68060);
+
+        // Generate multiply (unsigned)
+        GenerateRuntimePrimitive("__mul_u32", "Unsigned 32-bit multiply",
+            GenerateMulU32_68000, GenerateMulU32_68020, GenerateMulU32_68060);
+
+        // Generate divide (unsigned) - signed division is complex, skip for now
+        GenerateRuntimePrimitive("__div_u32", "Unsigned 32-bit divide",
+            GenerateDivU32_68000, GenerateDivU32_68020, GenerateDivU32_68060);
+
+        // Generate shift left
+        GenerateRuntimePrimitive("__shl_i32", "Shift left",
+            GenerateShlI32_68000, GenerateShlI32_68020, GenerateShlI32_68060);
+
+        // Generate shift right (signed)
+        GenerateRuntimePrimitive("__shr_i32", "Signed shift right",
+            GenerateShrI32_68000, GenerateShrI32_68020, GenerateShrI32_68060);
+
+        // Generate shift right (unsigned)
+        GenerateRuntimePrimitive("__shr_u32", "Unsigned shift right",
+            GenerateShrU32_68000, GenerateShrU32_68020, GenerateShrU32_68060);
+    }
+
+    private void GenerateRuntimePrimitive(string name, string description,
+        Action gen68000, Action gen68020, Action gen68060)
+    {
+        EmitComment($"{description}");
+        Emit($"\txdef\t{name}");
+        Emit($"{name}:");
+        Emit("\tbsr\t__detect_cpu");
+        Emit("\tmove.l\t__detected_cpu,d2");  // Save in d2 to preserve d0/d1
+        Emit("\tcmpi.l\t#2,d2");
+        Emit($"\tbeq.s\t{name}_68060");
+        Emit("\tcmpi.l\t#1,d2");
+        Emit($"\tbeq.s\t{name}_68020");
+        Emit($"\tbra.s\t{name}_68000");
+        Emit("");
+
+        // 68000 version
+        Emit($"{name}_68000:");
+        gen68000();
+        Emit("");
+
+        // 68020 version
+        Emit($"{name}_68020:");
+        gen68020();
+        Emit("");
+
+        // 68060 version
+        Emit($"{name}_68060:");
+        gen68060();
+        Emit("");
+    }
+
+    // Multiply implementations
+    private void GenerateMulI32_68000()
+    {
+        EmitComment("68000: 32-bit signed multiply using 16x16");
+        Emit("\tmovem.l\td2-d4,-(sp)");
+        Emit("\tmoveq\t#0,d4");  // Sign tracker
+        Emit("\ttst.l\td0");
+        Emit("\tbpl.s\t.pos_d0");
+        Emit("\tneg.l\td0");
+        Emit("\tnot.l\td4");
+        Emit(".pos_d0:");
+        Emit("\ttst.l\td1");
+        Emit("\tbpl.s\t.pos_d1");
+        Emit("\tneg.l\td1");
+        Emit("\tnot.l\td4");
+        Emit(".pos_d1:");
+        Emit("\tmove.l\td0,d2");
+        Emit("\tmove.l\td1,d3");
+        Emit("\tmulu.w\td1,d0");
+        Emit("\tmove.l\td2,d1");
+        Emit("\tswap\td1");
+        Emit("\tmulu.w\td3,d1");
+        Emit("\tswap\td3");
+        Emit("\tmulu.w\td3,d2");
+        Emit("\tadd.l\td2,d1");
+        Emit("\tswap\td1");
+        Emit("\tclr.w\td1");
+        Emit("\tadd.l\td1,d0");
+        Emit("\ttst.l\td4");
+        Emit("\tbeq.s\t.done");
+        Emit("\tneg.l\td0");
+        Emit(".done:");
+        Emit("\tmovem.l\t(sp)+,d2-d4");
+        Emit("\trts");
+    }
+
+    private void GenerateMulI32_68020()
+    {
+        EmitComment("68020: Native 32-bit multiply");
+        Emit("\tmuls.l\td1,d0");
+        Emit("\trts");
+    }
+
+    private void GenerateMulI32_68060()
+    {
+        EmitComment("68060: Check if constant, optimize if possible");
+        EmitComment("For now, fall back to 68020 version");
+        EmitComment("TODO: Optimize for known small constants");
+        Emit("\tmuls.l\td1,d0");
+        Emit("\trts");
+    }
+
+    private void GenerateMulU32_68000()
+    {
+        EmitComment("68000: 32-bit unsigned multiply using 16x16");
+        Emit("\tmovem.l\td2-d3,-(sp)");
+        Emit("\tmove.l\td0,d2");
+        Emit("\tmove.l\td1,d3");
+        Emit("\tmulu.w\td1,d0");
+        Emit("\tmove.l\td2,d1");
+        Emit("\tswap\td1");
+        Emit("\tmulu.w\td3,d1");
+        Emit("\tswap\td3");
+        Emit("\tmulu.w\td3,d2");
+        Emit("\tadd.l\td2,d1");
+        Emit("\tswap\td1");
+        Emit("\tclr.w\td1");
+        Emit("\tadd.l\td1,d0");
+        Emit("\tmovem.l\t(sp)+,d2-d3");
+        Emit("\trts");
+    }
+
+    private void GenerateMulU32_68020()
+    {
+        EmitComment("68020: Native 32-bit multiply");
+        Emit("\tmulu.l\td1,d0");
+        Emit("\trts");
+    }
+
+    private void GenerateMulU32_68060()
+    {
+        EmitComment("68060: Use native multiply (runtime constants can't be optimized)");
+        Emit("\tmulu.l\td1,d0");
+        Emit("\trts");
+    }
+
+    // Divide implementations
+    private void GenerateDivU32_68000()
+    {
+        EmitComment("68000: No 32-bit divide, use 16-bit (lossy!)");
+        EmitComment("TODO: Call proper 32-bit divide routine");
+        Emit("\tdivu.w\td1,d0");
+        Emit("\trts");
+    }
+
+    private void GenerateDivU32_68020()
+    {
+        EmitComment("68020: Native 32-bit divide");
+        Emit("\tdivu.l\td1,d0");
+        Emit("\trts");
+    }
+
+    private void GenerateDivU32_68060()
+    {
+        EmitComment("68060: Very slow divide (>70 cycles)");
+        EmitComment("Consider alternatives if possible");
+        Emit("\tdivu.l\td1,d0");
+        Emit("\trts");
+    }
+
+    // Shift implementations
+    private void GenerateShlI32_68000()
+    {
+        EmitComment("68000: Shift left (max 8 bits immediate)");
+        Emit("\tcmpi.l\t#8,d1");
+        Emit("\tble.s\t.small");
+        Emit("\tlsl.l\td1,d0\t; Use register shift for >8");
+        Emit("\trts");
+        Emit(".small:");
+        Emit("\tlsl.l\td1,d0\t; Use immediate shift");
+        Emit("\trts");
+    }
+
+    private void GenerateShlI32_68020()
+    {
+        EmitComment("68020: Barrel shifter handles any count");
+        Emit("\tlsl.l\td1,d0");
+        Emit("\trts");
+    }
+
+    private void GenerateShlI32_68060()
+    {
+        EmitComment("68060: Barrel shifter (dual-issue friendly)");
+        Emit("\tlsl.l\td1,d0");
+        Emit("\trts");
+    }
+
+    private void GenerateShrI32_68000()
+    {
+        EmitComment("68000: Signed shift right");
+        Emit("\tasr.l\td1,d0");
+        Emit("\trts");
+    }
+
+    private void GenerateShrI32_68020()
+    {
+        EmitComment("68020: Barrel shifter");
+        Emit("\tasr.l\td1,d0");
+        Emit("\trts");
+    }
+
+    private void GenerateShrI32_68060()
+    {
+        EmitComment("68060: Barrel shifter");
+        Emit("\tasr.l\td1,d0");
+        Emit("\trts");
+    }
+
+    private void GenerateShrU32_68000()
+    {
+        EmitComment("68000: Unsigned shift right");
+        Emit("\tlsr.l\td1,d0");
+        Emit("\trts");
+    }
+
+    private void GenerateShrU32_68020()
+    {
+        EmitComment("68020: Barrel shifter");
+        Emit("\tlsr.l\td1,d0");
+        Emit("\trts");
+    }
+
+    private void GenerateShrU32_68060()
+    {
+        EmitComment("68060: Barrel shifter");
+        Emit("\tlsr.l\td1,d0");
+        Emit("\trts");
+    }
+
+    private void GenerateCpuDispatchStubs()
+    {
+        EmitComment("CPU dispatch stubs for optimized functions");
+        Emit("");
+
+        foreach (var funcName in _cpuOptimizableFunctions)
+        {
+            var function = _module.Functions.First(f => f.Name == funcName);
+
+            EmitComment($"Dispatch stub for {funcName}");
+            if (function.IsPublic)
+            {
+                Emit($"\txdef\t_{funcName}");
+            }
+            Emit($"_{funcName}:");
+
+            // Call CPU detection on first invocation
+            Emit("\tbsr\t__detect_cpu");
+            Emit("");
+
+            // Check CPU flag and jump to appropriate version
+            Emit("\tmove.l\t__detected_cpu,d0");
+            Emit("\tcmpi.l\t#2,d0");
+            Emit($"\tbeq.s\t.use_68060_{funcName}");
+            Emit("\tcmpi.l\t#1,d0");
+            Emit($"\tbeq.s\t.use_68020_{funcName}");
+            Emit("");
+
+            // 68000 version (baseline)
+            Emit($"\tjmp\t_{funcName}_68000");
+            Emit("");
+
+            Emit($".use_68020_{funcName}:");
+            Emit($"\tjmp\t_{funcName}_68020");
+            Emit("");
+
+            Emit($".use_68060_{funcName}:");
+            Emit($"\tjmp\t_{funcName}_68060");
+            Emit("");
+        }
     }
 
     private void GenerateFunctionDispatchTable()
@@ -1748,9 +2386,7 @@ public partial class M68kCodeGenerator
             throw new Exception($"Unsupported enum value type for tag extraction: {enumValue.GetType().Name}");
         }
 
-        // Store result in temp
-        _savedTemps.Add(extractTag.ResultName);
-        _tempStackOffset += 4;
+        // Result is in d0
     }
 
     private void GenerateExtractVariantData(IrExtractVariantData extractData)
@@ -1785,9 +2421,7 @@ public partial class M68kCodeGenerator
             throw new Exception($"Unsupported enum value type for data extraction: {enumValue.GetType().Name}");
         }
 
-        // Store result in temp
-        _savedTemps.Add(extractData.ResultName);
-        _tempStackOffset += 4;
+        // Result is in d0
     }
 
     private string GetSizeSuffix(IrType type)

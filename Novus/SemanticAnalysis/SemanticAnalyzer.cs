@@ -1393,7 +1393,11 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return targetType;
 
         // Check if cast is valid
-        if (!IsNumericType(targetType) || !IsNumericType(exprType))
+        // Allow: numeric -> numeric, pointer -> integer
+        bool isValidCast = (IsNumericType(targetType) && IsNumericType(exprType)) ||
+                           (IsNumericType(targetType) && exprType is IrPointerType);
+
+        if (!isValidCast)
         {
             var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
             _diagnostics.ReportError(
@@ -1402,7 +1406,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 location,
                 helpTexts: new List<string>
                 {
-                    "only numeric types can be cast"
+                    "only numeric types and pointers to integers can be cast"
                 }
             );
             return null;
@@ -1563,6 +1567,15 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             );
         }
 
+        return null;
+    }
+
+    public override IrType? VisitDeferStatement([NotNull] NovusParser.DeferStatementContext context)
+    {
+        // Analyze the deferred block
+        // Variables captured in defer have their values at the time defer executes (end of scope)
+        // not at the time defer is registered
+        AnalyzeBlock(context.block());
         return null;
     }
 

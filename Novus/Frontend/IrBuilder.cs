@@ -1,5 +1,6 @@
 using Antlr4.Runtime;
 using Antlr4.Runtime.Misc;
+using Antlr4.Runtime.Tree;
 using Novus.IR;
 using Novus.Parser;
 
@@ -24,6 +25,15 @@ public class IrBuilder : NovusBaseVisitor<object?>
     private readonly Dictionary<string, (IrType Type, object Value)> _constants = new(); // Track constant values
     public readonly List<IrStringLiteral> StringLiterals = new(); // Track all string literals for data section
     private string _stdLibPath = "."; // Path to standard library
+    private readonly bool _skipAutoImports; // Skip auto-importing core module (for tests)
+
+    /// <summary>
+    /// Constructor for IrBuilder
+    /// </summary>
+    public IrBuilder(bool skipAutoImports = false)
+    {
+        _skipAutoImports = skipAutoImports;
+    }
 
     /// <summary>
     /// Set the standard library path
@@ -49,8 +59,11 @@ public class IrBuilder : NovusBaseVisitor<object?>
     public IrModule BuildModule(NovusParser.CompilationUnitContext context)
     {
         // Multi-pass approach to handle forward references:
-        // Pass 0a: Implicitly import all of core module
-        ImportModule("core", importAll: true);
+        // Pass 0a: Implicitly import all of core module (unless testing)
+        if (!_skipAutoImports)
+        {
+            ImportModule("core", importAll: true);
+        }
 
         // Pass 0b: Process explicit imports
         foreach (var importDecl in context.importDeclaration())
@@ -126,15 +139,19 @@ public class IrBuilder : NovusBaseVisitor<object?>
             // Visit function body and get the last expression value
             var lastValue = Visit(funcContext.block()) as IrValue;
 
-            // Add implicit return if:
-            // 1. Function has non-void return type
-            // 2. Block doesn't already have a terminator
-            // 3. There's a last expression value
-            if (_currentFunction.ReturnType is not IrVoidType &&
-                !CurrentBlockHasTerminator() &&
-                lastValue != null)
+            // Add implicit return if block doesn't already have a terminator
+            if (!CurrentBlockHasTerminator())
             {
-                _currentBlock!.AddInstruction(new IrReturn(lastValue));
+                if (_currentFunction.ReturnType is not IrVoidType && lastValue != null)
+                {
+                    // Non-void function with expression: return the value
+                    _currentBlock!.AddInstruction(new IrReturn(lastValue));
+                }
+                else
+                {
+                    // Void function or no return value: add void return
+                    _currentBlock!.AddInstruction(new IrReturn(null));
+                }
             }
         }
 
@@ -585,6 +602,16 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var identifiers = context.IDENTIFIER();
         var name = identifiers[0].GetText();
 
+        // Count dereference operators before the identifier
+        int derefCount = 0;
+        for (int i = 0; i < context.ChildCount; i++)
+        {
+            if (context.GetChild(i).GetText() == "*")
+                derefCount++;
+            else if (context.GetChild(i) is ITerminalNode terminal && terminal.Symbol.Type == NovusLexer.IDENTIFIER)
+                break;
+        }
+
         // Check if this is a member assignment (has multiple identifiers for member chain)
         if (identifiers.Length > 1)
         {
@@ -627,6 +654,63 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
 
             _currentBlock!.AddInstruction(new IrIndexStore(arrayVar, indexExpr, valueExpr));
+        }
+        else if (derefCount > 0)
+        {
+            // Dereference assignment: *ptr = value or **ptr = value, etc.
+            var value = (IrValue?)Visit(context.expression(0));
+
+            if (value == null)
+            {
+                throw new Exception($"Assignment to dereferenced variable requires a value");
+            }
+
+            // Get the variable
+            IrVariable? variable = null;
+            IrType? varType = null;
+
+            if (_localVariables.ContainsKey(name))
+            {
+                var localVar = _localVariables[name];
+                variable = new IrVariable(name, localVar.Type);
+                varType = localVar.Type;
+            }
+            else if (_currentFunction != null)
+            {
+                var param = _currentFunction.Parameters.FirstOrDefault(p => p.Name == name);
+                if (param != null)
+                {
+                    variable = new IrVariable(name, param.Type);
+                    varType = param.Type;
+                }
+            }
+
+            if (variable == null || varType == null)
+            {
+                throw new Exception($"Variable {name} not found");
+            }
+
+            // Apply dereferences to get the pointer/reference
+            IrValue pointer = variable;
+            for (int i = 0; i < derefCount - 1; i++)
+            {
+                // For multiple dereferences, each dereference gives us another pointer
+                IrType pointeeType;
+                if (varType is IrPointerType ptrType)
+                    pointeeType = ptrType.PointeeType;
+                else if (varType is IrReferenceType refType)
+                    pointeeType = refType.PointeeType;
+                else if (varType is IrMutReferenceType mutRefType)
+                    pointeeType = mutRefType.PointeeType;
+                else
+                    throw new Exception($"Cannot dereference non-pointer type");
+
+                pointer = new IrDereferenceValue(pointer, pointeeType);
+                varType = pointeeType;
+            }
+
+            // Generate the dereference store instruction
+            _currentBlock!.AddInstruction(new IrDereferenceStore(pointer, value));
         }
         else
         {
@@ -836,6 +920,34 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         var exitLabel = _loopExitLabels.Peek();
         _currentBlock!.AddInstruction(new IrBranch(exitLabel));
+        return null;
+    }
+
+    public override object? VisitDeferStatement([NotNull] NovusParser.DeferStatementContext context)
+    {
+        // Create a new basic block for the deferred code (don't add to function's basic blocks)
+        var deferLabel = $"defer_{_labelCounter++}";
+        var deferBlock = new IrBasicBlock(deferLabel);
+
+        // Save current block and switch to defer block
+        var savedBlock = _currentBlock;
+        _currentBlock = deferBlock;
+
+        // Visit the deferred block's statements
+        foreach (var statement in context.block().statement())
+        {
+            Visit(statement);
+        }
+
+        // Restore current block
+        _currentBlock = savedBlock;
+
+        // Add the defer block to the function's deferred blocks list (LIFO)
+        _currentFunction!.DeferredBlocks.Add(deferBlock);
+
+        // Add defer instruction to current block (marker only)
+        _currentBlock!.AddInstruction(new IrDefer(deferBlock));
+
         return null;
     }
 
@@ -1161,6 +1273,14 @@ public class IrBuilder : NovusBaseVisitor<object?>
         if (value is IrConstant constant)
         {
             return new IrConstant(constant.Value, targetType);
+        }
+
+        // Handle string literal to integer cast - return as-is, LoadOperand knows how to get the address
+        if (value is IrStringLiteral stringLit && targetType is IrIntType)
+        {
+            // String literal cast to integer means "take the address of the string"
+            // Keep the string literal as-is - the code generator's LoadOperand will emit lea instruction
+            return stringLit;
         }
 
         // For variables, if it's a bitwise cast (same size), just return the variable with new type
