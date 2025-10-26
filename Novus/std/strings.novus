@@ -1,0 +1,5 @@
+// strings.novus - String utility functions
+// Low-level string operations implemented in assembly for performance
+
+// Calculate length of null-terminated string
+extern fn strlen(str: i32) -> i32

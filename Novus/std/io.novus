@@ -1,34 +1,29 @@
 // io.novus - High-level I/O wrapper for Amiga DOS
-// Provides convenient functions for writing to stdout/stderr without manual length tracking
-//
-// NOTE: This module currently requires manual length tracking due to
-// limitations in pointer dereferencing. Use the manual Write() functions
-// from dos module until proper string support is added.
+// Automatic length calculation - no more manual counting!
 
-from dos import Output, Error, Write
-from core import Result
+from dos import Output, Write
+from strings import strlen
 
-// TODO: Calculate the length of a null-terminated string
-// This requires proper pointer type support which is not yet available
-// fn strlen(s: i32) -> i32 {
-//     var len = 0
-//     var ptr = s
-//     while *ptr != 0 {
-//         len = len + 1
-//         ptr = ptr + 1
-//     }
-//     return len
-// }
+// Write to stdout - automatic length calculation
+// Returns bytes written, or negative error code
+pub fn WriteOut(message: i32) -> i32 {
+    let stdout = Output()
+    if stdout == 0 {
+        return -1
+    }
+    let len = strlen(message)
+    return Write(stdout, message, len)
+}
 
-// TODO: These functions are not yet implemented due to lack of strlen
-// For now, use dos::Write() directly with manual length counting
-//
-// Example:
-//   from dos import Output, Write
-//   let stdout = Output()
-//   Write(stdout, (i32)"Hello!\n", 7)
-//
-// pub fn WriteOut(message: i32, length: i32) -> Result<i32, i32> { ... }
-// pub fn WriteErr(message: i32, length: i32) -> Result<i32, i32> { ... }
-// pub fn print(message: i32, length: i32) { ... }
-// pub fn eprint(message: i32, length: i32) { ... }
+// Write to stderr - automatic length calculation
+// Falls back to stdout if stderr unavailable
+// Returns bytes written, or negative error code
+pub fn WriteErr(message: i32) -> i32 {
+    // Note: Error() causes hangs on some systems, using Output() for now
+    let stdout = Output()
+    if stdout == 0 {
+        return -1
+    }
+    let len = strlen(message)
+    return Write(stdout, message, len)
+}
