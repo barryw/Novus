@@ -1,0 +1,44 @@
+// layers.library FFI Bindings
+// Raw 1:1 mappings to layers.library
+//
+// Auto-generated from NDK 3.9
+// - Functions from layers_lib.fd
+// - Structs from include/layers/*.h
+// - Constants from include/layers/*.h
+
+// ============================================================================
+// Functions
+// ============================================================================
+
+extern fn InitLayers(li: i32) -> i32
+extern fn CreateUpfrontLayer(li: i32, bm: i32, x0: i32, y0: i32, x1: i32, y1: i32, flags: i32, bm2: i32) -> i32
+extern fn CreateBehindLayer(li: i32, bm: i32, x0: i32, y0: i32, x1: i32, y1: i32, flags: i32, bm2: i32) -> i32
+extern fn UpfrontLayer(dummy: i32, layer: i32) -> i32
+extern fn BehindLayer(dummy: i32, layer: i32) -> i32
+extern fn MoveLayer(dummy: i32, layer: i32, dx: i32, dy: i32) -> i32
+extern fn SizeLayer(dummy: i32, layer: i32, dx: i32, dy: i32) -> i32
+extern fn ScrollLayer(dummy: i32, layer: i32, dx: i32, dy: i32) -> i32
+extern fn BeginUpdate(l: i32) -> i32
+extern fn EndUpdate(layer: i32, flag: i32) -> i32
+extern fn DeleteLayer(dummy: i32, layer: i32) -> i32
+extern fn LockLayer(dummy: i32, layer: i32) -> i32
+extern fn UnlockLayer(layer: i32) -> i32
+extern fn LockLayers(li: i32) -> i32
+extern fn UnlockLayers(li: i32) -> i32
+extern fn LockLayerInfo(li: i32) -> i32
+extern fn SwapBitsRastPortClipRect(rp: i32, cr: i32) -> i32
+extern fn WhichLayer(li: i32, x: i32, y: i32) -> i32
+extern fn UnlockLayerInfo(li: i32) -> i32
+extern fn NewLayerInfo() -> i32
+extern fn DisposeLayerInfo(li: i32) -> i32
+extern fn FattenLayerInfo(li: i32) -> i32
+extern fn ThinLayerInfo(li: i32) -> i32
+extern fn MoveLayerInFrontOf(layer_to_move: i32, other_layer: i32) -> i32
+extern fn InstallClipRegion(layer: i32, region: i32) -> i32
+extern fn MoveSizeLayer(layer: i32, dx: i32, dy: i32, dw: i32, dh: i32) -> i32
+extern fn CreateUpfrontHookLayer(li: i32, bm: i32, x0: i32, y0: i32, x1: i32, y1: i32, flags: i32, hook: i32, bm2: i32) -> i32
+extern fn CreateBehindHookLayer(li: i32, bm: i32, x0: i32, y0: i32, x1: i32, y1: i32, flags: i32, hook: i32, bm2: i32) -> i32
+extern fn InstallLayerHook(layer: i32, hook: i32) -> i32
+extern fn InstallLayerInfoHook(li: i32, hook: i32) -> i32
+extern fn SortLayerCR(layer: i32, dx: i32, dy: i32) -> i32
+extern fn DoHookClipRects(hook: i32, rport: i32, rect: i32) -> i32

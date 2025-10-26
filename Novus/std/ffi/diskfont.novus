@@ -1,0 +1,164 @@
+// diskfont.library FFI Bindings
+// Raw 1:1 mappings to diskfont.library
+//
+// Auto-generated from NDK 3.9
+// - Functions from diskfont_lib.fd
+// - Structs from include/diskfont/*.h
+// - Constants from include/diskfont/*.h
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+pub const OT_Indirect: u32 = $8000
+pub const OTUL_None: u32 = 0
+pub const OTUL_Solid: u32 = 1
+pub const OTUL_Broken: u32 = 2
+pub const OTUL_DoubleSolid: u32 = 3
+pub const OUTL_DoubleBroken: u32 = 4
+pub const OTS_UltraThin: u32 = 8 // 0- 15
+pub const OTS_ExtraThin: u32 = 24 // 16- 31
+pub const OTS_Thin: u32 = 40 // 32- 47
+pub const OTS_ExtraLight: u32 = 56 // 48- 63
+pub const OTS_Light: u32 = 72 // 64- 79
+pub const OTS_DemiLight: u32 = 88 // 80- 95
+pub const OTS_SemiLight: u32 = 104 // 96-111
+pub const OTS_Book: u32 = 120 // 112-127
+pub const OTS_Medium: u32 = 136 // 128-143
+pub const OTS_SemiBold: u32 = 152 // 144-159
+pub const OTS_DemiBold: u32 = 168 // 160-175
+pub const OTS_Bold: u32 = 184 // 176-191
+pub const OTS_ExtraBold: u32 = 200 // 192-207
+pub const OTS_Black: u32 = 216 // 208-223
+pub const OTS_ExtraBlack: u32 = 232 // 224-239
+pub const OTS_UltraBlack: u32 = 248 // 240-255
+pub const OTS_Upright: u32 = 0
+pub const OTS_Italic: u32 = 1 // Oblique, Slanted, etc.
+pub const OTS_LeftItalic: u32 = 2 // Reverse Slant
+pub const OTH_UltraCompressed: u32 = 16 // 0- 31
+pub const OTH_ExtraCompressed: u32 = 48 // 32- 63
+pub const OTH_Compressed: u32 = 80 // 64- 95
+pub const OTH_Condensed: u32 = 112 // 96-127
+pub const OTH_Normal: u32 = 144 // 128-159
+pub const OTH_SemiExpanded: u32 = 176 // 160-191
+pub const OTH_Expanded: u32 = 208 // 192-223
+pub const OTH_ExtraExpanded: u32 = 240 // 224-255
+pub const OT_MAXAVAILSIZES: u32 = 20 // no more than 20 sizes allowed
+pub const DFCTRL_SORT_OFF: u32 = 0
+pub const DFCTRL_SORT_ASC: u32 = 1
+pub const MAXFONTPATH: u32 = 256 // including null terminator
+pub const FCH_ID: u32 = $0f00 // FontContentsHeader, then FontContents
+pub const TFCH_ID: u32 = $0f02 // FontContentsHeader, then TFontContents
+pub const OFCH_ID: u32 = $0f03 // FontContentsHeader, then TFontContents,
+pub const DFH_ID: u32 = $0f80
+pub const MAXFONTNAME: u32 = 32 // font name including ".font\0"
+pub const AFB_MEMORY: u32 = 0
+pub const AFF_MEMORY: u32 = $0001
+pub const AFB_DISK: u32 = 1
+pub const AFF_DISK: u32 = $0002
+pub const AFB_SCALED: u32 = 2
+pub const AFF_SCALED: u32 = $0004
+pub const AFB_BITMAP: u32 = 3
+pub const AFF_BITMAP: u32 = $0008
+pub const AFB_TAGGED: u32 = 16 // return TAvailFonts
+pub const AFF_TAGGED: u32 = $10000
+pub const OTERR_Success: u32 = 0 // no error
+pub const OTERR_BadTag: u32 = 1 // inappropriate tag for function
+pub const OTERR_UnknownTag: u32 = 2 // unknown tag for function
+pub const OTERR_BadData: u32 = 3 // catch-all for bad tag data
+pub const OTERR_NoMemory: u32 = 4 // insufficient memory for operation
+pub const OTERR_NoFace: u32 = 5 // no typeface currently specified
+pub const OTERR_BadFace: u32 = 6 // typeface specification problem
+pub const OTERR_NoGlyph: u32 = 7 // no glyph specified
+pub const OTERR_BadGlyph: u32 = 8 // bad glyph code or glyph range
+pub const OTERR_NoShear: u32 = 9 // shear only partially specified
+pub const OTERR_NoRotate: u32 = 10 // rotate only partially specified
+pub const OTERR_TooSmall: u32 = 11 // typeface metrics yield tiny glyphs
+pub const OTERR_UnknownGlyph: u32 = 12 // glyph not known by engine
+
+// ============================================================================
+// Structs
+// ============================================================================
+
+pub struct FontContents {
+    fc_FileName: i8,
+    fc_YSize: u16,
+    fc_Style: u8,
+    fc_Flags: u8,
+}
+
+pub struct TFontContents {
+    tfc_FileName: i8,
+    tfc_TagCount: u16,
+    tfc_YSize: u16,
+    tfc_Style: u8,
+    tfc_Flags: u8,
+}
+
+pub struct FontContentsHeader {
+    fch_FileID: u16,
+    fch_NumEntries: u16,
+}
+
+pub struct DiskFontHeader {
+    dfh_DF: *u8,
+    dfh_FileID: u16,
+    dfh_Revision: u16,
+    dfh_Segment: i32,
+    dfh_Name: i8,
+    dfh_TF: *u8,
+}
+
+pub struct AvailFonts {
+    af_Type: u16,
+    af_Attr: *u8,
+}
+
+pub struct TAvailFonts {
+    taf_Type: u16,
+    taf_Attr: *u8,
+}
+
+pub struct AvailFontsHeader {
+    afh_NumEntries: u16,
+}
+
+pub struct GlyphEngine {
+    gle_Library: *u8,
+    gle_Name: *u8,
+}
+
+pub struct GlyphMap {
+    glm_BMModulo: u16,
+    glm_BMRows: u16,
+    glm_BlackLeft: u16,
+    glm_BlackTop: u16,
+    glm_BlackWidth: u16,
+    glm_BlackHeight: u16,
+    glm_XOrigin: i32,
+    glm_YOrigin: i32,
+    glm_X0: i16,
+    glm_Y0: i16,
+    glm_X1: i16,
+    glm_Y1: i16,
+    glm_Width: i32,
+    glm_BitMap: *u8,
+}
+
+pub struct GlyphWidthEntry {
+    gwe_Node: *u8,
+    gwe_Code: u16,
+    gwe_Width: i32,
+}
+
+// ============================================================================
+// Functions
+// ============================================================================
+
+extern fn OpenDiskFont(textAttr: i32) -> i32
+extern fn AvailFonts(buffer: i32, bufBytes: i32, flags: i32) -> i32
+extern fn NewFontContents(fontsLock: i32, fontName: i32) -> i32
+extern fn DisposeFontContents(fontContentsHeader: i32) -> i32
+extern fn NewScaledDiskFont(sourceFont: i32, destTextAttr: i32) -> i32
+extern fn GetDiskFontCtrl(tagid: i32) -> i32
+extern fn SetDiskFontCtrlA(taglist: i32) -> i32

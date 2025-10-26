@@ -1,0 +1,1156 @@
+// intuition.library FFI Bindings
+// Raw 1:1 mappings to intuition.library
+//
+// Auto-generated from NDK 3.9
+// - Functions from intuition_lib.fd
+// - Structs from include/intuition/*.h
+// - Constants from include/intuition/*.h
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+pub const MENUENABLED: u32 = $0001 // whether or not this menu is enabled
+pub const MIDRAWN: u32 = $0100 // this menu's items are currently drawn
+pub const CHECKIT: u32 = $0001 // set to indicate checkmarkable item
+pub const ITEMTEXT: u32 = $0002 // set if textual, clear if graphical item
+pub const COMMSEQ: u32 = $0004 // set if there's an command sequence
+pub const ITEMENABLED: u32 = $0010 // set if this item is enabled
+pub const HIGHFLAGS: u32 = $00C0 // see definitions below for these bits
+pub const HIGHIMAGE: u32 = $0000 // use the user's "select image"
+pub const HIGHCOMP: u32 = $0040 // highlight by complementing the selectbox
+pub const HIGHBOX: u32 = $0080 // highlight by "boxing" the selectbox
+pub const HIGHNONE: u32 = $00C0 // don't highlight
+pub const CHECKED: u32 = $0100 // state of the checkmark
+pub const ISDRAWN: u32 = $1000 // this item's subs are currently drawn
+pub const HIGHITEM: u32 = $2000 // this item is currently highlighted
+pub const MENUTOGGLED: u32 = $4000 // this item was already toggled
+pub const POINTREL: u32 = $0001
+pub const PREDRAWN: u32 = $0002
+pub const NOISYREQ: u32 = $0004
+pub const SIMPLEREQ: u32 = $0010
+pub const USEREQIMAGE: u32 = $0020
+pub const NOREQBACKFILL: u32 = $0040
+pub const REQOFFWINDOW: u32 = $1000 // part of one of the Gadgets was offwindow
+pub const REQACTIVE: u32 = $2000 // this requester is active
+pub const DEFERREFRESH: u32 = $8000 // this Requester stops a Refresh broadcast
+pub const GFLG_GADGHIGHBITS: u32 = $0003
+pub const GFLG_GADGHCOMP: u32 = $0000 // Complement the select box
+pub const GFLG_GADGHBOX: u32 = $0001 // Draw a box around the image
+pub const GFLG_GADGHIMAGE: u32 = $0002 // Blast in this alternate image
+pub const GFLG_GADGHNONE: u32 = $0003 // don't highlight
+pub const GFLG_GADGIMAGE: u32 = $0004 // set if GadgetRender and SelectRender
+pub const GFLG_RELBOTTOM: u32 = $0008 // vert. pos. is relative to bottom edge
+pub const GFLG_RELRIGHT: u32 = $0010 // horiz. pos. is relative to right edge
+pub const GFLG_RELWIDTH: u32 = $0020 // width is relative to req/window
+pub const GFLG_RELHEIGHT: u32 = $0040 // height is relative to req/window
+pub const GFLG_RELSPECIAL: u32 = $4000 // custom gadget has special relativity.
+pub const GFLG_SELECTED: u32 = $0080 // you may initialize and look at this
+pub const GFLG_DISABLED: u32 = $0100
+pub const GFLG_LABELMASK: u32 = $3000
+pub const GFLG_LABELITEXT: u32 = $0000 // GadgetText points to IntuiText
+pub const GFLG_STRINGEXTEND: u32 = $0400 // this String Gadget has StringExtend
+pub const GFLG_IMAGEDISABLE: u32 = $0800 // Gadget's image knows how to do disabled
+pub const GFLG_EXTENDED: u32 = $8000 // Gadget is extended
+pub const GACT_RELVERIFY: u32 = $0001
+pub const GACT_IMMEDIATE: u32 = $0002
+pub const GACT_ENDGADGET: u32 = $0004
+pub const GACT_FOLLOWMOUSE: u32 = $0008
+pub const GACT_RIGHTBORDER: u32 = $0010
+pub const GACT_LEFTBORDER: u32 = $0020
+pub const GACT_TOPBORDER: u32 = $0040
+pub const GACT_BOTTOMBORDER: u32 = $0080
+pub const GACT_BORDERSNIFF: u32 = $8000 // neither set nor rely on this bit
+pub const GACT_TOGGLESELECT: u32 = $0100 // this bit for toggle-select mode
+pub const GACT_BOOLEXTEND: u32 = $2000 // this Boolean Gadget has a BoolInfo
+pub const GACT_STRINGLEFT: u32 = $0000 // NOTE WELL: that this has value zero
+pub const GACT_STRINGCENTER: u32 = $0200
+pub const GACT_STRINGRIGHT: u32 = $0400
+pub const GACT_LONGINT: u32 = $0800 // this String Gadget is for Long Ints
+pub const GACT_ALTKEYMAP: u32 = $1000 // this String has an alternate keymap
+pub const GACT_STRINGEXTEND: u32 = $2000 // this String Gadget has StringExtend
+pub const GACT_ACTIVEGADGET: u32 = $4000 // this gadget is "active".  This flag
+pub const GTYP_SCRGADGET: u32 = $4000 // 1 = ScreenGadget, 0 = WindowGadget
+pub const GTYP_GZZGADGET: u32 = $2000 // 1 = for WFLG_GIMMEZEROZERO borders
+pub const GTYP_REQGADGET: u32 = $1000 // 1 = this is a Requester Gadget
+pub const GTYP_SYSGADGET: u32 = $8000
+pub const GTYP_SYSTYPEMASK: u32 = $00F0
+pub const GTYP_SIZING: u32 = $0010 // Window sizing gadget
+pub const GTYP_WDRAGGING: u32 = $0020 // Window drag bar
+pub const GTYP_SDRAGGING: u32 = $0030 // Screen drag bar
+pub const GTYP_WDEPTH: u32 = $0040 // Window depth gadget
+pub const GTYP_SDEPTH: u32 = $0050 // Screen depth gadget
+pub const GTYP_WZOOM: u32 = $0060 // Window zoom gadget
+pub const GTYP_SUNUSED: u32 = $0070 // Unused screen gadget
+pub const GTYP_CLOSE: u32 = $0080 // Window close gadget
+pub const GTYP_GTYPEMASK: u32 = $0007
+pub const GTYP_BOOLGADGET: u32 = $0001
+pub const GTYP_GADGET0002: u32 = $0002
+pub const GTYP_PROPGADGET: u32 = $0003
+pub const GTYP_STRGADGET: u32 = $0004
+pub const GTYP_CUSTOMGADGET: u32 = $0005
+pub const GMORE_BOUNDS: u32 = $00000001 // ExtGadget has valid Bounds
+pub const GMORE_GADGETHELP: u32 = $00000002 // This gadget responds to gadget help
+pub const BOOLMASK: u32 = $0001 // extension is for masked gadget
+pub const AUTOKNOB: u32 = $0001 // this flag sez:  gimme that old auto-knob
+pub const FREEHORIZ: u32 = $0002 // if set, the knob can move horizontally
+pub const FREEVERT: u32 = $0004 // if set, the knob can move vertically
+pub const PROPBORDERLESS: u32 = $0008 // if set, no border will be rendered
+pub const KNOBHIT: u32 = $0100 // set when this Knob is hit
+pub const PROPNEWLOOK: u32 = $0010 // set this if you want to get the new
+pub const KNOBHMIN: u32 = 6 // minimum horizontal size of the Knob
+pub const KNOBVMIN: u32 = 4 // minimum vertical size of the Knob
+pub const MAXBODY: u32 = $FFFF // maximum body value
+pub const MAXPOT: u32 = $FFFF // maximum pot value
+pub const IDCMP_SIZEVERIFY: u32 = $00000001
+pub const IDCMP_NEWSIZE: u32 = $00000002
+pub const IDCMP_REFRESHWINDOW: u32 = $00000004
+pub const IDCMP_MOUSEBUTTONS: u32 = $00000008
+pub const IDCMP_MOUSEMOVE: u32 = $00000010
+pub const IDCMP_GADGETDOWN: u32 = $00000020
+pub const IDCMP_GADGETUP: u32 = $00000040
+pub const IDCMP_REQSET: u32 = $00000080
+pub const IDCMP_MENUPICK: u32 = $00000100
+pub const IDCMP_CLOSEWINDOW: u32 = $00000200
+pub const IDCMP_RAWKEY: u32 = $00000400
+pub const IDCMP_REQVERIFY: u32 = $00000800
+pub const IDCMP_REQCLEAR: u32 = $00001000
+pub const IDCMP_MENUVERIFY: u32 = $00002000
+pub const IDCMP_NEWPREFS: u32 = $00004000
+pub const IDCMP_DISKINSERTED: u32 = $00008000
+pub const IDCMP_DISKREMOVED: u32 = $00010000
+pub const IDCMP_WBENCHMESSAGE: u32 = $00020000 // System use only
+pub const IDCMP_ACTIVEWINDOW: u32 = $00040000
+pub const IDCMP_INACTIVEWINDOW: u32 = $00080000
+pub const IDCMP_DELTAMOVE: u32 = $00100000
+pub const IDCMP_VANILLAKEY: u32 = $00200000
+pub const IDCMP_INTUITICKS: u32 = $00400000
+pub const IDCMP_IDCMPUPDATE: u32 = $00800000 // new for V36
+pub const IDCMP_MENUHELP: u32 = $01000000 // new for V36
+pub const IDCMP_CHANGEWINDOW: u32 = $02000000 // new for V36
+pub const IDCMP_GADGETHELP: u32 = $04000000 // new for V39
+pub const IDCMP_LONELYMESSAGE: u32 = $80000000
+pub const CWCODE_MOVESIZE: u32 = $0000 // Window was moved and/or sized
+pub const MENUHOT: u32 = $0001 // IntuiWants verification or MENUCANCEL
+pub const MENUCANCEL: u32 = $0002 // HOT Reply of this cancels Menu operation
+pub const OKABORT: u32 = $0004 // window rendered question moot
+pub const WBENCHOPEN: u32 = $0001
+pub const WBENCHCLOSE: u32 = $0002
+pub const WFLG_SIZEGADGET: u32 = $00000001 // include sizing system-gadget?
+pub const WFLG_DRAGBAR: u32 = $00000002 // include dragging system-gadget?
+pub const WFLG_DEPTHGADGET: u32 = $00000004 // include depth arrangement gadget?
+pub const WFLG_CLOSEGADGET: u32 = $00000008 // include close-box system-gadget?
+pub const WFLG_SIZEBRIGHT: u32 = $00000010 // size gadget uses right border
+pub const WFLG_SIZEBBOTTOM: u32 = $00000020 // size gadget uses bottom border
+pub const WFLG_REFRESHBITS: u32 = $000000C0
+pub const WFLG_SMART_REFRESH: u32 = $00000000
+pub const WFLG_SIMPLE_REFRESH: u32 = $00000040
+pub const WFLG_SUPER_BITMAP: u32 = $00000080
+pub const WFLG_OTHER_REFRESH: u32 = $000000C0
+pub const WFLG_BACKDROP: u32 = $00000100 // this is a backdrop window
+pub const WFLG_REPORTMOUSE: u32 = $00000200 // to hear about every mouse move
+pub const WFLG_GIMMEZEROZERO: u32 = $00000400 // a GimmeZeroZero window
+pub const WFLG_BORDERLESS: u32 = $00000800 // to get a Window sans border
+pub const WFLG_ACTIVATE: u32 = $00001000 // when Window opens, it's Active
+pub const WFLG_RMBTRAP: u32 = $00010000 // Catch RMB events for your own
+pub const WFLG_NOCAREREFRESH: u32 = $00020000 // not to be bothered with REFRESH
+pub const WFLG_NW_EXTENDED: u32 = $00040000 // extension data provided
+pub const WFLG_NEWLOOKMENUS: u32 = $00200000 // window has NewLook menus
+pub const WFLG_WINDOWACTIVE: u32 = $00002000 // this window is the active one
+pub const WFLG_INREQUEST: u32 = $00004000 // this window is in request mode
+pub const WFLG_MENUSTATE: u32 = $00008000 // Window is active with Menus on
+pub const WFLG_WINDOWREFRESH: u32 = $01000000 // Window is currently refreshing
+pub const WFLG_WBENCHWINDOW: u32 = $02000000 // WorkBench tool ONLY Window
+pub const WFLG_WINDOWTICKED: u32 = $04000000 // only one timer tick at a time
+pub const WFLG_VISITOR: u32 = $08000000 // visitor window
+pub const WFLG_ZOOMED: u32 = $10000000 // identifies "zoom state"
+pub const WFLG_HASZOOM: u32 = $20000000 // window has a zoom gadget
+pub const DEFAULTMOUSEQUEUE: u32 = (5) // no more mouse messages
+pub const HC_GADGETHELP: u32 = (1)
+pub const NOMENU: u32 = $001F
+pub const NOITEM: u32 = $003F
+pub const NOSUB: u32 = $001F
+pub const MENUNULL: u32 = $FFFF
+pub const CHECKWIDTH: u32 = 19
+pub const COMMWIDTH: u32 = 27
+pub const LOWCHECKWIDTH: u32 = 13
+pub const LOWCOMMWIDTH: u32 = 16
+pub const ALERT_TYPE: u32 = $80000000
+pub const RECOVERY_ALERT: u32 = $00000000 // the system can recover from this
+pub const DEADEND_ALERT: u32 = $80000000 // no recovery possible, this is it
+pub const AUTOFRONTPEN: u32 = 0
+pub const AUTOBACKPEN: u32 = 1
+pub const AUTOLEFTEDGE: u32 = 6
+pub const AUTOTOPEDGE: u32 = 3
+pub const CURSORUP: u32 = $4C
+pub const CURSORLEFT: u32 = $4F
+pub const CURSORRIGHT: u32 = $4E
+pub const CURSORDOWN: u32 = $4D
+pub const KEYCODE_Q: u32 = $10
+pub const KEYCODE_Z: u32 = $31
+pub const KEYCODE_X: u32 = $32
+pub const KEYCODE_V: u32 = $34
+pub const KEYCODE_B: u32 = $35
+pub const KEYCODE_N: u32 = $36
+pub const KEYCODE_M: u32 = $37
+pub const KEYCODE_LESS: u32 = $38
+pub const KEYCODE_GREATER: u32 = $39
+pub const SYSISIZE_MEDRES: u32 = (0)
+pub const SYSISIZE_LOWRES: u32 = (1)
+pub const SYSISIZE_HIRES: u32 = (2)
+pub const DEPTHIMAGE: u32 = ($00) // Window depth gadget image
+pub const ZOOMIMAGE: u32 = ($01) // Window zoom gadget image
+pub const SIZEIMAGE: u32 = ($02) // Window sizing gadget image
+pub const CLOSEIMAGE: u32 = ($03) // Window close gadget image
+pub const SDEPTHIMAGE: u32 = ($05) // Screen depth gadget image
+pub const LEFTIMAGE: u32 = ($0A) // Left-arrow gadget image
+pub const UPIMAGE: u32 = ($0B) // Up-arrow gadget image
+pub const RIGHTIMAGE: u32 = ($0C) // Right-arrow gadget image
+pub const DOWNIMAGE: u32 = ($0D) // Down-arrow gadget image
+pub const CHECKIMAGE: u32 = ($0E) // GadTools checkbox image
+pub const MXIMAGE: u32 = ($0F) // GadTools mutual exclude "button" image
+pub const MENUCHECK: u32 = ($10) // Menu checkmark image
+pub const AMIGAKEY: u32 = ($11) // Menu Amiga-key image
+pub const FRAME_DEFAULT: u32 = 0
+pub const FRAME_BUTTON: u32 = 1
+pub const FRAME_RIDGE: u32 = 2
+pub const FRAME_ICONDROPBOX: u32 = 3
+pub const IM_DRAW: u32 = $202 // draw yourself, with "state"
+pub const IM_HITTEST: u32 = $203 // return TRUE if click hits image
+pub const IM_ERASE: u32 = $204 // erase yourself
+pub const IM_MOVE: u32 = $205 // draw new and erase old, smoothly
+pub const IM_DRAWFRAME: u32 = $206 // draw with specified dimensions
+pub const IM_FRAMEBOX: u32 = $207 // get recommended frame around some box
+pub const IM_HITFRAME: u32 = $208 // hittest with dimensions
+pub const IM_ERASEFRAME: u32 = $209 // erase with dimensions
+pub const IDS_NORMAL: u32 = (0)
+pub const IDS_SELECTED: u32 = (1) // for selected gadgets
+pub const IDS_DISABLED: u32 = (2) // for disabled gadgets
+pub const IDS_BUSY: u32 = (3) // for future functionality
+pub const IDS_INDETERMINATE: u32 = (4) // for future functionality
+pub const IDS_INACTIVENORMAL: u32 = (5) // normal, in inactive window border
+pub const IDS_INACTIVESELECTED: u32 = (6) // selected, in inactive border
+pub const IDS_INACTIVEDISABLED: u32 = (7) // disabled, in inactive border
+pub const IDS_SELECTEDDISABLED: u32 = (8) // disabled and selected
+pub const FRAMEF_SPECIFY: u32 = 1 // Make do with the dimensions of FrameBox
+pub const IDOMAIN_MINIMUM: u32 = (0)
+pub const IDOMAIN_NOMINAL: u32 = (1)
+pub const IDOMAIN_MAXIMUM: u32 = (2)
+pub const INTUITION_CGHOOKS_H: u32 = 1
+pub const DRI_VERSION: u32 = (2)
+pub const DRIF_NEWLOOK: u32 = $00000001 // specified SA_Pens, full treatment
+pub const DETAILPEN: u32 = ($0000) // compatible Intuition rendering pens
+pub const BLOCKPEN: u32 = ($0001) // compatible Intuition rendering pens
+pub const TEXTPEN: u32 = ($0002) // text on background
+pub const SHINEPEN: u32 = ($0003) // bright edge on 3D objects
+pub const SHADOWPEN: u32 = ($0004) // dark edge on 3D objects
+pub const FILLPEN: u32 = ($0005) // active-window/selected-gadget fill
+pub const FILLTEXTPEN: u32 = ($0006) // text over FILLPEN
+pub const BACKGROUNDPEN: u32 = ($0007) // may not always be color 0
+pub const HIGHLIGHTTEXTPEN: u32 = ($0008) // special color text, on background
+pub const BARDETAILPEN: u32 = ($0009) // text/detail in screen-bar/menus
+pub const BARBLOCKPEN: u32 = ($000A) // screen-bar/menus fill
+pub const BARTRIMPEN: u32 = ($000B) // trim under screen-bar
+pub const NUMDRIPENS: u32 = ($000C)
+pub const PEN_C3: u32 = $FEFC // Complement of color 3
+pub const PEN_C2: u32 = $FEFD // Complement of color 2
+pub const PEN_C1: u32 = $FEFE // Complement of color 1
+pub const PEN_C0: u32 = $FEFF // Complement of color 0
+pub const SCREENTYPE: u32 = $000F // all the screens types available
+pub const WBENCHSCREEN: u32 = $0001 // identifies the Workbench screen
+pub const CUSTOMSCREEN: u32 = $000F // original custom screens
+pub const CUSTOMBITMAP: u32 = $0040 // if you are supplying your own BitMap
+pub const SCREENBEHIND: u32 = $0080 // if you want your screen to open behind
+pub const SCREENQUIET: u32 = $0100 // if you do not want Intuition to render
+pub const NS_EXTENDED: u32 = $1000 // ExtNewScreen.Extension is valid
+pub const AUTOSCROLL: u32 = $4000 // screen is to autoscoll
+pub const PENSHARED: u32 = $0400 // Screen opener set {SA_SharePens,TRUE}
+pub const OSERR_NOMONITOR: u32 = (1) // named monitor spec not available
+pub const OSERR_NOCHIPS: u32 = (2) // you need newer custom chips
+pub const OSERR_NOMEM: u32 = (3) // couldn't get normal memory
+pub const OSERR_NOCHIPMEM: u32 = (4) // couldn't get chipmem
+pub const OSERR_PUBNOTUNIQUE: u32 = (5) // public screen name already used
+pub const OSERR_UNKNOWNMODE: u32 = (6) // don't recognize mode asked for
+pub const OSERR_TOODEEP: u32 = (7) // Screen deeper than HW supports
+pub const OSERR_ATTACHFAIL: u32 = (8) // Failed to attach screens
+pub const OSERR_NOTAVAILABLE: u32 = (9) // Mode not available for other reason
+pub const OSCAN_TEXT: u32 = (1) // entirely visible
+pub const OSCAN_STANDARD: u32 = (2) // just past edges
+pub const OSCAN_MAX: u32 = (3) // as much as possible
+pub const OSCAN_VIDEO: u32 = (4) // even more than is possible
+pub const PSNF_PRIVATE: u32 = ($0001)
+pub const MAXPUBSCREENNAME: u32 = (139) // names no longer, please
+pub const SHANGHAI: u32 = $0001 // put workbench windows on pub screen
+pub const POPPUBSCREEN: u32 = $0002 // pop pub screen to front when visitor opens
+pub const SDEPTH_TOFRONT: u32 = (0) // Bring screen to front
+pub const SDEPTH_TOBACK: u32 = (1) // Send screen to back
+pub const SDEPTH_INFAMILY: u32 = (2) // Move an attached screen with
+pub const SPOS_RELATIVE: u32 = (0) // Coordinates are relative
+pub const SPOS_ABSOLUTE: u32 = (1) // Coordinates are expressed as
+pub const SPOS_MAKEVISIBLE: u32 = (2) // Coordinates describe a box on
+pub const SPOS_FORCEDRAG: u32 = (4) // Move non-draggable screen
+pub const SB_SCREEN_BITMAP: u32 = 1
+pub const SB_COPY_BITMAP: u32 = 2
+pub const SG_DEFAULTMAXCHARS: u32 = (128)
+pub const LORIENT_NONE: u32 = 0
+pub const LORIENT_HORIZ: u32 = 1
+pub const LORIENT_VERT: u32 = 2
+pub const GM_HITTEST: u32 = (0)
+pub const GM_RENDER: u32 = (1)
+pub const GM_GOACTIVE: u32 = (2)
+pub const GM_HANDLEINPUT: u32 = (3)
+pub const GM_GOINACTIVE: u32 = (4)
+pub const GM_HELPTEST: u32 = (5)
+pub const GM_LAYOUT: u32 = (6)
+pub const GM_DOMAIN: u32 = (7)
+pub const GM_KEYTEST: u32 = (8)
+pub const GM_KEYGOACTIVE: u32 = (9)
+pub const GM_KEYGOINACTIVE: u32 = (10)
+pub const GMR_GADGETHIT: u32 = ($00000004) // GM_HITTEST hit
+pub const GMR_NOHELPHIT: u32 = ($00000000) // GM_HELPTEST didn't hit
+pub const GMR_HELPHIT: u32 = ($FFFFFFFF) // GM_HELPTEST hit, return code = ~0
+pub const GMR_HELPCODE: u32 = ($00010000) // GM_HELPTEST hit, return low word as code
+pub const GREDRAW_UPDATE: u32 = (2) // incremental update, e.g. prop slider
+pub const GREDRAW_REDRAW: u32 = (1) // redraw gadget
+pub const GREDRAW_TOGGLE: u32 = (0) // toggle highlight, if applicable
+pub const GMR_MEACTIVE: u32 = (0)
+pub const GDOMAIN_MINIMUM: u32 = (0)
+pub const GDOMAIN_NOMINAL: u32 = (1)
+pub const GDOMAIN_MAXIMUM: u32 = (2)
+pub const CLF_INLIST: u32 = $00000001
+pub const FILENAME_SIZE: u32 = 30 // Filename size
+pub const DEVNAME_SIZE: u32 = 16 // Device-name size
+pub const TOPAZ_EIGHTY: u32 = 8
+pub const TOPAZ_SIXTY: u32 = 9
+pub const LW_RESERVED: u32 = 1 // internal use only
+pub const SCREEN_DRAG: u32 = 16384
+pub const MOUSE_ACCEL: u32 = 32768
+pub const PARALLEL_PRINTER: u32 = $00
+pub const SERIAL_PRINTER: u32 = $01
+pub const BAUD_110: u32 = $00
+pub const BAUD_300: u32 = $01
+pub const BAUD_1200: u32 = $02
+pub const BAUD_2400: u32 = $03
+pub const BAUD_4800: u32 = $04
+pub const BAUD_9600: u32 = $05
+pub const BAUD_19200: u32 = $06
+pub const BAUD_MIDI: u32 = $07
+pub const FANFOLD: u32 = $00
+pub const SINGLE: u32 = $80
+pub const PICA: u32 = $000
+pub const ELITE: u32 = $400
+pub const FINE: u32 = $800
+pub const DRAFT: u32 = $000
+pub const LETTER: u32 = $100
+pub const SIX_LPI: u32 = $000
+pub const EIGHT_LPI: u32 = $200
+pub const IMAGE_POSITIVE: u32 = $00
+pub const IMAGE_NEGATIVE: u32 = $01
+pub const ASPECT_HORIZ: u32 = $00
+pub const ASPECT_VERT: u32 = $01
+pub const SHADE_BW: u32 = $00
+pub const SHADE_GREYSCALE: u32 = $01
+pub const SHADE_COLOR: u32 = $02
+pub const US_LETTER: u32 = $00
+pub const US_LEGAL: u32 = $10
+pub const N_TRACTOR: u32 = $20
+pub const W_TRACTOR: u32 = $30
+pub const CUSTOM: u32 = $40
+pub const EURO_A0: u32 = $50 // European size A0: 841 x 1189
+pub const EURO_A1: u32 = $60 // European size A1: 594 x 841
+pub const EURO_A2: u32 = $70 // European size A2: 420 x 594
+pub const EURO_A3: u32 = $80 // European size A3: 297 x 420
+pub const EURO_A4: u32 = $90 // European size A4: 210 x 297
+pub const EURO_A5: u32 = $A0 // European size A5: 148 x 210
+pub const EURO_A6: u32 = $B0 // European size A6: 105 x 148
+pub const EURO_A7: u32 = $C0 // European size A7: 74 x 105
+pub const EURO_A8: u32 = $D0 // European size A8: 52 x 74
+pub const CUSTOM_NAME: u32 = $00
+pub const ALPHA_P_101: u32 = $01
+pub const BROTHER_15XL: u32 = $02
+pub const CBM_MPS1000: u32 = $03
+pub const DIAB_630: u32 = $04
+pub const DIAB_ADV_D25: u32 = $05
+pub const DIAB_C_150: u32 = $06
+pub const EPSON: u32 = $07
+pub const EPSON_JX_80: u32 = $08
+pub const OKIMATE_20: u32 = $09
+pub const QUME_LP_20: u32 = $0A
+pub const HP_LASERJET: u32 = $0B
+pub const HP_LASERJET_PLUS: u32 = $0C
+pub const SBUF_512: u32 = $00
+pub const SBUF_1024: u32 = $01
+pub const SBUF_2048: u32 = $02
+pub const SBUF_4096: u32 = $03
+pub const SBUF_8000: u32 = $04
+pub const SBUF_16000: u32 = $05
+pub const SREAD_BITS: u32 = $F0 // for SerRWBits
+pub const SWRITE_BITS: u32 = $0F
+pub const SSTOP_BITS: u32 = $F0 // for SerStopBuf
+pub const SBUFSIZE_BITS: u32 = $0F
+pub const SPARITY_BITS: u32 = $F0 // for SerParShk
+pub const SHSHAKE_BITS: u32 = $0F
+pub const SPARITY_NONE: u32 = 0
+pub const SPARITY_EVEN: u32 = 1
+pub const SPARITY_ODD: u32 = 2
+pub const SPARITY_MARK: u32 = 3
+pub const SPARITY_SPACE: u32 = 4
+pub const SHSHAKE_XON: u32 = 0
+pub const SHSHAKE_RTS: u32 = 1
+pub const SHSHAKE_NONE: u32 = 2
+pub const CORRECT_RED: u32 = $0001 // color correct red shades
+pub const CORRECT_GREEN: u32 = $0002 // color correct green shades
+pub const CORRECT_BLUE: u32 = $0004 // color correct blue shades
+pub const CENTER_IMAGE: u32 = $0008 // center image on paper
+pub const IGNORE_DIMENSIONS: u32 = $0000 // ignore max width/height settings
+pub const BOUNDED_DIMENSIONS: u32 = $0010 // use max width/height as boundaries
+pub const ABSOLUTE_DIMENSIONS: u32 = $0020 // use max width/height as absolutes
+pub const PIXEL_DIMENSIONS: u32 = $0040 // use max width/height as prt pixels
+pub const MULTIPLY_DIMENSIONS: u32 = $0080 // use max width/height as multipliers
+pub const INTEGER_SCALING: u32 = $0100 // force integer scaling
+pub const ORDERED_DITHERING: u32 = $0000 // ordered dithering
+pub const HALFTONE_DITHERING: u32 = $0200 // halftone dithering
+pub const FLOYD_DITHERING: u32 = $0400 // Floyd-Steinberg dithering
+pub const ANTI_ALIAS: u32 = $0800 // anti-alias image
+pub const GREY_SCALE2: u32 = $1000 // for use with hi-res monitor
+pub const INTUITION_CLASSUSR_H: u32 = 1
+pub const OM_Dummy: u32 = ($100)
+pub const OM_NEW: u32 = ($101) // 'object' parameter is "true class"
+pub const OM_DISPOSE: u32 = ($102) // delete self (no parameters)
+pub const OM_SET: u32 = ($103) // set attributes (in tag list)
+pub const OM_GET: u32 = ($104) // return single attribute value
+pub const OM_ADDTAIL: u32 = ($105) // add self to a List (let root do it)
+pub const OM_REMOVE: u32 = ($106) // remove self from list
+pub const OM_NOTIFY: u32 = ($107) // send to self: notify dependents
+pub const OM_UPDATE: u32 = ($108) // notification message from somebody
+pub const OM_ADDMEMBER: u32 = ($109) // used by various classes with lists
+pub const OM_REMMEMBER: u32 = ($10A) // used by various classes with lists
+pub const OPUF_INTERIM: u32 = 1
+pub const ICM_Dummy: u32 = ($0401) // used for nothing
+pub const ICM_SETLOOP: u32 = ($0402) // set/increment loop counter
+pub const ICM_CLEARLOOP: u32 = ($0403) // clear/decrement loop counter
+pub const ICM_CHECKLOOP: u32 = ($0404) // set/increment loop
+pub const EO_NOOP: u32 = ($0001)
+pub const EO_DELBACKWARD: u32 = ($0002)
+pub const EO_DELFORWARD: u32 = ($0003)
+pub const EO_MOVECURSOR: u32 = ($0004)
+pub const EO_ENTER: u32 = ($0005)
+pub const EO_RESET: u32 = ($0006)
+pub const EO_REPLACECHAR: u32 = ($0007)
+pub const EO_INSERTCHAR: u32 = ($0008)
+pub const EO_BADFORMAT: u32 = ($0009)
+pub const EO_BIGCHANGE: u32 = ($000A) // unused by Intuition
+pub const EO_UNDO: u32 = ($000B) // unused by Intuition
+pub const EO_CLEAR: u32 = ($000C)
+pub const EO_SPECIAL: u32 = ($000D) // unused by Intuition
+pub const SGA_USE: u32 = ($1) // use contents of SGWork
+pub const SGA_END: u32 = ($2) // terminate gadget, code in Code field
+pub const SGA_BEEP: u32 = ($4) // flash the screen for the user
+pub const SGA_REUSE: u32 = ($8) // reuse input event
+pub const SGA_REDISPLAY: u32 = ($10) // gadget visuals changed
+pub const SGA_NEXTACTIVE: u32 = ($20) // Make next possible gadget active.
+pub const SGA_PREVACTIVE: u32 = ($40) // Make previous possible gadget active.
+pub const SGH_KEY: u32 = (1) // process editing keystroke
+pub const SGH_CLICK: u32 = (2) // process mouse click cursor position
+pub const POINTERXRESN_DEFAULT: u32 = 0
+pub const POINTERXRESN_140NS: u32 = 1
+pub const POINTERXRESN_70NS: u32 = 2
+pub const POINTERXRESN_35NS: u32 = 3
+pub const POINTERXRESN_SCREENRES: u32 = 4
+pub const POINTERXRESN_LORES: u32 = 5
+pub const POINTERXRESN_HIRES: u32 = 6
+pub const POINTERYRESN_DEFAULT: u32 = 0
+pub const POINTERYRESN_HIGH: u32 = 2
+pub const POINTERYRESN_HIGHASPECT: u32 = 3
+pub const POINTERYRESN_SCREENRES: u32 = 4
+pub const POINTERYRESN_SCREENRESASPECT: u32 = 5
+pub const INTUITION_INTUITIONBASE_H: u32 = 1
+pub const DMODECOUNT: u32 = $0002 // how many modes there are
+pub const HIRESPICK: u32 = $0000
+pub const LOWRESPICK: u32 = $0001
+pub const EVENTMAX: u32 = 10 // size of event array
+pub const RESCOUNT: u32 = 2
+pub const HIRESGADGET: u32 = 0
+pub const LOWRESGADGET: u32 = 1
+pub const GADGETCOUNT: u32 = 8
+pub const UPFRONTGADGET: u32 = 0
+pub const DOWNBACKGADGET: u32 = 1
+pub const SIZEGADGET: u32 = 2
+pub const CLOSEGADGET: u32 = 3
+pub const DRAGGADGET: u32 = 4
+pub const SUPFRONTGADGET: u32 = 5
+pub const SDOWNBACKGADGET: u32 = 6
+pub const SDRAGGADGET: u32 = 7
+
+// ============================================================================
+// Structs
+// ============================================================================
+
+pub struct Menu {
+    NextMenu: *u8,
+    LeftEdge: i16,
+    Width: i16,
+    Flags: u16,
+    MenuName: *u8,
+    FirstItem: *u8,
+    JazzX: i16,
+}
+
+pub struct MenuItem {
+    NextItem: *u8,
+    LeftEdge: i16,
+    Width: i16,
+    Flags: u16,
+    MutualExclude: i32,
+    ItemFill: *u8,
+    SelectFill: *u8,
+    Command: i8,
+    SubItem: *u8,
+    NextSelect: u16,
+}
+
+pub struct Requester {
+    OlderRequest: *u8,
+    LeftEdge: i16,
+    Width: i16,
+    RelLeft: i16,
+    ReqGadget: *u8,
+    ReqBorder: *u8,
+    ReqText: *u8,
+    Flags: u16,
+    BackFill: u8,
+    ReqLayer: *u8,
+    ReqPad1: [32]u8,
+    ImageBMap: *u8,
+    RWindow: *u8,
+    ReqImage: *u8,
+    ReqPad2: [32]u8,
+}
+
+pub struct Gadget {
+    NextGadget: *u8,
+    LeftEdge: i16,
+    Width: i16,
+    Flags: u16,
+    Activation: u16,
+    GadgetType: u16,
+    GadgetRender: *u8,
+    SelectRender: *u8,
+    GadgetText: *u8,
+    MutualExclude: i32,
+    SpecialInfo: *u8,
+    GadgetID: u16,
+    UserData: *u8,
+}
+
+pub struct ExtGadget {
+    NextGadget: *u8,
+    LeftEdge: i16,
+    Width: i16,
+    Flags: u16,
+    Activation: u16,
+    GadgetType: u16,
+    GadgetRender: *u8,
+    SelectRender: *u8,
+    GadgetText: *u8,
+    MutualExclude: i32,
+    SpecialInfo: *u8,
+    GadgetID: u16,
+    UserData: *u8,
+    MoreFlags: u32,
+    BoundsLeftEdge: i16,
+    BoundsTopEdge: i16,
+    BoundsWidth: i16,
+    BoundsHeight: i16,
+}
+
+pub struct BoolInfo {
+    Flags: u16,
+    Mask: *u8,
+    Reserved: u32,
+}
+
+pub struct PropInfo {
+    Flags: u16,
+    HorizPot: u16,
+    VertPot: u16,
+    HorizBody: u16,
+    VertBody: u16,
+    CWidth: u16,
+    CHeight: u16,
+    HPotRes: u16,
+    LeftBorder: u16,
+    TopBorder: u16,
+}
+
+pub struct StringInfo {
+    Buffer: *u8,
+    UndoBuffer: *u8,
+    BufferPos: i16,
+    MaxChars: i16,
+    DispPos: i16,
+    UndoPos: i16,
+    NumChars: i16,
+    DispCount: i16,
+    CLeft: i16,
+    Extension: *u8,
+    LongInt: i32,
+    AltKeyMap: *u8,
+}
+
+pub struct IntuiText {
+    FrontPen: u8,
+    DrawMode: u8,
+    LeftEdge: i16,
+    TopEdge: i16,
+    ITextFont: *u8,
+    IText: *u8,
+    NextText: *u8,
+}
+
+pub struct Border {
+    LeftEdge: i16,
+    FrontPen: u8,
+    DrawMode: u8,
+    Count: i8,
+    XY: *u8,
+    NextBorder: *u8,
+}
+
+pub struct Image {
+    LeftEdge: i16,
+    TopEdge: i16,
+    Width: i16,
+    Height: i16,
+    Depth: i16,
+    ImageData: *u8,
+    PlanePick: u8,
+    NextImage: *u8,
+}
+
+pub struct IntuiMessage {
+    ExecMessage: *u8,
+    Class: u32,
+    Code: u16,
+    Qualifier: u16,
+    IAddress: *u8,
+    MouseX: i16,
+    Seconds: u32,
+    IDCMPWindow: *u8,
+    SpecialLink: *u8,
+}
+
+pub struct ExtIntuiMessage {
+    eim_IntuiMessage: *u8,
+    eim_TabletData: *u8,
+}
+
+pub struct IBox {
+    Left: i16,
+    Top: i16,
+    Width: i16,
+    Height: i16,
+}
+
+pub struct Window {
+    NextWindow: *u8,
+    LeftEdge: i16,
+    Width: i16,
+    MouseY: i16,
+    MinWidth: i16,
+    MaxWidth: u16,
+    Flags: u32,
+    MenuStrip: *u8,
+    Title: *u8,
+    FirstRequest: *u8,
+    DMRequest: *u8,
+    ReqCount: i16,
+    WScreen: *u8,
+    RPort: *u8,
+    BorderLeft: i8,
+    BorderRPort: *u8,
+    FirstGadget: *u8,
+    Parent: *u8,
+    Pointer: *u8,
+    PtrHeight: i8,
+    PtrWidth: i8,
+    XOffset: i8,
+    IDCMPFlags: u32,
+    UserPort: *u8,
+    MessageKey: *u8,
+    DetailPen: u8,
+    CheckMark: *u8,
+    ScreenTitle: *u8,
+    GZZMouseX: i16,
+    GZZMouseY: i16,
+    GZZWidth: i16,
+    GZZHeight: i16,
+    ExtData: *u8,
+    UserData: *u8,
+    WLayer: *u8,
+    IFont: *u8,
+    MoreFlags: u32,
+}
+
+pub struct NewWindow {
+    LeftEdge: i16,
+    Width: i16,
+    DetailPen: u8,
+    IDCMPFlags: u32,
+    Flags: u32,
+    FirstGadget: *u8,
+    CheckMark: *u8,
+    Title: *u8,
+    Screen: *u8,
+    BitMap: *u8,
+    MinWidth: i16,
+    MaxWidth: u16,
+    Type: u16,
+}
+
+pub struct ExtNewWindow {
+    LeftEdge: i16,
+    Width: i16,
+    DetailPen: u8,
+    IDCMPFlags: u32,
+    Flags: u32,
+    FirstGadget: *u8,
+    CheckMark: *u8,
+    Title: *u8,
+    Screen: *u8,
+    BitMap: *u8,
+    MinWidth: i16,
+    MaxWidth: u16,
+    Type: u16,
+    Extension: *u8,
+}
+
+pub struct Remember {
+    NextRemember: *u8,
+    RememberSize: u32,
+    Memory: *u8,
+}
+
+pub struct ColorSpec {
+    ColorIndex: i16,
+    Red: u16,
+    Green: u16,
+    Blue: u16,
+}
+
+pub struct EasyStruct {
+    es_StructSize: u32,
+    es_Flags: u32,
+    es_Title: *u8,
+    es_TextFormat: *u8,
+    es_GadgetFormat: *u8,
+}
+
+pub struct TabletData {
+    td_XFraction: u16,
+    td_TabletX: u32,
+    td_RangeX: u32,
+    td_TagList: *u8,
+}
+
+pub struct TabletHookData {
+    thd_Screen: *u8,
+    thd_Width: u32,
+    thd_Height: u32,
+    thd_ScreenChanged: i32,
+}
+
+pub struct impFrameBox {
+    MethodID: u32,
+    imp_ContentsBox: *u8,
+    imp_FrameBox: *u8,
+    imp_DrInfo: *u8,
+    imp_FrameFlags: u32,
+}
+
+pub struct impDomainFrame {
+    MethodID: u32,
+    imp_DrInfo: *u8,
+    imp_RPort: *u8,
+    imp_Which: i32,
+    imp_Domain: *u8,
+    imp_Attrs: *u8,
+}
+
+pub struct PGX {
+    pgx_Container: *u8,
+    pgx_NewKnob: *u8,
+}
+
+pub struct Screen {
+    NextScreen: *u8,
+    FirstWindow: *u8,
+    LeftEdge: i16,
+    Width: i16,
+    MouseY: i16,
+    Flags: u16,
+    Title: *u8,
+    DefaultTitle: *u8,
+    BarHeight: i8,
+    WBorTop: i8,
+    Font: *u8,
+    ViewPort: *u8,
+    RastPort: *u8,
+    BitMap: *u8,
+    LayerInfo: *u8,
+    FirstGadget: *u8,
+    DetailPen: u8,
+    SaveColor0: u16,
+    BarLayer: *u8,
+    ExtData: *u8,
+    UserData: *u8,
+}
+
+pub struct NewScreen {
+    LeftEdge: i16,
+    DetailPen: u8,
+    ViewModes: u16,
+    Type: u16,
+    Font: *u8,
+    DefaultTitle: *u8,
+    Gadgets: *u8,
+    CustomBitMap: *u8,
+}
+
+pub struct ExtNewScreen {
+    LeftEdge: i16,
+    DetailPen: u8,
+    ViewModes: u16,
+    Type: u16,
+    Font: *u8,
+    DefaultTitle: *u8,
+    Gadgets: *u8,
+    CustomBitMap: *u8,
+    Extension: *u8,
+}
+
+pub struct PubScreenNode {
+    psn_Node: *u8,
+    psn_Screen: *u8,
+    psn_Flags: u16,
+    psn_Size: i16,
+    psn_VisitorCount: i16,
+    psn_SigTask: *u8,
+    psn_SigBit: u8,
+}
+
+pub struct ScreenBuffer {
+    sb_BitMap: *u8,
+    sb_DBufInfo: *u8,
+}
+
+pub struct gpRender {
+    MethodID: u32,
+    gpr_GInfo: *u8,
+    gpr_RPort: *u8,
+    gpr_Redraw: i32,
+}
+
+pub struct gpGoInactive {
+    MethodID: u32,
+    gpgi_GInfo: *u8,
+    gpgi_Abort: u32,
+}
+
+pub struct gpLayout {
+    MethodID: u32,
+    gpl_GInfo: *u8,
+    gpl_Initial: u32,
+}
+
+pub struct gpDomain {
+    MethodID: u32,
+    gpd_GInfo: *u8,
+    gpd_RPort: *u8,
+    gpd_Which: i32,
+    gpd_Domain: *u8,
+    gpd_Attrs: *u8,
+}
+
+pub struct gpKeyTest {
+    MethodID: u32,
+    gpkt_GInfo: *u8,
+    gpkt_IMsg: *u8,
+    gpkt_VanillaKey: u32,
+}
+
+pub struct gpKeyInput {
+    MethodID: u32,
+    gpk_GInfo: *u8,
+    gpk_IEvent: *u8,
+    gpk_Termination: *u8,
+}
+
+pub struct gpKeyGoInactive {
+    MethodID: u32,
+    gpki_GInfo: *u8,
+    gpki_Abort: u32,
+}
+
+pub struct _Object {
+    o_Node: *u8,
+    o_Class: *u8,
+}
+
+pub struct ClassLibrary {
+    cl_Lib: *u8,
+    cl_Pad: u16,
+    cl_Class: *u8,
+}
+
+pub struct Preferences {
+    FontHeight: i8,
+    PrinterPort: u8,
+    BaudRate: u16,
+    KeyRptSpeed: *u8,
+    KeyRptDelay: *u8,
+    DoubleClick: *u8,
+    PointerMatrix: u16,
+    XOffset: i8,
+    YOffset: i8,
+    color17: u16,
+    color18: u16,
+    color19: u16,
+    PointerTicks: u16,
+    color0: u16,
+    color1: u16,
+    color2: u16,
+    color3: u16,
+    ViewXOffset: i8,
+    ViewYOffset: i8,
+    ViewInitX: i16,
+    EnableCLI: i32,
+    PrinterType: u16,
+    PrinterFilename: u8,
+    PrintPitch: u16,
+    PrintQuality: u16,
+    PrintSpacing: u16,
+    PrintLeftMargin: u16,
+    PrintRightMargin: u16,
+    PrintImage: u16,
+    PrintAspect: u16,
+    PrintShade: u16,
+    PrintThreshold: i16,
+    PaperSize: u16,
+    PaperLength: u16,
+    PaperType: u16,
+    SerRWBits: u8,
+    SerStopBuf: u8,
+    SerParShk: u8,
+    LaceWB: u8,
+    Pad: u8,
+    PrtDevName: u8,
+    DefaultPrtUnit: u8,
+    DefaultSerUnit: u8,
+    RowSizeChange: i8,
+    ColumnSizeChange: i8,
+    PrintFlags: u16,
+    PrintMaxWidth: u16,
+    PrintMaxHeight: u16,
+    PrintDensity: u8,
+    PrintXOffset: u8,
+    wb_Width: u16,
+    wb_Height: u16,
+    wb_Depth: u8,
+    ext_size: u8,
+}
+
+pub struct opSet {
+    MethodID: u32,
+    ops_AttrList: *u8,
+    ops_GInfo: *u8,
+}
+
+pub struct opUpdate {
+    MethodID: u32,
+    opu_AttrList: *u8,
+    opu_GInfo: *u8,
+    opu_Flags: u32,
+}
+
+pub struct opGet {
+    MethodID: u32,
+    opg_AttrID: u32,
+    opg_Storage: *u8,
+}
+
+pub struct opAddTail {
+    MethodID: u32,
+    opat_List: *u8,
+}
+
+pub struct opMember {
+    MethodID: u32,
+    opam_Object: *u8,
+}
+
+pub struct StringExtend {
+    Font: *u8,
+    Pens: [2]u8,
+    ActivePens: [2]u8,
+    InitialModes: u32,
+    EditHook: *u8,
+    WorkBuffer: *u8,
+    Reserved: [4]u32,
+}
+
+pub struct SGWork {
+    Gadget: *u8,
+    StringInfo: *u8,
+    WorkBuffer: *u8,
+    PrevBuffer: *u8,
+    Modes: u32,
+    IEvent: *u8,
+    Code: u16,
+    BufferPos: i16,
+    NumChars: i16,
+    Actions: u32,
+    LongInt: i32,
+    GadgetInfo: *u8,
+    EditOp: u16,
+}
+
+pub struct IntuitionBase {
+    LibNode: *u8,
+    ViewLord: *u8,
+    ActiveWindow: *u8,
+    ActiveScreen: *u8,
+    FirstScreen: *u8,
+    Flags: u32,
+    MouseY: i16,
+    Seconds: u32,
+    Micros: u32,
+}
+
+// ============================================================================
+// Functions
+// ============================================================================
+
+extern fn OpenIntuition() -> i32
+extern fn Intuition(iEvent: i32) -> i32
+extern fn AddGadget(window: i32, gadget: i32, position: i32) -> i32
+extern fn ClearDMRequest(window: i32) -> i32
+extern fn ClearMenuStrip(window: i32) -> i32
+extern fn ClearPointer(window: i32) -> i32
+extern fn CloseScreen(screen: i32) -> i32
+extern fn CloseWindow(window: i32) -> i32
+extern fn CloseWorkBench() -> i32
+extern fn CurrentTime(seconds: i32, micros: i32) -> i32
+extern fn DisplayAlert(alertNumber: i32, string: i32, height: i32) -> i32
+extern fn DisplayBeep(screen: i32) -> i32
+extern fn DoubleClick(sSeconds: i32, sMicros: i32, cSeconds: i32, cMicros: i32) -> i32
+extern fn DrawBorder(rp: i32, border: i32, leftOffset: i32, topOffset: i32) -> i32
+extern fn DrawImage(rp: i32, image: i32, leftOffset: i32, topOffset: i32) -> i32
+extern fn EndRequest(requester: i32, window: i32) -> i32
+extern fn GetDefPrefs(preferences: i32, size: i32) -> i32
+extern fn GetPrefs(preferences: i32, size: i32) -> i32
+extern fn InitRequester(requester: i32) -> i32
+extern fn ItemAddress(menuStrip: i32, menuNumber: i32) -> i32
+extern fn ModifyIDCMP(window: i32, flags: i32) -> i32
+extern fn ModifyProp(gadget: i32, window: i32, requester: i32, flags: i32, horizPot: i32, vertPot: i32, horizBody: i32, vertBody: i32) -> i32
+extern fn MoveScreen(screen: i32, dx: i32, dy: i32) -> i32
+extern fn MoveWindow(window: i32, dx: i32, dy: i32) -> i32
+extern fn OffGadget(gadget: i32, window: i32, requester: i32) -> i32
+extern fn OffMenu(window: i32, menuNumber: i32) -> i32
+extern fn OnGadget(gadget: i32, window: i32, requester: i32) -> i32
+extern fn OnMenu(window: i32, menuNumber: i32) -> i32
+extern fn OpenScreen(newScreen: i32) -> i32
+extern fn OpenWindow(newWindow: i32) -> i32
+extern fn OpenWorkBench() -> i32
+extern fn PrintIText(rp: i32, iText: i32, left: i32, top: i32) -> i32
+extern fn RefreshGadgets(gadgets: i32, window: i32, requester: i32) -> i32
+extern fn RemoveGadget(window: i32, gadget: i32) -> i32
+extern fn ReportMouse(flag: i32, window: i32) -> i32
+extern fn Request(requester: i32, window: i32) -> i32
+extern fn ScreenToBack(screen: i32) -> i32
+extern fn ScreenToFront(screen: i32) -> i32
+extern fn SetDMRequest(window: i32, requester: i32) -> i32
+extern fn SetMenuStrip(window: i32, menu: i32) -> i32
+extern fn SetPointer(window: i32, pointer: i32, height: i32, width: i32, xOffset: i32, yOffset: i32) -> i32
+extern fn SetWindowTitles(window: i32, windowTitle: i32, screenTitle: i32) -> i32
+extern fn ShowTitle(screen: i32, showIt: i32) -> i32
+extern fn SizeWindow(window: i32, dx: i32, dy: i32) -> i32
+extern fn ViewAddress() -> i32
+extern fn ViewPortAddress(window: i32) -> i32
+extern fn WindowToBack(window: i32) -> i32
+extern fn WindowToFront(window: i32) -> i32
+extern fn WindowLimits(window: i32, widthMin: i32, heightMin: i32, widthMax: i32, heightMax: i32) -> i32
+extern fn SetPrefs(preferences: i32, size: i32, inform: i32) -> i32
+extern fn IntuiTextLength(iText: i32) -> i32
+extern fn WBenchToBack() -> i32
+extern fn WBenchToFront() -> i32
+extern fn AutoRequest(window: i32, body: i32, posText: i32, negText: i32, pFlag: i32, nFlag: i32, width: i32, height: i32) -> i32
+extern fn BeginRefresh(window: i32) -> i32
+extern fn BuildSysRequest(window: i32, body: i32, posText: i32, negText: i32, flags: i32, width: i32, height: i32) -> i32
+extern fn EndRefresh(window: i32, complete: i32) -> i32
+extern fn FreeSysRequest(window: i32) -> i32
+extern fn MakeScreen(screen: i32) -> i32
+extern fn RemakeDisplay() -> i32
+extern fn RethinkDisplay() -> i32
+extern fn AllocRemember(rememberKey: i32, size: i32, flags: i32) -> i32
+extern fn FreeRemember(rememberKey: i32, reallyForget: i32) -> i32
+extern fn LockIBase(dontknow: i32) -> i32
+extern fn UnlockIBase(ibLock: i32) -> i32
+extern fn GetScreenData(buffer: i32, size: i32, type: i32, screen: i32) -> i32
+extern fn RefreshGList(gadgets: i32, window: i32, requester: i32, numGad: i32) -> i32
+extern fn AddGList(window: i32, gadget: i32, position: i32, numGad: i32, requester: i32) -> i32
+extern fn RemoveGList(remPtr: i32, gadget: i32, numGad: i32) -> i32
+extern fn ActivateWindow(window: i32) -> i32
+extern fn RefreshWindowFrame(window: i32) -> i32
+extern fn ActivateGadget(gadgets: i32, window: i32, requester: i32) -> i32
+extern fn NewModifyProp(gadget: i32, window: i32, requester: i32, flags: i32, horizPot: i32, vertPot: i32, horizBody: i32, vertBody: i32, numGad: i32) -> i32
+extern fn QueryOverscan(displayID: i32, rect: i32, oScanType: i32) -> i32
+extern fn MoveWindowInFrontOf(window: i32, behindWindow: i32) -> i32
+extern fn ChangeWindowBox(window: i32, left: i32, top: i32, width: i32, height: i32) -> i32
+extern fn SetEditHook(hook: i32) -> i32
+extern fn SetMouseQueue(window: i32, queueLength: i32) -> i32
+extern fn ZipWindow(window: i32) -> i32
+extern fn LockPubScreen(name: i32) -> i32
+extern fn UnlockPubScreen(name: i32, screen: i32) -> i32
+extern fn LockPubScreenList() -> i32
+extern fn UnlockPubScreenList() -> i32
+extern fn NextPubScreen(screen: i32, namebuf: i32) -> i32
+extern fn SetDefaultPubScreen(name: i32) -> i32
+extern fn SetPubScreenModes(modes: i32) -> i32
+extern fn PubScreenStatus(screen: i32, statusFlags: i32) -> i32
+extern fn ObtainGIRPort(gInfo: i32) -> i32
+extern fn ReleaseGIRPort(rp: i32) -> i32
+extern fn GadgetMouse(gadget: i32, gInfo: i32, mousePoint: i32) -> i32
+extern fn GetDefaultPubScreen(nameBuffer: i32) -> i32
+extern fn EasyRequestArgs(window: i32, easyStruct: i32, idcmpPtr: i32, args: i32) -> i32
+extern fn BuildEasyRequestArgs(window: i32, easyStruct: i32, idcmp: i32, args: i32) -> i32
+extern fn SysReqHandler(window: i32, idcmpPtr: i32, waitInput: i32) -> i32
+extern fn OpenWindowTagList(newWindow: i32, tagList: i32) -> i32
+extern fn OpenScreenTagList(newScreen: i32, tagList: i32) -> i32
+extern fn DrawImageState(rp: i32, image: i32, leftOffset: i32, topOffset: i32, state: i32, drawInfo: i32) -> i32
+extern fn PointInImage(point: i32, image: i32) -> i32
+extern fn EraseImage(rp: i32, image: i32, leftOffset: i32, topOffset: i32) -> i32
+extern fn NewObjectA(classPtr: i32, classID: i32, tagList: i32) -> i32
+extern fn DisposeObject(object: i32) -> i32
+extern fn SetAttrsA(object: i32, tagList: i32) -> i32
+extern fn GetAttr(attrID: i32, object: i32, storagePtr: i32) -> i32
+extern fn SetGadgetAttrsA(gadget: i32, window: i32, requester: i32, tagList: i32) -> i32
+extern fn NextObject(objectPtrPtr: i32) -> i32
+extern fn MakeClass(classID: i32, superClassID: i32, superClassPtr: i32, instanceSize: i32, flags: i32) -> i32
+extern fn AddClass(classPtr: i32) -> i32
+extern fn GetScreenDrawInfo(screen: i32) -> i32
+extern fn FreeScreenDrawInfo(screen: i32, drawInfo: i32) -> i32
+extern fn ResetMenuStrip(window: i32, menu: i32) -> i32
+extern fn RemoveClass(classPtr: i32) -> i32
+extern fn FreeClass(classPtr: i32) -> i32
+extern fn AllocScreenBuffer(sc: i32, bm: i32, flags: i32) -> i32
+extern fn FreeScreenBuffer(sc: i32, sb: i32) -> i32
+extern fn ChangeScreenBuffer(sc: i32, sb: i32) -> i32
+extern fn ScreenDepth(screen: i32, flags: i32, reserved: i32) -> i32
+extern fn ScreenPosition(screen: i32, flags: i32, x1: i32, y1: i32, x2: i32, y2: i32) -> i32
+extern fn ScrollWindowRaster(win: i32, dx: i32, dy: i32, xMin: i32, yMin: i32, xMax: i32, yMax: i32) -> i32
+extern fn LendMenus(fromwindow: i32, towindow: i32) -> i32
+extern fn DoGadgetMethodA(gad: i32, win: i32, req: i32, message: i32) -> i32
+extern fn SetWindowPointerA(win: i32, taglist: i32) -> i32
+extern fn TimedDisplayAlert(alertNumber: i32, string: i32, height: i32, time: i32) -> i32
+extern fn HelpControl(win: i32, flags: i32) -> i32

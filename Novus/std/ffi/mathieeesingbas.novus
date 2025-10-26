@@ -1,0 +1,24 @@
+// mathieeesingbas.library FFI Bindings
+// Raw 1:1 mappings to mathieeesingbas.library
+//
+// Auto-generated from NDK 3.9
+// - Functions from mathieeesingbas_lib.fd
+// - Structs from include/mathieeesingbas/*.h
+// - Constants from include/mathieeesingbas/*.h
+
+// ============================================================================
+// Functions
+// ============================================================================
+
+extern fn IEEESPFix(parm: i32) -> i32
+extern fn IEEESPFlt(integer: i32) -> i32
+extern fn IEEESPCmp(leftParm: i32, rightParm: i32) -> i32
+extern fn IEEESPTst(parm: i32) -> i32
+extern fn IEEESPAbs(parm: i32) -> i32
+extern fn IEEESPNeg(parm: i32) -> i32
+extern fn IEEESPAdd(leftParm: i32, rightParm: i32) -> i32
+extern fn IEEESPSub(leftParm: i32, rightParm: i32) -> i32
+extern fn IEEESPMul(leftParm: i32, rightParm: i32) -> i32
+extern fn IEEESPDiv(dividend: i32, divisor: i32) -> i32
+extern fn IEEESPFloor(parm: i32) -> i32
+extern fn IEEESPCeil(parm: i32) -> i32

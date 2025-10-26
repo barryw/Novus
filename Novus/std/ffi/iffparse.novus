@@ -1,0 +1,52 @@
+// iffparse.library FFI Bindings
+// Raw 1:1 mappings to iffparse.library
+//
+// Auto-generated from NDK 3.9
+// - Functions from iffparse_lib.fd
+// - Structs from include/iffparse/*.h
+// - Constants from include/iffparse/*.h
+
+// ============================================================================
+// Functions
+// ============================================================================
+
+extern fn AllocIFF() -> i32
+extern fn OpenIFF(iff: i32, rwMode: i32) -> i32
+extern fn ParseIFF(iff: i32, control: i32) -> i32
+extern fn CloseIFF(iff: i32) -> i32
+extern fn FreeIFF(iff: i32) -> i32
+extern fn ReadChunkBytes(iff: i32, buf: i32, numBytes: i32) -> i32
+extern fn WriteChunkBytes(iff: i32, buf: i32, numBytes: i32) -> i32
+extern fn ReadChunkRecords(iff: i32, buf: i32, bytesPerRecord: i32, numRecords: i32) -> i32
+extern fn WriteChunkRecords(iff: i32, buf: i32, bytesPerRecord: i32, numRecords: i32) -> i32
+extern fn PushChunk(iff: i32, type: i32, id: i32, size: i32) -> i32
+extern fn PopChunk(iff: i32) -> i32
+extern fn EntryHandler(iff: i32, type: i32, id: i32, position: i32, handler: i32, object: i32) -> i32
+extern fn ExitHandler(iff: i32, type: i32, id: i32, position: i32, handler: i32, object: i32) -> i32
+extern fn PropChunk(iff: i32, type: i32, id: i32) -> i32
+extern fn PropChunks(iff: i32, propArray: i32, numPairs: i32) -> i32
+extern fn StopChunk(iff: i32, type: i32, id: i32) -> i32
+extern fn StopChunks(iff: i32, propArray: i32, numPairs: i32) -> i32
+extern fn CollectionChunk(iff: i32, type: i32, id: i32) -> i32
+extern fn CollectionChunks(iff: i32, propArray: i32, numPairs: i32) -> i32
+extern fn StopOnExit(iff: i32, type: i32, id: i32) -> i32
+extern fn FindProp(iff: i32, type: i32, id: i32) -> i32
+extern fn FindCollection(iff: i32, type: i32, id: i32) -> i32
+extern fn FindPropContext(iff: i32) -> i32
+extern fn CurrentChunk(iff: i32) -> i32
+extern fn ParentChunk(contextNode: i32) -> i32
+extern fn AllocLocalItem(type: i32, id: i32, ident: i32, dataSize: i32) -> i32
+extern fn LocalItemData(localItem: i32) -> i32
+extern fn SetLocalItemPurge(localItem: i32, purgeHook: i32) -> i32
+extern fn FreeLocalItem(localItem: i32) -> i32
+extern fn FindLocalItem(iff: i32, type: i32, id: i32, ident: i32) -> i32
+extern fn StoreLocalItem(iff: i32, localItem: i32, position: i32) -> i32
+extern fn StoreItemInContext(iff: i32, localItem: i32, contextNode: i32) -> i32
+extern fn InitIFF(iff: i32, flags: i32, streamHook: i32) -> i32
+extern fn InitIFFasDOS(iff: i32) -> i32
+extern fn InitIFFasClip(iff: i32) -> i32
+extern fn OpenClipboard(unitNumber: i32) -> i32
+extern fn CloseClipboard(clipHandle: i32) -> i32
+extern fn GoodID(id: i32) -> i32
+extern fn GoodType(type: i32) -> i32
+extern fn IDtoStr(id: i32, buf: i32) -> i32

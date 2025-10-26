@@ -1,0 +1,17 @@
+// timer.library FFI Bindings
+// Raw 1:1 mappings to timer.library
+//
+// Auto-generated from NDK 3.9
+// - Functions from timer_lib.fd
+// - Structs from include/timer/*.h
+// - Constants from include/timer/*.h
+
+// ============================================================================
+// Functions
+// ============================================================================
+
+extern fn AddTime(dest: i32, src: i32) -> i32
+extern fn SubTime(dest: i32, src: i32) -> i32
+extern fn CmpTime(dest: i32, src: i32) -> i32
+extern fn ReadEClock(dest: i32) -> i32
+extern fn GetSysTime(dest: i32) -> i32

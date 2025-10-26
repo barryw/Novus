@@ -1,9 +1,0 @@
-// keymap - Amiga keymap.library bindings
-// Auto-generated from keymap_lib.fd
-
-module keymap;
-
-extern fn SetKeyMapDefault(keyMap: i32) -> i32;
-extern fn AskKeyMapDefault() -> i32;
-extern fn MapRawKey(event: i32, buffer: i32, length: i32, keyMap: i32) -> i32;
-extern fn MapANSI(string: i32, count: i32, buffer: i32, length: i32, keyMap: i32) -> i32;

@@ -1,0 +1,120 @@
+// utility.library FFI Bindings
+// Raw 1:1 mappings to utility.library
+//
+// Auto-generated from NDK 3.9
+// - Functions from utility_lib.fd
+// - Structs from include/utility/*.h
+// - Constants from include/utility/*.h
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+pub const PSTB_SIGNED: u32 = 31
+pub const PSTB_UNPACK: u32 = 30 // Note that these are active low...
+pub const PSTB_PACK: u32 = 29 // Note that these are active low...
+pub const PSTB_EXISTS: u32 = 26 // Tag exists bit true flag hack...
+pub const PKCTRL_PACKUNPACK: u32 = $00000000
+pub const PKCTRL_PACKONLY: u32 = $40000000
+pub const PKCTRL_UNPACKONLY: u32 = $20000000
+pub const PKCTRL_BYTE: u32 = $80000000
+pub const PKCTRL_WORD: u32 = $88000000
+pub const PKCTRL_LONG: u32 = $90000000
+pub const PKCTRL_UBYTE: u32 = $00000000
+pub const PKCTRL_UWORD: u32 = $08000000
+pub const PKCTRL_ULONG: u32 = $10000000
+pub const PKCTRL_BIT: u32 = $18000000
+pub const PKCTRL_FLIPBIT: u32 = $98000000
+pub const PACK_ENDTABLE: u32 = 0
+pub const ANO_NameSpace: u32 = 4000 // Tag to define namespace
+pub const ANO_UserSpace: u32 = 4001 // tag to define userspace
+pub const ANO_Priority: u32 = 4002 // tag to define priority
+pub const ANO_Flags: u32 = 4003 // tag to define flags
+pub const NSB_NODUPS: u32 = 0
+pub const NSB_CASE: u32 = 1
+pub const TAG_DONE: u32 = (0) // terminates array of TagItems. ti_Data unused
+pub const TAG_END: u32 = (0) // synonym for TAG_DONE
+pub const TAG_IGNORE: u32 = (1) // ignore this item, not end of array
+pub const TAG_MORE: u32 = (2) // ti_Data is pointer to another array of TagItems
+pub const TAG_SKIP: u32 = (3) // skip this and the next ti_Data items
+pub const TAGFILTER_AND: u32 = 0 // exclude everything but filter hits
+pub const TAGFILTER_NOT: u32 = 1 // exclude only filter hits
+pub const MAP_REMOVE_NOT_FOUND: u32 = 0 // remove tags that aren't in mapList
+pub const MAP_KEEP_NOT_FOUND: u32 = 1 // keep tags that aren't in mapList
+
+// ============================================================================
+// Structs
+// ============================================================================
+
+pub struct NamedObject {
+    no_Object: *u8,
+}
+
+pub struct Hook {
+    h_MinNode: *u8,
+    h_Data: *u8,
+}
+
+pub struct ClockData {
+    sec: u16,
+    min: u16,
+    hour: u16,
+    mday: u16,
+    month: u16,
+    year: u16,
+    wday: u16,
+}
+
+pub struct UtilityBase {
+    ub_LibNode: *u8,
+    ub_Language: u8,
+    ub_Reserved: u8,
+}
+
+pub struct TagItem {
+    ti_Tag: i32,
+    ti_Data: u32,
+}
+
+// ============================================================================
+// Functions
+// ============================================================================
+
+extern fn FindTagItem(tagVal: i32, tagList: i32) -> i32
+extern fn GetTagData(tagValue: i32, defaultVal: i32, tagList: i32) -> i32
+extern fn PackBoolTags(initialFlags: i32, tagList: i32, boolMap: i32) -> i32
+extern fn NextTagItem(tagListPtr: i32) -> i32
+extern fn FilterTagChanges(changeList: i32, originalList: i32, apply: i32) -> i32
+extern fn MapTags(tagList: i32, mapList: i32, mapType: i32) -> i32
+extern fn AllocateTagItems(numTags: i32) -> i32
+extern fn CloneTagItems(tagList: i32) -> i32
+extern fn FreeTagItems(tagList: i32) -> i32
+extern fn RefreshTagItemClones(clone: i32, original: i32) -> i32
+extern fn TagInArray(tagValue: i32, tagArray: i32) -> i32
+extern fn FilterTagItems(tagList: i32, filterArray: i32, logic: i32) -> i32
+extern fn CallHookPkt(hook: i32, object: i32, paramPacket: i32) -> i32
+extern fn Amiga2Date(seconds: i32, result: i32) -> i32
+extern fn Date2Amiga(date: i32) -> i32
+extern fn CheckDate(date: i32) -> i32
+extern fn SMult32(arg1: i32, arg2: i32) -> i32
+extern fn UMult32(arg1: i32, arg2: i32) -> i32
+extern fn SDivMod32(dividend: i32, divisor: i32) -> i32
+extern fn UDivMod32(dividend: i32, divisor: i32) -> i32
+extern fn Stricmp(string1: i32, string2: i32) -> i32
+extern fn Strnicmp(string1: i32, string2: i32, length: i32) -> i32
+extern fn ToUpper(character: i32) -> i32
+extern fn ToLower(character: i32) -> i32
+extern fn ApplyTagChanges(list: i32, changeList: i32) -> i32
+extern fn SMult64(arg1: i32, arg2: i32) -> i32
+extern fn UMult64(arg1: i32, arg2: i32) -> i32
+extern fn PackStructureTags(pack: i32, packTable: i32, tagList: i32) -> i32
+extern fn UnpackStructureTags(pack: i32, packTable: i32, tagList: i32) -> i32
+extern fn AddNamedObject(nameSpace: i32, object: i32) -> i32
+extern fn AllocNamedObjectA(name: i32, tagList: i32) -> i32
+extern fn AttemptRemNamedObject(object: i32) -> i32
+extern fn FindNamedObject(nameSpace: i32, name: i32, lastObject: i32) -> i32
+extern fn FreeNamedObject(object: i32) -> i32
+extern fn NamedObjectName(object: i32) -> i32
+extern fn ReleaseNamedObject(object: i32) -> i32
+extern fn RemNamedObject(object: i32, message: i32) -> i32
+extern fn GetUniqueID() -> i32
