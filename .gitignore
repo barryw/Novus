@@ -1,0 +1,66 @@
+# Build results
+bin/
+obj/
+out/
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+build/
+bld/
+
+# NuGet Packages
+*.nupkg
+*.snupkg
+**/packages/*
+!**/packages/build/
+*.nuget.props
+*.nuget.targets
+/packages/
+
+# Visual Studio / Rider / VS Code
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+_ReSharper.Caches/
+riderModule.iml
+*.DotSettings.user
+
+# Test Results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+*.trx
+*.coverage
+*.coveragexml
+
+# Temp files
+*.tmp
+*.temp
+*.cache
+*.log
+*.swp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Compiled binaries (our output)
+*.o
+*.out
+a.out
+test_*
+!Novus.Tests/
+
+# Assembly temporary files
+*.s.bak
+dos_stubs.o
+*_stubs.o

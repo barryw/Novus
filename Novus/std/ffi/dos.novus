@@ -1,0 +1,70 @@
+// AmigaDOS Library FFI Bindings
+// Raw 1:1 mappings to dos.library functions
+//
+// These use C calling convention and require dos_stubs.s to bridge
+// to the native Amiga library calling convention.
+//
+// See: NDK 3.9 autodocs/dos.doc for full documentation
+
+// ============================================================================
+// Standard I/O Functions
+// ============================================================================
+
+// Get the standard output file handle
+extern fn Output() -> i32
+
+// Get the standard input file handle
+extern fn Input() -> i32
+
+// Get the standard error file handle
+extern fn Error() -> i32
+
+// Write data to a file handle
+// Returns number of bytes written, or -1 on error
+extern fn Write(handle: i32, buffer: *u8, length: i32) -> i32
+
+// Read data from a file handle
+// Returns number of bytes read, 0 on EOF, or -1 on error
+extern fn Read(handle: i32, buffer: *u8, length: i32) -> i32
+
+// Formatted print to standard output
+// NOTE: Currently only supports single string argument
+// TODO: Add varargs support for full printf functionality
+extern fn Printf(format: *u8) -> i32
+
+// ============================================================================
+// File Operations
+// ============================================================================
+
+// Open a file
+// Modes: MODE_OLDFILE=1005, MODE_NEWFILE=1006, MODE_READWRITE=1004
+extern fn Open(name: *u8, mode: i32) -> i32
+
+// Close a file handle
+extern fn Close(file: i32)
+
+// ============================================================================
+// Directory Operations
+// ============================================================================
+
+// Get current directory lock
+extern fn CurrentDir(lock: i32) -> i32
+
+// Create a directory
+extern fn CreateDir(name: *u8) -> i32
+
+// Delete a file or directory
+extern fn DeleteFile(name: *u8) -> i32
+
+// ============================================================================
+// System Functions
+// ============================================================================
+
+// Execute a command
+extern fn Execute(command: *u8, input: i32, output: i32) -> i32
+
+// Delay for a number of ticks (1/50th second)
+extern fn Delay(ticks: i32)
+
+// Get the I/O error code from the last operation
+extern fn IoErr() -> i32

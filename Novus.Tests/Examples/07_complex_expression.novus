@@ -1,0 +1,6 @@
+// Example 07: Complex Nested Expression
+// Tests operator precedence and expression handling
+
+pub fn main() -> u32 {
+    return ((10 + 5) * (20 - 3)) / 2
+}

@@ -1,0 +1,40 @@
+// Example 12: Control Flow Demonstration
+// Tests if/else, while loops, forever loops, and break
+
+pub fn test_if_else(x: i32) -> i32 {
+    if x > 10 {
+        return 100
+    } else {
+        return 200
+    }
+}
+
+pub fn test_while() -> i32 {
+    while 0 == 1 {
+        return 999  // Never executes
+    }
+    return 42
+}
+
+pub fn test_forever_break() -> i32 {
+    forever {
+        break
+    }
+    return 123
+}
+
+pub fn test_nested_if(x: i32, y: i32) -> i32 {
+    if x > 0 {
+        if y > 0 {
+            return 1
+        } else {
+            return 2
+        }
+    } else {
+        return 3
+    }
+}
+
+pub fn main() -> u32 {
+    return 42u32
+}

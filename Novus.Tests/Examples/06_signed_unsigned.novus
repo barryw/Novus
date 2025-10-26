@@ -1,0 +1,14 @@
+// Example 06: Signed vs Unsigned
+// Tests that signed uses muls.l and unsigned uses mulu.l
+
+fn signed_multiply() -> i32 {
+    return 5i32 * 6i32
+}
+
+fn unsigned_multiply() -> u32 {
+    return 5u32 * 6u32
+}
+
+pub fn main() -> u32 {
+    return 42u32
+}

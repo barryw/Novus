@@ -1,0 +1,17 @@
+// mathieeedoubbas - Amiga mathieeedoubbas.library bindings
+// Auto-generated from mathieeedoubbas_lib.fd
+
+module mathieeedoubbas;
+
+extern fn IEEEDPFix(parm: i32) -> i32;
+extern fn IEEEDPFlt(integer: i32) -> i32;
+extern fn IEEEDPCmp(leftParm: i32, rightParm: i32) -> i32;
+extern fn IEEEDPTst(parm: i32) -> i32;
+extern fn IEEEDPAbs(parm: i32) -> i32;
+extern fn IEEEDPNeg(parm: i32) -> i32;
+extern fn IEEEDPAdd(leftParm: i32, rightParm: i32) -> i32;
+extern fn IEEEDPSub(leftParm: i32, rightParm: i32) -> i32;
+extern fn IEEEDPMul(factor1: i32, factor2: i32) -> i32;
+extern fn IEEEDPDiv(dividend: i32, divisor: i32) -> i32;
+extern fn IEEEDPFloor(parm: i32) -> i32;
+extern fn IEEEDPCeil(parm: i32) -> i32;

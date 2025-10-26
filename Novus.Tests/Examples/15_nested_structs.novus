@@ -1,0 +1,62 @@
+// Nested Structs Example
+// Demonstrates struct fields that are themselves structs,
+// chained member access, and struct-to-struct copying
+
+struct Point {
+    x: u32,
+    y: u32
+}
+
+struct Size {
+    width: u32,
+    height: u32
+}
+
+struct Rect {
+    top_left: Point,
+    size: Size
+}
+
+struct Window {
+    bounds: Rect,
+    visible: bool
+}
+
+pub fn main() -> u32 {
+    // Create a Point
+    let origin: Point = Point { x: 100u32, y: 200u32 }
+
+    // Create a Rect using inline nested struct literal
+    let r1: Rect = Rect {
+        top_left: Point { x: 10u32, y: 20u32 },
+        size: Size { width: 640u32, height: 480u32 }
+    }
+
+    // Create a Rect using struct variable assignment (copy)
+    let r2: Rect = Rect {
+        top_left: origin,
+        size: Size { width: 800u32, height: 600u32 }
+    }
+
+    // Create a Window with deeply nested structs (3 levels deep!)
+    let win: Window = Window {
+        bounds: Rect {
+            top_left: Point { x: 50u32, y: 75u32 },
+            size: Size { width: 1024u32, height: 768u32 }
+        },
+        visible: true
+    }
+
+    // Test chained member access (3 levels: win.bounds.top_left.x)
+    let x: u32 = win.bounds.top_left.x  // Should be 50
+
+    // Test another chained access path
+    let width: u32 = win.bounds.size.width  // Should be 1024
+
+    // Test access on struct created from variable
+    let x2: u32 = r2.top_left.x  // Should be 100 (from origin)
+    let y2: u32 = r2.top_left.y  // Should be 200 (from origin)
+
+    // Verify results: 50 + 1024 = 1074
+    return x + width
+}

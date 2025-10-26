@@ -1,0 +1,22 @@
+// Example 10: moveq Optimization
+// Values from -128 to +127 should use moveq instruction
+
+fn small_positive() -> i32 {
+    return 42
+}
+
+fn small_negative() -> i32 {
+    return -42
+}
+
+fn boundary_low() -> i32 {
+    return -128
+}
+
+fn boundary_high() -> i32 {
+    return 127
+}
+
+fn too_large() -> i32 {
+    return 128
+}

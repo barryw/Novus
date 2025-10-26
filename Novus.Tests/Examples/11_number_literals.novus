@@ -1,0 +1,27 @@
+// Example 11: Number Literal Formats
+// Demonstrates decimal, binary, and hexadecimal literals with underscores
+// Also shows type suffix syntax vs C-style cast syntax
+
+fn decimal_with_underscores() -> u32 {
+    return 1_000_000u32
+}
+
+fn binary_literal() -> u8 {
+    return %1111_1111u8
+}
+
+fn hex_literal_with_suffix() -> u16 {
+    return $BEEFu16  // Type suffix syntax
+}
+
+fn hex_literal_with_cast() -> u16 {
+    return (u16)$DEAD_BEEF  // C-style cast syntax
+}
+
+fn mixed_formats() -> u32 {
+    return 42 + %1010 + $FF
+}
+
+pub fn main() -> u32 {
+    return $2Au32  // 42 in hexadecimal
+}

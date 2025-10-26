@@ -1,0 +1,26 @@
+// Example 03: Type Sizes
+// Tests all integer type sizes (8, 16, 32 bits)
+
+pub fn test_u8() -> u8 {
+    return 255u8
+}
+
+pub fn test_u16() -> u16 {
+    return 65535u16
+}
+
+pub fn test_u32() -> u32 {
+    return 4294967295u32
+}
+
+pub fn test_i8() -> i8 {
+    return 127i8
+}
+
+pub fn test_i16() -> i16 {
+    return 32767i16
+}
+
+pub fn test_i32() -> i32 {
+    return 2147483647i32
+}

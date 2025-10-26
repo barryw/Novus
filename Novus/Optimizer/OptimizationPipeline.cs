@@ -1,0 +1,156 @@
+using Novus.IR;
+
+namespace Novus.Optimizer;
+
+/// <summary>
+/// Manages the execution of optimization passes on IR modules
+/// </summary>
+public class OptimizationPipeline
+{
+    private readonly List<IOptimizationPass> _passes = new();
+    private readonly int _maxIterations;
+    private readonly bool _verbose;
+
+    public OptimizationPipeline(int maxIterations = 10, bool verbose = false)
+    {
+        _maxIterations = maxIterations;
+        _verbose = verbose;
+    }
+
+    /// <summary>
+    /// Add an optimization pass to the pipeline
+    /// </summary>
+    public void AddPass(IOptimizationPass pass)
+    {
+        _passes.Add(pass);
+    }
+
+    /// <summary>
+    /// Run all optimization passes on the module until fixpoint or max iterations
+    /// </summary>
+    public void Run(IrModule module)
+    {
+        if (_verbose)
+        {
+            Console.WriteLine($"Running optimization pipeline with {_passes.Count} passes...");
+        }
+
+        for (int iteration = 0; iteration < _maxIterations; iteration++)
+        {
+            bool changed = false;
+
+            foreach (var pass in _passes)
+            {
+                if (_verbose)
+                {
+                    Console.WriteLine($"  [Iteration {iteration + 1}] Running {pass.Name}...");
+                }
+
+                bool passChanged = pass.Run(module);
+                changed |= passChanged;
+
+                if (_verbose && passChanged)
+                {
+                    Console.WriteLine($"    -> Modified");
+                }
+            }
+
+            // If no pass made changes, we've reached a fixpoint
+            if (!changed)
+            {
+                if (_verbose)
+                {
+                    Console.WriteLine($"Optimization converged after {iteration + 1} iteration(s)");
+                }
+                break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Create a standard optimization pipeline for a given optimization level
+    /// </summary>
+    public static OptimizationPipeline CreatePipeline(int level, bool verbose = false)
+    {
+        var pipeline = new OptimizationPipeline(maxIterations: 10, verbose: verbose);
+
+        switch (level)
+        {
+            case 0:
+                // No optimizations
+                break;
+
+            case 1:
+                // Basic optimizations - fast compile time
+                pipeline.AddPass(new Passes.ConstantFoldingPass());
+                pipeline.AddPass(new Passes.DeadCodeEliminationPass());
+                break;
+
+            case 2:
+                // Standard optimizations - balanced
+                pipeline.AddPass(new Passes.ConstantFoldingPass());
+                pipeline.AddPass(new Passes.ConstantPropagationPass());
+                pipeline.AddPass(new Passes.DeadCodeEliminationPass());
+                pipeline.AddPass(new Passes.CopyPropagationPass());
+                break;
+
+            case 3:
+                // Aggressive optimizations - longer compile time
+                pipeline.AddPass(new Passes.ConstantFoldingPass());
+                pipeline.AddPass(new Passes.ConstantPropagationPass());
+                pipeline.AddPass(new Passes.DeadCodeEliminationPass());
+                pipeline.AddPass(new Passes.CopyPropagationPass());
+                pipeline.AddPass(new Passes.CommonSubexpressionEliminationPass());
+                pipeline.AddPass(new Passes.StrengthReductionPass());
+                break;
+
+            default:
+                throw new ArgumentException($"Invalid optimization level: {level}. Must be 0-3.");
+        }
+
+        return pipeline;
+    }
+}
+
+/// <summary>
+/// Base class for function-level passes that iterates over all functions
+/// </summary>
+public abstract class FunctionPassBase : IFunctionPass
+{
+    public abstract string Name { get; }
+
+    public bool Run(IrModule module)
+    {
+        bool changed = false;
+        foreach (var function in module.Functions)
+        {
+            changed |= RunOnFunction(function);
+        }
+        return changed;
+    }
+
+    public abstract bool RunOnFunction(IrFunction function);
+}
+
+/// <summary>
+/// Base class for basic-block level passes that iterates over all blocks
+/// </summary>
+public abstract class BasicBlockPassBase : IBasicBlockPass
+{
+    public abstract string Name { get; }
+
+    public bool Run(IrModule module)
+    {
+        bool changed = false;
+        foreach (var function in module.Functions)
+        {
+            foreach (var block in function.BasicBlocks)
+            {
+                changed |= RunOnBasicBlock(block);
+            }
+        }
+        return changed;
+    }
+
+    public abstract bool RunOnBasicBlock(IrBasicBlock block);
+}

@@ -1,0 +1,8 @@
+// Example 02: Basic Arithmetic
+// Tests basic arithmetic operations
+// At O0: generates add.l and muls instructions
+// At O1+: should fold to constant 60
+
+pub fn main() -> u32 {
+    return (10 + 20) * 2
+}

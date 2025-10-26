@@ -1,0 +1,1 @@
+- to test built amiga executables, copy them to /Users/barry/Emulation/Amiga/A4000-DH0/Barry which is a shared drive for an A4000 with a 68040

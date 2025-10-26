@@ -1,0 +1,60 @@
+// Struct Example
+// Demonstrates struct definitions, initialization, and member access
+
+struct Point {
+    x: u32,
+    y: u32
+}
+
+struct Rect {
+    width: u32,
+    height: u32
+}
+
+struct Color {
+    r: u8,
+    g: u8,
+    b: u8
+}
+
+// Function that takes a struct parameter and returns a field
+pub fn get_x(p: Point) -> u32 {
+    return p.x
+}
+
+// Function that takes a struct parameter and returns a field
+pub fn get_y(p: Point) -> u32 {
+    return p.y
+}
+
+// Function that calculates area of a rectangle
+pub fn area(rect: Rect) -> u32 {
+    return rect.width * rect.height
+}
+
+// Function that creates a struct and returns a field value
+pub fn create_point() -> u32 {
+    let p: Point = Point { x: 100u32, y: 200u32 }
+    return p.x + p.y
+}
+
+// Function that uses multiple struct types
+pub fn test_multiple_structs() -> u32 {
+    let p: Point = Point { x: 10u32, y: 20u32 }
+    let r: Rect = Rect { width: 5u32, height: 10u32 }
+
+    return p.x + r.width
+}
+
+// Test with byte-sized fields
+pub fn test_color() -> u32 {
+    let c: Color = Color { r: 255u8, g: 128u8, b: 64u8 }
+    let red: u32 = (u32)c.r
+    return red
+}
+
+pub fn main() -> u32 {
+    let point: Point = Point { x: 42u32, y: 100u32 }
+    let result: u32 = point.x
+    return result
+}

@@ -1,0 +1,29 @@
+// locale - Amiga locale.library bindings
+// Auto-generated from locale_lib.fd
+
+module locale;
+
+extern fn CloseCatalog(catalog: i32) -> i32;
+extern fn CloseLocale(locale: i32) -> i32;
+extern fn ConvToLower(locale: i32, character: i32) -> i32;
+extern fn ConvToUpper(locale: i32, character: i32) -> i32;
+extern fn FormatDate(locale: i32, fmtTemplate: i32, date: i32, putCharFunc: i32) -> i32;
+extern fn FormatString(locale: i32, fmtTemplate: i32, dataStream: i32, putCharFunc: i32) -> i32;
+extern fn GetCatalogStr(catalog: i32, stringNum: i32, defaultString: i32) -> i32;
+extern fn GetLocaleStr(locale: i32, stringNum: i32) -> i32;
+extern fn IsAlNum(locale: i32, character: i32) -> i32;
+extern fn IsAlpha(locale: i32, character: i32) -> i32;
+extern fn IsCntrl(locale: i32, character: i32) -> i32;
+extern fn IsDigit(locale: i32, character: i32) -> i32;
+extern fn IsGraph(locale: i32, character: i32) -> i32;
+extern fn IsLower(locale: i32, character: i32) -> i32;
+extern fn IsPrint(locale: i32, character: i32) -> i32;
+extern fn IsPunct(locale: i32, character: i32) -> i32;
+extern fn IsSpace(locale: i32, character: i32) -> i32;
+extern fn IsUpper(locale: i32, character: i32) -> i32;
+extern fn IsXDigit(locale: i32, character: i32) -> i32;
+extern fn OpenCatalogA(locale: i32, name: i32, tags: i32) -> i32;
+extern fn OpenLocale(name: i32) -> i32;
+extern fn ParseDate(locale: i32, date: i32, fmtTemplate: i32, getCharFunc: i32) -> i32;
+extern fn StrConvert(locale: i32, string: i32, buffer: i32, bufferSize: i32, type: i32) -> i32;
+extern fn StrnCmp(locale: i32, string1: i32, string2: i32, length: i32, type: i32) -> i32;

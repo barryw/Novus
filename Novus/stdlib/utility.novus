@@ -1,0 +1,43 @@
+// utility - Amiga utility.library bindings
+// Auto-generated from utility_lib.fd
+
+module utility;
+
+extern fn FindTagItem(tagVal: i32, tagList: i32) -> i32;
+extern fn GetTagData(tagValue: i32, defaultVal: i32, tagList: i32) -> i32;
+extern fn PackBoolTags(initialFlags: i32, tagList: i32, boolMap: i32) -> i32;
+extern fn NextTagItem(tagListPtr: i32) -> i32;
+extern fn FilterTagChanges(changeList: i32, originalList: i32, apply: i32) -> i32;
+extern fn MapTags(tagList: i32, mapList: i32, mapType: i32) -> i32;
+extern fn AllocateTagItems(numTags: i32) -> i32;
+extern fn CloneTagItems(tagList: i32) -> i32;
+extern fn FreeTagItems(tagList: i32) -> i32;
+extern fn RefreshTagItemClones(clone: i32, original: i32) -> i32;
+extern fn TagInArray(tagValue: i32, tagArray: i32) -> i32;
+extern fn FilterTagItems(tagList: i32, filterArray: i32, logic: i32) -> i32;
+extern fn CallHookPkt(hook: i32, object: i32, paramPacket: i32) -> i32;
+extern fn Amiga2Date(seconds: i32, result: i32) -> i32;
+extern fn Date2Amiga(date: i32) -> i32;
+extern fn CheckDate(date: i32) -> i32;
+extern fn SMult32(arg1: i32, arg2: i32) -> i32;
+extern fn UMult32(arg1: i32, arg2: i32) -> i32;
+extern fn SDivMod32(dividend: i32, divisor: i32) -> i32;
+extern fn UDivMod32(dividend: i32, divisor: i32) -> i32;
+extern fn Stricmp(string1: i32, string2: i32) -> i32;
+extern fn Strnicmp(string1: i32, string2: i32, length: i32) -> i32;
+extern fn ToUpper(character: i32) -> i32;
+extern fn ToLower(character: i32) -> i32;
+extern fn ApplyTagChanges(list: i32, changeList: i32) -> i32;
+extern fn SMult64(arg1: i32, arg2: i32) -> i32;
+extern fn UMult64(arg1: i32, arg2: i32) -> i32;
+extern fn PackStructureTags(pack: i32, packTable: i32, tagList: i32) -> i32;
+extern fn UnpackStructureTags(pack: i32, packTable: i32, tagList: i32) -> i32;
+extern fn AddNamedObject(nameSpace: i32, object: i32) -> i32;
+extern fn AllocNamedObjectA(name: i32, tagList: i32) -> i32;
+extern fn AttemptRemNamedObject(object: i32) -> i32;
+extern fn FindNamedObject(nameSpace: i32, name: i32, lastObject: i32) -> i32;
+extern fn FreeNamedObject(object: i32) -> i32;
+extern fn NamedObjectName(object: i32) -> i32;
+extern fn ReleaseNamedObject(object: i32) -> i32;
+extern fn RemNamedObject(object: i32, message: i32) -> i32;
+extern fn GetUniqueID() -> i32;
