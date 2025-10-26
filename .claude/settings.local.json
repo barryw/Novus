@@ -1,24 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(antlr4:*)",
-      "Read(//Users/barry/amiga-cc/NDK3.9/**)",
-      "Read(//Users/barry/amiga-cc/**)",
-      "Bash(ar t:*)",
-      "Bash(find:*)",
-      "Bash(/Users/barry/amiga-cc/vbcc/bin/vc:*)",
-      "WebFetch(domain:sun.hasenbraten.de)",
-      "Bash(for test in test_nested_struct test_struct_copy test_simple_nested)",
-      "Bash(do echo \"Testing $test:\")",
-      "Bash(m68k-amigaos-objdump:*)",
-      "Bash(vda68k:*)",
-      "Bash(vasmm68k_mot:*)",
-      "Bash(objdump:*)",
-      "Read(//usr/local/**)",
-      "WebSearch",
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Read(///**)"
     ],
     "deny": [],
     "ask": []

@@ -56,7 +56,8 @@ genericParams
     ;
 
 type
-    : '*' type                                                # PointerType
+    : '&' 'mut'? type                                         # ReferenceType
+    | '*' type                                                # PointerType
     | '[' INTEGER_LITERAL ']' type                           # ArrayType
     | 'fn' '(' typeList? ')' ('->' type)?                    # FunctionPointerType
     | 'u8'                                                    # PrimitiveType
@@ -93,7 +94,12 @@ statement
     | foreverStatement
     | breakStatement
     | matchStatement
+    | deferStatement
     | expressionStatement
+    ;
+
+deferStatement
+    : 'defer' block
     ;
 
 matchStatement
@@ -159,8 +165,8 @@ expression
     | expression '(' argumentList? ')'                     # CallExpr
     | expression '[' expression ']'                        # IndexExpr
     | '(' type ')' expression                              # CastExpr
-    | '&' IDENTIFIER                                       # AddressOfExpr
-    | ('!' | '~' | '-') expression                         # UnaryExpr
+    | '&' 'mut'? expression                                # BorrowExpr
+    | ('!' | '~' | '-' | '*') expression                   # UnaryExpr
     | expression ('*' | '/' | '%') expression              # MultiplicativeExpr
     | expression ('+' | '-') expression                     # AdditiveExpr
     | expression ('<<' | '>>') expression                  # ShiftExpr

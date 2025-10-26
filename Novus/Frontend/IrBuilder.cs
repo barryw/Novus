@@ -998,23 +998,33 @@ public class IrBuilder : NovusBaseVisitor<object?>
         return null;
     }
 
-    public override object? VisitAddressOfExpr([NotNull] NovusParser.AddressOfExprContext context)
+    public override object? VisitBorrowExpr([NotNull] NovusParser.BorrowExprContext context)
     {
-        var functionName = context.IDENTIFIER().GetText();
+        // TODO: Implement full reference system with &T and &mut T
+        // For now, just handle the function pointer case (backward compatibility)
 
-        // Look up the function in the module
-        var function = _module.Functions.FirstOrDefault(f => f.Name == functionName);
-        if (function == null)
+        var exprContext = context.expression();
+
+        // Check if this is an identifier expression (for function pointers)
+        if (exprContext.Start.Type == NovusLexer.IDENTIFIER &&
+            exprContext.ChildCount == 1)
         {
-            throw new Exception($"Unknown function: {functionName}");
+            var functionName = exprContext.GetText();
+
+            // Look up the function in the module
+            var function = _module.Functions.FirstOrDefault(f => f.Name == functionName);
+            if (function != null)
+            {
+                // Create function pointer type from function signature
+                var paramTypes = function.Parameters.Select(p => p.Type).ToList();
+                var fpType = new IrFunctionPointerType(paramTypes, function.ReturnType);
+                return new IrFunctionAddress(functionName, fpType);
+            }
         }
 
-        // Create function pointer type from function signature
-        var paramTypes = function.Parameters.Select(p => p.Type).ToList();
-        var fpType = new IrFunctionPointerType(paramTypes, function.ReturnType);
-
-        // Return function address value
-        return new IrFunctionAddress(functionName, fpType);
+        // For now, throw an error for non-function borrows
+        // We'll implement proper references later
+        throw new NotImplementedException("Reference types (&T, &mut T) not yet fully implemented");
     }
 
     public override object? VisitIndexExpr([NotNull] NovusParser.IndexExprContext context)

@@ -2120,29 +2120,40 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return field.Type;
     }
 
-    public override IrType? VisitAddressOfExpr([NotNull] NovusParser.AddressOfExprContext context)
+    public override IrType? VisitBorrowExpr([NotNull] NovusParser.BorrowExprContext context)
     {
-        var functionName = context.IDENTIFIER().GetText();
+        // TODO: Implement full reference system with &T and &mut T
+        // For now, just handle the function pointer case (backward compatibility)
 
-        // Check if function exists
-        if (!_functions.ContainsKey(functionName))
+        var exprContext = context.expression();
+
+        // Check if this is a simple identifier (for function pointers)
+        if (exprContext.Start.Type == NovusLexer.IDENTIFIER &&
+            exprContext.ChildCount == 1)
         {
-            var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
-            _diagnostics.ReportError(
-                "E0013",
-                $"undefined function '{functionName}'",
-                location,
-                helpTexts: new List<string>
-                {
-                    "cannot take address of undefined function"
-                }
-            );
-            return null;
+            var name = exprContext.GetText();
+
+            // Check if it's a function
+            if (_functions.ContainsKey(name))
+            {
+                var function = _functions[name];
+                var paramTypes = function.Parameters.Select(p => p.Type).ToList();
+                return new IrFunctionPointerType(paramTypes, function.ReturnType);
+            }
         }
 
-        var function = _functions[functionName];
-        var paramTypes = function.Parameters.Select(p => p.Type).ToList();
-        return new IrFunctionPointerType(paramTypes, function.ReturnType);
+        // For non-function borrows, return error
+        var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+        _diagnostics.ReportError(
+            "E9999",
+            "reference types (&T, &mut T) are not yet fully implemented",
+            location,
+            helpTexts: new List<string>
+            {
+                "references will be supported in a future version"
+            }
+        );
+        return null;
     }
 
     public override IrType? VisitComparisonExpr([NotNull] NovusParser.ComparisonExprContext context)
