@@ -450,8 +450,11 @@ public partial class M68kCodeGenerator
         foreach (var param in function.Parameters)
         {
             _localVariableOffsets[param.Name] = paramOffset;
-            // Parameters are passed as longwords (4 bytes minimum)
-            paramOffset += 4;
+
+            // String and other struct parameters are passed as full structs on stack
+            // Regular parameters (i32, pointers, etc.) are 4 bytes
+            int paramSize = param.Type.SizeInBytes;
+            paramOffset += paramSize;
         }
 
         // Calculate stack space needed for local variables
@@ -967,43 +970,90 @@ public partial class M68kCodeGenerator
     {
         EmitComment($"Call {call.FunctionName}");
 
+        // Look up the function to get parameter types
+        var function = _module.Functions.FirstOrDefault(f => f.Name == call.FunctionName);
+
+        int totalBytesPushed = 0;
+
         // Push arguments onto stack in reverse order (right to left, per C calling convention)
         for (int i = call.Arguments.Count - 1; i >= 0; i--)
         {
             var arg = call.Arguments[i];
-            var argsPushedSoFar = call.Arguments.Count - 1 - i;
 
-            // Special handling for temp variables to account for changing SP
-            if (arg is IrVariable variable && variable.Name.StartsWith("%t"))
+            // Get the expected parameter type from the function signature
+            IrType? paramType = null;
+            if (function != null && i < function.Parameters.Count)
             {
-                var savedIndex = _savedTemps.IndexOf(variable.Name);
-                if (savedIndex >= 0)
-                {
-                    // Calculate offset including arguments already pushed for this call
-                    var baseOffset = (_savedTemps.Count - 1 - savedIndex) * 4;
-                    var adjustedOffset = baseOffset + (argsPushedSoFar * 4);
-                    var tempSize = GetSizeSuffix(variable.Type);
-                    Emit($"\tmove{tempSize}\t{adjustedOffset}(sp),d0");
-                    Emit("\tmove.l\td0,-(sp)");
-                    continue;
-                }
+                paramType = function.Parameters[i].Type;
             }
 
-            // Load argument into d0 first
-            LoadOperand(arg, "d0");
+            // Handle String (and other struct) parameters
+            if (paramType is IrStringType)
+            {
+                EmitComment($"Push String argument (8 bytes: ptr + len)");
 
-            // Push d0 onto stack
-            Emit("\tmove.l\td0,-(sp)");
+                // For String variable, we need to push both fields
+                // String layout: {ptr: *u8 at offset 0, len: i32 at offset 4}
+
+                if (arg is IrVariable stringVar)
+                {
+                    // Get the stack location of the String variable
+                    if (_localVariableOffsets.TryGetValue(stringVar.Name, out int offset))
+                    {
+                        // Push len field (offset 4) first - it will be at higher address
+                        Emit($"\tmove.l\t{offset + 4}(a6),-(sp)");
+                        // Push ptr field (offset 0) second - it will be at lower address
+                        Emit($"\tmove.l\t{offset}(a6),-(sp)");
+                        totalBytesPushed += 8;
+                    }
+                    else
+                    {
+                        throw new Exception($"Unknown String variable: {stringVar.Name}");
+                    }
+                }
+                else
+                {
+                    throw new Exception($"Unsupported String argument type: {arg.GetType().Name}");
+                }
+            }
+            else
+            {
+                // Regular 4-byte argument (i32, pointers, etc.)
+                var argsPushedSoFar = totalBytesPushed;
+
+                // Special handling for temp variables to account for changing SP
+                if (arg is IrVariable variable && variable.Name.StartsWith("%t"))
+                {
+                    var savedIndex = _savedTemps.IndexOf(variable.Name);
+                    if (savedIndex >= 0)
+                    {
+                        // Calculate offset including arguments already pushed for this call
+                        var baseOffset = (_savedTemps.Count - 1 - savedIndex) * 4;
+                        var adjustedOffset = baseOffset + argsPushedSoFar;
+                        var tempSize = GetSizeSuffix(variable.Type);
+                        Emit($"\tmove{tempSize}\t{adjustedOffset}(sp),d0");
+                        Emit("\tmove.l\td0,-(sp)");
+                        totalBytesPushed += 4;
+                        continue;
+                    }
+                }
+
+                // Load argument into d0 first
+                LoadOperand(arg, "d0");
+
+                // Push d0 onto stack
+                Emit("\tmove.l\td0,-(sp)");
+                totalBytesPushed += 4;
+            }
         }
 
         // Call the function using JSR (Jump to Subroutine)
         Emit($"\tjsr\t_{call.FunctionName}");
 
         // Clean up stack (remove arguments)
-        if (call.Arguments.Count > 0)
+        if (totalBytesPushed > 0)
         {
-            var stackCleanup = call.Arguments.Count * 4; // 4 bytes per argument
-            Emit($"\tlea\t{stackCleanup}(sp),sp");
+            Emit($"\tlea\t{totalBytesPushed}(sp),sp");
         }
 
         // Result is in d0 - don't save to stack to avoid stack overflow in loops
@@ -1459,7 +1509,15 @@ public partial class M68kCodeGenerator
             // Load field value into d0
             Emit($"\tmove{fieldSizeSuffix}\t{fieldOffset}(a6),d0");
 
-            // Result is in d0 - don't save to stack
+            // Check if this temp is used later (e.g., as function argument)
+            // If so, save it to the stack so it's not lost when d0 is reused
+            if (IsTempUsed(memberAccess.ResultName))
+            {
+                EmitComment($"Save {memberAccess.ResultName} to stack (used later)");
+                Emit("\tmove.l\td0,-(sp)");
+                _savedTemps.Add(memberAccess.ResultName);
+                _tempStackOffset += 4;
+            }
         }
     }
 
@@ -1686,17 +1744,15 @@ public partial class M68kCodeGenerator
             }
             case IrVariable variable:
             {
-                // Check if this is a parameter
+                // Check if this is a parameter (use _localVariableOffsets for correct offset)
                 if (_currentFunction != null)
                 {
                     var paramIndex = _currentFunction.Parameters.FindIndex(p => p.Name == variable.Name);
-                    if (paramIndex >= 0)
+                    if (paramIndex >= 0 && _localVariableOffsets.ContainsKey(variable.Name))
                     {
                         // Parameters are on the stack after link frame
-                        // Stack layout: [return addr][old a6][param1][param2]...
-                        // After link a6,#0: params start at 8(a6)
-                        // Parameters are passed as longwords (4 bytes each)
-                        var baseOffset = 8 + (paramIndex * 4);
+                        // Offsets are calculated in EmitPrologue based on actual parameter sizes
+                        var baseOffset = _localVariableOffsets[variable.Name];
 
                         // Adjust offset for big-endian when loading smaller than longword
                         var offset = baseOffset;

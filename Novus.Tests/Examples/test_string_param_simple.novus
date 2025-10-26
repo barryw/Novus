@@ -1,0 +1,25 @@
+// Test passing String as parameter - simple version
+
+// Non-FFI function that takes String parameter and returns its length
+fn get_length(s: String) -> i32 {
+    return s.len
+}
+
+// Non-FFI function that takes two Strings and returns sum of lengths
+fn sum_lengths(a: String, b: String) -> i32 {
+    return a.len + b.len
+}
+
+pub fn main() -> u32 {
+    let msg1 = "Hello"
+    let msg2 = "World"
+
+    // Test single String parameter
+    let len1 = get_length(msg1)
+
+    // Test multiple String parameters
+    let total = sum_lengths(msg1, msg2)
+
+    // len1 should be 5, total should be 10
+    return (u32)(len1 + total)  // 5 + 10 = 15
+}
