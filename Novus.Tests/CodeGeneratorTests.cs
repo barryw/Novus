@@ -17,7 +17,7 @@ public class CodeGeneratorTests
         var parser = new NovusParser(tokenStream);
         var tree = parser.compilationUnit();
 
-        var builder = new IrBuilder();
+        var builder = new IrBuilder(skipAutoImports: true);
         var module = builder.BuildModule(tree);
 
         var codegen = new M68kCodeGenerator(module, builder.StringLiterals, cpuTarget);
@@ -137,8 +137,8 @@ fn test() -> i32 {
 }";
         var asm = GenerateAssembly(source, "68000");
 
-        // For 68000, 32-bit multiply should fall back to workaround
-        Assert.Contains("muls.w", asm);
+        // For 68000, 32-bit multiply should use 16x16 multiply routine
+        Assert.Contains("68000: 32-bit multiply", asm);
     }
 
     [Fact]
@@ -843,5 +843,275 @@ pub fn add(a: u32, b: u32) -> u32 {
         // Should load parameters from stack
         Assert.Contains("8(a6)", asm);  // First parameter at 8(a6)
         Assert.Contains("12(a6)", asm); // Second parameter at 12(a6)
+    }
+
+    // CPU-Specific Optimization Tests
+
+    [Fact]
+    public void Generate_68060_MultiplyByTwo_UsesShiftAddOptimization()
+    {
+        var source = @"
+fn test(x: i32) -> i32 {
+    return x * 2
+}";
+        var asm = GenerateAssembly(source, "68060");
+
+        // 68060 should optimize x * 2 to add.l d0,d0 instead of muls.l
+        Assert.Contains("68060 optimization: x * 2", asm);
+        Assert.Contains("add.l\td0,d0", asm);
+        Assert.DoesNotContain("muls.l", asm);
+    }
+
+    [Fact]
+    public void Generate_68020_MultiplyByTwo_UsesNativeMultiply()
+    {
+        var source = @"
+fn test(x: i32) -> i32 {
+    return x * 2
+}";
+        var asm = GenerateAssembly(source, "68020");
+
+        // 68020 should use native muls.l (no 68060 optimization)
+        Assert.Contains("muls.l\td1,d0", asm);
+        Assert.DoesNotContain("68060 optimization", asm);
+    }
+
+    [Fact]
+    public void Generate_68060_MultiplyByThree_UsesShiftAddOptimization()
+    {
+        var source = @"
+fn test(x: i32) -> i32 {
+    return x * 3
+}";
+        var asm = GenerateAssembly(source, "68060");
+
+        // 68060 should optimize x * 3 to x + (x << 1)
+        Assert.Contains("68060 optimization: x * 3", asm);
+        Assert.Contains("add.l\td0,d0", asm);  // x << 1
+        Assert.Contains("add.l\td1,d0", asm);  // + x
+        Assert.DoesNotContain("muls.l", asm);
+    }
+
+    [Fact]
+    public void Generate_68060_MultiplyByFour_UsesDoubleShift()
+    {
+        var source = @"
+fn test(x: i32) -> i32 {
+    return x * 4
+}";
+        var asm = GenerateAssembly(source, "68060");
+
+        // 68060 should optimize x * 4 to x << 2 (two adds)
+        Assert.Contains("68060 optimization: x * 4", asm);
+        var addCount = asm.Split(new[] { "add.l\td0,d0" }, StringSplitOptions.None).Length - 1;
+        Assert.Equal(2, addCount);
+        Assert.DoesNotContain("muls.l", asm);
+    }
+
+    [Fact]
+    public void Generate_68060_MultiplyByFive_UsesShiftAddOptimization()
+    {
+        var source = @"
+fn test(x: i32) -> i32 {
+    return x * 5
+}";
+        var asm = GenerateAssembly(source, "68060");
+
+        // 68060 should optimize x * 5 to x + (x << 2)
+        Assert.Contains("68060 optimization: x * 5", asm);
+        Assert.DoesNotContain("muls.l", asm);
+    }
+
+    [Fact]
+    public void Generate_68060_MultiplyByEight_UsesTripleShift()
+    {
+        var source = @"
+fn test(x: i32) -> i32 {
+    return x * 8
+}";
+        var asm = GenerateAssembly(source, "68060");
+
+        // 68060 should optimize x * 8 to x << 3 (three adds)
+        Assert.Contains("68060 optimization: x * 8", asm);
+        var addCount = asm.Split(new[] { "add.l\td0,d0" }, StringSplitOptions.None).Length - 1;
+        Assert.Equal(3, addCount);
+        Assert.DoesNotContain("muls.l", asm);
+    }
+
+    [Fact]
+    public void Generate_68060_MultiplyByTen_UsesShiftAddOptimization()
+    {
+        var source = @"
+fn test(x: i32) -> i32 {
+    return x * 10
+}";
+        var asm = GenerateAssembly(source, "68060");
+
+        // 68060 should optimize x * 10
+        Assert.Contains("68060 optimization: x * 10", asm);
+        Assert.DoesNotContain("muls.l", asm);
+    }
+
+    [Fact]
+    public void Generate_68060_MultiplyByLargeConstant_UsesNativeMultiply()
+    {
+        var source = @"
+fn test(x: i32) -> i32 {
+    return x * 200
+}";
+        var asm = GenerateAssembly(source, "68060");
+
+        // 68060 should use native muls.l for large constants
+        Assert.Contains("muls.l\td1,d0", asm);
+        // But should have a warning comment
+        Assert.Contains("Note: 68060 has slow multiply", asm);
+    }
+
+    [Fact]
+    public void Generate_DivideByPowerOfTwo_OptimizesToShift()
+    {
+        var source = @"
+fn test(x: u32) -> u32 {
+    return x / 4
+}";
+        var asm = GenerateAssembly(source, "68020");
+
+        // Division by power of 2 should optimize to right shift (unsigned only)
+        Assert.Contains("Optimized: x / 4 = x >> 2", asm);
+        Assert.Contains("lsr.l\t#2,d0", asm);
+        Assert.DoesNotContain("divu.l", asm);
+    }
+
+    [Fact]
+    public void Generate_68060_DivideByPowerOfTwo_HasOptimizationComment()
+    {
+        var source = @"
+fn test(x: u32) -> u32 {
+    return x / 8
+}";
+        var asm = GenerateAssembly(source, "68060");
+
+        // 68060 should have specific optimization comment (only for unsigned)
+        Assert.Contains("68060 optimization: x / 8 = x >> 3", asm);
+        Assert.Contains("lsr.l\t#3,d0", asm);
+        Assert.DoesNotContain("divu.l", asm);
+    }
+
+    [Fact]
+    public void Generate_68060_DivideNonPowerOfTwo_HasWarning()
+    {
+        var source = @"
+fn test(x: i32) -> i32 {
+    return x / 7
+}";
+        var asm = GenerateAssembly(source, "68060");
+
+        // 68060 should use divs.l with warning
+        Assert.Contains("divs.l\td1,d0", asm);
+        Assert.Contains("WARNING: 68060 has very slow 32-bit divide", asm);
+    }
+
+    [Fact]
+    public void Generate_68000_StackAlignment_Uses2Bytes()
+    {
+        var source = @"
+fn test() -> i32 {
+    var x: i32 = 10
+    var y: i32 = 20
+    return x + y
+}";
+        var asm = GenerateAssembly(source, "68000");
+
+        // 68000 uses 2-byte alignment, so 2 i32 variables = 8 bytes
+        Assert.Contains("link\ta6,#-8", asm);
+    }
+
+    [Fact]
+    public void Generate_68060_StackAlignment_Uses8Bytes()
+    {
+        var source = @"
+fn test() -> i32 {
+    var x: i32 = 10
+    var y: i32 = 20
+    return x + y
+}";
+        var asm = GenerateAssembly(source, "68060");
+
+        // 68060 uses 8-byte alignment, so 2 i32 variables aligned to 8 bytes = 16 bytes
+        Assert.Contains("link\ta6,#-16", asm);
+    }
+
+    [Fact]
+    public void Generate_68020_ShiftByConstant_UsesBarrelShifter()
+    {
+        var source = @"
+fn test(x: i32) -> i32 {
+    return x << 4
+}";
+        var asm = GenerateAssembly(source, "68020");
+
+        // 68020+ has barrel shifter, can do immediate shift
+        Assert.Contains("lsl.l\t#4,d0", asm);
+    }
+
+    [Fact]
+    public void Generate_68000_ShiftByConstant_UsesImmediateShift()
+    {
+        var source = @"
+fn test(x: i32) -> i32 {
+    return x << 4
+}";
+        var asm = GenerateAssembly(source, "68000");
+
+        // 68000 can do immediate shifts up to 8
+        Assert.Contains("lsl.l\t#4,d0", asm);
+    }
+
+    [Fact]
+    public void Generate_RightShiftSigned_UsesArithmeticShift()
+    {
+        var source = @"
+fn test(x: i32) -> i32 {
+    return x >> 2
+}";
+        var asm = GenerateAssembly(source, "68020");
+
+        // Signed right shift should use asr (arithmetic shift)
+        Assert.Contains("asr.l\t#2,d0", asm);
+    }
+
+    [Fact]
+    public void Generate_RightShiftUnsigned_UsesLogicalShift()
+    {
+        var source = @"
+fn test(x: u32) -> u32 {
+    return x >> 2
+}";
+        var asm = GenerateAssembly(source, "68020");
+
+        // Unsigned right shift should use lsr (logical shift)
+        Assert.Contains("lsr.l\t#2,d0", asm);
+    }
+
+    [Fact]
+    public void Generate_68060_MultipleOptimizations_AllApplied()
+    {
+        var source = @"
+fn test(x: i32) -> i32 {
+    var a = x * 2
+    var b = x * 4
+    var c = x * 8
+    return a + b + c
+}";
+        var asm = GenerateAssembly(source, "68060");
+
+        // Should have all 68060 multiply optimizations
+        Assert.Contains("68060 optimization: x * 2", asm);
+        Assert.Contains("68060 optimization: x * 4", asm);
+        Assert.Contains("68060 optimization: x * 8", asm);
+
+        // Should use stack with 8-byte alignment
+        // 3 variables (a, b, c) = 12 bytes base, aligned to 24
+        Assert.Contains("link\ta6,#-24", asm);
     }
 }

@@ -50,16 +50,65 @@ public class DeadCodeEliminationPass : FunctionPassBase
         switch (instruction)
         {
             case IrBinaryOp binOp:
-                if (binOp.Left is IrVariable leftVar)
-                    usedVars.Add(leftVar.Name);
-                if (binOp.Right is IrVariable rightVar)
-                    usedVars.Add(rightVar.Name);
+                CollectUsesFromValue(binOp.Left, usedVars);
+                CollectUsesFromValue(binOp.Right, usedVars);
                 break;
 
             case IrReturn ret:
-                if (ret.Value is IrVariable retVar)
-                    usedVars.Add(retVar.Name);
+                if (ret.Value != null)
+                    CollectUsesFromValue(ret.Value, usedVars);
+                break;
+
+            case IrStore store:
+                CollectUsesFromValue(store.Value, usedVars);
+                break;
+
+            case IrDereferenceStore derefStore:
+                CollectUsesFromValue(derefStore.Value, usedVars);
+                CollectUsesFromValue(derefStore.Pointer, usedVars);
+                break;
+
+            case IrCall call:
+                foreach (var arg in call.Arguments)
+                    CollectUsesFromValue(arg, usedVars);
+                break;
+
+            case IrConditionalBranch condBranch:
+                CollectUsesFromValue(condBranch.Condition, usedVars);
+                break;
+
+            case IrIndexStore indexStore:
+                CollectUsesFromValue(indexStore.Index, usedVars);
+                CollectUsesFromValue(indexStore.Value, usedVars);
+                break;
+
+            case IrLocalDecl localDecl:
+                CollectUsesFromValue(localDecl.InitialValue, usedVars);
+                break;
+
+            case IrIndexAccess indexAccess:
+                if (indexAccess.Array is IrVariable arrayVar)
+                    usedVars.Add(arrayVar.Name);
+                CollectUsesFromValue(indexAccess.Index, usedVars);
                 break;
         }
+    }
+
+    private void CollectUsesFromValue(IrValue value, HashSet<string> usedVars)
+    {
+        if (value is IrVariable var)
+        {
+            usedVars.Add(var.Name);
+        }
+        else if (value is IrDereferenceValue deref)
+        {
+            CollectUsesFromValue(deref.PointerValue, usedVars);
+        }
+        else if (value is IrBorrowValue borrow)
+        {
+            CollectUsesFromValue(borrow.BorrowedValue, usedVars);
+        }
+        // Note: BinaryOp can appear as a value, but we handle it as an instruction
+        // IrConstant values don't reference variables
     }
 }

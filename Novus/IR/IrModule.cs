@@ -37,6 +37,7 @@ public class IrFunction
     public List<IrParameter> Parameters { get; } = new();
     public List<IrLocalVariable> LocalVariables { get; } = new();
     public List<IrBasicBlock> BasicBlocks { get; } = new();
+    public List<IrBasicBlock> DeferredBlocks { get; } = new();  // Blocks to execute on function exit (LIFO)
 
     public IrFunction(string name, IrType returnType, bool isPublic = false, bool isExtern = false)
     {
@@ -122,6 +123,20 @@ public class IrReturn : IrInstruction
     public IrReturn(IrValue? value = null)
     {
         Value = value;
+    }
+}
+
+/// <summary>
+/// Defer instruction - registers a block of code to execute on function exit
+/// Deferred blocks execute in LIFO order (last registered, first executed)
+/// </summary>
+public class IrDefer : IrInstruction
+{
+    public IrBasicBlock DeferredBlock { get; set; }
+
+    public IrDefer(IrBasicBlock deferredBlock)
+    {
+        DeferredBlock = deferredBlock;
     }
 }
 
@@ -245,6 +260,21 @@ public class IrStore : IrInstruction
     public IrStore(string variableName, IrValue value)
     {
         VariableName = variableName;
+        Value = value;
+    }
+}
+
+/// <summary>
+/// Dereference store instruction - assigns a value through a pointer/reference (*ptr = value)
+/// </summary>
+public class IrDereferenceStore : IrInstruction
+{
+    public IrValue Pointer { get; set; }
+    public IrValue Value { get; set; }
+
+    public IrDereferenceStore(IrValue pointer, IrValue value)
+    {
+        Pointer = pointer;
         Value = value;
     }
 }

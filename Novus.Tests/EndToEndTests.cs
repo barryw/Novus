@@ -25,8 +25,8 @@ public class EndToEndTests
             throw new Exception($"Parse failed with {parser.NumberOfSyntaxErrors} errors");
         }
 
-        // Build IR
-        var builder = new IrBuilder();
+        // Build IR (skip auto-imports for unit tests)
+        var builder = new IrBuilder(skipAutoImports: true);
         var module = builder.BuildModule(tree);
 
         // Run optimizer if requested
@@ -621,4 +621,309 @@ pub fn main() -> u32 {
         Assert.DoesNotContain("\tadd.l", withOpt);
         Assert.DoesNotContain("\tsub.l", withOpt);
     }
+
+    #region Reference Tests
+
+    [Fact]
+    public void Compile_ImmutableReference_Success()
+    {
+        var source = @"
+fn read_value(x: &i32) -> i32 {
+    return *x
+}
+
+pub fn main() -> i32 {
+    var num = 42
+    return read_value(&num)
+}";
+        var asm = CompileToAssembly(source);
+
+        // Should generate borrow (LEA) and dereference (move from address)
+        Assert.Contains("lea\t", asm);
+        Assert.Contains("_read_value:", asm);
+        Assert.Contains("jsr\t_read_value", asm);
+    }
+
+    [Fact]
+    public void Compile_MutableReference_Success()
+    {
+        var source = @"
+fn increment(x: &mut i32) {
+    var val = *x
+    *x = val + 1
+}
+
+pub fn main() -> i32 {
+    var num = 10
+    increment(&mut num)
+    return num
+}";
+        var asm = CompileToAssembly(source);
+
+        // Should generate borrow and dereference operations
+        Assert.Contains("lea\t", asm);
+        Assert.Contains("_increment:", asm);
+        Assert.Contains("jsr\t_increment", asm);
+    }
+
+    [Fact]
+    public void Compile_DereferenceExpression_GeneratesIndirectLoad()
+    {
+        var source = @"
+fn read_value(ptr: &i32) -> i32 {
+    return *ptr
+}
+
+pub fn main() -> i32 {
+    var x = 100
+    return read_value(&x)
+}";
+        var asm = CompileToAssembly(source);
+
+        // Should load the reference into an address register and then dereference
+        Assert.Contains("lea\t", asm);  // Borrow creates address
+        Assert.Contains("(a0)", asm);    // Dereference uses indirect addressing
+    }
+
+    [Fact]
+    public void Compile_BorrowExpression_GeneratesLEA()
+    {
+        var source = @"
+fn get_address(x: &i32) -> i32 {
+    return *x
+}
+
+pub fn main() -> i32 {
+    var value = 55
+    return get_address(&value)
+}";
+        var asm = CompileToAssembly(source);
+
+        // Borrowing should use LEA to compute address
+        Assert.Contains("lea\t-4(a6),a0", asm);  // LEA to get local variable address
+    }
+
+    [Fact]
+    public void Compile_MultipleReferences_Success()
+    {
+        var source = @"
+fn add_refs(a: &i32, b: &i32) -> i32 {
+    return *a + *b
+}
+
+pub fn main() -> i32 {
+    var x = 10
+    var y = 20
+    return add_refs(&x, &y)
+}";
+        var asm = CompileToAssembly(source);
+
+        // Should handle multiple reference parameters
+        Assert.Contains("_add_refs:", asm);
+        Assert.Contains("jsr\t_add_refs", asm);
+        Assert.Contains("lea\t", asm);
+    }
+
+    #endregion
+
+    #region Defer Tests
+
+    [Fact]
+    public void Compile_SimpleDeferStatement_Success()
+    {
+        var source = @"
+fn cleanup(x: i32) -> i32 {
+    return x
+}
+
+pub fn main() -> i32 {
+    var value = 10
+    defer {
+        var result = cleanup(value)
+    }
+    return 42
+}";
+        var asm = CompileToAssembly(source);
+
+        // Should generate defer block code
+        Assert.Contains("; Execute deferred blocks (LIFO order)", asm);
+        Assert.Contains("; Deferred block: defer_", asm);
+        Assert.Contains("jsr\t_cleanup", asm);
+    }
+
+    [Fact]
+    public void Compile_MultipleDeferStatements_ExecutesInLIFO()
+    {
+        var source = @"
+fn first() -> i32 {
+    return 1
+}
+
+fn second() -> i32 {
+    return 2
+}
+
+fn third() -> i32 {
+    return 3
+}
+
+pub fn main() -> i32 {
+    defer {
+        var x = first()
+    }
+    defer {
+        var y = second()
+    }
+    defer {
+        var z = third()
+    }
+    return 0
+}";
+        var asm = CompileToAssembly(source);
+
+        // Should execute defers in reverse order (LIFO)
+        Assert.Contains("; Execute deferred blocks (LIFO order)", asm);
+
+        // Find positions of defer blocks in assembly
+        var lines = asm.Split('\n');
+        var thirdCallIdx = -1;
+        var secondCallIdx = -1;
+        var firstCallIdx = -1;
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            if (lines[i].Contains("jsr\t_third") && thirdCallIdx == -1)
+                thirdCallIdx = i;
+            else if (lines[i].Contains("jsr\t_second") && secondCallIdx == -1 && thirdCallIdx > 0)
+                secondCallIdx = i;
+            else if (lines[i].Contains("jsr\t_first") && firstCallIdx == -1 && secondCallIdx > 0)
+                firstCallIdx = i;
+        }
+
+        // Verify LIFO order: third should be called first, then second, then first
+        Assert.True(thirdCallIdx < secondCallIdx, "Third defer should execute before second");
+        Assert.True(secondCallIdx < firstCallIdx, "Second defer should execute before first");
+    }
+
+    [Fact]
+    public void Compile_DeferWithFunctionCall_Success()
+    {
+        var source = @"
+fn close_file(handle: i32) {
+    var h = handle
+}
+
+fn open_file() -> i32 {
+    return 1
+}
+
+pub fn main() -> i32 {
+    var file = open_file()
+    defer {
+        close_file(file)
+    }
+    return 0
+}";
+        var asm = CompileToAssembly(source);
+
+        // Should call cleanup function in defer block
+        Assert.Contains("jsr\t_close_file", asm);
+        Assert.Contains("; Execute deferred blocks (LIFO order)", asm);
+    }
+
+    [Fact]
+    public void Compile_DeferAccessesLocalVariables_Success()
+    {
+        var source = @"
+fn process(x: i32) -> i32 {
+    return x
+}
+
+pub fn main() -> i32 {
+    var resource = 100
+    defer {
+        var result = process(resource)
+    }
+    return resource
+}";
+        var asm = CompileToAssembly(source);
+
+        // Defer should be able to access local variables from outer scope
+        Assert.Contains("_process:", asm);
+        Assert.Contains("; Deferred block:", asm);
+        // Should load 'resource' variable
+        Assert.Contains("-4(a6)", asm);  // Local variable access
+    }
+
+    [Fact]
+    public void Compile_NestedDefers_AllExecute()
+    {
+        var source = @"
+fn cleanup1() -> i32 {
+    return 1
+}
+
+fn cleanup2() -> i32 {
+    return 2
+}
+
+pub fn main() -> i32 {
+    defer {
+        var x = cleanup1()
+    }
+
+    var y = 10
+
+    defer {
+        var z = cleanup2()
+    }
+
+    return y
+}";
+        var asm = CompileToAssembly(source);
+
+        // Both defer blocks should be generated
+        Assert.Contains("jsr\t_cleanup1", asm);
+        Assert.Contains("jsr\t_cleanup2", asm);
+
+        // Should have multiple deferred blocks
+        var deferCount = asm.Split("Deferred block:").Length - 1;
+        Assert.Equal(2, deferCount);
+    }
+
+    [Fact]
+    public void Compile_DeferBeforeReturn_ExecutesBeforeEpilogue()
+    {
+        var source = @"
+fn cleanup() -> i32 {
+    return 99
+}
+
+pub fn main() -> i32 {
+    defer {
+        var x = cleanup()
+    }
+    return 42
+}";
+        var asm = CompileToAssembly(source);
+
+        var lines = asm.Split('\n');
+        var cleanupIdx = -1;
+        var unlkIdx = -1;
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            if (lines[i].Contains("jsr\t_cleanup"))
+                cleanupIdx = i;
+            else if (lines[i].Contains("\tunlk\ta6") && cleanupIdx > 0 && unlkIdx == -1)
+                unlkIdx = i;
+        }
+
+        // Defer should execute before unlk (epilogue)
+        Assert.True(cleanupIdx > 0, "Cleanup should be called");
+        Assert.True(unlkIdx > 0, "Unlk should be present");
+        Assert.True(cleanupIdx < unlkIdx, "Defer should execute before function epilogue");
+    }
+
+    #endregion
 }
