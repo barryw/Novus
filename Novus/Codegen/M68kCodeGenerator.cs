@@ -1215,7 +1215,13 @@ public partial class M68kCodeGenerator
         {
             var stringBaseOffset = _localVariableOffsets[localDecl.Name];
 
-            EmitComment($"Initialize String from literal \"{stringLiteral.Value}\"");
+            // Escape newlines and other special chars in comments to avoid breaking assembly
+            var escapedValue = stringLiteral.Value
+                .Replace("\\", "\\\\")
+                .Replace("\n", "\\n")
+                .Replace("\r", "\\r")
+                .Replace("\t", "\\t");
+            EmitComment($"Initialize String from literal \"{escapedValue}\"");
 
             // Store ptr at offset 0 (4 bytes)
             Emit($"\tlea\t{stringLiteral.Label},a0");

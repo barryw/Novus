@@ -1,7 +1,35 @@
 {
   "permissions": {
     "allow": [
-      "Read(///**)"
+      "Read(///**)",
+      "Bash(/dev/null)",
+      "Bash(for opt in 0 1 2)",
+      "Bash(do dotnet run --project Novus/Novus.csproj -- Novus.Tests/Examples/02_arithmetic.novus -o /tmp/novus_examples_review/02_arithmetic_O$opt.s -O $opt --emit-asm)",
+      "Bash(for example in 04_optimization 17_references 18_defer 12_control_flow 14_structs)",
+      "Bash(do for opt in 0 1 2)",
+      "Bash(do dotnet run --project Novus/Novus.csproj -- \"Novus.Tests/Examples/$example.novus\" -o \"/tmp/novus_examples_review/$example_O$opt.s\" -O $opt --emit-asm)",
+      "Bash(for example in 04_optimization 17_references 18_defer 12_control_flow)",
+      "Bash(do for opt in 0 2)",
+      "Bash(vlink:*)",
+      "Bash(ls:*)",
+      "Bash(nm:*)",
+      "Bash(vobjdump:*)",
+      "Bash(for func in benchmark_multiply benchmark_divide benchmark_shifts benchmark_complex)",
+      "Bash(do for cpu in 68000 68020 68060)",
+      "Bash(do echo -n \"Checking $func_$cpu: \")",
+      "Bash(for func in benchmark_multiply_68000 benchmark_divide_68000 benchmark_shifts_68000 benchmark_complex_68000 benchmark_fibonacci)",
+      "Bash(do echo \"=== $func ===\")",
+      "Bash(/opt/homebrew/bin/vamos cpu_benchmark:*)",
+      "Bash(/opt/homebrew/bin/vamos:*)",
+      "Bash(/opt/homebrew/bin/vobjdump:*)",
+      "Read(//Users/barry/**)",
+      "Bash(for:*)",
+      "Bash(do echo \"=== $f ===\")",
+      "Bash(/Users/barry/amiga-cc/vbcc/bin/ar t \"$f\")",
+      "Bash(do echo \"=== Compiling $test ===\" dotnet run --project /Users/barry/RiderProjects/Novus/Novus/Novus.csproj -- /Users/barry/RiderProjects/Novus/Novus.Tests/Examples/$test.novus -o /tmp/$test.s --emit-asm /Users/barry/amiga-cc/vbcc/bin/vasmm68k_mot -Fhunk -m68020 -o $test.o $test.s)",
+      "Bash(grep:*)",
+      "Bash(then echo \"✓ $test compiled successfully\" fi done)",
+      "Bash(\"\n\nAfter (fixed):\n  ; Initialize String from literal \"Hellon\"\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
     ],
     "deny": [],
     "ask": []
