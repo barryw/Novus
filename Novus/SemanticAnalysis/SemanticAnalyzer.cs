@@ -1341,29 +1341,91 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     );
                 }
 
-                // Validate argument types
-                if (context.argumentList() != null)
+                // Perform generic type inference and validate argument types
+                var irEnumType = (IrEnumType)enumType;
+                Dictionary<string, IrType>? typeSubstitutions = null;
+
+                if (context.argumentList() != null && irEnumType.GenericParameters.Count > 0)
                 {
+                    // Infer generic type parameters from arguments
+                    typeSubstitutions = new Dictionary<string, IrType>();
                     var arguments = context.argumentList().expression();
+
                     for (int i = 0; i < Math.Min(arguments.Length, variant.AssociatedData.Count); i++)
                     {
                         var argType = Visit(arguments[i]);
                         var expectedType = variant.AssociatedData[i];
 
-                        if (argType != null && !TypesCompatible(expectedType, argType))
+                        // If expected type is a generic parameter, infer it from the argument
+                        if (expectedType is IrGenericType genericType)
                         {
-                            var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
-                            _diagnostics.ReportError(
-                                "E0041",
-                                $"argument {i + 1} type mismatch",
-                                location,
-                                helpTexts: new List<string>
+                            var paramName = genericType.ParameterName;
+                            if (!typeSubstitutions.ContainsKey(paramName))
+                            {
+                                if (argType != null)
                                 {
-                                    $"expected '{TypeToString(expectedType)}', got '{TypeToString(argType)}'"
+                                    typeSubstitutions[paramName] = argType;
                                 }
-                            );
+                            }
+                            else
+                            {
+                                // Check consistency - all uses of T must have same type
+                                if (argType != null && !TypesCompatible(typeSubstitutions[paramName], argType))
+                                {
+                                    var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
+                                    _diagnostics.ReportError(
+                                        "E0042",
+                                        $"type parameter '{paramName}' inferred as both '{TypeToString(typeSubstitutions[paramName])}' and '{TypeToString(argType)}'",
+                                        location
+                                    );
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Concrete type - validate compatibility
+                            if (argType != null && !TypesCompatible(expectedType, argType))
+                            {
+                                var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
+                                _diagnostics.ReportError(
+                                    "E0041",
+                                    $"argument {i + 1} type mismatch",
+                                    location,
+                                    helpTexts: new List<string>
+                                    {
+                                        $"expected '{TypeToString(expectedType)}', got '{TypeToString(argType)}'"
+                                    }
+                                );
+                            }
                         }
                     }
+                }
+
+                // If we inferred type parameters, create a monomorphized instance
+                if (typeSubstitutions != null && typeSubstitutions.Count > 0)
+                {
+                    // Create monomorphized enum type
+                    var monomorphizedVariants = new List<IrEnumVariant>();
+                    foreach (var origVariant in irEnumType.Variants)
+                    {
+                        var monomorphizedData = new List<IrType>();
+                        foreach (var dataType in origVariant.AssociatedData)
+                        {
+                            if (dataType is IrGenericType gt && typeSubstitutions.ContainsKey(gt.ParameterName))
+                            {
+                                monomorphizedData.Add(typeSubstitutions[gt.ParameterName]);
+                            }
+                            else
+                            {
+                                monomorphizedData.Add(dataType);
+                            }
+                        }
+                        monomorphizedVariants.Add(new IrEnumVariant(origVariant.Name, origVariant.Tag, monomorphizedData));
+                    }
+
+                    // Create new enum type with concrete types (no generic parameters)
+                    var monomorphizedEnum = new IrEnumType(irEnumType.EnumName, monomorphizedVariants, null);
+                    return monomorphizedEnum;
                 }
             }
 
@@ -2217,10 +2279,35 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     return IrIntType.I32;
                 }
 
-                // For now, we'll need to create a monomorphized version
-                // This will be handled in the IR builder phase
-                // Return a placeholder for semantic analysis
-                return enumType;
+                // Create monomorphized enum with concrete types
+                var typeSubstitutions = new Dictionary<string, IrType>();
+                for (int i = 0; i < enumType.GenericParameters.Count; i++)
+                {
+                    typeSubstitutions[enumType.GenericParameters[i]] = typeArgs[i];
+                }
+
+                // Create monomorphized variants
+                var monomorphizedVariants = new List<IrEnumVariant>();
+                foreach (var origVariant in enumType.Variants)
+                {
+                    var monomorphizedData = new List<IrType>();
+                    foreach (var dataType in origVariant.AssociatedData)
+                    {
+                        if (dataType is IrGenericType gt && typeSubstitutions.ContainsKey(gt.ParameterName))
+                        {
+                            monomorphizedData.Add(typeSubstitutions[gt.ParameterName]);
+                        }
+                        else
+                        {
+                            monomorphizedData.Add(dataType);
+                        }
+                    }
+                    monomorphizedVariants.Add(new IrEnumVariant(origVariant.Name, origVariant.Tag, monomorphizedData));
+                }
+
+                // Create new enum type with concrete types (no generic parameters)
+                var monomorphizedEnum = new IrEnumType(enumType.EnumName, monomorphizedVariants, null);
+                return monomorphizedEnum;
             }
 
             return enumType;
@@ -2327,6 +2414,42 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
 
             return TypesCompatible(expectedFp.ReturnType, actualFp.ReturnType);
+        }
+
+        // Enum types - must have same name and variant structure
+        if (expected is IrEnumType expectedEnum && actual is IrEnumType actualEnum)
+        {
+            // Same enum name
+            if (expectedEnum.EnumName != actualEnum.EnumName)
+                return false;
+
+            // Same number of variants
+            if (expectedEnum.Variants.Count != actualEnum.Variants.Count)
+                return false;
+
+            // Each variant must match
+            for (int i = 0; i < expectedEnum.Variants.Count; i++)
+            {
+                var expVariant = expectedEnum.Variants[i];
+                var actVariant = actualEnum.Variants[i];
+
+                // Same variant name and tag
+                if (expVariant.Name != actVariant.Name || expVariant.Tag != actVariant.Tag)
+                    return false;
+
+                // Same associated data count
+                if (expVariant.AssociatedData.Count != actVariant.AssociatedData.Count)
+                    return false;
+
+                // Each associated data type must be compatible
+                for (int j = 0; j < expVariant.AssociatedData.Count; j++)
+                {
+                    if (!TypesCompatible(expVariant.AssociatedData[j], actVariant.AssociatedData[j]))
+                        return false;
+                }
+            }
+
+            return true;
         }
 
         // Both are integers - allow safe implicit conversions

@@ -1483,9 +1483,34 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     typeArgs.Add(ParseType(typeCtx));
                 }
 
-                // For now, return the base enum type
-                // Monomorphization will happen during code generation
-                return enumType;
+                // Create monomorphized enum with concrete types
+                var typeSubstitutions = new Dictionary<string, IrType>();
+                for (int i = 0; i < enumType.GenericParameters.Count; i++)
+                {
+                    typeSubstitutions[enumType.GenericParameters[i]] = typeArgs[i];
+                }
+
+                // Create monomorphized variants
+                var monomorphizedVariants = new List<IrEnumVariant>();
+                foreach (var origVariant in enumType.Variants)
+                {
+                    var monomorphizedData = new List<IrType>();
+                    foreach (var dataType in origVariant.AssociatedData)
+                    {
+                        if (dataType is IrGenericType gt && typeSubstitutions.ContainsKey(gt.ParameterName))
+                        {
+                            monomorphizedData.Add(typeSubstitutions[gt.ParameterName]);
+                        }
+                        else
+                        {
+                            monomorphizedData.Add(dataType);
+                        }
+                    }
+                    monomorphizedVariants.Add(new IrEnumVariant(origVariant.Name, origVariant.Tag, monomorphizedData));
+                }
+
+                // Create new enum type with concrete types (no generic parameters)
+                return new IrEnumType(enumType.EnumName, monomorphizedVariants, null);
             }
 
             return enumType;
