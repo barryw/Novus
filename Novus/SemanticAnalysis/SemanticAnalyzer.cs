@@ -2122,10 +2122,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public override IrType? VisitBorrowExpr([NotNull] NovusParser.BorrowExprContext context)
     {
-        // TODO: Implement full reference system with &T and &mut T
-        // For now, just handle the function pointer case (backward compatibility)
-
         var exprContext = context.expression();
+        bool isMutable = context.GetChild(1)?.GetText() == "mut";
 
         // Check if this is a simple identifier (for function pointers)
         if (exprContext.Start.Type == NovusLexer.IDENTIFIER &&
@@ -2133,7 +2131,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         {
             var name = exprContext.GetText();
 
-            // Check if it's a function
+            // Check if it's a function (for function pointers)
             if (_functions.ContainsKey(name))
             {
                 var function = _functions[name];
@@ -2142,18 +2140,17 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
-        // For non-function borrows, return error
-        var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
-        _diagnostics.ReportError(
-            "E9999",
-            "reference types (&T, &mut T) are not yet fully implemented",
-            location,
-            helpTexts: new List<string>
-            {
-                "references will be supported in a future version"
-            }
-        );
-        return null;
+        // For variables, struct fields, etc., create a reference type
+        var valueType = Visit(exprContext);
+        if (valueType == null)
+        {
+            return null;
+        }
+
+        // Return the appropriate reference type
+        return isMutable
+            ? (IrType)new IrMutReferenceType(valueType)
+            : new IrReferenceType(valueType);
     }
 
     public override IrType? VisitComparisonExpr([NotNull] NovusParser.ComparisonExprContext context)
@@ -2257,9 +2254,46 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public override IrType? VisitUnaryExpr([NotNull] NovusParser.UnaryExprContext context)
     {
-        var operandType = Visit(context.expression());
         var op = context.GetChild(0).GetText();
 
+        // Handle dereference specially
+        if (op == "*")
+        {
+            var derefOperandType = Visit(context.expression());
+            if (derefOperandType == null)
+                return IrIntType.I32;
+
+            // Check if it's a pointer or reference type
+            if (derefOperandType is IrPointerType ptrType)
+            {
+                return ptrType.PointeeType;
+            }
+            else if (derefOperandType is IrReferenceType refType)
+            {
+                return refType.PointeeType;
+            }
+            else if (derefOperandType is IrMutReferenceType mutRefType)
+            {
+                return mutRefType.PointeeType;
+            }
+            else
+            {
+                var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0025",
+                    $"cannot dereference non-pointer/reference type '{TypeToString(derefOperandType)}'",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "only pointers (*T) and references (&T, &mut T) can be dereferenced"
+                    }
+                );
+                return IrIntType.I32; // Fallback
+            }
+        }
+
+        // For other operators, visit operand first
+        var operandType = Visit(context.expression());
         if (operandType == null)
             return IrIntType.I32;
 

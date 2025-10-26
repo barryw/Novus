@@ -131,7 +131,7 @@ variableDeclaration
     ;
 
 assignmentStatement
-    : IDENTIFIER ('[' expression ']' | ('.' IDENTIFIER)+)? '=' expression
+    : ('*')* IDENTIFIER ('[' expression ']' | ('.' IDENTIFIER)+)? '=' expression
     ;
 
 ifStatement

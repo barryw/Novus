@@ -1000,31 +1000,43 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     public override object? VisitBorrowExpr([NotNull] NovusParser.BorrowExprContext context)
     {
-        // TODO: Implement full reference system with &T and &mut T
-        // For now, just handle the function pointer case (backward compatibility)
-
         var exprContext = context.expression();
 
-        // Check if this is an identifier expression (for function pointers)
+        // Check if this is a mutable borrow (&mut) or immutable borrow (&)
+        bool isMutable = context.GetChild(1)?.GetText() == "mut";
+
+        // Handle function pointers specially (backward compatibility)
         if (exprContext.Start.Type == NovusLexer.IDENTIFIER &&
             exprContext.ChildCount == 1)
         {
-            var functionName = exprContext.GetText();
+            var name = exprContext.GetText();
 
-            // Look up the function in the module
-            var function = _module.Functions.FirstOrDefault(f => f.Name == functionName);
+            // Check if it's a function (for function pointers)
+            var function = _module.Functions.FirstOrDefault(f => f.Name == name);
             if (function != null)
             {
                 // Create function pointer type from function signature
                 var paramTypes = function.Parameters.Select(p => p.Type).ToList();
                 var fpType = new IrFunctionPointerType(paramTypes, function.ReturnType);
-                return new IrFunctionAddress(functionName, fpType);
+                return new IrFunctionAddress(name, fpType);
             }
         }
 
-        // For now, throw an error for non-function borrows
-        // We'll implement proper references later
-        throw new NotImplementedException("Reference types (&T, &mut T) not yet fully implemented");
+        // For variables, struct members, array elements, etc., create a reference
+        // Visit the expression to get its value
+        var value = (IrValue)Visit(exprContext)!;
+
+        // Create the appropriate reference type
+        var refType = isMutable
+            ? (IrType)new IrMutReferenceType(value.Type)
+            : new IrReferenceType(value.Type);
+
+        // For code generation, references are just pointers (addresses)
+        // We return the value itself - the semantic analyzer will track that it's a reference
+        // At codegen time, we'll take the address of the value
+
+        // Create a "borrow" value that wraps the original value with reference type
+        return new IrBorrowValue(value, refType, isMutable);
     }
 
     public override object? VisitIndexExpr([NotNull] NovusParser.IndexExprContext context)
@@ -1218,15 +1230,45 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     public override object? VisitUnaryExpr([NotNull] NovusParser.UnaryExprContext context)
     {
-        var operand = (IrValue)Visit(context.expression())!;
         var op = context.GetChild(0).GetText();
+
+        // Handle dereference specially - we need to determine the type first
+        if (op == "*")
+        {
+            var operand = (IrValue)Visit(context.expression())!;
+
+            // Determine the pointee type
+            IrType pointeeType;
+            if (operand.Type is IrPointerType ptrType)
+            {
+                pointeeType = ptrType.PointeeType;
+            }
+            else if (operand.Type is IrReferenceType refType)
+            {
+                pointeeType = refType.PointeeType;
+            }
+            else if (operand.Type is IrMutReferenceType mutRefType)
+            {
+                pointeeType = mutRefType.PointeeType;
+            }
+            else
+            {
+                throw new Exception($"Cannot dereference non-pointer/reference type: {operand.Type.Name}");
+            }
+
+            // Create a dereference value
+            return new IrDereferenceValue(operand, pointeeType);
+        }
+
+        // For other unary ops, visit the operand first
+        var operandValue = (IrValue)Visit(context.expression())!;
 
         if (op == "!")
         {
             // Logical NOT: false becomes true, true becomes false
             // Implemented as: result = (operand == false)
             var tempName = $"%t{_tempCounter++}";
-            var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Eq, operand, new IrBoolConstant(false), IrBoolType.Instance);
+            var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Eq, operandValue, new IrBoolConstant(false), IrBoolType.Instance);
             _currentBlock!.AddInstruction(binOp);
             return new IrVariable(tempName, IrBoolType.Instance);
         }
@@ -1234,17 +1276,17 @@ public class IrBuilder : NovusBaseVisitor<object?>
         {
             // Bitwise NOT: XOR with -1 (all bits set)
             var tempName = $"%t{_tempCounter++}";
-            var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Xor, operand, new IrConstant(-1, operand.Type), operand.Type);
+            var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Xor, operandValue, new IrConstant(-1, operandValue.Type), operandValue.Type);
             _currentBlock!.AddInstruction(binOp);
-            return new IrVariable(tempName, operand.Type);
+            return new IrVariable(tempName, operandValue.Type);
         }
         else if (op == "-")
         {
             // Unary minus: subtract from 0
             var tempName = $"%t{_tempCounter++}";
-            var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Sub, new IrConstant(0, operand.Type), operand, operand.Type);
+            var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Sub, new IrConstant(0, operandValue.Type), operandValue, operandValue.Type);
             _currentBlock!.AddInstruction(binOp);
-            return new IrVariable(tempName, operand.Type);
+            return new IrVariable(tempName, operandValue.Type);
         }
 
         throw new Exception($"Unknown unary operator: {op}");

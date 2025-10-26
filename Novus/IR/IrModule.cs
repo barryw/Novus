@@ -639,6 +639,36 @@ public class IrFunctionAddress : IrValue
 }
 
 /// <summary>
+/// Borrow value - represents a reference to another value
+/// Created by & or &mut expressions
+/// </summary>
+public class IrBorrowValue : IrValue
+{
+    public IrValue BorrowedValue { get; set; }
+    public bool IsMutable { get; set; }
+
+    public IrBorrowValue(IrValue borrowedValue, IrType referenceType, bool isMutable) : base(referenceType)
+    {
+        BorrowedValue = borrowedValue;
+        IsMutable = isMutable;
+    }
+}
+
+/// <summary>
+/// Dereference value - represents dereferencing a pointer or reference
+/// Created by *expr expressions
+/// </summary>
+public class IrDereferenceValue : IrValue
+{
+    public IrValue PointerValue { get; set; }
+
+    public IrDereferenceValue(IrValue pointerValue, IrType pointeeType) : base(pointeeType)
+    {
+        PointerValue = pointerValue;
+    }
+}
+
+/// <summary>
 /// Indirect function call through a function pointer
 /// </summary>
 public class IrIndirectCall : IrInstruction
