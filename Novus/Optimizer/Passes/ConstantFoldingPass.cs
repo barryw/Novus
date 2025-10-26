@@ -91,6 +91,17 @@ public class ConstantFoldingPass : BasicBlockPassBase
                     binOp.Right = newValue;
                 }
             }
+            else if (instruction is IrCall call)
+            {
+                // Replace in call arguments
+                for (int i = 0; i < call.Arguments.Count; i++)
+                {
+                    if (call.Arguments[i] is IrVariable argVar && argVar.Name == oldName)
+                    {
+                        call.Arguments[i] = newValue;
+                    }
+                }
+            }
             else if (instruction is IrReturn ret)
             {
                 if (ret.Value is IrVariable retVar && retVar.Name == oldName)
