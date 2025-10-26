@@ -159,6 +159,14 @@ public partial class M68kCodeGenerator
             Emit("");
         }
 
+        // Emit _exit reference if we have a main function (needed for proper exit code handling)
+        if (_module.Functions.Any(f => f.Name == "main"))
+        {
+            EmitComment("C library exit function (for main return)");
+            Emit("\txref\t_exit");
+            Emit("");
+        }
+
         // Always generate CPU detection for fat binaries (needed for system.novus variables)
         if (IsCpuFatBinary)
         {
@@ -405,12 +413,8 @@ public partial class M68kCodeGenerator
         // For fat binaries, only export the base name (dispatch stub will be generated)
         if (function.IsPublic && suffix == "")
         {
-            // VBCC startup expects ___main (three underscores) for the entry point
-            if (function.Name == "main")
-            {
-                Emit($"\txdef\t___main");
-                Emit("___main:");
-            }
+            // Note: VBCC's startup code provides ___main, which calls _main
+            // We only need to export _main, not ___main
             Emit($"\txdef\t_{function.Name}");
         }
         Emit($"{functionLabel}:");
@@ -676,7 +680,34 @@ public partial class M68kCodeGenerator
         // Execute deferred blocks in LIFO order (reverse of insertion order)
         EmitDeferredBlocks();
 
-        // Emit epilogue and return
+        // Special handling for main function - call _exit() instead of returning
+        // This ensures the exit code is properly passed to AmigaOS
+        if (_currentFunction != null && _currentFunction.Name == "main")
+        {
+            EmitComment("Exit with return code (main function)");
+
+            // Push return value (already in d0) as argument to _exit()
+            if (ret.Value != null)
+            {
+                Emit("\tmove.l\td0,-(sp)\t\t; Push exit code");
+            }
+            else
+            {
+                Emit("\tmoveq\t#0,d0\t\t; Default exit code 0");
+                Emit("\tmove.l\td0,-(sp)");
+            }
+
+            // Call VBCC's exit function - never returns
+            Emit("\tjsr\t_exit\t\t; Terminate process");
+
+            // These instructions never execute, but keep epilogue for consistency
+            if (ret.Value != null)
+            {
+                Emit("\taddq.l\t#4,sp\t\t; (never reached)");
+            }
+        }
+
+        // Emit epilogue and return (for non-main functions, or unreachable code after exit)
         EmitEpilogue();
     }
 
