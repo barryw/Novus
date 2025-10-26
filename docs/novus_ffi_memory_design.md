@@ -21,7 +21,7 @@
 ```novus
 fn manual_memory() -> i32 {
     // Raw pointer - you manage it
-    let mem: *u8 = AllocMem(1024, MEMF_CHIP | MEMF_CLEAR)
+    var mem: *u8 = AllocMem(1024, MEMF_CHIP | MEMF_CLEAR)
 
     if mem == null {
         return -1
@@ -53,7 +53,7 @@ fn manual_memory() -> i32 {
 ```novus
 fn safe_memory() -> i32 {
     // Box - automatically freed at end of scope
-    let mem = Box.alloc(1024, MEMF_CHIP | MEMF_CLEAR)?
+    var mem = Box.alloc(1024, MEMF_CHIP | MEMF_CLEAR)?
 
     // Use mem...
     mem[0] = 42
@@ -77,10 +77,10 @@ fn safe_memory() -> i32 {
 
 ```novus
 fn shared_memory() {
-    let data = Rc.new(ExpensiveStruct { ... })
+    var data = Rc.new(ExpensiveStruct { ... })
 
-    let copy1 = data.clone()  // ref_count = 2
-    let copy2 = data.clone()  // ref_count = 3
+    var copy1 = data.clone()  // ref_count = 2
+    var copy2 = data.clone()  // ref_count = 3
 
     process(copy1)  // ref_count = 2 after this scope
 
@@ -127,7 +127,7 @@ pub struct Box<T> {
 impl Box<T> {
     // Allocate memory and wrap in Box for automatic cleanup
     pub fn alloc(size: u32, flags: u32) -> Result<Box<T>, MemError> {
-        let ptr = AllocMem(size, flags)
+        var ptr = AllocMem(size, flags)
 
         if ptr == null {
             return Err(MemError.OutOfMemory)
@@ -138,7 +138,7 @@ impl Box<T> {
 
     // Convert Box to raw pointer (gives up ownership)
     pub fn into_raw(self) -> *T {
-        let ptr = self.ptr
+        var ptr = self.ptr
         forget(self)  // Don't call drop on self
         return ptr
     }
@@ -167,7 +167,7 @@ impl Box<T> {
 ```novus
 fn example1() -> i32 {
     // Safe: Box automatically calls FreeMem
-    let buffer = Box.alloc(1024, MEMF_CHIP | MEMF_CLEAR)?
+    var buffer = Box.alloc(1024, MEMF_CHIP | MEMF_CLEAR)?
 
     // Use it
     buffer.ptr[0] = 42
@@ -178,7 +178,7 @@ fn example1() -> i32 {
 
 fn example2() -> i32 {
     // Manual: You control everything
-    let buffer = AllocMem(1024, MEMF_CHIP | MEMF_CLEAR)
+    var buffer = AllocMem(1024, MEMF_CHIP | MEMF_CLEAR)
 
     if buffer == null {
         return -1
@@ -213,7 +213,7 @@ pub struct Library {
 
 impl Library {
     pub fn open(name: str, version: u32) -> Result<Library, LibError> {
-        let base = OpenLibrary(name.as_ptr(), version)
+        var base = OpenLibrary(name.as_ptr(), version)
 
         if base == null {
             return Err(LibError.NotFound)
@@ -241,10 +241,10 @@ impl Library {
 ```novus
 fn safe_way() -> Result<(), Error> {
     // Library automatically closed at end of scope
-    let dos_lib = Library.open("dos.library", 0)?
+    var dos_lib = Library.open("dos.library", 0)?
 
     // Use the library...
-    let output = Output()  // dos.library function
+    var output = Output()  // dos.library function
 
     return Ok(())
 }  // CloseLibrary called automatically
@@ -252,14 +252,14 @@ fn safe_way() -> Result<(), Error> {
 
 fn manual_way() -> i32 {
     // The Old Way™ - you manage it
-    let dos_base = OpenLibrary("dos.library", 0)
+    var dos_base = OpenLibrary("dos.library", 0)
 
     if dos_base == null {
         return -1
     }
 
     // Use the library...
-    let output = Output()
+    var output = Output()
 
     // Don't forget!
     CloseLibrary(dos_base)
@@ -288,8 +288,8 @@ struct RcBox<T> {
 impl Rc<T> {
     pub fn new(value: T) -> Rc<T> {
         // Allocate space for ref count + value
-        let size = sizeof(RcBox<T>)
-        let ptr = AllocMem(size, MEMF_PUBLIC | MEMF_CLEAR) as *RcBox<T>
+        var size = sizeof(RcBox<T>)
+        var ptr = AllocMem(size, MEMF_PUBLIC | MEMF_CLEAR) as *RcBox<T>
 
         ptr.ref_count = 1
         ptr.value = value
@@ -333,16 +333,16 @@ struct App {
 }
 
 fn create_app() -> Result<App, Error> {
-    let dos = Rc.new(Library.open("dos.library", 0)?)
-    let graphics = Rc.new(Library.open("graphics.library", 0)?)
+    var dos = Rc.new(Library.open("dos.library", 0)?)
+    var graphics = Rc.new(Library.open("graphics.library", 0)?)
 
     return Ok(App { dos: dos, graphics: graphics })
 }
 
 fn use_app(app: &App) {
     // Both subsystems can share the libraries
-    let subsystem1 = SubSystem1 { dos: app.dos.clone() }
-    let subsystem2 = SubSystem2 { dos: app.dos.clone() }
+    var subsystem1 = SubSystem1 { dos: app.dos.clone() }
+    var subsystem2 = SubSystem2 { dos: app.dos.clone() }
 
     // Libraries automatically closed when last Rc drops
 }
@@ -359,18 +359,18 @@ use ffi::intuition::*
 use ffi::graphics::*
 
 fn open_window_manual() -> i32 {
-    let intuition_base = OpenLibrary("intuition.library", 0)
+    var intuition_base = OpenLibrary("intuition.library", 0)
     if intuition_base == null {
         return -1
     }
 
-    let graphics_base = OpenLibrary("graphics.library", 0)
+    var graphics_base = OpenLibrary("graphics.library", 0)
     if graphics_base == null {
         CloseLibrary(intuition_base)  // Must clean up!
         return -1
     }
 
-    let window = OpenWindow(&NewWindow {
+    var window = OpenWindow(&NewWindow {
         left: 0,
         top: 0,
         width: 320,
@@ -402,10 +402,10 @@ use intuition::*  // Safe wrapper
 use graphics::*
 
 fn open_window_safe() -> Result<(), Error> {
-    let intuition = Library.open("intuition.library", 0)?
-    let graphics = Library.open("graphics.library", 0)?
+    var intuition = Library.open("intuition.library", 0)?
+    var graphics = Library.open("graphics.library", 0)?
 
-    let window = Window.open(NewWindowSpec {
+    var window = Window.open(NewWindowSpec {
         left: 0,
         top: 0,
         width: 320,
@@ -461,7 +461,7 @@ let copy = shared.clone()
 
 // Safe wrapper:
 pub fn alloc_mem(size: u32, flags: u32) -> Result<Box<u8>, MemError> {
-    let ptr = AllocMem(size, flags)
+    var ptr = AllocMem(size, flags)
     if ptr == null {
         return Err(MemError.OutOfMemory)
     }
@@ -496,7 +496,7 @@ CopyMem(src_box.as_ptr(), dst_box.as_ptr(), 1024)
 // Safe wrapper:
 pub fn add_to_list(list: &mut List, node: Box<Node>) {
     // Give up ownership
-    let raw_node = node.into_raw()
+    var raw_node = node.into_raw()
     AddToList(list.ptr, raw_node)
     // Don't drop node, list owns it now
 }
@@ -510,12 +510,12 @@ pub fn add_to_list(list: &mut List, node: Box<Node>) {
 
 // Safe wrapper:
 pub fn find_task(name: Option<&str>) -> Option<&Task> {
-    let name_ptr = match name {
+    var name_ptr = match name {
         Some(n) => n.as_ptr(),
         None => null
     }
 
-    let task_ptr = FindTask(name_ptr)
+    var task_ptr = FindTask(name_ptr)
 
     if task_ptr == null {
         return None
@@ -648,18 +648,18 @@ std/
 use ffi::dos::*
 
 fn write_file_manual(path: str, data: str) -> i32 {
-    let dos_base = OpenLibrary("dos.library", 0)
+    var dos_base = OpenLibrary("dos.library", 0)
     if dos_base == null {
         return -1
     }
 
-    let file = Open(path.as_ptr(), MODE_NEWFILE)
+    var file = Open(path.as_ptr(), MODE_NEWFILE)
     if file == 0 {
         CloseLibrary(dos_base)
         return -1
     }
 
-    let result = Write(file, data.as_ptr(), data.len())
+    var result = Write(file, data.as_ptr(), data.len())
 
     Close(file)
     CloseLibrary(dos_base)
@@ -673,7 +673,7 @@ fn write_file_manual(path: str, data: str) -> i32 {
 use dos::*
 
 fn write_file_safe(path: str, data: str) -> Result<(), IoError> {
-    let file = File.create(path)?
+    var file = File.create(path)?
     file.write(data)?
     return Ok(())
 }  // file closed automatically, dos.library closed automatically

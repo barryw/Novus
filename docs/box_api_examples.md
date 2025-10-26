@@ -40,17 +40,17 @@ use ffi::exec::*
 
 fn read_file(path: str) -> Result<(), Error> {
     // Open file
-    let file = Open(path.as_ptr(), MODE_OLDFILE)
+    var file = Open(path.as_ptr(), MODE_OLDFILE)
     if file == 0 {
         return Err(Error.CannotOpen)
     }
     defer Close(file)
 
     // Allocate buffer (automatically freed at scope exit!)
-    let buffer = Box.alloc::<u8>(4096, MEMF_PUBLIC | MEMF_CLEAR)?
+    var buffer = Box.alloc::<u8>(4096, MEMF_PUBLIC | MEMF_CLEAR)?
 
     // Read into buffer (NDK function needs raw pointer)
-    let bytes_read = Read(file, buffer.as_ptr(), 4096)
+    var bytes_read = Read(file, buffer.as_ptr(), 4096)
 
     if bytes_read < 0 {
         return Err(Error.ReadFailed)
@@ -58,7 +58,7 @@ fn read_file(path: str) -> Result<(), Error> {
 
     // Process buffer
     for i in 0..bytes_read {
-        let byte = buffer[i]
+        var byte = buffer[i]
         println!("Byte {}: 0x{:02x}", i, byte)
     }
 
@@ -149,7 +149,7 @@ impl IndexMut<u32> for Box<T> {
 
 ```novus
 fn allocate_buffer() -> Result<Box<u8>, Error> {
-    let buf = Box.alloc::<u8>(1024, MEMF_CHIP)?
+    var buf = Box.alloc::<u8>(1024, MEMF_CHIP)?
 
     // Zero it out
     for i in 0..1024 {
@@ -170,7 +170,7 @@ struct Point {
 
 fn allocate_points() -> Result<Box<Point>, Error> {
     // Allocate 100 Points
-    let points = Box.alloc::<Point>(100, MEMF_PUBLIC)?
+    var points = Box.alloc::<Point>(100, MEMF_PUBLIC)?
 
     // Initialize
     for i in 0..100 {
@@ -191,7 +191,7 @@ struct LargeData {
 
 fn create_large_data() -> Result<Box<LargeData>, Error> {
     // Too big for stack, allocate on heap
-    let data = Box.new(LargeData {
+    var data = Box.new(LargeData {
         buffer: [0u8; 10000],
         metadata: [0u32; 1000]
     })?
@@ -204,8 +204,8 @@ fn create_large_data() -> Result<Box<LargeData>, Error> {
 
 ```novus
 fn copy_memory_example() -> Result<(), Error> {
-    let src = Box.alloc::<u8>(1024, MEMF_PUBLIC)?
-    let dst = Box.alloc::<u8>(1024, MEMF_PUBLIC)?
+    var src = Box.alloc::<u8>(1024, MEMF_PUBLIC)?
+    var dst = Box.alloc::<u8>(1024, MEMF_PUBLIC)?
 
     // Fill source
     for i in 0..1024 {
@@ -235,7 +235,7 @@ fn wrap_existing(ptr: *u8, size: u32) -> Box<u8> {
 
 // Give up ownership
 fn give_away_memory() -> *u8 {
-    let buffer = Box.alloc::<u8>(1024, MEMF_CHIP).unwrap()
+    var buffer = Box.alloc::<u8>(1024, MEMF_CHIP).unwrap()
 
     // Convert to raw pointer (no automatic cleanup!)
     return buffer.into_raw()
@@ -289,7 +289,7 @@ let buffer = match Box.alloc::<u8>(1024, MEMF_CHIP) {
 
 ```novus
 fn manual_way() -> i32 {
-    let buffer = AllocMem(1024, MEMF_CHIP | MEMF_CLEAR)
+    var buffer = AllocMem(1024, MEMF_CHIP | MEMF_CLEAR)
     if buffer == null {
         return -1
     }
@@ -313,7 +313,7 @@ fn manual_way() -> i32 {
 
 ```novus
 fn box_way() -> Result<(), Error> {
-    let buffer = Box.alloc::<u8>(1024, MEMF_CHIP | MEMF_CLEAR)?
+    var buffer = Box.alloc::<u8>(1024, MEMF_CHIP | MEMF_CLEAR)?
 
     // Use buffer...
     buffer[0] = 42  // Clean array syntax
@@ -334,12 +334,12 @@ fn box_way() -> Result<(), Error> {
 
 ```novus
 fn allocate() -> Result<Box<u8>, Error> {
-    let buffer = Box.alloc(1024, MEMF_CHIP)?
+    var buffer = Box.alloc(1024, MEMF_CHIP)?
     return Ok(buffer)  // Ownership transferred to caller
 }  // No free here!
 
 fn use_it() -> Result<(), Error> {
-    let my_buffer = allocate()?
+    var my_buffer = allocate()?
     // Use my_buffer...
     return Ok(())
 }  // Free happens here!
@@ -358,8 +358,8 @@ struct ScreenBuffer {
 
 impl ScreenBuffer {
     pub fn new(width: u16, height: u16) -> Result<ScreenBuffer, Error> {
-        let size = (width as u32) * (height as u32)
-        let pixels = Box.alloc::<u8>(size, MEMF_CHIP | MEMF_CLEAR)?
+        var size = (width as u32) * (height as u32)
+        var pixels = Box.alloc::<u8>(size, MEMF_CHIP | MEMF_CLEAR)?
 
         return Ok(ScreenBuffer {
             pixels: pixels,
@@ -369,12 +369,12 @@ impl ScreenBuffer {
     }
 
     pub fn set_pixel(&mut self, x: u16, y: u16, color: u8) {
-        let offset = (y as u32) * (self.width as u32) + (x as u32)
+        var offset = (y as u32) * (self.width as u32) + (x as u32)
         self.pixels[offset] = color
     }
 
     pub fn get_pixel(&self, x: u16, y: u16) -> u8 {
-        let offset = (y as u32) * (self.width as u32) + (x as u32)
+        var offset = (y as u32) * (self.width as u32) + (x as u32)
         return self.pixels[offset]
     }
 
@@ -385,13 +385,13 @@ impl ScreenBuffer {
 
 // Usage
 fn render() -> Result<(), Error> {
-    let screen = ScreenBuffer.new(320, 200)?
+    var screen = ScreenBuffer.new(320, 200)?
 
     screen.set_pixel(10, 10, 15)
     screen.set_pixel(20, 20, 31)
 
     // Pass to graphics library
-    let screen_ptr = screen.as_ptr()
+    var screen_ptr = screen.as_ptr()
     WritePixelArray(screen_ptr, /* ... */)
 
     return Ok(())

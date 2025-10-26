@@ -24,7 +24,7 @@ The closure captures variables from the enclosing scope.
 
 ```novus
 fn write_file(path: str, data: str) -> Result<(), Error> {
-    let file = Open(path.as_ptr(), MODE_NEWFILE)
+    var file = Open(path.as_ptr(), MODE_NEWFILE)
     if file == 0 {
         return Err(Error.CannotOpen)
     }
@@ -59,12 +59,12 @@ fn example() {
 
 ```novus
 fn example() {
-    let x = 10
-    let mut y = 20
+    var x = 10
+    var y = 20
 
     defer {
         println("x = {}, y = {}", x, y)  // Captures x and y
-        y = y + 1  // Can modify captured mutable variables
+        y = y + 1  // Can modify captured variables
     }
 
     y = 30  // Modifies y
@@ -80,28 +80,28 @@ use ffi::dos::*
 
 fn load_and_process_file(path: str) -> Result<(), Error> {
     // Open dos.library
-    let dos_base = OpenLibrary("dos.library", 0)
+    var dos_base = OpenLibrary("dos.library", 0)
     if dos_base == null {
         return Err(Error.NoDosLibrary)
     }
     defer { CloseLibrary(dos_base) }  // Cleanup #3
 
     // Allocate buffer
-    let buffer = AllocMem(4096, MEMF_PUBLIC | MEMF_CLEAR)
+    var buffer = AllocMem(4096, MEMF_PUBLIC | MEMF_CLEAR)
     if buffer == null {
         return Err(Error.OutOfMemory)
     }
     defer { FreeMem(buffer, 4096) }  // Cleanup #2
 
     // Open file
-    let file = Open(path.as_ptr(), MODE_OLDFILE)
+    var file = Open(path.as_ptr(), MODE_OLDFILE)
     if file == 0 {
         return Err(Error.CannotOpen)
     }
     defer { Close(file) }  // Cleanup #1
 
     // Process file...
-    let bytes_read = Read(file, buffer, 4096)
+    var bytes_read = Read(file, buffer, 4096)
     if bytes_read < 0 {
         return Err(Error.ReadFailed)
     }
@@ -137,18 +137,18 @@ fn load_and_process_file(path: str) -> Result<(), Error> {
 ```novus
 fn complex_example() -> Result<(), Error> {
     // Box: Simple heap allocation
-    let buffer = Box.alloc(4096, MEMF_CHIP)?
+    var buffer = Box.alloc(4096, MEMF_CHIP)?
     // Automatically freed at scope exit
 
     // defer: Manual resource cleanup
-    let file = Open("data.txt", MODE_OLDFILE)
+    var file = Open("data.txt", MODE_OLDFILE)
     if file == 0 {
         return Err(Error.CannotOpen)
     }
     defer { Close(file) }
 
     // Rc: Shared ownership
-    let config = Rc.new(load_config()?);
+    var config = Rc.new(load_config()?);
     spawn_worker(config.clone())
     spawn_worker(config.clone())
     // Config freed when last Rc drops
@@ -167,8 +167,8 @@ fn complex_example() -> Result<(), Error> {
 
 ```novus
 fn example() {
-    let x = 10
-    let mut counter = 0
+    var x = 10
+    var counter = 0
 
     defer {
         println("Cleanup starting")
@@ -236,7 +236,7 @@ fn loop_example() {
 fn loop_with_per_iteration_cleanup() {
     for i in 0..5 {
         {  // Nested scope
-            let temp = AllocMem(1024, MEMF_PUBLIC)
+            var temp = AllocMem(1024, MEMF_PUBLIC)
             defer { FreeMem(temp, 1024) }
 
             // Use temp...
@@ -254,7 +254,7 @@ fn loop_with_per_iteration_cleanup() {
 
 ```novus
 fn early_return_example(success: bool) -> Result<(), Error> {
-    let resource = acquire_resource()
+    var resource = acquire_resource()
     defer { release_resource(resource) }
 
     if !success {
@@ -280,18 +280,18 @@ use ffi::intuition::*
 use ffi::graphics::*
 
 fn open_window_no_defer() -> i32 {
-    let intuition_base = OpenLibrary("intuition.library", 0)
+    var intuition_base = OpenLibrary("intuition.library", 0)
     if intuition_base == null {
         return -1
     }
 
-    let graphics_base = OpenLibrary("graphics.library", 0)
+    var graphics_base = OpenLibrary("graphics.library", 0)
     if graphics_base == null {
         CloseLibrary(intuition_base)  // Easy to forget!
         return -1
     }
 
-    let window = OpenWindow(&NewWindow { /* ... */ })
+    var window = OpenWindow(&NewWindow { /* ... */ })
     if window == null {
         CloseLibrary(graphics_base)
         CloseLibrary(intuition_base)
@@ -316,19 +316,19 @@ use ffi::intuition::*
 use ffi::graphics::*
 
 fn open_window_with_defer() -> Result<(), Error> {
-    let intuition_base = OpenLibrary("intuition.library", 0)
+    var intuition_base = OpenLibrary("intuition.library", 0)
     if intuition_base == null {
         return Err(Error.LibraryNotFound)
     }
     defer { CloseLibrary(intuition_base) }  // Right next to allocation!
 
-    let graphics_base = OpenLibrary("graphics.library", 0)
+    var graphics_base = OpenLibrary("graphics.library", 0)
     if graphics_base == null {
         return Err(Error.LibraryNotFound)
     }
     defer { CloseLibrary(graphics_base) }  // Right next to allocation!
 
-    let window = OpenWindow(&NewWindow { /* ... */ })
+    var window = OpenWindow(&NewWindow { /* ... */ })
     if window == null {
         return Err(Error.CannotOpenWindow)
     }
@@ -380,7 +380,7 @@ deferStatement
 
 ```novus
 fn capture_example() {
-    let mut x = 10
+    var x = 10
 
     defer { println("x = {}", x) }  // Captures reference to x
 
@@ -395,7 +395,7 @@ fn capture_example() {
 
 ```novus
 fn move_example() {
-    let data = Box.alloc(1024, MEMF_CHIP)?
+    var data = Box.alloc(1024, MEMF_CHIP)?
 
     // data is moved into the closure
     defer {
@@ -509,11 +509,11 @@ For defer, **Approach 1** (inline expansion) is sufficient and has zero overhead
 fn order_example() -> i32 {
     println("1")
 
-    let box1 = Box.alloc(1024, MEMF_CHIP)?
+    var box1 = Box.alloc(1024, MEMF_CHIP)?
     defer { println("2 (defer)") }
 
     {
-        let box2 = Box.alloc(2048, MEMF_PUBLIC)?
+        var box2 = Box.alloc(2048, MEMF_PUBLIC)?
         defer { println("3 (defer)") }
 
         if true {
@@ -551,11 +551,11 @@ defer { defer { println("No!") } }  // Compile error
 
 **Rationale:** Too confusing. Use a single closure with multiple statements.
 
-### Mutable captures
+### Modifying captured variables
 
 ```novus
-fn mutable_capture() {
-    let mut counter = 0
+fn modify_capture() {
+    var counter = 0
 
     defer {
         counter = counter + 1
@@ -645,7 +645,7 @@ defer { FreeMem(mem, size) }
 
 **Pattern 6: Counter/Logging**
 ```novus
-let mut operations = 0
+let operations = 0
 defer { println("Total operations: {}", operations) }
 
 // operations incremented throughout function
@@ -662,32 +662,32 @@ use ffi::intuition::*
 
 fn run_application() -> Result<(), Error> {
     // Open libraries (defer for cleanup)
-    let exec_base = OpenLibrary("exec.library", 0)
+    var exec_base = OpenLibrary("exec.library", 0)
     if exec_base == null { return Err(Error.NoExec) }
     defer { CloseLibrary(exec_base) }
 
-    let dos_base = OpenLibrary("dos.library", 0)
+    var dos_base = OpenLibrary("dos.library", 0)
     if dos_base == null { return Err(Error.NoDos) }
     defer { CloseLibrary(dos_base) }
 
-    let intuition_base = OpenLibrary("intuition.library", 0)
+    var intuition_base = OpenLibrary("intuition.library", 0)
     if intuition_base == null { return Err(Error.NoIntuition) }
     defer { CloseLibrary(intuition_base) }
 
     // Allocate buffers (Box for automatic cleanup)
-    let render_buffer = Box.alloc(64000, MEMF_CHIP | MEMF_CLEAR)?
-    let work_buffer = Box.alloc(32000, MEMF_PUBLIC)?
+    var render_buffer = Box.alloc(64000, MEMF_CHIP | MEMF_CLEAR)?
+    var work_buffer = Box.alloc(32000, MEMF_PUBLIC)?
 
     // Open window (defer for cleanup)
-    let window = OpenWindow(&new_window_spec())
+    var window = OpenWindow(&new_window_spec())
     if window == null { return Err(Error.NoWindow) }
     defer { CloseWindow(window) }
 
     // Create shared config (Rc for sharing)
-    let config = Rc.new(AppConfig::load()?);
+    var config = Rc.new(AppConfig::load()?);
 
     // Track stats
-    let mut frame_count = 0
+    var frame_count = 0
     defer {
         println("Application ran for {} frames", frame_count)
     }

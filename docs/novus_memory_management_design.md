@@ -26,8 +26,8 @@ Structs and basic types live on the stack by default. Zero allocation overhead.
 
 ```novus
 fn example() {
-    let point = Point { x: 10, y: 20 }  // Stack allocated
-    let array = [1, 2, 3, 4, 5]          // Stack allocated
+    var point = Point { x: 10, y: 20 }  // Stack allocated
+    var array = [1, 2, 3, 4, 5]          // Stack allocated
 
     // ... use them ...
 
@@ -43,7 +43,7 @@ When you need heap memory with single ownership. Compiler tracks lifetime.
 
 ```novus
 fn load_large_data() -> Box<Buffer> {
-    let buf = Box.new(Buffer.alloc(65536))  // AllocMem called here
+    var buf = Box.new(Buffer.alloc(65536))  // AllocMem called here
 
     // Process buf...
 
@@ -51,7 +51,7 @@ fn load_large_data() -> Box<Buffer> {
 }
 
 fn main() {
-    let data = load_large_data()
+    var data = load_large_data()
 
     // Use data...
 
@@ -95,13 +95,13 @@ struct Rc<T> {
 impl Rc<T> {
     // Create new Rc with ref count = 1
     fn new(value: T) -> Rc<T> {
-        let layout = sizeof(T) + sizeof(u32)
-        let mem = AllocMem(layout, MEMF_PUBLIC | MEMF_CLEAR)
+        var layout = sizeof(T) + sizeof(u32)
+        var mem = AllocMem(layout, MEMF_PUBLIC | MEMF_CLEAR)
 
-        let ref_ptr = mem as *u32
+        var ref_ptr = mem as *u32
         *ref_ptr = 1  // Initial ref count
 
-        let data_ptr = (mem + 4) as *T
+        var data_ptr = (mem + 4) as *T
         *data_ptr = value
 
         return Rc { ptr: data_ptr, ref_count: ref_ptr }
@@ -124,10 +124,10 @@ impl Rc<T> {
 
 // Usage:
 fn example() {
-    let shared = Rc.new(ExpensiveData { ... })
+    var shared = Rc.new(ExpensiveData { ... })
 
     {
-        let copy = shared.clone()  // ref_count = 2
+        var copy = shared.clone()  // ref_count = 2
         process(copy)
     }  // copy.drop() called, ref_count = 1
 
@@ -271,7 +271,7 @@ private void GenerateDrop(IrDrop drop)
 **Novus code:**
 ```novus
 fn test_box() -> i32 {
-    let buf = Box.new<u8>(1024, MEMF_CHIP)
+    var buf = Box.new<u8>(1024, MEMF_CHIP)
 
     // Use buffer...
     buf[0] = 42
@@ -316,12 +316,12 @@ _test_box:
 **Novus code:**
 ```novus
 fn allocate_buffer() -> Box<Buffer> {
-    let buf = Box.new<Buffer>(4096, MEMF_PUBLIC)
+    var buf = Box.new<Buffer>(4096, MEMF_PUBLIC)
     return buf  // Ownership transferred, no drop here
 }
 
 fn main() {
-    let my_buf = allocate_buffer()
+    var my_buf = allocate_buffer()
     // Use my_buf...
 }  // my_buf dropped here (in main, not in allocate_buffer)
 ```
@@ -331,10 +331,10 @@ fn main() {
 **Novus code:**
 ```novus
 fn example() {
-    let buf1 = Box.new<u8>(1024, MEMF_CHIP)
+    var buf1 = Box.new<u8>(1024, MEMF_CHIP)
 
     {
-        let buf2 = Box.new<u8>(2048, MEMF_CHIP)
+        var buf2 = Box.new<u8>(2048, MEMF_CHIP)
         // Use buf2...
     }  // buf2 dropped here
 
