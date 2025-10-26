@@ -2159,8 +2159,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public override IrType? VisitStringLiteral([NotNull] NovusParser.StringLiteralContext context)
     {
-        // String literals have type *u8 (pointer to u8)
-        return new IrPointerType(IrIntType.U8);
+        // String literals have type String (fat pointer with {ptr, len})
+        return IrStringType.Instance;
     }
 
     public override IrType? VisitFloatLiteral([NotNull] NovusParser.FloatLiteralContext context)
@@ -2255,6 +2255,33 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         var memberName = context.IDENTIFIER().GetText();
+
+        // Handle String type member access (.ptr and .len)
+        if (baseType is IrStringType)
+        {
+            if (memberName == "ptr")
+            {
+                return new IrPointerType(IrIntType.U8);
+            }
+            else if (memberName == "len")
+            {
+                return IrIntType.I32;
+            }
+            else
+            {
+                var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0022",
+                    $"String type does not have a field named '{memberName}'",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "available fields: ptr, len"
+                    }
+                );
+                return null;
+            }
+        }
 
         // Check if the base type is a struct
         if (baseType is not IrStructType structType)
@@ -3073,6 +3100,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             "f64" => IrFloatType.F64,
             "fixed16" => IrFixedType.Fixed16,
             "fixed32" => IrFixedType.Fixed32,
+            "String" => IrStringType.Instance,
             _ => IrIntType.I32
         };
     }
@@ -3211,6 +3239,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             {
                 return true;
             }
+        }
+
+        // Allow String to i32 conversion for FFI interop
+        // Automatically extracts the .ptr field when passing String to functions expecting i32
+        if (expected is IrIntType && actual is IrStringType)
+        {
+            return true;
         }
 
         return false;

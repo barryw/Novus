@@ -345,17 +345,19 @@ public class IrFixedConstant : IrValue
 }
 
 /// <summary>
-/// String literal value (pointer to null-terminated string in data section)
+/// String literal value - fat pointer {ptr, len} to null-terminated string in data section
 /// </summary>
 public class IrStringLiteral : IrValue
 {
     public string Value { get; set; }
     public string Label { get; set; }  // Unique label for this string in data section
+    public int Length { get; set; }    // Pre-calculated string length
 
-    public IrStringLiteral(string value, string label) : base(new IrPointerType(IrIntType.U8))
+    public IrStringLiteral(string value, string label) : base(IrStringType.Instance)
     {
         Value = value;
         Label = label;
+        Length = value.Length;  // Calculate length at compile time
     }
 }
 
@@ -577,6 +579,26 @@ public class IrFixedType : IrType
     // Predefined common types
     public static readonly IrFixedType Fixed16 = new(16);  // 8.8 fixed point
     public static readonly IrFixedType Fixed32 = new(32);  // 16.16 fixed point
+}
+
+/// <summary>
+/// String type - fat pointer with {ptr: *u8, len: i32}
+/// Represents immutable string slices with known length
+/// String literals and string operations use this type
+/// </summary>
+public class IrStringType : IrType
+{
+    public static readonly IrStringType Instance = new();
+
+    private IrStringType() { }
+
+    // Size is 8 bytes: 4 bytes for pointer + 4 bytes for length
+    public override int SizeInBytes => 8;
+    public override string Name => "String";
+
+    // Predefined fields for accessing components
+    public static readonly IrStructField PtrField = new("ptr", new IrPointerType(IrIntType.U8));
+    public static readonly IrStructField LenField = new("len", IrIntType.I32);
 }
 
 /// <summary>

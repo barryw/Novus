@@ -1,0 +1,6 @@
+from io import WriteOut
+
+pub fn main() -> u32 {
+    WriteOut("Hello from String type!")
+    return 0
+}

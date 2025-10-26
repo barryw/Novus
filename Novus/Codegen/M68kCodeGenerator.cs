@@ -1160,6 +1160,20 @@ public partial class M68kCodeGenerator
                 dataOffset += assocValue.Type.SizeInBytes;
             }
         }
+        // Special handling for String literal initialization
+        else if (localDecl.InitialValue is IrStringLiteral stringLiteral)
+        {
+            var stringBaseOffset = _localVariableOffsets[localDecl.Name];
+
+            EmitComment($"Initialize String from literal \"{stringLiteral.Value}\"");
+
+            // Store ptr at offset 0 (4 bytes)
+            Emit($"\tlea\t{stringLiteral.Label},a0");
+            Emit($"\tmove.l\ta0,{stringBaseOffset}(a6)\t\t; Store string ptr");
+
+            // Store len at offset 4 (4 bytes)
+            Emit($"\tmove.l\t#{stringLiteral.Length},{stringBaseOffset + 4}(a6)\t\t; Store string len");
+        }
         else
         {
             // Regular scalar initialization

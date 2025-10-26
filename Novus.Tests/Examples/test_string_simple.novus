@@ -1,0 +1,20 @@
+from dos import Output, Write
+
+// strlen implemented in assembly (string_utils.s)
+extern fn strlen(str: i32) -> i32
+
+fn WriteOut(message: i32) -> i32 {
+    let stdout = Output()
+    if stdout == 0 {
+        return -1
+    }
+    let len = strlen(message)
+    return Write(stdout, message, len)
+}
+
+pub fn main() -> u32 {
+    // Test: Can we pass a String literal where i32 is expected?
+    // The compiler should auto-extract the .ptr field
+    WriteOut("Hello, World!\n")
+    return 0
+}

@@ -1,0 +1,5 @@
+// Test basic String type
+pub fn main() -> u32 {
+    let s = "Hello"
+    return 0
+}

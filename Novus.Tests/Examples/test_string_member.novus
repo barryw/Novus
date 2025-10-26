@@ -1,0 +1,11 @@
+// Test String member access (.len field)
+
+fn test_len(s: String) -> i32 {
+    return s.len
+}
+
+pub fn main() -> u32 {
+    let message = "Hello"
+    let len = test_len(message)
+    return (u32)len
+}

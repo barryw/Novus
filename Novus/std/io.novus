@@ -1,29 +1,29 @@
 // io.novus - High-level I/O wrapper for Amiga DOS
-// Automatic length calculation - no more manual counting!
+// Accepts String type - length is already known, no strlen() needed!
 
 from dos import Output, Write
-from strings import strlen
 
-// Write to stdout - automatic length calculation
+// Write to stdout - String provides both pointer and length
 // Returns bytes written, or negative error code
-pub fn WriteOut(message: i32) -> i32 {
+pub fn WriteOut(message: String) -> i32 {
     let stdout = Output()
     if stdout == 0 {
         return -1
     }
-    let len = strlen(message)
-    return Write(stdout, message, len)
+    // String is {ptr: *u8, len: i32}
+    // When passed to Write (which expects i32), compiler auto-extracts .ptr
+    // We access .len explicitly here
+    return Write(stdout, message, message.len)
 }
 
-// Write to stderr - automatic length calculation
+// Write to stderr - String provides both pointer and length
 // Falls back to stdout if stderr unavailable
 // Returns bytes written, or negative error code
-pub fn WriteErr(message: i32) -> i32 {
+pub fn WriteErr(message: String) -> i32 {
     // Note: Error() causes hangs on some systems, using Output() for now
     let stdout = Output()
     if stdout == 0 {
         return -1
     }
-    let len = strlen(message)
-    return Write(stdout, message, len)
+    return Write(stdout, message, message.len)
 }

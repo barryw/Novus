@@ -1053,14 +1053,57 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         // Insert implicit casts for arguments where needed
-        // (e.g., u32 -> i32 for same-bit-width conversions)
+        // (e.g., u32 -> i32 for same-bit-width conversions, String -> i32 for FFI)
         for (int i = 0; i < arguments.Count; i++)
         {
             var argType = arguments[i].Type;
             var paramType = function.Parameters[i].Type;
 
+            // Handle String to i32 conversion for FFI
+            if (argType is IrStringType && paramType is IrIntType)
+            {
+                // String literal - need to create temp String variable first, then extract .ptr
+                if (arguments[i] is IrStringLiteral stringLit)
+                {
+                    // Create a temporary String variable to hold the {ptr, len} struct
+                    var stringTempName = $"_str_temp_{_tempCounter++}";
+                    var stringVar = new IrLocalVariable(stringTempName, IrStringType.Instance, false);
+                    _currentFunction!.LocalVariables.Add(stringVar);
+
+                    var stringDecl = new IrLocalDecl(stringTempName, IrStringType.Instance, false, stringLit);
+                    _currentBlock!.AddInstruction(stringDecl);
+
+                    // Now extract the .ptr field
+                    var ptrTempName = $"%t{_tempCounter++}";
+                    var ptrAccess = new IrMemberAccess(
+                        ptrTempName,
+                        new IrVariable(stringTempName, IrStringType.Instance),
+                        "ptr",
+                        new IrPointerType(IrIntType.U8),
+                        0  // ptr is at offset 0
+                    );
+                    _currentBlock!.AddInstruction(ptrAccess);
+
+                    // Replace argument with the extracted pointer (cast to i32 for compatibility)
+                    arguments[i] = new IrVariable(ptrTempName, paramType);
+                }
+                else
+                {
+                    // String variable - extract .ptr field
+                    var ptrTempName = $"%t{_tempCounter++}";
+                    var ptrAccess = new IrMemberAccess(
+                        ptrTempName,
+                        arguments[i],
+                        "ptr",
+                        new IrPointerType(IrIntType.U8),
+                        0  // ptr is at offset 0
+                    );
+                    _currentBlock!.AddInstruction(ptrAccess);
+                    arguments[i] = new IrVariable(ptrTempName, paramType);
+                }
+            }
             // If types don't exactly match but are compatible integer types of same width
-            if (!argType.Equals(paramType) &&
+            else if (!argType.Equals(paramType) &&
                 argType is IrIntType argInt &&
                 paramType is IrIntType paramInt &&
                 argInt.BitWidth == paramInt.BitWidth)
@@ -1275,12 +1318,21 @@ public class IrBuilder : NovusBaseVisitor<object?>
             return new IrConstant(constant.Value, targetType);
         }
 
-        // Handle string literal to integer cast - return as-is, LoadOperand knows how to get the address
-        if (value is IrStringLiteral stringLit && targetType is IrIntType)
+        // Handle String to integer cast - extract the .ptr field
+        // This allows FFI interop: extern fn foo(s: i32) can accept String arguments
+        if (value.Type is IrStringType && targetType is IrIntType)
         {
-            // String literal cast to integer means "take the address of the string"
-            // Keep the string literal as-is - the code generator's LoadOperand will emit lea instruction
-            return stringLit;
+            // Create a member access to extract the .ptr field
+            var ptrTempName = $"_str_ptr_{_tempCounter++}";
+            var ptrAccess = new IrMemberAccess(
+                ptrTempName,
+                value,
+                "ptr",
+                new IrPointerType(IrIntType.U8),
+                0  // ptr is at offset 0
+            );
+            _currentBlock!.AddInstruction(ptrAccess);
+            return new IrVariable(ptrTempName, new IrPointerType(IrIntType.U8));
         }
 
         // For variables, if it's a bitwise cast (same size), just return the variable with new type
@@ -1702,6 +1754,35 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         var memberName = context.IDENTIFIER().GetText();
 
+        // Handle String type member access
+        if (baseExpr.Type is IrStringType)
+        {
+            IrType fieldType;
+            int fieldOffset;
+
+            if (memberName == "ptr")
+            {
+                fieldType = new IrPointerType(IrIntType.U8);
+                fieldOffset = 0;  // ptr is at offset 0
+            }
+            else if (memberName == "len")
+            {
+                fieldType = IrIntType.I32;
+                fieldOffset = 4;  // len is at offset 4 (after the 4-byte ptr)
+            }
+            else
+            {
+                throw new Exception($"String type does not have a field named '{memberName}'. Available fields: ptr, len");
+            }
+
+            // Generate a member access instruction for String
+            var strResultName = $"%t{_tempCounter++}";
+            var strMemberAccess = new IrMemberAccess(strResultName, baseExpr, memberName, fieldType, fieldOffset);
+            _currentBlock!.AddInstruction(strMemberAccess);
+
+            return new IrVariable(strResultName, fieldType);
+        }
+
         // Check if the base expression is a struct type
         if (baseExpr.Type is not IrStructType structType)
         {
@@ -2043,6 +2124,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             "f64" => IrFloatType.F64,
             "fixed16" => IrFixedType.Fixed16,
             "fixed32" => IrFixedType.Fixed32,
+            "String" => IrStringType.Instance,
             _ => throw new Exception($"Unknown primitive type: {typeText}")
         };
     }

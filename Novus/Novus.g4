@@ -77,6 +77,7 @@ type
     | 'f64'                                                   # PrimitiveType
     | 'fixed16'                                               # PrimitiveType
     | 'fixed32'                                               # PrimitiveType
+    | 'String'                                                # PrimitiveType
     | IDENTIFIER ('<' typeList '>')?                         # NamedType
     ;
 
