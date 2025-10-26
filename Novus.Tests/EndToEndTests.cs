@@ -926,4 +926,135 @@ pub fn main() -> i32 {
     }
 
     #endregion
+
+    #region Enum Tests
+
+    [Fact]
+    public void Compile_EnumComparison_LoadsEnumConstructor()
+    {
+        var source = @"
+enum Status {
+    Ok,
+    Error,
+    Pending
+}
+
+pub fn check_status(status: Status) -> i32 {
+    if status == Status::Ok {
+        return 1
+    }
+    if status == Status::Error {
+        return 2
+    }
+    return 0
+}";
+        var asm = CompileToAssembly(source);
+
+        // Should load enum constructors before comparison
+        // Status::Ok = 0
+        Assert.Contains("moveq\t#0,", asm);
+        // Status::Error = 1
+        Assert.Contains("moveq\t#1,", asm);
+        // Should have comparison instruction
+        Assert.Contains("cmp.l", asm);
+    }
+
+    [Fact]
+    public void Compile_SystemCPUEnumComparison_Success()
+    {
+        var source = @"
+enum SystemCPU {
+    M68000,
+    M68010,
+    M68020,
+    M68030
+}
+
+pub fn detect_cpu(cpu: SystemCPU) -> i32 {
+    if cpu == SystemCPU::M68000 {
+        return 0
+    }
+    if cpu == SystemCPU::M68020 {
+        return 2
+    }
+    return -1
+}";
+        var asm = CompileToAssembly(source);
+
+        // Should generate enum constructor loads
+        Assert.Contains("moveq\t#0,", asm);  // M68000
+        Assert.Contains("moveq\t#2,", asm);  // M68020
+        // Should generate comparisons
+        Assert.Contains("cmp.l", asm);
+        // Should have conditional branches
+        Assert.Contains("bne", asm);
+    }
+
+    [Fact]
+    public void Compile_MultipleEnumVariants_GeneratesCorrectTags()
+    {
+        var source = @"
+enum Color {
+    Red,
+    Green,
+    Blue,
+    Yellow
+}
+
+pub fn color_to_number(c: Color) -> i32 {
+    if c == Color::Red {
+        return 1
+    }
+    if c == Color::Green {
+        return 2
+    }
+    if c == Color::Blue {
+        return 3
+    }
+    if c == Color::Yellow {
+        return 4
+    }
+    return 0
+}";
+        var asm = CompileToAssembly(source);
+
+        // Should load all enum tags (0, 1, 2, 3)
+        Assert.Contains("moveq\t#0,", asm);  // Red
+        Assert.Contains("moveq\t#1,", asm);  // Green
+        Assert.Contains("moveq\t#2,", asm);  // Blue
+        Assert.Contains("moveq\t#3,", asm);  // Yellow
+    }
+
+    [Fact]
+    public void Compile_MatchStatement_SavesTagForMultipleComparisons()
+    {
+        var source = @"
+enum Status {
+    Idle,
+    Running,
+    Complete
+}
+
+pub fn check(status: Status) -> i32 {
+    match status {
+        Idle => 0,
+        Running => 1,
+        Complete => 2,
+    }
+}";
+        var asm = CompileToAssembly(source);
+
+        // Should save the extracted tag to stack
+        Assert.Contains("Save extracted tag for match", asm);
+
+        // Should load tag from stack for each comparison (not assume it's in d0)
+        Assert.Contains("move.l", asm);
+
+        // Should have all three comparisons with correct tag values
+        Assert.Contains("moveq\t#0,", asm);  // Idle = 0
+        Assert.Contains("moveq\t#1,", asm);  // Running = 1
+        Assert.Contains("moveq\t#2,", asm);  // Complete = 2
+    }
+
+    #endregion
 }

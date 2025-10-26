@@ -20,6 +20,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     // Symbol tables
     private readonly Dictionary<string, FunctionSymbol> _functions = new();
     private readonly Dictionary<string, VariableSymbol> _variables = new();
+    private readonly Dictionary<string, VariableSymbol> _globalVariables = new(); // Module-level extern vars
     private readonly Dictionary<string, IrStructType> _structs = new();
     private readonly Dictionary<string, IrEnumType> _enums = new();
     private readonly Dictionary<string, ConstantSymbol> _constants = new();
@@ -72,13 +73,19 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             RegisterStruct(structDecl);
         }
 
-        // Fourth pass: collect all function declarations
+        // Fourth pass: collect all global variable declarations
+        foreach (var globalVarDecl in context.globalVariableDeclaration())
+        {
+            RegisterGlobalVariable(globalVarDecl);
+        }
+
+        // Fifth pass: collect all function declarations
         foreach (var funcDecl in context.functionDeclaration())
         {
             RegisterFunction(funcDecl);
         }
 
-        // Fifth pass: analyze function bodies
+        // Sixth pass: analyze function bodies
         foreach (var funcDecl in context.functionDeclaration())
         {
             Visit(funcDecl);
@@ -243,6 +250,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 {
                     namesToImport.Add(funcDecl.IDENTIFIER().GetText());
                 }
+            }
+
+            // Import all extern global variables from the module
+            foreach (var globalVarDecl in moduleContext.globalVariableDeclaration())
+            {
+                // All global variables are extern by definition
+                namesToImport.Add(globalVarDecl.IDENTIFIER().GetText());
             }
         }
         else if (importList != null)
@@ -438,6 +452,39 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             _functions[funcName] = new FunctionSymbol(funcName, returnType, parameters, funcLocation, IsExtern: true);
             _importedNames[funcName] = moduleName;
         }
+
+        // Register imported global variables in symbol table
+        foreach (var globalVarDecl in moduleContext.globalVariableDeclaration())
+        {
+            var varName = globalVarDecl.IDENTIFIER().GetText();
+
+            // Skip if not in the import list
+            if (!namesToImport.Contains(varName))
+            {
+                continue;
+            }
+
+            // Check for duplicate names
+            if (_globalVariables.ContainsKey(varName))
+            {
+                var originalLocation = _globalVariables[varName].Location;
+                _diagnostics.ReportError(
+                    "E0001",
+                    $"global variable '{varName}' is defined multiple times",
+                    location,
+                    relatedLocations: new List<(SourceLocation, string)>
+                    {
+                        (originalLocation, $"previous definition of '{varName}' here")
+                    }
+                );
+                continue;
+            }
+
+            var varType = ParseType(globalVarDecl.type());
+            var varLocation = SourceLocationHelper.FromToken(globalVarDecl.IDENTIFIER().Symbol, modulePath, new string[] { });
+            _globalVariables[varName] = new VariableSymbol(varName, varType, IsMutable: false, varLocation);
+            _importedNames[varName] = moduleName;
+        }
     }
 
     private void RegisterConstant(NovusParser.ConstDeclarationContext context)
@@ -507,6 +554,36 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         _constants[name] = new ConstantSymbol(name, type, value, location);
+    }
+
+    private void RegisterGlobalVariable(NovusParser.GlobalVariableDeclarationContext context)
+    {
+        var name = context.IDENTIFIER().GetText();
+        var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+        var type = ParseType(context.type());
+
+        // Global variables must always be extern (defined externally, e.g. in assembly)
+        // Check for duplicate names
+        if (_globalVariables.ContainsKey(name))
+        {
+            var originalLocation = _globalVariables[name].Location;
+            _diagnostics.ReportError(
+                "E0001",
+                $"global variable '{name}' is defined multiple times",
+                location,
+                helpTexts: new List<string>
+                {
+                    $"consider renaming one of the variables"
+                },
+                relatedLocations: new List<(SourceLocation, string)>
+                {
+                    (originalLocation, $"previous definition of '{name}' here")
+                }
+            );
+            return;
+        }
+
+        _globalVariables[name] = new VariableSymbol(name, type, IsMutable: false, location);
     }
 
     private void RegisterFunction(NovusParser.FunctionDeclarationContext context)
@@ -2130,7 +2207,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     public override IrType? VisitIdentifierExpr([NotNull] NovusParser.IdentifierExprContext context)
     {
         var name = context.IDENTIFIER().GetText();
-        if (!_variables.ContainsKey(name) && !_functions.ContainsKey(name) && !_constants.ContainsKey(name))
+        if (!_variables.ContainsKey(name) && !_globalVariables.ContainsKey(name) && !_functions.ContainsKey(name) && !_constants.ContainsKey(name))
         {
             var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
             _diagnostics.ReportError(
@@ -2158,6 +2235,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         if (_functions.ContainsKey(name))
         {
             return _functions[name].ReturnType;
+        }
+
+        // Check global variables
+        if (_globalVariables.ContainsKey(name))
+        {
+            return _globalVariables[name].Type;
         }
 
         return _variables[name].Type;
@@ -2249,6 +2332,39 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         if (leftType == null || rightType == null)
             return IrBoolType.Instance;
+
+        var op = context.GetChild(1).GetText(); // Get the comparison operator
+
+        // Enum types can only be compared with == and !=
+        if (leftType is IrEnumType || rightType is IrEnumType)
+        {
+            if (op != "==" && op != "!=")
+            {
+                var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0004",
+                    $"enum types can only be compared with == and !=, not '{op}'",
+                    location
+                );
+                return IrBoolType.Instance;
+            }
+
+            // Both sides must be the same enum type
+            if (leftType is IrEnumType leftEnum && rightType is IrEnumType rightEnum)
+            {
+                if (leftEnum.Name != rightEnum.Name)
+                {
+                    var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                    _diagnostics.ReportError(
+                        "E0004",
+                        $"cannot compare different enum types '{TypeToString(leftType)}' and '{TypeToString(rightType)}'",
+                        location
+                    );
+                }
+            }
+
+            return IrBoolType.Instance;
+        }
 
         // Check that both operands are numeric types
         if (!IsNumericType(leftType))

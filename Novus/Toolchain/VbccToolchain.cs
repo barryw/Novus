@@ -153,8 +153,11 @@ public class VbccToolchain
 
         await File.WriteAllTextAsync(asmFile, asmSource);
 
+        // For fat binaries (cpu="auto"), use 68020 for assembly since it supports all instructions
+        var assemblyCpu = cpu == "auto" ? "68020" : cpu;
+
         // Assemble (with FPU support if fat binary or FPU mode)
-        if (!await Assemble(asmFile, objFile, cpu, enableFpu))
+        if (!await Assemble(asmFile, objFile, assemblyCpu, enableFpu))
         {
             Console.WriteLine("Assembly failed");
             return false;
@@ -174,7 +177,7 @@ public class VbccToolchain
             {
                 var stubsObj = Path.Combine(outputPath, $"{library}_stubs.o");
 
-                if (!await Assemble(stubsSource, stubsObj, cpu, false))
+                if (!await Assemble(stubsSource, stubsObj, assemblyCpu, false))
                 {
                     Console.WriteLine($"{library} stubs assembly failed");
                     return false;

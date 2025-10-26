@@ -32,6 +32,8 @@ public partial class M68kCodeGenerator
     // Track temp variables saved on stack (in order of saving)
     private readonly List<string> _savedTemps = new();
     private int _tempStackOffset = 0; // Total bytes used for temps
+    // Map temp names to global variables they should reload from (for match on globals)
+    private readonly Dictionary<string, string> _globalTagTemps = new();
 
     // Track which functions use floating point operations
     private readonly HashSet<string> _floatFunctions = new();
@@ -157,11 +159,16 @@ public partial class M68kCodeGenerator
             Emit("");
         }
 
-        // If building CPU fat binary, generate CPU detection and dispatch stubs
-        if (IsCpuFatBinary && _cpuOptimizableFunctions.Any())
+        // Always generate CPU detection for fat binaries (needed for system.novus variables)
+        if (IsCpuFatBinary)
         {
             GenerateCpuDetection();
-            GenerateCpuDispatchStubs();
+
+            // Only generate dispatch stubs if we have CPU-optimizable functions
+            if (_cpuOptimizableFunctions.Any())
+            {
+                GenerateCpuDispatchStubs();
+            }
         }
 
         // Always generate optimized runtime library primitives for assembly programmers
@@ -585,6 +592,22 @@ public partial class M68kCodeGenerator
                 break;
             case IrExtractTag extractTag:
                 GenerateExtractTag(extractTag);
+                // For global variables (CPU, FPU, Chipset), don't save - we'll reload from global each time
+                // For local enum variables, save to stack since they can't be reloaded
+                if (extractTag.EnumValue is IrVariable enumVar &&
+                    (enumVar.Name == "CPU" || enumVar.Name == "FPU" || enumVar.Name == "Chipset"))
+                {
+                    // Don't save - we'll reload from global for each comparison
+                    // Track that this temp should reload from the global
+                    _globalTagTemps[extractTag.ResultName] = enumVar.Name;
+                }
+                else
+                {
+                    // Save the extracted tag to stack since it will be used multiple times in match
+                    Emit($"\tmove.l\td0,-(sp)\t\t; Save extracted tag for match");
+                    _savedTemps.Add(extractTag.ResultName);
+                    _tempStackOffset += 4;
+                }
                 break;
             case IrExtractVariantData extractData:
                 GenerateExtractVariantData(extractData);
@@ -1727,6 +1750,15 @@ public partial class M68kCodeGenerator
                 // If it's a temporary variable (%tN), load it from the stack if saved
                 if (variable.Name.StartsWith("%t"))
                 {
+                    // Check if this temp should reload from a global variable (for match on globals)
+                    if (_globalTagTemps.ContainsKey(variable.Name))
+                    {
+                        var globalName = _globalTagTemps[variable.Name];
+                        var globalLabel = $"_system_{globalName}";
+                        Emit($"\tmove.l\t{globalLabel},{targetReg}\t\t; Reload tag from global");
+                        return;
+                    }
+
                     var savedIndex = _savedTemps.IndexOf(variable.Name);
                     if (savedIndex >= 0)
                     {
@@ -1785,6 +1817,24 @@ public partial class M68kCodeGenerator
                         }
                     }
                 }
+                // Check if it's a global variable from system module (CPU, FPU, Chipset)
+                else if (variable.Name == "CPU" || variable.Name == "FPU" || variable.Name == "Chipset")
+                {
+                    // Load from global variable label (e.g., _system_CPU)
+                    var globalLabel = $"_system_{variable.Name}";
+                    var varSize = GetSizeSuffix(variable.Type);
+                    Emit($"\tmove{varSize}\t{globalLabel},{targetReg}");
+
+                    // Clear upper bits after loading byte or word to avoid garbage
+                    if (variable.Type.SizeInBytes == 1 && targetReg.StartsWith('d'))
+                    {
+                        Emit($"\tand.l\t#$FF,{targetReg}");
+                    }
+                    else if (variable.Type.SizeInBytes == 2 && targetReg.StartsWith('d'))
+                    {
+                        Emit($"\tand.l\t#$FFFF,{targetReg}");
+                    }
+                }
                 else
                 {
                     // Unknown variable - shouldn't happen if semantic analysis passed
@@ -1794,8 +1844,25 @@ public partial class M68kCodeGenerator
             }
             case IrEnumValue enumValue:
             {
-                // Construct an enum value on the stack
-                // Enum layout: [tag (4 bytes)][data (variable)]
+                // For simple enums (no associated data), just load the tag value
+                // For enums with data, construct the full value on the stack
+
+                if (enumValue.AssociatedValues.Count == 0)
+                {
+                    // Simple enum - just load the tag value directly
+                    EmitComment($"Load enum tag {enumValue.Type.Name}::{enumValue.VariantName} = {enumValue.VariantTag}");
+                    if (targetReg.StartsWith("d"))
+                    {
+                        Emit($"\tmoveq\t#{enumValue.VariantTag},{targetReg}\t\t; Enum tag");
+                    }
+                    else
+                    {
+                        Emit($"\tmove.l\t#{enumValue.VariantTag},{targetReg}\t\t; Enum tag");
+                    }
+                    break;
+                }
+
+                // Enum with associated data - construct full value on stack
                 EmitComment($"Constructing enum {enumValue.Type.Name}::{enumValue.VariantName}");
 
                 var enumType = enumValue.Type as IrEnumType;
@@ -1839,6 +1906,21 @@ public partial class M68kCodeGenerator
                     // For data register, this is likely being stored somewhere - leave it on stack
                     // The calling code will need to handle copying it
                     throw new Exception("Enum values cannot be loaded directly into data registers - use address registers");
+                }
+                break;
+            }
+            case IrEnumConstructor enumConstructor:
+            {
+                // IrEnumConstructor represents an enum variant constructor (e.g., SystemCPU::M68000)
+                // For simple enums (no associated data), just load the tag value
+                EmitComment($"Load enum constructor {enumConstructor.Type.Name}::{enumConstructor.VariantName} = {enumConstructor.VariantTag}");
+                if (targetReg.StartsWith("d"))
+                {
+                    Emit($"\tmoveq\t#{enumConstructor.VariantTag},{targetReg}\t\t; Enum tag");
+                }
+                else
+                {
+                    Emit($"\tmove.l\t#{enumConstructor.VariantTag},{targetReg}\t\t; Enum tag");
                 }
                 break;
             }
@@ -1914,7 +1996,7 @@ public partial class M68kCodeGenerator
         Emit("__detect_fpu:");
         Emit("\t; Check if already initialized");
         Emit("\ttst.l\t__fpu_initialized");
-        Emit("\tbne.s\t.done");
+        Emit("\tbne\t.done");
         Emit("");
 
         Emit("\t; Mark as initialized");
@@ -1934,7 +2016,7 @@ public partial class M68kCodeGenerator
         Emit("\t; Bit 6 ($40) = AFB_68882");
         Emit("\t; Bit 7 ($80) = AFB_FPU40 (68040/68060 FPU)");
         Emit("\tandi.w\t#$00D0,d0\t; Mask FPU bits");
-        Emit("\tbeq.s\t.no_fpu");
+        Emit("\tbeq\t.no_fpu");
         Emit("");
 
         Emit("\t; FPU detected!");
@@ -1962,6 +2044,24 @@ public partial class M68kCodeGenerator
         Emit("\tdc.l\t0\t; 0=68000, 1=68020+, 2=68060");
         Emit("");
 
+        // System hardware detection variables for system.novus
+        // These are the public-facing variables that user code accesses
+        EmitComment("system.novus global variables (CPU, FPU, Chipset)");
+        Emit("\txdef\t_system_CPU");
+        Emit("_system_CPU:");
+        Emit("\tdc.l\t0\t; SystemCPU enum value");
+        Emit("");
+
+        Emit("\txdef\t_system_FPU");
+        Emit("_system_FPU:");
+        Emit("\tdc.l\t0\t; SystemFPU enum value");
+        Emit("");
+
+        Emit("\txdef\t_system_Chipset");
+        Emit("_system_Chipset:");
+        Emit("\tdc.l\t0\t; SystemChipset enum value");
+        Emit("");
+
         // Initialization flag to ensure detection runs only once
         Emit("__cpu_initialized:");
         Emit("\tdc.l\t0");
@@ -1977,7 +2077,7 @@ public partial class M68kCodeGenerator
         Emit("__detect_cpu:");
         Emit("\t; Check if already initialized");
         Emit("\ttst.l\t__cpu_initialized");
-        Emit("\tbne.s\t.done");
+        Emit("\tbne\t.done");
         Emit("");
 
         Emit("\t; Mark as initialized");
@@ -1990,6 +2090,7 @@ public partial class M68kCodeGenerator
 
         Emit("\t; Read AttnFlags from ExecBase+296");
         Emit("\tmove.w\t296(a0),d0");
+        Emit("\tmove.w\td0,d1\t; Save for FPU detection");
         Emit("");
 
         Emit("\t; Check for CPU flags:");
@@ -1997,31 +2098,119 @@ public partial class M68kCodeGenerator
         Emit("\t; Bit 1 ($02) = AFB_68020");
         Emit("\t; Bit 2 ($04) = AFB_68030");
         Emit("\t; Bit 3 ($08) = AFB_68040");
-        Emit("\t; Bit 5 ($20) = AFB_68060");
+        Emit("\t; Bit 7 ($80) = AFB_68060");
         Emit("");
 
         // Check for 68060 first (most specific)
         Emit("\t; Check for 68060");
-        Emit("\tbtst\t#5,d0");
+        Emit("\tbtst\t#7,d0");
         Emit("\tbeq.s\t.not_68060");
         Emit("\tmove.l\t#2,__detected_cpu\t; 68060 detected");
-        Emit("\tbra.s\t.done");
+        Emit("\tmove.l\t#5,_system_CPU\t; SystemCPU::M68060");
+        Emit("\tbra\t.check_fpu");
         Emit("");
 
         Emit(".not_68060:");
-        // Check for 68020+ (68020, 68030, 68040)
-        Emit("\t; Check for 68020, 68030, or 68040");
-        Emit("\tandi.w\t#$000E,d0\t; Mask 68020/030/040 bits");
-        Emit("\tbeq.s\t.is_68000");
+        // Check for 68040
+        Emit("\t; Check for 68040");
+        Emit("\tbtst\t#3,d0");
+        Emit("\tbeq.s\t.not_68040");
         Emit("\tmove.l\t#1,__detected_cpu\t; 68020+ detected");
-        Emit("\tbra.s\t.done");
+        Emit("\tmove.l\t#4,_system_CPU\t; SystemCPU::M68040");
+        Emit("\tbra\t.check_fpu");
+        Emit("");
+
+        Emit(".not_68040:");
+        // Check for 68030
+        Emit("\t; Check for 68030");
+        Emit("\tbtst\t#2,d0");
+        Emit("\tbeq.s\t.not_68030");
+        Emit("\tmove.l\t#1,__detected_cpu\t; 68020+ detected");
+        Emit("\tmove.l\t#3,_system_CPU\t; SystemCPU::M68030");
+        Emit("\tbra\t.check_fpu");
+        Emit("");
+
+        Emit(".not_68030:");
+        // Check for 68020
+        Emit("\t; Check for 68020");
+        Emit("\tbtst\t#1,d0");
+        Emit("\tbeq.s\t.not_68020");
+        Emit("\tmove.l\t#1,__detected_cpu\t; 68020+ detected");
+        Emit("\tmove.l\t#2,_system_CPU\t; SystemCPU::M68020");
+        Emit("\tbra\t.check_fpu");
+        Emit("");
+
+        Emit(".not_68020:");
+        // Check for 68010
+        Emit("\t; Check for 68010");
+        Emit("\tbtst\t#0,d0");
+        Emit("\tbeq.s\t.is_68000");
+        Emit("\tmove.l\t#0,__detected_cpu\t; 68000 category");
+        Emit("\tmove.l\t#1,_system_CPU\t; SystemCPU::M68010");
+        Emit("\tbra\t.check_fpu");
         Emit("");
 
         Emit(".is_68000:");
-        Emit("\t; Default to 68000 (already 0)");
+        Emit("\t; Default to 68000");
+        Emit("\tmove.l\t#0,__detected_cpu");
+        Emit("\tmove.l\t#0,_system_CPU\t; SystemCPU::M68000");
+        Emit("");
+
+        // Now detect FPU
+        Emit(".check_fpu:");
+        Emit("\t; Check for FPU flags (d1 has AttnFlags):");
+        Emit("\t; Bit 4 ($10) = AFB_68881");
+        Emit("\t; Bit 5 ($20) = AFB_68882");
+        Emit("\t; Bit 6 ($40) = AFB_FPU40 (68040/68060 FPU)");
+        Emit("");
+
+        // Check for 68060 FPU (based on CPU)
+        Emit("\t; Check for 68060 FPU");
+        Emit("\tmove.l\t_system_CPU,d2");
+        Emit("\tcmpi.l\t#5,d2\t; M68060?");
+        Emit("\tbne.s\t.not_68060_fpu");
+        Emit("\tbtst\t#6,d1\t; AFB_FPU40?");
+        Emit("\tbeq\t.no_fpu");
+        Emit("\tmove.l\t#4,_system_FPU\t; SystemFPU::M68060");
+        Emit("\tbra\t.done");
+        Emit("");
+
+        Emit(".not_68060_fpu:");
+        // Check for 68040 FPU
+        Emit("\t; Check for 68040 FPU");
+        Emit("\tcmpi.l\t#4,d2\t; M68040?");
+        Emit("\tbne.s\t.not_68040_fpu");
+        Emit("\tbtst\t#6,d1\t; AFB_FPU40?");
+        Emit("\tbeq\t.no_fpu");
+        Emit("\tmove.l\t#3,_system_FPU\t; SystemFPU::M68040");
+        Emit("\tbra\t.done");
+        Emit("");
+
+        Emit(".not_68040_fpu:");
+        // Check for 68882
+        Emit("\t; Check for 68882");
+        Emit("\tbtst\t#5,d1");
+        Emit("\tbeq.s\t.not_68882");
+        Emit("\tmove.l\t#2,_system_FPU\t; SystemFPU::M68882");
+        Emit("\tbra\t.done");
+        Emit("");
+
+        Emit(".not_68882:");
+        // Check for 68881
+        Emit("\t; Check for 68881");
+        Emit("\tbtst\t#4,d1");
+        Emit("\tbeq\t.no_fpu");
+        Emit("\tmove.l\t#1,_system_FPU\t; SystemFPU::M68881");
+        Emit("\tbra\t.done");
+        Emit("");
+
+        Emit(".no_fpu:");
+        Emit("\t; No FPU (already 0 = SystemFPU::None)");
         Emit("");
 
         Emit(".done:");
+        Emit("\t; Chipset detection would go here (requires GfxBase)");
+        Emit("\t; For now, default to OCS (0)");
         Emit("\trts");
         Emit("");
     }
@@ -2372,9 +2561,23 @@ public partial class M68kCodeGenerator
 
         if (enumValue is IrVariable enumVar)
         {
-            // Load tag from variable location (offset 0)
-            var offset = _localVariableOffsets[enumVar.Name];
-            Emit($"\tmove.l\t{offset}(a6),d0\t\t; Load enum tag");
+            // Check if it's a global system variable (CPU, FPU, Chipset)
+            if (enumVar.Name == "CPU" || enumVar.Name == "FPU" || enumVar.Name == "Chipset")
+            {
+                // Load tag directly from global label
+                var globalLabel = $"_system_{enumVar.Name}";
+                Emit($"\tmove.l\t{globalLabel},d0\t\t; Load enum tag from global");
+            }
+            else if (_localVariableOffsets.ContainsKey(enumVar.Name))
+            {
+                // Load tag from local variable location (offset 0)
+                var offset = _localVariableOffsets[enumVar.Name];
+                Emit($"\tmove.l\t{offset}(a6),d0\t\t; Load enum tag");
+            }
+            else
+            {
+                throw new Exception($"Variable '{enumVar.Name}' not found in local variables or globals");
+            }
         }
         else if (enumValue is IrEnumValue enumVal)
         {

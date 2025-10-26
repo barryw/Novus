@@ -9,8 +9,8 @@
 	xdef	_Open
 _Open:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	16(sp),d2	; accessMode
+	move.l	16(sp),d1	; name
+	move.l	20(sp),d2	; accessMode
 	move.l	_DOSBase,a6
 	jsr	-30(a6)	; Open()
 	movem.l	(sp)+,d1-d2/a6
@@ -30,9 +30,9 @@ _Close:
 	xdef	_Read
 _Read:
 	movem.l	d1-d3/a6,-(sp)
-	move.l	12(sp),d1	; file
-	move.l	16(sp),d2	; buffer
-	move.l	20(sp),d3	; length
+	move.l	20(sp),d1	; file (was 12)
+	move.l	24(sp),d2	; buffer (was 16)
+	move.l	28(sp),d3	; length (was 20)
 	move.l	_DOSBase,a6
 	jsr	-42(a6)	; Read()
 	movem.l	(sp)+,d1-d3/a6
@@ -42,9 +42,9 @@ _Read:
 	xdef	_Write
 _Write:
 	movem.l	d1-d3/a6,-(sp)
-	move.l	12(sp),d1	; file
-	move.l	16(sp),d2	; buffer
-	move.l	20(sp),d3	; length
+	move.l	20(sp),d1	; file (was 12)
+	move.l	24(sp),d2	; buffer (was 16)
+	move.l	28(sp),d3	; length (was 20)
 	move.l	_DOSBase,a6
 	jsr	-48(a6)	; Write()
 	movem.l	(sp)+,d1-d3/a6
@@ -72,9 +72,9 @@ _Output:
 	xdef	_Seek
 _Seek:
 	movem.l	d1-d3/a6,-(sp)
-	move.l	12(sp),d1	; file
-	move.l	16(sp),d2	; position
-	move.l	20(sp),d3	; offset
+	move.l	20(sp),d1	; file (was 12)
+	move.l	24(sp),d2	; position (was 16)
+	move.l	28(sp),d3	; offset (was 20)
 	move.l	_DOSBase,a6
 	jsr	-66(a6)	; Seek()
 	movem.l	(sp)+,d1-d3/a6
@@ -94,8 +94,8 @@ _DeleteFile:
 	xdef	_Rename
 _Rename:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; oldName
-	move.l	16(sp),d2	; newName
+	move.l	16(sp),d1	; oldName
+	move.l	20(sp),d2	; newName
 	move.l	_DOSBase,a6
 	jsr	-78(a6)	; Rename()
 	movem.l	(sp)+,d1-d2/a6
@@ -105,8 +105,8 @@ _Rename:
 	xdef	_Lock
 _Lock:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	16(sp),d2	; type
+	move.l	16(sp),d1	; name
+	move.l	20(sp),d2	; type
 	move.l	_DOSBase,a6
 	jsr	-84(a6)	; Lock()
 	movem.l	(sp)+,d1-d2/a6
@@ -136,8 +136,8 @@ _DupLock:
 	xdef	_Examine
 _Examine:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; lock
-	move.l	16(sp),d2	; fileInfoBlock
+	move.l	16(sp),d1	; lock
+	move.l	20(sp),d2	; fileInfoBlock
 	move.l	_DOSBase,a6
 	jsr	-102(a6)	; Examine()
 	movem.l	(sp)+,d1-d2/a6
@@ -147,8 +147,8 @@ _Examine:
 	xdef	_ExNext
 _ExNext:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; lock
-	move.l	16(sp),d2	; fileInfoBlock
+	move.l	16(sp),d1	; lock
+	move.l	20(sp),d2	; fileInfoBlock
 	move.l	_DOSBase,a6
 	jsr	-108(a6)	; ExNext()
 	movem.l	(sp)+,d1-d2/a6
@@ -158,8 +158,8 @@ _ExNext:
 	xdef	_Info
 _Info:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; lock
-	move.l	16(sp),d2	; parameterBlock
+	move.l	16(sp),d1	; lock
+	move.l	20(sp),d2	; parameterBlock
 	move.l	_DOSBase,a6
 	jsr	-114(a6)	; Info()
 	movem.l	(sp)+,d1-d2/a6
@@ -198,10 +198,10 @@ _IoErr:
 	xdef	_CreateProc
 _CreateProc:
 	movem.l	d1-d4/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	16(sp),d2	; pri
-	move.l	20(sp),d3	; segList
-	move.l	24(sp),d4	; stackSize
+	move.l	24(sp),d1	; name
+	move.l	28(sp),d2	; pri
+	move.l	32(sp),d3	; segList
+	move.l	36(sp),d4	; stackSize
 	move.l	_DOSBase,a6
 	jsr	-138(a6)	; CreateProc()
 	movem.l	(sp)+,d1-d4/a6
@@ -251,8 +251,8 @@ _DeviceProc:
 	xdef	_SetComment
 _SetComment:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	16(sp),d2	; comment
+	move.l	16(sp),d1	; name
+	move.l	20(sp),d2	; comment
 	move.l	_DOSBase,a6
 	jsr	-180(a6)	; SetComment()
 	movem.l	(sp)+,d1-d2/a6
@@ -262,8 +262,8 @@ _SetComment:
 	xdef	_SetProtection
 _SetProtection:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	16(sp),d2	; protect
+	move.l	16(sp),d1	; name
+	move.l	20(sp),d2	; protect
 	move.l	_DOSBase,a6
 	jsr	-186(a6)	; SetProtection()
 	movem.l	(sp)+,d1-d2/a6
@@ -293,8 +293,8 @@ _Delay:
 	xdef	_WaitForChar
 _WaitForChar:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; file
-	move.l	16(sp),d2	; timeout
+	move.l	16(sp),d1	; file
+	move.l	20(sp),d2	; timeout
 	move.l	_DOSBase,a6
 	jsr	-204(a6)	; WaitForChar()
 	movem.l	(sp)+,d1-d2/a6
@@ -336,8 +336,8 @@ _Execute:
 	xdef	_AllocDosObject
 _AllocDosObject:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; type
-	move.l	16(sp),d2	; tags
+	move.l	16(sp),d1	; type
+	move.l	20(sp),d2	; tags
 	move.l	_DOSBase,a6
 	jsr	-228(a6)	; AllocDosObject()
 	movem.l	(sp)+,d1-d2/a6
@@ -347,8 +347,8 @@ _AllocDosObject:
 	xdef	_FreeDosObject
 _FreeDosObject:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; type
-	move.l	16(sp),d2	; ptr
+	move.l	16(sp),d1	; type
+	move.l	20(sp),d2	; ptr
 	move.l	_DOSBase,a6
 	jsr	-234(a6)	; FreeDosObject()
 	movem.l	(sp)+,d1-d2/a6
@@ -358,13 +358,13 @@ _FreeDosObject:
 	xdef	_DoPkt
 _DoPkt:
 	movem.l	d1-d7/a6,-(sp)
-	move.l	12(sp),d1	; port
-	move.l	16(sp),d2	; action
-	move.l	20(sp),d3	; arg1
-	move.l	24(sp),d4	; arg2
-	move.l	28(sp),d5	; arg3
-	move.l	32(sp),d6	; arg4
-	move.l	36(sp),d7	; arg5
+	move.l	36(sp),d1	; port
+	move.l	40(sp),d2	; action
+	move.l	44(sp),d3	; arg1
+	move.l	48(sp),d4	; arg2
+	move.l	52(sp),d5	; arg3
+	move.l	56(sp),d6	; arg4
+	move.l	60(sp),d7	; arg5
 	move.l	_DOSBase,a6
 	jsr	-240(a6)	; DoPkt()
 	movem.l	(sp)+,d1-d7/a6
@@ -407,8 +407,8 @@ _ReplyPkt:
 	xdef	_AbortPkt
 _AbortPkt:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; port
-	move.l	16(sp),d2	; pkt
+	move.l	16(sp),d1	; port
+	move.l	20(sp),d2	; pkt
 	move.l	_DOSBase,a6
 	jsr	-264(a6)	; AbortPkt()
 	movem.l	(sp)+,d1-d2/a6
@@ -418,11 +418,11 @@ _AbortPkt:
 	xdef	_LockRecord
 _LockRecord:
 	movem.l	d1-d5/a6,-(sp)
-	move.l	12(sp),d1	; fh
-	move.l	16(sp),d2	; offset
-	move.l	20(sp),d3	; length
-	move.l	24(sp),d4	; mode
-	move.l	28(sp),d5	; timeout
+	move.l	28(sp),d1	; fh
+	move.l	32(sp),d2	; offset
+	move.l	36(sp),d3	; length
+	move.l	40(sp),d4	; mode
+	move.l	44(sp),d5	; timeout
 	move.l	_DOSBase,a6
 	jsr	-270(a6)	; LockRecord()
 	movem.l	(sp)+,d1-d5/a6
@@ -432,8 +432,8 @@ _LockRecord:
 	xdef	_LockRecords
 _LockRecords:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; recArray
-	move.l	16(sp),d2	; timeout
+	move.l	16(sp),d1	; recArray
+	move.l	20(sp),d2	; timeout
 	move.l	_DOSBase,a6
 	jsr	-276(a6)	; LockRecords()
 	movem.l	(sp)+,d1-d2/a6
@@ -495,8 +495,8 @@ _FGetC:
 	xdef	_FPutC
 _FPutC:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; fh
-	move.l	16(sp),d2	; ch
+	move.l	16(sp),d1	; fh
+	move.l	20(sp),d2	; ch
 	move.l	_DOSBase,a6
 	jsr	-312(a6)	; FPutC()
 	movem.l	(sp)+,d1-d2/a6
@@ -506,8 +506,8 @@ _FPutC:
 	xdef	_UnGetC
 _UnGetC:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; fh
-	move.l	16(sp),d2	; character
+	move.l	16(sp),d1	; fh
+	move.l	20(sp),d2	; character
 	move.l	_DOSBase,a6
 	jsr	-318(a6)	; UnGetC()
 	movem.l	(sp)+,d1-d2/a6
@@ -517,10 +517,10 @@ _UnGetC:
 	xdef	_FRead
 _FRead:
 	movem.l	d1-d4/a6,-(sp)
-	move.l	12(sp),d1	; fh
-	move.l	16(sp),d2	; block
-	move.l	20(sp),d3	; blocklen
-	move.l	24(sp),d4	; number
+	move.l	24(sp),d1	; fh
+	move.l	28(sp),d2	; block
+	move.l	32(sp),d3	; blocklen
+	move.l	36(sp),d4	; number
 	move.l	_DOSBase,a6
 	jsr	-324(a6)	; FRead()
 	movem.l	(sp)+,d1-d4/a6
@@ -530,10 +530,10 @@ _FRead:
 	xdef	_FWrite
 _FWrite:
 	movem.l	d1-d4/a6,-(sp)
-	move.l	12(sp),d1	; fh
-	move.l	16(sp),d2	; block
-	move.l	20(sp),d3	; blocklen
-	move.l	24(sp),d4	; number
+	move.l	24(sp),d1	; fh
+	move.l	28(sp),d2	; block
+	move.l	32(sp),d3	; blocklen
+	move.l	36(sp),d4	; number
 	move.l	_DOSBase,a6
 	jsr	-330(a6)	; FWrite()
 	movem.l	(sp)+,d1-d4/a6
@@ -555,8 +555,8 @@ _FGets:
 	xdef	_FPuts
 _FPuts:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; fh
-	move.l	16(sp),d2	; str
+	move.l	16(sp),d1	; fh
+	move.l	20(sp),d2	; str
 	move.l	_DOSBase,a6
 	jsr	-342(a6)	; FPuts()
 	movem.l	(sp)+,d1-d2/a6
@@ -600,10 +600,10 @@ _Flush:
 	xdef	_SetVBuf
 _SetVBuf:
 	movem.l	d1-d4/a6,-(sp)
-	move.l	12(sp),d1	; fh
-	move.l	16(sp),d2	; buff
-	move.l	20(sp),d3	; type
-	move.l	24(sp),d4	; size
+	move.l	24(sp),d1	; fh
+	move.l	28(sp),d2	; buff
+	move.l	32(sp),d3	; type
+	move.l	36(sp),d4	; size
 	move.l	_DOSBase,a6
 	jsr	-366(a6)	; SetVBuf()
 	movem.l	(sp)+,d1-d4/a6
@@ -643,8 +643,8 @@ _ParentOfFH:
 	xdef	_ExamineFH
 _ExamineFH:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; fh
-	move.l	16(sp),d2	; fib
+	move.l	16(sp),d1	; fh
+	move.l	20(sp),d2	; fib
 	move.l	_DOSBase,a6
 	jsr	-390(a6)	; ExamineFH()
 	movem.l	(sp)+,d1-d2/a6
@@ -654,8 +654,8 @@ _ExamineFH:
 	xdef	_SetFileDate
 _SetFileDate:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	16(sp),d2	; date
+	move.l	16(sp),d1	; name
+	move.l	20(sp),d2	; date
 	move.l	_DOSBase,a6
 	jsr	-396(a6)	; SetFileDate()
 	movem.l	(sp)+,d1-d2/a6
@@ -689,11 +689,11 @@ _NameFromFH:
 	xdef	_SplitName
 _SplitName:
 	movem.l	d1-d5/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	16(sp),d2	; separator
-	move.l	20(sp),d3	; buf
-	move.l	24(sp),d4	; oldpos
-	move.l	28(sp),d5	; size
+	move.l	28(sp),d1	; name
+	move.l	32(sp),d2	; separator
+	move.l	36(sp),d3	; buf
+	move.l	40(sp),d4	; oldpos
+	move.l	44(sp),d5	; size
 	move.l	_DOSBase,a6
 	jsr	-414(a6)	; SplitName()
 	movem.l	(sp)+,d1-d5/a6
@@ -703,8 +703,8 @@ _SplitName:
 	xdef	_SameLock
 _SameLock:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; lock1
-	move.l	16(sp),d2	; lock2
+	move.l	16(sp),d1	; lock1
+	move.l	20(sp),d2	; lock2
 	move.l	_DOSBase,a6
 	jsr	-420(a6)	; SameLock()
 	movem.l	(sp)+,d1-d2/a6
@@ -714,8 +714,8 @@ _SameLock:
 	xdef	_SetMode
 _SetMode:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; fh
-	move.l	16(sp),d2	; mode
+	move.l	16(sp),d1	; fh
+	move.l	20(sp),d2	; mode
 	move.l	_DOSBase,a6
 	jsr	-426(a6)	; SetMode()
 	movem.l	(sp)+,d1-d2/a6
@@ -725,11 +725,11 @@ _SetMode:
 	xdef	_ExAll
 _ExAll:
 	movem.l	d1-d5/a6,-(sp)
-	move.l	12(sp),d1	; lock
-	move.l	16(sp),d2	; buffer
-	move.l	20(sp),d3	; size
-	move.l	24(sp),d4	; data
-	move.l	28(sp),d5	; control
+	move.l	28(sp),d1	; lock
+	move.l	32(sp),d2	; buffer
+	move.l	36(sp),d3	; size
+	move.l	40(sp),d4	; data
+	move.l	44(sp),d5	; control
 	move.l	_DOSBase,a6
 	jsr	-432(a6)	; ExAll()
 	movem.l	(sp)+,d1-d5/a6
@@ -739,11 +739,11 @@ _ExAll:
 	xdef	_ReadLink
 _ReadLink:
 	movem.l	d1-d5/a6,-(sp)
-	move.l	12(sp),d1	; port
-	move.l	16(sp),d2	; lock
-	move.l	20(sp),d3	; path
-	move.l	24(sp),d4	; buffer
-	move.l	28(sp),d5	; size
+	move.l	28(sp),d1	; port
+	move.l	32(sp),d2	; lock
+	move.l	36(sp),d3	; path
+	move.l	40(sp),d4	; buffer
+	move.l	44(sp),d5	; size
 	move.l	_DOSBase,a6
 	jsr	-438(a6)	; ReadLink()
 	movem.l	(sp)+,d1-d5/a6
@@ -799,10 +799,10 @@ _SetIoErr:
 	xdef	_Fault
 _Fault:
 	movem.l	d1-d4/a6,-(sp)
-	move.l	12(sp),d1	; code
-	move.l	16(sp),d2	; header
-	move.l	20(sp),d3	; buffer
-	move.l	24(sp),d4	; len
+	move.l	24(sp),d1	; code
+	move.l	28(sp),d2	; header
+	move.l	32(sp),d3	; buffer
+	move.l	36(sp),d4	; len
 	move.l	_DOSBase,a6
 	jsr	-468(a6)	; Fault()
 	movem.l	(sp)+,d1-d4/a6
@@ -812,8 +812,8 @@ _Fault:
 	xdef	_PrintFault
 _PrintFault:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; code
-	move.l	16(sp),d2	; header
+	move.l	16(sp),d1	; code
+	move.l	20(sp),d2	; header
 	move.l	_DOSBase,a6
 	jsr	-474(a6)	; PrintFault()
 	movem.l	(sp)+,d1-d2/a6
@@ -823,10 +823,10 @@ _PrintFault:
 	xdef	_ErrorReport
 _ErrorReport:
 	movem.l	d1-d4/a6,-(sp)
-	move.l	12(sp),d1	; code
-	move.l	16(sp),d2	; type
-	move.l	20(sp),d3	; arg1
-	move.l	24(sp),d4	; device
+	move.l	24(sp),d1	; code
+	move.l	28(sp),d2	; type
+	move.l	32(sp),d3	; arg1
+	move.l	36(sp),d4	; device
 	move.l	_DOSBase,a6
 	jsr	-480(a6)	; ErrorReport()
 	movem.l	(sp)+,d1-d4/a6
@@ -855,10 +855,10 @@ _CreateNewProc:
 	xdef	_RunCommand
 _RunCommand:
 	movem.l	d1-d4/a6,-(sp)
-	move.l	12(sp),d1	; seg
-	move.l	16(sp),d2	; stack
-	move.l	20(sp),d3	; paramptr
-	move.l	24(sp),d4	; paramlen
+	move.l	24(sp),d1	; seg
+	move.l	28(sp),d2	; stack
+	move.l	32(sp),d3	; paramptr
+	move.l	36(sp),d4	; paramlen
 	move.l	_DOSBase,a6
 	jsr	-504(a6)	; RunCommand()
 	movem.l	(sp)+,d1-d4/a6
@@ -954,8 +954,8 @@ _SetCurrentDirName:
 	xdef	_GetCurrentDirName
 _GetCurrentDirName:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; buf
-	move.l	16(sp),d2	; len
+	move.l	16(sp),d1	; buf
+	move.l	20(sp),d2	; len
 	move.l	_DOSBase,a6
 	jsr	-564(a6)	; GetCurrentDirName()
 	movem.l	(sp)+,d1-d2/a6
@@ -975,8 +975,8 @@ _SetProgramName:
 	xdef	_GetProgramName
 _GetProgramName:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; buf
-	move.l	16(sp),d2	; len
+	move.l	16(sp),d1	; buf
+	move.l	20(sp),d2	; len
 	move.l	_DOSBase,a6
 	jsr	-576(a6)	; GetProgramName()
 	movem.l	(sp)+,d1-d2/a6
@@ -996,8 +996,8 @@ _SetPrompt:
 	xdef	_GetPrompt
 _GetPrompt:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; buf
-	move.l	16(sp),d2	; len
+	move.l	16(sp),d1	; buf
+	move.l	20(sp),d2	; len
 	move.l	_DOSBase,a6
 	jsr	-588(a6)	; GetPrompt()
 	movem.l	(sp)+,d1-d2/a6
@@ -1026,8 +1026,8 @@ _GetProgramDir:
 	xdef	_SystemTagList
 _SystemTagList:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; command
-	move.l	16(sp),d2	; tags
+	move.l	16(sp),d1	; command
+	move.l	20(sp),d2	; tags
 	move.l	_DOSBase,a6
 	jsr	-606(a6)	; SystemTagList()
 	movem.l	(sp)+,d1-d2/a6
@@ -1037,8 +1037,8 @@ _SystemTagList:
 	xdef	_AssignLock
 _AssignLock:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	16(sp),d2	; lock
+	move.l	16(sp),d1	; name
+	move.l	20(sp),d2	; lock
 	move.l	_DOSBase,a6
 	jsr	-612(a6)	; AssignLock()
 	movem.l	(sp)+,d1-d2/a6
@@ -1048,8 +1048,8 @@ _AssignLock:
 	xdef	_AssignLate
 _AssignLate:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	16(sp),d2	; path
+	move.l	16(sp),d1	; name
+	move.l	20(sp),d2	; path
 	move.l	_DOSBase,a6
 	jsr	-618(a6)	; AssignLate()
 	movem.l	(sp)+,d1-d2/a6
@@ -1059,8 +1059,8 @@ _AssignLate:
 	xdef	_AssignPath
 _AssignPath:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	16(sp),d2	; path
+	move.l	16(sp),d1	; name
+	move.l	20(sp),d2	; path
 	move.l	_DOSBase,a6
 	jsr	-624(a6)	; AssignPath()
 	movem.l	(sp)+,d1-d2/a6
@@ -1070,8 +1070,8 @@ _AssignPath:
 	xdef	_AssignAdd
 _AssignAdd:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	16(sp),d2	; lock
+	move.l	16(sp),d1	; name
+	move.l	20(sp),d2	; lock
 	move.l	_DOSBase,a6
 	jsr	-630(a6)	; AssignAdd()
 	movem.l	(sp)+,d1-d2/a6
@@ -1081,8 +1081,8 @@ _AssignAdd:
 	xdef	_RemAssignList
 _RemAssignList:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	16(sp),d2	; lock
+	move.l	16(sp),d1	; name
+	move.l	20(sp),d2	; lock
 	move.l	_DOSBase,a6
 	jsr	-636(a6)	; RemAssignList()
 	movem.l	(sp)+,d1-d2/a6
@@ -1092,8 +1092,8 @@ _RemAssignList:
 	xdef	_GetDeviceProc
 _GetDeviceProc:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	16(sp),d2	; dp
+	move.l	16(sp),d1	; name
+	move.l	20(sp),d2	; dp
 	move.l	_DOSBase,a6
 	jsr	-642(a6)	; GetDeviceProc()
 	movem.l	(sp)+,d1-d2/a6
@@ -1175,8 +1175,8 @@ _FindDosEntry:
 	xdef	_NextDosEntry
 _NextDosEntry:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; dlist
-	move.l	16(sp),d2	; flags
+	move.l	16(sp),d1	; dlist
+	move.l	20(sp),d2	; flags
 	move.l	_DOSBase,a6
 	jsr	-690(a6)	; NextDosEntry()
 	movem.l	(sp)+,d1-d2/a6
@@ -1186,8 +1186,8 @@ _NextDosEntry:
 	xdef	_MakeDosEntry
 _MakeDosEntry:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	16(sp),d2	; type
+	move.l	16(sp),d1	; name
+	move.l	20(sp),d2	; type
 	move.l	_DOSBase,a6
 	jsr	-696(a6)	; MakeDosEntry()
 	movem.l	(sp)+,d1-d2/a6
@@ -1229,8 +1229,8 @@ _Format:
 	xdef	_Relabel
 _Relabel:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; drive
-	move.l	16(sp),d2	; newname
+	move.l	16(sp),d1	; drive
+	move.l	20(sp),d2	; newname
 	move.l	_DOSBase,a6
 	jsr	-720(a6)	; Relabel()
 	movem.l	(sp)+,d1-d2/a6
@@ -1240,8 +1240,8 @@ _Relabel:
 	xdef	_Inhibit
 _Inhibit:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	16(sp),d2	; onoff
+	move.l	16(sp),d1	; name
+	move.l	20(sp),d2	; onoff
 	move.l	_DOSBase,a6
 	jsr	-726(a6)	; Inhibit()
 	movem.l	(sp)+,d1-d2/a6
@@ -1251,8 +1251,8 @@ _Inhibit:
 	xdef	_AddBuffers
 _AddBuffers:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	16(sp),d2	; number
+	move.l	16(sp),d1	; name
+	move.l	20(sp),d2	; number
 	move.l	_DOSBase,a6
 	jsr	-732(a6)	; AddBuffers()
 	movem.l	(sp)+,d1-d2/a6
@@ -1262,8 +1262,8 @@ _AddBuffers:
 	xdef	_CompareDates
 _CompareDates:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; date1
-	move.l	16(sp),d2	; date2
+	move.l	16(sp),d1	; date1
+	move.l	20(sp),d2	; date2
 	move.l	_DOSBase,a6
 	jsr	-738(a6)	; CompareDates()
 	movem.l	(sp)+,d1-d2/a6
@@ -1317,8 +1317,8 @@ _InternalUnLoadSeg:
 	xdef	_NewLoadSeg
 _NewLoadSeg:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; file
-	move.l	16(sp),d2	; tags
+	move.l	16(sp),d1	; file
+	move.l	20(sp),d2	; tags
 	move.l	_DOSBase,a6
 	jsr	-768(a6)	; NewLoadSeg()
 	movem.l	(sp)+,d1-d2/a6
@@ -1384,8 +1384,8 @@ _ReadArgs:
 	xdef	_FindArg
 _FindArg:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; keyword
-	move.l	16(sp),d2	; arg_template
+	move.l	16(sp),d1	; keyword
+	move.l	20(sp),d2	; arg_template
 	move.l	_DOSBase,a6
 	jsr	-804(a6)	; FindArg()
 	movem.l	(sp)+,d1-d2/a6
@@ -1407,8 +1407,8 @@ _ReadItem:
 	xdef	_StrToLong
 _StrToLong:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; string
-	move.l	16(sp),d2	; value
+	move.l	16(sp),d1	; string
+	move.l	20(sp),d2	; value
 	move.l	_DOSBase,a6
 	jsr	-816(a6)	; StrToLong()
 	movem.l	(sp)+,d1-d2/a6
@@ -1418,8 +1418,8 @@ _StrToLong:
 	xdef	_MatchFirst
 _MatchFirst:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; pat
-	move.l	16(sp),d2	; anchor
+	move.l	16(sp),d1	; pat
+	move.l	20(sp),d2	; anchor
 	move.l	_DOSBase,a6
 	jsr	-822(a6)	; MatchFirst()
 	movem.l	(sp)+,d1-d2/a6
@@ -1461,8 +1461,8 @@ _ParsePattern:
 	xdef	_MatchPattern
 _MatchPattern:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; pat
-	move.l	16(sp),d2	; str
+	move.l	16(sp),d1	; pat
+	move.l	20(sp),d2	; str
 	move.l	_DOSBase,a6
 	jsr	-846(a6)	; MatchPattern()
 	movem.l	(sp)+,d1-d2/a6
@@ -1534,10 +1534,10 @@ _EndNotify:
 	xdef	_SetVar
 _SetVar:
 	movem.l	d1-d4/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	16(sp),d2	; buffer
-	move.l	20(sp),d3	; size
-	move.l	24(sp),d4	; flags
+	move.l	24(sp),d1	; name
+	move.l	28(sp),d2	; buffer
+	move.l	32(sp),d3	; size
+	move.l	36(sp),d4	; flags
 	move.l	_DOSBase,a6
 	jsr	-900(a6)	; SetVar()
 	movem.l	(sp)+,d1-d4/a6
@@ -1547,10 +1547,10 @@ _SetVar:
 	xdef	_GetVar
 _GetVar:
 	movem.l	d1-d4/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	16(sp),d2	; buffer
-	move.l	20(sp),d3	; size
-	move.l	24(sp),d4	; flags
+	move.l	24(sp),d1	; name
+	move.l	28(sp),d2	; buffer
+	move.l	32(sp),d3	; size
+	move.l	36(sp),d4	; flags
 	move.l	_DOSBase,a6
 	jsr	-906(a6)	; GetVar()
 	movem.l	(sp)+,d1-d4/a6
@@ -1560,8 +1560,8 @@ _GetVar:
 	xdef	_DeleteVar
 _DeleteVar:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	16(sp),d2	; flags
+	move.l	16(sp),d1	; name
+	move.l	20(sp),d2	; flags
 	move.l	_DOSBase,a6
 	jsr	-912(a6)	; DeleteVar()
 	movem.l	(sp)+,d1-d2/a6
@@ -1571,8 +1571,8 @@ _DeleteVar:
 	xdef	_FindVar
 _FindVar:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	16(sp),d2	; type
+	move.l	16(sp),d1	; name
+	move.l	20(sp),d2	; type
 	move.l	_DOSBase,a6
 	jsr	-918(a6)	; FindVar()
 	movem.l	(sp)+,d1-d2/a6
@@ -1602,8 +1602,8 @@ _CliInitRun:
 	xdef	_WriteChars
 _WriteChars:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; buf
-	move.l	16(sp),d2	; buflen
+	move.l	16(sp),d1	; buf
+	move.l	20(sp),d2	; buflen
 	move.l	_DOSBase,a6
 	jsr	-942(a6)	; WriteChars()
 	movem.l	(sp)+,d1-d2/a6
@@ -1623,8 +1623,8 @@ _PutStr:
 	xdef	_VPrintf
 _VPrintf:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; format
-	move.l	16(sp),d2	; argarray
+	move.l	16(sp),d1	; format
+	move.l	20(sp),d2	; argarray
 	move.l	_DOSBase,a6
 	jsr	-954(a6)	; VPrintf()
 	movem.l	(sp)+,d1-d2/a6
@@ -1646,8 +1646,8 @@ _ParsePatternNoCase:
 	xdef	_MatchPatternNoCase
 _MatchPatternNoCase:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; pat
-	move.l	16(sp),d2	; str
+	move.l	16(sp),d1	; pat
+	move.l	20(sp),d2	; str
 	move.l	_DOSBase,a6
 	jsr	-972(a6)	; MatchPatternNoCase()
 	movem.l	(sp)+,d1-d2/a6
@@ -1657,8 +1657,8 @@ _MatchPatternNoCase:
 	xdef	_SameDevice
 _SameDevice:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; lock1
-	move.l	16(sp),d2	; lock2
+	move.l	16(sp),d1	; lock1
+	move.l	20(sp),d2	; lock2
 	move.l	_DOSBase,a6
 	jsr	-984(a6)	; SameDevice()
 	movem.l	(sp)+,d1-d2/a6
@@ -1668,11 +1668,11 @@ _SameDevice:
 	xdef	_ExAllEnd
 _ExAllEnd:
 	movem.l	d1-d5/a6,-(sp)
-	move.l	12(sp),d1	; lock
-	move.l	16(sp),d2	; buffer
-	move.l	20(sp),d3	; size
-	move.l	24(sp),d4	; data
-	move.l	28(sp),d5	; control
+	move.l	28(sp),d1	; lock
+	move.l	32(sp),d2	; buffer
+	move.l	36(sp),d3	; size
+	move.l	40(sp),d4	; data
+	move.l	44(sp),d5	; control
 	move.l	_DOSBase,a6
 	jsr	-990(a6)	; ExAllEnd()
 	movem.l	(sp)+,d1-d5/a6
@@ -1682,8 +1682,8 @@ _ExAllEnd:
 	xdef	_SetOwner
 _SetOwner:
 	movem.l	d1-d2/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	16(sp),d2	; owner_info
+	move.l	16(sp),d1	; name
+	move.l	20(sp),d2	; owner_info
 	move.l	_DOSBase,a6
 	jsr	-996(a6)	; SetOwner()
 	movem.l	(sp)+,d1-d2/a6

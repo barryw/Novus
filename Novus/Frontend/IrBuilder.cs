@@ -1630,6 +1630,21 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
         }
 
+        // Check if it's a known system global variable (CPU, FPU, Chipset)
+        // These are declared in system.novus as extern vars
+        if (name == "CPU" && _enums.ContainsKey("SystemCPU"))
+        {
+            return new IrVariable(name, _enums["SystemCPU"]);
+        }
+        if (name == "FPU" && _enums.ContainsKey("SystemFPU"))
+        {
+            return new IrVariable(name, _enums["SystemFPU"]);
+        }
+        if (name == "Chipset" && _enums.ContainsKey("SystemChipset"))
+        {
+            return new IrVariable(name, _enums["SystemChipset"]);
+        }
+
         // Otherwise, assume it's a temporary variable or function name
         return new IrVariable(name, IrIntType.I32); // Default type for temps
     }
@@ -1758,10 +1773,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Generate labels for match arms and end
         var matchEndLabel = $"match_end_{_labelCounter}";
         var armLabels = new List<string>();
+        var checkLabels = new List<string>();
 
         for (int i = 0; i < context.matchArm().Length; i++)
         {
             armLabels.Add($"match_arm_{_labelCounter}_{i}");
+            checkLabels.Add($"match_check_{_labelCounter}_{i}");
         }
         _labelCounter++;
 
@@ -1775,6 +1792,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
         {
             var armCtx = context.matchArm()[i];
             var pattern = armCtx.pattern();
+
+            // Add label for this check
+            _currentBlock!.AddInstruction(new IrLabel(checkLabels[i]));
 
             // Check if this is a wildcard pattern
             if (pattern is NovusParser.WildcardPatternContext)
@@ -1809,8 +1829,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 _currentBlock!.AddInstruction(new IrBinaryOp(cmpName, IrBinaryOp.OpKind.Eq, tagVar, tagConst, IrBoolType.Instance));
                 var cmpVar = new IrVariable(cmpName, IrBoolType.Instance);
 
-                // Branch: if match, go to arm, otherwise continue to next pattern
-                var nextLabel = i < armLabels.Count - 1 ? armLabels[i + 1] : matchEndLabel;
+                // Branch: if match, go to arm, otherwise continue to next check
+                var nextLabel = i < checkLabels.Count - 1 ? checkLabels[i + 1] : matchEndLabel;
                 _currentBlock!.AddInstruction(new IrConditionalBranch(cmpVar, armLabels[i], nextLabel));
             }
         }

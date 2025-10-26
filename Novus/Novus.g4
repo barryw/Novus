@@ -3,7 +3,7 @@ grammar Novus;
 // Parser Rules
 
 compilationUnit
-    : importDeclaration* (constDeclaration | structDeclaration | enumDeclaration | functionDeclaration)* EOF
+    : importDeclaration* (constDeclaration | globalVariableDeclaration | structDeclaration | enumDeclaration | functionDeclaration)* EOF
     ;
 
 importDeclaration
@@ -21,6 +21,10 @@ importName
 
 constDeclaration
     : 'pub'? 'const' IDENTIFIER ':' type '=' expression
+    ;
+
+globalVariableDeclaration
+    : 'extern' 'var' IDENTIFIER ':' type
     ;
 
 functionDeclaration

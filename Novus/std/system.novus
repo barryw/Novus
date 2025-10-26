@@ -1,0 +1,35 @@
+// system.novus - System hardware detection
+// Provides enums and variables for runtime hardware detection on Amiga
+
+// CPU types detected via ExecBase->AttnFlags
+pub enum SystemCPU {
+    M68000,    // 68000 (7.14 MHz on A500/A1000/A2000)
+    M68010,    // 68010 (rare)
+    M68020,    // 68020 (14 MHz on A1200/A3000)
+    M68030,    // 68030 (25-50 MHz on accelerators)
+    M68040,    // 68040 (25-40 MHz on A4000/accelerators)
+    M68060,    // 68060 (50-75 MHz on accelerators)
+}
+
+// FPU types detected via ExecBase->AttnFlags
+pub enum SystemFPU {
+    None,      // No FPU present
+    M68881,    // 68881 coprocessor (separate chip)
+    M68882,    // 68882 coprocessor (separate chip)
+    M68040,    // 68040 internal FPU
+    M68060,    // 68060 internal FPU
+}
+
+// Chipset types detected via GfxBase->ChipRevBits0
+pub enum SystemChipset {
+    OCS,       // Original Chip Set (A500/A1000/A2000)
+    ECS,       // Enhanced Chip Set (A500+/A600/A2000)
+    AGA,       // Advanced Graphics Architecture (A1200/A4000/CD32)
+}
+
+// Global variables set during startup by the runtime
+// These are initialized before main() is called
+// Values are set by the runtime's __detect_cpu routine
+extern var CPU: SystemCPU
+extern var FPU: SystemFPU
+extern var Chipset: SystemChipset

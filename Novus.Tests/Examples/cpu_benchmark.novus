@@ -4,6 +4,7 @@
 // (Default --cpu auto creates a fat binary that works optimally on all CPUs)
 
 from dos import Output, Write
+from system import CPU, FPU, SystemCPU, SystemFPU
 
 // Print header - CPU detection happens automatically in runtime
 fn print_header() {
@@ -12,6 +13,29 @@ fn print_header() {
     Write(stdout, (i32)"========================================\n", 41)
     Write(stdout, (i32)"   Novus CPU Fat Binary Benchmark\n", 35)
     Write(stdout, (i32)"========================================\n", 41)
+    Write(stdout, (i32)"\n", 1)
+
+    // Display detected CPU
+    Write(stdout, (i32)"Detected CPU: ", 14)
+    match CPU {
+        M68000 => Write(stdout, (i32)"68000\n", 6),
+        M68010 => Write(stdout, (i32)"68010\n", 6),
+        M68020 => Write(stdout, (i32)"68020\n", 6),
+        M68030 => Write(stdout, (i32)"68030\n", 6),
+        M68040 => Write(stdout, (i32)"68040\n", 6),
+        M68060 => Write(stdout, (i32)"68060\n", 6),
+    }
+
+    // Display detected FPU
+    Write(stdout, (i32)"Detected FPU: ", 14)
+    match FPU {
+        None => Write(stdout, (i32)"None\n", 5),
+        M68881 => Write(stdout, (i32)"68881\n", 6),
+        M68882 => Write(stdout, (i32)"68882\n", 6),
+        M68040 => Write(stdout, (i32)"68040 FPU\n", 10),
+        M68060 => Write(stdout, (i32)"68060 FPU\n", 10),
+    }
+
     Write(stdout, (i32)"\n", 1)
     Write(stdout, (i32)"This binary contains 3 optimized versions:\n", 44)
     Write(stdout, (i32)"  - 68000: 16x16 multiply routines\n", 35)
