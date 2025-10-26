@@ -1,70 +1,34 @@
 // io.novus - High-level I/O wrapper for Amiga DOS
 // Provides convenient functions for writing to stdout/stderr without manual length tracking
+//
+// NOTE: This module currently requires manual length tracking due to
+// limitations in pointer dereferencing. Use the manual Write() functions
+// from dos module until proper string support is added.
 
 from dos import Output, Error, Write
 from core import Result
 
-// Calculate the length of a null-terminated string
-fn strlen(s: i32) -> i32 {
-    var len = 0
-    var ptr = s
+// TODO: Calculate the length of a null-terminated string
+// This requires proper pointer type support which is not yet available
+// fn strlen(s: i32) -> i32 {
+//     var len = 0
+//     var ptr = s
+//     while *ptr != 0 {
+//         len = len + 1
+//         ptr = ptr + 1
+//     }
+//     return len
+// }
 
-    while *ptr != 0 {
-        len = len + 1
-        ptr = ptr + 1
-    }
-
-    return len
-}
-
-// Write a string to stdout
-// Returns Result with bytes written or error code
-pub fn WriteOut(message: i32) -> Result<i32, i32> {
-    let stdout = Output()
-    if stdout == 0 {
-        return Result::Err(-1)
-    }
-
-    let len = strlen(message)
-    let bytes_written = Write(stdout, message, len)
-
-    if bytes_written < 0 {
-        return Result::Err(bytes_written)
-    }
-
-    return Result::Ok(bytes_written)
-}
-
-// Write a string to stderr
-// Returns Result with bytes written or error code
-// Falls back to stdout if stderr is not available (e.g. in some emulators)
-pub fn WriteErr(message: i32) -> Result<i32, i32> {
-    var stderr = Error()
-
-    // Fallback to stdout if Error() returns 0 (not all systems support stderr)
-    if stderr == 0 {
-        stderr = Output()
-        if stderr == 0 {
-            return Result::Err(-1)
-        }
-    }
-
-    let len = strlen(message)
-    let bytes_written = Write(stderr, message, len)
-
-    if bytes_written < 0 {
-        return Result::Err(bytes_written)
-    }
-
-    return Result::Ok(bytes_written)
-}
-
-// Write a string to stdout (convenience version that ignores the result)
-pub fn print(message: i32) {
-    let result = WriteOut(message)
-}
-
-// Write a string to stderr (convenience version that ignores the result)
-pub fn eprint(message: i32) {
-    let result = WriteErr(message)
-}
+// TODO: These functions are not yet implemented due to lack of strlen
+// For now, use dos::Write() directly with manual length counting
+//
+// Example:
+//   from dos import Output, Write
+//   let stdout = Output()
+//   Write(stdout, (i32)"Hello!\n", 7)
+//
+// pub fn WriteOut(message: i32, length: i32) -> Result<i32, i32> { ... }
+// pub fn WriteErr(message: i32, length: i32) -> Result<i32, i32> { ... }
+// pub fn print(message: i32, length: i32) { ... }
+// pub fn eprint(message: i32, length: i32) { ... }
