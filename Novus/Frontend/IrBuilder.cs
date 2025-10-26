@@ -1724,6 +1724,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
     {
         return context switch
         {
+            NovusParser.ReferenceTypeContext refCtx => ParseReferenceType(refCtx),
             NovusParser.PointerTypeContext ptrCtx => ParsePointerType(ptrCtx),
             NovusParser.ArrayTypeContext arrayCtx => ParseArrayType(arrayCtx),
             NovusParser.FunctionPointerTypeContext fpCtx => ParseFunctionPointerType(fpCtx),
@@ -1731,6 +1732,18 @@ public class IrBuilder : NovusBaseVisitor<object?>
             NovusParser.NamedTypeContext namedCtx => ParseNamedType(namedCtx),
             _ => throw new Exception($"Unknown type context: {context.GetType().Name}")
         };
+    }
+
+    private IrType ParseReferenceType(NovusParser.ReferenceTypeContext context)
+    {
+        var pointeeType = ParseType(context.type());
+
+        // Check if this is a mutable reference (&mut T) or immutable reference (&T)
+        bool isMutable = context.GetChild(1)?.GetText() == "mut";
+
+        return isMutable
+            ? new IrMutReferenceType(pointeeType)
+            : new IrReferenceType(pointeeType);
     }
 
     private IrType ParsePointerType(NovusParser.PointerTypeContext context)

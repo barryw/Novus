@@ -426,6 +426,7 @@ public class IrArrayType : IrType
 
 /// <summary>
 /// Pointer type - all pointers are 32-bit addresses on 68k
+/// CAN be null - must check before dereferencing
 /// </summary>
 public class IrPointerType : IrType
 {
@@ -438,6 +439,40 @@ public class IrPointerType : IrType
 
     public override int SizeInBytes => 4; // All pointers are 32-bit on 68k
     public override string Name => $"*{PointeeType.Name}";
+}
+
+/// <summary>
+/// Immutable reference type - GUARANTEED non-null at compile time
+/// Read-only access to the referenced value
+/// </summary>
+public class IrReferenceType : IrType
+{
+    public IrType PointeeType { get; }
+
+    public IrReferenceType(IrType pointeeType)
+    {
+        PointeeType = pointeeType;
+    }
+
+    public override int SizeInBytes => 4; // References are 32-bit addresses on 68k
+    public override string Name => $"&{PointeeType.Name}";
+}
+
+/// <summary>
+/// Mutable reference type - GUARANTEED non-null at compile time
+/// Allows modification of the referenced value
+/// </summary>
+public class IrMutReferenceType : IrType
+{
+    public IrType PointeeType { get; }
+
+    public IrMutReferenceType(IrType pointeeType)
+    {
+        PointeeType = pointeeType;
+    }
+
+    public override int SizeInBytes => 4; // References are 32-bit addresses on 68k
+    public override string Name => $"&mut {PointeeType.Name}";
 }
 
 /// <summary>

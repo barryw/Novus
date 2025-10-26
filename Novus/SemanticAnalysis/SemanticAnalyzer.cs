@@ -2672,6 +2672,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     {
         return context switch
         {
+            NovusParser.ReferenceTypeContext refCtx => ParseReferenceType(refCtx),
             NovusParser.PointerTypeContext ptrCtx => ParsePointerType(ptrCtx),
             NovusParser.ArrayTypeContext arrayCtx => ParseArrayType(arrayCtx),
             NovusParser.FunctionPointerTypeContext fpCtx => ParseFunctionPointerType(fpCtx),
@@ -2679,6 +2680,18 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             NovusParser.NamedTypeContext namedCtx => ParseNamedType(namedCtx),
             _ => IrIntType.I32
         };
+    }
+
+    private IrType ParseReferenceType(NovusParser.ReferenceTypeContext context)
+    {
+        var pointeeType = ParseType(context.type());
+
+        // Check if this is a mutable reference (&mut T) or immutable reference (&T)
+        bool isMutable = context.GetChild(1)?.GetText() == "mut";
+
+        return isMutable
+            ? new IrMutReferenceType(pointeeType)
+            : new IrReferenceType(pointeeType);
     }
 
     private IrType ParsePointerType(NovusParser.PointerTypeContext context)
