@@ -29,6 +29,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     // Generic type parameters in scope (for generic enum/struct definitions)
     private readonly Dictionary<string, IrGenericType> _genericParams = new();
 
+    // Expected type for bidirectional type checking (flows down from context)
+    private IrType? _expectedType = null;
+
     public DiagnosticBag Diagnostics => _diagnostics;
 
     public SemanticAnalyzer(string filePath, string sourceCode, string stdLibPath)
@@ -649,16 +652,24 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return null;
         }
 
-        // Analyze the initializer expression
-        var exprType = Visit(context.expression());
-        if (exprType == null)
-            return null;
-
-        // Determine the variable type
+        // Determine the variable type (parse type annotation first for bidirectional checking)
         IrType varType;
         if (context.type() != null)
         {
             varType = ParseType(context.type());
+
+            // Set expected type for bidirectional type checking
+            var previousExpectedType = _expectedType;
+            _expectedType = varType;
+
+            // Analyze the initializer expression with expected type context
+            var exprType = Visit(context.expression());
+
+            // Restore previous expected type
+            _expectedType = previousExpectedType;
+
+            if (exprType == null)
+                return null;
 
             // Check type compatibility with initializer
             if (!TypesCompatible(varType, exprType))
@@ -677,7 +688,11 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
         else
         {
-            // Infer type from initializer
+            // No type annotation - infer type from initializer
+            var exprType = Visit(context.expression());
+            if (exprType == null)
+                return null;
+
             varType = exprType;
         }
 
@@ -1345,57 +1360,99 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 var irEnumType = (IrEnumType)enumType;
                 Dictionary<string, IrType>? typeSubstitutions = null;
 
-                if (context.argumentList() != null && irEnumType.GenericParameters.Count > 0)
+                if (irEnumType.GenericParameters.Count > 0)
                 {
                     // Infer generic type parameters from arguments
                     typeSubstitutions = new Dictionary<string, IrType>();
-                    var arguments = context.argumentList().expression();
 
-                    for (int i = 0; i < Math.Min(arguments.Length, variant.AssociatedData.Count); i++)
+                    if (context.argumentList() != null)
                     {
-                        var argType = Visit(arguments[i]);
-                        var expectedType = variant.AssociatedData[i];
+                        var arguments = context.argumentList().expression();
 
-                        // If expected type is a generic parameter, infer it from the argument
-                        if (expectedType is IrGenericType genericType)
+                        for (int i = 0; i < Math.Min(arguments.Length, variant.AssociatedData.Count); i++)
                         {
-                            var paramName = genericType.ParameterName;
-                            if (!typeSubstitutions.ContainsKey(paramName))
+                            var argType = Visit(arguments[i]);
+                            var expectedParamType = variant.AssociatedData[i];
+
+                            // If expected type is a generic parameter, infer it from the argument
+                            if (expectedParamType is IrGenericType genericType)
                             {
-                                if (argType != null)
+                                var paramName = genericType.ParameterName;
+                                if (!typeSubstitutions.ContainsKey(paramName))
                                 {
-                                    typeSubstitutions[paramName] = argType;
+                                    if (argType != null)
+                                    {
+                                        typeSubstitutions[paramName] = argType;
+                                    }
+                                }
+                                else
+                                {
+                                    // Check consistency - all uses of T must have same type
+                                    if (argType != null && !TypesCompatible(typeSubstitutions[paramName], argType))
+                                    {
+                                        var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
+                                        _diagnostics.ReportError(
+                                            "E0042",
+                                            $"type parameter '{paramName}' inferred as both '{TypeToString(typeSubstitutions[paramName])}' and '{TypeToString(argType)}'",
+                                            location
+                                        );
+                                    }
                                 }
                             }
                             else
                             {
-                                // Check consistency - all uses of T must have same type
-                                if (argType != null && !TypesCompatible(typeSubstitutions[paramName], argType))
+                                // Concrete type - validate compatibility
+                                if (argType != null && !TypesCompatible(expectedParamType, argType))
                                 {
                                     var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
                                     _diagnostics.ReportError(
-                                        "E0042",
-                                        $"type parameter '{paramName}' inferred as both '{TypeToString(typeSubstitutions[paramName])}' and '{TypeToString(argType)}'",
-                                        location
+                                        "E0041",
+                                        $"argument {i + 1} type mismatch",
+                                        location,
+                                        helpTexts: new List<string>
+                                        {
+                                            $"expected '{TypeToString(expectedParamType)}', got '{TypeToString(argType)}'"
+                                        }
                                     );
                                 }
                             }
                         }
-                        else
+                    }
+
+                    // Bidirectional type checking: use expected type to fill in missing parameters
+                    if (_expectedType is IrEnumType expectedEnumType &&
+                        expectedEnumType.EnumName == irEnumType.EnumName &&
+                        expectedEnumType.GenericParameters.Count == 0) // Expected type is monomorphized
+                    {
+                        // The expected type has concrete types for all parameters
+                        // Use those to fill in any parameters we couldn't infer from arguments
+                        // We need to match the generic parameters to the concrete types in the expected enum
+
+                        // Build a mapping from generic parameters to concrete types by comparing variants
+                        // Find a variant that uses each parameter and extract the concrete type
+                        for (int paramIdx = 0; paramIdx < irEnumType.GenericParameters.Count; paramIdx++)
                         {
-                            // Concrete type - validate compatibility
-                            if (argType != null && !TypesCompatible(expectedType, argType))
+                            var paramName = irEnumType.GenericParameters[paramIdx];
+                            if (!typeSubstitutions.ContainsKey(paramName))
                             {
-                                var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
-                                _diagnostics.ReportError(
-                                    "E0041",
-                                    $"argument {i + 1} type mismatch",
-                                    location,
-                                    helpTexts: new List<string>
+                                // Look through all variants to find one that uses this parameter
+                                bool found = false;
+                                for (int varIdx = 0; varIdx < irEnumType.Variants.Count && !found; varIdx++)
+                                {
+                                    var origVariant = irEnumType.Variants[varIdx];
+                                    var expectedVar = expectedEnumType.Variants[varIdx];
+
+                                    for (int dataIdx = 0; dataIdx < origVariant.AssociatedData.Count && !found; dataIdx++)
                                     {
-                                        $"expected '{TypeToString(expectedType)}', got '{TypeToString(argType)}'"
+                                        if (origVariant.AssociatedData[dataIdx] is IrGenericType gt &&
+                                            gt.ParameterName == paramName)
+                                        {
+                                            // Found the parameter! Use the concrete type from expected variant
+                                            typeSubstitutions[paramName] = expectedVar.AssociatedData[dataIdx];
+                                            found = true;
+                                        }
                                     }
-                                );
+                                }
                             }
                         }
                     }
@@ -2566,6 +2623,18 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         if (type is IrFixedType fixedType)
         {
             return $"fixed{fixedType.BitWidth}";
+        }
+        if (type is IrStructType structType)
+        {
+            return structType.Name;
+        }
+        if (type is IrEnumType enumType)
+        {
+            return enumType.Name;
+        }
+        if (type is IrGenericType genericType)
+        {
+            return genericType.ParameterName;
         }
         return "unknown";
     }
