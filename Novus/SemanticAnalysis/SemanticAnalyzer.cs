@@ -128,21 +128,65 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         if (importAll)
         {
-            // Import all extern functions from the module
-            foreach (var funcDecl in moduleContext.functionDeclaration())
+            // Import all pub enums from the module
+            foreach (var enumDecl in moduleContext.enumDeclaration())
             {
-                // Only import extern functions
-                var isExtern = false;
-                for (int i = 0; i < Math.Min(3, funcDecl.ChildCount); i++)
+                // Only import pub enums
+                var isPub = false;
+                for (int i = 0; i < Math.Min(3, enumDecl.ChildCount); i++)
                 {
-                    if (funcDecl.GetChild(i)?.GetText() == "extern")
+                    if (enumDecl.GetChild(i)?.GetText() == "pub")
                     {
-                        isExtern = true;
+                        isPub = true;
                         break;
                     }
                 }
 
-                if (isExtern)
+                if (isPub)
+                {
+                    namesToImport.Add(enumDecl.IDENTIFIER().GetText());
+                }
+            }
+
+            // Import all pub structs from the module
+            foreach (var structDecl in moduleContext.structDeclaration())
+            {
+                // Only import pub structs
+                var isPub = false;
+                for (int i = 0; i < Math.Min(3, structDecl.ChildCount); i++)
+                {
+                    if (structDecl.GetChild(i)?.GetText() == "pub")
+                    {
+                        isPub = true;
+                        break;
+                    }
+                }
+
+                if (isPub)
+                {
+                    namesToImport.Add(structDecl.IDENTIFIER().GetText());
+                }
+            }
+
+            // Import all pub/extern functions from the module
+            foreach (var funcDecl in moduleContext.functionDeclaration())
+            {
+                // Import pub or extern functions
+                var isPub = false;
+                var isExtern = false;
+                for (int i = 0; i < Math.Min(3, funcDecl.ChildCount); i++)
+                {
+                    if (funcDecl.GetChild(i)?.GetText() == "pub")
+                    {
+                        isPub = true;
+                    }
+                    if (funcDecl.GetChild(i)?.GetText() == "extern")
+                    {
+                        isExtern = true;
+                    }
+                }
+
+                if (isPub || isExtern)
                 {
                     namesToImport.Add(funcDecl.IDENTIFIER().GetText());
                 }
@@ -165,6 +209,70 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
+        // Register imported enums in symbol table
+        foreach (var enumDecl in moduleContext.enumDeclaration())
+        {
+            var enumName = enumDecl.IDENTIFIER().GetText();
+
+            // Skip if not in the import list
+            if (!namesToImport.Contains(enumName))
+            {
+                continue;
+            }
+
+            // Check for duplicate enum names
+            if (_enums.ContainsKey(enumName))
+            {
+                var enumLocation = SourceLocationHelper.FromToken(enumDecl.IDENTIFIER().Symbol, modulePath, new string[] { });
+                _diagnostics.ReportError(
+                    "E0030",
+                    $"imported enum '{enumName}' conflicts with existing enum",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        $"use an alias to avoid the conflict: import {enumName} as Another{enumName}"
+                    }
+                );
+                continue;
+            }
+
+            // Register the enum from the imported module
+            RegisterEnum(enumDecl);
+            _importedNames[enumName] = moduleName;
+        }
+
+        // Register imported structs in symbol table
+        foreach (var structDecl in moduleContext.structDeclaration())
+        {
+            var structName = structDecl.IDENTIFIER().GetText();
+
+            // Skip if not in the import list
+            if (!namesToImport.Contains(structName))
+            {
+                continue;
+            }
+
+            // Check for duplicate struct names
+            if (_structs.ContainsKey(structName))
+            {
+                var structLocation = SourceLocationHelper.FromToken(structDecl.IDENTIFIER().Symbol, modulePath, new string[] { });
+                _diagnostics.ReportError(
+                    "E0009",
+                    $"imported struct '{structName}' conflicts with existing struct",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        $"use an alias to avoid the conflict: import {structName} as Another{structName}"
+                    }
+                );
+                continue;
+            }
+
+            // Register the struct from the imported module
+            RegisterStruct(structDecl);
+            _importedNames[structName] = moduleName;
+        }
+
         // Register imported functions in symbol table
         foreach (var funcDecl in moduleContext.functionDeclaration())
         {
@@ -176,26 +284,30 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 continue;
             }
 
-            // Check if function is extern
+            // Check if function is pub or extern
+            var isPub = false;
             var isExtern = false;
             for (int i = 0; i < Math.Min(3, funcDecl.ChildCount); i++)
             {
+                if (funcDecl.GetChild(i)?.GetText() == "pub")
+                {
+                    isPub = true;
+                }
                 if (funcDecl.GetChild(i)?.GetText() == "extern")
                 {
                     isExtern = true;
-                    break;
                 }
             }
 
-            if (!isExtern)
+            if (!isPub && !isExtern)
             {
                 _diagnostics.ReportError(
                     "E0028",
-                    $"cannot import non-extern function '{funcName}' from module '{moduleName}'",
+                    $"cannot import private function '{funcName}' from module '{moduleName}'",
                     location,
                     helpTexts: new List<string>
                     {
-                        "only extern functions can be imported from modules"
+                        "only pub or extern functions can be imported from modules"
                     }
                 );
                 continue;

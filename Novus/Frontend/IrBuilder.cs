@@ -163,21 +163,65 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         if (importAll)
         {
-            // Import all extern functions from the module
-            foreach (var funcDecl in moduleContext.functionDeclaration())
+            // Import all pub enums from the module
+            foreach (var enumDecl in moduleContext.enumDeclaration())
             {
-                // Only import extern functions
-                var isExtern = false;
-                for (int i = 0; i < Math.Min(3, funcDecl.ChildCount); i++)
+                // Only import pub enums
+                var isPub = false;
+                for (int i = 0; i < Math.Min(3, enumDecl.ChildCount); i++)
                 {
-                    if (funcDecl.GetChild(i)?.GetText() == "extern")
+                    if (enumDecl.GetChild(i)?.GetText() == "pub")
                     {
-                        isExtern = true;
+                        isPub = true;
                         break;
                     }
                 }
 
-                if (isExtern)
+                if (isPub)
+                {
+                    namesToImport.Add(enumDecl.IDENTIFIER().GetText());
+                }
+            }
+
+            // Import all pub structs from the module
+            foreach (var structDecl in moduleContext.structDeclaration())
+            {
+                // Only import pub structs
+                var isPub = false;
+                for (int i = 0; i < Math.Min(3, structDecl.ChildCount); i++)
+                {
+                    if (structDecl.GetChild(i)?.GetText() == "pub")
+                    {
+                        isPub = true;
+                        break;
+                    }
+                }
+
+                if (isPub)
+                {
+                    namesToImport.Add(structDecl.IDENTIFIER().GetText());
+                }
+            }
+
+            // Import all pub/extern functions from the module
+            foreach (var funcDecl in moduleContext.functionDeclaration())
+            {
+                // Import pub or extern functions
+                var isPub = false;
+                var isExtern = false;
+                for (int i = 0; i < Math.Min(3, funcDecl.ChildCount); i++)
+                {
+                    if (funcDecl.GetChild(i)?.GetText() == "pub")
+                    {
+                        isPub = true;
+                    }
+                    if (funcDecl.GetChild(i)?.GetText() == "extern")
+                    {
+                        isExtern = true;
+                    }
+                }
+
+                if (isPub || isExtern)
                 {
                     namesToImport.Add(funcDecl.IDENTIFIER().GetText());
                 }
@@ -192,6 +236,36 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
         }
 
+        // Register imported enums in the module
+        foreach (var enumDecl in moduleContext.enumDeclaration())
+        {
+            var enumName = enumDecl.IDENTIFIER().GetText();
+
+            // Skip if not in the import list
+            if (!namesToImport.Contains(enumName))
+            {
+                continue;
+            }
+
+            // Register the enum from the imported module
+            RegisterEnum(enumDecl);
+        }
+
+        // Register imported structs in the module
+        foreach (var structDecl in moduleContext.structDeclaration())
+        {
+            var structName = structDecl.IDENTIFIER().GetText();
+
+            // Skip if not in the import list
+            if (!namesToImport.Contains(structName))
+            {
+                continue;
+            }
+
+            // Register the struct from the imported module
+            RegisterStruct(structDecl);
+        }
+
         // Register imported functions in the module
         foreach (var funcDecl in moduleContext.functionDeclaration())
         {
@@ -203,20 +277,24 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 continue;
             }
 
-            // Check if function is extern
+            // Check if function is pub or extern
+            var isPub = false;
             var isExtern = false;
             for (int i = 0; i < Math.Min(3, funcDecl.ChildCount); i++)
             {
+                if (funcDecl.GetChild(i)?.GetText() == "pub")
+                {
+                    isPub = true;
+                }
                 if (funcDecl.GetChild(i)?.GetText() == "extern")
                 {
                     isExtern = true;
-                    break;
                 }
             }
 
-            if (!isExtern)
+            if (!isPub && !isExtern)
             {
-                throw new Exception($"Cannot import non-extern function '{funcName}' from module '{moduleName}'");
+                throw new Exception($"Cannot import private function '{funcName}' from module '{moduleName}'");
             }
 
             // Parse function signature
