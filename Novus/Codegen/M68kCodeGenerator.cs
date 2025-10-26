@@ -923,6 +923,27 @@ public partial class M68kCodeGenerator
             // Initialize each field
             InitializeStructFields(structLiteral, structType, structBaseOffset);
         }
+        // Special handling for enum value initialization
+        else if (localDecl.InitialValue is IrEnumValue enumValue)
+        {
+            var enumType = (IrEnumType)localDecl.Type;
+            var enumBaseOffset = _localVariableOffsets[localDecl.Name];
+
+            // Store tag at offset 0
+            Emit($"\tmove.l\t#{enumValue.VariantTag},{enumBaseOffset}(a6)\t\t; Store enum tag");
+
+            // Store associated values starting at offset 4
+            int dataOffset = 4;
+            for (int i = 0; i < enumValue.AssociatedValues.Count; i++)
+            {
+                var assocValue = enumValue.AssociatedValues[i];
+                LoadOperand(assocValue, "d0");
+
+                var valueSize = GetSizeSuffix(assocValue.Type);
+                Emit($"\tmove{valueSize}\td0,{enumBaseOffset + dataOffset}(a6)\t\t; Store associated value {i}");
+                dataOffset += assocValue.Type.SizeInBytes;
+            }
+        }
         else
         {
             // Regular scalar initialization

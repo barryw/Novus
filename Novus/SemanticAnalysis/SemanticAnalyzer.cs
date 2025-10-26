@@ -1151,9 +1151,14 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         foreach (var armCtx in context.matchArm())
         {
             var pattern = armCtx.pattern();
-            AnalyzePattern(pattern, enumType, coveredVariants, ref hasWildcard);
 
-            // Analyze the arm body (expression or block)
+            // Save current variable scope - store list of variables added by this pattern
+            var variablesBeforePattern = new HashSet<string>(_variables.Keys);
+
+            // Analyze pattern and bind variables
+            AnalyzePatternAndBind(pattern, enumType, coveredVariants, ref hasWildcard);
+
+            // Analyze the arm body (expression or block) with bound variables in scope
             if (armCtx.expression() != null)
             {
                 Visit(armCtx.expression());
@@ -1161,6 +1166,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             else if (armCtx.block() != null)
             {
                 AnalyzeBlock(armCtx.block());
+            }
+
+            // Remove pattern bindings (they're only valid in this arm)
+            var keysToRemove = _variables.Keys.Where(k => !variablesBeforePattern.Contains(k)).ToList();
+            foreach (var key in keysToRemove)
+            {
+                _variables.Remove(key);
             }
         }
 
@@ -1191,7 +1203,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return null;
     }
 
-    private void AnalyzePattern(NovusParser.PatternContext pattern, IrEnumType enumType,
+    private void AnalyzePatternAndBind(NovusParser.PatternContext pattern, IrEnumType enumType,
         HashSet<string> coveredVariants, ref bool hasWildcard)
     {
         switch (pattern)
@@ -1233,6 +1245,27 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                         $"variant '{variantName}' expects {variant.AssociatedData.Count} values but pattern has {bindingCount}",
                         location
                     );
+                }
+
+                // Bind pattern variables to their types
+                if (patternList != null)
+                {
+                    var patterns = patternList.pattern();
+                    for (int i = 0; i < Math.Min(patterns.Length, variant.AssociatedData.Count); i++)
+                    {
+                        var subPattern = patterns[i];
+
+                        // Only bind identifier patterns (e.g., Some(x) binds x)
+                        if (subPattern is NovusParser.IdentifierPatternContext idPattern)
+                        {
+                            var bindingName = idPattern.IDENTIFIER().GetText();
+                            var bindingType = variant.AssociatedData[i];
+                            var location = SourceLocationHelper.FromToken(idPattern.IDENTIFIER().Symbol, _filePath, _sourceLines);
+
+                            // Register this variable as immutable (pattern bindings are always immutable)
+                            _variables[bindingName] = new VariableSymbol(bindingName, bindingType, false, location);
+                        }
+                    }
                 }
 
                 coveredVariants.Add(variantName);
