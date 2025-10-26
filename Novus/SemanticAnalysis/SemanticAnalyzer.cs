@@ -1,5 +1,6 @@
 using Antlr4.Runtime;
 using Antlr4.Runtime.Misc;
+using Antlr4.Runtime.Tree;
 using Novus.Diagnostics;
 using Novus.IR;
 using Novus.Parser;
@@ -973,6 +974,20 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var name = identifiers[0].GetText();
         var location = SourceLocationHelper.FromToken(identifiers[0].Symbol, _filePath, _sourceLines);
 
+        // Count dereference operators before the identifier
+        int derefCount = 0;
+        for (int i = 0; i < context.ChildCount; i++)
+        {
+            if (context.GetChild(i).GetText() == "*")
+            {
+                derefCount++;
+            }
+            else if (context.GetChild(i) is ITerminalNode terminal && terminal.Symbol.Type == NovusLexer.IDENTIFIER)
+            {
+                break; // Stop at the first identifier
+            }
+        }
+
         // Check if this is a member assignment
         if (identifiers.Length > 1)
         {
@@ -1071,9 +1086,70 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             // Note: For array element assignment, we don't check if the array itself is mutable
             // In most languages, you can modify elements of a const/let array, just not reassign the array itself
         }
+        else if (derefCount > 0)
+        {
+            // Dereference assignment: *x = value or **x = value, etc.
+
+            // Dereference the variable type to get the target type
+            IrType targetType = variable.Type;
+            for (int i = 0; i < derefCount; i++)
+            {
+                if (targetType is IrPointerType ptrType)
+                {
+                    targetType = ptrType.PointeeType;
+                }
+                else if (targetType is IrMutReferenceType mutRefType)
+                {
+                    targetType = mutRefType.PointeeType;
+                }
+                else if (targetType is IrReferenceType refType)
+                {
+                    // Trying to assign through immutable reference
+                    _diagnostics.ReportError(
+                        "E0026",
+                        $"cannot assign through immutable reference",
+                        location,
+                        helpTexts: new List<string>
+                        {
+                            $"'{name}' is an immutable reference (&{TypeToString(refType.PointeeType)})",
+                            "consider using a mutable reference (&mut) if you need to modify the value"
+                        }
+                    );
+                    return null;
+                }
+                else
+                {
+                    _diagnostics.ReportError(
+                        "E0025",
+                        $"cannot dereference non-pointer/reference type",
+                        location,
+                        helpTexts: new List<string>
+                        {
+                            $"'{name}' has type '{TypeToString(targetType)}', which cannot be dereferenced"
+                        }
+                    );
+                    return null;
+                }
+            }
+
+            // Check type compatibility of the assigned value
+            var exprType = Visit(context.expression(0));
+            if (exprType != null && !TypesCompatible(targetType, exprType))
+            {
+                _diagnostics.ReportError(
+                    "E0020",
+                    $"mismatched types in assignment",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        $"expected type '{TypeToString(targetType)}', found '{TypeToString(exprType)}'"
+                    }
+                );
+            }
+        }
         else
         {
-            // Simple variable assignment
+            // Simple variable assignment (no dereferences)
 
             // Check if variable is mutable
             if (!variable.IsMutable)
@@ -2885,6 +2961,18 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return false;
         }
 
+        // Mutable reference types - must reference compatible types
+        if (expected is IrMutReferenceType expectedMutRef && actual is IrMutReferenceType actualMutRef)
+        {
+            return TypesCompatible(expectedMutRef.PointeeType, actualMutRef.PointeeType);
+        }
+
+        // Immutable reference types - must reference compatible types
+        if (expected is IrReferenceType expectedRef && actual is IrReferenceType actualRef)
+        {
+            return TypesCompatible(expectedRef.PointeeType, actualRef.PointeeType);
+        }
+
         // Pointer types - must point to compatible types
         if (expected is IrPointerType expectedPtr && actual is IrPointerType actualPtr)
         {
@@ -3035,6 +3123,14 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     private string TypeToString(IrType type)
     {
+        if (type is IrMutReferenceType mutRefType)
+        {
+            return $"&mut {TypeToString(mutRefType.PointeeType)}";
+        }
+        if (type is IrReferenceType refType)
+        {
+            return $"&{TypeToString(refType.PointeeType)}";
+        }
         if (type is IrPointerType ptrType)
         {
             return $"*{TypeToString(ptrType.PointeeType)}";
