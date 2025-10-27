@@ -180,8 +180,12 @@ public partial class M68kCodeGenerator
             Emit("");
         }
 
-        // Always generate CPU detection for fat binaries (needed for system.novus variables)
-        if (IsCpuFatBinary)
+        // Only generate CPU detection and runtime primitives in the main module (with main function)
+        // Other modules will reference these symbols via xref
+        var hasMainFunction = _module.Functions.Any(f => f.Name == "main" && !f.IsExtern);
+
+        // Generate CPU detection for fat binaries (needed for system.novus variables)
+        if (IsCpuFatBinary && hasMainFunction)
         {
             GenerateCpuDetection();
 
@@ -192,9 +196,9 @@ public partial class M68kCodeGenerator
             }
         }
 
-        // Always generate optimized runtime library primitives for assembly programmers
+        // Generate optimized runtime library primitives for assembly programmers
         // These are exported and usable by any assembly code
-        if (IsCpuFatBinary)
+        if (IsCpuFatBinary && hasMainFunction)
         {
             GenerateOptimizedRuntimePrimitives();
         }
@@ -1397,11 +1401,48 @@ public partial class M68kCodeGenerator
             for (int i = 0; i < enumValue.AssociatedValues.Count; i++)
             {
                 var assocValue = enumValue.AssociatedValues[i];
-                LoadOperand(assocValue, "d0");
 
-                var valueSize = GetSizeSuffix(assocValue.Type);
-                Emit($"\tmove{valueSize}\td0,{enumBaseOffset + dataOffset}(a6)\t\t; Store associated value {i}");
-                dataOffset += assocValue.Type.SizeInBytes;
+                // Check if associated value is a nested composite enum (IrEnumValue with data or IrVariable with enum type > 4 bytes)
+                bool isCompositeEnum = false;
+                IrEnumType compositeEnumType = null;
+
+                if (assocValue is IrEnumValue nestedEnumVal && nestedEnumVal.AssociatedValues.Count > 0)
+                {
+                    isCompositeEnum = true;
+                    compositeEnumType = nestedEnumVal.Type as IrEnumType;
+                }
+                else if (assocValue.Type is IrEnumType enumType2 && enumType2.SizeInBytes > 4 && assocValue is IrVariable nestedVar)
+                {
+                    isCompositeEnum = true;
+                    compositeEnumType = enumType2;
+                }
+
+                if (isCompositeEnum)
+                {
+                    EmitComment($"Copy nested enum associated value (size: {compositeEnumType.SizeInBytes} bytes)");
+
+                    // Build/load the nested enum using address register
+                    LoadOperand(assocValue, "a1");
+
+                    // Copy longword-by-longword from nested enum to local enum
+                    int numLongwords = (compositeEnumType.SizeInBytes + 3) / 4;
+                    for (int j = 0; j < numLongwords; j++)
+                    {
+                        Emit($"\tmove.l\t{j * 4}(a1),d0");
+                        Emit($"\tmove.l\td0,{enumBaseOffset + dataOffset + (j * 4)}(a6)");
+                    }
+
+                    dataOffset += compositeEnumType.SizeInBytes;
+                }
+                else
+                {
+                    // Simple value - load into d0 and store
+                    LoadOperand(assocValue, "d0");
+
+                    var valueSize = GetSizeSuffix(assocValue.Type);
+                    Emit($"\tmove{valueSize}\td0,{enumBaseOffset + dataOffset}(a6)\t\t; Store associated value {i}");
+                    dataOffset += assocValue.Type.SizeInBytes;
+                }
             }
         }
         // Special handling for String literal initialization
@@ -2203,11 +2244,32 @@ public partial class M68kCodeGenerator
                 for (int i = 0; i < enumValue.AssociatedValues.Count; i++)
                 {
                     var assocValue = enumValue.AssociatedValues[i];
-                    LoadOperand(assocValue, "d0");
 
-                    var valueSize = GetSizeSuffix(assocValue.Type);
-                    Emit($"\tmove{valueSize}\td0,{dataOffset}(sp)\t\t; Store associated value {i}");
-                    dataOffset += assocValue.Type.SizeInBytes;
+                    // Check if this is a nested enum with associated data (composite type)
+                    if (assocValue is IrEnumValue nestedEnumValue && nestedEnumValue.AssociatedValues.Count > 0)
+                    {
+                        // Nested enum - build it and get address in a1
+                        LoadOperand(assocValue, "a1");
+
+                        // Copy it longword-by-longword from nested enum to current enum
+                        var nestedEnumType = nestedEnumValue.Type as IrEnumType;
+                        int numLongwords = (nestedEnumType.SizeInBytes + 3) / 4;
+                        for (int j = 0; j < numLongwords; j++)
+                        {
+                            Emit($"\tmove.l\t{j * 4}(a1),d0");
+                            Emit($"\tmove.l\td0,{dataOffset + (j * 4)}(sp)\t\t; Store nested enum longword {j}");
+                        }
+                        dataOffset += nestedEnumType.SizeInBytes;
+                    }
+                    else
+                    {
+                        // Simple value - load into d0
+                        LoadOperand(assocValue, "d0");
+
+                        var valueSize = GetSizeSuffix(assocValue.Type);
+                        Emit($"\tmove{valueSize}\td0,{dataOffset}(sp)\t\t; Store associated value {i}");
+                        dataOffset += assocValue.Type.SizeInBytes;
+                    }
                 }
 
                 // If targetReg is an address register, load the address
@@ -2931,15 +2993,40 @@ public partial class M68kCodeGenerator
         {
             // Load data from variable location
             var varOffset = _localVariableOffsets[enumVar.Name];
-            var dataSize = GetSizeSuffix(extractData.DataType);
-            Emit($"\tmove{dataSize}\t{varOffset + dataOffset}(a6),d0\t\t; Load variant data");
+
+            // Check if extracting a nested enum (> 4 bytes)
+            if (extractData.DataType is IrEnumType nestedEnumType && nestedEnumType.SizeInBytes > 4)
+            {
+                EmitComment($"Extract nested enum (size: {nestedEnumType.SizeInBytes} bytes) to stack");
+
+                // Copy nested enum to stack longword-by-longword
+                int numLongwords = (nestedEnumType.SizeInBytes + 3) / 4;
+                Emit($"\tsub.l\t#{nestedEnumType.SizeInBytes},sp\t\t; Allocate space for nested enum");
+
+                for (int i = 0; i < numLongwords; i++)
+                {
+                    Emit($"\tmove.l\t{varOffset + dataOffset + (i * 4)}(a6),d0");
+                    Emit($"\tmove.l\td0,{i * 4}(sp)\t\t; Copy longword {i}");
+                }
+
+                // Save as temp on stack
+                _savedTemps.Add(extractData.ResultName);
+                _savedTempSizes[extractData.ResultName] = nestedEnumType.SizeInBytes;
+                _tempStackOffset += nestedEnumType.SizeInBytes;
+            }
+            else
+            {
+                // Simple data - load into d0
+                var dataSize = GetSizeSuffix(extractData.DataType);
+                Emit($"\tmove{dataSize}\t{varOffset + dataOffset}(a6),d0\t\t; Load variant data");
+            }
         }
         else
         {
             throw new Exception($"Unsupported enum value type for data extraction: {enumValue.GetType().Name}");
         }
 
-        // Result is in d0
+        // Result is in d0 (for simple types) or on stack (for composite types)
     }
 
     private string GetSizeSuffix(IrType type)
