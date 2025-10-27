@@ -1517,19 +1517,14 @@ public partial class M68kCodeGenerator
         var structBaseOffset = _localVariableOffsets[baseVarName];
         int fieldOffset;
 
-        // Parameters are at positive offsets, locals at negative
-        if (structBaseOffset >= 8)
-        {
-            // This is a parameter (passed by value on stack)
-            // Fields are at base + field.Offset
-            fieldOffset = structBaseOffset + cumulativeFieldOffset;
-        }
-        else
-        {
-            // This is a local variable
-            // Fields grow downward, so base - field.Offset
-            fieldOffset = structBaseOffset - cumulativeFieldOffset;
-        }
+        // Struct fields always grow upward (toward higher addresses) regardless of
+        // whether the struct is a parameter or local variable. The struct is laid out
+        // in memory with field 0 at the base address, field 1 at base+size1, etc.
+        //
+        // For a String at -12(a6):
+        //   -12(a6): ptr (offset 0)
+        //   -8(a6):  len (offset 4)  ← base + 4, not base - 4!
+        fieldOffset = structBaseOffset + cumulativeFieldOffset;
 
         // Check if the result is a struct (intermediate access in chain)
         if (memberAccess.FieldType is IrStructType)
