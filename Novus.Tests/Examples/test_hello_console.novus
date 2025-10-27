@@ -1,0 +1,31 @@
+// Simple console output test for FS-UAE
+// Uses raw syscalls to avoid library initialization issues
+
+// AmigaOS DOS functions via direct library calls
+extern fn Write(file: i32, buffer: i32, length: i32) -> i32
+extern fn Output() -> i32
+
+pub fn main() -> u32 {
+    // Get stdout handle
+    let stdout = Output()
+
+    // If Output() fails, try handle 1 (stdout on most systems)
+    let handle = 0
+    if stdout != 0 {
+        handle = stdout
+    } else {
+        handle = 1  // Fallback to stdout handle
+    }
+
+    // Write messages demonstrating String type
+    let msg1 = "Hello from Novus!\n"
+    Write(handle, msg1, msg1.len)
+
+    let msg2 = "String type works!\n"
+    Write(handle, msg2, msg2.len)
+
+    let msg3 = "Exit code will be 42\n"
+    Write(handle, msg3, msg3.len)
+
+    return 42
+}

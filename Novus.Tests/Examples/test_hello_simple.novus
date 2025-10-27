@@ -1,0 +1,31 @@
+// Simple console output - works on FS-UAE!
+
+extern fn Write(file: i32, buffer: i32, length: i32) -> i32
+extern fn Output() -> i32
+
+// DOS library initialization (provided by dos_init.s)
+extern fn __dos_init() -> i32
+extern fn __dos_cleanup() -> i32
+
+pub fn main() -> u32 {
+    // Initialize DOS library
+    __dos_init()
+
+    // Get stdout handle
+    let stdout = Output()
+
+    // Write messages using String type!
+    let msg1 = "Hello from Novus!\n"
+    Write(stdout, msg1, msg1.len)
+
+    let msg2 = "String params work!\n"
+    Write(stdout, msg2, msg2.len)
+
+    let msg3 = "Returning exit code 42...\n"
+    Write(stdout, msg3, msg3.len)
+
+    // Cleanup
+    __dos_cleanup()
+
+    return 42
+}

@@ -184,6 +184,24 @@ public class VbccToolchain
                 }
 
                 objFiles.Add(stubsObj);
+
+                // If using DOS library, also include dos_init.o for automatic DOSBase initialization
+                if (library == "dos")
+                {
+                    var dosInitSource = Path.Combine(compilerDir, "stubs", "dos_init.s");
+                    if (File.Exists(dosInitSource))
+                    {
+                        var dosInitObj = Path.Combine(outputPath, "dos_init.o");
+
+                        if (!await Assemble(dosInitSource, dosInitObj, assemblyCpu, false))
+                        {
+                            Console.WriteLine("dos_init assembly failed");
+                            return false;
+                        }
+
+                        objFiles.Add(dosInitObj);
+                    }
+                }
             }
             else
             {
