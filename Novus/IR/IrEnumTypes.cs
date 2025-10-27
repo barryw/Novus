@@ -9,13 +9,15 @@ public class IrEnumType : IrType
     public string EnumName { get; }
     public List<IrEnumVariant> Variants { get; }
     public List<string> GenericParameters { get; }  // Type parameter names (e.g., ["T", "E"])
+    public string? CacheKey { get; set; }  // Cache key for monomorphized types (e.g., "Option<i32>")
     private int? _cachedSize;
 
-    public IrEnumType(string enumName, List<IrEnumVariant> variants, List<string>? genericParams = null)
+    public IrEnumType(string enumName, List<IrEnumVariant> variants, List<string>? genericParams = null, string? cacheKey = null)
     {
         EnumName = enumName;
         Variants = variants;
         GenericParameters = genericParams ?? new List<string>();
+        CacheKey = cacheKey;
     }
 
     public override int SizeInBytes
@@ -74,6 +76,35 @@ public class IrEnumType : IrType
                 return i;
         }
         return -1;
+    }
+
+    public override bool Equals(object? obj)
+    {
+        if (obj is not IrEnumType other)
+            return false;
+
+        // Two enums are equal if they have the same name and same number of generic parameters
+        // This handles both generic (Option<T>) and monomorphized (Option<i32>) types
+        return EnumName == other.EnumName &&
+               GenericParameters.Count == other.GenericParameters.Count &&
+               GenericParameters.SequenceEqual(other.GenericParameters) &&
+               Variants.Count == other.Variants.Count &&
+               Variants.Zip(other.Variants, (v1, v2) =>
+                   v1.Name == v2.Name &&
+                   v1.Tag == v2.Tag &&
+                   v1.AssociatedData.Count == v2.AssociatedData.Count &&
+                   v1.AssociatedData.Zip(v2.AssociatedData, (d1, d2) => d1.Equals(d2)).All(x => x)
+               ).All(x => x);
+    }
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(EnumName);
+        hash.Add(GenericParameters.Count);
+        foreach (var param in GenericParameters)
+            hash.Add(param);
+        return hash.ToHashCode();
     }
 }
 

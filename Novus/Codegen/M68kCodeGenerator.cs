@@ -2245,21 +2245,31 @@ public partial class M68kCodeGenerator
                 {
                     var assocValue = enumValue.AssociatedValues[i];
 
-                    // Check if this is a nested enum with associated data (composite type)
-                    if (assocValue is IrEnumValue nestedEnumValue && nestedEnumValue.AssociatedValues.Count > 0)
+                    // Check if associated value is a nested composite enum (> 4 bytes)
+                    bool isCompositeEnum = false;
+                    IrEnumType compositeEnumType = null;
+
+                    if (assocValue.Type is IrEnumType enumType2 && enumType2.SizeInBytes > 4)
                     {
-                        // Nested enum - build it and get address in a1
+                        // Any enum > 4 bytes needs special handling, regardless of whether
+                        // it's an IrEnumValue or IrVariable
+                        isCompositeEnum = true;
+                        compositeEnumType = enumType2;
+                    }
+
+                    if (isCompositeEnum)
+                    {
+                        // Nested composite enum - build/load it and get address in a1
                         LoadOperand(assocValue, "a1");
 
                         // Copy it longword-by-longword from nested enum to current enum
-                        var nestedEnumType = nestedEnumValue.Type as IrEnumType;
-                        int numLongwords = (nestedEnumType.SizeInBytes + 3) / 4;
+                        int numLongwords = (compositeEnumType.SizeInBytes + 3) / 4;
                         for (int j = 0; j < numLongwords; j++)
                         {
                             Emit($"\tmove.l\t{j * 4}(a1),d0");
                             Emit($"\tmove.l\td0,{dataOffset + (j * 4)}(sp)\t\t; Store nested enum longword {j}");
                         }
-                        dataOffset += nestedEnumType.SizeInBytes;
+                        dataOffset += compositeEnumType.SizeInBytes;
                     }
                     else
                     {

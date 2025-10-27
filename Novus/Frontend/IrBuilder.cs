@@ -620,23 +620,30 @@ public class IrBuilder : NovusBaseVisitor<object?>
     {
         var name = context.IDENTIFIER().GetText();
         var isMutable = context.GetChild(0)?.GetText() == "var";
+
+        // Parse type annotation if present (before evaluating the expression)
+        IrType? annotatedType = null;
+        if (context.type() != null)
+        {
+            annotatedType = ParseType(context.type());
+        }
+
+        // Set expected type for bidirectional type checking
+        var savedExpectedType = _expectedType;
+        _expectedType = annotatedType;
+
         var value = (IrValue?)Visit(context.expression());
+
+        // Restore previous expected type
+        _expectedType = savedExpectedType;
 
         if (value == null)
         {
             throw new Exception($"Variable {name} must have an initial value");
         }
 
-        // Infer type from value if not specified, otherwise parse the type annotation
-        IrType type;
-        if (context.type() != null)
-        {
-            type = ParseType(context.type());
-        }
-        else
-        {
-            type = value.Type;
-        }
+        // Use annotated type if specified, otherwise infer from value
+        IrType type = annotatedType ?? value.Type;
 
         // Create local variable
         var localVar = new IrLocalVariable(name, type, isMutable);
@@ -1016,13 +1023,45 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var arguments = new List<IrValue>();
         if (context.argumentList() != null)
         {
+            // Check if this is an enum constructor - if so, we can use expected types for arguments
+            List<IrType>? expectedArgTypes = null;
+            if (funcExpr is IrEnumConstructor tempEnumCtor &&
+                _expectedType is IrEnumType expectedEnumType &&
+                expectedEnumType.EnumName == (tempEnumCtor.Type as IrEnumType)?.EnumName)
+            {
+                // Expected type matches the enum we're constructing
+                // Extract expected argument types from the corresponding variant
+                var expectedVariant = expectedEnumType.GetVariant(tempEnumCtor.VariantName);
+                if (expectedVariant != null)
+                {
+                    expectedArgTypes = expectedVariant.AssociatedData;
+                }
+            }
+
+            int argIdx = 0;
             foreach (var argCtx in context.argumentList().expression())
             {
+                // Set expected type for this argument if available
+                var savedExpectedType = _expectedType;
+                if (expectedArgTypes != null && argIdx < expectedArgTypes.Count)
+                {
+                    _expectedType = expectedArgTypes[argIdx];
+                }
+                else
+                {
+                    _expectedType = null;
+                }
+
                 var argValue = (IrValue?)Visit(argCtx);
+
+                // Restore expected type
+                _expectedType = savedExpectedType;
+
                 if (argValue != null)
                 {
                     arguments.Add(argValue);
                 }
+                argIdx++;
             }
         }
 
@@ -1077,7 +1116,25 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     for (int paramIdx = 0; paramIdx < enumType.GenericParameters.Count; paramIdx++)
                     {
                         var paramName = enumType.GenericParameters[paramIdx];
-                        if (!typeSubstitutions.ContainsKey(paramName))
+
+                        // Check if we need to refine or replace the existing substitution
+                        bool needsRefinement = false;
+                        if (typeSubstitutions.ContainsKey(paramName))
+                        {
+                            var existing = typeSubstitutions[paramName];
+                            // Check if the existing substitution is still generic (contains IrGenericType)
+                            if (existing is IrEnumType existingEnum)
+                            {
+                                bool hasGenericData = existingEnum.Variants.Any(v =>
+                                    v.AssociatedData.Any(d => d is IrGenericType));
+                                if (hasGenericData || existingEnum.GenericParameters.Count > 0)
+                                {
+                                    needsRefinement = true;
+                                }
+                            }
+                        }
+
+                        if (!typeSubstitutions.ContainsKey(paramName) || needsRefinement)
                         {
                             // Find this parameter in a variant and extract the concrete type
                             for (int varIdx = 0; varIdx < enumType.Variants.Count; varIdx++)
@@ -1087,25 +1144,29 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                                 for (int dataIdx = 0; dataIdx < origVariant.AssociatedData.Count; dataIdx++)
                                 {
+                                    var expectedType = expectedVar.AssociatedData[dataIdx];
                                     if (origVariant.AssociatedData[dataIdx] is IrGenericType gt &&
                                         gt.ParameterName == paramName)
                                     {
-                                        typeSubstitutions[paramName] = expectedVar.AssociatedData[dataIdx];
+                                        typeSubstitutions[paramName] = expectedType;
                                         break;
                                     }
                                 }
 
-                                if (typeSubstitutions.ContainsKey(paramName))
+                                if (typeSubstitutions.ContainsKey(paramName) && !needsRefinement)
                                     break;
                             }
                         }
                     }
                 }
 
-                // Create cache key
-                var typeArgNames = enumType.GenericParameters.Select(p =>
-                    typeSubstitutions.ContainsKey(p) ? typeSubstitutions[p].Name : p);
-                var cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgNames)}>";
+                // Create cache key using proper type keys
+                var typeArgKeys = enumType.GenericParameters.Select(p =>
+                {
+                    var key = typeSubstitutions.ContainsKey(p) ? GetTypeCacheKey(typeSubstitutions[p]) : p;
+                    return key;
+                });
+                var cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
 
                 // Check cache first
                 if (_monomorphizedEnums.ContainsKey(cacheKey))
@@ -1134,10 +1195,16 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     }
 
                     // Create new enum type with concrete types
-                    finalEnumType = new IrEnumType(enumType.EnumName, monomorphizedVariants, null);
+                    finalEnumType = new IrEnumType(enumType.EnumName, monomorphizedVariants, null, cacheKey);
 
-                    // Cache it
-                    _monomorphizedEnums[cacheKey] = finalEnumType;
+                    // Only cache if fully monomorphized (no generic types in variants)
+                    bool isFullyMonomorphized = !monomorphizedVariants.Any(v =>
+                        v.AssociatedData.Any(d => d is IrGenericType));
+
+                    if (isFullyMonomorphized)
+                    {
+                        _monomorphizedEnums[cacheKey] = finalEnumType;
+                    }
                 }
             }
 
@@ -2191,8 +2258,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     typeArgs.Add(ParseType(typeCtx));
                 }
 
-                // Create cache key: EnumName_TypeArg1Name_TypeArg2Name...
-                var cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgs.Select(t => t.Name))}>";
+                // Create cache key using proper type keys that handle nested generics
+                var typeArgKeys = typeArgs.Select(t => GetTypeCacheKey(t));
+                var cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
 
                 // Check cache first
                 if (_monomorphizedEnums.ContainsKey(cacheKey))
@@ -2216,7 +2284,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     {
                         if (dataType is IrGenericType gt && typeSubstitutions.ContainsKey(gt.ParameterName))
                         {
-                            monomorphizedData.Add(typeSubstitutions[gt.ParameterName]);
+                            var substituted = typeSubstitutions[gt.ParameterName];
+                            monomorphizedData.Add(substituted);
                         }
                         else
                         {
@@ -2227,7 +2296,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 }
 
                 // Create new enum type with concrete types (no generic parameters)
-                var monomorphizedEnum = new IrEnumType(enumType.EnumName, monomorphizedVariants, null);
+                var monomorphizedEnum = new IrEnumType(enumType.EnumName, monomorphizedVariants, null, cacheKey);
 
                 // Cache it for future use
                 _monomorphizedEnums[cacheKey] = monomorphizedEnum;
@@ -2239,6 +2308,63 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         throw new Exception($"Unknown type '{typeName}'");
+    }
+
+    private string GetTypeCacheKey(IrType type)
+    {
+        // Recursively build a cache key for a type, handling nested generics
+        if (type is IrEnumType enumType)
+        {
+            // Check if enum still contains generic types in its variants
+            // An enum is only fully monomorphized if it has no generic parameters
+            // AND no generic types in its variant data
+            bool hasGenericData = enumType.Variants.Any(v =>
+                v.AssociatedData.Any(d => d is IrGenericType));
+
+            if (enumType.GenericParameters.Count > 0 || hasGenericData)
+            {
+                // Still generic - build cache key from generic parameter names found in variant data
+                if (hasGenericData)
+                {
+                    // Extract generic type names from variant data
+                    var genericNames = new HashSet<string>();
+                    foreach (var variant in enumType.Variants)
+                    {
+                        foreach (var data in variant.AssociatedData)
+                        {
+                            if (data is IrGenericType gt)
+                            {
+                                genericNames.Add(gt.ParameterName);
+                            }
+                        }
+                    }
+                    return $"{enumType.EnumName}<{string.Join(",", genericNames.OrderBy(x => x))}>";
+                }
+                else
+                {
+                    // Use declared generic parameters
+                    return $"{enumType.EnumName}<{string.Join(",", enumType.GenericParameters)}>";
+                }
+            }
+            else
+            {
+                // Fully monomorphized enum - use stored cache key if available
+                if (enumType.CacheKey != null)
+                {
+                    return enumType.CacheKey;
+                }
+                // Non-generic enum (like DosError) - just use the name
+                return enumType.EnumName;
+            }
+        }
+        else if (type is IrGenericType gt)
+        {
+            return gt.ParameterName;
+        }
+        else
+        {
+            return type.Name;
+        }
     }
 
     private IrType ParseArrayType(NovusParser.ArrayTypeContext context)

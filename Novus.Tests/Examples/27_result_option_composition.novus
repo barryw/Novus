@@ -11,9 +11,8 @@ fn find_number(id: i32) -> Result<Option<i32>, DosError> {
     }
 
     if id == 2 {
-        // No number found - return Ok with hardcoded zero to indicate None
-        // Note: This is a workaround for Option::None type inference limitation
-        return Result::Ok(Option::Some(0))
+        // No number found - return Ok with None
+        return Result::Ok(Option::None())
     }
 
     // Error case
@@ -42,19 +41,17 @@ pub fn main() -> i32 {
         },
     }
 
-    // Test 2: Ok(Some(0)) - Using 0 as sentinel for None
+    // Test 2: Ok(None) - Success but no data
     let result2 = find_number(2)
     match result2 {
         Ok(opt2) => {
             match opt2 {
                 Some(value2) => {
-                    if value2 == 0 {
-                        // This represents "not found" case
-                        let check: i32 = 0
-                    }
+                    return 3  // Failed: expected None
                 },
                 None => {
-                    return 3  // Failed: expected Some(0)
+                    // Correct: got None
+                    let check: i32 = 0
                 },
             }
         },
