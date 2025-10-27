@@ -167,6 +167,18 @@ public partial class M68kCodeGenerator
             Emit("");
         }
 
+        // Emit DOS init/cleanup references if DOS functions are used
+        // These will be called automatically via constructor/destructor lists
+        var dosFunctionNames = new[] { "Write", "Read", "Open", "Close", "Output", "Input", "Error" };
+        var usesDOS = _module.Functions.Any(f => f.IsExtern && dosFunctionNames.Contains(f.Name));
+        if (usesDOS)
+        {
+            EmitComment("DOS library auto-initialization (called by VBCC startup)");
+            Emit("\txref\t___dos_init");
+            Emit("\txref\t___dos_cleanup");
+            Emit("");
+        }
+
         // Always generate CPU detection for fat binaries (needed for system.novus variables)
         if (IsCpuFatBinary)
         {
@@ -334,19 +346,53 @@ public partial class M68kCodeGenerator
         Emit("");
 
         // Provide C++ constructor/destructor list symbols (required by VBCC startup code)
-        Emit("\t; C++ constructor/destructor lists (empty for Novus)");
-        Emit("\tsection\tdata,data");
-        Emit("\txdef\t___CTOR_LIST__");
-        Emit("\txdef\t___DTOR_LIST__");
-        Emit("___CTOR_LIST__:");
-        Emit("\tdc.l\t0\t; Count of constructors");
-        Emit("\tdc.l\t0\t; Terminator");
-        Emit("___DTOR_LIST__:");
-        Emit("\tdc.l\t0\t; Count of destructors");
-        Emit("\tdc.l\t0\t; Terminator");
-        Emit("");
-        Emit("\tsection\ttext,code");
-        Emit("");
+        // Only emit these in the main module (module with main function)
+        var hasMainFunction = _module.Functions.Any(f => f.Name == "main" && !f.IsExtern);
+
+        if (hasMainFunction)
+        {
+            // Check if we need DOS library initialization
+            var dosFunctionNames = new[] { "Write", "Read", "Open", "Close", "Output", "Input", "Error" };
+            var usesDOS = _module.Functions.Any(f => f.IsExtern && dosFunctionNames.Contains(f.Name));
+
+            Emit("\t; C++ constructor/destructor lists (main module only)");
+            Emit("\tsection\tdata,data");
+            Emit("\txdef\t___CTOR_LIST__");
+            Emit("\txdef\t___DTOR_LIST__");
+            Emit("___CTOR_LIST__:");
+
+            if (usesDOS)
+            {
+                EmitComment("Automatic DOS library initialization");
+                Emit("\tdc.l\t1\t; Count of constructors");
+                Emit("\tdc.l\t___dos_init\t; Initialize dos.library before main");
+                Emit("\tdc.l\t0\t; Terminator");
+            }
+            else
+            {
+                Emit("\tdc.l\t0\t; Count of constructors");
+                Emit("\tdc.l\t0\t; Terminator");
+            }
+
+            Emit("___DTOR_LIST__:");
+
+            if (usesDOS)
+            {
+                EmitComment("Automatic DOS library cleanup");
+                Emit("\tdc.l\t1\t; Count of destructors");
+                Emit("\tdc.l\t___dos_cleanup\t; Close dos.library after main");
+                Emit("\tdc.l\t0\t; Terminator");
+            }
+            else
+            {
+                Emit("\tdc.l\t0\t; Count of destructors");
+                Emit("\tdc.l\t0\t; Terminator");
+            }
+
+            Emit("");
+            Emit("\tsection\ttext,code");
+            Emit("");
+        }
     }
 
     /// <summary>
@@ -387,7 +433,8 @@ public partial class M68kCodeGenerator
         _currentFunctionSuffix = suffix; // Track suffix for label generation
 
         // Handle extern functions - just emit xref
-        if (function.IsExtern)
+        // Also treat functions with no body (imported declarations) as extern
+        if (function.IsExtern || function.BasicBlocks.Count == 0)
         {
             EmitComment($"External function: {function.Name}");
             Emit($"\txref\t_{function.Name}");
@@ -1041,6 +1088,17 @@ public partial class M68kCodeGenerator
                     {
                         throw new Exception($"Unknown String variable: {stringVar.Name}");
                     }
+                }
+                else if (arg is IrStringLiteral stringLiteral)
+                {
+                    // Push string literal as String argument (ptr + len)
+                    // Load address of string literal
+                    Emit($"\tlea\t{stringLiteral.Label},a0");
+                    // Push length first
+                    Emit($"\tmove.l\t#{stringLiteral.Value.Length},-(sp)");
+                    // Push pointer second
+                    Emit($"\tmove.l\ta0,-(sp)");
+                    totalBytesPushed += 8;
                 }
                 else
                 {

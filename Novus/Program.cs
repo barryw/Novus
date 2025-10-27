@@ -49,6 +49,72 @@ class Program
         return 1;
     }
 
+    /// <summary>
+    /// Compile a single Novus module to assembly
+    /// Returns the assembly string and list of imported module paths
+    /// </summary>
+    static async Task<(string Assembly, List<string> ImportedModules)?> CompileModuleToAssembly(
+        string inputFile,
+        string stdLibPath,
+        CompilerOptions options)
+    {
+        // Read source file
+        if (!File.Exists(inputFile))
+        {
+            Console.WriteLine($"Error: Module file not found: {inputFile}");
+            return null;
+        }
+
+        var source = await File.ReadAllTextAsync(inputFile);
+
+        // Lex and parse
+        var inputStream = new AntlrInputStream(source);
+        var lexer = new NovusLexer(inputStream);
+        var tokenStream = new CommonTokenStream(lexer);
+        var parser = new NovusParser(tokenStream);
+        var parseTree = parser.compilationUnit();
+
+        if (parser.NumberOfSyntaxErrors > 0)
+        {
+            Console.WriteLine($"Parse failed for {inputFile} with {parser.NumberOfSyntaxErrors} error(s)");
+            return null;
+        }
+
+        // Perform semantic analysis
+        var analyzer = new SemanticAnalyzer(inputFile, source, stdLibPath);
+        var analysisSucceeded = analyzer.Analyze(parseTree);
+
+        if (!analysisSucceeded)
+        {
+            if (analyzer.Diagnostics.HasErrors || analyzer.Diagnostics.HasWarnings)
+            {
+                Console.WriteLine(analyzer.Diagnostics.FormatDiagnostics());
+            }
+            return null;
+        }
+
+        // Build IR
+        var irBuilder = new IrBuilder();
+        irBuilder.SetStdLibPath(stdLibPath);
+        var module = irBuilder.BuildModule(parseTree);
+
+        // Run optimization passes
+        if (options.OptimizationLevel > 0)
+        {
+            var optimizer = Novus.Optimizer.OptimizationPipeline.CreatePipeline(
+                options.OptimizationLevel,
+                options.Verbose
+            );
+            optimizer.Run(module);
+        }
+
+        // Generate 68k assembly
+        var codegen = new M68kCodeGenerator(module, irBuilder.StringLiterals, options.Cpu, options.Fpu);
+        var assembly = codegen.Generate();
+
+        return (assembly, irBuilder.GetImportedModules());
+    }
+
     static async Task<int> RunCompiler(CompilerOptions options)
     {
         Console.WriteLine("Novus Compiler - Proof of Concept");
@@ -73,87 +139,82 @@ class Program
                 Console.WriteLine();
             }
 
-            Console.WriteLine($"Compiling: {options.InputFile}");
-            var source = await File.ReadAllTextAsync(options.InputFile);
-
-            // Lex and parse
-            Console.WriteLine("Parsing...");
-            var inputStream = new AntlrInputStream(source);
-            var lexer = new NovusLexer(inputStream);
-            var tokenStream = new CommonTokenStream(lexer);
-            var parser = new NovusParser(tokenStream);
-
-            // Parse the compilation unit
-            var parseTree = parser.compilationUnit();
-
-            // Check for parse errors
-            if (parser.NumberOfSyntaxErrors > 0)
-            {
-                Console.WriteLine($"Parse failed with {parser.NumberOfSyntaxErrors} error(s)");
-                return 1;
-            }
-
-            // Perform semantic analysis
-            Console.WriteLine("Analyzing semantics...");
-
-            // Find standard library path - it's in std/ relative to the compiler
+            // Find standard library path
             var compilerDir = AppContext.BaseDirectory;
             var stdLibPath = Path.Combine(compilerDir, "std");
 
-            var analyzer = new SemanticAnalyzer(options.InputFile, source, stdLibPath);
-            var analysisSucceeded = analyzer.Analyze(parseTree);
+            Console.WriteLine($"Compiling: {options.InputFile}");
+            Console.WriteLine("Parsing...");
+            Console.WriteLine("Analyzing semantics...");
+            Console.WriteLine("Building IR...");
 
-            // Report diagnostics
-            if (analyzer.Diagnostics.HasErrors || analyzer.Diagnostics.HasWarnings)
-            {
-                Console.WriteLine();
-                Console.WriteLine(analyzer.Diagnostics.FormatDiagnostics());
-            }
-
-            // Stop if there were errors
-            if (!analysisSucceeded)
+            // Compile the main file and get its dependencies
+            var mainResult = await CompileModuleToAssembly(options.InputFile, stdLibPath, options);
+            if (mainResult == null)
             {
                 return 1;
             }
 
-            // Build IR
-            Console.WriteLine("Building IR...");
-            var irBuilder = new IrBuilder();
-            irBuilder.SetStdLibPath(stdLibPath);
-            var module = irBuilder.BuildModule(parseTree);
+            var (mainAssembly, importedModules) = mainResult.Value;
 
-            Console.WriteLine($"  Functions: {module.Functions.Count}");
+            // Recursively collect all dependencies
+            var allModules = new Dictionary<string, string>(); // path -> assembly
+            var toProcess = new Queue<string>(importedModules);
+            var processed = new HashSet<string>();
+
+            while (toProcess.Count > 0)
+            {
+                var modulePath = toProcess.Dequeue();
+                if (processed.Contains(modulePath))
+                    continue;
+
+                processed.Add(modulePath);
+
+                if (options.Verbose)
+                {
+                    Console.WriteLine($"  Compiling dependency: {Path.GetFileName(modulePath)}");
+                }
+
+                var moduleResult = await CompileModuleToAssembly(modulePath, stdLibPath, options);
+                if (moduleResult == null)
+                {
+                    Console.WriteLine($"Failed to compile dependency: {modulePath}");
+                    return 1;
+                }
+
+                var (moduleAssembly, moduleImports) = moduleResult.Value;
+                allModules[modulePath] = moduleAssembly;
+
+                // Add transitive dependencies
+                foreach (var import in moduleImports)
+                {
+                    if (!processed.Contains(import))
+                    {
+                        toProcess.Enqueue(import);
+                    }
+                }
+            }
+
+            if (allModules.Count > 0)
+            {
+                Console.WriteLine($"  Compiled {allModules.Count} dependencies");
+            }
 
             // Optionally emit IR
             if (options.EmitIr)
             {
                 Console.WriteLine("\n=== IR Dump (Before Optimization) ===");
-                // TODO: Implement IR dumper
                 Console.WriteLine("(IR dump not yet implemented)");
                 Console.WriteLine();
             }
 
-            // Run optimization passes
-            if (options.OptimizationLevel > 0)
-            {
-                Console.WriteLine($"Running optimizations (level {options.OptimizationLevel})...");
-                var optimizer = Novus.Optimizer.OptimizationPipeline.CreatePipeline(
-                    options.OptimizationLevel,
-                    options.Verbose
-                );
-                optimizer.Run(module);
-            }
-
-            // Generate 68k assembly
             Console.WriteLine("Generating 68k assembly...");
-            var codegen = new M68kCodeGenerator(module, irBuilder.StringLiterals, options.Cpu, options.Fpu);
-            var assembly = codegen.Generate();
 
             if (options.EmitAsmOnly)
             {
-                // Just output the assembly
+                // Just output the main assembly
                 var asmFile = Path.ChangeExtension(options.OutputFile, ".s");
-                await File.WriteAllTextAsync(asmFile, assembly);
+                await File.WriteAllTextAsync(asmFile, mainAssembly);
                 Console.WriteLine($"Assembly written to: {asmFile}");
                 return 0;
             }
@@ -167,8 +228,10 @@ class Program
             // Enable FPU instructions in assembler if using fat binary or explicit FPU mode
             bool enableFpu = options.Fpu != "soft";
 
-            var success = await toolchain.CompileToExecutable(
-                assembly,
+            // Pass all assemblies (main + dependencies) to the toolchain
+            var success = await toolchain.CompileToExecutableWithDependencies(
+                mainAssembly,
+                allModules,
                 outputDir,
                 baseName,
                 options.Cpu,

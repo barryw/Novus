@@ -25,6 +25,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     private readonly Dictionary<string, IrEnumType> _enums = new();
     private readonly Dictionary<string, ConstantSymbol> _constants = new();
     private readonly Dictionary<string, string> _importedNames = new(); // Maps imported name -> module name
+    private readonly HashSet<string> _importedModules = new(); // Track which modules have been imported (by path)
     private FunctionSymbol? _currentFunction;
     private int _loopDepth = 0; // Track loop nesting for break validation
     private readonly string _stdLibPath; // Path to standard library
@@ -140,6 +141,15 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 return;
             }
         }
+
+        // Skip if this module has already been imported
+        if (_importedModules.Contains(modulePath))
+        {
+            return;
+        }
+
+        // Mark this module as imported
+        _importedModules.Add(modulePath);
 
         // Load and parse the module
         var moduleSource = System.IO.File.ReadAllText(modulePath);

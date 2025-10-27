@@ -26,6 +26,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
     public readonly List<IrStringLiteral> StringLiterals = new(); // Track all string literals for data section
     private string _stdLibPath = "."; // Path to standard library
     private readonly bool _skipAutoImports; // Skip auto-importing core module (for tests)
+    private readonly List<string> _importedModulePaths = new(); // Track imported module file paths for linking
 
     /// <summary>
     /// Constructor for IrBuilder
@@ -41,6 +42,14 @@ public class IrBuilder : NovusBaseVisitor<object?>
     public void SetStdLibPath(string path)
     {
         _stdLibPath = path;
+    }
+
+    /// <summary>
+    /// Get list of imported module file paths (for linking)
+    /// </summary>
+    public List<string> GetImportedModules()
+    {
+        return _importedModulePaths;
     }
 
     /// <summary>
@@ -188,7 +197,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
         }
 
-        // Load and parse the module
+        // Load and parse the module first to check if it needs compilation
         var moduleSource = System.IO.File.ReadAllText(modulePath);
         var inputStream = new AntlrInputStream(moduleSource);
         var lexer = new NovusLexer(inputStream);
@@ -199,6 +208,37 @@ public class IrBuilder : NovusBaseVisitor<object?>
         if (parser.NumberOfSyntaxErrors > 0)
         {
             throw new Exception($"Module '{moduleName}' has syntax errors");
+        }
+
+        // Check if this module has any pub (non-extern) functions that need compilation
+        // FFI modules (only extern functions) don't need to be compiled separately
+        bool hasImplementation = false;
+        foreach (var funcDecl in moduleContext.functionDeclaration())
+        {
+            bool isPub = false;
+            bool isExtern = false;
+            for (int i = 0; i < Math.Min(3, funcDecl.ChildCount); i++)
+            {
+                if (funcDecl.GetChild(i)?.GetText() == "pub")
+                    isPub = true;
+                if (funcDecl.GetChild(i)?.GetText() == "extern")
+                    isExtern = true;
+            }
+
+            // Module has implementation if it has pub functions that aren't extern
+            if (isPub && !isExtern)
+            {
+                hasImplementation = true;
+                break;
+            }
+        }
+
+        // Track this module for compilation only if it has real implementations
+        // (avoid duplicates)
+        // Exception: Never compile 'core' as a dependency - it's auto-imported everywhere
+        if (hasImplementation && !_importedModulePaths.Contains(modulePath) && moduleName != "core")
+        {
+            _importedModulePaths.Add(modulePath);
         }
 
         // Build the list of names to import
@@ -377,7 +417,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             // Parse function signature
             var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
-            var function = new IrFunction(funcName, returnType, isPublic: false, isExtern: true);
+            // Only mark as extern if it's truly an extern function (FFI)
+            // Pub functions from Novus modules are real implementations that need linking
+            var function = new IrFunction(funcName, returnType, isPublic: false, isExtern: isExtern);
 
             // Parse parameters
             if (funcDecl.parameterList() != null)

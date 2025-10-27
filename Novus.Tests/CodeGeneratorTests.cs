@@ -1114,4 +1114,102 @@ fn test(x: i32) -> i32 {
         // 3 variables (a, b, c) = 12 bytes base, aligned to 24
         Assert.Contains("link\ta6,#-24", asm);
     }
+
+    // Module Import Tests
+
+    [Fact]
+    public void Generate_ImportedFunctionWithNoBody_GeneratesExternalReference()
+    {
+        // Simulate an imported function by creating a function with no basic blocks
+        var module = new IrModule();
+
+        // Create main function with body
+        var mainFunc = new IrFunction("main", new IrIntType(32, false), isPublic: true, isExtern: false);
+        var entryBlock = mainFunc.CreateBasicBlock("entry");
+        entryBlock.Instructions.Add(new IrReturn(new IrConstant(42, new IrIntType(32, false))));
+        module.AddFunction(mainFunc);
+
+        // Create imported function with NO body (simulates imported declaration from another module)
+        var importedFunc = new IrFunction("WriteOut", new IrIntType(32, true), isPublic: false, isExtern: false);
+        importedFunc.Parameters.Add(new IrParameter("message", IrStringType.Instance));
+        // Importantly: NO basic blocks - this simulates an imported function
+        module.AddFunction(importedFunc);
+
+        var codegen = new M68kCodeGenerator(module, new List<IrStringLiteral>(), "68020");
+        var asm = codegen.Generate();
+
+        // Imported function should be treated as external reference
+        Assert.Contains("xref\t_WriteOut", asm);
+
+        // Imported function should NOT have a function body generated
+        // It should not have the function label followed by instructions
+        var lines = asm.Split('\n');
+        var writeOutLabelIndex = Array.FindIndex(lines, l => l.Trim() == "_WriteOut:");
+
+        // Function label should NOT exist (only xref)
+        Assert.Equal(-1, writeOutLabelIndex);
+
+        // Should NOT contain prologue for imported function
+        var writeOutSection = string.Join("\n", lines.SkipWhile(l => !l.Contains("WriteOut")));
+        Assert.DoesNotContain("link\ta6,#", writeOutSection);
+    }
+
+    [Fact]
+    public void Generate_ExternFunction_GeneratesExternalReference()
+    {
+        var source = @"
+extern fn Output() -> i32
+
+pub fn main() -> u32 {
+    return 42
+}";
+        var asm = GenerateAssembly(source);
+
+        // Extern function should generate xref
+        Assert.Contains("xref\t_Output", asm);
+
+        // Extern function should NOT have a function body
+        Assert.DoesNotContain("_Output:", asm);
+    }
+
+    [Fact]
+    public void Generate_ImportedAndLocalFunctions_OnlyGeneratesLocalBodies()
+    {
+        var module = new IrModule();
+
+        // Create local function with body
+        var localFunc = new IrFunction("helper", new IrIntType(32, true), isPublic: true, isExtern: false);
+        var helperBlock = localFunc.CreateBasicBlock("entry");
+        helperBlock.Instructions.Add(new IrReturn(new IrConstant(10, new IrIntType(32, true))));
+        module.AddFunction(localFunc);
+
+        // Create imported function with no body
+        var importedFunc = new IrFunction("WriteOut", new IrIntType(32, true), isPublic: false, isExtern: false);
+        importedFunc.Parameters.Add(new IrParameter("message", IrStringType.Instance));
+        module.AddFunction(importedFunc);
+
+        // Create main function with body
+        var mainFunc = new IrFunction("main", new IrIntType(32, false), isPublic: true, isExtern: false);
+        var mainBlock = mainFunc.CreateBasicBlock("entry");
+        mainBlock.Instructions.Add(new IrReturn(new IrConstant(0, new IrIntType(32, false))));
+        module.AddFunction(mainFunc);
+
+        var codegen = new M68kCodeGenerator(module, new List<IrStringLiteral>(), "68020");
+        var asm = codegen.Generate();
+
+        // Local functions should have bodies
+        Assert.Contains("_helper:", asm);
+        Assert.Contains("_main:", asm);
+
+        // Imported function should only have xref
+        Assert.Contains("xref\t_WriteOut", asm);
+        Assert.DoesNotContain("_WriteOut:", asm);
+
+        // Local functions should be exported (pub)
+        Assert.Contains("xdef\t_helper", asm);
+        Assert.Contains("xdef\t_main", asm);
+
+        // Imported function should NOT be exported
+        Assert.DoesNotContain("xdef\t_WriteOut", asm);
+    }
 }

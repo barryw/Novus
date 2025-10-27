@@ -221,6 +221,119 @@ public class VbccToolchain
     }
 
     /// <summary>
+    /// Compile a Novus source file with dependencies to an Amiga executable
+    /// </summary>
+    public async Task<bool> CompileToExecutableWithDependencies(
+        string mainAsmSource,
+        Dictionary<string, string> dependencyAssemblies,  // module path -> assembly
+        string outputPath,
+        string baseName,
+        string cpu = "68020",
+        bool enableFpu = false,
+        string fpuMode = "auto")
+    {
+        // For fat binaries (cpu="auto"), use 68020 for assembly since it supports all instructions
+        var assemblyCpu = cpu == "auto" ? "68020" : cpu;
+        var objFiles = new List<string>();
+
+        // Assemble the main file
+        var mainAsmFile = Path.Combine(outputPath, $"{baseName}.s");
+        var mainObjFile = Path.Combine(outputPath, $"{baseName}.o");
+        await File.WriteAllTextAsync(mainAsmFile, mainAsmSource);
+
+        if (!await Assemble(mainAsmFile, mainObjFile, assemblyCpu, enableFpu))
+        {
+            Console.WriteLine("Main assembly failed");
+            return false;
+        }
+        objFiles.Add(mainObjFile);
+
+        // Assemble all dependency modules
+        foreach (var (modulePath, asmSource) in dependencyAssemblies)
+        {
+            var moduleName = Path.GetFileNameWithoutExtension(modulePath);
+            var depAsmFile = Path.Combine(outputPath, $"{moduleName}.s");
+            var depObjFile = Path.Combine(outputPath, $"{moduleName}.o");
+
+            await File.WriteAllTextAsync(depAsmFile, asmSource);
+
+            if (!await Assemble(depAsmFile, depObjFile, assemblyCpu, enableFpu))
+            {
+                Console.WriteLine($"Dependency assembly failed: {moduleName}");
+                return false;
+            }
+            objFiles.Add(depObjFile);
+        }
+
+        // Detect which library stubs are needed (scan all assemblies)
+        var allAssemblies = new List<string> { mainAsmSource };
+        allAssemblies.AddRange(dependencyAssemblies.Values);
+
+        var requiredLibraries = new HashSet<string>();
+        foreach (var asm in allAssemblies)
+        {
+            var libs = DetectRequiredLibraries(asm);
+            foreach (var lib in libs)
+            {
+                requiredLibraries.Add(lib);
+            }
+        }
+
+        // Assemble library stubs (only once per library)
+        var compilerDir = AppContext.BaseDirectory;
+        foreach (var library in requiredLibraries)
+        {
+            var stubsSource = Path.Combine(compilerDir, "stubs", $"{library}_stubs.s");
+
+            if (File.Exists(stubsSource))
+            {
+                var stubsObj = Path.Combine(outputPath, $"{library}_stubs.o");
+
+                if (!await Assemble(stubsSource, stubsObj, assemblyCpu, false))
+                {
+                    Console.WriteLine($"{library} stubs assembly failed");
+                    return false;
+                }
+
+                objFiles.Add(stubsObj);
+
+                // If using DOS library, also include dos_init.o for automatic DOSBase initialization
+                if (library == "dos")
+                {
+                    var dosInitSource = Path.Combine(compilerDir, "stubs", "dos_init.s");
+                    if (File.Exists(dosInitSource))
+                    {
+                        var dosInitObj = Path.Combine(outputPath, "dos_init.o");
+
+                        if (!await Assemble(dosInitSource, dosInitObj, assemblyCpu, false))
+                        {
+                            Console.WriteLine("dos_init assembly failed");
+                            return false;
+                        }
+
+                        objFiles.Add(dosInitObj);
+                    }
+                }
+            }
+            else
+            {
+                Console.WriteLine($"Warning: {library} functions used but stubs not found at {stubsSource}");
+            }
+        }
+
+        // Link all object files
+        var exeFile = Path.Combine(outputPath, baseName);
+        if (!await Link(objFiles.ToArray(), exeFile, fpuMode, includeStartup: true))
+        {
+            Console.WriteLine("Linking failed");
+            return false;
+        }
+
+        Console.WriteLine($"Successfully created: {exeFile}");
+        return true;
+    }
+
+    /// <summary>
     /// Detect which Amiga libraries are referenced in the assembly code
     /// </summary>
     private HashSet<string> DetectRequiredLibraries(string asmSource)

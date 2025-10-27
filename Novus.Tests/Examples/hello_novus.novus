@@ -1,0 +1,14 @@
+// Hello from Novus - Clean ergonomic example!
+// NO manual DOS initialization needed - it just works!
+// Uses high-level I/O wrappers for maximum devex!
+
+from io import WriteOut
+
+pub fn main() -> u32 {
+    WriteOut("Hello from Novus!\n")
+    WriteOut("String type: ergonomic and safe!\n")
+    WriteOut("High-level wrappers: beautiful devex!\n")
+    WriteOut("No manual init - it just works!\n")
+
+    return 0
+}
