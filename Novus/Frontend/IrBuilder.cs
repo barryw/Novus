@@ -23,6 +23,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
     private readonly Dictionary<string, IrEnumType> _enums = new(); // Track enum types
     private readonly Dictionary<string, IrGenericType> _genericParams = new(); // Track generic type parameters
     private readonly Dictionary<string, (IrType Type, object Value)> _constants = new(); // Track constant values
+    private readonly Dictionary<string, IrEnumType> _monomorphizedEnums = new(); // Cache for monomorphized generic enums
+    private IrType? _expectedType = null; // Expected type for bidirectional type checking
     public readonly List<IrStringLiteral> StringLiterals = new(); // Track all string literals for data section
     private string _stdLibPath = "."; // Path to standard library
     private readonly bool _skipAutoImports; // Skip auto-importing core module (for tests)
@@ -601,7 +603,15 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     public override object? VisitReturnStatement([NotNull] NovusParser.ReturnStatementContext context)
     {
+        // Set expected type for bidirectional type checking
+        var savedExpectedType = _expectedType;
+        _expectedType = _currentFunction?.ReturnType;
+
         var value = (IrValue?)Visit(context.expression());
+
+        // Restore previous expected type
+        _expectedType = savedExpectedType;
+
         _currentBlock!.AddInstruction(new IrReturn(value));
         return null;
     }
@@ -1038,8 +1048,102 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 throw new Exception($"Variant '{enumCtor.VariantName}' expects {variant.AssociatedData.Count} arguments, got {arguments.Count}");
             }
 
-            // Create the enum value
-            return new IrEnumValue(enumType, enumCtor.VariantName, enumCtor.VariantTag, arguments);
+            // If enum has generic parameters, perform type inference to monomorphize
+            IrEnumType finalEnumType = enumType;
+            if (enumType.GenericParameters.Count > 0)
+            {
+                // Build type substitutions from argument types
+                var typeSubstitutions = new Dictionary<string, IrType>();
+                for (int i = 0; i < arguments.Count; i++)
+                {
+                    var argType = arguments[i].Type;
+                    var paramType = variant.AssociatedData[i];
+
+                    if (paramType is IrGenericType gt)
+                    {
+                        if (!typeSubstitutions.ContainsKey(gt.ParameterName))
+                        {
+                            typeSubstitutions[gt.ParameterName] = argType;
+                        }
+                    }
+                }
+
+                // Bidirectional type checking: use expected type to fill in missing parameters
+                if (_expectedType is IrEnumType expectedEnumType &&
+                    expectedEnumType.EnumName == enumType.EnumName &&
+                    expectedEnumType.GenericParameters.Count == 0) // Expected type is monomorphized
+                {
+                    // Extract concrete types from expected enum by matching variant structure
+                    for (int paramIdx = 0; paramIdx < enumType.GenericParameters.Count; paramIdx++)
+                    {
+                        var paramName = enumType.GenericParameters[paramIdx];
+                        if (!typeSubstitutions.ContainsKey(paramName))
+                        {
+                            // Find this parameter in a variant and extract the concrete type
+                            for (int varIdx = 0; varIdx < enumType.Variants.Count; varIdx++)
+                            {
+                                var origVariant = enumType.Variants[varIdx];
+                                var expectedVar = expectedEnumType.Variants[varIdx];
+
+                                for (int dataIdx = 0; dataIdx < origVariant.AssociatedData.Count; dataIdx++)
+                                {
+                                    if (origVariant.AssociatedData[dataIdx] is IrGenericType gt &&
+                                        gt.ParameterName == paramName)
+                                    {
+                                        typeSubstitutions[paramName] = expectedVar.AssociatedData[dataIdx];
+                                        break;
+                                    }
+                                }
+
+                                if (typeSubstitutions.ContainsKey(paramName))
+                                    break;
+                            }
+                        }
+                    }
+                }
+
+                // Create cache key
+                var typeArgNames = enumType.GenericParameters.Select(p =>
+                    typeSubstitutions.ContainsKey(p) ? typeSubstitutions[p].Name : p);
+                var cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgNames)}>";
+
+                // Check cache first
+                if (_monomorphizedEnums.ContainsKey(cacheKey))
+                {
+                    finalEnumType = _monomorphizedEnums[cacheKey];
+                }
+                else
+                {
+                    // Create monomorphized enum type
+                    var monomorphizedVariants = new List<IrEnumVariant>();
+                    foreach (var origVariant in enumType.Variants)
+                    {
+                        var monomorphizedData = new List<IrType>();
+                        foreach (var dataType in origVariant.AssociatedData)
+                        {
+                            if (dataType is IrGenericType genType && typeSubstitutions.ContainsKey(genType.ParameterName))
+                            {
+                                monomorphizedData.Add(typeSubstitutions[genType.ParameterName]);
+                            }
+                            else
+                            {
+                                monomorphizedData.Add(dataType);
+                            }
+                        }
+                        monomorphizedVariants.Add(new IrEnumVariant(origVariant.Name, origVariant.Tag, monomorphizedData));
+                    }
+
+                    // Create new enum type with concrete types
+                    finalEnumType = new IrEnumType(enumType.EnumName, monomorphizedVariants, null);
+
+                    // Cache it
+                    _monomorphizedEnums[cacheKey] = finalEnumType;
+                }
+            }
+
+            // Create the enum value with the monomorphized type
+            var finalVariant = finalEnumType.GetVariant(enumCtor.VariantName);
+            return new IrEnumValue(finalEnumType, enumCtor.VariantName, finalVariant!.Tag, arguments);
         }
 
         string? resultName;
@@ -2087,6 +2191,15 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     typeArgs.Add(ParseType(typeCtx));
                 }
 
+                // Create cache key: EnumName_TypeArg1Name_TypeArg2Name...
+                var cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgs.Select(t => t.Name))}>";
+
+                // Check cache first
+                if (_monomorphizedEnums.ContainsKey(cacheKey))
+                {
+                    return _monomorphizedEnums[cacheKey];
+                }
+
                 // Create monomorphized enum with concrete types
                 var typeSubstitutions = new Dictionary<string, IrType>();
                 for (int i = 0; i < enumType.GenericParameters.Count; i++)
@@ -2114,7 +2227,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 }
 
                 // Create new enum type with concrete types (no generic parameters)
-                return new IrEnumType(enumType.EnumName, monomorphizedVariants, null);
+                var monomorphizedEnum = new IrEnumType(enumType.EnumName, monomorphizedVariants, null);
+
+                // Cache it for future use
+                _monomorphizedEnums[cacheKey] = monomorphizedEnum;
+
+                return monomorphizedEnum;
             }
 
             return enumType;

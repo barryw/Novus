@@ -1,0 +1,36 @@
+// Test basic Option<T> construction and pattern matching
+
+fn make_some() -> Option<i32> {
+    return Option::Some(42)
+}
+
+pub fn main() -> i32 {
+    // Test Some variant
+    let some_result = make_some()
+    match some_result {
+        Some(value) => {
+            if value != 42 {
+                return 1  // Failed: expected 42
+            }
+        },
+        None => {
+            return 2  // Failed: expected Some
+        },
+    }
+
+    // Test direct construction and matching
+    let opt = Option::Some(21)
+    match opt {
+        Some(val) => {
+            let doubled = val * 2
+            if doubled != 42 {
+                return 3  // Failed: expected 42
+            }
+        },
+        None => {
+            return 4  // Failed: expected Some
+        },
+    }
+
+    return 0  // All tests passed
+}

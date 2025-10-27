@@ -1,29 +1,20 @@
-// io.novus - High-level I/O wrapper for Amiga DOS
-// Accepts String type - length is already known, no strlen() needed!
+// io.novus - High-level I/O for Amiga DOS
 
 from dos import Output, Write
+from error import DosError, dos_last_error
 
-// Write to stdout - String provides both pointer and length
-// Returns bytes written, or negative error code
-pub fn WriteOut(message: String) -> i32 {
+// Write to stdout - returns Result for proper error handling
+pub fn WriteOut(message: String) -> Result<i32, DosError> {
     let stdout = Output()
     if stdout == 0 {
-        return -1
+        return Result::Err(DosError::InvalidInput)
     }
-    // String is {ptr: *u8, len: i32}
-    // When passed to Write (which expects i32), compiler auto-extracts .ptr
-    // We access .len explicitly here
-    return Write(stdout, message, message.len)
-}
 
-// Write to stderr - String provides both pointer and length
-// Falls back to stdout if stderr unavailable
-// Returns bytes written, or negative error code
-pub fn WriteErr(message: String) -> i32 {
-    // Note: Error() causes hangs on some systems, using Output() for now
-    let stdout = Output()
-    if stdout == 0 {
-        return -1
+    let bytes = Write(stdout, message, message.len)
+    if bytes >= 0 {
+        return Result::Ok(bytes)
     }
-    return Write(stdout, message, message.len)
+
+    let err = dos_last_error()
+    return Result::Err(err)
 }

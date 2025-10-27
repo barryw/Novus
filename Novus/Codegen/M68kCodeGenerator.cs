@@ -31,6 +31,7 @@ public partial class M68kCodeGenerator
 
     // Track temp variables saved on stack (in order of saving)
     private readonly List<string> _savedTemps = new();
+    private readonly Dictionary<string, int> _savedTempSizes = new(); // Track size of each saved temp
     private int _tempStackOffset = 0; // Total bytes used for temps
     // Map temp names to global variables they should reload from (for match on globals)
     private readonly Dictionary<string, string> _globalTagTemps = new();
@@ -450,6 +451,7 @@ public partial class M68kCodeGenerator
 
         _localVariableOffsets.Clear();    // Clear local variable offsets for new function
         _savedTemps.Clear();              // Clear saved temps for new function
+        _savedTempSizes.Clear();          // Clear saved temp sizes for new function
         _tempStackOffset = 0;             // Reset temp stack offset
         _structMemberLocations.Clear();   // Clear struct member locations for new function
 
@@ -710,7 +712,90 @@ public partial class M68kCodeGenerator
             // Fixed-point uses integer representation, so it always goes in D0
             bool isTrueFloatReturn = ret.Value.Type is IrFloatType;
 
-            if (_generatingFpuVersion && isTrueFloatReturn)
+            // Check if we're returning an enum constructor (simple enum variant)
+            if (ret.Value is IrEnumConstructor enumCtor)
+            {
+                // Simple enum variant - just load the tag value into D0
+                EmitComment($"Return enum {enumCtor.Type.Name}::{enumCtor.VariantName} = {enumCtor.VariantTag}");
+                Emit($"\tmoveq\t#{enumCtor.VariantTag},d0\t\t; Enum tag");
+            }
+            // Check if we're returning an enum value with associated data
+            else if (ret.Value is IrEnumValue enumValue)
+            {
+                EmitComment($"Return enum value {enumValue.Type.Name}::{enumValue.VariantName}");
+
+                // For small enums (8 bytes), we can return in D0+D1
+                // For now, load enum into address register and then copy to D0+D1
+                LoadOperand(ret.Value, "a0");  // This will push enum to stack and load address
+                Emit("\tmove.l\t(a0),d0\t\t; Load enum tag");
+
+                if (enumValue.Type.SizeInBytes > 4)
+                {
+                    Emit("\tmove.l\t4(a0),d1\t\t; Load enum data");
+                }
+            }
+            // Check if we're returning an enum type (composite value)
+            else if (ret.Value.Type is IrEnumType enumType && ret.Value is IrVariable enumVar)
+            {
+                // For enum types, load from stack location into D0+D1 (8 bytes max)
+                EmitComment($"Return enum {enumType.EnumName} ({enumType.SizeInBytes} bytes)");
+
+                int offset;
+
+                // Check if it's a local variable or a temporary
+                if (_localVariableOffsets.ContainsKey(enumVar.Name))
+                {
+                    offset = _localVariableOffsets[enumVar.Name];
+                }
+                else if (enumVar.Name.StartsWith("%t"))
+                {
+                    // It's a temporary - check if it's saved on the stack
+                    var tempIndex = _savedTemps.IndexOf(enumVar.Name);
+                    if (tempIndex >= 0)
+                    {
+                        // Calculate offset from top of stack
+                        offset = (_savedTemps.Count - 1 - tempIndex) * 4;
+                        // Convert to frame pointer offset
+                        offset = -(_tempStackOffset - offset);
+
+                        // Load first 4 bytes (tag) into D0
+                        Emit($"\tmove.l\t{offset}(a6),d0\t\t; Load enum tag");
+
+                        // If enum has data (size > 4), load next 4 bytes into D1
+                        if (enumType.SizeInBytes > 4)
+                        {
+                            Emit($"\tmove.l\t{offset + 4}(a6),d1\t\t; Load enum data");
+                        }
+                    }
+                    else
+                    {
+                        // Temporary not saved - try to load it with LoadOperand
+                        EmitComment($"Load enum temporary {enumVar.Name}");
+                        LoadOperand(ret.Value, "a0");  // Load into address register
+
+                        // Load from address into D0+D1
+                        Emit("\tmove.l\t(a0),d0\t\t; Load enum tag");
+                        if (enumType.SizeInBytes > 4)
+                        {
+                            Emit("\tmove.l\t4(a0),d1\t\t; Load enum data");
+                        }
+                    }
+                }
+                else
+                {
+                    offset = _localVariableOffsets[enumVar.Name];
+
+                    // Load first 4 bytes (tag) into D0
+                    Emit($"\tmove.l\t{offset}(a6),d0\t\t; Load enum tag");
+
+                    // If enum has data (size > 4), load next 4 bytes into D1
+                    if (enumType.SizeInBytes > 4)
+                    {
+                        Emit($"\tmove.l\t{offset + 4}(a6),d1\t\t; Load enum data");
+                    }
+                }
+            }
+            else if (_generatingFpuVersion && isTrueFloatReturn)
             {
                 // Hardware FPU mode - return value in FP0 (for true floating point only)
                 // LoadOperand will place float constants in FP0
@@ -1145,8 +1230,28 @@ public partial class M68kCodeGenerator
             Emit($"\tlea\t{totalBytesPushed}(sp),sp");
         }
 
-        // Result is in d0 - don't save to stack to avoid stack overflow in loops
-        // If the temp is used later, LoadOperand will use d0 directly
+        // Handle return value based on type
+        if (call.ResultName != null)
+        {
+            // Check if this is a composite type (enum with size > 4 bytes)
+            // Use call.ReturnType which was set during IR building
+            if (call.ReturnType is IrEnumType enumType && enumType.SizeInBytes > 4)
+            {
+                // For composite types, result is in D0+D1
+                // Save both registers to stack
+                EmitComment($"Save composite return value ({enumType.SizeInBytes} bytes)");
+                Emit("\tmove.l\td1,-(sp)\t\t; Save enum data (D1)");
+                Emit("\tmove.l\td0,-(sp)\t\t; Save enum tag (D0)");
+                _savedTemps.Add(call.ResultName);
+                _savedTempSizes[call.ResultName] = 8;  // Track that this temp is 8 bytes
+                _tempStackOffset += 8;
+            }
+            else
+            {
+                // Result is in d0 - don't save to stack to avoid stack overflow in loops
+                // If the temp is used later, LoadOperand will use d0 directly
+            }
+        }
     }
 
     /// <summary>
@@ -1318,6 +1423,24 @@ public partial class M68kCodeGenerator
 
             // Store len at offset 4 (4 bytes)
             Emit($"\tmove.l\t#{stringLiteral.Length},{stringBaseOffset + 4}(a6)\t\t; Store string len");
+        }
+        // Special handling for composite types (8-byte enums) from temporaries
+        else if (localDecl.Type is IrEnumType enumType && enumType.SizeInBytes > 4 &&
+                 localDecl.InitialValue is IrVariable tempVar && tempVar.Name.StartsWith("%t"))
+        {
+            EmitComment($"Initialize composite type from temp {tempVar.Name}");
+            var destOffset = _localVariableOffsets[localDecl.Name];
+
+            // Load address of temp on stack
+            LoadOperand(localDecl.InitialValue, "a0");
+
+            // Copy enum tag (4 bytes)
+            Emit($"\tmove.l\t(a0),d0");
+            Emit($"\tmove.l\td0,{destOffset}(a6)\t\t; Store enum tag");
+
+            // Copy enum data (4 bytes)
+            Emit($"\tmove.l\t4(a0),d0");
+            Emit($"\tmove.l\td0,{destOffset + 4}(a6)\t\t; Store enum data");
         }
         else
         {
@@ -1922,9 +2045,41 @@ public partial class M68kCodeGenerator
                     var savedIndex = _savedTemps.IndexOf(variable.Name);
                     if (savedIndex >= 0)
                     {
+                        // Check if this is a composite type (8-byte enum)
+                        if (variable.Type is IrEnumType enumType && enumType.SizeInBytes > 4)
+                        {
+                            // For composite types, we need to calculate the proper offset
+                            // Calculate offset by summing sizes of all temps saved after this one
+                            int stackOffset = 0;
+                            for (int i = _savedTemps.Count - 1; i > savedIndex; i--)
+                            {
+                                var tempName = _savedTemps[i];
+                                // Get the size of this temp (default to 4 if not tracked)
+                                var tempSize = _savedTempSizes.GetValueOrDefault(tempName, 4);
+                                stackOffset += tempSize;
+                            }
+
+                            if (targetReg.StartsWith('a'))
+                            {
+                                // Load address of enum on stack
+                                Emit($"\tlea\t{stackOffset}(sp),{targetReg}");
+                            }
+                            else
+                            {
+                                throw new Exception("Composite types cannot be loaded into data registers - use address registers");
+                            }
+                            return;
+                        }
+
                         // Calculate offset: most recent temp is at 0(sp), earlier ones at higher offsets
-                        // If saved temps are [%t1, %t2, %t3], then %t3 is at 0(sp), %t2 at 4(sp), %t1 at 8(sp)
-                        var baseOffset = (_savedTemps.Count - 1 - savedIndex) * 4;
+                        // Account for variable-sized temps
+                        int baseOffset = 0;
+                        for (int i = _savedTemps.Count - 1; i > savedIndex; i--)
+                        {
+                            var tempName = _savedTemps[i];
+                            var tempSize = _savedTempSizes.GetValueOrDefault(tempName, 4);
+                            baseOffset += tempSize;
+                        }
 
                         // Adjust offset for big-endian byte ordering when loading smaller than longword
                         // Temps are always stored as longwords (4 bytes)

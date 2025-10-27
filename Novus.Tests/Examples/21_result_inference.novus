@@ -1,0 +1,62 @@
+// Test Result<T, E> type inference from context
+
+from error import DosError
+
+fn check_value(value: i32) -> Result<i32, DosError> {
+    if value > 0 {
+        // Type inference: knows this is Result<i32, DosError> from return type
+        return Result::Ok(value)
+    }
+    // Type inference works for Err variant too
+    return Result::Err(DosError::InvalidInput)
+}
+
+fn add_values(a: i32, b: i32) -> Result<i32, DosError> {
+    let result_a = check_value(a)
+    let result_b = check_value(b)
+
+    match result_a {
+        Ok(val_a) => {
+            match result_b {
+                Ok(val_b) => {
+                    return Result::Ok(val_a + val_b)
+                },
+                Err(err) => {
+                    return Result::Err(err)
+                },
+            }
+        },
+        Err(err) => {
+            return Result::Err(err)
+        },
+    }
+}
+
+pub fn main() -> i32 {
+    // Test successful case
+    let result = add_values(10, 20)
+    match result {
+        Ok(sum) => {
+            if sum != 30 {
+                return 1  // Failed: expected 30
+            }
+        },
+        Err(err) => {
+            return 2  // Failed: expected Ok
+        },
+    }
+
+    // Test error case
+    let err_result = add_values(-5, 10)
+    match err_result {
+        Ok(value) => {
+            return 3  // Failed: expected Err
+        },
+        Err(err) => {
+            // Success - got error as expected
+            let check: i32 = 0
+        },
+    }
+
+    return 0  // All tests passed
+}

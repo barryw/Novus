@@ -33,6 +33,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     // Generic type parameters in scope (for generic enum/struct definitions)
     private readonly Dictionary<string, IrGenericType> _genericParams = new();
 
+    // Cache for monomorphized generic enums (ensures same instance for same type)
+    private readonly Dictionary<string, IrEnumType> _monomorphizedEnums = new();
+
     // Expected type for bidirectional type checking (flows down from context)
     private IrType? _expectedType = null;
 
@@ -950,7 +953,6 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     public override IrType? VisitReturnStatement([NotNull] NovusParser.ReturnStatementContext context)
     {
         var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
-        var exprType = Visit(context.expression());
 
         if (_currentFunction == null)
         {
@@ -961,6 +963,15 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             );
             return null;
         }
+
+        // Set expected type for bidirectional type checking (enables type inference)
+        var savedExpectedType = _expectedType;
+        _expectedType = _currentFunction.ReturnType;
+
+        var exprType = Visit(context.expression());
+
+        // Restore previous expected type
+        _expectedType = savedExpectedType;
 
         // Check return type compatibility
         if (exprType != null && !TypesCompatible(_currentFunction.ReturnType, exprType))
@@ -1994,6 +2005,17 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 // If we inferred type parameters, create a monomorphized instance
                 if (typeSubstitutions != null && typeSubstitutions.Count > 0)
                 {
+                    // Create cache key: EnumName<TypeArg1Name,TypeArg2Name,...>
+                    var typeArgNames = irEnumType.GenericParameters.Select(p =>
+                        typeSubstitutions.ContainsKey(p) ? typeSubstitutions[p].Name : p);
+                    var cacheKey = $"{irEnumType.EnumName}<{string.Join(",", typeArgNames)}>";
+
+                    // Check cache first
+                    if (_monomorphizedEnums.ContainsKey(cacheKey))
+                    {
+                        return _monomorphizedEnums[cacheKey];
+                    }
+
                     // Create monomorphized enum type
                     var monomorphizedVariants = new List<IrEnumVariant>();
                     foreach (var origVariant in irEnumType.Variants)
@@ -2015,6 +2037,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
                     // Create new enum type with concrete types (no generic parameters)
                     var monomorphizedEnum = new IrEnumType(irEnumType.EnumName, monomorphizedVariants, null);
+
+                    // Cache it for future use
+                    _monomorphizedEnums[cacheKey] = monomorphizedEnum;
+
                     return monomorphizedEnum;
                 }
             }
@@ -3018,6 +3044,15 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     return IrIntType.I32;
                 }
 
+                // Create cache key: EnumName<TypeArg1Name,TypeArg2Name,...>
+                var cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgs.Select(t => t.Name))}>";
+
+                // Check cache first
+                if (_monomorphizedEnums.ContainsKey(cacheKey))
+                {
+                    return _monomorphizedEnums[cacheKey];
+                }
+
                 // Create monomorphized enum with concrete types
                 var typeSubstitutions = new Dictionary<string, IrType>();
                 for (int i = 0; i < enumType.GenericParameters.Count; i++)
@@ -3046,6 +3081,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
                 // Create new enum type with concrete types (no generic parameters)
                 var monomorphizedEnum = new IrEnumType(enumType.EnumName, monomorphizedVariants, null);
+
+                // Cache it for future use
+                _monomorphizedEnums[cacheKey] = monomorphizedEnum;
+
                 return monomorphizedEnum;
             }
 

@@ -1,0 +1,331 @@
+// Novus Error Taxonomy
+// Comprehensive error handling across Amiga subsystems
+//
+// Design Philosophy:
+// - Each subsystem has its own error type (DosError, ExecError, etc.)
+// - Top-level NovusError enum wraps all subsystem errors
+// - From<T> conversions allow ergonomic ? operator across subsystems
+// - Raw error codes preserved for debugging
+
+from dos import IoErr
+
+// ============================================================================
+// DOS Library Errors
+// ============================================================================
+
+// DOS error - maps common IoErr() codes from dos.library
+// Call dos.IoErr() to get the raw error code after a failed operation
+pub enum DosError {
+    // File/Directory errors
+    NotFound,               // ERROR_OBJECT_NOT_FOUND (205)
+    AlreadyExists,          // ERROR_OBJECT_EXISTS (203)
+    DirNotFound,            // ERROR_DIR_NOT_FOUND (204)
+    DirectoryNotEmpty,      // ERROR_DIRECTORY_NOT_EMPTY (216)
+
+    // Permission/Access errors
+    PermissionDenied,       // Generic permission error
+    WriteProtected,         // ERROR_WRITE_PROTECTED (223)
+    ReadProtected,          // ERROR_READ_PROTECTED (224)
+    DeleteProtected,        // ERROR_DELETE_PROTECTED (222)
+
+    // Disk errors
+    DiskFull,              // ERROR_DISK_FULL (221)
+    DiskNotValidated,      // ERROR_DISK_NOT_VALIDATED (213)
+    DiskWriteProtected,    // ERROR_DISK_WRITE_PROTECTED (214)
+    NoDisk,                // ERROR_NO_DISK (226)
+    NotADosDisk,           // ERROR_NOT_A_DOS_DISK (225)
+    DeviceNotMounted,      // ERROR_DEVICE_NOT_MOUNTED (218)
+
+    // I/O errors
+    SeekError,             // ERROR_SEEK_ERROR (219)
+    BufferOverflow,        // ERROR_BUFFER_OVERFLOW (303)
+    BadStreamName,         // ERROR_BAD_STREAM_NAME (206)
+
+    // Resource errors
+    NoFreeStore,           // ERROR_NO_FREE_STORE (103) - Out of memory
+    ObjectInUse,           // ERROR_OBJECT_IN_USE (202)
+    ObjectTooLarge,        // ERROR_OBJECT_TOO_LARGE (207)
+    TooManyLevels,         // ERROR_TOO_MANY_LEVELS (217)
+
+    // Lock/Record errors
+    InvalidLock,           // ERROR_INVALID_LOCK (211)
+    RecordNotLocked,       // ERROR_RECORD_NOT_LOCKED (240)
+    LockCollision,         // ERROR_LOCK_COLLISION (241)
+    LockTimeout,           // ERROR_LOCK_TIMEOUT (242)
+
+    // Other
+    NotImplemented,        // ERROR_NOT_IMPLEMENTED (236)
+    BadNumber,             // ERROR_BAD_NUMBER (115)
+    InvalidInput,          // Generic invalid input
+    Unknown,               // Unmapped error code (check IoErr() for raw value)
+}
+
+// Get the current DOS error from IoErr()
+pub fn dos_last_error() -> DosError {
+    let code = IoErr()
+    return dos_error_from_code(code)
+}
+
+// Convert raw IoErr code to DosError enum
+pub fn dos_error_from_code(code: i32) -> DosError {
+    // Map common DOS error codes to enum variants
+    // Note: This is a subset - extend as needed
+    if code == 205 {
+        return DosError::NotFound
+    }
+    if code == 203 {
+        return DosError::AlreadyExists
+    }
+    if code == 204 {
+        return DosError::DirNotFound
+    }
+    if code == 216 {
+        return DosError::DirectoryNotEmpty
+    }
+    if code == 223 {
+        return DosError::WriteProtected
+    }
+    if code == 224 {
+        return DosError::ReadProtected
+    }
+    if code == 222 {
+        return DosError::DeleteProtected
+    }
+    if code == 221 {
+        return DosError::DiskFull
+    }
+    if code == 213 {
+        return DosError::DiskNotValidated
+    }
+    if code == 214 {
+        return DosError::DiskWriteProtected
+    }
+    if code == 226 {
+        return DosError::NoDisk
+    }
+    if code == 225 {
+        return DosError::NotADosDisk
+    }
+    if code == 218 {
+        return DosError::DeviceNotMounted
+    }
+    if code == 219 {
+        return DosError::SeekError
+    }
+    if code == 303 {
+        return DosError::BufferOverflow
+    }
+    if code == 206 {
+        return DosError::BadStreamName
+    }
+    if code == 103 {
+        return DosError::NoFreeStore
+    }
+    if code == 202 {
+        return DosError::ObjectInUse
+    }
+    if code == 207 {
+        return DosError::ObjectTooLarge
+    }
+    if code == 217 {
+        return DosError::TooManyLevels
+    }
+    if code == 211 {
+        return DosError::InvalidLock
+    }
+    if code == 240 {
+        return DosError::RecordNotLocked
+    }
+    if code == 241 {
+        return DosError::LockCollision
+    }
+    if code == 242 {
+        return DosError::LockTimeout
+    }
+    if code == 236 {
+        return DosError::NotImplemented
+    }
+    if code == 115 {
+        return DosError::BadNumber
+    }
+
+    // Unknown error code - caller can check IoErr() for raw value
+    return DosError::Unknown
+}
+
+// Convert DosError back to error code (for debugging/logging)
+pub fn dos_error_to_code(err: DosError) -> i32 {
+    match err {
+        NotFound => 205,
+        AlreadyExists => 203,
+        DirNotFound => 204,
+        DirectoryNotEmpty => 216,
+        PermissionDenied => -1,  // Generic
+        WriteProtected => 223,
+        ReadProtected => 224,
+        DeleteProtected => 222,
+        DiskFull => 221,
+        DiskNotValidated => 213,
+        DiskWriteProtected => 214,
+        NoDisk => 226,
+        NotADosDisk => 225,
+        DeviceNotMounted => 218,
+        SeekError => 219,
+        BufferOverflow => 303,
+        BadStreamName => 206,
+        NoFreeStore => 103,
+        ObjectInUse => 202,
+        ObjectTooLarge => 207,
+        TooManyLevels => 217,
+        InvalidLock => 211,
+        RecordNotLocked => 240,
+        LockCollision => 241,
+        LockTimeout => 242,
+        NotImplemented => 236,
+        BadNumber => 115,
+        InvalidInput => -2,  // Generic
+        Unknown => -999,  // Unmapped error
+    }
+}
+
+// ============================================================================
+// Exec Library Errors
+// ============================================================================
+
+// Exec library errors - memory, tasks, signals, etc.
+pub enum ExecError {
+    NoMem,              // Memory allocation failed (NULL return from AllocMem)
+    BadSignal,          // Invalid signal number
+    NullReturn,         // Function returned NULL unexpectedly
+    BadTask,            // Invalid task pointer
+    BadNode,            // Invalid list node
+    BadPort,            // Invalid message port
+    SignalInUse,        // Signal already allocated
+    TaskNotFound,       // Task lookup failed
+    LibraryNotFound,    // OpenLibrary failed
+    InvalidAddress,     // Invalid memory address
+    AlignmentError,     // Memory alignment violation
+}
+
+// Convert ExecError to error code
+pub fn exec_error_to_code(err: ExecError) -> i32 {
+    match err {
+        NoMem => -100,
+        BadSignal => -101,
+        NullReturn => -102,
+        BadTask => -103,
+        BadNode => -104,
+        BadPort => -105,
+        SignalInUse => -106,
+        TaskNotFound => -107,
+        LibraryNotFound => -108,
+        InvalidAddress => -109,
+        AlignmentError => -110,
+    }
+}
+
+// ============================================================================
+// Intuition Library Errors
+// ============================================================================
+
+// Intuition (GUI) errors
+pub enum IntuitionError {
+    WindowOpenFailed,       // OpenWindow failed
+    ScreenOpenFailed,       // OpenScreen failed
+    GadgetCreateFailed,     // Gadget creation failed
+    MenuCreateFailed,       // Menu creation failed
+    InvalidWindow,          // Invalid window pointer
+    InvalidScreen,          // Invalid screen pointer
+    NoIDCMP,               // IDCMP setup failed
+    BadDisplayMode,        // Invalid display mode
+}
+
+// Convert IntuitionError to error code
+pub fn intuition_error_to_code(err: IntuitionError) -> i32 {
+    match err {
+        WindowOpenFailed => -200,
+        ScreenOpenFailed => -201,
+        GadgetCreateFailed => -202,
+        MenuCreateFailed => -203,
+        InvalidWindow => -204,
+        InvalidScreen => -205,
+        NoIDCMP => -206,
+        BadDisplayMode => -207,
+    }
+}
+
+// ============================================================================
+// Graphics Library Errors
+// ============================================================================
+
+// Graphics library errors
+pub enum GraphicsError {
+    BitMapAllocFailed,      // BitMap allocation failed
+    RastPortInitFailed,     // RastPort init failed
+    FontOpenFailed,         // OpenFont failed
+    InvalidBitMap,          // Invalid BitMap pointer
+    InvalidRastPort,        // Invalid RastPort pointer
+    BadDisplayMode,         // Invalid display mode
+    CopperListFailed,       // Copper list setup failed
+}
+
+// Convert GraphicsError to error code
+pub fn graphics_error_to_code(err: GraphicsError) -> i32 {
+    match err {
+        BitMapAllocFailed => -300,
+        RastPortInitFailed => -301,
+        FontOpenFailed => -302,
+        InvalidBitMap => -303,
+        InvalidRastPort => -304,
+        BadDisplayMode => -305,
+        CopperListFailed => -306,
+    }
+}
+
+// ============================================================================
+// Top-Level Novus Error (Wraps All Subsystems)
+// ============================================================================
+
+// Top-level error type that can represent errors from any Amiga subsystem
+// Use this as the error type when functions may fail with errors from
+// multiple subsystems (e.g., a GUI app that does file I/O)
+pub enum NovusError {
+    Dos(DosError),              // DOS library error
+    Exec(ExecError),            // Exec library error
+    Intuition(IntuitionError),  // Intuition library error
+    Graphics(GraphicsError),    // Graphics library error
+}
+
+// Convert any subsystem error to top-level NovusError
+// This enables the ? operator to work across subsystems
+
+// From<DosError> for NovusError
+pub fn novus_error_from_dos(err: DosError) -> NovusError {
+    return NovusError::Dos(err)
+}
+
+// From<ExecError> for NovusError
+pub fn novus_error_from_exec(err: ExecError) -> NovusError {
+    return NovusError::Exec(err)
+}
+
+// From<IntuitionError> for NovusError
+pub fn novus_error_from_intuition(err: IntuitionError) -> NovusError {
+    return NovusError::Intuition(err)
+}
+
+// From<GraphicsError> for NovusError
+pub fn novus_error_from_graphics(err: GraphicsError) -> NovusError {
+    return NovusError::Graphics(err)
+}
+
+// Convert NovusError to generic error code (for debugging/FFI)
+pub fn novus_error_to_code(err: NovusError) -> i32 {
+    match err {
+        Dos(dos_err) => dos_error_to_code(dos_err),
+        Exec(exec_err) => exec_error_to_code(exec_err),
+        Intuition(intui_err) => intuition_error_to_code(intui_err),
+        Graphics(gfx_err) => graphics_error_to_code(gfx_err),
+    }
+}
+
