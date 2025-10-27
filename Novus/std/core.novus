@@ -15,26 +15,9 @@ pub enum Result<T, E> {
     Err(E),
 }
 
-// Common error codes for Amiga development
-pub enum IoError {
-    NotFound,           // File or resource not found
-    PermissionDenied,   // Access denied
-    AlreadyExists,      // File already exists
-    InvalidInput,       // Invalid input data
-    OutOfMemory,        // Memory allocation failed
-    Interrupted,        // Operation interrupted
-    Unknown,            // Unknown error
-}
-
-// Convert IoError to error code
-pub fn io_error_code(err: IoError) -> i32 {
-    match err {
-        NotFound => -1,
-        PermissionDenied => -2,
-        AlreadyExists => -3,
-        InvalidInput => -4,
-        OutOfMemory => -5,
-        Interrupted => -6,
-        Unknown => -999,
-    }
-}
+// Note: For AmigaOS error types, see std/error.novus
+// - DosError for file/disk operations
+// - ExecError for memory/tasks/signals
+// - IntuitionError for GUI operations
+// - GraphicsError for graphics operations
+// - NovusError for multi-subsystem errors

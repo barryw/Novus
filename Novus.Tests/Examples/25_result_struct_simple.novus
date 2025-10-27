@@ -1,0 +1,26 @@
+// Simple test: Result with struct - verify basic functionality
+from error import DosError
+
+struct Point {
+    x: i32,
+    y: i32
+}
+
+fn make_point() -> Result<Point, DosError> {
+    let p: Point = Point { x: 42, y: 100 }
+    return Result::Ok(p)
+}
+
+pub fn main() -> i32 {
+    let result = make_point()
+
+    match result {
+        Ok(point) => {
+            // Success! We extracted the Point from Result
+            return 0  // Test passed
+        },
+        Err(err) => {
+            return 1  // Test failed
+        },
+    }
+}
