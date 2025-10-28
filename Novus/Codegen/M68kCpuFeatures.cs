@@ -105,6 +105,7 @@ public class M68kCpuFeatures
                 HasFullFpu = false;
                 break;
 
+            case "020":
             case "68020":
                 CpuGeneration = 2;
                 Has32BitMultiply = true;
@@ -129,6 +130,7 @@ public class M68kCpuFeatures
                 HasFullFpu = true;  // With external 68881/68882
                 break;
 
+            case "030":
             case "68030":
                 CpuGeneration = 3;
                 Has32BitMultiply = true;
@@ -153,6 +155,7 @@ public class M68kCpuFeatures
                 HasFullFpu = true;  // With external 68881/68882
                 break;
 
+            case "040":
             case "68040":
                 CpuGeneration = 4;
                 Has32BitMultiply = true;
@@ -177,6 +180,7 @@ public class M68kCpuFeatures
                 HasFullFpu = false;  // 040 FPU lacks transcendentals
                 break;
 
+            case "060":
             case "68060":
                 CpuGeneration = 6;
                 Has32BitMultiply = true;

@@ -17,6 +17,7 @@ public partial class M68kCodeGenerator
     private readonly Dictionary<string, int> _registerAllocation = new();
     private int _labelCounter = 0;
     private IrFunction? _currentFunction;
+    private Optimizer.RegisterAllocation? _currentFunctionRegAlloc = null;
     private bool _currentFunctionHasPrologue = false;
     private bool _generatingFpuVersion = false; // true when generating _fpu version of function
     private string _currentFunctionSuffix = ""; // suffix for current function (e.g., "_68000", "_68020", "_68060")
@@ -25,6 +26,7 @@ public partial class M68kCodeGenerator
     // Track last comparison for optimization
     private string? _lastComparisonResult;
     private string? _lastComparisonCondition;
+    private string? _lastResultInD0;  // Track which temporary is currently in d0
 
     // Track local variable stack offsets
     private readonly Dictionary<string, int> _localVariableOffsets = new();
@@ -56,6 +58,9 @@ public partial class M68kCodeGenerator
     // Track string literals for data section
     private List<IrStringLiteral> _stringLiterals = new();
 
+    // Store register allocations per function
+    private readonly Dictionary<string, Optimizer.RegisterAllocation> _registerAllocations = new();
+
     public M68kCodeGenerator(IrModule module, List<IrStringLiteral> stringLiterals, string cpuTarget = "68000", string fpuMode = "auto")
     {
         _module = module;
@@ -64,6 +69,17 @@ public partial class M68kCodeGenerator
         _cpuFeatures = new M68kCpuFeatures(_cpuTarget);
         _fpuMode = fpuMode.ToLower();
         _isOriginallyFatBinary = _cpuTarget == "auto"; // Remember if we started as fat binary
+    }
+
+    /// <summary>
+    /// Set register allocations for all functions (called by optimizer)
+    /// </summary>
+    public void SetRegisterAllocations(Dictionary<string, Optimizer.RegisterAllocation> allocations)
+    {
+        foreach (var kvp in allocations)
+        {
+            _registerAllocations[kvp.Key] = kvp.Value;
+        }
     }
 
     private bool Is68020Plus => _cpuFeatures.IsAtLeast(2);
@@ -450,6 +466,9 @@ public partial class M68kCodeGenerator
         _currentFunctionHasPrologue = false;
         _currentFunctionSuffix = suffix; // Track suffix for label generation
 
+        // Set register allocation for this function (if available)
+        _currentFunctionRegAlloc = _registerAllocations.GetValueOrDefault(function.Name);
+
         // Handle extern functions - just emit xref
         // Also treat functions with no body (imported declarations) as extern
         if (function.IsExtern || function.BasicBlocks.Count == 0)
@@ -571,14 +590,97 @@ public partial class M68kCodeGenerator
         if (stackSpace > 0)
         {
             Emit($"\tlink\ta6,#-{stackSpace}");
+            _currentFunctionHasPrologue = true;
         }
         else
         {
             Emit("\tlink\ta6,#0");
+            _currentFunctionHasPrologue = true;
         }
 
-        // Save registers if needed (we'll implement register allocation later)
-        // For now, we'll keep it minimal
+        // REGISTER ALLOCATION: Save callee-saved registers that are used
+        var usedCalleeSavedRegs = GetUsedCalleeSavedRegisters();
+        if (usedCalleeSavedRegs.Count > 0)
+        {
+            EmitComment($"Save callee-saved registers: {string.Join(", ", usedCalleeSavedRegs)}");
+            Emit($"\tmovem.l\t{string.Join("/", usedCalleeSavedRegs)},-(sp)");
+        }
+
+        // REGISTER ALLOCATION: Move parameters from ABI locations to allocated registers
+        if (_currentFunctionRegAlloc != null)
+        {
+            // ABI calling convention: d0, d1, a0, a1, then stack
+            var abiRegs = new[] { "d0", "d1", "a0", "a1" };
+            int paramIndex = 0;
+
+            foreach (var param in function.Parameters)
+            {
+                var allocatedReg = _currentFunctionRegAlloc.GetRegister(param.Name);
+                if (allocatedReg != null)
+                {
+                    string sourceReg;
+                    if (paramIndex < 4)
+                    {
+                        sourceReg = abiRegs[paramIndex];
+                    }
+                    else
+                    {
+                        // Parameter is on stack - load it first to d0, then move to allocated register
+                        int stackOffset = _localVariableOffsets[param.Name];
+                        sourceReg = "d0";
+                        if (allocatedReg != "d0")
+                        {
+                            EmitComment($"Load parameter {param.Name} from stack to {allocatedReg}");
+                            Emit($"\tmove.l\t{stackOffset}(a6),{allocatedReg}");
+                        }
+                        paramIndex++;
+                        continue;
+                    }
+
+                    if (sourceReg != allocatedReg)
+                    {
+                        EmitComment($"Move parameter {param.Name} from {sourceReg} to {allocatedReg}");
+                        Emit($"\tmove.l\t{sourceReg},{allocatedReg}");
+                    }
+                }
+                paramIndex++;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Get list of callee-saved registers used by current function (d2-d7, a2-a5)
+    /// </summary>
+    private List<string> GetUsedCalleeSavedRegisters()
+    {
+        var used = new List<string>();
+        if (_currentFunctionRegAlloc == null) return used;
+
+        // Callee-saved registers we can use
+        var calleeSaved = new[] { "d2", "d3", "d4", "d5", "d6", "d7", "a2", "a3", "a4", "a5" };
+
+        // Check which ones are actually used in this function
+        foreach (var reg in calleeSaved)
+        {
+            // Check if any variable is allocated to this register
+            foreach (var kvp in _currentFunctionRegAlloc.VariableToRegister)
+            {
+                if (kvp.Value == reg)
+                {
+                    used.Add(reg);
+                    break;
+                }
+            }
+        }
+
+        // Sort: data registers first (d2-d7), then address registers (a2-a5)
+        used.Sort((a, b) =>
+        {
+            if (a[0] == b[0]) return string.Compare(a, b, StringComparison.Ordinal);
+            return a[0] == 'd' ? -1 : 1;
+        });
+
+        return used;
     }
 
     private void EmitEpilogue(int? stackCleanup = null)
@@ -589,6 +691,14 @@ public partial class M68kCodeGenerator
         if (cleanup > 0)
         {
             Emit($"\tlea\t{cleanup}(sp),sp");
+        }
+
+        // REGISTER ALLOCATION: Restore callee-saved registers that were saved
+        var usedCalleeSavedRegs = GetUsedCalleeSavedRegisters();
+        if (usedCalleeSavedRegs.Count > 0)
+        {
+            EmitComment($"Restore callee-saved registers: {string.Join(", ", usedCalleeSavedRegs)}");
+            Emit($"\tmovem.l\t(sp)+,{string.Join("/", usedCalleeSavedRegs)}");
         }
 
         // Only emit unlk if we emitted link in the prologue
@@ -936,6 +1046,108 @@ public partial class M68kCodeGenerator
                     }
                 }
             }
+            // Check if we're returning a struct type (composite value)
+            else if (ret.Value.Type is IrStructType structType && ret.Value is IrVariable structVar)
+            {
+                // For struct types larger than 8 bytes, use hidden return pointer
+                if (structType.SizeInBytes > 8)
+                {
+                    EmitComment($"Return large struct {structType.StructName} ({structType.SizeInBytes} bytes) via hidden pointer");
+
+                    int offset;
+
+                    // Find where the struct is stored
+                    if (_localVariableOffsets.ContainsKey(structVar.Name))
+                    {
+                        offset = _localVariableOffsets[structVar.Name];
+                    }
+                    else if (structVar.Name.StartsWith("%t"))
+                    {
+                        var tempIndex = _savedTemps.IndexOf(structVar.Name);
+                        if (tempIndex >= 0)
+                        {
+                            offset = (_savedTemps.Count - 1 - tempIndex) * 4;
+                            offset = -(_tempStackOffset - offset);
+                        }
+                        else
+                        {
+                            throw new Exception($"Large struct temp {structVar.Name} not found on stack");
+                        }
+                    }
+                    else
+                    {
+                        throw new Exception($"Large struct variable {structVar.Name} not found");
+                    }
+
+                    // Copy the struct to the location pointed to by A0 (hidden return pointer)
+                    // A0 was passed by caller and points to where result should be stored
+                    for (int i = 0; i < structType.SizeInBytes; i += 4)
+                    {
+                        Emit($"\tmove.l\t{offset + i}(a6),d0");
+                        Emit($"\tmove.l\td0,{i}(a0)");
+                    }
+                }
+                else
+                {
+                    // For struct types 8 bytes or less, load from stack location into D0+D1
+                    EmitComment($"Return struct {structType.StructName} ({structType.SizeInBytes} bytes)");
+
+                    int offset;
+
+                    // Check if it's a local variable or a temporary
+                    if (_localVariableOffsets.ContainsKey(structVar.Name))
+                    {
+                        offset = _localVariableOffsets[structVar.Name];
+                    }
+                    else if (structVar.Name.StartsWith("%t"))
+                    {
+                        // It's a temporary - check if it's saved on the stack
+                        var tempIndex = _savedTemps.IndexOf(structVar.Name);
+                        if (tempIndex >= 0)
+                        {
+                            // Calculate offset from top of stack
+                            offset = (_savedTemps.Count - 1 - tempIndex) * 4;
+                            // Convert to frame pointer offset
+                            offset = -(_tempStackOffset - offset);
+
+                            // Load first 4 bytes into D0
+                            Emit($"\tmove.l\t{offset}(a6),d0\t\t; Load struct bytes 0-3");
+
+                            // If struct has more data (size > 4), load next 4 bytes into D1
+                            if (structType.SizeInBytes > 4)
+                            {
+                                Emit($"\tmove.l\t{offset + 4}(a6),d1\t\t; Load struct bytes 4-7");
+                            }
+                        }
+                        else
+                        {
+                            // Temporary not saved - try to load it with LoadOperand
+                            EmitComment($"Load struct temporary {structVar.Name}");
+                            LoadOperand(ret.Value, "a0");  // Load into address register
+
+                            // Load from address into D0+D1
+                            Emit("\tmove.l\t(a0),d0\t\t; Load struct bytes 0-3");
+                            if (structType.SizeInBytes > 4)
+                            {
+                                Emit("\tmove.l\t4(a0),d1\t\t; Load struct bytes 4-7");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        offset = _localVariableOffsets[structVar.Name];
+
+                        // Load first 4 bytes into D0
+                        Emit($"\tmove.l\t{offset}(a6),d0\t\t; Load struct bytes 0-3");
+
+                        // If struct has more data (size > 4), load next 4 bytes into D1
+                        if (structType.SizeInBytes > 4)
+                        {
+                            Emit($"\tmove.l\t{offset + 4}(a6),d1\t\t; Load struct bytes 4-7");
+                        }
+                    }
+                }
+            }
             else if (_generatingFpuVersion && isTrueFloatReturn)
             {
                 // Hardware FPU mode - return value in FP0 (for true floating point only)
@@ -999,10 +1211,66 @@ public partial class M68kCodeGenerator
                 }
                 else
                 {
-                    // Integer addition
-                    LoadOperand(binOp.Left, "d0");
-                    LoadOperand(binOp.Right, "d1");
-                    Emit($"\tadd{size}\td1,d0");
+                    // OPTIMIZATION: Use LEA for pointer arithmetic with constant displacement
+                    // Pattern: pointer + constant → lea (constant,An),Am
+                    // This is more efficient than load-add and doesn't affect condition codes
+                    bool isPointerArithmetic = binOp.Left.Type is IrPointerType || binOp.Right.Type is IrPointerType;
+                    IrConstant? displacement = null;
+                    IrValue? pointerOperand = null;
+
+                    if (isPointerArithmetic)
+                    {
+                        if (binOp.Right is IrConstant rightConst)
+                        {
+                            displacement = rightConst;
+                            pointerOperand = binOp.Left;
+                        }
+                        else if (binOp.Left is IrConstant leftConst)
+                        {
+                            displacement = leftConst;
+                            pointerOperand = binOp.Right;
+                        }
+                    }
+
+                    if (displacement != null && pointerOperand != null &&
+                        displacement.Value >= -32768 && displacement.Value <= 32767)
+                    {
+                        // Use LEA optimization for pointer + constant
+                        // LEA works with address registers, so we load pointer into a1, compute with LEA into a0,
+                        // then move to d0 for consistency with rest of code
+                        LoadOperand(pointerOperand, "a1");
+                        Emit($"\tlea\t{displacement.Value}(a1),a0");
+                        Emit("\tmove.l\ta0,d0");
+                        EmitComment($"Optimized: pointer arithmetic using LEA instead of ADD");
+                    }
+                    else
+                    {
+                        // Regular integer addition
+                        // OPTIMIZATION: If either operand is already in d0, don't reload it
+                        bool leftInD0 = binOp.Left is IrVariable leftVar && leftVar.Name == _lastResultInD0;
+                        bool rightInD0 = binOp.Right is IrVariable rightVar && rightVar.Name == _lastResultInD0;
+
+                        if (leftInD0)
+                        {
+                            // Left operand already in d0, just load Right into d1
+                            EmitComment($"Optimized: left operand already in d0");
+                            LoadOperand(binOp.Right, "d1");
+                            Emit($"\tadd{size}\td1,d0");
+                        }
+                        else if (rightInD0)
+                        {
+                            // Right operand already in d0, load Left into d1 and swap
+                            EmitComment($"Optimized: right operand already in d0");
+                            LoadOperand(binOp.Left, "d1");
+                            Emit($"\tadd{size}\td1,d0");  // add is commutative
+                        }
+                        else
+                        {
+                            LoadOperand(binOp.Left, "d0");
+                            LoadOperand(binOp.Right, "d1");
+                            Emit($"\tadd{size}\td1,d0");
+                        }
+                    }
                 }
                 break;
 
@@ -1230,12 +1498,33 @@ public partial class M68kCodeGenerator
             case IrBinaryOp.OpKind.Gt:
             case IrBinaryOp.OpKind.Ge:
                 GenerateComparison(binOp, instructions, index);
-                break;
+                // Comparisons use separate tracking (_lastComparisonResult)
+                return;
         }
 
-        // Result is in d0 - don't save to stack to avoid stack overflow in loops
-        // If the temp is used later, LoadOperand will use d0 directly if temp not in _savedTemps
-        // This works because most temps are used immediately in the next instruction
+        // Result is in d0
+        // REGISTER ALLOCATION: Check if result has an allocated register
+        if (_currentFunctionRegAlloc != null)
+        {
+            var allocatedReg = _currentFunctionRegAlloc.GetRegister(binOp.ResultName);
+            if (allocatedReg != null && allocatedReg != "d0")
+            {
+                // Move result from d0 to allocated register
+                EmitComment($"Store result {binOp.ResultName} to allocated register {allocatedReg}");
+                Emit($"\tmove.l\td0,{allocatedReg}");
+                _lastResultInD0 = null; // Result no longer in d0
+            }
+            else
+            {
+                // Result stays in d0 (either not allocated or allocated to d0)
+                _lastResultInD0 = binOp.ResultName;
+            }
+        }
+        else
+        {
+            // No register allocation - track that result is in d0
+            _lastResultInD0 = binOp.ResultName;
+        }
     }
 
     private void GenerateComparison(IrBinaryOp binOp, IList<IrInstruction> instructions, int index)
@@ -1306,11 +1595,38 @@ public partial class M68kCodeGenerator
         else
         {
             // Integer or soft-float comparison
-            LoadOperand(binOp.Left, "d0");
-            LoadOperand(binOp.Right, "d1");
 
-            // Compare: cmp.l d1,d0 computes (d0 - d1) and sets condition codes
-            Emit($"\tcmp{size}\td1,d0");
+            // OPTIMIZATION: Use TST instead of CMP when comparing a variable against zero
+            // TST is faster and smaller than CMP #0
+            // Only apply if one operand is a variable (not both constants)
+            bool leftIsZero = binOp.Left is IrConstant leftConst && leftConst.Value == 0;
+            bool rightIsZero = binOp.Right is IrConstant rightConst && rightConst.Value == 0;
+            bool leftIsVariable = binOp.Left is not IrConstant;
+            bool rightIsVariable = binOp.Right is not IrConstant;
+
+            if (rightIsZero && leftIsVariable)
+            {
+                // x CMP 0 => TST x (where x is a variable)
+                LoadOperand(binOp.Left, "d0");
+                Emit($"\ttst{size}\td0");
+                EmitComment($"Optimized: compare against zero using TST instead of CMP");
+            }
+            else if (leftIsZero && rightIsVariable &&
+                     (binOp.Operation == IrBinaryOp.OpKind.Eq || binOp.Operation == IrBinaryOp.OpKind.Ne))
+            {
+                // 0 == x or 0 != x => TST x (where x is a variable)
+                // (Only safe for equality comparisons; relational ops would need condition flip)
+                LoadOperand(binOp.Right, "d0");
+                Emit($"\ttst{size}\td0");
+                EmitComment($"Optimized: compare against zero using TST instead of CMP");
+            }
+            else
+            {
+                LoadOperand(binOp.Left, "d0");
+                LoadOperand(binOp.Right, "d1");
+                // Compare: cmp.l d1,d0 computes (d0 - d1) and sets condition codes
+                Emit($"\tcmp{size}\td1,d0");
+            }
 
             // OPTIMIZATION: If this comparison will be used directly for branching,
             // skip materialization and keep condition codes alive
@@ -1398,6 +1714,50 @@ public partial class M68kCodeGenerator
                 else
                 {
                     throw new Exception($"Unsupported String argument type: {arg.GetType().Name}");
+                }
+            }
+            // Handle composite types > 4 bytes (structs, large enums)
+            else if (arg.Type.SizeInBytes > 4)
+            {
+                EmitComment($"Push composite argument (size: {arg.Type.SizeInBytes} bytes)");
+
+                if (arg is IrVariable argVar)
+                {
+                    // Check if it's a temp on stack
+                    var savedIndex = _savedTemps.IndexOf(argVar.Name);
+                    if (savedIndex >= 0)
+                    {
+                        // Load address of temp on stack
+                        LoadOperand(arg, "a0");
+
+                        // Push composite type longword-by-longword (reverse order)
+                        int numLongwords = (arg.Type.SizeInBytes + 3) / 4;
+                        for (int j = numLongwords - 1; j >= 0; j--)
+                        {
+                            Emit($"\tmove.l\t{j * 4}(a0),d0");
+                            Emit("\tmove.l\td0,-(sp)");
+                        }
+                        totalBytesPushed += numLongwords * 4;
+                    }
+                    else if (_localVariableOffsets.TryGetValue(argVar.Name, out int offset))
+                    {
+                        // Local variable - push longword-by-longword (reverse order for stack growth)
+                        int numLongwords = (arg.Type.SizeInBytes + 3) / 4;
+                        for (int j = numLongwords - 1; j >= 0; j--)
+                        {
+                            Emit($"\tmove.l\t{offset + (j * 4)}(a6),d0");
+                            Emit("\tmove.l\td0,-(sp)");
+                        }
+                        totalBytesPushed += numLongwords * 4;
+                    }
+                    else
+                    {
+                        throw new Exception($"Unknown variable: {argVar.Name}");
+                    }
+                }
+                else
+                {
+                    throw new Exception($"Unsupported composite argument type: {arg.GetType().Name}");
                 }
             }
             else
@@ -1723,31 +2083,58 @@ public partial class M68kCodeGenerator
             // Store len at offset 4 (4 bytes)
             Emit($"\tmove.l\t#{stringLiteral.Length},{stringBaseOffset + 4}(a6)\t\t; Store string len");
         }
-        // Special handling for composite types (enums > 4 bytes) from temporaries
-        else if (localDecl.Type is IrEnumType enumType && enumType.SizeInBytes > 4 &&
+        // Special handling for composite types (> 4 bytes) from temporaries
+        else if (localDecl.Type.SizeInBytes > 4 &&
                  localDecl.InitialValue is IrVariable tempVar && tempVar.Name.StartsWith("%t"))
         {
-            EmitComment($"Initialize composite type from temp {tempVar.Name} ({enumType.SizeInBytes} bytes)");
+            var typeName = localDecl.Type is IrEnumType ? "enum" : "struct";
+            EmitComment($"Initialize composite {typeName} from temp {tempVar.Name} ({localDecl.Type.SizeInBytes} bytes)");
             var destOffset = _localVariableOffsets[localDecl.Name];
 
             // Load address of temp on stack
             LoadOperand(localDecl.InitialValue, "a0");
 
-            // Copy all bytes of the enum (in 4-byte chunks)
-            for (int i = 0; i < enumType.SizeInBytes; i += 4)
+            // Copy all bytes of the composite type (in 4-byte chunks)
+            for (int i = 0; i < localDecl.Type.SizeInBytes; i += 4)
             {
                 Emit($"\tmove.l\t{i}(a0),d0");
-                Emit($"\tmove.l\td0,{destOffset + i}(a6)\t\t; Store enum bytes {i}-{i+3}");
+                Emit($"\tmove.l\td0,{destOffset + i}(a6)\t\t; Store {typeName} bytes {i}-{i+3}");
             }
         }
         else
         {
             // Regular scalar initialization
+            // REGISTER ALLOCATION: Check if variable is allocated to a register
+            if (_currentFunctionRegAlloc != null)
+            {
+                var allocatedReg = _currentFunctionRegAlloc.GetRegister(localDecl.Name);
+                if (allocatedReg != null)
+                {
+                    // Variable is in a register - load value directly to that register
+                    EmitComment($"Initialize {localDecl.Name} in allocated register {allocatedReg}");
+                    LoadOperand(localDecl.InitialValue, allocatedReg);
+                    return;
+                }
+                // If spilled or not allocated, fall through to stack storage
+            }
+
             // Load initial value into d0
             LoadOperand(localDecl.InitialValue, "d0");
 
             // Store to local variable's stack location
-            var offset = _localVariableOffsets[localDecl.Name];
+            var baseOffset = _localVariableOffsets[localDecl.Name];
+
+            // Adjust offset for big-endian when storing smaller than longword
+            var offset = baseOffset;
+            if (localDecl.Type.SizeInBytes == 1)
+            {
+                offset += 3;  // Byte is at highest address in big-endian longword
+            }
+            else if (localDecl.Type.SizeInBytes == 2)
+            {
+                offset += 2;  // Word is at highest address in big-endian longword
+            }
+
             var size = GetSizeSuffix(localDecl.Type);
             Emit($"\tmove{size}\td0,{offset}(a6)");
         }
@@ -1757,11 +2144,37 @@ public partial class M68kCodeGenerator
     {
         EmitComment($"Store to {store.VariableName}");
 
+        // REGISTER ALLOCATION: Check if variable is allocated to a register
+        if (_currentFunctionRegAlloc != null)
+        {
+            var allocatedReg = _currentFunctionRegAlloc.GetRegister(store.VariableName);
+            if (allocatedReg != null)
+            {
+                // Variable is in a register - load value directly to that register
+                EmitComment($"Store to {store.VariableName} in allocated register {allocatedReg}");
+                LoadOperand(store.Value, allocatedReg);
+                return;
+            }
+            // If spilled or not allocated, fall through to stack storage
+        }
+
         // Load value into d0
         LoadOperand(store.Value, "d0");
 
         // Store to local variable's stack location
-        var offset = _localVariableOffsets[store.VariableName];
+        var baseOffset = _localVariableOffsets[store.VariableName];
+
+        // Adjust offset for big-endian when storing smaller than longword
+        var offset = baseOffset;
+        if (store.Value.Type.SizeInBytes == 1)
+        {
+            offset += 3;  // Byte is at highest address in big-endian longword
+        }
+        else if (store.Value.Type.SizeInBytes == 2)
+        {
+            offset += 2;  // Word is at highest address in big-endian longword
+        }
+
         var size = GetSizeSuffix(store.Value.Type);
         Emit($"\tmove{size}\td0,{offset}(a6)");
     }
@@ -1801,70 +2214,66 @@ public partial class M68kCodeGenerator
         var elementSize = indexAccess.ElementType.SizeInBytes;
         var elementSizeSuffix = GetSizeSuffix(indexAccess.ElementType);
 
+        // OPTIMIZATION: Use 68000 indexed addressing modes for array access
+        // These modes allow base + index in a single instruction
+        // Format: d(An,Di.size*scale) where:
+        //   d = displacement (array base offset)
+        //   An = base register (frame pointer a6)
+        //   Di = index register
+        //   size = .w or .l (we use .l for full 32-bit index)
+        //   scale = 1,2,4,8 (68020+ only, 68000 needs pre-scaled index)
+
         // Load index into d1
         LoadOperand(indexAccess.Index, "d1");
 
-        // Calculate byte offset: index * element_size
-        // Use CPU-specific optimization for multiplication
-        if (elementSize == 1)
+        // Check if we can use scaled indexing (68020+) or need to scale manually
+        bool canUseScaling = _cpuFeatures.HasBarrelShifter && (elementSize == 1 || elementSize == 2 || elementSize == 4 || elementSize == 8);
+
+        if (canUseScaling && elementSize > 1)
         {
-            // No multiplication needed for byte arrays
+            // 68020+ with scaling: move.x arrayOffset(a6,d1.l*scale),d0
+            EmitComment($"Optimized: indexed addressing with scale *{elementSize}");
+            Emit($"\tmove{elementSizeSuffix}\t{arrayBaseOffset}(a6,d1.l*{elementSize}),d0");
         }
-        else if (elementSize == 2)
+        else if (elementSize == 1)
         {
-            // index * 2 = index << 1
-            if (_cpuFeatures.HasBarrelShifter)
-            {
-                Emit("\tlsl.l\t#1,d1");  // 68020+: Use barrel shifter
-            }
-            else
-            {
-                Emit("\tadd.l\td1,d1");  // 68000: add is faster for single shift
-            }
+            // Byte arrays: no scaling needed
+            // Use indexed addressing: move.b arrayOffset(a6,d1.l),d0
+            EmitComment("Optimized: indexed addressing for byte array");
+            Emit($"\tmove{elementSizeSuffix}\t{arrayBaseOffset}(a6,d1.l),d0");
         }
-        else if (elementSize == 4)
+        else if (elementSize == 2 && !_cpuFeatures.HasBarrelShifter)
         {
-            // index * 4 = index << 2
-            if (_cpuFeatures.HasBarrelShifter)
-            {
-                Emit("\tlsl.l\t#2,d1");  // 68020+: Single shift instruction
-            }
-            else
-            {
-                Emit("\tadd.l\td1,d1");  // 68000: Two adds
-                Emit("\tadd.l\td1,d1");
-            }
+            // 68000: scale manually then use indexed addressing
+            Emit("\tadd.l\td1,d1\t; index * 2");
+            EmitComment("Optimized: indexed addressing with pre-scaled index");
+            Emit($"\tmove{elementSizeSuffix}\t{arrayBaseOffset}(a6,d1.l),d0");
         }
-        else if (elementSize == 8)
+        else if (elementSize == 4 && !_cpuFeatures.HasBarrelShifter)
         {
-            // index * 8 = index << 3
-            if (_cpuFeatures.HasBarrelShifter)
-            {
-                Emit("\tlsl.l\t#3,d1");  // 68020+: Single shift instruction
-            }
-            else
-            {
-                Emit("\tadd.l\td1,d1");  // 68000: Three adds
-                Emit("\tadd.l\td1,d1");
-                Emit("\tadd.l\td1,d1");
-            }
+            // 68000: scale manually then use indexed addressing
+            Emit("\tadd.l\td1,d1\t; index * 2");
+            Emit("\tadd.l\td1,d1\t; index * 4");
+            EmitComment("Optimized: indexed addressing with pre-scaled index");
+            Emit($"\tmove{elementSizeSuffix}\t{arrayBaseOffset}(a6,d1.l),d0");
+        }
+        else if (elementSize == 8 && !_cpuFeatures.HasBarrelShifter)
+        {
+            // 68000: scale manually then use indexed addressing
+            Emit("\tadd.l\td1,d1\t; index * 2");
+            Emit("\tadd.l\td1,d1\t; index * 4");
+            Emit("\tadd.l\td1,d1\t; index * 8");
+            EmitComment("Optimized: indexed addressing with pre-scaled index");
+            Emit($"\tmove{elementSizeSuffix}\t{arrayBaseOffset}(a6,d1.l),d0");
         }
         else
         {
-            // For other sizes, use multiplication
+            // For other sizes, use multiplication and traditional addressing
             Emit($"\tmulu.w\t#{elementSize},d1");
+            Emit($"\tlea\t{arrayBaseOffset}(a6),a0");
+            Emit("\tsuba.l\td1,a0");
+            Emit($"\tmove{elementSizeSuffix}\t(a0),d0");
         }
-
-        // Calculate address: a6 + arrayBaseOffset - index_offset
-        // (arrays grow downward on stack)
-        // Load base address into a0
-        Emit($"\tlea\t{arrayBaseOffset}(a6),a0");
-
-        // Subtract index offset to get final address
-        Emit("\tsuba.l\td1,a0");
-
-        // Load the element value into d0
-        Emit($"\tmove{elementSizeSuffix}\t(a0),d0");
 
         // Result is in d0 - don't save to stack
     }
@@ -1895,67 +2304,57 @@ public partial class M68kCodeGenerator
         // Load index into d1
         LoadOperand(indexStore.Index, "d1");
 
-        // Calculate byte offset: index * element_size
-        // Use CPU-specific optimization for multiplication
-        if (elementSize == 1)
+        // OPTIMIZATION: Use 68000 indexed addressing modes for array stores
+        // Same optimization as GenerateIndexAccess but for stores
+
+        // Check if we can use scaled indexing (68020+) or need to scale manually
+        bool canUseScaling = _cpuFeatures.HasBarrelShifter && (elementSize == 1 || elementSize == 2 || elementSize == 4 || elementSize == 8);
+
+        if (canUseScaling && elementSize > 1)
         {
-            // No multiplication needed for byte arrays
+            // 68020+ with scaling: move.x d2,arrayOffset(a6,d1.l*scale)
+            EmitComment($"Optimized: indexed addressing with scale *{elementSize}");
+            Emit($"\tmove{elementSizeSuffix}\td2,{arrayBaseOffset}(a6,d1.l*{elementSize})");
         }
-        else if (elementSize == 2)
+        else if (elementSize == 1)
         {
-            // index * 2 = index << 1
-            if (_cpuFeatures.HasBarrelShifter)
-            {
-                Emit("\tlsl.l\t#1,d1");  // 68020+: Use barrel shifter
-            }
-            else
-            {
-                Emit("\tadd.l\td1,d1");  // 68000: add is faster for single shift
-            }
+            // Byte arrays: no scaling needed
+            // Use indexed addressing: move.b d2,arrayOffset(a6,d1.l)
+            EmitComment("Optimized: indexed addressing for byte array");
+            Emit($"\tmove{elementSizeSuffix}\td2,{arrayBaseOffset}(a6,d1.l)");
         }
-        else if (elementSize == 4)
+        else if (elementSize == 2 && !_cpuFeatures.HasBarrelShifter)
         {
-            // index * 4 = index << 2
-            if (_cpuFeatures.HasBarrelShifter)
-            {
-                Emit("\tlsl.l\t#2,d1");  // 68020+: Single shift instruction
-            }
-            else
-            {
-                Emit("\tadd.l\td1,d1");  // 68000: Two adds
-                Emit("\tadd.l\td1,d1");
-            }
+            // 68000: scale manually then use indexed addressing
+            Emit("\tadd.l\td1,d1\t; index * 2");
+            EmitComment("Optimized: indexed addressing with pre-scaled index");
+            Emit($"\tmove{elementSizeSuffix}\td2,{arrayBaseOffset}(a6,d1.l)");
         }
-        else if (elementSize == 8)
+        else if (elementSize == 4 && !_cpuFeatures.HasBarrelShifter)
         {
-            // index * 8 = index << 3
-            if (_cpuFeatures.HasBarrelShifter)
-            {
-                Emit("\tlsl.l\t#3,d1");  // 68020+: Single shift instruction
-            }
-            else
-            {
-                Emit("\tadd.l\td1,d1");  // 68000: Three adds
-                Emit("\tadd.l\td1,d1");
-                Emit("\tadd.l\td1,d1");
-            }
+            // 68000: scale manually then use indexed addressing
+            Emit("\tadd.l\td1,d1\t; index * 2");
+            Emit("\tadd.l\td1,d1\t; index * 4");
+            EmitComment("Optimized: indexed addressing with pre-scaled index");
+            Emit($"\tmove{elementSizeSuffix}\td2,{arrayBaseOffset}(a6,d1.l)");
+        }
+        else if (elementSize == 8 && !_cpuFeatures.HasBarrelShifter)
+        {
+            // 68000: scale manually then use indexed addressing
+            Emit("\tadd.l\td1,d1\t; index * 2");
+            Emit("\tadd.l\td1,d1\t; index * 4");
+            Emit("\tadd.l\td1,d1\t; index * 8");
+            EmitComment("Optimized: indexed addressing with pre-scaled index");
+            Emit($"\tmove{elementSizeSuffix}\td2,{arrayBaseOffset}(a6,d1.l)");
         }
         else
         {
-            // For other sizes, use multiplication
+            // For other sizes, use multiplication and traditional addressing
             Emit($"\tmulu.w\t#{elementSize},d1");
+            Emit($"\tlea\t{arrayBaseOffset}(a6),a0");
+            Emit("\tsuba.l\td1,a0");
+            Emit($"\tmove{elementSizeSuffix}\td2,(a0)");
         }
-
-        // Calculate address: a6 + arrayBaseOffset - index_offset
-        // (arrays grow downward on stack)
-        // Load base address into a0
-        Emit($"\tlea\t{arrayBaseOffset}(a6),a0");
-
-        // Subtract index offset to get final address
-        Emit("\tsuba.l\td1,a0");
-
-        // Store the value from d2 to the array element
-        Emit($"\tmove{elementSizeSuffix}\td2,(a0)");
     }
 
     private void GenerateMemberAccess(IrMemberAccess memberAccess)
@@ -2139,6 +2538,21 @@ public partial class M68kCodeGenerator
 
     private void LoadOperand(IrValue value, string targetReg)
     {
+        // Clear d0 tracking if we're loading something different into d0
+        if (targetReg == "d0")
+        {
+            // Check if this value is the one currently tracked in d0
+            if (value is IrVariable v && v.Name == _lastResultInD0)
+            {
+                // Same value already in d0, don't clear tracking
+            }
+            else
+            {
+                // Loading something new into d0, clear tracking
+                _lastResultInD0 = null;
+            }
+        }
+
         switch (value)
         {
             case IrFunctionAddress funcAddr:
@@ -2255,6 +2669,24 @@ public partial class M68kCodeGenerator
             }
             case IrVariable variable:
             {
+                // REGISTER ALLOCATION: Check if variable is allocated to a register
+                if (_currentFunctionRegAlloc != null)
+                {
+                    var allocatedReg = _currentFunctionRegAlloc.GetRegister(variable.Name);
+                    if (allocatedReg != null)
+                    {
+                        // Variable is in a register - move from allocated register to target
+                        if (allocatedReg != targetReg)
+                        {
+                            EmitComment($"Load {variable.Name} from allocated register {allocatedReg}");
+                            Emit($"\tmove.l\t{allocatedReg},{targetReg}");
+                        }
+                        // else: already in target register, no move needed
+                        return;
+                    }
+                    // If spilled or not allocated, fall through to stack loading
+                }
+
                 // Check if this is a parameter (use _localVariableOffsets for correct offset)
                 if (_currentFunction != null)
                 {
@@ -2303,12 +2735,23 @@ public partial class M68kCodeGenerator
                 // Check if it's a local variable
                 if (_localVariableOffsets.ContainsKey(variable.Name))
                 {
-                    var offset = _localVariableOffsets[variable.Name];
+                    var baseOffset = _localVariableOffsets[variable.Name];
+
+                    // Adjust offset for big-endian when loading smaller than longword
+                    var offset = baseOffset;
+                    if (variable.Type.SizeInBytes == 1)
+                    {
+                        offset += 3;  // Byte is at highest address in big-endian longword
+                    }
+                    else if (variable.Type.SizeInBytes == 2)
+                    {
+                        offset += 2;  // Word is at highest address in big-endian longword
+                    }
 
                     if (targetReg.StartsWith("fp"))
                     {
-                        // Loading into FPU register - use fmove.l
-                        Emit($"\tfmove.l\t{offset}(a6),{targetReg}");
+                        // Loading into FPU register - use fmove.l (always use base offset)
+                        Emit($"\tfmove.l\t{baseOffset}(a6),{targetReg}");
                     }
                     else
                     {
@@ -2343,8 +2786,8 @@ public partial class M68kCodeGenerator
                     var savedIndex = _savedTemps.IndexOf(variable.Name);
                     if (savedIndex >= 0)
                     {
-                        // Check if this is a composite type (8-byte enum)
-                        if (variable.Type is IrEnumType enumType && enumType.SizeInBytes > 4)
+                        // Check if this is a composite type (> 4 bytes)
+                        if (variable.Type.SizeInBytes > 4)
                         {
                             // For composite types, we need to calculate the proper offset
                             // Calculate offset by summing sizes of all temps saved after this one
@@ -2359,12 +2802,12 @@ public partial class M68kCodeGenerator
 
                             if (targetReg.StartsWith('a'))
                             {
-                                // Load address of enum on stack
+                                // Load address of composite type on stack
                                 Emit($"\tlea\t{stackOffset}(sp),{targetReg}");
                             }
                             else
                             {
-                                throw new Exception("Composite types cannot be loaded into data registers - use address registers");
+                                throw new Exception($"Composite types (size {variable.Type.SizeInBytes} bytes) cannot be loaded into data registers - use address registers");
                             }
                             return;
                         }
@@ -3390,14 +3833,15 @@ public partial class M68kCodeGenerator
             // Load data from variable location
             var varOffset = _localVariableOffsets[enumVar.Name];
 
-            // Check if extracting a nested enum (> 4 bytes)
-            if (extractData.DataType is IrEnumType nestedEnumType && nestedEnumType.SizeInBytes > 4)
+            // Check if extracting composite data (> 4 bytes)
+            if (extractData.DataType.SizeInBytes > 4)
             {
-                EmitComment($"Extract nested enum (size: {nestedEnumType.SizeInBytes} bytes) to stack");
+                var typeName = extractData.DataType is IrEnumType ? "enum" : "struct";
+                EmitComment($"Extract {typeName} (size: {extractData.DataType.SizeInBytes} bytes) to stack");
 
-                // Copy nested enum to stack longword-by-longword
-                int numLongwords = (nestedEnumType.SizeInBytes + 3) / 4;
-                Emit($"\tsub.l\t#{nestedEnumType.SizeInBytes},sp\t\t; Allocate space for nested enum");
+                // Copy composite data to stack longword-by-longword
+                int numLongwords = (extractData.DataType.SizeInBytes + 3) / 4;
+                Emit($"\tsub.l\t#{extractData.DataType.SizeInBytes},sp\t\t; Allocate space for {typeName}");
 
                 for (int i = 0; i < numLongwords; i++)
                 {
@@ -3407,8 +3851,8 @@ public partial class M68kCodeGenerator
 
                 // Save as temp on stack
                 _savedTemps.Add(extractData.ResultName);
-                _savedTempSizes[extractData.ResultName] = nestedEnumType.SizeInBytes;
-                _tempStackOffset += nestedEnumType.SizeInBytes;
+                _savedTempSizes[extractData.ResultName] = extractData.DataType.SizeInBytes;
+                _tempStackOffset += extractData.DataType.SizeInBytes;
             }
             else
             {

@@ -244,6 +244,7 @@ class Program
             var module = irBuilder.BuildModule(compilationUnit);
 
             // Run optimization passes
+            Novus.Optimizer.Passes.RegisterAllocationPass? regAllocPass = null;
             if (options.OptimizationLevel > 0)
             {
                 var optimizer = Novus.Optimizer.OptimizationPipeline.CreatePipeline(
@@ -251,10 +252,29 @@ class Program
                     options.Verbose
                 );
                 optimizer.Run(module);
+
+                // Extract register allocation results if optimization level includes register allocation (level 2+)
+                if (options.OptimizationLevel >= 2)
+                {
+                    // Find the RegisterAllocationPass in the pipeline to get its results
+                    regAllocPass = optimizer.GetPass<Novus.Optimizer.Passes.RegisterAllocationPass>();
+                }
             }
 
             // Generate 68k assembly
             var codegen = new M68kCodeGenerator(module, irBuilder.StringLiterals, options.Cpu, options.Fpu);
+
+            // Apply register allocations if available
+            if (regAllocPass != null)
+            {
+                var allocations = regAllocPass.GetAllAllocations();
+                if (allocations.Count > 0 && options.Verbose)
+                {
+                    Console.WriteLine($"  Register allocation: {allocations.Count} function(s)");
+                }
+                codegen.SetRegisterAllocations(allocations.ToDictionary(kvp => kvp.Key, kvp => kvp.Value));
+            }
+
             var assembly = codegen.Generate();
 
             return (assembly, irBuilder.GetImportedModules());

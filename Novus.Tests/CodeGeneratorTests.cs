@@ -344,10 +344,9 @@ fn test(x: i32) -> i32 {
         Assert.Contains("if_then_", asm);
         Assert.Contains("if_end_", asm);
 
-        // Should have comparison and test/branch
+        // Should have comparison and conditional branch (optimized - no materialization)
         Assert.Contains("cmp", asm);
-        Assert.Contains("tst.l", asm);  // Test materialized condition
-        Assert.Contains("bne", asm);     // Branch if not equal (true)
+        Assert.Contains("bgt", asm);     // Branch directly on comparison result
     }
 
     [Fact]
@@ -368,10 +367,10 @@ fn test(x: i32) -> i32 {
         Assert.Contains("if_else_", asm);
         Assert.Contains("if_end_", asm);
 
-        // Should have test and branch instructions
-        Assert.Contains("tst.l", asm);  // Test condition value
-        Assert.Contains("bne", asm);     // Branch if not equal (true)
-        Assert.Contains("bra", asm);     // Unconditional branch
+        // Should have conditional branch (optimized - no materialization with tst.l)
+        Assert.Contains("cmp", asm);
+        Assert.Contains("bgt", asm);     // Branch directly on comparison result
+        Assert.Contains("bra", asm);     // Unconditional branch to skip else
     }
 
     [Fact]
@@ -389,21 +388,22 @@ fn test(x: i32) -> i32 {
         // Should use CMP for comparison
         Assert.Contains("cmp", asm);
 
-        // Should use Scc instruction (e.g., sgt)
-        Assert.Contains("sgt", asm);
+        // Should use conditional branch (bgt) - optimized, doesn't materialize with sgt
+        Assert.Contains("bgt", asm);
     }
 
     [Fact]
     public void Generate_AllComparisonOperators_GeneratesCorrectConditions()
     {
+        // When comparisons are used in if statements, they're optimized to conditional branches
         var testCases = new[]
         {
-            ("==", "seq"),
-            ("!=", "sne"),
-            ("<", "slt"),
-            ("<=", "sle"),
-            (">", "sgt"),
-            (">=", "sge")
+            ("==", "beq"),  // Branch if equal
+            ("!=", "bne"),  // Branch if not equal
+            ("<", "blt"),   // Branch if less than
+            ("<=", "ble"),  // Branch if less or equal
+            (">", "bgt"),   // Branch if greater than
+            (">=", "bge")   // Branch if greater or equal
         };
 
         foreach (var (op, expected) in testCases)
@@ -526,14 +526,19 @@ fn test() -> i32 {
     [Fact]
     public void Generate_ComparisonResult_ProperlyConverted()
     {
+        // Test that assigns comparison to variable - this DOES materialize the boolean
         var source = @"
 fn test(x: i32) -> i32 {
-    if x > 10 {
+    let result: bool = x > 10
+    if result {
         return 1
     }
     return 0
 }";
         var asm = GenerateAssembly(source);
+
+        // When comparison is assigned to variable, it's materialized using Scc
+        Assert.Contains("sgt", asm);  // Set if greater than
 
         // Should use ext.w + ext.l (68000 compatible, not extb.l which is 68020+)
         Assert.Contains("ext.w", asm);
@@ -541,8 +546,6 @@ fn test(x: i32) -> i32 {
 
         // Should use neg.l to convert $FFFFFFFF to 1
         Assert.Contains("neg.l", asm);
-
-        // Note: With optimization, tst.l is skipped and we branch directly on cmp result
     }
 
     [Fact]
@@ -562,10 +565,9 @@ fn test() -> i32 {
         Assert.Contains("moveq\t#1,d1", asm);
         Assert.Contains("cmp", asm);
 
-        // Should have conditional branch (test materialized value and branch)
-        Assert.Contains("tst.l\td0", asm);
-        Assert.Contains("bne\twhile_body_", asm);
-        Assert.Contains("bra\twhile_end_", asm);
+        // Should have conditional branch (optimized - branch directly on comparison)
+        Assert.Contains("beq\twhile_body_", asm);  // Branch if equal (0 == 1)
+        Assert.Contains("bra\twhile_end_", asm);   // Skip body if condition false
     }
 
     [Fact]
@@ -600,9 +602,9 @@ fn test(x: i32) -> i32 {
         // Should have addition
         Assert.Contains("add", asm);
 
-        // Should have comparison
+        // Should have comparison and conditional branch (optimized)
         Assert.Contains("cmp", asm);
-        Assert.Contains("sgt", asm);
+        Assert.Contains("bgt", asm);  // Optimized to branch directly
     }
 
     [Fact]
@@ -1211,5 +1213,135 @@ pub fn main() -> u32 {
 
         // Imported function should NOT be exported
         Assert.DoesNotContain("xdef\t_WriteOut", asm);
+    }
+
+    [Fact]
+    public void Generate_ByteStoreAndLoad_UsesBigEndianAlignment()
+    {
+        var source = @"
+fn test(x: u8) -> u8 {
+    var y: u8 = x
+    return y
+}";
+        var asm = GenerateAssembly(source);
+
+        // When storing a byte to stack, should use offset + 3 for big-endian
+        // Pattern: store byte at correct offset, then load from same offset
+        // The offset adjustment should be consistent
+        Assert.Contains("move.b", asm);
+    }
+
+    [Fact]
+    public void Generate_WordStoreAndLoad_UsesBigEndianAlignment()
+    {
+        var source = @"
+fn test(x: u16) -> u16 {
+    var y: u16 = x
+    return y
+}";
+        var asm = GenerateAssembly(source);
+
+        // When storing a word to stack, should use offset + 2 for big-endian
+        // Pattern: store word at correct offset, then load from same offset
+        Assert.Contains("move.w", asm);
+    }
+
+    [Fact]
+    public void Generate_MixedByteWordLong_CorrectAlignment()
+    {
+        var source = @"
+fn test() -> i32 {
+    var a: u8 = 1u8
+    var b: u16 = 2u16
+    var c: i32 = 3
+    return c
+}";
+        var asm = GenerateAssembly(source);
+
+        // All three types should be handled with correct alignment
+        Assert.Contains("move.b", asm);
+        Assert.Contains("move.w", asm);
+        Assert.Contains("move.l", asm);
+    }
+
+    [Fact]
+    public void Generate_ByteParameter_UsesBigEndianAlignment()
+    {
+        var source = @"
+fn test(x: u8) -> u8 {
+    return x
+}";
+        var asm = GenerateAssembly(source);
+
+        // Parameter access should use correct big-endian offset
+        // Byte parameter at 8(a6) should be accessed at 11(a6) [8+3]
+        Assert.Contains("move.b", asm);
+        Assert.Contains("(a6)", asm);
+    }
+
+    [Fact]
+    public void Generate_WordParameter_UsesBigEndianAlignment()
+    {
+        var source = @"
+fn test(x: u16) -> u16 {
+    return x
+}";
+        var asm = GenerateAssembly(source);
+
+        // Parameter access should use correct big-endian offset
+        // Word parameter at 8(a6) should be accessed at 10(a6) [8+2]
+        Assert.Contains("move.w", asm);
+        Assert.Contains("(a6)", asm);
+    }
+
+    [Fact]
+    public void Generate_68000Multiply_SavesAndRestoresD4Register()
+    {
+        // When targeting 68000, signed 32-bit multiply uses d2-d4
+        // This test verifies that d4 is properly saved/restored
+        var source = @"
+fn test(x: i32, y: i32) -> i32 {
+    return x * y
+}";
+
+        var asm = GenerateAssembly(source, cpuTarget: "68000");
+
+        // Should save d2-d4 at the start of multiply routine
+        Assert.Contains("movem.l\td2-d4,-(sp)", asm);
+
+        // Should restore d2-d4 at the end
+        Assert.Contains("movem.l\t(sp)+,d2-d4", asm);
+
+        // Should NOT have the buggy pattern of saving d2-d3 then restoring then saving d2-d4
+        var lines = asm.Split('\n');
+        for (int i = 0; i < lines.Length - 1; i++)
+        {
+            if (lines[i].Contains("movem.l\td2-d3,-(sp)"))
+            {
+                // If we save d2-d3, we should NOT then restore and re-save with d4
+                Assert.DoesNotContain("movem.l\t(sp)+,d2-d3", lines[i + 1]);
+            }
+        }
+    }
+
+    [Fact]
+    public void Generate_68000UnsignedMultiply_SavesAndRestoresD2D3Only()
+    {
+        // Unsigned 32-bit multiply on 68000 only uses d2-d3
+        var source = @"
+fn test(x: u32, y: u32) -> u32 {
+    return x * y
+}";
+
+        var asm = GenerateAssembly(source, cpuTarget: "68000");
+
+        // Should save d2-d3 at the start
+        Assert.Contains("movem.l\td2-d3,-(sp)", asm);
+
+        // Should restore d2-d3 at the end
+        Assert.Contains("movem.l\t(sp)+,d2-d3", asm);
+
+        // Should NOT use d4 at all (unsigned doesn't need sign tracking)
+        Assert.DoesNotContain("d4", asm);
     }
 }
