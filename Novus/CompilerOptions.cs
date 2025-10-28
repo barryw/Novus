@@ -1,8 +1,10 @@
 using CommandLine;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Novus;
 
 [Verb("compile", isDefault: true, HelpText = "Compile a Novus source file to an Amiga executable")]
+[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
 public class CompilerOptions
 {
     [Value(0, MetaName = "input", Required = true, HelpText = "Input Novus source file (.novus)")]

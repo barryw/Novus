@@ -1,8 +1,10 @@
 using CommandLine;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Novus;
 
 [Verb("generate-stubs", HelpText = "Generate Amiga library stubs and Novus modules from NDK .fd files")]
+[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
 public class GenerateStubsOptions
 {
     [Option('l', "library", Required = false, HelpText = "Generate stubs for a specific library (e.g., 'dos', 'graphics')")]

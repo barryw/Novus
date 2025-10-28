@@ -7,7 +7,13 @@
         <Nullable>enable</Nullable>
         <PublishAot>true</PublishAot>
         <InvariantGlobalization>true</InvariantGlobalization>
+        <TrimMode>partial</TrimMode>
     </PropertyGroup>
+
+    <ItemGroup>
+        <!-- Don't trim CommandLineParser - it uses reflection for option parsing -->
+        <TrimmerRootAssembly Include="CommandLine" />
+    </ItemGroup>
 
     <ItemGroup>
       <PackageReference Include="Antlr4.Runtime.Standard" Version="4.13.1" />

@@ -1,8 +1,10 @@
 using CommandLine;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Novus;
 
 [Verb("build", HelpText = "Build a project using novus.toml configuration")]
+[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
 public class BuildOptions
 {
     [Option('p', "project", Required = false, HelpText = "Path to project directory or novus.toml file (default: current directory)")]
