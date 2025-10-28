@@ -15,12 +15,114 @@ class Program
 {
     static async Task<int> Main(string[] args)
     {
-        return await CommandLine.Parser.Default.ParseArguments<CompilerOptions, GenerateStubsOptions>(args)
+        return await CommandLine.Parser.Default.ParseArguments<CompilerOptions, BuildOptions, GenerateStubsOptions>(args)
             .MapResult(
                 (CompilerOptions options) => RunCompiler(options),
+                (BuildOptions options) => RunBuild(options),
                 (GenerateStubsOptions options) => Task.FromResult(RunGenerateStubs(options)),
                 errors => Task.FromResult(1)
             );
+    }
+
+    static async Task<int> RunBuild(BuildOptions buildOptions)
+    {
+        // Determine project directory
+        var projectDir = buildOptions.ProjectPath ?? Directory.GetCurrentDirectory();
+        if (File.Exists(projectDir) && projectDir.EndsWith(".toml"))
+        {
+            // Project path is a toml file directly
+            projectDir = Path.GetDirectoryName(projectDir) ?? Directory.GetCurrentDirectory();
+        }
+
+        projectDir = Path.GetFullPath(projectDir);
+
+        // Load novus.toml
+        var projectFile = Path.Combine(projectDir, "novus.toml");
+        if (!File.Exists(projectFile))
+        {
+            Console.WriteLine($"Error: No novus.toml found in {projectDir}");
+            Console.WriteLine("Run 'novusc new <name>' to create a new project");
+            return 1;
+        }
+
+        Console.WriteLine($"Building project: {projectFile}\n");
+
+        Novus.Project.NovusProject project;
+        try
+        {
+            project = Novus.Project.ProjectLoader.LoadFromFile(projectFile);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading project file: {ex.Message}");
+            return 1;
+        }
+
+        // Validate project
+        if (string.IsNullOrEmpty(project.Package.Name))
+        {
+            Console.WriteLine("Error: [package] section must specify 'name'");
+            return 1;
+        }
+
+        // Determine entry point
+        var entryFile = project.Package.Entry;
+        if (string.IsNullOrEmpty(entryFile))
+        {
+            // Try main.novus or <package-name>.novus
+            var mainPath = Path.Combine(projectDir, project.Paths.Src, "main.novus");
+            var packagePath = Path.Combine(projectDir, project.Paths.Src, $"{project.Package.Name}.novus");
+
+            if (File.Exists(mainPath))
+                entryFile = Path.Combine(project.Paths.Src, "main.novus");
+            else if (File.Exists(packagePath))
+                entryFile = Path.Combine(project.Paths.Src, $"{project.Package.Name}.novus");
+            else
+            {
+                Console.WriteLine("Error: No entry point found");
+                Console.WriteLine($"  Looked for: {mainPath}");
+                Console.WriteLine($"  Looked for: {packagePath}");
+                Console.WriteLine("  Or specify 'entry' in [package] section");
+                return 1;
+            }
+        }
+
+        var inputFile = Path.Combine(projectDir, entryFile);
+        if (!File.Exists(inputFile))
+        {
+            Console.WriteLine($"Error: Entry file not found: {inputFile}");
+            return 1;
+        }
+
+        // Create output directory
+        var outputDir = Path.Combine(projectDir, project.Build.Output);
+        Directory.CreateDirectory(outputDir);
+
+        // Convert to CompilerOptions
+        var compilerOptions = new CompilerOptions
+        {
+            InputFile = inputFile,
+            OutputFile = Path.Combine(outputDir, project.Package.Name),
+            Cpu = buildOptions.Cpu ?? project.Build.TargetCpu,
+            Fpu = buildOptions.Fpu ?? project.Build.Fpu,
+            OptimizationLevel = buildOptions.OptimizationLevel ?? (buildOptions.Release ? 2 : project.Build.OptimizationLevel),
+            EmitAsmOnly = buildOptions.EmitAsmOnly || project.Build.EmitAsm,
+            VbccPath = buildOptions.VbccPath ?? "/Users/barry/amiga-cc/vbcc",
+            NdkPath = buildOptions.NdkPath ?? "/Users/barry/amiga-cc/NDK3.9",
+            Verbose = buildOptions.Verbose
+        };
+
+        Console.WriteLine($"Package: {project.Package.Name} v{project.Package.Version}");
+        if (!string.IsNullOrEmpty(project.Package.Description))
+        {
+            Console.WriteLine($"Description: {project.Package.Description}");
+        }
+        Console.WriteLine($"Entry: {entryFile}");
+        Console.WriteLine($"Output: {project.Build.Output}/{project.Package.Name}");
+        Console.WriteLine();
+
+        // Run the compiler
+        return await RunCompiler(compilerOptions);
     }
 
     static int RunGenerateStubs(GenerateStubsOptions options)
@@ -45,7 +147,7 @@ class Program
             return 0;
         }
 
-        Console.WriteLine("Error: Specify --library, --all, or --list");
+        Console.WriteLine("Error: Specify --library, --all, --list");
         Console.WriteLine("Use --help for usage information");
         return 1;
     }
