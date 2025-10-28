@@ -35,6 +35,9 @@ public partial class M68kCodeGenerator
     private int _tempStackOffset = 0; // Total bytes used for temps
     // Map temp names to global variables they should reload from (for match on globals)
     private readonly Dictionary<string, string> _globalTagTemps = new();
+    // Track stack depth at each label (for correct cleanup in branches)
+    private readonly Dictionary<string, int> _labelStackDepths = new();
+    private string? _currentLabel = null;  // Track the most recent label for stack depth lookup
 
     // Track which functions use floating point operations
     private readonly HashSet<string> _floatFunctions = new();
@@ -468,6 +471,8 @@ public partial class M68kCodeGenerator
         _savedTempSizes.Clear();          // Clear saved temp sizes for new function
         _tempStackOffset = 0;             // Reset temp stack offset
         _structMemberLocations.Clear();   // Clear struct member locations for new function
+        _labelStackDepths.Clear();        // Clear label stack depths for new function
+        _currentLabel = null;              // Reset current label
 
         var functionLabel = $"_{function.Name}{suffix}";
         EmitComment($"Function: {function.Name}{suffix}");
@@ -521,7 +526,15 @@ public partial class M68kCodeGenerator
     private void EmitPrologue(IrFunction function)
     {
         // Track parameter locations (positive offsets from a6)
-        int paramOffset = 8; // Parameters start at 8(a6) after return address and saved a6
+        // Parameters start at 8(a6) after return address and saved a6
+        // BUT if return type > 8 bytes, caller allocates return space on stack,
+        // so parameters are offset by sizeof(return_type)
+        int paramOffset = 8;
+        if (function.ReturnType is IrEnumType enumType && enumType.SizeInBytes > 8)
+        {
+            paramOffset += enumType.SizeInBytes; // Account for hidden return pointer space
+        }
+
         foreach (var param in function.Parameters)
         {
             _localVariableOffsets[param.Name] = paramOffset;
@@ -568,12 +581,14 @@ public partial class M68kCodeGenerator
         // For now, we'll keep it minimal
     }
 
-    private void EmitEpilogue()
+    private void EmitEpilogue(int? stackCleanup = null)
     {
         // Clean up any temp variables saved on the stack
-        if (_tempStackOffset > 0)
+        // Use provided cleanup amount if specified, otherwise use current _tempStackOffset
+        int cleanup = stackCleanup ?? _tempStackOffset;
+        if (cleanup > 0)
         {
-            Emit($"\tlea\t{_tempStackOffset}(sp),sp");
+            Emit($"\tlea\t{cleanup}(sp),sp");
         }
 
         // Only emit unlk if we emitted link in the prologue
@@ -702,17 +717,49 @@ public partial class M68kCodeGenerator
     private void GenerateLabel(IrLabel label)
     {
         // Include suffix for CPU-specific versions to avoid label conflicts
-        Emit($"{label.Name}{_currentFunctionSuffix}:");
+        var fullLabelName = $"{label.Name}{_currentFunctionSuffix}";
+        Emit($"{fullLabelName}:");
+
+        // Record the stack depth at this label for correct cleanup on returns
+        // Don't overwrite if it was already set by a branch instruction
+        if (!_labelStackDepths.ContainsKey(label.Name))
+        {
+            _labelStackDepths[label.Name] = _tempStackOffset;
+        }
+        else
+        {
+            // This label was already recorded by a branch - restore _tempStackOffset to that depth
+            // This handles match arms where different paths have different runtime stack depths
+            _tempStackOffset = _labelStackDepths[label.Name];
+        }
+        _currentLabel = label.Name;
     }
 
     private void GenerateBranch(IrBranch branch)
     {
+        // Record stack depth for branch target
+        if (!_labelStackDepths.ContainsKey(branch.Target))
+        {
+            _labelStackDepths[branch.Target] = _tempStackOffset;
+        }
+
         // Include suffix for CPU-specific versions to avoid label conflicts
         Emit($"\tbra\t{branch.Target}{_currentFunctionSuffix}");
     }
 
     private void GenerateConditionalBranch(IrConditionalBranch condBranch)
     {
+        // Record stack depth for branch targets
+        // This is the stack depth that will be active when the branch is taken
+        if (!_labelStackDepths.ContainsKey(condBranch.TrueTarget))
+        {
+            _labelStackDepths[condBranch.TrueTarget] = _tempStackOffset;
+        }
+        if (!_labelStackDepths.ContainsKey(condBranch.FalseTarget))
+        {
+            _labelStackDepths[condBranch.FalseTarget] = _tempStackOffset;
+        }
+
         // Optimization: If the condition is the result of the last comparison,
         // we can branch directly on condition codes instead of materializing to 0/1
         if (condBranch.Condition is IrVariable condVar &&
@@ -758,41 +805,125 @@ public partial class M68kCodeGenerator
             // Check if we're returning an enum value with associated data
             else if (ret.Value is IrEnumValue enumValue)
             {
-                EmitComment($"Return enum value {enumValue.Type.Name}::{enumValue.VariantName}");
-
-                // For small enums (8 bytes), we can return in D0+D1
-                // For now, load enum into address register and then copy to D0+D1
-                LoadOperand(ret.Value, "a0");  // This will push enum to stack and load address
-                Emit("\tmove.l\t(a0),d0\t\t; Load enum tag");
-
-                if (enumValue.Type.SizeInBytes > 4)
+                if (enumValue.Type.SizeInBytes > 8)
                 {
-                    Emit("\tmove.l\t4(a0),d1\t\t; Load enum data");
+                    EmitComment($"Return large enum value {enumValue.Type.Name}::{enumValue.VariantName} ({enumValue.Type.SizeInBytes} bytes) via hidden pointer");
+
+                    // Load enum into address register (this will construct it on stack)
+                    LoadOperand(ret.Value, "a1");  // This will push enum to stack and load address into a1
+
+                    // Copy from (a1) to (a0) - a0 is the hidden return pointer
+                    for (int i = 0; i < enumValue.Type.SizeInBytes; i += 4)
+                    {
+                        Emit($"\tmove.l\t{i}(a1),d0");
+                        Emit($"\tmove.l\td0,{i}(a0)");
+                    }
+                }
+                else
+                {
+                    EmitComment($"Return enum value {enumValue.Type.Name}::{enumValue.VariantName}");
+
+                    // For small enums (8 bytes or less), we can return in D0+D1
+                    // Load enum into address register and then copy to D0+D1
+                    LoadOperand(ret.Value, "a0");  // This will push enum to stack and load address
+                    Emit("\tmove.l\t(a0),d0\t\t; Load enum tag");
+
+                    if (enumValue.Type.SizeInBytes > 4)
+                    {
+                        Emit("\tmove.l\t4(a0),d1\t\t; Load enum data");
+                    }
                 }
             }
             // Check if we're returning an enum type (composite value)
             else if (ret.Value.Type is IrEnumType enumType && ret.Value is IrVariable enumVar)
             {
-                // For enum types, load from stack location into D0+D1 (8 bytes max)
-                EmitComment($"Return enum {enumType.EnumName} ({enumType.SizeInBytes} bytes)");
-
-                int offset;
-
-                // Check if it's a local variable or a temporary
-                if (_localVariableOffsets.ContainsKey(enumVar.Name))
+                // For enum types larger than 8 bytes, use hidden return pointer
+                if (enumType.SizeInBytes > 8)
                 {
-                    offset = _localVariableOffsets[enumVar.Name];
-                }
-                else if (enumVar.Name.StartsWith("%t"))
-                {
-                    // It's a temporary - check if it's saved on the stack
-                    var tempIndex = _savedTemps.IndexOf(enumVar.Name);
-                    if (tempIndex >= 0)
+                    EmitComment($"Return large enum {enumType.EnumName} ({enumType.SizeInBytes} bytes) via hidden pointer");
+
+                    int offset;
+
+                    // Find where the enum is stored
+                    if (_localVariableOffsets.ContainsKey(enumVar.Name))
                     {
-                        // Calculate offset from top of stack
-                        offset = (_savedTemps.Count - 1 - tempIndex) * 4;
-                        // Convert to frame pointer offset
-                        offset = -(_tempStackOffset - offset);
+                        offset = _localVariableOffsets[enumVar.Name];
+                    }
+                    else if (enumVar.Name.StartsWith("%t"))
+                    {
+                        var tempIndex = _savedTemps.IndexOf(enumVar.Name);
+                        if (tempIndex >= 0)
+                        {
+                            offset = (_savedTemps.Count - 1 - tempIndex) * 4;
+                            offset = -(_tempStackOffset - offset);
+                        }
+                        else
+                        {
+                            throw new Exception($"Large enum temp {enumVar.Name} not found on stack");
+                        }
+                    }
+                    else
+                    {
+                        throw new Exception($"Large enum variable {enumVar.Name} not found");
+                    }
+
+                    // Copy the enum to the location pointed to by A0 (hidden return pointer)
+                    // A0 was passed by caller and points to where result should be stored
+                    for (int i = 0; i < enumType.SizeInBytes; i += 4)
+                    {
+                        Emit($"\tmove.l\t{offset + i}(a6),d0");
+                        Emit($"\tmove.l\td0,{i}(a0)");
+                    }
+                }
+                else
+                {
+                    // For enum types 8 bytes or less, load from stack location into D0+D1
+                    EmitComment($"Return enum {enumType.EnumName} ({enumType.SizeInBytes} bytes)");
+
+                    int offset;
+
+                    // Check if it's a local variable or a temporary
+                    if (_localVariableOffsets.ContainsKey(enumVar.Name))
+                    {
+                        offset = _localVariableOffsets[enumVar.Name];
+                    }
+                    else if (enumVar.Name.StartsWith("%t"))
+                    {
+                        // It's a temporary - check if it's saved on the stack
+                        var tempIndex = _savedTemps.IndexOf(enumVar.Name);
+                        if (tempIndex >= 0)
+                        {
+                            // Calculate offset from top of stack
+                            offset = (_savedTemps.Count - 1 - tempIndex) * 4;
+                            // Convert to frame pointer offset
+                            offset = -(_tempStackOffset - offset);
+
+                            // Load first 4 bytes (tag) into D0
+                            Emit($"\tmove.l\t{offset}(a6),d0\t\t; Load enum tag");
+
+                            // If enum has data (size > 4), load next 4 bytes into D1
+                            if (enumType.SizeInBytes > 4)
+                            {
+                                Emit($"\tmove.l\t{offset + 4}(a6),d1\t\t; Load enum data");
+                            }
+                        }
+                        else
+                        {
+                            // Temporary not saved - try to load it with LoadOperand
+                            EmitComment($"Load enum temporary {enumVar.Name}");
+                            LoadOperand(ret.Value, "a0");  // Load into address register
+
+                            // Load from address into D0+D1
+                            Emit("\tmove.l\t(a0),d0\t\t; Load enum tag");
+                            if (enumType.SizeInBytes > 4)
+                            {
+                                Emit("\tmove.l\t4(a0),d1\t\t; Load enum data");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        offset = _localVariableOffsets[enumVar.Name];
 
                         // Load first 4 bytes (tag) into D0
                         Emit($"\tmove.l\t{offset}(a6),d0\t\t; Load enum tag");
@@ -802,32 +933,6 @@ public partial class M68kCodeGenerator
                         {
                             Emit($"\tmove.l\t{offset + 4}(a6),d1\t\t; Load enum data");
                         }
-                    }
-                    else
-                    {
-                        // Temporary not saved - try to load it with LoadOperand
-                        EmitComment($"Load enum temporary {enumVar.Name}");
-                        LoadOperand(ret.Value, "a0");  // Load into address register
-
-                        // Load from address into D0+D1
-                        Emit("\tmove.l\t(a0),d0\t\t; Load enum tag");
-                        if (enumType.SizeInBytes > 4)
-                        {
-                            Emit("\tmove.l\t4(a0),d1\t\t; Load enum data");
-                        }
-                    }
-                }
-                else
-                {
-                    offset = _localVariableOffsets[enumVar.Name];
-
-                    // Load first 4 bytes (tag) into D0
-                    Emit($"\tmove.l\t{offset}(a6),d0\t\t; Load enum tag");
-
-                    // If enum has data (size > 4), load next 4 bytes into D1
-                    if (enumType.SizeInBytes > 4)
-                    {
-                        Emit($"\tmove.l\t{offset + 4}(a6),d1\t\t; Load enum data");
                     }
                 }
             }
@@ -848,34 +953,11 @@ public partial class M68kCodeGenerator
         // Execute deferred blocks in LIFO order (reverse of insertion order)
         EmitDeferredBlocks();
 
-        // Special handling for main function - call _exit() instead of returning
-        // This ensures the exit code is properly passed to AmigaOS
-        if (_currentFunction != null && _currentFunction.Name == "main")
-        {
-            EmitComment("Exit with return code (main function)");
-
-            // Push return value (already in d0) as argument to _exit()
-            if (ret.Value != null)
-            {
-                Emit("\tmove.l\td0,-(sp)\t\t; Push exit code");
-            }
-            else
-            {
-                Emit("\tmoveq\t#0,d0\t\t; Default exit code 0");
-                Emit("\tmove.l\td0,-(sp)");
-            }
-
-            // Call VBCC's exit function - this is a noreturn function, never returns
-            Emit("\tjsr\t_exit\t\t; Terminate process (noreturn)");
-
-            // _exit() never returns, so we don't emit any cleanup code after it
-            // No epilogue, no stack cleanup, no rts - all would be dead code
-        }
-        else
-        {
-            // For non-main functions, emit normal epilogue and return
-            EmitEpilogue();
-        }
+        // Emit normal epilogue and return for all functions (including main)
+        // The return value is already in D0, and AmigaOS will receive it when main returns
+        // IMPORTANT: _tempStackOffset is restored to the label's entry depth when entering a label
+        // So it always represents the correct runtime stack depth for cleanup
+        EmitEpilogue(_tempStackOffset);
     }
 
     private void GenerateBinaryOp(IrBinaryOp binOp, IList<IrInstruction> instructions, int index)
@@ -1349,13 +1431,47 @@ public partial class M68kCodeGenerator
             }
         }
 
+        // Handle return value based on type - must allocate space BEFORE pushing arguments for large returns
+        int returnSpaceAllocated = 0;
+        if (call.ResultName != null && call.ReturnType is IrEnumType largeEnumType && largeEnumType.SizeInBytes > 8)
+        {
+            // For composite types > 8 bytes, allocate return space AFTER arguments are pushed
+            // This way the return value ends up at the correct location on stack after cleanup
+            returnSpaceAllocated = largeEnumType.SizeInBytes;
+        }
+
+        // Allocate return space if needed (AFTER arguments)
+        if (returnSpaceAllocated > 0)
+        {
+            EmitComment($"Allocate space for large return value ({returnSpaceAllocated} bytes)");
+            Emit($"\tsub.l\t#{returnSpaceAllocated},sp");
+            Emit("\tmove.l\tsp,a0\t\t; Pass return pointer in A0");
+        }
+
         // Call the function using JSR (Jump to Subroutine)
         Emit($"\tjsr\t_{call.FunctionName}");
 
         // Clean up stack (remove arguments)
+        // For large returns, arguments are ABOVE return space, so we need to skip over return space
         if (totalBytesPushed > 0)
         {
-            Emit($"\tlea\t{totalBytesPushed}(sp),sp");
+            if (returnSpaceAllocated > 0)
+            {
+                // Arguments are at SP+returnSize, so we need to remove them differently
+                // Move the return value down to cover the arguments, then adjust SP
+                // IMPORTANT: Copy from high to low addresses to avoid overwriting
+                EmitComment("Move return value down over arguments");
+                for (int i = returnSpaceAllocated - 4; i >= 0; i -= 4)
+                {
+                    Emit($"\tmove.l\t{i}(sp),{i + totalBytesPushed}(sp)");
+                }
+                Emit($"\tlea\t{totalBytesPushed}(sp),sp");
+            }
+            else
+            {
+                // Normal cleanup for non-large returns
+                Emit($"\tlea\t{totalBytesPushed}(sp),sp");
+            }
         }
 
         // Handle return value based on type
@@ -1363,11 +1479,20 @@ public partial class M68kCodeGenerator
         {
             // Check if this is a composite type (enum with size > 4 bytes)
             // Use call.ReturnType which was set during IR building
-            if (call.ReturnType is IrEnumType enumType && enumType.SizeInBytes > 4)
+            if (call.ReturnType is IrEnumType enumType && enumType.SizeInBytes > 8)
             {
-                // For composite types, result is in D0+D1
+                // For composite types > 8 bytes, result was stored at (A0) via hidden pointer
+                // The space is already on the stack, just track it
+                EmitComment($"Large composite return value ({enumType.SizeInBytes} bytes) already on stack");
+                _savedTemps.Add(call.ResultName);
+                _savedTempSizes[call.ResultName] = enumType.SizeInBytes;
+                _tempStackOffset += enumType.SizeInBytes;
+            }
+            else if (call.ReturnType is IrEnumType enumType2 && enumType2.SizeInBytes > 4)
+            {
+                // For composite types 5-8 bytes, result is in D0+D1
                 // Save both registers to stack
-                EmitComment($"Save composite return value ({enumType.SizeInBytes} bytes)");
+                EmitComment($"Save composite return value ({enumType2.SizeInBytes} bytes)");
                 Emit("\tmove.l\td1,-(sp)\t\t; Save enum data (D1)");
                 Emit("\tmove.l\td0,-(sp)\t\t; Save enum tag (D0)");
                 _savedTemps.Add(call.ResultName);
@@ -1552,6 +1677,9 @@ public partial class M68kCodeGenerator
                         Emit($"\tmove.l\td0,{enumBaseOffset + dataOffset + (j * 4)}(a6)");
                     }
 
+                    // Clean up temporary enum space allocated by LoadOperand
+                    Emit($"\tlea\t{compositeEnumType.SizeInBytes}(sp),sp\t\t; Free temporary enum space");
+
                     dataOffset += compositeEnumType.SizeInBytes;
                 }
                 else
@@ -1595,23 +1723,22 @@ public partial class M68kCodeGenerator
             // Store len at offset 4 (4 bytes)
             Emit($"\tmove.l\t#{stringLiteral.Length},{stringBaseOffset + 4}(a6)\t\t; Store string len");
         }
-        // Special handling for composite types (8-byte enums) from temporaries
+        // Special handling for composite types (enums > 4 bytes) from temporaries
         else if (localDecl.Type is IrEnumType enumType && enumType.SizeInBytes > 4 &&
                  localDecl.InitialValue is IrVariable tempVar && tempVar.Name.StartsWith("%t"))
         {
-            EmitComment($"Initialize composite type from temp {tempVar.Name}");
+            EmitComment($"Initialize composite type from temp {tempVar.Name} ({enumType.SizeInBytes} bytes)");
             var destOffset = _localVariableOffsets[localDecl.Name];
 
             // Load address of temp on stack
             LoadOperand(localDecl.InitialValue, "a0");
 
-            // Copy enum tag (4 bytes)
-            Emit($"\tmove.l\t(a0),d0");
-            Emit($"\tmove.l\td0,{destOffset}(a6)\t\t; Store enum tag");
-
-            // Copy enum data (4 bytes)
-            Emit($"\tmove.l\t4(a0),d0");
-            Emit($"\tmove.l\td0,{destOffset + 4}(a6)\t\t; Store enum data");
+            // Copy all bytes of the enum (in 4-byte chunks)
+            for (int i = 0; i < enumType.SizeInBytes; i += 4)
+            {
+                Emit($"\tmove.l\t{i}(a0),d0");
+                Emit($"\tmove.l\td0,{destOffset + i}(a6)\t\t; Store enum bytes {i}-{i+3}");
+            }
         }
         else
         {
@@ -2364,10 +2491,14 @@ public partial class M68kCodeGenerator
                 if (enumSize > 0)
                 {
                     Emit($"\tsub.l\t#{enumSize},sp\t\t; Allocate space for enum");
+                    _tempStackOffset += enumSize;  // Track stack allocation for cleanup
                 }
 
-                // Store tag at offset 0 (sp)
-                Emit($"\tmove.l\t#{enumValue.VariantTag},(sp)\t\t; Store variant tag");
+                // Save base address in a2 to handle nested allocations correctly
+                Emit($"\tmove.l\tsp,a2\t\t; Save enum base address");
+
+                // Store tag at offset 0
+                Emit($"\tmove.l\t#{enumValue.VariantTag},(a2)\t\t; Store variant tag");
 
                 // Store associated values starting at offset 4
                 int dataOffset = 4;
@@ -2380,7 +2511,7 @@ public partial class M68kCodeGenerator
                     {
                         // Simple enum constructor - just store the tag and zero padding
                         EmitComment($"Store simple enum {nestedEnumVal.Type.Name}::{nestedEnumVal.VariantName}");
-                        Emit($"\tmove.l\t#{nestedEnumVal.VariantTag},{dataOffset}(sp)\t\t; Store simple enum tag");
+                        Emit($"\tmove.l\t#{nestedEnumVal.VariantTag},{dataOffset}(a2)\t\t; Store simple enum tag");
 
                         // Zero out remaining bytes for this enum type
                         var nestedEnumType = nestedEnumVal.Type as IrEnumType;
@@ -2390,23 +2521,46 @@ public partial class M68kCodeGenerator
                             Emit($"\tmoveq\t#0,d0");
                             for (int offset = 4; offset < nestedEnumType.SizeInBytes; offset += 4)
                             {
-                                Emit($"\tmove.l\td0,{dataOffset + offset}(sp)\t\t; Zero data portion");
+                                Emit($"\tmove.l\td0,{dataOffset + offset}(a2)\t\t; Zero data portion");
                             }
                         }
                         dataOffset += nestedEnumType.SizeInBytes;
                     }
-                    // Check if associated value is a nested composite enum (> 4 bytes)
+                    // Check if associated value is a nested IrEnumValue - build it inline
+                    else if (assocValue is IrEnumValue nestedEnumValue && nestedEnumValue.Type is IrEnumType nestedEnumType)
+                    {
+                        // Build nested enum inline at current offset to avoid stack pointer issues
+                        EmitComment($"Build nested enum {nestedEnumType.Name} inline at offset {dataOffset}");
+
+                        // Store nested enum tag
+                        Emit($"\tmove.l\t#{nestedEnumValue.VariantTag},{dataOffset}(a2)");
+                        int nestedOffset = dataOffset + 4;
+
+                        // Store nested enum's associated values
+                        for (int k = 0; k < nestedEnumValue.AssociatedValues.Count; k++)
+                        {
+                            var nestedAssocValue = nestedEnumValue.AssociatedValues[k];
+                            LoadOperand(nestedAssocValue, "d0");
+                            var nestedValueSize = GetSizeSuffix(nestedAssocValue.Type);
+                            Emit($"\tmove{nestedValueSize}\td0,{nestedOffset}(a2)");
+                            nestedOffset += nestedAssocValue.Type.SizeInBytes;
+                        }
+
+                        dataOffset += nestedEnumType.SizeInBytes;
+                    }
+                    // Check if associated value is a nested composite enum variable (> 4 bytes)
                     else if (assocValue.Type is IrEnumType enumType2 && enumType2.SizeInBytes > 4)
                     {
-                        // Nested composite enum - build/load it and get address in a1
+                        // Nested composite enum variable - load it and get address in a1
                         LoadOperand(assocValue, "a1");
 
                         // Copy it longword-by-longword from nested enum to current enum
+                        // Use a2 (base address) instead of sp since sp may have moved
                         int numLongwords = (enumType2.SizeInBytes + 3) / 4;
                         for (int j = 0; j < numLongwords; j++)
                         {
                             Emit($"\tmove.l\t{j * 4}(a1),d0");
-                            Emit($"\tmove.l\td0,{dataOffset + (j * 4)}(sp)\t\t; Store nested enum longword {j}");
+                            Emit($"\tmove.l\td0,{dataOffset + (j * 4)}(a2)\t\t; Store nested enum longword {j}");
                         }
                         dataOffset += enumType2.SizeInBytes;
                     }
@@ -2416,7 +2570,7 @@ public partial class M68kCodeGenerator
                         LoadOperand(assocValue, "d0");
 
                         var valueSize = GetSizeSuffix(assocValue.Type);
-                        Emit($"\tmove{valueSize}\td0,{dataOffset}(sp)\t\t; Store associated value {i}");
+                        Emit($"\tmove{valueSize}\td0,{dataOffset}(a2)\t\t; Store associated value {i}");
                         dataOffset += assocValue.Type.SizeInBytes;
                     }
                 }
@@ -2425,7 +2579,10 @@ public partial class M68kCodeGenerator
                 // If it's a data register, we can't load the whole struct - error
                 if (targetReg.StartsWith('a'))
                 {
-                    Emit($"\tmove.l\tsp,{targetReg}\t\t; Load enum address");
+                    if (targetReg != "a2")
+                    {
+                        Emit($"\tmove.l\ta2,{targetReg}\t\t; Load enum address");
+                    }
                 }
                 else
                 {
