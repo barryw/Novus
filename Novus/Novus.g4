@@ -21,7 +21,11 @@ attributeArg
     ;
 
 importDeclaration
-    : KW_FROM IDENTIFIER KW_IMPORT importList
+    : KW_FROM modulePath KW_IMPORT importList
+    ;
+
+modulePath
+    : IDENTIFIER ('::' IDENTIFIER)*
     ;
 
 importList

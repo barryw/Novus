@@ -171,32 +171,47 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     private void ProcessImport(NovusParser.ImportDeclarationContext context)
     {
-        var moduleName = context.IDENTIFIER().GetText();
+        // Get the module path (e.g., "std::dos" or "std::ffi::exec")
+        var modulePath = context.modulePath().GetText();
 
         // Get the list of names to import
         var importList = context.importList();
         bool importAll = importList.GetText() == "*";
 
-        ImportModule(moduleName, importAll, importList);
+        ImportModule(modulePath, importAll, importList);
     }
 
-    private void ImportModule(string moduleName, bool importAll, NovusParser.ImportListContext? importList = null)
+    private void ImportModule(string moduleNamespace, bool importAll, NovusParser.ImportListContext? importList = null)
     {
+        // Convert namespace path to file path
+        // std::dos → std/dos.novus
+        // std::ffi::exec → std/ffi/exec.novus
+        var pathParts = moduleNamespace.Split(new[] { "::" }, StringSplitOptions.RemoveEmptyEntries);
 
-        // Resolve module path - search order:
-        // 1. std/{moduleName}.novus (wrappers)
-        // 2. std/ffi/{moduleName}.novus (raw FFI)
-        var modulePath = System.IO.Path.Combine(_stdLibPath, moduleName + ".novus");
+        // First part should be 'std' for now (later: package name)
+        if (pathParts.Length == 0)
+        {
+            throw new Exception($"Invalid module namespace: {moduleNamespace}");
+        }
+
+        // Build file path
+        string modulePath;
+        if (pathParts[0] == "std")
+        {
+            // std library module - relative to std lib path
+            var relativePath = string.Join(System.IO.Path.DirectorySeparatorChar.ToString(), pathParts.Skip(1));
+            modulePath = System.IO.Path.Combine(_stdLibPath, relativePath + ".novus");
+        }
+        else
+        {
+            // User module (future: will use package resolution)
+            var relativePath = string.Join(System.IO.Path.DirectorySeparatorChar.ToString(), pathParts);
+            modulePath = relativePath + ".novus";
+        }
 
         if (!System.IO.File.Exists(modulePath))
         {
-            // Try ffi subdirectory
-            modulePath = System.IO.Path.Combine(_stdLibPath, "ffi", moduleName + ".novus");
-
-            if (!System.IO.File.Exists(modulePath))
-            {
-                throw new Exception($"Module '{moduleName}' not found. Searched in std/{moduleName}.novus and std/ffi/{moduleName}.novus");
-            }
+            throw new Exception($"Module '{moduleNamespace}' not found at {modulePath}");
         }
 
         // Load and parse the module first to check if it needs compilation
@@ -209,7 +224,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         if (parser.NumberOfSyntaxErrors > 0)
         {
-            throw new Exception($"Module '{moduleName}' has syntax errors");
+            throw new Exception($"Module '{moduleNamespace}' has syntax errors");
         }
 
         // Check if this module has any pub (non-extern) functions that need compilation
@@ -238,7 +253,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Track this module for compilation only if it has real implementations
         // (avoid duplicates)
         // Exception: Never compile 'core' as a dependency - it's auto-imported everywhere
-        if (hasImplementation && !_importedModulePaths.Contains(modulePath) && moduleName != "core")
+        if (hasImplementation && !_importedModulePaths.Contains(modulePath) && moduleNamespace != "std::core")
         {
             _importedModulePaths.Add(modulePath);
         }
@@ -414,7 +429,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             if (!isPub && !isExtern)
             {
-                throw new Exception($"Cannot import private function '{funcName}' from module '{moduleName}'");
+                throw new Exception($"Cannot import private function '{funcName}' from module '{moduleNamespace}'");
             }
 
             // Parse function signature

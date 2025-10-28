@@ -100,17 +100,18 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     private void ProcessImport(NovusParser.ImportDeclarationContext context)
     {
-        var moduleName = context.IDENTIFIER().GetText();
-        var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+        // Get the module path (e.g., "std::dos" or "std::ffi::exec")
+        var moduleNamespace = context.modulePath().GetText();
+        var location = SourceLocationHelper.FromToken(context.modulePath().Start, _filePath, _sourceLines);
 
         // Get the list of names to import
         var importList = context.importList();
         bool importAll = importList.GetText() == "*";
 
-        ImportModule(moduleName, importAll, importList, location);
+        ImportModule(moduleNamespace, importAll, importList, location);
     }
 
-    private void ImportModule(string moduleName, bool importAll, NovusParser.ImportListContext? importList = null, SourceLocation? location = null)
+    private void ImportModule(string moduleNamespace, bool importAll, NovusParser.ImportListContext? importList = null, SourceLocation? location = null)
     {
         // Use dummy location for implicit imports
         if (location == null)
@@ -118,31 +119,49 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             location = new SourceLocation(_filePath, 0, 0, 0, "");
         }
 
-        // Resolve module path - search order:
-        // 1. std/{moduleName}.novus (wrappers)
-        // 2. std/ffi/{moduleName}.novus (raw FFI)
-        var modulePath = System.IO.Path.Combine(_stdLibPath, moduleName + ".novus");
+        // Convert namespace path to file path
+        // std::dos → std/dos.novus
+        // std::ffi::exec → std/ffi/exec.novus
+        var pathParts = moduleNamespace.Split(new[] { "::" }, StringSplitOptions.RemoveEmptyEntries);
+
+        if (pathParts.Length == 0)
+        {
+            _diagnostics.ReportError(
+                "E0026",
+                $"invalid module namespace: {moduleNamespace}",
+                location
+            );
+            return;
+        }
+
+        // Build file path
+        string modulePath;
+        if (pathParts[0] == "std")
+        {
+            // std library module - relative to std lib path
+            var relativePath = string.Join(System.IO.Path.DirectorySeparatorChar.ToString(), pathParts.Skip(1));
+            modulePath = System.IO.Path.Combine(_stdLibPath, relativePath + ".novus");
+        }
+        else
+        {
+            // User module (future: will use package resolution)
+            var relativePath = string.Join(System.IO.Path.DirectorySeparatorChar.ToString(), pathParts);
+            modulePath = relativePath + ".novus";
+        }
 
         if (!System.IO.File.Exists(modulePath))
         {
-            // Try ffi subdirectory
-            modulePath = System.IO.Path.Combine(_stdLibPath, "ffi", moduleName + ".novus");
-
-            if (!System.IO.File.Exists(modulePath))
-            {
-                _diagnostics.ReportError(
-                    "E0026",
-                    $"module '{moduleName}' not found",
-                    location,
-                    helpTexts: new List<string>
-                    {
-                        $"searched in: std/{moduleName}.novus",
-                        $"searched in: std/ffi/{moduleName}.novus",
-                        "create one of these files to define the module"
-                    }
-                );
-                return;
-            }
+            _diagnostics.ReportError(
+                "E0026",
+                $"module '{moduleNamespace}' not found",
+                location,
+                helpTexts: new List<string>
+                {
+                    $"expected file at: {modulePath}",
+                    "ensure the module file exists"
+                }
+            );
+            return;
         }
 
         // Skip if this module has already been imported
@@ -166,7 +185,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         {
             _diagnostics.ReportError(
                 "E0027",
-                $"module '{moduleName}' has syntax errors",
+                $"module '{moduleNamespace}' has syntax errors",
                 location,
                 helpTexts: new List<string>
                 {
@@ -284,7 +303,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 if (importNameCtx.IDENTIFIER().Length > 1)
                 {
                     var alias = importNameCtx.IDENTIFIER(1).GetText();
-                    _importedNames[alias] = moduleName;
+                    _importedNames[alias] = moduleNamespace;
                 }
             }
         }
@@ -318,7 +337,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
             // Register the enum from the imported module
             RegisterEnum(enumDecl);
-            _importedNames[enumName] = moduleName;
+            _importedNames[enumName] = moduleNamespace;
         }
 
         // Register imported constants in symbol table
@@ -350,7 +369,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
             // Register the constant from the imported module
             RegisterConstant(constDecl);
-            _importedNames[constName] = moduleName;
+            _importedNames[constName] = moduleNamespace;
         }
 
         // Register imported structs in symbol table
@@ -382,7 +401,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
             // Register the struct from the imported module
             RegisterStruct(structDecl);
-            _importedNames[structName] = moduleName;
+            _importedNames[structName] = moduleNamespace;
         }
 
         // Register imported functions in symbol table
@@ -415,7 +434,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             {
                 _diagnostics.ReportError(
                     "E0028",
-                    $"cannot import private function '{funcName}' from module '{moduleName}'",
+                    $"cannot import private function '{funcName}' from module '{moduleNamespace}'",
                     location,
                     helpTexts: new List<string>
                     {
@@ -463,7 +482,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             // Register the function as extern
             var funcLocation = SourceLocationHelper.FromToken(funcDecl.IDENTIFIER().Symbol, modulePath, new string[] { });
             _functions[funcName] = new FunctionSymbol(funcName, returnType, parameters, funcLocation, IsExtern: true);
-            _importedNames[funcName] = moduleName;
+            _importedNames[funcName] = moduleNamespace;
         }
 
         // Register imported global variables in symbol table
@@ -496,7 +515,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             var varType = ParseType(globalVarDecl.type());
             var varLocation = SourceLocationHelper.FromToken(globalVarDecl.IDENTIFIER().Symbol, modulePath, new string[] { });
             _globalVariables[varName] = new VariableSymbol(varName, varType, IsMutable: false, varLocation);
-            _importedNames[varName] = moduleName;
+            _importedNames[varName] = moduleNamespace;
         }
     }
 
