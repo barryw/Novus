@@ -1,4 +1,5 @@
 // graphics.library FFI Bindings
+// Namespace: std::ffi::graphics
 // Raw 1:1 mappings to graphics.library
 //
 // Auto-generated from NDK 3.9

@@ -1,6 +1,9 @@
-from io import WriteOut
+from std::io import WriteOut
 
 pub fn main() -> u32 {
-    WriteOut("Hello from String type!")
+    // WriteOut returns Result<i32, DosError>
+    // DosError is re-exported from std::io, so we don't need to import it separately
+    // Use the throwaway pattern _ to discard the result
+    let _ = WriteOut("Hello from String type, pub use, and _ pattern!")
     return 0
 }

@@ -1,7 +1,7 @@
 // Import System Example
 // Demonstrates importing DOS library functions using the module system
 
-from dos import Output, Write
+from std::ffi::dos import Output, Write
 
 pub fn main() -> i32 {
     // Get stdout handle

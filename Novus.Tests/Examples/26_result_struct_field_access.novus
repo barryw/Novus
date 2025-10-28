@@ -1,5 +1,5 @@
 // Test: Verify we can access fields from struct extracted from Result
-from error import DosError
+from std::error import DosError
 
 struct Point {
     x: i32,

@@ -1,4 +1,5 @@
 // strings.novus - String utility functions
+// Namespace: std::strings
 // Low-level string operations implemented in assembly for performance
 
 // Calculate length of null-terminated string

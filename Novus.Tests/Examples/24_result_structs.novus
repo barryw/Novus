@@ -1,7 +1,7 @@
 // Test Result<T, E> with arbitrary struct types
 // Verifies that Result can contain user-defined structs, not just primitives
 
-from error import DosError
+from std::error import DosError
 
 // Simple struct to test basic struct in Result
 struct Point {

@@ -1,4 +1,5 @@
 // locale.library FFI Bindings
+// Namespace: std::ffi::locale
 // Raw 1:1 mappings to locale.library
 //
 // Auto-generated from NDK 3.9

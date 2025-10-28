@@ -1,7 +1,7 @@
 // Test: Result<Option<T>, E> - Composing Result and Option together
 // Verifies that nested generics work correctly for real-world patterns
 
-from error import DosError
+from std::error import DosError
 
 // Test with simple i32 type first
 fn find_number(id: i32) -> Result<Option<i32>, DosError> {

@@ -1,6 +1,6 @@
 // Test passing String as parameter to non-FFI function
 
-from dos import Output, Write
+from std::ffi::dos import Output, Write
 
 // Non-FFI function that takes String parameter
 fn write_message(msg: String) -> i32 {

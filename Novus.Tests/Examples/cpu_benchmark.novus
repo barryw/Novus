@@ -3,8 +3,8 @@
 // Compile with: novus cpu_benchmark.novus -o cpu_benchmark
 // (Default --cpu auto creates a fat binary that works optimally on all CPUs)
 
-from dos import Output, Write
-from system import CPU, FPU, SystemCPU, SystemFPU
+from std::ffi::dos import Output, Write
+from std::system import CPU, FPU, SystemCPU, SystemFPU
 
 // Print header - CPU detection happens automatically in runtime
 fn print_header() {

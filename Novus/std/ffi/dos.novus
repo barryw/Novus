@@ -1,4 +1,5 @@
 // dos.library FFI Bindings
+// Namespace: std::ffi::dos
 // Raw 1:1 mappings to dos.library
 //
 // Auto-generated from NDK 3.9

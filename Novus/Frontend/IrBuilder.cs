@@ -73,7 +73,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Pass 0a: Implicitly import all of core module (unless testing)
         if (!_skipAutoImports)
         {
-            ImportModule("core", importAll: true);
+            ImportModule("std::core", importAll: true);
         }
 
         // Pass 0b: Process explicit imports
@@ -181,6 +181,91 @@ public class IrBuilder : NovusBaseVisitor<object?>
         ImportModule(modulePath, importAll, importList);
     }
 
+    private void ImportModuleSpecificSymbols(string moduleNamespace, List<string> symbolNames)
+    {
+        // Build a pseudo import list that contains the specific symbols
+        // We can't create a real ImportListContext without the parser, so we'll
+        // pass the symbol names another way
+        // For now, recursively call ImportModule for each symbol individually
+        foreach (var symbolName in symbolNames)
+        {
+            // Parse the module to get the symbols
+            var pathParts = moduleNamespace.Split(new[] { "::" }, StringSplitOptions.RemoveEmptyEntries);
+            string modulePath;
+            if (pathParts[0] == "std")
+            {
+                var relativePath = string.Join(System.IO.Path.DirectorySeparatorChar.ToString(), pathParts.Skip(1));
+                modulePath = System.IO.Path.Combine(_stdLibPath, relativePath + ".novus");
+            }
+            else
+            {
+                var relativePath = string.Join(System.IO.Path.DirectorySeparatorChar.ToString(), pathParts);
+                modulePath = relativePath + ".novus";
+            }
+
+            var moduleSource = System.IO.File.ReadAllText(modulePath);
+            var inputStream = new AntlrInputStream(moduleSource);
+            var lexer = new NovusLexer(inputStream);
+            var tokenStream = new CommonTokenStream(lexer);
+            var parser = new NovusParser(tokenStream);
+            var moduleContext = parser.compilationUnit();
+
+            // IMPORTANT: Process the module's own reexports first
+            // This ensures that types used by the symbol we're importing are available
+            foreach (var reexportDecl in moduleContext.reexportDeclaration())
+            {
+                var reexportPath = reexportDecl.modulePath().GetText();
+                var reexportText = reexportDecl.GetText();
+                if (reexportText.EndsWith("::*"))
+                {
+                    ImportModule(reexportPath, importAll: true, importList: null);
+                }
+                else
+                {
+                    var reexportList = reexportDecl.reexportList();
+                    if (reexportList != null)
+                    {
+                        var reexportSymbols = new List<string>();
+                        foreach (var id in reexportList.IDENTIFIER())
+                        {
+                            reexportSymbols.Add(id.GetText());
+                        }
+                        ImportModuleSpecificSymbols(reexportPath, reexportSymbols);
+                    }
+                }
+            }
+
+            // Find and register the specific symbol
+            // Check enums
+            foreach (var enumDecl in moduleContext.enumDeclaration())
+            {
+                if (enumDecl.IDENTIFIER().GetText() == symbolName)
+                {
+                    RegisterEnum(enumDecl);
+                    return; // Found it
+                }
+            }
+            // Check structs
+            foreach (var structDecl in moduleContext.structDeclaration())
+            {
+                if (structDecl.IDENTIFIER().GetText() == symbolName)
+                {
+                    RegisterStruct(structDecl);
+                    return; // Found it
+                }
+            }
+            // Check constants
+            foreach (var constDecl in moduleContext.constDeclaration())
+            {
+                if (constDecl.IDENTIFIER().GetText() == symbolName)
+                {
+                    RegisterConstant(constDecl);
+                    return; // Found it
+                }
+            }
+        }
+    }
+
     private void ImportModule(string moduleNamespace, bool importAll, NovusParser.ImportListContext? importList = null)
     {
         // Convert namespace path to file path
@@ -256,6 +341,37 @@ public class IrBuilder : NovusBaseVisitor<object?>
         if (hasImplementation && !_importedModulePaths.Contains(modulePath) && moduleNamespace != "std::core")
         {
             _importedModulePaths.Add(modulePath);
+        }
+
+        // CRITICAL: Process pub use reexports FIRST, before parsing any function signatures
+        // Function signatures may reference reexported types, so those types must be in scope
+        foreach (var reexportDecl in moduleContext.reexportDeclaration())
+        {
+            var reexportPath = reexportDecl.modulePath().GetText();
+            var text = reexportDecl.GetText();
+            bool reexportAll = text.EndsWith("::*");
+
+            if (reexportAll)
+            {
+                // pub use std::error::* - import all symbols
+                ImportModule(reexportPath, importAll: true, importList: null);
+            }
+            else
+            {
+                // pub use std::error::DosError - import specific symbols
+                var reexportList = reexportDecl.reexportList();
+                if (reexportList != null)
+                {
+                    var symbolNames = new List<string>();
+                    foreach (var id in reexportList.IDENTIFIER())
+                    {
+                        symbolNames.Add(id.GetText());
+                    }
+                    // Create a fake import list context with these names
+                    // We need to import these symbols so they're available when parsing function signatures
+                    ImportModuleSpecificSymbols(reexportPath, symbolNames);
+                }
+            }
         }
 
         // Build the list of names to import
@@ -633,7 +749,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     public override object? VisitVariableDeclaration([NotNull] NovusParser.VariableDeclarationContext context)
     {
-        var name = context.IDENTIFIER().GetText();
+        // Check if this is a throwaway binding (_)
+        var identifierNode = context.IDENTIFIER();
+        var name = identifierNode?.GetText() ?? "_";
+        var isThrowaway = name == "_";
         var isMutable = context.GetChild(0)?.GetText() == "var";
 
         // Parse type annotation if present (before evaluating the expression)
@@ -654,7 +773,17 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         if (value == null)
         {
-            throw new Exception($"Variable {name} must have an initial value");
+            throw new Exception($"Variable must have an initial value");
+        }
+
+        // For throwaway bindings, just evaluate the expression for side effects
+        // and discard the result - don't create a variable
+        if (isThrowaway)
+        {
+            // The expression has been evaluated - if it was a function call,
+            // the IrCall instruction was already added to the block.
+            // We just discard the result variable and don't create a local.
+            return null;
         }
 
         // Use annotated type if specified, otherwise infer from value

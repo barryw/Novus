@@ -1,6 +1,6 @@
 // Test Result<T, E> type inference from context
 
-from error import DosError
+from std::error import DosError
 
 fn check_value(value: i32) -> Result<i32, DosError> {
     if value > 0 {

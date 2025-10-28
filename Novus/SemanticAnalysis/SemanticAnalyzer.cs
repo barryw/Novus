@@ -51,7 +51,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     public bool Analyze(NovusParser.CompilationUnitContext context)
     {
         // Pass 0a: Implicitly import all of core module
-        ImportModule("core", importAll: true);
+        ImportModule("std::core", importAll: true);
 
         // Pass 0b: Process explicit imports
         foreach (var importDecl in context.importDeclaration())
@@ -109,6 +109,73 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         bool importAll = importList.GetText() == "*";
 
         ImportModule(moduleNamespace, importAll, importList, location);
+    }
+
+    private void ImportModuleSpecificSymbols(string moduleNamespace, List<string> symbolNames, SourceLocation? location = null)
+    {
+        // Import specific symbols from a module (for pub use reexports)
+        foreach (var symbolName in symbolNames)
+        {
+            // Parse the module to get the symbols
+            var pathParts = moduleNamespace.Split(new[] { "::" }, StringSplitOptions.RemoveEmptyEntries);
+            string modulePath;
+            if (pathParts[0] == "std")
+            {
+                var relativePath = string.Join(System.IO.Path.DirectorySeparatorChar.ToString(), pathParts.Skip(1));
+                modulePath = System.IO.Path.Combine(_stdLibPath, relativePath + ".novus");
+            }
+            else
+            {
+                var relativePath = string.Join(System.IO.Path.DirectorySeparatorChar.ToString(), pathParts);
+                modulePath = relativePath + ".novus";
+            }
+
+            if (!System.IO.File.Exists(modulePath))
+            {
+                _diagnostics.ReportError(
+                    "E0026",
+                    $"module '{moduleNamespace}' not found in reexport",
+                    location
+                );
+                return;
+            }
+
+            var moduleSource = System.IO.File.ReadAllText(modulePath);
+            var inputStream = new AntlrInputStream(moduleSource);
+            var lexer = new NovusLexer(inputStream);
+            var tokenStream = new CommonTokenStream(lexer);
+            var parser = new NovusParser(tokenStream);
+            var moduleContext = parser.compilationUnit();
+
+            // Find and register the specific symbol
+            // Check enums
+            foreach (var enumDecl in moduleContext.enumDeclaration())
+            {
+                if (enumDecl.IDENTIFIER().GetText() == symbolName)
+                {
+                    RegisterEnum(enumDecl);
+                    return; // Found it
+                }
+            }
+            // Check structs
+            foreach (var structDecl in moduleContext.structDeclaration())
+            {
+                if (structDecl.IDENTIFIER().GetText() == symbolName)
+                {
+                    RegisterStruct(structDecl);
+                    return; // Found it
+                }
+            }
+            // Check constants
+            foreach (var constDecl in moduleContext.constDeclaration())
+            {
+                if (constDecl.IDENTIFIER().GetText() == symbolName)
+                {
+                    RegisterConstant(constDecl);
+                    return; // Found it
+                }
+            }
+        }
     }
 
     private void ImportModule(string moduleNamespace, bool importAll, NovusParser.ImportListContext? importList = null, SourceLocation? location = null)
@@ -193,6 +260,35 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 }
             );
             return;
+        }
+
+        // CRITICAL: Process pub use reexports FIRST, before parsing any function signatures
+        // Function signatures may reference reexported types, so those types must be in scope
+        foreach (var reexportDecl in moduleContext.reexportDeclaration())
+        {
+            var reexportPath = reexportDecl.modulePath().GetText();
+            var text = reexportDecl.GetText();
+            bool reexportAll = text.EndsWith("::*");
+
+            if (reexportAll)
+            {
+                // pub use std::error::* - import all symbols
+                ImportModule(reexportPath, importAll: true, importList: null, location);
+            }
+            else
+            {
+                // pub use std::error::DosError - import specific symbols
+                var reexportList = reexportDecl.reexportList();
+                if (reexportList != null)
+                {
+                    var symbolNames = new List<string>();
+                    foreach (var id in reexportList.IDENTIFIER())
+                    {
+                        symbolNames.Add(id.GetText());
+                    }
+                    ImportModuleSpecificSymbols(reexportPath, symbolNames, location);
+                }
+            }
         }
 
         // Build the list of names to import
@@ -1015,12 +1111,19 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public override IrType? VisitVariableDeclaration([NotNull] NovusParser.VariableDeclarationContext context)
     {
-        var name = context.IDENTIFIER().GetText();
+        // Check if this is a throwaway binding (_)
+        var identifierNode = context.IDENTIFIER();
+        var name = identifierNode?.GetText() ?? "_";
+        var isThrowaway = name == "_";
         var isMutable = context.GetChild(0)?.GetText() == "var";
-        var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
 
-        // Check for duplicate variable names
-        if (_variables.ContainsKey(name))
+        // For location, use identifier if present, otherwise use the first token (let/var)
+        var location = identifierNode != null
+            ? SourceLocationHelper.FromToken(identifierNode.Symbol, _filePath, _sourceLines)
+            : SourceLocationHelper.FromToken(context.Start, _filePath, _sourceLines);
+
+        // Skip duplicate check for throwaway bindings
+        if (!isThrowaway && _variables.ContainsKey(name))
         {
             var originalLocation = _variables[name].Location;
             _diagnostics.ReportError(
@@ -1079,8 +1182,11 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             varType = exprType;
         }
 
-        // Add variable to symbol table
-        _variables[name] = new VariableSymbol(name, varType, isMutable, location);
+        // Add variable to symbol table (skip for throwaway bindings)
+        if (!isThrowaway)
+        {
+            _variables[name] = new VariableSymbol(name, varType, isMutable, location);
+        }
 
         return null;
     }

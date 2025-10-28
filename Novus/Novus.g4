@@ -3,7 +3,7 @@ grammar Novus;
 // Parser Rules
 
 compilationUnit
-    : importDeclaration* (constDeclaration | globalVariableDeclaration | structDeclaration | enumDeclaration | functionDeclaration)* EOF
+    : importDeclaration* reexportDeclaration* (constDeclaration | globalVariableDeclaration | structDeclaration | enumDeclaration | functionDeclaration)* EOF
     ;
 
 attribute
@@ -35,6 +35,14 @@ importList
 
 importName
     : IDENTIFIER (KW_AS IDENTIFIER)?
+    ;
+
+reexportDeclaration
+    : KW_PUB KW_USE modulePath '::' ('*' | reexportList)
+    ;
+
+reexportList
+    : IDENTIFIER (',' IDENTIFIER)*
     ;
 
 constDeclaration
@@ -172,7 +180,7 @@ returnStatement
     ;
 
 variableDeclaration
-    : (KW_LET | KW_VAR) IDENTIFIER (':' type)? '=' expression
+    : (KW_LET | KW_VAR) (IDENTIFIER | '_') (':' type)? '=' expression
     ;
 
 assignmentStatement
@@ -263,6 +271,7 @@ structFieldInit
 KW_FROM     : 'from';
 KW_IMPORT   : 'import';
 KW_AS       : 'as';
+KW_USE      : 'use';
 KW_PUB      : 'pub';
 KW_CONST    : 'const';
 KW_EXTERN   : 'extern';

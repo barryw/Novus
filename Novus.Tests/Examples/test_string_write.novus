@@ -1,7 +1,7 @@
 // Test String with console output
 
-from exec import OpenLibrary, CloseLibrary
-from dos import Output, Write
+from std::ffi::exec import OpenLibrary, CloseLibrary
+from std::ffi::dos import Output, Write
 
 pub fn main() -> u32 {
     // Open dos.library

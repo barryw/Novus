@@ -2,7 +2,7 @@
 // NO manual DOS initialization needed - it just works!
 // Uses high-level I/O wrappers for maximum devex!
 
-from io import WriteOut
+from std::io import WriteOut
 
 pub fn main() -> u32 {
     WriteOut("Hello from Novus!\n")

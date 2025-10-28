@@ -1,4 +1,5 @@
 // layers.library FFI Bindings
+// Namespace: std::ffi::layers
 // Raw 1:1 mappings to layers.library
 //
 // Auto-generated from NDK 3.9

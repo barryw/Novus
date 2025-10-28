@@ -1,6 +1,6 @@
 // String test with proper DOS library initialization
 
-from dos import DOSBase, OpenDOSLibrary, CloseDOSLibrary, Output, Write
+from std::ffi::dos import DOSBase, OpenDOSLibrary, CloseDOSLibrary, Output, Write
 
 // Function that takes String parameter
 fn print_string(stdout: i32, msg: String) -> i32 {

@@ -1,4 +1,5 @@
 // system.novus - System hardware detection
+// Namespace: std::system
 // Provides enums and variables for runtime hardware detection on Amiga
 
 // CPU types detected via ExecBase->AttnFlags

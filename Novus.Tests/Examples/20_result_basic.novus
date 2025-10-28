@@ -1,6 +1,6 @@
 // Test basic Result<T, E> construction and pattern matching
 
-from error import DosError
+from std::error import DosError
 
 fn make_ok() -> Result<i32, DosError> {
     return Result::Ok(42)

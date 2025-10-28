@@ -1,8 +1,8 @@
 // Error Handling Demo for Novus
 // Demonstrates comprehensive error taxonomy and Result<T, E> usage
 
-from io import write_out_result, print, println
-from error import DosError, ExecError, NovusError, novus_error_from_dos, novus_error_from_exec
+from std::io import write_out_result, print, println
+from std::error import DosError, ExecError, NovusError, novus_error_from_dos, novus_error_from_exec
 
 // Example 1: Basic Result handling with match
 pub fn example_basic_result() -> u32 {

@@ -1,4 +1,4 @@
-from dos import Output, Write
+from std::ffi::dos import Output, Write
 
 extern fn strlen(str: i32) -> i32
 

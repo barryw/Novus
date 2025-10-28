@@ -1,6 +1,6 @@
 // Demonstrate String type - no more manual length counting!
 
-from dos import Output, Write
+from std::ffi::dos import Output, Write
 
 pub fn main() -> u32 {
     let message = "Hello, String type!"

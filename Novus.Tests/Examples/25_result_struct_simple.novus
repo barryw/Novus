@@ -1,5 +1,5 @@
 // Simple test: Result with struct - verify basic functionality
-from error import DosError
+from std::error import DosError
 
 struct Point {
     x: i32,

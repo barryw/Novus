@@ -1,4 +1,5 @@
 // expansion.library FFI Bindings
+// Namespace: std::ffi::expansion
 // Raw 1:1 mappings to expansion.library
 //
 // Auto-generated from NDK 3.9

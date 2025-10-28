@@ -27,7 +27,8 @@
       "Bash(git restore:*)",
       "Bash(find:*)",
       "Bash(dotnet clean:*)",
-      "Bash(./Novus/bin/Release/net9.0/Novus:*)"
+      "Bash(./Novus/bin/Release/net9.0/Novus:*)",
+      "Bash(for file in Novus.Tests/Examples/*.novus)"
     ],
     "deny": [],
     "ask": []

@@ -1,7 +1,7 @@
 // Test Result<T, E> with I/O operations
 
-from error import DosError
-from dos import Output, Write
+from std::error import DosError
+from std::ffi::dos import Output, Write
 
 fn write_output(message: String) -> Result<i32, DosError> {
     let stdout = Output()

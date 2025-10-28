@@ -1,5 +1,6 @@
 // Novus Error Taxonomy
 // Comprehensive error handling across Amiga subsystems
+// Namespace: std::error
 //
 // Design Philosophy:
 // - Each subsystem has its own error type (DosError, ExecError, etc.)
@@ -7,7 +8,7 @@
 // - From<T> conversions allow ergonomic ? operator across subsystems
 // - Raw error codes preserved for debugging
 
-from dos import IoErr
+from std::ffi::dos import IoErr
 
 // ============================================================================
 // DOS Library Errors

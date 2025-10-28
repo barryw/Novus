@@ -1,4 +1,5 @@
 // Novus Standard Library - Core Types
+// Namespace: std::core
 // Generic enums for safe error handling and optional values
 
 // Option<T> - represents an optional value

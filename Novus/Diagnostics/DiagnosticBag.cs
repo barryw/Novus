@@ -91,7 +91,7 @@ public class DiagnosticBag
         sb.AppendLine($" {lineNumStr} | {diagnostic.Location.SourceLine}");
 
         // Caret line pointing to the error
-        var caretPadding = new string(' ', diagnostic.Location.Column - 1);
+        var caretPadding = new string(' ', Math.Max(0, diagnostic.Location.Column - 1));
         var carets = new string('^', Math.Max(1, diagnostic.Location.Length));
         sb.AppendLine($" {padding} | {caretPadding}{carets}");
 

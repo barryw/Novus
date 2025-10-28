@@ -1,4 +1,5 @@
 // utility.library FFI Bindings
+// Namespace: std::ffi::utility
 // Raw 1:1 mappings to utility.library
 //
 // Auto-generated from NDK 3.9
