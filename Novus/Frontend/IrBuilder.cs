@@ -2238,6 +2238,11 @@ public class IrBuilder : NovusBaseVisitor<object?>
             {
                 variantName = variantPattern.variantName().GetText();
             }
+            else if (pattern is NovusParser.SimpleVariantPatternContext simpleVariantPattern)
+            {
+                // SimpleVariantPattern is IDENTIFIER '::' IDENTIFIER ('::' IDENTIFIER)*
+                variantName = simpleVariantPattern.GetText();
+            }
             else if (pattern is NovusParser.IdentifierPatternContext identPattern)
             {
                 variantName = identPattern.IDENTIFIER().GetText();

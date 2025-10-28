@@ -158,13 +158,14 @@ matchArm
     ;
 
 pattern
-    : variantName '(' patternList? ')'  # VariantPattern
-    | IDENTIFIER                         # IdentifierPattern
-    | INTEGER_LITERAL                    # LiteralPattern
-    | STRING_LITERAL                     # LiteralPattern
-    | KW_TRUE                            # BoolLiteralPattern
-    | KW_FALSE                           # BoolLiteralPattern
-    | '_'                                # WildcardPattern
+    : variantName '(' patternList? ')'         # VariantPattern
+    | IDENTIFIER '::' IDENTIFIER ('::' IDENTIFIER)*  # SimpleVariantPattern
+    | IDENTIFIER                                # IdentifierPattern
+    | INTEGER_LITERAL                           # LiteralPattern
+    | STRING_LITERAL                            # LiteralPattern
+    | KW_TRUE                                   # BoolLiteralPattern
+    | KW_FALSE                                  # BoolLiteralPattern
+    | '_'                                       # WildcardPattern
     ;
 
 variantName

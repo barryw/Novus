@@ -1903,6 +1903,41 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 break;
             }
 
+            case NovusParser.SimpleVariantPatternContext simpleVariantPattern:
+            {
+                // SimpleVariantPattern is IDENTIFIER '::' IDENTIFIER ('::' IDENTIFIER)*
+                var variantName = simpleVariantPattern.GetText();
+                var variant = enumType.GetVariant(variantName);
+                if (variant == null)
+                {
+                    var location = SourceLocationHelper.FromToken(simpleVariantPattern.Start, _filePath, _sourceLines);
+                    _diagnostics.ReportError(
+                        "E0037",
+                        $"enum '{enumType.EnumName}' has no variant '{variantName}'",
+                        location
+                    );
+                    return;
+                }
+
+                // Simple variant pattern should only be used for variants without data
+                if (variant.HasAssociatedData)
+                {
+                    var location = SourceLocationHelper.FromToken(simpleVariantPattern.Start, _filePath, _sourceLines);
+                    _diagnostics.ReportError(
+                        "E0039",
+                        $"variant '{variantName}' has associated data and requires a pattern with bindings",
+                        location,
+                        helpTexts: new List<string>
+                        {
+                            $"use pattern: {variantName}({string.Join(", ", Enumerable.Range(0, variant.AssociatedData.Count).Select(i => $"_"))})"
+                        }
+                    );
+                }
+
+                coveredVariants.Add(variantName);
+                break;
+            }
+
             case NovusParser.IdentifierPatternContext identPattern:
             {
                 var variantName = identPattern.IDENTIFIER().GetText();

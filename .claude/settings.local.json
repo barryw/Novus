@@ -28,7 +28,8 @@
       "Bash(find:*)",
       "Bash(dotnet clean:*)",
       "Bash(./Novus/bin/Release/net9.0/Novus:*)",
-      "Bash(for file in Novus.Tests/Examples/*.novus)"
+      "Bash(for file in Novus.Tests/Examples/*.novus)",
+      "Bash(do echo \"Testing: $file\")"
     ],
     "deny": [],
     "ask": []
