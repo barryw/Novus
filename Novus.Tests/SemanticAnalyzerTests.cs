@@ -17,7 +17,7 @@ public class SemanticAnalyzerTests
         var tree = parser.compilationUnit();
 
         // For tests, use a dummy stdLibPath since most tests don't use imports
-        var analyzer = new SemanticAnalyzer("test.novus", source, ".");
+        var analyzer = new SemanticAnalyzer("test.novus", source, "std");
         analyzer.Analyze(tree);
         return analyzer.Diagnostics;
     }

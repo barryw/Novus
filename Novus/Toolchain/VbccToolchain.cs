@@ -153,7 +153,8 @@ public class VbccToolchain
 
         await File.WriteAllTextAsync(asmFile, asmSource);
 
-        // For fat binaries (cpu="auto"), use 68020 for assembly since it supports all instructions
+        // For fat binaries (cpu="auto"), use 68020 for assembly since it contains CPU-specific code
+        // The code generator ensures base code is 68000-compatible, with 68020+ code only in CPU-specific sections
         var assemblyCpu = cpu == "auto" ? "68020" : cpu;
 
         // Assemble (with FPU support if fat binary or FPU mode)
@@ -232,7 +233,8 @@ public class VbccToolchain
         bool enableFpu = false,
         string fpuMode = "auto")
     {
-        // For fat binaries (cpu="auto"), use 68020 for assembly since it supports all instructions
+        // For fat binaries (cpu="auto"), use 68020 for assembly since it contains CPU-specific code
+        // The code generator ensures base code is 68000-compatible, with 68020+ code only in CPU-specific sections
         var assemblyCpu = cpu == "auto" ? "68020" : cpu;
         var objFiles = new List<string>();
 
@@ -249,10 +251,24 @@ public class VbccToolchain
         }
         objFiles.Add(mainObjFile);
 
-        // Assemble all dependency modules
+        // Extract symbols referenced by the main assembly
+        var referencedSymbols = ExtractReferencedSymbols(mainAsmSource);
+
+        // Only assemble and link dependency modules that export referenced symbols
         foreach (var (modulePath, asmSource) in dependencyAssemblies)
         {
             var moduleName = Path.GetFileNameWithoutExtension(modulePath);
+
+            // Check if this dependency exports any symbols that are referenced
+            var exportedSymbols = ExtractExportedSymbols(asmSource);
+            var isReferenced = exportedSymbols.Any(sym => referencedSymbols.Contains(sym));
+
+            if (!isReferenced)
+            {
+                Console.WriteLine($"  ⊘ Skipping {moduleName} (not referenced)");
+                continue;
+            }
+
             var depAsmFile = Path.Combine(outputPath, $"{moduleName}.s");
             var depObjFile = Path.Combine(outputPath, $"{moduleName}.o");
 
@@ -267,12 +283,21 @@ public class VbccToolchain
             objFiles.Add(depObjFile);
         }
 
-        // Detect which library stubs are needed (scan all assemblies)
-        var allAssemblies = new List<string> { mainAsmSource };
-        allAssemblies.AddRange(dependencyAssemblies.Values);
+        // Detect which library stubs are needed (scan only linked assemblies)
+        var linkedAssemblies = new List<string> { mainAsmSource };
+
+        // Add only the dependency assemblies that were actually linked
+        foreach (var (modulePath, asmSource) in dependencyAssemblies)
+        {
+            var exportedSymbols = ExtractExportedSymbols(asmSource);
+            if (exportedSymbols.Any(sym => referencedSymbols.Contains(sym)))
+            {
+                linkedAssemblies.Add(asmSource);
+            }
+        }
 
         var requiredLibraries = new HashSet<string>();
-        foreach (var asm in allAssemblies)
+        foreach (var asm in linkedAssemblies)
         {
             var libs = DetectRequiredLibraries(asm);
             foreach (var lib in libs)
@@ -334,6 +359,50 @@ public class VbccToolchain
 
         Console.WriteLine($"\n✓ Successfully created: {Path.GetFileName(exeFile)}");
         return true;
+    }
+
+    /// <summary>
+    /// Extract all external symbol references (xref) from assembly code
+    /// </summary>
+    private HashSet<string> ExtractReferencedSymbols(string asmSource)
+    {
+        var symbols = new HashSet<string>();
+
+        // Look for "xref _symbolName" directives
+        var lines = asmSource.Split('\n');
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("xref\t") || trimmed.StartsWith("xref "))
+            {
+                var symbolName = trimmed.Substring(4).Trim();
+                symbols.Add(symbolName);
+            }
+        }
+
+        return symbols;
+    }
+
+    /// <summary>
+    /// Extract all exported symbols (xdef) from assembly code
+    /// </summary>
+    private HashSet<string> ExtractExportedSymbols(string asmSource)
+    {
+        var symbols = new HashSet<string>();
+
+        // Look for "xdef _symbolName" directives
+        var lines = asmSource.Split('\n');
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("xdef\t") || trimmed.StartsWith("xdef "))
+            {
+                var symbolName = trimmed.Substring(4).Trim();
+                symbols.Add(symbolName);
+            }
+        }
+
+        return symbols;
     }
 
     /// <summary>

@@ -471,6 +471,9 @@ public class IrPointerType : IrType
 
     public override int SizeInBytes => 4; // All pointers are 32-bit on 68k
     public override string Name => $"*{PointeeType.Name}";
+
+    // Predefined common pointer types (for static field initialization)
+    public static readonly IrPointerType U8Ptr = new(IrIntType.U8);
 }
 
 /// <summary>
@@ -597,7 +600,7 @@ public class IrStringType : IrType
     public override string Name => "String";
 
     // Predefined fields for accessing components
-    public static readonly IrStructField PtrField = new("ptr", new IrPointerType(IrIntType.U8));
+    public static readonly IrStructField PtrField = new("ptr", IrPointerType.U8Ptr);
     public static readonly IrStructField LenField = new("len", IrIntType.I32);
 }
 

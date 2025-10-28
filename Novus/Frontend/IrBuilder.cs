@@ -26,9 +26,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
     private readonly Dictionary<string, IrEnumType> _monomorphizedEnums = new(); // Cache for monomorphized generic enums
     private IrType? _expectedType = null; // Expected type for bidirectional type checking
     public readonly List<IrStringLiteral> StringLiterals = new(); // Track all string literals for data section
-    private string _stdLibPath = "."; // Path to standard library
+    private string _stdLibPath = "std"; // Path to standard library
     private readonly bool _skipAutoImports; // Skip auto-importing core module (for tests)
     private readonly List<string> _importedModulePaths = new(); // Track imported module file paths for linking
+    private readonly TypeInterner _typeInterner = new(); // Type interning for efficient type equality
 
     /// <summary>
     /// Constructor for IrBuilder
@@ -1536,7 +1537,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                         ptrTempName,
                         new IrVariable(stringTempName, IrStringType.Instance),
                         "ptr",
-                        new IrPointerType(IrIntType.U8),
+                        _typeInterner.GetPointerType(IrIntType.U8),
                         0  // ptr is at offset 0
                     );
                     _currentBlock!.AddInstruction(ptrAccess);
@@ -1552,7 +1553,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                         ptrTempName,
                         arguments[i],
                         "ptr",
-                        new IrPointerType(IrIntType.U8),
+                        _typeInterner.GetPointerType(IrIntType.U8),
                         0  // ptr is at offset 0
                     );
                     _currentBlock!.AddInstruction(ptrAccess);
@@ -1629,7 +1630,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             {
                 // Create function pointer type from function signature
                 var paramTypes = function.Parameters.Select(p => p.Type).ToList();
-                var fpType = new IrFunctionPointerType(paramTypes, function.ReturnType);
+                var fpType = _typeInterner.GetFunctionPointerType(paramTypes, function.ReturnType);
                 return new IrFunctionAddress(name, fpType);
             }
         }
@@ -1640,8 +1641,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         // Create the appropriate reference type
         var refType = isMutable
-            ? (IrType)new IrMutReferenceType(value.Type)
-            : new IrReferenceType(value.Type);
+            ? (IrType)_typeInterner.GetMutReferenceType(value.Type)
+            : _typeInterner.GetReferenceType(value.Type);
 
         // For code generation, references are just pointers (addresses)
         // We return the value itself - the semantic analyzer will track that it's a reference
@@ -1689,7 +1690,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         // Infer array type from first element
         var elementType = elements[0].Type;
-        var arrayType = new IrArrayType(elementType, elements.Count);
+        var arrayType = _typeInterner.GetArrayType(elementType, elements.Count);
 
         // Create array literal value
         var arrayLiteral = new IrArrayLiteral(arrayType);
@@ -1789,7 +1790,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 0  // ptr is at offset 0
             );
             _currentBlock!.AddInstruction(ptrAccess);
-            return new IrVariable(ptrTempName, new IrPointerType(IrIntType.U8));
+            return new IrVariable(ptrTempName, _typeInterner.GetPointerType(IrIntType.U8));
         }
 
         // For variables, if it's a bitwise cast (same size), just return the variable with new type
@@ -2374,7 +2375,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             if (memberName == "ptr")
             {
-                fieldType = new IrPointerType(IrIntType.U8);
+                fieldType = _typeInterner.GetPointerType(IrIntType.U8);
                 fieldOffset = 0;  // ptr is at offset 0
             }
             else if (memberName == "len")
@@ -2622,14 +2623,14 @@ public class IrBuilder : NovusBaseVisitor<object?>
         bool isMutable = context.GetChild(1)?.GetText() == "mut";
 
         return isMutable
-            ? new IrMutReferenceType(pointeeType)
-            : new IrReferenceType(pointeeType);
+            ? _typeInterner.GetMutReferenceType(pointeeType)
+            : _typeInterner.GetReferenceType(pointeeType);
     }
 
     private IrType ParsePointerType(NovusParser.PointerTypeContext context)
     {
         var pointeeType = ParseType(context.type());
-        return new IrPointerType(pointeeType);
+        return _typeInterner.GetPointerType(pointeeType);
     }
 
     private IrType ParseNamedType(NovusParser.NamedTypeContext context)
@@ -2776,7 +2777,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var sizeText = context.INTEGER_LITERAL().GetText();
         var size = int.Parse(sizeText);
         var elementType = ParseType(context.type());
-        return new IrArrayType(elementType, size);
+        return _typeInterner.GetArrayType(elementType, size);
     }
 
     private IrType ParseFunctionPointerType(NovusParser.FunctionPointerTypeContext context)
@@ -2793,7 +2794,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         var returnType = context.type() != null ? ParseType(context.type()) : IrVoidType.Instance;
 
-        return new IrFunctionPointerType(paramTypes, returnType);
+        return _typeInterner.GetFunctionPointerType(paramTypes, returnType);
     }
 
     private IrType ParsePrimitiveType(NovusParser.PrimitiveTypeContext context)

@@ -39,6 +39,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     // Expected type for bidirectional type checking (flows down from context)
     private IrType? _expectedType = null;
 
+    // Type interning system for efficient type equality
+    private readonly TypeInterner _typeInterner = new();
+
     public DiagnosticBag Diagnostics => _diagnostics;
 
     public SemanticAnalyzer(string filePath, string sourceCode, string stdLibPath)
@@ -2838,7 +2841,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         {
             if (memberName == "ptr")
             {
-                return new IrPointerType(IrIntType.U8);
+                return _typeInterner.GetPointerType(IrIntType.U8);
             }
             else if (memberName == "len")
             {
@@ -2912,7 +2915,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             {
                 var function = _functions[name];
                 var paramTypes = function.Parameters.Select(p => p.Type).ToList();
-                return new IrFunctionPointerType(paramTypes, function.ReturnType);
+                return _typeInterner.GetFunctionPointerType(paramTypes, function.ReturnType);
             }
         }
 
@@ -2925,8 +2928,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         // Return the appropriate reference type
         return isMutable
-            ? (IrType)new IrMutReferenceType(valueType)
-            : new IrReferenceType(valueType);
+            ? (IrType)_typeInterner.GetMutReferenceType(valueType)
+            : _typeInterner.GetReferenceType(valueType);
     }
 
     public override IrType? VisitComparisonExpr([NotNull] NovusParser.ComparisonExprContext context)
@@ -3373,7 +3376,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             // TODO: Check type compatibility
         }
 
-        return new IrArrayType(firstType!, expressions.Length);
+        return _typeInterner.GetArrayType(firstType!, expressions.Length);
     }
 
     public override IrType? VisitStructLiteral([NotNull] NovusParser.StructLiteralContext context)
@@ -3677,14 +3680,14 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         bool isMutable = context.GetChild(1)?.GetText() == "mut";
 
         return isMutable
-            ? new IrMutReferenceType(pointeeType)
-            : new IrReferenceType(pointeeType);
+            ? _typeInterner.GetMutReferenceType(pointeeType)
+            : _typeInterner.GetReferenceType(pointeeType);
     }
 
     private IrType ParsePointerType(NovusParser.PointerTypeContext context)
     {
         var pointeeType = ParseType(context.type());
-        return new IrPointerType(pointeeType);
+        return _typeInterner.GetPointerType(pointeeType);
     }
 
     private IrType ParseNamedType(NovusParser.NamedTypeContext context)
@@ -3797,7 +3800,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var sizeText = context.INTEGER_LITERAL().GetText();
         var size = int.Parse(sizeText);
         var elementType = ParseType(context.type());
-        return new IrArrayType(elementType, size);
+        return _typeInterner.GetArrayType(elementType, size);
     }
 
     private IrType ParseFunctionPointerType(NovusParser.FunctionPointerTypeContext context)
@@ -3814,7 +3817,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         var returnType = context.type() != null ? ParseType(context.type()) : IrVoidType.Instance;
 
-        return new IrFunctionPointerType(paramTypes, returnType);
+        return _typeInterner.GetFunctionPointerType(paramTypes, returnType);
     }
 
     private IrType ParsePrimitiveType(NovusParser.PrimitiveTypeContext context)

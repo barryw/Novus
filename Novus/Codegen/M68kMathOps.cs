@@ -181,17 +181,14 @@ public partial class M68kCodeGenerator
     private void Generate68000Multiply32(bool isSigned)
     {
         // d0 = multiplicand, d1 = multiplier
-        // Uses d2 as temporary
+        // Uses d2-d3 for unsigned, d2-d4 for signed
         // Result in d0
-
-        Emit("\tmovem.l\td2-d3,-(sp)");  // Save registers
 
         if (isSigned)
         {
             // Signed 32×32→32 multiply
             // Strategy: Convert to unsigned, multiply, adjust sign
             // Uses d2-d4 as temporaries
-            Emit("\tmovem.l\t(sp)+,d2-d3");  // We'll need d4 too
             Emit("\tmovem.l\td2-d4,-(sp)");  // Save d2-d4
 
             Emit("\tmoveq\t#0,d4");          // d4 = sign tracker (0 = positive, -1 = negative)
@@ -246,6 +243,8 @@ public partial class M68kCodeGenerator
             // Split into high and low words:
             // d0 = d0.hi:d0.lo, d1 = d1.hi:d1.lo
             // result = (d0.lo * d1.lo) + ((d0.hi * d1.lo + d0.lo * d1.hi) << 16)
+
+            Emit("\tmovem.l\td2-d3,-(sp)");  // Save d2-d3
 
             Emit("\tmove.l\td0,d2");      // d2 = d0 (save original)
             Emit("\tmove.l\td1,d3");      // d3 = d1 (save original)
