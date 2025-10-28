@@ -1,6 +1,7 @@
 ﻿using Antlr4.Runtime;
 using CommandLine;
 using Novus.Codegen;
+using Novus.Compilation;
 using Novus.Diagnostics;
 using Novus.Frontend;
 using Novus.Parser;
@@ -56,63 +57,114 @@ class Program
     static async Task<(string Assembly, List<string> ImportedModules)?> CompileModuleToAssembly(
         string inputFile,
         string stdLibPath,
-        CompilerOptions options)
+        CompilerOptions options,
+        ModuleCache moduleCache,
+        CircularImportDetector? circularImportDetector = null)
     {
-        // Read source file
-        if (!File.Exists(inputFile))
+        // Check for circular imports if detector is provided
+        if (circularImportDetector != null)
         {
-            Console.WriteLine($"Error: Module file not found: {inputFile}");
-            return null;
-        }
-
-        var source = await File.ReadAllTextAsync(inputFile);
-
-        // Lex and parse
-        var inputStream = new AntlrInputStream(source);
-        var lexer = new NovusLexer(inputStream);
-        var tokenStream = new CommonTokenStream(lexer);
-        var parser = new NovusParser(tokenStream);
-        var parseTree = parser.compilationUnit();
-
-        if (parser.NumberOfSyntaxErrors > 0)
-        {
-            Console.WriteLine($"Parse failed for {inputFile} with {parser.NumberOfSyntaxErrors} error(s)");
-            return null;
-        }
-
-        // Perform semantic analysis
-        var analyzer = new SemanticAnalyzer(inputFile, source, stdLibPath);
-        var analysisSucceeded = analyzer.Analyze(parseTree);
-
-        if (!analysisSucceeded)
-        {
-            if (analyzer.Diagnostics.HasErrors || analyzer.Diagnostics.HasWarnings)
+            if (!circularImportDetector.EnterModule(inputFile))
             {
-                Console.WriteLine(analyzer.Diagnostics.FormatDiagnostics());
+                // Circular dependency detected - error already reported
+                return null;
             }
-            return null;
         }
 
-        // Build IR
-        var irBuilder = new IrBuilder();
-        irBuilder.SetStdLibPath(stdLibPath);
-        var module = irBuilder.BuildModule(parseTree);
-
-        // Run optimization passes
-        if (options.OptimizationLevel > 0)
+        try
         {
-            var optimizer = Novus.Optimizer.OptimizationPipeline.CreatePipeline(
-                options.OptimizationLevel,
-                options.Verbose
-            );
-            optimizer.Run(module);
+            // Read source file
+            if (!File.Exists(inputFile))
+            {
+                Console.WriteLine($"Error: Module file not found: {inputFile}");
+                return null;
+            }
+
+            var source = await File.ReadAllTextAsync(inputFile);
+
+            // Create diagnostic bag for error collection
+            var diagnostics = new DiagnosticBag();
+
+            // Try to get cached parse tree
+            Antlr4.Runtime.Tree.IParseTree? cachedParseTree;
+            NovusParser.CompilationUnitContext compilationUnit;
+
+            if (moduleCache.TryGet(inputFile, out cachedParseTree) && cachedParseTree != null)
+            {
+                // Cache hit - skip parsing
+                if (options.Verbose)
+                {
+                    Console.WriteLine($"  [Cache hit] {Path.GetFileName(inputFile)}");
+                }
+                compilationUnit = (NovusParser.CompilationUnitContext)cachedParseTree;
+            }
+            else
+            {
+                // Cache miss - parse the file
+                var inputStream = new AntlrInputStream(source);
+                var lexer = new NovusLexer(inputStream);
+                var tokenStream = new CommonTokenStream(lexer);
+                var parser = new NovusParser(tokenStream);
+
+                // Remove default error listeners and add our custom one
+                parser.RemoveErrorListeners();
+                parser.AddErrorListener(new NovusErrorListener(diagnostics, inputFile, source));
+
+                compilationUnit = parser.compilationUnit();
+
+                // Check for parse errors
+                if (diagnostics.HasErrors)
+                {
+                    Console.WriteLine(diagnostics.FormatDiagnostics());
+                    return null;
+                }
+
+                // Add to cache
+                moduleCache.Add(inputFile, compilationUnit);
+            }
+
+            // Perform semantic analysis
+            var analyzer = new SemanticAnalyzer(inputFile, source, stdLibPath);
+            var analysisSucceeded = analyzer.Analyze(compilationUnit);
+
+            if (!analysisSucceeded)
+            {
+                if (analyzer.Diagnostics.HasErrors || analyzer.Diagnostics.HasWarnings)
+                {
+                    Console.WriteLine(analyzer.Diagnostics.FormatDiagnostics());
+                }
+                return null;
+            }
+
+            // Build IR
+            var irBuilder = new IrBuilder();
+            irBuilder.SetStdLibPath(stdLibPath);
+            var module = irBuilder.BuildModule(compilationUnit);
+
+            // Run optimization passes
+            if (options.OptimizationLevel > 0)
+            {
+                var optimizer = Novus.Optimizer.OptimizationPipeline.CreatePipeline(
+                    options.OptimizationLevel,
+                    options.Verbose
+                );
+                optimizer.Run(module);
+            }
+
+            // Generate 68k assembly
+            var codegen = new M68kCodeGenerator(module, irBuilder.StringLiterals, options.Cpu, options.Fpu);
+            var assembly = codegen.Generate();
+
+            return (assembly, irBuilder.GetImportedModules());
         }
-
-        // Generate 68k assembly
-        var codegen = new M68kCodeGenerator(module, irBuilder.StringLiterals, options.Cpu, options.Fpu);
-        var assembly = codegen.Generate();
-
-        return (assembly, irBuilder.GetImportedModules());
+        finally
+        {
+            // Always exit module to maintain proper stack state
+            if (circularImportDetector != null)
+            {
+                circularImportDetector.ExitModule();
+            }
+        }
     }
 
     static async Task<int> RunCompiler(CompilerOptions options)
@@ -143,19 +195,42 @@ class Program
             var compilerDir = AppContext.BaseDirectory;
             var stdLibPath = Path.Combine(compilerDir, "std");
 
+            // Create module cache for performance
+            var moduleCache = new ModuleCache();
+
+            // Create diagnostic bag and circular import detector
+            var diagnostics = new DiagnosticBag();
+            var circularImportDetector = new CircularImportDetector(diagnostics);
+
             Console.WriteLine($"Compiling: {options.InputFile}");
             Console.WriteLine("Parsing...");
             Console.WriteLine("Analyzing semantics...");
             Console.WriteLine("Building IR...");
 
             // Compile the main file and get its dependencies
-            var mainResult = await CompileModuleToAssembly(options.InputFile, stdLibPath, options);
+            var mainResult = await CompileModuleToAssembly(options.InputFile, stdLibPath, options, moduleCache, circularImportDetector);
             if (mainResult == null)
             {
+                // Check if it was a circular import error
+                if (diagnostics.HasErrors)
+                {
+                    Console.WriteLine(diagnostics.FormatDiagnostics());
+                }
                 return 1;
             }
 
             var (mainAssembly, importedModules) = mainResult.Value;
+
+            // Record dependencies from the main module and check for cycles
+            foreach (var import in importedModules)
+            {
+                if (!circularImportDetector.RecordDependency(options.InputFile, import))
+                {
+                    // Circular dependency detected
+                    Console.WriteLine(diagnostics.FormatDiagnostics());
+                    return 1;
+                }
+            }
 
             // Recursively collect all dependencies
             var allModules = new Dictionary<string, string>(); // path -> assembly
@@ -175,19 +250,35 @@ class Program
                     Console.WriteLine($"  Compiling dependency: {Path.GetFileName(modulePath)}");
                 }
 
-                var moduleResult = await CompileModuleToAssembly(modulePath, stdLibPath, options);
+                var moduleResult = await CompileModuleToAssembly(modulePath, stdLibPath, options, moduleCache, circularImportDetector);
                 if (moduleResult == null)
                 {
-                    Console.WriteLine($"Failed to compile dependency: {modulePath}");
+                    // Check if it was a circular import error
+                    if (diagnostics.HasErrors)
+                    {
+                        Console.WriteLine(diagnostics.FormatDiagnostics());
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Failed to compile dependency: {modulePath}");
+                    }
                     return 1;
                 }
 
                 var (moduleAssembly, moduleImports) = moduleResult.Value;
                 allModules[modulePath] = moduleAssembly;
 
-                // Add transitive dependencies
+                // Add transitive dependencies and check for cycles
                 foreach (var import in moduleImports)
                 {
+                    // Record the dependency and check for cycles
+                    if (!circularImportDetector.RecordDependency(modulePath, import))
+                    {
+                        // Circular dependency detected
+                        Console.WriteLine(diagnostics.FormatDiagnostics());
+                        return 1;
+                    }
+
                     if (!processed.Contains(import))
                     {
                         toProcess.Enqueue(import);
@@ -198,6 +289,11 @@ class Program
             if (allModules.Count > 0)
             {
                 Console.WriteLine($"  Compiled {allModules.Count} dependencies");
+            }
+
+            if (options.Verbose && moduleCache.Count > 0)
+            {
+                Console.WriteLine($"  Module cache: {moduleCache.Count} modules cached");
             }
 
             // Optionally emit IR

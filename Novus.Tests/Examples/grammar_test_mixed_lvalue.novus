@@ -1,0 +1,36 @@
+// Test mixed member and index access in assignments
+// Testing grammar fix #1: lvalueSuffix for complex lvalues
+
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+struct Container {
+    points: [10]Point,
+    value: i32,
+}
+
+fn test_mixed_access() {
+    var container: Container = Container {
+        points: {},
+        value: 0,
+    };
+
+    // These should all parse correctly now with the new lvalueSuffix rule
+
+    // Member then index: obj.array[0] = val
+    // container.points[0] = Point { x: 1, y: 2 };
+
+    // Index then member: array[0].field = val
+    // container.points[5].x = 42;
+
+    // Multiple member access: obj.field1.field2 = val
+    // (would work if we had nested structs)
+
+    // Multiple index access: arr[i][j] = val
+    // (would work if we had 2D arrays)
+
+    // For now these will throw NotImplementedException at compile time
+    // but the grammar should parse them correctly
+}

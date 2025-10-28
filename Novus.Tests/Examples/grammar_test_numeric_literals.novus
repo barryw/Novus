@@ -1,0 +1,31 @@
+// Test numeric literal patterns with suffixes
+// Testing grammar fix #3: proper handling of single-digit literals with suffixes
+
+fn test_numeric_literals() {
+    // Single digit with suffix (these were broken before)
+    let a: u8 = 5u8
+    let b: u16 = 9u16
+    let c: u32 = 1u32
+    let d: i8 = 7i8
+
+    // Binary literals with suffix
+    let e: u32 = %1011u32
+    let f: u8 = %1u8
+    let g: u16 = %11111111u16
+
+    // Hex literals with suffix
+    let h: u16 = $Fu16
+    let i: u8 = $Au8
+    let j: u32 = $FFFFu32
+    let k: u8 = $0u8
+
+    // Multi-digit with underscores (should still work)
+    let l: u32 = 1_000_000u32
+    let m: u32 = %1111_0000u32
+    let n: u32 = $DEAD_BEEFu32
+
+    // Without suffix (should still work)
+    let o: u32 = 42
+    let p: u32 = %1010
+    let q: u32 = $FF
+}

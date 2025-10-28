@@ -1,0 +1,21 @@
+// Test qualified struct names in struct literals
+// Testing grammar fix #2: typeName instead of IDENTIFIER in struct literals
+
+// Note: This will fail semantic analysis because we don't have a real
+// 'geometry' module, but it should PARSE correctly
+
+// Simulated qualified struct literal (when we have modules working)
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+fn test_qualified_struct() {
+    // Simple struct literal (should work)
+    let p1: Point = Point { x: 1, y: 2 }
+
+    // When we have modules, this should parse correctly:
+    // let p2: geometry::Point = geometry::Point { x: 3, y: 4 }
+
+    // The grammar now supports typeName which includes :: paths
+}

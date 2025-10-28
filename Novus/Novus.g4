@@ -6,8 +6,22 @@ compilationUnit
     : importDeclaration* (constDeclaration | globalVariableDeclaration | structDeclaration | enumDeclaration | functionDeclaration)* EOF
     ;
 
+attribute
+    : '@' IDENTIFIER ('(' attributeArgList? ')')?
+    | '#' '[' IDENTIFIER ('(' attributeArgList? ')')? ']'
+    ;
+
+attributeArgList
+    : attributeArg (',' attributeArg)*
+    ;
+
+attributeArg
+    : IDENTIFIER '=' expression
+    | expression
+    ;
+
 importDeclaration
-    : 'from' IDENTIFIER 'import' importList
+    : KW_FROM IDENTIFIER KW_IMPORT importList
     ;
 
 importList
@@ -16,19 +30,19 @@ importList
     ;
 
 importName
-    : IDENTIFIER ('as' IDENTIFIER)?
+    : IDENTIFIER (KW_AS IDENTIFIER)?
     ;
 
 constDeclaration
-    : 'pub'? 'const' IDENTIFIER ':' type '=' expression
+    : attribute* KW_PUB? KW_CONST IDENTIFIER ':' type '=' expression
     ;
 
 globalVariableDeclaration
-    : 'extern' 'var' IDENTIFIER ':' type
+    : attribute* KW_EXTERN KW_VAR IDENTIFIER ':' type
     ;
 
 functionDeclaration
-    : 'extern'? 'pub'? 'fn' IDENTIFIER '(' parameterList? ')' ('->' type)? block?
+    : attribute* KW_EXTERN? KW_PUB? KW_FN IDENTIFIER '(' parameterList? ')' ('->' type)? block?
     ;
 
 parameterList
@@ -40,7 +54,7 @@ parameter
     ;
 
 structDeclaration
-    : 'pub'? 'struct' IDENTIFIER genericParams? '{' structField* '}'
+    : attribute* KW_PUB? KW_STRUCT IDENTIFIER genericParams? '{' structField* '}'
     ;
 
 structField
@@ -48,7 +62,7 @@ structField
     ;
 
 enumDeclaration
-    : 'pub'? 'enum' IDENTIFIER genericParams? '{' enumVariant (',' enumVariant)* ','? '}'
+    : attribute* KW_PUB? KW_ENUM IDENTIFIER genericParams? '{' enumVariant (',' enumVariant)* ','? '}'
     ;
 
 enumVariant
@@ -60,25 +74,31 @@ genericParams
     ;
 
 type
-    : '&' 'mut'? type                                         # ReferenceType
+    : '&' KW_MUT? type                                        # ReferenceType
     | '*' type                                                # PointerType
     | '[' INTEGER_LITERAL ']' type                           # ArrayType
-    | 'fn' '(' typeList? ')' ('->' type)?                    # FunctionPointerType
-    | 'u8'                                                    # PrimitiveType
-    | 'u16'                                                   # PrimitiveType
-    | 'u32'                                                   # PrimitiveType
-    | 'u64'                                                   # PrimitiveType
-    | 'i8'                                                    # PrimitiveType
-    | 'i16'                                                   # PrimitiveType
-    | 'i32'                                                   # PrimitiveType
-    | 'i64'                                                   # PrimitiveType
-    | 'bool'                                                  # PrimitiveType
-    | 'f32'                                                   # PrimitiveType
-    | 'f64'                                                   # PrimitiveType
-    | 'fixed16'                                               # PrimitiveType
-    | 'fixed32'                                               # PrimitiveType
-    | 'String'                                                # PrimitiveType
-    | IDENTIFIER ('<' typeList '>')?                         # NamedType
+    | '[' type ']'                                           # SliceType
+    | '(' type (',' type)+ ')'                               # TupleType
+    | KW_FN '(' typeList? ')' ('->' type)?                   # FunctionPointerType
+    | KW_U8                                                   # PrimitiveType
+    | KW_U16                                                  # PrimitiveType
+    | KW_U32                                                  # PrimitiveType
+    | KW_U64                                                  # PrimitiveType
+    | KW_I8                                                   # PrimitiveType
+    | KW_I16                                                  # PrimitiveType
+    | KW_I32                                                  # PrimitiveType
+    | KW_I64                                                  # PrimitiveType
+    | KW_BOOL                                                 # PrimitiveType
+    | KW_F32                                                  # PrimitiveType
+    | KW_F64                                                  # PrimitiveType
+    | KW_FIXED16                                              # PrimitiveType
+    | KW_FIXED32                                              # PrimitiveType
+    | KW_STRING                                               # PrimitiveType
+    | typeName ('<' typeList '>')?                           # NamedType
+    ;
+
+typeName
+    : IDENTIFIER ('::' IDENTIFIER)*
     ;
 
 typeList
@@ -100,15 +120,25 @@ statement
     | breakStatement
     | matchStatement
     | deferStatement
+    | unsafeBlock
+    | usingStatement
     | expressionStatement
     ;
 
 deferStatement
-    : 'defer' block
+    : KW_DEFER block
+    ;
+
+unsafeBlock
+    : KW_UNSAFE block
+    ;
+
+usingStatement
+    : KW_USING expression block
     ;
 
 matchStatement
-    : 'match' expression '{' matchArm (',' matchArm)* ','? '}'
+    : KW_MATCH expression '{' matchArm (',' matchArm)* ','? '}'
     ;
 
 matchArm
@@ -116,11 +146,17 @@ matchArm
     ;
 
 pattern
-    : IDENTIFIER '(' patternList? ')'  # VariantPattern
-    | IDENTIFIER                        # IdentifierPattern
-    | INTEGER_LITERAL                   # LiteralPattern
-    | STRING_LITERAL                    # LiteralPattern
-    | '_'                               # WildcardPattern
+    : variantName '(' patternList? ')'  # VariantPattern
+    | IDENTIFIER                         # IdentifierPattern
+    | INTEGER_LITERAL                    # LiteralPattern
+    | STRING_LITERAL                     # LiteralPattern
+    | KW_TRUE                            # BoolLiteralPattern
+    | KW_FALSE                           # BoolLiteralPattern
+    | '_'                                # WildcardPattern
+    ;
+
+variantName
+    : IDENTIFIER ('::' IDENTIFIER)*
     ;
 
 patternList
@@ -128,35 +164,40 @@ patternList
     ;
 
 returnStatement
-    : 'return' expression
+    : KW_RETURN expression
     ;
 
 variableDeclaration
-    : ('let' | 'var') IDENTIFIER (':' type)? '=' expression
+    : (KW_LET | KW_VAR) IDENTIFIER (':' type)? '=' expression
     ;
 
 assignmentStatement
-    : ('*')* IDENTIFIER ('[' expression ']' | ('.' IDENTIFIER)+)? '=' expression
+    : ('*')* IDENTIFIER (lvalueSuffix)* '=' expression
+    ;
+
+lvalueSuffix
+    : '.' IDENTIFIER
+    | '[' expression ']'
     ;
 
 ifStatement
-    : 'if' expression block ('else' (ifStatement | block))?
+    : KW_IF expression block (KW_ELSE (ifStatement | block))?
     ;
 
 whileStatement
-    : 'while' expression block
+    : KW_WHILE expression block
     ;
 
 forStatement
-    : 'for' '(' (variableDeclaration | assignmentStatement)? ';' expression? ';' assignmentStatement? ')' block
+    : KW_FOR '(' (variableDeclaration | assignmentStatement)? ';' expression? ';' assignmentStatement? ')' block
     ;
 
 foreverStatement
-    : 'forever' block
+    : KW_FOREVER block
     ;
 
 breakStatement
-    : 'break'
+    : KW_BREAK
     ;
 
 expressionStatement
@@ -169,9 +210,12 @@ expression
     | expression '.' IDENTIFIER                            # MemberAccessExpr
     | expression '(' argumentList? ')'                     # CallExpr
     | expression '[' expression ']'                        # IndexExpr
+    | expression '..' expression                           # RangeExpr
+    | expression '..=' expression                          # RangeInclusiveExpr
     | '(' type ')' expression                              # CastExpr
-    | '&' 'mut'? expression                                # BorrowExpr
-    | ('!' | '~' | '-' | '*') expression                   # UnaryExpr
+    | '&' KW_MUT? expression                               # BorrowExpr
+    | ('!' | '~' | '-') expression                         # UnaryExpr
+    | '*' expression                                       # DereferenceExpr
     | expression ('*' | '/' | '%') expression              # MultiplicativeExpr
     | expression ('+' | '-') expression                     # AdditiveExpr
     | expression ('<<' | '>>') expression                  # ShiftExpr
@@ -188,17 +232,21 @@ argumentList
     ;
 
 primaryExpression
-    : 'true'                                      # BoolLiteral
-    | 'false'                                     # BoolLiteral
-    | STRING_LITERAL                              # StringLiteral
-    | '-'? FLOAT_LITERAL                          # FloatLiteral
-    | '-'? INTEGER_LITERAL                        # IntegerLiteral
-    | '-'? BINARY_LITERAL                         # BinaryLiteral
-    | '-'? HEX_LITERAL                            # HexLiteral
-    | IDENTIFIER '{' structFieldInit (',' structFieldInit)* ','? '}'  # StructLiteral
-    | IDENTIFIER                                  # IdentifierExpr
-    | '(' expression ')'                          # ParenExpr
-    | '{' (expression (',' expression)*)? '}'    # ArrayLiteral
+    : KW_TRUE                                      # BoolLiteral
+    | KW_FALSE                                     # BoolLiteral
+    | STRING_LITERAL                               # StringLiteral
+    | '-'? FLOAT_LITERAL                           # FloatLiteral
+    | '-'? INTEGER_LITERAL                         # IntegerLiteral
+    | '-'? BINARY_LITERAL                          # BinaryLiteral
+    | '-'? HEX_LITERAL                             # HexLiteral
+    | typeName '{' structFieldInit (',' structFieldInit)* ','? '}'  # StructLiteral
+    | identifier                                   # IdentifierExpr
+    | '(' expression ')'                           # ParenExpr
+    | '{' (expression (',' expression)*)? '}'     # ArrayLiteral
+    ;
+
+identifier
+    : IDENTIFIER ('::' IDENTIFIER)*
     ;
 
 structFieldInit
@@ -207,21 +255,64 @@ structFieldInit
 
 // Lexer Rules
 
+// Keywords (must come before IDENTIFIER)
+KW_FROM     : 'from';
+KW_IMPORT   : 'import';
+KW_AS       : 'as';
+KW_PUB      : 'pub';
+KW_CONST    : 'const';
+KW_EXTERN   : 'extern';
+KW_VAR      : 'var';
+KW_LET      : 'let';
+KW_MUT      : 'mut';
+KW_FN       : 'fn';
+KW_STRUCT   : 'struct';
+KW_ENUM     : 'enum';
+KW_RETURN   : 'return';
+KW_IF       : 'if';
+KW_ELSE     : 'else';
+KW_WHILE    : 'while';
+KW_FOR      : 'for';
+KW_FOREVER  : 'forever';
+KW_BREAK    : 'break';
+KW_MATCH    : 'match';
+KW_DEFER    : 'defer';
+KW_UNSAFE   : 'unsafe';
+KW_USING    : 'using';
+KW_TRUE     : 'true';
+KW_FALSE    : 'false';
+
+// Primitive type keywords
+KW_U8       : 'u8';
+KW_U16      : 'u16';
+KW_U32      : 'u32';
+KW_U64      : 'u64';
+KW_I8       : 'i8';
+KW_I16      : 'i16';
+KW_I32      : 'i32';
+KW_I64      : 'i64';
+KW_BOOL     : 'bool';
+KW_F32      : 'f32';
+KW_F64      : 'f64';
+KW_FIXED16  : 'fixed16';
+KW_FIXED32  : 'fixed32';
+KW_STRING   : 'String';
+
 FLOAT_LITERAL
     : [0-9]+ '.' [0-9]* ('f32' | 'f64' | 'fixed16' | 'fixed32')?
     | [0-9]* '.' [0-9]+ ('f32' | 'f64' | 'fixed16' | 'fixed32')?
     ;
 
 INTEGER_LITERAL
-    : [0-9] ([0-9_]* [0-9])? ('u8' | 'u16' | 'u32' | 'u64' | 'i8' | 'i16' | 'i32' | 'i64')?
+    : [0-9]+ ('_' [0-9]+)* ('u8' | 'u16' | 'u32' | 'u64' | 'i8' | 'i16' | 'i32' | 'i64')?
     ;
 
 BINARY_LITERAL
-    : '%' [01] ([01_]* [01])? ('u8' | 'u16' | 'u32' | 'u64' | 'i8' | 'i16' | 'i32' | 'i64')?
+    : '%' [01]+ ('_' [01]+)* ('u8' | 'u16' | 'u32' | 'u64' | 'i8' | 'i16' | 'i32' | 'i64')?
     ;
 
 HEX_LITERAL
-    : '$' [0-9A-Fa-f] ([0-9A-Fa-f_]* [0-9A-Fa-f])? ('u8' | 'u16' | 'u32' | 'u64' | 'i8' | 'i16' | 'i32' | 'i64')?
+    : '$' [0-9A-Fa-f]+ ('_' [0-9A-Fa-f]+)* ('u8' | 'u16' | 'u32' | 'u64' | 'i8' | 'i16' | 'i32' | 'i64')?
     ;
 
 STRING_LITERAL
@@ -229,7 +320,7 @@ STRING_LITERAL
     ;
 
 fragment ESC
-    : '\\' [btnfr"'\\]
+    : '\\' [btnfr0"'\\]
     | '\\x' [0-9A-Fa-f] [0-9A-Fa-f]
     ;
 

@@ -658,8 +658,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     public override object? VisitAssignmentStatement([NotNull] NovusParser.AssignmentStatementContext context)
     {
-        var identifiers = context.IDENTIFIER();
-        var name = identifiers[0].GetText();
+        var identifier = context.IDENTIFIER();
+        var name = identifier.GetText();
 
         // Count dereference operators before the identifier
         int derefCount = 0;
@@ -671,53 +671,20 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 break;
         }
 
-        // Check if this is a member assignment (has multiple identifiers for member chain)
-        if (identifiers.Length > 1)
+        var lvalueSuffixes = context.lvalueSuffix();
+
+        // Check if this is a member or index assignment (has lvalueSuffix elements)
+        if (lvalueSuffixes.Length > 0)
         {
-            // Member assignment: obj.field = value
-            // For now, we'll throw an exception as we need to implement struct member stores
-            throw new NotImplementedException("Struct member assignment not yet implemented in IR builder");
+            // Complex lvalue: obj.field, arr[index], or mixed obj.arr[0].field
+            // For now, we'll throw an exception as we need to implement complex lvalue stores
+            throw new NotImplementedException("Complex lvalue assignment (member/index chains) not yet implemented in IR builder");
         }
 
-        // Check if this is an array element assignment (has index expression)
-        if (context.expression().Length == 2)
-        {
-            // Array element assignment: arr[index] = value
-            var indexExpr = (IrValue?)Visit(context.expression(0));
-            var valueExpr = (IrValue?)Visit(context.expression(1));
-
-            if (indexExpr == null || valueExpr == null)
-            {
-                throw new Exception($"Array assignment requires index and value");
-            }
-
-            // Get the array variable
-            IrVariable? arrayVar = null;
-            if (_localVariables.ContainsKey(name))
-            {
-                var localVar = _localVariables[name];
-                arrayVar = new IrVariable(name, localVar.Type);
-            }
-            else if (_currentFunction != null)
-            {
-                var param = _currentFunction.Parameters.FirstOrDefault(p => p.Name == name);
-                if (param != null)
-                {
-                    arrayVar = new IrVariable(name, param.Type);
-                }
-            }
-
-            if (arrayVar == null)
-            {
-                throw new Exception($"Array variable {name} not found");
-            }
-
-            _currentBlock!.AddInstruction(new IrIndexStore(arrayVar, indexExpr, valueExpr));
-        }
-        else if (derefCount > 0)
+        if (derefCount > 0)
         {
             // Dereference assignment: *ptr = value or **ptr = value, etc.
-            var value = (IrValue?)Visit(context.expression(0));
+            var value = (IrValue?)Visit(context.expression());
 
             if (value == null)
             {
@@ -774,7 +741,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         else
         {
             // Simple variable assignment: x = value
-            var value = (IrValue?)Visit(context.expression(0));
+            var value = (IrValue?)Visit(context.expression());
 
             if (value == null)
             {
@@ -1869,7 +1836,30 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     public override object? VisitIdentifierExpr([NotNull] NovusParser.IdentifierExprContext context)
     {
-        var name = context.IDENTIFIER().GetText();
+        var name = context.identifier().GetText();
+
+        // Check if this is a qualified enum constructor (e.g., Result::Ok, Option::Some)
+        if (name.Contains("::"))
+        {
+            var parts = name.Split("::");
+            if (parts.Length == 2)
+            {
+                var enumName = parts[0];
+                var variantName = parts[1];
+
+                if (_enums.ContainsKey(enumName))
+                {
+                    var enumType = _enums[enumName];
+                    var variant = enumType.GetVariant(variantName);
+
+                    if (variant != null)
+                    {
+                        // Return an enum constructor that will be used in call expressions
+                        return new IrEnumConstructor(enumType, variantName, variant.Tag);
+                    }
+                }
+            }
+        }
 
         // Check if it's a constant - inline the value
         if (_constants.ContainsKey(name))
@@ -1921,7 +1911,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     public override object? VisitStructLiteral([NotNull] NovusParser.StructLiteralContext context)
     {
-        var structName = context.IDENTIFIER().GetText();
+        var structName = context.typeName().GetText();
 
         if (!_structs.ContainsKey(structName))
         {
@@ -2029,7 +2019,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         if (baseExpr is NovusParser.PrimaryExprContext primaryCtx &&
             primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext identCtx)
         {
-            enumName = identCtx.IDENTIFIER().GetText();
+            enumName = identCtx.identifier().GetText();
         }
 
         if (enumName == null || !_enums.ContainsKey(enumName))
@@ -2102,7 +2092,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             string? variantName = null;
             if (pattern is NovusParser.VariantPatternContext variantPattern)
             {
-                variantName = variantPattern.IDENTIFIER().GetText();
+                variantName = variantPattern.variantName().GetText();
             }
             else if (pattern is NovusParser.IdentifierPatternContext identPattern)
             {
@@ -2140,7 +2130,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             // Extract associated data for variant patterns
             if (pattern is NovusParser.VariantPatternContext variantPattern)
             {
-                var variantName = variantPattern.IDENTIFIER().GetText();
+                var variantName = variantPattern.variantName().GetText();
                 var variant = enumType.GetVariant(variantName);
 
                 // Extract associated data and bind to pattern variables
@@ -2230,7 +2220,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     private IrType ParseNamedType(NovusParser.NamedTypeContext context)
     {
-        var typeName = context.IDENTIFIER().GetText();
+        var typeName = context.typeName().GetText();
 
         // Check if it's a generic type parameter (T, E, etc.)
         if (_genericParams.ContainsKey(typeName))

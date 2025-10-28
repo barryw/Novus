@@ -87,7 +87,7 @@ public class ConstantExpressionEvaluator : NovusBaseVisitor<int?>
 
     public override int? VisitIdentifierExpr([NotNull] NovusParser.IdentifierExprContext context)
     {
-        var name = context.IDENTIFIER().GetText();
+        var name = context.identifier().GetText();
 
         if (_constants.TryGetValue(name, out var value))
         {

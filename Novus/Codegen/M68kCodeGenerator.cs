@@ -347,6 +347,14 @@ public partial class M68kCodeGenerator
             Emit("");
         }
 
+        // Declare external integer math library functions for fat binaries
+        if (IsCpuFatBinary)
+        {
+            Emit("\t; External VBCC integer math library functions");
+            Emit("\txref\t__divu");    // Unsigned 32-bit divide (for 68000)
+            Emit("");
+        }
+
         Emit("\tsection\ttext,code");
         Emit("");
 
@@ -479,6 +487,14 @@ public partial class M68kCodeGenerator
             _currentFunctionHasPrologue = true;
         }
 
+        // For main function in fat binary mode, initialize CPU detection at startup
+        if (function.Name == "main" && IsCpuFatBinary && suffix == "")
+        {
+            EmitComment("Initialize runtime: detect CPU type once at startup");
+            Emit("\tbsr\t__detect_cpu");
+            Emit("");
+        }
+
         // Generate code for basic blocks
         foreach (var block in function.BasicBlocks)
         {
@@ -582,9 +598,9 @@ public partial class M68kCodeGenerator
             EmitComment($"Deferred block: {deferBlock.Label}");
 
             // Generate code for each instruction in the deferred block
-            foreach (var instruction in deferBlock.Instructions)
+            for (int j = 0; j < deferBlock.Instructions.Count; j++)
             {
-                GenerateInstruction(instruction);
+                GenerateInstruction(deferBlock.Instructions[j], deferBlock.Instructions, j);
             }
         }
     }
@@ -598,13 +614,13 @@ public partial class M68kCodeGenerator
             Emit($"{block.Label}{_currentFunctionSuffix}:");
         }
 
-        foreach (var instruction in block.Instructions)
+        for (int i = 0; i < block.Instructions.Count; i++)
         {
-            GenerateInstruction(instruction);
+            GenerateInstruction(block.Instructions[i], block.Instructions, i);
         }
     }
 
-    private void GenerateInstruction(IrInstruction instruction)
+    private void GenerateInstruction(IrInstruction instruction, IList<IrInstruction> instructions, int index)
     {
         switch (instruction)
         {
@@ -612,7 +628,7 @@ public partial class M68kCodeGenerator
                 GenerateReturn(ret);
                 break;
             case IrBinaryOp binOp:
-                GenerateBinaryOp(binOp);
+                GenerateBinaryOp(binOp, instructions, index);
                 break;
             case IrLabel label:
                 GenerateLabel(label);
@@ -695,13 +711,27 @@ public partial class M68kCodeGenerator
 
     private void GenerateConditionalBranch(IrConditionalBranch condBranch)
     {
-        // The condition value should be in d0 (materialized as 0 or 1)
-        // Test it and branch accordingly
-        LoadOperand(condBranch.Condition, "d0");
-        Emit($"\ttst.l\td0");
-        // Include suffix for CPU-specific versions to avoid label conflicts
-        Emit($"\tbne\t{condBranch.TrueTarget}{_currentFunctionSuffix}");
-        Emit($"\tbra\t{condBranch.FalseTarget}{_currentFunctionSuffix}");
+        // Optimization: If the condition is the result of the last comparison,
+        // we can branch directly on condition codes instead of materializing to 0/1
+        if (condBranch.Condition is IrVariable condVar &&
+            condVar.Name == _lastComparisonResult &&
+            _lastComparisonCondition != null)
+        {
+            // Branch directly using the condition codes from the last comparison
+            EmitComment("Optimized: branch directly on comparison result");
+            // Include suffix for CPU-specific versions to avoid label conflicts
+            Emit($"\tb{_lastComparisonCondition}\t{condBranch.TrueTarget}{_currentFunctionSuffix}");
+            Emit($"\tbra\t{condBranch.FalseTarget}{_currentFunctionSuffix}");
+        }
+        else
+        {
+            // General case: load and test the condition value
+            LoadOperand(condBranch.Condition, "d0");
+            Emit($"\ttst.l\td0");
+            // Include suffix for CPU-specific versions to avoid label conflicts
+            Emit($"\tbne\t{condBranch.TrueTarget}{_currentFunctionSuffix}");
+            Emit($"\tbra\t{condBranch.FalseTarget}{_currentFunctionSuffix}");
+        }
 
         // Clear comparison tracking
         _lastComparisonResult = null;
@@ -833,21 +863,20 @@ public partial class M68kCodeGenerator
                 Emit("\tmove.l\td0,-(sp)");
             }
 
-            // Call VBCC's exit function - never returns
-            Emit("\tjsr\t_exit\t\t; Terminate process");
+            // Call VBCC's exit function - this is a noreturn function, never returns
+            Emit("\tjsr\t_exit\t\t; Terminate process (noreturn)");
 
-            // These instructions never execute, but keep epilogue for consistency
-            if (ret.Value != null)
-            {
-                Emit("\taddq.l\t#4,sp\t\t; (never reached)");
-            }
+            // _exit() never returns, so we don't emit any cleanup code after it
+            // No epilogue, no stack cleanup, no rts - all would be dead code
         }
-
-        // Emit epilogue and return (for non-main functions, or unreachable code after exit)
-        EmitEpilogue();
+        else
+        {
+            // For non-main functions, emit normal epilogue and return
+            EmitEpilogue();
+        }
     }
 
-    private void GenerateBinaryOp(IrBinaryOp binOp)
+    private void GenerateBinaryOp(IrBinaryOp binOp, IList<IrInstruction> instructions, int index)
     {
         var size = GetSizeSuffix(binOp.Type);
         bool isFloatOp = binOp.Type is IrFloatType;
@@ -1055,7 +1084,7 @@ public partial class M68kCodeGenerator
             case IrBinaryOp.OpKind.Le:
             case IrBinaryOp.OpKind.Gt:
             case IrBinaryOp.OpKind.Ge:
-                GenerateComparison(binOp);
+                GenerateComparison(binOp, instructions, index);
                 break;
         }
 
@@ -1064,7 +1093,7 @@ public partial class M68kCodeGenerator
         // This works because most temps are used immediately in the next instruction
     }
 
-    private void GenerateComparison(IrBinaryOp binOp)
+    private void GenerateComparison(IrBinaryOp binOp, IList<IrInstruction> instructions, int index)
     {
         // Use operand type for comparison size, not result type (result is always bool = 1 byte)
         var size = GetSizeSuffix(binOp.Left.Type);
@@ -1083,6 +1112,29 @@ public partial class M68kCodeGenerator
             IrBinaryOp.OpKind.Ge => "ge",  // Greater than or equal (N=0, signed)
             _ => throw new Exception($"Unknown comparison: {binOp.Operation}")
         };
+
+        // Look ahead to see if this comparison is immediately used in a conditional branch
+        // Pattern: BinaryOp (comparison) -> [optional Store] -> ConditionalBranch
+        bool willBranchDirectly = false;
+        int nextIndex = index + 1;
+
+        // Skip over optional store instruction
+        if (nextIndex < instructions.Count &&
+            instructions[nextIndex] is IrStore store &&
+            store.Value is IrVariable storeVar &&
+            storeVar.Name == binOp.ResultName)
+        {
+            nextIndex++;
+        }
+
+        // Check if next instruction is a conditional branch using this comparison
+        if (nextIndex < instructions.Count &&
+            instructions[nextIndex] is IrConditionalBranch condBranch &&
+            condBranch.Condition is IrVariable condVar &&
+            condVar.Name == binOp.ResultName)
+        {
+            willBranchDirectly = true;
+        }
 
         if (_generatingFpuVersion && isFloatCompare)
         {
@@ -1115,17 +1167,26 @@ public partial class M68kCodeGenerator
             // Compare: cmp.l d1,d0 computes (d0 - d1) and sets condition codes
             Emit($"\tcmp{size}\td1,d0");
 
-            // Materialize boolean result in d0 (for cases where it's used as a value)
-            // Scc sets byte to $FF if condition true, $00 if false
-            Emit($"\ts{condition}\td0");
+            // OPTIMIZATION: If this comparison will be used directly for branching,
+            // skip materialization and keep condition codes alive
+            if (!willBranchDirectly)
+            {
+                // Materialize boolean result in d0 (for cases where it's used as a value)
+                // Scc sets byte to $FF if condition true, $00 if false
+                Emit($"\ts{condition}\td0");
 
-            // Extend byte result to longword (sign extend $FF to $FFFFFFFF, $00 to $00000000)
-            // Note: extb.l doesn't exist on 68000, use ext.w + ext.l sequence
-            Emit($"\text.w\td0");   // Extend byte to word: $FF → $FFFF or $00 → $0000
-            Emit($"\text.l\td0");   // Extend word to long: $FFFF → $FFFFFFFF or $0000 → $00000000
+                // Extend byte result to longword (sign extend $FF to $FFFFFFFF, $00 to $00000000)
+                // Note: extb.l doesn't exist on 68000, use ext.w + ext.l sequence
+                Emit($"\text.w\td0");   // Extend byte to word: $FF → $FFFF or $00 → $0000
+                Emit($"\text.l\td0");   // Extend word to long: $FFFF → $FFFFFFFF or $0000 → $00000000
 
-            // Convert $FFFFFFFF to $00000001 for true, $00000000 stays $00000000
-            Emit($"\tneg.l\td0");
+                // Convert $FFFFFFFF to $00000001 for true, $00000000 stays $00000000
+                Emit($"\tneg.l\td0");
+            }
+            else
+            {
+                EmitComment("Comparison result will be used directly for branching - keeping condition codes");
+            }
         }
 
         // Track this comparison for potential optimization in conditional branch
@@ -1402,17 +1463,13 @@ public partial class M68kCodeGenerator
             {
                 var assocValue = enumValue.AssociatedValues[i];
 
-                // Check if associated value is a nested composite enum (IrEnumValue with data or IrVariable with enum type > 4 bytes)
+                // Check if associated value is a nested composite enum (any enum type > 4 bytes)
                 bool isCompositeEnum = false;
                 IrEnumType compositeEnumType = null;
 
-                if (assocValue is IrEnumValue nestedEnumVal && nestedEnumVal.AssociatedValues.Count > 0)
+                if (assocValue.Type is IrEnumType enumType2 && enumType2.SizeInBytes > 4)
                 {
-                    isCompositeEnum = true;
-                    compositeEnumType = nestedEnumVal.Type as IrEnumType;
-                }
-                else if (assocValue.Type is IrEnumType enumType2 && enumType2.SizeInBytes > 4 && assocValue is IrVariable nestedVar)
-                {
+                    // Any enum > 4 bytes needs special handling (IrEnumValue or IrVariable)
                     isCompositeEnum = true;
                     compositeEnumType = enumType2;
                 }
@@ -2245,31 +2302,40 @@ public partial class M68kCodeGenerator
                 {
                     var assocValue = enumValue.AssociatedValues[i];
 
-                    // Check if associated value is a nested composite enum (> 4 bytes)
-                    bool isCompositeEnum = false;
-                    IrEnumType compositeEnumType = null;
-
-                    if (assocValue.Type is IrEnumType enumType2 && enumType2.SizeInBytes > 4)
+                    // Check if associated value is a simple enum constructor (no associated values)
+                    if (assocValue is IrEnumValue nestedEnumVal && nestedEnumVal.AssociatedValues.Count == 0)
                     {
-                        // Any enum > 4 bytes needs special handling, regardless of whether
-                        // it's an IrEnumValue or IrVariable
-                        isCompositeEnum = true;
-                        compositeEnumType = enumType2;
-                    }
+                        // Simple enum constructor - just store the tag and zero padding
+                        EmitComment($"Store simple enum {nestedEnumVal.Type.Name}::{nestedEnumVal.VariantName}");
+                        Emit($"\tmove.l\t#{nestedEnumVal.VariantTag},{dataOffset}(sp)\t\t; Store simple enum tag");
 
-                    if (isCompositeEnum)
+                        // Zero out remaining bytes for this enum type
+                        var nestedEnumType = nestedEnumVal.Type as IrEnumType;
+                        int remainingBytes = nestedEnumType.SizeInBytes - 4;
+                        if (remainingBytes > 0)
+                        {
+                            Emit($"\tmoveq\t#0,d0");
+                            for (int offset = 4; offset < nestedEnumType.SizeInBytes; offset += 4)
+                            {
+                                Emit($"\tmove.l\td0,{dataOffset + offset}(sp)\t\t; Zero data portion");
+                            }
+                        }
+                        dataOffset += nestedEnumType.SizeInBytes;
+                    }
+                    // Check if associated value is a nested composite enum (> 4 bytes)
+                    else if (assocValue.Type is IrEnumType enumType2 && enumType2.SizeInBytes > 4)
                     {
                         // Nested composite enum - build/load it and get address in a1
                         LoadOperand(assocValue, "a1");
 
                         // Copy it longword-by-longword from nested enum to current enum
-                        int numLongwords = (compositeEnumType.SizeInBytes + 3) / 4;
+                        int numLongwords = (enumType2.SizeInBytes + 3) / 4;
                         for (int j = 0; j < numLongwords; j++)
                         {
                             Emit($"\tmove.l\t{j * 4}(a1),d0");
                             Emit($"\tmove.l\td0,{dataOffset + (j * 4)}(sp)\t\t; Store nested enum longword {j}");
                         }
-                        dataOffset += compositeEnumType.SizeInBytes;
+                        dataOffset += enumType2.SizeInBytes;
                     }
                     else
                     {
@@ -2653,8 +2719,8 @@ public partial class M68kCodeGenerator
         EmitComment($"{description}");
         Emit($"\txdef\t{name}");
         Emit($"{name}:");
-        Emit("\tbsr\t__detect_cpu");
-        Emit("\tmove.l\t__detected_cpu,d2");  // Save in d2 to preserve d0/d1
+        EmitComment("CPU already detected at startup, just read the flag");
+        Emit("\tmove.l\t__detected_cpu,d2");  // Load CPU flag (d2 preserves d0/d1)
         Emit("\tcmpi.l\t#2,d2");
         Emit($"\tbeq.s\t{name}_68060");
         Emit("\tcmpi.l\t#1,d2");
@@ -2767,9 +2833,11 @@ public partial class M68kCodeGenerator
     // Divide implementations
     private void GenerateDivU32_68000()
     {
-        EmitComment("68000: No 32-bit divide, use 16-bit (lossy!)");
-        EmitComment("TODO: Call proper 32-bit divide routine");
-        Emit("\tdivu.w\td1,d0");
+        EmitComment("68000: Call VBCC's 32-bit unsigned divide library function");
+        EmitComment("Convention: d0=dividend, d1=divisor, result=d0, preserves d2-d7/a2-a6");
+        Emit("\tmovem.l\td2/a6,-(sp)\t; Save registers (VBCC requirement)");
+        Emit("\tjsr\t__divu\t\t; Call VBCC's 32/32 unsigned divide");
+        Emit("\tmovem.l\t(sp)+,d2/a6\t; Restore registers");
         Emit("\trts");
     }
 
@@ -2873,10 +2941,7 @@ public partial class M68kCodeGenerator
             }
             Emit($"_{funcName}:");
 
-            // Call CPU detection on first invocation
-            Emit("\tbsr\t__detect_cpu");
-            Emit("");
-
+            EmitComment("CPU already detected at startup, just read the flag");
             // Check CPU flag and jump to appropriate version
             Emit("\tmove.l\t__detected_cpu,d0");
             Emit("\tcmpi.l\t#2,d0");

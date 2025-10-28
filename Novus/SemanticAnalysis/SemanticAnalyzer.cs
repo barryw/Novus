@@ -1068,9 +1068,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public override IrType? VisitAssignmentStatement([NotNull] NovusParser.AssignmentStatementContext context)
     {
-        var identifiers = context.IDENTIFIER();
-        var name = identifiers[0].GetText();
-        var location = SourceLocationHelper.FromToken(identifiers[0].Symbol, _filePath, _sourceLines);
+        var identifier = context.IDENTIFIER();
+        var name = identifier.GetText();
+        var location = SourceLocationHelper.FromToken(identifier.Symbol, _filePath, _sourceLines);
 
         // Count dereference operators before the identifier
         int derefCount = 0;
@@ -1086,17 +1086,19 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
-        // Check if this is a member assignment
-        if (identifiers.Length > 1)
+        var lvalueSuffixes = context.lvalueSuffix();
+
+        // Check if this is a complex lvalue (member or index access)
+        if (lvalueSuffixes.Length > 0)
         {
-            // Member assignment: obj.field = value
+            // Complex lvalue: obj.field, arr[index], or mixed obj.arr[0].field
             // For now, we'll just verify the base variable exists
-            // Full member access checking will be implemented later
+            // Full member/index chain checking will be implemented later
             if (!_variables.ContainsKey(name))
             {
                 _diagnostics.ReportError(
                     "E0018",
-                    $"cannot assign to member of undeclared variable '{name}'",
+                    $"cannot assign to member/element of undeclared variable '{name}'",
                     location,
                     helpTexts: new List<string>
                     {
@@ -1106,8 +1108,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 );
                 return null;
             }
-            // TODO: Validate member chain and types
-            var valueType = Visit(context.expression(0));
+            // TODO: Validate lvalue suffix chain and types
+            var valueType = Visit(context.expression());
             return null;
         }
 
@@ -1129,62 +1131,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         var variable = _variables[name];
 
-        // Check if this is an array element assignment (has 2 expressions: index and value)
-        if (context.expression().Length == 2)
-        {
-            // Array element assignment: arr[index] = value
-
-            // Check that variable is actually an array
-            if (variable.Type is not IrArrayType arrayType)
-            {
-                _diagnostics.ReportError(
-                    "E0021",
-                    $"cannot index into non-array type",
-                    location,
-                    helpTexts: new List<string>
-                    {
-                        $"'{name}' has type '{TypeToString(variable.Type)}', which is not an array"
-                    }
-                );
-                return null;
-            }
-
-            // Validate index expression
-            var indexType = Visit(context.expression(0));
-            if (indexType != null && !IsNumericType(indexType))
-            {
-                var indexLocation = SourceLocationHelper.FromContext(context.expression(0), _filePath, _sourceLines);
-                _diagnostics.ReportError(
-                    "E0022",
-                    $"array index must be a numeric type",
-                    indexLocation,
-                    helpTexts: new List<string>
-                    {
-                        $"found type '{TypeToString(indexType)}', expected a numeric type"
-                    }
-                );
-            }
-
-            // Validate value expression type
-            var valueType = Visit(context.expression(1));
-            if (valueType != null && !TypesCompatible(arrayType.ElementType, valueType))
-            {
-                var valueLocation = SourceLocationHelper.FromContext(context.expression(1), _filePath, _sourceLines);
-                _diagnostics.ReportError(
-                    "E0023",
-                    $"mismatched types in array element assignment",
-                    valueLocation,
-                    helpTexts: new List<string>
-                    {
-                        $"expected type '{TypeToString(arrayType.ElementType)}', found '{TypeToString(valueType)}'"
-                    }
-                );
-            }
-
-            // Note: For array element assignment, we don't check if the array itself is mutable
-            // In most languages, you can modify elements of a const/let array, just not reassign the array itself
-        }
-        else if (derefCount > 0)
+        if (derefCount > 0)
         {
             // Dereference assignment: *x = value or **x = value, etc.
 
@@ -1231,7 +1178,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
 
             // Check type compatibility of the assigned value
-            var exprType = Visit(context.expression(0));
+            var exprType = Visit(context.expression());
             if (exprType != null && !TypesCompatible(targetType, exprType))
             {
                 _diagnostics.ReportError(
@@ -1270,7 +1217,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
 
             // Check type compatibility
-            var exprType = Visit(context.expression(0));
+            var exprType = Visit(context.expression());
             if (exprType != null && !TypesCompatible(variable.Type, exprType))
             {
                 _diagnostics.ReportError(
@@ -1280,7 +1227,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     helpTexts: new List<string>
                     {
                         $"expected type '{TypeToString(variable.Type)}', found '{TypeToString(exprType)}'",
-                        $"consider using a cast: ({TypeToString(variable.Type)}){context.expression(0).GetText()}"
+                        $"consider using a cast: ({TypeToString(variable.Type)}){context.expression().GetText()}"
                     }
                 );
             }
@@ -1773,13 +1720,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
             case NovusParser.VariantPatternContext variantPattern:
             {
-                var variantName = variantPattern.IDENTIFIER().GetText();
+                var variantName = variantPattern.variantName().GetText();
 
                 // Check if this variant exists
                 var variant = enumType.GetVariant(variantName);
                 if (variant == null)
                 {
-                    var location = SourceLocationHelper.FromToken(variantPattern.IDENTIFIER().Symbol, _filePath, _sourceLines);
+                    var location = SourceLocationHelper.FromToken(variantPattern.variantName().Start, _filePath, _sourceLines);
                     _diagnostics.ReportError(
                         "E0037",
                         $"enum '{enumType.EnumName}' has no variant '{variantName}'",
@@ -1798,7 +1745,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
                 if (bindingCount != variant.AssociatedData.Count)
                 {
-                    var location = SourceLocationHelper.FromToken(variantPattern.IDENTIFIER().Symbol, _filePath, _sourceLines);
+                    var location = SourceLocationHelper.FromToken(variantPattern.variantName().Start, _filePath, _sourceLines);
                     _diagnostics.ReportError(
                         "E0038",
                         $"variant '{variantName}' expects {variant.AssociatedData.Count} values but pattern has {bindingCount}",
@@ -1872,11 +1819,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Get the function name from the expression (should be an identifier or path expression)
         var funcExpr = context.expression();
 
-        // Handle path expressions (enum constructors like Option::Some)
+        // Handle OLD path expressions (enum constructors like Option::Some) - kept for backwards compatibility
+        // NOTE: This code path is no longer used after grammar changes, but keeping it for reference
         if (funcExpr is NovusParser.PathExprContext pathCtx)
         {
             // Visit the path expression to get the enum type
             var enumType = Visit(pathCtx);
+
             if (enumType == null || enumType is not IrEnumType)
             {
                 // Error already reported by VisitPathExpr
@@ -2086,8 +2035,233 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return null;
         }
 
-        var functionName = identifierExpr.IDENTIFIER().GetText();
+        var functionName = identifierExpr.identifier().GetText();
         var argCount = context.argumentList()?.expression().Length ?? 0;
+
+        // Check if this is a qualified enum constructor (e.g., Result::Ok)
+        if (functionName.Contains("::"))
+        {
+            var parts = functionName.Split("::");
+            if (parts.Length == 2)
+            {
+                var enumName = parts[0];
+                var variantName = parts[1];
+
+                if (_enums.ContainsKey(enumName))
+                {
+                    var enumType = _enums[enumName];
+                    var variant = enumType.GetVariant(variantName);
+
+                    if (variant == null)
+                    {
+                        var location = SourceLocationHelper.FromToken(identifierExpr.identifier().Start, _filePath, _sourceLines);
+                        _diagnostics.ReportError(
+                            "E0037",
+                            $"enum '{enumName}' has no variant '{variantName}'",
+                            location
+                        );
+                        return null;
+                    }
+
+                    // Validate argument count
+                    if (argCount != variant.AssociatedData.Count)
+                    {
+                        var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                        _diagnostics.ReportError(
+                            "E0040",
+                            $"variant '{variantName}' expects {variant.AssociatedData.Count} argument(s), but {argCount} were provided",
+                            location
+                        );
+                        return enumType;
+                    }
+
+                    // Perform generic type inference and validate argument types
+                    Dictionary<string, IrType>? typeSubstitutions = null;
+
+                    if (enumType.GenericParameters.Count > 0)
+                    {
+                        // Infer generic type parameters from arguments
+                        typeSubstitutions = new Dictionary<string, IrType>();
+
+                        // FIRST: Extract type substitutions from expected type (if available)
+                        // This enables nested generic constructors to work correctly
+                        if (_expectedType is IrEnumType expectedEnumType &&
+                            expectedEnumType.EnumName == enumType.EnumName &&
+                            expectedEnumType.GenericParameters.Count == 0) // Expected type is monomorphized
+                        {
+                            // Build a mapping from generic parameters to concrete types by comparing variants
+                            for (int paramIdx = 0; paramIdx < enumType.GenericParameters.Count; paramIdx++)
+                            {
+                                var paramName = enumType.GenericParameters[paramIdx];
+
+                                // Look through all variants to find one that uses this parameter
+                                bool found = false;
+                                for (int varIdx = 0; varIdx < enumType.Variants.Count && !found; varIdx++)
+                                {
+                                    var origVariant = enumType.Variants[varIdx];
+                                    var expectedVar = expectedEnumType.Variants[varIdx];
+
+                                    for (int dataIdx = 0; dataIdx < origVariant.AssociatedData.Count && !found; dataIdx++)
+                                    {
+                                        if (origVariant.AssociatedData[dataIdx] is IrGenericType gt &&
+                                            gt.ParameterName == paramName)
+                                        {
+                                            // Found the parameter! Use the concrete type from expected variant
+                                            typeSubstitutions[paramName] = expectedVar.AssociatedData[dataIdx];
+                                            found = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (context.argumentList() != null)
+                        {
+                            var arguments = context.argumentList().expression();
+
+                            for (int i = 0; i < Math.Min(arguments.Length, variant.AssociatedData.Count); i++)
+                            {
+                                var expectedParamType = variant.AssociatedData[i];
+
+                                // Compute the concrete expected type for this argument by applying substitutions
+                                IrType? concreteExpectedType = expectedParamType;
+                                if (expectedParamType is IrGenericType gt && typeSubstitutions.ContainsKey(gt.ParameterName))
+                                {
+                                    concreteExpectedType = typeSubstitutions[gt.ParameterName];
+                                }
+
+                                // Set expected type for bidirectional type checking before visiting argument
+                                var savedExpectedType = _expectedType;
+                                _expectedType = concreteExpectedType;
+
+                                // Visit the argument with the expected type context
+                                var argType = Visit(arguments[i]);
+
+                                // Restore previous expected type
+                                _expectedType = savedExpectedType;
+
+                                // If expected type is a generic parameter, infer it from the argument
+                                if (expectedParamType is IrGenericType genericType)
+                                {
+                                    var paramName = genericType.ParameterName;
+                                    if (!typeSubstitutions.ContainsKey(paramName))
+                                    {
+                                        if (argType != null)
+                                        {
+                                            typeSubstitutions[paramName] = argType;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        // Check consistency - all uses of T must have same type
+                                        if (argType != null && !TypesCompatible(typeSubstitutions[paramName], argType))
+                                        {
+                                            var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
+                                            _diagnostics.ReportError(
+                                                "E0042",
+                                                $"type parameter '{paramName}' inferred as both '{TypeToString(typeSubstitutions[paramName])}' and '{TypeToString(argType)}'",
+                                                location
+                                            );
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    // Concrete type - validate compatibility
+                                    if (argType != null && !TypesCompatible(expectedParamType, argType))
+                                    {
+                                        var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
+                                        _diagnostics.ReportError(
+                                            "E0041",
+                                            $"argument {i + 1} type mismatch",
+                                            location,
+                                            helpTexts: new List<string>
+                                            {
+                                                $"expected '{TypeToString(expectedParamType)}', got '{TypeToString(argType)}'"
+                                            }
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Non-generic enum - just validate argument types
+                        if (context.argumentList() != null)
+                        {
+                            var arguments = context.argumentList().expression();
+                            for (int i = 0; i < arguments.Length; i++)
+                            {
+                                var argType = Visit(arguments[i]);
+                                var expectedType = variant.AssociatedData[i];
+
+                                if (argType != null && !TypesCompatible(expectedType, argType))
+                                {
+                                    var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
+                                    _diagnostics.ReportError(
+                                        "E0015",
+                                        $"argument {i + 1} type mismatch for variant '{variantName}'",
+                                        location,
+                                        helpTexts: new List<string>
+                                        {
+                                            $"expected '{TypeToString(expectedType)}', got '{TypeToString(argType)}'"
+                                        }
+                                    );
+                                }
+                            }
+                        }
+                    }
+
+                    // If we inferred type parameters, create a monomorphized instance
+                    if (typeSubstitutions != null && typeSubstitutions.Count > 0)
+                    {
+                        // Create cache key: EnumName<TypeArg1CacheKey,TypeArg2CacheKey,...>
+                        // Use GetTypeCacheKey to handle nested types correctly
+                        var typeArgKeys = enumType.GenericParameters.Select(p =>
+                            typeSubstitutions.ContainsKey(p) ? GetTypeCacheKey(typeSubstitutions[p]) : p);
+                        var cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
+
+                        // Check cache first
+                        if (_monomorphizedEnums.ContainsKey(cacheKey))
+                        {
+                            return _monomorphizedEnums[cacheKey];
+                        }
+
+                        // Create monomorphized enum type
+                        var monomorphizedVariants = new List<IrEnumVariant>();
+                        foreach (var origVariant in enumType.Variants)
+                        {
+                            var monomorphizedData = new List<IrType>();
+                            foreach (var dataType in origVariant.AssociatedData)
+                            {
+                                if (dataType is IrGenericType gt && typeSubstitutions.ContainsKey(gt.ParameterName))
+                                {
+                                    var substitutedType = typeSubstitutions[gt.ParameterName];
+                                    monomorphizedData.Add(substitutedType);
+                                }
+                                else
+                                {
+                                    monomorphizedData.Add(dataType);
+                                }
+                            }
+                            monomorphizedVariants.Add(new IrEnumVariant(origVariant.Name, origVariant.Tag, monomorphizedData));
+                        }
+
+                        // Create new enum type with concrete types (no generic parameters)
+                        var monomorphizedEnum = new IrEnumType(enumType.EnumName, monomorphizedVariants, null, cacheKey);
+
+                        // Cache it for future use
+                        _monomorphizedEnums[cacheKey] = monomorphizedEnum;
+
+                        return monomorphizedEnum;
+                    }
+
+                    // Return the enum type
+                    return enumType;
+                }
+            }
+        }
 
         // Check if this is a variable with a function pointer type
         if (_variables.ContainsKey(functionName))
@@ -2139,7 +2313,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Check if function exists
         if (!_functions.ContainsKey(functionName))
         {
-            var location = SourceLocationHelper.FromToken(identifierExpr.IDENTIFIER().Symbol, _filePath, _sourceLines);
+            var location = SourceLocationHelper.FromToken(identifierExpr.identifier().Start, _filePath, _sourceLines);
             _diagnostics.ReportError(
                 "E0013",
                 $"undefined function '{functionName}'",
@@ -2255,10 +2429,43 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public override IrType? VisitIdentifierExpr([NotNull] NovusParser.IdentifierExprContext context)
     {
-        var name = context.IDENTIFIER().GetText();
+        var name = context.identifier().GetText();
+
+        // Check if this is a qualified name (e.g., Result::Ok, Option::Some)
+        if (name.Contains("::"))
+        {
+            var parts = name.Split("::");
+            if (parts.Length == 2)
+            {
+                var enumName = parts[0];
+                var variantName = parts[1];
+
+                // Check if the enum exists
+                if (_enums.ContainsKey(enumName))
+                {
+                    var enumType = _enums[enumName];
+                    var variant = enumType.GetVariant(variantName);
+
+                    if (variant == null)
+                    {
+                        var location = SourceLocationHelper.FromToken(context.identifier().Start, _filePath, _sourceLines);
+                        _diagnostics.ReportError(
+                            "E0037",
+                            $"enum '{enumName}' has no variant '{variantName}'",
+                            location
+                        );
+                        return null;
+                    }
+
+                    // Return the enum type - this will be used when called as a constructor
+                    return enumType;
+                }
+            }
+        }
+
         if (!_variables.ContainsKey(name) && !_globalVariables.ContainsKey(name) && !_functions.ContainsKey(name) && !_constants.ContainsKey(name))
         {
-            var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+            var location = SourceLocationHelper.FromToken(context.identifier().Start, _filePath, _sourceLines);
             _diagnostics.ReportError(
                 "E0007",
                 $"undefined variable '{name}'",
@@ -2626,7 +2833,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         if (baseExpr is NovusParser.PrimaryExprContext primaryCtx &&
             primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext identCtx)
         {
-            enumName = identCtx.IDENTIFIER().GetText();
+            enumName = identCtx.identifier().GetText();
         }
 
         if (enumName == null)
@@ -2706,12 +2913,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public override IrType? VisitStructLiteral([NotNull] NovusParser.StructLiteralContext context)
     {
-        var structName = context.IDENTIFIER().GetText();
+        var structName = context.typeName().GetText();
 
         // Check if struct type exists
         if (!_structs.ContainsKey(structName))
         {
-            var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+            var location = SourceLocationHelper.FromContext(context.typeName(), _filePath, _sourceLines);
             _diagnostics.ReportError(
                 "E0023",
                 $"unknown struct type '{structName}'",
@@ -3017,7 +3224,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     private IrType ParseNamedType(NovusParser.NamedTypeContext context)
     {
-        var typeName = context.IDENTIFIER().GetText();
+        var typeName = context.typeName().GetText();
 
         // Check if it's a generic type parameter (T, E, etc.)
         if (_genericParams.ContainsKey(typeName))
@@ -3048,7 +3255,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 // Validate number of type arguments matches generic parameters
                 if (typeArgs.Count != enumType.GenericParameters.Count)
                 {
-                    var loc = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+                    var loc = SourceLocationHelper.FromToken(context.typeName().Start, _filePath, _sourceLines);
                     _diagnostics.ReportError(
                         "E0031",
                         $"enum '{typeName}' expects {enumType.GenericParameters.Count} type arguments but got {typeArgs.Count}",
@@ -3106,7 +3313,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         // Unknown type - report error and return i32 as fallback
-        var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+        var location = SourceLocationHelper.FromToken(context.typeName().Start, _filePath, _sourceLines);
         _diagnostics.ReportError(
             "E0020",
             $"unknown type '{typeName}'",
