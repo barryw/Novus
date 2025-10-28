@@ -33,7 +33,10 @@
       "Bash(tee:*)",
       "Bash(dotnet publish:*)",
       "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Release/net9.0/osx-arm64/publish/Novus:*)",
-      "Bash(vamos:*)"
+      "Bash(vamos:*)",
+      "Bash(nm:*)",
+      "Bash(objdump:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []

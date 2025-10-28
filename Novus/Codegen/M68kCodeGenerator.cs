@@ -368,7 +368,9 @@ public partial class M68kCodeGenerator
             var dosFunctionNames = new[] { "Write", "Read", "Open", "Close", "Output", "Input", "Error" };
             var usesDOS = _module.Functions.Any(f => f.IsExtern && dosFunctionNames.Contains(f.Name));
 
-            Emit("\t; C++ constructor/destructor lists (main module only)");
+            // VBCC's _main.c always requires these symbols when linking with -lvc
+            // We must provide them, but keep them empty when not needed
+            Emit("\t; C++ constructor/destructor lists (required by VBCC startup)");
             Emit("\tsection\tdata,data");
             Emit("\txdef\t___CTOR_LIST__");
             Emit("\txdef\t___DTOR_LIST__");
@@ -2920,7 +2922,7 @@ public partial class M68kCodeGenerator
         Emit(".divsi_pos_divisor:");
 
         // Call unsigned division helper
-        Emit("\tbsr.s\t__divu32_helper_internal");
+        Emit("\tbsr\t__divu32_helper_internal");
 
         // Fix sign of result
         Emit("\ttst.l\td4");
