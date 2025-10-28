@@ -32,7 +32,8 @@
       "Bash(do echo \"Testing: $file\")",
       "Bash(tee:*)",
       "Bash(dotnet publish:*)",
-      "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Release/net9.0/osx-arm64/publish/Novus:*)"
+      "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Release/net9.0/osx-arm64/publish/Novus:*)",
+      "Bash(vamos:*)"
     ],
     "deny": [],
     "ask": []

@@ -1043,23 +1043,29 @@ public partial class M68kCodeGenerator
 
                         if (isSigned)
                         {
-                            Emit("\tjsr\t__divs32\t; d0 = d2 / d3");
-                            Emit("\tmove.l\td0,d1");
-                            Emit("\tmove.l\td3,d0");
+                            // Call division: d0 / d1 -> d0 (quotient in d0, d1 preserved)
+                            Emit("\tjsr\t__div_i32\t; d0 = d0 / d1");
+                            // Now: d0 = quotient, d2 = original dividend, d3 = divisor
+                            // Multiply quotient * divisor
+                            Emit("\tmove.l\td3,d1\t; d1 = divisor");
                             Emit("\tjsr\t__mul_i32\t; d0 = quotient * divisor");
-                            Emit("\tmove.l\td2,d1");
+                            // Subtract from original dividend
+                            Emit("\tmove.l\td2,d1\t; d1 = original dividend");
                             Emit("\tsub.l\td0,d1\t; remainder = dividend - (quotient * divisor)");
-                            Emit("\tmove.l\td1,d0");
+                            Emit("\tmove.l\td1,d0\t; Move remainder to d0");
                         }
                         else
                         {
-                            Emit("\tjsr\t__divu\t; d0 = d2 / d3");
-                            Emit("\tmove.l\td0,d1");
-                            Emit("\tmove.l\td3,d0");
+                            // Call division: d0 / d1 -> d0 (quotient in d0, d1 preserved)
+                            Emit("\tjsr\t__div_u32\t; d0 = d0 / d1");
+                            // Now: d0 = quotient, d2 = original dividend, d3 = divisor
+                            // Multiply quotient * divisor
+                            Emit("\tmove.l\td3,d1\t; d1 = divisor");
                             Emit("\tjsr\t__mul_u32\t; d0 = quotient * divisor");
-                            Emit("\tmove.l\td2,d1");
+                            // Subtract from original dividend
+                            Emit("\tmove.l\td2,d1\t; d1 = original dividend");
                             Emit("\tsub.l\td0,d1\t; remainder = dividend - (quotient * divisor)");
-                            Emit("\tmove.l\td1,d0");
+                            Emit("\tmove.l\td1,d0\t; Move remainder to d0");
                         }
 
                         Emit("\tmovem.l\t(sp)+,d2-d3");
@@ -2734,6 +2740,7 @@ public partial class M68kCodeGenerator
         EmitComment("Available functions:");
         EmitComment("  __mul_i32(d0, d1) -> d0    : Signed 32-bit multiply");
         EmitComment("  __mul_u32(d0, d1) -> d0    : Unsigned 32-bit multiply");
+        EmitComment("  __div_i32(d0, d1) -> d0    : Signed 32-bit divide");
         EmitComment("  __div_u32(d0, d1) -> d0    : Unsigned 32-bit divide");
         EmitComment("  __shl_i32(d0, d1) -> d0    : Shift left");
         EmitComment("  __shr_i32(d0, d1) -> d0    : Signed shift right");
@@ -2751,7 +2758,11 @@ public partial class M68kCodeGenerator
         GenerateRuntimePrimitive("__mul_u32", "Unsigned 32-bit multiply",
             GenerateMulU32_68000, GenerateMulU32_68020, GenerateMulU32_68060);
 
-        // Generate divide (unsigned) - signed division is complex, skip for now
+        // Generate divide (signed)
+        GenerateRuntimePrimitive("__div_i32", "Signed 32-bit divide",
+            GenerateDivI32_68000, GenerateDivI32_68020, GenerateDivI32_68060);
+
+        // Generate divide (unsigned)
         GenerateRuntimePrimitive("__div_u32", "Unsigned 32-bit divide",
             GenerateDivU32_68000, GenerateDivU32_68020, GenerateDivU32_68060);
 
@@ -2766,6 +2777,9 @@ public partial class M68kCodeGenerator
         // Generate shift right (unsigned)
         GenerateRuntimePrimitive("__shr_u32", "Unsigned shift right",
             GenerateShrU32_68000, GenerateShrU32_68020, GenerateShrU32_68060);
+
+        // Generate division helper (shared by signed and unsigned division on 68000)
+        GenerateDivisionHelper();
     }
 
     private void GenerateRuntimePrimitive(string name, string description,
@@ -2886,13 +2900,96 @@ public partial class M68kCodeGenerator
     }
 
     // Divide implementations
+    private void GenerateDivI32_68000()
+    {
+        EmitComment("68000: Signed 32-bit divide using 16-bit divs");
+        EmitComment("Uses repeated subtraction for high-order bits");
+        Emit("\tmovem.l\td2-d4,-(sp)\t; Save registers");
+
+        // Handle sign: convert to unsigned, divide, fix sign
+        Emit("\tmoveq\t#0,d4\t\t; d4 = sign tracker");
+        Emit("\ttst.l\td0");
+        Emit("\tbpl.s\t.divsi_pos_dividend");
+        Emit("\tneg.l\td0");
+        Emit("\tnot.l\td4");
+        Emit(".divsi_pos_dividend:");
+        Emit("\ttst.l\td1");
+        Emit("\tbpl.s\t.divsi_pos_divisor");
+        Emit("\tneg.l\td1");
+        Emit("\tnot.l\td4");
+        Emit(".divsi_pos_divisor:");
+
+        // Call unsigned division helper
+        Emit("\tbsr.s\t__divu32_helper_internal");
+
+        // Fix sign of result
+        Emit("\ttst.l\td4");
+        Emit("\tbeq.s\t.divsi_done");
+        Emit("\tneg.l\td0");
+        Emit(".divsi_done:");
+        Emit("\tmovem.l\t(sp)+,d2-d4");
+        Emit("\trts");
+    }
+
+    private void GenerateDivI32_68020()
+    {
+        EmitComment("68020: Native 32-bit signed divide");
+        Emit("\tdivs.l\td1,d0");
+        Emit("\trts");
+    }
+
+    private void GenerateDivI32_68060()
+    {
+        EmitComment("68060: Very slow divide (>70 cycles)");
+        EmitComment("Consider alternatives if possible");
+        Emit("\tdivs.l\td1,d0");
+        Emit("\trts");
+    }
+
     private void GenerateDivU32_68000()
     {
-        EmitComment("68000: Call VBCC's 32-bit unsigned divide library function");
-        EmitComment("Convention: d0=dividend, d1=divisor, result=d0, preserves d2-d7/a2-a6");
-        Emit("\tmovem.l\td2/a6,-(sp)\t; Save registers (VBCC requirement)");
-        Emit("\tjsr\t__divu\t\t; Call VBCC's 32/32 unsigned divide");
-        Emit("\tmovem.l\t(sp)+,d2/a6\t; Restore registers");
+        EmitComment("68000: Unsigned 32-bit divide");
+        Emit("\tmovem.l\td2-d3,-(sp)");
+        Emit("\tbsr\t__divu32_helper_internal");
+        Emit("\tmovem.l\t(sp)+,d2-d3");
+        Emit("\trts");
+    }
+
+    // Helper function for unsigned 32-bit division (used by both signed and unsigned)
+    private void GenerateDivisionHelper()
+    {
+        // Unsigned 32÷32→32 division helper
+        // Input: d0=dividend, d1=divisor
+        // Output: d0=quotient
+        // Uses: d2=counter, d3=quotient
+        Emit("__divu32_helper_internal:");
+        EmitComment("Unsigned 32-bit division helper (used internally)");
+        Emit("\tmoveq\t#0,d3\t\t; quotient = 0");
+        Emit("\tmoveq\t#31,d2\t\t; bit counter");
+        Emit("\ttst.l\td1");
+        Emit("\tbne.s\t.divu_loop");
+        Emit("\tmoveq\t#-1,d0\t\t; division by zero");
+        Emit("\trts");
+
+        Emit(".divu_loop:");
+        // Shift dividend left, test if divisor fits
+        Emit("\tadd.l\td0,d0\t\t; dividend <<= 1");
+        Emit("\tbcc.s\t.divu_no_carry\t; branch if no carry");
+        // Carry set: high bit was 1
+        Emit("\tsub.l\td1,d0\t\t; subtract divisor");
+        Emit("\taddq.l\t#1,d3\t\t; quotient++");
+        Emit("\tdbf\td2,.divu_loop");
+        Emit("\tmove.l\td3,d0\t\t; return quotient");
+        Emit("\trts");
+
+        Emit(".divu_no_carry:");
+        Emit("\tcmp.l\td1,d0\t\t; dividend >= divisor?");
+        Emit("\tbcs.s\t.divu_next\t\t; branch if less");
+        Emit("\tsub.l\td1,d0\t\t; subtract divisor");
+        Emit("\taddq.l\t#1,d3\t\t; quotient++");
+        Emit(".divu_next:");
+        Emit("\tdbf\td2,.divu_loop");
+        Emit("\tmove.l\td3,d0\t\t; return quotient");
         Emit("\trts");
     }
 

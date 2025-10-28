@@ -333,14 +333,21 @@ public partial class M68kCodeGenerator
             }
             else
             {
-                // 68000: No native 32-bit divide
-                // Would need to call runtime routine
-                EmitComment("68000: 32-bit divide requires runtime routine");
-                EmitComment("TODO: Call __divsi3 / __udivsi3");
-                // Placeholder - this will be wrong
-                var divOp = isSigned ? "divs.w" : "divu.w";
-                Emit($"\t{divOp}\td1,d0");
-                EmitComment("WARNING: 32-bit divide on 68000 is incomplete");
+                // 68000: No native 32-bit divide - call VBCC library functions
+                // In fat binary mode, call runtime primitive to avoid duplicate labels
+                if (_isOriginallyFatBinary)
+                {
+                    EmitComment("68000: Call CPU-optimized runtime primitive");
+                    var funcName = isSigned ? "__div_i32" : "__div_u32";
+                    Emit($"\tjsr\t{funcName}");
+                }
+                else
+                {
+                    EmitComment("68000: Call our runtime primitive (no fat binary)");
+                    var funcName = isSigned ? "__div_i32" : "__div_u32";
+                    Emit($"\tjsr\t{funcName}");
+                    EmitComment("Note: __div_i32/__div_u32 will be generated as standalone functions");
+                }
             }
         }
     }
