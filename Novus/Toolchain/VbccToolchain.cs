@@ -45,7 +45,7 @@ public class VbccToolchain
             args.Insert(2, "-m68881");  // Enable 68881/68882 FPU instructions
         }
 
-        Console.WriteLine($"Assembling: {Path.GetFileName(asmFile)}");
+        // Don't print here - caller will show progress
         return await RunTool(vasmPath, args);
     }
 
@@ -131,7 +131,7 @@ public class VbccToolchain
             args.Add("-lamiga");  // Link with amiga.lib (provides _DOSBase, etc.)
         }
 
-        Console.WriteLine($"Linking: {Path.GetFileName(outputFile)}");
+        // Don't print here - caller shows final success message
         return await RunTool(vlinkPath, args);
     }
 
@@ -241,6 +241,7 @@ public class VbccToolchain
         var mainObjFile = Path.Combine(outputPath, $"{baseName}.o");
         await File.WriteAllTextAsync(mainAsmFile, mainAsmSource);
 
+        Console.WriteLine($"  → {baseName}.s → {baseName}.o");
         if (!await Assemble(mainAsmFile, mainObjFile, assemblyCpu, enableFpu))
         {
             Console.WriteLine("Main assembly failed");
@@ -257,6 +258,7 @@ public class VbccToolchain
 
             await File.WriteAllTextAsync(depAsmFile, asmSource);
 
+            Console.WriteLine($"  → {moduleName}.s → {moduleName}.o");
             if (!await Assemble(depAsmFile, depObjFile, assemblyCpu, enableFpu))
             {
                 Console.WriteLine($"Dependency assembly failed: {moduleName}");
@@ -323,13 +325,14 @@ public class VbccToolchain
 
         // Link all object files
         var exeFile = Path.Combine(outputPath, baseName);
+        Console.WriteLine($"\nLinking {objFiles.Count} object file{(objFiles.Count > 1 ? "s" : "")}...");
         if (!await Link(objFiles.ToArray(), exeFile, fpuMode, includeStartup: true))
         {
             Console.WriteLine("Linking failed");
             return false;
         }
 
-        Console.WriteLine($"Successfully created: {exeFile}");
+        Console.WriteLine($"\n✓ Successfully created: {Path.GetFileName(exeFile)}");
         return true;
     }
 

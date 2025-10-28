@@ -245,10 +245,11 @@ class Program
 
                 processed.Add(modulePath);
 
-                if (options.Verbose)
-                {
-                    Console.WriteLine($"  Compiling dependency: {Path.GetFileName(modulePath)}");
-                }
+                // Always show which module is being compiled (not just in verbose mode)
+                var moduleName = Path.GetFileNameWithoutExtension(modulePath);
+                var moduleDir = Path.GetFileName(Path.GetDirectoryName(modulePath));
+                var displayName = moduleDir == "std" ? $"std::{moduleName}" : moduleName;
+                Console.WriteLine($"  → {displayName}");
 
                 var moduleResult = await CompileModuleToAssembly(modulePath, stdLibPath, options, moduleCache, circularImportDetector);
                 if (moduleResult == null)
@@ -288,7 +289,7 @@ class Program
 
             if (allModules.Count > 0)
             {
-                Console.WriteLine($"  Compiled {allModules.Count} dependencies");
+                Console.WriteLine($"  ✓ Compiled {allModules.Count} module{(allModules.Count > 1 ? "s" : "")}");
             }
 
             if (options.Verbose && moduleCache.Count > 0)
@@ -306,20 +307,33 @@ class Program
 
             Console.WriteLine("Generating 68k assembly...");
 
+            // Determine output directory and base name (used by both asm-only and full build)
+            var outputDir = Path.GetDirectoryName(Path.GetFullPath(options.OutputFile)) ?? ".";
+            var baseName = Path.GetFileNameWithoutExtension(options.OutputFile);
+
             if (options.EmitAsmOnly)
             {
-                // Just output the main assembly
-                var asmFile = Path.ChangeExtension(options.OutputFile, ".s");
-                await File.WriteAllTextAsync(asmFile, mainAssembly);
-                Console.WriteLine($"Assembly written to: {asmFile}");
+                // Output all assembly files (main + dependencies)
+                var mainAsmFile = Path.Combine(outputDir, $"{baseName}.s");
+                await File.WriteAllTextAsync(mainAsmFile, mainAssembly);
+                Console.WriteLine($"  → {Path.GetFileName(mainAsmFile)}");
+
+                // Write dependency assemblies
+                foreach (var (modulePath, assembly) in allModules)
+                {
+                    var moduleName = Path.GetFileNameWithoutExtension(modulePath);
+                    var depAsmFile = Path.Combine(outputDir, $"{moduleName}.s");
+                    await File.WriteAllTextAsync(depAsmFile, assembly);
+                    Console.WriteLine($"  → {Path.GetFileName(depAsmFile)}");
+                }
+
+                Console.WriteLine($"\nAssembly files written to: {outputDir}");
                 return 0;
             }
 
             // Assemble and link with VBCC
             Console.WriteLine("Assembling and linking...");
             var toolchain = new VbccToolchain(options.VbccPath, options.NdkPath);
-            var outputDir = Path.GetDirectoryName(Path.GetFullPath(options.OutputFile)) ?? ".";
-            var baseName = Path.GetFileNameWithoutExtension(options.OutputFile);
 
             // Enable FPU instructions in assembler if using fat binary or explicit FPU mode
             bool enableFpu = options.Fpu != "soft";
