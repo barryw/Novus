@@ -1197,6 +1197,44 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var name = identifier.GetText();
         var location = SourceLocationHelper.FromToken(identifier.Symbol, _filePath, _sourceLines);
 
+        // Detect which kind of assignment this is
+        string? op = null;
+        bool isPostIncDec = false;
+        bool isPreIncDec = false;
+
+        // Check for compound operators and increment/decrement
+        for (int i = 0; i < context.ChildCount; i++)
+        {
+            var childText = context.GetChild(i).GetText();
+            if (childText == "+=" || childText == "-=" || childText == "*=" || childText == "/=" ||
+                childText == "%=" || childText == "&=" || childText == "|=" || childText == "^=" ||
+                childText == "<<=" || childText == ">>=")
+            {
+                op = childText;
+                break;
+            }
+            else if (childText == "=" && context.expression() != null)
+            {
+                op = "=";
+                break;
+            }
+            else if (childText == "++" || childText == "--")
+            {
+                // Check if it's at the beginning (pre) or after identifier (post)
+                if (i == 0)
+                {
+                    isPreIncDec = true;
+                    op = childText;
+                }
+                else
+                {
+                    isPostIncDec = true;
+                    op = childText;
+                }
+                break;
+            }
+        }
+
         // Count dereference operators before the identifier
         int derefCount = 0;
         for (int i = 0; i < context.ChildCount; i++)
@@ -1212,6 +1250,56 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         var lvalueSuffixes = context.lvalueSuffix();
+
+        // Handle increment/decrement statements (no expression)
+        if (isPostIncDec || isPreIncDec)
+        {
+            // Check if variable exists
+            if (!_variables.ContainsKey(name))
+            {
+                _diagnostics.ReportError(
+                    "E0018",
+                    $"cannot apply operator '{op}' to undeclared variable '{name}'",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "this variable has not been declared",
+                        "consider declaring it with 'let' or 'var'"
+                    }
+                );
+                return null;
+            }
+
+            var incDecVariable = _variables[name];
+
+            // Check if variable is mutable
+            if (!incDecVariable.IsMutable)
+            {
+                _diagnostics.ReportError(
+                    "E0019",
+                    $"cannot apply operator '{op}' to immutable variable '{name}'",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "this variable was declared with 'let', which makes it immutable",
+                        "consider declaring it with 'var' if you need to modify it"
+                    }
+                );
+                return null;
+            }
+
+            // Check that it's a numeric type
+            if (!IsNumericType(incDecVariable.Type))
+            {
+                _diagnostics.ReportError(
+                    "E0024",
+                    $"operator '{op}' requires numeric type, found '{TypeToString(incDecVariable.Type)}'",
+                    location
+                );
+            }
+
+            return null;
+        }
 
         // Check if this is a complex lvalue (member or index access)
         if (lvalueSuffixes.Length > 0)
@@ -1343,18 +1431,91 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
             // Check type compatibility
             var exprType = Visit(context.expression());
-            if (exprType != null && !TypesCompatible(variable.Type, exprType))
+
+            // Handle compound operators
+            if (op != "=")
             {
-                _diagnostics.ReportError(
-                    "E0020",
-                    $"mismatched types in assignment",
-                    location,
-                    helpTexts: new List<string>
+                // For compound operators, verify the variable type supports the operation
+                if (op == "+=" || op == "-=" || op == "*=" || op == "/=" || op == "%=")
+                {
+                    // Arithmetic operators require numeric types
+                    if (!IsNumericType(variable.Type))
                     {
-                        $"expected type '{TypeToString(variable.Type)}', found '{TypeToString(exprType)}'",
-                        $"consider using a cast: ({TypeToString(variable.Type)}){context.expression().GetText()}"
+                        _diagnostics.ReportError(
+                            "E0024",
+                            $"operator '{op}' requires numeric type, found '{TypeToString(variable.Type)}'",
+                            location
+                        );
                     }
-                );
+                    if (exprType != null && !IsNumericType(exprType))
+                    {
+                        var exprLocation = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
+                        _diagnostics.ReportError(
+                            "E0024",
+                            $"operator '{op}' requires numeric type, found '{TypeToString(exprType)}'",
+                            exprLocation
+                        );
+                    }
+                }
+                else if (op == "&=" || op == "|=" || op == "^=")
+                {
+                    // Bitwise operators require integer or boolean types
+                    if (!IsIntegralType(variable.Type) && !(variable.Type is IrBoolType))
+                    {
+                        _diagnostics.ReportError(
+                            "E0024",
+                            $"operator '{op}' requires integer or boolean type, found '{TypeToString(variable.Type)}'",
+                            location
+                        );
+                    }
+                    if (exprType != null && !IsIntegralType(exprType) && !(exprType is IrBoolType))
+                    {
+                        var exprLocation = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
+                        _diagnostics.ReportError(
+                            "E0024",
+                            $"operator '{op}' requires integer or boolean type, found '{TypeToString(exprType)}'",
+                            exprLocation
+                        );
+                    }
+                }
+                else if (op == "<<=" || op == ">>=")
+                {
+                    // Shift operators require integer types
+                    if (!IsIntegralType(variable.Type))
+                    {
+                        _diagnostics.ReportError(
+                            "E0024",
+                            $"operator '{op}' requires integer type, found '{TypeToString(variable.Type)}'",
+                            location
+                        );
+                    }
+                    if (exprType != null && !IsIntegralType(exprType))
+                    {
+                        var exprLocation = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
+                        _diagnostics.ReportError(
+                            "E0024",
+                            $"operator '{op}' requires integer type, found '{TypeToString(exprType)}'",
+                            exprLocation
+                        );
+                    }
+                }
+            }
+            else
+            {
+                // Simple assignment: check type compatibility
+                if (exprType != null && !TypesCompatible(variable.Type, exprType))
+                {
+                    _diagnostics.ReportError(
+                        "E0020",
+                        $"mismatched types in assignment",
+                        location,
+                        helpTexts: new List<string>
+                        {
+                            $"expected type '{TypeToString(variable.Type)}', found '{TypeToString(exprType)}'",
+                            $"consider using a cast: ({TypeToString(variable.Type)}){context.expression().GetText()}"
+                        }
+                    );
+                }
             }
         }
 
@@ -2977,6 +3138,150 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         throw new Exception($"Unknown unary operator: {op}");
     }
 
+    public override IrType? VisitPostIncrementExpr([NotNull] NovusParser.PostIncrementExprContext context)
+    {
+        var operandType = Visit(context.expression());
+        if (operandType == null)
+            return IrIntType.I32;
+
+        // Verify it's a numeric type
+        if (!IsNumericType(operandType))
+        {
+            var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0024",
+                $"operator '++' requires numeric type, found '{TypeToString(operandType)}'",
+                location
+            );
+        }
+
+        // Verify it's an lvalue (for now, just check it's an identifier)
+        if (!(context.expression() is NovusParser.PrimaryExprContext primaryCtx &&
+              primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext))
+        {
+            var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0027",
+                "operator '++' requires an lvalue",
+                location,
+                helpTexts: new List<string>
+                {
+                    "only variables, not arbitrary expressions, can be incremented"
+                }
+            );
+        }
+
+        return operandType;
+    }
+
+    public override IrType? VisitPostDecrementExpr([NotNull] NovusParser.PostDecrementExprContext context)
+    {
+        var operandType = Visit(context.expression());
+        if (operandType == null)
+            return IrIntType.I32;
+
+        // Verify it's a numeric type
+        if (!IsNumericType(operandType))
+        {
+            var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0024",
+                $"operator '--' requires numeric type, found '{TypeToString(operandType)}'",
+                location
+            );
+        }
+
+        // Verify it's an lvalue (for now, just check it's an identifier)
+        if (!(context.expression() is NovusParser.PrimaryExprContext primaryCtx &&
+              primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext))
+        {
+            var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0027",
+                "operator '--' requires an lvalue",
+                location,
+                helpTexts: new List<string>
+                {
+                    "only variables, not arbitrary expressions, can be decremented"
+                }
+            );
+        }
+
+        return operandType;
+    }
+
+    public override IrType? VisitPreIncrementExpr([NotNull] NovusParser.PreIncrementExprContext context)
+    {
+        var operandType = Visit(context.expression());
+        if (operandType == null)
+            return IrIntType.I32;
+
+        // Verify it's a numeric type
+        if (!IsNumericType(operandType))
+        {
+            var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0024",
+                $"operator '++' requires numeric type, found '{TypeToString(operandType)}'",
+                location
+            );
+        }
+
+        // Verify it's an lvalue (for now, just check it's an identifier)
+        if (!(context.expression() is NovusParser.PrimaryExprContext primaryCtx &&
+              primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext))
+        {
+            var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0027",
+                "operator '++' requires an lvalue",
+                location,
+                helpTexts: new List<string>
+                {
+                    "only variables, not arbitrary expressions, can be incremented"
+                }
+            );
+        }
+
+        return operandType;
+    }
+
+    public override IrType? VisitPreDecrementExpr([NotNull] NovusParser.PreDecrementExprContext context)
+    {
+        var operandType = Visit(context.expression());
+        if (operandType == null)
+            return IrIntType.I32;
+
+        // Verify it's a numeric type
+        if (!IsNumericType(operandType))
+        {
+            var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0024",
+                $"operator '--' requires numeric type, found '{TypeToString(operandType)}'",
+                location
+            );
+        }
+
+        // Verify it's an lvalue (for now, just check it's an identifier)
+        if (!(context.expression() is NovusParser.PrimaryExprContext primaryCtx &&
+              primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext))
+        {
+            var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0027",
+                "operator '--' requires an lvalue",
+                location,
+                helpTexts: new List<string>
+                {
+                    "only variables, not arbitrary expressions, can be decremented"
+                }
+            );
+        }
+
+        return operandType;
+    }
+
     public override IrType? VisitParenExpr([NotNull] NovusParser.ParenExprContext context)
     {
         return Visit(context.expression());
@@ -3690,6 +3995,11 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     private bool IsNumericType(IrType type)
     {
         return type is IrIntType || type is IrFloatType || type is IrFixedType;
+    }
+
+    private bool IsIntegralType(IrType type)
+    {
+        return type is IrIntType;
     }
 
     private bool IsBoolOrNumericType(IrType type)

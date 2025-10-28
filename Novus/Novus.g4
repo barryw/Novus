@@ -185,7 +185,9 @@ variableDeclaration
     ;
 
 assignmentStatement
-    : ('*')* IDENTIFIER (lvalueSuffix)* '=' expression
+    : ('*')* IDENTIFIER (lvalueSuffix)* ('=' | '+=' | '-=' | '*=' | '/=' | '%=' | '&=' | '|=' | '^=' | '<<=' | '>>=') expression
+    | ('*')* IDENTIFIER (lvalueSuffix)* ('++' | '--')
+    | ('++' | '--') ('*')* IDENTIFIER (lvalueSuffix)*
     ;
 
 lvalueSuffix
@@ -223,11 +225,15 @@ expression
     | expression '.' IDENTIFIER                            # MemberAccessExpr
     | expression '(' argumentList? ')'                     # CallExpr
     | expression '[' expression ']'                        # IndexExpr
+    | expression '++' # PostIncrementExpr
+    | expression '--'                                      # PostDecrementExpr
     | expression '..' expression                           # RangeExpr
     | expression '..=' expression                          # RangeInclusiveExpr
     | '(' type ')' expression                              # CastExpr
     | '&' KW_MUT? expression                               # BorrowExpr
     | ('!' | '~' | '-') expression                         # UnaryExpr
+    | '++' expression                                      # PreIncrementExpr
+    | '--' expression                                      # PreDecrementExpr
     | '*' expression                                       # DereferenceExpr
     | expression ('*' | '/' | '%') expression              # MultiplicativeExpr
     | expression ('+' | '-') expression                     # AdditiveExpr

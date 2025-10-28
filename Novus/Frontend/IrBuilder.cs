@@ -805,6 +805,44 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var identifier = context.IDENTIFIER();
         var name = identifier.GetText();
 
+        // Detect which kind of assignment this is
+        string? op = null;
+        bool isPostIncDec = false;
+        bool isPreIncDec = false;
+
+        // Check for compound operators and increment/decrement
+        for (int i = 0; i < context.ChildCount; i++)
+        {
+            var childText = context.GetChild(i).GetText();
+            if (childText == "+=" || childText == "-=" || childText == "*=" || childText == "/=" ||
+                childText == "%=" || childText == "&=" || childText == "|=" || childText == "^=" ||
+                childText == "<<=" || childText == ">>=")
+            {
+                op = childText;
+                break;
+            }
+            else if (childText == "=" && context.expression() != null)
+            {
+                op = "=";
+                break;
+            }
+            else if (childText == "++" || childText == "--")
+            {
+                // Check if it's at the beginning (pre) or after identifier (post)
+                if (i == 0)
+                {
+                    isPreIncDec = true;
+                    op = childText;
+                }
+                else
+                {
+                    isPostIncDec = true;
+                    op = childText;
+                }
+                break;
+            }
+        }
+
         // Count dereference operators before the identifier
         int derefCount = 0;
         for (int i = 0; i < context.ChildCount; i++)
@@ -816,6 +854,46 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         var lvalueSuffixes = context.lvalueSuffix();
+
+        // Handle increment/decrement statements (no expression)
+        if (isPostIncDec || isPreIncDec)
+        {
+            // Get the variable
+            IrVariable? variable = null;
+            IrType? varType = null;
+
+            if (_localVariables.ContainsKey(name))
+            {
+                var localVar = _localVariables[name];
+                variable = new IrVariable(name, localVar.Type);
+                varType = localVar.Type;
+            }
+            else if (_currentFunction != null)
+            {
+                var param = _currentFunction.Parameters.FirstOrDefault(p => p.Name == name);
+                if (param != null)
+                {
+                    variable = new IrVariable(name, param.Type);
+                    varType = param.Type;
+                }
+            }
+
+            if (variable == null || varType == null)
+            {
+                throw new Exception($"Variable {name} not found");
+            }
+
+            // Increment or decrement: var = var +/- 1
+            var resultTemp = $"%t{_tempCounter++}";
+            var opKind = (op == "++" ? IrBinaryOp.OpKind.Add : IrBinaryOp.OpKind.Sub);
+            var binOp = new IrBinaryOp(resultTemp, opKind, variable, new IrConstant(1, varType), varType);
+            _currentBlock!.AddInstruction(binOp);
+
+            // Store back to the variable
+            _currentBlock.AddInstruction(new IrStore(name, new IrVariable(resultTemp, varType)));
+
+            return null;
+        }
 
         // Check if this is a member or index assignment (has lvalueSuffix elements)
         if (lvalueSuffixes.Length > 0)
@@ -884,7 +962,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
         else
         {
-            // Simple variable assignment: x = value
+            // Simple variable assignment or compound operator: x = value or x += value
             var value = (IrValue?)Visit(context.expression());
 
             if (value == null)
@@ -892,9 +970,64 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 throw new Exception($"Assignment to {name} requires a value");
             }
 
-            // The semantic analyzer will check if the variable is mutable
-            // Here we just generate the IR
-            _currentBlock!.AddInstruction(new IrStore(name, value));
+            // Handle compound operators by desugaring them to binary ops
+            if (op != "=")
+            {
+                // Get the variable
+                IrVariable? variable = null;
+                IrType? varType = null;
+
+                if (_localVariables.ContainsKey(name))
+                {
+                    var localVar = _localVariables[name];
+                    variable = new IrVariable(name, localVar.Type);
+                    varType = localVar.Type;
+                }
+                else if (_currentFunction != null)
+                {
+                    var param = _currentFunction.Parameters.FirstOrDefault(p => p.Name == name);
+                    if (param != null)
+                    {
+                        variable = new IrVariable(name, param.Type);
+                        varType = param.Type;
+                    }
+                }
+
+                if (variable == null || varType == null)
+                {
+                    throw new Exception($"Variable {name} not found");
+                }
+
+                // Desugar compound operator: x op= y becomes x = x op y
+                var resultTemp = $"%t{_tempCounter++}";
+                IrBinaryOp.OpKind opKind = op switch
+                {
+                    "+=" => IrBinaryOp.OpKind.Add,
+                    "-=" => IrBinaryOp.OpKind.Sub,
+                    "*=" => IrBinaryOp.OpKind.Mul,
+                    "/=" => IrBinaryOp.OpKind.Div,
+                    "%=" => IrBinaryOp.OpKind.Mod,
+                    "&=" => IrBinaryOp.OpKind.And,
+                    "|=" => IrBinaryOp.OpKind.Or,
+                    "^=" => IrBinaryOp.OpKind.Xor,
+                    "<<=" => IrBinaryOp.OpKind.Shl,
+                    ">>=" => IrBinaryOp.OpKind.Shr,
+                    _ => throw new Exception($"Unknown compound operator: {op}")
+                };
+
+                var binOp = new IrBinaryOp(resultTemp, opKind, variable, value, varType);
+                _currentBlock!.AddInstruction(binOp);
+
+                // Store the result back
+                _currentBlock.AddInstruction(new IrStore(name, new IrVariable(resultTemp, varType)));
+            }
+            else
+            {
+                // Simple assignment: x = value
+                // The semantic analyzer will check if the variable is mutable
+                // Here we just generate the IR
+                _currentBlock!.AddInstruction(new IrStore(name, value));
+            }
         }
 
         return null;
@@ -1786,6 +1919,132 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         throw new Exception($"Unknown unary operator: {op}");
+    }
+
+    public override object? VisitPostIncrementExpr([NotNull] NovusParser.PostIncrementExprContext context)
+    {
+        // Post-increment: return old value, but increment the variable
+        var operand = (IrValue)Visit(context.expression())!;
+
+        // Get the variable name
+        string varName;
+        if (context.expression() is NovusParser.PrimaryExprContext primaryCtx &&
+            primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext identCtx)
+        {
+            varName = identCtx.identifier().GetText();
+        }
+        else
+        {
+            throw new Exception("Post-increment requires a variable");
+        }
+
+        // Save the old value in a temp (using Add with 0 to copy)
+        var oldValueTemp = $"%t{_tempCounter++}";
+        var copyOp = new IrBinaryOp(oldValueTemp, IrBinaryOp.OpKind.Add, operand, new IrConstant(0, operand.Type), operand.Type);
+        _currentBlock!.AddInstruction(copyOp);
+
+        // Increment the variable: var = var + 1
+        var incrementTemp = $"%t{_tempCounter++}";
+        var addOp = new IrBinaryOp(incrementTemp, IrBinaryOp.OpKind.Add, operand, new IrConstant(1, operand.Type), operand.Type);
+        _currentBlock.AddInstruction(addOp);
+
+        // Store back to the variable
+        _currentBlock.AddInstruction(new IrStore(varName, new IrVariable(incrementTemp, operand.Type)));
+
+        // Return the old value
+        return new IrVariable(oldValueTemp, operand.Type);
+    }
+
+    public override object? VisitPostDecrementExpr([NotNull] NovusParser.PostDecrementExprContext context)
+    {
+        // Post-decrement: return old value, but decrement the variable
+        var operand = (IrValue)Visit(context.expression())!;
+
+        // Get the variable name
+        string varName;
+        if (context.expression() is NovusParser.PrimaryExprContext primaryCtx &&
+            primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext identCtx)
+        {
+            varName = identCtx.identifier().GetText();
+        }
+        else
+        {
+            throw new Exception("Post-decrement requires a variable");
+        }
+
+        // Save the old value in a temp (using Add with 0 to copy)
+        var oldValueTemp = $"%t{_tempCounter++}";
+        var copyOp = new IrBinaryOp(oldValueTemp, IrBinaryOp.OpKind.Add, operand, new IrConstant(0, operand.Type), operand.Type);
+        _currentBlock!.AddInstruction(copyOp);
+
+        // Decrement the variable: var = var - 1
+        var decrementTemp = $"%t{_tempCounter++}";
+        var subOp = new IrBinaryOp(decrementTemp, IrBinaryOp.OpKind.Sub, operand, new IrConstant(1, operand.Type), operand.Type);
+        _currentBlock.AddInstruction(subOp);
+
+        // Store back to the variable
+        _currentBlock.AddInstruction(new IrStore(varName, new IrVariable(decrementTemp, operand.Type)));
+
+        // Return the old value
+        return new IrVariable(oldValueTemp, operand.Type);
+    }
+
+    public override object? VisitPreIncrementExpr([NotNull] NovusParser.PreIncrementExprContext context)
+    {
+        // Pre-increment: increment the variable and return new value
+        var operand = (IrValue)Visit(context.expression())!;
+
+        // Get the variable name
+        string varName;
+        if (context.expression() is NovusParser.PrimaryExprContext primaryCtx &&
+            primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext identCtx)
+        {
+            varName = identCtx.identifier().GetText();
+        }
+        else
+        {
+            throw new Exception("Pre-increment requires a variable");
+        }
+
+        // Increment the variable: var = var + 1
+        var incrementTemp = $"%t{_tempCounter++}";
+        var addOp = new IrBinaryOp(incrementTemp, IrBinaryOp.OpKind.Add, operand, new IrConstant(1, operand.Type), operand.Type);
+        _currentBlock!.AddInstruction(addOp);
+
+        // Store back to the variable
+        _currentBlock.AddInstruction(new IrStore(varName, new IrVariable(incrementTemp, operand.Type)));
+
+        // Return the new value
+        return new IrVariable(incrementTemp, operand.Type);
+    }
+
+    public override object? VisitPreDecrementExpr([NotNull] NovusParser.PreDecrementExprContext context)
+    {
+        // Pre-decrement: decrement the variable and return new value
+        var operand = (IrValue)Visit(context.expression())!;
+
+        // Get the variable name
+        string varName;
+        if (context.expression() is NovusParser.PrimaryExprContext primaryCtx &&
+            primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext identCtx)
+        {
+            varName = identCtx.identifier().GetText();
+        }
+        else
+        {
+            throw new Exception("Pre-decrement requires a variable");
+        }
+
+        // Decrement the variable: var = var - 1
+        var decrementTemp = $"%t{_tempCounter++}";
+        var subOp = new IrBinaryOp(decrementTemp, IrBinaryOp.OpKind.Sub, operand, new IrConstant(1, operand.Type), operand.Type);
+        _currentBlock!.AddInstruction(subOp);
+
+        // Store back to the variable
+        _currentBlock.AddInstruction(new IrStore(varName, new IrVariable(decrementTemp, operand.Type)));
+
+        // Return the new value
+        return new IrVariable(decrementTemp, operand.Type);
     }
 
     public override object? VisitLogicalAndExpr([NotNull] NovusParser.LogicalAndExprContext context)

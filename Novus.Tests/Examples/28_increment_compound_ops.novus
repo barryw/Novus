@@ -1,0 +1,61 @@
+pub fn main() -> u32 {
+    // Test post-increment
+    var x: i32 = 5
+    x++
+    x++
+    // x is now 7
+
+    // Test compound assignment operators
+    var a: i32 = 100
+    a += 50
+    // a is now 150
+
+    a -= 30
+    // a is now 120
+
+    a *= 2
+    // a is now 240
+
+    a /= 3
+    // a is now 80
+
+    a %= 7
+    // a is now 3
+
+    // Test bitwise compound operators
+    var b: u32 = $FF
+    b &= $0F
+    // b is now $0F (15)
+
+    b |= $F0
+    // b is now $FF (255)
+
+    b ^= $AA
+    // b is now $55 (85)
+
+    // Test shift compound operators
+    var c: u32 = 1
+    c <<= 4
+    // c is now 16
+
+    c >>= 2
+    // c is now 4
+
+    // Test decrement in a different context
+    var z: i32 = 20
+    if true {
+        z--
+    }
+    // z is now 19
+
+    // Test increment/decrement as expressions
+    var result1: i32 = 0
+    var result2: i32 = 0
+    if true {
+        result1 = x++  // Post-increment: returns 7, x becomes 8
+        result2 = ++x  // Pre-increment: x becomes 9, returns 9
+    }
+
+    // Calculate result: x(9) + a(3) + (i32)c(4) + z(19) + result1(7) + result2(9) = 51
+    return (u32)(x + a + (i32)c + z + result1 + result2)
+}
