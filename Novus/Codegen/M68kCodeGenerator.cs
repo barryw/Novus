@@ -1018,6 +1018,61 @@ public partial class M68kCodeGenerator
                 }
                 break;
 
+            case IrBinaryOp.OpKind.Mod:
+                EmitComment($"{binOp.ResultName} = mod");
+                if (isFloatOp)
+                {
+                    throw new NotImplementedException("Modulo operation not supported for floating-point types");
+                }
+                else
+                {
+                    // Integer modulo - use divs.l/divu.l which returns quotient:remainder in d0:d1
+                    LoadOperand(binOp.Left, "d0");
+                    LoadOperand(binOp.Right, "d1");
+
+                    var isSigned = binOp.Type is IrIntType intType && intType.IsSigned;
+                    var divOp = isSigned ? "divsl" : "divul";
+
+                    if (_cpuTarget == "68000")
+                    {
+                        // 68000 doesn't have 32-bit divide with remainder
+                        // We need to implement modulo using: a % b = a - (a / b) * b
+                        Emit("\tmovem.l\td2-d3,-(sp)");
+                        Emit("\tmove.l\td0,d2\t; Save dividend");
+                        Emit("\tmove.l\td1,d3\t; Save divisor");
+
+                        if (isSigned)
+                        {
+                            Emit("\tjsr\t__divs32\t; d0 = d2 / d3");
+                            Emit("\tmove.l\td0,d1");
+                            Emit("\tmove.l\td3,d0");
+                            Emit("\tjsr\t__mul_i32\t; d0 = quotient * divisor");
+                            Emit("\tmove.l\td2,d1");
+                            Emit("\tsub.l\td0,d1\t; remainder = dividend - (quotient * divisor)");
+                            Emit("\tmove.l\td1,d0");
+                        }
+                        else
+                        {
+                            Emit("\tjsr\t__divu\t; d0 = d2 / d3");
+                            Emit("\tmove.l\td0,d1");
+                            Emit("\tmove.l\td3,d0");
+                            Emit("\tjsr\t__mul_u32\t; d0 = quotient * divisor");
+                            Emit("\tmove.l\td2,d1");
+                            Emit("\tsub.l\td0,d1\t; remainder = dividend - (quotient * divisor)");
+                            Emit("\tmove.l\td1,d0");
+                        }
+
+                        Emit("\tmovem.l\t(sp)+,d2-d3");
+                    }
+                    else
+                    {
+                        // 68020+ has divsl.l/divul.l which returns remainder in d1
+                        Emit($"\t{divOp}.l\td1,d1:d0\t; d0 = quotient, d1 = remainder");
+                        Emit("\tmove.l\td1,d0\t; Move remainder to d0");
+                    }
+                }
+                break;
+
             case IrBinaryOp.OpKind.Or:
                 EmitComment($"{binOp.ResultName} = or");
                 LoadOperand(binOp.Left, "d0");
