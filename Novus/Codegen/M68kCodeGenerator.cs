@@ -1556,12 +1556,22 @@ public partial class M68kCodeGenerator
                 }
                 else
                 {
-                    // Simple value - load into d0 and store
-                    LoadOperand(assocValue, "d0");
+                    // Simple value - check if it's a simple enum that needs special handling
+                    if (assocValue is IrEnumValue simpleEnumValue && assocValue.Type is IrEnumType simpleEnumType && simpleEnumType.SizeInBytes <= 4)
+                    {
+                        // Simple enum value (tag only, fits in 4 bytes) - just store the tag
+                        Emit($"\tmove.l\t#{simpleEnumValue.VariantTag},{enumBaseOffset + dataOffset}(a6)\t\t; Store simple enum tag");
+                        dataOffset += 4;
+                    }
+                    else
+                    {
+                        // Regular scalar value - load into d0 and store
+                        LoadOperand(assocValue, "d0");
 
-                    var valueSize = GetSizeSuffix(assocValue.Type);
-                    Emit($"\tmove{valueSize}\td0,{enumBaseOffset + dataOffset}(a6)\t\t; Store associated value {i}");
-                    dataOffset += assocValue.Type.SizeInBytes;
+                        var valueSize = GetSizeSuffix(assocValue.Type);
+                        Emit($"\tmove{valueSize}\td0,{enumBaseOffset + dataOffset}(a6)\t\t; Store associated value {i}");
+                        dataOffset += assocValue.Type.SizeInBytes;
+                    }
                 }
             }
         }
