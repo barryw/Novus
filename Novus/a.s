@@ -469,6 +469,20 @@ _main_68000:
 	; WARNING: 32-bit divide on 68000 is incomplete
 	; Store to a
 	move.l	d0,-8(a6)
+	; %t6 = mod
+	move.l	-8(a6),d0
+	moveq	#7,d1
+	movem.l	d2-d3,-(sp)
+	move.l	d0,d2	; Save dividend
+	move.l	d1,d3	; Save divisor
+	jsr	__divs32	; d0 = d2 / d3
+	move.l	d0,d1
+	move.l	d3,d0
+	jsr	__mul_i32	; d0 = quotient * divisor
+	move.l	d2,d1
+	sub.l	d0,d1	; remainder = dividend - (quotient * divisor)
+	move.l	d1,d0
+	movem.l	(sp)+,d2-d3
 	; Store to a
 	move.l	d0,-8(a6)
 	; var b: u32
@@ -617,6 +631,11 @@ _main_68020:
 	divs.l	d1,d0
 	; Store to a
 	move.l	d0,-8(a6)
+	; %t6 = mod
+	move.l	-8(a6),d0
+	moveq	#7,d1
+	divsl.l	d1,d1:d0	; d0 = quotient, d1 = remainder
+	move.l	d1,d0	; Move remainder to d0
 	; Store to a
 	move.l	d0,-8(a6)
 	; var b: u32
@@ -767,6 +786,11 @@ _main_68060:
 	; WARNING: 68060 has very slow 32-bit divide (>70 cycles); avoid if possible
 	; Store to a
 	move.l	d0,-16(a6)
+	; %t6 = mod
+	move.l	-16(a6),d0
+	moveq	#7,d1
+	divsl.l	d1,d1:d0	; d0 = quotient, d1 = remainder
+	move.l	d1,d0	; Move remainder to d0
 	; Store to a
 	move.l	d0,-16(a6)
 	; var b: u32

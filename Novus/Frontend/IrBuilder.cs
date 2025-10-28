@@ -1938,20 +1938,23 @@ public class IrBuilder : NovusBaseVisitor<object?>
             throw new Exception("Post-increment requires a variable");
         }
 
-        // Save the old value in a temp (using Add with 0 to copy)
-        var oldValueTemp = $"%t{_tempCounter++}";
-        var copyOp = new IrBinaryOp(oldValueTemp, IrBinaryOp.OpKind.Add, operand, new IrConstant(0, operand.Type), operand.Type);
-        _currentBlock!.AddInstruction(copyOp);
+        // Create a local variable to save the old value FIRST
+        var oldValueTemp = $"%postinc_save{_tempCounter++}";
+        var oldValueLocal = new IrLocalVariable(oldValueTemp, operand.Type, false);
+        _currentFunction!.LocalVariables.Add(oldValueLocal);
 
-        // Increment the variable: var = var + 1
+        // Store the old value (current value of operand) to our save variable
+        _currentBlock!.AddInstruction(new IrStore(oldValueTemp, operand));
+
+        // Now increment the variable: var = var + 1
         var incrementTemp = $"%t{_tempCounter++}";
         var addOp = new IrBinaryOp(incrementTemp, IrBinaryOp.OpKind.Add, operand, new IrConstant(1, operand.Type), operand.Type);
         _currentBlock.AddInstruction(addOp);
 
-        // Store back to the variable
+        // Store the new value back to the variable
         _currentBlock.AddInstruction(new IrStore(varName, new IrVariable(incrementTemp, operand.Type)));
 
-        // Return the old value
+        // Return the old value from the saved local
         return new IrVariable(oldValueTemp, operand.Type);
     }
 
@@ -1972,20 +1975,23 @@ public class IrBuilder : NovusBaseVisitor<object?>
             throw new Exception("Post-decrement requires a variable");
         }
 
-        // Save the old value in a temp (using Add with 0 to copy)
-        var oldValueTemp = $"%t{_tempCounter++}";
-        var copyOp = new IrBinaryOp(oldValueTemp, IrBinaryOp.OpKind.Add, operand, new IrConstant(0, operand.Type), operand.Type);
-        _currentBlock!.AddInstruction(copyOp);
+        // Create a local variable to save the old value FIRST
+        var oldValueTemp = $"%postdec_save{_tempCounter++}";
+        var oldValueLocal = new IrLocalVariable(oldValueTemp, operand.Type, false);
+        _currentFunction!.LocalVariables.Add(oldValueLocal);
 
-        // Decrement the variable: var = var - 1
+        // Store the old value (current value of operand) to our save variable
+        _currentBlock!.AddInstruction(new IrStore(oldValueTemp, operand));
+
+        // Now decrement the variable: var = var - 1
         var decrementTemp = $"%t{_tempCounter++}";
         var subOp = new IrBinaryOp(decrementTemp, IrBinaryOp.OpKind.Sub, operand, new IrConstant(1, operand.Type), operand.Type);
         _currentBlock.AddInstruction(subOp);
 
-        // Store back to the variable
+        // Store the new value back to the variable
         _currentBlock.AddInstruction(new IrStore(varName, new IrVariable(decrementTemp, operand.Type)));
 
-        // Return the old value
+        // Return the old value from the saved local
         return new IrVariable(oldValueTemp, operand.Type);
     }
 
