@@ -163,6 +163,40 @@ public class IrEnumValue : IrValue
 }
 
 /// <summary>
+/// Generic associated function reference (e.g., Vec::new before type parameters are known)
+/// This is a placeholder that will be resolved to a concrete function when called
+/// </summary>
+public class IrGenericAssociatedFunction : IrValue
+{
+    public string TypeName { get; set; }
+    public string MethodName { get; set; }
+    public List<string> GenericParameters { get; set; }
+
+    public IrGenericAssociatedFunction(string typeName, string methodName, List<string> genericParameters)
+        : base(IrVoidType.Instance)  // Type will be determined when instantiated
+    {
+        TypeName = typeName;
+        MethodName = methodName;
+        GenericParameters = genericParameters;
+    }
+}
+
+/// <summary>
+/// Function reference (e.g., Vec_i32_new after monomorphization, or non-generic associated function)
+/// Can be called directly
+/// </summary>
+public class IrFunctionRef : IrValue
+{
+    public IrFunction Function { get; set; }
+
+    public IrFunctionRef(IrFunction function)
+        : base(function.ReturnType)
+    {
+        Function = function;
+    }
+}
+
+/// <summary>
 /// Match expression instruction - pattern matching on enum values
 /// </summary>
 public class IrMatch : IrInstruction

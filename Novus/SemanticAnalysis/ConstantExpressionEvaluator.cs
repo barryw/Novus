@@ -152,7 +152,7 @@ public class ConstantExpressionEvaluator : NovusBaseVisitor<int?>
         return null;
     }
 
-    public override int? VisitShiftExpr([NotNull] NovusParser.ShiftExprContext context)
+    public override int? VisitShiftLeftExpr([NotNull] NovusParser.ShiftLeftExprContext context)
     {
         var left = Visit(context.expression(0));
         var right = Visit(context.expression(1));
@@ -160,13 +160,18 @@ public class ConstantExpressionEvaluator : NovusBaseVisitor<int?>
         if (!left.HasValue || !right.HasValue)
             return null;
 
-        var op = context.GetChild(1).GetText();
-        return op switch
-        {
-            "<<" => left.Value << right.Value,
-            ">>" => left.Value >> right.Value,
-            _ => null
-        };
+        return left.Value << right.Value;
+    }
+
+    public override int? VisitShiftRightExpr([NotNull] NovusParser.ShiftRightExprContext context)
+    {
+        var left = Visit(context.expression(0));
+        var right = Visit(context.expression(1));
+
+        if (!left.HasValue || !right.HasValue)
+            return null;
+
+        return left.Value >> right.Value;
     }
 
     public override int? VisitAdditiveExpr([NotNull] NovusParser.AdditiveExprContext context)

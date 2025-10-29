@@ -36,6 +36,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     // Cache for monomorphized generic enums (ensures same instance for same type)
     private readonly Dictionary<string, IrEnumType> _monomorphizedEnums = new();
 
+    // Cache for monomorphized generic structs (ensures same instance for same type)
+    private readonly Dictionary<string, IrStructType> _monomorphizedStructs = new();
+
     // Expected type for bidirectional type checking (flows down from context)
     private IrType? _expectedType = null;
 
@@ -53,8 +56,14 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public bool Analyze(NovusParser.CompilationUnitContext context)
     {
-        // Pass 0a: Implicitly import all of core module
-        ImportModule("std::core", importAll: true);
+        // Pass 0a: Implicitly import all of core module (unless compiling a std library module)
+        // Don't auto-import std::core when compiling std library modules to prevent circular dependencies
+        bool isStdLibraryModule = _filePath.Contains(System.IO.Path.DirectorySeparatorChar + "std" + System.IO.Path.DirectorySeparatorChar);
+
+        if (!isStdLibraryModule)
+        {
+            ImportModule("std::core", importAll: true);
+        }
 
         // Pass 0b: Process explicit imports
         foreach (var importDecl in context.importDeclaration())
@@ -86,16 +95,28 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             RegisterGlobalVariable(globalVarDecl);
         }
 
-        // Fifth pass: collect all function declarations
+        // Fifth pass: collect all impl block methods
+        foreach (var implDecl in context.implDeclaration())
+        {
+            RegisterImpl(implDecl);
+        }
+
+        // Sixth pass: collect all function declarations
         foreach (var funcDecl in context.functionDeclaration())
         {
             RegisterFunction(funcDecl);
         }
 
-        // Sixth pass: analyze function bodies
+        // Seventh pass: analyze function bodies (including methods from impl blocks)
         foreach (var funcDecl in context.functionDeclaration())
         {
             Visit(funcDecl);
+        }
+
+        // Eighth pass: analyze impl block method bodies
+        foreach (var implDecl in context.implDeclaration())
+        {
+            AnalyzeImplBlock(implDecl);
         }
 
         return !_diagnostics.HasErrors;
@@ -265,7 +286,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return;
         }
 
-        // CRITICAL: Process pub use reexports FIRST, before parsing any function signatures
+        // Note: We DON'T process the module's own imports here (transitive dependencies)
+        // Each module handles its own imports when it's compiled as a separate dependency
+        // This prevents duplicate symbols and circular dependencies
+        // Only process reexports, which are explicitly made public by the module
+
+        // CRITICAL: Process pub use reexports, before parsing any function signatures
         // Function signatures may reference reexported types, so those types must be in scope
         foreach (var reexportDecl in moduleContext.reexportDeclaration())
         {
@@ -418,19 +444,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 continue;
             }
 
-            // Check for duplicate enum names
+            // Skip if this enum has already been imported (transitive dependencies)
             if (_enums.ContainsKey(enumName))
             {
-                var enumLocation = SourceLocationHelper.FromToken(enumDecl.IDENTIFIER().Symbol, modulePath, new string[] { });
-                _diagnostics.ReportError(
-                    "E0030",
-                    $"imported enum '{enumName}' conflicts with existing enum",
-                    location,
-                    helpTexts: new List<string>
-                    {
-                        $"use an alias to avoid the conflict: import {enumName} as Another{enumName}"
-                    }
-                );
                 continue;
             }
 
@@ -450,19 +466,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 continue;
             }
 
-            // Check for duplicate constant names
+            // Skip if this constant has already been imported (transitive dependencies)
             if (_constants.ContainsKey(constName))
             {
-                var constLocation = SourceLocationHelper.FromToken(constDecl.IDENTIFIER().Symbol, modulePath, new string[] { });
-                _diagnostics.ReportError(
-                    "E0033",
-                    $"imported constant '{constName}' conflicts with existing constant",
-                    location,
-                    helpTexts: new List<string>
-                    {
-                        $"use an alias to avoid the conflict: import {constName} as Another{constName}"
-                    }
-                );
                 continue;
             }
 
@@ -482,19 +488,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 continue;
             }
 
-            // Check for duplicate struct names
+            // Skip if this struct has already been imported (transitive dependencies)
             if (_structs.ContainsKey(structName))
             {
-                var structLocation = SourceLocationHelper.FromToken(structDecl.IDENTIFIER().Symbol, modulePath, new string[] { });
-                _diagnostics.ReportError(
-                    "E0009",
-                    $"imported struct '{structName}' conflicts with existing struct",
-                    location,
-                    helpTexts: new List<string>
-                    {
-                        $"use an alias to avoid the conflict: import {structName} as Another{structName}"
-                    }
-                );
                 continue;
             }
 
@@ -543,23 +539,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 continue;
             }
 
-            // Check for duplicate function names
+            // Skip if this function has already been imported (transitive dependencies)
+            // This allows the same function to be imported through multiple paths without conflict
             if (_functions.ContainsKey(funcName))
             {
-                var originalLocation = _functions[funcName].Location;
-                _diagnostics.ReportError(
-                    "E0029",
-                    $"imported function '{funcName}' conflicts with existing function",
-                    location,
-                    helpTexts: new List<string>
-                    {
-                        "use an alias to avoid the conflict: import " + funcName + " as Another" + funcName
-                    },
-                    relatedLocations: new List<(SourceLocation, string)>
-                    {
-                        (originalLocation, $"existing definition of '{funcName}' here")
-                    }
-                );
                 continue;
             }
 
@@ -615,6 +598,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             var varLocation = SourceLocationHelper.FromToken(globalVarDecl.IDENTIFIER().Symbol, modulePath, new string[] { });
             _globalVariables[varName] = new VariableSymbol(varName, varType, IsMutable: false, varLocation);
             _importedNames[varName] = moduleNamespace;
+        }
+
+        // Register all impl blocks from the module (methods are always imported with their types)
+        foreach (var implDecl in moduleContext.implDeclaration())
+        {
+            RegisterImpl(implDecl);
         }
     }
 
@@ -800,6 +789,116 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         _functions[name] = new FunctionSymbol(name, returnType, parameters, location, isExtern);
     }
 
+    private void RegisterImpl(NovusParser.ImplDeclarationContext context)
+    {
+        // Handle generic parameters if present (e.g., impl<T> Vec<T>)
+        var genericParams = new List<string>();
+        if (context.genericParams() != null)
+        {
+            foreach (var paramId in context.genericParams().IDENTIFIER())
+            {
+                var paramName = paramId.GetText();
+                genericParams.Add(paramName);
+
+                // Add to generic param scope for method parsing
+                _genericParams[paramName] = new IrGenericType(paramName);
+            }
+        }
+
+        // Get the type being implemented (e.g., Vec, Vec<T>, Point)
+        var implTypeName = context.typeName().IDENTIFIER(0).GetText();
+
+        // Register each method in the impl block
+        foreach (var item in context.implItem())
+        {
+            if (item.functionDeclaration() != null)
+            {
+                RegisterImplMethod(item.functionDeclaration(), implTypeName, genericParams);
+            }
+        }
+
+        // Clear generic params from scope after impl registration
+        foreach (var paramName in genericParams)
+        {
+            _genericParams.Remove(paramName);
+        }
+    }
+
+    private void RegisterImplMethod(NovusParser.FunctionDeclarationContext context, string implTypeName, List<string> genericParams)
+    {
+        var methodName = context.IDENTIFIER().GetText();
+        var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+
+        // Generate mangled name for the method: TypeName::methodName
+        // For generic types, we'll need monomorphization later
+        var mangledName = $"{implTypeName}::{methodName}";
+
+        // Check for duplicate function names
+        if (_functions.ContainsKey(mangledName))
+        {
+            var originalLocation = _functions[mangledName].Location;
+            _diagnostics.ReportError(
+                "E0001",
+                $"method '{methodName}' for type '{implTypeName}' is defined multiple times",
+                location,
+                helpTexts: new List<string>
+                {
+                    $"consider renaming one of the methods or removing the duplicate"
+                },
+                relatedLocations: new List<(SourceLocation, string)>
+                {
+                    (originalLocation, $"previous definition of '{methodName}' here")
+                }
+            );
+            return;
+        }
+
+        var returnType = context.type() != null ? ParseType(context.type()) : IrVoidType.Instance;
+        var parameters = new List<ParameterSymbol>();
+
+        // Parse parameters (including self parameter if present)
+        if (context.parameterList() != null)
+        {
+            // Check for self parameter
+            if (context.parameterList().selfParameter() != null)
+            {
+                var selfParam = context.parameterList().selfParameter();
+                var selfLocation = SourceLocationHelper.FromToken(selfParam.KW_SELF().Symbol, _filePath, _sourceLines);
+
+                // Determine self type based on parameter form
+                IrType selfType;
+                if (selfParam.GetText().StartsWith("&mut"))
+                {
+                    // &mut self
+                    selfType = new IrPointerType(_structs.ContainsKey(implTypeName) ? _structs[implTypeName] : new IrGenericType(implTypeName));
+                }
+                else if (selfParam.GetText().StartsWith("&"))
+                {
+                    // &self (immutable reference - treat as pointer for now)
+                    selfType = new IrPointerType(_structs.ContainsKey(implTypeName) ? _structs[implTypeName] : new IrGenericType(implTypeName));
+                }
+                else
+                {
+                    // self (by value)
+                    selfType = _structs.ContainsKey(implTypeName) ? _structs[implTypeName] : new IrGenericType(implTypeName);
+                }
+
+                parameters.Add(new ParameterSymbol("self", selfType, selfLocation));
+            }
+
+            // Parse regular parameters
+            foreach (var paramCtx in context.parameterList().parameter())
+            {
+                var paramName = paramCtx.IDENTIFIER().GetText();
+                var paramType = ParseType(paramCtx.type());
+                var paramLocation = SourceLocationHelper.FromToken(paramCtx.IDENTIFIER().Symbol, _filePath, _sourceLines);
+                parameters.Add(new ParameterSymbol(paramName, paramType, paramLocation));
+            }
+        }
+
+        _functions[mangledName] = new FunctionSymbol(mangledName, returnType, parameters, location, false);
+    }
+
     private void RegisterStruct(NovusParser.StructDeclarationContext context)
     {
         var name = context.IDENTIFIER().GetText();
@@ -820,6 +919,20 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return;
         }
 
+        // Handle generic parameters if present
+        var genericParams = new List<string>();
+        if (context.genericParams() != null)
+        {
+            foreach (var paramId in context.genericParams().IDENTIFIER())
+            {
+                var paramName = paramId.GetText();
+                genericParams.Add(paramName);
+
+                // Add to generic param scope for field parsing
+                _genericParams[paramName] = new IrGenericType(paramName);
+            }
+        }
+
         // Parse struct fields
         var fields = new List<IrStructField>();
         foreach (var fieldCtx in context.structField())
@@ -829,7 +942,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             fields.Add(new IrStructField(fieldName, fieldType));
         }
 
-        var structType = new IrStructType(name, fields);
+        // Clear generic params from scope after struct registration
+        foreach (var paramName in genericParams)
+        {
+            _genericParams.Remove(paramName);
+        }
+
+        var structType = new IrStructType(name, fields, genericParams);
 
         // Force offset calculation by accessing SizeInBytes
         _ = structType.SizeInBytes;
@@ -905,6 +1024,75 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         // Clear generic param scope
         _genericParams.Clear();
+    }
+
+    private void AnalyzeImplBlock(NovusParser.ImplDeclarationContext context)
+    {
+        // Restore generic parameters to scope for method body analysis
+        var genericParams = new List<string>();
+        if (context.genericParams() != null)
+        {
+            foreach (var paramId in context.genericParams().IDENTIFIER())
+            {
+                var paramName = paramId.GetText();
+                genericParams.Add(paramName);
+                _genericParams[paramName] = new IrGenericType(paramName);
+            }
+        }
+
+        // Get the type being implemented
+        var implTypeName = context.typeName().IDENTIFIER(0).GetText();
+
+        // Analyze each method
+        foreach (var item in context.implItem())
+        {
+            if (item.functionDeclaration() != null)
+            {
+                AnalyzeImplMethod(item.functionDeclaration(), implTypeName);
+            }
+        }
+
+        // Clear generic params after analysis
+        foreach (var paramName in genericParams)
+        {
+            _genericParams.Remove(paramName);
+        }
+    }
+
+    private void AnalyzeImplMethod(NovusParser.FunctionDeclarationContext context, string implTypeName)
+    {
+        var methodName = context.IDENTIFIER().GetText();
+        var mangledName = $"{implTypeName}::{methodName}";
+
+        // Look up the method using the mangled name
+        if (!_functions.ContainsKey(mangledName))
+        {
+            // This shouldn't happen if RegisterImpl worked correctly
+            var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0051",
+                $"internal error: method '{methodName}' not found in function table",
+                location
+            );
+            return;
+        }
+
+        _currentFunction = _functions[mangledName];
+        _variables.Clear();
+
+        // Add parameters to symbol table (including self if present)
+        foreach (var param in _currentFunction.Parameters)
+        {
+            _variables[param.Name] = new VariableSymbol(param.Name, param.Type, false, param.Location);
+        }
+
+        // Analyze function body with unreachable code detection
+        if (context.block() != null)
+        {
+            AnalyzeBlock(context.block());
+        }
+
+        _currentFunction = null;
     }
 
     public override IrType? VisitFunctionDeclaration([NotNull] NovusParser.FunctionDeclarationContext context)
@@ -1196,9 +1384,27 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public override IrType? VisitAssignmentStatement([NotNull] NovusParser.AssignmentStatementContext context)
     {
+        // Get the identifier or 'self' keyword
         var identifier = context.IDENTIFIER();
-        var name = identifier.GetText();
-        var location = SourceLocationHelper.FromToken(identifier.Symbol, _filePath, _sourceLines);
+        var selfKeyword = context.KW_SELF();
+
+        string name;
+        SourceLocation location;
+
+        if (identifier != null)
+        {
+            name = identifier.GetText();
+            location = SourceLocationHelper.FromToken(identifier.Symbol, _filePath, _sourceLines);
+        }
+        else if (selfKeyword != null)
+        {
+            name = "self";
+            location = SourceLocationHelper.FromToken(selfKeyword.Symbol, _filePath, _sourceLines);
+        }
+        else
+        {
+            throw new Exception("Assignment statement must have either IDENTIFIER or KW_SELF");
+        }
 
         // Detect which kind of assignment this is
         string? op = null;
@@ -1533,13 +1739,29 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         if (leftType == null || rightType == null)
             return null;
 
+        var op = context.GetChild(1).GetText();
+
+        // Handle pointer arithmetic: ptr + offset or ptr - offset
+        if (leftType is IrPointerType && IsNumericType(rightType))
+        {
+            // ptr + offset or ptr - offset => ptr
+            return leftType;
+        }
+
+        // Handle pointer difference: ptr - ptr => integer
+        if (op == "-" && leftType is IrPointerType && rightType is IrPointerType)
+        {
+            // ptr - ptr => u32 (byte difference)
+            return new IrIntType(32, false);
+        }
+
         // Check that both operands are numeric types
         if (!IsNumericType(leftType))
         {
             var location = SourceLocationHelper.FromContext(context.expression(0), _filePath, _sourceLines);
             _diagnostics.ReportError(
                 "E0004",
-                $"cannot apply operator '{context.GetChild(1).GetText()}' to non-numeric type '{TypeToString(leftType)}'",
+                $"cannot apply operator '{op}' to non-numeric type '{TypeToString(leftType)}'",
                 location
             );
             return null;
@@ -1550,7 +1772,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             var location = SourceLocationHelper.FromContext(context.expression(1), _filePath, _sourceLines);
             _diagnostics.ReportError(
                 "E0004",
-                $"cannot apply operator '{context.GetChild(1).GetText()}' to non-numeric type '{TypeToString(rightType)}'",
+                $"cannot apply operator '{op}' to non-numeric type '{TypeToString(rightType)}'",
                 location
             );
             return null;
@@ -1575,7 +1797,30 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return leftType; // Use left operand's type as result type
     }
 
-    public override IrType? VisitShiftExpr([NotNull] NovusParser.ShiftExprContext context)
+    public override IrType? VisitShiftLeftExpr([NotNull] NovusParser.ShiftLeftExprContext context)
+    {
+        var leftType = Visit(context.expression(0));
+        var rightType = Visit(context.expression(1));
+
+        if (leftType == null || rightType == null)
+            return null;
+
+        // Both operands must be numeric types
+        if (!IsNumericType(leftType) || !IsNumericType(rightType))
+        {
+            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0004",
+                $"shift operators require numeric types",
+                location
+            );
+            return null;
+        }
+
+        return leftType;
+    }
+
+    public override IrType? VisitShiftRightExpr([NotNull] NovusParser.ShiftRightExprContext context)
     {
         var leftType = Visit(context.expression(0));
         var rightType = Visit(context.expression(1));
@@ -1727,9 +1972,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return targetType;
 
         // Check if cast is valid
-        // Allow: numeric -> numeric, pointer -> integer
+        // Allow: numeric -> numeric, pointer -> integer, integer -> pointer
         bool isValidCast = (IsNumericType(targetType) && IsNumericType(exprType)) ||
-                           (IsNumericType(targetType) && exprType is IrPointerType);
+                           (IsNumericType(targetType) && exprType is IrPointerType) ||
+                           (targetType is IrPointerType && IsNumericType(exprType));
 
         if (!isValidCast)
         {
@@ -2143,18 +2389,28 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Get the function name from the expression (should be an identifier or path expression)
         var funcExpr = context.expression();
 
-        // Handle OLD path expressions (enum constructors like Option::Some) - kept for backwards compatibility
-        // NOTE: This code path is no longer used after grammar changes, but keeping it for reference
+        // Handle method calls (e.g., v.len())
+        // Method calls are CallExpr with MemberAccessExpr as the function expression
+        if (funcExpr is NovusParser.MemberAccessExprContext memberAccessCtx)
+        {
+            return HandleMethodCall(context, memberAccessCtx);
+        }
+
+        // Handle path expressions (enum constructors or associated functions)
         if (funcExpr is NovusParser.PathExprContext pathCtx)
         {
-            // Visit the path expression to get the enum type
-            var enumType = Visit(pathCtx);
+            // Visit the path expression to get the type
+            var resultType = Visit(pathCtx);
 
-            if (enumType == null || enumType is not IrEnumType)
+            if (resultType == null)
             {
                 // Error already reported by VisitPathExpr
                 return null;
             }
+
+            // Handle enum constructors
+            if (resultType is IrEnumType enumType)
+            {
 
             // Validate arguments match the variant's associated data
             var variantName = pathCtx.IDENTIFIER().GetText();
@@ -2332,6 +2588,22 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
 
             return enumType;
+            }
+            else
+            {
+                // Handle associated function calls (e.g., Vec::new())
+                // resultType is the function's return type
+                // If the return type is generic and we have an expected type, use the expected type
+                if (_expectedType != null && TypesCompatible(resultType, _expectedType))
+                {
+                    // Return the expected type for generic inference
+                    // e.g., Vec::new() with expected type Vec<i32> returns Vec<i32>
+                    return _expectedType;
+                }
+
+                // No expected type or not compatible - return the function's declared return type
+                return resultType;
+            }
         }
 
         // The function name should be in a primary expression (identifier)
@@ -2699,6 +2971,182 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return function.ReturnType;
     }
 
+    /// <summary>
+    /// Handle method calls (e.g., v.len())
+    /// Desugars: v.len() → Type::len(&v)
+    /// </summary>
+    private IrType? HandleMethodCall(NovusParser.CallExprContext callCtx, NovusParser.MemberAccessExprContext memberAccessCtx)
+    {
+        // Get the receiver (the thing before the dot)
+        var receiverExpr = memberAccessCtx.expression();
+        var methodName = memberAccessCtx.IDENTIFIER().GetText();
+
+        // Evaluate the receiver to get its type
+        var receiverType = Visit(receiverExpr);
+        if (receiverType == null)
+        {
+            return null;
+        }
+
+        // Get the base type name (struct/enum name)
+        string typeName;
+        if (receiverType is IrStructType structType)
+        {
+            typeName = structType.Name;
+        }
+        else if (receiverType is IrEnumType enumType)
+        {
+            typeName = enumType.EnumName;
+        }
+        else if (receiverType is IrPointerType ptrType)
+        {
+            // Auto-dereference pointers
+            if (ptrType.PointeeType is IrStructType pointeeStruct)
+            {
+                typeName = pointeeStruct.Name;
+            }
+            else if (ptrType.PointeeType is IrEnumType pointeeEnum)
+            {
+                typeName = pointeeEnum.EnumName;
+            }
+            else
+            {
+                var location = SourceLocationHelper.FromContext(memberAccessCtx, _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0052",
+                    $"cannot call method on type '{receiverType.Name}'",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "methods can only be called on struct or enum types"
+                    }
+                );
+                return null;
+            }
+        }
+        else
+        {
+            var location = SourceLocationHelper.FromContext(memberAccessCtx, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0052",
+                $"cannot call method on type '{receiverType.Name}'",
+                location,
+                helpTexts: new List<string>
+                {
+                    "methods can only be called on struct or enum types"
+                }
+            );
+            return null;
+        }
+
+        // Look up the method using the mangled name: Type::method
+        var mangledMethodName = $"{typeName}::{methodName}";
+
+        if (!_functions.ContainsKey(mangledMethodName))
+        {
+            var location = SourceLocationHelper.FromContext(memberAccessCtx, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0053",
+                $"no method named '{methodName}' found for type '{typeName}'",
+                location,
+                helpTexts: new List<string>
+                {
+                    $"consider implementing this method in an impl block: impl {typeName} {{ fn {methodName}(...) {{ ... }} }}"
+                }
+            );
+            return null;
+        }
+
+        var method = _functions[mangledMethodName];
+
+        // Build type substitution map for generic methods
+        var typeSubstitutions = new Dictionary<string, IrType>();
+        if (receiverType is IrStructType receiverStruct && receiverStruct.CacheKey != null)
+        {
+            // Receiver is a monomorphized struct (e.g., Vec<i32>)
+            // Get the base generic struct to find generic parameter names
+            var baseStruct = _structs[receiverStruct.StructName];
+            if (baseStruct.GenericParameters.Count > 0)
+            {
+                // Extract type arguments from the monomorphized struct fields
+                // For now, we'll match them based on field positions
+                for (int i = 0; i < baseStruct.GenericParameters.Count && i < baseStruct.Fields.Count; i++)
+                {
+                    var genericParam = baseStruct.GenericParameters[i];
+                    var baseFieldType = baseStruct.Fields[i].Type;
+                    var monomorphizedFieldType = receiverStruct.Fields[i].Type;
+
+                    // If base field is generic type T, map T to the monomorphized type
+                    if (baseFieldType is IrGenericType gt)
+                    {
+                        typeSubstitutions[gt.ParameterName] = monomorphizedFieldType;
+                    }
+                    // If base field is *T, extract T from monomorphized *i32
+                    else if (baseFieldType is IrPointerType basePtrType && basePtrType.PointeeType is IrGenericType ptrGt)
+                    {
+                        if (monomorphizedFieldType is IrPointerType monoPtrType)
+                        {
+                            typeSubstitutions[ptrGt.ParameterName] = monoPtrType.PointeeType;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check if method has a self parameter
+        bool hasSelfParam = method.Parameters.Count > 0 && method.Parameters[0].Name == "self";
+
+        // Count the arguments (excluding self, which we'll add)
+        var providedArgCount = callCtx.argumentList()?.expression().Length ?? 0;
+        var expectedArgCount = hasSelfParam ? method.Parameters.Count - 1 : method.Parameters.Count;
+
+        if (providedArgCount != expectedArgCount)
+        {
+            var location = SourceLocationHelper.FromContext(callCtx, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0014",
+                $"method '{methodName}' expects {expectedArgCount} argument(s), but {providedArgCount} were provided",
+                location
+            );
+            return method.ReturnType;
+        }
+
+        // Validate argument types (skip self parameter)
+        if (callCtx.argumentList() != null)
+        {
+            var arguments = callCtx.argumentList().expression();
+            var paramStartIndex = hasSelfParam ? 1 : 0;
+
+            for (int i = 0; i < arguments.Length; i++)
+            {
+                var argType = Visit(arguments[i]);
+                var paramType = method.Parameters[paramStartIndex + i].Type;
+
+                // Substitute generic types in parameter type
+                if (paramType is IrGenericType genericParam && typeSubstitutions.ContainsKey(genericParam.ParameterName))
+                {
+                    paramType = typeSubstitutions[genericParam.ParameterName];
+                }
+
+                if (argType != null && !TypesCompatible(paramType, argType))
+                {
+                    var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
+                    _diagnostics.ReportError(
+                        "E0015",
+                        $"mismatched types in method call",
+                        location,
+                        helpTexts: new List<string>
+                        {
+                            $"argument {i + 1} ('{method.Parameters[paramStartIndex + i].Name}'): expected '{TypeToString(paramType)}', found '{TypeToString(argType)}'"
+                        }
+                    );
+                }
+            }
+        }
+
+        return method.ReturnType;
+    }
+
     public override IrType? VisitBoolLiteral([NotNull] NovusParser.BoolLiteralContext context)
     {
         return IrBoolType.Instance;
@@ -2708,6 +3156,26 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     {
         // String literals have type String (fat pointer with {ptr, len})
         return IrStringType.Instance;
+    }
+
+    public override IrType? VisitSizeofExpr([NotNull] NovusParser.SizeofExprContext context)
+    {
+        // @sizeof(Type) returns a u32 representing the size in bytes
+        var typeCtx = context.type();
+        var targetType = ParseType(typeCtx);
+
+        if (targetType == null)
+        {
+            var location = new SourceLocation(_filePath,
+                typeCtx.Start.Line, typeCtx.Start.Column, 0, "");
+            _diagnostics.ReportError("E0054",
+                $"could not determine type for @sizeof",
+                location);
+            return IrIntType.U32;
+        }
+
+        // The result is always u32
+        return IrIntType.U32;
     }
 
     public override IrType? VisitFloatLiteral([NotNull] NovusParser.FloatLiteralContext context)
@@ -2749,6 +3217,27 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     public override IrType? VisitHexLiteral([NotNull] NovusParser.HexLiteralContext context)
     {
         return ParseAndValidateHexLiteral(context, context.HEX_LITERAL().GetText());
+    }
+
+    public override IrType? VisitSelfExpr([NotNull] NovusParser.SelfExprContext context)
+    {
+        // Look up 'self' in the variable table
+        if (_variables.ContainsKey("self"))
+        {
+            return _variables["self"].Type;
+        }
+
+        var location = SourceLocationHelper.FromToken(context.KW_SELF().Symbol, _filePath, _sourceLines);
+        _diagnostics.ReportError(
+            "E0050",
+            "'self' is only valid within method bodies",
+            location,
+            helpTexts: new List<string>
+            {
+                "'self' can only be used inside methods defined in impl blocks"
+            }
+        );
+        return null;
     }
 
     public override IrType? VisitIdentifierExpr([NotNull] NovusParser.IdentifierExprContext context)
@@ -2835,6 +3324,21 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         var memberName = context.IDENTIFIER().GetText();
+
+        // Auto-dereference pointers (like Rust/Swift)
+        // This allows `&self` to work like `self` for member access
+        if (baseType is IrPointerType ptrType)
+        {
+            baseType = ptrType.PointeeType;
+        }
+        else if (baseType is IrReferenceType refType)
+        {
+            baseType = refType.PointeeType;
+        }
+        else if (baseType is IrMutReferenceType mutRefType)
+        {
+            baseType = mutRefType.PointeeType;
+        }
 
         // Handle String type member access (.ptr and .len)
         if (baseType is IrStringType)
@@ -3292,70 +3796,122 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public override IrType? VisitPathExpr([NotNull] NovusParser.PathExprContext context)
     {
-        // Handle enum variant path expressions like Option::Some, Result::Ok
+        // Handle path expressions: Type::name
+        // This can be:
+        // 1. Enum variants: Option::Some, Result::Ok
+        // 2. Associated functions (static methods): Vec::new, Vec::with_capacity
         var baseExpr = context.expression();
-        var variantName = context.IDENTIFIER().GetText();
+        var memberName = context.IDENTIFIER().GetText();
 
         // The base expression should be a primary expression containing an identifier
-        string? enumName = null;
+        string? typeName = null;
         if (baseExpr is NovusParser.PrimaryExprContext primaryCtx &&
             primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext identCtx)
         {
-            enumName = identCtx.identifier().GetText();
+            typeName = identCtx.identifier().GetText();
         }
 
-        if (enumName == null)
+        if (typeName == null)
         {
             var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
             _diagnostics.ReportError(
                 "E0032",
-                "path expression base must be an enum type identifier",
+                "path expression base must be a type identifier",
                 location,
                 helpTexts: new List<string>
                 {
-                    "expected format: EnumName::VariantName"
+                    "expected format: TypeName::member"
                 }
             );
             return null;
         }
 
-        // Look up the enum type
-        if (!_enums.ContainsKey(enumName))
+        // Try enum variant first
+        if (_enums.ContainsKey(typeName))
         {
-            var location = SourceLocationHelper.FromContext(baseExpr, _filePath, _sourceLines);
+            var enumType = _enums[typeName];
+
+            // Check if the variant exists
+            var variant = enumType.GetVariant(memberName);
+            if (variant == null)
+            {
+                var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0034",
+                    $"enum '{typeName}' has no variant '{memberName}'",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        $"available variants: {string.Join(", ", enumType.Variants.Select(v => v.Name))}"
+                    }
+                );
+                return null;
+            }
+
+            // Return the enum type - this will be used when constructing the variant
+            return enumType;
+        }
+
+        // Try associated function (struct method without self parameter)
+        var mangledName = $"{typeName}::{memberName}";
+
+        if (_functions.ContainsKey(mangledName))
+        {
+            var funcSymbol = _functions[mangledName];
+
+            // Check if this is an associated function (no self parameter)
+            var hasSelf = funcSymbol.Parameters.Count > 0 && funcSymbol.Parameters[0].Name == "self";
+
+            if (hasSelf)
+            {
+                var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0035",
+                    $"cannot call method '{memberName}' of type '{typeName}' without an instance (it requires 'self')",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "use an instance: let v = ...; v.method()",
+                        "or create an instance first"
+                    }
+                );
+                return null;
+            }
+
+            // Return the function's return type
+            // This is a special marker that indicates "this is an associated function reference"
+            return funcSymbol.ReturnType;
+        }
+
+        // Type not found or member doesn't exist
+        var errorLocation = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+        if (_structs.ContainsKey(typeName))
+        {
+            _diagnostics.ReportError(
+                "E0036",
+                $"type '{typeName}' has no associated function or method '{memberName}'",
+                errorLocation,
+                helpTexts: new List<string>
+                {
+                    "check the spelling of the function name",
+                    "make sure the function is marked 'pub' if imported"
+                }
+            );
+        }
+        else
+        {
             _diagnostics.ReportError(
                 "E0033",
-                $"'{enumName}' is not an enum type",
-                location,
+                $"type '{typeName}' not found",
+                errorLocation,
                 helpTexts: new List<string>
                 {
-                    "path expressions can only be used with enum types"
+                    "path expressions require a valid type name",
+                    "expected an enum, struct, or other type"
                 }
             );
-            return null;
         }
-
-        var enumType = _enums[enumName];
-
-        // Check if the variant exists
-        var variant = enumType.GetVariant(variantName);
-        if (variant == null)
-        {
-            var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
-            _diagnostics.ReportError(
-                "E0034",
-                $"enum '{enumName}' has no variant '{variantName}'",
-                location,
-                helpTexts: new List<string>
-                {
-                    $"available variants: {string.Join(", ", enumType.Variants.Select(v => v.Name))}"
-                }
-            );
-            return null;
-        }
-
-        // Return the enum type - this will be used when constructing the variant
-        return enumType;
+        return null;
     }
 
     public override IrType? VisitArrayLiteral([NotNull] NovusParser.ArrayLiteralContext context)
@@ -3400,7 +3956,18 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return null;
         }
 
-        var structType = _structs[structName];
+        // Use expected type for bidirectional type checking if it's a monomorphized version of this struct
+        IrStructType structType;
+        if (_expectedType is IrStructType expectedStruct && expectedStruct.StructName == structName)
+        {
+            // Use the expected monomorphized type (e.g., Vec<i32>)
+            structType = expectedStruct;
+        }
+        else
+        {
+            // Use the base generic type (e.g., Vec<T>)
+            structType = _structs[structName];
+        }
         var initializedFields = new HashSet<string>();
 
         // Validate field initializers
@@ -3703,7 +4270,82 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Check if it's a struct type
         if (_structs.ContainsKey(typeName))
         {
-            return _structs[typeName];
+            var structType = _structs[typeName];
+
+            // Handle generic instantiation (e.g., Vec<i32>)
+            if (context.typeList() != null)
+            {
+                var typeArgs = new List<IrType>();
+                foreach (var typeCtx in context.typeList().type())
+                {
+                    typeArgs.Add(ParseType(typeCtx));
+                }
+
+                // Validate number of type arguments matches generic parameters
+                if (typeArgs.Count != structType.GenericParameters.Count)
+                {
+                    var loc = SourceLocationHelper.FromToken(context.typeName().Start, _filePath, _sourceLines);
+                    _diagnostics.ReportError(
+                        "E0031",
+                        $"struct '{typeName}' expects {structType.GenericParameters.Count} type arguments but got {typeArgs.Count}",
+                        loc
+                    );
+                    return IrIntType.I32;
+                }
+
+                // If any type argument is still generic (IrGenericType), return the original generic struct
+                // This happens when parsing types in generic context (e.g., Vec<T> in fn new() -> Vec<T>)
+                if (typeArgs.Any(t => t is IrGenericType))
+                {
+                    return structType;
+                }
+
+                // Create cache key: StructName<TypeArg1CacheKey,TypeArg2CacheKey,...>
+                var cacheKey = $"{structType.StructName}<{string.Join(",", typeArgs.Select(t => GetTypeCacheKey(t)))}>";
+
+                // Check cache first
+                if (_monomorphizedStructs.ContainsKey(cacheKey))
+                {
+                    return _monomorphizedStructs[cacheKey];
+                }
+
+                // Create monomorphized struct with concrete types
+                var typeSubstitutions = new Dictionary<string, IrType>();
+                for (int i = 0; i < structType.GenericParameters.Count; i++)
+                {
+                    typeSubstitutions[structType.GenericParameters[i]] = typeArgs[i];
+                }
+
+                // Create monomorphized fields
+                var monomorphizedFields = new List<IrStructField>();
+                foreach (var origField in structType.Fields)
+                {
+                    var fieldType = origField.Type;
+
+                    // Substitute generic types in field
+                    if (fieldType is IrGenericType gt && typeSubstitutions.ContainsKey(gt.ParameterName))
+                    {
+                        fieldType = typeSubstitutions[gt.ParameterName];
+                    }
+                    // Handle nested generic types (e.g., *T where T is generic)
+                    else if (fieldType is IrPointerType ptrType && ptrType.PointeeType is IrGenericType ptrGt && typeSubstitutions.ContainsKey(ptrGt.ParameterName))
+                    {
+                        fieldType = _typeInterner.GetPointerType(typeSubstitutions[ptrGt.ParameterName]);
+                    }
+
+                    monomorphizedFields.Add(new IrStructField(origField.Name, fieldType));
+                }
+
+                // Create new struct type with concrete types (no generic parameters)
+                var monomorphizedStruct = new IrStructType(structType.StructName, monomorphizedFields, null, cacheKey);
+
+                // Cache it for future use
+                _monomorphizedStructs[cacheKey] = monomorphizedStruct;
+
+                return monomorphizedStruct;
+            }
+
+            return structType;
         }
 
         // Check if it's an enum type
@@ -3730,6 +4372,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                         loc
                     );
                     return IrIntType.I32;
+                }
+
+                // If any type argument is still generic (IrGenericType), return the original generic enum
+                // This happens when parsing types in generic context (e.g., Option<T> in a generic function)
+                if (typeArgs.Any(t => t is IrGenericType))
+                {
+                    return enumType;
                 }
 
                 // Create cache key: EnumName<TypeArg1CacheKey,TypeArg2CacheKey,...>
@@ -3990,6 +4639,35 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         if (expected is IrIntType && actual is IrStringType)
         {
             return true;
+        }
+
+        // Struct types - allow generic to concrete matching (e.g., Vec<T> can match Vec<i32>)
+        if (expected is IrStructType expectedStruct && actual is IrStructType actualStruct)
+        {
+            // Same struct name
+            if (expectedStruct.StructName != actualStruct.StructName)
+            {
+                return false;
+            }
+
+            // If actual type is generic (has generic parameters), allow matching with concrete expected type
+            // This handles the case where Vec::new() returns Vec<T>, but we expect Vec<i32>
+            if (actualStruct.GenericParameters.Count > 0 && expectedStruct.GenericParameters.Count == 0)
+            {
+                // Actual is generic (Vec<T>), expected is concrete (Vec<i32>) - compatible!
+                return true;
+            }
+
+            // If expected type is generic and actual is concrete, also allow
+            // This handles the reverse case (less common but possible)
+            if (expectedStruct.GenericParameters.Count > 0 && actualStruct.GenericParameters.Count == 0)
+            {
+                // Expected is generic (Vec<T>), actual is concrete (Vec<i32>) - compatible!
+                return true;
+            }
+
+            // Both are concrete or both are generic - must match exactly (handled by Equals above)
+            return false;
         }
 
         return false;

@@ -100,44 +100,6 @@ public partial class M68kCodeGenerator
                function.BasicBlocks.Any(bb => bb.Instructions.Any(IsFloatInstruction));
     }
 
-    private bool IsFloatInstruction(IrInstruction instr)
-    {
-        return instr switch
-        {
-            IrLocalDecl decl => decl.Type is IrFloatType,
-            IrBinaryOp binOp => binOp.Type is IrFloatType,
-            IrReturn ret => ret.Value?.Type is IrFloatType,
-            _ => false
-        };
-    }
-
-    // Check if a function benefits from CPU-specific optimizations
-    // Functions with multiply, divide, or shift operations benefit from:
-    // - 68060 shift/add optimizations for small constant multiplies
-    // - Division by power-of-2 optimization
-    // - Barrel shifter on 68020+
-    private bool UsesCpuOptimizations(IrFunction function)
-    {
-        return function.BasicBlocks.Any(bb => bb.Instructions.Any(IsCpuOptimizableInstruction));
-    }
-
-    private bool IsCpuOptimizableInstruction(IrInstruction instr)
-    {
-        return instr switch
-        {
-            IrBinaryOp binOp => binOp.Operation switch
-            {
-                IrBinaryOp.OpKind.Mul => true,   // Multiply benefits from 68060 optimization
-                IrBinaryOp.OpKind.Div => true,   // Divide benefits from power-of-2 optimization
-                IrBinaryOp.OpKind.Shl => true,   // Shifts benefit from barrel shifter
-                IrBinaryOp.OpKind.Shr => true,   // Shifts benefit from barrel shifter
-                _ => false
-            },
-            IrIndexAccess _ => true,  // Array indexing benefits from barrel shifter
-            IrIndexStore _ => true,   // Array indexing benefits from barrel shifter
-            _ => false
-        };
-    }
 
     public string Generate()
     {
@@ -433,305 +395,6 @@ public partial class M68kCodeGenerator
     /// Generate a function with a specific CPU target and suffix
     /// Used for CPU fat binaries to generate 68000/68020/68060 versions
     /// </summary>
-    private void GenerateFunctionWithCpuTarget(IrFunction function, string cpuTarget, string suffix)
-    {
-        // Save current CPU features
-        var savedCpuFeatures = _cpuFeatures;
-        var savedCpuTarget = _cpuTarget;
-
-        // Temporarily switch to target CPU
-        var tempCpuTarget = cpuTarget;
-        var tempCpuFeatures = new M68kCpuFeatures(cpuTarget);
-
-        // Use reflection to update the readonly fields (hack, but necessary for fat binaries)
-        var cpuTargetField = typeof(M68kCodeGenerator).GetField("_cpuTarget",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        var cpuFeaturesField = typeof(M68kCodeGenerator).GetField("_cpuFeatures",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
-        cpuTargetField?.SetValue(this, tempCpuTarget);
-        cpuFeaturesField?.SetValue(this, tempCpuFeatures);
-
-        // Generate the function with the new CPU target
-        GenerateFunction(function, suffix);
-
-        // Restore original CPU features
-        cpuTargetField?.SetValue(this, savedCpuTarget);
-        cpuFeaturesField?.SetValue(this, savedCpuFeatures);
-    }
-
-    private void GenerateFunction(IrFunction function, string suffix = "")
-    {
-        _currentFunction = function;
-        _currentFunctionHasPrologue = false;
-        _currentFunctionSuffix = suffix; // Track suffix for label generation
-
-        // Set register allocation for this function (if available)
-        _currentFunctionRegAlloc = _registerAllocations.GetValueOrDefault(function.Name);
-
-        // Handle extern functions - just emit xref
-        // Also treat functions with no body (imported declarations) as extern
-        if (function.IsExtern || function.BasicBlocks.Count == 0)
-        {
-            EmitComment($"External function: {function.Name}");
-            Emit($"\txref\t_{function.Name}");
-            Emit("");
-            return;
-        }
-
-        // Determine if we should use FPU instructions:
-        // - In fat binary mode: only for "_fpu" suffix
-        // - In explicit FPU mode (68881, 68040): always
-        // - In soft mode: never
-        _generatingFpuVersion = suffix == "_fpu" || (_fpuMode != "soft" && !IsFatBinary);
-
-        _localVariableOffsets.Clear();    // Clear local variable offsets for new function
-        _savedTemps.Clear();              // Clear saved temps for new function
-        _savedTempSizes.Clear();          // Clear saved temp sizes for new function
-        _tempStackOffset = 0;             // Reset temp stack offset
-        _structMemberLocations.Clear();   // Clear struct member locations for new function
-        _labelStackDepths.Clear();        // Clear label stack depths for new function
-        _currentLabel = null;              // Reset current label
-
-        var functionLabel = $"_{function.Name}{suffix}";
-        EmitComment($"Function: {function.Name}{suffix}");
-
-        // Export symbol only if function is public (using xdef for vasm Motorola syntax)
-        // For fat binaries, only export the base name (dispatch stub will be generated)
-        if (function.IsPublic && suffix == "")
-        {
-            // Note: VBCC's startup code provides ___main, which calls _main
-            // We only need to export _main, not ___main
-            Emit($"\txdef\t_{function.Name}");
-        }
-        Emit($"{functionLabel}:");
-
-        // Function prologue
-        if (NeedsPrologue(function))
-        {
-            EmitPrologue(function);
-            _currentFunctionHasPrologue = true;
-        }
-
-        // For main function in fat binary mode, initialize CPU detection at startup
-        if (function.Name == "main" && IsCpuFatBinary && suffix == "")
-        {
-            EmitComment("Initialize runtime: detect CPU type once at startup");
-            Emit("\tbsr\t__detect_cpu");
-            Emit("");
-        }
-
-        // Generate code for basic blocks
-        foreach (var block in function.BasicBlocks)
-        {
-            GenerateBasicBlock(block);
-        }
-
-        Emit("");
-    }
-
-    private bool NeedsPrologue(IrFunction function)
-    {
-        // For this simple proof-of-concept, we'll use minimal prologues
-        // Real implementation would analyze the function to determine this
-        return function.Parameters.Count > 0 || HasLocalVariables(function);
-    }
-
-    private bool HasLocalVariables(IrFunction function)
-    {
-        return function.LocalVariables.Count > 0;
-    }
-
-    private void EmitPrologue(IrFunction function)
-    {
-        // Track parameter locations (positive offsets from a6)
-        // Parameters start at 8(a6) after return address and saved a6
-        // BUT if return type > 8 bytes, caller allocates return space on stack,
-        // so parameters are offset by sizeof(return_type)
-        int paramOffset = 8;
-        if (function.ReturnType is IrEnumType enumType && enumType.SizeInBytes > 8)
-        {
-            paramOffset += enumType.SizeInBytes; // Account for hidden return pointer space
-        }
-
-        foreach (var param in function.Parameters)
-        {
-            _localVariableOffsets[param.Name] = paramOffset;
-
-            // String and other struct parameters are passed as full structs on stack
-            // Regular parameters (i32, pointers, etc.) are 4 bytes
-            int paramSize = param.Type.SizeInBytes;
-            paramOffset += paramSize;
-        }
-
-        // Calculate stack space needed for local variables
-        // Use CPU-specific alignment: 2 bytes for 68000-68030, 4 for 68040, 8 for 68060/68080
-        int stackSpace = 0;
-        int currentOffset = 0; // Local variables grow downward from a6
-        int alignment = _cpuFeatures.PreferredAlignment;
-
-        foreach (var localVar in function.LocalVariables)
-        {
-            var size = localVar.Type.SizeInBytes;
-            // Align each variable to CPU's preferred alignment
-            if (size % alignment != 0)
-                size += alignment - (size % alignment);
-
-            currentOffset -= size;
-            _localVariableOffsets[localVar.Name] = currentOffset;
-            stackSpace += size;
-        }
-
-        // Align total stack space to CPU's preferred alignment
-        if (stackSpace % alignment != 0)
-            stackSpace += alignment - (stackSpace % alignment);
-
-        // Standard 68k function prologue
-        if (stackSpace > 0)
-        {
-            Emit($"\tlink\ta6,#-{stackSpace}");
-            _currentFunctionHasPrologue = true;
-        }
-        else
-        {
-            Emit("\tlink\ta6,#0");
-            _currentFunctionHasPrologue = true;
-        }
-
-        // REGISTER ALLOCATION: Save callee-saved registers that are used
-        var usedCalleeSavedRegs = GetUsedCalleeSavedRegisters();
-        if (usedCalleeSavedRegs.Count > 0)
-        {
-            EmitComment($"Save callee-saved registers: {string.Join(", ", usedCalleeSavedRegs)}");
-            Emit($"\tmovem.l\t{string.Join("/", usedCalleeSavedRegs)},-(sp)");
-        }
-
-        // REGISTER ALLOCATION: Move parameters from ABI locations to allocated registers
-        if (_currentFunctionRegAlloc != null)
-        {
-            // ABI calling convention: d0, d1, a0, a1, then stack
-            var abiRegs = new[] { "d0", "d1", "a0", "a1" };
-            int paramIndex = 0;
-
-            foreach (var param in function.Parameters)
-            {
-                var allocatedReg = _currentFunctionRegAlloc.GetRegister(param.Name);
-                if (allocatedReg != null)
-                {
-                    string sourceReg;
-                    if (paramIndex < 4)
-                    {
-                        sourceReg = abiRegs[paramIndex];
-                    }
-                    else
-                    {
-                        // Parameter is on stack - load it first to d0, then move to allocated register
-                        int stackOffset = _localVariableOffsets[param.Name];
-                        sourceReg = "d0";
-                        if (allocatedReg != "d0")
-                        {
-                            EmitComment($"Load parameter {param.Name} from stack to {allocatedReg}");
-                            Emit($"\tmove.l\t{stackOffset}(a6),{allocatedReg}");
-                        }
-                        paramIndex++;
-                        continue;
-                    }
-
-                    if (sourceReg != allocatedReg)
-                    {
-                        EmitComment($"Move parameter {param.Name} from {sourceReg} to {allocatedReg}");
-                        Emit($"\tmove.l\t{sourceReg},{allocatedReg}");
-                    }
-                }
-                paramIndex++;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Get list of callee-saved registers used by current function (d2-d7, a2-a5)
-    /// </summary>
-    private List<string> GetUsedCalleeSavedRegisters()
-    {
-        var used = new List<string>();
-        if (_currentFunctionRegAlloc == null) return used;
-
-        // Callee-saved registers we can use
-        var calleeSaved = new[] { "d2", "d3", "d4", "d5", "d6", "d7", "a2", "a3", "a4", "a5" };
-
-        // Check which ones are actually used in this function
-        foreach (var reg in calleeSaved)
-        {
-            // Check if any variable is allocated to this register
-            foreach (var kvp in _currentFunctionRegAlloc.VariableToRegister)
-            {
-                if (kvp.Value == reg)
-                {
-                    used.Add(reg);
-                    break;
-                }
-            }
-        }
-
-        // Sort: data registers first (d2-d7), then address registers (a2-a5)
-        used.Sort((a, b) =>
-        {
-            if (a[0] == b[0]) return string.Compare(a, b, StringComparison.Ordinal);
-            return a[0] == 'd' ? -1 : 1;
-        });
-
-        return used;
-    }
-
-    private void EmitEpilogue(int? stackCleanup = null)
-    {
-        // Clean up any temp variables saved on the stack
-        // Use provided cleanup amount if specified, otherwise use current _tempStackOffset
-        int cleanup = stackCleanup ?? _tempStackOffset;
-        if (cleanup > 0)
-        {
-            Emit($"\tlea\t{cleanup}(sp),sp");
-        }
-
-        // REGISTER ALLOCATION: Restore callee-saved registers that were saved
-        var usedCalleeSavedRegs = GetUsedCalleeSavedRegisters();
-        if (usedCalleeSavedRegs.Count > 0)
-        {
-            EmitComment($"Restore callee-saved registers: {string.Join(", ", usedCalleeSavedRegs)}");
-            Emit($"\tmovem.l\t(sp)+,{string.Join("/", usedCalleeSavedRegs)}");
-        }
-
-        // Only emit unlk if we emitted link in the prologue
-        if (_currentFunctionHasPrologue)
-        {
-            Emit("\tunlk\ta6");
-        }
-        Emit("\trts");
-    }
-
-    private void EmitDeferredBlocks()
-    {
-        if (_currentFunction == null || _currentFunction.DeferredBlocks.Count == 0)
-        {
-            return;
-        }
-
-        EmitComment("Execute deferred blocks (LIFO order)");
-
-        // Execute deferred blocks in LIFO order (reverse order of insertion)
-        for (int i = _currentFunction.DeferredBlocks.Count - 1; i >= 0; i--)
-        {
-            var deferBlock = _currentFunction.DeferredBlocks[i];
-            EmitComment($"Deferred block: {deferBlock.Label}");
-
-            // Generate code for each instruction in the deferred block
-            for (int j = 0; j < deferBlock.Instructions.Count; j++)
-            {
-                GenerateInstruction(deferBlock.Instructions[j], deferBlock.Instructions, j);
-            }
-        }
-    }
-
     private void GenerateBasicBlock(IrBasicBlock block)
     {
         // Emit block label if it's not the entry block
@@ -749,6 +412,9 @@ public partial class M68kCodeGenerator
 
     private void GenerateInstruction(IrInstruction instruction, IList<IrInstruction> instructions, int index)
     {
+        var instrName = instruction.GetType().Name;
+        Console.WriteLine($"[DEBUG Instruction] {instrName}, _lastResultInD0='{_lastResultInD0 ?? "NULL"}'");
+
         switch (instruction)
         {
             case IrReturn ret:
@@ -1046,6 +712,37 @@ public partial class M68kCodeGenerator
                     }
                 }
             }
+            // Check if we're returning a struct literal
+            else if (ret.Value is IrStructLiteral structLiteral && structLiteral.Type is IrStructType litStructType)
+            {
+                if (litStructType.SizeInBytes > 8)
+                {
+                    EmitComment($"Return large struct literal {litStructType.StructName} ({litStructType.SizeInBytes} bytes) via hidden pointer");
+
+                    // Initialize the struct directly at the location pointed to by A0 (hidden return pointer)
+                    // A0 was passed by caller and points to where result should be stored
+                    InitializeStructFields(structLiteral, litStructType, 0, useAddressRegister: true);
+                }
+                else
+                {
+                    // For small structs (≤8 bytes), load fields directly into D0+D1
+                    EmitComment($"Return small struct literal {litStructType.StructName} ({litStructType.SizeInBytes} bytes)");
+
+                    // Load first 4 bytes (first field or part of it) into D0
+                    if (litStructType.Fields.Count > 0)
+                    {
+                        LoadOperand(litStructType.Fields[0].Type is IrPointerType
+                            ? structLiteral.FieldValues[litStructType.Fields[0].Name]
+                            : structLiteral.FieldValues[litStructType.Fields[0].Name], "d0");
+                    }
+
+                    // Load second 4 bytes (second field or rest of first field) into D1 if needed
+                    if (litStructType.SizeInBytes > 4 && litStructType.Fields.Count > 1)
+                    {
+                        LoadOperand(structLiteral.FieldValues[litStructType.Fields[1].Name], "d1");
+                    }
+                }
+            }
             // Check if we're returning a struct type (composite value)
             else if (ret.Value.Type is IrStructType structType && ret.Value is IrVariable structVar)
             {
@@ -1172,489 +869,6 @@ public partial class M68kCodeGenerator
         EmitEpilogue(_tempStackOffset);
     }
 
-    private void GenerateBinaryOp(IrBinaryOp binOp, IList<IrInstruction> instructions, int index)
-    {
-        var size = GetSizeSuffix(binOp.Type);
-        bool isFloatOp = binOp.Type is IrFloatType;
-
-        // Simplified code generation - load operands and perform operation
-        // Real implementation would do proper register allocation
-
-        switch (binOp.Operation)
-        {
-            case IrBinaryOp.OpKind.Add:
-                EmitComment($"{binOp.ResultName} = add");
-                if (_generatingFpuVersion && isFloatOp)
-                {
-                    // Hardware FPU addition
-                    LoadOperand(binOp.Left, "fp0");
-                    LoadOperand(binOp.Right, "fp1");
-                    Emit("\tfadd.x\tfp1,fp0");
-                    // Convert to d0 for storage
-                    Emit("\tfmove.l\tfp0,d0");
-                }
-                else if (isFloatOp)
-                {
-                    // Soft-float addition - call VBCC library function
-                    // Arguments: float a, float b (as IEEE-754 bit patterns in d0, d1)
-                    // Returns: float result in d0
-                    LoadOperand(binOp.Right, "d0");
-                    Emit("\tmove.l\td0,-(sp)");  // Push right operand
-                    LoadOperand(binOp.Left, "d0");
-                    Emit("\tmove.l\td0,-(sp)");  // Push left operand
-
-                    // Call VBCC soft-float functions: __ieeeaddl for f32, __ieeeaddd for f64
-                    var funcName = binOp.Type is IrFloatType ft && ft.BitWidth == 32 ? "__ieeeaddl" : "__ieeeaddd";
-                    Emit($"\tjsr\t{funcName}");
-                    Emit("\taddq.l\t#8,sp");     // Clean up stack (2 * 4 bytes)
-                    // Result is in d0
-                }
-                else
-                {
-                    // OPTIMIZATION: Use LEA for pointer arithmetic with constant displacement
-                    // Pattern: pointer + constant → lea (constant,An),Am
-                    // This is more efficient than load-add and doesn't affect condition codes
-                    bool isPointerArithmetic = binOp.Left.Type is IrPointerType || binOp.Right.Type is IrPointerType;
-                    IrConstant? displacement = null;
-                    IrValue? pointerOperand = null;
-
-                    if (isPointerArithmetic)
-                    {
-                        if (binOp.Right is IrConstant rightConst)
-                        {
-                            displacement = rightConst;
-                            pointerOperand = binOp.Left;
-                        }
-                        else if (binOp.Left is IrConstant leftConst)
-                        {
-                            displacement = leftConst;
-                            pointerOperand = binOp.Right;
-                        }
-                    }
-
-                    if (displacement != null && pointerOperand != null &&
-                        displacement.Value >= -32768 && displacement.Value <= 32767)
-                    {
-                        // Use LEA optimization for pointer + constant
-                        // LEA works with address registers, so we load pointer into a1, compute with LEA into a0,
-                        // then move to d0 for consistency with rest of code
-                        LoadOperand(pointerOperand, "a1");
-                        Emit($"\tlea\t{displacement.Value}(a1),a0");
-                        Emit("\tmove.l\ta0,d0");
-                        EmitComment($"Optimized: pointer arithmetic using LEA instead of ADD");
-                    }
-                    else
-                    {
-                        // Regular integer addition
-                        // OPTIMIZATION: If either operand is already in d0, don't reload it
-                        bool leftInD0 = binOp.Left is IrVariable leftVar && leftVar.Name == _lastResultInD0;
-                        bool rightInD0 = binOp.Right is IrVariable rightVar && rightVar.Name == _lastResultInD0;
-
-                        if (leftInD0)
-                        {
-                            // Left operand already in d0, just load Right into d1
-                            EmitComment($"Optimized: left operand already in d0");
-                            LoadOperand(binOp.Right, "d1");
-                            Emit($"\tadd{size}\td1,d0");
-                        }
-                        else if (rightInD0)
-                        {
-                            // Right operand already in d0, load Left into d1 and swap
-                            EmitComment($"Optimized: right operand already in d0");
-                            LoadOperand(binOp.Left, "d1");
-                            Emit($"\tadd{size}\td1,d0");  // add is commutative
-                        }
-                        else
-                        {
-                            LoadOperand(binOp.Left, "d0");
-                            LoadOperand(binOp.Right, "d1");
-                            Emit($"\tadd{size}\td1,d0");
-                        }
-                    }
-                }
-                break;
-
-            case IrBinaryOp.OpKind.Sub:
-                EmitComment($"{binOp.ResultName} = sub");
-                if (_generatingFpuVersion && isFloatOp)
-                {
-                    // Hardware FPU subtraction
-                    LoadOperand(binOp.Left, "fp0");
-                    LoadOperand(binOp.Right, "fp1");
-                    Emit("\tfsub.x\tfp1,fp0");
-                    // Convert to d0 for storage
-                    Emit("\tfmove.l\tfp0,d0");
-                }
-                else if (isFloatOp)
-                {
-                    // Soft-float subtraction - call VBCC library function
-                    LoadOperand(binOp.Right, "d0");
-                    Emit("\tmove.l\td0,-(sp)");  // Push right operand
-                    LoadOperand(binOp.Left, "d0");
-                    Emit("\tmove.l\td0,-(sp)");  // Push left operand
-
-                    var funcName = binOp.Type is IrFloatType ft && ft.BitWidth == 32 ? "__ieeesubl" : "__ieeesubd";
-                    Emit($"\tjsr\t{funcName}");
-                    Emit("\taddq.l\t#8,sp");
-                }
-                else
-                {
-                    // Integer subtraction
-                    LoadOperand(binOp.Left, "d0");
-                    LoadOperand(binOp.Right, "d1");
-                    Emit($"\tsub{size}\td1,d0");
-                }
-                break;
-
-            case IrBinaryOp.OpKind.Mul:
-                EmitComment($"{binOp.ResultName} = mul");
-                if (_generatingFpuVersion && isFloatOp)
-                {
-                    // Hardware FPU multiplication
-                    LoadOperand(binOp.Left, "fp0");
-                    LoadOperand(binOp.Right, "fp1");
-                    Emit("\tfmul.x\tfp1,fp0");
-                    // Convert to d0 for storage
-                    Emit("\tfmove.l\tfp0,d0");
-                }
-                else if (isFloatOp)
-                {
-                    // Soft-float multiplication - call VBCC library function
-                    LoadOperand(binOp.Right, "d0");
-                    Emit("\tmove.l\td0,-(sp)");  // Push right operand
-                    LoadOperand(binOp.Left, "d0");
-                    Emit("\tmove.l\td0,-(sp)");  // Push left operand
-
-                    var funcName = binOp.Type is IrFloatType ft && ft.BitWidth == 32 ? "__ieeemull" : "__ieeemuld";
-                    Emit($"\tjsr\t{funcName}");
-                    Emit("\taddq.l\t#8,sp");
-                }
-                else
-                {
-                    // Integer multiplication
-                    LoadOperand(binOp.Left, "d0");
-                    LoadOperand(binOp.Right, "d1");
-                    GenerateMultiply(binOp);
-                }
-                break;
-
-            case IrBinaryOp.OpKind.Div:
-                EmitComment($"{binOp.ResultName} = div");
-                if (_generatingFpuVersion && isFloatOp)
-                {
-                    // Hardware FPU division
-                    LoadOperand(binOp.Left, "fp0");
-                    LoadOperand(binOp.Right, "fp1");
-                    Emit("\tfdiv.x\tfp1,fp0");
-                    // Convert to d0 for storage
-                    Emit("\tfmove.l\tfp0,d0");
-                }
-                else if (isFloatOp)
-                {
-                    // Soft-float division - call VBCC library function
-                    LoadOperand(binOp.Right, "d0");
-                    Emit("\tmove.l\td0,-(sp)");  // Push right operand
-                    LoadOperand(binOp.Left, "d0");
-                    Emit("\tmove.l\td0,-(sp)");  // Push left operand
-
-                    var funcName = binOp.Type is IrFloatType ft && ft.BitWidth == 32 ? "__ieeedivl" : "__ieeedivd";
-                    Emit($"\tjsr\t{funcName}");
-                    Emit("\taddq.l\t#8,sp");
-                }
-                else
-                {
-                    // Integer division
-                    LoadOperand(binOp.Left, "d0");
-                    LoadOperand(binOp.Right, "d1");
-                    GenerateDivide(binOp);
-                }
-                break;
-
-            case IrBinaryOp.OpKind.Mod:
-                EmitComment($"{binOp.ResultName} = mod");
-                if (isFloatOp)
-                {
-                    throw new NotImplementedException("Modulo operation not supported for floating-point types");
-                }
-                else
-                {
-                    // Integer modulo - use divs.l/divu.l which returns quotient:remainder in d0:d1
-                    LoadOperand(binOp.Left, "d0");
-                    LoadOperand(binOp.Right, "d1");
-
-                    var isSigned = binOp.Type is IrIntType intType && intType.IsSigned;
-                    var divOp = isSigned ? "divsl" : "divul";
-
-                    if (_cpuTarget == "68000")
-                    {
-                        // 68000 doesn't have 32-bit divide with remainder
-                        // We need to implement modulo using: a % b = a - (a / b) * b
-                        Emit("\tmovem.l\td2-d3,-(sp)");
-                        Emit("\tmove.l\td0,d2\t; Save dividend");
-                        Emit("\tmove.l\td1,d3\t; Save divisor");
-
-                        if (isSigned)
-                        {
-                            // Call division: d0 / d1 -> d0 (quotient in d0, d1 preserved)
-                            Emit("\tjsr\t__div_i32\t; d0 = d0 / d1");
-                            // Now: d0 = quotient, d2 = original dividend, d3 = divisor
-                            // Multiply quotient * divisor
-                            Emit("\tmove.l\td3,d1\t; d1 = divisor");
-                            Emit("\tjsr\t__mul_i32\t; d0 = quotient * divisor");
-                            // Subtract from original dividend
-                            Emit("\tmove.l\td2,d1\t; d1 = original dividend");
-                            Emit("\tsub.l\td0,d1\t; remainder = dividend - (quotient * divisor)");
-                            Emit("\tmove.l\td1,d0\t; Move remainder to d0");
-                        }
-                        else
-                        {
-                            // Call division: d0 / d1 -> d0 (quotient in d0, d1 preserved)
-                            Emit("\tjsr\t__div_u32\t; d0 = d0 / d1");
-                            // Now: d0 = quotient, d2 = original dividend, d3 = divisor
-                            // Multiply quotient * divisor
-                            Emit("\tmove.l\td3,d1\t; d1 = divisor");
-                            Emit("\tjsr\t__mul_u32\t; d0 = quotient * divisor");
-                            // Subtract from original dividend
-                            Emit("\tmove.l\td2,d1\t; d1 = original dividend");
-                            Emit("\tsub.l\td0,d1\t; remainder = dividend - (quotient * divisor)");
-                            Emit("\tmove.l\td1,d0\t; Move remainder to d0");
-                        }
-
-                        Emit("\tmovem.l\t(sp)+,d2-d3");
-                    }
-                    else
-                    {
-                        // 68020+ has divsl.l/divul.l which returns remainder in d1
-                        Emit($"\t{divOp}.l\td1,d1:d0\t; d0 = quotient, d1 = remainder");
-                        Emit("\tmove.l\td1,d0\t; Move remainder to d0");
-                    }
-                }
-                break;
-
-            case IrBinaryOp.OpKind.Or:
-                EmitComment($"{binOp.ResultName} = or");
-                LoadOperand(binOp.Left, "d0");
-                LoadOperand(binOp.Right, "d1");
-                Emit($"\tor{size}\td1,d0");
-                break;
-
-            case IrBinaryOp.OpKind.And:
-                EmitComment($"{binOp.ResultName} = and");
-                LoadOperand(binOp.Left, "d0");
-                LoadOperand(binOp.Right, "d1");
-                Emit($"\tand{size}\td1,d0");
-                break;
-
-            case IrBinaryOp.OpKind.Xor:
-                EmitComment($"{binOp.ResultName} = xor");
-                LoadOperand(binOp.Left, "d0");
-                LoadOperand(binOp.Right, "d1");
-                Emit($"\teor{size}\td1,d0");
-                break;
-
-            case IrBinaryOp.OpKind.Shl:
-                EmitComment($"{binOp.ResultName} = shl");
-                LoadOperand(binOp.Left, "d0");   // Value to shift
-
-                // Check if shift amount is a constant - can optimize
-                if (binOp.Right is IrConstant leftShiftConst)
-                {
-                    int shiftAmount = (int)leftShiftConst.Value;
-                    GenerateLeftShift(shiftAmount, size);
-                }
-                else
-                {
-                    // Variable shift amount
-                    LoadOperand(binOp.Right, "d1");  // Shift amount into d1
-                    Emit($"\tlsl{size}\td1,d0");
-                }
-                break;
-
-            case IrBinaryOp.OpKind.Shr:
-                EmitComment($"{binOp.ResultName} = shr");
-                LoadOperand(binOp.Left, "d0");   // Value to shift
-
-                // Check if shift amount is a constant - can optimize
-                if (binOp.Right is IrConstant rightShiftConst)
-                {
-                    int shiftAmount = (int)rightShiftConst.Value;
-                    bool isSigned = binOp.Left.Type is IrIntType intType && intType.IsSigned;
-                    GenerateRightShift(shiftAmount, isSigned);
-                }
-                else
-                {
-                    // Variable shift amount
-                    bool isSigned = binOp.Left.Type is IrIntType intType && intType.IsSigned;
-                    var shiftOp = isSigned ? "asr" : "lsr";
-                    LoadOperand(binOp.Right, "d1");  // Shift amount into d1
-                    Emit($"\t{shiftOp}{size}\td1,d0");
-                }
-                break;
-
-            case IrBinaryOp.OpKind.Eq:
-            case IrBinaryOp.OpKind.Ne:
-            case IrBinaryOp.OpKind.Lt:
-            case IrBinaryOp.OpKind.Le:
-            case IrBinaryOp.OpKind.Gt:
-            case IrBinaryOp.OpKind.Ge:
-                GenerateComparison(binOp, instructions, index);
-                // Comparisons use separate tracking (_lastComparisonResult)
-                return;
-        }
-
-        // Result is in d0
-        // REGISTER ALLOCATION: Check if result has an allocated register
-        if (_currentFunctionRegAlloc != null)
-        {
-            var allocatedReg = _currentFunctionRegAlloc.GetRegister(binOp.ResultName);
-            if (allocatedReg != null && allocatedReg != "d0")
-            {
-                // Move result from d0 to allocated register
-                EmitComment($"Store result {binOp.ResultName} to allocated register {allocatedReg}");
-                Emit($"\tmove.l\td0,{allocatedReg}");
-                _lastResultInD0 = null; // Result no longer in d0
-            }
-            else
-            {
-                // Result stays in d0 (either not allocated or allocated to d0)
-                _lastResultInD0 = binOp.ResultName;
-            }
-        }
-        else
-        {
-            // No register allocation - track that result is in d0
-            _lastResultInD0 = binOp.ResultName;
-        }
-    }
-
-    private void GenerateComparison(IrBinaryOp binOp, IList<IrInstruction> instructions, int index)
-    {
-        // Use operand type for comparison size, not result type (result is always bool = 1 byte)
-        var size = GetSizeSuffix(binOp.Left.Type);
-        bool isFloatCompare = binOp.Left.Type is IrFloatType;
-
-        EmitComment($"{binOp.ResultName} = {binOp.Operation}");
-
-        // Map IR comparison to 68k condition code
-        var condition = binOp.Operation switch
-        {
-            IrBinaryOp.OpKind.Eq => "eq",  // Equal (Z=1)
-            IrBinaryOp.OpKind.Ne => "ne",  // Not equal (Z=0)
-            IrBinaryOp.OpKind.Lt => "lt",  // Less than (N=1, signed)
-            IrBinaryOp.OpKind.Le => "le",  // Less than or equal (Z=1 or N=1, signed)
-            IrBinaryOp.OpKind.Gt => "gt",  // Greater than (Z=0 and N=0, signed)
-            IrBinaryOp.OpKind.Ge => "ge",  // Greater than or equal (N=0, signed)
-            _ => throw new Exception($"Unknown comparison: {binOp.Operation}")
-        };
-
-        // Look ahead to see if this comparison is immediately used in a conditional branch
-        // Pattern: BinaryOp (comparison) -> [optional Store] -> ConditionalBranch
-        bool willBranchDirectly = false;
-        int nextIndex = index + 1;
-
-        // Skip over optional store instruction
-        if (nextIndex < instructions.Count &&
-            instructions[nextIndex] is IrStore store &&
-            store.Value is IrVariable storeVar &&
-            storeVar.Name == binOp.ResultName)
-        {
-            nextIndex++;
-        }
-
-        // Check if next instruction is a conditional branch using this comparison
-        if (nextIndex < instructions.Count &&
-            instructions[nextIndex] is IrConditionalBranch condBranch &&
-            condBranch.Condition is IrVariable condVar &&
-            condVar.Name == binOp.ResultName)
-        {
-            willBranchDirectly = true;
-        }
-
-        if (_generatingFpuVersion && isFloatCompare)
-        {
-            // Hardware FPU comparison
-            LoadOperand(binOp.Left, "fp0");
-            LoadOperand(binOp.Right, "fp1");
-
-            // FCMP computes (fp0 - fp1) and sets FPU condition codes
-            Emit("\tfcmp.x\tfp1,fp0");
-
-            // FBcc uses FPU condition codes (same mnemonics as integer)
-            // Note: We need to materialize the result to d0 for later use
-            // Unfortunately there's no FScc instruction, so we use FBcc with labels
-            var trueLabel = $".cmp_true_{_floatConstCounter++}";
-            var doneLabel = $".cmp_done_{_floatConstCounter++}";
-
-            Emit($"\tfb{condition}\t{trueLabel}");
-            Emit("\tmoveq\t#0,d0");  // False
-            Emit($"\tbra.s\t{doneLabel}");
-            Emit($"{trueLabel}:");
-            Emit("\tmoveq\t#1,d0");  // True
-            Emit($"{doneLabel}:");
-        }
-        else
-        {
-            // Integer or soft-float comparison
-
-            // OPTIMIZATION: Use TST instead of CMP when comparing a variable against zero
-            // TST is faster and smaller than CMP #0
-            // Only apply if one operand is a variable (not both constants)
-            bool leftIsZero = binOp.Left is IrConstant leftConst && leftConst.Value == 0;
-            bool rightIsZero = binOp.Right is IrConstant rightConst && rightConst.Value == 0;
-            bool leftIsVariable = binOp.Left is not IrConstant;
-            bool rightIsVariable = binOp.Right is not IrConstant;
-
-            if (rightIsZero && leftIsVariable)
-            {
-                // x CMP 0 => TST x (where x is a variable)
-                LoadOperand(binOp.Left, "d0");
-                Emit($"\ttst{size}\td0");
-                EmitComment($"Optimized: compare against zero using TST instead of CMP");
-            }
-            else if (leftIsZero && rightIsVariable &&
-                     (binOp.Operation == IrBinaryOp.OpKind.Eq || binOp.Operation == IrBinaryOp.OpKind.Ne))
-            {
-                // 0 == x or 0 != x => TST x (where x is a variable)
-                // (Only safe for equality comparisons; relational ops would need condition flip)
-                LoadOperand(binOp.Right, "d0");
-                Emit($"\ttst{size}\td0");
-                EmitComment($"Optimized: compare against zero using TST instead of CMP");
-            }
-            else
-            {
-                LoadOperand(binOp.Left, "d0");
-                LoadOperand(binOp.Right, "d1");
-                // Compare: cmp.l d1,d0 computes (d0 - d1) and sets condition codes
-                Emit($"\tcmp{size}\td1,d0");
-            }
-
-            // OPTIMIZATION: If this comparison will be used directly for branching,
-            // skip materialization and keep condition codes alive
-            if (!willBranchDirectly)
-            {
-                // Materialize boolean result in d0 (for cases where it's used as a value)
-                // Scc sets byte to $FF if condition true, $00 if false
-                Emit($"\ts{condition}\td0");
-
-                // Extend byte result to longword (sign extend $FF to $FFFFFFFF, $00 to $00000000)
-                // Note: extb.l doesn't exist on 68000, use ext.w + ext.l sequence
-                Emit($"\text.w\td0");   // Extend byte to word: $FF → $FFFF or $00 → $0000
-                Emit($"\text.l\td0");   // Extend word to long: $FFFF → $FFFFFFFF or $0000 → $00000000
-
-                // Convert $FFFFFFFF to $00000001 for true, $00000000 stays $00000000
-                Emit($"\tneg.l\td0");
-            }
-            else
-            {
-                EmitComment("Comparison result will be used directly for branching - keeping condition codes");
-            }
-        }
-
-        // Track this comparison for potential optimization in conditional branch
-        _lastComparisonResult = binOp.ResultName;
-        _lastComparisonCondition = condition;
-    }
-
     private void GenerateCall(IrCall call)
     {
         EmitComment($"Call {call.FunctionName}");
@@ -1775,7 +989,8 @@ public partial class M68kCodeGenerator
                         var baseOffset = (_savedTemps.Count - 1 - savedIndex) * 4;
                         var adjustedOffset = baseOffset + argsPushedSoFar;
                         var tempSize = GetSizeSuffix(variable.Type);
-                        Emit($"\tmove{tempSize}\t{adjustedOffset}(sp),d0");
+                        var offsetStr = adjustedOffset == 0 ? "(sp)" : $"{adjustedOffset}(sp)";
+                        Emit($"\tmove{tempSize}\t{offsetStr},d0");
                         Emit("\tmove.l\td0,-(sp)");
                         totalBytesPushed += 4;
                         continue;
@@ -1793,23 +1008,25 @@ public partial class M68kCodeGenerator
 
         // Handle return value based on type - must allocate space BEFORE pushing arguments for large returns
         int returnSpaceAllocated = 0;
-        if (call.ResultName != null && call.ReturnType is IrEnumType largeEnumType && largeEnumType.SizeInBytes > 8)
+        if (call.ResultName != null && call.ReturnType.SizeInBytes > 8)
         {
-            // For composite types > 8 bytes, allocate return space AFTER arguments are pushed
+            // For composite types > 8 bytes (structs or enums), allocate return space AFTER arguments are pushed
             // This way the return value ends up at the correct location on stack after cleanup
-            returnSpaceAllocated = largeEnumType.SizeInBytes;
+            returnSpaceAllocated = call.ReturnType.SizeInBytes;
         }
 
         // Allocate return space if needed (AFTER arguments)
         if (returnSpaceAllocated > 0)
         {
-            EmitComment($"Allocate space for large return value ({returnSpaceAllocated} bytes)");
+            var typeName = call.ReturnType is IrEnumType ? "enum" :
+                          call.ReturnType is IrStructType ? "struct" : "composite";
+            EmitComment($"Allocate space for large {typeName} return value ({returnSpaceAllocated} bytes)");
             Emit($"\tsub.l\t#{returnSpaceAllocated},sp");
             Emit("\tmove.l\tsp,a0\t\t; Pass return pointer in A0");
         }
 
         // Call the function using JSR (Jump to Subroutine)
-        Emit($"\tjsr\t_{call.FunctionName}");
+        Emit($"\tjsr\t_{MangleName(call.FunctionName)}");
 
         // Clean up stack (remove arguments)
         // For large returns, arguments are ABOVE return space, so we need to skip over return space
@@ -1837,32 +1054,37 @@ public partial class M68kCodeGenerator
         // Handle return value based on type
         if (call.ResultName != null)
         {
-            // Check if this is a composite type (enum with size > 4 bytes)
+            // Check if this is a composite type (struct or enum with size > 4 bytes)
             // Use call.ReturnType which was set during IR building
-            if (call.ReturnType is IrEnumType enumType && enumType.SizeInBytes > 8)
+            if (call.ReturnType.SizeInBytes > 8)
             {
                 // For composite types > 8 bytes, result was stored at (A0) via hidden pointer
                 // The space is already on the stack, just track it
-                EmitComment($"Large composite return value ({enumType.SizeInBytes} bytes) already on stack");
+                var typeName = call.ReturnType is IrEnumType ? "enum" :
+                              call.ReturnType is IrStructType ? "struct" : "composite";
+                EmitComment($"Large {typeName} return value ({call.ReturnType.SizeInBytes} bytes) already on stack");
                 _savedTemps.Add(call.ResultName);
-                _savedTempSizes[call.ResultName] = enumType.SizeInBytes;
-                _tempStackOffset += enumType.SizeInBytes;
+                _savedTempSizes[call.ResultName] = call.ReturnType.SizeInBytes;
+                _tempStackOffset += call.ReturnType.SizeInBytes;
             }
-            else if (call.ReturnType is IrEnumType enumType2 && enumType2.SizeInBytes > 4)
+            else if (call.ReturnType.SizeInBytes > 4)
             {
                 // For composite types 5-8 bytes, result is in D0+D1
                 // Save both registers to stack
-                EmitComment($"Save composite return value ({enumType2.SizeInBytes} bytes)");
-                Emit("\tmove.l\td1,-(sp)\t\t; Save enum data (D1)");
-                Emit("\tmove.l\td0,-(sp)\t\t; Save enum tag (D0)");
+                var typeName = call.ReturnType is IrEnumType ? "enum" :
+                              call.ReturnType is IrStructType ? "struct" : "composite";
+                EmitComment($"Save {typeName} return value ({call.ReturnType.SizeInBytes} bytes)");
+                Emit("\tmove.l\td1,-(sp)\t\t; Save data (D1)");
+                Emit("\tmove.l\td0,-(sp)\t\t; Save data (D0)");
                 _savedTemps.Add(call.ResultName);
                 _savedTempSizes[call.ResultName] = 8;  // Track that this temp is 8 bytes
                 _tempStackOffset += 8;
             }
             else
             {
-                // Result is in d0 - don't save to stack to avoid stack overflow in loops
-                // If the temp is used later, LoadOperand will use d0 directly
+                // Result is in d0 - track it so next instruction can use it directly
+                _lastResultInD0 = call.ResultName;
+                EmitComment($"Result {call.ResultName} in d0");
             }
         }
     }
@@ -1931,7 +1153,8 @@ public partial class M68kCodeGenerator
                     var baseOffset = (_savedTemps.Count - 1 - savedIndex) * 4;
                     var adjustedOffset = baseOffset + (argsPushedSoFar * 4);
                     var tempSize = GetSizeSuffix(variable.Type);
-                    Emit($"\tmove{tempSize}\t{adjustedOffset}(sp),d0");
+                    var offsetStr = adjustedOffset == 0 ? "(sp)" : $"{adjustedOffset}(sp)";
+                    Emit($"\tmove{tempSize}\t{offsetStr},d0");
                     Emit("\tmove.l\td0,-(sp)");
                     continue;
                 }
@@ -2083,22 +1306,50 @@ public partial class M68kCodeGenerator
             // Store len at offset 4 (4 bytes)
             Emit($"\tmove.l\t#{stringLiteral.Length},{stringBaseOffset + 4}(a6)\t\t; Store string len");
         }
-        // Special handling for composite types (> 4 bytes) from temporaries
-        else if (localDecl.Type.SizeInBytes > 4 &&
-                 localDecl.InitialValue is IrVariable tempVar && tempVar.Name.StartsWith("%t"))
+        // Special handling for composite types (> 4 bytes) from temporaries or other composite values
+        else if (localDecl.Type.SizeInBytes > 4)
         {
-            var typeName = localDecl.Type is IrEnumType ? "enum" : "struct";
-            EmitComment($"Initialize composite {typeName} from temp {tempVar.Name} ({localDecl.Type.SizeInBytes} bytes)");
+            var typeName = localDecl.Type is IrEnumType ? "enum" :
+                          localDecl.Type is IrStructType ? "struct" : "composite";
+            EmitComment($"Initialize {typeName} {localDecl.Name} ({localDecl.Type.SizeInBytes} bytes)");
             var destOffset = _localVariableOffsets[localDecl.Name];
 
-            // Load address of temp on stack
+            // Load address of source value on stack
             LoadOperand(localDecl.InitialValue, "a0");
 
-            // Copy all bytes of the composite type (in 4-byte chunks)
-            for (int i = 0; i < localDecl.Type.SizeInBytes; i += 4)
+            // Copy all bytes of the composite type (in 4-byte chunks, word-aligned)
+            int bytesToCopy = localDecl.Type.SizeInBytes;
+            // Round up to nearest word (2 bytes) for proper alignment
+            if (bytesToCopy % 2 != 0)
             {
-                Emit($"\tmove.l\t{i}(a0),d0");
-                Emit($"\tmove.l\td0,{destOffset + i}(a6)\t\t; Store {typeName} bytes {i}-{i+3}");
+                bytesToCopy++;
+            }
+
+            for (int i = 0; i < bytesToCopy; i += 4)
+            {
+                if (i + 4 <= bytesToCopy)
+                {
+                    // Full longword
+                    Emit($"\tmove.l\t{i}(a0),d0");
+                    Emit($"\tmove.l\td0,{destOffset + i}(a6)\t\t; Store {typeName} bytes {i}-{i+3}");
+                }
+                else if (i + 2 <= bytesToCopy)
+                {
+                    // Final word
+                    Emit($"\tmove.w\t{i}(a0),d0");
+                    Emit($"\tmove.w\td0,{destOffset + i}(a6)\t\t; Store {typeName} bytes {i}-{i+1}");
+                }
+            }
+
+            // Clean up the stack space used by the return value
+            // If the initializer was a function call that returned a large struct,
+            // the struct is still on the stack and needs to be popped
+            if (localDecl.InitialValue is IrVariable initVar && initVar.Name.StartsWith("%t"))
+            {
+                // This is a temporary from a function return - clean up stack
+                Emit($"\tlea\t{localDecl.Type.SizeInBytes}(sp),sp\t\t; Pop {typeName} return value from stack");
+                // Update _tempStackOffset to reflect that we've cleaned up this space
+                _tempStackOffset -= localDecl.Type.SizeInBytes;
             }
         }
         else
@@ -2124,16 +1375,11 @@ public partial class M68kCodeGenerator
             // Store to local variable's stack location
             var baseOffset = _localVariableOffsets[localDecl.Name];
 
-            // Adjust offset for big-endian when storing smaller than longword
+            // NOTE: Do NOT adjust for big-endian on stack variables!
+            // The stack frame layout already accounts for proper alignment.
+            // Big-endian adjustment is only needed for register operations,
+            // not for stack-based (a6) relative addressing.
             var offset = baseOffset;
-            if (localDecl.Type.SizeInBytes == 1)
-            {
-                offset += 3;  // Byte is at highest address in big-endian longword
-            }
-            else if (localDecl.Type.SizeInBytes == 2)
-            {
-                offset += 2;  // Word is at highest address in big-endian longword
-            }
 
             var size = GetSizeSuffix(localDecl.Type);
             Emit($"\tmove{size}\td0,{offset}(a6)");
@@ -2164,16 +1410,9 @@ public partial class M68kCodeGenerator
         // Store to local variable's stack location
         var baseOffset = _localVariableOffsets[store.VariableName];
 
-        // Adjust offset for big-endian when storing smaller than longword
+        // NOTE: Do NOT adjust for big-endian on stack variables!
+        // The stack frame layout already accounts for proper alignment.
         var offset = baseOffset;
-        if (store.Value.Type.SizeInBytes == 1)
-        {
-            offset += 3;  // Byte is at highest address in big-endian longword
-        }
-        else if (store.Value.Type.SizeInBytes == 2)
-        {
-            offset += 2;  // Word is at highest address in big-endian longword
-        }
 
         var size = GetSizeSuffix(store.Value.Type);
         Emit($"\tmove{size}\td0,{offset}(a6)");
@@ -2196,23 +1435,83 @@ public partial class M68kCodeGenerator
 
     private void GenerateIndexAccess(IrIndexAccess indexAccess)
     {
-        EmitComment($"{indexAccess.ResultName} = array[index]");
+        var elementSize = indexAccess.ElementType.SizeInBytes;
+        var elementSizeSuffix = GetSizeSuffix(indexAccess.ElementType);
 
-        // Get array variable
+        // Check if this is pointer indexing or array indexing
         if (indexAccess.Array is not IrVariable arrayVar)
         {
-            throw new Exception("Array must be a variable");
+            throw new Exception("Index base must be a variable");
         }
 
-        // Get base address of array (its stack offset)
+        // Get the type directly from the variable
+        var baseType = arrayVar.Type;
+
+        // Check if we can use scaled indexing (used by both pointer and array paths)
+        bool canUseScaling = _cpuFeatures.HasBarrelShifter && (elementSize == 1 || elementSize == 2 || elementSize == 4 || elementSize == 8);
+
+        // Handle pointer indexing: ptr[index] = *(ptr + index * sizeof(T))
+        if (baseType is IrPointerType)
+        {
+            EmitComment($"{indexAccess.ResultName} = ptr[index]");
+
+            // Load the pointer into a0 using LoadOperand (handles local vars, params, and saved temps)
+            LoadOperand(indexAccess.Array, "a0");
+
+            // Load index into d1
+            LoadOperand(indexAccess.Index, "d1");
+
+            if (canUseScaling && elementSize > 1)
+            {
+                // 68020+: Use scaled indexed addressing
+                EmitComment($"Pointer indexing with scale *{elementSize}");
+                Emit($"\tmove{elementSizeSuffix}\t(a0,d1.l*{elementSize}),d0");
+            }
+            else if (elementSize == 1)
+            {
+                // Byte: no scaling needed
+                Emit($"\tmove{elementSizeSuffix}\t(a0,d1.l),d0");
+            }
+            else
+            {
+                // Manual scaling for other sizes or 68000
+                if (elementSize == 2)
+                {
+                    Emit("\tadd.l\td1,d1\t; index * 2");
+                }
+                else if (elementSize == 4)
+                {
+                    Emit("\tadd.l\td1,d1\t; index * 2");
+                    Emit("\tadd.l\td1,d1\t; index * 4");
+                }
+                else if (elementSize == 8)
+                {
+                    Emit("\tadd.l\td1,d1\t; index * 2");
+                    Emit("\tadd.l\td1,d1\t; index * 4");
+                    Emit("\tadd.l\td1,d1\t; index * 8");
+                }
+                else
+                {
+                    // Use multiplication for odd sizes
+                    Emit($"\tmulu.w\t#{elementSize},d1");
+                }
+                Emit($"\tmove{elementSizeSuffix}\t(a0,d1.l),d0");
+            }
+
+            // Track that result is in d0
+            _lastResultInD0 = indexAccess.ResultName;
+            return;
+        }
+
+        // Handle array indexing (stack-based arrays)
+        EmitComment($"{indexAccess.ResultName} = array[index]");
+
         if (!_localVariableOffsets.ContainsKey(arrayVar.Name))
         {
             throw new Exception($"Array variable {arrayVar.Name} not found");
         }
 
         var arrayBaseOffset = _localVariableOffsets[arrayVar.Name];
-        var elementSize = indexAccess.ElementType.SizeInBytes;
-        var elementSizeSuffix = GetSizeSuffix(indexAccess.ElementType);
 
         // OPTIMIZATION: Use 68000 indexed addressing modes for array access
         // These modes allow base + index in a single instruction
@@ -2225,9 +1524,6 @@ public partial class M68kCodeGenerator
 
         // Load index into d1
         LoadOperand(indexAccess.Index, "d1");
-
-        // Check if we can use scaled indexing (68020+) or need to scale manually
-        bool canUseScaling = _cpuFeatures.HasBarrelShifter && (elementSize == 1 || elementSize == 2 || elementSize == 4 || elementSize == 8);
 
         if (canUseScaling && elementSize > 1)
         {
@@ -2275,28 +1571,90 @@ public partial class M68kCodeGenerator
             Emit($"\tmove{elementSizeSuffix}\t(a0),d0");
         }
 
-        // Result is in d0 - don't save to stack
+        // Result is in d0 - track it
+        _lastResultInD0 = indexAccess.ResultName;
     }
 
     private void GenerateIndexStore(IrIndexStore indexStore)
     {
-        EmitComment($"array[index] = value");
+        var elementSize = indexStore.Value.Type.SizeInBytes;
+        var elementSizeSuffix = GetSizeSuffix(indexStore.Value.Type);
 
-        // Get array variable
+        // Check if this is pointer or array indexing
         if (indexStore.Array is not IrVariable arrayVar)
         {
-            throw new Exception("Array must be a variable");
+            throw new Exception("Index base must be a variable");
         }
 
-        // Get base address of array (its stack offset)
+        // Get the type directly from the variable
+        var baseType = arrayVar.Type;
+
+        // Check if we can use scaled indexing (used by both pointer and array paths)
+        bool canUseScaling = _cpuFeatures.HasBarrelShifter && (elementSize == 1 || elementSize == 2 || elementSize == 4 || elementSize == 8);
+
+        // Handle pointer indexing: ptr[index] = value
+        if (baseType is IrPointerType)
+        {
+            EmitComment($"ptr[index] = value");
+
+            // Load the pointer into a0 using LoadOperand (handles local vars, params, and saved temps)
+            LoadOperand(indexStore.Array, "a0");
+
+            // Load value to store into d2
+            LoadOperand(indexStore.Value, "d2");
+
+            // Load index into d1
+            LoadOperand(indexStore.Index, "d1");
+
+            if (canUseScaling && elementSize > 1)
+            {
+                // 68020+: Use scaled indexed addressing
+                EmitComment($"Pointer store with scale *{elementSize}");
+                Emit($"\tmove{elementSizeSuffix}\td2,(a0,d1.l*{elementSize})");
+            }
+            else if (elementSize == 1)
+            {
+                // Byte: no scaling needed
+                Emit($"\tmove{elementSizeSuffix}\td2,(a0,d1.l)");
+            }
+            else
+            {
+                // Manual scaling for other sizes or 68000
+                if (elementSize == 2)
+                {
+                    Emit("\tadd.l\td1,d1\t; index * 2");
+                }
+                else if (elementSize == 4)
+                {
+                    Emit("\tadd.l\td1,d1\t; index * 2");
+                    Emit("\tadd.l\td1,d1\t; index * 4");
+                }
+                else if (elementSize == 8)
+                {
+                    Emit("\tadd.l\td1,d1\t; index * 2");
+                    Emit("\tadd.l\td1,d1\t; index * 4");
+                    Emit("\tadd.l\td1,d1\t; index * 8");
+                }
+                else
+                {
+                    // Use multiplication for odd sizes
+                    Emit($"\tmulu.w\t#{elementSize},d1");
+                }
+                Emit($"\tmove{elementSizeSuffix}\td2,(a0,d1.l)");
+            }
+
+            return;
+        }
+
+        // Handle array indexing (stack-based arrays)
+        EmitComment($"array[index] = value");
+
         if (!_localVariableOffsets.ContainsKey(arrayVar.Name))
         {
             throw new Exception($"Array variable {arrayVar.Name} not found");
         }
 
         var arrayBaseOffset = _localVariableOffsets[arrayVar.Name];
-        var elementSize = indexStore.Value.Type.SizeInBytes;
-        var elementSizeSuffix = GetSizeSuffix(indexStore.Value.Type);
 
         // Load value to store into d2 (save it before we calculate address)
         LoadOperand(indexStore.Value, "d2");
@@ -2306,9 +1664,6 @@ public partial class M68kCodeGenerator
 
         // OPTIMIZATION: Use 68000 indexed addressing modes for array stores
         // Same optimization as GenerateIndexAccess but for stores
-
-        // Check if we can use scaled indexing (68020+) or need to scale manually
-        bool canUseScaling = _cpuFeatures.HasBarrelShifter && (elementSize == 1 || elementSize == 2 || elementSize == 4 || elementSize == 8);
 
         if (canUseScaling && elementSize > 1)
         {
@@ -2361,10 +1716,51 @@ public partial class M68kCodeGenerator
     {
         EmitComment($"{memberAccess.ResultName} = {memberAccess.Struct}.{memberAccess.FieldName}");
 
+        // Check if the base is a dereferenced pointer (auto-dereferenced for member access)
+        if (memberAccess.Struct is IrDereferenceValue derefValue)
+        {
+            // Get the pointer variable
+            if (derefValue.PointerValue is not IrVariable ptrVar)
+            {
+                throw new Exception("Dereference base must be a variable");
+            }
+
+            // Load the pointer into a0
+            if (!_localVariableOffsets.ContainsKey(ptrVar.Name))
+            {
+                throw new Exception($"Pointer variable {ptrVar.Name} not found");
+            }
+
+            var ptrOffset = _localVariableOffsets[ptrVar.Name];
+            Emit($"\tmovea.l\t{ptrOffset}(a6),a0");
+            EmitComment($"Load pointer {ptrVar.Name} for member access");
+
+            // Access the field through the pointer
+            var fieldSizeSuffix = GetSizeSuffix(memberAccess.FieldType);
+
+            // If d0 already has a value that hasn't been consumed, save it first
+            if (_lastResultInD0 != null)
+            {
+                EmitComment($"Save previous d0 value ({_lastResultInD0}) before overwriting");
+                Emit("\tmove.l\td0,-(sp)");
+                _savedTemps.Add(_lastResultInD0);
+                _tempStackOffset += 4;
+            }
+
+            Emit($"\tmove{fieldSizeSuffix}\t{memberAccess.FieldOffset}(a0),d0");
+
+            // Track that this result is in d0 for the next instruction
+            _lastResultInD0 = memberAccess.ResultName;
+            // Field access temps stay in d0 to be consumed by next instruction
+            // (tracked via _lastResultInD0)
+
+            return;
+        }
+
         // Get struct variable
         if (memberAccess.Struct is not IrVariable structVar)
         {
-            throw new Exception("Struct member access base must be a variable");
+            throw new Exception("Struct member access base must be a variable or dereference");
         }
 
         string baseVarName;
@@ -2416,18 +1812,21 @@ public partial class M68kCodeGenerator
             // Scalar field - load it
             var fieldSizeSuffix = GetSizeSuffix(memberAccess.FieldType);
 
+            // If d0 already has a value that hasn't been consumed, save it first
+            if (_lastResultInD0 != null)
+            {
+                EmitComment($"Save previous d0 value ({_lastResultInD0}) before overwriting");
+                Emit("\tmove.l\td0,-(sp)");
+                _savedTemps.Add(_lastResultInD0);
+                _tempStackOffset += 4;
+            }
+
             // Load field value into d0
             Emit($"\tmove{fieldSizeSuffix}\t{fieldOffset}(a6),d0");
 
-            // Check if this temp is used later (e.g., as function argument)
-            // If so, save it to the stack so it's not lost when d0 is reused
-            if (IsTempUsed(memberAccess.ResultName))
-            {
-                EmitComment($"Save {memberAccess.ResultName} to stack (used later)");
-                Emit("\tmove.l\td0,-(sp)");
-                _savedTemps.Add(memberAccess.ResultName);
-                _tempStackOffset += 4;
-            }
+            // Track that this result is in d0 for the next instruction
+            _lastResultInD0 = memberAccess.ResultName;
+            // Field access temps stay in d0 to be consumed by next instruction
         }
     }
 
@@ -2435,10 +1834,40 @@ public partial class M68kCodeGenerator
     {
         EmitComment($"{memberStore.Struct}.{memberStore.FieldName} = value");
 
+        var fieldSizeSuffix = GetSizeSuffix(memberStore.Value.Type);
+
+        // Check if the base is a dereferenced pointer (auto-dereferenced for member access)
+        if (memberStore.Struct is IrDereferenceValue derefValue)
+        {
+            // Get the pointer variable
+            if (derefValue.PointerValue is not IrVariable ptrVar)
+            {
+                throw new Exception("Dereference base must be a variable");
+            }
+
+            // Load value to store into d0
+            LoadOperand(memberStore.Value, "d0");
+
+            // Load the pointer into a0
+            if (!_localVariableOffsets.ContainsKey(ptrVar.Name))
+            {
+                throw new Exception($"Pointer variable {ptrVar.Name} not found");
+            }
+
+            var ptrOffset = _localVariableOffsets[ptrVar.Name];
+            Emit($"\tmovea.l\t{ptrOffset}(a6),a0");
+            EmitComment($"Load pointer {ptrVar.Name} for member store");
+
+            // Store the value to the field through the pointer
+            Emit($"\tmove{fieldSizeSuffix}\td0,{memberStore.FieldOffset}(a0)");
+
+            return;
+        }
+
         // Get struct variable
         if (memberStore.Struct is not IrVariable structVar)
         {
-            throw new Exception("Struct member store base must be a variable");
+            throw new Exception("Struct member store base must be a variable or dereference");
         }
 
         // Get base address of struct (its stack offset)
@@ -2448,8 +1877,7 @@ public partial class M68kCodeGenerator
         }
 
         var structBaseOffset = _localVariableOffsets[structVar.Name];
-        var fieldOffset = structBaseOffset - memberStore.FieldOffset;
-        var fieldSizeSuffix = GetSizeSuffix(memberStore.Value.Type);
+        var fieldOffset = structBaseOffset + memberStore.FieldOffset;
 
         // Load value to store into d0
         LoadOperand(memberStore.Value, "d0");
@@ -2461,8 +1889,12 @@ public partial class M68kCodeGenerator
     /// <summary>
     /// Recursively initialize struct fields, handling nested structs
     /// </summary>
-    private void InitializeStructFields(IrStructLiteral structLiteral, IrStructType structType, int structBaseOffset)
+    private void InitializeStructFields(IrStructLiteral structLiteral, IrStructType structType, int structBaseOffset, bool useAddressRegister = false)
     {
+        // useAddressRegister: if true, write to (a0) instead of (a6)
+        // This is used for initializing large struct return values directly at the hidden pointer location
+        string baseRegister = useAddressRegister ? "a0" : "a6";
+
         foreach (var field in structType.Fields)
         {
             if (!structLiteral.FieldValues.ContainsKey(field.Name))
@@ -2471,14 +1903,25 @@ public partial class M68kCodeGenerator
             }
 
             var fieldValue = structLiteral.FieldValues[field.Name];
-            var fieldOffset = structBaseOffset - field.Offset;
+            int fieldOffset;
+
+            if (useAddressRegister)
+            {
+                // For A0: offset is positive from base (hidden return pointer)
+                fieldOffset = structBaseOffset + field.Offset;
+            }
+            else
+            {
+                // For A6: offset is negative from base (frame pointer)
+                fieldOffset = structBaseOffset - field.Offset;
+            }
 
             // Check if this field is itself a struct literal
             if (fieldValue is IrStructLiteral nestedStructLiteral && field.Type is IrStructType nestedStructType)
             {
                 // Recursively initialize nested struct from literal
                 EmitComment($"Initialize nested struct field {field.Name}");
-                InitializeStructFields(nestedStructLiteral, nestedStructType, fieldOffset);
+                InitializeStructFields(nestedStructLiteral, nestedStructType, fieldOffset, useAddressRegister);
             }
             // Check if this field is a struct variable (struct-to-struct copy)
             else if (field.Type is IrStructType sourceStructType && fieldValue is IrVariable structVar)
@@ -2492,7 +1935,7 @@ public partial class M68kCodeGenerator
                 // Scalar field - load and store normally
                 LoadOperand(fieldValue, "d0");
                 var fieldSizeSuffix = GetSizeSuffix(field.Type);
-                Emit($"\tmove{fieldSizeSuffix}\td0,{fieldOffset}(a6)");
+                Emit($"\tmove{fieldSizeSuffix}\td0,{fieldOffset}({baseRegister})");
             }
         }
     }
@@ -2536,567 +1979,6 @@ public partial class M68kCodeGenerator
         }
     }
 
-    private void LoadOperand(IrValue value, string targetReg)
-    {
-        // Clear d0 tracking if we're loading something different into d0
-        if (targetReg == "d0")
-        {
-            // Check if this value is the one currently tracked in d0
-            if (value is IrVariable v && v.Name == _lastResultInD0)
-            {
-                // Same value already in d0, don't clear tracking
-            }
-            else
-            {
-                // Loading something new into d0, clear tracking
-                _lastResultInD0 = null;
-            }
-        }
-
-        switch (value)
-        {
-            case IrFunctionAddress funcAddr:
-                // Load address of function (for function pointers)
-                // LEA can only load into address registers, so use a0 as intermediate if target is data register
-                if (targetReg.StartsWith('d'))
-                {
-                    Emit($"\tlea\t_{funcAddr.FunctionName},a0");
-                    Emit($"\tmove.l\ta0,{targetReg}");
-                }
-                else
-                {
-                    Emit($"\tlea\t_{funcAddr.FunctionName},{targetReg}");
-                }
-                break;
-            case IrStringLiteral stringLiteral:
-                // Load address of string literal
-                // LEA can only load into address registers, so use a0 as intermediate if target is data register
-                if (targetReg.StartsWith('d'))
-                {
-                    Emit($"\tlea\t{stringLiteral.Label},a0");
-                    Emit($"\tmove.l\ta0,{targetReg}");
-                }
-                else
-                {
-                    Emit($"\tlea\t{stringLiteral.Label},{targetReg}");
-                }
-                break;
-            case IrArrayLiteral arrayLiteral:
-                // Array literals can't be loaded into a register
-                // They should only appear in initialization contexts
-                throw new Exception("Array literals cannot be loaded into registers");
-            case IrBoolConstant boolConstant:
-                // Boolean constants: true = 1, false = 0
-                var boolValue = boolConstant.Value ? 1 : 0;
-                Emit($"\tmoveq\t#{boolValue},{targetReg}");
-                break;
-            case IrConstant constant:
-                var size = GetSizeSuffix(constant.Type);
-
-                // Optimization: Use moveq for small longword immediates
-                // moveq is faster (4 cycles vs 8) and smaller (2 bytes vs 6)
-                if (size == ".l" && constant.Value >= -128 && constant.Value <= 127)
-                {
-                    Emit($"\tmoveq\t#{constant.Value},{targetReg}");
-                }
-                else
-                {
-                    Emit($"\tmove{size}\t#{constant.Value},{targetReg}");
-                }
-                break;
-            case IrFloatConstant floatConstant:
-            {
-                if (_generatingFpuVersion)
-                {
-                    // Hardware FPU mode - use FPU instructions
-                    // Create a unique label for this constant
-                    var constLabel = $"__fc{_floatConstCounter++}";
-                    _floatConstants[constLabel] = floatConstant.Value;
-
-                    // Determine target FPU register (default to fp0)
-                    var fpReg = targetReg.StartsWith("fp") ? targetReg : "fp0";
-
-                    // Load constant from memory into FPU register
-                    if (floatConstant.Type is IrFloatType ft && ft.BitWidth == 32)
-                    {
-                        Emit($"\tfmove.s\t{constLabel},{fpReg}");
-                    }
-                    else // f64
-                    {
-                        Emit($"\tfmove.d\t{constLabel},{fpReg}");
-                    }
-
-                    // If target is a data register (for storage), convert from FPU to integer bits
-                    if (targetReg.StartsWith('d'))
-                    {
-                        Emit($"\tfmove.l\t{fpReg},{targetReg}");
-                    }
-                }
-                else
-                {
-                    // Soft-float mode - store the IEEE-754 bit representation as an integer
-                    uint bits;
-                    if (floatConstant.Type is IrFloatType ft && ft.BitWidth == 32)
-                    {
-                        bits = BitConverter.SingleToUInt32Bits((float)floatConstant.Value);
-                        Emit($"\tmove.l\t#${bits:X8},{targetReg}");
-                    }
-                    else // f64
-                    {
-                        // For f64, we need 64 bits which won't fit in a single register
-                        // This is a limitation - for now just convert to f32
-                        bits = BitConverter.SingleToUInt32Bits((float)floatConstant.Value);
-                        Emit($"\tmove.l\t#${bits:X8},{targetReg}");
-                    }
-                }
-                break;
-            }
-            case IrFixedConstant fixedConstant:
-            {
-                // Convert fixed-point: multiply by 2^fractional_bits
-                int fractionalBits = fixedConstant.Type is IrFixedType ft && ft.BitWidth == 16 ? 8 : 16;
-                int fixedValue = (int)(fixedConstant.Value * (1 << fractionalBits));
-
-                if (fixedConstant.Type is IrFixedType fixedType && fixedType.BitWidth == 16)
-                {
-                    Emit($"\tmove.w\t#{fixedValue},{targetReg}");
-                }
-                else
-                {
-                    Emit($"\tmove.l\t#{fixedValue},{targetReg}");
-                }
-                break;
-            }
-            case IrVariable variable:
-            {
-                // REGISTER ALLOCATION: Check if variable is allocated to a register
-                if (_currentFunctionRegAlloc != null)
-                {
-                    var allocatedReg = _currentFunctionRegAlloc.GetRegister(variable.Name);
-                    if (allocatedReg != null)
-                    {
-                        // Variable is in a register - move from allocated register to target
-                        if (allocatedReg != targetReg)
-                        {
-                            EmitComment($"Load {variable.Name} from allocated register {allocatedReg}");
-                            Emit($"\tmove.l\t{allocatedReg},{targetReg}");
-                        }
-                        // else: already in target register, no move needed
-                        return;
-                    }
-                    // If spilled or not allocated, fall through to stack loading
-                }
-
-                // Check if this is a parameter (use _localVariableOffsets for correct offset)
-                if (_currentFunction != null)
-                {
-                    var paramIndex = _currentFunction.Parameters.FindIndex(p => p.Name == variable.Name);
-                    if (paramIndex >= 0 && _localVariableOffsets.ContainsKey(variable.Name))
-                    {
-                        // Parameters are on the stack after link frame
-                        // Offsets are calculated in EmitPrologue based on actual parameter sizes
-                        var baseOffset = _localVariableOffsets[variable.Name];
-
-                        // Adjust offset for big-endian when loading smaller than longword
-                        var offset = baseOffset;
-                        if (variable.Type.SizeInBytes == 1)
-                        {
-                            offset += 3;  // Byte is at highest address in big-endian longword
-                        }
-                        else if (variable.Type.SizeInBytes == 2)
-                        {
-                            offset += 2;  // Word is at highest address in big-endian longword
-                        }
-
-                        if (targetReg.StartsWith("fp"))
-                        {
-                            // Loading into FPU register - always use base offset for floats
-                            Emit($"\tfmove.l\t{baseOffset}(a6),{targetReg}");
-                        }
-                        else
-                        {
-                            var varSize = GetSizeSuffix(variable.Type);
-                            Emit($"\tmove{varSize}\t{offset}(a6),{targetReg}");
-
-                            // Clear upper bits for byte/word loads to data registers
-                            if (variable.Type.SizeInBytes == 1 && targetReg.StartsWith('d'))
-                            {
-                                Emit($"\tand.l\t#$FF,{targetReg}");
-                            }
-                            else if (variable.Type.SizeInBytes == 2 && targetReg.StartsWith('d'))
-                            {
-                                Emit($"\tand.l\t#$FFFF,{targetReg}");
-                            }
-                        }
-                        return;
-                    }
-                }
-
-                // Check if it's a local variable
-                if (_localVariableOffsets.ContainsKey(variable.Name))
-                {
-                    var baseOffset = _localVariableOffsets[variable.Name];
-
-                    // Adjust offset for big-endian when loading smaller than longword
-                    var offset = baseOffset;
-                    if (variable.Type.SizeInBytes == 1)
-                    {
-                        offset += 3;  // Byte is at highest address in big-endian longword
-                    }
-                    else if (variable.Type.SizeInBytes == 2)
-                    {
-                        offset += 2;  // Word is at highest address in big-endian longword
-                    }
-
-                    if (targetReg.StartsWith("fp"))
-                    {
-                        // Loading into FPU register - use fmove.l (always use base offset)
-                        Emit($"\tfmove.l\t{baseOffset}(a6),{targetReg}");
-                    }
-                    else
-                    {
-                        var varSize = GetSizeSuffix(variable.Type);
-                        Emit($"\tmove{varSize}\t{offset}(a6),{targetReg}");
-
-                        // Clear upper bits after loading byte or word to avoid garbage
-                        if (variable.Type.SizeInBytes == 1 && targetReg.StartsWith('d'))
-                        {
-                            Emit($"\tand.l\t#$FF,{targetReg}");
-                        }
-                        else if (variable.Type.SizeInBytes == 2 && targetReg.StartsWith('d'))
-                        {
-                            Emit($"\tand.l\t#$FFFF,{targetReg}");
-                        }
-                    }
-                    return;
-                }
-
-                // If it's a temporary variable (%tN), load it from the stack if saved
-                if (variable.Name.StartsWith("%t"))
-                {
-                    // Check if this temp should reload from a global variable (for match on globals)
-                    if (_globalTagTemps.ContainsKey(variable.Name))
-                    {
-                        var globalName = _globalTagTemps[variable.Name];
-                        var globalLabel = $"_system_{globalName}";
-                        Emit($"\tmove.l\t{globalLabel},{targetReg}\t\t; Reload tag from global");
-                        return;
-                    }
-
-                    var savedIndex = _savedTemps.IndexOf(variable.Name);
-                    if (savedIndex >= 0)
-                    {
-                        // Check if this is a composite type (> 4 bytes)
-                        if (variable.Type.SizeInBytes > 4)
-                        {
-                            // For composite types, we need to calculate the proper offset
-                            // Calculate offset by summing sizes of all temps saved after this one
-                            int stackOffset = 0;
-                            for (int i = _savedTemps.Count - 1; i > savedIndex; i--)
-                            {
-                                var tempName = _savedTemps[i];
-                                // Get the size of this temp (default to 4 if not tracked)
-                                var tempSize = _savedTempSizes.GetValueOrDefault(tempName, 4);
-                                stackOffset += tempSize;
-                            }
-
-                            if (targetReg.StartsWith('a'))
-                            {
-                                // Load address of composite type on stack
-                                Emit($"\tlea\t{stackOffset}(sp),{targetReg}");
-                            }
-                            else
-                            {
-                                throw new Exception($"Composite types (size {variable.Type.SizeInBytes} bytes) cannot be loaded into data registers - use address registers");
-                            }
-                            return;
-                        }
-
-                        // Calculate offset: most recent temp is at 0(sp), earlier ones at higher offsets
-                        // Account for variable-sized temps
-                        int baseOffset = 0;
-                        for (int i = _savedTemps.Count - 1; i > savedIndex; i--)
-                        {
-                            var tempName = _savedTemps[i];
-                            var tempSize = _savedTempSizes.GetValueOrDefault(tempName, 4);
-                            baseOffset += tempSize;
-                        }
-
-                        // Adjust offset for big-endian byte ordering when loading smaller than longword
-                        // Temps are always stored as longwords (4 bytes)
-                        var offset = baseOffset;
-                        if (variable.Type.SizeInBytes == 1)
-                        {
-                            offset += 3;  // Byte is at highest address in big-endian longword
-                        }
-                        else if (variable.Type.SizeInBytes == 2)
-                        {
-                            offset += 2;  // Word is at highest address in big-endian longword
-                        }
-
-                        if (targetReg.StartsWith("fp"))
-                        {
-                            // Loading into FPU register - use fmove.l (always longword)
-                            Emit($"\tfmove.l\t{baseOffset}(sp),{targetReg}");
-                        }
-                        else
-                        {
-                            var tempSize = GetSizeSuffix(variable.Type);
-                            Emit($"\tmove{tempSize}\t{offset}(sp),{targetReg}");
-
-                            // Clear upper bits after loading byte or word to avoid garbage
-                            if (variable.Type.SizeInBytes == 1 && targetReg.StartsWith('d'))
-                            {
-                                Emit($"\tand.l\t#$FF,{targetReg}");
-                            }
-                            else if (variable.Type.SizeInBytes == 2 && targetReg.StartsWith('d'))
-                            {
-                                Emit($"\tand.l\t#$FFFF,{targetReg}");
-                            }
-                        }
-                    }
-                    else
-                    {
-                        // Result already in d0 from immediately previous operation
-                        if (targetReg != "d0")
-                        {
-                            if (targetReg.StartsWith("fp"))
-                            {
-                                // Loading into FPU register from d0
-                                Emit($"\tfmove.l\td0,{targetReg}");
-                            }
-                            else
-                            {
-                                var tempSize = GetSizeSuffix(variable.Type);
-                                Emit($"\tmove{tempSize}\td0,{targetReg}");
-                            }
-                        }
-                    }
-                }
-                // Check if it's a global variable from system module (CPU, FPU, Chipset)
-                else if (variable.Name == "CPU" || variable.Name == "FPU" || variable.Name == "Chipset")
-                {
-                    // Load from global variable label (e.g., _system_CPU)
-                    var globalLabel = $"_system_{variable.Name}";
-                    var varSize = GetSizeSuffix(variable.Type);
-                    Emit($"\tmove{varSize}\t{globalLabel},{targetReg}");
-
-                    // Clear upper bits after loading byte or word to avoid garbage
-                    if (variable.Type.SizeInBytes == 1 && targetReg.StartsWith('d'))
-                    {
-                        Emit($"\tand.l\t#$FF,{targetReg}");
-                    }
-                    else if (variable.Type.SizeInBytes == 2 && targetReg.StartsWith('d'))
-                    {
-                        Emit($"\tand.l\t#$FFFF,{targetReg}");
-                    }
-                }
-                else
-                {
-                    // Unknown variable - shouldn't happen if semantic analysis passed
-                    throw new Exception($"Unknown variable: {variable.Name}");
-                }
-                break;
-            }
-            case IrEnumValue enumValue:
-            {
-                // For simple enums (no associated data), just load the tag value
-                // For enums with data, construct the full value on the stack
-
-                if (enumValue.AssociatedValues.Count == 0)
-                {
-                    // Simple enum - just load the tag value directly
-                    EmitComment($"Load enum tag {enumValue.Type.Name}::{enumValue.VariantName} = {enumValue.VariantTag}");
-                    if (targetReg.StartsWith("d"))
-                    {
-                        Emit($"\tmoveq\t#{enumValue.VariantTag},{targetReg}\t\t; Enum tag");
-                    }
-                    else
-                    {
-                        Emit($"\tmove.l\t#{enumValue.VariantTag},{targetReg}\t\t; Enum tag");
-                    }
-                    break;
-                }
-
-                // Enum with associated data - construct full value on stack
-                EmitComment($"Constructing enum {enumValue.Type.Name}::{enumValue.VariantName}");
-
-                var enumType = enumValue.Type as IrEnumType;
-                if (enumType == null)
-                {
-                    throw new Exception("Enum value must have enum type");
-                }
-
-                // Calculate total size needed
-                var enumSize = enumType.SizeInBytes;
-
-                // Allocate space on stack (subtract from sp)
-                if (enumSize > 0)
-                {
-                    Emit($"\tsub.l\t#{enumSize},sp\t\t; Allocate space for enum");
-                    _tempStackOffset += enumSize;  // Track stack allocation for cleanup
-                }
-
-                // Save base address in a2 to handle nested allocations correctly
-                Emit($"\tmove.l\tsp,a2\t\t; Save enum base address");
-
-                // Store tag at offset 0
-                Emit($"\tmove.l\t#{enumValue.VariantTag},(a2)\t\t; Store variant tag");
-
-                // Store associated values starting at offset 4
-                int dataOffset = 4;
-                for (int i = 0; i < enumValue.AssociatedValues.Count; i++)
-                {
-                    var assocValue = enumValue.AssociatedValues[i];
-
-                    // Check if associated value is a simple enum constructor (no associated values)
-                    if (assocValue is IrEnumValue nestedEnumVal && nestedEnumVal.AssociatedValues.Count == 0)
-                    {
-                        // Simple enum constructor - just store the tag and zero padding
-                        EmitComment($"Store simple enum {nestedEnumVal.Type.Name}::{nestedEnumVal.VariantName}");
-                        Emit($"\tmove.l\t#{nestedEnumVal.VariantTag},{dataOffset}(a2)\t\t; Store simple enum tag");
-
-                        // Zero out remaining bytes for this enum type
-                        var nestedEnumType = nestedEnumVal.Type as IrEnumType;
-                        int remainingBytes = nestedEnumType.SizeInBytes - 4;
-                        if (remainingBytes > 0)
-                        {
-                            Emit($"\tmoveq\t#0,d0");
-                            for (int offset = 4; offset < nestedEnumType.SizeInBytes; offset += 4)
-                            {
-                                Emit($"\tmove.l\td0,{dataOffset + offset}(a2)\t\t; Zero data portion");
-                            }
-                        }
-                        dataOffset += nestedEnumType.SizeInBytes;
-                    }
-                    // Check if associated value is a nested IrEnumValue - build it inline
-                    else if (assocValue is IrEnumValue nestedEnumValue && nestedEnumValue.Type is IrEnumType nestedEnumType)
-                    {
-                        // Build nested enum inline at current offset to avoid stack pointer issues
-                        EmitComment($"Build nested enum {nestedEnumType.Name} inline at offset {dataOffset}");
-
-                        // Store nested enum tag
-                        Emit($"\tmove.l\t#{nestedEnumValue.VariantTag},{dataOffset}(a2)");
-                        int nestedOffset = dataOffset + 4;
-
-                        // Store nested enum's associated values
-                        for (int k = 0; k < nestedEnumValue.AssociatedValues.Count; k++)
-                        {
-                            var nestedAssocValue = nestedEnumValue.AssociatedValues[k];
-                            LoadOperand(nestedAssocValue, "d0");
-                            var nestedValueSize = GetSizeSuffix(nestedAssocValue.Type);
-                            Emit($"\tmove{nestedValueSize}\td0,{nestedOffset}(a2)");
-                            nestedOffset += nestedAssocValue.Type.SizeInBytes;
-                        }
-
-                        dataOffset += nestedEnumType.SizeInBytes;
-                    }
-                    // Check if associated value is a nested composite enum variable (> 4 bytes)
-                    else if (assocValue.Type is IrEnumType enumType2 && enumType2.SizeInBytes > 4)
-                    {
-                        // Nested composite enum variable - load it and get address in a1
-                        LoadOperand(assocValue, "a1");
-
-                        // Copy it longword-by-longword from nested enum to current enum
-                        // Use a2 (base address) instead of sp since sp may have moved
-                        int numLongwords = (enumType2.SizeInBytes + 3) / 4;
-                        for (int j = 0; j < numLongwords; j++)
-                        {
-                            Emit($"\tmove.l\t{j * 4}(a1),d0");
-                            Emit($"\tmove.l\td0,{dataOffset + (j * 4)}(a2)\t\t; Store nested enum longword {j}");
-                        }
-                        dataOffset += enumType2.SizeInBytes;
-                    }
-                    else
-                    {
-                        // Simple value - load into d0
-                        LoadOperand(assocValue, "d0");
-
-                        var valueSize = GetSizeSuffix(assocValue.Type);
-                        Emit($"\tmove{valueSize}\td0,{dataOffset}(a2)\t\t; Store associated value {i}");
-                        dataOffset += assocValue.Type.SizeInBytes;
-                    }
-                }
-
-                // If targetReg is an address register, load the address
-                // If it's a data register, we can't load the whole struct - error
-                if (targetReg.StartsWith('a'))
-                {
-                    if (targetReg != "a2")
-                    {
-                        Emit($"\tmove.l\ta2,{targetReg}\t\t; Load enum address");
-                    }
-                }
-                else
-                {
-                    // For data register, this is likely being stored somewhere - leave it on stack
-                    // The calling code will need to handle copying it
-                    throw new Exception("Enum values cannot be loaded directly into data registers - use address registers");
-                }
-                break;
-            }
-            case IrEnumConstructor enumConstructor:
-            {
-                // IrEnumConstructor represents an enum variant constructor (e.g., SystemCPU::M68000)
-                // For simple enums (no associated data), just load the tag value
-                EmitComment($"Load enum constructor {enumConstructor.Type.Name}::{enumConstructor.VariantName} = {enumConstructor.VariantTag}");
-                if (targetReg.StartsWith("d"))
-                {
-                    Emit($"\tmoveq\t#{enumConstructor.VariantTag},{targetReg}\t\t; Enum tag");
-                }
-                else
-                {
-                    Emit($"\tmove.l\t#{enumConstructor.VariantTag},{targetReg}\t\t; Enum tag");
-                }
-                break;
-            }
-            case IrBorrowValue borrowValue:
-            {
-                // Borrow creates a reference (address) to a value
-                // For variables, load the address using LEA
-                if (borrowValue.BorrowedValue is IrVariable variable)
-                {
-                    if (_localVariableOffsets.ContainsKey(variable.Name))
-                    {
-                        var offset = _localVariableOffsets[variable.Name];
-
-                        // LEA can only target address registers, so use a0 as intermediate
-                        Emit($"\tlea\t{offset}(a6),a0");
-
-                        // If target is a data register, move from a0
-                        if (targetReg.StartsWith('d'))
-                        {
-                            Emit($"\tmove.l\ta0,{targetReg}");
-                        }
-                        else if (targetReg != "a0")
-                        {
-                            Emit($"\tmove.l\ta0,{targetReg}");
-                        }
-                    }
-                    else
-                    {
-                        throw new Exception($"Cannot borrow unknown variable: {variable.Name}");
-                    }
-                }
-                else
-                {
-                    throw new Exception($"Cannot borrow non-variable: {borrowValue.BorrowedValue.GetType().Name}");
-                }
-                break;
-            }
-            case IrDereferenceValue derefValue:
-            {
-                // Dereference: load the value pointed to by a pointer/reference
-                // First, load the pointer/reference into an address register
-                LoadOperand(derefValue.PointerValue, "a0");
-
-                // Then load the value from that address
-                var valueSize = GetSizeSuffix(derefValue.Type);
-                Emit($"\tmove{valueSize}\t(a0),{targetReg}");
-                break;
-            }
-        }
-    }
 
     private void GenerateFpuDetection()
     {
@@ -3859,6 +2741,9 @@ public partial class M68kCodeGenerator
                 // Simple data - load into d0
                 var dataSize = GetSizeSuffix(extractData.DataType);
                 Emit($"\tmove{dataSize}\t{varOffset + dataOffset}(a6),d0\t\t; Load variant data");
+
+                // Track that result is in d0
+                _lastResultInD0 = extractData.ResultName;
             }
         }
         else
@@ -3869,24 +2754,4 @@ public partial class M68kCodeGenerator
         // Result is in d0 (for simple types) or on stack (for composite types)
     }
 
-    private string GetSizeSuffix(IrType type)
-    {
-        return type.SizeInBytes switch
-        {
-            1 => ".b",  // byte
-            2 => ".w",  // word
-            4 => ".l",  // long
-            _ => throw new Exception($"Unsupported type size: {type.SizeInBytes}")
-        };
-    }
-
-    private void Emit(string line)
-    {
-        _output.AppendLine(line);
-    }
-
-    private void EmitComment(string comment)
-    {
-        _output.AppendLine($"\t; {comment}");
-    }
 }

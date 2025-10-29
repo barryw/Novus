@@ -241,7 +241,22 @@ class Program
             // Build IR
             var irBuilder = new IrBuilder();
             irBuilder.SetStdLibPath(stdLibPath);
+            irBuilder.SetInputFilePath(inputFile);
             var module = irBuilder.BuildModule(compilationUnit);
+
+            // Run transformation passes (before optimization)
+            // Transformations can modify IR structure (inlining, monomorphization, etc.)
+            if (options.OptimizationLevel > 0)
+            {
+                var transformPipeline = Novus.Transforms.TransformPipeline.CreatePipeline(
+                    enableInlining: false, // TODO: Enable when implemented
+                    verbose: options.Verbose
+                );
+                if (transformPipeline != null)
+                {
+                    transformPipeline.Run(module);
+                }
+            }
 
             // Run optimization passes
             Novus.Optimizer.Passes.RegisterAllocationPass? regAllocPass = null;

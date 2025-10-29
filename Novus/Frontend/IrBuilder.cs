@@ -24,12 +24,28 @@ public class IrBuilder : NovusBaseVisitor<object?>
     private readonly Dictionary<string, IrGenericType> _genericParams = new(); // Track generic type parameters
     private readonly Dictionary<string, (IrType Type, object Value)> _constants = new(); // Track constant values
     private readonly Dictionary<string, IrEnumType> _monomorphizedEnums = new(); // Cache for monomorphized generic enums
+    private readonly Dictionary<string, IrStructType> _monomorphizedStructs = new(); // Cache for monomorphized generic structs
+
+    // Store generic method templates for later instantiation
+    // Key: "TypeName::methodName", Value: (genericParams, context)
+    private readonly Dictionary<string, (List<string> GenericParams, NovusParser.FunctionDeclarationContext Context)> _genericMethodTemplates = new();
+
+    // Track which monomorphized methods have been generated
+    // Key: "TypeName<ConcreteType>::methodName" (e.g., "Vec<i32>::push")
+    private readonly HashSet<string> _instantiatedMethods = new();
+
     private IrType? _expectedType = null; // Expected type for bidirectional type checking
     public readonly List<IrStringLiteral> StringLiterals = new(); // Track all string literals for data section
     private string _stdLibPath = "std"; // Path to standard library
+    private string? _inputFilePath = null; // Path to the file being compiled
     private readonly bool _skipAutoImports; // Skip auto-importing core module (for tests)
     private readonly List<string> _importedModulePaths = new(); // Track imported module file paths for linking
+    private readonly HashSet<string> _processedModules = new(); // Track which modules we've already processed for imports (prevent circular imports)
     private readonly TypeInterner _typeInterner = new(); // Type interning for efficient type equality
+
+    // Track active type substitutions during generic method instantiation
+    // Key: generic param name (e.g., "T"), Value: concrete type (e.g., i32)
+    private Dictionary<string, IrType>? _currentTypeSubstitutions = null;
 
     /// <summary>
     /// Constructor for IrBuilder
@@ -45,6 +61,14 @@ public class IrBuilder : NovusBaseVisitor<object?>
     public void SetStdLibPath(string path)
     {
         _stdLibPath = path;
+    }
+
+    /// <summary>
+    /// Set the input file path being compiled
+    /// </summary>
+    public void SetInputFilePath(string path)
+    {
+        _inputFilePath = path;
     }
 
     /// <summary>
@@ -71,8 +95,11 @@ public class IrBuilder : NovusBaseVisitor<object?>
     public IrModule BuildModule(NovusParser.CompilationUnitContext context)
     {
         // Multi-pass approach to handle forward references:
-        // Pass 0a: Implicitly import all of core module (unless testing)
-        if (!_skipAutoImports)
+        // Pass 0a: Implicitly import all of core module (unless testing or compiling a std library module)
+        // Don't auto-import std::core when compiling std library modules to prevent circular dependencies
+        bool isStdLibraryModule = _inputFilePath != null && _inputFilePath.Contains(System.IO.Path.DirectorySeparatorChar + "std" + System.IO.Path.DirectorySeparatorChar);
+
+        if (!_skipAutoImports && !isStdLibraryModule)
         {
             ImportModule("std::core", importAll: true);
         }
@@ -101,7 +128,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             RegisterStruct(structContext);
         }
 
-        // Pass 4: Collect all function signatures
+        // Pass 4: Collect all function signatures (including impl methods)
         foreach (var funcContext in context.functionDeclaration())
         {
             var name = funcContext.IDENTIFIER().GetText();
@@ -131,6 +158,76 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
 
             _module.AddFunction(function);
+        }
+
+        // Pass 4.5: Collect impl block method signatures
+        foreach (var implContext in context.implDeclaration())
+        {
+            // Get the type name this impl is for
+            // Get only the base type name (Vec, not Vec<T>)
+            var typeName = implContext.typeName().IDENTIFIER(0).GetText();
+
+            // Process each method in the impl block
+            foreach (var implItem in implContext.implItem())
+            {
+                var funcDecl = implItem.functionDeclaration();
+                if (funcDecl == null) continue;
+
+                var methodName = funcDecl.IDENTIFIER().GetText();
+                var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
+
+                // Check for extern and pub keywords
+                var isExtern = false;
+                var isPublic = false;
+                for (int i = 0; i < Math.Min(3, funcDecl.ChildCount); i++)
+                {
+                    var childText = funcDecl.GetChild(i)?.GetText();
+                    if (childText == "extern") isExtern = true;
+                    if (childText == "pub") isPublic = true;
+                }
+
+                // Methods are registered with mangled names: Type::method
+                var mangledName = $"{typeName}::{methodName}";
+                var function = new IrFunction(mangledName, returnType, isPublic, isExtern);
+
+                // Parse parameters (including self)
+                if (funcDecl.parameterList() != null)
+                {
+                    var paramList = funcDecl.parameterList();
+
+                    // Handle self parameter if present
+                    if (paramList.selfParameter() != null)
+                    {
+                        var selfParam = paramList.selfParameter();
+                        var isMutable = selfParam.KW_MUT() != null;
+                        var isBorrowed = selfParam.GetChild(0).GetText() == "&";
+
+                        // Determine self type - look up the struct type
+                        if (!_structs.TryGetValue(typeName, out var structType))
+                        {
+                            throw new Exception($"Type '{typeName}' not found for impl block");
+                        }
+
+                        IrType selfType = structType;
+                        if (isBorrowed)
+                        {
+                            selfType = _typeInterner.GetPointerType(selfType);
+                        }
+
+                        function.Parameters.Add(new IrParameter("self", selfType));
+                    }
+
+                    // Add regular parameters
+                    foreach (var paramCtx in paramList.parameter())
+                    {
+                        var paramName = paramCtx.IDENTIFIER().GetText();
+                        var paramType = ParseType(paramCtx.type());
+                        function.Parameters.Add(new IrParameter(paramName, paramType));
+                    }
+                }
+
+                _module.AddFunction(function);
+            }
         }
 
         // Pass 5: Build function bodies
@@ -163,6 +260,63 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 {
                     // Void function or no return value: add void return
                     _currentBlock!.AddInstruction(new IrReturn(null));
+                }
+            }
+        }
+
+        // Pass 6: Build impl method bodies
+        foreach (var implContext in context.implDeclaration())
+        {
+            // Get only the base type name (Vec, not Vec<T>)
+            var typeName = implContext.typeName().IDENTIFIER(0).GetText();
+
+            foreach (var implItem in implContext.implItem())
+            {
+                var funcDecl = implItem.functionDeclaration();
+                if (funcDecl == null) continue;
+
+                var methodName = funcDecl.IDENTIFIER().GetText();
+                var mangledName = $"{typeName}::{methodName}";
+
+                _currentFunction = _module.Functions.First(f => f.Name == mangledName);
+
+                // Skip extern functions or methods with no body
+                if (_currentFunction.IsExtern || funcDecl.block() == null)
+                {
+                    continue;
+                }
+
+                _currentBlock = _currentFunction.CreateBasicBlock("entry");
+                _localVariables.Clear();
+
+                // Add self parameter to local variables if present
+                if (_currentFunction.Parameters.Any(p => p.Name == "self"))
+                {
+                    var selfParam = _currentFunction.Parameters.First(p => p.Name == "self");
+                    // Parameters are not mutable by default (they're immutable copies)
+                    _localVariables["self"] = new IrLocalVariable("self", selfParam.Type, isMutable: false);
+                }
+
+                // Add other parameters to local variables
+                foreach (var param in _currentFunction.Parameters.Where(p => p.Name != "self"))
+                {
+                    _localVariables[param.Name] = new IrLocalVariable(param.Name, param.Type, isMutable: false);
+                }
+
+                // Visit method body
+                var lastValue = Visit(funcDecl.block()) as IrValue;
+
+                // Add implicit return if block doesn't already have a terminator
+                if (!CurrentBlockHasTerminator())
+                {
+                    if (_currentFunction.ReturnType is not IrVoidType && lastValue != null)
+                    {
+                        _currentBlock!.AddInstruction(new IrReturn(lastValue));
+                    }
+                    else
+                    {
+                        _currentBlock!.AddInstruction(new IrReturn(null));
+                    }
                 }
             }
         }
@@ -269,6 +423,15 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     private void ImportModule(string moduleNamespace, bool importAll, NovusParser.ImportListContext? importList = null)
     {
+        // Skip if this module has already been processed (prevent circular imports)
+        if (_processedModules.Contains(moduleNamespace))
+        {
+            return;
+        }
+
+        // Mark this module as being processed
+        _processedModules.Add(moduleNamespace);
+
         // Convert namespace path to file path
         // std::dos → std/dos.novus
         // std::ffi::exec → std/ffi/exec.novus
@@ -344,7 +507,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
             _importedModulePaths.Add(modulePath);
         }
 
-        // CRITICAL: Process pub use reexports FIRST, before parsing any function signatures
+        // Note: We DON'T process the module's own imports here (transitive dependencies)
+        // Each module handles its own imports when it's compiled as a separate dependency
+        // This prevents duplicate symbols and circular dependencies
+        // Only process reexports, which are explicitly made public by the module
+
+        // CRITICAL: Process pub use reexports, before parsing any function signatures
         // Function signatures may reference reexported types, so those types must be in scope
         foreach (var reexportDecl in moduleContext.reexportDeclaration())
         {
@@ -484,6 +652,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 continue;
             }
 
+            // Skip if this enum has already been imported (transitive dependencies)
+            if (_enums.ContainsKey(enumName))
+            {
+                continue;
+            }
+
             // Register the enum from the imported module
             RegisterEnum(enumDecl);
         }
@@ -499,6 +673,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 continue;
             }
 
+            // Skip if this constant has already been imported (transitive dependencies)
+            if (_constants.ContainsKey(constName))
+            {
+                continue;
+            }
+
             // Register the constant from the imported module
             RegisterConstant(constDecl);
         }
@@ -510,6 +690,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             // Skip if not in the import list
             if (!namesToImport.Contains(structName))
+            {
+                continue;
+            }
+
+            // Skip if this struct has already been imported (transitive dependencies)
+            if (_structs.ContainsKey(structName))
             {
                 continue;
             }
@@ -549,6 +735,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 throw new Exception($"Cannot import private function '{funcName}' from module '{moduleNamespace}'");
             }
 
+            // Skip if this function has already been imported (transitive dependencies)
+            if (_module.Functions.Any(f => f.Name == funcName))
+            {
+                continue;
+            }
+
             // Parse function signature
             var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
             // Only mark as extern if it's truly an extern function (FFI)
@@ -568,6 +760,342 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             _module.AddFunction(function);
         }
+
+        // Register imported impl block methods in the module
+        foreach (var implDecl in moduleContext.implDeclaration())
+        {
+            // Handle generic parameters if present (e.g., impl<T> Vec<T>)
+            var genericParams = new List<string>();
+            if (implDecl.genericParams() != null)
+            {
+                foreach (var paramId in implDecl.genericParams().IDENTIFIER())
+                {
+                    var paramName = paramId.GetText();
+                    genericParams.Add(paramName);
+                    _genericParams[paramName] = new IrGenericType(paramName);
+                }
+            }
+
+            // Get only the base type name (Vec, not Vec<T>)
+            var typeName = implDecl.typeName().IDENTIFIER(0).GetText();
+
+            foreach (var implItem in implDecl.implItem())
+            {
+                var funcDecl = implItem.functionDeclaration();
+                if (funcDecl == null) continue;
+
+                var methodName = funcDecl.IDENTIFIER().GetText();
+
+                // Check if method is pub
+                var isPub = false;
+                for (int i = 0; i < Math.Min(3, funcDecl.ChildCount); i++)
+                {
+                    if (funcDecl.GetChild(i)?.GetText() == "pub")
+                    {
+                        isPub = true;
+                        break;
+                    }
+                }
+
+                // For generic impl blocks, store ALL methods as templates (pub and private)
+                // because instantiating one method may need to call private helper methods
+                if (genericParams.Count > 0)
+                {
+                    var templateKey = $"{typeName}::{methodName}";
+                    _genericMethodTemplates[templateKey] = (genericParams, funcDecl);
+                    // Don't create function yet - it will be instantiated when called with concrete types
+                    continue;
+                }
+
+                // Only import pub methods for non-generic impl blocks
+                if (!isPub)
+                {
+                    continue;
+                }
+
+                // For non-generic impl blocks, create the function normally
+                var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
+
+                // Methods are registered with mangled names: Type::method
+                var mangledName = $"{typeName}::{methodName}";
+                var function = new IrFunction(mangledName, returnType, isPublic: false, isExtern: false);
+
+                // Parse parameters (including self)
+                if (funcDecl.parameterList() != null)
+                {
+                    var paramList = funcDecl.parameterList();
+
+                    // Handle self parameter if present
+                    if (paramList.selfParameter() != null)
+                    {
+                        var selfParam = paramList.selfParameter();
+                        var isMutable = selfParam.KW_MUT() != null;
+                        var isBorrowed = selfParam.GetChild(0).GetText() == "&";
+
+                        // Determine self type - look up the struct type
+                        if (!_structs.TryGetValue(typeName, out var structType))
+                        {
+                            throw new Exception($"Type '{typeName}' not found for impl block");
+                        }
+
+                        IrType selfType = structType;
+                        if (isBorrowed)
+                        {
+                            selfType = _typeInterner.GetPointerType(selfType);
+                        }
+
+                        function.Parameters.Add(new IrParameter("self", selfType));
+                    }
+
+                    // Add regular parameters
+                    foreach (var paramCtx in paramList.parameter())
+                    {
+                        var paramName = paramCtx.IDENTIFIER().GetText();
+                        var paramType = ParseType(paramCtx.type());
+                        function.Parameters.Add(new IrParameter(paramName, paramType));
+                    }
+                }
+
+                _module.AddFunction(function);
+            }
+
+            // Clear generic params from scope after impl registration
+            foreach (var paramName in genericParams)
+            {
+                _genericParams.Remove(paramName);
+            }
+        }
+
+        // If we're importing any impl blocks (generic or not), also import all transitive dependencies
+        // that the impl methods might need (e.g., AllocMem from std::exec for Vec methods)
+        bool hasImplBlocks = moduleContext.implDeclaration().Length > 0;
+        if (hasImplBlocks)
+        {
+            // First, import any extern functions directly declared in this module
+            foreach (var funcDecl in moduleContext.functionDeclaration())
+            {
+                var funcName = funcDecl.IDENTIFIER().GetText();
+
+                // Check if it's an extern function
+                bool isExtern = false;
+                for (int i = 0; i < Math.Min(3, funcDecl.ChildCount); i++)
+                {
+                    if (funcDecl.GetChild(i)?.GetText() == "extern")
+                    {
+                        isExtern = true;
+                        break;
+                    }
+                }
+
+                // Only import extern functions (FFI bindings)
+                if (!isExtern) continue;
+
+                // Check if we already have this function
+                if (_module.Functions.Any(f => f.Name == funcName)) continue;
+
+                // Parse and import the extern function
+                var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
+                var function = new IrFunction(funcName, returnType, isPublic: false, isExtern: true);
+
+                // Parse parameters
+                if (funcDecl.parameterList() != null)
+                {
+                    foreach (var paramCtx in funcDecl.parameterList().parameter())
+                    {
+                        var paramName = paramCtx.IDENTIFIER().GetText();
+                        var paramType = ParseType(paramCtx.type());
+                        function.Parameters.Add(new IrParameter(paramName, paramType));
+                    }
+                }
+
+                _module.AddFunction(function);
+            }
+
+            // Second, recursively import symbols from FFI modules that this module imports
+            // This handles cases like std::core importing from std::ffi::exec
+            // Only import from std::ffi::* modules to avoid conflicts with wrapper functions
+            foreach (var importDecl in moduleContext.importDeclaration())
+            {
+                var importPath = importDecl.modulePath().GetText();
+
+                // Only transitively import from std::ffi::* modules (pure FFI bindings)
+                if (!importPath.Contains("::ffi::"))
+                {
+                    continue;
+                }
+
+                var importListCtx = importDecl.importList();
+
+                // Import the specific symbols that this module imports
+                // These are extern FFI functions that impl methods need
+                if (importListCtx != null)
+                {
+                    ImportModule(importPath, importAll: false, importList: importListCtx);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Instantiate a generic method for a monomorphized struct type
+    /// E.g., instantiate Vec<T>::push as Vec<i32>::push
+    /// </summary>
+    private IrFunction? InstantiateGenericMethod(IrStructType monomorphizedStruct, string methodName)
+    {
+        var baseTypeName = monomorphizedStruct.StructName;
+        var templateKey = $"{baseTypeName}::{methodName}";
+
+        // Check if we have a template for this method
+        if (!_genericMethodTemplates.TryGetValue(templateKey, out var template))
+        {
+            return null; // No template found
+        }
+
+        var (genericParams, funcDecl) = template;
+
+        // Build instantiation key (e.g., "Vec<i32>::push")
+        var instantiationKey = $"{monomorphizedStruct.CacheKey}::{methodName}";
+
+        // Check if already instantiated
+        if (_instantiatedMethods.Contains(instantiationKey))
+        {
+            // Already generated, look it up
+            var mangledName = $"{baseTypeName}_{methodName}";
+            return _module.Functions.FirstOrDefault(f => f.Name == mangledName);
+        }
+
+        // Build type substitution map from monomorphized struct
+        var typeSubstitutions = new Dictionary<string, IrType>();
+        var baseStruct = _structs[baseTypeName];
+
+        for (int i = 0; i < baseStruct.GenericParameters.Count && i < baseStruct.Fields.Count; i++)
+        {
+            var genericParam = baseStruct.GenericParameters[i];
+            var baseFieldType = baseStruct.Fields[i].Type;
+            var monomorphizedFieldType = monomorphizedStruct.Fields[i].Type;
+
+            // Extract concrete type from field
+            if (baseFieldType is IrGenericType gt)
+            {
+                typeSubstitutions[gt.ParameterName] = monomorphizedFieldType;
+                Console.WriteLine($"[InstantiateGenericMethod] Type substitution: {gt.ParameterName} -> {monomorphizedFieldType}");
+            }
+            else if (baseFieldType is IrPointerType basePtrType && basePtrType.PointeeType is IrGenericType ptrGt)
+            {
+                if (monomorphizedFieldType is IrPointerType monoPtrType)
+                {
+                    typeSubstitutions[ptrGt.ParameterName] = monoPtrType.PointeeType;
+                    Console.WriteLine($"[InstantiateGenericMethod] Type substitution (from ptr): {ptrGt.ParameterName} -> {monoPtrType.PointeeType}");
+                }
+            }
+        }
+
+        // Set up concrete types for substitution during parsing
+        var savedGenericParams = new Dictionary<string, IrGenericType>();
+        foreach (var paramName in genericParams)
+        {
+            if (_genericParams.ContainsKey(paramName))
+            {
+                savedGenericParams[paramName] = _genericParams[paramName];
+            }
+            _genericParams[paramName] = new IrGenericType(paramName);
+        }
+
+        // Set active type substitutions for the duration of this instantiation
+        var savedSubstitutions = _currentTypeSubstitutions;
+        _currentTypeSubstitutions = typeSubstitutions;
+
+        // Create the function
+        var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
+
+        // Substitute generic types in return type
+        returnType = SubstituteGenericTypes(returnType, typeSubstitutions);
+
+        var mangledMethodName = $"{baseTypeName}_{methodName}";
+        var function = new IrFunction(mangledMethodName, returnType, isPublic: false, isExtern: false);
+
+        // Parse parameters with substitutions
+        if (funcDecl.parameterList() != null)
+        {
+            var paramList = funcDecl.parameterList();
+
+            // Handle self parameter
+            if (paramList.selfParameter() != null)
+            {
+                var selfParam = paramList.selfParameter();
+                var isBorrowed = selfParam.GetChild(0).GetText() == "&";
+
+                IrType selfType = monomorphizedStruct;
+                if (isBorrowed)
+                {
+                    selfType = _typeInterner.GetPointerType(selfType);
+                }
+
+                function.Parameters.Add(new IrParameter("self", selfType));
+            }
+
+            // Add regular parameters - need to substitute generic types
+            foreach (var paramCtx in paramList.parameter())
+            {
+                var paramName = paramCtx.IDENTIFIER().GetText();
+                var paramType = ParseType(paramCtx.type());
+
+                // Substitute generic types recursively
+                paramType = SubstituteGenericTypes(paramType, typeSubstitutions);
+
+                function.Parameters.Add(new IrParameter(paramName, paramType));
+            }
+        }
+
+        _module.AddFunction(function);
+
+        // Build the function body - save all state to avoid corrupting caller
+        var savedFunction = _currentFunction;
+        var savedBlock = _currentBlock;
+        var savedLocalVars = new Dictionary<string, IrLocalVariable>(_localVariables);
+
+        _currentFunction = function;
+        _localVariables.Clear();
+
+        // Add parameters to local variables
+        foreach (var param in function.Parameters)
+        {
+            _localVariables[param.Name] = new IrLocalVariable(param.Name, param.Type, false);
+        }
+
+        // Create entry block
+        var entryBlock = new IrBasicBlock("entry");
+        function.BasicBlocks.Add(entryBlock);
+        _currentBlock = entryBlock;
+
+        // Visit the function body with type substitutions active
+        if (funcDecl.block() != null)
+        {
+            Visit(funcDecl.block());
+        }
+
+        // Restore all state
+        _currentFunction = savedFunction;
+        _currentBlock = savedBlock;
+        _localVariables.Clear();
+        foreach (var kvp in savedLocalVars)
+        {
+            _localVariables[kvp.Key] = kvp.Value;
+        }
+
+        // Restore type substitutions
+        _currentTypeSubstitutions = savedSubstitutions;
+
+        // Clear generic params
+        foreach (var paramName in typeSubstitutions.Keys)
+        {
+            _genericParams.Remove(paramName);
+        }
+
+        // Mark as instantiated
+        _instantiatedMethods.Add(instantiationKey);
+
+        return function;
     }
 
     private void RegisterConstant(NovusParser.ConstDeclarationContext context)
@@ -649,6 +1177,20 @@ public class IrBuilder : NovusBaseVisitor<object?>
     {
         var name = context.IDENTIFIER().GetText();
 
+        // Handle generic parameters if present
+        var genericParams = new List<string>();
+        if (context.genericParams() != null)
+        {
+            foreach (var paramId in context.genericParams().IDENTIFIER())
+            {
+                var paramName = paramId.GetText();
+                genericParams.Add(paramName);
+
+                // Add to generic param scope for field parsing
+                _genericParams[paramName] = new IrGenericType(paramName);
+            }
+        }
+
         // Parse struct fields
         var fields = new List<IrStructField>();
         foreach (var fieldCtx in context.structField())
@@ -658,7 +1200,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
             fields.Add(new IrStructField(fieldName, fieldType));
         }
 
-        var structType = new IrStructType(name, fields);
+        // Clear generic params from scope after struct registration
+        foreach (var paramName in genericParams)
+        {
+            _genericParams.Remove(paramName);
+        }
+
+        var structType = new IrStructType(name, fields, genericParams);
 
         // Force offset calculation by accessing SizeInBytes
         _ = structType.SizeInBytes;
@@ -803,8 +1351,23 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     public override object? VisitAssignmentStatement([NotNull] NovusParser.AssignmentStatementContext context)
     {
+        // Get the identifier or 'self' keyword
         var identifier = context.IDENTIFIER();
-        var name = identifier.GetText();
+        var selfKeyword = context.KW_SELF();
+
+        string name;
+        if (identifier != null)
+        {
+            name = identifier.GetText();
+        }
+        else if (selfKeyword != null)
+        {
+            name = "self";
+        }
+        else
+        {
+            throw new Exception("Assignment statement must have either IDENTIFIER or KW_SELF");
+        }
 
         // Detect which kind of assignment this is
         string? op = null;
@@ -899,9 +1462,176 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Check if this is a member or index assignment (has lvalueSuffix elements)
         if (lvalueSuffixes.Length > 0)
         {
-            // Complex lvalue: obj.field, arr[index], or mixed obj.arr[0].field
-            // For now, we'll throw an exception as we need to implement complex lvalue stores
-            throw new NotImplementedException("Complex lvalue assignment (member/index chains) not yet implemented in IR builder");
+            // Handle member/index assignments: obj.field = value, arr[index] = value
+            var value = (IrValue?)Visit(context.expression());
+            if (value == null)
+            {
+                throw new Exception($"Assignment requires a value");
+            }
+
+            // Start with the base variable
+            IrVariable baseVar;
+            if (_localVariables.ContainsKey(name))
+            {
+                baseVar = new IrVariable(name, _localVariables[name].Type);
+            }
+            else if (_currentFunction != null && _currentFunction.Parameters.Any(p => p.Name == name))
+            {
+                var param = _currentFunction.Parameters.First(p => p.Name == name);
+                baseVar = new IrVariable(name, param.Type);
+            }
+            else
+            {
+                throw new Exception($"Undefined variable: {name}");
+            }
+
+            // For single member access (e.g., self.value = expr)
+            if (lvalueSuffixes.Length == 1 && lvalueSuffixes[0].GetChild(0).GetText() == ".")
+            {
+                var memberName = lvalueSuffixes[0].IDENTIFIER().GetText();
+
+                // Auto-dereference pointers to structs (like in VisitMemberAccessExpr)
+                IrValue actualBase = baseVar;
+                var structType = baseVar.Type;
+                if (structType is IrPointerType ptrType && ptrType.PointeeType is IrStructType)
+                {
+                    // Wrap in IrDereferenceValue for auto-dereference
+                    actualBase = new IrDereferenceValue(baseVar, ptrType.PointeeType);
+                    structType = ptrType.PointeeType;
+                }
+
+                if (structType is not IrStructType irStructType)
+                {
+                    throw new Exception($"Cannot access member '{memberName}' on non-struct type");
+                }
+
+                // Find the field offset
+                int fieldOffset = 0;
+                bool found = false;
+                foreach (var field in irStructType.Fields)
+                {
+                    if (field.Name == memberName)
+                    {
+                        fieldOffset = field.Offset;
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found)
+                {
+                    throw new Exception($"Field '{memberName}' not found in struct '{irStructType.Name}'");
+                }
+
+                // Generate store to struct member (using actualBase which may be dereferenced)
+                var storeMember = new IrMemberStore(actualBase, memberName, fieldOffset, value);
+                _currentBlock!.AddInstruction(storeMember);
+
+                return null;
+            }
+
+            // For single index access (e.g., ptr[0] = value, arr[i] = value)
+            if (lvalueSuffixes.Length == 1 && lvalueSuffixes[0].GetChild(0).GetText() == "[")
+            {
+                // Parse the index expression
+                var indexExpr = (IrValue?)Visit(lvalueSuffixes[0].expression());
+                if (indexExpr == null)
+                {
+                    throw new Exception("Index expression is required");
+                }
+
+                // Generate index store instruction
+                var indexStore = new IrIndexStore(baseVar, indexExpr, value);
+                _currentBlock!.AddInstruction(indexStore);
+
+                return null;
+            }
+
+            // Handle complex lvalue chains (e.g., self.ptr[index] = value, self.field1.field2 = value)
+            // Build up the lvalue by processing each suffix in order
+            IrValue currentLValue = baseVar;
+
+            for (int i = 0; i < lvalueSuffixes.Length; i++)
+            {
+                var suffix = lvalueSuffixes[i];
+                bool isLastSuffix = (i == lvalueSuffixes.Length - 1);
+
+                if (suffix.GetChild(0).GetText() == ".")
+                {
+                    // Field access
+                    var memberName = suffix.IDENTIFIER().GetText();
+
+                    // Auto-dereference pointers to structs
+                    IrValue actualBase = currentLValue;
+                    var structType = currentLValue.Type;
+                    if (structType is IrPointerType ptrType && ptrType.PointeeType is IrStructType)
+                    {
+                        actualBase = new IrDereferenceValue(currentLValue, ptrType.PointeeType);
+                        structType = ptrType.PointeeType;
+                    }
+
+                    if (structType is not IrStructType irStructType)
+                    {
+                        throw new Exception($"Cannot access member '{memberName}' on non-struct type");
+                    }
+
+                    // Find the field
+                    var field = irStructType.Fields.FirstOrDefault(f => f.Name == memberName);
+                    if (field == null)
+                    {
+                        throw new Exception($"Field '{memberName}' not found in struct '{irStructType.Name}'");
+                    }
+
+                    if (isLastSuffix)
+                    {
+                        // This is the final field - emit a store
+                        var storeMember = new IrMemberStore(actualBase, memberName, field.Offset, value);
+                        _currentBlock!.AddInstruction(storeMember);
+                        return null;
+                    }
+                    else
+                    {
+                        // This is an intermediate field - load it for the next suffix
+                        var tempName = $"_field_{memberName}_{_tempCounter++}";
+                        var loadMember = new IrMemberAccess(tempName, actualBase, memberName, field.Type, field.Offset);
+                        _currentBlock!.AddInstruction(loadMember);
+                        currentLValue = new IrVariable(tempName, field.Type);
+                    }
+                }
+                else if (suffix.GetChild(0).GetText() == "[")
+                {
+                    // Index access
+                    var indexExpr = (IrValue?)Visit(suffix.expression());
+                    if (indexExpr == null)
+                    {
+                        throw new Exception("Index expression is required");
+                    }
+
+                    if (isLastSuffix)
+                    {
+                        // This is the final index - emit an index store
+                        var indexStore = new IrIndexStore(currentLValue, indexExpr, value);
+                        _currentBlock!.AddInstruction(indexStore);
+                        return null;
+                    }
+                    else
+                    {
+                        // This is an intermediate index - load it for the next suffix
+                        var elementType = currentLValue.Type is IrPointerType pt ? pt.PointeeType : throw new Exception("Cannot index non-pointer type");
+                        var tempName = $"_indexed_{_tempCounter++}";
+                        var loadIndex = new IrIndexAccess(tempName, currentLValue, indexExpr, elementType);
+                        _currentBlock!.AddInstruction(loadIndex);
+                        currentLValue = new IrVariable(tempName, elementType);
+                    }
+                }
+                else
+                {
+                    throw new Exception($"Unexpected lvalue suffix: {suffix.GetText()}");
+                }
+            }
+
+            // If we get here, something went wrong
+            throw new Exception("Failed to process lvalue chain");
         }
 
         if (derefCount > 0)
@@ -1262,6 +1992,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     public override object? VisitCallExpr([NotNull] NovusParser.CallExprContext context)
     {
+        // Handle method calls (e.g., v.len())
+        // Method calls desugar to: Type::method(receiver, args...)
+        if (context.expression() is NovusParser.MemberAccessExprContext memberAccessCtx)
+        {
+            return HandleMethodCallIr(context, memberAccessCtx);
+        }
+
         var funcExpr = (IrValue?)Visit(context.expression());
 
         // Parse arguments
@@ -1308,6 +2045,70 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 }
                 argIdx++;
             }
+        }
+
+        // Handle generic associated function calls (e.g., Vec::new())
+        if (funcExpr is IrGenericAssociatedFunction genericAssocFunc)
+        {
+            // We need to determine the concrete type parameters
+            // Try to infer from expected type
+            if (_expectedType == null)
+            {
+                throw new Exception($"Cannot infer type parameters for '{genericAssocFunc.TypeName}::{genericAssocFunc.MethodName}()'. Please provide explicit type annotation.");
+            }
+
+            // Extract concrete type parameters from expected type
+            IrStructType? monomorphizedStruct = null;
+
+            if (_expectedType is IrStructType expectedStruct && expectedStruct.GenericParameters.Count == 0)
+            {
+                // Expected type is a monomorphized struct like Vec<i32>
+                monomorphizedStruct = expectedStruct;
+            }
+
+            if (monomorphizedStruct == null)
+            {
+                throw new Exception($"Cannot determine concrete type parameters for '{genericAssocFunc.TypeName}::{genericAssocFunc.MethodName}()' from expected type '{_expectedType.Name}'");
+            }
+
+            // Instantiate the generic method with the monomorphized struct
+            var instantiatedFunc = InstantiateGenericMethod(monomorphizedStruct, genericAssocFunc.MethodName);
+            if (instantiatedFunc == null)
+            {
+                throw new Exception($"Failed to instantiate generic method '{genericAssocFunc.TypeName}::{genericAssocFunc.MethodName}'");
+            }
+
+            // Generate call to instantiated function
+            var callResult = $"%t{_tempCounter++}";
+            var callInst = new IrCall(instantiatedFunc.Name, instantiatedFunc.ReturnType, callResult);
+            foreach (var arg in arguments)
+            {
+                callInst.Arguments.Add(arg);
+            }
+            _currentBlock!.AddInstruction(callInst);
+
+            return new IrVariable(callResult, instantiatedFunc.ReturnType);
+        }
+
+        // Handle non-generic function reference calls
+        if (funcExpr is IrFunctionRef funcRef)
+        {
+            // Validate argument count
+            if (arguments.Count != funcRef.Function.Parameters.Count)
+            {
+                throw new Exception($"Function '{funcRef.Function.Name}' expects {funcRef.Function.Parameters.Count} arguments, got {arguments.Count}");
+            }
+
+            // Generate call instruction
+            var callResultName = $"%t{_tempCounter++}";
+            var callInstruction = new IrCall(funcRef.Function.Name, funcRef.Function.ReturnType, callResultName);
+            foreach (var arg in arguments)
+            {
+                callInstruction.Arguments.Add(arg);
+            }
+            _currentBlock!.AddInstruction(callInstruction);
+
+            return new IrVariable(callResultName, funcRef.Function.ReturnType);
         }
 
         // Check if this is an enum constructor call
@@ -1611,6 +2412,148 @@ public class IrBuilder : NovusBaseVisitor<object?>
         return null;
     }
 
+    /// <summary>
+    /// Handle method calls (e.g., v.len())
+    /// Desugars to: Type::method(receiver, args...)
+    /// </summary>
+    private object? HandleMethodCallIr(NovusParser.CallExprContext callCtx, NovusParser.MemberAccessExprContext memberAccessCtx)
+    {
+        // Get the receiver (the thing before the dot)
+        var receiverExpr = memberAccessCtx.expression();
+        var methodName = memberAccessCtx.IDENTIFIER().GetText();
+
+        // Evaluate the receiver
+        var receiver = (IrValue?)Visit(receiverExpr);
+        if (receiver == null)
+        {
+            throw new Exception("Method call receiver is null");
+        }
+
+        // Get the type name for method lookup
+        string typeName;
+        var receiverType = receiver.Type;
+
+        if (receiverType is IrStructType structType)
+        {
+            typeName = structType.StructName;  // Use base name, not full generic name
+        }
+        else if (receiverType is IrEnumType enumType)
+        {
+            typeName = enumType.EnumName;
+        }
+        else if (receiverType is IrPointerType ptrType)
+        {
+            // Auto-dereference pointers
+            if (ptrType.PointeeType is IrStructType pointeeStruct)
+            {
+                typeName = pointeeStruct.StructName;  // Use base name, not full generic name
+            }
+            else if (ptrType.PointeeType is IrEnumType pointeeEnum)
+            {
+                typeName = pointeeEnum.EnumName;
+            }
+            else
+            {
+                throw new Exception($"Cannot call methods on pointer to non-struct/enum type: {receiverType.Name}");
+            }
+        }
+        else
+        {
+            throw new Exception($"Cannot call methods on type: {receiverType.Name}");
+        }
+
+        // Build the mangled function name: Type::method
+        var mangledMethodName = $"{typeName}::{methodName}";
+
+        // Look up the method
+        var method = _module.Functions.FirstOrDefault(f => f.Name == mangledMethodName);
+
+        // If method not found, try to instantiate it for monomorphized structs
+        if (method == null)
+        {
+            IrStructType? monomorphizedStruct = null;
+
+            // Check if receiver is a monomorphized struct
+            if (receiverType is IrStructType receiverStruct && receiverStruct.CacheKey != null)
+            {
+                monomorphizedStruct = receiverStruct;
+            }
+            // Check if receiver is a pointer to a monomorphized struct (&Vec<i32>, &mut Vec<i32>)
+            else if (receiverType is IrPointerType ptrType && ptrType.PointeeType is IrStructType pointeeStruct && pointeeStruct.CacheKey != null)
+            {
+                monomorphizedStruct = pointeeStruct;
+            }
+
+            if (monomorphizedStruct != null)
+            {
+                method = InstantiateGenericMethod(monomorphizedStruct, methodName);
+            }
+        }
+
+        if (method == null)
+        {
+            throw new Exception($"Method '{methodName}' not found for type '{typeName}'");
+        }
+
+        // Build arguments list: [receiver, ...user_args]
+        // Check if we need to borrow the receiver (for &self or &mut self)
+        IrValue receiverArg = receiver;
+        if (method.Parameters.Count > 0)
+        {
+            var firstParamType = method.Parameters[0].Type;
+
+            // If method expects a pointer/reference but we have a value, borrow it
+            if ((firstParamType is IrPointerType || firstParamType is IrReferenceType || firstParamType is IrMutReferenceType)
+                && receiver.Type is not IrPointerType && receiver.Type is not IrReferenceType && receiver.Type is not IrMutReferenceType)
+            {
+                // Wrap receiver in IrBorrowValue to take its address
+                bool isMutable = firstParamType is IrMutReferenceType || firstParamType is IrPointerType;
+                receiverArg = new IrBorrowValue(receiver, firstParamType, isMutable);
+            }
+        }
+
+        var arguments = new List<IrValue> { receiverArg };
+
+        // Add user-provided arguments
+        if (callCtx.argumentList() != null)
+        {
+            foreach (var argCtx in callCtx.argumentList().expression())
+            {
+                var argValue = (IrValue?)Visit(argCtx);
+                if (argValue != null)
+                {
+                    arguments.Add(argValue);
+                }
+            }
+        }
+
+        // Validate argument count
+        if (arguments.Count != method.Parameters.Count)
+        {
+            throw new Exception($"Method {methodName} expects {method.Parameters.Count} arguments, got {arguments.Count}");
+        }
+
+        // Create the call instruction
+        var returnType = method.ReturnType;
+        var resultName = returnType is not IrVoidType ? $"%t{_tempCounter++}" : null;
+
+        var call = new IrCall(mangledMethodName, returnType, resultName);
+        foreach (var arg in arguments)
+        {
+            call.Arguments.Add(arg);
+        }
+
+        _currentBlock!.AddInstruction(call);
+
+        // Return the result variable if non-void
+        if (resultName != null)
+        {
+            return new IrVariable(resultName, returnType);
+        }
+
+        return null;
+    }
+
     public override object? VisitBorrowExpr([NotNull] NovusParser.BorrowExprContext context)
     {
         var exprContext = context.expression();
@@ -1654,21 +2597,32 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     public override object? VisitIndexExpr([NotNull] NovusParser.IndexExprContext context)
     {
-        var arrayExpr = (IrValue)Visit(context.expression(0))!;
+        var baseExpr = (IrValue)Visit(context.expression(0))!;
         var indexExpr = (IrValue)Visit(context.expression(1))!;
 
-        // Get the array type to determine element type
-        if (arrayExpr.Type is not IrArrayType arrayType)
+        // Handle array indexing
+        if (baseExpr.Type is IrArrayType arrayType)
         {
-            throw new Exception($"Cannot index into non-array type: {arrayExpr.Type.Name}");
+            // Create an index access instruction for arrays
+            var tempName = $"%t{_tempCounter++}";
+            var indexAccess = new IrIndexAccess(tempName, baseExpr, indexExpr, arrayType.ElementType);
+            _currentBlock!.AddInstruction(indexAccess);
+
+            return new IrVariable(tempName, arrayType.ElementType);
         }
 
-        // Create an index access instruction
-        var tempName = $"%t{_tempCounter++}";
-        var indexAccess = new IrIndexAccess(tempName, arrayExpr, indexExpr, arrayType.ElementType);
-        _currentBlock!.AddInstruction(indexAccess);
+        // Handle pointer indexing: ptr[index] = *(ptr + index * sizeof(T))
+        if (baseExpr.Type is IrPointerType ptrType)
+        {
+            // Create an index access instruction for pointers
+            var tempName = $"%t{_tempCounter++}";
+            var indexAccess = new IrIndexAccess(tempName, baseExpr, indexExpr, ptrType.PointeeType);
+            _currentBlock!.AddInstruction(indexAccess);
 
-        return new IrVariable(tempName, arrayType.ElementType);
+            return new IrVariable(tempName, ptrType.PointeeType);
+        }
+
+        throw new Exception($"Cannot index into non-array/non-pointer type: {baseExpr.Type.Name}");
     }
 
     public override object? VisitArrayLiteral([NotNull] NovusParser.ArrayLiteralContext context)
@@ -1716,14 +2670,25 @@ public class IrBuilder : NovusBaseVisitor<object?>
         return new IrVariable(tempName, left.Type);
     }
 
-    public override object? VisitShiftExpr([NotNull] NovusParser.ShiftExprContext context)
+    public override object? VisitShiftLeftExpr([NotNull] NovusParser.ShiftLeftExprContext context)
     {
         var left = (IrValue)Visit(context.expression(0))!;
         var right = (IrValue)Visit(context.expression(1))!;
-        var op = context.GetChild(1).GetText() == "<<" ? IrBinaryOp.OpKind.Shl : IrBinaryOp.OpKind.Shr;
 
         var tempName = $"%t{_tempCounter++}";
-        var binOp = new IrBinaryOp(tempName, op, left, right, left.Type);
+        var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Shl, left, right, left.Type);
+        _currentBlock!.AddInstruction(binOp);
+
+        return new IrVariable(tempName, left.Type);
+    }
+
+    public override object? VisitShiftRightExpr([NotNull] NovusParser.ShiftRightExprContext context)
+    {
+        var left = (IrValue)Visit(context.expression(0))!;
+        var right = (IrValue)Visit(context.expression(1))!;
+
+        var tempName = $"%t{_tempCounter++}";
+        var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Shr, left, right, left.Type);
         _currentBlock!.AddInstruction(binOp);
 
         return new IrVariable(tempName, left.Type);
@@ -1896,9 +2861,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
         if (op == "!")
         {
             // Logical NOT: false becomes true, true becomes false
-            // Implemented as: result = (operand == false)
+            // Implemented as: result = (operand XOR 1)
+            // This flips the boolean bit: 0 XOR 1 = 1, 1 XOR 1 = 0
             var tempName = $"%t{_tempCounter++}";
-            var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Eq, operandValue, new IrBoolConstant(false), IrBoolType.Instance);
+            var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Xor, operandValue, new IrConstant(1, new IrIntType(32, false)), IrBoolType.Instance);
             _currentBlock!.AddInstruction(binOp);
             return new IrVariable(tempName, IrBoolType.Instance);
         }
@@ -2230,6 +3196,22 @@ public class IrBuilder : NovusBaseVisitor<object?>
         return stringLiteral;
     }
 
+    public override object? VisitSizeofExpr([NotNull] NovusParser.SizeofExprContext context)
+    {
+        // @sizeof(Type) - compile-time intrinsic that returns size in bytes as u32
+        var typeCtx = context.type();
+        var targetType = ParseType(typeCtx);
+
+        if (targetType == null)
+        {
+            throw new Exception($"could not determine type for @sizeof");
+        }
+
+        // Return the size as a constant u32 value
+        var sizeInBytes = (int)targetType.SizeInBytes;
+        return new IrConstant(sizeInBytes, IrIntType.U32);
+    }
+
     private string ProcessEscapeSequences(string input)
     {
         return input
@@ -2248,24 +3230,58 @@ public class IrBuilder : NovusBaseVisitor<object?>
     {
         var name = context.identifier().GetText();
 
-        // Check if this is a qualified enum constructor (e.g., Result::Ok, Option::Some)
+        // Check if this is a qualified enum constructor or associated function (e.g., Result::Ok, Vec::new)
         if (name.Contains("::"))
         {
             var parts = name.Split("::");
             if (parts.Length == 2)
             {
-                var enumName = parts[0];
-                var variantName = parts[1];
+                var typeName = parts[0];
+                var memberName = parts[1];
 
-                if (_enums.ContainsKey(enumName))
+                // Try enum variant first
+                if (_enums.ContainsKey(typeName))
                 {
-                    var enumType = _enums[enumName];
-                    var variant = enumType.GetVariant(variantName);
+                    var enumType = _enums[typeName];
+                    var variant = enumType.GetVariant(memberName);
 
                     if (variant != null)
                     {
                         // Return an enum constructor that will be used in call expressions
-                        return new IrEnumConstructor(enumType, variantName, variant.Tag);
+                        return new IrEnumConstructor(enumType, memberName, variant.Tag);
+                    }
+                }
+
+                // Try associated function (struct method without self parameter)
+                var mangledName = name; // Already has :: format
+
+                // Check if this is a generic type - look in generic method templates
+                if (_structs.ContainsKey(typeName))
+                {
+                    var structType = _structs[typeName];
+
+                    // If the struct is generic, check generic method templates
+                    if (structType.GenericParameters.Count > 0)
+                    {
+                        var templateKey = mangledName;
+                        if (_genericMethodTemplates.ContainsKey(templateKey))
+                        {
+                            // Return a special marker for generic associated function
+                            // This will be instantiated later when we know the concrete types
+                            return new IrGenericAssociatedFunction(typeName, memberName, structType.GenericParameters);
+                        }
+                    }
+                }
+
+                // Try to find the function in the module
+                var function = _module.Functions.FirstOrDefault(f => f.Name == mangledName);
+                if (function != null)
+                {
+                    // Check if this is an associated function (no self parameter)
+                    if (function.Parameters.Count == 0 || function.Parameters[0].Name != "self")
+                    {
+                        // Return a function reference that can be called
+                        return new IrFunctionRef(function);
                     }
                 }
             }
@@ -2314,6 +3330,22 @@ public class IrBuilder : NovusBaseVisitor<object?>
         return new IrVariable(name, IrIntType.I32); // Default type for temps
     }
 
+    public override object? VisitSelfExpr([NotNull] NovusParser.SelfExprContext context)
+    {
+        // Return the 'self' variable (parameter in method)
+        if (_localVariables.ContainsKey("self"))
+        {
+            return new IrVariable("self", _localVariables["self"].Type);
+        }
+        else if (_currentFunction != null && _currentFunction.Parameters.Any(p => p.Name == "self"))
+        {
+            var selfParam = _currentFunction.Parameters.First(p => p.Name == "self");
+            return new IrVariable("self", selfParam.Type);
+        }
+
+        throw new Exception("'self' can only be used inside methods");
+    }
+
     public override object? VisitParenExpr([NotNull] NovusParser.ParenExprContext context)
     {
         return Visit(context.expression());
@@ -2328,7 +3360,19 @@ public class IrBuilder : NovusBaseVisitor<object?>
             throw new Exception($"Unknown struct type '{structName}'");
         }
 
-        var structType = _structs[structName];
+        // Use expected type for bidirectional type checking if it's a monomorphized version of this struct
+        IrStructType structType;
+        if (_expectedType is IrStructType expectedStruct && expectedStruct.StructName == structName)
+        {
+            // Use the expected monomorphized type (e.g., Vec<i32>)
+            structType = expectedStruct;
+        }
+        else
+        {
+            // Use the base generic type (e.g., Vec<T>)
+            structType = _structs[structName];
+        }
+
         var fieldValues = new Dictionary<string, IrValue>();
 
         // Process field initializers
@@ -2396,10 +3440,21 @@ public class IrBuilder : NovusBaseVisitor<object?>
             return new IrVariable(strResultName, fieldType);
         }
 
-        // Check if the base expression is a struct type
-        if (baseExpr.Type is not IrStructType structType)
+        // Auto-dereference pointers to structs
+        IrValue actualBase = baseExpr;
+        IrType baseType = baseExpr.Type;
+
+        if (baseType is IrPointerType ptrType && ptrType.PointeeType is IrStructType)
         {
-            throw new Exception($"Cannot access member '{memberName}' on non-struct type '{baseExpr.Type.Name}'");
+            // Auto-dereference the pointer - wrap in IrDereferenceValue
+            actualBase = new IrDereferenceValue(actualBase, ptrType.PointeeType);
+            baseType = ptrType.PointeeType;
+        }
+
+        // Check if the base expression is a struct type
+        if (baseType is not IrStructType structType)
+        {
+            throw new Exception($"Cannot access member '{memberName}' on non-struct type '{baseType.Name}'");
         }
 
         // Find the field
@@ -2411,7 +3466,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         // Generate a member access instruction
         var resultName = $"%t{_tempCounter++}";
-        var memberAccess = new IrMemberAccess(resultName, baseExpr, memberName, field.Type, field.Offset);
+        var memberAccess = new IrMemberAccess(resultName, actualBase, memberName, field.Type, field.Offset);
         _currentBlock!.AddInstruction(memberAccess);
 
         return new IrVariable(resultName, field.Type);
@@ -2419,36 +3474,79 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     public override object? VisitPathExpr([NotNull] NovusParser.PathExprContext context)
     {
-        // Handle enum variant path expressions like Option::Some, Result::Ok
-        // This returns an IrEnumValue which can then be called with arguments
+        // Handle path expressions: Type::name
+        // This can be:
+        // 1. Enum variants: Option::Some, Result::Ok
+        // 2. Associated functions (static methods): Vec::new, Vec::with_capacity
         var baseExpr = context.expression();
-        var variantName = context.IDENTIFIER().GetText();
+        var memberName = context.IDENTIFIER().GetText();
 
-        // The base expression should be an identifier for the enum type
-        string? enumName = null;
+        // The base expression should be an identifier for the type
+        string? typeName = null;
         if (baseExpr is NovusParser.PrimaryExprContext primaryCtx &&
             primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext identCtx)
         {
-            enumName = identCtx.identifier().GetText();
+            typeName = identCtx.identifier().GetText();
         }
 
-        if (enumName == null || !_enums.ContainsKey(enumName))
+        if (typeName == null)
         {
-            throw new Exception($"Path expression must reference an enum type, got '{enumName}'");
+            throw new Exception($"Path expression must reference a type");
         }
 
-        var enumType = _enums[enumName];
-        var variant = enumType.GetVariant(variantName);
-
-        if (variant == null)
+        // Try enum variant first
+        if (_enums.ContainsKey(typeName))
         {
-            throw new Exception($"Enum '{enumName}' has no variant '{variantName}'");
+            var enumType = _enums[typeName];
+            var variant = enumType.GetVariant(memberName);
+
+            if (variant == null)
+            {
+                throw new Exception($"Enum '{typeName}' has no variant '{memberName}'");
+            }
+
+            // Return enum constructor
+            return new IrEnumConstructor(enumType, memberName, variant.Tag);
         }
 
-        // For now, we'll return a special marker value
-        // The actual construction will happen when this is called as a function
-        // This is a placeholder that indicates "this is an enum constructor"
-        return new IrEnumConstructor(enumType, variantName, variant.Tag);
+        // Try associated function (struct method without self parameter)
+        var mangledName = $"{typeName}::{memberName}";
+
+        // Check if this is a generic type - look in generic method templates
+        if (_structs.ContainsKey(typeName))
+        {
+            var structType = _structs[typeName];
+
+            // If the struct is generic, check generic method templates
+            if (structType.GenericParameters.Count > 0)
+            {
+                var templateKey = mangledName;
+                if (_genericMethodTemplates.ContainsKey(templateKey))
+                {
+                    // Return a special marker for generic associated function
+                    // This will be instantiated later when we know the concrete types
+                    return new IrGenericAssociatedFunction(typeName, memberName, structType.GenericParameters);
+                }
+            }
+        }
+
+        // Try to find the function in the module
+        var function = _module.Functions.FirstOrDefault(f => f.Name == mangledName);
+        if (function != null)
+        {
+            // Check if this is an associated function (no self parameter)
+            if (function.Parameters.Count == 0 || function.Parameters[0].Name != "self")
+            {
+                // Return a function reference that can be called
+                return new IrFunctionRef(function);
+            }
+            else
+            {
+                throw new Exception($"Cannot call method '{memberName}' of type '{typeName}' without an instance (it requires 'self')");
+            }
+        }
+
+        throw new Exception($"Type '{typeName}' has no associated function or variant '{memberName}'");
     }
 
     public override object? VisitMatchStatement([NotNull] NovusParser.MatchStatementContext context)
@@ -2640,13 +3738,78 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Check if it's a generic type parameter (T, E, etc.)
         if (_genericParams.ContainsKey(typeName))
         {
+            // If we're inside a generic method instantiation and have a concrete type, use it
+            if (_currentTypeSubstitutions != null && _currentTypeSubstitutions.ContainsKey(typeName))
+            {
+                return _currentTypeSubstitutions[typeName];
+            }
             return _genericParams[typeName];
         }
 
         // Check if it's a struct type
         if (_structs.ContainsKey(typeName))
         {
-            return _structs[typeName];
+            var structType = _structs[typeName];
+
+            // Handle generic instantiation (e.g., Vec<i32>)
+            if (context.typeList() != null)
+            {
+                var typeArgs = new List<IrType>();
+                foreach (var typeCtx in context.typeList().type())
+                {
+                    typeArgs.Add(ParseType(typeCtx));
+                }
+
+                // Create cache key
+                var typeArgKeys = typeArgs.Select(t => GetTypeCacheKey(t));
+                var cacheKey = $"{structType.StructName}<{string.Join(",", typeArgKeys)}>";
+
+                // Check cache first
+                if (_monomorphizedStructs.ContainsKey(cacheKey))
+                {
+                    return _monomorphizedStructs[cacheKey];
+                }
+
+                // Create monomorphized struct with concrete types
+                var typeSubstitutions = new Dictionary<string, IrType>();
+                for (int i = 0; i < structType.GenericParameters.Count; i++)
+                {
+                    typeSubstitutions[structType.GenericParameters[i]] = typeArgs[i];
+                }
+
+                // Create monomorphized fields
+                var monomorphizedFields = new List<IrStructField>();
+                foreach (var origField in structType.Fields)
+                {
+                    var fieldType = origField.Type;
+
+                    // Substitute generic types in field
+                    if (fieldType is IrGenericType gt && typeSubstitutions.ContainsKey(gt.ParameterName))
+                    {
+                        fieldType = typeSubstitutions[gt.ParameterName];
+                    }
+                    // Handle nested generic types (e.g., *T where T is generic)
+                    else if (fieldType is IrPointerType ptrType && ptrType.PointeeType is IrGenericType ptrGt && typeSubstitutions.ContainsKey(ptrGt.ParameterName))
+                    {
+                        fieldType = _typeInterner.GetPointerType(typeSubstitutions[ptrGt.ParameterName]);
+                    }
+
+                    monomorphizedFields.Add(new IrStructField(origField.Name, fieldType));
+                }
+
+                // Create new struct type with concrete types (no generic parameters)
+                var monomorphizedStruct = new IrStructType(structType.StructName, monomorphizedFields, null, cacheKey);
+
+                // Force calculation of field offsets by accessing SizeInBytes
+                _ = monomorphizedStruct.SizeInBytes;
+
+                // Cache it for future use
+                _monomorphizedStructs[cacheKey] = monomorphizedStruct;
+
+                return monomorphizedStruct;
+            }
+
+            return structType;
         }
 
         // Check if it's an enum type
@@ -2713,6 +3876,51 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         throw new Exception($"Unknown type '{typeName}'");
+    }
+
+    /// <summary>
+    /// Recursively substitute generic type parameters with concrete types
+    /// </summary>
+    private IrType SubstituteGenericTypes(IrType type, Dictionary<string, IrType> substitutions)
+    {
+        if (type is IrGenericType gt && substitutions.ContainsKey(gt.ParameterName))
+        {
+            return substitutions[gt.ParameterName];
+        }
+        else if (type is IrPointerType ptrType)
+        {
+            var substitutedPointee = SubstituteGenericTypes(ptrType.PointeeType, substitutions);
+            if (substitutedPointee != ptrType.PointeeType)
+            {
+                return _typeInterner.GetPointerType(substitutedPointee);
+            }
+        }
+        else if (type is IrReferenceType refType)
+        {
+            var substitutedPointee = SubstituteGenericTypes(refType.PointeeType, substitutions);
+            if (substitutedPointee != refType.PointeeType)
+            {
+                return _typeInterner.GetReferenceType(substitutedPointee);
+            }
+        }
+        else if (type is IrMutReferenceType mutRefType)
+        {
+            var substitutedPointee = SubstituteGenericTypes(mutRefType.PointeeType, substitutions);
+            if (substitutedPointee != mutRefType.PointeeType)
+            {
+                return _typeInterner.GetMutReferenceType(substitutedPointee);
+            }
+        }
+        else if (type is IrArrayType arrayType)
+        {
+            var substitutedElement = SubstituteGenericTypes(arrayType.ElementType, substitutions);
+            if (substitutedElement != arrayType.ElementType)
+            {
+                return _typeInterner.GetArrayType(substitutedElement, arrayType.Length);
+            }
+        }
+
+        return type;
     }
 
     private string GetTypeCacheKey(IrType type)
@@ -2983,5 +4191,66 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Parse hex string to long
         var value = Convert.ToInt64(hexText, 16);
         return (value, type);
+    }
+
+    /// <summary>
+    /// Parse a type from its mangled name (e.g., "i32" -> IrIntType.I32, "Vec_i32" -> Vec<i32>)
+    /// </summary>
+    private IrType ParseTypeFromMangledName(string mangledName)
+    {
+        // Handle primitive types
+        if (mangledName == "i8") return IrIntType.I8;
+        if (mangledName == "i16") return IrIntType.I16;
+        if (mangledName == "i32") return IrIntType.I32;
+        if (mangledName == "i64") return IrIntType.I64;
+        if (mangledName == "u8") return IrIntType.U8;
+        if (mangledName == "u16") return IrIntType.U16;
+        if (mangledName == "u32") return IrIntType.U32;
+        if (mangledName == "u64") return IrIntType.U64;
+        if (mangledName == "bool") return IrBoolType.Instance;
+        if (mangledName == "void") return IrVoidType.Instance;
+
+        // Handle struct types (e.g., "Vec_i32" -> Vec<i32>)
+        // For now, this is a simple implementation
+        // TODO: Handle nested generics and more complex types
+        throw new Exception($"Cannot parse complex mangled type name '{mangledName}' yet");
+    }
+
+    /// <summary>
+    /// Get the mangled name for a type (e.g., IrIntType.I32 -> "i32", Vec<i32> -> "Vec_i32")
+    /// </summary>
+    private string GetMangledTypeName(IrType type)
+    {
+        if (type is IrIntType intType)
+        {
+            if (intType == IrIntType.I8) return "i8";
+            if (intType == IrIntType.I16) return "i16";
+            if (intType == IrIntType.I32) return "i32";
+            if (intType == IrIntType.I64) return "i64";
+            if (intType == IrIntType.U8) return "u8";
+            if (intType == IrIntType.U16) return "u16";
+            if (intType == IrIntType.U32) return "u32";
+            if (intType == IrIntType.U64) return "u64";
+        }
+        else if (type is IrBoolType)
+        {
+            return "bool";
+        }
+        else if (type is IrStructType structType)
+        {
+            // Use CacheKey if available (for monomorphized types like Vec<i32>)
+            if (structType.CacheKey != null)
+            {
+                return structType.CacheKey;
+            }
+            // Fall back to struct name for non-generic types
+            return structType.StructName;
+        }
+        else if (type is IrPointerType ptrType)
+        {
+            return "ptr_" + GetMangledTypeName(ptrType.PointeeType);
+        }
+
+        throw new Exception($"Cannot get mangled name for type '{type.Name}'");
     }
 }

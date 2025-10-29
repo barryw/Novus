@@ -3,7 +3,7 @@ grammar Novus;
 // Parser Rules
 
 compilationUnit
-    : importDeclaration* reexportDeclaration* (constDeclaration | globalVariableDeclaration | structDeclaration | enumDeclaration | functionDeclaration)* EOF
+    : importDeclaration* reexportDeclaration* (constDeclaration | globalVariableDeclaration | structDeclaration | enumDeclaration | implDeclaration | functionDeclaration)* EOF
     ;
 
 attribute
@@ -58,11 +58,17 @@ functionDeclaration
     ;
 
 parameterList
-    : parameter (',' parameter)*
+    : selfParameter (',' parameter)*
+    | parameter (',' parameter)*
     ;
 
 parameter
     : IDENTIFIER ':' type
+    ;
+
+selfParameter
+    : '&' KW_MUT? KW_SELF
+    | KW_SELF
     ;
 
 structDeclaration
@@ -81,8 +87,20 @@ enumVariant
     : IDENTIFIER ('(' typeList ')')?
     ;
 
+implDeclaration
+    : attribute* KW_IMPL genericParams? typeName genericTypeArgs? '{' implItem* '}'
+    ;
+
+implItem
+    : functionDeclaration
+    ;
+
 genericParams
     : '<' IDENTIFIER (',' IDENTIFIER)* '>'
+    ;
+
+genericTypeArgs
+    : '<' typeList '>'
     ;
 
 type
@@ -106,7 +124,7 @@ type
     | KW_FIXED16                                              # PrimitiveType
     | KW_FIXED32                                              # PrimitiveType
     | KW_STRING                                               # PrimitiveType
-    | typeName ('<' typeList '>')?                           # NamedType
+    | typeName ('<' typeList '>')?                          # NamedType
     ;
 
 typeName
@@ -181,13 +199,13 @@ returnStatement
     ;
 
 variableDeclaration
-    : (KW_LET | KW_VAR) (IDENTIFIER | '_') (':' type)? '=' expression
+    : (KW_LET | KW_VAR) KW_MUT? (IDENTIFIER | '_') (':' type)? '=' expression
     ;
 
 assignmentStatement
-    : ('*')* IDENTIFIER (lvalueSuffix)* ('=' | '+=' | '-=' | '*=' | '/=' | '%=' | '&=' | '|=' | '^=' | '<<=' | '>>=') expression
-    | ('*')* IDENTIFIER (lvalueSuffix)* ('++' | '--')
-    | ('++' | '--') ('*')* IDENTIFIER (lvalueSuffix)*
+    : ('*')* (IDENTIFIER | KW_SELF) (lvalueSuffix)* ('=' | '+=' | '-=' | '*=' | '/=' | '%=' | '&=' | '|=' | '^=' | '<<=' | '>>=') expression
+    | ('*')* (IDENTIFIER | KW_SELF) (lvalueSuffix)* ('++' | '--')
+    | ('++' | '--') ('*')* (IDENTIFIER | KW_SELF) (lvalueSuffix)*
     ;
 
 lvalueSuffix
@@ -237,7 +255,8 @@ expression
     | '*' expression                                       # DereferenceExpr
     | expression ('*' | '/' | '%') expression              # MultiplicativeExpr
     | expression ('+' | '-') expression                     # AdditiveExpr
-    | expression ('<<' | '>>') expression                  # ShiftExpr
+    | expression '<' '<' expression                        # ShiftLeftExpr
+    | expression '>' '>' expression                        # ShiftRightExpr
     | expression '&' expression                            # BitwiseAndExpr
     | expression '^' expression                            # BitwiseXorExpr
     | expression '|' expression                            # BitwiseOrExpr
@@ -253,6 +272,8 @@ argumentList
 primaryExpression
     : KW_TRUE                                      # BoolLiteral
     | KW_FALSE                                     # BoolLiteral
+    | KW_SELF                                      # SelfExpr
+    | '@' KW_SIZEOF '(' type ')'                   # SizeofExpr
     | STRING_LITERAL                               # StringLiteral
     | '-'? FLOAT_LITERAL                           # FloatLiteral
     | '-'? INTEGER_LITERAL                         # IntegerLiteral
@@ -286,6 +307,8 @@ KW_VAR      : 'var';
 KW_LET      : 'let';
 KW_MUT      : 'mut';
 KW_FN       : 'fn';
+KW_IMPL     : 'impl';
+KW_SELF     : 'self';
 KW_STRUCT   : 'struct';
 KW_ENUM     : 'enum';
 KW_RETURN   : 'return';
@@ -299,6 +322,7 @@ KW_MATCH    : 'match';
 KW_DEFER    : 'defer';
 KW_UNSAFE   : 'unsafe';
 KW_USING    : 'using';
+KW_SIZEOF   : 'sizeof';
 KW_TRUE     : 'true';
 KW_FALSE    : 'false';
 

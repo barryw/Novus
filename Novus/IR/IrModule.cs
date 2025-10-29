@@ -1,3 +1,5 @@
+using Novus.HIR;
+
 namespace Novus.IR;
 
 /// <summary>
@@ -8,6 +10,12 @@ public class IrModule
     public List<IrFunction> Functions { get; } = new();
     public List<IrEnumType> Enums { get; } = new();
     public Dictionary<string, IrMonomorphizedType> MonomorphizedTypes { get; } = new();
+
+    /// <summary>
+    /// HIR (High-level IR) instructions that need lowering to LIR
+    /// These represent language features like Copper lists, Blitter jobs, async functions
+    /// </summary>
+    public List<HirInstruction> HirInstructions { get; } = new();
 
     public void AddFunction(IrFunction function)
     {
@@ -611,12 +619,16 @@ public class IrStructType : IrType
 {
     public string StructName { get; }
     public List<IrStructField> Fields { get; }
+    public List<string> GenericParameters { get; }  // Type parameter names (e.g., ["T"])
+    public string? CacheKey { get; set; }  // Cache key for monomorphized types (e.g., "Vec<i32>")
     private int? _cachedSize;
 
-    public IrStructType(string structName, List<IrStructField> fields)
+    public IrStructType(string structName, List<IrStructField> fields, List<string>? genericParams = null, string? cacheKey = null)
     {
         StructName = structName;
         Fields = fields;
+        GenericParameters = genericParams ?? new List<string>();
+        CacheKey = cacheKey;
     }
 
     public override int SizeInBytes
@@ -656,7 +668,15 @@ public class IrStructType : IrType
         }
     }
 
-    public override string Name => StructName;
+    public override string Name
+    {
+        get
+        {
+            if (GenericParameters.Count > 0)
+                return $"{StructName}<{string.Join(", ", GenericParameters)}>";
+            return StructName;
+        }
+    }
 
     public IrStructField? GetField(string fieldName)
     {
