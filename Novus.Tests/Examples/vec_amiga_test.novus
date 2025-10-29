@@ -1,0 +1,28 @@
+// Vec test for Amiga - Tests that we can build a program with Vec
+// This will be expanded as we implement more features
+
+struct Vec<T> {
+    ptr: *T,
+    len: u32,
+    capacity: u32,
+}
+
+impl<T> Vec<T> {
+    fn len(&self) -> u32 {
+        return self.len
+    }
+
+    fn is_empty(&self) -> bool {
+        return self.len == 0u32
+    }
+
+    fn capacity(&self) -> u32 {
+        return self.capacity
+    }
+}
+
+// For now, just test that the program compiles
+// We'll add Vec operations as we implement them
+fn main() -> i32 {
+    return 42
+}

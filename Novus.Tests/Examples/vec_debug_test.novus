@@ -1,0 +1,9 @@
+from std::core import Vec
+
+fn main() -> i32 {
+    // Create empty vector
+    var v: Vec<i32> = Vec::new()
+
+    // Return the len value directly (should be 0)
+    return (i32)v.len()
+}

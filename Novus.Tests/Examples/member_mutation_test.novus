@@ -1,0 +1,29 @@
+// Test member mutation in methods
+
+struct Counter {
+    value: i32,
+}
+
+impl Counter {
+    fn new() -> Counter {
+        return Counter {
+            value: 0,
+        }
+    }
+
+    fn increment(&mut self) {
+        self.value = self.value + 1
+    }
+
+    fn get(&self) -> i32 {
+        return self.value
+    }
+}
+
+fn main() -> i32 {
+    let mut c: Counter = Counter::new()
+    c.increment()
+    c.increment()
+    c.increment()
+    return c.get()
+}

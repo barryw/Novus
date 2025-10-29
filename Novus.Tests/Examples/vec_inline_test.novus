@@ -1,0 +1,52 @@
+from std::core import Vec
+
+fn main() -> i32 {
+    // Create empty vector inline
+    let null_ptr: *i32 = (*i32)0
+    var v: Vec<i32> = Vec {
+        ptr: null_ptr,
+        len: 0u32,
+        capacity: 0u32,
+    }
+
+    // Test: should be empty
+    if !v.is_empty() {
+        return 1
+    }
+
+    // Test: push elements
+    v.push(10)
+    v.push(20)
+    v.push(30)
+
+    // Test: should have 3 elements
+    if v.len() != 3u32 {
+        return 2
+    }
+
+    // Test: set element
+    let ok: bool = v.set(1u32, 25)
+    if !ok {
+        return 3
+    }
+
+    // Test: push more to trigger reallocation
+    v.push(40)
+    v.push(50)
+
+    if v.len() != 5u32 {
+        return 4
+    }
+
+    // Test: clear
+    v.clear()
+    if v.len() != 0u32 {
+        return 5
+    }
+
+    // Clean up
+    v.drop()
+
+    // Success!
+    return 42
+}

@@ -1,0 +1,27 @@
+// Test basic Vec<T> syntax and impl blocks
+
+struct Vec<T> {
+    ptr: *T,
+    len: u32,
+    capacity: u32,
+}
+
+impl<T> Vec<T> {
+    fn len(&self) -> u32 {
+        return self.len
+    }
+
+    fn is_empty(&self) -> bool {
+        return self.len == 0u32
+    }
+
+    fn capacity(&self) -> u32 {
+        return self.capacity
+    }
+}
+
+fn main() -> i32 {
+    // For now just test that the grammar parses
+    // We'll implement method calls and Vec construction later
+    return 0
+}

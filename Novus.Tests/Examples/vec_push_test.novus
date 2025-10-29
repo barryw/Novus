@@ -1,0 +1,16 @@
+from std::core import Vec
+
+fn main() -> i32 {
+    // Create empty vector
+    var v: Vec<i32> = Vec::new()
+
+    // Test: push one element
+    v.push(10)
+
+    // Test: should have 1 element
+    if v.len() != 1u32 {
+        return 1
+    }
+
+    return 42  // Success!
+}

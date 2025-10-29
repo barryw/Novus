@@ -1,0 +1,22 @@
+// Simple member mutation test
+
+struct Counter {
+    value: i32,
+}
+
+impl Counter {
+    fn increment(&mut self) {
+        self.value = self.value + 1
+    }
+}
+
+fn main() -> i32 {
+    let mut c: Counter = Counter {
+        value: 0,
+    }
+
+    // This should modify c.value from 0 to 1
+    c.increment()
+
+    return c.value
+}

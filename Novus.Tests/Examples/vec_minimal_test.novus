@@ -1,0 +1,13 @@
+from std::core import Vec
+
+fn main() -> i32 {
+    // Create empty vector
+    var v: Vec<i32> = Vec::new()
+
+    // Test: should be empty
+    if v.is_empty() {
+        return 42  // Success!
+    }
+
+    return 1  // Failed
+}

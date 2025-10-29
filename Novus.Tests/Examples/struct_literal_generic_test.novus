@@ -1,0 +1,22 @@
+// Test struct literals with generics
+
+struct Container<T> {
+    value: T,
+    count: u32,
+}
+
+fn make_container() -> Container<i32> {
+    return Container {
+        value: 42,
+        count: 1u32,
+    }
+}
+
+fn main() -> i32 {
+    let c: Container<i32> = Container {
+        value: 100,
+        count: 5u32,
+    }
+
+    return c.value
+}

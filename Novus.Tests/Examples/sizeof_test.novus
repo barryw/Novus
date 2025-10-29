@@ -1,0 +1,40 @@
+// Test @sizeof intrinsic
+
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+fn main() -> i32 {
+    // Test @sizeof with primitive types
+    let size_i32: u32 = @sizeof(i32)
+    let size_u8: u32 = @sizeof(u8)
+    let size_ptr: u32 = @sizeof(*i32)
+
+    // Test @sizeof with struct type
+    let size_point: u32 = @sizeof(Point)
+
+    // Verify sizes are correct
+    // i32 should be 4 bytes
+    // u8 should be 1 byte
+    // pointer should be 4 bytes
+    // Point (2 x i32) should be 8 bytes
+
+    if size_i32 != 4u32 {
+        return 1
+    }
+
+    if size_u8 != 1u32 {
+        return 2
+    }
+
+    if size_ptr != 4u32 {
+        return 3
+    }
+
+    if size_point != 8u32 {
+        return 4
+    }
+
+    return 42
+}
