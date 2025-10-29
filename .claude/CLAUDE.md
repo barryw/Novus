@@ -1,5 +1,23 @@
 # Novus Language Project
 
+## ⚠️ CRITICAL DEVELOPMENT RULES
+
+**READ THIS FIRST - These rules override everything else:**
+
+- **Testing Amiga executables**: Copy to `/Users/barry/Emulation/Amiga/A4000-DH0/Barry` (shared drive for A4000 with 68040)
+
+- **Documentation**: You have extensive docs in the `docs/` folder. Read them when needed.
+
+- **Language Design**: Follow `LanguageDesignDoc.md` for language design decisions
+
+- **Ultimate Goal**: Make the compiler self-hosting. We should be able to build a Novus compiler that runs on AmigaOS so we can do development completely on an Amiga
+
+- **Compiler First**: Always ensure the compiler matches what we're trying to do, even if it means fixing the compiler. **Never reduce the scope of what we're trying to accomplish.**
+
+- **🚨 NEVER USE VASM/VLINK DIRECTLY**: Always build Amiga executables using the Novus compiler. Always. The compiler handles the complete pipeline: compile → assemble → link. If you manually invoke `vasmm68k_mot` or `vlink`, you're doing it wrong.
+
+---
+
 ## Overview
 
 **Novus** is a modern systems programming language for the Amiga 68k ecosystem. It combines modern language ergonomics with direct hardware access and the efficiency required for 68k systems.
