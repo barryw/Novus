@@ -65,3 +65,15 @@ test_*
 *.s.bak
 dos_stubs.o
 *_stubs.o
+
+# Review and planning documents
+ARCHITECTURE_COMPARISON.md
+EXTENSIBILITY_REVIEW.md
+REFACTORING_PLAN.md
+REFACTORING_PRIORITY.md
+docs/MemorySafety.md
+docs/Vec_ImplBlocks_Design.md
+
+# Temp test files
+a
+a.s
