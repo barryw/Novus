@@ -479,6 +479,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Check if this module has any pub (non-extern) functions that need compilation
         // FFI modules (only extern functions) don't need to be compiled separately
         bool hasImplementation = false;
+
+        // Check for top-level functions
         foreach (var funcDecl in moduleContext.functionDeclaration())
         {
             bool isPub = false;
@@ -496,6 +498,41 @@ public class IrBuilder : NovusBaseVisitor<object?>
             {
                 hasImplementation = true;
                 break;
+            }
+        }
+
+        // Also check for impl declarations with public methods
+        if (!hasImplementation)
+        {
+            foreach (var implDecl in moduleContext.implDeclaration())
+            {
+                // Check if this impl declaration has any public methods
+                // implItem contains a functionDeclaration, so get that
+                foreach (var implItem in implDecl.implItem())
+                {
+                    var funcDecl = implItem.functionDeclaration();
+                    if (funcDecl != null)
+                    {
+                        bool isPub = false;
+                        for (int i = 0; i < Math.Min(3, funcDecl.ChildCount); i++)
+                        {
+                            if (funcDecl.GetChild(i)?.GetText() == "pub")
+                            {
+                                isPub = true;
+                                break;
+                            }
+                        }
+
+                        if (isPub)
+                        {
+                            hasImplementation = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (hasImplementation)
+                    break;
             }
         }
 

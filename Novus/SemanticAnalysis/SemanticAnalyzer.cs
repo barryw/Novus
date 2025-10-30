@@ -1972,10 +1972,11 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return targetType;
 
         // Check if cast is valid
-        // Allow: numeric -> numeric, pointer -> integer, integer -> pointer
+        // Allow: numeric -> numeric, pointer -> integer, integer -> pointer, pointer -> pointer
         bool isValidCast = (IsNumericType(targetType) && IsNumericType(exprType)) ||
                            (IsNumericType(targetType) && exprType is IrPointerType) ||
-                           (targetType is IrPointerType && IsNumericType(exprType));
+                           (targetType is IrPointerType && IsNumericType(exprType)) ||
+                           (targetType is IrPointerType && exprType is IrPointerType);
 
         if (!isValidCast)
         {
@@ -1986,7 +1987,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 location,
                 helpTexts: new List<string>
                 {
-                    "only numeric types and pointers to integers can be cast"
+                    "only numeric types and pointers can be cast"
                 }
             );
             return null;

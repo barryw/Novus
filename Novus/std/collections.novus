@@ -40,8 +40,8 @@ impl<T> Vec<T> {
 
         match mem_opt {
             Some(mem) => {
-                // Type annotation handles pointer cast from *u8 to *T
-                let ptr: *T = mem
+                // Explicit pointer cast from *u8 to *T
+                let ptr: *T = (*T)mem
                 return Option::Some(Vec {
                     ptr: ptr,
                     len: 0u32,
@@ -72,7 +72,7 @@ impl<T> Vec<T> {
 
     // Reserve additional capacity (grow if needed)
     // Returns true on success, false if allocation failed
-    fn reserve(&mut self, additional: u32) -> bool {
+    pub fn reserve(&mut self, additional: u32) -> bool {
         let needed_capacity: u32 = self.len + additional
 
         // Only grow if we need more capacity
@@ -97,8 +97,8 @@ impl<T> Vec<T> {
 
             match new_mem_opt {
                 Some(new_mem) => {
-                    // Type annotation handles pointer cast from *u8 to *T
-                    let new_ptr: *T = new_mem
+                    // Explicit pointer cast from *u8 to *T
+                    let new_ptr: *T = (*T)new_mem
 
                     // Copy existing elements to new allocation
                     var i: u32 = 0u32
@@ -110,7 +110,7 @@ impl<T> Vec<T> {
                     // Free old memory if it exists
                     if self.capacity > 0u32 {
                         let old_bytes: u32 = self.capacity * element_size
-                        let old_mem: *u8 = (*u8)(u32)self.ptr
+                        let old_mem: *u8 = (*u8)self.ptr
                         FreeMem(old_mem, old_bytes)
                     }
 
@@ -187,8 +187,8 @@ impl<T> Vec<T> {
         if self.capacity > 0u32 {
             let element_size: u32 = @sizeof(T)
             let bytes: u32 = self.capacity * element_size
-            // Type annotation handles pointer cast from *T to *u8
-            let mem: *u8 = self.ptr
+            // Explicit pointer cast from *T to *u8
+            let mem: *u8 = (*u8)self.ptr
             FreeMem(mem, bytes)
 
             // Reset to null pointer (0 with type inference)
