@@ -688,6 +688,51 @@ public class IrStructType : IrType
     {
         return Fields.FirstOrDefault(f => f.Name == fieldName);
     }
+
+    /// <summary>
+    /// Create a monomorphized version of a generic struct by substituting type parameters
+    /// </summary>
+    public static IrStructType Monomorphize(IrStructType genericStruct, List<IrType> typeArgs)
+    {
+        if (genericStruct.GenericParameters.Count != typeArgs.Count)
+        {
+            throw new ArgumentException($"Type argument count mismatch: expected {genericStruct.GenericParameters.Count}, got {typeArgs.Count}");
+        }
+
+        // Build substitution map
+        var substitutions = new Dictionary<string, IrType>();
+        for (int i = 0; i < genericStruct.GenericParameters.Count; i++)
+        {
+            substitutions[genericStruct.GenericParameters[i]] = typeArgs[i];
+        }
+
+        // Substitute type parameters in fields
+        var monomorphizedFields = new List<IrStructField>();
+        foreach (var field in genericStruct.Fields)
+        {
+            var substitutedType = SubstituteType(field.Type, substitutions);
+            monomorphizedFields.Add(new IrStructField(field.Name, substitutedType));
+        }
+
+        // Build cache key (e.g., "Vec<i32>")
+        var cacheKey = $"{genericStruct.StructName}<{string.Join(",", typeArgs.Select(t => t.Name))}>";
+
+        return new IrStructType(genericStruct.StructName, monomorphizedFields, new List<string>(), cacheKey);
+    }
+
+    private static IrType SubstituteType(IrType type, Dictionary<string, IrType> substitutions)
+    {
+        // If the type is a generic parameter, substitute it
+        if (type is IrStructType structType && structType.GenericParameters.Count == 1 &&
+            substitutions.ContainsKey(structType.GenericParameters[0]))
+        {
+            return substitutions[structType.GenericParameters[0]];
+        }
+
+        // TODO: Handle nested generic types like Option<Vec<T>>
+
+        return type;
+    }
 }
 
 /// <summary>

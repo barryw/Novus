@@ -3146,18 +3146,23 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     paramType = typeSubstitutions[genericParam.ParameterName];
                 }
 
-                if (argType != null && !TypesCompatible(paramType, argType))
+                // Skip type checking if parameter type is still a generic parameter (will be inferred later)
+                // This allows Vec::new() followed by vec.push(42i32) to work with type inference
+                if (paramType is not IrGenericType)
                 {
-                    var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
-                    _diagnostics.ReportError(
-                        "E0015",
-                        $"mismatched types in method call",
-                        location,
-                        helpTexts: new List<string>
-                        {
-                            $"argument {i + 1} ('{method.Parameters[paramStartIndex + i].Name}'): expected '{TypeToString(paramType)}', found '{TypeToString(argType)}'"
-                        }
-                    );
+                    if (argType != null && !TypesCompatible(paramType, argType))
+                    {
+                        var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
+                        _diagnostics.ReportError(
+                            "E0015",
+                            $"mismatched types in method call",
+                            location,
+                            helpTexts: new List<string>
+                            {
+                                $"argument {i + 1} ('{method.Parameters[paramStartIndex + i].Name}'): expected '{TypeToString(paramType)}', found '{TypeToString(argType)}'"
+                            }
+                        );
+                    }
                 }
             }
         }

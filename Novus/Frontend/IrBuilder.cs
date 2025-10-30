@@ -2180,7 +2180,25 @@ public class IrBuilder : NovusBaseVisitor<object?>
             // Try to infer from expected type
             if (_expectedType == null)
             {
-                throw new Exception($"Cannot infer type parameters for '{genericAssocFunc.TypeName}::{genericAssocFunc.MethodName}()'. Please provide explicit type annotation.");
+                // No expected type - create unresolved generic that will be inferred from usage
+                // Example: let vec = Vec::new() → vec has type Vec<UnresolvedGeneric>
+                // When vec.push(42i32) is called later, we'll resolve it to Vec<i32>
+
+                var unresolvedTypeArgs = new List<IrType>();
+                for (int i = 0; i < genericAssocFunc.GenericParameters.Count; i++)
+                {
+                    unresolvedTypeArgs.Add(new IrUnresolvedGenericType());
+                }
+
+                var partiallyResolvedType = new IrPartiallyResolvedGenericType(
+                    genericAssocFunc.TypeName,
+                    unresolvedTypeArgs
+                );
+
+                // Return a placeholder value with the partially resolved type
+                // The actual instantiation will happen when we see method calls on this value
+                var placeholderResult = $"%t{_tempCounter++}";
+                return new IrVariable(placeholderResult, partiallyResolvedType);
             }
 
             // Extract concrete type parameters from expected type
@@ -2549,6 +2567,110 @@ public class IrBuilder : NovusBaseVisitor<object?>
     }
 
     /// <summary>
+    /// Try to resolve generic type parameters from a method call
+    /// Example: vec.push(42i32) where vec is Vec<UnresolvedGeneric> → infer T = i32
+    /// </summary>
+    private IrStructType? TryResolveGenericFromMethodCall(IrPartiallyResolvedGenericType partialType, string methodName, List<IrValue> methodArgs)
+    {
+        // Look up the method template for this generic type
+        var templateKey = $"{partialType.GenericTypeName}::{methodName}";
+
+        if (!_genericMethodTemplates.TryGetValue(templateKey, out var template))
+        {
+            // Method not found or not generic
+            return null;
+        }
+
+        var (genericParams, funcDecl, _) = template;
+
+        // Parse the method's parameter types from the template
+        // Note: 'self' parameter is handled specially in the grammar and may not be in parameterList
+        var paramContexts = funcDecl.parameterList()?.parameter()?.ToList() ?? new List<NovusParser.ParameterContext>();
+
+        if (paramContexts.Count == 0)
+        {
+            // No non-self parameters to infer from
+            return null;
+        }
+
+        // Try to infer generic type from the method arguments
+        // For Vec::push(&mut self, value: T), paramContexts contains just [value: T]
+        // methodArgs contains the user-provided arguments (not including self)
+        // So paramContexts[0] corresponds to methodArgs[0]
+
+        var unresolvedTypeToResolvedType = new Dictionary<IrUnresolvedGenericType, IrType>();
+
+        for (int i = 0; i < paramContexts.Count && i < methodArgs.Count; i++)
+        {
+            var paramCtx = paramContexts[i];
+            var paramTypeName = paramCtx.type().GetText();
+            var argType = methodArgs[i].Type;
+
+            // Check if parameter type is a generic parameter (e.g., "T")
+            if (genericParams.Contains(paramTypeName))
+            {
+                // This parameter has a generic type - use the argument's type
+                var paramIndex = genericParams.IndexOf(paramTypeName);
+
+                if (paramIndex < partialType.TypeArguments.Count &&
+                    partialType.TypeArguments[paramIndex] is IrUnresolvedGenericType unresolvedType)
+                {
+                    unresolvedTypeToResolvedType[unresolvedType] = argType;
+                }
+            }
+        }
+
+        // Resolve all unresolved type parameters
+        bool allResolved = true;
+        foreach (var typeArg in partialType.TypeArguments)
+        {
+            if (typeArg is IrUnresolvedGenericType unresolvedType)
+            {
+                if (unresolvedTypeToResolvedType.TryGetValue(unresolvedType, out var resolvedType))
+                {
+                    unresolvedType.ResolvedType = resolvedType;
+                }
+                else
+                {
+                    allResolved = false;
+                }
+            }
+        }
+
+        if (!allResolved)
+        {
+            return null; // Couldn't resolve all type parameters
+        }
+
+        // Now that all type parameters are resolved, create the monomorphized struct
+        var resolvedTypeArgs = partialType.GetResolvedTypeArguments();
+
+        // Find the generic struct template
+        var genericStruct = _structs.Values.FirstOrDefault(s =>
+            s.StructName == partialType.GenericTypeName && s.GenericParameters.Count > 0);
+
+        if (genericStruct == null)
+        {
+            return null;
+        }
+
+        // Create monomorphized struct
+        var monomorphizedStruct = IrStructType.Monomorphize(genericStruct, resolvedTypeArgs);
+
+        // Cache the monomorphized struct
+        var cacheKey = monomorphizedStruct.CacheKey ?? monomorphizedStruct.Name;
+        if (!_monomorphizedStructs.ContainsKey(cacheKey))
+        {
+            _monomorphizedStructs[cacheKey] = monomorphizedStruct;
+        }
+
+        // Update the partial type to mark it as fully resolved
+        partialType.FullyResolvedType = monomorphizedStruct;
+
+        return monomorphizedStruct;
+    }
+
+    /// <summary>
     /// Handle method calls (e.g., v.len())
     /// Desugars to: Type::method(receiver, args...)
     /// </summary>
@@ -2563,6 +2685,45 @@ public class IrBuilder : NovusBaseVisitor<object?>
         if (receiver == null)
         {
             throw new Exception("Method call receiver is null");
+        }
+
+        // Handle unresolved generic types - resolve them from method arguments
+        if (receiver.Type is IrPartiallyResolvedGenericType partialType)
+        {
+            // Parse method arguments to infer the generic type
+            var methodArgs = new List<IrValue>();
+            if (callCtx.argumentList() != null)
+            {
+                foreach (var argCtx in callCtx.argumentList().expression())
+                {
+                    var argValue = (IrValue?)Visit(argCtx);
+                    if (argValue != null)
+                    {
+                        methodArgs.Add(argValue);
+                    }
+                }
+            }
+
+            // Try to resolve the generic type from method arguments
+            var resolvedType = TryResolveGenericFromMethodCall(partialType, methodName, methodArgs);
+            if (resolvedType != null)
+            {
+                // Update the receiver's type
+                if (receiver is IrVariable irVar)
+                {
+                    receiver = new IrVariable(irVar.Name, resolvedType);
+
+                    // Also update the local variable's type in the symbol table
+                    if (_localVariables.TryGetValue(irVar.Name, out var localVar))
+                    {
+                        localVar.Type = resolvedType;
+                    }
+                }
+            }
+            else
+            {
+                throw new Exception($"Cannot infer generic type parameters for '{partialType.GenericTypeName}' from method call '{methodName}'");
+            }
         }
 
         // Get the type name for method lookup
