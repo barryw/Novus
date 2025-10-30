@@ -276,23 +276,14 @@ class Program
                 }
             }
 
-            // Generate 68k assembly
-            var codegen = new M68kCodeGenerator(module, irBuilder.StringLiterals, options.Cpu, options.Fpu);
+            // Generate C code
+            var codegen = new CCodeGenerator(module, irBuilder.StringLiterals, options.Cpu, options.Fpu);
 
-            // Apply register allocations if available
-            if (regAllocPass != null)
-            {
-                var allocations = regAllocPass.GetAllAllocations();
-                if (allocations.Count > 0 && options.Verbose)
-                {
-                    Console.WriteLine($"  Register allocation: {allocations.Count} function(s)");
-                }
-                codegen.SetRegisterAllocations(allocations.ToDictionary(kvp => kvp.Key, kvp => kvp.Value));
-            }
+            // Note: Register allocation is not used with C backend - VBCC handles register allocation
 
-            var assembly = codegen.Generate();
+            var cCode = codegen.Generate();
 
-            return (assembly, irBuilder.GetImportedModules());
+            return (cCode, irBuilder.GetImportedModules());
         }
         finally
         {
@@ -356,7 +347,7 @@ class Program
                 return 1;
             }
 
-            var (mainAssembly, importedModules) = mainResult.Value;
+            var (mainCCode, importedModules) = mainResult.Value;
 
             // Record dependencies from the main module and check for cycles
             foreach (var import in importedModules)
@@ -370,7 +361,7 @@ class Program
             }
 
             // Recursively collect all dependencies
-            var allModules = new Dictionary<string, string>(); // path -> assembly
+            var allModules = new Dictionary<string, string>(); // path -> C code
             var toProcess = new Queue<string>(importedModules);
             var processed = new HashSet<string>();
 
@@ -403,8 +394,8 @@ class Program
                     return 1;
                 }
 
-                var (moduleAssembly, moduleImports) = moduleResult.Value;
-                allModules[modulePath] = moduleAssembly;
+                var (moduleCCode, moduleImports) = moduleResult.Value;
+                allModules[modulePath] = moduleCCode;
 
                 // Add transitive dependencies and check for cycles
                 foreach (var import in moduleImports)
@@ -442,53 +433,114 @@ class Program
                 Console.WriteLine();
             }
 
-            Console.WriteLine("Generating 68k assembly...");
+            Console.WriteLine("Generating C code...");
 
-            // Determine output directory and base name (used by both asm-only and full build)
+            // Determine output directory and base name (used by both emit-only and full build)
             var outputDir = Path.GetDirectoryName(Path.GetFullPath(options.OutputFile)) ?? ".";
             var baseName = Path.GetFileNameWithoutExtension(options.OutputFile);
 
+            // Write all C files to disk first (needed for both emit-only and full build)
+            var mainCFile = Path.Combine(outputDir, $"{baseName}.c");
+            await File.WriteAllTextAsync(mainCFile, mainCCode);
+            var cFiles = new List<string> { mainCFile };
+
+            // Write dependency C files
+            foreach (var (modulePath, cCode) in allModules)
+            {
+                var moduleName = Path.GetFileNameWithoutExtension(modulePath);
+                var depCFile = Path.Combine(outputDir, $"{moduleName}.c");
+                await File.WriteAllTextAsync(depCFile, cCode);
+                cFiles.Add(depCFile);
+            }
+
             if (options.EmitAsmOnly)
             {
-                // Output all assembly files (main + dependencies)
-                var mainAsmFile = Path.Combine(outputDir, $"{baseName}.s");
-                await File.WriteAllTextAsync(mainAsmFile, mainAssembly);
-                Console.WriteLine($"  → {Path.GetFileName(mainAsmFile)}");
-
-                // Write dependency assemblies
-                foreach (var (modulePath, assembly) in allModules)
+                // Just output the C files and stop
+                Console.WriteLine($"  → {Path.GetFileName(mainCFile)}");
+                foreach (var cFile in cFiles.Skip(1))
                 {
-                    var moduleName = Path.GetFileNameWithoutExtension(modulePath);
-                    var depAsmFile = Path.Combine(outputDir, $"{moduleName}.s");
-                    await File.WriteAllTextAsync(depAsmFile, assembly);
-                    Console.WriteLine($"  → {Path.GetFileName(depAsmFile)}");
+                    Console.WriteLine($"  → {Path.GetFileName(cFile)}");
                 }
 
-                Console.WriteLine($"\nAssembly files written to: {outputDir}");
+                Console.WriteLine($"\nC files written to: {outputDir}");
                 return 0;
             }
 
-            // Assemble and link with VBCC
-            Console.WriteLine("Assembling and linking...");
+            // Compile C code with VBCC
+            Console.WriteLine("Compiling with VBCC...");
             var toolchain = new VbccToolchain(options.VbccPath, options.NdkPath);
 
-            // Enable FPU instructions in assembler if using fat binary or explicit FPU mode
-            bool enableFpu = options.Fpu != "soft";
+            // Link assembly stubs for AmigaOS library calls
+            // Our assembly stubs use i32 signatures, avoiding VBCC's type system (BPTR, CONST_STRPTR, etc.)
+            var objectFiles = new List<string>();
 
-            // Pass all assemblies (main + dependencies) to the toolchain
-            var success = await toolchain.CompileToExecutableWithDependencies(
-                mainAssembly,
-                allModules,
-                outputDir,
-                baseName,
-                options.Cpu,
-                enableFpu,
-                options.Fpu
+            // Map "auto" CPU to a concrete target for assembly (vasm doesn't understand "auto")
+            var assemblyCpu = options.Cpu == "auto" ? "68020" : options.Cpu;
+
+            // Assemble core Novus runtime files (always needed)
+            var coreFiles = new[] { "novus_startup", "library_bases" };
+            foreach (var coreFile in coreFiles)
+            {
+                var coreSource = Path.Combine(compilerDir, "stubs", $"{coreFile}.s");
+                if (File.Exists(coreSource))
+                {
+                    var coreObj = Path.Combine(outputDir, $"{coreFile}.o");
+                    if (!await toolchain.Assemble(coreSource, coreObj, assemblyCpu, false))
+                    {
+                        Console.WriteLine($"Failed to assemble {coreFile}");
+                        return 1;
+                    }
+                    objectFiles.Add(coreObj);
+                }
+            }
+
+            // Assemble library stubs
+            var stubsToAssemble = new[] { "exec", "dos" }; // Common stubs for basic programs
+
+            foreach (var stub in stubsToAssemble)
+            {
+                var stubSource = Path.Combine(compilerDir, "stubs", $"{stub}_stubs.s");
+                if (File.Exists(stubSource))
+                {
+                    var stubObj = Path.Combine(outputDir, $"{stub}_stubs.o");
+                    if (!await toolchain.Assemble(stubSource, stubObj, assemblyCpu, false))
+                    {
+                        Console.WriteLine($"Failed to assemble {stub} stubs");
+                        return 1;
+                    }
+                    objectFiles.Add(stubObj);
+
+                    // If using DOS library, also include dos_init.o for automatic DOSBase initialization
+                    if (stub == "dos")
+                    {
+                        var dosInitSource = Path.Combine(compilerDir, "stubs", "dos_init.s");
+                        if (File.Exists(dosInitSource))
+                        {
+                            var dosInitObj = Path.Combine(outputDir, "dos_init.o");
+                            if (!await toolchain.Assemble(dosInitSource, dosInitObj, assemblyCpu, false))
+                            {
+                                Console.WriteLine("Failed to assemble dos_init");
+                                return 1;
+                            }
+                            objectFiles.Add(dosInitObj);
+                        }
+                    }
+                }
+            }
+
+            // Compile and link with vc (vc understands "auto" for fat binaries, but use concrete target for now)
+            var exeFile = Path.Combine(outputDir, baseName);
+            var success = await toolchain.CompileWithVC(
+                cFiles,
+                objectFiles,
+                exeFile,
+                assemblyCpu,
+                options.OptimizationLevel
             );
 
             if (success)
             {
-                Console.WriteLine("\n✓ Compilation successful!");
+                Console.WriteLine($"\n✓ Successfully created: {Path.GetFileName(exeFile)}");
                 return 0;
             }
             else

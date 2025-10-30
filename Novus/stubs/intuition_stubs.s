@@ -3,7 +3,7 @@
 
 	xref	_IntuitionBase	; Provided by startup.o + -lamiga
 
-	section	text,code
+	section	"CODE",code
 
 ; OpenIntuition()
 	xdef	_OpenIntuition

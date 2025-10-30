@@ -1,7 +1,7 @@
 ; string_utils.s - String utility functions for Novus runtime
 ; Provides strlen and other string operations
 
-	section	text,code
+	section	"CODE",code
 
 ; strlen(str) - Calculate length of null-terminated string
 ; Args: str in d0 (or stack)

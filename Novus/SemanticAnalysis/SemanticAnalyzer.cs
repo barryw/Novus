@@ -2255,7 +2255,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
             case NovusParser.VariantPatternContext variantPattern:
             {
-                var variantName = variantPattern.variantName().GetText();
+                // Extract the last identifier from the qualified name (e.g., SimpleResult::Ok -> Ok)
+                var variantNameCtx = variantPattern.variantName();
+                var identifiers = variantNameCtx.IDENTIFIER();
+                var variantName = identifiers[identifiers.Length - 1].GetText();
 
                 // Check if this variant exists
                 var variant = enumType.GetVariant(variantName);
@@ -2316,7 +2319,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             case NovusParser.SimpleVariantPatternContext simpleVariantPattern:
             {
                 // SimpleVariantPattern is IDENTIFIER '::' IDENTIFIER ('::' IDENTIFIER)*
-                var variantName = simpleVariantPattern.GetText();
+                // Extract the last identifier from the qualified name (e.g., SimpleResult::Ok -> Ok)
+                var identifiers = simpleVariantPattern.IDENTIFIER();
+                var variantName = identifiers[identifiers.Length - 1].GetText();
+
                 var variant = enumType.GetVariant(variantName);
                 if (variant == null)
                 {
@@ -3154,8 +3160,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public override IrType? VisitStringLiteral([NotNull] NovusParser.StringLiteralContext context)
     {
-        // String literals have type String (fat pointer with {ptr, len})
-        return IrStringType.Instance;
+        // String literals are *u8 (pointer to null-terminated byte array)
+        // This matches C string literal semantics and is required for FFI
+        return new IrPointerType(IrIntType.U8);
     }
 
     public override IrType? VisitSizeofExpr([NotNull] NovusParser.SizeofExprContext context)

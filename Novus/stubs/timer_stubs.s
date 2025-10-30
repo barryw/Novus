@@ -3,7 +3,7 @@
 
 	xref	_TimerBase	; Provided by startup.o + -lamiga
 
-	section	text,code
+	section	"CODE",code
 
 ; AddTime(dest, src)
 	xdef	_AddTime

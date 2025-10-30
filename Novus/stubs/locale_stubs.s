@@ -3,7 +3,7 @@
 
 	xref	_LocaleBase	; Provided by startup.o + -lamiga
 
-	section	text,code
+	section	"CODE",code
 
 ; CloseCatalog(catalog)
 	xdef	_CloseCatalog

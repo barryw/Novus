@@ -3,7 +3,7 @@
 
 	xref	_MathIeeeDoubBasBase	; Provided by startup.o + -lamiga
 
-	section	text,code
+	section	"CODE",code
 
 ; IEEEDPFix(parm)
 	xdef	_IEEEDPFix

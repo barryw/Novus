@@ -3,7 +3,7 @@
 
 	xref	_DiskfontBase	; Provided by startup.o + -lamiga
 
-	section	text,code
+	section	"CODE",code
 
 ; OpenDiskFont(textAttr)
 	xdef	_OpenDiskFont

@@ -9,12 +9,13 @@
 ; Required by: dos_stubs.s (all DOS function stubs need _DOSBase)
 ; ============================================================================
 
-	section	text,code
+	section	"CODE",code
 
 ; ============================================================================
 ; External References
 ; ============================================================================
-	xref	_DOSBase		; Provided by VBCC startup.o
+	xref	_DOSBase		; Provided by library_bases.s
+	xref	_SysBase		; Provided by library_bases.s
 
 ; ============================================================================
 ; Exports
@@ -34,7 +35,7 @@ dos_name:
 ; ============================================================================
 ; Code Section
 ; ============================================================================
-	section	text,code
+	section	"CODE",code
 
 ; ----------------------------------------------------------------------------
 ; ___dos_init - Initialize DOS library
@@ -48,12 +49,20 @@ dos_name:
 ___dos_init:
 	movem.l	d1/a0-a1/a6,-(sp)	; Save registers
 
-	; Check if already initialized
+	; Initialize SysBase if not already done
+	move.l	_SysBase,d0
+	bne.s	.sysbase_ok
+	move.l	4.w,a6			; Get exec.library base from absolute address 4
+	move.l	a6,_SysBase		; Store it for future use
+	bra.s	.check_dos
+
+.sysbase_ok:
+	move.l	d0,a6			; Use existing SysBase
+
+.check_dos:
+	; Check if DOSBase already initialized
 	move.l	_DOSBase,d0
 	bne.s	.already_open
-
-	; Get exec.library base from absolute address 4 (AmigaOS constant)
-	move.l	4.w,a6
 
 	; OpenLibrary("dos.library", 0) - LVO offset -552
 	lea	dos_name,a1		; Library name (absolute addressing)

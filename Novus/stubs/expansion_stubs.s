@@ -3,7 +3,7 @@
 
 	xref	_ExpansionBase	; Provided by startup.o + -lamiga
 
-	section	text,code
+	section	"CODE",code
 
 ; AddConfigDev(configDev)
 	xdef	_AddConfigDev

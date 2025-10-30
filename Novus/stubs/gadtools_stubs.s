@@ -3,7 +3,7 @@
 
 	xref	_GadToolsBase	; Provided by startup.o + -lamiga
 
-	section	text,code
+	section	"CODE",code
 
 ; CreateGadgetA(kind, gad, ng, taglist)
 	xdef	_CreateGadgetA

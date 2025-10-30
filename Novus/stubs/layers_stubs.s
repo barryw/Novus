@@ -3,7 +3,7 @@
 
 	xref	_LayersBase	; Provided by startup.o + -lamiga
 
-	section	text,code
+	section	"CODE",code
 
 ; InitLayers(li)
 	xdef	_InitLayers

@@ -3,7 +3,7 @@
 
 	xref	_IconBase	; Provided by startup.o + -lamiga
 
-	section	text,code
+	section	"CODE",code
 
 ; FreeFreeList(freelist)
 	xdef	_FreeFreeList

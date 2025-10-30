@@ -3,7 +3,7 @@
 
 	xref	_MathIeeeSingBasBase	; Provided by startup.o + -lamiga
 
-	section	text,code
+	section	"CODE",code
 
 ; IEEESPFix(parm)
 	xdef	_IEEESPFix

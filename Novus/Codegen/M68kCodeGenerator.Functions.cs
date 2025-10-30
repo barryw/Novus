@@ -192,6 +192,13 @@ public partial class M68kCodeGenerator
         if (stackSpace % alignment != 0)
             stackSpace += alignment - (stackSpace % alignment);
 
+        // CRITICAL: Ensure stack frame is always longword-aligned (multiple of 4)
+        // This prevents address errors on 68000 when accessing parameters/locals
+        // Even though 68000 only requires word alignment (2), longword alignment
+        // is safer and matches AmigaOS conventions
+        if (stackSpace % 4 != 0)
+            stackSpace += 4 - (stackSpace % 4);
+
         // Standard 68k function prologue
         if (stackSpace > 0)
         {

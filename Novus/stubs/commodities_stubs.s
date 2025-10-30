@@ -3,7 +3,7 @@
 
 	xref	_CxBase	; Provided by startup.o + -lamiga
 
-	section	text,code
+	section	"CODE",code
 
 ; CreateCxObj(type, arg1, arg2)
 	xdef	_CreateCxObj

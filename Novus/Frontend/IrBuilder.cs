@@ -3600,12 +3600,16 @@ public class IrBuilder : NovusBaseVisitor<object?>
             string? variantName = null;
             if (pattern is NovusParser.VariantPatternContext variantPattern)
             {
-                variantName = variantPattern.variantName().GetText();
+                // Extract the last identifier from the qualified name (e.g., SimpleResult::Ok -> Ok)
+                var identifiers = variantPattern.variantName().IDENTIFIER();
+                variantName = identifiers[identifiers.Length - 1].GetText();
             }
             else if (pattern is NovusParser.SimpleVariantPatternContext simpleVariantPattern)
             {
                 // SimpleVariantPattern is IDENTIFIER '::' IDENTIFIER ('::' IDENTIFIER)*
-                variantName = simpleVariantPattern.GetText();
+                // Extract the last identifier from the qualified name (e.g., SimpleResult::Ok -> Ok)
+                var identifiers = simpleVariantPattern.IDENTIFIER();
+                variantName = identifiers[identifiers.Length - 1].GetText();
             }
             else if (pattern is NovusParser.IdentifierPatternContext identPattern)
             {
@@ -3643,7 +3647,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
             // Extract associated data for variant patterns
             if (pattern is NovusParser.VariantPatternContext variantPattern)
             {
-                var variantName = variantPattern.variantName().GetText();
+                // Extract the last identifier from the qualified name (e.g., SimpleResult::Ok -> Ok)
+                var identifiers = variantPattern.variantName().IDENTIFIER();
+                var variantName = identifiers[identifiers.Length - 1].GetText();
                 var variant = enumType.GetVariant(variantName);
 
                 // Extract associated data and bind to pattern variables
@@ -3662,7 +3668,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                             // Extract the data
                             var extractName = $"%t{_tempCounter++}";
-                            _currentBlock!.AddInstruction(new IrExtractVariantData(extractName, matchValue, dataIdx, dataType));
+                            _currentBlock!.AddInstruction(new IrExtractVariantData(extractName, matchValue, variantName, dataIdx, dataType));
 
                             // Store in a local variable
                             var localVar = new IrLocalVariable(bindingName, dataType, false);

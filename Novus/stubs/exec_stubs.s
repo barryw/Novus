@@ -1,9 +1,9 @@
 ; exec library stubs for Novus
 ; Auto-generated from exec_lib.fd
 
-	xref	_SysBase	; Provided by startup.o + -lamiga
+	xref	_SysBase	; Provided by library_bases.s
 
-	section	text,code
+	section	"CODE",code
 
 ; Supervisor(userFunction)
 	xdef	_Supervisor
@@ -240,12 +240,12 @@ _Deallocate:
 ; AllocMem(byteSize, requirements)
 	xdef	_AllocMem
 _AllocMem:
-	movem.l	d0-d1/a6,-(sp)
-	move.l	12(sp),d0	; byteSize
-	move.l	16(sp),d1	; requirements
+	movem.l	d1/a6,-(sp)	; Don't save d0 - it's the return value!
+	move.l	12(sp),d0	; byteSize (skip 2 saved regs + return addr = 12)
+	move.l	16(sp),d1	; requirements (skip 2 saved regs + return addr + 1 param = 16)
 	move.l	_SysBase,a6
-	jsr	-198(a6)	; AllocMem()
-	movem.l	(sp)+,d0-d1/a6
+	jsr	-198(a6)	; AllocMem() - returns pointer in D0
+	movem.l	(sp)+,d1/a6	; Restore d1 and a6 but NOT d0!
 	rts
 
 ; AllocAbs(byteSize, location)
@@ -262,12 +262,12 @@ _AllocAbs:
 ; FreeMem(memoryBlock, byteSize)
 	xdef	_FreeMem
 _FreeMem:
-	movem.l	d0/a1/a6,-(sp)
-	move.l	16(sp),a1	; memoryBlock
-	move.l	20(sp),d0	; byteSize
+	movem.l	a1/a6,-(sp)	; Don't save d0 - we'll use it for byteSize
+	move.l	12(sp),a1	; memoryBlock (skip 2 saved regs + return addr = 12)
+	move.l	16(sp),d0	; byteSize (skip 2 saved regs + return addr + 1 param = 16)
 	move.l	_SysBase,a6
-	jsr	-210(a6)	; FreeMem()
-	movem.l	(sp)+,d0/a1/a6
+	jsr	-210(a6)	; FreeMem() - no return value
+	movem.l	(sp)+,a1/a6	; Restore a1 and a6
 	rts
 
 ; AvailMem(requirements)

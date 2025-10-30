@@ -136,6 +136,44 @@ public class VbccToolchain
     }
 
     /// <summary>
+    /// Compile C code to an Amiga executable using VBCC's vc frontend
+    /// </summary>
+    public async Task<bool> CompileWithVC(
+        List<string> cFiles,
+        List<string> objectFiles,
+        string outputPath,
+        string cpu = "68020",
+        int optimization = 2)
+    {
+        var vcPath = Path.Combine(_vbccPath, "bin", "vc");
+
+        var args = new List<string>
+        {
+            "+aos68k",          // Target AmigaOS 2.0+ (68020+)
+            "-c99",             // Enable C99 standard
+            $"-cpu={cpu}",      // CPU target
+            $"-O{optimization}", // Optimization level
+            "-nostdlib",        // Don't use standard library startup
+            "-o", outputPath    // Output file
+        };
+
+        // CRITICAL: Add pre-assembled object files FIRST
+        // novus_startup.o MUST come before C code so _start is at CODE+0
+        args.AddRange(objectFiles);
+
+        // Add C source files AFTER object files
+        args.AddRange(cFiles);
+
+        // Link against VBCC runtime library ONLY
+        // Don't use -lamiga because it provides DOS functions with wrong signatures
+        args.Add("-lvc");        // VBCC runtime library (for C runtime support)
+
+        Console.WriteLine($"Compiling with vc: {Path.GetFileName(outputPath)}");
+        Console.WriteLine($"Debug: vc {string.Join(" ", args)}");
+        return await RunTool(vcPath, args);
+    }
+
+    /// <summary>
     /// Compile a complete Novus source file to an Amiga executable
     /// </summary>
     public async Task<bool> CompileToExecutable(
@@ -164,11 +202,40 @@ public class VbccToolchain
             return false;
         }
 
-        var objFiles = new List<string> { objFile };
+        var objFiles = new List<string>();
+
+        // CRITICAL: Assemble novus_startup.o FIRST so _start is at CODE+0
+        var compilerDir = AppContext.BaseDirectory;
+        var startupSource = Path.Combine(compilerDir, "stubs", "novus_startup.s");
+        if (File.Exists(startupSource))
+        {
+            var startupObj = Path.Combine(outputPath, "novus_startup.o");
+            if (!await Assemble(startupSource, startupObj, assemblyCpu, false))
+            {
+                Console.WriteLine("novus_startup assembly failed");
+                return false;
+            }
+            objFiles.Add(startupObj);
+        }
+
+        // Add main program object file
+        objFiles.Add(objFile);
+
+        // Assemble library_bases.o (required for _SysBase, _DOSBase)
+        var libBasesSource = Path.Combine(compilerDir, "stubs", "library_bases.s");
+        if (File.Exists(libBasesSource))
+        {
+            var libBasesObj = Path.Combine(outputPath, "library_bases.o");
+            if (!await Assemble(libBasesSource, libBasesObj, assemblyCpu, false))
+            {
+                Console.WriteLine("library_bases assembly failed");
+                return false;
+            }
+            objFiles.Add(libBasesObj);
+        }
 
         // Detect which library stubs are needed and assemble them
         var requiredLibraries = DetectRequiredLibraries(asmSource);
-        var compilerDir = AppContext.BaseDirectory;
 
         foreach (var library in requiredLibraries)
         {
@@ -210,8 +277,8 @@ public class VbccToolchain
             }
         }
 
-        // Link with appropriate math library and startup code
-        if (!await Link(objFiles.ToArray(), exeFile, fpuMode, includeStartup: true))
+        // Link with appropriate math library (novus_startup.o already in objFiles)
+        if (!await Link(objFiles.ToArray(), exeFile, fpuMode, includeStartup: false))
         {
             Console.WriteLine("Linking failed");
             return false;
@@ -237,6 +304,20 @@ public class VbccToolchain
         // The code generator ensures base code is 68000-compatible, with 68020+ code only in CPU-specific sections
         var assemblyCpu = cpu == "auto" ? "68020" : cpu;
         var objFiles = new List<string>();
+        var compilerDir = AppContext.BaseDirectory;
+
+        // CRITICAL: Assemble novus_startup.o FIRST so _start is at CODE+0
+        var startupSource = Path.Combine(compilerDir, "stubs", "novus_startup.s");
+        if (File.Exists(startupSource))
+        {
+            var startupObj = Path.Combine(outputPath, "novus_startup.o");
+            if (!await Assemble(startupSource, startupObj, assemblyCpu, false))
+            {
+                Console.WriteLine("novus_startup assembly failed");
+                return false;
+            }
+            objFiles.Add(startupObj);
+        }
 
         // Assemble the main file
         var mainAsmFile = Path.Combine(outputPath, $"{baseName}.s");
@@ -250,6 +331,19 @@ public class VbccToolchain
             return false;
         }
         objFiles.Add(mainObjFile);
+
+        // Assemble library_bases.o (required for _SysBase, _DOSBase)
+        var libBasesSource = Path.Combine(compilerDir, "stubs", "library_bases.s");
+        if (File.Exists(libBasesSource))
+        {
+            var libBasesObj = Path.Combine(outputPath, "library_bases.o");
+            if (!await Assemble(libBasesSource, libBasesObj, assemblyCpu, false))
+            {
+                Console.WriteLine("library_bases assembly failed");
+                return false;
+            }
+            objFiles.Add(libBasesObj);
+        }
 
         // Extract symbols referenced by the main assembly
         var referencedSymbols = ExtractReferencedSymbols(mainAsmSource);
@@ -307,7 +401,6 @@ public class VbccToolchain
         }
 
         // Assemble library stubs (only once per library)
-        var compilerDir = AppContext.BaseDirectory;
         foreach (var library in requiredLibraries)
         {
             var stubsSource = Path.Combine(compilerDir, "stubs", $"{library}_stubs.s");
@@ -348,10 +441,10 @@ public class VbccToolchain
             }
         }
 
-        // Link all object files
+        // Link all object files (novus_startup.o already in objFiles)
         var exeFile = Path.Combine(outputPath, baseName);
         Console.WriteLine($"\nLinking {objFiles.Count} object file{(objFiles.Count > 1 ? "s" : "")}...");
-        if (!await Link(objFiles.ToArray(), exeFile, fpuMode, includeStartup: true))
+        if (!await Link(objFiles.ToArray(), exeFile, fpuMode, includeStartup: false))
         {
             Console.WriteLine("Linking failed");
             return false;

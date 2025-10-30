@@ -1,9 +1,9 @@
 ; dos library stubs for Novus
 ; Auto-generated from dos_lib.fd
 
-	xref	_DOSBase	; Provided by startup.o + -lamiga
+	xref	_DOSBase	; Provided by library_bases.s
 
-	section	text,code
+	section	"CODE",code
 
 ; Open(name, accessMode)
 	xdef	_Open

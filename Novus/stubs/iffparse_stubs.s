@@ -3,7 +3,7 @@
 
 	xref	_IFFParseBase	; Provided by startup.o + -lamiga
 
-	section	text,code
+	section	"CODE",code
 
 ; AllocIFF()
 	xdef	_AllocIFF

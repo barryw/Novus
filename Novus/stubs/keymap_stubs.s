@@ -3,7 +3,7 @@
 
 	xref	_KeymapBase	; Provided by startup.o + -lamiga
 
-	section	text,code
+	section	"CODE",code
 
 ; SetKeyMapDefault(keyMap)
 	xdef	_SetKeyMapDefault

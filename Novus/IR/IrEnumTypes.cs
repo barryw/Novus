@@ -298,13 +298,15 @@ public class IrExtractVariantData : IrInstruction
 {
     public string ResultName { get; set; }
     public IrValue EnumValue { get; set; }
+    public string VariantName { get; set; }  // Name of the variant we're extracting from
     public int DataIndex { get; set; }  // Which piece of associated data (0, 1, 2...)
     public IrType DataType { get; set; }
 
-    public IrExtractVariantData(string resultName, IrValue enumValue, int dataIndex, IrType dataType)
+    public IrExtractVariantData(string resultName, IrValue enumValue, string variantName, int dataIndex, IrType dataType)
     {
         ResultName = resultName;
         EnumValue = enumValue;
+        VariantName = variantName;
         DataIndex = dataIndex;
         DataType = dataType;
     }
