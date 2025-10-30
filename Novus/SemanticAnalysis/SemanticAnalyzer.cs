@@ -2972,16 +2972,62 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 if (argType != null && !TypesCompatible(paramType, argType))
                 {
                     var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
-                    _diagnostics.ReportError(
-                        "E0015",
-                        $"mismatched types in function call",
-                        location,
-                        helpTexts: new List<string>
+
+                    // Check if this is a function pointer mismatch - give detailed error
+                    if (paramType is IrFunctionPointerType expectedFp && argType is IrFunctionPointerType actualFp)
+                    {
+                        var helpTexts = new List<string>
                         {
-                            $"argument {i + 1} ('{function.Parameters[i].Name}'): expected '{TypeToString(paramType)}', found '{TypeToString(argType)}'",
-                            $"consider using a cast: ({TypeToString(paramType)}){arguments[i].GetText()}"
+                            $"argument {i + 1} ('{function.Parameters[i].Name}'): function pointer signature mismatch"
+                        };
+
+                        // Check what's wrong: parameter count, parameter types, or return type
+                        if (expectedFp.ParameterTypes.Count != actualFp.ParameterTypes.Count)
+                        {
+                            helpTexts.Add($"  expected {expectedFp.ParameterTypes.Count} parameter(s), found {actualFp.ParameterTypes.Count}");
                         }
-                    );
+                        else
+                        {
+                            // Check each parameter type
+                            for (int j = 0; j < expectedFp.ParameterTypes.Count; j++)
+                            {
+                                if (!TypesCompatible(expectedFp.ParameterTypes[j], actualFp.ParameterTypes[j]))
+                                {
+                                    helpTexts.Add($"  parameter {j + 1}: expected '{TypeToString(expectedFp.ParameterTypes[j])}', found '{TypeToString(actualFp.ParameterTypes[j])}'");
+                                }
+                            }
+                        }
+
+                        // Check return type
+                        if (!TypesCompatible(expectedFp.ReturnType, actualFp.ReturnType))
+                        {
+                            helpTexts.Add($"  return type: expected '{TypeToString(expectedFp.ReturnType)}', found '{TypeToString(actualFp.ReturnType)}'");
+                        }
+
+                        helpTexts.Add($"expected signature: {TypeToString(paramType)}");
+                        helpTexts.Add($"found signature:    {TypeToString(argType)}");
+
+                        _diagnostics.ReportError(
+                            "E0015",
+                            $"function pointer signature mismatch",
+                            location,
+                            helpTexts: helpTexts
+                        );
+                    }
+                    else
+                    {
+                        // Regular type mismatch
+                        _diagnostics.ReportError(
+                            "E0015",
+                            $"mismatched types in function call",
+                            location,
+                            helpTexts: new List<string>
+                            {
+                                $"argument {i + 1} ('{function.Parameters[i].Name}'): expected '{TypeToString(paramType)}', found '{TypeToString(argType)}'",
+                                $"consider using a cast: ({TypeToString(paramType)}){arguments[i].GetText()}"
+                            }
+                        );
+                    }
                 }
             }
         }
@@ -3335,10 +3381,16 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return _constants[name].Type;
         }
 
-        // If it's a function name, it will be handled by CallExpr
+        // If it's a function name being used as a value (not being called), return function pointer type
         if (_functions.ContainsKey(name))
         {
-            return _functions[name].ReturnType;
+            var func = _functions[name];
+            // Create a function pointer type
+            var funcPtrType = _typeInterner.GetFunctionPointerType(
+                func.Parameters.Select(p => p.Type).ToList(),
+                func.ReturnType
+            );
+            return funcPtrType;
         }
 
         // Check global variables

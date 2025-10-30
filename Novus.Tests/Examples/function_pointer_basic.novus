@@ -1,0 +1,21 @@
+// Test basic function pointer usage: passing a function as a parameter
+
+fn add(a: i32, b: i32) -> i32 {
+    return a + b
+}
+
+fn subtract(a: i32, b: i32) -> i32 {
+    return a - b
+}
+
+fn apply_operation(x: i32, y: i32, operation: fn(i32, i32) -> i32) -> i32 {
+    return operation(x, y)
+}
+
+fn main() -> i32 {
+    let sum = apply_operation(10, 5, add)
+    let diff = apply_operation(10, 5, subtract)
+
+    // Should return 15 + 5 = 20
+    return sum + diff
+}

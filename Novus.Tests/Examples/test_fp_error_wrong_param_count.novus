@@ -1,0 +1,15 @@
+// Test error message: passing function with wrong parameter count
+
+fn negate(x: i32) -> i32 {
+    return -x
+}
+
+fn apply_operation(x: i32, y: i32, op: fn(i32, i32) -> i32) -> i32 {
+    return op(x, y)
+}
+
+fn main() -> i32 {
+    // ERROR: negate takes 1 parameter, but we need fn(i32, i32) -> i32 (2 parameters)
+    let result = apply_operation(10, 5, negate)
+    return result
+}

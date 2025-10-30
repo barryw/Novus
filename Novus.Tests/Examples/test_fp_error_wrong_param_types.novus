@@ -1,0 +1,16 @@
+// Test error message: passing function with wrong parameter types
+
+fn add_ints(a: i32, b: i32) -> i32 {
+    return a + b
+}
+
+fn apply_bool_op(x: bool, y: bool, op: fn(bool, bool) -> bool) -> bool {
+    return op(x, y)
+}
+
+fn main() -> i32 {
+    // ERROR: add_ints has signature fn(i32, i32) -> i32
+    // but we need fn(bool, bool) -> bool
+    let result = apply_bool_op(true, false, add_ints)
+    return 0
+}

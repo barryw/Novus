@@ -435,6 +435,7 @@ public class CCodeGenerator
             {
                 foreach (var instruction in block.Instructions)
                 {
+                    // Handle direct function calls
                     if (instruction is IrCall call)
                     {
                         // Mark called function as reachable
@@ -450,6 +451,37 @@ public class CCodeGenerator
                             }
                         }
                     }
+
+                    // Handle indirect calls through function pointers
+                    // We need to scan the function pointer value for IrFunctionAddress
+                    if (instruction is IrIndirectCall indirectCall)
+                    {
+                        ScanValueForFunctionReferences(indirectCall.FunctionPointer, reachable, worklist);
+                        // Also scan arguments
+                        foreach (var arg in indirectCall.Arguments)
+                        {
+                            ScanValueForFunctionReferences(arg, reachable, worklist);
+                        }
+                    }
+
+                    // Scan other instructions that might contain function addresses
+                    // (e.g., store, local decl with initializer, etc.)
+                    switch (instruction)
+                    {
+                        case IrLocalDecl localDecl when localDecl.InitialValue != null:
+                            ScanValueForFunctionReferences(localDecl.InitialValue, reachable, worklist);
+                            break;
+                        case IrStore store:
+                            ScanValueForFunctionReferences(store.Value, reachable, worklist);
+                            break;
+                        case IrBinaryOp binaryOp:
+                            ScanValueForFunctionReferences(binaryOp.Left, reachable, worklist);
+                            ScanValueForFunctionReferences(binaryOp.Right, reachable, worklist);
+                            break;
+                        case IrReturn returnInst when returnInst.Value != null:
+                            ScanValueForFunctionReferences(returnInst.Value, reachable, worklist);
+                            break;
+                    }
                 }
             }
         }
@@ -462,6 +494,74 @@ public class CCodeGenerator
         // For now, we rely on the linker's --gc-sections to eliminate truly unused code.
 
         return reachable;
+    }
+
+    /// <summary>
+    /// Recursively scan an IR value for function addresses (IrFunctionAddress).
+    /// When found, mark those functions as reachable.
+    /// </summary>
+    private void ScanValueForFunctionReferences(IrValue value, HashSet<string> reachable, Queue<string> worklist)
+    {
+        switch (value)
+        {
+            case IrFunctionAddress funcAddr:
+                // Found a function being referenced - mark it as reachable
+                if (!reachable.Contains(funcAddr.FunctionName))
+                {
+                    reachable.Add(funcAddr.FunctionName);
+
+                    // If it's a function in this module (not extern), add to worklist
+                    var referencedFunc = _module.Functions.FirstOrDefault(f => f.Name == funcAddr.FunctionName && !f.IsExtern);
+                    if (referencedFunc != null)
+                    {
+                        worklist.Enqueue(funcAddr.FunctionName);
+                    }
+                }
+                break;
+
+            case IrStructLiteral structLit:
+                // Scan all fields for function references
+                foreach (var fieldValue in structLit.FieldValues.Values)
+                {
+                    ScanValueForFunctionReferences(fieldValue, reachable, worklist);
+                }
+                break;
+
+            case IrArrayLiteral arrayLit:
+                // Scan all elements for function references
+                foreach (var element in arrayLit.Elements)
+                {
+                    ScanValueForFunctionReferences(element, reachable, worklist);
+                }
+                break;
+
+            case IrEnumValue enumValue:
+                // Scan associated data for function references
+                foreach (var data in enumValue.AssociatedValues)
+                {
+                    ScanValueForFunctionReferences(data, reachable, worklist);
+                }
+                break;
+
+            case IrBorrowValue borrowValue:
+                ScanValueForFunctionReferences(borrowValue.BorrowedValue, reachable, worklist);
+                break;
+
+            case IrDereferenceValue derefValue:
+                ScanValueForFunctionReferences(derefValue.PointerValue, reachable, worklist);
+                break;
+
+            case IrCastValue castValue:
+                ScanValueForFunctionReferences(castValue.Value, reachable, worklist);
+                break;
+
+            // For simple values (constants, variables), there's nothing to scan
+            case IrConstant:
+            case IrBoolConstant:
+            case IrVariable:
+            case IrStringLiteral:
+                break;
+        }
     }
 
     private void EmitHeaders()
@@ -874,6 +974,10 @@ public class CCodeGenerator
                 EmitCall(call);
                 break;
 
+            case IrIndirectCall indirectCall:
+                EmitIndirectCall(indirectCall);
+                break;
+
             case IrLabel label:
                 EmitLabel(label);
                 break;
@@ -1061,6 +1165,26 @@ public class CCodeGenerator
         }
     }
 
+    private void EmitIndirectCall(IrIndirectCall call)
+    {
+        // Emit an indirect call through a function pointer
+        var funcPtr = EmitValue(call.FunctionPointer);
+        var args = call.Arguments.Select(EmitValue).ToList();
+
+        var callExpr = $"({funcPtr})({string.Join(", ", args)})";
+
+        if (call.ResultName != null)
+        {
+            var cType = GetCType(call.ReturnType);
+            var resultName = SanitizeVariableName(call.ResultName);
+            _output.AppendLine($"    {cType} {resultName} = {callExpr};");
+        }
+        else
+        {
+            _output.AppendLine($"    {callExpr};");
+        }
+    }
+
     private bool _inMatchArmScope = false;
 
     private void EmitLabel(IrLabel label)
@@ -1222,6 +1346,7 @@ public class CCodeGenerator
             IrDereferenceValue derefValue => $"(*{EmitValue(derefValue.PointerValue)})",
             IrCastValue castValue => EmitCastValue(castValue),
             IrStructLiteral structLit => EmitStructLiteral(structLit),
+            IrFunctionAddress funcAddr => funcAddr.FunctionName,  // Function name IS its address in C
             _ => throw new NotSupportedException($"Unsupported value type: {value.GetType().Name}")
         };
     }
@@ -1384,8 +1509,19 @@ public class CCodeGenerator
             IrArrayType arrayType => $"{GetCType(arrayType.ElementType)}*",  // Arrays as pointers for now
             IrReferenceType refType => $"{GetCType(refType.PointeeType)}*",  // References as pointers
             IrMutReferenceType mutRefType => $"{GetCType(mutRefType.PointeeType)}*",  // Mut references as pointers
+            IrFunctionPointerType fpType => GetFunctionPointerType(fpType),
             _ => throw new NotSupportedException($"Unsupported type: {type.GetType().Name}")
         };
+    }
+
+    private string GetFunctionPointerType(IrFunctionPointerType fpType)
+    {
+        // Generate C function pointer type: return_type (*)(param1_type, param2_type, ...)
+        var returnType = GetCType(fpType.ReturnType);
+        var paramTypes = fpType.ParameterTypes.Count > 0
+            ? string.Join(", ", fpType.ParameterTypes.Select(GetCType))
+            : "void";
+        return $"{returnType} (*)({paramTypes})";
     }
 
     private string GetParameterList(IrFunction function)
@@ -1394,10 +1530,32 @@ public class CCodeGenerator
             return "void";
 
         var parameters = function.Parameters
-            .Select(p => $"{GetCType(p.Type)} {p.Name}")
+            .Select(p => GetCParameter(p.Type, p.Name))
             .ToList();
 
         return string.Join(", ", parameters);
+    }
+
+    /// <summary>
+    /// Generate a C parameter declaration, handling function pointers correctly.
+    /// Function pointer syntax in C requires the parameter name inside parentheses:
+    ///   int32_t (*callback)(int32_t, int32_t)  // correct
+    ///   int32_t (*)(int32_t, int32_t) callback // incorrect
+    /// </summary>
+    private string GetCParameter(IrType type, string name)
+    {
+        if (type is IrFunctionPointerType fpType)
+        {
+            // Special handling for function pointer parameters
+            var returnType = GetCType(fpType.ReturnType);
+            var paramTypes = fpType.ParameterTypes.Count > 0
+                ? string.Join(", ", fpType.ParameterTypes.Select(GetCType))
+                : "void";
+            return $"{returnType} (*{name})({paramTypes})";
+        }
+
+        // For all other types, use normal syntax
+        return $"{GetCType(type)} {name}";
     }
 
     private string MangleName(string name)

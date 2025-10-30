@@ -1,0 +1,22 @@
+// Test storing function pointers in variables
+
+fn double(n: i32) -> i32 {
+    return n * 2
+}
+
+fn triple(n: i32) -> i32 {
+    return n * 3
+}
+
+fn main() -> i32 {
+    // Store function pointer in a variable
+    var operation: fn(i32) -> i32 = double
+    let result1 = operation(5)  // Should be 10
+
+    // Reassign to different function
+    operation = triple
+    let result2 = operation(5)  // Should be 15
+
+    // Should return 10 + 15 = 25
+    return result1 + result2
+}

@@ -1,0 +1,33 @@
+// Test function pointers in structs (callback pattern)
+
+struct Calculator {
+    operation: fn(i32, i32) -> i32
+}
+
+fn multiply(a: i32, b: i32) -> i32 {
+    return a * b;
+}
+
+fn power(a: i32, b: i32) -> i32 {
+    // Simple power function (a^b for small b)
+    var result = 1
+    var i = 0
+    while i < b {
+        result = result * a
+        i = i + 1
+    }
+    return result
+}
+
+fn main() -> i32 {
+    // Create calculator with multiply operation
+    let calc1 = Calculator { operation: multiply }
+    let result1 = calc1.operation(6, 7)  // 42
+
+    // Create calculator with power operation
+    let calc2 = Calculator { operation: power }
+    let result2 = calc2.operation(2, 5)  // 32
+
+    // Should return 42 + 32 = 74
+    return result1 + result2
+}
