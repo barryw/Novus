@@ -1,0 +1,28 @@
+// Comprehensive Vec<i32> hardware test for Amiga
+// Tests: creation, len, capacity, is_empty
+// Returns: 0 = all tests passed, non-zero = test number that failed
+from std::core import Option
+from std::collections import Vec
+
+fn main() -> i32 {
+    // Test 1: Create empty vector
+    let vec: Vec<i32> = Vec::new()
+
+    // Test 2: Check if empty
+    if !vec.is_empty() {
+        return 2  // Failed: should be empty
+    }
+
+    // Test 3: Check initial length
+    if vec.len() != 0u32 {
+        return 3  // Failed: length should be 0
+    }
+
+    // Test 4: Check initial capacity
+    if vec.capacity() != 0u32 {
+        return 4  // Failed: capacity should be 0
+    }
+
+    // All tests passed!
+    return 0
+}

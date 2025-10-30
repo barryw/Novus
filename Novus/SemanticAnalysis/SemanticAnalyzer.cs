@@ -3010,7 +3010,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         string typeName;
         if (receiverType is IrStructType structType)
         {
-            typeName = structType.Name;
+            typeName = structType.StructName;  // Use StructName to get base name without generic params
         }
         else if (receiverType is IrEnumType enumType)
         {
@@ -3021,7 +3021,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             // Auto-dereference pointers
             if (ptrType.PointeeType is IrStructType pointeeStruct)
             {
-                typeName = pointeeStruct.Name;
+                typeName = pointeeStruct.StructName;  // Use StructName to get base name without generic params
             }
             else if (ptrType.PointeeType is IrEnumType pointeeEnum)
             {
@@ -3291,6 +3291,16 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     }
 
                     // Return the enum type - this will be used when called as a constructor
+                    // If we have an expected type that's a monomorphization of this enum, use that
+                    if (_expectedType is IrEnumType expectedEnum &&
+                        expectedEnum.EnumName == enumType.EnumName &&
+                        expectedEnum.GenericParameters.Count == 0 &&
+                        enumType.GenericParameters.Count > 0)
+                    {
+                        // Expected type is a monomorphized version (e.g., Option<Vec<T>>)
+                        // of the generic enum (e.g., Option<T>)
+                        return expectedEnum;
+                    }
                     return enumType;
                 }
             }
@@ -3421,6 +3431,71 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         return field.Type;
+    }
+
+    public override IrType? VisitIndexExpr([NotNull] NovusParser.IndexExprContext context)
+    {
+        // Get the base expression type (e.g., pointer, array, slice)
+        var baseType = Visit(context.expression(0));
+        if (baseType == null)
+        {
+            return null;
+        }
+
+        // Get the index expression type
+        var indexType = Visit(context.expression(1));
+        if (indexType == null)
+        {
+            return null;
+        }
+
+        // Index must be an integer type
+        if (indexType is not IrIntType)
+        {
+            var location = SourceLocationHelper.FromContext(context.expression(1), _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0023",
+                $"index must be an integer type, found '{TypeToString(indexType)}'",
+                location
+            );
+            return null;
+        }
+
+        // Auto-dereference pointers (like Rust/Swift)
+        if (baseType is IrPointerType ptrType)
+        {
+            // ptr[index] returns the element type
+            return ptrType.PointeeType;
+        }
+        else if (baseType is IrReferenceType refType && refType.PointeeType is IrPointerType refPtrType)
+        {
+            // &ptr[index] returns the element type
+            return refPtrType.PointeeType;
+        }
+        else if (baseType is IrMutReferenceType mutRefType && mutRefType.PointeeType is IrPointerType mutRefPtrType)
+        {
+            // &mut ptr[index] returns the element type
+            return mutRefPtrType.PointeeType;
+        }
+        else if (baseType is IrArrayType arrayType)
+        {
+            // array[index] returns the element type
+            return arrayType.ElementType;
+        }
+        else
+        {
+            var location = SourceLocationHelper.FromContext(context.expression(0), _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0024",
+                $"cannot index into type '{TypeToString(baseType)}'",
+                location,
+                helpTexts: new List<string>
+                {
+                    "indexing is only valid on pointers and arrays"
+                }
+            );
+            return null;
+        }
     }
 
     public override IrType? VisitBorrowExpr([NotNull] NovusParser.BorrowExprContext context)

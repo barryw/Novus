@@ -167,6 +167,18 @@ public class IrBuilder : NovusBaseVisitor<object?>
             // Get only the base type name (Vec, not Vec<T>)
             var typeName = implContext.typeName().IDENTIFIER(0).GetText();
 
+            // Extract generic parameters from impl if present (e.g., impl<T> Vec<T>)
+            var genericParams = new List<string>();
+            if (implContext.genericParams() != null)
+            {
+                foreach (var paramId in implContext.genericParams().IDENTIFIER())
+                {
+                    var paramName = paramId.GetText();
+                    genericParams.Add(paramName);
+                    _genericParams[paramName] = new IrGenericType(paramName);
+                }
+            }
+
             // Process each method in the impl block
             foreach (var implItem in implContext.implItem())
             {
@@ -174,6 +186,17 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 if (funcDecl == null) continue;
 
                 var methodName = funcDecl.IDENTIFIER().GetText();
+
+                // For generic impl blocks, store methods as templates for later instantiation
+                if (genericParams.Count > 0)
+                {
+                    var templateKey = $"{typeName}::{methodName}";
+                    _genericMethodTemplates[templateKey] = (genericParams, funcDecl);
+                    // Don't create function yet - it will be instantiated when called with concrete types
+                    continue;
+                }
+
+                // Non-generic impl blocks: create function signatures now
                 var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
 
                 // Check for extern and pub keywords
@@ -228,6 +251,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                 _module.AddFunction(function);
             }
+
+            // Clear generic parameters after processing impl block
+            foreach (var paramName in genericParams)
+            {
+                _genericParams.Remove(paramName);
+            }
         }
 
         // Pass 5: Build function bodies
@@ -264,12 +293,22 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
         }
 
-        // Pass 6: Build impl method bodies
+        // Pass 6: Build impl method bodies (only for non-generic impl blocks)
         foreach (var implContext in context.implDeclaration())
         {
             // Get only the base type name (Vec, not Vec<T>)
             var typeName = implContext.typeName().IDENTIFIER(0).GetText();
 
+            // Check if this is a generic impl block
+            var isGeneric = implContext.genericParams() != null;
+
+            // Skip generic impl blocks - they will be instantiated on demand
+            if (isGeneric)
+            {
+                continue;
+            }
+
+            // Non-generic impl blocks: build method bodies
             foreach (var implItem in implContext.implItem())
             {
                 var funcDecl = implItem.functionDeclaration();
@@ -2519,8 +2558,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
             throw new Exception($"Cannot call methods on type: {receiverType.Name}");
         }
 
-        // Build the mangled function name: Type::method
-        var mangledMethodName = $"{typeName}::{methodName}";
+        // Build the mangled function name: Type_method
+        // Note: We use underscore instead of :: because instantiated generic methods
+        // are created with underscore (Vec_is_empty, not Vec::is_empty)
+        var mangledMethodName = $"{typeName}_{methodName}";
 
         // Look up the method
         var method = _module.Functions.FirstOrDefault(f => f.Name == mangledMethodName);

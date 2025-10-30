@@ -1120,6 +1120,7 @@ public class CCodeGenerator
             IrStringLiteral stringLit => $"(String){{ .ptr = (uint8_t*){stringLit.Label}, .len = {stringLit.Length} }}",
             IrEnumValue enumValue => EmitEnumValue(enumValue),
             IrBorrowValue borrowValue => $"&{EmitValue(borrowValue.BorrowedValue)}",
+            IrDereferenceValue derefValue => $"(*{EmitValue(derefValue.PointerValue)})",
             IrStructLiteral structLit => EmitStructLiteral(structLit),
             _ => throw new NotSupportedException($"Unsupported value type: {value.GetType().Name}")
         };

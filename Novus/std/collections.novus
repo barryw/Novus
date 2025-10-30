@@ -49,13 +49,10 @@ impl<T> Vec<T> {
                 })
             },
             None => {
-                // Allocation failed - fall through to return None below
-                let _dummy: u32 = 0u32
+                // Allocation failed
+                return Option::None
             }
         }
-
-        // Return None outside match (will only reach here if allocation failed)
-        return Option::None
     }
 
     // Get the number of elements in the vector

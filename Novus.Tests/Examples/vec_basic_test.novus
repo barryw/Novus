@@ -1,0 +1,15 @@
+// Test basic Vec<i32> functionality
+from std::core import Option
+from std::collections import Vec
+
+fn main() -> i32 {
+    // Create a new empty vector (no allocation needed)
+    let vec: Vec<i32> = Vec::new()
+
+    // Check if it's empty
+    if vec.is_empty() {
+        return 0  // Success
+    }
+
+    return 1  // Should not reach here
+}
