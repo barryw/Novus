@@ -66,6 +66,7 @@ public class VbccToolchain
         args.Add("-x");  // Discard local symbols
         args.Add("-Bstatic");  // Static linking
         args.Add("-Cvbcc");  // VBCC calling convention
+        args.Add("-gc-all");  // Dead code elimination - remove all unreferenced sections
 
         // Add startup code first (must come before user object files)
         if (includeStartup)
@@ -133,6 +134,32 @@ public class VbccToolchain
 
         // Don't print here - caller shows final success message
         return await RunTool(vlinkPath, args);
+    }
+
+    /// <summary>
+    /// Compile a C file to an object file using VBCC's vc frontend (compile only, no linking)
+    /// </summary>
+    public async Task<bool> CompileToObject(
+        string cFile,
+        string objFile,
+        string cpu = "68020",
+        int optimization = 0)
+    {
+        var vcPath = Path.Combine(_vbccPath, "bin", "vc");
+
+        var args = new List<string>
+        {
+            "+aos68k",          // Target AmigaOS 2.0+ (68020+)
+            "-c99",             // Enable C99 standard
+            $"-cpu={cpu}",      // CPU target
+            $"-O{optimization}", // Optimization level
+            "-c",               // Compile only, don't link
+            "-o", objFile,      // Output object file
+            cFile               // Input C file
+        };
+
+        // Don't print here - caller will show progress
+        return await RunTool(vcPath, args);
     }
 
     /// <summary>

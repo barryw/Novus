@@ -126,10 +126,9 @@ public class FdParser
 
         sb.AppendLine($"; {library.Name} library stubs for Novus");
         sb.AppendLine($"; Auto-generated from {library.Name}_lib.fd");
+        sb.AppendLine($"; Each function in its own section for vlink -gc-all dead code elimination");
         sb.AppendLine();
         sb.AppendLine($"\txref\t{library.BaseVariable}\t; Provided by startup.o + -lamiga");
-        sb.AppendLine();
-        sb.AppendLine("\tsection\ttext,code");
         sb.AppendLine();
 
         foreach (var func in functions.Where(f => !f.IsPrivate))
@@ -142,6 +141,10 @@ public class FdParser
 
     private static void GenerateFunctionStub(StringBuilder sb, LibraryInfo library, FunctionDescriptor func)
     {
+        // Each function gets its own section for dead code elimination
+        // Section name format: CODE_FunctionName
+        sb.AppendLine($"\tsection\tCODE_{func.Name},code");
+        sb.AppendLine();
         sb.AppendLine($"; {func.Name}({string.Join(", ", func.Parameters)})");
         sb.AppendLine($"\txdef\t_{func.Name}");
         sb.AppendLine($"_{func.Name}:");
@@ -172,6 +175,25 @@ public class FdParser
         }
         saveRegs.Add("a6"); // Always save a6
 
+        // Calculate actual number of registers being saved
+        int actualRegisterCount = 0;
+        foreach (var regRange in saveRegs)
+        {
+            if (regRange.Contains('-'))
+            {
+                // It's a range like "d1-d3" or "a0-a1"
+                var parts = regRange.Split('-');
+                var start = int.Parse(parts[0].Substring(1));
+                var end = int.Parse(parts[1].Substring(1));
+                actualRegisterCount += (end - start + 1);
+            }
+            else
+            {
+                // Single register like "a6" or "d0"
+                actualRegisterCount++;
+            }
+        }
+
         // Save registers
         if (saveRegs.Count > 0)
         {
@@ -180,7 +202,7 @@ public class FdParser
 
         // Load parameters from stack into registers
         // Stack layout: saved regs, then return address (4 bytes), then params
-        int stackOffset = saveRegs.Count * 4 + 4; // saved regs + return address
+        int stackOffset = actualRegisterCount * 4 + 4; // saved regs + return address
 
         for (int i = 0; i < func.Registers.Count; i++)
         {

@@ -4,6 +4,7 @@ using Novus.Codegen;
 using Novus.Compilation;
 using Novus.Diagnostics;
 using Novus.Frontend;
+using Novus.IR;
 using Novus.Parser;
 using Novus.SemanticAnalysis;
 using Novus.Toolchain;
@@ -153,7 +154,131 @@ class Program
     }
 
     /// <summary>
-    /// Compile a single Novus module to assembly
+    /// Module IR compilation result (before C code generation)
+    /// </summary>
+    record ModuleIR(
+        string ModulePath,
+        string ModuleName,
+        IrModule IrModule,
+        List<IrStringLiteral> StringLiterals,
+        List<string> ImportedModules,
+        bool HasMain);
+
+    /// <summary>
+    /// Compile a single Novus module to IR (without generating C code yet).
+    /// This allows us to collect all modules first, then generate a shared types header.
+    /// </summary>
+    static async Task<ModuleIR?> CompileModuleToIR(
+        string inputFile,
+        string stdLibPath,
+        CompilerOptions options,
+        ModuleCache moduleCache,
+        CircularImportDetector? circularImportDetector = null)
+    {
+        // Check for circular imports if detector is provided
+        if (circularImportDetector != null)
+        {
+            if (!circularImportDetector.EnterModule(inputFile))
+            {
+                // Circular dependency detected - error already reported
+                return null;
+            }
+        }
+
+        try
+        {
+            // Read source file
+            if (!File.Exists(inputFile))
+            {
+                Console.WriteLine($"Error: Module file not found: {inputFile}");
+                return null;
+            }
+
+            var source = await File.ReadAllTextAsync(inputFile);
+
+            // Create diagnostic bag for error collection
+            var diagnostics = new DiagnosticBag();
+
+            // Try to get cached parse tree
+            Antlr4.Runtime.Tree.IParseTree? cachedParseTree;
+            NovusParser.CompilationUnitContext compilationUnit;
+
+            if (moduleCache.TryGet(inputFile, out cachedParseTree) && cachedParseTree != null)
+            {
+                // Cache hit - skip parsing
+                if (options.Verbose)
+                {
+                    Console.WriteLine($"  [Cache hit] {Path.GetFileName(inputFile)}");
+                }
+                compilationUnit = (NovusParser.CompilationUnitContext)cachedParseTree;
+            }
+            else
+            {
+                // Cache miss - parse the file
+                var inputStream = new AntlrInputStream(source);
+                var lexer = new NovusLexer(inputStream);
+                var tokenStream = new CommonTokenStream(lexer);
+                var parser = new NovusParser(tokenStream);
+
+                // Remove default error listeners and add our custom one
+                parser.RemoveErrorListeners();
+                parser.AddErrorListener(new NovusErrorListener(diagnostics, inputFile, source));
+
+                compilationUnit = parser.compilationUnit();
+
+                // Check for parse errors
+                if (diagnostics.HasErrors)
+                {
+                    Console.WriteLine(diagnostics.FormatDiagnostics());
+                    return null;
+                }
+
+                // Add to cache
+                moduleCache.Add(inputFile, compilationUnit);
+            }
+
+            // Perform semantic analysis
+            var analyzer = new SemanticAnalyzer(inputFile, source, stdLibPath);
+            var analysisSucceeded = analyzer.Analyze(compilationUnit);
+
+            if (!analysisSucceeded)
+            {
+                if (analyzer.Diagnostics.HasErrors || analyzer.Diagnostics.HasWarnings)
+                {
+                    Console.WriteLine(analyzer.Diagnostics.FormatDiagnostics());
+                }
+                return null;
+            }
+
+            // Build IR
+            var irBuilder = new IrBuilder();
+            irBuilder.SetStdLibPath(stdLibPath);
+            irBuilder.SetInputFilePath(inputFile);
+            var module = irBuilder.BuildModule(compilationUnit);
+
+            var moduleName = Path.GetFileNameWithoutExtension(inputFile);
+            var hasMain = module.Functions.Any(f => f.Name == "main" && !f.IsExtern);
+
+            return new ModuleIR(
+                inputFile,
+                moduleName,
+                module,
+                irBuilder.StringLiterals,
+                irBuilder.GetImportedModules(),
+                hasMain);
+        }
+        finally
+        {
+            // Always exit module to maintain proper stack state
+            if (circularImportDetector != null)
+            {
+                circularImportDetector.ExitModule();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Compile a single Novus module to assembly (LEGACY - for compatibility)
     /// Returns the assembly string and list of imported module paths
     /// </summary>
     static async Task<(string Assembly, List<string> ImportedModules)?> CompileModuleToAssembly(
@@ -277,7 +402,18 @@ class Program
             }
 
             // Generate C code
-            var codegen = new CCodeGenerator(module, irBuilder.StringLiterals, options.Cpu, options.Fpu);
+            // OPTIMIZATION: For std::error, only generate functions that are actually imported
+            // This enables smart cross-module DCE without needing whole-program analysis
+            HashSet<string>? explicitEntryPoints = null;
+            var moduleName = Path.GetFileNameWithoutExtension(inputFile);
+            if (moduleName == "error" && inputFile.Contains("/std/"))
+            {
+                // For std::error, only dos_last_error is imported by other modules
+                // (dos_error_from_code will be included transitively since dos_last_error calls it)
+                explicitEntryPoints = new HashSet<string> { "dos_last_error" };
+            }
+
+            var codegen = new CCodeGenerator(module, irBuilder.StringLiterals, options.Cpu, options.Fpu, explicitEntryPoints);
 
             // Note: Register allocation is not used with C backend - VBCC handles register allocation
 
@@ -335,11 +471,14 @@ class Program
             Console.WriteLine("Analyzing semantics...");
             Console.WriteLine("Building IR...");
 
-            // Compile the main file and get its dependencies
-            var mainResult = await CompileModuleToAssembly(options.InputFile, stdLibPath, options, moduleCache, circularImportDetector);
-            if (mainResult == null)
+            // ============================================================================
+            // PHASE 1: Compile all modules to IR (without generating C code yet)
+            // ============================================================================
+
+            // Compile the main file to IR
+            var mainIR = await CompileModuleToIR(options.InputFile, stdLibPath, options, moduleCache, circularImportDetector);
+            if (mainIR == null)
             {
-                // Check if it was a circular import error
                 if (diagnostics.HasErrors)
                 {
                     Console.WriteLine(diagnostics.FormatDiagnostics());
@@ -347,22 +486,19 @@ class Program
                 return 1;
             }
 
-            var (mainCCode, importedModules) = mainResult.Value;
-
-            // Record dependencies from the main module and check for cycles
-            foreach (var import in importedModules)
+            // Record dependencies from the main module
+            foreach (var import in mainIR.ImportedModules)
             {
                 if (!circularImportDetector.RecordDependency(options.InputFile, import))
                 {
-                    // Circular dependency detected
                     Console.WriteLine(diagnostics.FormatDiagnostics());
                     return 1;
                 }
             }
 
-            // Recursively collect all dependencies
-            var allModules = new Dictionary<string, string>(); // path -> C code
-            var toProcess = new Queue<string>(importedModules);
+            // Recursively collect all dependencies to IR
+            var allModulesIR = new Dictionary<string, ModuleIR>(); // path -> IR
+            var toProcess = new Queue<string>(mainIR.ImportedModules);
             var processed = new HashSet<string>();
 
             while (toProcess.Count > 0)
@@ -373,16 +509,15 @@ class Program
 
                 processed.Add(modulePath);
 
-                // Always show which module is being compiled (not just in verbose mode)
+                // Show which module is being compiled
                 var moduleName = Path.GetFileNameWithoutExtension(modulePath);
                 var moduleDir = Path.GetFileName(Path.GetDirectoryName(modulePath));
                 var displayName = moduleDir == "std" ? $"std::{moduleName}" : moduleName;
                 Console.WriteLine($"  → {displayName}");
 
-                var moduleResult = await CompileModuleToAssembly(modulePath, stdLibPath, options, moduleCache, circularImportDetector);
-                if (moduleResult == null)
+                var moduleIR = await CompileModuleToIR(modulePath, stdLibPath, options, moduleCache, circularImportDetector);
+                if (moduleIR == null)
                 {
-                    // Check if it was a circular import error
                     if (diagnostics.HasErrors)
                     {
                         Console.WriteLine(diagnostics.FormatDiagnostics());
@@ -394,16 +529,13 @@ class Program
                     return 1;
                 }
 
-                var (moduleCCode, moduleImports) = moduleResult.Value;
-                allModules[modulePath] = moduleCCode;
+                allModulesIR[modulePath] = moduleIR;
 
-                // Add transitive dependencies and check for cycles
-                foreach (var import in moduleImports)
+                // Add transitive dependencies
+                foreach (var import in moduleIR.ImportedModules)
                 {
-                    // Record the dependency and check for cycles
                     if (!circularImportDetector.RecordDependency(modulePath, import))
                     {
-                        // Circular dependency detected
                         Console.WriteLine(diagnostics.FormatDiagnostics());
                         return 1;
                     }
@@ -415,9 +547,9 @@ class Program
                 }
             }
 
-            if (allModules.Count > 0)
+            if (allModulesIR.Count > 0)
             {
-                Console.WriteLine($"  ✓ Compiled {allModules.Count} module{(allModules.Count > 1 ? "s" : "")}");
+                Console.WriteLine($"  ✓ Compiled {allModulesIR.Count + 1} module{(allModulesIR.Count > 0 ? "s" : "")}");
             }
 
             if (options.Verbose && moduleCache.Count > 0)
@@ -433,36 +565,91 @@ class Program
                 Console.WriteLine();
             }
 
+            // ============================================================================
+            // PHASE 2: Generate shared types header + per-function C files
+            // ============================================================================
+
             Console.WriteLine("Generating C code...");
 
-            // Determine output directory and base name (used by both emit-only and full build)
+            // Build type registry from all modules
+            var typeRegistry = new TypeRegistry();
+            typeRegistry.RegisterModule(mainIR.IrModule);
+            foreach (var moduleIR in allModulesIR.Values)
+            {
+                typeRegistry.RegisterModule(moduleIR.IrModule);
+            }
+
+            // Generate shared types header
+            var sharedTypesHeader = CCodeGenerator.GenerateSharedTypesHeader(typeRegistry);
+
+            // Determine output directory
             var outputDir = Path.GetDirectoryName(Path.GetFullPath(options.OutputFile)) ?? ".";
             var baseName = Path.GetFileNameWithoutExtension(options.OutputFile);
 
-            // Write all C files to disk first (needed for both emit-only and full build)
+            // Write shared types header
+            var typesHeaderPath = Path.Combine(outputDir, "novus_types.h");
+            await File.WriteAllTextAsync(typesHeaderPath, sharedTypesHeader);
+
+            // Generate C files - collect all file paths
+            var cFiles = new List<string>();
+
+            // Main module: generate monolithic C file (with string literals and main function)
+            var mainCodegen = new CCodeGenerator(
+                mainIR.IrModule,
+                mainIR.StringLiterals,
+                options.Cpu,
+                options.Fpu,
+                explicitEntryPoints: null,
+                useSharedTypesHeader: true);
+
+            var mainCCode = mainCodegen.Generate();
             var mainCFile = Path.Combine(outputDir, $"{baseName}.c");
             await File.WriteAllTextAsync(mainCFile, mainCCode);
-            var cFiles = new List<string> { mainCFile };
+            cFiles.Add(mainCFile);
 
-            // Write dependency C files
-            foreach (var (modulePath, cCode) in allModules)
-            {
-                var moduleName = Path.GetFileNameWithoutExtension(modulePath);
-                var depCFile = Path.Combine(outputDir, $"{moduleName}.c");
-                await File.WriteAllTextAsync(depCFile, cCode);
-                cFiles.Add(depCFile);
-            }
+            Console.WriteLine($"  → {Path.GetFileName(mainCFile)}");
 
-            if (options.EmitAsmOnly)
+            // Library modules: generate one C file per function
+            foreach (var (modulePath, moduleIR) in allModulesIR)
             {
-                // Just output the C files and stop
-                Console.WriteLine($"  → {Path.GetFileName(mainCFile)}");
-                foreach (var cFile in cFiles.Skip(1))
+                var moduleName = moduleIR.ModuleName;
+                var isStdModule = modulePath.Contains("/std/");
+
+                // Get all non-extern functions with implementations
+                var functions = moduleIR.IrModule.Functions
+                    .Where(f => !f.IsExtern && f.BasicBlocks.Count > 0)
+                    .ToList();
+
+                if (functions.Count == 0)
+                    continue;
+
+                var moduleCodegen = new CCodeGenerator(
+                    moduleIR.IrModule,
+                    moduleIR.StringLiterals,
+                    options.Cpu,
+                    options.Fpu,
+                    explicitEntryPoints: null,
+                    useSharedTypesHeader: true);
+
+                // Generate one C file per function
+                foreach (var function in functions)
                 {
-                    Console.WriteLine($"  → {Path.GetFileName(cFile)}");
+                    var functionCCode = moduleCodegen.GenerateFunctionFile(function);
+                    var functionCFile = Path.Combine(outputDir, $"{moduleName}_{function.Name}.c");
+                    await File.WriteAllTextAsync(functionCFile, functionCCode);
+                    cFiles.Add(functionCFile);
                 }
 
-                Console.WriteLine($"\nC files written to: {outputDir}");
+                var displayName = isStdModule ? $"std::{moduleName}" : moduleName;
+                Console.WriteLine($"  → {displayName} ({functions.Count} function{(functions.Count > 1 ? "s" : "")})");
+            }
+
+            // Handle emit-only mode (just generate C files and stop)
+            if (options.EmitAsmOnly)
+            {
+                Console.WriteLine($"\nC files and header written to: {outputDir}");
+                Console.WriteLine($"  novus_types.h (shared types)");
+                Console.WriteLine($"  {cFiles.Count} function file{(cFiles.Count > 1 ? "s" : "")}");
                 return 0;
             }
 
@@ -528,14 +715,33 @@ class Program
                 }
             }
 
-            // Compile and link with vc (vc understands "auto" for fat binaries, but use concrete target for now)
+            // Step 1: Compile each C file to an object file
+            Console.WriteLine("\nCompiling C files...");
+            foreach (var cFile in cFiles)
+            {
+                var cFileName = Path.GetFileName(cFile);
+                var objFile = Path.Combine(outputDir, Path.GetFileNameWithoutExtension(cFile) + ".o");
+
+                Console.WriteLine($"  → {cFileName}");
+                if (!await toolchain.CompileToObject(cFile, objFile, assemblyCpu, options.OptimizationLevel))
+                {
+                    Console.WriteLine($"\n✗ Failed to compile {cFileName}");
+                    return 1;
+                }
+
+                objectFiles.Add(objFile);
+            }
+
+            // Step 2: Link all object files with dead code elimination
             var exeFile = Path.Combine(outputDir, baseName);
-            var success = await toolchain.CompileWithVC(
-                cFiles,
-                objectFiles,
+            Console.WriteLine("\nLinking with dead code elimination...");
+            Console.WriteLine($"  → {objectFiles.Count} object files");
+
+            var success = await toolchain.Link(
+                objectFiles.ToArray(),
                 exeFile,
-                assemblyCpu,
-                options.OptimizationLevel
+                options.Fpu,
+                includeStartup: false  // startup already in objectFiles
             );
 
             if (success)
@@ -545,7 +751,7 @@ class Program
             }
             else
             {
-                Console.WriteLine("\n✗ Compilation failed");
+                Console.WriteLine("\n✗ Linking failed");
                 return 1;
             }
         }
