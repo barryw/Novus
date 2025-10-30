@@ -1,0 +1,54 @@
+// Final safety test - tests automatic defer with Vec
+// Uses Vec::new() which doesn't allocate (simpler for testing)
+from std::collections import Vec
+
+fn test_single_vec() -> i32 {
+    var vec: Vec<i32> = Vec::new()
+    // Compiler auto-injects: defer vec.drop()
+
+    // Vec is empty, so these will fail but that's ok
+    vec.push(42i32)
+    vec.push(99i32)
+
+    return 0
+    // vec.drop() should be called here automatically
+}
+
+fn test_two_vecs() -> i32 {
+    var vec1: Vec<i32> = Vec::new()
+    // Compiler auto-injects: defer vec1.drop()
+
+    var vec2: Vec<i32> = Vec::new()
+    // Compiler auto-injects: defer vec2.drop()
+
+    vec1.push(111i32)
+    vec2.push(222i32)
+
+    return 0
+    // LIFO: vec2.drop() first, then vec1.drop()
+}
+
+fn test_early_return() -> i32 {
+    var vec: Vec<i32> = Vec::new()
+    // Compiler auto-injects: defer vec.drop()
+
+    vec.push(42i32)
+
+    if true {
+        return 1  // vec.drop() should be called here
+    }
+
+    return 0  // vec.drop() should also be called here
+}
+
+fn main() -> i32 {
+    let r1 = test_single_vec()
+    let r2 = test_two_vecs()
+    let r3 = test_early_return()
+
+    if r1 == 0 && r2 == 0 && r3 == 1 {
+        return 0  // All tests passed
+    } else {
+        return 1  // Something failed
+    }
+}

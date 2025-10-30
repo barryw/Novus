@@ -1,0 +1,6 @@
+from std::panic import panic
+
+fn main() -> i32 {
+    panic("Test panic message!")
+    return 0  // Never reached
+}

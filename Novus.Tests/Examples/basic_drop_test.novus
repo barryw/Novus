@@ -1,0 +1,27 @@
+from std::io import WriteOut
+
+// Simple struct with drop() method to test automatic cleanup
+struct TestResource {
+    value: i32,
+}
+
+impl TestResource {
+    pub fn new(value: i32) -> TestResource {
+        WriteOut("Creating resource\n")
+        return TestResource { value: value }
+    }
+
+    pub fn drop(&mut self) {
+        WriteOut("Dropping resource\n")
+    }
+}
+
+fn main() -> i32 {
+    WriteOut("Start\n")
+
+    // This should automatically call drop() at end of scope
+    let res: TestResource = TestResource::new(42i32)
+
+    WriteOut("End\n")
+    return 0
+}

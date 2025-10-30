@@ -4891,6 +4891,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         {
             return "bool";
         }
+        if (type is IrStringType)
+        {
+            return "String";
+        }
         if (type is IrVoidType)
         {
             return "void";

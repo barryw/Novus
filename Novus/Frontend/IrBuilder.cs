@@ -27,8 +27,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
     private readonly Dictionary<string, IrStructType> _monomorphizedStructs = new(); // Cache for monomorphized generic structs
 
     // Store generic method templates for later instantiation
-    // Key: "TypeName::methodName", Value: (genericParams, context)
-    private readonly Dictionary<string, (List<string> GenericParams, NovusParser.FunctionDeclarationContext Context)> _genericMethodTemplates = new();
+    // Key: "TypeName::methodName", Value: (genericParams, context, constants)
+    // The constants dictionary captures the constants visible when the template was created
+    private readonly Dictionary<string, (List<string> GenericParams, NovusParser.FunctionDeclarationContext Context, Dictionary<string, (IrType Type, object Value)> Constants)> _genericMethodTemplates = new();
 
     // Track which monomorphized methods have been generated
     // Key: "TypeName<ConcreteType>::methodName" (e.g., "Vec<i32>::push")
@@ -191,7 +192,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 if (genericParams.Count > 0)
                 {
                     var templateKey = $"{typeName}::{methodName}";
-                    _genericMethodTemplates[templateKey] = (genericParams, funcDecl);
+                    // Capture current constants dictionary (make a copy so imports don't affect templates)
+                    var templateConstants = new Dictionary<string, (IrType Type, object Value)>(_constants);
+                    _genericMethodTemplates[templateKey] = (genericParams, funcDecl, templateConstants);
                     // Don't create function yet - it will be instantiated when called with concrete types
                     continue;
                 }
@@ -583,10 +586,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
             _importedModulePaths.Add(modulePath);
         }
 
-        // Note: We DON'T process the module's own imports here (transitive dependencies)
-        // Each module handles its own imports when it's compiled as a separate dependency
-        // This prevents duplicate symbols and circular dependencies
-        // Only process reexports, which are explicitly made public by the module
+        // Note: We need to process the module's imports to make constants available for generic templates
+        // This is safe because _processedModules prevents circular dependencies
+        Console.WriteLine($"[ImportModule] Processing imports for {moduleNamespace}");
+        foreach (var importDecl in moduleContext.importDeclaration())
+        {
+            ProcessImport(importDecl);
+        }
 
         // CRITICAL: Process pub use reexports, before parsing any function signatures
         // Function signatures may reference reexported types, so those types must be in scope
@@ -739,6 +745,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         // Register imported constants in the module
+        Console.WriteLine($"[ImportModule] Registering constants from {moduleNamespace}, have {_constants.Count} before");
         foreach (var constDecl in moduleContext.constDeclaration())
         {
             var constName = constDecl.IDENTIFIER().GetText();
@@ -752,12 +759,15 @@ public class IrBuilder : NovusBaseVisitor<object?>
             // Skip if this constant has already been imported (transitive dependencies)
             if (_constants.ContainsKey(constName))
             {
+                Console.WriteLine($"[ImportModule] Skipping already-imported constant '{constName}'");
                 continue;
             }
 
             // Register the constant from the imported module
+            Console.WriteLine($"[ImportModule] Registering constant '{constName}'");
             RegisterConstant(constDecl);
         }
+        Console.WriteLine($"[ImportModule] After registering constants, have {_constants.Count} total");
 
         // Register imported structs in the module
         foreach (var structDecl in moduleContext.structDeclaration())
@@ -878,7 +888,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 if (genericParams.Count > 0)
                 {
                     var templateKey = $"{typeName}::{methodName}";
-                    _genericMethodTemplates[templateKey] = (genericParams, funcDecl);
+                    // Capture current constants dictionary (make a copy so imports don't affect templates)
+                    var templateConstants = new Dictionary<string, (IrType Type, object Value)>(_constants);
+                    Console.WriteLine($"[ImportModule] Creating template for '{templateKey}' with {templateConstants.Count} constants: {string.Join(", ", templateConstants.Keys)}");
+                    _genericMethodTemplates[templateKey] = (genericParams, funcDecl, templateConstants);
                     // Don't create function yet - it will be instantiated when called with concrete types
                     continue;
                 }
@@ -1027,7 +1040,18 @@ public class IrBuilder : NovusBaseVisitor<object?>
             return null; // No template found
         }
 
-        var (genericParams, funcDecl) = template;
+        var (genericParams, funcDecl, templateConstants) = template;
+
+        Console.WriteLine($"[InstantiateGenericMethod] Instantiating {monomorphizedStruct.CacheKey}::{methodName} with {templateConstants.Count} template constants");
+
+        // Save current constants and use template's constants during instantiation
+        var savedConstants = new Dictionary<string, (IrType Type, object Value)>(_constants);
+        Console.WriteLine($"[InstantiateGenericMethod] Current module has {_constants.Count} constants, template has {templateConstants.Count}");
+        foreach (var kvp in templateConstants)
+        {
+            _constants[kvp.Key] = kvp.Value;
+            Console.WriteLine($"[InstantiateGenericMethod] Added template constant '{kvp.Key}' = {kvp.Value.Value}");
+        }
 
         // Build instantiation key (e.g., "Vec<i32>::push")
         var instantiationKey = $"{monomorphizedStruct.CacheKey}::{methodName}";
@@ -1162,6 +1186,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Restore type substitutions
         _currentTypeSubstitutions = savedSubstitutions;
 
+        // Restore constants
+        _constants.Clear();
+        foreach (var kvp in savedConstants)
+        {
+            _constants[kvp.Key] = kvp.Value;
+        }
+
         // Clear generic params
         foreach (var paramName in typeSubstitutions.Keys)
         {
@@ -1194,6 +1225,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
         if (value != null)
         {
             _constants[name] = (type, value);
+            // Also store in the IR module for code generator access
+            _module.Constants[name] = (type, value);
         }
     }
 
@@ -1431,6 +1464,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         // Generate IR for the declaration with initial value
         _currentBlock!.AddInstruction(new IrLocalDecl(name, type, isMutable, value));
+
+        // Automatic defer for types with drop() method (RAII-style cleanup)
+        // For generic types, eagerly instantiate the drop() method if it exists as a template
+        if (EnsureDropMethodInstantiated(type))
+        {
+            InjectAutomaticDrop(name, type);
+        }
 
         return null;
     }
@@ -3382,7 +3422,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
         if (_constants.ContainsKey(name))
         {
             var (type, value) = _constants[name];
+            Console.WriteLine($"[DEBUG] [{_inputFilePath}] Inlining constant '{name}' = {value}");
             return new IrConstant((int)value, type);
+        }
+        else
+        {
+            Console.WriteLine($"[DEBUG] [{_inputFilePath}] Identifier '{name}' not found in constants (have {_constants.Count} constants): {string.Join(", ", _constants.Keys)}");
         }
 
         // Check if it's a local variable
@@ -4435,5 +4480,160 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         throw new Exception($"Cannot get mangled name for type '{type.Name}'");
+    }
+
+    /// <summary>
+    /// Ensure that a drop() method is instantiated for this type if it exists as a template.
+    /// For generic types like Vec<T>, this will instantiate Vec<T>::drop() if it exists.
+    /// Returns true if the type has a drop() method (either already instantiated or newly instantiated).
+    /// </summary>
+    private bool EnsureDropMethodInstantiated(IrType type)
+    {
+        // Get the type name for method lookup
+        string typeName;
+        IrStructType? structType = null;
+        IrEnumType? enumType = null;
+
+        if (type is IrStructType st)
+        {
+            structType = st;
+            typeName = st.StructName;  // Use base name for generic types
+        }
+        else if (type is IrEnumType et)
+        {
+            enumType = et;
+            typeName = et.EnumName;
+        }
+        else
+        {
+            // Only structs and enums can have methods
+            return false;
+        }
+
+        // Look for Type_drop method in the module
+        var dropMethod = $"{typeName}_drop";
+
+        // Check if already instantiated
+        if (_module.Functions.Any(f => f.Name == dropMethod))
+        {
+            return true;
+        }
+
+        // Check if there's a generic template for the drop() method
+        var templateKey = $"{typeName}::drop";
+
+        if (_genericMethodTemplates.ContainsKey(templateKey))
+        {
+            // Instantiate the generic drop() method
+            try
+            {
+                IrFunction? instantiatedFunc = null;
+
+                if (structType != null)
+                {
+                    instantiatedFunc = InstantiateGenericMethod(structType, "drop");
+                }
+                else if (enumType != null)
+                {
+                    // TODO: Add support for enum methods if needed
+                    return false;
+                }
+
+                if (instantiatedFunc != null)
+                {
+                    return true;
+                }
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        // No drop method exists
+        return false;
+    }
+
+    /// <summary>
+    /// Check if a type has a drop() method.
+    /// This enables automatic defer cleanup for RAII-style resource management.
+    /// </summary>
+    private bool TypeHasDropMethod(IrType type)
+    {
+        // Get the type name for method lookup
+        string typeName;
+        if (type is IrStructType structType)
+        {
+            typeName = structType.StructName;  // Use base name for generic types
+        }
+        else if (type is IrEnumType enumType)
+        {
+            typeName = enumType.EnumName;
+        }
+        else
+        {
+            // Only structs and enums can have methods
+            return false;
+        }
+
+        // Look for Type_drop method in the module
+        var dropMethod = $"{typeName}_drop";
+        return _module.Functions.Any(f => f.Name == dropMethod);
+    }
+
+    /// <summary>
+    /// Inject an automatic defer block that calls drop() on a variable.
+    /// This implements RAII-style cleanup for types with drop() methods.
+    /// </summary>
+    private void InjectAutomaticDrop(string varName, IrType type)
+    {
+        // Create a new basic block for the deferred drop() call
+        var deferLabel = $"autoclean_{varName}_{_labelCounter++}";
+        var deferBlock = new IrBasicBlock(deferLabel);
+
+        // Save current block
+        var savedBlock = _currentBlock;
+        _currentBlock = deferBlock;
+
+        // Generate call to var.drop()
+        // This desugars to: Type_drop(&mut var)
+        string typeName;
+        if (type is IrStructType structType)
+        {
+            typeName = structType.StructName;
+        }
+        else if (type is IrEnumType enumType)
+        {
+            typeName = enumType.EnumName;
+        }
+        else
+        {
+            throw new Exception($"Cannot generate drop call for type '{type.Name}'");
+        }
+
+        var dropMethodName = $"{typeName}_drop";
+        var dropMethod = _module.Functions.FirstOrDefault(f => f.Name == dropMethodName);
+        if (dropMethod == null)
+        {
+            throw new Exception($"Drop method '{dropMethodName}' not found");
+        }
+
+        // Load the variable and borrow it mutably for drop()
+        var varRef = new IrVariable(varName, type);
+        var mutBorrow = new IrBorrowValue(varRef, new IrMutReferenceType(type), isMutable: true);
+
+        // Create the drop() call (drop() returns void)
+        var dropCall = new IrCall(dropMethodName, IrVoidType.Instance, null);
+        dropCall.Arguments.Add(mutBorrow);
+        deferBlock.AddInstruction(dropCall);
+
+        // Restore current block
+        _currentBlock = savedBlock;
+
+        // Add the defer block to the function's deferred blocks list (LIFO)
+        _currentFunction!.DeferredBlocks.Add(deferBlock);
+
+        // Add defer instruction to current block (marker)
+        _currentBlock!.AddInstruction(new IrDefer(deferBlock));
     }
 }

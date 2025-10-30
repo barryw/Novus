@@ -1,0 +1,26 @@
+// Test to verify defer blocks execute in LIFO order
+// Use actual return values instead of external function calls
+
+fn test_defer_lifo() -> i32 {
+    let val1 = 10
+    defer {
+        // This should execute SECOND (cleanup val1)
+        let x = val1  // Just reference it
+    }
+
+    let val2 = 20
+    defer {
+        // This should execute FIRST (cleanup val2)
+        let y = val2  // Just reference it
+    }
+
+    return 42
+    // Generated C should have:
+    // 1. Defer block for val2 (LIFO - last in, first out)
+    // 2. Defer block for val1
+    // 3. return 42
+}
+
+fn main() -> i32 {
+    return test_defer_lifo()
+}

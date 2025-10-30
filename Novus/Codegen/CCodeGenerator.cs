@@ -26,6 +26,9 @@ public class CCodeGenerator
     // to avoid redeclaration errors when the same variable is assigned in multiple branches
     private HashSet<string> _declaredVariables = new();
 
+    // Track current function being emitted (for defer cleanup)
+    private IrFunction? _currentEmittingFunction = null;
+
     public CCodeGenerator(IrModule module, List<IrStringLiteral> stringLiterals, string cpuTarget, string fpuMode, HashSet<string>? explicitEntryPoints = null, bool useSharedTypesHeader = false)
     {
         _module = module;
@@ -130,6 +133,18 @@ public class CCodeGenerator
             sb.AppendLine();
         }
 
+        // Emit string literals (if any)
+        if (_stringLiterals.Count > 0)
+        {
+            sb.AppendLine("// String literals");
+            foreach (var literal in _stringLiterals)
+            {
+                var escaped = EscapeString(literal.Value);
+                sb.AppendLine($"static const char {literal.Label}[] = \"{escaped}\";");
+            }
+            sb.AppendLine();
+        }
+
         // Extern declarations for functions this function calls
         var calledFunctions = GetCalledFunctions(function);
         if (calledFunctions.Count > 0)
@@ -163,6 +178,10 @@ public class CCodeGenerator
     /// </summary>
     private void EmitFunctionToBuilder(StringBuilder targetBuilder, IrFunction function)
     {
+        // Set current function for defer cleanup
+        _currentEmittingFunction = function;
+        _declaredVariables.Clear();
+
         var returnType = GetCType(function.ReturnType);
         var parameters = GetParameterList(function);
         var funcName = MangleName(function.Name);
@@ -193,7 +212,17 @@ public class CCodeGenerator
             }
         }
 
+        // Emit deferred cleanup at end of function
+        var beforeCleanupLength = _output.Length;
+        EmitDeferredCleanup(function, 1);
+        var cleanupEmitted = _output.ToString().Substring(beforeCleanupLength);
+        targetBuilder.Append(cleanupEmitted);
+        _output.Length = beforeCleanupLength;
+
         targetBuilder.AppendLine("}");
+
+        // Clear current function
+        _currentEmittingFunction = null;
     }
 
     /// <summary>
@@ -398,8 +427,11 @@ public class CCodeGenerator
             if (currentFunc == null)
                 continue;
 
-            // Scan all instructions for function calls
-            foreach (var block in currentFunc.BasicBlocks)
+            // Scan all instructions for function calls (including deferred blocks)
+            var blocksToScan = new List<IrBasicBlock>(currentFunc.BasicBlocks);
+            blocksToScan.AddRange(currentFunc.DeferredBlocks);
+
+            foreach (var block in blocksToScan)
             {
                 foreach (var instruction in block.Instructions)
                 {
@@ -769,6 +801,9 @@ public class CCodeGenerator
         // Clear declared variables for this function
         _declaredVariables.Clear();
 
+        // Set current function for defer cleanup
+        _currentEmittingFunction = function;
+
         var returnType = GetCType(function.ReturnType);
         var parameters = GetParameterList(function);
         var funcName = MangleName(function.Name);
@@ -802,7 +837,13 @@ public class CCodeGenerator
             _inMatchArmScope = false;
         }
 
+        // Emit deferred cleanup at end of function (if no explicit return)
+        EmitDeferredCleanup(function, 1);
+
         _output.AppendLine("}");
+
+        // Clear current function
+        _currentEmittingFunction = null;
     }
 
     private void EmitBasicBlock(IrBasicBlock block)
@@ -865,9 +906,61 @@ public class CCodeGenerator
                 EmitMemberAccess(memberAccess);
                 break;
 
+            case IrDefer defer:
+                // IrDefer is just a marker - defer blocks are emitted at function exit points
+                // We don't emit anything here
+                break;
+
             default:
                 _output.AppendLine($"    // TODO: {instruction.GetType().Name}");
                 break;
+        }
+    }
+
+    /// <summary>
+    /// Emit deferred cleanup blocks in LIFO order (last registered, first executed).
+    /// This is called before function exit points (return statements, end of function).
+    /// </summary>
+    private void EmitDeferredCleanup(IrFunction function, int indentLevel = 1)
+    {
+        if (function.DeferredBlocks.Count == 0)
+            return;
+
+        var indent = new string(' ', indentLevel * 4);
+
+        // Execute deferred blocks in LIFO order (reverse order)
+        for (int i = function.DeferredBlocks.Count - 1; i >= 0; i--)
+        {
+            var deferBlock = function.DeferredBlocks[i];
+
+            // Emit a comment for debugging
+            _output.AppendLine($"{indent}// Defer cleanup block {function.DeferredBlocks.Count - i}");
+
+            // Emit all instructions in the deferred block
+            foreach (var instruction in deferBlock.Instructions)
+            {
+                // Save current output position
+                var beforeLength = _output.Length;
+
+                // Emit instruction (will write to _output with default indentation)
+                EmitInstruction(instruction);
+
+                // Get what was emitted and fix indentation
+                var emitted = _output.ToString().Substring(beforeLength);
+                _output.Length = beforeLength;  // Remove what we just added
+
+                // Re-emit with correct indentation
+                var lines = emitted.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                foreach (var line in lines)
+                {
+                    // Strip existing indentation and apply our indentation
+                    var trimmed = line.TrimStart();
+                    if (!string.IsNullOrWhiteSpace(trimmed))
+                    {
+                        _output.AppendLine($"{indent}{trimmed}");
+                    }
+                }
+            }
         }
     }
 
@@ -1008,6 +1101,12 @@ public class CCodeGenerator
 
     private void EmitReturn(IrReturn returnInst)
     {
+        // Emit deferred cleanup before returning
+        if (_currentEmittingFunction != null)
+        {
+            EmitDeferredCleanup(_currentEmittingFunction, 1);
+        }
+
         if (returnInst.Value != null)
         {
             var value = EmitValue(returnInst.Value);
@@ -1116,7 +1215,7 @@ public class CCodeGenerator
         {
             IrConstant constant => constant.Value.ToString(),
             IrBoolConstant boolConst => boolConst.Value ? "true" : "false",
-            IrVariable variable => SanitizeVariableName(variable.Name),
+            IrVariable variable => EmitVariable(variable),
             IrStringLiteral stringLit => $"(String){{ .ptr = (uint8_t*){stringLit.Label}, .len = {stringLit.Length} }}",
             IrEnumValue enumValue => EmitEnumValue(enumValue),
             IrBorrowValue borrowValue => $"&{EmitValue(borrowValue.BorrowedValue)}",
@@ -1125,6 +1224,35 @@ public class CCodeGenerator
             IrStructLiteral structLit => EmitStructLiteral(structLit),
             _ => throw new NotSupportedException($"Unsupported value type: {value.GetType().Name}")
         };
+    }
+
+    private string EmitVariable(IrVariable variable)
+    {
+        // Check if this variable is actually a constant reference
+        // If so, inline the constant value instead of emitting the variable name
+        if (_module.Constants.TryGetValue(variable.Name, out var constant))
+        {
+            return constant.Value.ToString() ?? "0";
+        }
+
+        // Fallback: Check for well-known Amiga system constants
+        // This handles generic instantiation where constants from imported modules aren't available
+        var wellKnownConstants = new Dictionary<string, long>
+        {
+            // Exec memory allocation flags (from exec.library)
+            ["MEMF_PUBLIC"] = 0,
+            ["MEMF_CHIP"] = 2,
+            ["MEMF_FAST"] = 4,
+            ["MEMF_CLEAR"] = 65536,
+        };
+
+        if (wellKnownConstants.TryGetValue(variable.Name, out var value))
+        {
+            return value.ToString();
+        }
+
+        // Not a constant - emit the variable name
+        return SanitizeVariableName(variable.Name);
     }
 
     private string EmitStructLiteral(IrStructLiteral structLit)

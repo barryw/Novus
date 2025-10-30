@@ -1,0 +1,56 @@
+// Simple test to verify defer blocks are emitted in generated C code
+// This doesn't actually allocate memory, just simulates the defer pattern
+
+fn cleanup(id: i32) {
+    // In real code this would be Vec::drop() or similar
+    // For now just a placeholder
+}
+
+fn test_single_defer() -> i32 {
+    let val = 42
+    defer {
+        cleanup(val)
+    }
+    return 0
+    // cleanup(val) should be called here in generated C
+}
+
+fn test_two_defers() -> i32 {
+    let val1 = 1
+    defer {
+        cleanup(val1)
+    }
+
+    let val2 = 2
+    defer {
+        cleanup(val2)
+    }
+
+    return 0
+    // Should call: cleanup(val2), then cleanup(val1) - LIFO order
+}
+
+fn test_early_return() -> i32 {
+    let val = 100
+    defer {
+        cleanup(val)
+    }
+
+    if true {
+        return 1  // Should call cleanup(val) before returning
+    }
+
+    return 0  // Should also call cleanup(val) before returning
+}
+
+fn main() -> i32 {
+    let r1 = test_single_defer()
+    let r2 = test_two_defers()
+    let r3 = test_early_return()
+
+    if r1 == 0 && r2 == 0 && r3 == 1 {
+        return 0
+    } else {
+        return 1
+    }
+}

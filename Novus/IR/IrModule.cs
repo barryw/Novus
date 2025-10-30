@@ -12,6 +12,12 @@ public class IrModule
     public Dictionary<string, IrMonomorphizedType> MonomorphizedTypes { get; } = new();
 
     /// <summary>
+    /// Module constants - maps constant name to (type, value)
+    /// Used by code generator to inline constant references
+    /// </summary>
+    public Dictionary<string, (IrType Type, object Value)> Constants { get; } = new();
+
+    /// <summary>
     /// HIR (High-level IR) instructions that need lowering to LIR
     /// These represent language features like Copper lists, Blitter jobs, async functions
     /// </summary>

@@ -1,0 +1,110 @@
+// Comprehensive safety test - allocates real memory and verifies cleanup
+// This test will leak memory if automatic defer doesn't work
+from std::collections import Vec
+
+fn test_single_allocation() -> i32 {
+    // Allocate 100 i32s (400 bytes)
+    let vec_opt: Option<Vec<i32>> = Vec::with_capacity(100u32)
+    match vec_opt {
+        Some(v) => {
+            var vec = v
+            // Compiler auto-injects: defer vec.drop()
+
+            // Fill it with data
+            vec.push(42i32)
+            vec.push(99i32)
+            vec.push(1000i32)
+
+            return 0  // vec.drop() called here - frees 400 bytes
+        },
+        None => {
+            return 1  // Failed to allocate
+        }
+    }
+}
+
+fn test_multiple_allocations() -> i32 {
+    // Allocate first Vec (1000 i32s = 4000 bytes)
+    let vec1_opt: Option<Vec<i32>> = Vec::with_capacity(1000u32)
+    match vec1_opt {
+        Some(v1) => {
+            var vec1 = v1
+            // Compiler auto-injects: defer vec1.drop()
+
+            vec1.push(111i32)
+
+            // Allocate second Vec (500 i32s = 2000 bytes)
+            let vec2_opt: Option<Vec<i32>> = Vec::with_capacity(500u32)
+            match vec2_opt {
+                Some(v2) => {
+                    var vec2 = v2
+                    // Compiler auto-injects: defer vec2.drop()
+
+                    vec2.push(222i32)
+
+                    return 0
+                    // LIFO cleanup: vec2.drop() (2000 bytes), then vec1.drop() (4000 bytes)
+                },
+                None => {
+                    return 2
+                    // vec1.drop() called here (4000 bytes freed)
+                }
+            }
+        },
+        None => {
+            return 1
+        }
+    }
+}
+
+fn test_loop_allocations() -> i32 {
+    // Allocate and free in a loop - each iteration should free memory
+    var i: i32 = 0i32
+    while i < 10i32 {
+        let vec_opt: Option<Vec<i32>> = Vec::with_capacity(50u32)
+        match vec_opt {
+            Some(v) => {
+                var vec = v
+                // Compiler auto-injects: defer vec.drop()
+
+                vec.push(i)
+                vec.push(i)
+
+                // Loop continues - vec.drop() called at end of iteration
+            },
+            None => {
+                return 1  // Failed to allocate
+            }
+        }
+
+        i = i + 1i32
+    }
+
+    return 0  // All 10 allocations should be freed
+}
+
+fn main() -> i32 {
+    // Run single allocation test
+    let result1 = test_single_allocation()
+    if result1 != 0 {
+        return 1
+    }
+
+    // Run multiple allocations test
+    let result2 = test_multiple_allocations()
+    if result2 != 0 {
+        return 2
+    }
+
+    // Run loop allocations test (10 iterations)
+    let result3 = test_loop_allocations()
+    if result3 != 0 {
+        return 3
+    }
+
+    // All tests passed!
+    // Total allocations: 1 + 2 + 10 = 13
+    // If automatic defer works, all 13 allocations are freed
+    // If defer doesn't work, we leaked ~6600+ bytes
+    return 0
+}
