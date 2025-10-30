@@ -49,10 +49,13 @@ impl<T> Vec<T> {
                 })
             },
             None => {
-                // Allocation failed
-                return Option::None
+                // Allocation failed - fall through to return None below
+                let _dummy: u32 = 0u32
             }
         }
+
+        // Return None outside match (will only reach here if allocation failed)
+        return Option::None
     }
 
     // Get the number of elements in the vector
@@ -110,7 +113,7 @@ impl<T> Vec<T> {
                     // Free old memory if it exists
                     if self.capacity > 0u32 {
                         let old_bytes: u32 = self.capacity * element_size
-                        let old_mem: *u8 = (*u8)self.ptr
+                        let old_mem: *u8 = (*u8)(self.ptr)
                         FreeMem(old_mem, old_bytes)
                     }
 
@@ -188,7 +191,7 @@ impl<T> Vec<T> {
             let element_size: u32 = @sizeof(T)
             let bytes: u32 = self.capacity * element_size
             // Explicit pointer cast from *T to *u8
-            let mem: *u8 = (*u8)self.ptr
+            let mem: *u8 = (*u8)(self.ptr)
             FreeMem(mem, bytes)
 
             // Reset to null pointer (0 with type inference)
