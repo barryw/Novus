@@ -1,0 +1,703 @@
+// exec.library FFI Bindings
+// Raw 1:1 mappings to exec.library
+//
+// Auto-generated from NDK 3.9
+// - Functions from exec_lib.fd
+// - Structs from include/exec/*.h
+// - Constants from include/exec/*.h
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+pub const SIH_PRIMASK: u32 = ($f0)
+pub const INTB_NMI: u32 = 15
+pub const INTF_NMI: u32 = 32768
+pub const UNITF_ACTIVE: u32 = 1
+pub const UNITF_INTASK: u32 = 2
+pub const SM_SHARED: u32 = (1)
+pub const SM_EXCLUSIVE: u32 = (0)
+pub const TRUE: u32 = 1
+pub const FALSE: u32 = 0
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FF
+pub const LIBRARY_MINIMUM: u32 = 40 // Lowest version supported by Amiga, Inc.
+pub const LIB_VECTSIZE: u32 = 6 // Each library entry takes 6 bytes
+pub const LIB_RESERVED: u32 = 4 // Exec reserves the first 4 vectors
+pub const LIBF_SUMMING: u32 = 1 // we are currently checksumming
+pub const LIBF_CHANGED: u32 = 2 // we have just changed the lib
+pub const LIBF_SUMUSED: u32 = 4 // set if we should bother to sum
+pub const LIBF_DELEXP: u32 = 8 // delayed expunge
+pub const PF_ACTION: u32 = 3 // Mask
+pub const PA_SIGNAL: u32 = 0 // Signal task in mp_SigTask
+pub const PA_SOFTINT: u32 = 1 // Signal SoftInt in mp_SoftInt/mp_SigTask
+pub const PA_IGNORE: u32 = 2 // Ignore arrival
+pub const TB_PROCTIME: u32 = 0
+pub const TB_ETASK: u32 = 3
+pub const TB_STACKCHK: u32 = 4
+pub const TB_EXCEPT: u32 = 5
+pub const TB_SWITCH: u32 = 6
+pub const TB_LAUNCH: u32 = 7
+pub const TF_PROCTIME: u32 = 1
+pub const TF_ETASK: u32 = 8
+pub const TF_STACKCHK: u32 = 16
+pub const TF_EXCEPT: u32 = 32
+pub const TF_SWITCH: u32 = 64
+pub const TF_LAUNCH: u32 = 128
+pub const TS_INVALID: u32 = 0
+pub const TS_ADDED: u32 = 1
+pub const TS_RUN: u32 = 2
+pub const TS_READY: u32 = 3
+pub const TS_WAIT: u32 = 4
+pub const TS_EXCEPT: u32 = 5
+pub const TS_REMOVED: u32 = 6
+pub const SIGB_ABORT: u32 = 0
+pub const SIGB_CHILD: u32 = 1
+pub const SIGB_BLIT: u32 = 4 // Note: same as SINGLE
+pub const SIGB_SINGLE: u32 = 4 // Note: same as BLIT
+pub const SIGB_INTUITION: u32 = 5
+pub const SIGB_NET: u32 = 7
+pub const SIGB_DOS: u32 = 8
+pub const SIGF_ABORT: u32 = 1
+pub const SIGF_CHILD: u32 = 2
+pub const SIGF_BLIT: u32 = 16
+pub const SIGF_SINGLE: u32 = 16
+pub const SIGF_INTUITION: u32 = 32
+pub const SIGF_NET: u32 = 128
+pub const SIGF_DOS: u32 = 256
+pub const NT_UNKNOWN: u32 = 0
+pub const NT_TASK: u32 = 1 // Exec task
+pub const NT_INTERRUPT: u32 = 2
+pub const NT_DEVICE: u32 = 3
+pub const NT_MSGPORT: u32 = 4
+pub const NT_MESSAGE: u32 = 5 // Indicates message currently pending
+pub const NT_FREEMSG: u32 = 6
+pub const NT_REPLYMSG: u32 = 7 // Message has been replied
+pub const NT_RESOURCE: u32 = 8
+pub const NT_LIBRARY: u32 = 9
+pub const NT_MEMORY: u32 = 10
+pub const NT_SOFTINT: u32 = 11 // Internal flag used by SoftInits
+pub const NT_FONT: u32 = 12
+pub const NT_PROCESS: u32 = 13 // AmigaDOS Process
+pub const NT_SEMAPHORE: u32 = 14
+pub const NT_SIGNALSEM: u32 = 15 // signal semaphores
+pub const NT_BOOTNODE: u32 = 16
+pub const NT_KICKMEM: u32 = 17
+pub const NT_GRAPHICS: u32 = 18
+pub const NT_DEATHMESSAGE: u32 = 19
+pub const NT_USER: u32 = 254 // User node types work down from here
+pub const NT_EXTENDED: u32 = 255
+pub const IOB_QUICK: u32 = 0
+pub const IOF_QUICK: u32 = 1
+pub const CMD_INVALID: u32 = 0
+pub const CMD_RESET: u32 = 1
+pub const CMD_READ: u32 = 2
+pub const CMD_WRITE: u32 = 3
+pub const CMD_UPDATE: u32 = 4
+pub const CMD_CLEAR: u32 = 5
+pub const CMD_STOP: u32 = 6
+pub const CMD_START: u32 = 7
+pub const CMD_FLUSH: u32 = 8
+pub const CMD_NONSTD: u32 = 9
+pub const AFB_68010: u32 = 0 // also set for 68020
+pub const AFB_68020: u32 = 1 // also set for 68030
+pub const AFB_68030: u32 = 2 // also set for 68040
+pub const AFB_68040: u32 = 3 // also set for 68060
+pub const AFB_68881: u32 = 4 // also set for 68882
+pub const AFB_68882: u32 = 5
+pub const AFB_FPU40: u32 = 6 // Set if 68040 FPU
+pub const AFB_68060: u32 = 7
+pub const AFB_PRIVATE: u32 = 15 // Just what it says
+pub const AFF_68010: u32 = 1
+pub const AFF_68020: u32 = 2
+pub const AFF_68030: u32 = 4
+pub const AFF_68040: u32 = 8
+pub const AFF_68881: u32 = 16
+pub const AFF_68882: u32 = 32
+pub const AFF_FPU40: u32 = 64
+pub const AFF_68060: u32 = 128
+pub const AFF_PRIVATE: u32 = 32768
+pub const CACRF_EnableI: u32 = 1 // Enable instruction cache
+pub const CACRF_FreezeI: u32 = 2 // Freeze instruction cache
+pub const CACRF_ClearI: u32 = 8 // Clear instruction cache
+pub const CACRF_IBE: u32 = 16 // Instruction burst enable
+pub const CACRF_EnableD: u32 = 256 // 68030 Enable data cache
+pub const CACRF_FreezeD: u32 = 512 // 68030 Freeze data cache
+pub const CACRF_ClearD: u32 = 2048 // 68030 Clear data cache
+pub const CACRF_DBE: u32 = 4096 // 68030 Data burst enable
+pub const CACRF_WriteAllocate: u32 = 8192 // 68030 Write-Allocate mode
+pub const CACRF_EnableE: u32 = 1073741824 // Master enable for external caches
+pub const CACRF_CopyBack: u32 = -2147483648 // Master enable for copyback caches
+pub const DMA_Continue: u32 = 2 // Continuation flag for CachePreDMA
+pub const DMA_NoModify: u32 = 4 // Set if DMA does not update memory
+pub const DMA_ReadFromRAM: u32 = 8 // Set if DMA goes *FROM* RAM to device
+pub const ACPU_BusErr: u32 = $80000002 // Hardware bus fault/access error
+pub const ACPU_InstErr: u32 = $80000004 // Illegal instruction
+pub const ACPU_DivZero: u32 = $80000005 // Divide by zero
+pub const ACPU_CHK: u32 = $80000006 // Check instruction error
+pub const ACPU_TRAPV: u32 = $80000007 // TrapV instruction error
+pub const ACPU_PrivErr: u32 = $80000008 // Privilege violation error
+pub const ACPU_Trace: u32 = $80000009 // Trace error
+pub const ACPU_LineA: u32 = $8000000A // Line 1010 Emulator error
+pub const ACPU_LineF: u32 = $8000000B // Line 1111 Emulator error
+pub const ACPU_Format: u32 = $8000000E // Stack frame format error
+pub const ACPU_Spurious: u32 = $80000018 // Spurious interrupt error
+pub const ACPU_AutoVec1: u32 = $80000019 // AutoVector Level 1 interrupt error
+pub const ACPU_AutoVec2: u32 = $8000001A // AutoVector Level 2 interrupt error
+pub const ACPU_AutoVec3: u32 = $8000001B // AutoVector Level 3 interrupt error
+pub const ACPU_AutoVec4: u32 = $8000001C // AutoVector Level 4 interrupt error
+pub const ACPU_AutoVec5: u32 = $8000001D // AutoVector Level 5 interrupt error
+pub const ACPU_AutoVec6: u32 = $8000001E // AutoVector Level 6 interrupt error
+pub const ACPU_AutoVec7: u32 = $8000001F // AutoVector Level 7 interrupt error
+pub const AT_DeadEnd: u32 = $80000000
+pub const AT_Recovery: u32 = $00000000
+pub const AG_NoMemory: u32 = $00010000
+pub const AG_MakeLib: u32 = $00020000
+pub const AG_OpenLib: u32 = $00030000
+pub const AG_OpenDev: u32 = $00040000
+pub const AG_OpenRes: u32 = $00050000
+pub const AG_IOError: u32 = $00060000
+pub const AG_NoSignal: u32 = $00070000
+pub const AG_BadParm: u32 = $00080000
+pub const AG_CloseLib: u32 = $00090000 // usually too many closes
+pub const AG_CloseDev: u32 = $000A0000 // or a mismatched close
+pub const AG_ProcCreate: u32 = $000B0000 // Process creation failed
+pub const AO_ExecLib: u32 = $00008001
+pub const AO_GraphicsLib: u32 = $00008002
+pub const AO_LayersLib: u32 = $00008003
+pub const AO_Intuition: u32 = $00008004
+pub const AO_MathLib: u32 = $00008005
+pub const AO_DOSLib: u32 = $00008007
+pub const AO_RAMLib: u32 = $00008008
+pub const AO_IconLib: u32 = $00008009
+pub const AO_ExpansionLib: u32 = $0000800A
+pub const AO_DiskfontLib: u32 = $0000800B
+pub const AO_UtilityLib: u32 = $0000800C
+pub const AO_KeyMapLib: u32 = $0000800D
+pub const AO_AudioDev: u32 = $00008010
+pub const AO_ConsoleDev: u32 = $00008011
+pub const AO_GamePortDev: u32 = $00008012
+pub const AO_KeyboardDev: u32 = $00008013
+pub const AO_TrackDiskDev: u32 = $00008014
+pub const AO_TimerDev: u32 = $00008015
+pub const AO_CIARsrc: u32 = $00008020
+pub const AO_DiskRsrc: u32 = $00008021
+pub const AO_MiscRsrc: u32 = $00008022
+pub const AO_BootStrap: u32 = $00008030
+pub const AO_Workbench: u32 = $00008031
+pub const AO_DiskCopy: u32 = $00008032
+pub const AO_GadTools: u32 = $00008033
+pub const AO_Unknown: u32 = $00008035
+pub const AN_ExecLib: u32 = $01000000
+pub const AN_LibChkSum: u32 = $01000003 // Library checksum failure
+pub const AN_MemCorrupt: u32 = $81000005 // Corrupt memory list detected in FreeMem
+pub const AN_IntrMem: u32 = $81000006 // No memory for interrupt servers
+pub const AN_SemCorrupt: u32 = $01000008 // A semaphore is in an illegal state
+pub const AN_FreeTwice: u32 = $01000009 // Freeing memory already freed
+pub const AN_IOUsedTwice: u32 = $0100000B // Attempt to reuse active IORequest
+pub const AN_MemoryInsane: u32 = $0100000C // Sanity check on memory list failed
+pub const AN_IOAfterClose: u32 = $0100000D // IO attempted on closed IORequest
+pub const AN_StackProbe: u32 = $0100000E // Stack appears to extend out of range
+pub const AN_BadFreeAddr: u32 = $0100000F // Memory header not located. [ Usually an
+pub const AN_BadSemaphore: u32 = $01000010 // An attempt was made to use the old
+pub const AN_GraphicsLib: u32 = $02000000
+pub const AN_GfxNoMem: u32 = $82010000 // graphics out of memory
+pub const AN_GfxNoMemMspc: u32 = $82010001 // MonitorSpec alloc, no memory
+pub const AN_LongFrame: u32 = $82010006 // long frame, no memory
+pub const AN_ShortFrame: u32 = $82010007 // short frame, no memory
+pub const AN_TextTmpRas: u32 = $02010009 // text, no memory for TmpRas
+pub const AN_BltBitMap: u32 = $8201000A // BltBitMap, no memory
+pub const AN_RegionMemory: u32 = $8201000B // regions, memory not available
+pub const AN_MakeVPort: u32 = $82010030 // MakeVPort, no memory
+pub const AN_GfxNewError: u32 = $0200000C
+pub const AN_GfxFreeError: u32 = $0200000D
+pub const AN_GfxNoLCM: u32 = $82011234 // emergency memory not available
+pub const AN_ObsoleteFont: u32 = $02000401 // unsupported font description used
+pub const AN_LayersLib: u32 = $03000000
+pub const AN_LayersNoMem: u32 = $83010000 // layers out of memory
+pub const AN_Intuition: u32 = $04000000
+pub const AN_GadgetType: u32 = $84000001 // unknown gadget type
+pub const AN_BadGadget: u32 = $04000001 // Recovery form of AN_GadgetType
+pub const AN_CreatePort: u32 = $84010002 // create port, no memory
+pub const AN_ItemAlloc: u32 = $04010003 // item plane alloc, no memory
+pub const AN_SubAlloc: u32 = $04010004 // sub alloc, no memory
+pub const AN_PlaneAlloc: u32 = $84010005 // plane alloc, no memory
+pub const AN_ItemBoxTop: u32 = $84000006 // item box top < RelZero
+pub const AN_OpenScreen: u32 = $84010007 // open screen, no memory
+pub const AN_OpenScrnRast: u32 = $84010008 // open screen, raster alloc, no memory
+pub const AN_SysScrnType: u32 = $84000009 // open sys screen, unknown type
+pub const AN_AddSWGadget: u32 = $8401000A // add SW gadgets, no memory
+pub const AN_OpenWindow: u32 = $8401000B // open window, no memory
+pub const AN_BadState: u32 = $8400000C // Bad State Return entering Intuition
+pub const AN_BadMessage: u32 = $8400000D // Bad Message received by IDCMP
+pub const AN_WeirdEcho: u32 = $8400000E // Weird echo causing incomprehension
+pub const AN_NoConsole: u32 = $8400000F // couldn't open the Console Device
+pub const AN_NoISem: u32 = $04000010 // Intuition skipped obtaining a sem
+pub const AN_ISemOrder: u32 = $04000011 // Intuition obtained a sem in bad order
+pub const AN_MathLib: u32 = $05000000
+pub const AN_DOSLib: u32 = $07000000
+pub const AN_StartMem: u32 = $07010001 // no memory at startup
+pub const AN_EndTask: u32 = $07000002 // EndTask didn't
+pub const AN_QPktFail: u32 = $07000003 // Qpkt failure
+pub const AN_AsyncPkt: u32 = $07000004 // Unexpected packet received
+pub const AN_FreeVec: u32 = $07000005 // Freevec failed
+pub const AN_DiskBlkSeq: u32 = $07000006 // Disk block sequence error
+pub const AN_BitMap: u32 = $07000007 // Bitmap corrupt
+pub const AN_KeyFree: u32 = $07000008 // Key already free
+pub const AN_BadChkSum: u32 = $07000009 // Invalid checksum
+pub const AN_DiskError: u32 = $0700000A // Disk Error
+pub const AN_KeyRange: u32 = $0700000B // Key out of range
+pub const AN_BadOverlay: u32 = $0700000C // Bad overlay
+pub const AN_BadInitFunc: u32 = $0700000D // Invalid init packet for cli/shell
+pub const AN_FileReclosed: u32 = $0700000E // A filehandle was closed more than once
+pub const AN_RAMLib: u32 = $08000000
+pub const AN_BadSegList: u32 = $08000001 // no overlays in library seglists
+pub const AN_IconLib: u32 = $09000000
+pub const AN_ExpansionLib: u32 = $0A000000
+pub const AN_BadExpansionFree: u32 = $0A000001 // freeed free region
+pub const AN_DiskfontLib: u32 = $0B000000
+pub const AN_AudioDev: u32 = $10000000
+pub const AN_ConsoleDev: u32 = $11000000
+pub const AN_NoWindow: u32 = $11000001 // Console can't open initial window
+pub const AN_GamePortDev: u32 = $12000000
+pub const AN_KeyboardDev: u32 = $13000000
+pub const AN_TrackDiskDev: u32 = $14000000
+pub const AN_TDCalibSeek: u32 = $14000001 // calibrate: seek error
+pub const AN_TDDelay: u32 = $14000002 // delay: error on timer wait
+pub const AN_TimerDev: u32 = $15000000
+pub const AN_TMBadReq: u32 = $15000001 // bad request
+pub const AN_TMBadSupply: u32 = $15000002 // power supply -- no 50/60Hz ticks
+pub const AN_CIARsrc: u32 = $20000000
+pub const AN_DiskRsrc: u32 = $21000000
+pub const AN_DRHasDisk: u32 = $21000001 // get unit: already has disk
+pub const AN_DRIntNoAct: u32 = $21000002 // interrupt: no active unit
+pub const AN_MiscRsrc: u32 = $22000000
+pub const AN_BootStrap: u32 = $30000000
+pub const AN_BootError: u32 = $30000001 // boot code returned an error
+pub const AN_Workbench: u32 = $31000000
+pub const AN_NoFonts: u32 = $B1000001
+pub const AN_WBBadStartupMsg1: u32 = $31000001
+pub const AN_WBBadStartupMsg2: u32 = $31000002
+pub const AN_WBBadIOMsg: u32 = $31000003 // Hacker code?
+pub const AN_WBReLayoutToolMenu: u32 = $B1010009 // GadTools broke?
+pub const AN_DiskCopy: u32 = $32000000
+pub const AN_GadTools: u32 = $33000000
+pub const AN_UtilityLib: u32 = $34000000
+pub const AN_Unknown: u32 = $35000000
+pub const MEMF_ANY: u32 = (0) // Any type of memory will do
+pub const MEMF_PUBLIC: u32 = 1
+pub const MEMF_CHIP: u32 = 2
+pub const MEMF_FAST: u32 = 4
+pub const MEMF_LOCAL: u32 = 256 // Memory that does not go away at RESET
+pub const MEMF_24BITDMA: u32 = 512 // DMAable memory within 24 bits of address
+pub const MEMF_KICK: u32 = 1024 // Memory that can be used for KickTags
+pub const MEMF_CLEAR: u32 = 65536 // AllocMem: NULL out area before return
+pub const MEMF_LARGEST: u32 = 131072 // AvailMem: return the largest chunk size
+pub const MEMF_REVERSE: u32 = 262144 // AllocMem: allocate from the top down
+pub const MEMF_TOTAL: u32 = 524288 // AvailMem: return total size of memory
+pub const MEMF_NO_EXPUNGE: u32 = -2147483648 // AllocMem: Do not cause expunge on failure
+pub const MEM_BLOCKSIZE: u32 = 8
+pub const MEMHF_RECYCLE: u32 = 1 // 0==First time, 1==recycle
+pub const MEM_DID_NOTHING: u32 = (0) // Nothing we could do...
+pub const MEM_TRY_AGAIN: u32 = (1) // We did some, try the allocation again
+pub const RTC_MATCHWORD: u32 = $4AFC // The 68000 "ILLEGAL" instruction
+pub const RTF_AUTOINIT: u32 = 128 // rt_Init points to data structure
+pub const RTF_AFTERDOS: u32 = 4
+pub const RTF_SINGLETASK: u32 = 2
+pub const RTF_COLDSTART: u32 = 1
+pub const RTW_NEVER: u32 = 0
+pub const RTW_COLDSTART: u32 = 1
+
+// ============================================================================
+// Structs
+// ============================================================================
+
+pub struct Interrupt {
+    is_Node: *u8,
+    is_Data: *u8,
+}
+
+pub struct IntVector {
+    iv_Data: *u8,
+    iv_Node: *u8,
+}
+
+pub struct SoftIntList {
+    sh_List: *u8,
+    sh_Pad: u16,
+}
+
+pub struct Device {
+    dd_Library: *u8,
+}
+
+pub struct Unit {
+    unit_MsgPort: *u8,
+    unit_flags: u8,
+    unit_pad: u8,
+    unit_OpenCnt: u16,
+}
+
+pub struct SemaphoreRequest {
+    sr_Link: *u8,
+    sr_Waiter: *u8,
+}
+
+pub struct SignalSemaphore {
+    ss_Link: *u8,
+    ss_NestCount: i16,
+    ss_WaitQueue: *u8,
+    ss_MultipleLink: *u8,
+    ss_Owner: *u8,
+    ss_QueueCount: i16,
+}
+
+pub struct SemaphoreMessage {
+    ssm_Message: *u8,
+    ssm_Semaphore: *u8,
+}
+
+pub struct Semaphore {
+    sm_MsgPort: *u8,
+    sm_Bids: i16,
+}
+
+pub struct Library {
+    lib_Node: *u8,
+    lib_Flags: u8,
+    lib_pad: u8,
+    lib_NegSize: u16,
+    lib_PosSize: u16,
+    lib_Version: u16,
+    lib_Revision: u16,
+    lib_IdString: *u8,
+    lib_Sum: u32,
+    lib_OpenCnt: u16,
+}
+
+pub struct MsgPort {
+    mp_Node: *u8,
+    mp_Flags: u8,
+    mp_SigBit: u8,
+    mp_SigTask: *u8,
+    mp_MsgList: *u8,
+}
+
+pub struct Message {
+    mn_Node: *u8,
+    mn_ReplyPort: *u8,
+    mn_Length: u16,
+}
+
+pub struct Task {
+    tc_Node: *u8,
+    tc_Flags: u8,
+    tc_State: u8,
+    tc_IDNestCnt: i8,
+    tc_TDNestCnt: i8,
+    tc_SigAlloc: u32,
+    tc_SigWait: u32,
+    tc_SigRecvd: u32,
+    tc_SigExcept: u32,
+    tc_TrapAlloc: u16,
+    tc_TrapAble: u16,
+    tc_ExceptData: *u8,
+    tc_ExceptCode: *u8,
+    tc_TrapData: *u8,
+    tc_TrapCode: *u8,
+    tc_SPReg: *u8,
+    tc_SPLower: *u8,
+    tc_SPUpper: *u8,
+    tc_MemEntry: *u8,
+    tc_UserData: *u8,
+}
+
+pub struct StackSwapStruct {
+    stk_Lower: *u8,
+    stk_Upper: u32,
+    stk_Pointer: *u8,
+}
+
+pub struct List {
+    lh_Head: *u8,
+    lh_Tail: *u8,
+    lh_TailPred: *u8,
+    lh_Type: u8,
+    l_pad: u8,
+}
+
+pub struct MinList {
+    mlh_Head: *u8,
+    mlh_Tail: *u8,
+    mlh_TailPred: *u8,
+}
+
+pub struct Node {
+    ln_Succ: *u8,
+    ln_Pred: *u8,
+    ln_Type: u8,
+    ln_Pri: i8,
+    ln_Name: *u8,
+}
+
+pub struct MinNode {
+    mln_Succ: *u8,
+    mln_Pred: *u8,
+}
+
+pub struct AVLNode {
+    reserved: [4]u32,
+}
+
+pub struct IORequest {
+    io_Message: *u8,
+    io_Device: *u8,
+    io_Unit: *u8,
+    io_Command: u16,
+    io_Flags: u8,
+    io_Error: i8,
+}
+
+pub struct IOStdReq {
+    io_Message: *u8,
+    io_Device: *u8,
+    io_Unit: *u8,
+    io_Command: u16,
+    io_Flags: u8,
+    io_Error: i8,
+    io_Actual: u32,
+    io_Length: u32,
+    io_Data: *u8,
+    io_Offset: u32,
+}
+
+pub struct ExecBase {
+    LibNode: *u8,
+    SoftVer: u16,
+    LowMemChkSum: i16,
+    ChkBase: u32,
+    ColdCapture: *u8,
+    CoolCapture: *u8,
+    WarmCapture: *u8,
+    SysStkUpper: *u8,
+    SysStkLower: *u8,
+    MaxLocMem: u32,
+    DebugEntry: *u8,
+    DebugData: *u8,
+    AlertData: *u8,
+    MaxExtMem: *u8,
+    ChkSum: u16,
+    IntVects: [16]i32,
+    ThisTask: *u8,
+    IdleCount: u32,
+    DispCount: u32,
+    Quantum: u16,
+    Elapsed: u16,
+    SysFlags: u16,
+    IDNestCnt: i8,
+    TDNestCnt: i8,
+    AttnFlags: u16,
+    AttnResched: u16,
+    ResModules: *u8,
+    TaskTrapCode: *u8,
+    TaskExceptCode: *u8,
+    TaskExitCode: *u8,
+    TaskSigAlloc: u32,
+    TaskTrapAlloc: u16,
+    MemList: i32,
+    ResourceList: i32,
+    DeviceList: i32,
+    IntrList: i32,
+    LibList: i32,
+    PortList: i32,
+    TaskReady: i32,
+    TaskWait: i32,
+    SoftInts: [5]i32,
+    LastAlert: [4]i32,
+    VBlankFrequency: u8,
+    PowerSupplyFrequency: u8,
+    SemaphoreList: i32,
+    KickMemPtr: *u8,
+    KickTagPtr: *u8,
+    KickCheckSum: *u8,
+    ex_Pad0: u16,
+    ex_LaunchPoint: u32,
+    ex_RamLibPrivate: *u8,
+    ex_EClockFrequency: u32,
+    ex_CacheControl: u32,
+    ex_TaskID: u32,
+    ex_Reserved1: [5]u32,
+    ex_MMULock: *u8,
+    ex_Reserved2: [3]u32,
+    ex_MemHandlers: i32,
+    ex_MemHandler: *u8,
+}
+
+pub struct MemChunk {
+    mc_Next: *u8,
+    mc_Bytes: u32,
+}
+
+pub struct MemHeader {
+    mh_Node: *u8,
+    mh_Attributes: u16,
+    mh_First: *u8,
+    mh_Lower: *u8,
+    mh_Upper: *u8,
+    mh_Free: u32,
+}
+
+pub struct MemList {
+    ml_Node: *u8,
+    ml_NumEntries: u16,
+    ml_ME: [1]*u8,
+}
+
+pub struct MemHandlerData {
+    memh_RequestSize: u32,
+    memh_RequestFlags: u32,
+    memh_Flags: u32,
+}
+
+pub struct Resident {
+    rt_MatchWord: u16,
+    rt_MatchTag: *u8,
+    rt_EndSkip: *u8,
+    rt_Flags: u8,
+    rt_Version: u8,
+    rt_Type: u8,
+    rt_Pri: i8,
+    rt_Name: *u8,
+    rt_IdString: *u8,
+    rt_Init: *u8,
+}
+
+// ============================================================================
+// Functions
+// ============================================================================
+
+extern fn Supervisor(userFunction: i32) -> i32
+extern fn InitCode(startClass: i32, version: i32) -> i32
+extern fn InitStruct(initTable: i32, memory: i32, size: i32) -> i32
+extern fn MakeLibrary(funcInit: i32, structInit: i32, libInit: i32, dataSize: i32, segList: i32) -> i32
+extern fn MakeFunctions(target: i32, functionArray: i32, funcDispBase: i32) -> i32
+extern fn FindResident(name: i32) -> i32
+extern fn InitResident(resident: i32, segList: i32) -> i32
+extern fn Alert(alertNum: i32) -> i32
+extern fn Debug(flags: i32) -> i32
+extern fn Disable() -> i32
+extern fn Enable() -> i32
+extern fn Forbid() -> i32
+extern fn Permit() -> i32
+extern fn SetSR(newSR: i32, mask: i32) -> i32
+extern fn SuperState() -> i32
+extern fn UserState(sysStack: i32) -> i32
+extern fn SetIntVector(intNumber: i32, interrupt: i32) -> i32
+extern fn AddIntServer(intNumber: i32, interrupt: i32) -> i32
+extern fn RemIntServer(intNumber: i32, interrupt: i32) -> i32
+extern fn Cause(interrupt: i32) -> i32
+extern fn Allocate(freeList: i32, byteSize: i32) -> i32
+extern fn Deallocate(freeList: i32, memoryBlock: i32, byteSize: i32) -> i32
+extern fn AllocMem(byteSize: i32, requirements: i32) -> i32
+extern fn AllocAbs(byteSize: i32, location: i32) -> i32
+extern fn FreeMem(memoryBlock: i32, byteSize: i32) -> i32
+extern fn AvailMem(requirements: i32) -> i32
+extern fn AllocEntry(entry: i32) -> i32
+extern fn FreeEntry(entry: i32) -> i32
+extern fn Insert(list: i32, node: i32, pred: i32) -> i32
+extern fn AddHead(list: i32, node: i32) -> i32
+extern fn AddTail(list: i32, node: i32) -> i32
+extern fn Remove(node: i32) -> i32
+extern fn RemHead(list: i32) -> i32
+extern fn RemTail(list: i32) -> i32
+extern fn Enqueue(list: i32, node: i32) -> i32
+extern fn FindName(list: i32, name: i32) -> i32
+extern fn AddTask(task: i32, initPC: i32, finalPC: i32) -> i32
+extern fn RemTask(task: i32) -> i32
+extern fn FindTask(name: i32) -> i32
+extern fn SetTaskPri(task: i32, priority: i32) -> i32
+extern fn SetSignal(newSignals: i32, signalSet: i32) -> i32
+extern fn SetExcept(newSignals: i32, signalSet: i32) -> i32
+extern fn Wait(signalSet: i32) -> i32
+extern fn Signal(task: i32, signalSet: i32) -> i32
+extern fn AllocSignal(signalNum: i32) -> i32
+extern fn FreeSignal(signalNum: i32) -> i32
+extern fn AllocTrap(trapNum: i32) -> i32
+extern fn FreeTrap(trapNum: i32) -> i32
+extern fn AddPort(port: i32) -> i32
+extern fn RemPort(port: i32) -> i32
+extern fn PutMsg(port: i32, message: i32) -> i32
+extern fn GetMsg(port: i32) -> i32
+extern fn ReplyMsg(message: i32) -> i32
+extern fn WaitPort(port: i32) -> i32
+extern fn FindPort(name: i32) -> i32
+extern fn AddLibrary(library: i32) -> i32
+extern fn RemLibrary(library: i32) -> i32
+extern fn OldOpenLibrary(libName: i32) -> i32
+extern fn CloseLibrary(library: i32) -> i32
+extern fn SetFunction(library: i32, funcOffset: i32, newFunction: i32) -> i32
+extern fn SumLibrary(library: i32) -> i32
+extern fn AddDevice(device: i32) -> i32
+extern fn RemDevice(device: i32) -> i32
+extern fn OpenDevice(devName: i32, unit: i32, ioRequest: i32, flags: i32) -> i32
+extern fn CloseDevice(ioRequest: i32) -> i32
+extern fn DoIO(ioRequest: i32) -> i32
+extern fn SendIO(ioRequest: i32) -> i32
+extern fn CheckIO(ioRequest: i32) -> i32
+extern fn WaitIO(ioRequest: i32) -> i32
+extern fn AbortIO(ioRequest: i32) -> i32
+extern fn AddResource(resource: i32) -> i32
+extern fn RemResource(resource: i32) -> i32
+extern fn OpenResource(resName: i32) -> i32
+extern fn RawDoFmt(formatString: i32, dataStream: i32, putChProc: i32, putChData: i32) -> i32
+extern fn GetCC() -> i32
+extern fn TypeOfMem(address: i32) -> i32
+extern fn Procure(sigSem: i32, bidMsg: i32) -> i32
+extern fn Vacate(sigSem: i32, bidMsg: i32) -> i32
+extern fn OpenLibrary(libName: i32, version: i32) -> i32
+extern fn InitSemaphore(sigSem: i32) -> i32
+extern fn ObtainSemaphore(sigSem: i32) -> i32
+extern fn ReleaseSemaphore(sigSem: i32) -> i32
+extern fn AttemptSemaphore(sigSem: i32) -> i32
+extern fn ObtainSemaphoreList(sigSem: i32) -> i32
+extern fn ReleaseSemaphoreList(sigSem: i32) -> i32
+extern fn FindSemaphore(name: i32) -> i32
+extern fn AddSemaphore(sigSem: i32) -> i32
+extern fn RemSemaphore(sigSem: i32) -> i32
+extern fn SumKickData() -> i32
+extern fn AddMemList(size: i32, attributes: i32, pri: i32, base: i32, name: i32) -> i32
+extern fn CopyMem(source: i32, dest: i32, size: i32) -> i32
+extern fn CopyMemQuick(source: i32, dest: i32, size: i32) -> i32
+extern fn CacheClearU() -> i32
+extern fn CacheClearE(address: i32, length: i32, caches: i32) -> i32
+extern fn CacheControl(cacheBits: i32, cacheMask: i32) -> i32
+extern fn CreateIORequest(port: i32, size: i32) -> i32
+extern fn DeleteIORequest(iorequest: i32) -> i32
+extern fn CreateMsgPort() -> i32
+extern fn DeleteMsgPort(port: i32) -> i32
+extern fn ObtainSemaphoreShared(sigSem: i32) -> i32
+extern fn AllocVec(byteSize: i32, requirements: i32) -> i32
+extern fn FreeVec(memoryBlock: i32) -> i32
+extern fn CreatePool(requirements: i32, puddleSize: i32, threshSize: i32) -> i32
+extern fn DeletePool(poolHeader: i32) -> i32
+extern fn AllocPooled(poolHeader: i32, memSize: i32) -> i32
+extern fn FreePooled(poolHeader: i32, memory: i32, memSize: i32) -> i32
+extern fn AttemptSemaphoreShared(sigSem: i32) -> i32
+extern fn ColdReboot() -> i32
+extern fn StackSwap(newStack: i32) -> i32
+extern fn CachePreDMA(address: i32, length: i32, flags: i32) -> i32
+extern fn CachePostDMA(address: i32, length: i32, flags: i32) -> i32
+extern fn AddMemHandler(memhand: i32) -> i32
+extern fn RemMemHandler(memhand: i32) -> i32
+extern fn ObtainQuickVector(interruptCode: i32) -> i32
+extern fn NewMinList(minlist: i32) -> i32
+extern fn AVL_AddNode(root: i32, node: i32, func: i32) -> i32
+extern fn AVL_RemNodeByAddress(root: i32, node: i32) -> i32
+extern fn AVL_RemNodeByKey(root: i32, key: i32, func: i32) -> i32
+extern fn AVL_FindNode(root: i32, key: i32, func: i32) -> i32
+extern fn AVL_FindPrevNodeByAddress(node: i32) -> i32
+extern fn AVL_FindPrevNodeByKey(root: i32, key: i32, func: i32) -> i32
+extern fn AVL_FindNextNodeByAddress(node: i32) -> i32
+extern fn AVL_FindNextNodeByKey(root: i32, key: i32, func: i32) -> i32
+extern fn AVL_FindFirstNode(root: i32) -> i32
+extern fn AVL_FindLastNode(root: i32) -> i32

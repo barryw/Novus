@@ -238,7 +238,8 @@ expressionStatement
     ;
 
 expression
-    : primaryExpression                                     # PrimaryExpr
+    : '(' type ')' expression                              # CastExpr
+    | primaryExpression                                     # PrimaryExpr
     | expression '::' IDENTIFIER                           # PathExpr
     | expression '.' IDENTIFIER                            # MemberAccessExpr
     | expression '(' argumentList? ')'                     # CallExpr
@@ -247,7 +248,6 @@ expression
     | expression '--'                                      # PostDecrementExpr
     | expression '..' expression                           # RangeExpr
     | expression '..=' expression                          # RangeInclusiveExpr
-    | '(' type ')' expression                              # CastExpr
     | '&' KW_MUT? expression                               # BorrowExpr
     | ('!' | '~' | '-') expression                         # UnaryExpr
     | '++' expression                                      # PreIncrementExpr

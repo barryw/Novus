@@ -4701,6 +4701,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return false;
         }
 
+        // Allow integer (especially 0) to be used as null pointer
+        // This enables: let ptr: *T = 0
+        if (expected is IrPointerType && actual is IrIntType)
+        {
+            return true;
+        }
+
         return false;
     }
 
