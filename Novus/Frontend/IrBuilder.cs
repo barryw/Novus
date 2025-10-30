@@ -2153,10 +2153,20 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     }
                 }
 
-                // Bidirectional type checking: use expected type to fill in missing parameters
-                if (_expectedType is IrEnumType expectedEnumType &&
+                // Special case: If this is a unit variant (no arguments) and we have an expected type,
+                // use the expected type directly for monomorphization
+                if (arguments.Count == 0 &&
+                    _expectedType is IrEnumType expectedEnumType &&
                     expectedEnumType.EnumName == enumType.EnumName &&
-                    expectedEnumType.GenericParameters.Count == 0) // Expected type is monomorphized
+                    expectedEnumType.GenericParameters.Count == 0)
+                {
+                    // The expected type is already fully monomorphized, use it directly
+                    finalEnumType = expectedEnumType;
+                }
+                // Bidirectional type checking: use expected type to fill in missing parameters
+                else if (_expectedType is IrEnumType expectedEnumType2 &&
+                    expectedEnumType2.EnumName == enumType.EnumName &&
+                    expectedEnumType2.GenericParameters.Count == 0) // Expected type is monomorphized
                 {
                     // Extract concrete types from expected enum by matching variant structure
                     for (int paramIdx = 0; paramIdx < enumType.GenericParameters.Count; paramIdx++)
@@ -2186,7 +2196,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                             for (int varIdx = 0; varIdx < enumType.Variants.Count; varIdx++)
                             {
                                 var origVariant = enumType.Variants[varIdx];
-                                var expectedVar = expectedEnumType.Variants[varIdx];
+                                var expectedVar = expectedEnumType2.Variants[varIdx];
 
                                 for (int dataIdx = 0; dataIdx < origVariant.AssociatedData.Count; dataIdx++)
                                 {
@@ -2204,52 +2214,52 @@ public class IrBuilder : NovusBaseVisitor<object?>
                             }
                         }
                     }
-                }
 
-                // Create cache key using proper type keys
-                var typeArgKeys = enumType.GenericParameters.Select(p =>
-                {
-                    var key = typeSubstitutions.ContainsKey(p) ? GetTypeCacheKey(typeSubstitutions[p]) : p;
-                    return key;
-                });
-                var cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
-
-                // Check cache first
-                if (_monomorphizedEnums.ContainsKey(cacheKey))
-                {
-                    finalEnumType = _monomorphizedEnums[cacheKey];
-                }
-                else
-                {
-                    // Create monomorphized enum type
-                    var monomorphizedVariants = new List<IrEnumVariant>();
-                    foreach (var origVariant in enumType.Variants)
+                    // Create cache key using proper type keys
+                    var typeArgKeys = enumType.GenericParameters.Select(p =>
                     {
-                        var monomorphizedData = new List<IrType>();
-                        foreach (var dataType in origVariant.AssociatedData)
-                        {
-                            if (dataType is IrGenericType genType && typeSubstitutions.ContainsKey(genType.ParameterName))
-                            {
-                                monomorphizedData.Add(typeSubstitutions[genType.ParameterName]);
-                            }
-                            else
-                            {
-                                monomorphizedData.Add(dataType);
-                            }
-                        }
-                        monomorphizedVariants.Add(new IrEnumVariant(origVariant.Name, origVariant.Tag, monomorphizedData));
+                        var key = typeSubstitutions.ContainsKey(p) ? GetTypeCacheKey(typeSubstitutions[p]) : p;
+                        return key;
+                    });
+                    var cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
+
+                    // Check cache first
+                    if (_monomorphizedEnums.ContainsKey(cacheKey))
+                    {
+                        finalEnumType = _monomorphizedEnums[cacheKey];
                     }
-
-                    // Create new enum type with concrete types
-                    finalEnumType = new IrEnumType(enumType.EnumName, monomorphizedVariants, null, cacheKey);
-
-                    // Only cache if fully monomorphized (no generic types in variants)
-                    bool isFullyMonomorphized = !monomorphizedVariants.Any(v =>
-                        v.AssociatedData.Any(d => d is IrGenericType));
-
-                    if (isFullyMonomorphized)
+                    else
                     {
-                        _monomorphizedEnums[cacheKey] = finalEnumType;
+                        // Create monomorphized enum type
+                        var monomorphizedVariants = new List<IrEnumVariant>();
+                        foreach (var origVariant in enumType.Variants)
+                        {
+                            var monomorphizedData = new List<IrType>();
+                            foreach (var dataType in origVariant.AssociatedData)
+                            {
+                                if (dataType is IrGenericType genType && typeSubstitutions.ContainsKey(genType.ParameterName))
+                                {
+                                    monomorphizedData.Add(typeSubstitutions[genType.ParameterName]);
+                                }
+                                else
+                                {
+                                    monomorphizedData.Add(dataType);
+                                }
+                            }
+                            monomorphizedVariants.Add(new IrEnumVariant(origVariant.Name, origVariant.Tag, monomorphizedData));
+                        }
+
+                        // Create new enum type with concrete types
+                        finalEnumType = new IrEnumType(enumType.EnumName, monomorphizedVariants, null, cacheKey);
+
+                        // Only cache if fully monomorphized (no generic types in variants)
+                        bool isFullyMonomorphized = !monomorphizedVariants.Any(v =>
+                            v.AssociatedData.Any(d => d is IrGenericType));
+
+                        if (isFullyMonomorphized)
+                        {
+                            _monomorphizedEnums[cacheKey] = finalEnumType;
+                        }
                     }
                 }
             }

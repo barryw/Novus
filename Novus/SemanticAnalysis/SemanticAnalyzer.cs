@@ -2476,6 +2476,17 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                         }
                     }
 
+                    // Special case: If this is a unit variant (no arguments) and we have an expected type
+                    // that's fully monomorphized, use it directly (no need to extract type parameters)
+                    if ((context.argumentList() == null || context.argumentList().expression().Length == 0) &&
+                        _expectedType is IrEnumType expectedEnumType2 &&
+                        expectedEnumType2.EnumName == irEnumType.EnumName &&
+                        expectedEnumType2.GenericParameters.Count == 0)
+                    {
+                        // Return the expected type directly - it's already fully monomorphized
+                        return expectedEnumType2;
+                    }
+
                     if (context.argumentList() != null)
                     {
                         var arguments = context.argumentList().expression();
@@ -3853,6 +3864,17 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     }
                 );
                 return null;
+            }
+
+            // If we have an expected type that's a monomorphized version of this enum,
+            // and this is a unit variant (no associated data), use the expected type
+            if (variant.AssociatedData.Count == 0 &&
+                _expectedType is IrEnumType expectedEnumType &&
+                expectedEnumType.EnumName == enumType.EnumName &&
+                expectedEnumType.GenericParameters.Count == 0)
+            {
+                // Return the expected monomorphized type
+                return expectedEnumType;
             }
 
             // Return the enum type - this will be used when constructing the variant

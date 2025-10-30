@@ -162,7 +162,7 @@ public class CCodeGenerator
 
     private void EmitEnumType(IrEnumType enumType)
     {
-        var enumName = MangleName(enumType.Name);
+        var enumName = MangleName(enumType);
 
         // Emit variant tag enum
         _output.AppendLine($"// Enum: {enumType.Name}");
@@ -323,6 +323,13 @@ public class CCodeGenerator
             EmitBasicBlock(block);
         }
 
+        // Close any pending match arm scope
+        if (_inMatchArmScope)
+        {
+            _output.AppendLine("    }");
+            _inMatchArmScope = false;
+        }
+
         _output.AppendLine("}");
     }
 
@@ -455,11 +462,27 @@ public class CCodeGenerator
         }
     }
 
+    private bool _inMatchArmScope = false;
+
     private void EmitLabel(IrLabel label)
     {
+        // Close previous match arm scope if needed
+        if (_inMatchArmScope && (label.Name.StartsWith("match_arm_") || label.Name.StartsWith("match_end_") || label.Name.StartsWith("match_check_")))
+        {
+            _output.AppendLine("    }");
+            _inMatchArmScope = false;
+        }
+
         // Emit label (unindented for C style)
         // Add empty statement to ensure valid C (labels must be followed by a statement)
         _output.AppendLine($"{label.Name}:;");
+
+        // Open new scope for match arms
+        if (label.Name.StartsWith("match_arm_"))
+        {
+            _output.AppendLine("    {");
+            _inMatchArmScope = true;
+        }
     }
 
     private void EmitBranch(IrBranch branch)
@@ -498,7 +521,7 @@ public class CCodeGenerator
         if (enumType == null)
             throw new InvalidOperationException("Match expression must be on an enum type");
 
-        var enumName = MangleName(enumType.Name);
+        var enumName = MangleName(enumType);
 
         // Switch on the tag
         _output.AppendLine($"    switch ({matchValue}.tag) {{");
@@ -574,7 +597,7 @@ public class CCodeGenerator
         if (enumType == null)
             throw new InvalidOperationException("EnumValue must have IrEnumType");
 
-        var enumName = MangleName(enumType.Name);
+        var enumName = MangleName(enumType);
         var tempName = $"_enum_{enumValue.VariantName}_{_tempCounter++}";
 
         // Construct the enum value inline (C99 compound literal)
@@ -658,7 +681,7 @@ public class CCodeGenerator
             IrVoidType => "void",
             IrPointerType ptrType => $"{GetCType(ptrType.PointeeType)}*",
             IrStringType => "String",
-            IrEnumType enumType => MangleName(enumType.Name),  // For now, just use mangled name
+            IrEnumType enumType => MangleName(enumType),
             IrStructType structType => MangleName(structType.Name),  // TODO: Generate struct definition
             IrArrayType arrayType => $"{GetCType(arrayType.ElementType)}*",  // Arrays as pointers for now
             IrReferenceType refType => $"{GetCType(refType.PointeeType)}*",  // References as pointers
@@ -684,5 +707,21 @@ public class CCodeGenerator
         // For now, keep names simple
         // TODO: Handle generic instantiations, modules, etc.
         return name.Replace("::", "_");
+    }
+
+    private string MangleName(IrEnumType enumType)
+    {
+        // Use CacheKey for monomorphized generics, otherwise use EnumName
+        var name = enumType.CacheKey ?? enumType.EnumName;
+
+        // Sanitize for C identifier:
+        // Option<i32> -> Option_i32
+        // Result<i32, *u8> -> Result_i32_ptr_u8
+        return name.Replace("::", "_")
+                   .Replace("<", "_")
+                   .Replace(">", "")
+                   .Replace(",", "")
+                   .Replace("*", "ptr_")
+                   .Replace(" ", "");
     }
 }
