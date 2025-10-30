@@ -77,3 +77,13 @@ docs/Vec_ImplBlocks_Design.md
 # Temp test files
 a
 a.s
+a.c
+
+# Compiler-generated C output files (root directory only)
+/*.c
+/*.h
+exec_*.c
+novus_types.h
+
+# Test build configs (generated, not source)
+Novus.Tests/Examples/novus.toml
