@@ -4,7 +4,7 @@
 extern var SysBase: *i32
 
 // External variable at specific address (hardware register)
-extern var CUSTOM: *i32 at 0xdff000
+extern var CUSTOM: *i32 at $dff000
 
 fn main() -> i32 {
     // Can use extern variables (would need unsafe in real code)

@@ -77,6 +77,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             RegisterConstant(constDecl);
         }
 
+        // Pass 1.5: collect all static variable declarations
+        foreach (var staticDecl in context.staticDeclaration())
+        {
+            RegisterStatic(staticDecl);
+        }
+
         // Second pass: collect all enum declarations
         foreach (var enumDecl in context.enumDeclaration())
         {
@@ -89,7 +95,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             RegisterStruct(structDecl);
         }
 
-        // Fourth pass: collect all global variable declarations
+        // Fourth pass: collect all extern variable declarations
         foreach (var globalVarDecl in context.globalVariableDeclaration())
         {
             RegisterGlobalVariable(globalVarDecl);
@@ -674,6 +680,46 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         _constants[name] = new ConstantSymbol(name, type, value, location);
+    }
+
+    private void RegisterStatic(NovusParser.StaticDeclarationContext context)
+    {
+        var name = context.IDENTIFIER().GetText();
+        var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+        var type = ParseType(context.type());
+
+        // Check for mut keyword
+        var isMutable = false;
+        for (int i = 0; i < Math.Min(5, context.ChildCount); i++)
+        {
+            if (context.GetChild(i)?.GetText() == "mut")
+            {
+                isMutable = true;
+                break;
+            }
+        }
+
+        // Check for duplicate names
+        if (_globalVariables.ContainsKey(name))
+        {
+            var originalLocation = _globalVariables[name].Location;
+            _diagnostics.ReportError(
+                "E0001",
+                $"static variable '{name}' is defined multiple times",
+                location,
+                helpTexts: new List<string>
+                {
+                    $"consider renaming one of the variables"
+                },
+                relatedLocations: new List<(SourceLocation, string)>
+                {
+                    (originalLocation, $"previous definition of '{name}' here")
+                }
+            );
+            return;
+        }
+
+        _globalVariables[name] = new VariableSymbol(name, type, IsMutable: isMutable, location);
     }
 
     private void RegisterGlobalVariable(NovusParser.GlobalVariableDeclarationContext context)
@@ -1463,8 +1509,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Handle increment/decrement statements (no expression)
         if (isPostIncDec || isPreIncDec)
         {
-            // Check if variable exists
-            if (!_variables.ContainsKey(name))
+            // Check if variable exists (local or global)
+            if (!_variables.ContainsKey(name) && !_globalVariables.ContainsKey(name))
             {
                 _diagnostics.ReportError(
                     "E0018",
@@ -1479,7 +1525,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 return null;
             }
 
-            var incDecVariable = _variables[name];
+            var incDecVariable = _variables.ContainsKey(name) ? _variables[name] : _globalVariables[name];
 
             // Check if variable is mutable
             if (!incDecVariable.IsMutable)
@@ -1516,7 +1562,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             // Complex lvalue: obj.field, arr[index], or mixed obj.arr[0].field
             // For now, we'll just verify the base variable exists
             // Full member/index chain checking will be implemented later
-            if (!_variables.ContainsKey(name))
+            if (!_variables.ContainsKey(name) && !_globalVariables.ContainsKey(name))
             {
                 _diagnostics.ReportError(
                     "E0018",
@@ -1535,8 +1581,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return null;
         }
 
-        // Check if variable exists
-        if (!_variables.ContainsKey(name))
+        // Check if variable exists (local or global)
+        if (!_variables.ContainsKey(name) && !_globalVariables.ContainsKey(name))
         {
             _diagnostics.ReportError(
                 "E0018",
@@ -1551,7 +1597,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return null;
         }
 
-        var variable = _variables[name];
+        var variable = _variables.ContainsKey(name) ? _variables[name] : _globalVariables[name];
 
         if (derefCount > 0)
         {
