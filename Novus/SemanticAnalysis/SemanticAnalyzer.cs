@@ -3171,9 +3171,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public override IrType? VisitStringLiteral([NotNull] NovusParser.StringLiteralContext context)
     {
-        // String literals are *u8 (pointer to null-terminated byte array)
-        // This matches C string literal semantics and is required for FFI
-        return new IrPointerType(IrIntType.U8);
+        // String literals are String type (fat pointer: {ptr: *u8, len: i32})
+        // This is safer than raw *u8 and matches Rust/Swift string semantics
+        // To get the raw pointer for FFI, use string_literal.ptr
+        return IrStringType.Instance;
     }
 
     public override IrType? VisitSizeofExpr([NotNull] NovusParser.SizeofExprContext context)

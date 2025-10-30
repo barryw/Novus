@@ -48,17 +48,25 @@ public class TypeRegistry
                 }
             }
 
-            // Scan instructions for enum types
+            // Scan instructions for enum and struct types
             foreach (var block in function.BasicBlocks)
             {
                 foreach (var instruction in block.Instructions)
                 {
-                    if (instruction is IrLocalDecl localDecl &&
-                        localDecl.Type is IrEnumType enumDeclType &&
-                        enumDeclType.GenericParameters.Count == 0)
+                    if (instruction is IrLocalDecl localDecl)
                     {
-                        if (!_enumTypes.Any(e => GetEnumName(e) == GetEnumName(enumDeclType)))
-                            _enumTypes.Add(enumDeclType);
+                        if (localDecl.Type is IrEnumType enumDeclType &&
+                            enumDeclType.GenericParameters.Count == 0)
+                        {
+                            if (!_enumTypes.Any(e => GetEnumName(e) == GetEnumName(enumDeclType)))
+                                _enumTypes.Add(enumDeclType);
+                        }
+                        else if (localDecl.Type is IrStructType structDeclType &&
+                                 structDeclType.GenericParameters.Count == 0)
+                        {
+                            if (!_structTypes.Any(s => GetStructName(s) == GetStructName(structDeclType)))
+                                _structTypes.Add(structDeclType);
+                        }
                     }
 
                     if (instruction is IrMatch match &&
@@ -70,9 +78,37 @@ public class TypeRegistry
                     }
                 }
             }
-        }
 
-        // TODO: Add struct type collection when we implement structs
+            // Check return type for struct
+            if (function.ReturnType is IrStructType structRet && structRet.GenericParameters.Count == 0)
+            {
+                if (!_structTypes.Any(s => GetStructName(s) == GetStructName(structRet)))
+                    _structTypes.Add(structRet);
+            }
+
+            // Check parameters for struct
+            foreach (var param in function.Parameters)
+            {
+                // Handle reference types (e.g., &self, &mut self)
+                var paramType = param.Type;
+                if (paramType is IrReferenceType refType)
+                    paramType = refType.PointeeType;
+                else if (paramType is IrMutReferenceType mutRefType)
+                    paramType = mutRefType.PointeeType;
+
+                if (paramType is IrStructType structParam && structParam.GenericParameters.Count == 0)
+                {
+                    if (!_structTypes.Any(s => GetStructName(s) == GetStructName(structParam)))
+                        _structTypes.Add(structParam);
+                }
+            }
+        }
+    }
+
+    private string GetStructName(IrStructType structType)
+    {
+        // Use CacheKey for monomorphized generics, otherwise use Name
+        return structType.CacheKey ?? structType.Name;
     }
 
     private bool UsesStringType(IrFunction function)

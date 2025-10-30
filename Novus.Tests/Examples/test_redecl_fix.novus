@@ -1,0 +1,35 @@
+// Test that variable redeclaration bug is fixed
+// This exercises the branch-based variable assignment pattern
+
+fn main() -> i32 {
+    // Test 1: Boolean || with phi-style merge
+    let a: bool = true
+    let b: bool = false
+
+    let result1: bool = a || b
+    if result1 {
+        return 1
+    }
+
+    // Test 2: Boolean && with phi-style merge
+    let c: bool = true
+    let d: bool = true
+
+    let result2: bool = c && d
+    if !result2 {
+        return 2
+    }
+
+    // Test 3: Nested || operations
+    let e: bool = false
+    let f: bool = false
+    let g: bool = false
+
+    let result3: bool = e || f || g
+    if result3 {
+        return 3
+    }
+
+    // All tests passed
+    return 42
+}

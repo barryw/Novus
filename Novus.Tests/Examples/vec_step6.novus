@@ -1,0 +1,13 @@
+from std::collections import Vec
+
+// Step 6: Push MULTIPLE elements to trigger reallocation
+fn main() -> i32 {
+    var v: Vec<i32> = Vec::new()
+    v.push(10)
+    v.push(20)
+    v.push(30)
+    v.push(40)
+    v.push(50)  // This should trigger reallocation
+    v.drop()
+    return 42
+}

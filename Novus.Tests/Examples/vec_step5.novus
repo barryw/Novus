@@ -1,0 +1,9 @@
+from std::collections import Vec
+
+// Step 5: Push and then call drop
+fn main() -> i32 {
+    var v: Vec<i32> = Vec::new()
+    v.push(10)
+    v.drop()
+    return 42
+}

@@ -1,0 +1,17 @@
+from std::collections import Vec
+
+// Step 12: Push 5 elements (triggers reallocation), then return WITHOUT drop
+// This tests if the crash happens during reallocation or during final cleanup
+fn main() -> i32 {
+    var v: Vec<i32> = Vec::new()
+
+    if !v.push(10) { return 1 }
+    if !v.push(20) { return 2 }
+    if !v.push(30) { return 3 }
+    if !v.push(40) { return 4 }
+    if !v.push(50) { return 5 }  // This triggers reallocation
+
+    // DON'T call v.drop() - just return
+    // This will leak memory but tells us if crash is in realloc or cleanup
+    return 42
+}

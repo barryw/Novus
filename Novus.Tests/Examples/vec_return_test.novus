@@ -1,4 +1,4 @@
-from std::core import Vec
+from std::collections import Vec
 
 fn main() -> i32 {
     // Create empty vector using Vec::new()

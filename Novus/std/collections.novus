@@ -1,0 +1,200 @@
+// Novus Standard Library - Collections Module
+// Namespace: std::collections
+// Dynamic data structures and collection types
+
+// Import core types and allocator functions
+from std::core import Option, AllocMem, FreeMem
+
+// Vec<T> - dynamic array (growable)
+// A contiguous growable array type with heap-allocated contents
+pub struct Vec<T> {
+    ptr: *T,
+    len: u32,
+    capacity: u32,
+}
+
+impl<T> Vec<T> {
+    // Create an empty vector with zero capacity
+    pub fn new() -> Vec<T> {
+        //  Note: Using 0 for null pointer - type inference will make it *T
+        return Vec {
+            ptr: 0,
+            len: 0u32,
+            capacity: 0u32,
+        }
+    }
+
+    // Create a vector with pre-allocated capacity
+    // Returns None if allocation fails
+    pub fn with_capacity(capacity: u32) -> Option<Vec<T>> {
+        if capacity == 0u32 {
+            return Option::Some(Vec::new())
+        }
+
+        let element_size: u32 = @sizeof(T)
+        let bytes_needed: u32 = capacity * element_size
+
+        // Use safe wrapper - returns Option<*u8>
+        // Note: Using 0u32 directly instead of MEMF_PUBLIC due to generic instantiation limitation
+        let mem_opt: Option<*u8> = AllocMem(bytes_needed, 0u32)
+
+        match mem_opt {
+            Some(mem) => {
+                // Type annotation handles pointer cast from *u8 to *T
+                let ptr: *T = mem
+                return Option::Some(Vec {
+                    ptr: ptr,
+                    len: 0u32,
+                    capacity: capacity,
+                })
+            },
+            None => {
+                // Allocation failed
+                return Option::None
+            }
+        }
+    }
+
+    // Get the number of elements in the vector
+    pub fn len(&self) -> u32 {
+        return self.len
+    }
+
+    // Check if the vector is empty
+    pub fn is_empty(&self) -> bool {
+        return self.len == 0u32
+    }
+
+    // Get the capacity of the vector
+    pub fn capacity(&self) -> u32 {
+        return self.capacity
+    }
+
+    // Reserve additional capacity (grow if needed)
+    // Returns true on success, false if allocation failed
+    fn reserve(&mut self, additional: u32) -> bool {
+        let needed_capacity: u32 = self.len + additional
+
+        // Only grow if we need more capacity
+        if needed_capacity > self.capacity {
+            // Calculate new capacity (double current or use needed, whichever is larger)
+            var new_capacity: u32 = self.capacity * 2u32
+            if new_capacity < needed_capacity {
+                new_capacity = needed_capacity
+            }
+
+            // Minimum capacity of 4 elements
+            if new_capacity < 4u32 {
+                new_capacity = 4u32
+            }
+
+            let element_size: u32 = @sizeof(T)
+            let new_bytes: u32 = new_capacity * element_size
+
+            // Use safe wrapper - returns Option<*u8>
+            // Note: Using 0u32 directly instead of MEMF_PUBLIC due to generic instantiation limitation
+            let new_mem_opt: Option<*u8> = AllocMem(new_bytes, 0u32)
+
+            match new_mem_opt {
+                Some(new_mem) => {
+                    // Type annotation handles pointer cast from *u8 to *T
+                    let new_ptr: *T = new_mem
+
+                    // Copy existing elements to new allocation
+                    var i: u32 = 0u32
+                    while i < self.len {
+                        new_ptr[i] = self.ptr[i]
+                        i = i + 1u32
+                    }
+
+                    // Free old memory if it exists
+                    if self.capacity > 0u32 {
+                        let old_bytes: u32 = self.capacity * element_size
+                        let old_mem: *u8 = (*u8)(u32)self.ptr
+                        FreeMem(old_mem, old_bytes)
+                    }
+
+                    // Update vec fields
+                    self.ptr = new_ptr
+                    self.capacity = new_capacity
+                    return true
+                },
+                None => {
+                    // Allocation failed
+                    return false
+                }
+            }
+        }
+
+        return true
+    }
+
+    // Add an element to the end of the vector
+    // Returns true on success, false if allocation failed
+    pub fn push(&mut self, value: T) -> bool {
+        // Ensure we have capacity
+        if self.len >= self.capacity {
+            let success: bool = self.reserve(1u32)
+            if !success {
+                return false  // Allocation failed
+            }
+        }
+
+        // Add the element
+        self.ptr[self.len] = value
+        self.len = self.len + 1u32
+        return true
+    }
+
+    // Remove and return the last element (returns Option<T>)
+    pub fn pop(&mut self) -> Option<T> {
+        if self.len == 0u32 {
+            return Option::None
+        }
+
+        self.len = self.len - 1u32
+        let value: T = self.ptr[self.len]
+        return Option::Some(value)
+    }
+
+    // Get element at index (safe, returns Option)
+    pub fn get(&self, index: u32) -> Option<T> {
+        if index >= self.len {
+            return Option::None
+        }
+
+        let value: T = self.ptr[index]
+        return Option::Some(value)
+    }
+
+    // Set element at index (returns true if successful)
+    pub fn set(&mut self, index: u32, value: T) -> bool {
+        if index >= self.len {
+            return false
+        }
+
+        self.ptr[index] = value
+        return true
+    }
+
+    // Remove all elements (keeps capacity)
+    pub fn clear(&mut self) {
+        self.len = 0u32
+    }
+
+    // Free the vector's memory
+    pub fn drop(&mut self) {
+        if self.capacity > 0u32 {
+            let element_size: u32 = @sizeof(T)
+            let bytes: u32 = self.capacity * element_size
+            // Type annotation handles pointer cast from *T to *u8
+            let mem: *u8 = self.ptr
+            FreeMem(mem, bytes)
+
+            // Reset to null pointer (0 with type inference)
+            self.ptr = 0
+            self.len = 0u32
+            self.capacity = 0u32
+        }
+    }
+}

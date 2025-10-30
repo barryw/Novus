@@ -36,7 +36,17 @@
       "Bash(vamos:*)",
       "Bash(nm:*)",
       "Bash(objdump:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(./test_option_simple:*)",
+      "Bash(/Users/barry/amiga-cc/vbcc/bin/vc:*)",
+      "Bash(/Users/barry/Developer/vbcc/bin/vobjdump:*)",
+      "Bash(/Users/barry/amiga-cc/vbcc/bin/vobjdump:*)",
+      "Bash(vobjdump:*)",
+      "Bash(for f in test_writeout.o io.o error.o)",
+      "Bash(do echo \"=== $f ===\")",
+      "Bash(size:*)",
+      "Bash(for:*)",
+      "Bash(do sed -i '' 's/from std::core import Vec/from std::collections import Vec/g' \"$file\")"
     ],
     "deny": [],
     "ask": []

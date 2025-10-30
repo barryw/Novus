@@ -1,6 +1,7 @@
 // io.novus - High-level I/O for Amiga DOS
 // Namespace: std::io
 
+from std::core import Result, Option, Vec
 from std::ffi::dos import Output, Write
 from std::error import DosError, dos_last_error
 
@@ -14,7 +15,8 @@ pub fn WriteOut(message: String) -> Result<i32, DosError> {
         return Result::Err(DosError::InvalidInput)
     }
 
-    let bytes = Write(stdout, message, message.len)
+    // Pass string fields directly to Write (cast inline)
+    let bytes = Write(stdout, (i32)message.ptr, message.len)
     if bytes >= 0 {
         return Result::Ok(bytes)
     }

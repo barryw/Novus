@@ -1,0 +1,17 @@
+from std::exec import SafeAllocMem, SafeFreeMem, MEMF_PUBLIC
+
+fn main() -> i32 {
+    // Simple test: allocate and free memory
+    let ptr: *u8 = SafeAllocMem(100u32, MEMF_PUBLIC)
+
+    // Check if allocation succeeded
+    if (u32)ptr == 0u32 {
+        return 1  // Allocation failed
+    }
+
+    // Free the memory
+    SafeFreeMem(ptr, 100u32)
+
+    // Success
+    return 42
+}

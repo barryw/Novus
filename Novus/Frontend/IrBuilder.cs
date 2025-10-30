@@ -1254,7 +1254,17 @@ public class IrBuilder : NovusBaseVisitor<object?>
         _currentBlock = function.CreateBasicBlock("entry");
 
         // Visit function body
-        Visit(context.block());
+        var blockResult = Visit(context.block());
+
+        // If function has non-void return type and block produced a value, add implicit return
+        if (returnType is not IrVoidType && blockResult is IrValue lastValue)
+        {
+            // Only add implicit return if block doesn't already have a terminator
+            if (!CurrentBlockHasTerminator())
+            {
+                _currentBlock!.AddInstruction(new IrReturn(lastValue));
+            }
+        }
 
         return null;
     }
@@ -3257,7 +3267,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                     if (variant != null)
                     {
-                        // Return an enum constructor that will be used in call expressions
+                        // For unit variants (no associated data), create the enum value directly
+                        if (variant.AssociatedData.Count == 0)
+                        {
+                            return new IrEnumValue(enumType, memberName, variant.Tag, new List<IrValue>());
+                        }
+
+                        // For variants with data, return a constructor for use in call expressions
                         return new IrEnumConstructor(enumType, memberName, variant.Tag);
                     }
                 }
@@ -3515,7 +3531,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 throw new Exception($"Enum '{typeName}' has no variant '{memberName}'");
             }
 
-            // Return enum constructor
+            // For unit variants (no associated data), create the enum value directly
+            if (variant.AssociatedData.Count == 0)
+            {
+                return new IrEnumValue(enumType, memberName, variant.Tag, new List<IrValue>());
+            }
+
+            // Return enum constructor for variants with data
             return new IrEnumConstructor(enumType, memberName, variant.Tag);
         }
 
@@ -3582,12 +3604,55 @@ public class IrBuilder : NovusBaseVisitor<object?>
             armLabels.Add($"match_arm_{_labelCounter}_{i}");
             checkLabels.Add($"match_check_{_labelCounter}_{i}");
         }
+        var matchId = _labelCounter;
         _labelCounter++;
 
-        // Extract tag from enum value
+        // Determine if arms produce values and their type
+        IrType? matchResultType = null;
+        bool armsProduceValues = context.matchArm().Any(arm => arm.expression() != null);
+        string? matchResultVarName = null;
+
+        // Extract tag from enum value (before declaring match result, so it appears first)
         var tagName = $"%t{_tempCounter++}";
         _currentBlock!.AddInstruction(new IrExtractTag(tagName, matchValue));
         var tagVar = new IrVariable(tagName, IrIntType.I32);
+
+        // Declare match result variable if arms produce values
+        if (armsProduceValues)
+        {
+            // Use expected type if available (e.g., from function return type)
+            matchResultType = _expectedType ?? _currentFunction?.ReturnType;
+
+            if (matchResultType != null && matchResultType is not IrVoidType)
+            {
+                matchResultVarName = $"%match_{matchId}_result";
+
+                // Declare the match result variable with an uninitialized value
+                var matchResultVar = new IrLocalVariable(matchResultVarName, matchResultType, true);
+                _currentFunction!.LocalVariables.Add(matchResultVar);
+                _localVariables[matchResultVarName] = matchResultVar;
+
+                // Emit the declaration instruction (C needs this to actually declare the variable)
+                // We use a default value as initializer (will be overwritten by match arms)
+                IrValue defaultValue;
+                if (matchResultType is IrIntType intType)
+                {
+                    defaultValue = new IrConstant(0, intType);
+                }
+                else if (matchResultType is IrBoolType)
+                {
+                    defaultValue = new IrBoolConstant(false);
+                }
+                else
+                {
+                    // For complex types, we'll initialize later in the first arm
+                    // For now, create a zero constant
+                    defaultValue = new IrConstant(0, matchResultType);
+                }
+
+                _currentBlock!.AddInstruction(new IrLocalDecl(matchResultVarName, matchResultType, true, defaultValue));
+            }
+        }
 
         // Generate comparisons and branches for each arm
         for (int i = 0; i < context.matchArm().Length; i++)
@@ -3692,14 +3757,45 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 }
             }
 
-            // Visit the arm body
+            // Visit the arm body and capture result if it's an expression
+            IrValue? armResult = null;
             if (armCtx.expression() != null)
             {
-                Visit(armCtx.expression());
+                armResult = (IrValue?)Visit(armCtx.expression());
+
+                // Infer match result type from first arm if we didn't have an expected type
+                if (i == 0 && armResult != null && matchResultType == null)
+                {
+                    matchResultType = armResult.Type;
+                    matchResultVarName = $"%match_{matchId}_result";
+
+                    // Declare the variable now that we know the type
+                    var matchResultVar = new IrLocalVariable(matchResultVarName, matchResultType, true);
+                    _currentFunction!.LocalVariables.Add(matchResultVar);
+                    _localVariables[matchResultVarName] = matchResultVar;
+                }
             }
             else if (armCtx.block() != null)
             {
-                Visit(armCtx.block());
+                armResult = (IrValue?)Visit(armCtx.block());
+
+                // Infer match result type from first arm if we didn't have an expected type
+                if (i == 0 && armResult != null && matchResultType == null)
+                {
+                    matchResultType = armResult.Type;
+                    matchResultVarName = $"%match_{matchId}_result";
+
+                    // Declare the variable now that we know the type
+                    var matchResultVar = new IrLocalVariable(matchResultVarName, matchResultType, true);
+                    _currentFunction!.LocalVariables.Add(matchResultVar);
+                    _localVariables[matchResultVarName] = matchResultVar;
+                }
+            }
+
+            // If we have a result value, result type, and variable name, store it
+            if (armResult != null && matchResultType != null && matchResultVarName != null && !CurrentBlockHasTerminator())
+            {
+                _currentBlock!.AddInstruction(new IrStore(matchResultVarName, armResult));
             }
 
             // Jump to end (if not already terminated)
@@ -3711,6 +3807,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         // End label
         _currentBlock!.AddInstruction(new IrLabel(matchEndLabel));
+
+        // Return match result if we computed one
+        if (matchResultType != null && matchResultVarName != null)
+        {
+            return new IrVariable(matchResultVarName, matchResultType);
+        }
 
         return null;
     }

@@ -1,4 +1,5 @@
-from std::core import Vec, Option
+from std::collections import Vec
+from std::core import Option
 
 fn main() -> i32 {
     // Test 1: Create empty vector

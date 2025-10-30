@@ -22,6 +22,10 @@ public class CCodeGenerator
     private readonly HashSet<string>? _explicitEntryPoints;
     private readonly bool _useSharedTypesHeader;
 
+    // Track which variables have been declared in the current function
+    // to avoid redeclaration errors when the same variable is assigned in multiple branches
+    private HashSet<string> _declaredVariables = new();
+
     public CCodeGenerator(IrModule module, List<IrStringLiteral> stringLiterals, string cpuTarget, string fpuMode, HashSet<string>? explicitEntryPoints = null, bool useSharedTypesHeader = false)
     {
         _module = module;
@@ -63,6 +67,22 @@ public class CCodeGenerator
         sb.AppendLine("} String;");
         sb.AppendLine();
 
+        var codegen = new CCodeGenerator(new IrModule(), new List<IrStringLiteral>(), "68020", "auto");
+
+        // Struct types
+        if (typeRegistry.StructTypes.Any())
+        {
+            sb.AppendLine("// ============================================================================");
+            sb.AppendLine("// Struct Types");
+            sb.AppendLine("// ============================================================================");
+            sb.AppendLine();
+
+            foreach (var structType in typeRegistry.StructTypes.OrderBy(s => s.Name))
+            {
+                codegen.EmitStructTypeToBuilder(sb, structType);
+            }
+        }
+
         // Enum types
         if (typeRegistry.EnumTypes.Any())
         {
@@ -71,14 +91,11 @@ public class CCodeGenerator
             sb.AppendLine("// ============================================================================");
             sb.AppendLine();
 
-            var codegen = new CCodeGenerator(new IrModule(), new List<IrStringLiteral>(), "68020", "auto");
             foreach (var enumType in typeRegistry.EnumTypes.OrderBy(e => e.Name))
             {
                 codegen.EmitEnumTypeToBuilder(sb, enumType);
             }
         }
-
-        // TODO: Struct types when we implement them
 
         sb.AppendLine("#endif // NOVUS_TYPES_H");
 
@@ -238,6 +255,26 @@ public class CCodeGenerator
         sb.AppendLine($"    enum {enumName}_Tag tag;");
         sb.AppendLine($"    union {enumName}_Data data;");
         sb.AppendLine($"}} {enumName};");
+        sb.AppendLine();
+    }
+
+    /// <summary>
+    /// Helper to emit struct type to a specific StringBuilder (for shared header generation)
+    /// </summary>
+    private void EmitStructTypeToBuilder(StringBuilder sb, IrStructType structType)
+    {
+        var structName = MangleName(structType);
+
+        sb.AppendLine($"// Struct: {structType.Name}");
+        sb.AppendLine($"typedef struct {{");
+
+        foreach (var field in structType.Fields)
+        {
+            var fieldType = GetCType(field.Type);
+            sb.AppendLine($"    {fieldType} {field.Name};");
+        }
+
+        sb.AppendLine($"}} {structName};");
         sb.AppendLine();
     }
 
@@ -677,11 +714,8 @@ public class CCodeGenerator
             foreach (var (funcName, (returnType, paramTypes)) in crossModuleCalls)
             {
                 var cReturnType = GetCType(returnType);
-                var parameters = string.Join(", ", paramTypes.Select(GetCType));
-                if (string.IsNullOrEmpty(parameters))
-                {
-                    parameters = "void";
-                }
+                var parameters = paramTypes.Count == 0 ? "void" :
+                    string.Join(", ", paramTypes.Select((type, index) => $"{GetCType(type)} p{index}"));
                 _output.AppendLine($"{cReturnType} {MangleName(funcName)}({parameters});");
             }
             _output.AppendLine();
@@ -732,6 +766,9 @@ public class CCodeGenerator
 
     private void EmitFunction(IrFunction function)
     {
+        // Clear declared variables for this function
+        _declaredVariables.Clear();
+
         var returnType = GetCType(function.ReturnType);
         var parameters = GetParameterList(function);
         var funcName = MangleName(function.Name);
@@ -840,15 +877,33 @@ public class CCodeGenerator
         var varName = SanitizeVariableName(localDecl.Name);
         var initValue = EmitValue(localDecl.InitialValue);
 
-        // If types don't match, emit a cast
-        var initType = GetCType(localDecl.InitialValue.Type);
-        if (initType != cType)
+        // Check if this variable has already been declared in this function
+        if (_declaredVariables.Contains(varName))
         {
-            _output.AppendLine($"    {cType} {varName} = ({cType}){initValue};");
+            // Already declared - emit assignment only
+            var initType = GetCType(localDecl.InitialValue.Type);
+            if (initType != cType)
+            {
+                _output.AppendLine($"    {varName} = ({cType}){initValue};");
+            }
+            else
+            {
+                _output.AppendLine($"    {varName} = {initValue};");
+            }
         }
         else
         {
-            _output.AppendLine($"    {cType} {varName} = {initValue};");
+            // First declaration - emit with type
+            var initType = GetCType(localDecl.InitialValue.Type);
+            if (initType != cType)
+            {
+                _output.AppendLine($"    {cType} {varName} = ({cType}){initValue};");
+            }
+            else
+            {
+                _output.AppendLine($"    {cType} {varName} = {initValue};");
+            }
+            _declaredVariables.Add(varName);
         }
     }
 
@@ -1064,8 +1119,24 @@ public class CCodeGenerator
             IrVariable variable => SanitizeVariableName(variable.Name),
             IrStringLiteral stringLit => $"(String){{ .ptr = (uint8_t*){stringLit.Label}, .len = {stringLit.Length} }}",
             IrEnumValue enumValue => EmitEnumValue(enumValue),
+            IrBorrowValue borrowValue => $"&{EmitValue(borrowValue.BorrowedValue)}",
+            IrStructLiteral structLit => EmitStructLiteral(structLit),
             _ => throw new NotSupportedException($"Unsupported value type: {value.GetType().Name}")
         };
+    }
+
+    private string EmitStructLiteral(IrStructLiteral structLit)
+    {
+        var structType = structLit.Type as IrStructType;
+        if (structType == null)
+            throw new InvalidOperationException("StructLiteral must have IrStructType");
+
+        var typeName = GetCType(structType);
+        var fields = structLit.FieldValues
+            .Select(kvp => $".{kvp.Key} = {EmitValue(kvp.Value)}")
+            .ToList();
+
+        return $"({typeName}){{ {string.Join(", ", fields)} }}";
     }
 
     private string EmitEnumValue(IrEnumValue enumValue)
@@ -1167,7 +1238,7 @@ public class CCodeGenerator
             IrPointerType ptrType => $"{GetCType(ptrType.PointeeType)}*",
             IrStringType => "String",
             IrEnumType enumType => MangleName(enumType),
-            IrStructType structType => MangleName(structType.Name),  // TODO: Generate struct definition
+            IrStructType structType => MangleName(structType),
             IrArrayType arrayType => $"{GetCType(arrayType.ElementType)}*",  // Arrays as pointers for now
             IrReferenceType refType => $"{GetCType(refType.PointeeType)}*",  // References as pointers
             IrMutReferenceType mutRefType => $"{GetCType(mutRefType.PointeeType)}*",  // Mut references as pointers
@@ -1202,6 +1273,22 @@ public class CCodeGenerator
         // Sanitize for C identifier:
         // Option<i32> -> Option_i32
         // Result<i32, *u8> -> Result_i32_ptr_u8
+        return name.Replace("::", "_")
+                   .Replace("<", "_")
+                   .Replace(">", "")
+                   .Replace(",", "")
+                   .Replace("*", "ptr_")
+                   .Replace(" ", "");
+    }
+
+    private string MangleName(IrStructType structType)
+    {
+        // Use CacheKey for monomorphized generics, otherwise use Name
+        var name = structType.CacheKey ?? structType.Name;
+
+        // Sanitize for C identifier:
+        // Vec<i32> -> Vec_i32
+        // HashMap<String, i32> -> HashMap_String_i32
         return name.Replace("::", "_")
                    .Replace("<", "_")
                    .Replace(">", "")

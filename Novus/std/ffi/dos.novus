@@ -1,5 +1,4 @@
 // dos.library FFI Bindings
-// Namespace: std::ffi::dos
 // Raw 1:1 mappings to dos.library
 //
 // Auto-generated from NDK 3.9
@@ -736,7 +735,6 @@ extern fn Read(file: i32, buffer: i32, length: i32) -> i32
 extern fn Write(file: i32, buffer: i32, length: i32) -> i32
 extern fn Input() -> i32
 extern fn Output() -> i32
-extern fn Error() -> i32
 extern fn Seek(file: i32, position: i32, offset: i32) -> i32
 extern fn DeleteFile(name: i32) -> i32
 extern fn Rename(oldName: i32, newName: i32) -> i32

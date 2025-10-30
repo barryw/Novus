@@ -1,0 +1,18 @@
+from std::core import AllocMem, FreeMem
+
+// Test that FreeMem works with manual alloc/free
+fn main() -> i32 {
+    // Allocate 16 bytes
+    let mem_opt: Option<*u8> = AllocMem(16u32, 0u32)
+
+    match mem_opt {
+        Some(ptr) => {
+            // Free the 16 bytes immediately
+            FreeMem(ptr, 16u32)
+            return 42
+        },
+        None => {
+            return 1  // Allocation failed
+        }
+    }
+}

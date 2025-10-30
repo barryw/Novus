@@ -1,0 +1,12 @@
+from std::collections import Vec
+
+// Step 9: Test the clear() operation
+fn main() -> i32 {
+    var v: Vec<i32> = Vec::new()
+    v.push(10)
+    v.push(20)
+    v.push(30)
+    v.clear()
+    v.drop()
+    return 42
+}

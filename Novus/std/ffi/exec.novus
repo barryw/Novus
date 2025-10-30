@@ -1,5 +1,4 @@
 // exec.library FFI Bindings
-// Namespace: std::ffi::exec
 // Raw 1:1 mappings to exec.library
 //
 // Auto-generated from NDK 3.9

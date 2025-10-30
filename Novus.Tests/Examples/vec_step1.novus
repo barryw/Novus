@@ -1,0 +1,4 @@
+// Step 1: Test if we can even run and return
+fn main() -> i32 {
+    return 42
+}

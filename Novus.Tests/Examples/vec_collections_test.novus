@@ -1,0 +1,45 @@
+// Simple test of Vec from std::collections
+from std::collections import Vec
+
+fn main() -> i32 {
+    // Create an empty vector
+    var v: Vec<i32> = Vec::new()
+
+    // Check it's empty
+    if !v.is_empty() {
+        return 1  // FAIL
+    }
+
+    if v.len() != 0u32 {
+        return 2  // FAIL
+    }
+
+    // Push some values
+    let success1: bool = v.push(10)
+    let success2: bool = v.push(20)
+    let success3: bool = v.push(30)
+
+    if !success1 || !success2 || !success3 {
+        return 3  // FAIL: push failed
+    }
+
+    if v.len() != 3u32 {
+        return 4  // FAIL: wrong length
+    }
+
+    if v.is_empty() {
+        return 5  // FAIL: should not be empty
+    }
+
+    // Clear the vector
+    v.clear()
+
+    if v.len() != 0u32 {
+        return 6  // FAIL: should be empty after clear
+    }
+
+    // Clean up
+    v.drop()
+
+    return 42  // SUCCESS
+}
