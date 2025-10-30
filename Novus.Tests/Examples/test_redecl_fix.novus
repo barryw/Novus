@@ -6,18 +6,18 @@ fn main() -> i32 {
     let a: bool = true
     let b: bool = false
 
-    let result1: bool = a || b
-    if result1 {
-        return 1
+    let result1: bool = a || b  // true || false = true
+    if !result1 {
+        return 1  // FAIL: Should be true
     }
 
     // Test 2: Boolean && with phi-style merge
     let c: bool = true
     let d: bool = true
 
-    let result2: bool = c && d
+    let result2: bool = c && d  // true && true = true
     if !result2 {
-        return 2
+        return 2  // FAIL: Should be true
     }
 
     // Test 3: Nested || operations
@@ -25,9 +25,9 @@ fn main() -> i32 {
     let f: bool = false
     let g: bool = false
 
-    let result3: bool = e || f || g
+    let result3: bool = e || f || g  // false || false || false = false
     if result3 {
-        return 3
+        return 3  // FAIL: Should be false
     }
 
     // All tests passed
