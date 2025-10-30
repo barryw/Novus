@@ -328,6 +328,22 @@ public class IrGenericType : IrType
         "Generic types must be monomorphized before code generation");
 
     public override string Name => ParameterName;
+
+    // Override Equals and GetHashCode to ensure type parameter identity is based on name
+    // This allows TypeInterner to correctly cache pointer types like *T
+    public override bool Equals(object? obj)
+    {
+        if (obj is IrGenericType other)
+        {
+            return ParameterName == other.ParameterName;
+        }
+        return false;
+    }
+
+    public override int GetHashCode()
+    {
+        return ParameterName.GetHashCode();
+    }
 }
 
 /// <summary>

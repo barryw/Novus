@@ -46,7 +46,8 @@
       "Bash(do echo \"=== $f ===\")",
       "Bash(size:*)",
       "Bash(for:*)",
-      "Bash(do sed -i '' 's/from std::core import Vec/from std::collections import Vec/g' \"$file\")"
+      "Bash(do sed -i '' 's/from std::core import Vec/from std::collections import Vec/g' \"$file\")",
+      "Bash(1)"
     ],
     "deny": [],
     "ask": []
