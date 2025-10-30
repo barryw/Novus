@@ -2856,23 +2856,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
             return new IrVariable(ptrTempName, _typeInterner.GetPointerType(IrIntType.U8));
         }
 
-        // For variables, if it's a bitwise cast (same size), just return the variable with new type
-        // This allows the value to be read from its current location
-        if (value is IrVariable variable && value.Type.SizeInBytes == targetType.SizeInBytes)
-        {
-            return new IrVariable(variable.Name, targetType);
-        }
-
-        // For other cases, we'd need a proper cast instruction
-        // For now, return the variable with the new type (works for bitwise casts)
-        if (value is IrVariable var2)
-        {
-            return new IrVariable(var2.Name, targetType);
-        }
-
-        // Fallback: create temp (this shouldn't happen often)
-        var tempName = $"%t{_tempCounter++}";
-        return new IrVariable(tempName, targetType);
+        // Create an explicit cast value
+        // This preserves the cast operation for the code generator
+        // Supports nested casts: (T1)(T2)expr becomes IrCastValue(IrCastValue(expr, T2), T1)
+        return new IrCastValue(value, value.Type, targetType);
     }
 
     public override object? VisitMultiplicativeExpr([NotNull] NovusParser.MultiplicativeExprContext context)

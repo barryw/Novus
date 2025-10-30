@@ -744,6 +744,23 @@ public class IrDereferenceValue : IrValue
 }
 
 /// <summary>
+/// Cast value - represents a type cast operation
+/// Created by (type)expr expressions
+/// Supports nested casts: (T1)(T2)expr
+/// </summary>
+public class IrCastValue : IrValue
+{
+    public IrValue Value { get; set; }
+    public IrType SourceType { get; set; }
+
+    public IrCastValue(IrValue value, IrType sourceType, IrType targetType) : base(targetType)
+    {
+        Value = value;
+        SourceType = sourceType;
+    }
+}
+
+/// <summary>
 /// Indirect function call through a function pointer
 /// </summary>
 public class IrIndirectCall : IrInstruction

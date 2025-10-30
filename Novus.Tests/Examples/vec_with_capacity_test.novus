@@ -1,0 +1,22 @@
+// Test Vec::with_capacity which uses @sizeof(T)
+from std::collections import Vec
+from std::core import Option
+
+fn main() -> i32 {
+    // Create a Vec<i32> manually to test methods that use @sizeof(T)
+    var vec: Vec<i32> = Vec {
+        ptr: (*i32)0,
+        len: 5u32,
+        capacity: 10u32,
+    }
+
+    // Test methods that use @sizeof(T) internally
+    let cap: u32 = vec.capacity()
+    let len: u32 = vec.len()
+    let empty: bool = vec.is_empty()
+
+    // Try reserve which uses @sizeof(T)
+    let success: bool = vec.reserve(20u32)
+
+    return 0
+}

@@ -1,0 +1,15 @@
+// Test cast expressions
+fn main() -> i32 {
+    let x: u32 = 42
+
+    // Single cast
+    let y: i32 = (i32)x
+
+    // Double cast
+    let z: *u8 = (*u8)(u32)y
+
+    // Triple cast (extreme case)
+    let w: i64 = (i64)(i32)(u32)x
+
+    return 0
+}

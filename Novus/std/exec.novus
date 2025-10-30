@@ -18,8 +18,9 @@
 //   - defer pattern           - RAII-style cleanup (defer FreeMem(...))
 
 // Declare extern functions directly instead of importing to avoid namespace pollution
-extern fn FFI_AllocMem(byteSize: i32, requirements: i32) -> i32
-extern fn FFI_FreeMem(memoryBlock: i32, byteSize: i32) -> i32
+// These map directly to the exec.library functions in exec_stubs.s
+extern fn AllocMem(byteSize: i32, requirements: i32) -> i32
+extern fn FreeMem(memoryBlock: i32, byteSize: i32) -> i32
 
 // Memory allocation flags (MEMF_* constants)
 pub const MEMF_PUBLIC: u32 = 0u32         // Any memory
@@ -40,8 +41,8 @@ pub const MEMF_CLEAR: u32 = 65536u32      // Clear memory after allocation
 /// # Note
 /// This returns a raw pointer. Use AllocMem wrapper in std::core for Option-wrapped version
 pub fn SafeAllocMem(byteSize: u32, attributes: u32) -> *u8 {
-    // Call the FFI function (returns i32, 0 = null = failure)
-    let result: i32 = FFI_AllocMem((i32)byteSize, (i32)attributes)
+    // Call exec.library AllocMem (returns i32, 0 = null = failure)
+    let result: i32 = AllocMem((i32)byteSize, (i32)attributes)
 
     // Convert to pointer
     let ptr: *u8 = (*u8)(u32)result
@@ -77,6 +78,6 @@ pub fn SafeFreeMem(memoryBlock: *u8, byteSize: u32) {
     // Convert pointer to i32 address for FFI
     let addr: i32 = (i32)(u32)memoryBlock
 
-    // Call the FFI function (return value is ignored in AmigaOS)
-    FFI_FreeMem(addr, (i32)byteSize)
+    // Call exec.library FreeMem (return value is ignored in AmigaOS)
+    FreeMem(addr, (i32)byteSize)
 }

@@ -4,6 +4,7 @@
 
 // Import core types and allocator functions
 from std::core import Option, AllocMem, FreeMem
+from std::exec import MEMF_PUBLIC, MEMF_CLEAR
 
 // Vec<T> - dynamic array (growable)
 // A contiguous growable array type with heap-allocated contents
@@ -34,9 +35,8 @@ impl<T> Vec<T> {
         let element_size: u32 = @sizeof(T)
         let bytes_needed: u32 = capacity * element_size
 
-        // Use safe wrapper - returns Option<*u8>
-        // Note: Using 0u32 directly instead of MEMF_PUBLIC due to generic instantiation limitation
-        let mem_opt: Option<*u8> = AllocMem(bytes_needed, 0u32)
+        // Allocate with MEMF_PUBLIC | MEMF_CLEAR (clear memory to zero)
+        let mem_opt: Option<*u8> = AllocMem(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
 
         match mem_opt {
             Some(mem) => {
@@ -91,9 +91,8 @@ impl<T> Vec<T> {
             let element_size: u32 = @sizeof(T)
             let new_bytes: u32 = new_capacity * element_size
 
-            // Use safe wrapper - returns Option<*u8>
-            // Note: Using 0u32 directly instead of MEMF_PUBLIC due to generic instantiation limitation
-            let new_mem_opt: Option<*u8> = AllocMem(new_bytes, 0u32)
+            // Allocate with MEMF_PUBLIC | MEMF_CLEAR (clear memory to zero)
+            let new_mem_opt: Option<*u8> = AllocMem(new_bytes, MEMF_PUBLIC | MEMF_CLEAR)
 
             match new_mem_opt {
                 Some(new_mem) => {

@@ -1121,6 +1121,7 @@ public class CCodeGenerator
             IrEnumValue enumValue => EmitEnumValue(enumValue),
             IrBorrowValue borrowValue => $"&{EmitValue(borrowValue.BorrowedValue)}",
             IrDereferenceValue derefValue => $"(*{EmitValue(derefValue.PointerValue)})",
+            IrCastValue castValue => EmitCastValue(castValue),
             IrStructLiteral structLit => EmitStructLiteral(structLit),
             _ => throw new NotSupportedException($"Unsupported value type: {value.GetType().Name}")
         };
@@ -1175,6 +1176,18 @@ public class CCodeGenerator
 
         result += " }";
         return result;
+    }
+
+    private string EmitCastValue(IrCastValue castValue)
+    {
+        // Get the target type in C syntax
+        var targetType = GetCType(castValue.Type);
+
+        // Recursively emit the inner value (handles nested casts)
+        var innerValue = EmitValue(castValue.Value);
+
+        // Emit the cast: (target_type)inner_value
+        return $"({targetType}){innerValue}";
     }
 
     private int _tempCounter = 0;
