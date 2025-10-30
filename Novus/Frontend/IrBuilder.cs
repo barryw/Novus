@@ -117,6 +117,18 @@ public class IrBuilder : NovusBaseVisitor<object?>
             RegisterConstant(constContext);
         }
 
+        // Pass 1.5: Register all static variables
+        foreach (var staticContext in context.staticDeclaration())
+        {
+            RegisterStatic(staticContext);
+        }
+
+        // Pass 1.6: Register all external variables
+        foreach (var externVarContext in context.globalVariableDeclaration())
+        {
+            RegisterExternalVariable(externVarContext);
+        }
+
         // Pass 2: Register all enum types
         foreach (var enumContext in context.enumDeclaration())
         {
@@ -135,17 +147,18 @@ public class IrBuilder : NovusBaseVisitor<object?>
             var name = funcContext.IDENTIFIER().GetText();
             var returnType = funcContext.type() != null ? ParseType(funcContext.type()) : IrVoidType.Instance;
 
-            // Check for extern and pub keywords
+            // Check for extern, pub, and internal keywords
             var isExtern = false;
-            var isPublic = false;
-            for (int i = 0; i < Math.Min(3, funcContext.ChildCount); i++)
+            var visibility = Visibility.Private;
+            for (int i = 0; i < Math.Min(4, funcContext.ChildCount); i++)
             {
                 var childText = funcContext.GetChild(i)?.GetText();
                 if (childText == "extern") isExtern = true;
-                if (childText == "pub") isPublic = true;
+                if (childText == "pub") visibility = Visibility.Public;
+                if (childText == "internal") visibility = Visibility.Internal;
             }
 
-            var function = new IrFunction(name, returnType, isPublic, isExtern);
+            var function = new IrFunction(name, returnType, visibility, isExtern);
 
             // Parse parameters
             if (funcContext.parameterList() != null)
@@ -202,19 +215,20 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 // Non-generic impl blocks: create function signatures now
                 var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
 
-                // Check for extern and pub keywords
+                // Check for extern, pub, and internal keywords
                 var isExtern = false;
-                var isPublic = false;
-                for (int i = 0; i < Math.Min(3, funcDecl.ChildCount); i++)
+                var visibility = Visibility.Private;
+                for (int i = 0; i < Math.Min(4, funcDecl.ChildCount); i++)
                 {
                     var childText = funcDecl.GetChild(i)?.GetText();
                     if (childText == "extern") isExtern = true;
-                    if (childText == "pub") isPublic = true;
+                    if (childText == "pub") visibility = Visibility.Public;
+                    if (childText == "internal") visibility = Visibility.Internal;
                 }
 
                 // Methods are registered with mangled names: Type::method
                 var mangledName = $"{typeName}::{methodName}";
-                var function = new IrFunction(mangledName, returnType, isPublic, isExtern);
+                var function = new IrFunction(mangledName, returnType, visibility, isExtern);
 
                 // Parse parameters (including self)
                 if (funcDecl.parameterList() != null)
@@ -831,7 +845,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
             // Only mark as extern if it's truly an extern function (FFI)
             // Pub functions from Novus modules are real implementations that need linking
-            var function = new IrFunction(funcName, returnType, isPublic: false, isExtern: isExtern);
+            var function = new IrFunction(funcName, returnType, Visibility.Private, isExtern);
 
             // Parse parameters
             if (funcDecl.parameterList() != null)
@@ -907,7 +921,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                 // Methods are registered with mangled names: Type::method
                 var mangledName = $"{typeName}::{methodName}";
-                var function = new IrFunction(mangledName, returnType, isPublic: false, isExtern: false);
+                var function = new IrFunction(mangledName, returnType, Visibility.Private, false);
 
                 // Parse parameters (including self)
                 if (funcDecl.parameterList() != null)
@@ -984,7 +998,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                 // Parse and import the extern function
                 var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
-                var function = new IrFunction(funcName, returnType, isPublic: false, isExtern: true);
+                var function = new IrFunction(funcName, returnType, Visibility.Private, true);
 
                 // Parse parameters
                 if (funcDecl.parameterList() != null)
@@ -1112,7 +1126,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         returnType = SubstituteGenericTypes(returnType, typeSubstitutions);
 
         var mangledMethodName = $"{baseTypeName}_{methodName}";
-        var function = new IrFunction(mangledMethodName, returnType, isPublic: false, isExtern: false);
+        var function = new IrFunction(mangledMethodName, returnType, Visibility.Private, false);
 
         // Parse parameters with substitutions
         if (funcDecl.parameterList() != null)
@@ -1210,6 +1224,15 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var name = context.IDENTIFIER().GetText();
         var type = ParseType(context.type());
 
+        // Check for pub/internal keywords
+        var visibility = Visibility.Private;
+        for (int i = 0; i < Math.Min(3, context.ChildCount); i++)
+        {
+            var childText = context.GetChild(i)?.GetText();
+            if (childText == "pub") visibility = Visibility.Public;
+            if (childText == "internal") visibility = Visibility.Internal;
+        }
+
         // Evaluate the constant expression using the evaluator
         var valueExpr = context.expression();
 
@@ -1226,8 +1249,72 @@ public class IrBuilder : NovusBaseVisitor<object?>
         {
             _constants[name] = (type, value);
             // Also store in the IR module for code generator access
-            _module.Constants[name] = (type, value);
+            _module.Constants[name] = (visibility, type, value);
         }
+    }
+
+    private void RegisterStatic(NovusParser.StaticDeclarationContext context)
+    {
+        var name = context.IDENTIFIER().GetText();
+        var type = ParseType(context.type());
+
+        // Check for pub/internal/mut keywords
+        var visibility = Visibility.Private;
+        var isMutable = false;
+        for (int i = 0; i < Math.Min(5, context.ChildCount); i++)
+        {
+            var childText = context.GetChild(i)?.GetText();
+            if (childText == "pub") visibility = Visibility.Public;
+            if (childText == "internal") visibility = Visibility.Internal;
+            if (childText == "mut") isMutable = true;
+        }
+
+        // Evaluate the initial value expression
+        var valueExpr = context.expression();
+
+        // For now, we'll create a temporary function context to evaluate the expression
+        // In the future, we should allow const expressions only
+        _currentFunction = new IrFunction("__static_init", IrVoidType.Instance);
+        _currentBlock = _currentFunction.CreateBasicBlock("entry");
+
+        var initialValue = (IrValue?)Visit(valueExpr);
+
+        // Restore state
+        _currentFunction = null;
+        _currentBlock = null;
+
+        if (initialValue != null)
+        {
+            var staticVar = new IrStaticVariable(name, type, visibility, isMutable, initialValue);
+            _module.StaticVariables.Add(staticVar);
+        }
+    }
+
+    private void RegisterExternalVariable(NovusParser.GlobalVariableDeclarationContext context)
+    {
+        var name = context.IDENTIFIER().GetText();
+        var type = ParseType(context.type());
+
+        // Check for optional 'at <address>' clause
+        long? address = null;
+        if (context.KW_AT() != null && context.expression() != null)
+        {
+            // Evaluate the address expression (must be a compile-time constant)
+            var constantValues = _constants.ToDictionary(
+                kvp => kvp.Key,
+                kvp => kvp.Value.Value
+            );
+
+            var evaluator = new SemanticAnalysis.ConstantExpressionEvaluator(constantValues);
+            int? addrValue = evaluator.Visit(context.expression());
+            if (addrValue.HasValue)
+            {
+                address = addrValue.Value;
+            }
+        }
+
+        var externVar = new IrExternalVariable(name, type, address);
+        _module.ExternalVariables.Add(externVar);
     }
 
     private void RegisterEnum(NovusParser.EnumDeclarationContext context)
@@ -1338,7 +1425,16 @@ public class IrBuilder : NovusBaseVisitor<object?>
             if (childText == "pub") isPublic = true;
         }
 
-        var function = new IrFunction(name, returnType, isPublic, isExtern);
+        // Parse visibility
+        var visibility = Visibility.Private;
+        for (int i = 0; i < Math.Min(4, context.ChildCount); i++)
+        {
+            var childText = context.GetChild(i)?.GetText();
+            if (childText == "pub") visibility = Visibility.Public;
+            if (childText == "internal") visibility = Visibility.Internal;
+        }
+
+        var function = new IrFunction(name, returnType, visibility, isExtern);
         _module.AddFunction(function);
         _currentFunction = function;
 
@@ -3589,6 +3685,20 @@ public class IrBuilder : NovusBaseVisitor<object?>
         else
         {
             Console.WriteLine($"[DEBUG] [{_inputFilePath}] Identifier '{name}' not found in constants (have {_constants.Count} constants): {string.Join(", ", _constants.Keys)}");
+        }
+
+        // Check if it's a static variable
+        var staticVar = _module.StaticVariables.FirstOrDefault(sv => sv.Name == name);
+        if (staticVar != null)
+        {
+            return new IrGlobalVariable(name, staticVar.Type);
+        }
+
+        // Check if it's an extern variable
+        var externVar = _module.ExternalVariables.FirstOrDefault(ev => ev.Name == name);
+        if (externVar != null)
+        {
+            return new IrGlobalVariable(name, externVar.Type);
         }
 
         // Check if it's a local variable

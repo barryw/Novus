@@ -339,6 +339,8 @@ public class CCodeGenerator
         EmitHeaders();
         EmitTypedefs(reachableFunctions);
         EmitStringLiterals();
+        EmitExternalVariables();
+        EmitStaticVariables();
         EmitForwardDeclarations(reachableFunctions);
         EmitFunctions(reachableFunctions);
 
@@ -771,6 +773,56 @@ public class CCodeGenerator
             .Replace("\n", "\\n")
             .Replace("\r", "\\r")
             .Replace("\t", "\\t");
+    }
+
+    private void EmitExternalVariables()
+    {
+        if (_module.ExternalVariables.Count == 0)
+            return;
+
+        _output.AppendLine("// External variables");
+        foreach (var externVar in _module.ExternalVariables)
+        {
+            var cType = GetCType(externVar.Type);
+
+            if (externVar.Address.HasValue)
+            {
+                // Hardware register at specific address - define as volatile pointer
+                _output.AppendLine($"#define {externVar.Name} (*({cType}*)0x{externVar.Address.Value:X})");
+            }
+            else
+            {
+                // Extern variable resolved by linker
+                _output.AppendLine($"extern {cType} {externVar.Name};");
+            }
+        }
+        _output.AppendLine();
+    }
+
+    private void EmitStaticVariables()
+    {
+        if (_module.StaticVariables.Count == 0)
+            return;
+
+        _output.AppendLine("// Static variables");
+        foreach (var staticVar in _module.StaticVariables)
+        {
+            var cType = GetCType(staticVar.Type);
+            var staticKeyword = staticVar.Visibility == Visibility.Private ? "static" : "";
+            var constKeyword = !staticVar.IsMutable ? "const" : "";
+
+            // Generate initial value
+            var initialValue = EmitValue(staticVar.InitialValue);
+
+            // Emit the declaration with initialization
+            var keywords = new List<string>();
+            if (!string.IsNullOrEmpty(staticKeyword)) keywords.Add(staticKeyword);
+            if (!string.IsNullOrEmpty(constKeyword)) keywords.Add(constKeyword);
+
+            var keywordStr = keywords.Count > 0 ? string.Join(" ", keywords) + " " : "";
+            _output.AppendLine($"{keywordStr}{cType} {staticVar.Name} = {initialValue};");
+        }
+        _output.AppendLine();
     }
 
     private void EmitForwardDeclarations(HashSet<string> reachableFunctions)
@@ -1340,6 +1392,7 @@ public class CCodeGenerator
             IrConstant constant => constant.Value.ToString(),
             IrBoolConstant boolConst => boolConst.Value ? "true" : "false",
             IrVariable variable => EmitVariable(variable),
+            IrGlobalVariable globalVar => globalVar.Name,  // Global variables use their name directly
             IrStringLiteral stringLit => $"(String){{ .ptr = (uint8_t*){stringLit.Label}, .len = {stringLit.Length} }}",
             IrEnumValue enumValue => EmitEnumValue(enumValue),
             IrBorrowValue borrowValue => $"&{EmitValue(borrowValue.BorrowedValue)}",

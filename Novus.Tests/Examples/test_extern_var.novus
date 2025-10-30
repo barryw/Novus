@@ -1,0 +1,12 @@
+// Test extern variable declarations
+
+// External variable without address (resolved by linker)
+extern var SysBase: *i32
+
+// External variable at specific address (hardware register)
+extern var CUSTOM: *i32 at 0xdff000
+
+fn main() -> i32 {
+    // Can use extern variables (would need unsafe in real code)
+    return 0
+}

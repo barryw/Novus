@@ -1,0 +1,37 @@
+// Test basic const and static declarations with different visibility
+
+// Private const (file-local)
+const MAX_COUNT: i32 = 100
+
+// Public const (exported)
+pub const VERSION: i32 = 1
+
+// Internal const (target-wide)
+internal const BUFFER_SIZE: i32 = 1024
+
+// Private static (immutable)
+static counter: i32 = 0
+
+// Public static (immutable, exported)
+pub static PI_TIMES_100: i32 = 314
+
+// Internal static (immutable, target-wide)
+internal static cache_size: i32 = 256
+
+// Private mutable static
+static mut frame_count: i32 = 0
+
+// Public mutable static
+pub static mut global_state: i32 = 42
+
+fn main() -> i32 {
+    let total = MAX_COUNT + VERSION + BUFFER_SIZE
+    let more = counter + PI_TIMES_100 + cache_size
+
+    unsafe {
+        frame_count = frame_count + 1
+        global_state = global_state + 10
+    }
+
+    return total + more
+}

@@ -3,6 +3,16 @@ using Novus.HIR;
 namespace Novus.IR;
 
 /// <summary>
+/// Visibility level for module items
+/// </summary>
+public enum Visibility
+{
+    Private,   // File-local (default)
+    Internal,  // Target-wide (internal to this compilation unit)
+    Public     // Exported (visible to other targets/packages)
+}
+
+/// <summary>
 /// Represents a complete Novus compilation unit
 /// </summary>
 public class IrModule
@@ -12,10 +22,20 @@ public class IrModule
     public Dictionary<string, IrMonomorphizedType> MonomorphizedTypes { get; } = new();
 
     /// <summary>
-    /// Module constants - maps constant name to (type, value)
+    /// Module constants - maps constant name to (visibility, type, value)
     /// Used by code generator to inline constant references
     /// </summary>
-    public Dictionary<string, (IrType Type, object Value)> Constants { get; } = new();
+    public Dictionary<string, (Visibility Visibility, IrType Type, object Value)> Constants { get; } = new();
+
+    /// <summary>
+    /// Static variables - immutable or mutable global variables with fixed addresses
+    /// </summary>
+    public List<IrStaticVariable> StaticVariables { get; } = new();
+
+    /// <summary>
+    /// External variables - declared with 'extern var', resolved at link time
+    /// </summary>
+    public List<IrExternalVariable> ExternalVariables { get; } = new();
 
     /// <summary>
     /// HIR (High-level IR) instructions that need lowering to LIR
@@ -46,20 +66,23 @@ public class IrFunction
 {
     public string Name { get; set; }
     public IrType ReturnType { get; set; }
-    public bool IsPublic { get; set; }  // true if 'pub' keyword used
+    public Visibility Visibility { get; set; }
     public bool IsExtern { get; set; }  // true if 'extern' keyword used
     public List<IrParameter> Parameters { get; } = new();
     public List<IrLocalVariable> LocalVariables { get; } = new();
     public List<IrBasicBlock> BasicBlocks { get; } = new();
     public List<IrBasicBlock> DeferredBlocks { get; } = new();  // Blocks to execute on function exit (LIFO)
 
-    public IrFunction(string name, IrType returnType, bool isPublic = false, bool isExtern = false)
+    public IrFunction(string name, IrType returnType, Visibility visibility = Visibility.Private, bool isExtern = false)
     {
         Name = name;
         ReturnType = returnType;
-        IsPublic = isPublic;
+        Visibility = visibility;
         IsExtern = isExtern;
     }
+
+    // Compatibility property for code that checks IsPublic
+    public bool IsPublic => Visibility == Visibility.Public;
 
     public IrBasicBlock CreateBasicBlock(string label)
     {
@@ -915,5 +938,58 @@ public class IrIndexStore : IrInstruction
         Array = array;
         Index = index;
         Value = value;
+    }
+}
+
+/// <summary>
+/// Static variable - global variable with fixed address and lifetime
+/// Can be immutable or mutable (requires unsafe to access if mut)
+/// </summary>
+public class IrStaticVariable
+{
+    public string Name { get; set; }
+    public IrType Type { get; set; }
+    public Visibility Visibility { get; set; }
+    public bool IsMutable { get; set; }
+    public IrValue InitialValue { get; set; }
+
+    public IrStaticVariable(string name, IrType type, Visibility visibility, bool isMutable, IrValue initialValue)
+    {
+        Name = name;
+        Type = type;
+        Visibility = visibility;
+        IsMutable = isMutable;
+        InitialValue = initialValue;
+    }
+}
+
+/// <summary>
+/// External variable - declared with 'extern var', resolved at link time
+/// Used for library bases, hardware registers, and FFI
+/// </summary>
+public class IrExternalVariable
+{
+    public string Name { get; set; }
+    public IrType Type { get; set; }
+    public long? Address { get; set; }  // Optional fixed address (e.g., hardware registers)
+
+    public IrExternalVariable(string name, IrType type, long? address = null)
+    {
+        Name = name;
+        Type = type;
+        Address = address;
+    }
+}
+
+/// <summary>
+/// Global variable value reference - refers to a static or extern variable
+/// </summary>
+public class IrGlobalVariable : IrValue
+{
+    public string Name { get; set; }
+
+    public IrGlobalVariable(string name, IrType type) : base(type)
+    {
+        Name = name;
     }
 }

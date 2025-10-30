@@ -3,7 +3,7 @@ grammar Novus;
 // Parser Rules
 
 compilationUnit
-    : importDeclaration* reexportDeclaration* (constDeclaration | globalVariableDeclaration | structDeclaration | enumDeclaration | implDeclaration | functionDeclaration)* EOF
+    : importDeclaration* reexportDeclaration* (constDeclaration | staticDeclaration | globalVariableDeclaration | structDeclaration | enumDeclaration | implDeclaration | functionDeclaration)* EOF
     ;
 
 attribute
@@ -46,15 +46,19 @@ reexportList
     ;
 
 constDeclaration
-    : attribute* KW_PUB? KW_CONST IDENTIFIER ':' type '=' expression
+    : attribute* (KW_PUB | KW_INTERNAL)? KW_CONST IDENTIFIER ':' type '=' expression
+    ;
+
+staticDeclaration
+    : attribute* (KW_PUB | KW_INTERNAL)? KW_STATIC KW_MUT? IDENTIFIER ':' type '=' expression
     ;
 
 globalVariableDeclaration
-    : attribute* KW_EXTERN KW_VAR IDENTIFIER ':' type
+    : attribute* KW_EXTERN KW_VAR IDENTIFIER ':' type (KW_AT expression)?
     ;
 
 functionDeclaration
-    : attribute* KW_EXTERN? KW_PUB? KW_FN IDENTIFIER '(' parameterList? ')' ('->' type)? block?
+    : attribute* KW_EXTERN? (KW_PUB | KW_INTERNAL)? KW_FN IDENTIFIER '(' parameterList? ')' ('->' type)? block?
     ;
 
 parameterList
@@ -72,7 +76,7 @@ selfParameter
     ;
 
 structDeclaration
-    : attribute* KW_PUB? KW_STRUCT IDENTIFIER genericParams? '{' structField* '}'
+    : attribute* (KW_PUB | KW_INTERNAL)? KW_STRUCT IDENTIFIER genericParams? '{' structField* '}'
     ;
 
 structField
@@ -80,7 +84,7 @@ structField
     ;
 
 enumDeclaration
-    : attribute* KW_PUB? KW_ENUM IDENTIFIER genericParams? '{' enumVariant (',' enumVariant)* ','? '}'
+    : attribute* (KW_PUB | KW_INTERNAL)? KW_ENUM IDENTIFIER genericParams? '{' enumVariant (',' enumVariant)* ','? '}'
     ;
 
 enumVariant
@@ -301,9 +305,12 @@ KW_IMPORT   : 'import';
 KW_AS       : 'as';
 KW_USE      : 'use';
 KW_PUB      : 'pub';
+KW_INTERNAL : 'internal';
 KW_CONST    : 'const';
+KW_STATIC   : 'static';
 KW_EXTERN   : 'extern';
 KW_VAR      : 'var';
+KW_AT       : 'at';
 KW_LET      : 'let';
 KW_MUT      : 'mut';
 KW_FN       : 'fn';
