@@ -1255,4 +1255,197 @@ pub fn main() -> u32 {
         Assert.True(diagnostics.HasErrors);
         Assert.Contains(diagnostics.Diagnostics, d => d.Message.Contains("type mismatch") || d.Message.Contains("incompatible"));
     }
+
+    // Mutability validation tests
+    [Fact]
+    public void Analyze_AssignToImmutableVariable_ReportsError()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    let x = 10
+    x = 20
+    return x
+}";
+        var diagnostics = Analyze(source);
+        Assert.True(diagnostics.HasErrors);
+        Assert.Contains(diagnostics.Diagnostics, d => d.Code == "E0019" && d.Message.Contains("immutable"));
+    }
+
+    [Fact]
+    public void Analyze_AssignToMutableVariable_NoErrors()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    var x = 10
+    x = 20
+    return x
+}";
+        var diagnostics = Analyze(source);
+        Assert.False(diagnostics.HasErrors);
+    }
+
+    [Fact]
+    public void Analyze_IncrementImmutableVariable_ReportsError()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    let x = 10
+    x++
+    return x
+}";
+        var diagnostics = Analyze(source);
+        Assert.True(diagnostics.HasErrors);
+        Assert.Contains(diagnostics.Diagnostics, d => d.Code == "E0019" && d.Message.Contains("immutable"));
+    }
+
+    [Fact]
+    public void Analyze_IncrementMutableVariable_NoErrors()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    var x = 10
+    x++
+    return x
+}";
+        var diagnostics = Analyze(source);
+        Assert.False(diagnostics.HasErrors);
+    }
+
+    [Fact]
+    public void Analyze_CompoundAssignToImmutableVariable_ReportsError()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    let x = 10
+    x += 5
+    return x
+}";
+        var diagnostics = Analyze(source);
+        Assert.True(diagnostics.HasErrors);
+        Assert.Contains(diagnostics.Diagnostics, d => d.Code == "E0019" && d.Message.Contains("immutable"));
+    }
+
+    [Fact]
+    public void Analyze_CompoundAssignToMutableVariable_NoErrors()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    var x = 10
+    x += 5
+    return x
+}";
+        var diagnostics = Analyze(source);
+        Assert.False(diagnostics.HasErrors);
+    }
+
+    [Fact]
+    public void Analyze_FunctionParametersAreImmutable_ReportsError()
+    {
+        var source = @"
+pub fn test(x: i32) -> i32 {
+    x = 20
+    return x
+}";
+        var diagnostics = Analyze(source);
+        Assert.True(diagnostics.HasErrors);
+        Assert.Contains(diagnostics.Diagnostics, d => d.Code == "E0019" && d.Message.Contains("immutable"));
+    }
+
+    [Fact]
+    public void Analyze_AssignThroughImmutableReference_ReportsError()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    var x = 10
+    let r = &x
+    *r = 20
+    return x
+}";
+        var diagnostics = Analyze(source);
+        Assert.True(diagnostics.HasErrors);
+        Assert.Contains(diagnostics.Diagnostics, d => d.Code == "E0026" && d.Message.Contains("immutable reference"));
+    }
+
+    // Variable shadowing tests
+    [Fact]
+    public void Analyze_VariableShadowingInSameScope_ReportsError()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    let x = 10
+    let x = 20
+    return x
+}";
+        var diagnostics = Analyze(source);
+        Assert.True(diagnostics.HasErrors);
+        Assert.Contains(diagnostics.Diagnostics, d => d.Code == "E0016" && d.Message.Contains("already defined"));
+    }
+
+    [Fact]
+    public void Analyze_ParameterShadowing_ReportsError()
+    {
+        var source = @"
+pub fn test(x: i32) -> i32 {
+    let x = 20
+    return x
+}";
+        var diagnostics = Analyze(source);
+        Assert.True(diagnostics.HasErrors);
+        Assert.Contains(diagnostics.Diagnostics, d => d.Code == "E0016" && d.Message.Contains("already defined"));
+    }
+
+    // Type inference tests
+    [Fact]
+    public void Analyze_TypeInferenceFromLiteral_NoErrors()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    let x = 42
+    return x
+}";
+        var diagnostics = Analyze(source);
+        Assert.False(diagnostics.HasErrors);
+    }
+
+    [Fact]
+    public void Analyze_TypeInferenceFromExpression_NoErrors()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    let x = 10 + 20
+    return x
+}";
+        var diagnostics = Analyze(source);
+        Assert.False(diagnostics.HasErrors);
+    }
+
+    [Fact]
+    public void Analyze_TypeInferenceFromFunctionCall_NoErrors()
+    {
+        var source = @"
+fn get_value() -> i32 {
+    return 42
+}
+
+pub fn main() -> i32 {
+    let x = get_value()
+    return x
+}";
+        var diagnostics = Analyze(source);
+        Assert.False(diagnostics.HasErrors);
+    }
+
+    [Fact]
+    public void Analyze_MixedMutabilityInCompoundExpression_NoErrors()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    let a = 10
+    var b = 20
+    b += a
+    return b
+}";
+        var diagnostics = Analyze(source);
+        Assert.False(diagnostics.HasErrors);
+    }
 }
