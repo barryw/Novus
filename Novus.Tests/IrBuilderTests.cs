@@ -16,7 +16,7 @@ public class IrBuilderTests
         var parser = new NovusParser(tokenStream);
         var tree = parser.compilationUnit();
 
-        var builder = new IrBuilder();
+        var builder = new IrBuilder(skipAutoImports: true);
         return builder.BuildModule(tree);
     }
 

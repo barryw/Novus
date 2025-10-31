@@ -156,7 +156,9 @@
       "Bash(while read f)",
       "Bash(do basename \"$f\")",
       "Bash(python3:*)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(./novusc build:*)",
+      "Bash(sort:*)"
     ],
     "deny": [],
     "ask": []
