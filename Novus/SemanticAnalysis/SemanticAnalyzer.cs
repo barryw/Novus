@@ -1545,7 +1545,6 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Detect which kind of assignment this is
         string? op = null;
         bool isPostIncDec = false;
-        bool isPreIncDec = false;
 
         // Check for compound operators and increment/decrement
         for (int i = 0; i < context.ChildCount; i++)
@@ -1565,17 +1564,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
             else if (childText == "++" || childText == "--")
             {
-                // Check if it's at the beginning (pre) or after identifier (post)
-                if (i == 0)
-                {
-                    isPreIncDec = true;
-                    op = childText;
-                }
-                else
-                {
-                    isPostIncDec = true;
-                    op = childText;
-                }
+                // Post-increment/decrement (after identifier)
+                isPostIncDec = true;
+                op = childText;
                 break;
             }
         }
@@ -1596,8 +1587,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         var lvalueSuffixes = context.lvalueSuffix();
 
-        // Handle increment/decrement statements (no expression)
-        if (isPostIncDec || isPreIncDec)
+        // Handle post-increment/decrement statements (no expression)
+        if (isPostIncDec)
         {
             // Check if variable exists (local or global)
             if (!_variables.ContainsKey(name) && !_globalVariables.ContainsKey(name))
@@ -4060,6 +4051,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public override IrType? VisitPostIncrementExpr([NotNull] NovusParser.PostIncrementExprContext context)
     {
+        System.Console.WriteLine($"DEBUG: VisitPostIncrementExpr ENTERED, expr text = '{context.expression().GetText()}'");
         var operandType = Visit(context.expression());
         if (operandType == null)
             return IrIntType.I32;
@@ -4075,9 +4067,24 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             );
         }
 
-        // Verify it's an lvalue (for now, just check it's an identifier)
-        if (!(context.expression() is NovusParser.PrimaryExprContext primaryCtx &&
-              primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext))
+        // Verify it's an lvalue
+        bool isLvalue = false;
+        if (context.expression() is NovusParser.PrimaryExprContext primaryCtx)
+        {
+            var primaryExpr = primaryCtx.primaryExpression();
+            if (primaryExpr is NovusParser.IdentifierExprContext)
+            {
+                isLvalue = true;
+            }
+        }
+        else if (context.expression() is NovusParser.MemberAccessExprContext ||
+                 context.expression() is NovusParser.IndexExprContext ||
+                 context.expression() is NovusParser.DereferenceExprContext)
+        {
+            isLvalue = true;
+        }
+
+        if (!isLvalue)
         {
             var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
             _diagnostics.ReportError(
@@ -4086,7 +4093,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 location,
                 helpTexts: new List<string>
                 {
-                    "only variables, not arbitrary expressions, can be incremented"
+                    "only variables, member accesses, array elements, or dereferences can be incremented"
                 }
             );
         }
@@ -4111,9 +4118,24 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             );
         }
 
-        // Verify it's an lvalue (for now, just check it's an identifier)
-        if (!(context.expression() is NovusParser.PrimaryExprContext primaryCtx &&
-              primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext))
+        // Verify it's an lvalue
+        bool isLvalue = false;
+        if (context.expression() is NovusParser.PrimaryExprContext primaryCtx)
+        {
+            var primaryExpr = primaryCtx.primaryExpression();
+            if (primaryExpr is NovusParser.IdentifierExprContext)
+            {
+                isLvalue = true;
+            }
+        }
+        else if (context.expression() is NovusParser.MemberAccessExprContext ||
+                 context.expression() is NovusParser.IndexExprContext ||
+                 context.expression() is NovusParser.DereferenceExprContext)
+        {
+            isLvalue = true;
+        }
+
+        if (!isLvalue)
         {
             var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
             _diagnostics.ReportError(
@@ -4122,7 +4144,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 location,
                 helpTexts: new List<string>
                 {
-                    "only variables, not arbitrary expressions, can be decremented"
+                    "only variables, member accesses, array elements, or dereferences can be decremented"
                 }
             );
         }
@@ -4132,6 +4154,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public override IrType? VisitPreIncrementExpr([NotNull] NovusParser.PreIncrementExprContext context)
     {
+        System.Console.WriteLine("DEBUG: VisitPreIncrementExpr ENTERED");
         var operandType = Visit(context.expression());
         if (operandType == null)
             return IrIntType.I32;
@@ -4147,9 +4170,27 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             );
         }
 
-        // Verify it's an lvalue (for now, just check it's an identifier)
-        if (!(context.expression() is NovusParser.PrimaryExprContext primaryCtx &&
-              primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext))
+        // Verify it's an lvalue
+        bool isLvalue = false;
+        var expr = context.expression();
+        System.Console.WriteLine($"DEBUG PreInc: Expression type = {expr.GetType().Name}, Text = '{expr.GetText()}'");
+        if (expr is NovusParser.PrimaryExprContext primaryCtx)
+        {
+            var primaryExpr = primaryCtx.primaryExpression();
+            System.Console.WriteLine($"DEBUG PreInc: PrimaryExpression type = {primaryExpr?.GetType().Name}");
+            if (primaryExpr is NovusParser.IdentifierExprContext)
+            {
+                isLvalue = true;
+            }
+        }
+        else if (expr is NovusParser.MemberAccessExprContext ||
+                 expr is NovusParser.IndexExprContext ||
+                 expr is NovusParser.DereferenceExprContext)
+        {
+            isLvalue = true;
+        }
+
+        if (!isLvalue)
         {
             var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
             _diagnostics.ReportError(
@@ -4158,7 +4199,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 location,
                 helpTexts: new List<string>
                 {
-                    "only variables, not arbitrary expressions, can be incremented"
+                    "only variables, member accesses, array elements, or dereferences can be incremented"
                 }
             );
         }
@@ -4183,9 +4224,24 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             );
         }
 
-        // Verify it's an lvalue (for now, just check it's an identifier)
-        if (!(context.expression() is NovusParser.PrimaryExprContext primaryCtx &&
-              primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext))
+        // Verify it's an lvalue
+        bool isLvalue = false;
+        if (context.expression() is NovusParser.PrimaryExprContext primaryCtx)
+        {
+            var primaryExpr = primaryCtx.primaryExpression();
+            if (primaryExpr is NovusParser.IdentifierExprContext)
+            {
+                isLvalue = true;
+            }
+        }
+        else if (context.expression() is NovusParser.MemberAccessExprContext ||
+                 context.expression() is NovusParser.IndexExprContext ||
+                 context.expression() is NovusParser.DereferenceExprContext)
+        {
+            isLvalue = true;
+        }
+
+        if (!isLvalue)
         {
             var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
             _diagnostics.ReportError(
@@ -4194,7 +4250,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 location,
                 helpTexts: new List<string>
                 {
-                    "only variables, not arbitrary expressions, can be decremented"
+                    "only variables, member accesses, array elements, or dereferences can be decremented"
                 }
             );
         }

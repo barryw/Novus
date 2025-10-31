@@ -1,0 +1,24 @@
+// Example: Pre/Post Increment on Separate Lines
+//
+// Description:
+//   Tests that increment/decrement operators work correctly when on separate lines.
+//   This is the critical test case for newline-sensitive parsing.
+//
+// Expected Output:
+//   Exit code: 5
+//   x should be:
+//     Start: 5
+//     After ++x (pre-increment): 6
+//     After --x (pre-decrement): 5
+//     After x++ (post-increment): 5 (returns 5, but x becomes 6)
+//     After x-- (post-decrement): 6 (returns 6, but x becomes 5)
+//     Final: 5
+
+pub fn main() -> i32 {
+    var x = 5
+    ++x
+    --x
+    x++
+    x--
+    return x
+}

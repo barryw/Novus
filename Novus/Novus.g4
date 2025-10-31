@@ -3,12 +3,12 @@ grammar Novus;
 // Parser Rules
 
 compilationUnit
-    : importDeclaration* reexportDeclaration* (constDeclaration | staticDeclaration | globalVariableDeclaration | structDeclaration | enumDeclaration | implDeclaration | functionDeclaration)* EOF
+    : NEWLINE* importDeclaration* reexportDeclaration* (constDeclaration | staticDeclaration | globalVariableDeclaration | structDeclaration | enumDeclaration | implDeclaration | functionDeclaration)* EOF
     ;
 
 attribute
-    : '@' IDENTIFIER ('(' attributeArgList? ')')?
-    | '#' '[' IDENTIFIER ('(' attributeArgList? ')')? ']'
+    : '@' IDENTIFIER ('(' attributeArgList? ')')? NEWLINE*
+    | '#' '[' IDENTIFIER ('(' attributeArgList? ')')? ']' NEWLINE*
     ;
 
 attributeArgList
@@ -21,7 +21,7 @@ attributeArg
     ;
 
 importDeclaration
-    : KW_FROM modulePath KW_IMPORT importList
+    : KW_FROM modulePath KW_IMPORT importList NEWLINE*
     ;
 
 modulePath
@@ -38,7 +38,7 @@ importName
     ;
 
 reexportDeclaration
-    : KW_PUB KW_USE modulePath '::' ('*' | reexportList)
+    : KW_PUB KW_USE modulePath '::' ('*' | reexportList) NEWLINE*
     ;
 
 reexportList
@@ -46,19 +46,19 @@ reexportList
     ;
 
 constDeclaration
-    : attribute* (KW_PUB | KW_INTERNAL)? KW_CONST IDENTIFIER ':' type '=' expression
+    : attribute* (KW_PUB | KW_INTERNAL)? KW_CONST IDENTIFIER ':' type '=' expression NEWLINE*
     ;
 
 staticDeclaration
-    : attribute* (KW_PUB | KW_INTERNAL)? KW_STATIC KW_MUT? IDENTIFIER ':' type '=' expression
+    : attribute* (KW_PUB | KW_INTERNAL)? KW_STATIC KW_MUT? IDENTIFIER ':' type '=' expression NEWLINE*
     ;
 
 globalVariableDeclaration
-    : attribute* KW_EXTERN KW_VAR IDENTIFIER ':' type (KW_AT expression)?
+    : attribute* KW_EXTERN KW_VAR IDENTIFIER ':' type (KW_AT expression)? NEWLINE*
     ;
 
 functionDeclaration
-    : attribute* KW_EXTERN? (KW_PUB | KW_INTERNAL)? KW_FN IDENTIFIER '(' parameterList? ')' ('->' type)? block?
+    : attribute* KW_EXTERN? (KW_PUB | KW_INTERNAL)? KW_FN IDENTIFIER '(' parameterList? ')' ('->' type)? block? NEWLINE*
     ;
 
 parameterList
@@ -76,15 +76,15 @@ selfParameter
     ;
 
 structDeclaration
-    : attribute* (KW_PUB | KW_INTERNAL)? KW_STRUCT IDENTIFIER genericParams? '{' structField* '}'
+    : attribute* (KW_PUB | KW_INTERNAL)? KW_STRUCT IDENTIFIER genericParams? '{' NEWLINE* structField* '}' NEWLINE*
     ;
 
 structField
-    : IDENTIFIER ':' type ','?
+    : IDENTIFIER ':' type ','? NEWLINE*
     ;
 
 enumDeclaration
-    : attribute* (KW_PUB | KW_INTERNAL)? KW_ENUM IDENTIFIER genericParams? '{' enumVariant (',' enumVariant)* ','? '}'
+    : attribute* (KW_PUB | KW_INTERNAL)? KW_ENUM IDENTIFIER genericParams? '{' NEWLINE* enumVariant (',' NEWLINE* enumVariant)* ','? NEWLINE* '}' NEWLINE*
     ;
 
 enumVariant
@@ -92,7 +92,7 @@ enumVariant
     ;
 
 implDeclaration
-    : attribute* KW_IMPL genericParams? typeName genericTypeArgs? '{' implItem* '}'
+    : attribute* KW_IMPL genericParams? typeName genericTypeArgs? '{' NEWLINE* implItem* '}' NEWLINE*
     ;
 
 implItem
@@ -140,7 +140,7 @@ typeList
     ;
 
 block
-    : '{' statement* '}'
+    : '{' NEWLINE* (statement (NEWLINE+ statement)* NEWLINE*)? '}'
     ;
 
 statement
@@ -173,7 +173,7 @@ usingStatement
     ;
 
 matchStatement
-    : KW_MATCH expression '{' matchArm (',' matchArm)* ','? '}'
+    : KW_MATCH expression '{' NEWLINE* matchArm (',' NEWLINE* matchArm)* ','? NEWLINE* '}'
     ;
 
 matchArm
@@ -208,9 +208,8 @@ variableDeclaration
     ;
 
 assignmentStatement
-    : ('*')* (IDENTIFIER | KW_SELF) (lvalueSuffix)* ('=' | '+=' | '-=' | '*=' | '/=' | '%=' | '&=' | '|=' | '^=' | '<<=' | '>>=') expression
-    | ('*')* (IDENTIFIER | KW_SELF) (lvalueSuffix)* ('++' | '--')
-    | ('++' | '--') ('*')* (IDENTIFIER | KW_SELF) (lvalueSuffix)*
+    : ('*')* (IDENTIFIER | KW_SELF) (lvalueSuffix)* ('++' | '--')
+    | ('*')* (IDENTIFIER | KW_SELF) (lvalueSuffix)* ('=' | '+=' | '-=' | '*=' | '/=' | '%=' | '&=' | '|=' | '^=' | '<<=' | '>>=') expression
     ;
 
 lvalueSuffix
@@ -289,10 +288,10 @@ primaryExpression
     | '-'? INTEGER_LITERAL                         # IntegerLiteral
     | '-'? BINARY_LITERAL                          # BinaryLiteral
     | '-'? HEX_LITERAL                             # HexLiteral
-    | typeName '{' structFieldInit (',' structFieldInit)* ','? '}'  # StructLiteral
+    | typeName '{' NEWLINE* structFieldInit (',' NEWLINE* structFieldInit)* ','? NEWLINE* '}'  # StructLiteral
     | identifier                                   # IdentifierExpr
     | '(' expression ')'                           # ParenExpr
-    | '{' (expression (',' expression)*)? '}'     # ArrayLiteral
+    | '{' NEWLINE* (expression (',' NEWLINE* expression)*)? NEWLINE* '}'     # ArrayLiteral
     ;
 
 identifier
@@ -300,7 +299,7 @@ identifier
     ;
 
 structFieldInit
-    : IDENTIFIER ':' expression
+    : IDENTIFIER ':' NEWLINE* expression
     ;
 
 // Lexer Rules
@@ -391,7 +390,11 @@ IDENTIFIER
 
 // Whitespace and Comments
 WS
-    : [ \t\r\n]+ -> skip
+    : [ \t]+ -> skip
+    ;
+
+NEWLINE
+    : '\r'? '\n'
     ;
 
 LINE_COMMENT

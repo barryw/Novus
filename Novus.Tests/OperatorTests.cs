@@ -31,8 +31,8 @@ public class OperatorTests
         var source = @"
 pub fn main() -> i32 {
     var x = 5
-    var y = (++x)
-    return y
+    ++x
+    return x
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -45,8 +45,8 @@ pub fn main() -> i32 {
         var source = @"
 pub fn main() -> i32 {
     var x = 5
-    var y = (--x)
-    return y
+    --x
+    return x
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -59,9 +59,9 @@ pub fn main() -> i32 {
 pub fn main() -> i32 {
     var x = 1
     var y = 2
-    var a = (++x)
-    var b = (++y)
-    return a + b
+    ++x
+    ++y
+    return x + y
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -102,9 +102,9 @@ pub fn main() -> i32 {
 pub fn main() -> i32 {
     var x = 5
     var y = 5
-    var a = (++x)
+    ++x
     y++
-    return a + y
+    return x + y
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);

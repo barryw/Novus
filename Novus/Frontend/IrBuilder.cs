@@ -1400,7 +1400,6 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Detect which kind of assignment this is
         string? op = null;
         bool isPostIncDec = false;
-        bool isPreIncDec = false;
 
         // Check for compound operators and increment/decrement
         for (int i = 0; i < context.ChildCount; i++)
@@ -1420,17 +1419,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
             else if (childText == "++" || childText == "--")
             {
-                // Check if it's at the beginning (pre) or after identifier (post)
-                if (i == 0)
-                {
-                    isPreIncDec = true;
-                    op = childText;
-                }
-                else
-                {
-                    isPostIncDec = true;
-                    op = childText;
-                }
+                // Post-increment/decrement (after identifier)
+                isPostIncDec = true;
+                op = childText;
                 break;
             }
         }
@@ -1447,8 +1438,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         var lvalueSuffixes = context.lvalueSuffix();
 
-        // Handle increment/decrement statements (no expression)
-        if (isPostIncDec || isPreIncDec)
+        // Handle post-increment/decrement statements (no expression)
+        if (isPostIncDec)
         {
             // Get the variable
             IrVariable? variable = null;

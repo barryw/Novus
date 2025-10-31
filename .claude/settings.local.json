@@ -162,7 +162,8 @@
       "Bash(dotnet:*)",
       "Bash(do echo \"Testing: $f\")",
       "Bash(rm:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Debug/net9.0/Novus:*)"
     ],
     "deny": [],
     "ask": []
