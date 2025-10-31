@@ -365,7 +365,6 @@ class Program
             }
 
             // Run optimization passes
-            Novus.Optimizer.Passes.RegisterAllocationPass? regAllocPass = null;
             if (options.OptimizationLevel > 0)
             {
                 var optimizer = Novus.Optimizer.OptimizationPipeline.CreatePipeline(
@@ -373,13 +372,6 @@ class Program
                     options.Verbose
                 );
                 optimizer.Run(module);
-
-                // Extract register allocation results if optimization level includes register allocation (level 2+)
-                if (options.OptimizationLevel >= 2)
-                {
-                    // Find the RegisterAllocationPass in the pipeline to get its results
-                    regAllocPass = optimizer.GetPass<Novus.Optimizer.Passes.RegisterAllocationPass>();
-                }
             }
 
             // Generate C code
@@ -395,9 +387,6 @@ class Program
             }
 
             var codegen = new CCodeGenerator(module, irBuilder.StringLiterals, options.Cpu, options.Fpu, explicitEntryPoints);
-
-            // Note: Register allocation is not used with C backend - VBCC handles register allocation
-
             var cCode = codegen.Generate();
 
             return (cCode, irBuilder.GetImportedModules());

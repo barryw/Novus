@@ -43,16 +43,12 @@ public class OptimizationPipeline
             Console.WriteLine($"Running optimization pipeline with {_passes.Count} passes...");
         }
 
-        // Separate RegisterAllocationPass from other passes
-        var regularPasses = _passes.Where(p => p is not Passes.RegisterAllocationPass).ToList();
-        var regAllocPass = _passes.OfType<Passes.RegisterAllocationPass>().FirstOrDefault();
-
-        // Run regular optimization passes until convergence
+        // Run optimization passes until convergence
         for (int iteration = 0; iteration < _maxIterations; iteration++)
         {
             bool changed = false;
 
-            foreach (var pass in regularPasses)
+            foreach (var pass in _passes)
             {
                 if (_verbose)
                 {
@@ -77,17 +73,6 @@ public class OptimizationPipeline
                 }
                 break;
             }
-        }
-
-        // Run register allocation AFTER convergence (not during iterations)
-        // This prevents other optimization passes from breaking register allocation
-        if (regAllocPass != null)
-        {
-            if (_verbose)
-            {
-                Console.WriteLine($"  Running {regAllocPass.Name} (post-convergence)...");
-            }
-            regAllocPass.Run(module);
         }
     }
 
@@ -117,9 +102,7 @@ public class OptimizationPipeline
                 pipeline.AddPass(new Passes.AlgebraicSimplificationPass());
                 pipeline.AddPass(new Passes.ConstantPropagationPass());
                 pipeline.AddPass(new Passes.CFGDeadCodeEliminationPass());
-                pipeline.AddPass(new Passes.CopyPropagationPass()); // Fixed: now scope-aware
-                // NOTE: RegisterAllocationPass runs after convergence (see Run() method)
-                pipeline.AddPass(new Passes.RegisterAllocationPass()); // Allocate variables to registers
+                pipeline.AddPass(new Passes.CopyPropagationPass());
                 break;
 
             case 3:
@@ -127,13 +110,11 @@ public class OptimizationPipeline
                 pipeline.AddPass(new Passes.ConstantFoldingPass());
                 pipeline.AddPass(new Passes.AlgebraicSimplificationPass());
                 pipeline.AddPass(new Passes.ConstantPropagationPass());
-                pipeline.AddPass(new Passes.CFGDeadCodeEliminationPass()); // Use CFG-based DCE
+                pipeline.AddPass(new Passes.CFGDeadCodeEliminationPass());
                 pipeline.AddPass(new Passes.CopyPropagationPass());
                 pipeline.AddPass(new Passes.CommonSubexpressionEliminationPass());
                 pipeline.AddPass(new Passes.StrengthReductionPass());
-                pipeline.AddPass(new Passes.LoopInvariantCodeMotionPass()); // Move loop-invariant code to preheaders
-                pipeline.AddPass(new Passes.DBccLoopOptimizationPass()); // Rotate counted loops for DBcc
-                pipeline.AddPass(new Passes.RegisterAllocationPass()); // Allocate variables to registers (after loop opts)
+                pipeline.AddPass(new Passes.LoopInvariantCodeMotionPass());
                 break;
 
             default:
