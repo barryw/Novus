@@ -1,0 +1,64 @@
+// Novus Standard Library - TagList Helpers
+// Namespace: std::tags
+//
+// Utilities for working with AmigaOS TagList-based APIs
+// Many AmigaOS functions use variable-length tag lists to pass parameters.
+// This module provides helpers to make working with tags more ergonomic.
+
+from std::core import Option
+from std::collections import Vec
+from std::amiga_structs import TagItem, TAG_DONE
+
+// ============================================================================
+// TagList Builder
+// ============================================================================
+
+/// Build a complete TagItem array from a user-provided array, adding TAG_DONE
+///
+/// Takes a pointer to an array of TagItems and its length, returns a new Vec with TAG_DONE appended.
+/// This ensures proper tag list termination for AmigaOS APIs.
+///
+/// Example:
+/// ```novus
+/// from std::tags import make_tags
+/// from std::ffi::intuition import WA_Width, WA_Height, WA_Title
+/// from std::amiga_structs import TagItem
+///
+/// let input_tags: [3]TagItem = [
+///     TagItem { ti_Tag: WA_Width, ti_Data: 640 },
+///     TagItem { ti_Tag: WA_Height, ti_Data: 480 },
+///     TagItem { ti_Tag: WA_Title, ti_Data: "My Window".ptr as u32 }
+/// ]
+/// let tags = make_tags(&input_tags, 3u32)
+/// // Returns a Vec with your 3 tags + TAG_DONE at the end
+/// ```
+pub fn make_tags(tags_ptr: *TagItem, count: u32) -> Vec<TagItem> {
+    let mut result = Vec::new()
+
+    // Add all user-provided tags
+    let mut i = 0u32
+    while i < count {
+        let tag = tags_ptr[i]
+        result.push(tag)
+        i = i + 1u32
+    }
+
+    // Always append TAG_DONE
+    result.push(TagItem {
+        ti_Tag: TAG_DONE,
+        ti_Data: 0u32
+    })
+
+    return result
+}
+
+// ============================================================================
+// Future Additions
+// ============================================================================
+//
+// We could add:
+// - TagBuilder with fluent API: TagBuilder::new().add(tag, data).build()
+// - Type-safe wrappers for specific tag types (string tags, bool tags, etc.)
+// - Tag validation/checking utilities
+// - Utilities to read/parse existing tag lists
+// - Convenience helper: make_tag(tag, data) -> TagItem

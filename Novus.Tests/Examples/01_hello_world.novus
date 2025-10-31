@@ -1,6 +1,0 @@
-// Example 01: Hello World
-// The simplest possible program - returns 42
-
-pub fn main() -> u32 {
-    return 42
-}

@@ -1,0 +1,143 @@
+// Novus Standard Library - DOS (High-Level)
+// Namespace: std::dos
+//
+// High-level wrappers for dos.library functions
+// For low-level FFI access, use std::ffi::dos
+
+from std::core import Option, Result
+from std::error import DosError, NovusError, novus_error_from_dos
+from std::tags import make_tags
+from std::amiga_structs import TagItem, Process
+from std::ffi::dos import SystemTagList, CreateNewProc, AllocDosObject, FreeDosObject
+from std::ffi::dos import NewLoadSeg, UnLoadSeg
+
+// ============================================================================
+// Command Execution
+// ============================================================================
+
+/// Execute a shell command with tag-based parameters
+///
+/// This is a high-level wrapper around SystemTagList.
+///
+/// Example:
+/// ```novus
+/// from std::dos import System
+/// from std::ffi::dos import SYS_Input, SYS_Output, SYS_Asynch, DOSTRUE
+///
+/// let result = System("dir", &[
+///     (SYS_Asynch, DOSTRUE),
+/// ])?
+/// ```
+pub fn System(command: *u8, tags_ptr: *TagItem, count: u32) -> Result<i32, NovusError> {
+    let tag_list = make_tags(tags_ptr, count)
+    let result = SystemTagList(command, tag_list.as_ptr())
+
+    // SystemTagList returns -1 on error
+    if result == -1 {
+        return Result::Err(novus_error_from_dos(DosError::NotImplemented))
+    }
+
+    return Result::Ok(result)
+}
+
+// ============================================================================
+// Process Management
+// ============================================================================
+
+/// Create a new process with tag-based parameters
+///
+/// This is a high-level wrapper around CreateNewProc.
+///
+/// Example:
+/// ```novus
+/// from std::dos import CreateProcess
+/// from std::ffi::dos import NP_Entry, NP_Name, NP_StackSize
+///
+/// let process = CreateProcess(&[
+///     (NP_Entry, my_task_func as u32),
+///     (NP_Name, "My Task".ptr as u32),
+///     (NP_StackSize, 4096),
+/// ])?
+/// ```
+pub fn CreateProcess(tags_ptr: *TagItem, count: u32) -> Result<*Process, NovusError> {
+    let tag_list = make_tags(tags_ptr, count)
+    let process = CreateNewProc(tag_list.as_ptr())
+
+    // Check if process creation succeeded
+    let process_int: u32 = (u32)process
+    if process_int == 0u32 {
+        return Result::Err(novus_error_from_dos(DosError::NoFreeStore))
+    }
+
+    return Result::Ok(process)
+}
+
+// ============================================================================
+// DOS Object Allocation
+// ============================================================================
+
+/// Allocate a DOS object (lock, filehandle, etc.) with tag-based parameters
+///
+/// This is a high-level wrapper around AllocDosObject.
+///
+/// Example:
+/// ```novus
+/// from std::dos import AllocDos
+/// from std::ffi::dos import DOS_STDPKT, ADO_FH_Mode, MODE_NEWFILE
+///
+/// let obj = AllocDos(DOS_STDPKT, &[
+///     (ADO_FH_Mode, MODE_NEWFILE),
+/// ])?
+///
+/// defer FreeDosObject(DOS_STDPKT, obj)
+/// ```
+pub fn AllocDos(obj_type: u32, tags_ptr: *TagItem, count: u32) -> Result<*u8, NovusError> {
+    let tag_list = make_tags(tags_ptr, count)
+    let obj = AllocDosObject(obj_type, tag_list.as_ptr())
+
+    // Check if allocation succeeded
+    let obj_int: u32 = (u32)obj
+    if obj_int == 0u32 {
+        return Result::Err(novus_error_from_dos(DosError::NoFreeStore))
+    }
+
+    return Result::Ok(obj)
+}
+
+/// Load a program segment with tag-based parameters
+///
+/// This is a high-level wrapper around NewLoadSeg.
+///
+/// Example:
+/// ```novus
+/// from std::dos import LoadSeg
+///
+/// let seglist = LoadSeg("SYS:C/Dir", &[])?
+/// defer UnLoadSeg(seglist)
+/// ```
+pub fn LoadSeg(file: *u8, tags_ptr: *TagItem, count: u32) -> Result<i32, NovusError> {
+    let tag_list = make_tags(tags_ptr, count)
+    let seglist = NewLoadSeg(file, tag_list.as_ptr())
+
+    // NewLoadSeg returns 0 on failure
+    if seglist == 0 {
+        return Result::Err(novus_error_from_dos(DosError::NotFound))
+    }
+
+    return Result::Ok(seglist)
+}
+
+// ============================================================================
+// Notes on Printf/FPrintf
+// ============================================================================
+//
+// Printf and FPrintf are varargs functions that require special handling.
+// For now, you can use the V* variants (VPrintf, VFPrintf) directly by
+// building an argument array manually, or use simpler functions like PutStr.
+//
+// The V* functions take a format string and a pointer to an array of arguments.
+// This requires careful manual construction of the argument array with correct
+// sizing and alignment.
+//
+// Future enhancement: Add a Printf macro or special compiler support for
+// format string handling.

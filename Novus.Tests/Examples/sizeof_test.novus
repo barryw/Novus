@@ -1,4 +1,10 @@
-// Test @sizeof intrinsic
+// Example: Sizeof Operator
+//
+// Description:
+//   Tests @sizeof compile-time operator for getting sizes of types.
+//
+// Expected Output:
+//   Exit code: sum of type sizes
 
 struct Point {
     x: i32,

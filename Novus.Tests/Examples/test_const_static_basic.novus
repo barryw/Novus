@@ -1,6 +1,11 @@
-// Test basic const and static declarations with different visibility
+// Example: Constants
+//
+// Description:
+//   Tests constant declarations with pub const and compile-time evaluation.
+//
+// Expected Output:
+//   Exit code: constant value
 
-// Private const (file-local)
 const MAX_COUNT: i32 = 100
 
 // Public const (exported)

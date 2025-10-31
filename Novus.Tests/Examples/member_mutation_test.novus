@@ -1,4 +1,10 @@
-// Test member mutation in methods
+// Example: Struct Member Mutation
+//
+// Description:
+//   Tests mutating struct fields. Shows struct members can be modified when mutable.
+//
+// Expected Output:
+//   Exit code: 0
 
 struct Counter {
     value: i32,

@@ -1,5 +1,10 @@
-// Example 12: Control Flow Demonstration
-// Tests if/else, while loops, forever loops, and break
+// Example: Control Flow
+//
+// Description:
+//   Demonstrates if/else statements and conditional branching.
+//
+// Expected Output:
+//   Exit code: result based on conditions
 
 pub fn test_if_else(x: i32) -> i32 {
     if x > 10 {

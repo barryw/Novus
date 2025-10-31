@@ -13,7 +13,7 @@ public class CodeGeneratorTests
     {
         var inputStream = new AntlrInputStream(source);
         var lexer = new NovusLexer(inputStream);
-        var tokenStream = new CommonTokenStream(lexer);
+        var tokenStream = new AngleBracketTokenStream(lexer);
         var parser = new NovusParser(tokenStream);
         var tree = parser.compilationUnit();
 
@@ -1126,13 +1126,13 @@ fn test(x: i32) -> i32 {
         var module = new IrModule();
 
         // Create main function with body
-        var mainFunc = new IrFunction("main", new IrIntType(32, false), isPublic: true, isExtern: false);
+        var mainFunc = new IrFunction("main", new IrIntType(32, false), visibility: Visibility.Public, isExtern: false);
         var entryBlock = mainFunc.CreateBasicBlock("entry");
         entryBlock.Instructions.Add(new IrReturn(new IrConstant(42, new IrIntType(32, false))));
         module.AddFunction(mainFunc);
 
         // Create imported function with NO body (simulates imported declaration from another module)
-        var importedFunc = new IrFunction("WriteOut", new IrIntType(32, true), isPublic: false, isExtern: false);
+        var importedFunc = new IrFunction("WriteOut", new IrIntType(32, true), visibility: Visibility.Private, isExtern: false);
         importedFunc.Parameters.Add(new IrParameter("message", IrStringType.Instance));
         // Importantly: NO basic blocks - this simulates an imported function
         module.AddFunction(importedFunc);
@@ -1180,18 +1180,18 @@ pub fn main() -> u32 {
         var module = new IrModule();
 
         // Create local function with body
-        var localFunc = new IrFunction("helper", new IrIntType(32, true), isPublic: true, isExtern: false);
+        var localFunc = new IrFunction("helper", new IrIntType(32, true), visibility: Visibility.Public, isExtern: false);
         var helperBlock = localFunc.CreateBasicBlock("entry");
         helperBlock.Instructions.Add(new IrReturn(new IrConstant(10, new IrIntType(32, true))));
         module.AddFunction(localFunc);
 
         // Create imported function with no body
-        var importedFunc = new IrFunction("WriteOut", new IrIntType(32, true), isPublic: false, isExtern: false);
+        var importedFunc = new IrFunction("WriteOut", new IrIntType(32, true), visibility: Visibility.Private, isExtern: false);
         importedFunc.Parameters.Add(new IrParameter("message", IrStringType.Instance));
         module.AddFunction(importedFunc);
 
         // Create main function with body
-        var mainFunc = new IrFunction("main", new IrIntType(32, false), isPublic: true, isExtern: false);
+        var mainFunc = new IrFunction("main", new IrIntType(32, false), visibility: Visibility.Public, isExtern: false);
         var mainBlock = mainFunc.CreateBasicBlock("entry");
         mainBlock.Instructions.Add(new IrReturn(new IrConstant(0, new IrIntType(32, false))));
         module.AddFunction(mainFunc);

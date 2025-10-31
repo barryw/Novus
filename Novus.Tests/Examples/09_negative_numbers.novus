@@ -1,5 +1,10 @@
-// Example 09: Negative Numbers
-// Tests handling of negative literal values
+// Example: Negative Numbers
+//
+// Description:
+//   Tests handling of negative number literals and negative arithmetic with signed types.
+//
+// Expected Output:
+//   Exit code: calculated result
 
 fn negative_i8() -> i8 {
     return -42i8

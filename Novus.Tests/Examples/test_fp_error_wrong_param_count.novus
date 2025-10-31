@@ -1,4 +1,10 @@
-// Test error message: passing function with wrong parameter count
+// Example: FP Error - Param Count
+//
+// Description:
+//   Negative test: should reject function pointers with wrong parameter count.
+//
+// Expected Output:
+//   Compilation error expected
 
 fn negate(x: i32) -> i32 {
     return -x

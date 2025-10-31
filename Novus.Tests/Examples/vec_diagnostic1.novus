@@ -1,7 +1,0 @@
-from std::collections import Vec
-
-// Minimal test: Just create Vec and return immediately
-fn main() -> i32 {
-    var v: Vec<i32> = Vec::new()
-    return 42
-}

@@ -1,5 +1,10 @@
-// Example 07: Complex Nested Expression
-// Tests operator precedence and expression handling
+// Example: Complex Expression
+//
+// Description:
+//   Tests complex arithmetic expression with multiple operations and precedence.
+//
+// Expected Output:
+//   Exit code: calculated result
 
 pub fn main() -> u32 {
     return ((10 + 5) * (20 - 3)) / 2

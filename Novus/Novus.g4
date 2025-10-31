@@ -266,8 +266,7 @@ expression
     | '*' expression                                       # DereferenceExpr
     | expression ('*' | '/' | '%') expression              # MultiplicativeExpr
     | expression ('+' | '-') expression                     # AdditiveExpr
-    | expression '<' '<' expression                        # ShiftLeftExpr
-    | expression '>' '>' expression                        # ShiftRightExpr
+    | expression ('<<' | '>>') expression                  # ShiftExpr
     | expression '&' expression                            # BitwiseAndExpr
     | expression '^' expression                            # BitwiseXorExpr
     | expression '|' expression                            # BitwiseOrExpr
@@ -378,8 +377,12 @@ STRING_LITERAL
     ;
 
 fragment ESC
-    : '\\' [btnfr0"'\\]
-    | '\\x' [0-9A-Fa-f] [0-9A-Fa-f]
+    : '\\' ('b' | 't' | 'n' | 'f' | 'r' | '0' | '"' | '\'' | '\\')
+    | '\\x' HEX_DIGIT HEX_DIGIT
+    ;
+
+fragment HEX_DIGIT
+    : [0-9A-Fa-f]
     ;
 
 IDENTIFIER

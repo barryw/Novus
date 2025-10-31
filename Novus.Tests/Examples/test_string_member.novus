@@ -1,4 +1,10 @@
-// Test String member access (.len field)
+// Example: String Struct Member
+//
+// Description:
+//   Tests String type (fat pointer) as a struct member field.
+//
+// Expected Output:
+//   Exit code: 0
 
 fn test_len(s: String) -> i32 {
     return s.len

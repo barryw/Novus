@@ -1,0 +1,43 @@
+// Example: Array of Structs
+//
+// Description:
+//   Demonstrates creating arrays of struct instances using array literal
+//   syntax. Shows integration with AmigaOS TagItem structs imported from
+//   the standard library. Tests struct field access through array indexing.
+//
+// Expected Output:
+//   Exit code: 0 (all tests pass)
+
+from std::amiga_structs import TagItem, TAG_DONE
+
+fn main() -> i32 {
+    // Test: Array of struct literals
+    let tags: [3]TagItem = {
+        TagItem { ti_Tag: 100u32, ti_Data: 200u32 },
+        TagItem { ti_Tag: 300u32, ti_Data: 400u32 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0u32 }
+    }
+
+    // Verify first tag
+    if tags[0u32].ti_Tag != 100u32 {
+        return 1
+    }
+    if tags[0u32].ti_Data != 200u32 {
+        return 2
+    }
+
+    // Verify second tag
+    if tags[1u32].ti_Tag != 300u32 {
+        return 3
+    }
+    if tags[1u32].ti_Data != 400u32 {
+        return 4
+    }
+
+    // Verify TAG_DONE
+    if tags[2u32].ti_Tag != TAG_DONE {
+        return 5
+    }
+
+    return 0
+}

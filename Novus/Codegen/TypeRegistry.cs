@@ -17,6 +17,36 @@ public class TypeRegistry
     /// </summary>
     public void RegisterModule(IrModule module)
     {
+        // Scan external variables for enum and struct types
+        foreach (var externVar in module.ExternalVariables)
+        {
+            if (externVar.Type is IrEnumType enumExtVar && enumExtVar.GenericParameters.Count == 0)
+            {
+                if (!_enumTypes.Any(e => GetEnumName(e) == GetEnumName(enumExtVar)))
+                    _enumTypes.Add(enumExtVar);
+            }
+            else if (externVar.Type is IrStructType structExtVar && structExtVar.GenericParameters.Count == 0)
+            {
+                if (!_structTypes.Any(s => GetStructName(s) == GetStructName(structExtVar)))
+                    _structTypes.Add(structExtVar);
+            }
+        }
+
+        // Scan static variables for enum and struct types
+        foreach (var staticVar in module.StaticVariables)
+        {
+            if (staticVar.Type is IrEnumType enumStaticVar && enumStaticVar.GenericParameters.Count == 0)
+            {
+                if (!_enumTypes.Any(e => GetEnumName(e) == GetEnumName(enumStaticVar)))
+                    _enumTypes.Add(enumStaticVar);
+            }
+            else if (staticVar.Type is IrStructType structStaticVar && structStaticVar.GenericParameters.Count == 0)
+            {
+                if (!_structTypes.Any(s => GetStructName(s) == GetStructName(structStaticVar)))
+                    _structTypes.Add(structStaticVar);
+            }
+        }
+
         // Scan all functions for actually-used enum types
         // This includes return types, parameters, local variables, and instruction operands
         foreach (var function in module.Functions)

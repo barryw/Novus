@@ -1,5 +1,6 @@
 using Antlr4.Runtime;
 using Novus.Diagnostics;
+using Novus.Frontend;
 using Novus.Parser;
 
 namespace Novus.Tests;
@@ -11,7 +12,7 @@ public class NovusErrorListenerTests
         var diagnostics = new DiagnosticBag();
         var inputStream = new AntlrInputStream(source);
         var lexer = new NovusLexer(inputStream);
-        var tokenStream = new CommonTokenStream(lexer);
+        var tokenStream = new AngleBracketTokenStream(lexer);
         var parser = new NovusParser(tokenStream);
 
         parser.RemoveErrorListeners();

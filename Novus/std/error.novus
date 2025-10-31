@@ -156,36 +156,36 @@ pub fn dos_error_from_code(code: i32) -> DosError {
 
 // Convert DosError back to error code (for debugging/logging)
 pub fn dos_error_to_code(err: DosError) -> i32 {
-    match err {
-        NotFound => 205,
-        AlreadyExists => 203,
-        DirNotFound => 204,
-        DirectoryNotEmpty => 216,
-        PermissionDenied => -1,  // Generic
-        WriteProtected => 223,
-        ReadProtected => 224,
-        DeleteProtected => 222,
-        DiskFull => 221,
-        DiskNotValidated => 213,
-        DiskWriteProtected => 214,
-        NoDisk => 226,
-        NotADosDisk => 225,
-        DeviceNotMounted => 218,
-        SeekError => 219,
-        BufferOverflow => 303,
-        BadStreamName => 206,
-        NoFreeStore => 103,
-        ObjectInUse => 202,
-        ObjectTooLarge => 207,
-        TooManyLevels => 217,
-        InvalidLock => 211,
-        RecordNotLocked => 240,
-        LockCollision => 241,
-        LockTimeout => 242,
-        NotImplemented => 236,
-        BadNumber => 115,
-        InvalidInput => -2,  // Generic
-        Unknown => -999,  // Unmapped error
+    return match err {
+        DosError::NotFound => 205,
+        DosError::AlreadyExists => 203,
+        DosError::DirNotFound => 204,
+        DosError::DirectoryNotEmpty => 216,
+        DosError::PermissionDenied => -1,  // Generic
+        DosError::WriteProtected => 223,
+        DosError::ReadProtected => 224,
+        DosError::DeleteProtected => 222,
+        DosError::DiskFull => 221,
+        DosError::DiskNotValidated => 213,
+        DosError::DiskWriteProtected => 214,
+        DosError::NoDisk => 226,
+        DosError::NotADosDisk => 225,
+        DosError::DeviceNotMounted => 218,
+        DosError::SeekError => 219,
+        DosError::BufferOverflow => 303,
+        DosError::BadStreamName => 206,
+        DosError::NoFreeStore => 103,
+        DosError::ObjectInUse => 202,
+        DosError::ObjectTooLarge => 207,
+        DosError::TooManyLevels => 217,
+        DosError::InvalidLock => 211,
+        DosError::RecordNotLocked => 240,
+        DosError::LockCollision => 241,
+        DosError::LockTimeout => 242,
+        DosError::NotImplemented => 236,
+        DosError::BadNumber => 115,
+        DosError::InvalidInput => -2,  // Generic
+        DosError::Unknown => -999,  // Unmapped error
     }
 }
 
@@ -210,18 +210,18 @@ pub enum ExecError {
 
 // Convert ExecError to error code
 pub fn exec_error_to_code(err: ExecError) -> i32 {
-    match err {
-        NoMem => -100,
-        BadSignal => -101,
-        NullReturn => -102,
-        BadTask => -103,
-        BadNode => -104,
-        BadPort => -105,
-        SignalInUse => -106,
-        TaskNotFound => -107,
-        LibraryNotFound => -108,
-        InvalidAddress => -109,
-        AlignmentError => -110,
+    return match err {
+        ExecError::NoMem => -100,
+        ExecError::BadSignal => -101,
+        ExecError::NullReturn => -102,
+        ExecError::BadTask => -103,
+        ExecError::BadNode => -104,
+        ExecError::BadPort => -105,
+        ExecError::SignalInUse => -106,
+        ExecError::TaskNotFound => -107,
+        ExecError::LibraryNotFound => -108,
+        ExecError::InvalidAddress => -109,
+        ExecError::AlignmentError => -110,
     }
 }
 
@@ -243,15 +243,15 @@ pub enum IntuitionError {
 
 // Convert IntuitionError to error code
 pub fn intuition_error_to_code(err: IntuitionError) -> i32 {
-    match err {
-        WindowOpenFailed => -200,
-        ScreenOpenFailed => -201,
-        GadgetCreateFailed => -202,
-        MenuCreateFailed => -203,
-        InvalidWindow => -204,
-        InvalidScreen => -205,
-        NoIDCMP => -206,
-        BadDisplayMode => -207,
+    return match err {
+        IntuitionError::WindowOpenFailed => -200,
+        IntuitionError::ScreenOpenFailed => -201,
+        IntuitionError::GadgetCreateFailed => -202,
+        IntuitionError::MenuCreateFailed => -203,
+        IntuitionError::InvalidWindow => -204,
+        IntuitionError::InvalidScreen => -205,
+        IntuitionError::NoIDCMP => -206,
+        IntuitionError::BadDisplayMode => -207,
     }
 }
 
@@ -272,14 +272,14 @@ pub enum GraphicsError {
 
 // Convert GraphicsError to error code
 pub fn graphics_error_to_code(err: GraphicsError) -> i32 {
-    match err {
-        BitMapAllocFailed => -300,
-        RastPortInitFailed => -301,
-        FontOpenFailed => -302,
-        InvalidBitMap => -303,
-        InvalidRastPort => -304,
-        BadDisplayMode => -305,
-        CopperListFailed => -306,
+    return match err {
+        GraphicsError::BitMapAllocFailed => -300,
+        GraphicsError::RastPortInitFailed => -301,
+        GraphicsError::FontOpenFailed => -302,
+        GraphicsError::InvalidBitMap => -303,
+        GraphicsError::InvalidRastPort => -304,
+        GraphicsError::BadDisplayMode => -305,
+        GraphicsError::CopperListFailed => -306,
     }
 }
 
@@ -322,11 +322,11 @@ pub fn novus_error_from_graphics(err: GraphicsError) -> NovusError {
 
 // Convert NovusError to generic error code (for debugging/FFI)
 pub fn novus_error_to_code(err: NovusError) -> i32 {
-    match err {
-        Dos(dos_err) => dos_error_to_code(dos_err),
-        Exec(exec_err) => exec_error_to_code(exec_err),
-        Intuition(intui_err) => intuition_error_to_code(intui_err),
-        Graphics(gfx_err) => graphics_error_to_code(gfx_err),
+    return match err {
+        NovusError::Dos(dos_err) => dos_error_to_code(dos_err),
+        NovusError::Exec(exec_err) => exec_error_to_code(exec_err),
+        NovusError::Intuition(intui_err) => intuition_error_to_code(intui_err),
+        NovusError::Graphics(gfx_err) => graphics_error_to_code(gfx_err),
     }
 }
 

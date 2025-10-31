@@ -1,6 +1,7 @@
 using Antlr4.Runtime;
 using Antlr4.Runtime.Tree;
 using Novus.Compilation;
+using Novus.Frontend;
 using Novus.Parser;
 
 namespace Novus.Tests;
@@ -18,7 +19,7 @@ public class ModuleCacheTests
     {
         var inputStream = new AntlrInputStream(source);
         var lexer = new NovusLexer(inputStream);
-        var tokenStream = new CommonTokenStream(lexer);
+        var tokenStream = new AngleBracketTokenStream(lexer);
         var parser = new NovusParser(tokenStream);
         return parser.compilationUnit();
     }

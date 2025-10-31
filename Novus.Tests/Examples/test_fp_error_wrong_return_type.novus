@@ -1,4 +1,10 @@
-// Test error message: passing function with wrong return type
+// Example: FP Error - Return Type
+//
+// Description:
+//   Negative test: should reject function pointers with wrong return type.
+//
+// Expected Output:
+//   Compilation error expected
 
 fn print_sum(a: i32, b: i32) {
     // Returns void, not i32

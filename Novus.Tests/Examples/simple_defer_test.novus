@@ -1,5 +1,10 @@
-// Simple test to verify defer blocks are emitted in generated C code
-// This doesn't actually allocate memory, just simulates the defer pattern
+// Example: Basic Defer
+//
+// Description:
+//   Simple defer test showing cleanup block execution when function returns.
+//
+// Expected Output:
+//   Exit code: value set by defer
 
 fn cleanup(id: i32) {
     // In real code this would be Vec::drop() or similar

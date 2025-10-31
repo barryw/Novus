@@ -634,6 +634,12 @@ public class CCodeGenerator
             _output.AppendLine();
         }
 
+        // Include AmigaOS headers for external structs
+        // TagItem is defined in utility/tagitem.h
+        _output.AppendLine("#include <utility/tagitem.h>");
+        _output.AppendLine("typedef struct TagItem TagItem;");
+        _output.AppendLine();
+
         // Don't emit proto headers - we'll use assembly stubs with i32 signatures
         // This avoids fighting VBCC's type system (BPTR, CONST_STRPTR, etc.)
         // Our assembly stubs handle the conversions from i32 to proper AmigaOS types
@@ -661,8 +667,22 @@ public class CCodeGenerator
 
     private void EmitEnumTypes(HashSet<string> reachableFunctions)
     {
-        // Collect all unique enum types used in reachable functions only
+        // Collect all unique enum types used in reachable functions, external variables, and static variables
         var enumTypes = new HashSet<IrEnumType>();
+
+        // Scan external variables for enum types
+        foreach (var externVar in _module.ExternalVariables)
+        {
+            if (externVar.Type is IrEnumType enumExtVar)
+                enumTypes.Add(enumExtVar);
+        }
+
+        // Scan static variables for enum types
+        foreach (var staticVar in _module.StaticVariables)
+        {
+            if (staticVar.Type is IrEnumType enumStaticVar)
+                enumTypes.Add(enumStaticVar);
+        }
 
         // Scan only reachable functions for enum types
         foreach (var function in _module.Functions.Where(f => reachableFunctions.Contains(f.Name)))
@@ -1201,7 +1221,6 @@ public class CCodeGenerator
 
     private void EmitLocalDecl(IrLocalDecl localDecl)
     {
-        var cType = GetCType(localDecl.Type);
         var varName = SanitizeVariableName(localDecl.Name);
         var initValue = EmitValue(localDecl.InitialValue);
 
@@ -1209,6 +1228,7 @@ public class CCodeGenerator
         if (_declaredVariables.Contains(varName))
         {
             // Already declared - emit assignment only
+            var cType = GetCType(localDecl.Type);
             var initType = GetCType(localDecl.InitialValue.Type);
             if (initType != cType)
             {
@@ -1222,14 +1242,25 @@ public class CCodeGenerator
         else
         {
             // First declaration - emit with type
-            var initType = GetCType(localDecl.InitialValue.Type);
-            if (initType != cType)
+            // Special handling for array types with array literal initialization
+            if (localDecl.Type is IrArrayType arrayType && localDecl.InitialValue is IrArrayLiteral)
             {
-                _output.AppendLine($"    {cType} {varName} = ({cType}){initValue};");
+                var elementType = GetCType(arrayType.ElementType);
+                var size = arrayType.Length;
+                _output.AppendLine($"    {elementType} {varName}[{size}] = {initValue};");
             }
             else
             {
-                _output.AppendLine($"    {cType} {varName} = {initValue};");
+                var cType = GetCType(localDecl.Type);
+                var initType = GetCType(localDecl.InitialValue.Type);
+                if (initType != cType)
+                {
+                    _output.AppendLine($"    {cType} {varName} = ({cType}){initValue};");
+                }
+                else
+                {
+                    _output.AppendLine($"    {cType} {varName} = {initValue};");
+                }
             }
             _declaredVariables.Add(varName);
         }
@@ -1497,6 +1528,7 @@ public class CCodeGenerator
             IrDereferenceValue derefValue => $"(*{EmitValue(derefValue.PointerValue)})",
             IrCastValue castValue => EmitCastValue(castValue),
             IrStructLiteral structLit => EmitStructLiteral(structLit),
+            IrArrayLiteral arrayLit => EmitArrayLiteral(arrayLit),
             IrFunctionAddress funcAddr => funcAddr.FunctionName,  // Function name IS its address in C
             _ => throw new NotSupportedException($"Unsupported value type: {value.GetType().Name}")
         };
@@ -1543,6 +1575,21 @@ public class CCodeGenerator
             .ToList();
 
         return $"({typeName}){{ {string.Join(", ", fields)} }}";
+    }
+
+    private string EmitArrayLiteral(IrArrayLiteral arrayLit)
+    {
+        var arrayType = arrayLit.Type as IrArrayType;
+        if (arrayType == null)
+            throw new InvalidOperationException("ArrayLiteral must have IrArrayType");
+
+        var elements = arrayLit.Elements
+            .Select(elem => EmitValue(elem))
+            .ToList();
+
+        // Just emit the brace-enclosed elements without type cast
+        // The variable declaration will provide the type
+        return $"{{ {string.Join(", ", elements)} }}";
     }
 
     private string EmitEnumValue(IrEnumValue enumValue)

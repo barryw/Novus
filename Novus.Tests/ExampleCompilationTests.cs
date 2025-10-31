@@ -22,7 +22,7 @@ public class ExampleCompilationTests
         // Parse
         var inputStream = new AntlrInputStream(source);
         var lexer = new NovusLexer(inputStream);
-        var tokenStream = new CommonTokenStream(lexer);
+        var tokenStream = new AngleBracketTokenStream(lexer);
         var parser = new NovusParser(tokenStream);
         var tree = parser.compilationUnit();
 

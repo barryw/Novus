@@ -1,5 +1,6 @@
 using Novus.Compilation;
 using Novus.Diagnostics;
+using Novus.Frontend;
 using Novus.Parser;
 using Antlr4.Runtime;
 
@@ -63,7 +64,7 @@ fn main() -> i32 {
             {
                 var inputStream = new AntlrInputStream(source);
                 var lexer = new NovusLexer(inputStream);
-                var tokenStream = new CommonTokenStream(lexer);
+                var tokenStream = new AngleBracketTokenStream(lexer);
                 var parser = new NovusParser(tokenStream);
                 parser.compilationUnit();
             }
@@ -145,7 +146,7 @@ fn main() -> i32 {
             // Act
             var inputStream = new AntlrInputStream(source);
             var lexer = new NovusLexer(inputStream);
-            var tokenStream = new CommonTokenStream(lexer);
+            var tokenStream = new AngleBracketTokenStream(lexer);
             var parser = new NovusParser(tokenStream);
 
             parser.RemoveErrorListeners();
@@ -186,7 +187,7 @@ fn main() -> i32 {
                 var source = File.ReadAllText(module);
                 var inputStream = new AntlrInputStream(source);
                 var lexer = new NovusLexer(inputStream);
-                var tokenStream = new CommonTokenStream(lexer);
+                var tokenStream = new AngleBracketTokenStream(lexer);
                 var parser = new NovusParser(tokenStream);
 
                 parser.RemoveErrorListeners();
@@ -275,7 +276,7 @@ fn bad2() -> i32 {
             // Act
             var inputStream = new AntlrInputStream(source);
             var lexer = new NovusLexer(inputStream);
-            var tokenStream = new CommonTokenStream(lexer);
+            var tokenStream = new AngleBracketTokenStream(lexer);
             var parser = new NovusParser(tokenStream);
 
             parser.RemoveErrorListeners();
@@ -374,7 +375,7 @@ fn main() -> i32 {
             // Act
             var inputStream = new AntlrInputStream(source);
             var lexer = new NovusLexer(inputStream);
-            var tokenStream = new CommonTokenStream(lexer);
+            var tokenStream = new AngleBracketTokenStream(lexer);
             var parser = new NovusParser(tokenStream);
 
             parser.RemoveErrorListeners();

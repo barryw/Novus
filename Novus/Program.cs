@@ -198,7 +198,7 @@ class Program
                 // Cache miss - parse the file
                 var inputStream = new AntlrInputStream(source);
                 var lexer = new NovusLexer(inputStream);
-                var tokenStream = new CommonTokenStream(lexer);
+                var tokenStream = new AngleBracketTokenStream(lexer);
                 var parser = new NovusParser(tokenStream);
 
                 // Remove default error listeners and add our custom one
@@ -311,7 +311,7 @@ class Program
                 // Cache miss - parse the file
                 var inputStream = new AntlrInputStream(source);
                 var lexer = new NovusLexer(inputStream);
-                var tokenStream = new CommonTokenStream(lexer);
+                var tokenStream = new AngleBracketTokenStream(lexer);
                 var parser = new NovusParser(tokenStream);
 
                 // Remove default error listeners and add our custom one

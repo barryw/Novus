@@ -1,3 +1,11 @@
+// Example: Memory Allocation
+//
+// Description:
+//   Tests AmigaOS memory allocation using exec.library AllocMem FFI call.
+//
+// Expected Output:
+//   Exit code: 0
+
 from std::exec import SafeAllocMem, SafeFreeMem, MEMF_PUBLIC
 
 fn main() -> i32 {

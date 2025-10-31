@@ -1,4 +1,5 @@
 using Antlr4.Runtime;
+using Novus.Frontend;
 using Novus.Parser;
 using Xunit;
 
@@ -10,7 +11,7 @@ public class ParserTests
     {
         var inputStream = new AntlrInputStream(source);
         var lexer = new NovusLexer(inputStream);
-        var tokenStream = new CommonTokenStream(lexer);
+        var tokenStream = new AngleBracketTokenStream(lexer);
         return new NovusParser(tokenStream);
     }
 
@@ -451,7 +452,7 @@ fn test(x: i32) -> i32 {
         var func = tree.functionDeclaration()[0];
         var ifStmt = func.block().statement(0).ifStatement();
         Assert.NotNull(ifStmt);
-        Assert.NotNull(ifStmt.expression());
+        Assert.NotNull(ifStmt.ifCondition());
         Assert.Equal(2, ifStmt.block().Length); // then and else blocks
     }
 

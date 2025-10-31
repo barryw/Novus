@@ -1,6 +1,0 @@
-from std::io import WriteOut
-
-fn main() -> i32 {
-    WriteOut("Test\n")
-    return 0
-}

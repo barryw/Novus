@@ -5,6 +5,8 @@
 // NOTE: Import specific types from std::amiga_structs as needed
 // Example: from std::amiga_structs import Task, Node, List
 
+from std::amiga_structs import DiscResourceUnit
+
 // ============================================================================
 // Constants
 // ============================================================================

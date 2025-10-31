@@ -1,6 +1,11 @@
-// Test extern variable declarations
+// Example: External Variables
+//
+// Description:
+//   Tests extern declarations for accessing global variables from external libraries.
+//
+// Expected Output:
+//   Compiles successfully
 
-// External variable without address (resolved by linker)
 extern var SysBase: *i32
 
 // External variable at specific address (hardware register)

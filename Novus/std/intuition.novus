@@ -1,0 +1,97 @@
+// Novus Standard Library - Intuition (High-Level)
+// Namespace: std::intuition
+//
+// High-level wrappers for intuition.library functions
+// For low-level FFI access, use std::ffi::intuition
+
+from std::core import Option, Result
+from std::error import IntuitionError, NovusError, novus_error_from_intuition
+from std::tags import make_tags
+from std::amiga_structs import TagItem, Window, Screen, NewWindow, NewScreen
+from std::ffi::intuition import OpenWindowTagList, OpenScreenTagList, CloseWindow, CloseScreen
+
+// ============================================================================
+// Window Management
+// ============================================================================
+
+/// Open an Intuition window with tag-based parameters
+///
+/// This is a high-level wrapper around OpenWindowTagList that provides:
+/// - Type-safe Result return (instead of nullable pointer)
+/// - Automatic TAG_DONE appending
+///
+/// Example:
+/// ```novus
+/// from std::intuition import OpenWindow
+/// from std::ffi::intuition import WA_Width, WA_Height, WA_Title, WA_Flags, WFLG_CLOSEGADGET, CloseWindow
+/// from std::amiga_structs import TagItem
+///
+/// let input_tags: [4]TagItem = [
+///     TagItem { ti_Tag: WA_Width, ti_Data: 640 },
+///     TagItem { ti_Tag: WA_Height, ti_Data: 480 },
+///     TagItem { ti_Tag: WA_Title, ti_Data: "My Application".ptr as u32 },
+///     TagItem { ti_Tag: WA_Flags, ti_Data: WFLG_CLOSEGADGET }
+/// ]
+/// let window = OpenWindow(&input_tags, 4u32)?
+/// defer CloseWindow(window)
+/// ```
+pub fn OpenWindow(tags_ptr: *TagItem, count: u32) -> Result<*Window, NovusError> {
+    let tag_list = make_tags(tags_ptr, count)
+    let null_new_window: *NewWindow = 0
+    let window = OpenWindowTagList(null_new_window, tag_list.as_ptr())
+
+    // Check if window opened successfully
+    let window_int: u32 = (u32)window
+    if window_int == 0u32 {
+        return Result::Err(novus_error_from_intuition(IntuitionError::WindowOpenFailed))
+    }
+
+    return Result::Ok(window)
+}
+
+/// Open an Intuition screen with tag-based parameters
+///
+/// This is a high-level wrapper around OpenScreenTagList.
+///
+/// Example:
+/// ```novus
+/// from std::intuition import OpenScreen
+/// from std::ffi::intuition import SA_Width, SA_Height, SA_Depth, SA_Title, CloseScreen
+/// from std::amiga_structs import TagItem
+///
+/// let input_tags: [4]TagItem = [
+///     TagItem { ti_Tag: SA_Width, ti_Data: 640 },
+///     TagItem { ti_Tag: SA_Height, ti_Data: 480 },
+///     TagItem { ti_Tag: SA_Depth, ti_Data: 8 },
+///     TagItem { ti_Tag: SA_Title, ti_Data: "My Screen".ptr as u32 }
+/// ]
+/// let screen = OpenScreen(&input_tags, 4u32)?
+/// defer CloseScreen(screen)
+/// ```
+pub fn OpenScreen(tags_ptr: *TagItem, count: u32) -> Result<*Screen, NovusError> {
+    let tag_list = make_tags(tags_ptr, count)
+    let null_new_screen: *NewScreen = 0
+    let screen = OpenScreenTagList(null_new_screen, tag_list.as_ptr())
+
+    // Check if screen opened successfully
+    let screen_int: u32 = (u32)screen
+    if screen_int == 0u32 {
+        return Result::Err(novus_error_from_intuition(IntuitionError::ScreenOpenFailed))
+    }
+
+    return Result::Ok(screen)
+}
+
+// ============================================================================
+// Future Additions
+// ============================================================================
+//
+// Additional wrappers to add as needed:
+// - NewObject / DisposeObject (BOOPSI objects)
+// - SetAttrs / SetGadgetAttrs
+// - EasyRequest (simple requester dialogs)
+// - BuildEasyRequest
+// - DoGadgetMethod
+// - SetWindowPointer
+//
+// For now, users can call the FFI functions directly with manual tag arrays.

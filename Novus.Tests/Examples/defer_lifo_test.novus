@@ -1,5 +1,10 @@
-// Test to verify defer blocks execute in LIFO order
-// Use actual return values instead of external function calls
+// Example: Defer LIFO Order
+//
+// Description:
+//   Verifies defer blocks execute in Last-In-First-Out (reverse declaration) order.
+//
+// Expected Output:
+//   Exit code: 0
 
 fn test_defer_lifo() -> i32 {
     let val1 = 10

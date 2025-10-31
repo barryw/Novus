@@ -1,4 +1,10 @@
-// Test error message: passing function with wrong parameter types
+// Example: FP Error - Param Types
+//
+// Description:
+//   Negative test: should reject function pointers with wrong parameter types.
+//
+// Expected Output:
+//   Compilation error expected
 
 fn add_ints(a: i32, b: i32) -> i32 {
     return a + b

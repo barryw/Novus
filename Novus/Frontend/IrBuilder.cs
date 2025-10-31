@@ -124,12 +124,6 @@ public class IrBuilder : NovusBaseVisitor<object?>
             RegisterStatic(staticContext);
         }
 
-        // Pass 1.6: Register all external variables
-        foreach (var externVarContext in context.globalVariableDeclaration())
-        {
-            RegisterExternalVariable(externVarContext);
-        }
-
         // Pass 2: Register all enum types
         foreach (var enumContext in context.enumDeclaration())
         {
@@ -140,6 +134,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
         foreach (var structContext in context.structDeclaration())
         {
             RegisterStruct(structContext);
+        }
+
+        // Pass 3.5: Register all external variables (after types are registered)
+        foreach (var externVarContext in context.globalVariableDeclaration())
+        {
+            RegisterExternalVariable(externVarContext);
         }
 
         // Pass 4: Collect all function signatures (including impl methods)
@@ -402,25 +402,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         foreach (var symbolName in symbolNames)
         {
             // Parse the module to get the symbols
-            var pathParts = moduleNamespace.Split(new[] { "::" }, StringSplitOptions.RemoveEmptyEntries);
-            string modulePath;
-            if (pathParts[0] == "std")
-            {
-                var relativePath = string.Join(System.IO.Path.DirectorySeparatorChar.ToString(), pathParts.Skip(1));
-                modulePath = System.IO.Path.Combine(_stdLibPath, relativePath + ".novus");
-            }
-            else
-            {
-                var relativePath = string.Join(System.IO.Path.DirectorySeparatorChar.ToString(), pathParts);
-                modulePath = relativePath + ".novus";
-            }
+            string modulePath = ModuleImportHelper.ResolveModulePath(moduleNamespace, _stdLibPath);
+            var (moduleContext, syntaxErrors) = ModuleImportHelper.ParseModuleFile(modulePath);
 
-            var moduleSource = System.IO.File.ReadAllText(modulePath);
-            var inputStream = new AntlrInputStream(moduleSource);
-            var lexer = new NovusLexer(inputStream);
-            var tokenStream = new CommonTokenStream(lexer);
-            var parser = new NovusParser(tokenStream);
-            var moduleContext = parser.compilationUnit();
+            if (moduleContext == null || syntaxErrors > 0)
+            {
+                throw new Exception($"Module '{moduleNamespace}' not found or has syntax errors");
+            }
 
             // IMPORTANT: Process the module's own reexports first
             // This ensures that types used by the symbol we're importing are available
@@ -490,108 +478,19 @@ public class IrBuilder : NovusBaseVisitor<object?>
         _processedModules.Add(moduleNamespace);
 
         // Convert namespace path to file path
-        // std::dos → std/dos.novus
-        // std::ffi::exec → std/ffi/exec.novus
-        var pathParts = moduleNamespace.Split(new[] { "::" }, StringSplitOptions.RemoveEmptyEntries);
-
-        // First part should be 'std' for now (later: package name)
-        if (pathParts.Length == 0)
-        {
-            throw new Exception($"Invalid module namespace: {moduleNamespace}");
-        }
-
-        // Build file path
-        string modulePath;
-        if (pathParts[0] == "std")
-        {
-            // std library module - relative to std lib path
-            var relativePath = string.Join(System.IO.Path.DirectorySeparatorChar.ToString(), pathParts.Skip(1));
-            modulePath = System.IO.Path.Combine(_stdLibPath, relativePath + ".novus");
-        }
-        else
-        {
-            // User module (future: will use package resolution)
-            var relativePath = string.Join(System.IO.Path.DirectorySeparatorChar.ToString(), pathParts);
-            modulePath = relativePath + ".novus";
-        }
-
-        if (!System.IO.File.Exists(modulePath))
-        {
-            throw new Exception($"Module '{moduleNamespace}' not found at {modulePath}");
-        }
+        string modulePath = ModuleImportHelper.ResolveModulePath(moduleNamespace, _stdLibPath);
 
         // Load and parse the module first to check if it needs compilation
-        var moduleSource = System.IO.File.ReadAllText(modulePath);
-        var inputStream = new AntlrInputStream(moduleSource);
-        var lexer = new NovusLexer(inputStream);
-        var tokenStream = new CommonTokenStream(lexer);
-        var parser = new NovusParser(tokenStream);
-        var moduleContext = parser.compilationUnit();
+        var (moduleContext, syntaxErrors) = ModuleImportHelper.ParseModuleFile(modulePath);
 
-        if (parser.NumberOfSyntaxErrors > 0)
+        if (moduleContext == null || syntaxErrors > 0)
         {
-            throw new Exception($"Module '{moduleNamespace}' has syntax errors");
+            throw new Exception($"Module '{moduleNamespace}' not found at {modulePath} or has syntax errors");
         }
 
         // Check if this module has any pub (non-extern) functions that need compilation
         // FFI modules (only extern functions) don't need to be compiled separately
-        bool hasImplementation = false;
-
-        // Check for top-level functions
-        foreach (var funcDecl in moduleContext.functionDeclaration())
-        {
-            bool isPub = false;
-            bool isExtern = false;
-            for (int i = 0; i < Math.Min(3, funcDecl.ChildCount); i++)
-            {
-                if (funcDecl.GetChild(i)?.GetText() == "pub")
-                    isPub = true;
-                if (funcDecl.GetChild(i)?.GetText() == "extern")
-                    isExtern = true;
-            }
-
-            // Module has implementation if it has pub functions that aren't extern
-            if (isPub && !isExtern)
-            {
-                hasImplementation = true;
-                break;
-            }
-        }
-
-        // Also check for impl declarations with public methods
-        if (!hasImplementation)
-        {
-            foreach (var implDecl in moduleContext.implDeclaration())
-            {
-                // Check if this impl declaration has any public methods
-                // implItem contains a functionDeclaration, so get that
-                foreach (var implItem in implDecl.implItem())
-                {
-                    var funcDecl = implItem.functionDeclaration();
-                    if (funcDecl != null)
-                    {
-                        bool isPub = false;
-                        for (int i = 0; i < Math.Min(3, funcDecl.ChildCount); i++)
-                        {
-                            if (funcDecl.GetChild(i)?.GetText() == "pub")
-                            {
-                                isPub = true;
-                                break;
-                            }
-                        }
-
-                        if (isPub)
-                        {
-                            hasImplementation = true;
-                            break;
-                        }
-                    }
-                }
-
-                if (hasImplementation)
-                    break;
-            }
-        }
+        bool hasImplementation = ModuleImportHelper.CheckHasImplementation(moduleContext);
 
         // Track this module for compilation only if it has real implementations
         // (avoid duplicates)
@@ -640,102 +539,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         // Build the list of names to import
-        var namesToImport = new HashSet<string>();
-
-        if (importAll)
-        {
-            // Import all pub enums from the module
-            foreach (var enumDecl in moduleContext.enumDeclaration())
-            {
-                // Only import pub enums
-                var isPub = false;
-                for (int i = 0; i < Math.Min(3, enumDecl.ChildCount); i++)
-                {
-                    if (enumDecl.GetChild(i)?.GetText() == "pub")
-                    {
-                        isPub = true;
-                        break;
-                    }
-                }
-
-                if (isPub)
-                {
-                    namesToImport.Add(enumDecl.IDENTIFIER().GetText());
-                }
-            }
-
-            // Import all pub constants from the module
-            foreach (var constDecl in moduleContext.constDeclaration())
-            {
-                // Only import pub constants
-                var isPub = false;
-                for (int i = 0; i < Math.Min(3, constDecl.ChildCount); i++)
-                {
-                    if (constDecl.GetChild(i)?.GetText() == "pub")
-                    {
-                        isPub = true;
-                        break;
-                    }
-                }
-
-                if (isPub)
-                {
-                    namesToImport.Add(constDecl.IDENTIFIER().GetText());
-                }
-            }
-
-            // Import all pub structs from the module
-            foreach (var structDecl in moduleContext.structDeclaration())
-            {
-                // Only import pub structs
-                var isPub = false;
-                for (int i = 0; i < Math.Min(3, structDecl.ChildCount); i++)
-                {
-                    if (structDecl.GetChild(i)?.GetText() == "pub")
-                    {
-                        isPub = true;
-                        break;
-                    }
-                }
-
-                if (isPub)
-                {
-                    namesToImport.Add(structDecl.IDENTIFIER().GetText());
-                }
-            }
-
-            // Import all pub/extern functions from the module
-            foreach (var funcDecl in moduleContext.functionDeclaration())
-            {
-                // Import pub or extern functions
-                var isPub = false;
-                var isExtern = false;
-                for (int i = 0; i < Math.Min(3, funcDecl.ChildCount); i++)
-                {
-                    if (funcDecl.GetChild(i)?.GetText() == "pub")
-                    {
-                        isPub = true;
-                    }
-                    if (funcDecl.GetChild(i)?.GetText() == "extern")
-                    {
-                        isExtern = true;
-                    }
-                }
-
-                if (isPub || isExtern)
-                {
-                    namesToImport.Add(funcDecl.IDENTIFIER().GetText());
-                }
-            }
-        }
-        else if (importList != null)
-        {
-            // Import specific names
-            foreach (var importNameCtx in importList.importName())
-            {
-                namesToImport.Add(importNameCtx.IDENTIFIER(0).GetText());
-            }
-        }
+        var namesToImport = ModuleImportHelper.BuildImportNameSet(moduleContext, importAll, importList);
 
         // Register imported enums in the module
         foreach (var enumDecl in moduleContext.enumDeclaration())
@@ -816,19 +620,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
 
             // Check if function is pub or extern
-            var isPub = false;
-            var isExtern = false;
-            for (int i = 0; i < Math.Min(3, funcDecl.ChildCount); i++)
-            {
-                if (funcDecl.GetChild(i)?.GetText() == "pub")
-                {
-                    isPub = true;
-                }
-                if (funcDecl.GetChild(i)?.GetText() == "extern")
-                {
-                    isExtern = true;
-                }
-            }
+            var (isPub, isExtern) = ModuleImportHelper.GetFunctionVisibility(funcDecl);
 
             if (!isPub && !isExtern)
             {
@@ -3255,25 +3047,16 @@ public class IrBuilder : NovusBaseVisitor<object?>
         return new IrVariable(tempName, left.Type);
     }
 
-    public override object? VisitShiftLeftExpr([NotNull] NovusParser.ShiftLeftExprContext context)
+    public override object? VisitShiftExpr([NotNull] NovusParser.ShiftExprContext context)
     {
         var left = (IrValue)Visit(context.expression(0))!;
         var right = (IrValue)Visit(context.expression(1))!;
 
-        var tempName = $"%t{_tempCounter++}";
-        var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Shl, left, right, left.Type);
-        _currentBlock!.AddInstruction(binOp);
-
-        return new IrVariable(tempName, left.Type);
-    }
-
-    public override object? VisitShiftRightExpr([NotNull] NovusParser.ShiftRightExprContext context)
-    {
-        var left = (IrValue)Visit(context.expression(0))!;
-        var right = (IrValue)Visit(context.expression(1))!;
+        var op = context.GetChild(1).GetText(); // Get the operator: << or >>
+        var opKind = op == "<<" ? IrBinaryOp.OpKind.Shl : IrBinaryOp.OpKind.Shr;
 
         var tempName = $"%t{_tempCounter++}";
-        var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Shr, left, right, left.Type);
+        var binOp = new IrBinaryOp(tempName, opKind, left, right, left.Type);
         _currentBlock!.AddInstruction(binOp);
 
         return new IrVariable(tempName, left.Type);

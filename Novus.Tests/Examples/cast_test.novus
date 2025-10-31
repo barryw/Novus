@@ -1,4 +1,11 @@
-// Test cast expressions
+// Example: Type Casting
+//
+// Description:
+//   Tests type casting between integer types and pointers using C-style (type)value syntax.
+//
+// Expected Output:
+//   Exit code: 0
+
 fn main() -> i32 {
     let x: u32 = 42
 

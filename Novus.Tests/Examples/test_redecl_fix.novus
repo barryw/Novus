@@ -1,5 +1,10 @@
-// Test that variable redeclaration bug is fixed
-// This exercises the branch-based variable assignment pattern
+// Example: Redeclaration Fix
+//
+// Description:
+//   Tests that variable redeclaration in different scopes works correctly.
+//
+// Expected Output:
+//   Exit code: 0
 
 fn main() -> i32 {
     // Test 1: Boolean || with phi-style merge

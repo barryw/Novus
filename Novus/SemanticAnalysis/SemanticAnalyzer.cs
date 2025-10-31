@@ -2,6 +2,7 @@ using Antlr4.Runtime;
 using Antlr4.Runtime.Misc;
 using Antlr4.Runtime.Tree;
 using Novus.Diagnostics;
+using Novus.Frontend;
 using Novus.IR;
 using Novus.Parser;
 
@@ -147,20 +148,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         foreach (var symbolName in symbolNames)
         {
             // Parse the module to get the symbols
-            var pathParts = moduleNamespace.Split(new[] { "::" }, StringSplitOptions.RemoveEmptyEntries);
-            string modulePath;
-            if (pathParts[0] == "std")
-            {
-                var relativePath = string.Join(System.IO.Path.DirectorySeparatorChar.ToString(), pathParts.Skip(1));
-                modulePath = System.IO.Path.Combine(_stdLibPath, relativePath + ".novus");
-            }
-            else
-            {
-                var relativePath = string.Join(System.IO.Path.DirectorySeparatorChar.ToString(), pathParts);
-                modulePath = relativePath + ".novus";
-            }
+            string modulePath = ModuleImportHelper.ResolveModulePath(moduleNamespace, _stdLibPath);
+            var (moduleContext, syntaxErrors) = ModuleImportHelper.ParseModuleFile(modulePath);
 
-            if (!System.IO.File.Exists(modulePath))
+            if (moduleContext == null || syntaxErrors > 0)
             {
                 _diagnostics.ReportError(
                     "E0026",
@@ -169,13 +160,6 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 );
                 return;
             }
-
-            var moduleSource = System.IO.File.ReadAllText(modulePath);
-            var inputStream = new AntlrInputStream(moduleSource);
-            var lexer = new NovusLexer(inputStream);
-            var tokenStream = new CommonTokenStream(lexer);
-            var parser = new NovusParser(tokenStream);
-            var moduleContext = parser.compilationUnit();
 
             // Find and register the specific symbol
             // Check enums
@@ -217,36 +201,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         // Convert namespace path to file path
-        // std::dos → std/dos.novus
-        // std::ffi::exec → std/ffi/exec.novus
-        var pathParts = moduleNamespace.Split(new[] { "::" }, StringSplitOptions.RemoveEmptyEntries);
+        string modulePath = ModuleImportHelper.ResolveModulePath(moduleNamespace, _stdLibPath);
 
-        if (pathParts.Length == 0)
-        {
-            _diagnostics.ReportError(
-                "E0026",
-                $"invalid module namespace: {moduleNamespace}",
-                location
-            );
-            return;
-        }
+        // Load and parse the module
+        var (moduleContext, syntaxErrors) = ModuleImportHelper.ParseModuleFile(modulePath);
 
-        // Build file path
-        string modulePath;
-        if (pathParts[0] == "std")
-        {
-            // std library module - relative to std lib path
-            var relativePath = string.Join(System.IO.Path.DirectorySeparatorChar.ToString(), pathParts.Skip(1));
-            modulePath = System.IO.Path.Combine(_stdLibPath, relativePath + ".novus");
-        }
-        else
-        {
-            // User module (future: will use package resolution)
-            var relativePath = string.Join(System.IO.Path.DirectorySeparatorChar.ToString(), pathParts);
-            modulePath = relativePath + ".novus";
-        }
-
-        if (!System.IO.File.Exists(modulePath))
+        if (moduleContext == null)
         {
             _diagnostics.ReportError(
                 "E0026",
@@ -261,24 +221,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return;
         }
 
-        // Skip if this module has already been imported
-        if (_importedModules.Contains(modulePath))
-        {
-            return;
-        }
-
-        // Mark this module as imported
-        _importedModules.Add(modulePath);
-
-        // Load and parse the module
-        var moduleSource = System.IO.File.ReadAllText(modulePath);
-        var inputStream = new AntlrInputStream(moduleSource);
-        var lexer = new NovusLexer(inputStream);
-        var tokenStream = new CommonTokenStream(lexer);
-        var parser = new NovusParser(tokenStream);
-        var moduleContext = parser.compilationUnit();
-
-        if (parser.NumberOfSyntaxErrors > 0)
+        if (syntaxErrors > 0)
         {
             _diagnostics.ReportError(
                 "E0027",
@@ -291,6 +234,15 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             );
             return;
         }
+
+        // Skip if this module has already been imported
+        if (_importedModules.Contains(modulePath))
+        {
+            return;
+        }
+
+        // Mark this module as imported
+        _importedModules.Add(modulePath);
 
         // Note: We DON'T process the module's own imports here (transitive dependencies)
         // Each module handles its own imports when it's compiled as a separate dependency
@@ -327,110 +279,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         // Build the list of names to import
-        var namesToImport = new HashSet<string>();
+        var namesToImport = ModuleImportHelper.BuildImportNameSet(moduleContext, importAll, importList);
 
-        if (importAll)
+        // Handle import aliases (import Printf as MyPrintf)
+        if (!importAll && importList != null)
         {
-            // Import all pub enums from the module
-            foreach (var enumDecl in moduleContext.enumDeclaration())
-            {
-                // Only import pub enums
-                var isPub = false;
-                for (int i = 0; i < Math.Min(3, enumDecl.ChildCount); i++)
-                {
-                    if (enumDecl.GetChild(i)?.GetText() == "pub")
-                    {
-                        isPub = true;
-                        break;
-                    }
-                }
-
-                if (isPub)
-                {
-                    namesToImport.Add(enumDecl.IDENTIFIER().GetText());
-                }
-            }
-
-            // Import all pub constants from the module
-            foreach (var constDecl in moduleContext.constDeclaration())
-            {
-                // Only import pub constants
-                var isPub = false;
-                for (int i = 0; i < Math.Min(3, constDecl.ChildCount); i++)
-                {
-                    if (constDecl.GetChild(i)?.GetText() == "pub")
-                    {
-                        isPub = true;
-                        break;
-                    }
-                }
-
-                if (isPub)
-                {
-                    namesToImport.Add(constDecl.IDENTIFIER().GetText());
-                }
-            }
-
-            // Import all pub structs from the module
-            foreach (var structDecl in moduleContext.structDeclaration())
-            {
-                // Only import pub structs
-                var isPub = false;
-                for (int i = 0; i < Math.Min(3, structDecl.ChildCount); i++)
-                {
-                    if (structDecl.GetChild(i)?.GetText() == "pub")
-                    {
-                        isPub = true;
-                        break;
-                    }
-                }
-
-                if (isPub)
-                {
-                    namesToImport.Add(structDecl.IDENTIFIER().GetText());
-                }
-            }
-
-            // Import all pub/extern functions from the module
-            foreach (var funcDecl in moduleContext.functionDeclaration())
-            {
-                // Import pub or extern functions
-                var isPub = false;
-                var isExtern = false;
-                for (int i = 0; i < Math.Min(3, funcDecl.ChildCount); i++)
-                {
-                    if (funcDecl.GetChild(i)?.GetText() == "pub")
-                    {
-                        isPub = true;
-                    }
-                    if (funcDecl.GetChild(i)?.GetText() == "extern")
-                    {
-                        isExtern = true;
-                    }
-                }
-
-                if (isPub || isExtern)
-                {
-                    namesToImport.Add(funcDecl.IDENTIFIER().GetText());
-                }
-            }
-
-            // Import all extern global variables from the module
-            foreach (var globalVarDecl in moduleContext.globalVariableDeclaration())
-            {
-                // All global variables are extern by definition
-                namesToImport.Add(globalVarDecl.IDENTIFIER().GetText());
-            }
-        }
-        else if (importList != null)
-        {
-            // Import specific names
             foreach (var importNameCtx in importList.importName())
             {
-                var importedName = importNameCtx.IDENTIFIER(0).GetText();
-                namesToImport.Add(importedName);
-
-                // Handle aliases (import Printf as MyPrintf)
                 if (importNameCtx.IDENTIFIER().Length > 1)
                 {
                     var alias = importNameCtx.IDENTIFIER(1).GetText();
@@ -517,19 +372,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
 
             // Check if function is pub or extern
-            var isPub = false;
-            var isExtern = false;
-            for (int i = 0; i < Math.Min(3, funcDecl.ChildCount); i++)
-            {
-                if (funcDecl.GetChild(i)?.GetText() == "pub")
-                {
-                    isPub = true;
-                }
-                if (funcDecl.GetChild(i)?.GetText() == "extern")
-                {
-                    isExtern = true;
-                }
-            }
+            var (isPub, isExtern) = ModuleImportHelper.GetFunctionVisibility(funcDecl);
 
             if (!isPub && !isExtern)
             {
@@ -2042,30 +1885,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return leftType; // Use left operand's type as result type
     }
 
-    public override IrType? VisitShiftLeftExpr([NotNull] NovusParser.ShiftLeftExprContext context)
-    {
-        var leftType = Visit(context.expression(0));
-        var rightType = Visit(context.expression(1));
-
-        if (leftType == null || rightType == null)
-            return null;
-
-        // Both operands must be numeric types
-        if (!IsNumericType(leftType) || !IsNumericType(rightType))
-        {
-            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
-            _diagnostics.ReportError(
-                "E0004",
-                $"shift operators require numeric types",
-                location
-            );
-            return null;
-        }
-
-        return leftType;
-    }
-
-    public override IrType? VisitShiftRightExpr([NotNull] NovusParser.ShiftRightExprContext context)
+    public override IrType? VisitShiftExpr([NotNull] NovusParser.ShiftExprContext context)
     {
         var leftType = Visit(context.expression(0));
         var rightType = Visit(context.expression(1));

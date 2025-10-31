@@ -1,5 +1,0 @@
-// Test return value - should return 42
-
-pub fn main() -> u32 {
-    return 42
-}

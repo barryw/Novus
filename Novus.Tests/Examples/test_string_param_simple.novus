@@ -1,6 +1,11 @@
-// Test passing String as parameter - simple version
+// Example: String Parameters
+//
+// Description:
+//   Tests passing String type as function parameter.
+//
+// Expected Output:
+//   Exit code: 0
 
-// Non-FFI function that takes String parameter and returns its length
 fn get_length(s: String) -> i32 {
     return s.len
 }

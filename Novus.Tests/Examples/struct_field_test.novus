@@ -1,4 +1,11 @@
-// Test struct field access
+// Example: Struct Field Access
+//
+// Description:
+//   Tests accessing struct fields using dot notation to read member values.
+//
+// Expected Output:
+//   Exit code: 0
+
 struct Counter {
     value: i32,
 }

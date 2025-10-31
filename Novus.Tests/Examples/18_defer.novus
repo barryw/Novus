@@ -1,5 +1,10 @@
 // Example: Defer Statement
-// Demonstrates automatic cleanup with defer (executes in LIFO order)
+//
+// Description:
+//   Demonstrates defer blocks for cleanup that execute in LIFO order at scope exit.
+//
+// Expected Output:
+//   Exit code: 0 if defers execute correctly
 
 fn cleanup_resource(id: i32) -> i32 {
     // In a real scenario, this might close files, free memory, etc.

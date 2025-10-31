@@ -1,0 +1,33 @@
+// Example: Array Literals
+//
+// Description:
+//   Demonstrates array literal syntax using braces {...}. Tests both
+//   multi-element and single-element array initialization. Arrays in
+//   Novus use fixed sizes known at compile time.
+//
+// Expected Output:
+//   Exit code: 0 (all tests pass)
+
+fn main() -> i32 {
+    // Test 1: Simple integer array
+    let numbers: [3]i32 = {10, 20, 30}
+
+    if numbers[0u32] != 10 {
+        return 1
+    }
+    if numbers[1u32] != 20 {
+        return 2
+    }
+    if numbers[2u32] != 30 {
+        return 3
+    }
+
+    // Test 2: Single element array
+    let single: [1]i32 = {42}
+    if single[0u32] != 42 {
+        return 4
+    }
+
+    // All tests passed
+    return 0
+}

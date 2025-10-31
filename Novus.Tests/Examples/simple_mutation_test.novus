@@ -1,4 +1,10 @@
-// Simple member mutation test
+// Example: Variable Mutation
+//
+// Description:
+//   Tests basic variable reassignment. Shows mutable variables can be updated.
+//
+// Expected Output:
+//   Exit code: updated value
 
 struct Counter {
     value: i32,

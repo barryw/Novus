@@ -1,5 +1,10 @@
-// Example 13: Boolean Types and Operations
-// Tests bool literals, comparisons, and logical operations
+// Example: Boolean Types
+//
+// Description:
+//   Tests boolean type with logical operations (&&, ||, !) and comparisons.
+//
+// Expected Output:
+//   Exit code: result of boolean logic
 
 pub fn test_bool_literals() -> bool {
     let x: bool = true

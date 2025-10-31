@@ -1,6 +1,10 @@
-// Example 04: Optimization Test
-// At O0: generates add.l and muls instructions
-// At O1+: should optimize to constant 20
+// Example: Optimization Test
+//
+// Description:
+//   Tests compiler optimization of constant expressions at different optimization levels.
+//
+// Expected Output:
+//   Exit code: 20
 
 pub fn main() -> u32 {
     return (2 + 3) * 4

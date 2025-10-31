@@ -1,4 +1,11 @@
-// Test basic String type
+// Example: String Type
+//
+// Description:
+//   Tests basic String type which is a fat pointer with ptr and len fields.
+//
+// Expected Output:
+//   Exit code: 0
+
 pub fn main() -> u32 {
     let s = "Hello"
     return 0

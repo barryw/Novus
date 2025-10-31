@@ -1,4 +1,10 @@
-// Test: What happens if we use a non-error type in Result?
+// Example: Error Type Validation
+//
+// Description:
+//   Tests proper error type handling by the type system.
+//
+// Expected Output:
+//   Compiles successfully
 
 fn make_result() -> Result<i32, i32> {
     return Result::Ok(42)

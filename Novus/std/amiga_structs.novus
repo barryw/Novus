@@ -5274,6 +5274,99 @@ pub const tf_Extension: u32 = 0 /* TODO: tf_Message.mn_ReplyPort */
 // Struct Definitions
 // ============================================================================
 
+// Manual additions for typedef'd structs not captured by CHeaderParser
+
+pub struct TagItem {
+    ti_Tag: u32,
+    ti_Data: u32,
+}
+
+pub struct Rectangle {
+    MinX: i16,
+    MinY: i16,
+    MaxX: i16,
+    MaxY: i16,
+}
+
+pub struct IBox {
+    Left: i16,
+    Top: i16,
+    Width: i16,
+    Height: i16,
+}
+
+// Forward declarations for complex graphics types
+// These are simplified versions - full definitions would require complete graphics.h parsing
+pub struct Screen {
+    sc_Dummy: u32,  // Placeholder
+}
+
+pub struct Window {
+    wn_Dummy: u32,  // Placeholder
+}
+
+pub struct BitMap {
+    bm_Dummy: u32,  // Placeholder
+}
+
+pub struct Layer {
+    lr_Dummy: u32,  // Placeholder
+}
+
+pub struct RastPort {
+    rp_Dummy: u32,  // Placeholder
+}
+
+pub struct Gadget {
+    gd_Dummy: u32,  // Placeholder
+}
+
+pub struct GadgetInfo {
+    gi_Dummy: u32,  // Placeholder
+}
+
+pub struct Requester {
+    rq_Dummy: u32,  // Placeholder
+}
+
+pub struct DrawInfo {
+    di_Dummy: u32,  // Placeholder
+}
+
+pub struct NewWindow {
+    nw_Dummy: u32,  // Placeholder
+}
+
+pub struct Hook {
+    hk_Dummy: u32,  // Placeholder
+}
+
+pub struct RootNode {
+    rn_Dummy: u32,  // Placeholder
+}
+
+pub struct SignalSemaphore {
+    ss_Dummy: u32,  // Placeholder
+}
+
+pub struct AChain {
+    ac_Dummy: u32,  // Placeholder
+}
+
+pub struct NotifyRequest {
+    nr_Dummy: u32,  // Placeholder
+}
+
+pub struct WBArg {
+    wa_Dummy: u32,  // Placeholder
+}
+
+pub struct DiscResourceUnit {
+    dru_Dummy: u32,  // Placeholder
+}
+
+// Generated struct definitions
+
 pub struct Node {
     ln_Succ: *Node,
     ln_Pred: *Node,

@@ -1,4 +1,10 @@
-// Test basic function pointer usage: passing a function as a parameter
+// Example: Function Pointers
+//
+// Description:
+//   Demonstrates function pointer types and calling functions through pointer variables.
+//
+// Expected Output:
+//   Exit code: result of indirect call
 
 fn add(a: i32, b: i32) -> i32 {
     return a + b
