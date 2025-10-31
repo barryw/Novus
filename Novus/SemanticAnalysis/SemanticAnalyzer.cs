@@ -1023,7 +1023,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             _variables[param.Name] = new VariableSymbol(param.Name, param.Type, false, param.Location);
         }
 
-        // Analyze function body with unreachable code detection
+        // First, analyze the function body with full semantic analysis (visits all expressions)
+        AnalyzeBlock(context.block());
+
+        // Then check if all paths return
         bool allPathsReturn = AnalyzeBlockReturns(context.block());
 
         // Check if function with non-void return type has all paths returning
@@ -1113,6 +1116,33 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     }
 
     /// <summary>
+    /// Checks if an if statement always returns a value on all code paths
+    /// </summary>
+    private bool IfStatementAlwaysReturns(NovusParser.IfStatementContext ifStmt)
+    {
+        bool thenReturns = AnalyzeBlockReturns(ifStmt.block(0));
+
+        // Check if there's an else-if statement
+        var elseIfStmt = ifStmt.ifStatement();
+        if (elseIfStmt != null)
+        {
+            // Recursively check the else-if chain
+            bool elseIfReturns = IfStatementAlwaysReturns(elseIfStmt);
+            return thenReturns && elseIfReturns;
+        }
+
+        // Check if there's a simple else block
+        if (ifStmt.block().Length > 1)
+        {
+            bool elseReturns = AnalyzeBlockReturns(ifStmt.block(1));
+            return thenReturns && elseReturns;
+        }
+
+        // No else clause
+        return false;
+    }
+
+    /// <summary>
     /// Checks if a statement always returns a value on all code paths
     /// </summary>
     private bool StatementAlwaysReturns(NovusParser.StatementContext stmt)
@@ -1127,7 +1157,20 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             var ifStmt = stmt.ifStatement();
             bool thenReturns = AnalyzeBlockReturns(ifStmt.block(0));
 
-            // Check if there's a simple else block (not else-if)
+            // Check if there's an else clause
+            // Grammar: KW_IF ifCondition block (KW_ELSE (ifStatement | block))?
+            // So the else part can be either another ifStatement (else-if) or a block (else)
+
+            // Try to get the else-if statement (nested ifStatement)
+            var elseIfStmt = ifStmt.ifStatement();
+            if (elseIfStmt != null)
+            {
+                // This is an else-if chain - recursively check if the else-if returns
+                bool elseIfReturns = IfStatementAlwaysReturns(elseIfStmt);
+                return thenReturns && elseIfReturns;
+            }
+
+            // Check if there's a simple else block
             if (ifStmt.block().Length > 1)
             {
                 // Has else block
@@ -1135,8 +1178,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 return thenReturns && elseReturns;
             }
 
-            // TODO: Handle else-if chains
-            // For now, we conservatively say if-else-if doesn't guarantee return
+            // No else clause at all
             return false;
         }
 

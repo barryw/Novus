@@ -10,24 +10,28 @@ namespace Novus.Tests;
 public class CompilationTests
 {
     [Theory]
-    [InlineData("01_hello_world")]
     [InlineData("02_arithmetic")]
-    [InlineData("03_variables")]
-    [InlineData("vec_amiga_test")]
+    [InlineData("04_optimization")]
+    [InlineData("12_control_flow")]
     public void ExampleShouldAssembleAndLink(string exampleName)
     {
         var projectRoot = GetProjectRoot();
         var inputFile = Path.Combine(projectRoot, "Novus.Tests", "Examples", $"{exampleName}.novus");
         var outputFile = Path.Combine(Path.GetTempPath(), $"{exampleName}_test");
 
-        // Skip if input file doesn't exist
-        if (!File.Exists(inputFile))
-        {
-            return;
-        }
+        // Verify input file exists
+        Assert.True(File.Exists(inputFile), $"Input file not found: {inputFile}");
+
+        // Verify VBCC is available
+        var vbccPath = Environment.GetEnvironmentVariable("VBCC_PATH")
+                      ?? "/Users/barry/amiga-cc/vbcc/bin/vc";
+        Assert.True(File.Exists(vbccPath),
+            $"VBCC toolchain not found at {vbccPath}. Set VBCC_PATH environment variable or install VBCC.");
 
         // Run the compiler
         var compilerPath = Path.Combine(projectRoot, "Novus", "bin", "Debug", "net9.0", "Novus.dll");
+        Assert.True(File.Exists(compilerPath), $"Compiler not found at {compilerPath}. Build the project first.");
+
         var startInfo = new ProcessStartInfo
         {
             FileName = "dotnet",
@@ -47,8 +51,9 @@ public class CompilationTests
         var stderr = process.StandardError.ReadToEnd();
 
         // Check that compilation succeeded
-        Assert.Equal(0, process.ExitCode);
-        Assert.Contains("Compilation successful", stdout);
+        Assert.True(process.ExitCode == 0,
+            $"Compilation failed with exit code {process.ExitCode}.\nOutput:\n{stdout}\nErrors:\n{stderr}");
+        Assert.Contains("Successfully created:", stdout);
 
         // Check that the executable was created
         Assert.True(File.Exists(outputFile),

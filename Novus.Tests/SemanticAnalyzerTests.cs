@@ -539,6 +539,16 @@ fn test(x: i32) -> i32 {
 }";
         var diagnostics = Analyze(source);
 
+        // Debug: print all diagnostics
+        if (diagnostics.HasErrors)
+        {
+            Console.WriteLine("Unexpected errors:");
+            foreach (var d in diagnostics.Diagnostics.Where(d => d.IsError))
+            {
+                Console.WriteLine($"  [{d.Code}] {d.Message}");
+            }
+        }
+
         Assert.False(diagnostics.HasErrors);
     }
 

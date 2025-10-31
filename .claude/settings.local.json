@@ -158,7 +158,8 @@
       "Bash(python3:*)",
       "Bash(git log:*)",
       "Bash(./novusc build:*)",
-      "Bash(sort:*)"
+      "Bash(sort:*)",
+      "Bash(dotnet:*)"
     ],
     "deny": [],
     "ask": []

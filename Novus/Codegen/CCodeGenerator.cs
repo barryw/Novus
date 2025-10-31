@@ -1315,7 +1315,7 @@ public class CCodeGenerator
 
         var callExpr = $"{MangleName(call.FunctionName)}({string.Join(", ", args)})";
 
-        if (call.ResultName != null)
+        if (call.ResultName != null && call.ReturnType is not IrVoidType)
         {
             var cType = GetCType(call.ReturnType);
             var resultName = SanitizeVariableName(call.ResultName);
@@ -1335,7 +1335,7 @@ public class CCodeGenerator
 
         var callExpr = $"({funcPtr})({string.Join(", ", args)})";
 
-        if (call.ResultName != null)
+        if (call.ResultName != null && call.ReturnType is not IrVoidType)
         {
             var cType = GetCType(call.ReturnType);
             var resultName = SanitizeVariableName(call.ResultName);
