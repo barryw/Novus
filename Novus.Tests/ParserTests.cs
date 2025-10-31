@@ -773,4 +773,149 @@ pub fn double(x: u32) -> u32 {
         Assert.Equal(0, parser.NumberOfSyntaxErrors);
         Assert.Equal(3, tree.functionDeclaration().Length);
     }
+
+    // TODO: Add Parse_ForLoop_Success when RangeExpr is fully implemented
+
+    [Fact]
+    public void Parse_MatchExpression_Success()
+    {
+        var source = @"
+fn test(opt: Option<i32>) -> i32 {
+    match opt {
+        Some(value) => return value,
+        None => return 0
+    }
+}";
+        var parser = CreateParser(source);
+        var tree = parser.compilationUnit();
+
+        Assert.Equal(0, parser.NumberOfSyntaxErrors);
+    }
+
+    // TODO: Add Parse_UnsafeBlock_Success when unsafe blocks are fully implemented in parser
+    // TODO: Add Parse_UsingStatement_Success when using statements are fully implemented in parser
+
+    [Fact]
+    public void Parse_EnumDeclaration_Success()
+    {
+        var source = @"
+enum Result<T, E> {
+    Ok(T),
+    Err(E)
+}";
+        var parser = CreateParser(source);
+        var tree = parser.compilationUnit();
+
+        Assert.Equal(0, parser.NumberOfSyntaxErrors);
+        Assert.Single(tree.enumDeclaration());
+    }
+
+    [Fact]
+    public void Parse_ImplBlock_Success()
+    {
+        var source = @"
+struct Point {
+    x: i32,
+    y: i32
+}
+
+impl Point {
+    pub fn new(x: i32, y: i32) -> Point {
+        return Point { x: x, y: y }
+    }
+
+    pub fn distance(&self) -> i32 {
+        return self.x * self.x + self.y * self.y
+    }
+}";
+        var parser = CreateParser(source);
+        var tree = parser.compilationUnit();
+
+        Assert.Equal(0, parser.NumberOfSyntaxErrors);
+        Assert.Single(tree.implDeclaration());
+    }
+
+    // TODO: Add Parse_GenericImplBlock_Success when generic impl syntax is fully supported
+
+    [Fact]
+    public void Parse_AttributeOnFunction_Success()
+    {
+        var source = @"
+#[inline]
+#[no_mangle]
+pub fn critical_function() -> i32 {
+    return 42
+}";
+        var parser = CreateParser(source);
+        var tree = parser.compilationUnit();
+
+        Assert.Equal(0, parser.NumberOfSyntaxErrors);
+    }
+
+    [Fact]
+    public void Parse_SelfParameter_Success()
+    {
+        var source = @"
+impl Point {
+    pub fn get_x(&self) -> i32 {
+        return self.x
+    }
+
+    pub fn set_x(&mut self, value: i32) {
+        self.x = value
+    }
+}";
+        var parser = CreateParser(source);
+        var tree = parser.compilationUnit();
+
+        Assert.Equal(0, parser.NumberOfSyntaxErrors);
+    }
+
+    [Fact]
+    public void Parse_DeferStatement_Success()
+    {
+        var source = @"
+fn cleanup_test() -> i32 {
+    let ptr = allocate(100u32)
+    defer {
+        free(ptr)
+    }
+    return process(ptr)
+}";
+        var parser = CreateParser(source);
+        var tree = parser.compilationUnit();
+
+        Assert.Equal(0, parser.NumberOfSyntaxErrors);
+    }
+
+    [Fact]
+    public void Parse_StructDeclaration_Success()
+    {
+        var source = @"
+struct Point {
+    x: i32,
+    y: i32
+}";
+        var parser = CreateParser(source);
+        var tree = parser.compilationUnit();
+
+        Assert.Equal(0, parser.NumberOfSyntaxErrors);
+        Assert.Single(tree.structDeclaration());
+    }
+
+    [Fact]
+    public void Parse_GenericStruct_Success()
+    {
+        var source = @"
+struct Vec<T> {
+    data: *T,
+    len: u32,
+    cap: u32
+}";
+        var parser = CreateParser(source);
+        var tree = parser.compilationUnit();
+
+        Assert.Equal(0, parser.NumberOfSyntaxErrors);
+        Assert.Single(tree.structDeclaration());
+    }
 }
