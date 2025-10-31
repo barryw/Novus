@@ -3534,20 +3534,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         if (_variables.ContainsKey("self"))
         {
             var selfType = _variables["self"].Type;
-            Console.WriteLine($"[DEBUG] VisitSelfExpr: 'self' found in variable table");
-            Console.WriteLine($"[DEBUG]   Type: {selfType.Name}");
             if (selfType is IrStructType structType)
             {
-                Console.WriteLine($"[DEBUG]   Is Generic: {structType.GenericParameters.Count > 0}");
-                Console.WriteLine($"[DEBUG]   Generic params: {string.Join(", ", structType.GenericParameters)}");
-                Console.WriteLine($"[DEBUG]   Struct fields: {string.Join(", ", structType.Fields.Select(f => $"{f.Name}:{f.Type.Name}"))}");
             }
             else if (selfType is IrPointerType ptrType)
             {
-                Console.WriteLine($"[DEBUG]   Is Pointer to: {ptrType.PointeeType.Name}");
                 if (ptrType.PointeeType is IrStructType innerStruct)
                 {
-                    Console.WriteLine($"[DEBUG]   Inner struct generic params: {string.Join(", ", innerStruct.GenericParameters)}");
                 }
             }
             return selfType;
@@ -3660,33 +3653,22 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     public override IrType? VisitMemberAccessExpr([NotNull] NovusParser.MemberAccessExprContext context)
     {
         var exprText = context.expression().GetText();
-        Console.WriteLine($"[DEBUG] VisitMemberAccessExpr: accessing member on expression '{exprText}'");
 
         var baseType = Visit(context.expression());
         if (baseType == null)
         {
-            Console.WriteLine($"[DEBUG]   Base type is NULL");
             return null;
         }
 
         var memberName = context.IDENTIFIER().GetText();
-        Console.WriteLine($"[DEBUG]   Base type before auto-deref: {baseType.Name}");
-        Console.WriteLine($"[DEBUG]   Member being accessed: {memberName}");
 
         if (exprText == "self")
         {
-            Console.WriteLine($"[DEBUG]   *** SELF ACCESS DETECTED ***");
-            Console.WriteLine($"[DEBUG]   self has type: {baseType.Name}");
             if (baseType is IrStructType st)
             {
-                Console.WriteLine($"[DEBUG]   Is Generic: {st.GenericParameters.Count > 0}");
-                Console.WriteLine($"[DEBUG]   Generic params: {string.Join(", ", st.GenericParameters)}");
-                Console.WriteLine($"[DEBUG]   Fields: {string.Join(", ", st.Fields.Select(f => $"{f.Name}:{f.Type.Name}"))}");
             }
             else if (baseType is IrPointerType pt && pt.PointeeType is IrStructType pts)
             {
-                Console.WriteLine($"[DEBUG]   Pointer to struct: {pts.Name}");
-                Console.WriteLine($"[DEBUG]   Generic params: {string.Join(", ", pts.GenericParameters)}");
             }
         }
 
@@ -3694,21 +3676,17 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // This allows `&self` to work like `self` for member access
         if (baseType is IrPointerType ptrType)
         {
-            Console.WriteLine($"[DEBUG]   Auto-dereferencing pointer: {baseType.Name} -> {ptrType.PointeeType.Name}");
             baseType = ptrType.PointeeType;
         }
         else if (baseType is IrReferenceType refType)
         {
-            Console.WriteLine($"[DEBUG]   Auto-dereferencing reference: {baseType.Name} -> {refType.PointeeType.Name}");
             baseType = refType.PointeeType;
         }
         else if (baseType is IrMutReferenceType mutRefType)
         {
-            Console.WriteLine($"[DEBUG]   Auto-dereferencing mut reference: {baseType.Name} -> {mutRefType.PointeeType.Name}");
             baseType = mutRefType.PointeeType;
         }
 
-        Console.WriteLine($"[DEBUG]   Base type after auto-deref: {baseType.Name}");
 
         // Handle String type member access (.ptr and .len)
         if (baseType is IrStringType)

@@ -80,7 +80,6 @@ public class ValidatorManager
     {
         if (_verbose)
         {
-            Console.WriteLine($"Running {_validators.Count} semantic validators...");
         }
 
         bool allPassed = true;
@@ -106,7 +105,6 @@ public class ValidatorManager
 
         if (_verbose)
         {
-            Console.WriteLine($"Validation complete: {(allPassed ? "Passed" : "Failed")}");
         }
 
         return allPassed;

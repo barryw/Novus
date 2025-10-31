@@ -501,7 +501,6 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         // Note: We need to process the module's imports to make constants available for generic templates
         // This is safe because _processedModules prevents circular dependencies
-        Console.WriteLine($"[ImportModule] Processing imports for {moduleNamespace}");
         foreach (var importDecl in moduleContext.importDeclaration())
         {
             ProcessImport(importDecl);
@@ -563,7 +562,6 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         // Register imported constants in the module
-        Console.WriteLine($"[ImportModule] Registering constants from {moduleNamespace}, have {_constants.Count} before");
         foreach (var constDecl in moduleContext.constDeclaration())
         {
             var constName = constDecl.IDENTIFIER().GetText();
@@ -577,15 +575,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
             // Skip if this constant has already been imported (transitive dependencies)
             if (_constants.ContainsKey(constName))
             {
-                Console.WriteLine($"[ImportModule] Skipping already-imported constant '{constName}'");
                 continue;
             }
 
             // Register the constant from the imported module
-            Console.WriteLine($"[ImportModule] Registering constant '{constName}'");
             RegisterConstant(constDecl);
         }
-        Console.WriteLine($"[ImportModule] After registering constants, have {_constants.Count} total");
 
         // Register imported structs in the module
         foreach (var structDecl in moduleContext.structDeclaration())
@@ -696,7 +691,6 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     var templateKey = $"{typeName}::{methodName}";
                     // Capture current constants dictionary (make a copy so imports don't affect templates)
                     var templateConstants = new Dictionary<string, (IrType Type, object Value)>(_constants);
-                    Console.WriteLine($"[ImportModule] Creating template for '{templateKey}' with {templateConstants.Count} constants: {string.Join(", ", templateConstants.Keys)}");
                     _genericMethodTemplates[templateKey] = (genericParams, funcDecl, templateConstants);
                     // Don't create function yet - it will be instantiated when called with concrete types
                     continue;
@@ -848,12 +842,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         var (genericParams, funcDecl, templateConstants) = template;
 
-        Console.WriteLine($"[InstantiateGenericMethod] Instantiating {monomorphizedStruct.CacheKey}::{methodName} with {templateConstants.Count} template constants");
 
         // Save current constants and MERGE template constants with current module constants
         // Current module constants take priority (they may include transitive imports)
         var savedConstants = new Dictionary<string, (IrType Type, object Value)>(_constants);
-        Console.WriteLine($"[InstantiateGenericMethod] Current module has {_constants.Count} constants, template has {templateConstants.Count}");
 
         // Start with template constants
         _constants.Clear();
@@ -868,7 +860,6 @@ public class IrBuilder : NovusBaseVisitor<object?>
             _constants[kvp.Key] = kvp.Value;
             if (!templateConstants.ContainsKey(kvp.Key))
             {
-                Console.WriteLine($"[InstantiateGenericMethod] Added current module constant '{kvp.Key}' = {kvp.Value.Value}");
             }
         }
 
@@ -905,7 +896,6 @@ public class IrBuilder : NovusBaseVisitor<object?>
             {
                 throw new Exception($"Generic parameter '{genericParam}' not found in monomorphized struct {monomorphizedStruct.CacheKey}");
             }
-            Console.WriteLine($"[InstantiateGenericMethod] Type substitution: {genericParam} -> {typeSubstitutions[genericParam]}");
         }
 
         // Set up concrete types for substitution during parsing
@@ -3674,12 +3664,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
         if (_constants.ContainsKey(name))
         {
             var (type, value) = _constants[name];
-            Console.WriteLine($"[DEBUG] [{_inputFilePath}] Inlining constant '{name}' = {value}");
             return new IrConstant((int)value, type);
         }
         else
         {
-            Console.WriteLine($"[DEBUG] [{_inputFilePath}] Identifier '{name}' not found in constants (have {_constants.Count} constants): {string.Join(", ", _constants.Keys)}");
         }
 
         // Check if it's a static variable
