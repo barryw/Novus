@@ -314,8 +314,18 @@ public class CCodeGenerator
 
         foreach (var field in structType.Fields)
         {
-            var fieldType = GetCType(field.Type);
-            sb.AppendLine($"    {fieldType} {field.Name};");
+            // Special handling for array fields - need T[n] syntax, not T*
+            if (field.Type is IrArrayType arrayType)
+            {
+                var elementType = GetCType(arrayType.ElementType);
+                var size = arrayType.Length;
+                sb.AppendLine($"    {elementType} {field.Name}[{size}];");
+            }
+            else
+            {
+                var fieldType = GetCType(field.Type);
+                sb.AppendLine($"    {fieldType} {field.Name};");
+            }
         }
 
         sb.AppendLine($"}} {structName};");
@@ -1600,10 +1610,13 @@ public class CCodeGenerator
         {
             IrConstant constant => constant.Value.ToString(),
             IrBoolConstant boolConst => boolConst.Value ? "true" : "false",
+            IrFloatConstant floatConst => EmitFloatConstant(floatConst),
+            IrFixedConstant fixedConst => EmitFixedConstant(fixedConst),
             IrVariable variable => EmitVariable(variable),
             IrGlobalVariable globalVar => globalVar.Name,  // Global variables use their name directly
             IrStringLiteral stringLit => $"(String){{ .ptr = (uint8_t*){stringLit.Label}, .len = {stringLit.Length} }}",
             IrEnumValue enumValue => EmitEnumValue(enumValue),
+            IrEnumConstructor enumCtor => EmitEnumConstructor(enumCtor),
             IrBorrowValue borrowValue => $"&{EmitValue(borrowValue.BorrowedValue)}",
             IrDereferenceValue derefValue => $"(*{EmitValue(derefValue.PointerValue)})",
             IrCastValue castValue => EmitCastValue(castValue),
@@ -1708,6 +1721,61 @@ public class CCodeGenerator
 
         result += " }";
         return result;
+    }
+
+    private string EmitFloatConstant(IrFloatConstant floatConst)
+    {
+        // Emit float/double literals with appropriate suffix
+        // f32 -> add 'f' suffix, f64 -> no suffix (default double)
+        var floatType = floatConst.Type as IrFloatType;
+        if (floatType == null)
+            throw new InvalidOperationException("FloatConstant must have IrFloatType");
+
+        return floatType.BitWidth == 32
+            ? $"{floatConst.Value:G9}f"  // G9 preserves precision for float
+            : $"{floatConst.Value:G17}"; // G17 preserves precision for double
+    }
+
+    private string EmitFixedConstant(IrFixedConstant fixedConst)
+    {
+        // Convert fixed-point constant to integer representation
+        // fixed16 = 8.8 format, fixed32 = 16.16 format (fractional bits = total bits / 2)
+        var fixedType = fixedConst.Type as IrFixedType;
+        if (fixedType == null)
+            throw new InvalidOperationException("FixedConstant must have IrFixedType");
+
+        // Calculate the integer representation: value * 2^fractional_bits
+        // Fractional bits are half the total bit width
+        int fractionalBits = fixedType.BitWidth / 2;
+        long intValue = (long)(fixedConst.Value * (1 << fractionalBits));
+
+        // Emit as integer cast to the appropriate fixed-point type
+        return $"({GetCType(fixedType)}){intValue}";
+    }
+
+    private string EmitEnumConstructor(IrEnumConstructor enumCtor)
+    {
+        // Enum constructor without arguments - just the variant tag
+        // e.g., Option::None becomes Option_None
+        var enumType = enumCtor.Type as IrEnumType;
+        if (enumType == null)
+            throw new InvalidOperationException("EnumConstructor must have IrEnumType");
+
+        var enumName = MangleName(enumType);
+
+        // Check if this enum has any associated data
+        bool hasAnyData = enumType.Variants.Any(v => v.HasAssociatedData);
+
+        if (!hasAnyData)
+        {
+            // Simple enum - just emit the constant name
+            return $"{enumName}_{enumCtor.VariantName}";
+        }
+        else
+        {
+            // Tagged union - emit compound literal with just the tag
+            return $"({enumName}){{ .tag = {enumName}_{enumCtor.VariantName} }}";
+        }
     }
 
     private string EmitCastValue(IrCastValue castValue)
