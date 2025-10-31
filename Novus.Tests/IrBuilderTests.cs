@@ -913,4 +913,118 @@ pub fn main() -> u32 {
         var exception = Assert.Throws<Exception>(() => BuildIr(source));
         Assert.Contains("Unknown function: unknown", exception.Message);
     }
+
+    [Fact]
+    public void BuildIr_BitwiseAndOperator_CreatesBinaryOp()
+    {
+        var source = @"
+pub fn main(a: u32, b: u32) -> u32 {
+    return a & b
+}";
+        var module = BuildIr(source);
+        var function = module.Functions.First(f => f.Name == "main");
+        var block = function.BasicBlocks[0];
+
+        var binOp = Assert.IsType<IrBinaryOp>(block.Instructions[0]);
+        Assert.Equal(IrBinaryOp.OpKind.And, binOp.Operation);
+    }
+
+    [Fact]
+    public void BuildIr_BitwiseOrOperator_CreatesBinaryOp()
+    {
+        var source = @"
+pub fn main(a: u32, b: u32) -> u32 {
+    return a | b
+}";
+        var module = BuildIr(source);
+        var function = module.Functions.First(f => f.Name == "main");
+        var block = function.BasicBlocks[0];
+
+        var binOp = Assert.IsType<IrBinaryOp>(block.Instructions[0]);
+        Assert.Equal(IrBinaryOp.OpKind.Or, binOp.Operation);
+    }
+
+    [Fact]
+    public void BuildIr_BitwiseXorOperator_CreatesBinaryOp()
+    {
+        var source = @"
+pub fn main(a: u32, b: u32) -> u32 {
+    return a ^ b
+}";
+        var module = BuildIr(source);
+        var function = module.Functions.First(f => f.Name == "main");
+        var block = function.BasicBlocks[0];
+
+        var binOp = Assert.IsType<IrBinaryOp>(block.Instructions[0]);
+        Assert.Equal(IrBinaryOp.OpKind.Xor, binOp.Operation);
+    }
+
+    [Fact]
+    public void BuildIr_LeftShiftOperator_CreatesBinaryOp()
+    {
+        var source = @"
+pub fn main() -> u32 {
+    return 1u32 << 8u32
+}";
+        var module = BuildIr(source);
+        var function = module.Functions.First(f => f.Name == "main");
+        var block = function.BasicBlocks[0];
+
+        var binOp = Assert.IsType<IrBinaryOp>(block.Instructions[0]);
+        Assert.Equal(IrBinaryOp.OpKind.Shl, binOp.Operation);
+    }
+
+    [Fact]
+    public void BuildIr_RightShiftOperator_CreatesBinaryOp()
+    {
+        var source = @"
+pub fn main() -> u32 {
+    return 256u32 >> 8u32
+}";
+        var module = BuildIr(source);
+        var function = module.Functions.First(f => f.Name == "main");
+        var block = function.BasicBlocks[0];
+
+        var binOp = Assert.IsType<IrBinaryOp>(block.Instructions[0]);
+        Assert.Equal(IrBinaryOp.OpKind.Shr, binOp.Operation);
+    }
+
+    [Fact]
+    public void BuildIr_DeferStatement_CreatesDeferInstruction()
+    {
+        var source = @"
+pub fn cleanup_test() -> i32 {
+    let x = 10i32
+    defer {
+        let y = 20i32
+    }
+    return x
+}";
+        var module = BuildIr(source);
+        var function = module.Functions.First(f => f.Name == "cleanup_test");
+
+        // Defer creates a deferred block in the function
+        Assert.True(function.DeferredBlocks.Count > 0, "Expected at least one deferred block");
+    }
+
+    [Fact]
+    public void BuildIr_BitwiseOperatorsWithVariables_CreatesBinaryOp()
+    {
+        var source = @"
+pub fn bitwise_test(a: u32, b: u32) -> u32 {
+    let and_result = a & b
+    let or_result = a | b
+    let xor_result = a ^ b
+    return and_result + or_result + xor_result
+}";
+        var module = BuildIr(source);
+        var function = module.Functions.First(f => f.Name == "bitwise_test");
+        var binaryOps = function.BasicBlocks[0].Instructions.OfType<IrBinaryOp>().ToList();
+
+        // Should have at least 3 bitwise ops (and, or, xor) plus the additions
+        Assert.True(binaryOps.Count >= 5, $"Expected at least 5 binary ops, got {binaryOps.Count}");
+        Assert.Contains(binaryOps, op => op.Operation == IrBinaryOp.OpKind.And);
+        Assert.Contains(binaryOps, op => op.Operation == IrBinaryOp.OpKind.Or);
+        Assert.Contains(binaryOps, op => op.Operation == IrBinaryOp.OpKind.Xor);
+    }
 }
