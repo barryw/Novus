@@ -6,6 +6,6 @@
 // Expected Output:
 //   Exit code: 20
 
-pub fn main() -> u32 {
+pub fn main() -> i32 {
     return (2 + 3) * 4
 }

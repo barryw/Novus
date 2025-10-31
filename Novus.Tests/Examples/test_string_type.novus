@@ -6,7 +6,7 @@
 // Expected Output:
 //   Exit code: 0
 
-pub fn main() -> u32 {
+pub fn main() -> i32 {
     let s = "Hello"
     return 0
 }

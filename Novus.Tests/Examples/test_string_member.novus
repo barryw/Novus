@@ -10,7 +10,7 @@ fn test_len(s: String) -> i32 {
     return s.len
 }
 
-pub fn main() -> u32 {
+pub fn main() -> i32 {
     let message = "Hello"
     let len = test_len(message)
     return (u32)len

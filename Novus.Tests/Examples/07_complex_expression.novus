@@ -6,6 +6,6 @@
 // Expected Output:
 //   Exit code: calculated result
 
-pub fn main() -> u32 {
+pub fn main() -> i32 {
     return ((10 + 5) * (20 - 3)) / 2
 }

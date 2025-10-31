@@ -11,7 +11,7 @@ struct Point {
     y: i32,
 }
 
-fn main() -> i32 {
+pub fn main() -> i32 {
     // Test @sizeof with primitive types
     let size_i32: u32 = @sizeof(i32)
     let size_u8: u32 = @sizeof(u8)

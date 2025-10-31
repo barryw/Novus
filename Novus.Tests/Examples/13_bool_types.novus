@@ -71,7 +71,7 @@ pub fn test_comparison_in_if() -> u32 {
     }
 }
 
-pub fn main() -> u32 {
+pub fn main() -> i32 {
     let result: bool = test_comparison_lt()
     if result {
         return 42u32

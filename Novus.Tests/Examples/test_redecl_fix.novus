@@ -6,7 +6,7 @@
 // Expected Output:
 //   Exit code: 0
 
-fn main() -> i32 {
+pub fn main() -> i32 {
     // Test 1: Boolean || with phi-style merge
     let a: bool = true
     let b: bool = false

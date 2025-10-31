@@ -48,7 +48,7 @@ fn test_early_return() -> i32 {
     return 0  // Should also call cleanup(val) before returning
 }
 
-fn main() -> i32 {
+pub fn main() -> i32 {
     let r1 = test_single_defer()
     let r2 = test_two_defers()
     let r3 = test_early_return()

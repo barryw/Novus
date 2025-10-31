@@ -26,6 +26,6 @@ fn test_defer_lifo() -> i32 {
     // 3. return 42
 }
 
-fn main() -> i32 {
+pub fn main() -> i32 {
     return test_defer_lifo()
 }

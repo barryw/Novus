@@ -40,6 +40,6 @@ pub fn test_nested_if(x: i32, y: i32) -> i32 {
     }
 }
 
-pub fn main() -> u32 {
+pub fn main() -> i32 {
     return 42u32
 }

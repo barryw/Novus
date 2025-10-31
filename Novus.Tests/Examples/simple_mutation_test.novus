@@ -16,7 +16,7 @@ impl Counter {
     }
 }
 
-fn main() -> i32 {
+pub fn main() -> i32 {
     let mut c: Counter = Counter {
         value: 0,
     }

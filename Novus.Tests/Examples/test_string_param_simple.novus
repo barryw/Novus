@@ -15,7 +15,7 @@ fn sum_lengths(a: String, b: String) -> i32 {
     return a.len + b.len
 }
 
-pub fn main() -> u32 {
+pub fn main() -> i32 {
     let msg1 = "Hello"
     let msg2 = "World"
 
