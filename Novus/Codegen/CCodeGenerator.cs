@@ -278,26 +278,35 @@ public class CCodeGenerator
         sb.AppendLine("};");
         sb.AppendLine();
 
-        sb.AppendLine($"union {enumName}_Data {{");
-        foreach (var variant in enumType.Variants)
+        // BUG FIX #4: Check if any variant has associated data before generating union
+        bool anyVariantHasData = enumType.Variants.Any(v => v.HasAssociatedData);
+
+        if (anyVariantHasData)
         {
-            if (variant.HasAssociatedData)
+            sb.AppendLine($"union {enumName}_Data {{");
+            foreach (var variant in enumType.Variants)
             {
-                sb.AppendLine($"    struct {{");
-                for (int i = 0; i < variant.AssociatedData.Count; i++)
+                if (variant.HasAssociatedData)
                 {
-                    var dataType = GetCType(variant.AssociatedData[i]);
-                    sb.AppendLine($"        {dataType} _{i};");
+                    sb.AppendLine($"    struct {{");
+                    for (int i = 0; i < variant.AssociatedData.Count; i++)
+                    {
+                        var dataType = GetCType(variant.AssociatedData[i]);
+                        sb.AppendLine($"        {dataType} _{i};");
+                    }
+                    sb.AppendLine($"    }} {variant.Name};");
                 }
-                sb.AppendLine($"    }} {variant.Name};");
             }
+            sb.AppendLine("};");
+            sb.AppendLine();
         }
-        sb.AppendLine("};");
-        sb.AppendLine();
 
         sb.AppendLine($"typedef struct {{");
         sb.AppendLine($"    enum {enumName}_Tag tag;");
-        sb.AppendLine($"    union {enumName}_Data data;");
+        if (anyVariantHasData)
+        {
+            sb.AppendLine($"    union {enumName}_Data data;");
+        }
         sb.AppendLine($"}} {enumName};");
         sb.AppendLine();
     }
@@ -1471,6 +1480,7 @@ public class CCodeGenerator
         // Switch on the tag
         _output.AppendLine($"    switch ({matchValue}.tag) {{");
 
+        bool hasWildcard = false;
         foreach (var arm in match.Arms)
         {
             if (arm.Pattern is IrVariantPattern variantPattern)
@@ -1482,7 +1492,14 @@ public class CCodeGenerator
                 {
                     var boundVar = variantPattern.BoundVariables[i];
                     var variant = enumType.GetVariant(variantPattern.VariantName);
-                    if (variant != null && i < variant.AssociatedData.Count)
+
+                    // BUG FIX #3: Check for null variant before accessing properties
+                    if (variant == null)
+                    {
+                        throw new InvalidOperationException($"Variant '{variantPattern.VariantName}' not found in enum '{enumName}'");
+                    }
+
+                    if (i < variant.AssociatedData.Count)
                     {
                         var dataType = GetCType(variant.AssociatedData[i]);
                         _output.AppendLine($"        {dataType} {boundVar} = {matchValue}.data.{variantPattern.VariantName}._{i};");
@@ -1493,9 +1510,18 @@ public class CCodeGenerator
             }
             else if (arm.Pattern is IrWildcardPattern)
             {
+                hasWildcard = true;
                 _output.AppendLine($"    default:");
                 _output.AppendLine($"        goto {arm.TargetLabel};");
             }
+        }
+
+        // BUG FIX #2: Add default case if no wildcard pattern to catch invalid enum tags
+        if (!hasWildcard)
+        {
+            _output.AppendLine($"    default:");
+            _output.AppendLine($"        // Invalid enum tag - this should never happen in safe code");
+            _output.AppendLine($"        abort();");
         }
 
         _output.AppendLine("    }");
