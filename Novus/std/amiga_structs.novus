@@ -5301,6 +5301,10 @@ pub struct Screen {
     sc_Dummy: u32,  // Placeholder
 }
 
+pub struct NewScreen {
+    ns_Dummy: u32,  // Placeholder
+}
+
 pub struct Window {
     wn_Dummy: u32,  // Placeholder
 }

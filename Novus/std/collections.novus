@@ -181,6 +181,16 @@ impl<T> Vec<T> {
         self.len = 0u32
     }
 
+    // Get immutable pointer to the underlying buffer
+    pub fn as_ptr(&self) -> *T {
+        return self.ptr
+    }
+
+    // Get mutable pointer to the underlying buffer
+    pub fn as_mut_ptr(&mut self) -> *T {
+        return self.ptr
+    }
+
     // Free the vector's memory
     pub fn drop(&mut self) {
         if self.capacity > 0u32 {
