@@ -502,6 +502,12 @@ public class CCodeGenerator
                                 worklist.Enqueue(call.FunctionName);
                             }
                         }
+
+                        // Scan arguments for function references (e.g., passing functions as parameters)
+                        foreach (var arg in call.Arguments)
+                        {
+                            ScanValueForFunctionReferences(arg, reachable, worklist);
+                        }
                     }
 
                     // Handle indirect calls through function pointers
@@ -567,6 +573,20 @@ public class CCodeGenerator
                     if (referencedFunc != null)
                     {
                         worklist.Enqueue(funcAddr.FunctionName);
+                    }
+                }
+                break;
+
+            case IrFunctionRef funcRef:
+                // Found a function reference - mark it as reachable
+                if (!reachable.Contains(funcRef.Function.Name))
+                {
+                    reachable.Add(funcRef.Function.Name);
+
+                    // If it's a function in this module (not extern), add to worklist
+                    if (!funcRef.Function.IsExtern && funcRef.Function.BasicBlocks.Count > 0)
+                    {
+                        worklist.Enqueue(funcRef.Function.Name);
                     }
                 }
                 break;
@@ -1530,6 +1550,7 @@ public class CCodeGenerator
             IrStructLiteral structLit => EmitStructLiteral(structLit),
             IrArrayLiteral arrayLit => EmitArrayLiteral(arrayLit),
             IrFunctionAddress funcAddr => funcAddr.FunctionName,  // Function name IS its address in C
+            IrFunctionRef funcRef => funcRef.Function.Name,  // Function reference - emit function name
             _ => throw new NotSupportedException($"Unsupported value type: {value.GetType().Name}")
         };
     }

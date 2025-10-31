@@ -6,7 +6,8 @@
 // Expected Output:
 //   Exit code: 0
 
-from std::exec import SafeAllocMem, SafeFreeMem, MEMF_PUBLIC
+from std::exec import SafeAllocMem, SafeFreeMem
+from std::ffi::amiga_consts import MEMF_PUBLIC
 
 fn main() -> i32 {
     // Simple test: allocate and free memory

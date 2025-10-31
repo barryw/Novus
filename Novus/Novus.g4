@@ -177,7 +177,7 @@ matchStatement
     ;
 
 matchArm
-    : pattern '=>' (expression | block)
+    : pattern '=>' (expression | block | returnStatement)
     ;
 
 pattern

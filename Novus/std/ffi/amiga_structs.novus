@@ -1,0 +1,1359 @@
+// Generated from NDK headers by Novus SFD Parser
+// AmigaOS struct definitions
+//
+// This file contains struct definitions from the NDK headers.
+// Constants are in std::ffi::amiga_consts
+
+// ============================================================================
+// Struct Definitions
+// ============================================================================
+
+pub struct Node {
+    ln_Succ: *Node,
+    ln_Pred: *Node,
+    ln_Type: u8,
+    ln_Pri: i8,
+    ln_Name: *u8,
+}
+
+pub struct MinNode {
+    mln_Succ: *MinNode,
+    mln_Pred: *MinNode,
+}
+
+pub struct Library {
+    lib_Node: Node,
+    lib_Flags: u8,
+    lib_pad: u8,
+    lib_NegSize: u16,
+    lib_PosSize: u16,
+    lib_Version: u16,
+    lib_Revision: u16,
+    lib_IdString: *u8,
+    lib_Sum: u32,
+    lib_OpenCnt: u16,
+}
+
+pub struct List {
+    lh_Head: *Node,
+    lh_Tail: *Node,
+    lh_TailPred: *Node,
+    lh_Type: u8,
+    l_pad: u8,
+}
+
+pub struct MinList {
+    mlh_Head: *MinNode,
+    mlh_Tail: *MinNode,
+    mlh_TailPred: *MinNode,
+}
+
+pub struct TagItem {
+    ti_Tag: u32,
+    ti_Data: u32,
+}
+
+pub struct Task {
+    tc_Node: Node,
+    tc_Flags: u8,
+    tc_State: u8,
+    tc_IDNestCnt: i8,
+    tc_TDNestCnt: i8,
+    tc_SigAlloc: u32,
+    tc_SigWait: u32,
+    tc_SigRecvd: u32,
+    tc_SigExcept: u32,
+    tc_TrapAlloc: u16,
+    tc_TrapAble: u16,
+    tc_ExceptData: *u8,
+    tc_ExceptCode: *u8,
+    tc_TrapData: *u8,
+    tc_TrapCode: *u8,
+    tc_SPReg: *u8,
+    tc_SPLower: *u8,
+    tc_SPUpper: *u8,
+    tc_Switch: *u8,
+    tc_Launch: *u8,
+    tc_MemEntry: List,
+    tc_UserData: *u8,
+}
+
+pub struct StackSwapStruct {
+    stk_Lower: *u8,
+    stk_Upper: u32,
+    stk_Pointer: *u8,
+}
+
+pub struct MsgPort {
+    mp_Node: Node,
+    mp_Flags: u8,
+    mp_SigBit: u8,
+    mp_SigTask: *u8,
+    mp_MsgList: List,
+}
+
+pub struct Message {
+    mn_Node: Node,
+    mn_ReplyPort: *MsgPort,
+    mn_Length: u16,
+}
+
+pub struct Device {
+    dd_Library: Library,
+}
+
+pub struct Unit {
+    unit_MsgPort: MsgPort,
+    unit_flags: u8,
+    unit_pad: u8,
+    unit_OpenCnt: u16,
+}
+
+pub struct ExtendedNode {
+    xln_Succ: *u8,
+    xln_Pred: *u8,
+    xln_Type: u8,
+    xln_Pri: i8,
+    xln_Name: *u8,
+    xln_Subsystem: u8,
+    xln_Subtype: u8,
+    xln_Library: i32,
+    xln_Init: *u8,
+}
+
+pub struct Custom {
+    bltddat: u16,
+    dmaconr: u16,
+    vposr: u16,
+    vhposr: u16,
+    dskdatr: u16,
+    joy0dat: u16,
+    joy1dat: u16,
+    clxdat: u16,
+    adkconr: u16,
+    pot0dat: u16,
+    pot1dat: u16,
+    potinp: u16,
+    serdatr: u16,
+    dskbytr: u16,
+    intenar: u16,
+    intreqr: u16,
+    dskpt: *u8,
+    dsklen: u16,
+    dskdat: u16,
+    refptr: u16,
+    vposw: u16,
+    vhposw: u16,
+    copcon: u16,
+    serdat: u16,
+    serper: u16,
+    potgo: u16,
+    joytest: u16,
+    strequ: u16,
+    strvbl: u16,
+    strhor: u16,
+    strlong: u16,
+    bltcon0: u16,
+    bltcon1: u16,
+    bltafwm: u16,
+    bltalwm: u16,
+    bltcpt: *u8,
+    bltbpt: *u8,
+    bltapt: *u8,
+    bltdpt: *u8,
+    bltsize: u16,
+    pad2d: u8,
+    bltcon0l: u8,
+    bltsizv: u16,
+    bltsizh: u16,
+    bltcmod: u16,
+    bltbmod: u16,
+    bltamod: u16,
+    bltdmod: u16,
+    pad34: [4]u16,
+    bltcdat: u16,
+    bltbdat: u16,
+    bltadat: u16,
+    pad3b: [3]u16,
+    deniseid: u16,
+    dsksync: u16,
+    cop1lc: u32,
+    cop2lc: u32,
+    copjmp1: u16,
+    copjmp2: u16,
+    copins: u16,
+    diwstrt: u16,
+    diwstop: u16,
+    ddfstrt: u16,
+    ddfstop: u16,
+    dmacon: u16,
+    clxcon: u16,
+    intena: u16,
+    intreq: u16,
+    adkcon: u16,
+    ac_ptr: *u8,
+    ac_len: u16,
+    ac_per: u16,
+    ac_vol: u16,
+    ac_dat: u16,
+    ac_pad: [2]u16,
+}
+
+pub struct SpriteDef {
+    pos: u16,
+    ctl: u16,
+    dataa: u16,
+    datab: u16,
+}
+
+pub struct DBufInfo {
+    dbi_Link1: *u8,
+    dbi_Count1: u32,
+    dbi_SafeMessage: Message,
+    dbi_UserData1: *u8,
+    dbi_Link2: *u8,
+    dbi_Count2: u32,
+    dbi_DispMessage: Message,
+    dbi_UserData2: *u8,
+    dbi_MatchLong: u32,
+    dbi_CopPtr1: *u8,
+    dbi_CopPtr2: *u8,
+    dbi_CopPtr3: *u8,
+    dbi_BeamPos1: u16,
+    dbi_BeamPos2: u16,
+}
+
+pub struct TextAttr {
+    ta_Name: *u8,
+    ta_YSize: u16,
+    ta_Style: u8,
+    ta_Flags: u8,
+}
+
+pub struct TTextAttr {
+    tta_Name: *u8,
+    tta_YSize: u16,
+    tta_Style: u8,
+    tta_Flags: u8,
+    tta_Tags: *TagItem,
+}
+
+pub struct TextFont {
+    tf_Message: Message,
+    tf_YSize: u16,
+    tf_Style: u8,
+    tf_Flags: u8,
+    tf_XSize: u16,
+    tf_Baseline: u16,
+    tf_BoldSmear: u16,
+    tf_Accessors: u16,
+    tf_LoChar: u8,
+    tf_HiChar: u8,
+    tf_CharData: *u8,
+    tf_Modulo: u16,
+    tf_CharLoc: *u8,
+    tf_CharSpace: *u8,
+    tf_CharKern: *u8,
+}
+
+pub struct TextFontExtension {
+    tfe_MatchWord: u16,
+    tfe_Flags0: u8,
+    tfe_Flags1: u8,
+    tfe_BackPtr: *TextFont,
+    tfe_OrigReplyPort: *MsgPort,
+    tfe_Tags: *TagItem,
+    tfe_OFontPatchS: *u8,
+    tfe_OFontPatchK: *u8,
+}
+
+pub struct ColorFontColors {
+    cfc_Reserved: u16,
+    cfc_Count: u16,
+    cfc_ColorTable: *u8,
+}
+
+pub struct ColorTextFont {
+    ctf_TF: TextFont,
+    ctf_Flags: u16,
+    ctf_Depth: u8,
+    ctf_FgColor: u8,
+    ctf_Low: u8,
+    ctf_High: u8,
+    ctf_PlanePick: u8,
+    ctf_PlaneOnOff: u8,
+    ctf_ColorFontColors: *ColorFontColors,
+    ctf_CharData: [8]*u8,
+}
+
+pub struct TextExtent {
+    te_Width: u16,
+    te_Height: u16,
+    te_Extent: Rectangle,
+}
+
+pub struct IORequest {
+    io_Message: Message,
+    io_Device: *Device,
+    io_Unit: *Unit,
+    io_Command: u16,
+    io_Flags: u8,
+    io_Error: i8,
+}
+
+pub struct IOStdReq {
+    io_Message: Message,
+    io_Device: *Device,
+    io_Unit: *Unit,
+    io_Command: u16,
+    io_Flags: u8,
+    io_Error: i8,
+    io_Actual: u32,
+    io_Length: u32,
+    io_Data: *u8,
+    io_Offset: u32,
+}
+
+pub struct timeval {
+    tv_secs: u32,
+    tv_micro: u32,
+}
+
+pub struct EClockVal {
+    ev_hi: u32,
+    ev_lo: u32,
+}
+
+pub struct timerequest {
+    tr_node: IORequest,
+    tr_time: timeval,
+}
+
+pub struct IEPointerPixel {
+    iepp_Screen: *Screen,
+    X: i16,
+    Y: i16,
+}
+
+pub struct IEPointerTablet {
+    X: u16,
+    Y: u16,
+}
+
+pub struct InputEvent {
+    // TODO: Contains union - needs manual conversion
+    ie_NextEvent: *InputEvent,
+    ie_Class: u8,
+    ie_SubClass: u8,
+    ie_Code: u16,
+    ie_Qualifier: u16,
+    ie_x: i16,
+    ie_y: i16,
+}
+
+pub struct PubScreenNode {
+    psn_Node: Node,
+    psn_Screen: *Screen,
+    psn_Flags: u16,
+    psn_Size: i16,
+    psn_VisitorCount: i16,
+    psn_SigTask: *Task,
+    psn_SigBit: u8,
+}
+
+pub struct EasyStruct {
+    es_StructSize: u32,
+    es_Flags: u32,
+    es_Title: *u8,
+    es_TextFormat: *u8,
+    es_GadgetFormat: *u8,
+}
+
+pub struct Interrupt {
+    is_Node: Node,
+    is_Data: *u8,
+    is_Code: *u8,
+}
+
+pub struct IntVector {
+    iv_Data: *u8,
+    iv_Code: *u8,
+    iv_Node: *Node,
+}
+
+pub struct SoftIntList {
+    sh_List: List,
+    sh_Pad: u16,
+}
+
+pub struct DateStamp {
+    ds_Days: i32,
+    ds_Minute: i32,
+    ds_Tick: i32,
+}
+
+pub struct FileInfoBlock {
+    fib_DiskKey: i32,
+    fib_DirEntryType: i32,
+    fib_FileName: [108]*u8 /* char */,
+    fib_Protection: i32,
+    fib_EntryType: i32,
+    fib_Size: i32,
+    fib_NumBlocks: i32,
+    fib_Date: DateStamp,
+    fib_Comment: [80]*u8 /* char */,
+    fib_OwnerUID: u16,
+    fib_OwnerGID: u16,
+    fib_Reserved: [32]*u8 /* char */,
+}
+
+pub struct InfoData {
+    id_NumSoftErrors: i32,
+    id_UnitNumber: i32,
+    id_DiskState: i32,
+    id_NumBlocks: i32,
+    id_NumBlocksUsed: i32,
+    id_BytesPerBlock: i32,
+    id_DiskType: i32,
+    id_VolumeNode: i32,
+    id_InUse: i32,
+}
+
+pub struct opSet {
+    MethodID: u32,
+    ops_AttrList: *TagItem,
+    ops_GInfo: *GadgetInfo,
+}
+
+pub struct opUpdate {
+    MethodID: u32,
+    opu_AttrList: *TagItem,
+    opu_GInfo: *GadgetInfo,
+    opu_Flags: u32,
+}
+
+pub struct opGet {
+    MethodID: u32,
+    opg_AttrID: u32,
+    opg_Storage: *u8,
+}
+
+pub struct opAddTail {
+    MethodID: u32,
+    opat_List: *List,
+}
+
+pub struct opMember {
+    MethodID: u32,
+    opam_Object: *u8,
+}
+
+pub struct NexxStr {
+    ns_Ivalue: i32,
+    ns_Length: u16,
+    ns_Flags: u8,
+    ns_Hash: u8,
+    ns_Buff: [8]i8,
+}
+
+pub struct RexxArg {
+    ra_Size: i32,
+    ra_Length: u16,
+    ra_Flags: u8,
+    ra_Hash: u8,
+    ra_Buff: [8]i8,
+}
+
+pub struct RexxMsg {
+    rm_Node: Message,
+    rm_TaskBlock: *u8,
+    rm_LibBase: *u8,
+    rm_Action: i32,
+    rm_Result1: i32,
+    rm_Result2: i32,
+    rm_Args: [16]*u8,
+    rm_PassPort: *MsgPort,
+    rm_CommAddr: *u8,
+    rm_FileExt: *u8,
+    rm_Stdin: i32,
+    rm_Stdout: i32,
+    rm_avail: i32,
+}
+
+pub struct RexxRsrc {
+    rr_Node: Node,
+    rr_Func: i16,
+    rr_Base: *u8,
+    rr_Size: i32,
+    rr_Arg1: i32,
+    rr_Arg2: i32,
+}
+
+pub struct RexxTask {
+    rt_Global: [GLOBALSZ]i8,
+    rt_MsgPort: MsgPort,
+    rt_Flags: u8,
+    rt_SigBit: i8,
+    rt_ClientID: *u8,
+    rt_MsgPkt: *u8,
+    rt_TaskID: *u8,
+    rt_RexxPort: *u8,
+    rt_ErrTrap: *u8,
+    rt_StackPtr: *u8,
+    rt_Header1: List,
+    rt_Header2: List,
+    rt_Header3: List,
+    rt_Header4: List,
+    rt_Header5: List,
+}
+
+pub struct SrcNode {
+    sn_Succ: *SrcNode,
+    sn_Pred: *SrcNode,
+    sn_Ptr: *u8,
+    sn_Size: i32,
+}
+
+pub struct RxsLib {
+    rl_Node: Library,
+    rl_Flags: u8,
+    rl_Shadow: u8,
+    rl_SysBase: *u8,
+    rl_DOSBase: *u8,
+    rl_IeeeDPBase: *u8,
+    rl_SegList: i32,
+    rl_NIL: i32,
+    rl_Chunk: i32,
+    rl_MaxNest: i32,
+    rl_NULL: *NexxStr,
+    rl_FALSE: *NexxStr,
+    rl_TRUE: *NexxStr,
+    rl_REXX: *NexxStr,
+    rl_COMMAND: *NexxStr,
+    rl_STDIN: *NexxStr,
+    rl_STDOUT: *NexxStr,
+    rl_STDERR: *NexxStr,
+    rl_Version: *u8,
+    rl_TaskName: *u8,
+    rl_TaskPri: i32,
+    rl_TaskSeg: i32,
+    rl_StackSize: i32,
+    rl_RexxDir: *u8,
+    rl_CTABLE: *u8,
+    rl_Notice: *u8,
+    rl_RexxPort: MsgPort,
+    rl_ReadLock: u16,
+    rl_TraceFH: i32,
+    rl_TaskList: List,
+    rl_NumTask: i16,
+    rl_LibList: List,
+    rl_NumLib: i16,
+    rl_ClipList: List,
+    rl_NumClip: i16,
+    rl_MsgList: List,
+    rl_NumMsg: i16,
+    rl_PgmList: List,
+    rl_NumPgm: i16,
+    rl_TraceCnt: u16,
+    rl_avail: i16,
+}
+
+pub struct IoBuff {
+    iobNode: RexxRsrc,
+    iobRpt: *u8,
+    iobRct: i32,
+    iobDFH: i32,
+    iobLock: *u8,
+    iobBct: i32,
+    iobArea: [RXBUFFSZ]i8,
+}
+
+pub struct RexxMsgPort {
+    rmp_Node: RexxRsrc,
+    rmp_Port: MsgPort,
+    rmp_ReplyList: List,
+}
+
+pub struct impFrameBox {
+    MethodID: u32,
+    imp_ContentsBox: *IBox,
+    imp_FrameBox: *IBox,
+    imp_DrInfo: *DrawInfo,
+    imp_FrameFlags: u32,
+}
+
+pub struct MemChunk {
+    mc_Next: *MemChunk,
+    mc_Bytes: u32,
+}
+
+pub struct MemHeader {
+    mh_Node: Node,
+    mh_Attributes: u16,
+    mh_First: *MemChunk,
+    mh_Lower: *u8,
+    mh_Upper: *u8,
+    mh_Free: u32,
+}
+
+pub struct MemEntry {
+    // TODO: Contains union - needs manual conversion
+    meu_Reqs: u32,
+    meu_Addr: *u8,
+}
+
+pub struct MemList {
+    ml_Node: Node,
+    ml_NumEntries: u16,
+    ml_ME: [1]MemEntry,
+}
+
+pub struct CSource {
+    CS_Buffer: *u8,
+    CS_Length: i32,
+    CS_CurChr: i32,
+}
+
+pub struct RDArgs {
+    RDA_Source: CSource,
+    RDA_DAList: i32,
+    RDA_Buffer: *u8,
+    RDA_BufSiz: i32,
+    RDA_ExtHelp: *u8,
+    RDA_Flags: i32,
+}
+
+pub struct OldDrawerData {
+    dd_NewWindow: NewWindow,
+    dd_CurrentX: i32,
+    dd_CurrentY: i32,
+}
+
+pub struct DrawerData {
+    dd_NewWindow: NewWindow,
+    dd_CurrentX: i32,
+    dd_CurrentY: i32,
+    dd_Flags: u32,
+    dd_ViewModes: u16,
+}
+
+pub struct DiskObject {
+    do_Magic: u16,
+    do_Version: u16,
+    do_Gadget: Gadget,
+    do_Type: u8,
+    do_DefaultTool: *u8,
+    do_ToolTypes: *u8,
+    do_CurrentX: i32,
+    do_CurrentY: i32,
+    do_DrawerData: *DrawerData,
+    do_ToolWindow: *u8,
+    do_StackSize: i32,
+}
+
+pub struct FreeList {
+    fl_NumFree: i16,
+    fl_MemList: List,
+}
+
+pub struct AppMessage {
+    am_Message: Message,
+    am_Type: u16,
+    am_UserData: u32,
+    am_ID: u32,
+    am_NumArgs: i32,
+    am_ArgList: *WBArg,
+    am_Version: u16,
+    am_Class: u16,
+    am_MouseX: i16,
+    am_MouseY: i16,
+    am_Seconds: u32,
+    am_Micros: u32,
+    am_Reserved: [8]u32,
+}
+
+pub struct AppWindow {
+    aw_PRIVATE: *u8,
+}
+
+pub struct AppWindowDropZone {
+    awdz_PRIVATE: *u8,
+}
+
+pub struct AppIcon {
+    ai_PRIVATE: *u8,
+}
+
+pub struct AppMenuItem {
+    ami_PRIVATE: *u8,
+}
+
+pub struct AppMenu {
+    am_PRIVATE: *u8,
+}
+
+pub struct ClipboardUnitPartial {
+    cu_Node: Node,
+    cu_UnitNum: u32,
+}
+
+pub struct IOClipReq {
+    io_Message: Message,
+    io_Device: *Device,
+    io_Unit: *ClipboardUnitPartial,
+    io_Command: u16,
+    io_Flags: u8,
+    io_Error: i8,
+    io_Actual: u32,
+    io_Length: u32,
+    io_Data: *u8,
+    io_Offset: u32,
+    io_ClipID: i32,
+}
+
+pub struct SatisfyMsg {
+    sm_Msg: Message,
+    sm_Unit: u16,
+    sm_ClipID: i32,
+}
+
+pub struct ClipHookMsg {
+    chm_Type: u32,
+    chm_ChangeCmd: i32,
+    chm_ClipID: i32,
+}
+
+pub struct DRPSourceMsg {
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    buf: *u8,
+}
+
+pub struct IOPArray {
+    PTermArray0: u32,
+    PTermArray1: u32,
+}
+
+pub struct IOExtPar {
+    IOPar: IOStdReq,
+    io_PExtFlags: u32,
+    io_Status: u8,
+    io_ParFlags: u8,
+    io_PTermArray: IOPArray,
+}
+
+pub struct IOTArray {
+    TermArray0: u32,
+    TermArray1: u32,
+}
+
+pub struct IOExtSer {
+    IOSer: IOStdReq,
+    io_CtlChar: u32,
+    io_RBufLen: u32,
+    io_ExtFlags: u32,
+    io_Baud: u32,
+    io_BrkTime: u32,
+    io_TermArray: IOTArray,
+    io_ReadLen: u8,
+    io_WriteLen: u8,
+    io_StopBits: u8,
+    io_SerFlags: u8,
+    io_Status: u16,
+}
+
+pub struct Process {
+    pr_Task: Task,
+    pr_MsgPort: MsgPort,
+    pr_Pad: i16,
+    pr_SegList: i32,
+    pr_StackSize: i32,
+    pr_GlobVec: *u8,
+    pr_TaskNum: i32,
+    pr_StackBase: i32,
+    pr_Result2: i32,
+    pr_CurrentDir: i32,
+    pr_CIS: i32,
+    pr_COS: i32,
+    pr_ConsoleTask: *u8,
+    pr_FileSystemTask: *u8,
+    pr_CLI: i32,
+    pr_ReturnAddr: *u8,
+    pr_PktWait: *u8,
+    pr_WindowPtr: *u8,
+    pr_HomeDir: i32,
+    pr_Flags: i32,
+    pr_ExitCode: *u8,
+    pr_ExitData: i32,
+    pr_Arguments: *u8,
+    pr_LocalVars: MinList,
+    pr_ShellPrivate: u32,
+    pr_CES: i32,
+}
+
+pub struct FileHandle {
+    fh_Link: *Message,
+    fh_Port: *MsgPort,
+    fh_Type: *MsgPort,
+    fh_Buf: i32,
+    fh_Pos: i32,
+    fh_End: i32,
+    fh_Funcs: i32,
+    fh_Func2: i32,
+    fh_Func3: i32,
+    fh_Args: i32,
+    fh_Arg2: i32,
+}
+
+pub struct DosPacket {
+    dp_Link: *Message,
+    dp_Port: *MsgPort,
+    dp_Type: i32,
+    dp_Res1: i32,
+    dp_Res2: i32,
+    dp_Arg1: i32,
+    dp_Arg2: i32,
+    dp_Arg3: i32,
+    dp_Arg4: i32,
+    dp_Arg5: i32,
+    dp_Arg6: i32,
+    dp_Arg7: i32,
+}
+
+pub struct StandardPacket {
+    sp_Msg: Message,
+    sp_Pkt: DosPacket,
+}
+
+pub struct ErrorString {
+    estr_Nums: *u8,
+    estr_Strings: *u8,
+}
+
+pub struct DosLibrary {
+    dl_lib: Library,
+    dl_Root: *RootNode,
+    dl_GV: *u8,
+    dl_A2: i32,
+    dl_A5: i32,
+    dl_A6: i32,
+    dl_Errors: *ErrorString,
+    dl_TimeReq: *timerequest,
+    dl_UtilityBase: *Library,
+    dl_IntuitionBase: *Library,
+}
+
+pub struct RootNode {
+    rn_TaskArray: i32,
+    rn_ConsoleSegment: i32,
+    rn_Time: DateStamp,
+    rn_RestartSeg: i32,
+    rn_Info: i32,
+    rn_FileHandlerSegment: i32,
+    rn_CliList: MinList,
+    rn_BootProc: *MsgPort,
+    rn_ShellSegment: i32,
+    rn_Flags: i32,
+}
+
+pub struct CliProcList {
+    cpl_Node: MinNode,
+    cpl_First: i32,
+    cpl_Array: *MsgPort,
+}
+
+pub struct DosInfo {
+    di_McName: i32,
+    di_DevInfo: i32,
+    di_Devices: i32,
+    di_Handlers: i32,
+    di_NetHand: *u8,
+    di_DevLock: SignalSemaphore,
+    di_EntryLock: SignalSemaphore,
+    di_DeleteLock: SignalSemaphore,
+}
+
+pub struct Segment {
+    seg_Next: i32,
+    seg_UC: i32,
+    seg_Seg: i32,
+    seg_Name: [4]u8,
+}
+
+pub struct CommandLineInterface {
+    cli_Result2: i32,
+    cli_SetName: *u8 /* BSTR */,
+    cli_CommandDir: i32,
+    cli_ReturnCode: i32,
+    cli_CommandName: *u8 /* BSTR */,
+    cli_FailLevel: i32,
+    cli_Prompt: *u8 /* BSTR */,
+    cli_StandardInput: i32,
+    cli_CurrentInput: i32,
+    cli_CommandFile: *u8 /* BSTR */,
+    cli_Interactive: i32,
+    cli_Background: i32,
+    cli_CurrentOutput: i32,
+    cli_DefaultStack: i32,
+    cli_StandardOutput: i32,
+    cli_Module: i32,
+}
+
+pub struct DeviceList {
+    dl_Next: i32,
+    dl_Type: i32,
+    dl_Task: *MsgPort,
+    dl_Lock: i32,
+    dl_VolumeDate: DateStamp,
+    dl_LockList: i32,
+    dl_DiskType: i32,
+    dl_unused: i32,
+    dl_Name: *u8 /* BSTR */,
+}
+
+pub struct DevInfo {
+    dvi_Next: i32,
+    dvi_Type: i32,
+    dvi_Task: *u8,
+    dvi_Lock: i32,
+    dvi_Handler: *u8 /* BSTR */,
+    dvi_StackSize: i32,
+    dvi_Priority: i32,
+    dvi_Startup: i32,
+    dvi_SegList: i32,
+    dvi_GlobVec: i32,
+    dvi_Name: *u8 /* BSTR */,
+}
+
+pub struct DosList {
+    // TODO: Contains union - needs manual conversion
+    dol_Next: i32,
+    dol_Type: i32,
+    dol_Task: *MsgPort,
+    dol_Lock: i32,
+    dol_Handler: *u8 /* BSTR */,
+    dol_StackSize: i32,
+    dol_Priority: i32,
+    dol_Startup: u32,
+    dol_SegList: i32,
+    dol_GlobVec: i32,
+}
+
+pub struct AssignList {
+    al_Next: *AssignList,
+    al_Lock: i32,
+}
+
+pub struct DevProc {
+    dvp_Port: *MsgPort,
+    dvp_Lock: i32,
+    dvp_Flags: u32,
+    dvp_DevNode: *DosList,
+}
+
+pub struct FileLock {
+    fl_Link: i32,
+    fl_Key: i32,
+    fl_Access: i32,
+    fl_Task: *MsgPort,
+    fl_Volume: i32,
+}
+
+pub struct RecordLock {
+    rec_FH: i32,
+    rec_Offset: u32,
+    rec_Length: u32,
+    rec_Mode: u32,
+}
+
+pub struct AnchorPath {
+    ap_Base: *AChain,
+    ap_Last: *AChain,
+    ap_BreakBits: i32,
+    ap_FoundBreak: i32,
+    ap_Flags: i8,
+    ap_Reserved: i8,
+    ap_Strlen: i16,
+    ap_Info: FileInfoBlock,
+    ap_Buf: [1]u8,
+}
+
+pub struct AChain {
+    an_Child: *AChain,
+    an_Parent: *AChain,
+    an_Lock: i32,
+    an_Info: FileInfoBlock,
+    an_Flags: i8,
+    an_String: [1]u8,
+}
+
+pub struct LocalVar {
+    lv_Node: Node,
+    lv_Flags: u16,
+    lv_Value: *u8,
+    lv_Len: u32,
+}
+
+pub struct NotifyMessage {
+    nm_ExecMessage: Message,
+    nm_Class: u32,
+    nm_Code: u16,
+    nm_NReq: *NotifyRequest,
+    nm_DoNotTouch: u32,
+    nm_DoNotTouch2: u32,
+}
+
+pub struct NotifyRequest {
+    // TODO: Contains union - needs manual conversion
+    nr_Name: *u8,
+    nr_FullName: *u8,
+    nr_UserData: u32,
+    nr_Flags: u32,
+    nr_Port: *MsgPort,
+}
+
+pub struct DateTime {
+    dat_Stamp: DateStamp,
+    dat_Format: u8,
+    dat_Flags: u8,
+    dat_StrDay: *u8,
+    dat_StrDate: *u8,
+    dat_StrTime: *u8,
+}
+
+pub struct ExAllData {
+    ed_Next: *ExAllData,
+    ed_Name: *u8,
+    ed_Type: i32,
+    ed_Size: u32,
+    ed_Prot: u32,
+    ed_Days: u32,
+    ed_Mins: u32,
+    ed_Ticks: u32,
+    ed_Comment: *u8,
+    ed_OwnerUID: u16,
+    ed_OwnerGID: u16,
+}
+
+pub struct ExAllControl {
+    eac_Entries: u32,
+    eac_LastKey: u32,
+    eac_MatchString: *u8,
+    eac_MatchFunc: *Hook,
+}
+
+pub struct ExpansionRom {
+    er_Type: u8,
+    er_Product: u8,
+    er_Flags: u8,
+    er_Reserved03: u8,
+    er_Manufacturer: u16,
+    er_SerialNumber: u32,
+    er_InitDiagVec: u16,
+    er_Reserved0c: u8,
+    er_Reserved0d: u8,
+    er_Reserved0e: u8,
+    er_Reserved0f: u8,
+}
+
+pub struct ExpansionControl {
+    ec_Interrupt: u8,
+    ec_Z3_HighBase: u8,
+    ec_BaseAddress: u8,
+    ec_Shutup: u8,
+    ec_Reserved14: u8,
+    ec_Reserved15: u8,
+    ec_Reserved16: u8,
+    ec_Reserved17: u8,
+    ec_Reserved18: u8,
+    ec_Reserved19: u8,
+    ec_Reserved1a: u8,
+    ec_Reserved1b: u8,
+    ec_Reserved1c: u8,
+    ec_Reserved1d: u8,
+    ec_Reserved1e: u8,
+    ec_Reserved1f: u8,
+}
+
+pub struct DiagArea {
+    da_Config: u8,
+    da_Flags: u8,
+    da_Size: u16,
+    da_DiagPoint: u16,
+    da_BootPoint: u16,
+    da_Name: u16,
+    da_Reserved01: u16,
+    da_Reserved02: u16,
+}
+
+pub struct ConfigDev {
+    cd_Node: Node,
+    cd_Flags: u8,
+    cd_Pad: u8,
+    cd_Rom: ExpansionRom,
+    cd_BoardAddr: *u8,
+    cd_BoardSize: u32,
+    cd_SlotAddr: u16,
+    cd_SlotSize: u16,
+    cd_Driver: *u8,
+    cd_NextCD: *ConfigDev,
+    cd_Unused: [4]u32,
+}
+
+pub struct CurrentBinding {
+    cb_ConfigDev: *ConfigDev,
+    cb_FileName: *u8,
+    cb_ProductString: *u8,
+    cb_ToolTypes: *u8,
+}
+
+pub struct DosEnvec {
+    de_TableSize: u32,
+    de_SizeBlock: u32,
+    de_SecOrg: u32,
+    de_Surfaces: u32,
+    de_SectorPerBlock: u32,
+    de_BlocksPerTrack: u32,
+    de_Reserved: u32,
+    de_PreAlloc: u32,
+    de_Interleave: u32,
+    de_LowCyl: u32,
+    de_HighCyl: u32,
+    de_NumBuffers: u32,
+    de_BufMemType: u32,
+    de_MaxTransfer: u32,
+    de_Mask: u32,
+    de_BootPri: i32,
+    de_DosType: u32,
+    de_Baud: u32,
+    de_Control: u32,
+    de_BootBlocks: u32,
+}
+
+pub struct FileSysStartupMsg {
+    fssm_Unit: u32,
+    fssm_Device: *u8 /* BSTR */,
+    fssm_Environ: i32,
+    fssm_Flags: u32,
+}
+
+pub struct DeviceNode {
+    dn_Next: i32,
+    dn_Type: u32,
+    dn_Task: *MsgPort,
+    dn_Lock: i32,
+    dn_Handler: *u8 /* BSTR */,
+    dn_StackSize: u32,
+    dn_Priority: i32,
+    dn_Startup: i32,
+    dn_SegList: i32,
+    dn_GlobalVec: i32,
+    dn_Name: *u8 /* BSTR */,
+}
+
+pub struct DiscResourceUnit {
+    dru_Message: Message,
+    dru_DiscBlock: Interrupt,
+    dru_DiscSync: Interrupt,
+    dru_Index: Interrupt,
+}
+
+pub struct DiscResource {
+    dr_Library: Library,
+    dr_Current: *DiscResourceUnit,
+    dr_Flags: u8,
+    dr_pad: u8,
+    dr_SysLib: *Library,
+    dr_CiaResource: *Library,
+    dr_UnitID: [4]u32,
+    dr_Waiting: List,
+    dr_DiscBlock: Interrupt,
+    dr_DiscSync: Interrupt,
+    dr_Index: Interrupt,
+    dr_CurrTask: *Task,
+}
+
+pub struct Resident {
+    rt_MatchWord: u16,
+    rt_MatchTag: *Resident,
+    rt_EndSkip: *u8,
+    rt_Flags: u8,
+    rt_Version: u8,
+    rt_Type: u8,
+    rt_Pri: i8,
+    rt_Name: *u8,
+    rt_IdString: *u8,
+    rt_Init: *u8,
+}
+
+pub struct CardHandle {
+    cah_CardNode: Node,
+    cah_CardRemoved: *Interrupt,
+    cah_CardInserted: *Interrupt,
+    cah_CardStatus: *Interrupt,
+    cah_CardFlags: u8,
+}
+
+pub struct DeviceTData {
+    dtd_DTsize: u32,
+    dtd_DTspeed: u32,
+    dtd_DTtype: u8,
+    dtd_DTflags: u8,
+}
+
+pub struct CardMemoryMap {
+    cmm_CommonMemory: *u8,
+    cmm_AttributeMemory: *u8,
+    cmm_IOMemory: *u8,
+    cmm_CommonMemSize: u32,
+    cmm_AttributeMemSize: u32,
+    cmm_IOMemSize: u32,
+}
+
+pub struct TP_AmigaXIP {
+    TPL_CODE: u8,
+    TPL_LINK: u8,
+    TP_XIPLOC: [4]u8,
+    TP_XIPFLAGS: u8,
+    TP_XIPRESRV: u8,
+}
+
+pub struct WBStartup {
+    sm_Message: Message,
+    sm_Process: *MsgPort,
+    sm_Segment: i32,
+    sm_NumArgs: i32,
+    sm_ToolWindow: *u8,
+    sm_ArgList: *WBArg,
+}
+
+pub struct WBArg {
+    wa_Lock: i32,
+    wa_Name: *u8,
+}
+
+pub struct BitScaleArgs {
+    bsa_SrcY: *u8 /* UWORD bsa_SrcX, */,
+    bsa_SrcHeight: *u8 /* UWORD bsa_SrcWidth, */,
+    bsa_YSrcFactor: *u8 /* UWORD bsa_XSrcFactor, */,
+    bsa_DestY: *u8 /* UWORD bsa_DestX, */,
+    bsa_DestHeight: *u8 /* UWORD bsa_DestWidth, */,
+    bsa_YDestFactor: *u8 /* UWORD bsa_XDestFactor, */,
+    bsa_SrcBitMap: *BitMap,
+    bsa_DestBitMap: *BitMap,
+    bsa_Flags: u32,
+    bsa_YDDA: *u8 /* UWORD bsa_XDDA, */,
+    bsa_Reserved1: i32,
+    bsa_Reserved2: i32,
+}
+
+pub struct FontContents {
+    fc_FileName: [MAXFONTPATH]*u8 /* char */,
+    fc_YSize: u16,
+    fc_Style: u8,
+    fc_Flags: u8,
+}
+
+pub struct TFontContents {
+    tfc_FileName: [MAXFONTPATH-2]*u8 /* char */,
+    tfc_TagCount: u16,
+    tfc_YSize: u16,
+    tfc_Style: u8,
+    tfc_Flags: u8,
+}
+
+pub struct FontContentsHeader {
+    fch_FileID: u16,
+    fch_NumEntries: u16,
+}
+
+pub struct DiskFontHeader {
+    dfh_DF: Node,
+    dfh_FileID: u16,
+    dfh_Revision: u16,
+    dfh_Segment: i32,
+    dfh_Name: [MAXFONTNAME]*u8 /* char */,
+    dfh_TF: TextFont,
+}
+
+pub struct AvailFonts {
+    af_Type: u16,
+    af_Attr: TextAttr,
+}
+
+pub struct TAvailFonts {
+    taf_Type: u16,
+    taf_Attr: TTextAttr,
+}
+
+pub struct AvailFontsHeader {
+    afh_NumEntries: u16,
+}
+
+pub struct KeyMap {
+    km_LoKeyMapTypes: *u8,
+    km_LoKeyMap: *u8,
+    km_LoCapsable: *u8,
+    km_LoRepeatable: *u8,
+    km_HiKeyMapTypes: *u8,
+    km_HiKeyMap: *u8,
+    km_HiCapsable: *u8,
+    km_HiRepeatable: *u8,
+}
+
+pub struct KeyMapNode {
+    kn_Node: Node,
+    kn_KeyMap: KeyMap,
+}
+
+pub struct KeyMapResource {
+    kr_Node: Node,
+    kr_List: List,
+}
+
+pub struct GadgetInfo {
+    gi_Screen: *Screen,
+    gi_Window: *Window,
+    gi_Requester: *Requester,
+    gi_RastPort: *RastPort,
+    gi_Layer: *Layer,
+    gi_Domain: IBox,
+    DetailPen: u8,
+    BlockPen: u8,
+}
+
+pub struct PGX {
+    pgx_Container: IBox,
+    pgx_NewKnob: IBox,
+}
+
+pub struct GlyphEngine {
+    gle_Library: *Library,
+    gle_Name: *u8,
+}
+
+pub struct GlyphMap {
+    glm_BMModulo: u16,
+    glm_BMRows: u16,
+    glm_BlackLeft: u16,
+    glm_BlackTop: u16,
+    glm_BlackWidth: u16,
+    glm_BlackHeight: u16,
+    glm_XOrigin: *u8 /* FIXED */,
+    glm_YOrigin: *u8 /* FIXED */,
+    glm_X0: i16,
+    glm_Y0: i16,
+    glm_X1: i16,
+    glm_Y1: i16,
+    glm_Width: *u8 /* FIXED */,
+    glm_BitMap: *u8,
+}
+
+pub struct GlyphWidthEntry {
+    gwe_Node: MinNode,
+    gwe_Code: u16,
+    gwe_Width: *u8 /* FIXED */,
+}
+

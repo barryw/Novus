@@ -118,15 +118,9 @@ public class SfdGenerator
         sb.AppendLine($"// Library: {library.LibraryName}");
         sb.AppendLine($"// Base: {library.BaseSymbol}");
         sb.AppendLine("//");
-        sb.AppendLine("// NOTE: Import specific types from std::amiga_structs as needed");
-        sb.AppendLine("// Example: from std::amiga_structs import Task, Node, List");
+        sb.AppendLine("// NOTE: Constants are in std::ffi::amiga_consts");
+        sb.AppendLine("// NOTE: Structs are in std::ffi::amiga_structs");
         sb.AppendLine();
-
-        // Parse included headers and generate const definitions (structs skipped for now)
-        if (library.Includes.Count > 0)
-        {
-            GenerateConstants(sb, library.Includes);
-        }
 
         // Function declarations section
         sb.AppendLine("// ============================================================================");
@@ -270,15 +264,8 @@ public class SfdGenerator
 
     private void GenerateCentralStructsFile(List<string> allIncludes)
     {
-        var sb = new StringBuilder();
         var allStructs = new Dictionary<string, CHeaderParser.CStruct>();
-
-        sb.AppendLine("// Generated from NDK headers by Novus SFD Parser");
-        sb.AppendLine("// Central struct and constant definitions for all Amiga OS types");
-        sb.AppendLine("//");
-        sb.AppendLine("// This file contains ALL struct definitions and constants from the NDK headers.");
-        sb.AppendLine("// Import this file when you need to use Amiga OS structs in your FFI code.");
-        sb.AppendLine();
+        var allConstants = new Dictionary<string, CHeaderParser.CConstant>();
 
         // Always include core Amiga headers that define fundamental types
         var coreHeaders = new List<string>
@@ -305,7 +292,6 @@ public class SfdGenerator
         }
 
         // Parse all headers and collect structs AND constants (with transitive includes)
-        var allConstants = new Dictionary<string, CHeaderParser.CConstant>();
         foreach (var includePath in allIncludesToParse)
         {
             var headerPath = Path.Combine(_ndkPath, "Include", "include_h", includePath);
@@ -329,43 +315,61 @@ public class SfdGenerator
             }
         }
 
-        // Generate constants section
-        if (allConstants.Count > 0)
+        // Generate amiga_consts.novus (constants only)
+        var constsSb = new StringBuilder();
+        constsSb.AppendLine("// Generated from NDK headers by Novus SFD Parser");
+        constsSb.AppendLine("// AmigaOS constant definitions (source of truth)");
+        constsSb.AppendLine("//");
+        constsSb.AppendLine("// This file contains ALL constants from the NDK headers.");
+        constsSb.AppendLine("// Struct definitions are in std::ffi::amiga_structs");
+        constsSb.AppendLine();
+        constsSb.AppendLine("// ============================================================================");
+        constsSb.AppendLine("// Constants");
+        constsSb.AppendLine("// ============================================================================");
+        constsSb.AppendLine();
+
+        int skippedCount = 0;
+        foreach (var constant in allConstants.Values.OrderBy(c => c.Name))
         {
-            sb.AppendLine("// ============================================================================");
-            sb.AppendLine("// Constants");
-            sb.AppendLine("// ============================================================================");
-            sb.AppendLine();
-
-            foreach (var constant in allConstants.Values.OrderBy(c => c.Name))
+            var novusValue = ConvertConstantValue(constant.Value);
+            // Skip constants that couldn't be converted (complex macros, field accessors, etc.)
+            if (novusValue == null)
             {
-                var novusValue = ConvertConstantValue(constant.Value);
-                sb.AppendLine($"pub const {constant.Name}: u32 = {novusValue}");
+                skippedCount++;
+                continue;
             }
-
-            sb.AppendLine();
+            constsSb.AppendLine($"pub const {constant.Name}: u32 = {novusValue}");
         }
 
-        // Sort structs by dependencies
+        var constsOutputFile = Path.Combine(_outputPath, "std", "ffi", "amiga_consts.novus");
+        Directory.CreateDirectory(Path.GetDirectoryName(constsOutputFile)!);
+        File.WriteAllText(constsOutputFile, constsSb.ToString());
+        var includedCount = allConstants.Count - skippedCount;
+        Console.WriteLine($"  Generated {constsOutputFile} with {includedCount} constants ({skippedCount} skipped)");
+
+        // Generate amiga_structs.novus (structs only)
+        var structsSb = new StringBuilder();
+        structsSb.AppendLine("// Generated from NDK headers by Novus SFD Parser");
+        structsSb.AppendLine("// AmigaOS struct definitions");
+        structsSb.AppendLine("//");
+        structsSb.AppendLine("// This file contains struct definitions from the NDK headers.");
+        structsSb.AppendLine("// Constants are in std::ffi::amiga_consts");
+        structsSb.AppendLine();
+        structsSb.AppendLine("// ============================================================================");
+        structsSb.AppendLine("// Struct Definitions");
+        structsSb.AppendLine("// ============================================================================");
+        structsSb.AppendLine();
+
         var sortedStructs = TopologicalSortStructs(allStructs);
-
-        // Generate structs section
-        sb.AppendLine("// ============================================================================");
-        sb.AppendLine("// Struct Definitions");
-        sb.AppendLine("// ============================================================================");
-        sb.AppendLine();
-
-        // Generate all structs
         foreach (var structDef in sortedStructs)
         {
-            GenerateNovusStruct(sb, structDef);
+            GenerateNovusStruct(structsSb, structDef);
         }
 
-        // Write to file
-        var outputFile = Path.Combine(_outputPath, "std", "amiga_structs.novus");
-        Directory.CreateDirectory(Path.GetDirectoryName(outputFile)!);
-        File.WriteAllText(outputFile, sb.ToString());
-        Console.WriteLine($"  Generated {outputFile} with {sortedStructs.Count} structs");
+        var structsOutputFile = Path.Combine(_outputPath, "std", "ffi", "amiga_structs.novus");
+        Directory.CreateDirectory(Path.GetDirectoryName(structsOutputFile)!);
+        File.WriteAllText(structsOutputFile, structsSb.ToString());
+        Console.WriteLine($"  Generated {structsOutputFile} with {sortedStructs.Count} structs");
     }
 
     private void GenerateConstants(StringBuilder sb, List<string> includes)
@@ -486,13 +490,30 @@ public class SfdGenerator
         sb.AppendLine();
     }
 
-    private string ConvertConstantValue(string cValue)
+    private string? ConvertConstantValue(string cValue)
     {
         cValue = cValue.Trim();
+
+        // Skip struct field accessors (contain dots) - these are C macros for nested field access
+        if (cValue.Contains("."))
+            return null;
 
         // Handle (0L) or (0) or 0L
         if (cValue == "(0L)" || cValue == "(0)" || cValue == "0L")
             return "0";
+
+        // Handle negative numbers: -2, -1, (-1), etc.
+        var negMatch = Regex.Match(cValue, @"^\(?\s*(-\d+)L?\s*\)?$");
+        if (negMatch.Success)
+            return negMatch.Groups[1].Value;
+
+        // Handle character constants: 'R', 'W', etc.
+        var charMatch = Regex.Match(cValue, @"^'(.)'$");
+        if (charMatch.Success)
+        {
+            char c = charMatch.Groups[1].Value[0];
+            return ((int)c).ToString();
+        }
 
         // Handle (1L<<n) or (1<<n) bit shift patterns - with or without parens
         var shiftMatch = Regex.Match(cValue, @"\(?(\d+)L?\s*<<\s*(\d+)\)?");
@@ -500,23 +521,23 @@ public class SfdGenerator
         {
             var value = shiftMatch.Groups[1].Value;
             var shift = shiftMatch.Groups[2].Value;
-            return $"(1u32 << {shift})";  // Always use 1 for the base value
+            return $"(1 << {shift})";
         }
 
         // Handle hex values: 0x1234 -> $1234
         if (cValue.StartsWith("0x") || cValue.StartsWith("0X"))
         {
             var hexPart = cValue.Substring(2).TrimEnd('L', 'l');
-            return "$" + hexPart + "u32";
+            return "$" + hexPart;
         }
 
-        // Handle plain numbers with optional L suffix
+        // Handle plain positive numbers with optional L suffix
         var numMatch = Regex.Match(cValue, @"^\(?\s*(\d+)L?\s*\)?$");
         if (numMatch.Success)
-            return numMatch.Groups[1].Value + "u32";
+            return numMatch.Groups[1].Value;
 
-        // Otherwise return as-is with comment
-        return $"0 /* TODO: {cValue} */";
+        // Skip anything else (expressions, aliases, etc.) - these need manual handling or evaluation
+        return null;
     }
 
     private string SanitizeIdentifier(string name)

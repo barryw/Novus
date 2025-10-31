@@ -8,7 +8,8 @@
 // Expected Output:
 //   Exit code: 0 (all tests pass)
 
-from std::amiga_structs import TagItem, TAG_DONE
+from std::ffi::amiga_structs import TagItem
+from std::ffi::amiga_consts import TAG_DONE
 
 fn main() -> i32 {
     // Test: Array of struct literals

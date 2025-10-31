@@ -2,26 +2,8 @@
 // Library: battclock.resource
 // Base: _BattClockBase
 //
-// NOTE: Import specific types from std::amiga_structs as needed
-// Example: from std::amiga_structs import Task, Node, List
-
-// ============================================================================
-// Constants
-// ============================================================================
-
-pub const INCLUDE_VERSION: u32 = 45u32
-pub const GLOBAL: u32 = 0 /* TODO: extern */
-pub const IMPORT: u32 = 0 /* TODO: extern */
-pub const STATIC: u32 = 0 /* TODO: static */
-pub const REGISTER: u32 = 0 /* TODO: register */
-pub const VOID: u32 = 0 /* TODO: void */
-pub const CONST: u32 = 0 /* TODO: const */
-pub const VOLATILE: u32 = 0 /* TODO: volatile */
-pub const TRUE: u32 = 1u32
-pub const FALSE: u32 = 0u32
-pub const NULL: u32 = 0
-pub const BYTEMASK: u32 = $FFu32
-pub const LIBRARY_MINIMUM: u32 = 40u32
+// NOTE: Constants are in std::ffi::amiga_consts
+// NOTE: Structs are in std::ffi::amiga_structs
 
 // ============================================================================
 // Library Functions

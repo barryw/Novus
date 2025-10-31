@@ -7,7 +7,7 @@
 from std::core import Option, Result
 from std::error import IntuitionError, NovusError, novus_error_from_intuition
 from std::tags import make_tags
-from std::amiga_structs import TagItem, Window, Screen, NewWindow, NewScreen
+from std::ffi::amiga_structs import TagItem, Window, Screen, NewWindow, NewScreen
 from std::ffi::intuition import OpenWindowTagList, OpenScreenTagList, CloseWindow, CloseScreen
 
 // ============================================================================
@@ -24,7 +24,7 @@ from std::ffi::intuition import OpenWindowTagList, OpenScreenTagList, CloseWindo
 /// ```novus
 /// from std::intuition import OpenWindow
 /// from std::ffi::intuition import WA_Width, WA_Height, WA_Title, WA_Flags, WFLG_CLOSEGADGET, CloseWindow
-/// from std::amiga_structs import TagItem
+/// from std::ffi::amiga_structs import TagItem
 ///
 /// let input_tags: [4]TagItem = [
 ///     TagItem { ti_Tag: WA_Width, ti_Data: 640 },
@@ -57,7 +57,7 @@ pub fn OpenWindow(tags_ptr: *TagItem, count: u32) -> Result<*Window, NovusError>
 /// ```novus
 /// from std::intuition import OpenScreen
 /// from std::ffi::intuition import SA_Width, SA_Height, SA_Depth, SA_Title, CloseScreen
-/// from std::amiga_structs import TagItem
+/// from std::ffi::amiga_structs import TagItem
 ///
 /// let input_tags: [4]TagItem = [
 ///     TagItem { ti_Tag: SA_Width, ti_Data: 640 },

@@ -1234,7 +1234,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     coveredVariants.Add(variantName);
                 }
 
-                // Match arm can have a block or just an expression
+                // Match arm can have a block, return statement, or just an expression
                 if (arm.block() != null)
                 {
                     // Block form: check if the last statement is a return
@@ -1245,6 +1245,11 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                         allArmsReturn = false;
                         break;
                     }
+                }
+                else if (arm.returnStatement() != null)
+                {
+                    // Return statement form (e.g., Some(x) => return x) - this returns from the function
+                    // Continue checking other arms
                 }
                 else
                 {
@@ -1259,7 +1264,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             // Full exhaustiveness is checked in VisitMatchStatement
             bool looksExhaustive = hasWildcard ||
                                    (coveredVariants.Contains("Some") && coveredVariants.Contains("None")) ||
-                                   (coveredVariants.Contains("Ok") && coveredVariants.Contains("Err"));
+                                   (coveredVariants.Contains("Ok") && coveredVariants.Contains("Err")) ||
+                                   (coveredVariants.Count >= 3);  // Heuristic: 3+ variants likely means exhaustive enum match
 
             // Only guarantees return if it looks exhaustive AND all arms return
             return looksExhaustive && allArmsReturn;
@@ -1436,7 +1442,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var identifierNode = context.IDENTIFIER();
         var name = identifierNode?.GetText() ?? "_";
         var isThrowaway = name == "_";
-        var isMutable = context.GetChild(0)?.GetText() == "var";
+        var isMutable = context.GetChild(0)?.GetText() == "var" || context.GetChild(1)?.GetText() == "mut";
 
         // For location, use identifier if present, otherwise use the first token (let/var)
         var location = identifierNode != null
@@ -2428,7 +2434,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             // Analyze pattern and bind variables
             AnalyzePatternAndBind(pattern, enumType, coveredVariants, ref hasWildcard);
 
-            // Analyze the arm body (expression or block) with bound variables in scope
+            // Analyze the arm body (expression, block, or return statement) with bound variables in scope
             if (armCtx.expression() != null)
             {
                 Visit(armCtx.expression());
@@ -2436,6 +2442,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             else if (armCtx.block() != null)
             {
                 AnalyzeBlock(armCtx.block());
+            }
+            else if (armCtx.returnStatement() != null)
+            {
+                Visit(armCtx.returnStatement());
             }
 
             // Remove pattern bindings (they're only valid in this arm)

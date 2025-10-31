@@ -7,7 +7,7 @@
 
 from std::core import Option
 from std::collections import Vec
-from std::amiga_structs import TagItem, TAG_DONE
+from std::ffi::amiga_structs import TagItem, TAG_DONE
 
 // ============================================================================
 // TagList Builder
@@ -22,7 +22,7 @@ from std::amiga_structs import TagItem, TAG_DONE
 /// ```novus
 /// from std::tags import make_tags
 /// from std::ffi::intuition import WA_Width, WA_Height, WA_Title
-/// from std::amiga_structs import TagItem
+/// from std::ffi::amiga_structs import TagItem
 ///
 /// let input_tags: [3]TagItem = [
 ///     TagItem { ti_Tag: WA_Width, ti_Data: 640 },

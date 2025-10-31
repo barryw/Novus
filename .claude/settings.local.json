@@ -159,7 +159,9 @@
       "Bash(git log:*)",
       "Bash(./novusc build:*)",
       "Bash(sort:*)",
-      "Bash(dotnet:*)"
+      "Bash(dotnet:*)",
+      "Bash(do echo \"Testing: $f\")",
+      "Bash(rm:*)"
     ],
     "deny": [],
     "ask": []

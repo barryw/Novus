@@ -7,7 +7,7 @@
 from std::core import Option, Result
 from std::error import DosError, NovusError, novus_error_from_dos
 from std::tags import make_tags
-from std::amiga_structs import TagItem, Process
+from std::ffi::amiga_structs import TagItem, Process
 from std::ffi::dos import SystemTagList, CreateNewProc, AllocDosObject, FreeDosObject
 from std::ffi::dos import NewLoadSeg, UnLoadSeg
 

@@ -32,12 +32,7 @@ pub const TRUE: i16 = 1i16
 pub const FALSE: i16 = 0i16
 pub const NULL: u32 = 0u32
 
-// Memory allocation flags (from exec/memory.h)
-pub const MEMF_ANY: u32 = 0
-pub const MEMF_PUBLIC: u32 = (1u32 << 0)
-pub const MEMF_CHIP: u32 = (1u32 << 1)
-pub const MEMF_FAST: u32 = (1u32 << 2)
-pub const MEMF_CLEAR: u32 = (1u32 << 16)
+// Memory allocation flags - import from std::amiga_structs (source of truth)
 
 // ============================================================================
 // Notes
