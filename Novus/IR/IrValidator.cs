@@ -612,6 +612,45 @@ public class IrValidator
                 // Enum constructors are always valid
                 break;
 
+            case IrGlobalVariable globalVar:
+                if (string.IsNullOrEmpty(globalVar.Name))
+                {
+                    AddError("Global variable has empty name");
+                }
+                // TODO: Validate global is declared when IrModule.GlobalVariables is added
+                break;
+
+            case IrFunctionRef funcRef:
+                if (funcRef.Function == null)
+                {
+                    AddError("Function reference has null function");
+                }
+                else if (string.IsNullOrEmpty(funcRef.Function.Name))
+                {
+                    AddError("Function reference has function with empty name");
+                }
+                else if (!_functions.Contains(funcRef.Function.Name))
+                {
+                    AddError($"Function reference to undeclared function: {funcRef.Function.Name}");
+                }
+                break;
+
+            case IrCastValue castValue:
+                if (castValue.Value == null)
+                {
+                    AddError("Cast has null value");
+                }
+                else
+                {
+                    ValidateValue(castValue.Value);
+                }
+                if (castValue.SourceType == null)
+                {
+                    AddError("Cast has null source type");
+                }
+                // Target type is validated via value.Type check above
+                break;
+
             default:
                 AddError($"Unknown value type: {value.GetType().Name}");
                 break;

@@ -532,9 +532,25 @@ public class CCodeGenerator
                         case IrStore store:
                             ScanValueForFunctionReferences(store.Value, reachable, worklist);
                             break;
+                        case IrMemberStore memberStore:
+                            ScanValueForFunctionReferences(memberStore.Struct, reachable, worklist);
+                            ScanValueForFunctionReferences(memberStore.Value, reachable, worklist);
+                            break;
+                        case IrDereferenceStore derefStore:
+                            ScanValueForFunctionReferences(derefStore.Pointer, reachable, worklist);
+                            ScanValueForFunctionReferences(derefStore.Value, reachable, worklist);
+                            break;
+                        case IrIndexStore indexStore:
+                            ScanValueForFunctionReferences(indexStore.Array, reachable, worklist);
+                            ScanValueForFunctionReferences(indexStore.Index, reachable, worklist);
+                            ScanValueForFunctionReferences(indexStore.Value, reachable, worklist);
+                            break;
                         case IrBinaryOp binaryOp:
                             ScanValueForFunctionReferences(binaryOp.Left, reachable, worklist);
                             ScanValueForFunctionReferences(binaryOp.Right, reachable, worklist);
+                            break;
+                        case IrMatch match:
+                            ScanValueForFunctionReferences(match.MatchValue, reachable, worklist);
                             break;
                         case IrReturn returnInst when returnInst.Value != null:
                             ScanValueForFunctionReferences(returnInst.Value, reachable, worklist);

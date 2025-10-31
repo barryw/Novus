@@ -850,13 +850,26 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         Console.WriteLine($"[InstantiateGenericMethod] Instantiating {monomorphizedStruct.CacheKey}::{methodName} with {templateConstants.Count} template constants");
 
-        // Save current constants and use template's constants during instantiation
+        // Save current constants and MERGE template constants with current module constants
+        // Current module constants take priority (they may include transitive imports)
         var savedConstants = new Dictionary<string, (IrType Type, object Value)>(_constants);
         Console.WriteLine($"[InstantiateGenericMethod] Current module has {_constants.Count} constants, template has {templateConstants.Count}");
+
+        // Start with template constants
+        _constants.Clear();
         foreach (var kvp in templateConstants)
         {
             _constants[kvp.Key] = kvp.Value;
-            Console.WriteLine($"[InstantiateGenericMethod] Added template constant '{kvp.Key}' = {kvp.Value.Value}");
+        }
+
+        // Overlay current module constants (allows transitive imports to work)
+        foreach (var kvp in savedConstants)
+        {
+            _constants[kvp.Key] = kvp.Value;
+            if (!templateConstants.ContainsKey(kvp.Key))
+            {
+                Console.WriteLine($"[InstantiateGenericMethod] Added current module constant '{kvp.Key}' = {kvp.Value.Value}");
+            }
         }
 
         // Build instantiation key (e.g., "Vec<i32>::push")
