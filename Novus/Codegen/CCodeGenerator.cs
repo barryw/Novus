@@ -1624,6 +1624,7 @@ public class CCodeGenerator
             IrArrayLiteral arrayLit => EmitArrayLiteral(arrayLit),
             IrFunctionAddress funcAddr => funcAddr.FunctionName,  // Function name IS its address in C
             IrFunctionRef funcRef => funcRef.Function.Name,  // Function reference - emit function name
+            IrGenericAssociatedFunction genericFunc => throw new InvalidOperationException($"Generic associated function '{genericFunc.TypeName}::{genericFunc.MethodName}' must be monomorphized to a concrete function before code generation"),
             _ => throw new NotSupportedException($"Unsupported value type: {value.GetType().Name}")
         };
     }
@@ -1849,6 +1850,8 @@ public class CCodeGenerator
                 },
             IrBoolType => "bool",
             IrVoidType => "void",
+            IrFloatType floatType => floatType.BitWidth == 32 ? "float" : "double",
+            IrFixedType fixedType => fixedType.BitWidth == 16 ? "int16_t" : "int32_t",
             IrPointerType ptrType => $"{GetCType(ptrType.PointeeType)}*",
             IrStringType => "String",
             IrEnumType enumType => MangleName(enumType),
@@ -1857,6 +1860,8 @@ public class CCodeGenerator
             IrReferenceType refType => $"{GetCType(refType.PointeeType)}*",  // References as pointers
             IrMutReferenceType mutRefType => $"{GetCType(mutRefType.PointeeType)}*",  // Mut references as pointers
             IrFunctionPointerType fpType => GetFunctionPointerType(fpType),
+            IrUnresolvedGenericType unresolvedGeneric => throw new InvalidOperationException($"Unresolved generic type '{unresolvedGeneric.Name}' must be monomorphized before code generation"),
+            IrPartiallyResolvedGenericType partiallyResolved => throw new InvalidOperationException($"Partially resolved generic type must be fully monomorphized before code generation"),
             _ => throw new NotSupportedException($"Unsupported type: {type.GetType().Name}")
         };
     }

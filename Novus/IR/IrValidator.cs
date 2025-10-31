@@ -651,6 +651,10 @@ public class IrValidator
                 // Target type is validated via value.Type check above
                 break;
 
+            case IrGenericAssociatedFunction genericFunc:
+                AddError($"Generic associated function '{genericFunc.TypeName}::{genericFunc.MethodName}' must be monomorphized before validation");
+                break;
+
             default:
                 AddError($"Unknown value type: {value.GetType().Name}");
                 break;
