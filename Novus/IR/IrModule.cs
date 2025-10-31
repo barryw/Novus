@@ -646,6 +646,10 @@ public class IrStringType : IrType
 /// </summary>
 public class IrStructType : IrType
 {
+    // Thread-local stack to detect recursive type definitions
+    [ThreadStatic]
+    private static HashSet<string>? _sizingStack;
+
     public string StructName { get; }
     public List<IrStructField> Fields { get; }
     public List<string> GenericParameters { get; }  // Type parameter names (e.g., ["T"])
@@ -667,12 +671,31 @@ public class IrStructType : IrType
             if (_cachedSize.HasValue)
                 return _cachedSize.Value;
 
-            // Calculate total size with alignment
-            int size = 0;
-            foreach (var field in Fields)
+            // Initialize thread-local stack if needed
+            _sizingStack ??= new HashSet<string>();
+
+            // Use cache key if available, otherwise struct name
+            string typeKey = CacheKey ?? StructName;
+
+            // Detect recursive type definition without indirection
+            if (_sizingStack.Contains(typeKey))
             {
-                // Align field to its natural alignment (for now, use field size as alignment)
-                int fieldSize = field.Type.SizeInBytes;
+                throw new InvalidOperationException(
+                    $"Recursive type definition without indirection: struct '{StructName}' contains itself directly. " +
+                    "Use a pointer (*T) or reference (&T) to break the cycle.");
+            }
+
+            // Mark this type as being sized
+            _sizingStack.Add(typeKey);
+
+            try
+            {
+                // Calculate total size with alignment
+                int size = 0;
+                foreach (var field in Fields)
+                {
+                    // Align field to its natural alignment (for now, use field size as alignment)
+                    int fieldSize = field.Type.SizeInBytes;
                 int alignment = fieldSize switch
                 {
                     1 => 1,  // byte-aligned
@@ -684,16 +707,22 @@ public class IrStructType : IrType
                 if (size % alignment != 0)
                     size += alignment - (size % alignment);
 
-                field.Offset = size;
-                size += fieldSize;
+                    field.Offset = size;
+                    size += fieldSize;
+                }
+
+                // Pad final struct size to word boundary (68k likes word-aligned structs)
+                if (size % 2 != 0)
+                    size++;
+
+                _cachedSize = size;
+                return size;
             }
-
-            // Pad final struct size to word boundary (68k likes word-aligned structs)
-            if (size % 2 != 0)
-                size++;
-
-            _cachedSize = size;
-            return size;
+            finally
+            {
+                // Remove this type from the sizing stack
+                _sizingStack.Remove(typeKey);
+            }
         }
     }
 

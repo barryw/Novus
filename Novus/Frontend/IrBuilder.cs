@@ -874,26 +874,25 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var typeSubstitutions = new Dictionary<string, IrType>();
         var baseStruct = _structs[baseTypeName];
 
-        for (int i = 0; i < baseStruct.GenericParameters.Count && i < baseStruct.Fields.Count; i++)
+        // Scan all fields to find which ones use generic types
+        // This handles cases where generics aren't in the first N fields
+        for (int i = 0; i < baseStruct.Fields.Count && i < monomorphizedStruct.Fields.Count; i++)
         {
-            var genericParam = baseStruct.GenericParameters[i];
             var baseFieldType = baseStruct.Fields[i].Type;
             var monomorphizedFieldType = monomorphizedStruct.Fields[i].Type;
 
-            // Extract concrete type from field
-            if (baseFieldType is IrGenericType gt)
+            // Recursively extract generic type mappings from field types
+            ExtractGenericTypeMapping(baseFieldType, monomorphizedFieldType, typeSubstitutions);
+        }
+
+        // Verify all generic parameters were resolved
+        foreach (var genericParam in baseStruct.GenericParameters)
+        {
+            if (!typeSubstitutions.ContainsKey(genericParam))
             {
-                typeSubstitutions[gt.ParameterName] = monomorphizedFieldType;
-                Console.WriteLine($"[InstantiateGenericMethod] Type substitution: {gt.ParameterName} -> {monomorphizedFieldType}");
+                throw new Exception($"Generic parameter '{genericParam}' not found in monomorphized struct {monomorphizedStruct.CacheKey}");
             }
-            else if (baseFieldType is IrPointerType basePtrType && basePtrType.PointeeType is IrGenericType ptrGt)
-            {
-                if (monomorphizedFieldType is IrPointerType monoPtrType)
-                {
-                    typeSubstitutions[ptrGt.ParameterName] = monoPtrType.PointeeType;
-                    Console.WriteLine($"[InstantiateGenericMethod] Type substitution (from ptr): {ptrGt.ParameterName} -> {monoPtrType.PointeeType}");
-                }
-            }
+            Console.WriteLine($"[InstantiateGenericMethod] Type substitution: {genericParam} -> {typeSubstitutions[genericParam]}");
         }
 
         // Set up concrete types for substitution during parsing
@@ -4958,5 +4957,50 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         // Add defer instruction to current block (marker)
         _currentBlock!.AddInstruction(new IrDefer(deferBlock));
+    }
+
+    /// <summary>
+    /// Recursively extracts generic type mappings by comparing base and monomorphized types.
+    /// Handles nested generics in pointers, arrays, and other type constructors.
+    /// </summary>
+    private void ExtractGenericTypeMapping(IrType baseType, IrType monomorphizedType, Dictionary<string, IrType> substitutions)
+    {
+        switch (baseType)
+        {
+            case IrGenericType gt:
+                // Direct generic type - map it to the concrete type
+                if (!substitutions.ContainsKey(gt.ParameterName))
+                {
+                    substitutions[gt.ParameterName] = monomorphizedType;
+                }
+                break;
+
+            case IrPointerType basePtrType when monomorphizedType is IrPointerType monoPtrType:
+                // Recurse into pointer pointee types
+                ExtractGenericTypeMapping(basePtrType.PointeeType, monoPtrType.PointeeType, substitutions);
+                break;
+
+            case IrMutReferenceType baseRefType when monomorphizedType is IrMutReferenceType monoRefType:
+                // Recurse into mutable reference types
+                ExtractGenericTypeMapping(baseRefType.PointeeType, monoRefType.PointeeType, substitutions);
+                break;
+
+            case IrReferenceType baseRefType when monomorphizedType is IrReferenceType monoRefType:
+                // Recurse into immutable reference types
+                ExtractGenericTypeMapping(baseRefType.PointeeType, monoRefType.PointeeType, substitutions);
+                break;
+
+            case IrArrayType baseArrayType when monomorphizedType is IrArrayType monoArrayType:
+                // Recurse into array element types
+                if (baseArrayType.Length == monoArrayType.Length)
+                {
+                    ExtractGenericTypeMapping(baseArrayType.ElementType, monoArrayType.ElementType, substitutions);
+                }
+                break;
+
+            // For non-generic types (primitives, concrete structs), no mapping needed
+            default:
+                break;
+        }
     }
 }
