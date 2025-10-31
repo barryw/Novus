@@ -1,0 +1,76 @@
+// Example: Bitwise Operations
+//
+// Description:
+//   Demonstrates all bitwise operators: AND (&), OR (|), XOR (^),
+//   left shift (<<), right shift (>>), and bitwise NOT (~).
+//
+// Expected Output:
+//   Exit code: 0 (all bitwise operations work correctly)
+
+pub fn main() -> i32 {
+    // Bitwise AND
+    var a = %1111
+    var b = %1010
+    var and_result = a & b
+    // 1111 & 1010 = 1010 (10 in decimal)
+    if and_result != 10 {
+        return 1
+    }
+
+    // Bitwise OR
+    var or_result = a | b
+    // 1111 | 1010 = 1111 (15 in decimal)
+    if or_result != 15 {
+        return 2
+    }
+
+    // Bitwise XOR
+    var xor_result = a ^ b
+    // 1111 ^ 1010 = 0101 (5 in decimal)
+    if xor_result != 5 {
+        return 3
+    }
+
+    // Left shift
+    var shift_val = 1
+    var left_shift = shift_val << 3
+    // 0001 << 3 = 1000 (8 in decimal)
+    if left_shift != 8 {
+        return 4
+    }
+
+    // Right shift
+    var right_val = 16
+    var right_shift = right_val >> 2
+    // 10000 >> 2 = 00100 (4 in decimal)
+    if right_shift != 4 {
+        return 5
+    }
+
+    // Bitwise NOT
+    var not_val = 0
+    var not_result = ~not_val
+    // ~0 = -1 (all bits set in two's complement)
+    if not_result != -1 {
+        return 6
+    }
+
+    // Combining operations: mask and shift
+    var color = $FF00AA
+    var red = (color >> 16) & $FF
+    var green = (color >> 8) & $FF
+    var blue = color & $FF
+
+    // red = $FF, green = $00, blue = $AA
+    if red != 255 {
+        return 7
+    }
+    if green != 0 {
+        return 8
+    }
+    if blue != 170 {
+        return 9
+    }
+
+    return 0
+}

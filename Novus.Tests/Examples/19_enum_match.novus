@@ -1,0 +1,65 @@
+// Example: Enums with Pattern Matching
+//
+// Description:
+//   Demonstrates enum declarations with associated data and pattern matching
+//   to destructure enum values.
+//
+// Expected Output:
+//   Exit code: 0 (successful enum pattern matching)
+
+enum Message {
+    Quit,
+    Move(i32, i32),
+    Write(i32),
+    ChangeColor(i32, i32, i32)
+}
+
+fn process_message(msg: Message) -> i32 {
+    match msg {
+        Message::Quit => {
+            return 0
+        },
+        Message::Move(x, y) => {
+            return x + y
+        },
+        Message::Write(text) => {
+            return text
+        },
+        Message::ChangeColor(r, g, b) => {
+            return r + g + b
+        }
+    }
+}
+
+pub fn main() -> i32 {
+    // Test simple variant
+    var quit_msg = Message::Quit
+    var result1 = process_message(quit_msg)
+
+    // Test variant with data
+    var move_msg = Message::Move(10, 20)
+    var result2 = process_message(move_msg)
+
+    // Test another variant
+    var write_msg = Message::Write(42)
+    var result3 = process_message(write_msg)
+
+    // Test variant with multiple fields
+    var color_msg = Message::ChangeColor(1, 2, 3)
+    var result4 = process_message(color_msg)
+
+    // Verify results
+    // result1 = 0, result2 = 30, result3 = 42, result4 = 6
+    // Return 0 if all correct
+    if result1 == 0 {
+        if result2 == 30 {
+            if result3 == 42 {
+                if result4 == 6 {
+                    return 0
+                }
+            }
+        }
+    }
+
+    return 1
+}

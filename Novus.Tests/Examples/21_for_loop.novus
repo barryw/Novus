@@ -1,0 +1,57 @@
+// Example: For Loops
+//
+// Description:
+//   Demonstrates C-style for loops with initialization, condition, and increment.
+//
+// Expected Output:
+//   Exit code: 0 (successful loop execution)
+
+pub fn main() -> i32 {
+    // Basic for loop: sum numbers 0 to 9
+    var sum = 0
+    for (var i = 0; i < 10; i++) {
+        sum = sum + i
+    }
+
+    // sum should be 0+1+2+3+4+5+6+7+8+9 = 45
+    if sum != 45 {
+        return 1
+    }
+
+    // For loop with non-unit increment
+    var sum2 = 0
+    for (var j = 0; j < 10; j = j + 2) {
+        sum2 = sum2 + j
+    }
+
+    // sum2 should be 0+2+4+6+8 = 20
+    if sum2 != 20 {
+        return 2
+    }
+
+    // For loop counting down
+    var countdown = 0
+    for (var k = 10; k > 0; k--) {
+        countdown = countdown + k
+    }
+
+    // countdown should be 10+9+8+7+6+5+4+3+2+1 = 55
+    if countdown != 55 {
+        return 3
+    }
+
+    // Nested for loops
+    var nested = 0
+    for (var x = 0; x < 3; x++) {
+        for (var y = 0; y < 3; y++) {
+            nested = nested + 1
+        }
+    }
+
+    // nested should be 3*3 = 9
+    if nested != 9 {
+        return 4
+    }
+
+    return 0
+}

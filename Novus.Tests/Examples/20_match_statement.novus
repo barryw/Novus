@@ -1,0 +1,70 @@
+// Example: Match Statements
+//
+// Description:
+//   Demonstrates using match statements with return statements
+//   to compute values based on enum variants.
+//
+// Expected Output:
+//   Exit code: 0 (successful match statement evaluation)
+
+enum Status {
+    Success,
+    Pending,
+    Error(i32)
+}
+
+fn get_code(status: Status) -> i32 {
+    // Match used with return in each arm
+    match status {
+        Status::Success => return 0,
+        Status::Pending => return 1,
+        Status::Error(code) => return code
+    }
+}
+
+fn get_priority(status: Status) -> i32 {
+    // Match with block bodies
+    match status {
+        Status::Success => {
+            return 10
+        },
+        Status::Pending => {
+            return 5
+        },
+        Status::Error(code) => {
+            return 100
+        }
+    }
+}
+
+pub fn main() -> i32 {
+    var success = Status::Success
+    var pending = Status::Pending
+    var error = Status::Error(42)
+
+    // Test match expressions
+    var code1 = get_code(success)
+    var code2 = get_code(pending)
+    var code3 = get_code(error)
+
+    var priority1 = get_priority(success)
+    var priority2 = get_priority(pending)
+    var priority3 = get_priority(error)
+
+    // Verify results
+    if code1 == 0 {
+        if code2 == 1 {
+            if code3 == 42 {
+                if priority1 == 10 {
+                    if priority2 == 5 {
+                        if priority3 == 100 {
+                            return 0
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return 1
+}
