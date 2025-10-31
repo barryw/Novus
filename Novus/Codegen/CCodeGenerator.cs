@@ -878,7 +878,7 @@ public class CCodeGenerator
             if (externVar.Address.HasValue)
             {
                 // Hardware register at specific address - define as volatile pointer
-                _output.AppendLine($"#define {externVar.Name} (*({cType}*)0x{externVar.Address.Value:X})");
+                _output.AppendLine($"#define {externVar.Name} (*(volatile {cType}*)0x{externVar.Address.Value:X})");
             }
             else
             {
@@ -1179,6 +1179,14 @@ public class CCodeGenerator
 
             case IrIndexStore indexStore:
                 EmitIndexStore(indexStore);
+                break;
+
+            case IrMemberStore memberStore:
+                EmitMemberStore(memberStore);
+                break;
+
+            case IrDereferenceStore derefStore:
+                EmitDereferenceStore(derefStore);
                 break;
 
             case IrDefer defer:
@@ -1522,6 +1530,16 @@ public class CCodeGenerator
         var resultName = SanitizeVariableName(indexAccess.ResultName);
         var elementType = GetCType(indexAccess.ElementType);
 
+        // TODO: Make bounds checking conditional on debug build flag
+        // Add runtime bounds check if array type information is available
+        if (indexAccess.Array.Type is IrArrayType arrayType)
+        {
+            _output.AppendLine($"    if ((uint32_t){indexValue} >= {arrayType.Length}) {{");
+            _output.AppendLine($"        // Bounds check failed - index out of range");
+            _output.AppendLine($"        abort();  // TODO: Better error handling");
+            _output.AppendLine($"    }}");
+        }
+
         _output.AppendLine($"    {elementType} {resultName} = {arrayValue}[{indexValue}];");
     }
 
@@ -1531,7 +1549,33 @@ public class CCodeGenerator
         var indexValue = EmitValue(indexStore.Index);
         var storeValue = EmitValue(indexStore.Value);
 
+        // TODO: Make bounds checking conditional on debug build flag
+        // Add runtime bounds check if array type information is available
+        if (indexStore.Array.Type is IrArrayType arrayType)
+        {
+            _output.AppendLine($"    if ((uint32_t){indexValue} >= {arrayType.Length}) {{");
+            _output.AppendLine($"        // Bounds check failed - index out of range");
+            _output.AppendLine($"        abort();  // TODO: Better error handling");
+            _output.AppendLine($"    }}");
+        }
+
         _output.AppendLine($"    {arrayValue}[{indexValue}] = {storeValue};");
+    }
+
+    private void EmitMemberStore(IrMemberStore memberStore)
+    {
+        var structValue = EmitValue(memberStore.Struct);
+        var storeValue = EmitValue(memberStore.Value);
+
+        _output.AppendLine($"    {structValue}.{memberStore.FieldName} = {storeValue};");
+    }
+
+    private void EmitDereferenceStore(IrDereferenceStore derefStore)
+    {
+        var pointerValue = EmitValue(derefStore.Pointer);
+        var storeValue = EmitValue(derefStore.Value);
+
+        _output.AppendLine($"    (*{pointerValue}) = {storeValue};");
     }
 
     private string EmitValue(IrValue value)

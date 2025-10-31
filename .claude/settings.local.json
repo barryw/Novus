@@ -161,7 +161,8 @@
       "Bash(sort:*)",
       "Bash(dotnet:*)",
       "Bash(do echo \"Testing: $f\")",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []
