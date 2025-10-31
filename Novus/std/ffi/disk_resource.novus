@@ -1,0 +1,144 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: disk.resource
+// Base: _DiskBase
+//
+// NOTE: Import specific types from std::amiga_structs as needed
+// Example: from std::amiga_structs import Task, Node, List
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const NT_UNKNOWN: u32 = 0u32
+pub const NT_TASK: u32 = 1u32
+pub const NT_INTERRUPT: u32 = 2u32
+pub const NT_DEVICE: u32 = 3u32
+pub const NT_MSGPORT: u32 = 4u32
+pub const NT_MESSAGE: u32 = 5u32
+pub const NT_FREEMSG: u32 = 6u32
+pub const NT_REPLYMSG: u32 = 7u32
+pub const NT_RESOURCE: u32 = 8u32
+pub const NT_LIBRARY: u32 = 9u32
+pub const NT_MEMORY: u32 = 10u32
+pub const NT_SOFTINT: u32 = 11u32
+pub const NT_FONT: u32 = 12u32
+pub const NT_PROCESS: u32 = 13u32
+pub const NT_SEMAPHORE: u32 = 14u32
+pub const NT_SIGNALSEM: u32 = 15u32
+pub const NT_BOOTNODE: u32 = 16u32
+pub const NT_KICKMEM: u32 = 17u32
+pub const NT_GRAPHICS: u32 = 18u32
+pub const NT_DEATHMESSAGE: u32 = 19u32
+pub const NT_USER: u32 = 254u32
+pub const NT_EXTENDED: u32 = 255u32
+pub const TB_PROCTIME: u32 = 0u32
+pub const TB_ETASK: u32 = 3u32
+pub const TB_STACKCHK: u32 = 4u32
+pub const TB_EXCEPT: u32 = 5u32
+pub const TB_SWITCH: u32 = 6u32
+pub const TB_LAUNCH: u32 = 7u32
+pub const TF_PROCTIME: u32 = (1u32 << 0)
+pub const TF_ETASK: u32 = (1u32 << 3)
+pub const TF_STACKCHK: u32 = (1u32 << 4)
+pub const TF_EXCEPT: u32 = (1u32 << 5)
+pub const TF_SWITCH: u32 = (1u32 << 6)
+pub const TF_LAUNCH: u32 = (1u32 << 7)
+pub const TS_INVALID: u32 = 0u32
+pub const TS_ADDED: u32 = 1u32
+pub const TS_RUN: u32 = 2u32
+pub const TS_READY: u32 = 3u32
+pub const TS_WAIT: u32 = 4u32
+pub const TS_EXCEPT: u32 = 5u32
+pub const TS_REMOVED: u32 = 6u32
+pub const SIGB_ABORT: u32 = 0u32
+pub const SIGB_CHILD: u32 = 1u32
+pub const SIGB_BLIT: u32 = 4u32
+pub const SIGB_SINGLE: u32 = 4u32
+pub const SIGB_INTUITION: u32 = 5u32
+pub const SIGB_NET: u32 = 7u32
+pub const SIGB_DOS: u32 = 8u32
+pub const SIGF_ABORT: u32 = (1u32 << 0)
+pub const SIGF_CHILD: u32 = (1u32 << 1)
+pub const SIGF_BLIT: u32 = (1u32 << 4)
+pub const SIGF_SINGLE: u32 = (1u32 << 4)
+pub const SIGF_INTUITION: u32 = (1u32 << 5)
+pub const SIGF_NET: u32 = (1u32 << 7)
+pub const SIGF_DOS: u32 = (1u32 << 8)
+pub const mp_SoftInt: u32 = 0 /* TODO: mp_SigTask */
+pub const PF_ACTION: u32 = 3u32
+pub const PA_SIGNAL: u32 = 0u32
+pub const PA_SOFTINT: u32 = 1u32
+pub const PA_IGNORE: u32 = 2u32
+pub const SIH_PRIMASK: u32 = 0 /* TODO: (0xf0) */
+pub const INTB_NMI: u32 = 15u32
+pub const INTF_NMI: u32 = (1u32 << 15)
+pub const LIB_VECTSIZE: u32 = 6u32
+pub const LIB_RESERVED: u32 = 4u32
+pub const LIB_BASE: u32 = 0 /* TODO: (-LIB_VECTSIZE) */
+pub const LIB_USERDEF: u32 = 0 /* TODO: (LIB_BASE-(LIB_RESERVED*LIB_VECTSIZE)) */
+pub const LIB_NONSTD: u32 = 0 /* TODO: (LIB_USERDEF) */
+pub const LIB_OPEN: u32 = 0 /* TODO: (-6) */
+pub const LIB_CLOSE: u32 = 0 /* TODO: (-12) */
+pub const LIB_EXPUNGE: u32 = 0 /* TODO: (-18) */
+pub const LIB_EXTFUNC: u32 = 0 /* TODO: (-24) */
+pub const LIBF_SUMMING: u32 = (1u32 << 0)
+pub const LIBF_CHANGED: u32 = (1u32 << 1)
+pub const LIBF_SUMUSED: u32 = (1u32 << 2)
+pub const LIBF_DELEXP: u32 = (1u32 << 3)
+pub const lh_Node: u32 = 0 /* TODO: lib_Node */
+pub const lh_Flags: u32 = 0 /* TODO: lib_Flags */
+pub const lh_pad: u32 = 0 /* TODO: lib_pad */
+pub const lh_NegSize: u32 = 0 /* TODO: lib_NegSize */
+pub const lh_PosSize: u32 = 0 /* TODO: lib_PosSize */
+pub const lh_Version: u32 = 0 /* TODO: lib_Version */
+pub const lh_Revision: u32 = 0 /* TODO: lib_Revision */
+pub const lh_IdString: u32 = 0 /* TODO: lib_IdString */
+pub const lh_Sum: u32 = 0 /* TODO: lib_Sum */
+pub const lh_OpenCnt: u32 = 0 /* TODO: lib_OpenCnt */
+pub const DRB_ALLOC0: u32 = 0u32
+pub const DRB_ALLOC1: u32 = 1u32
+pub const DRB_ALLOC2: u32 = 2u32
+pub const DRB_ALLOC3: u32 = 3u32
+pub const DRB_ACTIVE: u32 = 7u32
+pub const DRF_ALLOC0: u32 = (1u32 << 0)
+pub const DRF_ALLOC1: u32 = (1u32 << 1)
+pub const DRF_ALLOC2: u32 = (1u32 << 2)
+pub const DRF_ALLOC3: u32 = (1u32 << 3)
+pub const DRF_ACTIVE: u32 = (1u32 << 7)
+pub const DSKDMAOFF: u32 = $4000u32
+pub const DISKNAME: u32 = 0 /* TODO: "disk.resource" */
+pub const DR_ALLOCUNIT: u32 = 0 /* TODO: (LIB_BASE - 0*LIB_VECTSIZE) */
+pub const DR_FREEUNIT: u32 = 0 /* TODO: (LIB_BASE - 1*LIB_VECTSIZE) */
+pub const DR_GETUNIT: u32 = 0 /* TODO: (LIB_BASE - 2*LIB_VECTSIZE) */
+pub const DR_GIVEUNIT: u32 = 0 /* TODO: (LIB_BASE - 3*LIB_VECTSIZE) */
+pub const DR_GETUNITID: u32 = 0 /* TODO: (LIB_BASE - 4*LIB_VECTSIZE) */
+pub const DR_READUNITID: u32 = 0 /* TODO: (LIB_BASE - 5*LIB_VECTSIZE) */
+pub const DR_LASTCOMM: u32 = 0 /* TODO: (DR_READUNITID) */
+pub const DRT_AMIGA: u32 = 0 /* TODO: (0x00000000) */
+pub const DRT_37422D2S: u32 = 0 /* TODO: (0x55555555) */
+pub const DRT_EMPTY: u32 = 0 /* TODO: (0xFFFFFFFF) */
+pub const DRT_150RPM: u32 = 0 /* TODO: (0xAAAAAAAA) */
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+extern pub fn AllocUnit(unitNum: i32) -> i16
+extern pub fn FreeUnit(unitNum: i32)
+extern pub fn GetUnit(unitPointer: *DiscResourceUnit) -> *DiscResourceUnit
+extern pub fn GiveUnit()
+extern pub fn GetUnitID(unitNum: i32) -> i32
+extern pub fn ReadUnitID(unitNum: i32) -> i32

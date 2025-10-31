@@ -1,0 +1,58 @@
+// Novus Standard Library - Amiga OS Type Mapping Reference
+// Namespace: std::amiga_types
+//
+// This file documents the Amiga OS type system and how it maps to Novus types.
+// Once Novus supports type aliases, these will become actual type definitions.
+//
+// For now, use this as a reference when reading/writing FFI code:
+//
+// Amiga Type    Novus Type    Description
+// ===========   ===========   ================================================
+// BYTE          i8            signed 8-bit quantity
+// UBYTE         u8            unsigned 8-bit quantity
+// WORD          i16           signed 16-bit quantity
+// UWORD         u16           unsigned 16-bit quantity
+// LONG          i32           signed 32-bit quantity
+// ULONG         u32           unsigned 32-bit quantity
+// BOOL          i16           Boolean (16-bit on Amiga, TRUE=1, FALSE=0)
+// APTR          *u8           32-bit untyped pointer (void*)
+// STRPTR        *u8           String pointer (NULL terminated)
+// BPTR          i32           BCPL pointer (byte offset / 4, NOT a real pointer!)
+//
+// Special note on BPTR:
+//   BPTR is NOT a regular pointer! It's a LONG containing a byte offset
+//   divided by 4 (BCPL word addressing). To convert BPTR to native pointer:
+//     let ptr: *u8 = (*u8)(u32)((bptr_value << 2))
+//
+// ============================================================================
+// Constants
+// ============================================================================
+
+pub const TRUE: i16 = 1i16
+pub const FALSE: i16 = 0i16
+pub const NULL: u32 = 0u32
+
+// Memory allocation flags (from exec/memory.h)
+pub const MEMF_ANY: u32 = 0
+pub const MEMF_PUBLIC: u32 = (1u32 << 0)
+pub const MEMF_CHIP: u32 = (1u32 << 1)
+pub const MEMF_FAST: u32 = (1u32 << 2)
+pub const MEMF_CLEAR: u32 = (1u32 << 16)
+
+// ============================================================================
+// Notes
+// ============================================================================
+
+// 1. BPTR is NOT a regular pointer! It's a LONG that contains a byte offset
+//    divided by 4 (BCPL word offset). To convert BPTR to native pointer:
+//      APTR ptr = (APTR)(BPTR_VALUE << 2);
+//
+// 2. Many Amiga functions return BOOL (16-bit) not bool (8-bit in C99)
+//
+// 3. APTR is used for "any pointer" - similar to void* in C
+//
+// 4. Some types have multiple definitions in the NDK (signed/unsigned char)
+//    depending on compiler flags. We use the most common versions.
+//
+// 5. These types are primarily for FFI. Native Novus code should prefer
+//    Novus types (u32, i32, *u8, etc.) for clarity.

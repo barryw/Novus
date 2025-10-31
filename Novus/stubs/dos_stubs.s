@@ -1,1998 +1,1691 @@
-; dos library stubs for Novus
-; Auto-generated from dos_lib.fd
-; Each function in its own section for vlink -gc-all dead code elimination
+; Generated from SFD file by Novus SFD Parser
+; Library: dos.library
+; Base: _DOSBase
+; Each function is in its own section for dead code elimination
 
-	xref	_DOSBase	; Provided by startup.o + -lamiga
+	xref	_DOSBase
 
-	section	CODE_Open,code
+	section	_Open_stub,code
 
-; Open(name, accessMode)
+; BPTR Open(CONST_STRPTR name, LONG accessMode)
 	xdef	_Open
 _Open:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; name
-	move.l	20(sp),d2	; accessMode
-	move.l	_DOSBase,a6
-	jsr	-30(a6)	; Open()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-30(a6)
 	rts
 
-	section	CODE_Close,code
+	section	_Close_stub,code
 
-; Close(file)
+; LONG Close(BPTR file)
 	xdef	_Close
 _Close:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; file
-	move.l	_DOSBase,a6
-	jsr	-36(a6)	; Close()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-36(a6)
 	rts
 
-	section	CODE_Read,code
+	section	_Read_stub,code
 
-; Read(file, buffer, length)
+; LONG Read(BPTR file, APTR buffer, LONG length)
 	xdef	_Read
 _Read:
-	movem.l	d1-d3/a6,-(sp)
-	move.l	20(sp),d1	; file
-	move.l	24(sp),d2	; buffer
-	move.l	28(sp),d3	; length
-	move.l	_DOSBase,a6
-	jsr	-42(a6)	; Read()
-	movem.l	(sp)+,d1-d3/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	movea.l	_DOSBase,a6
+	jsr	-42(a6)
 	rts
 
-	section	CODE_Write,code
+	section	_Write_stub,code
 
-; Write(file, buffer, length)
+; LONG Write(BPTR file, const APTR buffer, LONG length)
 	xdef	_Write
 _Write:
-	movem.l	d1-d3/a6,-(sp)
-	move.l	20(sp),d1	; file
-	move.l	24(sp),d2	; buffer
-	move.l	28(sp),d3	; length
-	move.l	_DOSBase,a6
-	jsr	-48(a6)	; Write()
-	movem.l	(sp)+,d1-d3/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	movea.l	_DOSBase,a6
+	jsr	-48(a6)
 	rts
 
-	section	CODE_Input,code
+	section	_Input_stub,code
 
-; Input()
+; BPTR Input()
 	xdef	_Input
 _Input:
-	movem.l	a6,-(sp)
-	move.l	_DOSBase,a6
-	jsr	-54(a6)	; Input()
-	movem.l	(sp)+,a6
+	movea.l	_DOSBase,a6
+	jsr	-54(a6)
 	rts
 
-	section	CODE_Output,code
+	section	_Output_stub,code
 
-; Output()
+; BPTR Output()
 	xdef	_Output
 _Output:
-	movem.l	a6,-(sp)
-	move.l	_DOSBase,a6
-	jsr	-60(a6)	; Output()
-	movem.l	(sp)+,a6
+	movea.l	_DOSBase,a6
+	jsr	-60(a6)
 	rts
 
-	section	CODE_Seek,code
+	section	_Seek_stub,code
 
-; Seek(file, position, offset)
+; LONG Seek(BPTR file, LONG position, LONG offset)
 	xdef	_Seek
 _Seek:
-	movem.l	d1-d3/a6,-(sp)
-	move.l	20(sp),d1	; file
-	move.l	24(sp),d2	; position
-	move.l	28(sp),d3	; offset
-	move.l	_DOSBase,a6
-	jsr	-66(a6)	; Seek()
-	movem.l	(sp)+,d1-d3/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	movea.l	_DOSBase,a6
+	jsr	-66(a6)
 	rts
 
-	section	CODE_DeleteFile,code
+	section	_DeleteFile_stub,code
 
-; DeleteFile(name)
+; LONG DeleteFile(CONST_STRPTR name)
 	xdef	_DeleteFile
 _DeleteFile:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	_DOSBase,a6
-	jsr	-72(a6)	; DeleteFile()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-72(a6)
 	rts
 
-	section	CODE_Rename,code
+	section	_Rename_stub,code
 
-; Rename(oldName, newName)
+; LONG Rename(CONST_STRPTR oldName, CONST_STRPTR newName)
 	xdef	_Rename
 _Rename:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; oldName
-	move.l	20(sp),d2	; newName
-	move.l	_DOSBase,a6
-	jsr	-78(a6)	; Rename()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-78(a6)
 	rts
 
-	section	CODE_Lock,code
+	section	_Lock_stub,code
 
-; Lock(name, type)
+; BPTR Lock(CONST_STRPTR name, LONG type)
 	xdef	_Lock
 _Lock:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; name
-	move.l	20(sp),d2	; type
-	move.l	_DOSBase,a6
-	jsr	-84(a6)	; Lock()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-84(a6)
 	rts
 
-	section	CODE_UnLock,code
+	section	_UnLock_stub,code
 
-; UnLock(lock)
+; VOID UnLock(BPTR lock)
 	xdef	_UnLock
 _UnLock:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; lock
-	move.l	_DOSBase,a6
-	jsr	-90(a6)	; UnLock()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-90(a6)
 	rts
 
-	section	CODE_DupLock,code
+	section	_DupLock_stub,code
 
-; DupLock(lock)
+; BPTR DupLock(BPTR lock)
 	xdef	_DupLock
 _DupLock:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; lock
-	move.l	_DOSBase,a6
-	jsr	-96(a6)	; DupLock()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-96(a6)
 	rts
 
-	section	CODE_Examine,code
+	section	_Examine_stub,code
 
-; Examine(lock, fileInfoBlock)
+; LONG Examine(BPTR lock, struct FileInfoBlock * fileInfoBlock)
 	xdef	_Examine
 _Examine:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; lock
-	move.l	20(sp),d2	; fileInfoBlock
-	move.l	_DOSBase,a6
-	jsr	-102(a6)	; Examine()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-102(a6)
 	rts
 
-	section	CODE_ExNext,code
+	section	_ExNext_stub,code
 
-; ExNext(lock, fileInfoBlock)
+; LONG ExNext(BPTR lock, struct FileInfoBlock * fileInfoBlock)
 	xdef	_ExNext
 _ExNext:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; lock
-	move.l	20(sp),d2	; fileInfoBlock
-	move.l	_DOSBase,a6
-	jsr	-108(a6)	; ExNext()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-108(a6)
 	rts
 
-	section	CODE_Info,code
+	section	_Info_stub,code
 
-; Info(lock, parameterBlock)
+; LONG Info(BPTR lock, struct InfoData * parameterBlock)
 	xdef	_Info
 _Info:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; lock
-	move.l	20(sp),d2	; parameterBlock
-	move.l	_DOSBase,a6
-	jsr	-114(a6)	; Info()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-114(a6)
 	rts
 
-	section	CODE_CreateDir,code
+	section	_CreateDir_stub,code
 
-; CreateDir(name)
+; BPTR CreateDir(CONST_STRPTR name)
 	xdef	_CreateDir
 _CreateDir:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	_DOSBase,a6
-	jsr	-120(a6)	; CreateDir()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-120(a6)
 	rts
 
-	section	CODE_CurrentDir,code
+	section	_CurrentDir_stub,code
 
-; CurrentDir(lock)
+; BPTR CurrentDir(BPTR lock)
 	xdef	_CurrentDir
 _CurrentDir:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; lock
-	move.l	_DOSBase,a6
-	jsr	-126(a6)	; CurrentDir()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-126(a6)
 	rts
 
-	section	CODE_IoErr,code
+	section	_IoErr_stub,code
 
-; IoErr()
+; LONG IoErr()
 	xdef	_IoErr
 _IoErr:
-	movem.l	a6,-(sp)
-	move.l	_DOSBase,a6
-	jsr	-132(a6)	; IoErr()
-	movem.l	(sp)+,a6
+	movea.l	_DOSBase,a6
+	jsr	-132(a6)
 	rts
 
-	section	CODE_CreateProc,code
+	section	_CreateProc_stub,code
 
-; CreateProc(name, pri, segList, stackSize)
+; struct MsgPort * CreateProc(CONST_STRPTR name, LONG pri, BPTR segList, LONG stackSize)
 	xdef	_CreateProc
 _CreateProc:
-	movem.l	d1-d4/a6,-(sp)
-	move.l	24(sp),d1	; name
-	move.l	28(sp),d2	; pri
-	move.l	32(sp),d3	; segList
-	move.l	36(sp),d4	; stackSize
-	move.l	_DOSBase,a6
-	jsr	-138(a6)	; CreateProc()
-	movem.l	(sp)+,d1-d4/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	move.l	16(sp),d4
+	movea.l	_DOSBase,a6
+	jsr	-138(a6)
 	rts
 
-	section	CODE_Exit,code
+	section	_Exit_stub,code
 
-; Exit(returnCode)
+; VOID Exit(LONG returnCode)
 	xdef	_Exit
 _Exit:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; returnCode
-	move.l	_DOSBase,a6
-	jsr	-144(a6)	; Exit()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-144(a6)
 	rts
 
-	section	CODE_LoadSeg,code
+	section	_LoadSeg_stub,code
 
-; LoadSeg(name)
+; BPTR LoadSeg(CONST_STRPTR name)
 	xdef	_LoadSeg
 _LoadSeg:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	_DOSBase,a6
-	jsr	-150(a6)	; LoadSeg()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-150(a6)
 	rts
 
-	section	CODE_UnLoadSeg,code
+	section	_UnLoadSeg_stub,code
 
-; UnLoadSeg(seglist)
+; VOID UnLoadSeg(BPTR seglist)
 	xdef	_UnLoadSeg
 _UnLoadSeg:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; seglist
-	move.l	_DOSBase,a6
-	jsr	-156(a6)	; UnLoadSeg()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-156(a6)
 	rts
 
-	section	CODE_DeviceProc,code
+	section	_DeviceProc_stub,code
 
-; DeviceProc(name)
+; struct MsgPort * DeviceProc(CONST_STRPTR name)
 	xdef	_DeviceProc
 _DeviceProc:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	_DOSBase,a6
-	jsr	-174(a6)	; DeviceProc()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-174(a6)
 	rts
 
-	section	CODE_SetComment,code
+	section	_SetComment_stub,code
 
-; SetComment(name, comment)
+; LONG SetComment(CONST_STRPTR name, CONST_STRPTR comment)
 	xdef	_SetComment
 _SetComment:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; name
-	move.l	20(sp),d2	; comment
-	move.l	_DOSBase,a6
-	jsr	-180(a6)	; SetComment()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-180(a6)
 	rts
 
-	section	CODE_SetProtection,code
+	section	_SetProtection_stub,code
 
-; SetProtection(name, protect)
+; LONG SetProtection(CONST_STRPTR name, LONG protect)
 	xdef	_SetProtection
 _SetProtection:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; name
-	move.l	20(sp),d2	; protect
-	move.l	_DOSBase,a6
-	jsr	-186(a6)	; SetProtection()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-186(a6)
 	rts
 
-	section	CODE_DateStamp,code
+	section	_DateStamp_stub,code
 
-; DateStamp(date)
+; struct DateStamp * DateStamp(struct DateStamp * date)
 	xdef	_DateStamp
 _DateStamp:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; date
-	move.l	_DOSBase,a6
-	jsr	-192(a6)	; DateStamp()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-192(a6)
 	rts
 
-	section	CODE_Delay,code
+	section	_Delay_stub,code
 
-; Delay(timeout)
+; VOID Delay(LONG timeout)
 	xdef	_Delay
 _Delay:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; timeout
-	move.l	_DOSBase,a6
-	jsr	-198(a6)	; Delay()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-198(a6)
 	rts
 
-	section	CODE_WaitForChar,code
+	section	_WaitForChar_stub,code
 
-; WaitForChar(file, timeout)
+; LONG WaitForChar(BPTR file, LONG timeout)
 	xdef	_WaitForChar
 _WaitForChar:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; file
-	move.l	20(sp),d2	; timeout
-	move.l	_DOSBase,a6
-	jsr	-204(a6)	; WaitForChar()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-204(a6)
 	rts
 
-	section	CODE_ParentDir,code
+	section	_ParentDir_stub,code
 
-; ParentDir(lock)
+; BPTR ParentDir(BPTR lock)
 	xdef	_ParentDir
 _ParentDir:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; lock
-	move.l	_DOSBase,a6
-	jsr	-210(a6)	; ParentDir()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-210(a6)
 	rts
 
-	section	CODE_IsInteractive,code
+	section	_IsInteractive_stub,code
 
-; IsInteractive(file)
+; LONG IsInteractive(BPTR file)
 	xdef	_IsInteractive
 _IsInteractive:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; file
-	move.l	_DOSBase,a6
-	jsr	-216(a6)	; IsInteractive()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-216(a6)
 	rts
 
-	section	CODE_Execute,code
+	section	_Execute_stub,code
 
-; Execute(string, file, file2)
+; LONG Execute(CONST_STRPTR string, BPTR file, BPTR file2)
 	xdef	_Execute
 _Execute:
-	movem.l	d1-d3/a6,-(sp)
-	move.l	20(sp),d1	; string
-	move.l	24(sp),d2	; file
-	move.l	28(sp),d3	; file2
-	move.l	_DOSBase,a6
-	jsr	-222(a6)	; Execute()
-	movem.l	(sp)+,d1-d3/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	movea.l	_DOSBase,a6
+	jsr	-222(a6)
 	rts
 
-	section	CODE_AllocDosObject,code
+	section	_AllocDosObject_stub,code
 
-; AllocDosObject(type, tags)
+; APTR AllocDosObject(ULONG type, const struct TagItem * tags)
 	xdef	_AllocDosObject
 _AllocDosObject:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; type
-	move.l	20(sp),d2	; tags
-	move.l	_DOSBase,a6
-	jsr	-228(a6)	; AllocDosObject()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-228(a6)
 	rts
 
-	section	CODE_FreeDosObject,code
+	section	_FreeDosObject_stub,code
 
-; FreeDosObject(type, ptr)
+; VOID FreeDosObject(ULONG type, APTR ptr)
 	xdef	_FreeDosObject
 _FreeDosObject:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; type
-	move.l	20(sp),d2	; ptr
-	move.l	_DOSBase,a6
-	jsr	-234(a6)	; FreeDosObject()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-246(a6)
 	rts
 
-	section	CODE_DoPkt,code
+	section	_DoPkt_stub,code
 
-; DoPkt(port, action, arg1, arg2, arg3, arg4, arg5)
+; LONG DoPkt(struct MsgPort * port, LONG action, LONG arg1, LONG arg2, LONG arg3, LONG arg4, LONG arg5)
 	xdef	_DoPkt
 _DoPkt:
-	movem.l	d1-d7/a6,-(sp)
-	move.l	36(sp),d1	; port
-	move.l	40(sp),d2	; action
-	move.l	44(sp),d3	; arg1
-	move.l	48(sp),d4	; arg2
-	move.l	52(sp),d5	; arg3
-	move.l	56(sp),d6	; arg4
-	move.l	60(sp),d7	; arg5
-	move.l	_DOSBase,a6
-	jsr	-240(a6)	; DoPkt()
-	movem.l	(sp)+,d1-d7/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	move.l	16(sp),d4
+	move.l	20(sp),d5
+	move.l	24(sp),d6
+	move.l	28(sp),d7
+	movea.l	_DOSBase,a6
+	jsr	-252(a6)
 	rts
 
-	section	CODE_SendPkt,code
+	section	_SendPkt_stub,code
 
-; SendPkt(dp, port, replyport)
+; VOID SendPkt(struct DosPacket * dp, struct MsgPort * port, struct MsgPort * replyport)
 	xdef	_SendPkt
 _SendPkt:
-	movem.l	d1-d3/a6,-(sp)
-	move.l	20(sp),d1	; dp
-	move.l	24(sp),d2	; port
-	move.l	28(sp),d3	; replyport
-	move.l	_DOSBase,a6
-	jsr	-246(a6)	; SendPkt()
-	movem.l	(sp)+,d1-d3/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	movea.l	_DOSBase,a6
+	jsr	-288(a6)
 	rts
 
-	section	CODE_WaitPkt,code
+	section	_WaitPkt_stub,code
 
-; WaitPkt()
+; struct DosPacket * WaitPkt()
 	xdef	_WaitPkt
 _WaitPkt:
-	movem.l	a6,-(sp)
-	move.l	_DOSBase,a6
-	jsr	-252(a6)	; WaitPkt()
-	movem.l	(sp)+,a6
+	movea.l	_DOSBase,a6
+	jsr	-294(a6)
 	rts
 
-	section	CODE_ReplyPkt,code
+	section	_ReplyPkt_stub,code
 
-; ReplyPkt(dp, res1, res2)
+; VOID ReplyPkt(struct DosPacket * dp, LONG res1, LONG res2)
 	xdef	_ReplyPkt
 _ReplyPkt:
-	movem.l	d1-d3/a6,-(sp)
-	move.l	20(sp),d1	; dp
-	move.l	24(sp),d2	; res1
-	move.l	28(sp),d3	; res2
-	move.l	_DOSBase,a6
-	jsr	-258(a6)	; ReplyPkt()
-	movem.l	(sp)+,d1-d3/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	movea.l	_DOSBase,a6
+	jsr	-300(a6)
 	rts
 
-	section	CODE_AbortPkt,code
+	section	_AbortPkt_stub,code
 
-; AbortPkt(port, pkt)
+; VOID AbortPkt(struct MsgPort * port, struct DosPacket * pkt)
 	xdef	_AbortPkt
 _AbortPkt:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; port
-	move.l	20(sp),d2	; pkt
-	move.l	_DOSBase,a6
-	jsr	-264(a6)	; AbortPkt()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-306(a6)
 	rts
 
-	section	CODE_LockRecord,code
+	section	_LockRecord_stub,code
 
-; LockRecord(fh, offset, length, mode, timeout)
+; BOOL LockRecord(BPTR fh, ULONG offset, ULONG length, ULONG mode, ULONG timeout)
 	xdef	_LockRecord
 _LockRecord:
-	movem.l	d1-d5/a6,-(sp)
-	move.l	28(sp),d1	; fh
-	move.l	32(sp),d2	; offset
-	move.l	36(sp),d3	; length
-	move.l	40(sp),d4	; mode
-	move.l	44(sp),d5	; timeout
-	move.l	_DOSBase,a6
-	jsr	-270(a6)	; LockRecord()
-	movem.l	(sp)+,d1-d5/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	move.l	16(sp),d4
+	move.l	20(sp),d5
+	movea.l	_DOSBase,a6
+	jsr	-312(a6)
 	rts
 
-	section	CODE_LockRecords,code
+	section	_LockRecords_stub,code
 
-; LockRecords(recArray, timeout)
+; BOOL LockRecords(struct RecordLock * recArray, ULONG timeout)
 	xdef	_LockRecords
 _LockRecords:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; recArray
-	move.l	20(sp),d2	; timeout
-	move.l	_DOSBase,a6
-	jsr	-276(a6)	; LockRecords()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-318(a6)
 	rts
 
-	section	CODE_UnLockRecord,code
+	section	_UnLockRecord_stub,code
 
-; UnLockRecord(fh, offset, length)
+; BOOL UnLockRecord(BPTR fh, ULONG offset, ULONG length)
 	xdef	_UnLockRecord
 _UnLockRecord:
-	movem.l	d1-d3/a6,-(sp)
-	move.l	20(sp),d1	; fh
-	move.l	24(sp),d2	; offset
-	move.l	28(sp),d3	; length
-	move.l	_DOSBase,a6
-	jsr	-282(a6)	; UnLockRecord()
-	movem.l	(sp)+,d1-d3/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	movea.l	_DOSBase,a6
+	jsr	-324(a6)
 	rts
 
-	section	CODE_UnLockRecords,code
+	section	_UnLockRecords_stub,code
 
-; UnLockRecords(recArray)
+; BOOL UnLockRecords(struct RecordLock * recArray)
 	xdef	_UnLockRecords
 _UnLockRecords:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; recArray
-	move.l	_DOSBase,a6
-	jsr	-288(a6)	; UnLockRecords()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-330(a6)
 	rts
 
-	section	CODE_SelectInput,code
+	section	_SelectInput_stub,code
 
-; SelectInput(fh)
+; BPTR SelectInput(BPTR fh)
 	xdef	_SelectInput
 _SelectInput:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; fh
-	move.l	_DOSBase,a6
-	jsr	-294(a6)	; SelectInput()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-336(a6)
 	rts
 
-	section	CODE_SelectOutput,code
+	section	_SelectOutput_stub,code
 
-; SelectOutput(fh)
+; BPTR SelectOutput(BPTR fh)
 	xdef	_SelectOutput
 _SelectOutput:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; fh
-	move.l	_DOSBase,a6
-	jsr	-300(a6)	; SelectOutput()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-342(a6)
 	rts
 
-	section	CODE_FGetC,code
+	section	_FGetC_stub,code
 
-; FGetC(fh)
+; LONG FGetC(BPTR fh)
 	xdef	_FGetC
 _FGetC:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; fh
-	move.l	_DOSBase,a6
-	jsr	-306(a6)	; FGetC()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-348(a6)
 	rts
 
-	section	CODE_FPutC,code
+	section	_FPutC_stub,code
 
-; FPutC(fh, ch)
+; LONG FPutC(BPTR fh, LONG ch)
 	xdef	_FPutC
 _FPutC:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; fh
-	move.l	20(sp),d2	; ch
-	move.l	_DOSBase,a6
-	jsr	-312(a6)	; FPutC()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-354(a6)
 	rts
 
-	section	CODE_UnGetC,code
+	section	_UnGetC_stub,code
 
-; UnGetC(fh, character)
+; LONG UnGetC(BPTR fh, LONG character)
 	xdef	_UnGetC
 _UnGetC:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; fh
-	move.l	20(sp),d2	; character
-	move.l	_DOSBase,a6
-	jsr	-318(a6)	; UnGetC()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-360(a6)
 	rts
 
-	section	CODE_FRead,code
+	section	_FRead_stub,code
 
-; FRead(fh, block, blocklen, number)
+; LONG FRead(BPTR fh, APTR block, ULONG blocklen, ULONG number)
 	xdef	_FRead
 _FRead:
-	movem.l	d1-d4/a6,-(sp)
-	move.l	24(sp),d1	; fh
-	move.l	28(sp),d2	; block
-	move.l	32(sp),d3	; blocklen
-	move.l	36(sp),d4	; number
-	move.l	_DOSBase,a6
-	jsr	-324(a6)	; FRead()
-	movem.l	(sp)+,d1-d4/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	move.l	16(sp),d4
+	movea.l	_DOSBase,a6
+	jsr	-366(a6)
 	rts
 
-	section	CODE_FWrite,code
+	section	_FWrite_stub,code
 
-; FWrite(fh, block, blocklen, number)
+; LONG FWrite(BPTR fh, const APTR block, ULONG blocklen, ULONG number)
 	xdef	_FWrite
 _FWrite:
-	movem.l	d1-d4/a6,-(sp)
-	move.l	24(sp),d1	; fh
-	move.l	28(sp),d2	; block
-	move.l	32(sp),d3	; blocklen
-	move.l	36(sp),d4	; number
-	move.l	_DOSBase,a6
-	jsr	-330(a6)	; FWrite()
-	movem.l	(sp)+,d1-d4/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	move.l	16(sp),d4
+	movea.l	_DOSBase,a6
+	jsr	-372(a6)
 	rts
 
-	section	CODE_FGets,code
+	section	_FGets_stub,code
 
-; FGets(fh, buf, buflen)
+; STRPTR FGets(BPTR fh, STRPTR buf, ULONG buflen)
 	xdef	_FGets
 _FGets:
-	movem.l	d1-d3/a6,-(sp)
-	move.l	20(sp),d1	; fh
-	move.l	24(sp),d2	; buf
-	move.l	28(sp),d3	; buflen
-	move.l	_DOSBase,a6
-	jsr	-336(a6)	; FGets()
-	movem.l	(sp)+,d1-d3/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	movea.l	_DOSBase,a6
+	jsr	-378(a6)
 	rts
 
-	section	CODE_FPuts,code
+	section	_FPuts_stub,code
 
-; FPuts(fh, str)
+; LONG FPuts(BPTR fh, CONST_STRPTR str)
 	xdef	_FPuts
 _FPuts:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; fh
-	move.l	20(sp),d2	; str
-	move.l	_DOSBase,a6
-	jsr	-342(a6)	; FPuts()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-384(a6)
 	rts
 
-	section	CODE_VFWritef,code
+	section	_VFWritef_stub,code
 
-; VFWritef(fh, format, argarray)
+; VOID VFWritef(BPTR fh, CONST_STRPTR format, const LONG * argarray)
 	xdef	_VFWritef
 _VFWritef:
-	movem.l	d1-d3/a6,-(sp)
-	move.l	20(sp),d1	; fh
-	move.l	24(sp),d2	; format
-	move.l	28(sp),d3	; argarray
-	move.l	_DOSBase,a6
-	jsr	-348(a6)	; VFWritef()
-	movem.l	(sp)+,d1-d3/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	movea.l	_DOSBase,a6
+	jsr	-390(a6)
 	rts
 
-	section	CODE_VFPrintf,code
+	section	_VFPrintf_stub,code
 
-; VFPrintf(fh, format, argarray)
+; LONG VFPrintf(BPTR fh, CONST_STRPTR format, const APTR argarray)
 	xdef	_VFPrintf
 _VFPrintf:
-	movem.l	d1-d3/a6,-(sp)
-	move.l	20(sp),d1	; fh
-	move.l	24(sp),d2	; format
-	move.l	28(sp),d3	; argarray
-	move.l	_DOSBase,a6
-	jsr	-354(a6)	; VFPrintf()
-	movem.l	(sp)+,d1-d3/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	movea.l	_DOSBase,a6
+	jsr	-402(a6)
 	rts
 
-	section	CODE_Flush,code
+	section	_Flush_stub,code
 
-; Flush(fh)
+; LONG Flush(BPTR fh)
 	xdef	_Flush
 _Flush:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; fh
-	move.l	_DOSBase,a6
-	jsr	-360(a6)	; Flush()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-414(a6)
 	rts
 
-	section	CODE_SetVBuf,code
+	section	_SetVBuf_stub,code
 
-; SetVBuf(fh, buff, type, size)
+; LONG SetVBuf(BPTR fh, STRPTR buff, LONG type, LONG size)
 	xdef	_SetVBuf
 _SetVBuf:
-	movem.l	d1-d4/a6,-(sp)
-	move.l	24(sp),d1	; fh
-	move.l	28(sp),d2	; buff
-	move.l	32(sp),d3	; type
-	move.l	36(sp),d4	; size
-	move.l	_DOSBase,a6
-	jsr	-366(a6)	; SetVBuf()
-	movem.l	(sp)+,d1-d4/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	move.l	16(sp),d4
+	movea.l	_DOSBase,a6
+	jsr	-420(a6)
 	rts
 
-	section	CODE_DupLockFromFH,code
+	section	_DupLockFromFH_stub,code
 
-; DupLockFromFH(fh)
+; BPTR DupLockFromFH(BPTR fh)
 	xdef	_DupLockFromFH
 _DupLockFromFH:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; fh
-	move.l	_DOSBase,a6
-	jsr	-372(a6)	; DupLockFromFH()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-426(a6)
 	rts
 
-	section	CODE_OpenFromLock,code
+	section	_OpenFromLock_stub,code
 
-; OpenFromLock(lock)
+; BPTR OpenFromLock(BPTR lock)
 	xdef	_OpenFromLock
 _OpenFromLock:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; lock
-	move.l	_DOSBase,a6
-	jsr	-378(a6)	; OpenFromLock()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-432(a6)
 	rts
 
-	section	CODE_ParentOfFH,code
+	section	_ParentOfFH_stub,code
 
-; ParentOfFH(fh)
+; BPTR ParentOfFH(BPTR fh)
 	xdef	_ParentOfFH
 _ParentOfFH:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; fh
-	move.l	_DOSBase,a6
-	jsr	-384(a6)	; ParentOfFH()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-438(a6)
 	rts
 
-	section	CODE_ExamineFH,code
+	section	_ExamineFH_stub,code
 
-; ExamineFH(fh, fib)
+; BOOL ExamineFH(BPTR fh, struct FileInfoBlock * fib)
 	xdef	_ExamineFH
 _ExamineFH:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; fh
-	move.l	20(sp),d2	; fib
-	move.l	_DOSBase,a6
-	jsr	-390(a6)	; ExamineFH()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-444(a6)
 	rts
 
-	section	CODE_SetFileDate,code
+	section	_SetFileDate_stub,code
 
-; SetFileDate(name, date)
+; LONG SetFileDate(CONST_STRPTR name, const struct DateStamp * date)
 	xdef	_SetFileDate
 _SetFileDate:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; name
-	move.l	20(sp),d2	; date
-	move.l	_DOSBase,a6
-	jsr	-396(a6)	; SetFileDate()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-450(a6)
 	rts
 
-	section	CODE_NameFromLock,code
+	section	_NameFromLock_stub,code
 
-; NameFromLock(lock, buffer, len)
+; LONG NameFromLock(BPTR lock, STRPTR buffer, LONG len)
 	xdef	_NameFromLock
 _NameFromLock:
-	movem.l	d1-d3/a6,-(sp)
-	move.l	20(sp),d1	; lock
-	move.l	24(sp),d2	; buffer
-	move.l	28(sp),d3	; len
-	move.l	_DOSBase,a6
-	jsr	-402(a6)	; NameFromLock()
-	movem.l	(sp)+,d1-d3/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	movea.l	_DOSBase,a6
+	jsr	-456(a6)
 	rts
 
-	section	CODE_NameFromFH,code
+	section	_NameFromFH_stub,code
 
-; NameFromFH(fh, buffer, len)
+; LONG NameFromFH(BPTR fh, STRPTR buffer, LONG len)
 	xdef	_NameFromFH
 _NameFromFH:
-	movem.l	d1-d3/a6,-(sp)
-	move.l	20(sp),d1	; fh
-	move.l	24(sp),d2	; buffer
-	move.l	28(sp),d3	; len
-	move.l	_DOSBase,a6
-	jsr	-408(a6)	; NameFromFH()
-	movem.l	(sp)+,d1-d3/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	movea.l	_DOSBase,a6
+	jsr	-462(a6)
 	rts
 
-	section	CODE_SplitName,code
+	section	_SplitName_stub,code
 
-; SplitName(name, separator, buf, oldpos, size)
+; WORD SplitName(CONST_STRPTR name, UBYTE separator, STRPTR buf, WORD oldpos, LONG size)
 	xdef	_SplitName
 _SplitName:
-	movem.l	d1-d5/a6,-(sp)
-	move.l	28(sp),d1	; name
-	move.l	32(sp),d2	; separator
-	move.l	36(sp),d3	; buf
-	move.l	40(sp),d4	; oldpos
-	move.l	44(sp),d5	; size
-	move.l	_DOSBase,a6
-	jsr	-414(a6)	; SplitName()
-	movem.l	(sp)+,d1-d5/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	move.l	16(sp),d4
+	move.l	20(sp),d5
+	movea.l	_DOSBase,a6
+	jsr	-468(a6)
 	rts
 
-	section	CODE_SameLock,code
+	section	_SameLock_stub,code
 
-; SameLock(lock1, lock2)
+; LONG SameLock(BPTR lock1, BPTR lock2)
 	xdef	_SameLock
 _SameLock:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; lock1
-	move.l	20(sp),d2	; lock2
-	move.l	_DOSBase,a6
-	jsr	-420(a6)	; SameLock()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-474(a6)
 	rts
 
-	section	CODE_SetMode,code
+	section	_SetMode_stub,code
 
-; SetMode(fh, mode)
+; LONG SetMode(BPTR fh, LONG mode)
 	xdef	_SetMode
 _SetMode:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; fh
-	move.l	20(sp),d2	; mode
-	move.l	_DOSBase,a6
-	jsr	-426(a6)	; SetMode()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-480(a6)
 	rts
 
-	section	CODE_ExAll,code
+	section	_ExAll_stub,code
 
-; ExAll(lock, buffer, size, data, control)
+; LONG ExAll(BPTR lock, struct ExAllData * buffer, LONG size, LONG data, struct ExAllControl * control)
 	xdef	_ExAll
 _ExAll:
-	movem.l	d1-d5/a6,-(sp)
-	move.l	28(sp),d1	; lock
-	move.l	32(sp),d2	; buffer
-	move.l	36(sp),d3	; size
-	move.l	40(sp),d4	; data
-	move.l	44(sp),d5	; control
-	move.l	_DOSBase,a6
-	jsr	-432(a6)	; ExAll()
-	movem.l	(sp)+,d1-d5/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	move.l	16(sp),d4
+	move.l	20(sp),d5
+	movea.l	_DOSBase,a6
+	jsr	-486(a6)
 	rts
 
-	section	CODE_ReadLink,code
+	section	_ReadLink_stub,code
 
-; ReadLink(port, lock, path, buffer, size)
+; LONG ReadLink(struct MsgPort * port, BPTR lock, CONST_STRPTR path, STRPTR buffer, ULONG size)
 	xdef	_ReadLink
 _ReadLink:
-	movem.l	d1-d5/a6,-(sp)
-	move.l	28(sp),d1	; port
-	move.l	32(sp),d2	; lock
-	move.l	36(sp),d3	; path
-	move.l	40(sp),d4	; buffer
-	move.l	44(sp),d5	; size
-	move.l	_DOSBase,a6
-	jsr	-438(a6)	; ReadLink()
-	movem.l	(sp)+,d1-d5/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	move.l	16(sp),d4
+	move.l	20(sp),d5
+	movea.l	_DOSBase,a6
+	jsr	-492(a6)
 	rts
 
-	section	CODE_MakeLink,code
+	section	_MakeLink_stub,code
 
-; MakeLink(name, dest, soft)
+; LONG MakeLink(CONST_STRPTR name, LONG dest, LONG soft)
 	xdef	_MakeLink
 _MakeLink:
-	movem.l	d1-d3/a6,-(sp)
-	move.l	20(sp),d1	; name
-	move.l	24(sp),d2	; dest
-	move.l	28(sp),d3	; soft
-	move.l	_DOSBase,a6
-	jsr	-444(a6)	; MakeLink()
-	movem.l	(sp)+,d1-d3/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	movea.l	_DOSBase,a6
+	jsr	-498(a6)
 	rts
 
-	section	CODE_ChangeMode,code
+	section	_ChangeMode_stub,code
 
-; ChangeMode(type, fh, newmode)
+; LONG ChangeMode(LONG type, BPTR fh, LONG newmode)
 	xdef	_ChangeMode
 _ChangeMode:
-	movem.l	d1-d3/a6,-(sp)
-	move.l	20(sp),d1	; type
-	move.l	24(sp),d2	; fh
-	move.l	28(sp),d3	; newmode
-	move.l	_DOSBase,a6
-	jsr	-450(a6)	; ChangeMode()
-	movem.l	(sp)+,d1-d3/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	movea.l	_DOSBase,a6
+	jsr	-504(a6)
 	rts
 
-	section	CODE_SetFileSize,code
+	section	_SetFileSize_stub,code
 
-; SetFileSize(fh, pos, mode)
+; LONG SetFileSize(BPTR fh, LONG pos, LONG mode)
 	xdef	_SetFileSize
 _SetFileSize:
-	movem.l	d1-d3/a6,-(sp)
-	move.l	20(sp),d1	; fh
-	move.l	24(sp),d2	; pos
-	move.l	28(sp),d3	; mode
-	move.l	_DOSBase,a6
-	jsr	-456(a6)	; SetFileSize()
-	movem.l	(sp)+,d1-d3/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	movea.l	_DOSBase,a6
+	jsr	-510(a6)
 	rts
 
-	section	CODE_SetIoErr,code
+	section	_SetIoErr_stub,code
 
-; SetIoErr(result)
+; LONG SetIoErr(LONG result)
 	xdef	_SetIoErr
 _SetIoErr:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; result
-	move.l	_DOSBase,a6
-	jsr	-462(a6)	; SetIoErr()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-516(a6)
 	rts
 
-	section	CODE_Fault,code
+	section	_Fault_stub,code
 
-; Fault(code, header, buffer, len)
+; BOOL Fault(LONG code, STRPTR header, STRPTR buffer, LONG len)
 	xdef	_Fault
 _Fault:
-	movem.l	d1-d4/a6,-(sp)
-	move.l	24(sp),d1	; code
-	move.l	28(sp),d2	; header
-	move.l	32(sp),d3	; buffer
-	move.l	36(sp),d4	; len
-	move.l	_DOSBase,a6
-	jsr	-468(a6)	; Fault()
-	movem.l	(sp)+,d1-d4/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	move.l	16(sp),d4
+	movea.l	_DOSBase,a6
+	jsr	-522(a6)
 	rts
 
-	section	CODE_PrintFault,code
+	section	_PrintFault_stub,code
 
-; PrintFault(code, header)
+; BOOL PrintFault(LONG code, CONST_STRPTR header)
 	xdef	_PrintFault
 _PrintFault:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; code
-	move.l	20(sp),d2	; header
-	move.l	_DOSBase,a6
-	jsr	-474(a6)	; PrintFault()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-528(a6)
 	rts
 
-	section	CODE_ErrorReport,code
+	section	_ErrorReport_stub,code
 
-; ErrorReport(code, type, arg1, device)
+; LONG ErrorReport(LONG code, LONG type, ULONG arg1, struct MsgPort * device)
 	xdef	_ErrorReport
 _ErrorReport:
-	movem.l	d1-d4/a6,-(sp)
-	move.l	24(sp),d1	; code
-	move.l	28(sp),d2	; type
-	move.l	32(sp),d3	; arg1
-	move.l	36(sp),d4	; device
-	move.l	_DOSBase,a6
-	jsr	-480(a6)	; ErrorReport()
-	movem.l	(sp)+,d1-d4/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	move.l	16(sp),d4
+	movea.l	_DOSBase,a6
+	jsr	-534(a6)
 	rts
 
-	section	CODE_Cli,code
+	section	_Cli_stub,code
 
-; Cli()
+; struct CommandLineInterface * Cli()
 	xdef	_Cli
 _Cli:
-	movem.l	a6,-(sp)
-	move.l	_DOSBase,a6
-	jsr	-492(a6)	; Cli()
-	movem.l	(sp)+,a6
+	movea.l	_DOSBase,a6
+	jsr	-546(a6)
 	rts
 
-	section	CODE_CreateNewProc,code
+	section	_CreateNewProc_stub,code
 
-; CreateNewProc(tags)
+; struct Process * CreateNewProc(const struct TagItem * tags)
 	xdef	_CreateNewProc
 _CreateNewProc:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; tags
-	move.l	_DOSBase,a6
-	jsr	-498(a6)	; CreateNewProc()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-552(a6)
 	rts
 
-	section	CODE_RunCommand,code
+	section	_RunCommand_stub,code
 
-; RunCommand(seg, stack, paramptr, paramlen)
+; LONG RunCommand(BPTR seg, LONG stack, CONST_STRPTR paramptr, LONG paramlen)
 	xdef	_RunCommand
 _RunCommand:
-	movem.l	d1-d4/a6,-(sp)
-	move.l	24(sp),d1	; seg
-	move.l	28(sp),d2	; stack
-	move.l	32(sp),d3	; paramptr
-	move.l	36(sp),d4	; paramlen
-	move.l	_DOSBase,a6
-	jsr	-504(a6)	; RunCommand()
-	movem.l	(sp)+,d1-d4/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	move.l	16(sp),d4
+	movea.l	_DOSBase,a6
+	jsr	-570(a6)
 	rts
 
-	section	CODE_GetConsoleTask,code
+	section	_GetConsoleTask_stub,code
 
-; GetConsoleTask()
+; struct MsgPort * GetConsoleTask()
 	xdef	_GetConsoleTask
 _GetConsoleTask:
-	movem.l	a6,-(sp)
-	move.l	_DOSBase,a6
-	jsr	-510(a6)	; GetConsoleTask()
-	movem.l	(sp)+,a6
+	movea.l	_DOSBase,a6
+	jsr	-576(a6)
 	rts
 
-	section	CODE_SetConsoleTask,code
+	section	_SetConsoleTask_stub,code
 
-; SetConsoleTask(task)
+; struct MsgPort * SetConsoleTask(const struct MsgPort * task)
 	xdef	_SetConsoleTask
 _SetConsoleTask:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; task
-	move.l	_DOSBase,a6
-	jsr	-516(a6)	; SetConsoleTask()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-582(a6)
 	rts
 
-	section	CODE_GetFileSysTask,code
+	section	_GetFileSysTask_stub,code
 
-; GetFileSysTask()
+; struct MsgPort * GetFileSysTask()
 	xdef	_GetFileSysTask
 _GetFileSysTask:
-	movem.l	a6,-(sp)
-	move.l	_DOSBase,a6
-	jsr	-522(a6)	; GetFileSysTask()
-	movem.l	(sp)+,a6
+	movea.l	_DOSBase,a6
+	jsr	-588(a6)
 	rts
 
-	section	CODE_SetFileSysTask,code
+	section	_SetFileSysTask_stub,code
 
-; SetFileSysTask(task)
+; struct MsgPort * SetFileSysTask(const struct MsgPort * task)
 	xdef	_SetFileSysTask
 _SetFileSysTask:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; task
-	move.l	_DOSBase,a6
-	jsr	-528(a6)	; SetFileSysTask()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-594(a6)
 	rts
 
-	section	CODE_GetArgStr,code
+	section	_GetArgStr_stub,code
 
-; GetArgStr()
+; STRPTR GetArgStr()
 	xdef	_GetArgStr
 _GetArgStr:
-	movem.l	a6,-(sp)
-	move.l	_DOSBase,a6
-	jsr	-534(a6)	; GetArgStr()
-	movem.l	(sp)+,a6
+	movea.l	_DOSBase,a6
+	jsr	-600(a6)
 	rts
 
-	section	CODE_SetArgStr,code
+	section	_SetArgStr_stub,code
 
-; SetArgStr(string)
+; BOOL SetArgStr(CONST_STRPTR string)
 	xdef	_SetArgStr
 _SetArgStr:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; string
-	move.l	_DOSBase,a6
-	jsr	-540(a6)	; SetArgStr()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-606(a6)
 	rts
 
-	section	CODE_FindCliProc,code
+	section	_FindCliProc_stub,code
 
-; FindCliProc(num)
+; struct Process * FindCliProc(ULONG num)
 	xdef	_FindCliProc
 _FindCliProc:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; num
-	move.l	_DOSBase,a6
-	jsr	-546(a6)	; FindCliProc()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-612(a6)
 	rts
 
-	section	CODE_MaxCli,code
+	section	_MaxCli_stub,code
 
-; MaxCli()
+; ULONG MaxCli()
 	xdef	_MaxCli
 _MaxCli:
-	movem.l	a6,-(sp)
-	move.l	_DOSBase,a6
-	jsr	-552(a6)	; MaxCli()
-	movem.l	(sp)+,a6
+	movea.l	_DOSBase,a6
+	jsr	-618(a6)
 	rts
 
-	section	CODE_SetCurrentDirName,code
+	section	_SetCurrentDirName_stub,code
 
-; SetCurrentDirName(name)
+; BOOL SetCurrentDirName(CONST_STRPTR name)
 	xdef	_SetCurrentDirName
 _SetCurrentDirName:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	_DOSBase,a6
-	jsr	-558(a6)	; SetCurrentDirName()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-624(a6)
 	rts
 
-	section	CODE_GetCurrentDirName,code
+	section	_GetCurrentDirName_stub,code
 
-; GetCurrentDirName(buf, len)
+; BOOL GetCurrentDirName(STRPTR buf, LONG len)
 	xdef	_GetCurrentDirName
 _GetCurrentDirName:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; buf
-	move.l	20(sp),d2	; len
-	move.l	_DOSBase,a6
-	jsr	-564(a6)	; GetCurrentDirName()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-630(a6)
 	rts
 
-	section	CODE_SetProgramName,code
+	section	_SetProgramName_stub,code
 
-; SetProgramName(name)
+; BOOL SetProgramName(CONST_STRPTR name)
 	xdef	_SetProgramName
 _SetProgramName:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	_DOSBase,a6
-	jsr	-570(a6)	; SetProgramName()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-636(a6)
 	rts
 
-	section	CODE_GetProgramName,code
+	section	_GetProgramName_stub,code
 
-; GetProgramName(buf, len)
+; BOOL GetProgramName(STRPTR buf, LONG len)
 	xdef	_GetProgramName
 _GetProgramName:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; buf
-	move.l	20(sp),d2	; len
-	move.l	_DOSBase,a6
-	jsr	-576(a6)	; GetProgramName()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-642(a6)
 	rts
 
-	section	CODE_SetPrompt,code
+	section	_SetPrompt_stub,code
 
-; SetPrompt(name)
+; BOOL SetPrompt(CONST_STRPTR name)
 	xdef	_SetPrompt
 _SetPrompt:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	_DOSBase,a6
-	jsr	-582(a6)	; SetPrompt()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-648(a6)
 	rts
 
-	section	CODE_GetPrompt,code
+	section	_GetPrompt_stub,code
 
-; GetPrompt(buf, len)
+; BOOL GetPrompt(STRPTR buf, LONG len)
 	xdef	_GetPrompt
 _GetPrompt:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; buf
-	move.l	20(sp),d2	; len
-	move.l	_DOSBase,a6
-	jsr	-588(a6)	; GetPrompt()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-654(a6)
 	rts
 
-	section	CODE_SetProgramDir,code
+	section	_SetProgramDir_stub,code
 
-; SetProgramDir(lock)
+; BPTR SetProgramDir(BPTR lock)
 	xdef	_SetProgramDir
 _SetProgramDir:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; lock
-	move.l	_DOSBase,a6
-	jsr	-594(a6)	; SetProgramDir()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-660(a6)
 	rts
 
-	section	CODE_GetProgramDir,code
+	section	_GetProgramDir_stub,code
 
-; GetProgramDir()
+; BPTR GetProgramDir()
 	xdef	_GetProgramDir
 _GetProgramDir:
-	movem.l	a6,-(sp)
-	move.l	_DOSBase,a6
-	jsr	-600(a6)	; GetProgramDir()
-	movem.l	(sp)+,a6
+	movea.l	_DOSBase,a6
+	jsr	-666(a6)
 	rts
 
-	section	CODE_SystemTagList,code
+	section	_SystemTagList_stub,code
 
-; SystemTagList(command, tags)
+; LONG SystemTagList(CONST_STRPTR command, const struct TagItem * tags)
 	xdef	_SystemTagList
 _SystemTagList:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; command
-	move.l	20(sp),d2	; tags
-	move.l	_DOSBase,a6
-	jsr	-606(a6)	; SystemTagList()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-672(a6)
 	rts
 
-	section	CODE_AssignLock,code
+	section	_AssignLock_stub,code
 
-; AssignLock(name, lock)
+; LONG AssignLock(CONST_STRPTR name, BPTR lock)
 	xdef	_AssignLock
 _AssignLock:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; name
-	move.l	20(sp),d2	; lock
-	move.l	_DOSBase,a6
-	jsr	-612(a6)	; AssignLock()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-690(a6)
 	rts
 
-	section	CODE_AssignLate,code
+	section	_AssignLate_stub,code
 
-; AssignLate(name, path)
+; BOOL AssignLate(CONST_STRPTR name, CONST_STRPTR path)
 	xdef	_AssignLate
 _AssignLate:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; name
-	move.l	20(sp),d2	; path
-	move.l	_DOSBase,a6
-	jsr	-618(a6)	; AssignLate()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-696(a6)
 	rts
 
-	section	CODE_AssignPath,code
+	section	_AssignPath_stub,code
 
-; AssignPath(name, path)
+; BOOL AssignPath(CONST_STRPTR name, CONST_STRPTR path)
 	xdef	_AssignPath
 _AssignPath:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; name
-	move.l	20(sp),d2	; path
-	move.l	_DOSBase,a6
-	jsr	-624(a6)	; AssignPath()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-702(a6)
 	rts
 
-	section	CODE_AssignAdd,code
+	section	_AssignAdd_stub,code
 
-; AssignAdd(name, lock)
+; BOOL AssignAdd(CONST_STRPTR name, BPTR lock)
 	xdef	_AssignAdd
 _AssignAdd:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; name
-	move.l	20(sp),d2	; lock
-	move.l	_DOSBase,a6
-	jsr	-630(a6)	; AssignAdd()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-708(a6)
 	rts
 
-	section	CODE_RemAssignList,code
+	section	_RemAssignList_stub,code
 
-; RemAssignList(name, lock)
+; LONG RemAssignList(CONST_STRPTR name, BPTR lock)
 	xdef	_RemAssignList
 _RemAssignList:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; name
-	move.l	20(sp),d2	; lock
-	move.l	_DOSBase,a6
-	jsr	-636(a6)	; RemAssignList()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-714(a6)
 	rts
 
-	section	CODE_GetDeviceProc,code
+	section	_GetDeviceProc_stub,code
 
-; GetDeviceProc(name, dp)
+; struct DevProc * GetDeviceProc(CONST_STRPTR name, struct DevProc * dp)
 	xdef	_GetDeviceProc
 _GetDeviceProc:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; name
-	move.l	20(sp),d2	; dp
-	move.l	_DOSBase,a6
-	jsr	-642(a6)	; GetDeviceProc()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-720(a6)
 	rts
 
-	section	CODE_FreeDeviceProc,code
+	section	_FreeDeviceProc_stub,code
 
-; FreeDeviceProc(dp)
+; VOID FreeDeviceProc(struct DevProc * dp)
 	xdef	_FreeDeviceProc
 _FreeDeviceProc:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; dp
-	move.l	_DOSBase,a6
-	jsr	-648(a6)	; FreeDeviceProc()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-726(a6)
 	rts
 
-	section	CODE_LockDosList,code
+	section	_LockDosList_stub,code
 
-; LockDosList(flags)
+; struct DosList * LockDosList(ULONG flags)
 	xdef	_LockDosList
 _LockDosList:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; flags
-	move.l	_DOSBase,a6
-	jsr	-654(a6)	; LockDosList()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-732(a6)
 	rts
 
-	section	CODE_UnLockDosList,code
+	section	_UnLockDosList_stub,code
 
-; UnLockDosList(flags)
+; VOID UnLockDosList(ULONG flags)
 	xdef	_UnLockDosList
 _UnLockDosList:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; flags
-	move.l	_DOSBase,a6
-	jsr	-660(a6)	; UnLockDosList()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-738(a6)
 	rts
 
-	section	CODE_AttemptLockDosList,code
+	section	_AttemptLockDosList_stub,code
 
-; AttemptLockDosList(flags)
+; struct DosList * AttemptLockDosList(ULONG flags)
 	xdef	_AttemptLockDosList
 _AttemptLockDosList:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; flags
-	move.l	_DOSBase,a6
-	jsr	-666(a6)	; AttemptLockDosList()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-744(a6)
 	rts
 
-	section	CODE_RemDosEntry,code
+	section	_RemDosEntry_stub,code
 
-; RemDosEntry(dlist)
+; BOOL RemDosEntry(struct DosList * dlist)
 	xdef	_RemDosEntry
 _RemDosEntry:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; dlist
-	move.l	_DOSBase,a6
-	jsr	-672(a6)	; RemDosEntry()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-750(a6)
 	rts
 
-	section	CODE_AddDosEntry,code
+	section	_AddDosEntry_stub,code
 
-; AddDosEntry(dlist)
+; LONG AddDosEntry(struct DosList * dlist)
 	xdef	_AddDosEntry
 _AddDosEntry:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; dlist
-	move.l	_DOSBase,a6
-	jsr	-678(a6)	; AddDosEntry()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-756(a6)
 	rts
 
-	section	CODE_FindDosEntry,code
+	section	_FindDosEntry_stub,code
 
-; FindDosEntry(dlist, name, flags)
+; struct DosList * FindDosEntry(const struct DosList * dlist, CONST_STRPTR name, ULONG flags)
 	xdef	_FindDosEntry
 _FindDosEntry:
-	movem.l	d1-d3/a6,-(sp)
-	move.l	20(sp),d1	; dlist
-	move.l	24(sp),d2	; name
-	move.l	28(sp),d3	; flags
-	move.l	_DOSBase,a6
-	jsr	-684(a6)	; FindDosEntry()
-	movem.l	(sp)+,d1-d3/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	movea.l	_DOSBase,a6
+	jsr	-762(a6)
 	rts
 
-	section	CODE_NextDosEntry,code
+	section	_NextDosEntry_stub,code
 
-; NextDosEntry(dlist, flags)
+; struct DosList * NextDosEntry(const struct DosList * dlist, ULONG flags)
 	xdef	_NextDosEntry
 _NextDosEntry:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; dlist
-	move.l	20(sp),d2	; flags
-	move.l	_DOSBase,a6
-	jsr	-690(a6)	; NextDosEntry()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-768(a6)
 	rts
 
-	section	CODE_MakeDosEntry,code
+	section	_MakeDosEntry_stub,code
 
-; MakeDosEntry(name, type)
+; struct DosList * MakeDosEntry(CONST_STRPTR name, LONG type)
 	xdef	_MakeDosEntry
 _MakeDosEntry:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; name
-	move.l	20(sp),d2	; type
-	move.l	_DOSBase,a6
-	jsr	-696(a6)	; MakeDosEntry()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-774(a6)
 	rts
 
-	section	CODE_FreeDosEntry,code
+	section	_FreeDosEntry_stub,code
 
-; FreeDosEntry(dlist)
+; VOID FreeDosEntry(struct DosList * dlist)
 	xdef	_FreeDosEntry
 _FreeDosEntry:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; dlist
-	move.l	_DOSBase,a6
-	jsr	-702(a6)	; FreeDosEntry()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-780(a6)
 	rts
 
-	section	CODE_IsFileSystem,code
+	section	_IsFileSystem_stub,code
 
-; IsFileSystem(name)
+; BOOL IsFileSystem(CONST_STRPTR name)
 	xdef	_IsFileSystem
 _IsFileSystem:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; name
-	move.l	_DOSBase,a6
-	jsr	-708(a6)	; IsFileSystem()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-786(a6)
 	rts
 
-	section	CODE_Format,code
+	section	_Format_stub,code
 
-; Format(filesystem, volumename, dostype)
+; BOOL Format(CONST_STRPTR filesystem, CONST_STRPTR volumename, ULONG dostype)
 	xdef	_Format
 _Format:
-	movem.l	d1-d3/a6,-(sp)
-	move.l	20(sp),d1	; filesystem
-	move.l	24(sp),d2	; volumename
-	move.l	28(sp),d3	; dostype
-	move.l	_DOSBase,a6
-	jsr	-714(a6)	; Format()
-	movem.l	(sp)+,d1-d3/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	movea.l	_DOSBase,a6
+	jsr	-792(a6)
 	rts
 
-	section	CODE_Relabel,code
+	section	_Relabel_stub,code
 
-; Relabel(drive, newname)
+; LONG Relabel(CONST_STRPTR drive, CONST_STRPTR newname)
 	xdef	_Relabel
 _Relabel:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; drive
-	move.l	20(sp),d2	; newname
-	move.l	_DOSBase,a6
-	jsr	-720(a6)	; Relabel()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-798(a6)
 	rts
 
-	section	CODE_Inhibit,code
+	section	_Inhibit_stub,code
 
-; Inhibit(name, onoff)
+; LONG Inhibit(CONST_STRPTR name, LONG onoff)
 	xdef	_Inhibit
 _Inhibit:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; name
-	move.l	20(sp),d2	; onoff
-	move.l	_DOSBase,a6
-	jsr	-726(a6)	; Inhibit()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-804(a6)
 	rts
 
-	section	CODE_AddBuffers,code
+	section	_AddBuffers_stub,code
 
-; AddBuffers(name, number)
+; LONG AddBuffers(CONST_STRPTR name, LONG number)
 	xdef	_AddBuffers
 _AddBuffers:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; name
-	move.l	20(sp),d2	; number
-	move.l	_DOSBase,a6
-	jsr	-732(a6)	; AddBuffers()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-810(a6)
 	rts
 
-	section	CODE_CompareDates,code
+	section	_CompareDates_stub,code
 
-; CompareDates(date1, date2)
+; LONG CompareDates(const struct DateStamp * date1, const struct DateStamp * date2)
 	xdef	_CompareDates
 _CompareDates:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; date1
-	move.l	20(sp),d2	; date2
-	move.l	_DOSBase,a6
-	jsr	-738(a6)	; CompareDates()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-816(a6)
 	rts
 
-	section	CODE_DateToStr,code
+	section	_DateToStr_stub,code
 
-; DateToStr(datetime)
+; LONG DateToStr(struct DateTime * datetime)
 	xdef	_DateToStr
 _DateToStr:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; datetime
-	move.l	_DOSBase,a6
-	jsr	-744(a6)	; DateToStr()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-822(a6)
 	rts
 
-	section	CODE_StrToDate,code
+	section	_StrToDate_stub,code
 
-; StrToDate(datetime)
+; LONG StrToDate(struct DateTime * datetime)
 	xdef	_StrToDate
 _StrToDate:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; datetime
-	move.l	_DOSBase,a6
-	jsr	-750(a6)	; StrToDate()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-828(a6)
 	rts
 
-	section	CODE_InternalLoadSeg,code
+	section	_InternalLoadSeg_stub,code
 
-; InternalLoadSeg(fh, table, funcarray, stack)
+; BPTR InternalLoadSeg(BPTR fh, BPTR table, const LONG * funcarray, LONG * stack)
 	xdef	_InternalLoadSeg
 _InternalLoadSeg:
-	movem.l	d0/a0-a2/a6,-(sp)
-	move.l	24(sp),d0	; fh
-	move.l	28(sp),a0	; table
-	move.l	32(sp),a1	; funcarray
-	move.l	36(sp),a2	; stack
-	move.l	_DOSBase,a6
-	jsr	-756(a6)	; InternalLoadSeg()
-	movem.l	(sp)+,d0/a0-a2/a6
+	move.l	4(sp),d0
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
+	movea.l	16(sp),a2
+	movea.l	_DOSBase,a6
+	jsr	-834(a6)
 	rts
 
-	section	CODE_InternalUnLoadSeg,code
+	section	_InternalUnLoadSeg_stub,code
 
-; InternalUnLoadSeg(seglist, freefunc)
+; BOOL InternalUnLoadSeg(BPTR seglist, VOID (*freefunc)() freefunc)
 	xdef	_InternalUnLoadSeg
 _InternalUnLoadSeg:
-	movem.l	d1/a1/a6,-(sp)
-	move.l	16(sp),d1	; seglist
-	move.l	20(sp),a1	; freefunc
-	move.l	_DOSBase,a6
-	jsr	-762(a6)	; InternalUnLoadSeg()
-	movem.l	(sp)+,d1/a1/a6
+	move.l	4(sp),d1
+	movea.l	8(sp),a1
+	movea.l	_DOSBase,a6
+	jsr	-840(a6)
 	rts
 
-	section	CODE_NewLoadSeg,code
+	section	_NewLoadSeg_stub,code
 
-; NewLoadSeg(file, tags)
+; BPTR NewLoadSeg(CONST_STRPTR file, const struct TagItem * tags)
 	xdef	_NewLoadSeg
 _NewLoadSeg:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; file
-	move.l	20(sp),d2	; tags
-	move.l	_DOSBase,a6
-	jsr	-768(a6)	; NewLoadSeg()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-846(a6)
 	rts
 
-	section	CODE_AddSegment,code
+	section	_AddSegment_stub,code
 
-; AddSegment(name, seg, system)
+; LONG AddSegment(CONST_STRPTR name, BPTR seg, LONG system)
 	xdef	_AddSegment
 _AddSegment:
-	movem.l	d1-d3/a6,-(sp)
-	move.l	20(sp),d1	; name
-	move.l	24(sp),d2	; seg
-	move.l	28(sp),d3	; system
-	move.l	_DOSBase,a6
-	jsr	-774(a6)	; AddSegment()
-	movem.l	(sp)+,d1-d3/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	movea.l	_DOSBase,a6
+	jsr	-864(a6)
 	rts
 
-	section	CODE_FindSegment,code
+	section	_FindSegment_stub,code
 
-; FindSegment(name, seg, system)
+; struct Segment * FindSegment(CONST_STRPTR name, const struct Segment * seg, LONG system)
 	xdef	_FindSegment
 _FindSegment:
-	movem.l	d1-d3/a6,-(sp)
-	move.l	20(sp),d1	; name
-	move.l	24(sp),d2	; seg
-	move.l	28(sp),d3	; system
-	move.l	_DOSBase,a6
-	jsr	-780(a6)	; FindSegment()
-	movem.l	(sp)+,d1-d3/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	movea.l	_DOSBase,a6
+	jsr	-870(a6)
 	rts
 
-	section	CODE_RemSegment,code
+	section	_RemSegment_stub,code
 
-; RemSegment(seg)
+; LONG RemSegment(struct Segment * seg)
 	xdef	_RemSegment
 _RemSegment:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; seg
-	move.l	_DOSBase,a6
-	jsr	-786(a6)	; RemSegment()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-876(a6)
 	rts
 
-	section	CODE_CheckSignal,code
+	section	_CheckSignal_stub,code
 
-; CheckSignal(mask)
+; LONG CheckSignal(LONG mask)
 	xdef	_CheckSignal
 _CheckSignal:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; mask
-	move.l	_DOSBase,a6
-	jsr	-792(a6)	; CheckSignal()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-882(a6)
 	rts
 
-	section	CODE_ReadArgs,code
+	section	_ReadArgs_stub,code
 
-; ReadArgs(arg_template, array, args)
+; struct RDArgs * ReadArgs(CONST_STRPTR arg_template, LONG * array, struct RDArgs * args)
 	xdef	_ReadArgs
 _ReadArgs:
-	movem.l	d1-d3/a6,-(sp)
-	move.l	20(sp),d1	; arg_template
-	move.l	24(sp),d2	; array
-	move.l	28(sp),d3	; args
-	move.l	_DOSBase,a6
-	jsr	-798(a6)	; ReadArgs()
-	movem.l	(sp)+,d1-d3/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	movea.l	_DOSBase,a6
+	jsr	-888(a6)
 	rts
 
-	section	CODE_FindArg,code
+	section	_FindArg_stub,code
 
-; FindArg(keyword, arg_template)
+; LONG FindArg(CONST_STRPTR keyword, CONST_STRPTR arg_template)
 	xdef	_FindArg
 _FindArg:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; keyword
-	move.l	20(sp),d2	; arg_template
-	move.l	_DOSBase,a6
-	jsr	-804(a6)	; FindArg()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-894(a6)
 	rts
 
-	section	CODE_ReadItem,code
+	section	_ReadItem_stub,code
 
-; ReadItem(name, maxchars, cSource)
+; LONG ReadItem(CONST_STRPTR name, LONG maxchars, struct CSource * cSource)
 	xdef	_ReadItem
 _ReadItem:
-	movem.l	d1-d3/a6,-(sp)
-	move.l	20(sp),d1	; name
-	move.l	24(sp),d2	; maxchars
-	move.l	28(sp),d3	; cSource
-	move.l	_DOSBase,a6
-	jsr	-810(a6)	; ReadItem()
-	movem.l	(sp)+,d1-d3/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	movea.l	_DOSBase,a6
+	jsr	-900(a6)
 	rts
 
-	section	CODE_StrToLong,code
+	section	_StrToLong_stub,code
 
-; StrToLong(string, value)
+; LONG StrToLong(CONST_STRPTR string, LONG * value)
 	xdef	_StrToLong
 _StrToLong:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; string
-	move.l	20(sp),d2	; value
-	move.l	_DOSBase,a6
-	jsr	-816(a6)	; StrToLong()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-906(a6)
 	rts
 
-	section	CODE_MatchFirst,code
+	section	_MatchFirst_stub,code
 
-; MatchFirst(pat, anchor)
+; LONG MatchFirst(CONST_STRPTR pat, struct AnchorPath * anchor)
 	xdef	_MatchFirst
 _MatchFirst:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; pat
-	move.l	20(sp),d2	; anchor
-	move.l	_DOSBase,a6
-	jsr	-822(a6)	; MatchFirst()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-912(a6)
 	rts
 
-	section	CODE_MatchNext,code
+	section	_MatchNext_stub,code
 
-; MatchNext(anchor)
+; LONG MatchNext(struct AnchorPath * anchor)
 	xdef	_MatchNext
 _MatchNext:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; anchor
-	move.l	_DOSBase,a6
-	jsr	-828(a6)	; MatchNext()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-918(a6)
 	rts
 
-	section	CODE_MatchEnd,code
+	section	_MatchEnd_stub,code
 
-; MatchEnd(anchor)
+; VOID MatchEnd(struct AnchorPath * anchor)
 	xdef	_MatchEnd
 _MatchEnd:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; anchor
-	move.l	_DOSBase,a6
-	jsr	-834(a6)	; MatchEnd()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-924(a6)
 	rts
 
-	section	CODE_ParsePattern,code
+	section	_ParsePattern_stub,code
 
-; ParsePattern(pat, buf, buflen)
+; LONG ParsePattern(CONST_STRPTR pat, STRPTR buf, LONG buflen)
 	xdef	_ParsePattern
 _ParsePattern:
-	movem.l	d1-d3/a6,-(sp)
-	move.l	20(sp),d1	; pat
-	move.l	24(sp),d2	; buf
-	move.l	28(sp),d3	; buflen
-	move.l	_DOSBase,a6
-	jsr	-840(a6)	; ParsePattern()
-	movem.l	(sp)+,d1-d3/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	movea.l	_DOSBase,a6
+	jsr	-930(a6)
 	rts
 
-	section	CODE_MatchPattern,code
+	section	_MatchPattern_stub,code
 
-; MatchPattern(pat, str)
+; BOOL MatchPattern(CONST_STRPTR pat, STRPTR str)
 	xdef	_MatchPattern
 _MatchPattern:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; pat
-	move.l	20(sp),d2	; str
-	move.l	_DOSBase,a6
-	jsr	-846(a6)	; MatchPattern()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-936(a6)
 	rts
 
-	section	CODE_FreeArgs,code
+	section	_FreeArgs_stub,code
 
-; FreeArgs(args)
+; VOID FreeArgs(struct RDArgs * args)
 	xdef	_FreeArgs
 _FreeArgs:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; args
-	move.l	_DOSBase,a6
-	jsr	-858(a6)	; FreeArgs()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-948(a6)
 	rts
 
-	section	CODE_FilePart,code
+	section	_FilePart_stub,code
 
-; FilePart(path)
+; STRPTR FilePart(CONST_STRPTR path)
 	xdef	_FilePart
 _FilePart:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; path
-	move.l	_DOSBase,a6
-	jsr	-870(a6)	; FilePart()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-960(a6)
 	rts
 
-	section	CODE_PathPart,code
+	section	_PathPart_stub,code
 
-; PathPart(path)
+; STRPTR PathPart(CONST_STRPTR path)
 	xdef	_PathPart
 _PathPart:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; path
-	move.l	_DOSBase,a6
-	jsr	-876(a6)	; PathPart()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-966(a6)
 	rts
 
-	section	CODE_AddPart,code
+	section	_AddPart_stub,code
 
-; AddPart(dirname, filename, size)
+; BOOL AddPart(STRPTR dirname, CONST_STRPTR filename, ULONG size)
 	xdef	_AddPart
 _AddPart:
-	movem.l	d1-d3/a6,-(sp)
-	move.l	20(sp),d1	; dirname
-	move.l	24(sp),d2	; filename
-	move.l	28(sp),d3	; size
-	move.l	_DOSBase,a6
-	jsr	-882(a6)	; AddPart()
-	movem.l	(sp)+,d1-d3/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	movea.l	_DOSBase,a6
+	jsr	-972(a6)
 	rts
 
-	section	CODE_StartNotify,code
+	section	_StartNotify_stub,code
 
-; StartNotify(notify)
+; BOOL StartNotify(struct NotifyRequest * notify)
 	xdef	_StartNotify
 _StartNotify:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; notify
-	move.l	_DOSBase,a6
-	jsr	-888(a6)	; StartNotify()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-978(a6)
 	rts
 
-	section	CODE_EndNotify,code
+	section	_EndNotify_stub,code
 
-; EndNotify(notify)
+; VOID EndNotify(struct NotifyRequest * notify)
 	xdef	_EndNotify
 _EndNotify:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; notify
-	move.l	_DOSBase,a6
-	jsr	-894(a6)	; EndNotify()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-984(a6)
 	rts
 
-	section	CODE_SetVar,code
+	section	_SetVar_stub,code
 
-; SetVar(name, buffer, size, flags)
+; BOOL SetVar(CONST_STRPTR name, CONST_STRPTR buffer, LONG size, LONG flags)
 	xdef	_SetVar
 _SetVar:
-	movem.l	d1-d4/a6,-(sp)
-	move.l	24(sp),d1	; name
-	move.l	28(sp),d2	; buffer
-	move.l	32(sp),d3	; size
-	move.l	36(sp),d4	; flags
-	move.l	_DOSBase,a6
-	jsr	-900(a6)	; SetVar()
-	movem.l	(sp)+,d1-d4/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	move.l	16(sp),d4
+	movea.l	_DOSBase,a6
+	jsr	-990(a6)
 	rts
 
-	section	CODE_GetVar,code
+	section	_GetVar_stub,code
 
-; GetVar(name, buffer, size, flags)
+; LONG GetVar(CONST_STRPTR name, STRPTR buffer, LONG size, LONG flags)
 	xdef	_GetVar
 _GetVar:
-	movem.l	d1-d4/a6,-(sp)
-	move.l	24(sp),d1	; name
-	move.l	28(sp),d2	; buffer
-	move.l	32(sp),d3	; size
-	move.l	36(sp),d4	; flags
-	move.l	_DOSBase,a6
-	jsr	-906(a6)	; GetVar()
-	movem.l	(sp)+,d1-d4/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	move.l	16(sp),d4
+	movea.l	_DOSBase,a6
+	jsr	-996(a6)
 	rts
 
-	section	CODE_DeleteVar,code
+	section	_DeleteVar_stub,code
 
-; DeleteVar(name, flags)
+; LONG DeleteVar(CONST_STRPTR name, ULONG flags)
 	xdef	_DeleteVar
 _DeleteVar:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; name
-	move.l	20(sp),d2	; flags
-	move.l	_DOSBase,a6
-	jsr	-912(a6)	; DeleteVar()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-1002(a6)
 	rts
 
-	section	CODE_FindVar,code
+	section	_FindVar_stub,code
 
-; FindVar(name, type)
+; struct LocalVar * FindVar(CONST_STRPTR name, ULONG type)
 	xdef	_FindVar
 _FindVar:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; name
-	move.l	20(sp),d2	; type
-	move.l	_DOSBase,a6
-	jsr	-918(a6)	; FindVar()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-1008(a6)
 	rts
 
-	section	CODE_CliInitNewcli,code
+	section	_CliInitNewcli_stub,code
 
-; CliInitNewcli(dp)
+; LONG CliInitNewcli(struct DosPacket * dp)
 	xdef	_CliInitNewcli
 _CliInitNewcli:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; dp
-	move.l	_DOSBase,a6
-	jsr	-930(a6)	; CliInitNewcli()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_DOSBase,a6
+	jsr	-1020(a6)
 	rts
 
-	section	CODE_CliInitRun,code
+	section	_CliInitRun_stub,code
 
-; CliInitRun(dp)
+; LONG CliInitRun(struct DosPacket * dp)
 	xdef	_CliInitRun
 _CliInitRun:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; dp
-	move.l	_DOSBase,a6
-	jsr	-936(a6)	; CliInitRun()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_DOSBase,a6
+	jsr	-1026(a6)
 	rts
 
-	section	CODE_WriteChars,code
+	section	_WriteChars_stub,code
 
-; WriteChars(buf, buflen)
+; LONG WriteChars(CONST_STRPTR buf, ULONG buflen)
 	xdef	_WriteChars
 _WriteChars:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; buf
-	move.l	20(sp),d2	; buflen
-	move.l	_DOSBase,a6
-	jsr	-942(a6)	; WriteChars()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-1032(a6)
 	rts
 
-	section	CODE_PutStr,code
+	section	_PutStr_stub,code
 
-; PutStr(str)
+; LONG PutStr(CONST_STRPTR str)
 	xdef	_PutStr
 _PutStr:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; str
-	move.l	_DOSBase,a6
-	jsr	-948(a6)	; PutStr()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_DOSBase,a6
+	jsr	-1038(a6)
 	rts
 
-	section	CODE_VPrintf,code
+	section	_VPrintf_stub,code
 
-; VPrintf(format, argarray)
+; LONG VPrintf(CONST_STRPTR format, const APTR argarray)
 	xdef	_VPrintf
 _VPrintf:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; format
-	move.l	20(sp),d2	; argarray
-	move.l	_DOSBase,a6
-	jsr	-954(a6)	; VPrintf()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-1044(a6)
 	rts
 
-	section	CODE_ParsePatternNoCase,code
+	section	_ParsePatternNoCase_stub,code
 
-; ParsePatternNoCase(pat, buf, buflen)
+; LONG ParsePatternNoCase(CONST_STRPTR pat, UBYTE * buf, LONG buflen)
 	xdef	_ParsePatternNoCase
 _ParsePatternNoCase:
-	movem.l	d1-d3/a6,-(sp)
-	move.l	20(sp),d1	; pat
-	move.l	24(sp),d2	; buf
-	move.l	28(sp),d3	; buflen
-	move.l	_DOSBase,a6
-	jsr	-966(a6)	; ParsePatternNoCase()
-	movem.l	(sp)+,d1-d3/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	movea.l	_DOSBase,a6
+	jsr	-1062(a6)
 	rts
 
-	section	CODE_MatchPatternNoCase,code
+	section	_MatchPatternNoCase_stub,code
 
-; MatchPatternNoCase(pat, str)
+; BOOL MatchPatternNoCase(CONST_STRPTR pat, STRPTR str)
 	xdef	_MatchPatternNoCase
 _MatchPatternNoCase:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; pat
-	move.l	20(sp),d2	; str
-	move.l	_DOSBase,a6
-	jsr	-972(a6)	; MatchPatternNoCase()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-1068(a6)
 	rts
 
-	section	CODE_SameDevice,code
+	section	_SameDevice_stub,code
 
-; SameDevice(lock1, lock2)
+; BOOL SameDevice(BPTR lock1, BPTR lock2)
 	xdef	_SameDevice
 _SameDevice:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; lock1
-	move.l	20(sp),d2	; lock2
-	move.l	_DOSBase,a6
-	jsr	-984(a6)	; SameDevice()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-1080(a6)
 	rts
 
-	section	CODE_ExAllEnd,code
+	section	_ExAllEnd_stub,code
 
-; ExAllEnd(lock, buffer, size, data, control)
+; VOID ExAllEnd(BPTR lock, struct ExAllData * buffer, LONG size, LONG data, struct ExAllControl * control)
 	xdef	_ExAllEnd
 _ExAllEnd:
-	movem.l	d1-d5/a6,-(sp)
-	move.l	28(sp),d1	; lock
-	move.l	32(sp),d2	; buffer
-	move.l	36(sp),d3	; size
-	move.l	40(sp),d4	; data
-	move.l	44(sp),d5	; control
-	move.l	_DOSBase,a6
-	jsr	-990(a6)	; ExAllEnd()
-	movem.l	(sp)+,d1-d5/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	move.l	12(sp),d3
+	move.l	16(sp),d4
+	move.l	20(sp),d5
+	movea.l	_DOSBase,a6
+	jsr	-1086(a6)
 	rts
 
-	section	CODE_SetOwner,code
+	section	_SetOwner_stub,code
 
-; SetOwner(name, owner_info)
+; BOOL SetOwner(CONST_STRPTR name, LONG owner_info)
 	xdef	_SetOwner
 _SetOwner:
-	movem.l	d1-d2/a6,-(sp)
-	move.l	16(sp),d1	; name
-	move.l	20(sp),d2	; owner_info
-	move.l	_DOSBase,a6
-	jsr	-996(a6)	; SetOwner()
-	movem.l	(sp)+,d1-d2/a6
+	move.l	4(sp),d1
+	move.l	8(sp),d2
+	movea.l	_DOSBase,a6
+	jsr	-1092(a6)
 	rts
 

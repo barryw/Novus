@@ -128,29 +128,10 @@ class Program
 
     static int RunGenerateStubs(GenerateStubsOptions options)
     {
-        var generator = new NdkStubGenerator(options.NdkPath, options.OutputPath);
-
-        if (options.ListLibraries)
-        {
-            generator.ListAvailableLibraries();
-            return 0;
-        }
-
-        if (options.GenerateAll)
-        {
-            generator.GenerateCommonLibraries();
-            return 0;
-        }
-
-        if (!string.IsNullOrEmpty(options.Library))
-        {
-            generator.GenerateLibraryStubs(options.Library);
-            return 0;
-        }
-
-        Console.WriteLine("Error: Specify --library, --all, --list");
-        Console.WriteLine("Use --help for usage information");
-        return 1;
+        // Generate FFI bindings from SFD files (NDK 3.9+)
+        var sfdGenerator = new SfdGenerator(options.NdkPath, options.OutputPath);
+        sfdGenerator.GenerateAllBindings();
+        return 0;
     }
 
     /// <summary>
@@ -665,7 +646,7 @@ class Program
             var assemblyCpu = options.Cpu == "auto" ? "68020" : options.Cpu;
 
             // Assemble core Novus runtime files (always needed)
-            var coreFiles = new[] { "novus_startup", "library_bases" };
+            var coreFiles = new[] { "novus_startup", "exec_base" };
             foreach (var coreFile in coreFiles)
             {
                 var coreSource = Path.Combine(compilerDir, "stubs", $"{coreFile}.s");
@@ -681,10 +662,53 @@ class Program
                 }
             }
 
-            // Assemble library stubs
-            var stubsToAssemble = new[] { "exec", "dos" }; // Common stubs for basic programs
+            // Detect which library stubs are actually needed by scanning generated C code
+            Console.WriteLine("\n=== DEBUG: Detecting required libraries from C code ===");
 
-            foreach (var stub in stubsToAssemble)
+            var requiredLibraries = new HashSet<string>();
+
+            // Always include exec (needed for basic Amiga operations like AllocMem/FreeMem)
+            requiredLibraries.Add("exec");
+            Console.WriteLine("  ✓ Always including 'exec' library");
+
+            // Scan generated C files for DOS library function calls
+            foreach (var cFile in cFiles)
+            {
+                var cCode = await File.ReadAllTextAsync(cFile);
+
+                // Check for DOS function calls in the C code
+                if (cCode.Contains("_Output(") ||
+                    cCode.Contains("_Input(") ||
+                    cCode.Contains("_Write(") ||
+                    cCode.Contains("_Read(") ||
+                    cCode.Contains("_Printf("))
+                {
+                    requiredLibraries.Add("dos");
+                    Console.WriteLine($"  ✓ Detected DOS library usage in {Path.GetFileName(cFile)}");
+                    break; // Only need to find it once
+                }
+            }
+
+            Console.WriteLine($"=== Required libraries: {string.Join(", ", requiredLibraries)} ===\n");
+
+            // If DOS library is needed, also assemble dos_base.o
+            if (requiredLibraries.Contains("dos"))
+            {
+                var dosBaseSource = Path.Combine(compilerDir, "stubs", "dos_base.s");
+                if (File.Exists(dosBaseSource))
+                {
+                    var dosBaseObj = Path.Combine(outputDir, "dos_base.o");
+                    if (!await toolchain.Assemble(dosBaseSource, dosBaseObj, assemblyCpu, false))
+                    {
+                        Console.WriteLine("Failed to assemble dos_base");
+                        return 1;
+                    }
+                    objectFiles.Add(dosBaseObj);
+                }
+            }
+
+            // Assemble library stubs
+            foreach (var stub in requiredLibraries)
             {
                 var stubSource = Path.Combine(compilerDir, "stubs", $"{stub}_stubs.s");
                 if (File.Exists(stubSource))

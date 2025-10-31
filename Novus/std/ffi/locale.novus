@@ -1,37 +1,573 @@
-// locale.library FFI Bindings
-// Namespace: std::ffi::locale
-// Raw 1:1 mappings to locale.library
+// Generated from SFD file by Novus SFD Parser
+// Library: locale.library
+// Base: _LocaleBase
 //
-// Auto-generated from NDK 3.9
-// - Functions from locale_lib.fd
-// - Structs from include/locale/*.h
-// - Constants from include/locale/*.h
+// NOTE: Import specific types from std::amiga_structs as needed
+// Example: from std::amiga_structs import Task, Node, List
 
 // ============================================================================
-// Functions
+// Constants
 // ============================================================================
 
-extern fn CloseCatalog(catalog: i32) -> i32
-extern fn CloseLocale(locale: i32) -> i32
-extern fn ConvToLower(locale: i32, character: i32) -> i32
-extern fn ConvToUpper(locale: i32, character: i32) -> i32
-extern fn FormatDate(locale: i32, fmtTemplate: i32, date: i32, putCharFunc: i32) -> i32
-extern fn FormatString(locale: i32, fmtTemplate: i32, dataStream: i32, putCharFunc: i32) -> i32
-extern fn GetCatalogStr(catalog: i32, stringNum: i32, defaultString: i32) -> i32
-extern fn GetLocaleStr(locale: i32, stringNum: i32) -> i32
-extern fn IsAlNum(locale: i32, character: i32) -> i32
-extern fn IsAlpha(locale: i32, character: i32) -> i32
-extern fn IsCntrl(locale: i32, character: i32) -> i32
-extern fn IsDigit(locale: i32, character: i32) -> i32
-extern fn IsGraph(locale: i32, character: i32) -> i32
-extern fn IsLower(locale: i32, character: i32) -> i32
-extern fn IsPrint(locale: i32, character: i32) -> i32
-extern fn IsPunct(locale: i32, character: i32) -> i32
-extern fn IsSpace(locale: i32, character: i32) -> i32
-extern fn IsUpper(locale: i32, character: i32) -> i32
-extern fn IsXDigit(locale: i32, character: i32) -> i32
-extern fn OpenCatalogA(locale: i32, name: i32, tags: i32) -> i32
-extern fn OpenLocale(name: i32) -> i32
-extern fn ParseDate(locale: i32, date: i32, fmtTemplate: i32, getCharFunc: i32) -> i32
-extern fn StrConvert(locale: i32, string: i32, buffer: i32, bufferSize: i32, type: i32) -> i32
-extern fn StrnCmp(locale: i32, string1: i32, string2: i32, length: i32, type: i32) -> i32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const NT_UNKNOWN: u32 = 0u32
+pub const NT_TASK: u32 = 1u32
+pub const NT_INTERRUPT: u32 = 2u32
+pub const NT_DEVICE: u32 = 3u32
+pub const NT_MSGPORT: u32 = 4u32
+pub const NT_MESSAGE: u32 = 5u32
+pub const NT_FREEMSG: u32 = 6u32
+pub const NT_REPLYMSG: u32 = 7u32
+pub const NT_RESOURCE: u32 = 8u32
+pub const NT_LIBRARY: u32 = 9u32
+pub const NT_MEMORY: u32 = 10u32
+pub const NT_SOFTINT: u32 = 11u32
+pub const NT_FONT: u32 = 12u32
+pub const NT_PROCESS: u32 = 13u32
+pub const NT_SEMAPHORE: u32 = 14u32
+pub const NT_SIGNALSEM: u32 = 15u32
+pub const NT_BOOTNODE: u32 = 16u32
+pub const NT_KICKMEM: u32 = 17u32
+pub const NT_GRAPHICS: u32 = 18u32
+pub const NT_DEATHMESSAGE: u32 = 19u32
+pub const NT_USER: u32 = 254u32
+pub const NT_EXTENDED: u32 = 255u32
+pub const LIB_VECTSIZE: u32 = 6u32
+pub const LIB_RESERVED: u32 = 4u32
+pub const LIB_BASE: u32 = 0 /* TODO: (-LIB_VECTSIZE) */
+pub const LIB_USERDEF: u32 = 0 /* TODO: (LIB_BASE-(LIB_RESERVED*LIB_VECTSIZE)) */
+pub const LIB_NONSTD: u32 = 0 /* TODO: (LIB_USERDEF) */
+pub const LIB_OPEN: u32 = 0 /* TODO: (-6) */
+pub const LIB_CLOSE: u32 = 0 /* TODO: (-12) */
+pub const LIB_EXPUNGE: u32 = 0 /* TODO: (-18) */
+pub const LIB_EXTFUNC: u32 = 0 /* TODO: (-24) */
+pub const LIBF_SUMMING: u32 = (1u32 << 0)
+pub const LIBF_CHANGED: u32 = (1u32 << 1)
+pub const LIBF_SUMUSED: u32 = (1u32 << 2)
+pub const LIBF_DELEXP: u32 = (1u32 << 3)
+pub const lh_Node: u32 = 0 /* TODO: lib_Node */
+pub const lh_Flags: u32 = 0 /* TODO: lib_Flags */
+pub const lh_pad: u32 = 0 /* TODO: lib_pad */
+pub const lh_NegSize: u32 = 0 /* TODO: lib_NegSize */
+pub const lh_PosSize: u32 = 0 /* TODO: lib_PosSize */
+pub const lh_Version: u32 = 0 /* TODO: lib_Version */
+pub const lh_Revision: u32 = 0 /* TODO: lib_Revision */
+pub const lh_IdString: u32 = 0 /* TODO: lib_IdString */
+pub const lh_Sum: u32 = 0 /* TODO: lib_Sum */
+pub const lh_OpenCnt: u32 = 0 /* TODO: lib_OpenCnt */
+pub const TAG_DONE: u32 = 0
+pub const TAG_END: u32 = 0
+pub const TAG_IGNORE: u32 = 1u32
+pub const TAG_MORE: u32 = 2u32
+pub const TAG_SKIP: u32 = 3u32
+pub const TAG_USER: u32 = (1u32 << 31)
+pub const TAGFILTER_AND: u32 = 0u32
+pub const TAGFILTER_NOT: u32 = 1u32
+pub const MAP_REMOVE_NOT_FOUND: u32 = 0u32
+pub const MAP_KEEP_NOT_FOUND: u32 = 1u32
+pub const DAY_1: u32 = 1u32
+pub const DAY_2: u32 = 2u32
+pub const DAY_3: u32 = 3u32
+pub const DAY_4: u32 = 4u32
+pub const DAY_5: u32 = 5u32
+pub const DAY_6: u32 = 6u32
+pub const DAY_7: u32 = 7u32
+pub const ABDAY_1: u32 = 8u32
+pub const ABDAY_2: u32 = 9u32
+pub const ABDAY_3: u32 = 10u32
+pub const ABDAY_4: u32 = 11u32
+pub const ABDAY_5: u32 = 12u32
+pub const ABDAY_6: u32 = 13u32
+pub const ABDAY_7: u32 = 14u32
+pub const MON_1: u32 = 15u32
+pub const MON_2: u32 = 16u32
+pub const MON_3: u32 = 17u32
+pub const MON_4: u32 = 18u32
+pub const MON_5: u32 = 19u32
+pub const MON_6: u32 = 20u32
+pub const MON_7: u32 = 21u32
+pub const MON_8: u32 = 22u32
+pub const MON_9: u32 = 23u32
+pub const MON_10: u32 = 24u32
+pub const MON_11: u32 = 25u32
+pub const MON_12: u32 = 26u32
+pub const ABMON_1: u32 = 27u32
+pub const ABMON_2: u32 = 28u32
+pub const ABMON_3: u32 = 29u32
+pub const ABMON_4: u32 = 30u32
+pub const ABMON_5: u32 = 31u32
+pub const ABMON_6: u32 = 32u32
+pub const ABMON_7: u32 = 33u32
+pub const ABMON_8: u32 = 34u32
+pub const ABMON_9: u32 = 35u32
+pub const ABMON_10: u32 = 36u32
+pub const ABMON_11: u32 = 37u32
+pub const ABMON_12: u32 = 38u32
+pub const YESSTR: u32 = 39u32
+pub const NOSTR: u32 = 40u32
+pub const AM_STR: u32 = 41u32
+pub const PM_STR: u32 = 42u32
+pub const SOFTHYPHEN: u32 = 43u32
+pub const HARDHYPHEN: u32 = 44u32
+pub const OPENQUOTE: u32 = 45u32
+pub const CLOSEQUOTE: u32 = 46u32
+pub const YESTERDAYSTR: u32 = 47u32
+pub const TODAYSTR: u32 = 48u32
+pub const TOMORROWSTR: u32 = 49u32
+pub const FUTURESTR: u32 = 50u32
+pub const MAXSTRMSG: u32 = 51u32
+pub const MS_ISO: u32 = 0u32
+pub const MS_AMERICAN: u32 = 1u32
+pub const MS_IMPERIAL: u32 = 2u32
+pub const MS_BRITISH: u32 = 3u32
+pub const CT_7SUN: u32 = 0u32
+pub const CT_7MON: u32 = 1u32
+pub const CT_7TUE: u32 = 2u32
+pub const CT_7WED: u32 = 3u32
+pub const CT_7THU: u32 = 4u32
+pub const CT_7FRI: u32 = 5u32
+pub const CT_7SAT: u32 = 6u32
+pub const SS_NOSPACE: u32 = 0u32
+pub const SS_SPACE: u32 = 1u32
+pub const SP_PARENS: u32 = 0u32
+pub const SP_PREC_ALL: u32 = 1u32
+pub const SP_SUCC_ALL: u32 = 2u32
+pub const SP_PREC_CURR: u32 = 3u32
+pub const SP_SUCC_CURR: u32 = 4u32
+pub const CSP_PRECEDES: u32 = 0u32
+pub const CSP_SUCCEEDS: u32 = 1u32
+pub const OC_TagBase: u32 = 0 /* TODO: (TAG_USER + 0x90000) */
+pub const OC_BuiltInLanguage: u32 = 0 /* TODO: OC_TagBase+1 */
+pub const OC_BuiltInCodeSet: u32 = 0 /* TODO: OC_TagBase+2 */
+pub const OC_Version: u32 = 0 /* TODO: OC_TagBase+3 */
+pub const OC_Language: u32 = 0 /* TODO: OC_TagBase+4 */
+pub const SC_ASCII: u32 = 0u32
+pub const SC_COLLATE1: u32 = 1u32
+pub const SC_COLLATE2: u32 = 2u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const DOSNAME: u32 = 0 /* TODO: "dos.library" */
+pub const DOSTRUE: u32 = 0 /* TODO: (-1L) */
+pub const DOSFALSE: u32 = 0
+pub const MODE_OLDFILE: u32 = 1005u32
+pub const MODE_NEWFILE: u32 = 1006u32
+pub const MODE_READWRITE: u32 = 1004u32
+pub const OFFSET_BEGINNING: u32 = 0 /* TODO: -1 */
+pub const OFFSET_CURRENT: u32 = 0u32
+pub const OFFSET_END: u32 = 1u32
+pub const OFFSET_BEGINING: u32 = 0 /* TODO: OFFSET_BEGINNING */
+pub const BITSPERBYTE: u32 = 8u32
+pub const BYTESPERLONG: u32 = 4u32
+pub const BITSPERLONG: u32 = 32u32
+pub const MAXINT: u32 = $7FFFFFFFu32
+pub const MININT: u32 = $80000000u32
+pub const SHARED_LOCK: u32 = 0 /* TODO: -2 */
+pub const ACCESS_READ: u32 = 0 /* TODO: -2 */
+pub const EXCLUSIVE_LOCK: u32 = 0 /* TODO: -1 */
+pub const ACCESS_WRITE: u32 = 0 /* TODO: -1 */
+pub const TICKS_PER_SECOND: u32 = 50u32
+pub const FIBB_OTR_READ: u32 = 15u32
+pub const FIBB_OTR_WRITE: u32 = 14u32
+pub const FIBB_OTR_EXECUTE: u32 = 13u32
+pub const FIBB_OTR_DELETE: u32 = 12u32
+pub const FIBB_GRP_READ: u32 = 11u32
+pub const FIBB_GRP_WRITE: u32 = 10u32
+pub const FIBB_GRP_EXECUTE: u32 = 9u32
+pub const FIBB_GRP_DELETE: u32 = 8u32
+pub const FIBB_SCRIPT: u32 = 6u32
+pub const FIBB_PURE: u32 = 5u32
+pub const FIBB_ARCHIVE: u32 = 4u32
+pub const FIBB_READ: u32 = 3u32
+pub const FIBB_WRITE: u32 = 2u32
+pub const FIBB_EXECUTE: u32 = 1u32
+pub const FIBB_DELETE: u32 = 0u32
+pub const FIBF_OTR_READ: u32 = 0 /* TODO: (1<<FIBB_OTR_READ) */
+pub const FIBF_OTR_WRITE: u32 = 0 /* TODO: (1<<FIBB_OTR_WRITE) */
+pub const FIBF_OTR_EXECUTE: u32 = 0 /* TODO: (1<<FIBB_OTR_EXECUTE) */
+pub const FIBF_OTR_DELETE: u32 = 0 /* TODO: (1<<FIBB_OTR_DELETE) */
+pub const FIBF_GRP_READ: u32 = 0 /* TODO: (1<<FIBB_GRP_READ) */
+pub const FIBF_GRP_WRITE: u32 = 0 /* TODO: (1<<FIBB_GRP_WRITE) */
+pub const FIBF_GRP_EXECUTE: u32 = 0 /* TODO: (1<<FIBB_GRP_EXECUTE) */
+pub const FIBF_GRP_DELETE: u32 = 0 /* TODO: (1<<FIBB_GRP_DELETE) */
+pub const FIBF_SCRIPT: u32 = 0 /* TODO: (1<<FIBB_SCRIPT) */
+pub const FIBF_PURE: u32 = 0 /* TODO: (1<<FIBB_PURE) */
+pub const FIBF_ARCHIVE: u32 = 0 /* TODO: (1<<FIBB_ARCHIVE) */
+pub const FIBF_READ: u32 = 0 /* TODO: (1<<FIBB_READ) */
+pub const FIBF_WRITE: u32 = 0 /* TODO: (1<<FIBB_WRITE) */
+pub const FIBF_EXECUTE: u32 = 0 /* TODO: (1<<FIBB_EXECUTE) */
+pub const FIBF_DELETE: u32 = 0 /* TODO: (1<<FIBB_DELETE) */
+pub const FAULT_MAX: u32 = 82u32
+pub const ID_WRITE_PROTECTED: u32 = 80u32
+pub const ID_VALIDATING: u32 = 81u32
+pub const ID_VALIDATED: u32 = 82u32
+pub const ID_NO_DISK_PRESENT: u32 = 0 /* TODO: (-1) */
+pub const ID_UNREADABLE_DISK: u32 = 0 /* TODO: (0x42414400L) */
+pub const ID_DOS_DISK: u32 = 0 /* TODO: (0x444F5300L) */
+pub const ID_FFS_DISK: u32 = 0 /* TODO: (0x444F5301L) */
+pub const ID_INTER_DOS_DISK: u32 = 0 /* TODO: (0x444F5302L) */
+pub const ID_INTER_FFS_DISK: u32 = 0 /* TODO: (0x444F5303L) */
+pub const ID_FASTDIR_DOS_DISK: u32 = 0 /* TODO: (0x444F5304L) */
+pub const ID_FASTDIR_FFS_DISK: u32 = 0 /* TODO: (0x444F5305L) */
+pub const ID_NOT_REALLY_DOS: u32 = 0 /* TODO: (0x4E444F53L) */
+pub const ID_KICKSTART_DISK: u32 = 0 /* TODO: (0x4B49434BL) */
+pub const ID_MSDOS_DISK: u32 = 0 /* TODO: (0x4d534400L) */
+pub const ERROR_NO_FREE_STORE: u32 = 103u32
+pub const ERROR_TASK_TABLE_FULL: u32 = 105u32
+pub const ERROR_BAD_TEMPLATE: u32 = 114u32
+pub const ERROR_BAD_NUMBER: u32 = 115u32
+pub const ERROR_REQUIRED_ARG_MISSING: u32 = 116u32
+pub const ERROR_KEY_NEEDS_ARG: u32 = 117u32
+pub const ERROR_TOO_MANY_ARGS: u32 = 118u32
+pub const ERROR_UNMATCHED_QUOTES: u32 = 119u32
+pub const ERROR_LINE_TOO_LONG: u32 = 120u32
+pub const ERROR_FILE_NOT_OBJECT: u32 = 121u32
+pub const ERROR_INVALID_RESIDENT_LIBRARY: u32 = 122u32
+pub const ERROR_NO_DEFAULT_DIR: u32 = 201u32
+pub const ERROR_OBJECT_IN_USE: u32 = 202u32
+pub const ERROR_OBJECT_EXISTS: u32 = 203u32
+pub const ERROR_DIR_NOT_FOUND: u32 = 204u32
+pub const ERROR_OBJECT_NOT_FOUND: u32 = 205u32
+pub const ERROR_BAD_STREAM_NAME: u32 = 206u32
+pub const ERROR_OBJECT_TOO_LARGE: u32 = 207u32
+pub const ERROR_ACTION_NOT_KNOWN: u32 = 209u32
+pub const ERROR_INVALID_COMPONENT_NAME: u32 = 210u32
+pub const ERROR_INVALID_LOCK: u32 = 211u32
+pub const ERROR_OBJECT_WRONG_TYPE: u32 = 212u32
+pub const ERROR_DISK_NOT_VALIDATED: u32 = 213u32
+pub const ERROR_DISK_WRITE_PROTECTED: u32 = 214u32
+pub const ERROR_RENAME_ACROSS_DEVICES: u32 = 215u32
+pub const ERROR_DIRECTORY_NOT_EMPTY: u32 = 216u32
+pub const ERROR_TOO_MANY_LEVELS: u32 = 217u32
+pub const ERROR_DEVICE_NOT_MOUNTED: u32 = 218u32
+pub const ERROR_SEEK_ERROR: u32 = 219u32
+pub const ERROR_COMMENT_TOO_BIG: u32 = 220u32
+pub const ERROR_DISK_FULL: u32 = 221u32
+pub const ERROR_DELETE_PROTECTED: u32 = 222u32
+pub const ERROR_WRITE_PROTECTED: u32 = 223u32
+pub const ERROR_READ_PROTECTED: u32 = 224u32
+pub const ERROR_NOT_A_DOS_DISK: u32 = 225u32
+pub const ERROR_NO_DISK: u32 = 226u32
+pub const ERROR_NO_MORE_ENTRIES: u32 = 232u32
+pub const ERROR_IS_SOFT_LINK: u32 = 233u32
+pub const ERROR_OBJECT_LINKED: u32 = 234u32
+pub const ERROR_BAD_HUNK: u32 = 235u32
+pub const ERROR_NOT_IMPLEMENTED: u32 = 236u32
+pub const ERROR_RECORD_NOT_LOCKED: u32 = 240u32
+pub const ERROR_LOCK_COLLISION: u32 = 241u32
+pub const ERROR_LOCK_TIMEOUT: u32 = 242u32
+pub const ERROR_UNLOCK_ERROR: u32 = 243u32
+pub const RETURN_OK: u32 = 0u32
+pub const RETURN_WARN: u32 = 5u32
+pub const RETURN_ERROR: u32 = 10u32
+pub const RETURN_FAIL: u32 = 20u32
+pub const SIGBREAKB_CTRL_C: u32 = 12u32
+pub const SIGBREAKB_CTRL_D: u32 = 13u32
+pub const SIGBREAKB_CTRL_E: u32 = 14u32
+pub const SIGBREAKB_CTRL_F: u32 = 15u32
+pub const SIGBREAKF_CTRL_C: u32 = 0 /* TODO: (1<<SIGBREAKB_CTRL_C) */
+pub const SIGBREAKF_CTRL_D: u32 = 0 /* TODO: (1<<SIGBREAKB_CTRL_D) */
+pub const SIGBREAKF_CTRL_E: u32 = 0 /* TODO: (1<<SIGBREAKB_CTRL_E) */
+pub const SIGBREAKF_CTRL_F: u32 = 0 /* TODO: ((long)1<<SIGBREAKB_CTRL_F) */
+pub const LOCK_DIFFERENT: u32 = 0 /* TODO: -1 */
+pub const LOCK_SAME: u32 = 0u32
+pub const LOCK_SAME_VOLUME: u32 = 1u32
+pub const LOCK_SAME_HANDLER: u32 = 0 /* TODO: LOCK_SAME_VOLUME */
+pub const CHANGE_LOCK: u32 = 0u32
+pub const CHANGE_FH: u32 = 1u32
+pub const LINK_HARD: u32 = 0u32
+pub const LINK_SOFT: u32 = 1u32
+pub const ITEM_EQUAL: u32 = 0 /* TODO: -2 */
+pub const ITEM_ERROR: u32 = 0 /* TODO: -1 */
+pub const ITEM_NOTHING: u32 = 0u32
+pub const ITEM_UNQUOTED: u32 = 1u32
+pub const ITEM_QUOTED: u32 = 2u32
+pub const DOS_FILEHANDLE: u32 = 0u32
+pub const DOS_EXALLCONTROL: u32 = 1u32
+pub const DOS_FIB: u32 = 2u32
+pub const DOS_STDPKT: u32 = 3u32
+pub const DOS_CLI: u32 = 4u32
+pub const DOS_RDARGS: u32 = 5u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const NT_UNKNOWN: u32 = 0u32
+pub const NT_TASK: u32 = 1u32
+pub const NT_INTERRUPT: u32 = 2u32
+pub const NT_DEVICE: u32 = 3u32
+pub const NT_MSGPORT: u32 = 4u32
+pub const NT_MESSAGE: u32 = 5u32
+pub const NT_FREEMSG: u32 = 6u32
+pub const NT_REPLYMSG: u32 = 7u32
+pub const NT_RESOURCE: u32 = 8u32
+pub const NT_LIBRARY: u32 = 9u32
+pub const NT_MEMORY: u32 = 10u32
+pub const NT_SOFTINT: u32 = 11u32
+pub const NT_FONT: u32 = 12u32
+pub const NT_PROCESS: u32 = 13u32
+pub const NT_SEMAPHORE: u32 = 14u32
+pub const NT_SIGNALSEM: u32 = 15u32
+pub const NT_BOOTNODE: u32 = 16u32
+pub const NT_KICKMEM: u32 = 17u32
+pub const NT_GRAPHICS: u32 = 18u32
+pub const NT_DEATHMESSAGE: u32 = 19u32
+pub const NT_USER: u32 = 254u32
+pub const NT_EXTENDED: u32 = 255u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const TAG_DONE: u32 = 0
+pub const TAG_END: u32 = 0
+pub const TAG_IGNORE: u32 = 1u32
+pub const TAG_MORE: u32 = 2u32
+pub const TAG_SKIP: u32 = 3u32
+pub const TAG_USER: u32 = (1u32 << 31)
+pub const TAGFILTER_AND: u32 = 0u32
+pub const TAGFILTER_NOT: u32 = 1u32
+pub const MAP_REMOVE_NOT_FOUND: u32 = 0u32
+pub const MAP_KEEP_NOT_FOUND: u32 = 1u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const NT_UNKNOWN: u32 = 0u32
+pub const NT_TASK: u32 = 1u32
+pub const NT_INTERRUPT: u32 = 2u32
+pub const NT_DEVICE: u32 = 3u32
+pub const NT_MSGPORT: u32 = 4u32
+pub const NT_MESSAGE: u32 = 5u32
+pub const NT_FREEMSG: u32 = 6u32
+pub const NT_REPLYMSG: u32 = 7u32
+pub const NT_RESOURCE: u32 = 8u32
+pub const NT_LIBRARY: u32 = 9u32
+pub const NT_MEMORY: u32 = 10u32
+pub const NT_SOFTINT: u32 = 11u32
+pub const NT_FONT: u32 = 12u32
+pub const NT_PROCESS: u32 = 13u32
+pub const NT_SEMAPHORE: u32 = 14u32
+pub const NT_SIGNALSEM: u32 = 15u32
+pub const NT_BOOTNODE: u32 = 16u32
+pub const NT_KICKMEM: u32 = 17u32
+pub const NT_GRAPHICS: u32 = 18u32
+pub const NT_DEATHMESSAGE: u32 = 19u32
+pub const NT_USER: u32 = 254u32
+pub const NT_EXTENDED: u32 = 255u32
+pub const TB_PROCTIME: u32 = 0u32
+pub const TB_ETASK: u32 = 3u32
+pub const TB_STACKCHK: u32 = 4u32
+pub const TB_EXCEPT: u32 = 5u32
+pub const TB_SWITCH: u32 = 6u32
+pub const TB_LAUNCH: u32 = 7u32
+pub const TF_PROCTIME: u32 = (1u32 << 0)
+pub const TF_ETASK: u32 = (1u32 << 3)
+pub const TF_STACKCHK: u32 = (1u32 << 4)
+pub const TF_EXCEPT: u32 = (1u32 << 5)
+pub const TF_SWITCH: u32 = (1u32 << 6)
+pub const TF_LAUNCH: u32 = (1u32 << 7)
+pub const TS_INVALID: u32 = 0u32
+pub const TS_ADDED: u32 = 1u32
+pub const TS_RUN: u32 = 2u32
+pub const TS_READY: u32 = 3u32
+pub const TS_WAIT: u32 = 4u32
+pub const TS_EXCEPT: u32 = 5u32
+pub const TS_REMOVED: u32 = 6u32
+pub const SIGB_ABORT: u32 = 0u32
+pub const SIGB_CHILD: u32 = 1u32
+pub const SIGB_BLIT: u32 = 4u32
+pub const SIGB_SINGLE: u32 = 4u32
+pub const SIGB_INTUITION: u32 = 5u32
+pub const SIGB_NET: u32 = 7u32
+pub const SIGB_DOS: u32 = 8u32
+pub const SIGF_ABORT: u32 = (1u32 << 0)
+pub const SIGF_CHILD: u32 = (1u32 << 1)
+pub const SIGF_BLIT: u32 = (1u32 << 4)
+pub const SIGF_SINGLE: u32 = (1u32 << 4)
+pub const SIGF_INTUITION: u32 = (1u32 << 5)
+pub const SIGF_NET: u32 = (1u32 << 7)
+pub const SIGF_DOS: u32 = (1u32 << 8)
+pub const mp_SoftInt: u32 = 0 /* TODO: mp_SigTask */
+pub const PF_ACTION: u32 = 3u32
+pub const PA_SIGNAL: u32 = 0u32
+pub const PA_SOFTINT: u32 = 1u32
+pub const PA_IGNORE: u32 = 2u32
+pub const LIB_VECTSIZE: u32 = 6u32
+pub const LIB_RESERVED: u32 = 4u32
+pub const LIB_BASE: u32 = 0 /* TODO: (-LIB_VECTSIZE) */
+pub const LIB_USERDEF: u32 = 0 /* TODO: (LIB_BASE-(LIB_RESERVED*LIB_VECTSIZE)) */
+pub const LIB_NONSTD: u32 = 0 /* TODO: (LIB_USERDEF) */
+pub const LIB_OPEN: u32 = 0 /* TODO: (-6) */
+pub const LIB_CLOSE: u32 = 0 /* TODO: (-12) */
+pub const LIB_EXPUNGE: u32 = 0 /* TODO: (-18) */
+pub const LIB_EXTFUNC: u32 = 0 /* TODO: (-24) */
+pub const LIBF_SUMMING: u32 = (1u32 << 0)
+pub const LIBF_CHANGED: u32 = (1u32 << 1)
+pub const LIBF_SUMUSED: u32 = (1u32 << 2)
+pub const LIBF_DELEXP: u32 = (1u32 << 3)
+pub const lh_Node: u32 = 0 /* TODO: lib_Node */
+pub const lh_Flags: u32 = 0 /* TODO: lib_Flags */
+pub const lh_pad: u32 = 0 /* TODO: lib_pad */
+pub const lh_NegSize: u32 = 0 /* TODO: lib_NegSize */
+pub const lh_PosSize: u32 = 0 /* TODO: lib_PosSize */
+pub const lh_Version: u32 = 0 /* TODO: lib_Version */
+pub const lh_Revision: u32 = 0 /* TODO: lib_Revision */
+pub const lh_IdString: u32 = 0 /* TODO: lib_IdString */
+pub const lh_Sum: u32 = 0 /* TODO: lib_Sum */
+pub const lh_OpenCnt: u32 = 0 /* TODO: lib_OpenCnt */
+pub const NXADDLEN: u32 = 9u32
+pub const NSB_KEEP: u32 = 0u32
+pub const NSB_STRING: u32 = 1u32
+pub const NSB_NOTNUM: u32 = 2u32
+pub const NSB_NUMBER: u32 = 3u32
+pub const NSB_BINARY: u32 = 4u32
+pub const NSB_FLOAT: u32 = 5u32
+pub const NSB_EXT: u32 = 6u32
+pub const NSB_SOURCE: u32 = 7u32
+pub const NSF_KEEP: u32 = 0 /* TODO: (1 << NSB_KEEP  ) */
+pub const NSF_STRING: u32 = 0 /* TODO: (1 << NSB_STRING) */
+pub const NSF_NOTNUM: u32 = 0 /* TODO: (1 << NSB_NOTNUM) */
+pub const NSF_NUMBER: u32 = 0 /* TODO: (1 << NSB_NUMBER) */
+pub const NSF_BINARY: u32 = 0 /* TODO: (1 << NSB_BINARY) */
+pub const NSF_FLOAT: u32 = 0 /* TODO: (1 << NSB_FLOAT ) */
+pub const NSF_EXT: u32 = 0 /* TODO: (1 << NSB_EXT   ) */
+pub const NSF_SOURCE: u32 = 0 /* TODO: (1 << NSB_SOURCE) */
+pub const NSF_INTNUM: u32 = 0 /* TODO: (NSF_NUMBER | NSF_BINARY | NSF_STRING) */
+pub const NSF_DPNUM: u32 = 0 /* TODO: (NSF_NUMBER | NSF_FLOAT) */
+pub const NSF_ALPHA: u32 = 0 /* TODO: (NSF_NOTNUM | NSF_STRING) */
+pub const NSF_OWNED: u32 = 0 /* TODO: (NSF_SOURCE | NSF_EXT    | NSF_KEEP) */
+pub const KEEPSTR: u32 = 0 /* TODO: (NSF_STRING | NSF_SOURCE | NSF_NOTNUM) */
+pub const KEEPNUM: u32 = 0 /* TODO: (NSF_STRING | NSF_SOURCE | NSF_NUMBER | NSF_BINARY) */
+pub const MAXRMARG: u32 = 15u32
+pub const RXCOMM: u32 = $01000000u32
+pub const RXFUNC: u32 = $02000000u32
+pub const RXCLOSE: u32 = $03000000u32
+pub const RXQUERY: u32 = $04000000u32
+pub const RXADDFH: u32 = $07000000u32
+pub const RXADDLIB: u32 = $08000000u32
+pub const RXREMLIB: u32 = $09000000u32
+pub const RXADDCON: u32 = $0A000000u32
+pub const RXREMCON: u32 = $0B000000u32
+pub const RXTCOPN: u32 = $0C000000u32
+pub const RXTCCLS: u32 = $0D000000u32
+pub const RXFB_NOIO: u32 = 16u32
+pub const RXFB_RESULT: u32 = 17u32
+pub const RXFB_STRING: u32 = 18u32
+pub const RXFB_TOKEN: u32 = 19u32
+pub const RXFB_NONRET: u32 = 20u32
+pub const RXFF_NOIO: u32 = 0 /* TODO: (1L << RXFB_NOIO  ) */
+pub const RXFF_RESULT: u32 = 0 /* TODO: (1L << RXFB_RESULT) */
+pub const RXFF_STRING: u32 = 0 /* TODO: (1L << RXFB_STRING) */
+pub const RXFF_TOKEN: u32 = 0 /* TODO: (1L << RXFB_TOKEN ) */
+pub const RXFF_NONRET: u32 = 0 /* TODO: (1L << RXFB_NONRET) */
+pub const RXCODEMASK: u32 = $FF000000u32
+pub const RXARGMASK: u32 = $0000000Fu32
+pub const RRT_ANY: u32 = 0u32
+pub const RRT_LIB: u32 = 1u32
+pub const RRT_PORT: u32 = 2u32
+pub const RRT_FILE: u32 = 3u32
+pub const RRT_HOST: u32 = 4u32
+pub const RRT_CLIP: u32 = 5u32
+pub const GLOBALSZ: u32 = 200u32
+pub const RTFB_TRACE: u32 = 0u32
+pub const RTFB_HALT: u32 = 1u32
+pub const RTFB_SUSP: u32 = 2u32
+pub const RTFB_TCUSE: u32 = 3u32
+pub const RTFB_WAIT: u32 = 6u32
+pub const RTFB_CLOSE: u32 = 7u32
+pub const MEMQUANT: u32 = 16u32
+pub const MEMMASK: u32 = $FFFFFFF0u32
+pub const MEMQUICK: u32 = (1u32 << 0)
+pub const MEMCLEAR: u32 = (1u32 << 16)
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+extern pub fn CloseCatalog(catalog: *Catalog)
+extern pub fn CloseLocale(locale: *Locale)
+extern pub fn ConvToLower(locale: *Locale, character: u32) -> u32
+extern pub fn ConvToUpper(locale: *Locale, character: u32) -> u32
+extern pub fn FormatDate(locale: *Locale, fmtTemplate: *u8, date: *DateStamp, putCharFunc: *Hook)
+extern pub fn FormatString(locale: *Locale, fmtTemplate: *u8, dataStream: *u8, putCharFunc: *Hook) -> *u8
+extern pub fn GetCatalogStr(catalog: *Catalog, stringNum: i32, defaultString: *u8) -> *u8
+extern pub fn GetLocaleStr(locale: *Locale, stringNum: u32) -> *u8
+extern pub fn IsAlNum(locale: *Locale, character: u32) -> i16
+extern pub fn IsAlpha(locale: *Locale, character: u32) -> i16
+extern pub fn IsCntrl(locale: *Locale, character: u32) -> i16
+extern pub fn IsDigit(locale: *Locale, character: u32) -> i16
+extern pub fn IsGraph(locale: *Locale, character: u32) -> i16
+extern pub fn IsLower(locale: *Locale, character: u32) -> i16
+extern pub fn IsPrint(locale: *Locale, character: u32) -> i16
+extern pub fn IsPunct(locale: *Locale, character: u32) -> i16
+extern pub fn IsSpace(locale: *Locale, character: u32) -> i16
+extern pub fn IsUpper(locale: *Locale, character: u32) -> i16
+extern pub fn IsXDigit(locale: *Locale, character: u32) -> i16
+extern pub fn OpenCatalogA(locale: *Locale, name: *u8, tags: *TagItem) -> *Catalog
+// Varargs function OpenCatalog skipped - needs manual implementation
+extern pub fn OpenLocale(name: *u8) -> *Locale
+extern pub fn ParseDate(locale: *Locale, date: *DateStamp, fmtTemplate: *u8, getCharFunc: *Hook) -> i16
+extern pub fn StrConvert(locale: *Locale, string: *u8, buffer: *u8, bufferSize: u32, _type: u32) -> u32
+extern pub fn StrnCmp(locale: *Locale, string1: *u8, string2: *u8, length: i32, _type: u32) -> i32

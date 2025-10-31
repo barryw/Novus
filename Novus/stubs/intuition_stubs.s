@@ -1,1400 +1,1400 @@
-; intuition library stubs for Novus
-; Auto-generated from intuition_lib.fd
+; Generated from SFD file by Novus SFD Parser
+; Library: intuition.library
+; Base: _IntuitionBase
+; Each function is in its own section for dead code elimination
 
-	xref	_IntuitionBase	; Provided by startup.o + -lamiga
+	xref	_IntuitionBase
 
-	section	"CODE",code
+	section	_OpenIntuition_stub,code
 
-; OpenIntuition()
+; VOID OpenIntuition()
 	xdef	_OpenIntuition
 _OpenIntuition:
-	movem.l	a6,-(sp)
-	move.l	_IntuitionBase,a6
-	jsr	-30(a6)	; OpenIntuition()
-	movem.l	(sp)+,a6
+	movea.l	_IntuitionBase,a6
+	jsr	-30(a6)
 	rts
 
-; Intuition(iEvent)
+	section	_Intuition_stub,code
+
+; VOID Intuition(struct InputEvent * iEvent)
 	xdef	_Intuition
 _Intuition:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; iEvent
-	move.l	_IntuitionBase,a6
-	jsr	-36(a6)	; Intuition()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-36(a6)
 	rts
 
-; AddGadget(window, gadget, position)
+	section	_AddGadget_stub,code
+
+; UWORD AddGadget(struct Window * window, struct Gadget * gadget, UWORD position)
 	xdef	_AddGadget
 _AddGadget:
-	movem.l	d0/a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; window
-	move.l	20(sp),a1	; gadget
-	move.l	24(sp),d0	; position
-	move.l	_IntuitionBase,a6
-	jsr	-42(a6)	; AddGadget()
-	movem.l	(sp)+,d0/a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	movea.l	_IntuitionBase,a6
+	jsr	-42(a6)
 	rts
 
-; ClearDMRequest(window)
+	section	_ClearDMRequest_stub,code
+
+; BOOL ClearDMRequest(struct Window * window)
 	xdef	_ClearDMRequest
 _ClearDMRequest:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; window
-	move.l	_IntuitionBase,a6
-	jsr	-48(a6)	; ClearDMRequest()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-48(a6)
 	rts
 
-; ClearMenuStrip(window)
+	section	_ClearMenuStrip_stub,code
+
+; VOID ClearMenuStrip(struct Window * window)
 	xdef	_ClearMenuStrip
 _ClearMenuStrip:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; window
-	move.l	_IntuitionBase,a6
-	jsr	-54(a6)	; ClearMenuStrip()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-54(a6)
 	rts
 
-; ClearPointer(window)
+	section	_ClearPointer_stub,code
+
+; VOID ClearPointer(struct Window * window)
 	xdef	_ClearPointer
 _ClearPointer:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; window
-	move.l	_IntuitionBase,a6
-	jsr	-60(a6)	; ClearPointer()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-60(a6)
 	rts
 
-; CloseScreen(screen)
+	section	_CloseScreen_stub,code
+
+; BOOL CloseScreen(struct Screen * screen)
 	xdef	_CloseScreen
 _CloseScreen:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; screen
-	move.l	_IntuitionBase,a6
-	jsr	-66(a6)	; CloseScreen()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-66(a6)
 	rts
 
-; CloseWindow(window)
+	section	_CloseWindow_stub,code
+
+; VOID CloseWindow(struct Window * window)
 	xdef	_CloseWindow
 _CloseWindow:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; window
-	move.l	_IntuitionBase,a6
-	jsr	-72(a6)	; CloseWindow()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-72(a6)
 	rts
 
-; CloseWorkBench()
+	section	_CloseWorkBench_stub,code
+
+; LONG CloseWorkBench()
 	xdef	_CloseWorkBench
 _CloseWorkBench:
-	movem.l	a6,-(sp)
-	move.l	_IntuitionBase,a6
-	jsr	-78(a6)	; CloseWorkBench()
-	movem.l	(sp)+,a6
+	movea.l	_IntuitionBase,a6
+	jsr	-78(a6)
 	rts
 
-; CurrentTime(seconds, micros)
+	section	_CurrentTime_stub,code
+
+; VOID CurrentTime(ULONG * seconds, ULONG * micros)
 	xdef	_CurrentTime
 _CurrentTime:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; seconds
-	move.l	16(sp),a1	; micros
-	move.l	_IntuitionBase,a6
-	jsr	-84(a6)	; CurrentTime()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-84(a6)
 	rts
 
-; DisplayAlert(alertNumber, string, height)
+	section	_DisplayAlert_stub,code
+
+; BOOL DisplayAlert(ULONG alertNumber, CONST_STRPTR string, UWORD height)
 	xdef	_DisplayAlert
 _DisplayAlert:
-	movem.l	d0-d1/a0/a6,-(sp)
-	move.l	16(sp),d0	; alertNumber
-	move.l	20(sp),a0	; string
-	move.l	24(sp),d1	; height
-	move.l	_IntuitionBase,a6
-	jsr	-90(a6)	; DisplayAlert()
-	movem.l	(sp)+,d0-d1/a0/a6
+	move.l	4(sp),d0
+	movea.l	8(sp),a0
+	move.l	12(sp),d1
+	movea.l	_IntuitionBase,a6
+	jsr	-90(a6)
 	rts
 
-; DisplayBeep(screen)
+	section	_DisplayBeep_stub,code
+
+; VOID DisplayBeep(struct Screen * screen)
 	xdef	_DisplayBeep
 _DisplayBeep:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; screen
-	move.l	_IntuitionBase,a6
-	jsr	-96(a6)	; DisplayBeep()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-96(a6)
 	rts
 
-; DoubleClick(sSeconds, sMicros, cSeconds, cMicros)
+	section	_DoubleClick_stub,code
+
+; BOOL DoubleClick(ULONG sSeconds, ULONG sMicros, ULONG cSeconds, ULONG cMicros)
 	xdef	_DoubleClick
 _DoubleClick:
-	movem.l	d0-d3/a6,-(sp)
-	move.l	12(sp),d0	; sSeconds
-	move.l	16(sp),d1	; sMicros
-	move.l	20(sp),d2	; cSeconds
-	move.l	24(sp),d3	; cMicros
-	move.l	_IntuitionBase,a6
-	jsr	-102(a6)	; DoubleClick()
-	movem.l	(sp)+,d0-d3/a6
+	move.l	4(sp),d0
+	move.l	8(sp),d1
+	move.l	12(sp),d2
+	move.l	16(sp),d3
+	movea.l	_IntuitionBase,a6
+	jsr	-102(a6)
 	rts
 
-; DrawBorder(rp, border, leftOffset, topOffset)
+	section	_DrawBorder_stub,code
+
+; VOID DrawBorder(struct RastPort * rp, const struct Border * border, WORD leftOffset, WORD topOffset)
 	xdef	_DrawBorder
 _DrawBorder:
-	movem.l	d0-d1/a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; rp
-	move.l	20(sp),a1	; border
-	move.l	24(sp),d0	; leftOffset
-	move.l	28(sp),d1	; topOffset
-	move.l	_IntuitionBase,a6
-	jsr	-108(a6)	; DrawBorder()
-	movem.l	(sp)+,d0-d1/a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	move.l	16(sp),d1
+	movea.l	_IntuitionBase,a6
+	jsr	-108(a6)
 	rts
 
-; DrawImage(rp, image, leftOffset, topOffset)
+	section	_DrawImage_stub,code
+
+; VOID DrawImage(struct RastPort * rp, struct Image * image, WORD leftOffset, WORD topOffset)
 	xdef	_DrawImage
 _DrawImage:
-	movem.l	d0-d1/a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; rp
-	move.l	20(sp),a1	; image
-	move.l	24(sp),d0	; leftOffset
-	move.l	28(sp),d1	; topOffset
-	move.l	_IntuitionBase,a6
-	jsr	-114(a6)	; DrawImage()
-	movem.l	(sp)+,d0-d1/a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	move.l	16(sp),d1
+	movea.l	_IntuitionBase,a6
+	jsr	-114(a6)
 	rts
 
-; EndRequest(requester, window)
+	section	_EndRequest_stub,code
+
+; VOID EndRequest(struct Requester * requester, struct Window * window)
 	xdef	_EndRequest
 _EndRequest:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; requester
-	move.l	16(sp),a1	; window
-	move.l	_IntuitionBase,a6
-	jsr	-120(a6)	; EndRequest()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-120(a6)
 	rts
 
-; GetDefPrefs(preferences, size)
+	section	_GetDefPrefs_stub,code
+
+; struct Preferences * GetDefPrefs(struct Preferences * preferences, WORD size)
 	xdef	_GetDefPrefs
 _GetDefPrefs:
-	movem.l	d0/a0/a6,-(sp)
-	move.l	16(sp),a0	; preferences
-	move.l	20(sp),d0	; size
-	move.l	_IntuitionBase,a6
-	jsr	-126(a6)	; GetDefPrefs()
-	movem.l	(sp)+,d0/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	movea.l	_IntuitionBase,a6
+	jsr	-126(a6)
 	rts
 
-; GetPrefs(preferences, size)
+	section	_GetPrefs_stub,code
+
+; struct Preferences * GetPrefs(struct Preferences * preferences, WORD size)
 	xdef	_GetPrefs
 _GetPrefs:
-	movem.l	d0/a0/a6,-(sp)
-	move.l	16(sp),a0	; preferences
-	move.l	20(sp),d0	; size
-	move.l	_IntuitionBase,a6
-	jsr	-132(a6)	; GetPrefs()
-	movem.l	(sp)+,d0/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	movea.l	_IntuitionBase,a6
+	jsr	-132(a6)
 	rts
 
-; InitRequester(requester)
+	section	_InitRequester_stub,code
+
+; VOID InitRequester(struct Requester * requester)
 	xdef	_InitRequester
 _InitRequester:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; requester
-	move.l	_IntuitionBase,a6
-	jsr	-138(a6)	; InitRequester()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-138(a6)
 	rts
 
-; ItemAddress(menuStrip, menuNumber)
+	section	_ItemAddress_stub,code
+
+; struct MenuItem * ItemAddress(const struct Menu * menuStrip, UWORD menuNumber)
 	xdef	_ItemAddress
 _ItemAddress:
-	movem.l	d0/a0/a6,-(sp)
-	move.l	16(sp),a0	; menuStrip
-	move.l	20(sp),d0	; menuNumber
-	move.l	_IntuitionBase,a6
-	jsr	-144(a6)	; ItemAddress()
-	movem.l	(sp)+,d0/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	movea.l	_IntuitionBase,a6
+	jsr	-144(a6)
 	rts
 
-; ModifyIDCMP(window, flags)
+	section	_ModifyIDCMP_stub,code
+
+; BOOL ModifyIDCMP(struct Window * window, ULONG flags)
 	xdef	_ModifyIDCMP
 _ModifyIDCMP:
-	movem.l	d0/a0/a6,-(sp)
-	move.l	16(sp),a0	; window
-	move.l	20(sp),d0	; flags
-	move.l	_IntuitionBase,a6
-	jsr	-150(a6)	; ModifyIDCMP()
-	movem.l	(sp)+,d0/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	movea.l	_IntuitionBase,a6
+	jsr	-150(a6)
 	rts
 
-; ModifyProp(gadget, window, requester, flags, horizPot, vertPot, horizBody, vertBody)
+	section	_ModifyProp_stub,code
+
+; VOID ModifyProp(struct Gadget * gadget, struct Window * window, struct Requester * requester, UWORD flags, UWORD horizPot, UWORD vertPot, UWORD horizBody, UWORD vertBody)
 	xdef	_ModifyProp
 _ModifyProp:
-	movem.l	d0-d4/a0-a2/a6,-(sp)
-	move.l	16(sp),a0	; gadget
-	move.l	20(sp),a1	; window
-	move.l	24(sp),a2	; requester
-	move.l	28(sp),d0	; flags
-	move.l	32(sp),d1	; horizPot
-	move.l	36(sp),d2	; vertPot
-	move.l	40(sp),d3	; horizBody
-	move.l	44(sp),d4	; vertBody
-	move.l	_IntuitionBase,a6
-	jsr	-156(a6)	; ModifyProp()
-	movem.l	(sp)+,d0-d4/a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	move.l	16(sp),d0
+	move.l	20(sp),d1
+	move.l	24(sp),d2
+	move.l	28(sp),d3
+	move.l	32(sp),d4
+	movea.l	_IntuitionBase,a6
+	jsr	-156(a6)
 	rts
 
-; MoveScreen(screen, dx, dy)
+	section	_MoveScreen_stub,code
+
+; VOID MoveScreen(struct Screen * screen, WORD dx, WORD dy)
 	xdef	_MoveScreen
 _MoveScreen:
-	movem.l	d0-d1/a0/a6,-(sp)
-	move.l	16(sp),a0	; screen
-	move.l	20(sp),d0	; dx
-	move.l	24(sp),d1	; dy
-	move.l	_IntuitionBase,a6
-	jsr	-162(a6)	; MoveScreen()
-	movem.l	(sp)+,d0-d1/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	movea.l	_IntuitionBase,a6
+	jsr	-162(a6)
 	rts
 
-; MoveWindow(window, dx, dy)
+	section	_MoveWindow_stub,code
+
+; VOID MoveWindow(struct Window * window, WORD dx, WORD dy)
 	xdef	_MoveWindow
 _MoveWindow:
-	movem.l	d0-d1/a0/a6,-(sp)
-	move.l	16(sp),a0	; window
-	move.l	20(sp),d0	; dx
-	move.l	24(sp),d1	; dy
-	move.l	_IntuitionBase,a6
-	jsr	-168(a6)	; MoveWindow()
-	movem.l	(sp)+,d0-d1/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	movea.l	_IntuitionBase,a6
+	jsr	-168(a6)
 	rts
 
-; OffGadget(gadget, window, requester)
+	section	_OffGadget_stub,code
+
+; VOID OffGadget(struct Gadget * gadget, struct Window * window, struct Requester * requester)
 	xdef	_OffGadget
 _OffGadget:
-	movem.l	a0-a2/a6,-(sp)
-	move.l	12(sp),a0	; gadget
-	move.l	16(sp),a1	; window
-	move.l	20(sp),a2	; requester
-	move.l	_IntuitionBase,a6
-	jsr	-174(a6)	; OffGadget()
-	movem.l	(sp)+,a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	_IntuitionBase,a6
+	jsr	-174(a6)
 	rts
 
-; OffMenu(window, menuNumber)
+	section	_OffMenu_stub,code
+
+; VOID OffMenu(struct Window * window, UWORD menuNumber)
 	xdef	_OffMenu
 _OffMenu:
-	movem.l	d0/a0/a6,-(sp)
-	move.l	16(sp),a0	; window
-	move.l	20(sp),d0	; menuNumber
-	move.l	_IntuitionBase,a6
-	jsr	-180(a6)	; OffMenu()
-	movem.l	(sp)+,d0/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	movea.l	_IntuitionBase,a6
+	jsr	-180(a6)
 	rts
 
-; OnGadget(gadget, window, requester)
+	section	_OnGadget_stub,code
+
+; VOID OnGadget(struct Gadget * gadget, struct Window * window, struct Requester * requester)
 	xdef	_OnGadget
 _OnGadget:
-	movem.l	a0-a2/a6,-(sp)
-	move.l	12(sp),a0	; gadget
-	move.l	16(sp),a1	; window
-	move.l	20(sp),a2	; requester
-	move.l	_IntuitionBase,a6
-	jsr	-186(a6)	; OnGadget()
-	movem.l	(sp)+,a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	_IntuitionBase,a6
+	jsr	-186(a6)
 	rts
 
-; OnMenu(window, menuNumber)
+	section	_OnMenu_stub,code
+
+; VOID OnMenu(struct Window * window, UWORD menuNumber)
 	xdef	_OnMenu
 _OnMenu:
-	movem.l	d0/a0/a6,-(sp)
-	move.l	16(sp),a0	; window
-	move.l	20(sp),d0	; menuNumber
-	move.l	_IntuitionBase,a6
-	jsr	-192(a6)	; OnMenu()
-	movem.l	(sp)+,d0/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	movea.l	_IntuitionBase,a6
+	jsr	-192(a6)
 	rts
 
-; OpenScreen(newScreen)
+	section	_OpenScreen_stub,code
+
+; struct Screen * OpenScreen(const struct NewScreen * newScreen)
 	xdef	_OpenScreen
 _OpenScreen:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; newScreen
-	move.l	_IntuitionBase,a6
-	jsr	-198(a6)	; OpenScreen()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-198(a6)
 	rts
 
-; OpenWindow(newWindow)
+	section	_OpenWindow_stub,code
+
+; struct Window * OpenWindow(const struct NewWindow * newWindow)
 	xdef	_OpenWindow
 _OpenWindow:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; newWindow
-	move.l	_IntuitionBase,a6
-	jsr	-204(a6)	; OpenWindow()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-204(a6)
 	rts
 
-; OpenWorkBench()
+	section	_OpenWorkBench_stub,code
+
+; ULONG OpenWorkBench()
 	xdef	_OpenWorkBench
 _OpenWorkBench:
-	movem.l	a6,-(sp)
-	move.l	_IntuitionBase,a6
-	jsr	-210(a6)	; OpenWorkBench()
-	movem.l	(sp)+,a6
+	movea.l	_IntuitionBase,a6
+	jsr	-210(a6)
 	rts
 
-; PrintIText(rp, iText, left, top)
+	section	_PrintIText_stub,code
+
+; VOID PrintIText(struct RastPort * rp, const struct IntuiText * iText, WORD left, WORD top)
 	xdef	_PrintIText
 _PrintIText:
-	movem.l	d0-d1/a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; rp
-	move.l	20(sp),a1	; iText
-	move.l	24(sp),d0	; left
-	move.l	28(sp),d1	; top
-	move.l	_IntuitionBase,a6
-	jsr	-216(a6)	; PrintIText()
-	movem.l	(sp)+,d0-d1/a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	move.l	16(sp),d1
+	movea.l	_IntuitionBase,a6
+	jsr	-216(a6)
 	rts
 
-; RefreshGadgets(gadgets, window, requester)
+	section	_RefreshGadgets_stub,code
+
+; VOID RefreshGadgets(struct Gadget * gadgets, struct Window * window, struct Requester * requester)
 	xdef	_RefreshGadgets
 _RefreshGadgets:
-	movem.l	a0-a2/a6,-(sp)
-	move.l	12(sp),a0	; gadgets
-	move.l	16(sp),a1	; window
-	move.l	20(sp),a2	; requester
-	move.l	_IntuitionBase,a6
-	jsr	-222(a6)	; RefreshGadgets()
-	movem.l	(sp)+,a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	_IntuitionBase,a6
+	jsr	-222(a6)
 	rts
 
-; RemoveGadget(window, gadget)
+	section	_RemoveGadget_stub,code
+
+; UWORD RemoveGadget(struct Window * window, struct Gadget * gadget)
 	xdef	_RemoveGadget
 _RemoveGadget:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; window
-	move.l	16(sp),a1	; gadget
-	move.l	_IntuitionBase,a6
-	jsr	-228(a6)	; RemoveGadget()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-228(a6)
 	rts
 
-; ReportMouse(flag, window)
+	section	_ReportMouse_stub,code
+
+; VOID ReportMouse(BOOL flag, struct Window * window)
 	xdef	_ReportMouse
 _ReportMouse:
-	movem.l	d0/a0/a6,-(sp)
-	move.l	16(sp),d0	; flag
-	move.l	20(sp),a0	; window
-	move.l	_IntuitionBase,a6
-	jsr	-234(a6)	; ReportMouse()
-	movem.l	(sp)+,d0/a0/a6
+	move.l	4(sp),d0
+	movea.l	8(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-234(a6)
 	rts
 
-; Request(requester, window)
+	section	_Request_stub,code
+
+; BOOL Request(struct Requester * requester, struct Window * window)
 	xdef	_Request
 _Request:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; requester
-	move.l	16(sp),a1	; window
-	move.l	_IntuitionBase,a6
-	jsr	-240(a6)	; Request()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-246(a6)
 	rts
 
-; ScreenToBack(screen)
+	section	_ScreenToBack_stub,code
+
+; VOID ScreenToBack(struct Screen * screen)
 	xdef	_ScreenToBack
 _ScreenToBack:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; screen
-	move.l	_IntuitionBase,a6
-	jsr	-246(a6)	; ScreenToBack()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-252(a6)
 	rts
 
-; ScreenToFront(screen)
+	section	_ScreenToFront_stub,code
+
+; VOID ScreenToFront(struct Screen * screen)
 	xdef	_ScreenToFront
 _ScreenToFront:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; screen
-	move.l	_IntuitionBase,a6
-	jsr	-252(a6)	; ScreenToFront()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-258(a6)
 	rts
 
-; SetDMRequest(window, requester)
+	section	_SetDMRequest_stub,code
+
+; BOOL SetDMRequest(struct Window * window, struct Requester * requester)
 	xdef	_SetDMRequest
 _SetDMRequest:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; window
-	move.l	16(sp),a1	; requester
-	move.l	_IntuitionBase,a6
-	jsr	-258(a6)	; SetDMRequest()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-264(a6)
 	rts
 
-; SetMenuStrip(window, menu)
+	section	_SetMenuStrip_stub,code
+
+; BOOL SetMenuStrip(struct Window * window, struct Menu * menu)
 	xdef	_SetMenuStrip
 _SetMenuStrip:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; window
-	move.l	16(sp),a1	; menu
-	move.l	_IntuitionBase,a6
-	jsr	-264(a6)	; SetMenuStrip()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-270(a6)
 	rts
 
-; SetPointer(window, pointer, height, width, xOffset, yOffset)
+	section	_SetPointer_stub,code
+
+; VOID SetPointer(struct Window * window, UWORD * pointer, WORD height, WORD width, WORD xOffset, WORD yOffset)
 	xdef	_SetPointer
 _SetPointer:
-	movem.l	d0-d3/a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; window
-	move.l	20(sp),a1	; pointer
-	move.l	24(sp),d0	; height
-	move.l	28(sp),d1	; width
-	move.l	32(sp),d2	; xOffset
-	move.l	36(sp),d3	; yOffset
-	move.l	_IntuitionBase,a6
-	jsr	-270(a6)	; SetPointer()
-	movem.l	(sp)+,d0-d3/a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	move.l	16(sp),d1
+	move.l	20(sp),d2
+	move.l	24(sp),d3
+	movea.l	_IntuitionBase,a6
+	jsr	-276(a6)
 	rts
 
-; SetWindowTitles(window, windowTitle, screenTitle)
+	section	_SetWindowTitles_stub,code
+
+; VOID SetWindowTitles(struct Window * window, CONST_STRPTR windowTitle, CONST_STRPTR screenTitle)
 	xdef	_SetWindowTitles
 _SetWindowTitles:
-	movem.l	a0-a2/a6,-(sp)
-	move.l	12(sp),a0	; window
-	move.l	16(sp),a1	; windowTitle
-	move.l	20(sp),a2	; screenTitle
-	move.l	_IntuitionBase,a6
-	jsr	-276(a6)	; SetWindowTitles()
-	movem.l	(sp)+,a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	_IntuitionBase,a6
+	jsr	-282(a6)
 	rts
 
-; ShowTitle(screen, showIt)
+	section	_ShowTitle_stub,code
+
+; VOID ShowTitle(struct Screen * screen, BOOL showIt)
 	xdef	_ShowTitle
 _ShowTitle:
-	movem.l	d0/a0/a6,-(sp)
-	move.l	16(sp),a0	; screen
-	move.l	20(sp),d0	; showIt
-	move.l	_IntuitionBase,a6
-	jsr	-282(a6)	; ShowTitle()
-	movem.l	(sp)+,d0/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	movea.l	_IntuitionBase,a6
+	jsr	-288(a6)
 	rts
 
-; SizeWindow(window, dx, dy)
+	section	_SizeWindow_stub,code
+
+; VOID SizeWindow(struct Window * window, WORD dx, WORD dy)
 	xdef	_SizeWindow
 _SizeWindow:
-	movem.l	d0-d1/a0/a6,-(sp)
-	move.l	16(sp),a0	; window
-	move.l	20(sp),d0	; dx
-	move.l	24(sp),d1	; dy
-	move.l	_IntuitionBase,a6
-	jsr	-288(a6)	; SizeWindow()
-	movem.l	(sp)+,d0-d1/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	movea.l	_IntuitionBase,a6
+	jsr	-294(a6)
 	rts
 
-; ViewAddress()
+	section	_ViewAddress_stub,code
+
+; struct View * ViewAddress()
 	xdef	_ViewAddress
 _ViewAddress:
-	movem.l	a6,-(sp)
-	move.l	_IntuitionBase,a6
-	jsr	-294(a6)	; ViewAddress()
-	movem.l	(sp)+,a6
+	movea.l	_IntuitionBase,a6
+	jsr	-300(a6)
 	rts
 
-; ViewPortAddress(window)
+	section	_ViewPortAddress_stub,code
+
+; struct ViewPort * ViewPortAddress(const struct Window * window)
 	xdef	_ViewPortAddress
 _ViewPortAddress:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; window
-	move.l	_IntuitionBase,a6
-	jsr	-300(a6)	; ViewPortAddress()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-306(a6)
 	rts
 
-; WindowToBack(window)
+	section	_WindowToBack_stub,code
+
+; VOID WindowToBack(struct Window * window)
 	xdef	_WindowToBack
 _WindowToBack:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; window
-	move.l	_IntuitionBase,a6
-	jsr	-306(a6)	; WindowToBack()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-312(a6)
 	rts
 
-; WindowToFront(window)
+	section	_WindowToFront_stub,code
+
+; VOID WindowToFront(struct Window * window)
 	xdef	_WindowToFront
 _WindowToFront:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; window
-	move.l	_IntuitionBase,a6
-	jsr	-312(a6)	; WindowToFront()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-318(a6)
 	rts
 
-; WindowLimits(window, widthMin, heightMin, widthMax, heightMax)
+	section	_WindowLimits_stub,code
+
+; BOOL WindowLimits(struct Window * window, LONG widthMin, LONG heightMin, ULONG widthMax, ULONG heightMax)
 	xdef	_WindowLimits
 _WindowLimits:
-	movem.l	d0-d3/a0/a6,-(sp)
-	move.l	16(sp),a0	; window
-	move.l	20(sp),d0	; widthMin
-	move.l	24(sp),d1	; heightMin
-	move.l	28(sp),d2	; widthMax
-	move.l	32(sp),d3	; heightMax
-	move.l	_IntuitionBase,a6
-	jsr	-318(a6)	; WindowLimits()
-	movem.l	(sp)+,d0-d3/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	move.l	16(sp),d2
+	move.l	20(sp),d3
+	movea.l	_IntuitionBase,a6
+	jsr	-324(a6)
 	rts
 
-; SetPrefs(preferences, size, inform)
+	section	_SetPrefs_stub,code
+
+; struct Preferences * SetPrefs(const struct Preferences * preferences, LONG size, BOOL inform)
 	xdef	_SetPrefs
 _SetPrefs:
-	movem.l	d0-d1/a0/a6,-(sp)
-	move.l	16(sp),a0	; preferences
-	move.l	20(sp),d0	; size
-	move.l	24(sp),d1	; inform
-	move.l	_IntuitionBase,a6
-	jsr	-324(a6)	; SetPrefs()
-	movem.l	(sp)+,d0-d1/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	movea.l	_IntuitionBase,a6
+	jsr	-330(a6)
 	rts
 
-; IntuiTextLength(iText)
+	section	_IntuiTextLength_stub,code
+
+; LONG IntuiTextLength(const struct IntuiText * iText)
 	xdef	_IntuiTextLength
 _IntuiTextLength:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; iText
-	move.l	_IntuitionBase,a6
-	jsr	-330(a6)	; IntuiTextLength()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-336(a6)
 	rts
 
-; WBenchToBack()
+	section	_WBenchToBack_stub,code
+
+; BOOL WBenchToBack()
 	xdef	_WBenchToBack
 _WBenchToBack:
-	movem.l	a6,-(sp)
-	move.l	_IntuitionBase,a6
-	jsr	-336(a6)	; WBenchToBack()
-	movem.l	(sp)+,a6
+	movea.l	_IntuitionBase,a6
+	jsr	-342(a6)
 	rts
 
-; WBenchToFront()
+	section	_WBenchToFront_stub,code
+
+; BOOL WBenchToFront()
 	xdef	_WBenchToFront
 _WBenchToFront:
-	movem.l	a6,-(sp)
-	move.l	_IntuitionBase,a6
-	jsr	-342(a6)	; WBenchToFront()
-	movem.l	(sp)+,a6
+	movea.l	_IntuitionBase,a6
+	jsr	-348(a6)
 	rts
 
-; AutoRequest(window, body, posText, negText, pFlag, nFlag, width, height)
+	section	_AutoRequest_stub,code
+
+; BOOL AutoRequest(struct Window * window, const struct IntuiText * body, const struct IntuiText * posText, const struct IntuiText * negText, ULONG pFlag, ULONG nFlag, UWORD width, UWORD height)
 	xdef	_AutoRequest
 _AutoRequest:
-	movem.l	d0-d3/a0-a3/a6,-(sp)
-	move.l	16(sp),a0	; window
-	move.l	20(sp),a1	; body
-	move.l	24(sp),a2	; posText
-	move.l	28(sp),a3	; negText
-	move.l	32(sp),d0	; pFlag
-	move.l	36(sp),d1	; nFlag
-	move.l	40(sp),d2	; width
-	move.l	44(sp),d3	; height
-	move.l	_IntuitionBase,a6
-	jsr	-348(a6)	; AutoRequest()
-	movem.l	(sp)+,d0-d3/a0-a3/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	16(sp),a3
+	move.l	20(sp),d0
+	move.l	24(sp),d1
+	move.l	28(sp),d2
+	move.l	32(sp),d3
+	movea.l	_IntuitionBase,a6
+	jsr	-354(a6)
 	rts
 
-; BeginRefresh(window)
+	section	_BeginRefresh_stub,code
+
+; VOID BeginRefresh(struct Window * window)
 	xdef	_BeginRefresh
 _BeginRefresh:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; window
-	move.l	_IntuitionBase,a6
-	jsr	-354(a6)	; BeginRefresh()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-360(a6)
 	rts
 
-; BuildSysRequest(window, body, posText, negText, flags, width, height)
+	section	_BuildSysRequest_stub,code
+
+; struct Window * BuildSysRequest(struct Window * window, const struct IntuiText * body, const struct IntuiText * posText, const struct IntuiText * negText, ULONG flags, UWORD width, UWORD height)
 	xdef	_BuildSysRequest
 _BuildSysRequest:
-	movem.l	d0-d2/a0-a3/a6,-(sp)
-	move.l	16(sp),a0	; window
-	move.l	20(sp),a1	; body
-	move.l	24(sp),a2	; posText
-	move.l	28(sp),a3	; negText
-	move.l	32(sp),d0	; flags
-	move.l	36(sp),d1	; width
-	move.l	40(sp),d2	; height
-	move.l	_IntuitionBase,a6
-	jsr	-360(a6)	; BuildSysRequest()
-	movem.l	(sp)+,d0-d2/a0-a3/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	16(sp),a3
+	move.l	20(sp),d0
+	move.l	24(sp),d1
+	move.l	28(sp),d2
+	movea.l	_IntuitionBase,a6
+	jsr	-366(a6)
 	rts
 
-; EndRefresh(window, complete)
+	section	_EndRefresh_stub,code
+
+; VOID EndRefresh(struct Window * window, LONG complete)
 	xdef	_EndRefresh
 _EndRefresh:
-	movem.l	d0/a0/a6,-(sp)
-	move.l	16(sp),a0	; window
-	move.l	20(sp),d0	; complete
-	move.l	_IntuitionBase,a6
-	jsr	-366(a6)	; EndRefresh()
-	movem.l	(sp)+,d0/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	movea.l	_IntuitionBase,a6
+	jsr	-372(a6)
 	rts
 
-; FreeSysRequest(window)
+	section	_FreeSysRequest_stub,code
+
+; VOID FreeSysRequest(struct Window * window)
 	xdef	_FreeSysRequest
 _FreeSysRequest:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; window
-	move.l	_IntuitionBase,a6
-	jsr	-372(a6)	; FreeSysRequest()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-378(a6)
 	rts
 
-; MakeScreen(screen)
+	section	_MakeScreen_stub,code
+
+; LONG MakeScreen(struct Screen * screen)
 	xdef	_MakeScreen
 _MakeScreen:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; screen
-	move.l	_IntuitionBase,a6
-	jsr	-378(a6)	; MakeScreen()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-384(a6)
 	rts
 
-; RemakeDisplay()
+	section	_RemakeDisplay_stub,code
+
+; LONG RemakeDisplay()
 	xdef	_RemakeDisplay
 _RemakeDisplay:
-	movem.l	a6,-(sp)
-	move.l	_IntuitionBase,a6
-	jsr	-384(a6)	; RemakeDisplay()
-	movem.l	(sp)+,a6
+	movea.l	_IntuitionBase,a6
+	jsr	-390(a6)
 	rts
 
-; RethinkDisplay()
+	section	_RethinkDisplay_stub,code
+
+; LONG RethinkDisplay()
 	xdef	_RethinkDisplay
 _RethinkDisplay:
-	movem.l	a6,-(sp)
-	move.l	_IntuitionBase,a6
-	jsr	-390(a6)	; RethinkDisplay()
-	movem.l	(sp)+,a6
+	movea.l	_IntuitionBase,a6
+	jsr	-396(a6)
 	rts
 
-; AllocRemember(rememberKey, size, flags)
+	section	_AllocRemember_stub,code
+
+; APTR AllocRemember(struct Remember ** rememberKey, ULONG size, ULONG flags)
 	xdef	_AllocRemember
 _AllocRemember:
-	movem.l	d0-d1/a0/a6,-(sp)
-	move.l	16(sp),a0	; rememberKey
-	move.l	20(sp),d0	; size
-	move.l	24(sp),d1	; flags
-	move.l	_IntuitionBase,a6
-	jsr	-396(a6)	; AllocRemember()
-	movem.l	(sp)+,d0-d1/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	movea.l	_IntuitionBase,a6
+	jsr	-402(a6)
 	rts
 
-; FreeRemember(rememberKey, reallyForget)
+	section	_FreeRemember_stub,code
+
+; VOID FreeRemember(struct Remember ** rememberKey, BOOL reallyForget)
 	xdef	_FreeRemember
 _FreeRemember:
-	movem.l	d0/a0/a6,-(sp)
-	move.l	16(sp),a0	; rememberKey
-	move.l	20(sp),d0	; reallyForget
-	move.l	_IntuitionBase,a6
-	jsr	-408(a6)	; FreeRemember()
-	movem.l	(sp)+,d0/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	movea.l	_IntuitionBase,a6
+	jsr	-414(a6)
 	rts
 
-; LockIBase(dontknow)
+	section	_LockIBase_stub,code
+
+; ULONG LockIBase(ULONG dontknow)
 	xdef	_LockIBase
 _LockIBase:
-	movem.l	d0/a6,-(sp)
-	move.l	12(sp),d0	; dontknow
-	move.l	_IntuitionBase,a6
-	jsr	-414(a6)	; LockIBase()
-	movem.l	(sp)+,d0/a6
+	move.l	4(sp),d0
+	movea.l	_IntuitionBase,a6
+	jsr	-420(a6)
 	rts
 
-; UnlockIBase(ibLock)
+	section	_UnlockIBase_stub,code
+
+; VOID UnlockIBase(ULONG ibLock)
 	xdef	_UnlockIBase
 _UnlockIBase:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; ibLock
-	move.l	_IntuitionBase,a6
-	jsr	-420(a6)	; UnlockIBase()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-426(a6)
 	rts
 
-; GetScreenData(buffer, size, type, screen)
+	section	_GetScreenData_stub,code
+
+; LONG GetScreenData(APTR buffer, UWORD size, UWORD type, const struct Screen * screen)
 	xdef	_GetScreenData
 _GetScreenData:
-	movem.l	d0-d1/a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; buffer
-	move.l	20(sp),d0	; size
-	move.l	24(sp),d1	; type
-	move.l	28(sp),a1	; screen
-	move.l	_IntuitionBase,a6
-	jsr	-426(a6)	; GetScreenData()
-	movem.l	(sp)+,d0-d1/a0-a1/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	movea.l	16(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-432(a6)
 	rts
 
-; RefreshGList(gadgets, window, requester, numGad)
+	section	_RefreshGList_stub,code
+
+; VOID RefreshGList(struct Gadget * gadgets, struct Window * window, struct Requester * requester, WORD numGad)
 	xdef	_RefreshGList
 _RefreshGList:
-	movem.l	d0/a0-a2/a6,-(sp)
-	move.l	16(sp),a0	; gadgets
-	move.l	20(sp),a1	; window
-	move.l	24(sp),a2	; requester
-	move.l	28(sp),d0	; numGad
-	move.l	_IntuitionBase,a6
-	jsr	-432(a6)	; RefreshGList()
-	movem.l	(sp)+,d0/a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	move.l	16(sp),d0
+	movea.l	_IntuitionBase,a6
+	jsr	-438(a6)
 	rts
 
-; AddGList(window, gadget, position, numGad, requester)
+	section	_AddGList_stub,code
+
+; UWORD AddGList(struct Window * window, struct Gadget * gadget, UWORD position, WORD numGad, struct Requester * requester)
 	xdef	_AddGList
 _AddGList:
-	movem.l	d0-d1/a0-a2/a6,-(sp)
-	move.l	16(sp),a0	; window
-	move.l	20(sp),a1	; gadget
-	move.l	24(sp),d0	; position
-	move.l	28(sp),d1	; numGad
-	move.l	32(sp),a2	; requester
-	move.l	_IntuitionBase,a6
-	jsr	-438(a6)	; AddGList()
-	movem.l	(sp)+,d0-d1/a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	move.l	16(sp),d1
+	movea.l	20(sp),a2
+	movea.l	_IntuitionBase,a6
+	jsr	-444(a6)
 	rts
 
-; RemoveGList(remPtr, gadget, numGad)
+	section	_RemoveGList_stub,code
+
+; UWORD RemoveGList(struct Window * remPtr, struct Gadget * gadget, WORD numGad)
 	xdef	_RemoveGList
 _RemoveGList:
-	movem.l	d0/a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; remPtr
-	move.l	20(sp),a1	; gadget
-	move.l	24(sp),d0	; numGad
-	move.l	_IntuitionBase,a6
-	jsr	-444(a6)	; RemoveGList()
-	movem.l	(sp)+,d0/a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	movea.l	_IntuitionBase,a6
+	jsr	-450(a6)
 	rts
 
-; ActivateWindow(window)
+	section	_ActivateWindow_stub,code
+
+; VOID ActivateWindow(struct Window * window)
 	xdef	_ActivateWindow
 _ActivateWindow:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; window
-	move.l	_IntuitionBase,a6
-	jsr	-450(a6)	; ActivateWindow()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-456(a6)
 	rts
 
-; RefreshWindowFrame(window)
+	section	_RefreshWindowFrame_stub,code
+
+; VOID RefreshWindowFrame(struct Window * window)
 	xdef	_RefreshWindowFrame
 _RefreshWindowFrame:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; window
-	move.l	_IntuitionBase,a6
-	jsr	-456(a6)	; RefreshWindowFrame()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-462(a6)
 	rts
 
-; ActivateGadget(gadgets, window, requester)
+	section	_ActivateGadget_stub,code
+
+; BOOL ActivateGadget(struct Gadget * gadgets, struct Window * window, struct Requester * requester)
 	xdef	_ActivateGadget
 _ActivateGadget:
-	movem.l	a0-a2/a6,-(sp)
-	move.l	12(sp),a0	; gadgets
-	move.l	16(sp),a1	; window
-	move.l	20(sp),a2	; requester
-	move.l	_IntuitionBase,a6
-	jsr	-462(a6)	; ActivateGadget()
-	movem.l	(sp)+,a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	_IntuitionBase,a6
+	jsr	-468(a6)
 	rts
 
-; NewModifyProp(gadget, window, requester, flags, horizPot, vertPot, horizBody, vertBody, numGad)
+	section	_NewModifyProp_stub,code
+
+; VOID NewModifyProp(struct Gadget * gadget, struct Window * window, struct Requester * requester, UWORD flags, UWORD horizPot, UWORD vertPot, UWORD horizBody, UWORD vertBody, WORD numGad)
 	xdef	_NewModifyProp
 _NewModifyProp:
-	movem.l	d0-d5/a0-a2/a6,-(sp)
-	move.l	16(sp),a0	; gadget
-	move.l	20(sp),a1	; window
-	move.l	24(sp),a2	; requester
-	move.l	28(sp),d0	; flags
-	move.l	32(sp),d1	; horizPot
-	move.l	36(sp),d2	; vertPot
-	move.l	40(sp),d3	; horizBody
-	move.l	44(sp),d4	; vertBody
-	move.l	48(sp),d5	; numGad
-	move.l	_IntuitionBase,a6
-	jsr	-468(a6)	; NewModifyProp()
-	movem.l	(sp)+,d0-d5/a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	move.l	16(sp),d0
+	move.l	20(sp),d1
+	move.l	24(sp),d2
+	move.l	28(sp),d3
+	move.l	32(sp),d4
+	move.l	36(sp),d5
+	movea.l	_IntuitionBase,a6
+	jsr	-474(a6)
 	rts
 
-; QueryOverscan(displayID, rect, oScanType)
+	section	_QueryOverscan_stub,code
+
+; LONG QueryOverscan(ULONG displayID, struct Rectangle * rect, WORD oScanType)
 	xdef	_QueryOverscan
 _QueryOverscan:
-	movem.l	d0/a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; displayID
-	move.l	20(sp),a1	; rect
-	move.l	24(sp),d0	; oScanType
-	move.l	_IntuitionBase,a6
-	jsr	-474(a6)	; QueryOverscan()
-	movem.l	(sp)+,d0/a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	movea.l	_IntuitionBase,a6
+	jsr	-480(a6)
 	rts
 
-; MoveWindowInFrontOf(window, behindWindow)
+	section	_MoveWindowInFrontOf_stub,code
+
+; VOID MoveWindowInFrontOf(struct Window * window, struct Window * behindWindow)
 	xdef	_MoveWindowInFrontOf
 _MoveWindowInFrontOf:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; window
-	move.l	16(sp),a1	; behindWindow
-	move.l	_IntuitionBase,a6
-	jsr	-480(a6)	; MoveWindowInFrontOf()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-486(a6)
 	rts
 
-; ChangeWindowBox(window, left, top, width, height)
+	section	_ChangeWindowBox_stub,code
+
+; VOID ChangeWindowBox(struct Window * window, WORD left, WORD top, WORD width, WORD height)
 	xdef	_ChangeWindowBox
 _ChangeWindowBox:
-	movem.l	d0-d3/a0/a6,-(sp)
-	move.l	16(sp),a0	; window
-	move.l	20(sp),d0	; left
-	move.l	24(sp),d1	; top
-	move.l	28(sp),d2	; width
-	move.l	32(sp),d3	; height
-	move.l	_IntuitionBase,a6
-	jsr	-486(a6)	; ChangeWindowBox()
-	movem.l	(sp)+,d0-d3/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	move.l	16(sp),d2
+	move.l	20(sp),d3
+	movea.l	_IntuitionBase,a6
+	jsr	-492(a6)
 	rts
 
-; SetEditHook(hook)
+	section	_SetEditHook_stub,code
+
+; struct Hook * SetEditHook(struct Hook * hook)
 	xdef	_SetEditHook
 _SetEditHook:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; hook
-	move.l	_IntuitionBase,a6
-	jsr	-492(a6)	; SetEditHook()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-498(a6)
 	rts
 
-; SetMouseQueue(window, queueLength)
+	section	_SetMouseQueue_stub,code
+
+; LONG SetMouseQueue(struct Window * window, UWORD queueLength)
 	xdef	_SetMouseQueue
 _SetMouseQueue:
-	movem.l	d0/a0/a6,-(sp)
-	move.l	16(sp),a0	; window
-	move.l	20(sp),d0	; queueLength
-	move.l	_IntuitionBase,a6
-	jsr	-498(a6)	; SetMouseQueue()
-	movem.l	(sp)+,d0/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	movea.l	_IntuitionBase,a6
+	jsr	-504(a6)
 	rts
 
-; ZipWindow(window)
+	section	_ZipWindow_stub,code
+
+; VOID ZipWindow(struct Window * window)
 	xdef	_ZipWindow
 _ZipWindow:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; window
-	move.l	_IntuitionBase,a6
-	jsr	-504(a6)	; ZipWindow()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-510(a6)
 	rts
 
-; LockPubScreen(name)
+	section	_LockPubScreen_stub,code
+
+; struct Screen * LockPubScreen(CONST_STRPTR name)
 	xdef	_LockPubScreen
 _LockPubScreen:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; name
-	move.l	_IntuitionBase,a6
-	jsr	-510(a6)	; LockPubScreen()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-516(a6)
 	rts
 
-; UnlockPubScreen(name, screen)
+	section	_UnlockPubScreen_stub,code
+
+; VOID UnlockPubScreen(CONST_STRPTR name, struct Screen * screen)
 	xdef	_UnlockPubScreen
 _UnlockPubScreen:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; name
-	move.l	16(sp),a1	; screen
-	move.l	_IntuitionBase,a6
-	jsr	-516(a6)	; UnlockPubScreen()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-522(a6)
 	rts
 
-; LockPubScreenList()
+	section	_LockPubScreenList_stub,code
+
+; struct List * LockPubScreenList()
 	xdef	_LockPubScreenList
 _LockPubScreenList:
-	movem.l	a6,-(sp)
-	move.l	_IntuitionBase,a6
-	jsr	-522(a6)	; LockPubScreenList()
-	movem.l	(sp)+,a6
+	movea.l	_IntuitionBase,a6
+	jsr	-528(a6)
 	rts
 
-; UnlockPubScreenList()
+	section	_UnlockPubScreenList_stub,code
+
+; VOID UnlockPubScreenList()
 	xdef	_UnlockPubScreenList
 _UnlockPubScreenList:
-	movem.l	a6,-(sp)
-	move.l	_IntuitionBase,a6
-	jsr	-528(a6)	; UnlockPubScreenList()
-	movem.l	(sp)+,a6
+	movea.l	_IntuitionBase,a6
+	jsr	-534(a6)
 	rts
 
-; NextPubScreen(screen, namebuf)
+	section	_NextPubScreen_stub,code
+
+; STRPTR NextPubScreen(const struct Screen * screen, STRPTR namebuf)
 	xdef	_NextPubScreen
 _NextPubScreen:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; screen
-	move.l	16(sp),a1	; namebuf
-	move.l	_IntuitionBase,a6
-	jsr	-534(a6)	; NextPubScreen()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-540(a6)
 	rts
 
-; SetDefaultPubScreen(name)
+	section	_SetDefaultPubScreen_stub,code
+
+; VOID SetDefaultPubScreen(CONST_STRPTR name)
 	xdef	_SetDefaultPubScreen
 _SetDefaultPubScreen:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; name
-	move.l	_IntuitionBase,a6
-	jsr	-540(a6)	; SetDefaultPubScreen()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-546(a6)
 	rts
 
-; SetPubScreenModes(modes)
+	section	_SetPubScreenModes_stub,code
+
+; UWORD SetPubScreenModes(UWORD modes)
 	xdef	_SetPubScreenModes
 _SetPubScreenModes:
-	movem.l	d0/a6,-(sp)
-	move.l	12(sp),d0	; modes
-	move.l	_IntuitionBase,a6
-	jsr	-546(a6)	; SetPubScreenModes()
-	movem.l	(sp)+,d0/a6
+	move.l	4(sp),d0
+	movea.l	_IntuitionBase,a6
+	jsr	-552(a6)
 	rts
 
-; PubScreenStatus(screen, statusFlags)
+	section	_PubScreenStatus_stub,code
+
+; UWORD PubScreenStatus(struct Screen * screen, UWORD statusFlags)
 	xdef	_PubScreenStatus
 _PubScreenStatus:
-	movem.l	d0/a0/a6,-(sp)
-	move.l	16(sp),a0	; screen
-	move.l	20(sp),d0	; statusFlags
-	move.l	_IntuitionBase,a6
-	jsr	-552(a6)	; PubScreenStatus()
-	movem.l	(sp)+,d0/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	movea.l	_IntuitionBase,a6
+	jsr	-558(a6)
 	rts
 
-; ObtainGIRPort(gInfo)
+	section	_ObtainGIRPort_stub,code
+
+; struct RastPort * ObtainGIRPort(struct GadgetInfo * gInfo)
 	xdef	_ObtainGIRPort
 _ObtainGIRPort:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; gInfo
-	move.l	_IntuitionBase,a6
-	jsr	-558(a6)	; ObtainGIRPort()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-564(a6)
 	rts
 
-; ReleaseGIRPort(rp)
+	section	_ReleaseGIRPort_stub,code
+
+; VOID ReleaseGIRPort(struct RastPort * rp)
 	xdef	_ReleaseGIRPort
 _ReleaseGIRPort:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; rp
-	move.l	_IntuitionBase,a6
-	jsr	-564(a6)	; ReleaseGIRPort()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-570(a6)
 	rts
 
-; GadgetMouse(gadget, gInfo, mousePoint)
+	section	_GadgetMouse_stub,code
+
+; VOID GadgetMouse(struct Gadget * gadget, struct GadgetInfo * gInfo, WORD * mousePoint)
 	xdef	_GadgetMouse
 _GadgetMouse:
-	movem.l	a0-a2/a6,-(sp)
-	move.l	12(sp),a0	; gadget
-	move.l	16(sp),a1	; gInfo
-	move.l	20(sp),a2	; mousePoint
-	move.l	_IntuitionBase,a6
-	jsr	-570(a6)	; GadgetMouse()
-	movem.l	(sp)+,a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	_IntuitionBase,a6
+	jsr	-576(a6)
 	rts
 
-; GetDefaultPubScreen(nameBuffer)
+	section	_GetDefaultPubScreen_stub,code
+
+; VOID GetDefaultPubScreen(STRPTR nameBuffer)
 	xdef	_GetDefaultPubScreen
 _GetDefaultPubScreen:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; nameBuffer
-	move.l	_IntuitionBase,a6
-	jsr	-582(a6)	; GetDefaultPubScreen()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-588(a6)
 	rts
 
-; EasyRequestArgs(window, easyStruct, idcmpPtr, args)
+	section	_EasyRequestArgs_stub,code
+
+; LONG EasyRequestArgs(struct Window * window, const struct EasyStruct * easyStruct, ULONG * idcmpPtr, const APTR args)
 	xdef	_EasyRequestArgs
 _EasyRequestArgs:
-	movem.l	a0-a3/a6,-(sp)
-	move.l	12(sp),a0	; window
-	move.l	16(sp),a1	; easyStruct
-	move.l	20(sp),a2	; idcmpPtr
-	move.l	24(sp),a3	; args
-	move.l	_IntuitionBase,a6
-	jsr	-588(a6)	; EasyRequestArgs()
-	movem.l	(sp)+,a0-a3/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	16(sp),a3
+	movea.l	_IntuitionBase,a6
+	jsr	-594(a6)
 	rts
 
-; BuildEasyRequestArgs(window, easyStruct, idcmp, args)
+	section	_BuildEasyRequestArgs_stub,code
+
+; struct Window * BuildEasyRequestArgs(struct Window * window, const struct EasyStruct * easyStruct, ULONG idcmp, const APTR args)
 	xdef	_BuildEasyRequestArgs
 _BuildEasyRequestArgs:
-	movem.l	d0/a0-a3/a6,-(sp)
-	move.l	16(sp),a0	; window
-	move.l	20(sp),a1	; easyStruct
-	move.l	24(sp),d0	; idcmp
-	move.l	28(sp),a3	; args
-	move.l	_IntuitionBase,a6
-	jsr	-594(a6)	; BuildEasyRequestArgs()
-	movem.l	(sp)+,d0/a0-a3/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	movea.l	16(sp),a3
+	movea.l	_IntuitionBase,a6
+	jsr	-606(a6)
 	rts
 
-; SysReqHandler(window, idcmpPtr, waitInput)
+	section	_SysReqHandler_stub,code
+
+; LONG SysReqHandler(struct Window * window, ULONG * idcmpPtr, BOOL waitInput)
 	xdef	_SysReqHandler
 _SysReqHandler:
-	movem.l	d0/a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; window
-	move.l	20(sp),a1	; idcmpPtr
-	move.l	24(sp),d0	; waitInput
-	move.l	_IntuitionBase,a6
-	jsr	-600(a6)	; SysReqHandler()
-	movem.l	(sp)+,d0/a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	movea.l	_IntuitionBase,a6
+	jsr	-618(a6)
 	rts
 
-; OpenWindowTagList(newWindow, tagList)
+	section	_OpenWindowTagList_stub,code
+
+; struct Window * OpenWindowTagList(const struct NewWindow * newWindow, const struct TagItem * tagList)
 	xdef	_OpenWindowTagList
 _OpenWindowTagList:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; newWindow
-	move.l	16(sp),a1	; tagList
-	move.l	_IntuitionBase,a6
-	jsr	-606(a6)	; OpenWindowTagList()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-624(a6)
 	rts
 
-; OpenScreenTagList(newScreen, tagList)
+	section	_OpenScreenTagList_stub,code
+
+; struct Screen * OpenScreenTagList(const struct NewScreen * newScreen, const struct TagItem * tagList)
 	xdef	_OpenScreenTagList
 _OpenScreenTagList:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; newScreen
-	move.l	16(sp),a1	; tagList
-	move.l	_IntuitionBase,a6
-	jsr	-612(a6)	; OpenScreenTagList()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-636(a6)
 	rts
 
-; DrawImageState(rp, image, leftOffset, topOffset, state, drawInfo)
+	section	_DrawImageState_stub,code
+
+; VOID DrawImageState(struct RastPort * rp, struct Image * image, WORD leftOffset, WORD topOffset, ULONG state, const struct DrawInfo * drawInfo)
 	xdef	_DrawImageState
 _DrawImageState:
-	movem.l	d0-d2/a0-a2/a6,-(sp)
-	move.l	16(sp),a0	; rp
-	move.l	20(sp),a1	; image
-	move.l	24(sp),d0	; leftOffset
-	move.l	28(sp),d1	; topOffset
-	move.l	32(sp),d2	; state
-	move.l	36(sp),a2	; drawInfo
-	move.l	_IntuitionBase,a6
-	jsr	-618(a6)	; DrawImageState()
-	movem.l	(sp)+,d0-d2/a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	move.l	16(sp),d1
+	move.l	20(sp),d2
+	movea.l	24(sp),a2
+	movea.l	_IntuitionBase,a6
+	jsr	-648(a6)
 	rts
 
-; PointInImage(point, image)
+	section	_PointInImage_stub,code
+
+; BOOL PointInImage(ULONG point, struct Image * image)
 	xdef	_PointInImage
 _PointInImage:
-	movem.l	d0/a0/a6,-(sp)
-	move.l	16(sp),d0	; point
-	move.l	20(sp),a0	; image
-	move.l	_IntuitionBase,a6
-	jsr	-624(a6)	; PointInImage()
-	movem.l	(sp)+,d0/a0/a6
+	move.l	4(sp),d0
+	movea.l	8(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-654(a6)
 	rts
 
-; EraseImage(rp, image, leftOffset, topOffset)
+	section	_EraseImage_stub,code
+
+; VOID EraseImage(struct RastPort * rp, struct Image * image, WORD leftOffset, WORD topOffset)
 	xdef	_EraseImage
 _EraseImage:
-	movem.l	d0-d1/a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; rp
-	move.l	20(sp),a1	; image
-	move.l	24(sp),d0	; leftOffset
-	move.l	28(sp),d1	; topOffset
-	move.l	_IntuitionBase,a6
-	jsr	-630(a6)	; EraseImage()
-	movem.l	(sp)+,d0-d1/a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	move.l	16(sp),d1
+	movea.l	_IntuitionBase,a6
+	jsr	-660(a6)
 	rts
 
-; NewObjectA(classPtr, classID, tagList)
+	section	_NewObjectA_stub,code
+
+; APTR NewObjectA(struct IClass * classPtr, CONST_STRPTR classID, const struct TagItem * tagList)
 	xdef	_NewObjectA
 _NewObjectA:
-	movem.l	a0-a2/a6,-(sp)
-	move.l	12(sp),a0	; classPtr
-	move.l	16(sp),a1	; classID
-	move.l	20(sp),a2	; tagList
-	move.l	_IntuitionBase,a6
-	jsr	-636(a6)	; NewObjectA()
-	movem.l	(sp)+,a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	_IntuitionBase,a6
+	jsr	-666(a6)
 	rts
 
-; DisposeObject(object)
+	section	_DisposeObject_stub,code
+
+; VOID DisposeObject(APTR object)
 	xdef	_DisposeObject
 _DisposeObject:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; object
-	move.l	_IntuitionBase,a6
-	jsr	-642(a6)	; DisposeObject()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-678(a6)
 	rts
 
-; SetAttrsA(object, tagList)
+	section	_SetAttrsA_stub,code
+
+; ULONG SetAttrsA(APTR object, const struct TagItem * tagList)
 	xdef	_SetAttrsA
 _SetAttrsA:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; object
-	move.l	16(sp),a1	; tagList
-	move.l	_IntuitionBase,a6
-	jsr	-648(a6)	; SetAttrsA()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-684(a6)
 	rts
 
-; GetAttr(attrID, object, storagePtr)
+	section	_GetAttr_stub,code
+
+; ULONG GetAttr(ULONG attrID, APTR object, ULONG * storagePtr)
 	xdef	_GetAttr
 _GetAttr:
-	movem.l	d0/a0-a1/a6,-(sp)
-	move.l	16(sp),d0	; attrID
-	move.l	20(sp),a0	; object
-	move.l	24(sp),a1	; storagePtr
-	move.l	_IntuitionBase,a6
-	jsr	-654(a6)	; GetAttr()
-	movem.l	(sp)+,d0/a0-a1/a6
+	move.l	4(sp),d0
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-696(a6)
 	rts
 
-; SetGadgetAttrsA(gadget, window, requester, tagList)
+	section	_SetGadgetAttrsA_stub,code
+
+; ULONG SetGadgetAttrsA(struct Gadget * gadget, struct Window * window, struct Requester * requester, const struct TagItem * tagList)
 	xdef	_SetGadgetAttrsA
 _SetGadgetAttrsA:
-	movem.l	a0-a3/a6,-(sp)
-	move.l	12(sp),a0	; gadget
-	move.l	16(sp),a1	; window
-	move.l	20(sp),a2	; requester
-	move.l	24(sp),a3	; tagList
-	move.l	_IntuitionBase,a6
-	jsr	-660(a6)	; SetGadgetAttrsA()
-	movem.l	(sp)+,a0-a3/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	16(sp),a3
+	movea.l	_IntuitionBase,a6
+	jsr	-702(a6)
 	rts
 
-; NextObject(objectPtrPtr)
+	section	_NextObject_stub,code
+
+; APTR NextObject(APTR objectPtrPtr)
 	xdef	_NextObject
 _NextObject:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; objectPtrPtr
-	move.l	_IntuitionBase,a6
-	jsr	-666(a6)	; NextObject()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-714(a6)
 	rts
 
-; MakeClass(classID, superClassID, superClassPtr, instanceSize, flags)
+	section	_MakeClass_stub,code
+
+; struct IClass * MakeClass(CONST_STRPTR classID, CONST_STRPTR superClassID, const struct IClass * superClassPtr, UWORD instanceSize, ULONG flags)
 	xdef	_MakeClass
 _MakeClass:
-	movem.l	d0-d1/a0-a2/a6,-(sp)
-	move.l	16(sp),a0	; classID
-	move.l	20(sp),a1	; superClassID
-	move.l	24(sp),a2	; superClassPtr
-	move.l	28(sp),d0	; instanceSize
-	move.l	32(sp),d1	; flags
-	move.l	_IntuitionBase,a6
-	jsr	-678(a6)	; MakeClass()
-	movem.l	(sp)+,d0-d1/a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	move.l	16(sp),d0
+	move.l	20(sp),d1
+	movea.l	_IntuitionBase,a6
+	jsr	-726(a6)
 	rts
 
-; AddClass(classPtr)
+	section	_AddClass_stub,code
+
+; VOID AddClass(struct IClass * classPtr)
 	xdef	_AddClass
 _AddClass:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; classPtr
-	move.l	_IntuitionBase,a6
-	jsr	-684(a6)	; AddClass()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-732(a6)
 	rts
 
-; GetScreenDrawInfo(screen)
+	section	_GetScreenDrawInfo_stub,code
+
+; struct DrawInfo * GetScreenDrawInfo(struct Screen * screen)
 	xdef	_GetScreenDrawInfo
 _GetScreenDrawInfo:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; screen
-	move.l	_IntuitionBase,a6
-	jsr	-690(a6)	; GetScreenDrawInfo()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-738(a6)
 	rts
 
-; FreeScreenDrawInfo(screen, drawInfo)
+	section	_FreeScreenDrawInfo_stub,code
+
+; VOID FreeScreenDrawInfo(struct Screen * screen, struct DrawInfo * drawInfo)
 	xdef	_FreeScreenDrawInfo
 _FreeScreenDrawInfo:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; screen
-	move.l	16(sp),a1	; drawInfo
-	move.l	_IntuitionBase,a6
-	jsr	-696(a6)	; FreeScreenDrawInfo()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-744(a6)
 	rts
 
-; ResetMenuStrip(window, menu)
+	section	_ResetMenuStrip_stub,code
+
+; BOOL ResetMenuStrip(struct Window * window, struct Menu * menu)
 	xdef	_ResetMenuStrip
 _ResetMenuStrip:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; window
-	move.l	16(sp),a1	; menu
-	move.l	_IntuitionBase,a6
-	jsr	-702(a6)	; ResetMenuStrip()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-750(a6)
 	rts
 
-; RemoveClass(classPtr)
+	section	_RemoveClass_stub,code
+
+; VOID RemoveClass(struct IClass * classPtr)
 	xdef	_RemoveClass
 _RemoveClass:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; classPtr
-	move.l	_IntuitionBase,a6
-	jsr	-708(a6)	; RemoveClass()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-756(a6)
 	rts
 
-; FreeClass(classPtr)
+	section	_FreeClass_stub,code
+
+; BOOL FreeClass(struct IClass * classPtr)
 	xdef	_FreeClass
 _FreeClass:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; classPtr
-	move.l	_IntuitionBase,a6
-	jsr	-714(a6)	; FreeClass()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_IntuitionBase,a6
+	jsr	-762(a6)
 	rts
 
-; AllocScreenBuffer(sc, bm, flags)
+	section	_AllocScreenBuffer_stub,code
+
+; struct ScreenBuffer * AllocScreenBuffer(struct Screen * sc, struct BitMap * bm, ULONG flags)
 	xdef	_AllocScreenBuffer
 _AllocScreenBuffer:
-	movem.l	d0/a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; sc
-	move.l	20(sp),a1	; bm
-	move.l	24(sp),d0	; flags
-	move.l	_IntuitionBase,a6
-	jsr	-768(a6)	; AllocScreenBuffer()
-	movem.l	(sp)+,d0/a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	movea.l	_IntuitionBase,a6
+	jsr	-816(a6)
 	rts
 
-; FreeScreenBuffer(sc, sb)
+	section	_FreeScreenBuffer_stub,code
+
+; VOID FreeScreenBuffer(struct Screen * sc, struct ScreenBuffer * sb)
 	xdef	_FreeScreenBuffer
 _FreeScreenBuffer:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; sc
-	move.l	16(sp),a1	; sb
-	move.l	_IntuitionBase,a6
-	jsr	-774(a6)	; FreeScreenBuffer()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-822(a6)
 	rts
 
-; ChangeScreenBuffer(sc, sb)
+	section	_ChangeScreenBuffer_stub,code
+
+; ULONG ChangeScreenBuffer(struct Screen * sc, struct ScreenBuffer * sb)
 	xdef	_ChangeScreenBuffer
 _ChangeScreenBuffer:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; sc
-	move.l	16(sp),a1	; sb
-	move.l	_IntuitionBase,a6
-	jsr	-780(a6)	; ChangeScreenBuffer()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-828(a6)
 	rts
 
-; ScreenDepth(screen, flags, reserved)
+	section	_ScreenDepth_stub,code
+
+; VOID ScreenDepth(struct Screen * screen, ULONG flags, APTR reserved)
 	xdef	_ScreenDepth
 _ScreenDepth:
-	movem.l	d0/a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; screen
-	move.l	20(sp),d0	; flags
-	move.l	24(sp),a1	; reserved
-	move.l	_IntuitionBase,a6
-	jsr	-786(a6)	; ScreenDepth()
-	movem.l	(sp)+,d0/a0-a1/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	movea.l	12(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-834(a6)
 	rts
 
-; ScreenPosition(screen, flags, x1, y1, x2, y2)
+	section	_ScreenPosition_stub,code
+
+; VOID ScreenPosition(struct Screen * screen, ULONG flags, LONG x1, LONG y1, LONG x2, LONG y2)
 	xdef	_ScreenPosition
 _ScreenPosition:
-	movem.l	d0-d4/a0/a6,-(sp)
-	move.l	16(sp),a0	; screen
-	move.l	20(sp),d0	; flags
-	move.l	24(sp),d1	; x1
-	move.l	28(sp),d2	; y1
-	move.l	32(sp),d3	; x2
-	move.l	36(sp),d4	; y2
-	move.l	_IntuitionBase,a6
-	jsr	-792(a6)	; ScreenPosition()
-	movem.l	(sp)+,d0-d4/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	move.l	16(sp),d2
+	move.l	20(sp),d3
+	move.l	24(sp),d4
+	movea.l	_IntuitionBase,a6
+	jsr	-840(a6)
 	rts
 
-; ScrollWindowRaster(win, dx, dy, xMin, yMin, xMax, yMax)
+	section	_ScrollWindowRaster_stub,code
+
+; VOID ScrollWindowRaster(struct Window * win, WORD dx, WORD dy, WORD xMin, WORD yMin, WORD xMax, WORD yMax)
 	xdef	_ScrollWindowRaster
 _ScrollWindowRaster:
-	movem.l	d0-d5/a1/a6,-(sp)
-	move.l	16(sp),a1	; win
-	move.l	20(sp),d0	; dx
-	move.l	24(sp),d1	; dy
-	move.l	28(sp),d2	; xMin
-	move.l	32(sp),d3	; yMin
-	move.l	36(sp),d4	; xMax
-	move.l	40(sp),d5	; yMax
-	move.l	_IntuitionBase,a6
-	jsr	-798(a6)	; ScrollWindowRaster()
-	movem.l	(sp)+,d0-d5/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	move.l	16(sp),d2
+	move.l	20(sp),d3
+	move.l	24(sp),d4
+	move.l	28(sp),d5
+	movea.l	_IntuitionBase,a6
+	jsr	-846(a6)
 	rts
 
-; LendMenus(fromwindow, towindow)
+	section	_LendMenus_stub,code
+
+; VOID LendMenus(struct Window * fromwindow, struct Window * towindow)
 	xdef	_LendMenus
 _LendMenus:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; fromwindow
-	move.l	16(sp),a1	; towindow
-	move.l	_IntuitionBase,a6
-	jsr	-804(a6)	; LendMenus()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-852(a6)
 	rts
 
-; DoGadgetMethodA(gad, win, req, message)
+	section	_DoGadgetMethodA_stub,code
+
+; ULONG DoGadgetMethodA(struct Gadget * gad, struct Window * win, struct Requester * req, Msg message)
 	xdef	_DoGadgetMethodA
 _DoGadgetMethodA:
-	movem.l	a0-a3/a6,-(sp)
-	move.l	12(sp),a0	; gad
-	move.l	16(sp),a1	; win
-	move.l	20(sp),a2	; req
-	move.l	24(sp),a3	; message
-	move.l	_IntuitionBase,a6
-	jsr	-810(a6)	; DoGadgetMethodA()
-	movem.l	(sp)+,a0-a3/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	16(sp),a3
+	movea.l	_IntuitionBase,a6
+	jsr	-858(a6)
 	rts
 
-; SetWindowPointerA(win, taglist)
+	section	_SetWindowPointerA_stub,code
+
+; VOID SetWindowPointerA(struct Window * win, const struct TagItem * taglist)
 	xdef	_SetWindowPointerA
 _SetWindowPointerA:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; win
-	move.l	16(sp),a1	; taglist
-	move.l	_IntuitionBase,a6
-	jsr	-816(a6)	; SetWindowPointerA()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-870(a6)
 	rts
 
-; TimedDisplayAlert(alertNumber, string, height, time)
+	section	_TimedDisplayAlert_stub,code
+
+; BOOL TimedDisplayAlert(ULONG alertNumber, CONST_STRPTR string, UWORD height, ULONG time)
 	xdef	_TimedDisplayAlert
 _TimedDisplayAlert:
-	movem.l	d0-d1/a0-a1/a6,-(sp)
-	move.l	16(sp),d0	; alertNumber
-	move.l	20(sp),a0	; string
-	move.l	24(sp),d1	; height
-	move.l	28(sp),a1	; time
-	move.l	_IntuitionBase,a6
-	jsr	-822(a6)	; TimedDisplayAlert()
-	movem.l	(sp)+,d0-d1/a0-a1/a6
+	move.l	4(sp),d0
+	movea.l	8(sp),a0
+	move.l	12(sp),d1
+	movea.l	16(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-882(a6)
 	rts
 
-; HelpControl(win, flags)
+	section	_HelpControl_stub,code
+
+; VOID HelpControl(struct Window * win, ULONG flags)
 	xdef	_HelpControl
 _HelpControl:
-	movem.l	d0/a0/a6,-(sp)
-	move.l	16(sp),a0	; win
-	move.l	20(sp),d0	; flags
-	move.l	_IntuitionBase,a6
-	jsr	-828(a6)	; HelpControl()
-	movem.l	(sp)+,d0/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	movea.l	_IntuitionBase,a6
+	jsr	-888(a6)
 	rts
 

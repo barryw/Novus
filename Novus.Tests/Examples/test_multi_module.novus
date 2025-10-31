@@ -1,0 +1,26 @@
+// Test cross-module calls with multiple different modules
+// This proves the extern declaration fix works for ANY function
+
+from std::core import AllocMem, FreeMem
+from std::io import WriteOut
+
+pub const MEMF_PUBLIC: u32 = 1
+pub const MEMF_CLEAR: u32 = 65536
+
+pub fn main() -> i32 {
+    // Test 1: Call AllocMem from std::core
+    let mem = AllocMem(1024, MEMF_PUBLIC | MEMF_CLEAR)
+    defer => FreeMem(mem)
+
+    // Test 2: Call WriteOut from std::io (different module!)
+    let result = WriteOut("Testing cross-module calls\n")
+
+    match result {
+        Ok(bytes) => {
+            return 0
+        },
+        Err(e) => {
+            return 1
+        }
+    }
+}

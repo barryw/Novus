@@ -1,0 +1,21 @@
+// Debug version - test without defer, just alloc and immediate free
+from std::core import AllocMem, FreeMem
+
+pub const MEMF_PUBLIC: u32 = 1
+pub const MEMF_CLEAR: u32 = 65536
+
+pub fn main() -> i32 {
+    let mem = AllocMem(1024, MEMF_PUBLIC | MEMF_CLEAR)
+
+    match mem {
+        Some(block) => {
+            // Successfully allocated, now free immediately
+            FreeMem(mem)
+            return 0
+        },
+        None => {
+            // Allocation failed
+            return 255
+        }
+    }
+}

@@ -1,121 +1,233 @@
-// utility.library FFI Bindings
-// Namespace: std::ffi::utility
-// Raw 1:1 mappings to utility.library
+// Generated from SFD file by Novus SFD Parser
+// Library: utility.library
+// Base: _UtilityBase
 //
-// Auto-generated from NDK 3.9
-// - Functions from utility_lib.fd
-// - Structs from include/utility/*.h
-// - Constants from include/utility/*.h
+// NOTE: Import specific types from std::amiga_structs as needed
+// Example: from std::amiga_structs import Task, Node, List
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-pub const PSTB_SIGNED: u32 = 31
-pub const PSTB_UNPACK: u32 = 30 // Note that these are active low...
-pub const PSTB_PACK: u32 = 29 // Note that these are active low...
-pub const PSTB_EXISTS: u32 = 26 // Tag exists bit true flag hack...
-pub const PKCTRL_PACKUNPACK: u32 = $00000000
-pub const PKCTRL_PACKONLY: u32 = $40000000
-pub const PKCTRL_UNPACKONLY: u32 = $20000000
-pub const PKCTRL_BYTE: u32 = $80000000
-pub const PKCTRL_WORD: u32 = $88000000
-pub const PKCTRL_LONG: u32 = $90000000
-pub const PKCTRL_UBYTE: u32 = $00000000
-pub const PKCTRL_UWORD: u32 = $08000000
-pub const PKCTRL_ULONG: u32 = $10000000
-pub const PKCTRL_BIT: u32 = $18000000
-pub const PKCTRL_FLIPBIT: u32 = $98000000
-pub const PACK_ENDTABLE: u32 = 0
-pub const ANO_NameSpace: u32 = 4000 // Tag to define namespace
-pub const ANO_UserSpace: u32 = 4001 // tag to define userspace
-pub const ANO_Priority: u32 = 4002 // tag to define priority
-pub const ANO_Flags: u32 = 4003 // tag to define flags
-pub const NSB_NODUPS: u32 = 0
-pub const NSB_CASE: u32 = 1
-pub const TAG_DONE: u32 = (0) // terminates array of TagItems. ti_Data unused
-pub const TAG_END: u32 = (0) // synonym for TAG_DONE
-pub const TAG_IGNORE: u32 = (1) // ignore this item, not end of array
-pub const TAG_MORE: u32 = (2) // ti_Data is pointer to another array of TagItems
-pub const TAG_SKIP: u32 = (3) // skip this and the next ti_Data items
-pub const TAGFILTER_AND: u32 = 0 // exclude everything but filter hits
-pub const TAGFILTER_NOT: u32 = 1 // exclude only filter hits
-pub const MAP_REMOVE_NOT_FOUND: u32 = 0 // remove tags that aren't in mapList
-pub const MAP_KEEP_NOT_FOUND: u32 = 1 // keep tags that aren't in mapList
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const NT_UNKNOWN: u32 = 0u32
+pub const NT_TASK: u32 = 1u32
+pub const NT_INTERRUPT: u32 = 2u32
+pub const NT_DEVICE: u32 = 3u32
+pub const NT_MSGPORT: u32 = 4u32
+pub const NT_MESSAGE: u32 = 5u32
+pub const NT_FREEMSG: u32 = 6u32
+pub const NT_REPLYMSG: u32 = 7u32
+pub const NT_RESOURCE: u32 = 8u32
+pub const NT_LIBRARY: u32 = 9u32
+pub const NT_MEMORY: u32 = 10u32
+pub const NT_SOFTINT: u32 = 11u32
+pub const NT_FONT: u32 = 12u32
+pub const NT_PROCESS: u32 = 13u32
+pub const NT_SEMAPHORE: u32 = 14u32
+pub const NT_SIGNALSEM: u32 = 15u32
+pub const NT_BOOTNODE: u32 = 16u32
+pub const NT_KICKMEM: u32 = 17u32
+pub const NT_GRAPHICS: u32 = 18u32
+pub const NT_DEATHMESSAGE: u32 = 19u32
+pub const NT_USER: u32 = 254u32
+pub const NT_EXTENDED: u32 = 255u32
+pub const TB_PROCTIME: u32 = 0u32
+pub const TB_ETASK: u32 = 3u32
+pub const TB_STACKCHK: u32 = 4u32
+pub const TB_EXCEPT: u32 = 5u32
+pub const TB_SWITCH: u32 = 6u32
+pub const TB_LAUNCH: u32 = 7u32
+pub const TF_PROCTIME: u32 = (1u32 << 0)
+pub const TF_ETASK: u32 = (1u32 << 3)
+pub const TF_STACKCHK: u32 = (1u32 << 4)
+pub const TF_EXCEPT: u32 = (1u32 << 5)
+pub const TF_SWITCH: u32 = (1u32 << 6)
+pub const TF_LAUNCH: u32 = (1u32 << 7)
+pub const TS_INVALID: u32 = 0u32
+pub const TS_ADDED: u32 = 1u32
+pub const TS_RUN: u32 = 2u32
+pub const TS_READY: u32 = 3u32
+pub const TS_WAIT: u32 = 4u32
+pub const TS_EXCEPT: u32 = 5u32
+pub const TS_REMOVED: u32 = 6u32
+pub const SIGB_ABORT: u32 = 0u32
+pub const SIGB_CHILD: u32 = 1u32
+pub const SIGB_BLIT: u32 = 4u32
+pub const SIGB_SINGLE: u32 = 4u32
+pub const SIGB_INTUITION: u32 = 5u32
+pub const SIGB_NET: u32 = 7u32
+pub const SIGB_DOS: u32 = 8u32
+pub const SIGF_ABORT: u32 = (1u32 << 0)
+pub const SIGF_CHILD: u32 = (1u32 << 1)
+pub const SIGF_BLIT: u32 = (1u32 << 4)
+pub const SIGF_SINGLE: u32 = (1u32 << 4)
+pub const SIGF_INTUITION: u32 = (1u32 << 5)
+pub const SIGF_NET: u32 = (1u32 << 7)
+pub const SIGF_DOS: u32 = (1u32 << 8)
+pub const mp_SoftInt: u32 = 0 /* TODO: mp_SigTask */
+pub const PF_ACTION: u32 = 3u32
+pub const PA_SIGNAL: u32 = 0u32
+pub const PA_SOFTINT: u32 = 1u32
+pub const PA_IGNORE: u32 = 2u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const TAG_DONE: u32 = 0
+pub const TAG_END: u32 = 0
+pub const TAG_IGNORE: u32 = 1u32
+pub const TAG_MORE: u32 = 2u32
+pub const TAG_SKIP: u32 = 3u32
+pub const TAG_USER: u32 = (1u32 << 31)
+pub const TAGFILTER_AND: u32 = 0u32
+pub const TAGFILTER_NOT: u32 = 1u32
+pub const MAP_REMOVE_NOT_FOUND: u32 = 0u32
+pub const MAP_KEEP_NOT_FOUND: u32 = 1u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const NT_UNKNOWN: u32 = 0u32
+pub const NT_TASK: u32 = 1u32
+pub const NT_INTERRUPT: u32 = 2u32
+pub const NT_DEVICE: u32 = 3u32
+pub const NT_MSGPORT: u32 = 4u32
+pub const NT_MESSAGE: u32 = 5u32
+pub const NT_FREEMSG: u32 = 6u32
+pub const NT_REPLYMSG: u32 = 7u32
+pub const NT_RESOURCE: u32 = 8u32
+pub const NT_LIBRARY: u32 = 9u32
+pub const NT_MEMORY: u32 = 10u32
+pub const NT_SOFTINT: u32 = 11u32
+pub const NT_FONT: u32 = 12u32
+pub const NT_PROCESS: u32 = 13u32
+pub const NT_SEMAPHORE: u32 = 14u32
+pub const NT_SIGNALSEM: u32 = 15u32
+pub const NT_BOOTNODE: u32 = 16u32
+pub const NT_KICKMEM: u32 = 17u32
+pub const NT_GRAPHICS: u32 = 18u32
+pub const NT_DEATHMESSAGE: u32 = 19u32
+pub const NT_USER: u32 = 254u32
+pub const NT_EXTENDED: u32 = 255u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const ANO_NameSpace: u32 = 4000u32
+pub const ANO_UserSpace: u32 = 4001u32
+pub const ANO_Priority: u32 = 4002u32
+pub const ANO_Flags: u32 = 4003u32
+pub const NSB_NODUPS: u32 = 0u32
+pub const NSB_CASE: u32 = 1u32
+pub const NSF_NODUPS: u32 = 0 /* TODO: (1L << NSB_NODUPS) */
+pub const NSF_CASE: u32 = 0 /* TODO: (1L << NSB_CASE) */
 
 // ============================================================================
-// Structs
+// Library Functions
 // ============================================================================
 
-pub struct NamedObject {
-    no_Object: *u8,
-}
-
-pub struct Hook {
-    h_MinNode: *u8,
-    h_Data: *u8,
-}
-
-pub struct ClockData {
-    sec: u16,
-    min: u16,
-    hour: u16,
-    mday: u16,
-    month: u16,
-    year: u16,
-    wday: u16,
-}
-
-pub struct UtilityBase {
-    ub_LibNode: *u8,
-    ub_Language: u8,
-    ub_Reserved: u8,
-}
-
-pub struct TagItem {
-    ti_Tag: i32,
-    ti_Data: u32,
-}
-
-// ============================================================================
-// Functions
-// ============================================================================
-
-extern fn FindTagItem(tagVal: i32, tagList: i32) -> i32
-extern fn GetTagData(tagValue: i32, defaultVal: i32, tagList: i32) -> i32
-extern fn PackBoolTags(initialFlags: i32, tagList: i32, boolMap: i32) -> i32
-extern fn NextTagItem(tagListPtr: i32) -> i32
-extern fn FilterTagChanges(changeList: i32, originalList: i32, apply: i32) -> i32
-extern fn MapTags(tagList: i32, mapList: i32, mapType: i32) -> i32
-extern fn AllocateTagItems(numTags: i32) -> i32
-extern fn CloneTagItems(tagList: i32) -> i32
-extern fn FreeTagItems(tagList: i32) -> i32
-extern fn RefreshTagItemClones(clone: i32, original: i32) -> i32
-extern fn TagInArray(tagValue: i32, tagArray: i32) -> i32
-extern fn FilterTagItems(tagList: i32, filterArray: i32, logic: i32) -> i32
-extern fn CallHookPkt(hook: i32, object: i32, paramPacket: i32) -> i32
-extern fn Amiga2Date(seconds: i32, result: i32) -> i32
-extern fn Date2Amiga(date: i32) -> i32
-extern fn CheckDate(date: i32) -> i32
-extern fn SMult32(arg1: i32, arg2: i32) -> i32
-extern fn UMult32(arg1: i32, arg2: i32) -> i32
-extern fn SDivMod32(dividend: i32, divisor: i32) -> i32
-extern fn UDivMod32(dividend: i32, divisor: i32) -> i32
-extern fn Stricmp(string1: i32, string2: i32) -> i32
-extern fn Strnicmp(string1: i32, string2: i32, length: i32) -> i32
-extern fn ToUpper(character: i32) -> i32
-extern fn ToLower(character: i32) -> i32
-extern fn ApplyTagChanges(list: i32, changeList: i32) -> i32
-extern fn SMult64(arg1: i32, arg2: i32) -> i32
-extern fn UMult64(arg1: i32, arg2: i32) -> i32
-extern fn PackStructureTags(pack: i32, packTable: i32, tagList: i32) -> i32
-extern fn UnpackStructureTags(pack: i32, packTable: i32, tagList: i32) -> i32
-extern fn AddNamedObject(nameSpace: i32, object: i32) -> i32
-extern fn AllocNamedObjectA(name: i32, tagList: i32) -> i32
-extern fn AttemptRemNamedObject(object: i32) -> i32
-extern fn FindNamedObject(nameSpace: i32, name: i32, lastObject: i32) -> i32
-extern fn FreeNamedObject(object: i32) -> i32
-extern fn NamedObjectName(object: i32) -> i32
-extern fn ReleaseNamedObject(object: i32) -> i32
-extern fn RemNamedObject(object: i32, message: i32) -> i32
-extern fn GetUniqueID() -> i32
+extern pub fn FindTagItem(tagVal: *u8 /* Tag */, tagList: *TagItem) -> *TagItem
+extern pub fn GetTagData(tagValue: *u8 /* Tag */, defaultVal: u32, tagList: *TagItem) -> u32
+extern pub fn PackBoolTags(initialFlags: u32, tagList: *TagItem, boolMap: *TagItem) -> u32
+extern pub fn NextTagItem(tagListPtr: *TagItem) -> *TagItem
+extern pub fn FilterTagChanges(changeList: *TagItem, originalList: *TagItem, apply: u32)
+extern pub fn MapTags(tagList: *TagItem, mapList: *TagItem, mapType: u32)
+extern pub fn AllocateTagItems(numTags: u32) -> *TagItem
+extern pub fn CloneTagItems(tagList: *TagItem) -> *TagItem
+extern pub fn FreeTagItems(tagList: *TagItem)
+extern pub fn RefreshTagItemClones(clone: *TagItem, original: *TagItem)
+extern pub fn TagInArray(tagValue: *u8 /* Tag */, tagArray: *u8) -> i16
+extern pub fn FilterTagItems(tagList: *TagItem, filterArray: *u8, logic: u32) -> u32
+extern pub fn CallHookPkt(hook: *Hook, object: *u8, paramPacket: *u8) -> u32
+extern pub fn Amiga2Date(seconds: u32, result: *ClockData)
+extern pub fn Date2Amiga(date: *ClockData) -> u32
+extern pub fn CheckDate(date: *ClockData) -> u32
+extern pub fn SMult32(arg1: i32, arg2: i32) -> i32
+extern pub fn UMult32(arg1: u32, arg2: u32) -> u32
+extern pub fn SDivMod32(dividend: i32, divisor: i32) -> i32
+extern pub fn UDivMod32(dividend: u32, divisor: u32) -> u32
+extern pub fn Stricmp(string1: *u8, string2: *u8) -> i32
+extern pub fn Strnicmp(string1: *u8, string2: *u8, length: i32) -> i32
+extern pub fn ToUpper(character: u8) -> u8
+extern pub fn ToLower(character: u8) -> u8
+extern pub fn ApplyTagChanges(list: *TagItem, changeList: *TagItem)
+extern pub fn SMult64(arg1: i32, arg2: i32) -> i32
+extern pub fn UMult64(arg1: u32, arg2: u32) -> u32
+extern pub fn PackStructureTags(pack: *u8, packTable: *u8, tagList: *TagItem) -> u32
+extern pub fn UnpackStructureTags(pack: *u8, packTable: *u8, tagList: *TagItem) -> u32
+extern pub fn AddNamedObject(nameSpace: *NamedObject, object: *NamedObject) -> i16
+extern pub fn AllocNamedObjectA(name: *u8, tagList: *TagItem) -> *NamedObject
+// Varargs function AllocNamedObject skipped - needs manual implementation
+extern pub fn AttemptRemNamedObject(object: *NamedObject) -> i32
+extern pub fn FindNamedObject(nameSpace: *NamedObject, name: *u8, lastObject: *NamedObject) -> *NamedObject
+extern pub fn FreeNamedObject(object: *NamedObject)
+extern pub fn NamedObjectName(object: *NamedObject) -> *u8
+extern pub fn ReleaseNamedObject(object: *NamedObject)
+extern pub fn RemNamedObject(object: *NamedObject, message: *Message)
+extern pub fn GetUniqueID() -> u32

@@ -1,1883 +1,1883 @@
-; graphics library stubs for Novus
-; Auto-generated from graphics_lib.fd
+; Generated from SFD file by Novus SFD Parser
+; Library: graphics.library
+; Base: _GfxBase
+; Each function is in its own section for dead code elimination
 
-	xref	_GfxBase	; Provided by startup.o + -lamiga
+	xref	_GfxBase
 
-	section	"CODE",code
+	section	_BltBitMap_stub,code
 
-; BltBitMap(srcBitMap, xSrc, ySrc, destBitMap, xDest, yDest, xSize, ySize, minterm, mask, tempA)
+; LONG BltBitMap(const struct BitMap * srcBitMap, WORD xSrc, WORD ySrc, struct BitMap * destBitMap, WORD xDest, WORD yDest, WORD xSize, WORD ySize, UBYTE minterm, UBYTE mask, PLANEPTR tempA)
 	xdef	_BltBitMap
 _BltBitMap:
-	movem.l	d0-d7/a0-a2/a6,-(sp)
-	move.l	16(sp),a0	; srcBitMap
-	move.l	20(sp),d0	; xSrc
-	move.l	24(sp),d1	; ySrc
-	move.l	28(sp),a1	; destBitMap
-	move.l	32(sp),d2	; xDest
-	move.l	36(sp),d3	; yDest
-	move.l	40(sp),d4	; xSize
-	move.l	44(sp),d5	; ySize
-	move.l	48(sp),d6	; minterm
-	move.l	52(sp),d7	; mask
-	move.l	56(sp),a2	; tempA
-	move.l	_GfxBase,a6
-	jsr	-30(a6)	; BltBitMap()
-	movem.l	(sp)+,d0-d7/a0-a2/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	movea.l	16(sp),a1
+	move.l	20(sp),d2
+	move.l	24(sp),d3
+	move.l	28(sp),d4
+	move.l	32(sp),d5
+	move.l	36(sp),d6
+	move.l	40(sp),d7
+	movea.l	44(sp),a2
+	movea.l	_GfxBase,a6
+	jsr	-30(a6)
 	rts
 
-; BltTemplate(source, xSrc, srcMod, destRP, xDest, yDest, xSize, ySize)
+	section	_BltTemplate_stub,code
+
+; VOID BltTemplate(const PLANEPTR source, WORD xSrc, WORD srcMod, struct RastPort * destRP, WORD xDest, WORD yDest, WORD xSize, WORD ySize)
 	xdef	_BltTemplate
 _BltTemplate:
-	movem.l	d0-d5/a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; source
-	move.l	20(sp),d0	; xSrc
-	move.l	24(sp),d1	; srcMod
-	move.l	28(sp),a1	; destRP
-	move.l	32(sp),d2	; xDest
-	move.l	36(sp),d3	; yDest
-	move.l	40(sp),d4	; xSize
-	move.l	44(sp),d5	; ySize
-	move.l	_GfxBase,a6
-	jsr	-36(a6)	; BltTemplate()
-	movem.l	(sp)+,d0-d5/a0-a1/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	movea.l	16(sp),a1
+	move.l	20(sp),d2
+	move.l	24(sp),d3
+	move.l	28(sp),d4
+	move.l	32(sp),d5
+	movea.l	_GfxBase,a6
+	jsr	-36(a6)
 	rts
 
-; ClearEOL(rp)
+	section	_ClearEOL_stub,code
+
+; VOID ClearEOL(struct RastPort * rp)
 	xdef	_ClearEOL
 _ClearEOL:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; rp
-	move.l	_GfxBase,a6
-	jsr	-42(a6)	; ClearEOL()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-42(a6)
 	rts
 
-; ClearScreen(rp)
+	section	_ClearScreen_stub,code
+
+; VOID ClearScreen(struct RastPort * rp)
 	xdef	_ClearScreen
 _ClearScreen:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; rp
-	move.l	_GfxBase,a6
-	jsr	-48(a6)	; ClearScreen()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-48(a6)
 	rts
 
-; TextLength(rp, string, count)
+	section	_TextLength_stub,code
+
+; WORD TextLength(struct RastPort * rp, CONST_STRPTR string, UWORD count)
 	xdef	_TextLength
 _TextLength:
-	movem.l	d0/a0-a1/a6,-(sp)
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),a0	; string
-	move.l	24(sp),d0	; count
-	move.l	_GfxBase,a6
-	jsr	-54(a6)	; TextLength()
-	movem.l	(sp)+,d0/a0-a1/a6
+	movea.l	4(sp),a1
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-54(a6)
 	rts
 
-; Text(rp, string, count)
+	section	_Text_stub,code
+
+; LONG Text(struct RastPort * rp, CONST_STRPTR string, UWORD count)
 	xdef	_Text
 _Text:
-	movem.l	d0/a0-a1/a6,-(sp)
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),a0	; string
-	move.l	24(sp),d0	; count
-	move.l	_GfxBase,a6
-	jsr	-60(a6)	; Text()
-	movem.l	(sp)+,d0/a0-a1/a6
+	movea.l	4(sp),a1
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-60(a6)
 	rts
 
-; SetFont(rp, textFont)
+	section	_SetFont_stub,code
+
+; LONG SetFont(struct RastPort * rp, const struct TextFont * textFont)
 	xdef	_SetFont
 _SetFont:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a1	; rp
-	move.l	16(sp),a0	; textFont
-	move.l	_GfxBase,a6
-	jsr	-66(a6)	; SetFont()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a1
+	movea.l	8(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-66(a6)
 	rts
 
-; OpenFont(textAttr)
+	section	_OpenFont_stub,code
+
+; struct TextFont * OpenFont(struct TextAttr * textAttr)
 	xdef	_OpenFont
 _OpenFont:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; textAttr
-	move.l	_GfxBase,a6
-	jsr	-72(a6)	; OpenFont()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-72(a6)
 	rts
 
-; CloseFont(textFont)
+	section	_CloseFont_stub,code
+
+; VOID CloseFont(struct TextFont * textFont)
 	xdef	_CloseFont
 _CloseFont:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; textFont
-	move.l	_GfxBase,a6
-	jsr	-78(a6)	; CloseFont()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-78(a6)
 	rts
 
-; AskSoftStyle(rp)
+	section	_AskSoftStyle_stub,code
+
+; ULONG AskSoftStyle(struct RastPort * rp)
 	xdef	_AskSoftStyle
 _AskSoftStyle:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; rp
-	move.l	_GfxBase,a6
-	jsr	-84(a6)	; AskSoftStyle()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-84(a6)
 	rts
 
-; SetSoftStyle(rp, style, enable)
+	section	_SetSoftStyle_stub,code
+
+; ULONG SetSoftStyle(struct RastPort * rp, ULONG style, ULONG enable)
 	xdef	_SetSoftStyle
 _SetSoftStyle:
-	movem.l	d0-d1/a1/a6,-(sp)
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),d0	; style
-	move.l	24(sp),d1	; enable
-	move.l	_GfxBase,a6
-	jsr	-90(a6)	; SetSoftStyle()
-	movem.l	(sp)+,d0-d1/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	movea.l	_GfxBase,a6
+	jsr	-90(a6)
 	rts
 
-; AddBob(bob, rp)
+	section	_AddBob_stub,code
+
+; VOID AddBob(struct Bob * bob, struct RastPort * rp)
 	xdef	_AddBob
 _AddBob:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; bob
-	move.l	16(sp),a1	; rp
-	move.l	_GfxBase,a6
-	jsr	-96(a6)	; AddBob()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-96(a6)
 	rts
 
-; AddVSprite(vSprite, rp)
+	section	_AddVSprite_stub,code
+
+; VOID AddVSprite(struct VSprite * vSprite, struct RastPort * rp)
 	xdef	_AddVSprite
 _AddVSprite:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; vSprite
-	move.l	16(sp),a1	; rp
-	move.l	_GfxBase,a6
-	jsr	-102(a6)	; AddVSprite()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-102(a6)
 	rts
 
-; DoCollision(rp)
+	section	_DoCollision_stub,code
+
+; VOID DoCollision(struct RastPort * rp)
 	xdef	_DoCollision
 _DoCollision:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; rp
-	move.l	_GfxBase,a6
-	jsr	-108(a6)	; DoCollision()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-108(a6)
 	rts
 
-; DrawGList(rp, vp)
+	section	_DrawGList_stub,code
+
+; VOID DrawGList(struct RastPort * rp, struct ViewPort * vp)
 	xdef	_DrawGList
 _DrawGList:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a1	; rp
-	move.l	16(sp),a0	; vp
-	move.l	_GfxBase,a6
-	jsr	-114(a6)	; DrawGList()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a1
+	movea.l	8(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-114(a6)
 	rts
 
-; InitGels(head, tail, gelsInfo)
+	section	_InitGels_stub,code
+
+; VOID InitGels(struct VSprite * head, struct VSprite * tail, struct GelsInfo * gelsInfo)
 	xdef	_InitGels
 _InitGels:
-	movem.l	a0-a2/a6,-(sp)
-	move.l	12(sp),a0	; head
-	move.l	16(sp),a1	; tail
-	move.l	20(sp),a2	; gelsInfo
-	move.l	_GfxBase,a6
-	jsr	-120(a6)	; InitGels()
-	movem.l	(sp)+,a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	_GfxBase,a6
+	jsr	-120(a6)
 	rts
 
-; InitMasks(vSprite)
+	section	_InitMasks_stub,code
+
+; VOID InitMasks(struct VSprite * vSprite)
 	xdef	_InitMasks
 _InitMasks:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; vSprite
-	move.l	_GfxBase,a6
-	jsr	-126(a6)	; InitMasks()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-126(a6)
 	rts
 
-; RemIBob(bob, rp, vp)
+	section	_RemIBob_stub,code
+
+; VOID RemIBob(struct Bob * bob, struct RastPort * rp, struct ViewPort * vp)
 	xdef	_RemIBob
 _RemIBob:
-	movem.l	a0-a2/a6,-(sp)
-	move.l	12(sp),a0	; bob
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),a2	; vp
-	move.l	_GfxBase,a6
-	jsr	-132(a6)	; RemIBob()
-	movem.l	(sp)+,a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	_GfxBase,a6
+	jsr	-132(a6)
 	rts
 
-; RemVSprite(vSprite)
+	section	_RemVSprite_stub,code
+
+; VOID RemVSprite(struct VSprite * vSprite)
 	xdef	_RemVSprite
 _RemVSprite:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; vSprite
-	move.l	_GfxBase,a6
-	jsr	-138(a6)	; RemVSprite()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-138(a6)
 	rts
 
-; SetCollision(num, routine, gelsInfo)
+	section	_SetCollision_stub,code
+
+; VOID SetCollision(ULONG num, VOID (*routine)(struct VSprite *gelA, struct VSprite *gelB) routine, struct GelsInfo * gelsInfo)
 	xdef	_SetCollision
 _SetCollision:
-	movem.l	d0/a0-a1/a6,-(sp)
-	move.l	16(sp),d0	; num
-	move.l	20(sp),a0	; routine
-	move.l	24(sp),a1	; gelsInfo
-	move.l	_GfxBase,a6
-	jsr	-144(a6)	; SetCollision()
-	movem.l	(sp)+,d0/a0-a1/a6
+	move.l	4(sp),d0
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-144(a6)
 	rts
 
-; SortGList(rp)
+	section	_SortGList_stub,code
+
+; VOID SortGList(struct RastPort * rp)
 	xdef	_SortGList
 _SortGList:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; rp
-	move.l	_GfxBase,a6
-	jsr	-150(a6)	; SortGList()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-150(a6)
 	rts
 
-; AddAnimOb(anOb, anKey, rp)
+	section	_AddAnimOb_stub,code
+
+; VOID AddAnimOb(struct AnimOb * anOb, struct AnimOb ** anKey, struct RastPort * rp)
 	xdef	_AddAnimOb
 _AddAnimOb:
-	movem.l	a0-a2/a6,-(sp)
-	move.l	12(sp),a0	; anOb
-	move.l	16(sp),a1	; anKey
-	move.l	20(sp),a2	; rp
-	move.l	_GfxBase,a6
-	jsr	-156(a6)	; AddAnimOb()
-	movem.l	(sp)+,a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	_GfxBase,a6
+	jsr	-156(a6)
 	rts
 
-; Animate(anKey, rp)
+	section	_Animate_stub,code
+
+; VOID Animate(struct AnimOb ** anKey, struct RastPort * rp)
 	xdef	_Animate
 _Animate:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; anKey
-	move.l	16(sp),a1	; rp
-	move.l	_GfxBase,a6
-	jsr	-162(a6)	; Animate()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-162(a6)
 	rts
 
-; GetGBuffers(anOb, rp, flag)
+	section	_GetGBuffers_stub,code
+
+; BOOL GetGBuffers(struct AnimOb * anOb, struct RastPort * rp, BOOL flag)
 	xdef	_GetGBuffers
 _GetGBuffers:
-	movem.l	d0/a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; anOb
-	move.l	20(sp),a1	; rp
-	move.l	24(sp),d0	; flag
-	move.l	_GfxBase,a6
-	jsr	-168(a6)	; GetGBuffers()
-	movem.l	(sp)+,d0/a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-168(a6)
 	rts
 
-; InitGMasks(anOb)
+	section	_InitGMasks_stub,code
+
+; VOID InitGMasks(struct AnimOb * anOb)
 	xdef	_InitGMasks
 _InitGMasks:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; anOb
-	move.l	_GfxBase,a6
-	jsr	-174(a6)	; InitGMasks()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-174(a6)
 	rts
 
-; DrawEllipse(rp, xCenter, yCenter, a, b)
+	section	_DrawEllipse_stub,code
+
+; VOID DrawEllipse(struct RastPort * rp, WORD xCenter, WORD yCenter, WORD a, WORD b)
 	xdef	_DrawEllipse
 _DrawEllipse:
-	movem.l	d0-d3/a1/a6,-(sp)
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),d0	; xCenter
-	move.l	24(sp),d1	; yCenter
-	move.l	28(sp),d2	; a
-	move.l	32(sp),d3	; b
-	move.l	_GfxBase,a6
-	jsr	-180(a6)	; DrawEllipse()
-	movem.l	(sp)+,d0-d3/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	move.l	16(sp),d2
+	move.l	20(sp),d3
+	movea.l	_GfxBase,a6
+	jsr	-180(a6)
 	rts
 
-; AreaEllipse(rp, xCenter, yCenter, a, b)
+	section	_AreaEllipse_stub,code
+
+; LONG AreaEllipse(struct RastPort * rp, WORD xCenter, WORD yCenter, WORD a, WORD b)
 	xdef	_AreaEllipse
 _AreaEllipse:
-	movem.l	d0-d3/a1/a6,-(sp)
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),d0	; xCenter
-	move.l	24(sp),d1	; yCenter
-	move.l	28(sp),d2	; a
-	move.l	32(sp),d3	; b
-	move.l	_GfxBase,a6
-	jsr	-186(a6)	; AreaEllipse()
-	movem.l	(sp)+,d0-d3/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	move.l	16(sp),d2
+	move.l	20(sp),d3
+	movea.l	_GfxBase,a6
+	jsr	-186(a6)
 	rts
 
-; LoadRGB4(vp, colors, count)
+	section	_LoadRGB4_stub,code
+
+; VOID LoadRGB4(struct ViewPort * vp, const UWORD * colors, WORD count)
 	xdef	_LoadRGB4
 _LoadRGB4:
-	movem.l	d0/a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; vp
-	move.l	20(sp),a1	; colors
-	move.l	24(sp),d0	; count
-	move.l	_GfxBase,a6
-	jsr	-192(a6)	; LoadRGB4()
-	movem.l	(sp)+,d0/a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-192(a6)
 	rts
 
-; InitRastPort(rp)
+	section	_InitRastPort_stub,code
+
+; VOID InitRastPort(struct RastPort * rp)
 	xdef	_InitRastPort
 _InitRastPort:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; rp
-	move.l	_GfxBase,a6
-	jsr	-198(a6)	; InitRastPort()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-198(a6)
 	rts
 
-; InitVPort(vp)
+	section	_InitVPort_stub,code
+
+; VOID InitVPort(struct ViewPort * vp)
 	xdef	_InitVPort
 _InitVPort:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; vp
-	move.l	_GfxBase,a6
-	jsr	-204(a6)	; InitVPort()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-204(a6)
 	rts
 
-; MrgCop(view)
+	section	_MrgCop_stub,code
+
+; ULONG MrgCop(struct View * view)
 	xdef	_MrgCop
 _MrgCop:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; view
-	move.l	_GfxBase,a6
-	jsr	-210(a6)	; MrgCop()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-210(a6)
 	rts
 
-; MakeVPort(view, vp)
+	section	_MakeVPort_stub,code
+
+; ULONG MakeVPort(struct View * view, struct ViewPort * vp)
 	xdef	_MakeVPort
 _MakeVPort:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; view
-	move.l	16(sp),a1	; vp
-	move.l	_GfxBase,a6
-	jsr	-216(a6)	; MakeVPort()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-216(a6)
 	rts
 
-; LoadView(view)
+	section	_LoadView_stub,code
+
+; VOID LoadView(struct View * view)
 	xdef	_LoadView
 _LoadView:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; view
-	move.l	_GfxBase,a6
-	jsr	-222(a6)	; LoadView()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-222(a6)
 	rts
 
-; WaitBlit()
+	section	_WaitBlit_stub,code
+
+; VOID WaitBlit()
 	xdef	_WaitBlit
 _WaitBlit:
-	movem.l	a6,-(sp)
-	move.l	_GfxBase,a6
-	jsr	-228(a6)	; WaitBlit()
-	movem.l	(sp)+,a6
+	movea.l	_GfxBase,a6
+	jsr	-228(a6)
 	rts
 
-; SetRast(rp, pen)
+	section	_SetRast_stub,code
+
+; VOID SetRast(struct RastPort * rp, UBYTE pen)
 	xdef	_SetRast
 _SetRast:
-	movem.l	d0/a1/a6,-(sp)
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),d0	; pen
-	move.l	_GfxBase,a6
-	jsr	-234(a6)	; SetRast()
-	movem.l	(sp)+,d0/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-234(a6)
 	rts
 
-; Move(rp, x, y)
+	section	_Move_stub,code
+
+; VOID Move(struct RastPort * rp, WORD x, WORD y)
 	xdef	_Move
 _Move:
-	movem.l	d0-d1/a1/a6,-(sp)
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),d0	; x
-	move.l	24(sp),d1	; y
-	move.l	_GfxBase,a6
-	jsr	-240(a6)	; Move()
-	movem.l	(sp)+,d0-d1/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	movea.l	_GfxBase,a6
+	jsr	-240(a6)
 	rts
 
-; Draw(rp, x, y)
+	section	_Draw_stub,code
+
+; VOID Draw(struct RastPort * rp, WORD x, WORD y)
 	xdef	_Draw
 _Draw:
-	movem.l	d0-d1/a1/a6,-(sp)
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),d0	; x
-	move.l	24(sp),d1	; y
-	move.l	_GfxBase,a6
-	jsr	-246(a6)	; Draw()
-	movem.l	(sp)+,d0-d1/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	movea.l	_GfxBase,a6
+	jsr	-246(a6)
 	rts
 
-; AreaMove(rp, x, y)
+	section	_AreaMove_stub,code
+
+; LONG AreaMove(struct RastPort * rp, WORD x, WORD y)
 	xdef	_AreaMove
 _AreaMove:
-	movem.l	d0-d1/a1/a6,-(sp)
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),d0	; x
-	move.l	24(sp),d1	; y
-	move.l	_GfxBase,a6
-	jsr	-252(a6)	; AreaMove()
-	movem.l	(sp)+,d0-d1/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	movea.l	_GfxBase,a6
+	jsr	-252(a6)
 	rts
 
-; AreaDraw(rp, x, y)
+	section	_AreaDraw_stub,code
+
+; LONG AreaDraw(struct RastPort * rp, WORD x, WORD y)
 	xdef	_AreaDraw
 _AreaDraw:
-	movem.l	d0-d1/a1/a6,-(sp)
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),d0	; x
-	move.l	24(sp),d1	; y
-	move.l	_GfxBase,a6
-	jsr	-258(a6)	; AreaDraw()
-	movem.l	(sp)+,d0-d1/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	movea.l	_GfxBase,a6
+	jsr	-258(a6)
 	rts
 
-; AreaEnd(rp)
+	section	_AreaEnd_stub,code
+
+; LONG AreaEnd(struct RastPort * rp)
 	xdef	_AreaEnd
 _AreaEnd:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; rp
-	move.l	_GfxBase,a6
-	jsr	-264(a6)	; AreaEnd()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-264(a6)
 	rts
 
-; WaitTOF()
+	section	_WaitTOF_stub,code
+
+; VOID WaitTOF()
 	xdef	_WaitTOF
 _WaitTOF:
-	movem.l	a6,-(sp)
-	move.l	_GfxBase,a6
-	jsr	-270(a6)	; WaitTOF()
-	movem.l	(sp)+,a6
+	movea.l	_GfxBase,a6
+	jsr	-270(a6)
 	rts
 
-; QBlit(blit)
+	section	_QBlit_stub,code
+
+; VOID QBlit(struct bltnode * blit)
 	xdef	_QBlit
 _QBlit:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; blit
-	move.l	_GfxBase,a6
-	jsr	-276(a6)	; QBlit()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-276(a6)
 	rts
 
-; InitArea(areaInfo, vectorBuffer, maxVectors)
+	section	_InitArea_stub,code
+
+; VOID InitArea(struct AreaInfo * areaInfo, APTR vectorBuffer, WORD maxVectors)
 	xdef	_InitArea
 _InitArea:
-	movem.l	d0/a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; areaInfo
-	move.l	20(sp),a1	; vectorBuffer
-	move.l	24(sp),d0	; maxVectors
-	move.l	_GfxBase,a6
-	jsr	-282(a6)	; InitArea()
-	movem.l	(sp)+,d0/a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-282(a6)
 	rts
 
-; SetRGB4(vp, index, red, green, blue)
+	section	_SetRGB4_stub,code
+
+; VOID SetRGB4(struct ViewPort * vp, WORD index, UBYTE red, UBYTE green, UBYTE blue)
 	xdef	_SetRGB4
 _SetRGB4:
-	movem.l	d0-d3/a0/a6,-(sp)
-	move.l	16(sp),a0	; vp
-	move.l	20(sp),d0	; index
-	move.l	24(sp),d1	; red
-	move.l	28(sp),d2	; green
-	move.l	32(sp),d3	; blue
-	move.l	_GfxBase,a6
-	jsr	-288(a6)	; SetRGB4()
-	movem.l	(sp)+,d0-d3/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	move.l	16(sp),d2
+	move.l	20(sp),d3
+	movea.l	_GfxBase,a6
+	jsr	-288(a6)
 	rts
 
-; QBSBlit(blit)
+	section	_QBSBlit_stub,code
+
+; VOID QBSBlit(struct bltnode * blit)
 	xdef	_QBSBlit
 _QBSBlit:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; blit
-	move.l	_GfxBase,a6
-	jsr	-294(a6)	; QBSBlit()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-294(a6)
 	rts
 
-; BltClear(memBlock, byteCount, flags)
+	section	_BltClear_stub,code
+
+; VOID BltClear(PLANEPTR memBlock, ULONG byteCount, ULONG flags)
 	xdef	_BltClear
 _BltClear:
-	movem.l	d0-d1/a1/a6,-(sp)
-	move.l	16(sp),a1	; memBlock
-	move.l	20(sp),d0	; byteCount
-	move.l	24(sp),d1	; flags
-	move.l	_GfxBase,a6
-	jsr	-300(a6)	; BltClear()
-	movem.l	(sp)+,d0-d1/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	movea.l	_GfxBase,a6
+	jsr	-300(a6)
 	rts
 
-; RectFill(rp, xMin, yMin, xMax, yMax)
+	section	_RectFill_stub,code
+
+; VOID RectFill(struct RastPort * rp, WORD xMin, WORD yMin, WORD xMax, WORD yMax)
 	xdef	_RectFill
 _RectFill:
-	movem.l	d0-d3/a1/a6,-(sp)
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),d0	; xMin
-	move.l	24(sp),d1	; yMin
-	move.l	28(sp),d2	; xMax
-	move.l	32(sp),d3	; yMax
-	move.l	_GfxBase,a6
-	jsr	-306(a6)	; RectFill()
-	movem.l	(sp)+,d0-d3/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	move.l	16(sp),d2
+	move.l	20(sp),d3
+	movea.l	_GfxBase,a6
+	jsr	-306(a6)
 	rts
 
-; BltPattern(rp, mask, xMin, yMin, xMax, yMax, maskBPR)
+	section	_BltPattern_stub,code
+
+; VOID BltPattern(struct RastPort * rp, const PLANEPTR mask, WORD xMin, WORD yMin, WORD xMax, WORD yMax, UWORD maskBPR)
 	xdef	_BltPattern
 _BltPattern:
-	movem.l	d0-d4/a0-a1/a6,-(sp)
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),a0	; mask
-	move.l	24(sp),d0	; xMin
-	move.l	28(sp),d1	; yMin
-	move.l	32(sp),d2	; xMax
-	move.l	36(sp),d3	; yMax
-	move.l	40(sp),d4	; maskBPR
-	move.l	_GfxBase,a6
-	jsr	-312(a6)	; BltPattern()
-	movem.l	(sp)+,d0-d4/a0-a1/a6
+	movea.l	4(sp),a1
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	move.l	16(sp),d1
+	move.l	20(sp),d2
+	move.l	24(sp),d3
+	move.l	28(sp),d4
+	movea.l	_GfxBase,a6
+	jsr	-312(a6)
 	rts
 
-; ReadPixel(rp, x, y)
+	section	_ReadPixel_stub,code
+
+; ULONG ReadPixel(struct RastPort * rp, WORD x, WORD y)
 	xdef	_ReadPixel
 _ReadPixel:
-	movem.l	d0-d1/a1/a6,-(sp)
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),d0	; x
-	move.l	24(sp),d1	; y
-	move.l	_GfxBase,a6
-	jsr	-318(a6)	; ReadPixel()
-	movem.l	(sp)+,d0-d1/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	movea.l	_GfxBase,a6
+	jsr	-318(a6)
 	rts
 
-; WritePixel(rp, x, y)
+	section	_WritePixel_stub,code
+
+; LONG WritePixel(struct RastPort * rp, WORD x, WORD y)
 	xdef	_WritePixel
 _WritePixel:
-	movem.l	d0-d1/a1/a6,-(sp)
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),d0	; x
-	move.l	24(sp),d1	; y
-	move.l	_GfxBase,a6
-	jsr	-324(a6)	; WritePixel()
-	movem.l	(sp)+,d0-d1/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	movea.l	_GfxBase,a6
+	jsr	-324(a6)
 	rts
 
-; Flood(rp, mode, x, y)
+	section	_Flood_stub,code
+
+; BOOL Flood(struct RastPort * rp, ULONG mode, WORD x, WORD y)
 	xdef	_Flood
 _Flood:
-	movem.l	d0-d2/a1/a6,-(sp)
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),d2	; mode
-	move.l	24(sp),d0	; x
-	move.l	28(sp),d1	; y
-	move.l	_GfxBase,a6
-	jsr	-330(a6)	; Flood()
-	movem.l	(sp)+,d0-d2/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d2
+	move.l	12(sp),d0
+	move.l	16(sp),d1
+	movea.l	_GfxBase,a6
+	jsr	-330(a6)
 	rts
 
-; PolyDraw(rp, count, polyTable)
+	section	_PolyDraw_stub,code
+
+; VOID PolyDraw(struct RastPort * rp, WORD count, const WORD * polyTable)
 	xdef	_PolyDraw
 _PolyDraw:
-	movem.l	d0/a0-a1/a6,-(sp)
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),d0	; count
-	move.l	24(sp),a0	; polyTable
-	move.l	_GfxBase,a6
-	jsr	-336(a6)	; PolyDraw()
-	movem.l	(sp)+,d0/a0-a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	movea.l	12(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-336(a6)
 	rts
 
-; SetAPen(rp, pen)
+	section	_SetAPen_stub,code
+
+; VOID SetAPen(struct RastPort * rp, UBYTE pen)
 	xdef	_SetAPen
 _SetAPen:
-	movem.l	d0/a1/a6,-(sp)
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),d0	; pen
-	move.l	_GfxBase,a6
-	jsr	-342(a6)	; SetAPen()
-	movem.l	(sp)+,d0/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-342(a6)
 	rts
 
-; SetBPen(rp, pen)
+	section	_SetBPen_stub,code
+
+; VOID SetBPen(struct RastPort * rp, UBYTE pen)
 	xdef	_SetBPen
 _SetBPen:
-	movem.l	d0/a1/a6,-(sp)
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),d0	; pen
-	move.l	_GfxBase,a6
-	jsr	-348(a6)	; SetBPen()
-	movem.l	(sp)+,d0/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-348(a6)
 	rts
 
-; SetDrMd(rp, drawMode)
+	section	_SetDrMd_stub,code
+
+; VOID SetDrMd(struct RastPort * rp, UBYTE drawMode)
 	xdef	_SetDrMd
 _SetDrMd:
-	movem.l	d0/a1/a6,-(sp)
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),d0	; drawMode
-	move.l	_GfxBase,a6
-	jsr	-354(a6)	; SetDrMd()
-	movem.l	(sp)+,d0/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-354(a6)
 	rts
 
-; InitView(view)
+	section	_InitView_stub,code
+
+; VOID InitView(struct View * view)
 	xdef	_InitView
 _InitView:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; view
-	move.l	_GfxBase,a6
-	jsr	-360(a6)	; InitView()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-360(a6)
 	rts
 
-; CBump(copList)
+	section	_CBump_stub,code
+
+; VOID CBump(struct UCopList * copList)
 	xdef	_CBump
 _CBump:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; copList
-	move.l	_GfxBase,a6
-	jsr	-366(a6)	; CBump()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-366(a6)
 	rts
 
-; CMove(copList, destination, data)
+	section	_CMove_stub,code
+
+; VOID CMove(struct UCopList * copList, APTR destination, WORD data)
 	xdef	_CMove
 _CMove:
-	movem.l	d0-d1/a1/a6,-(sp)
-	move.l	16(sp),a1	; copList
-	move.l	20(sp),d0	; destination
-	move.l	24(sp),d1	; data
-	move.l	_GfxBase,a6
-	jsr	-372(a6)	; CMove()
-	movem.l	(sp)+,d0-d1/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	movea.l	_GfxBase,a6
+	jsr	-372(a6)
 	rts
 
-; CWait(copList, v, h)
+	section	_CWait_stub,code
+
+; VOID CWait(struct UCopList * copList, WORD v, WORD h)
 	xdef	_CWait
 _CWait:
-	movem.l	d0-d1/a1/a6,-(sp)
-	move.l	16(sp),a1	; copList
-	move.l	20(sp),d0	; v
-	move.l	24(sp),d1	; h
-	move.l	_GfxBase,a6
-	jsr	-378(a6)	; CWait()
-	movem.l	(sp)+,d0-d1/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	movea.l	_GfxBase,a6
+	jsr	-378(a6)
 	rts
 
-; VBeamPos()
+	section	_VBeamPos_stub,code
+
+; LONG VBeamPos()
 	xdef	_VBeamPos
 _VBeamPos:
-	movem.l	a6,-(sp)
-	move.l	_GfxBase,a6
-	jsr	-384(a6)	; VBeamPos()
-	movem.l	(sp)+,a6
+	movea.l	_GfxBase,a6
+	jsr	-384(a6)
 	rts
 
-; InitBitMap(bitMap, depth, width, height)
+	section	_InitBitMap_stub,code
+
+; VOID InitBitMap(struct BitMap * bitMap, BYTE depth, WORD width, WORD height)
 	xdef	_InitBitMap
 _InitBitMap:
-	movem.l	d0-d2/a0/a6,-(sp)
-	move.l	16(sp),a0	; bitMap
-	move.l	20(sp),d0	; depth
-	move.l	24(sp),d1	; width
-	move.l	28(sp),d2	; height
-	move.l	_GfxBase,a6
-	jsr	-390(a6)	; InitBitMap()
-	movem.l	(sp)+,d0-d2/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	move.l	16(sp),d2
+	movea.l	_GfxBase,a6
+	jsr	-390(a6)
 	rts
 
-; ScrollRaster(rp, dx, dy, xMin, yMin, xMax, yMax)
+	section	_ScrollRaster_stub,code
+
+; VOID ScrollRaster(struct RastPort * rp, WORD dx, WORD dy, WORD xMin, WORD yMin, WORD xMax, WORD yMax)
 	xdef	_ScrollRaster
 _ScrollRaster:
-	movem.l	d0-d5/a1/a6,-(sp)
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),d0	; dx
-	move.l	24(sp),d1	; dy
-	move.l	28(sp),d2	; xMin
-	move.l	32(sp),d3	; yMin
-	move.l	36(sp),d4	; xMax
-	move.l	40(sp),d5	; yMax
-	move.l	_GfxBase,a6
-	jsr	-396(a6)	; ScrollRaster()
-	movem.l	(sp)+,d0-d5/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	move.l	16(sp),d2
+	move.l	20(sp),d3
+	move.l	24(sp),d4
+	move.l	28(sp),d5
+	movea.l	_GfxBase,a6
+	jsr	-396(a6)
 	rts
 
-; WaitBOVP(vp)
+	section	_WaitBOVP_stub,code
+
+; VOID WaitBOVP(struct ViewPort * vp)
 	xdef	_WaitBOVP
 _WaitBOVP:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; vp
-	move.l	_GfxBase,a6
-	jsr	-402(a6)	; WaitBOVP()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-402(a6)
 	rts
 
-; GetSprite(sprite, num)
+	section	_GetSprite_stub,code
+
+; WORD GetSprite(struct SimpleSprite * sprite, WORD num)
 	xdef	_GetSprite
 _GetSprite:
-	movem.l	d0/a0/a6,-(sp)
-	move.l	16(sp),a0	; sprite
-	move.l	20(sp),d0	; num
-	move.l	_GfxBase,a6
-	jsr	-408(a6)	; GetSprite()
-	movem.l	(sp)+,d0/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-408(a6)
 	rts
 
-; FreeSprite(num)
+	section	_FreeSprite_stub,code
+
+; VOID FreeSprite(WORD num)
 	xdef	_FreeSprite
 _FreeSprite:
-	movem.l	d0/a6,-(sp)
-	move.l	12(sp),d0	; num
-	move.l	_GfxBase,a6
-	jsr	-414(a6)	; FreeSprite()
-	movem.l	(sp)+,d0/a6
+	move.l	4(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-414(a6)
 	rts
 
-; ChangeSprite(vp, sprite, newData)
+	section	_ChangeSprite_stub,code
+
+; VOID ChangeSprite(struct ViewPort * vp, struct SimpleSprite * sprite, UWORD * newData)
 	xdef	_ChangeSprite
 _ChangeSprite:
-	movem.l	a0-a2/a6,-(sp)
-	move.l	12(sp),a0	; vp
-	move.l	16(sp),a1	; sprite
-	move.l	20(sp),a2	; newData
-	move.l	_GfxBase,a6
-	jsr	-420(a6)	; ChangeSprite()
-	movem.l	(sp)+,a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	_GfxBase,a6
+	jsr	-420(a6)
 	rts
 
-; MoveSprite(vp, sprite, x, y)
+	section	_MoveSprite_stub,code
+
+; VOID MoveSprite(struct ViewPort * vp, struct SimpleSprite * sprite, WORD x, WORD y)
 	xdef	_MoveSprite
 _MoveSprite:
-	movem.l	d0-d1/a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; vp
-	move.l	20(sp),a1	; sprite
-	move.l	24(sp),d0	; x
-	move.l	28(sp),d1	; y
-	move.l	_GfxBase,a6
-	jsr	-426(a6)	; MoveSprite()
-	movem.l	(sp)+,d0-d1/a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	move.l	16(sp),d1
+	movea.l	_GfxBase,a6
+	jsr	-426(a6)
 	rts
 
-; LockLayerRom(layer)
+	section	_LockLayerRom_stub,code
+
+; VOID LockLayerRom(struct Layer * layer)
 	xdef	_LockLayerRom
 _LockLayerRom:
-	movem.l	a5/a6,-(sp)
-	move.l	12(sp),a5	; layer
-	move.l	_GfxBase,a6
-	jsr	-432(a6)	; LockLayerRom()
-	movem.l	(sp)+,a5/a6
+	movea.l	4(sp),a5
+	movea.l	_GfxBase,a6
+	jsr	-432(a6)
 	rts
 
-; UnlockLayerRom(layer)
+	section	_UnlockLayerRom_stub,code
+
+; VOID UnlockLayerRom(struct Layer * layer)
 	xdef	_UnlockLayerRom
 _UnlockLayerRom:
-	movem.l	a5/a6,-(sp)
-	move.l	12(sp),a5	; layer
-	move.l	_GfxBase,a6
-	jsr	-438(a6)	; UnlockLayerRom()
-	movem.l	(sp)+,a5/a6
+	movea.l	4(sp),a5
+	movea.l	_GfxBase,a6
+	jsr	-438(a6)
 	rts
 
-; SyncSBitMap(layer)
+	section	_SyncSBitMap_stub,code
+
+; VOID SyncSBitMap(struct Layer * layer)
 	xdef	_SyncSBitMap
 _SyncSBitMap:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; layer
-	move.l	_GfxBase,a6
-	jsr	-444(a6)	; SyncSBitMap()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-444(a6)
 	rts
 
-; CopySBitMap(layer)
+	section	_CopySBitMap_stub,code
+
+; VOID CopySBitMap(struct Layer * layer)
 	xdef	_CopySBitMap
 _CopySBitMap:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; layer
-	move.l	_GfxBase,a6
-	jsr	-450(a6)	; CopySBitMap()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-450(a6)
 	rts
 
-; OwnBlitter()
+	section	_OwnBlitter_stub,code
+
+; VOID OwnBlitter()
 	xdef	_OwnBlitter
 _OwnBlitter:
-	movem.l	a6,-(sp)
-	move.l	_GfxBase,a6
-	jsr	-456(a6)	; OwnBlitter()
-	movem.l	(sp)+,a6
+	movea.l	_GfxBase,a6
+	jsr	-456(a6)
 	rts
 
-; DisownBlitter()
+	section	_DisownBlitter_stub,code
+
+; VOID DisownBlitter()
 	xdef	_DisownBlitter
 _DisownBlitter:
-	movem.l	a6,-(sp)
-	move.l	_GfxBase,a6
-	jsr	-462(a6)	; DisownBlitter()
-	movem.l	(sp)+,a6
+	movea.l	_GfxBase,a6
+	jsr	-462(a6)
 	rts
 
-; InitTmpRas(tmpRas, buffer, size)
+	section	_InitTmpRas_stub,code
+
+; struct TmpRas * InitTmpRas(struct TmpRas * tmpRas, PLANEPTR buffer, LONG size)
 	xdef	_InitTmpRas
 _InitTmpRas:
-	movem.l	d0/a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; tmpRas
-	move.l	20(sp),a1	; buffer
-	move.l	24(sp),d0	; size
-	move.l	_GfxBase,a6
-	jsr	-468(a6)	; InitTmpRas()
-	movem.l	(sp)+,d0/a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-468(a6)
 	rts
 
-; AskFont(rp, textAttr)
+	section	_AskFont_stub,code
+
+; VOID AskFont(struct RastPort * rp, struct TextAttr * textAttr)
 	xdef	_AskFont
 _AskFont:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a1	; rp
-	move.l	16(sp),a0	; textAttr
-	move.l	_GfxBase,a6
-	jsr	-474(a6)	; AskFont()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a1
+	movea.l	8(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-474(a6)
 	rts
 
-; AddFont(textFont)
+	section	_AddFont_stub,code
+
+; VOID AddFont(struct TextFont * textFont)
 	xdef	_AddFont
 _AddFont:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; textFont
-	move.l	_GfxBase,a6
-	jsr	-480(a6)	; AddFont()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-480(a6)
 	rts
 
-; RemFont(textFont)
+	section	_RemFont_stub,code
+
+; VOID RemFont(struct TextFont * textFont)
 	xdef	_RemFont
 _RemFont:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; textFont
-	move.l	_GfxBase,a6
-	jsr	-486(a6)	; RemFont()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-486(a6)
 	rts
 
-; AllocRaster(width, height)
+	section	_AllocRaster_stub,code
+
+; PLANEPTR AllocRaster(UWORD width, UWORD height)
 	xdef	_AllocRaster
 _AllocRaster:
-	movem.l	d0-d1/a6,-(sp)
-	move.l	12(sp),d0	; width
-	move.l	16(sp),d1	; height
-	move.l	_GfxBase,a6
-	jsr	-492(a6)	; AllocRaster()
-	movem.l	(sp)+,d0-d1/a6
+	move.l	4(sp),d0
+	move.l	8(sp),d1
+	movea.l	_GfxBase,a6
+	jsr	-492(a6)
 	rts
 
-; FreeRaster(p, width, height)
+	section	_FreeRaster_stub,code
+
+; VOID FreeRaster(PLANEPTR p, UWORD width, UWORD height)
 	xdef	_FreeRaster
 _FreeRaster:
-	movem.l	d0-d1/a0/a6,-(sp)
-	move.l	16(sp),a0	; p
-	move.l	20(sp),d0	; width
-	move.l	24(sp),d1	; height
-	move.l	_GfxBase,a6
-	jsr	-498(a6)	; FreeRaster()
-	movem.l	(sp)+,d0-d1/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	movea.l	_GfxBase,a6
+	jsr	-498(a6)
 	rts
 
-; AndRectRegion(region, rectangle)
+	section	_AndRectRegion_stub,code
+
+; VOID AndRectRegion(struct Region * region, const struct Rectangle * rectangle)
 	xdef	_AndRectRegion
 _AndRectRegion:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; region
-	move.l	16(sp),a1	; rectangle
-	move.l	_GfxBase,a6
-	jsr	-504(a6)	; AndRectRegion()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-504(a6)
 	rts
 
-; OrRectRegion(region, rectangle)
+	section	_OrRectRegion_stub,code
+
+; BOOL OrRectRegion(struct Region * region, const struct Rectangle * rectangle)
 	xdef	_OrRectRegion
 _OrRectRegion:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; region
-	move.l	16(sp),a1	; rectangle
-	move.l	_GfxBase,a6
-	jsr	-510(a6)	; OrRectRegion()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-510(a6)
 	rts
 
-; NewRegion()
+	section	_NewRegion_stub,code
+
+; struct Region * NewRegion()
 	xdef	_NewRegion
 _NewRegion:
-	movem.l	a6,-(sp)
-	move.l	_GfxBase,a6
-	jsr	-516(a6)	; NewRegion()
-	movem.l	(sp)+,a6
+	movea.l	_GfxBase,a6
+	jsr	-516(a6)
 	rts
 
-; ClearRectRegion(region, rectangle)
+	section	_ClearRectRegion_stub,code
+
+; BOOL ClearRectRegion(struct Region * region, const struct Rectangle * rectangle)
 	xdef	_ClearRectRegion
 _ClearRectRegion:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; region
-	move.l	16(sp),a1	; rectangle
-	move.l	_GfxBase,a6
-	jsr	-522(a6)	; ClearRectRegion()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-522(a6)
 	rts
 
-; ClearRegion(region)
+	section	_ClearRegion_stub,code
+
+; VOID ClearRegion(struct Region * region)
 	xdef	_ClearRegion
 _ClearRegion:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; region
-	move.l	_GfxBase,a6
-	jsr	-528(a6)	; ClearRegion()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-528(a6)
 	rts
 
-; DisposeRegion(region)
+	section	_DisposeRegion_stub,code
+
+; VOID DisposeRegion(struct Region * region)
 	xdef	_DisposeRegion
 _DisposeRegion:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; region
-	move.l	_GfxBase,a6
-	jsr	-534(a6)	; DisposeRegion()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-534(a6)
 	rts
 
-; FreeVPortCopLists(vp)
+	section	_FreeVPortCopLists_stub,code
+
+; VOID FreeVPortCopLists(struct ViewPort * vp)
 	xdef	_FreeVPortCopLists
 _FreeVPortCopLists:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; vp
-	move.l	_GfxBase,a6
-	jsr	-540(a6)	; FreeVPortCopLists()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-540(a6)
 	rts
 
-; FreeCopList(copList)
+	section	_FreeCopList_stub,code
+
+; VOID FreeCopList(struct CopList * copList)
 	xdef	_FreeCopList
 _FreeCopList:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; copList
-	move.l	_GfxBase,a6
-	jsr	-546(a6)	; FreeCopList()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-546(a6)
 	rts
 
-; ClipBlit(srcRP, xSrc, ySrc, destRP, xDest, yDest, xSize, ySize, minterm)
+	section	_ClipBlit_stub,code
+
+; VOID ClipBlit(struct RastPort * srcRP, WORD xSrc, WORD ySrc, struct RastPort * destRP, WORD xDest, WORD yDest, WORD xSize, WORD ySize, UBYTE minterm)
 	xdef	_ClipBlit
 _ClipBlit:
-	movem.l	d0-d6/a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; srcRP
-	move.l	20(sp),d0	; xSrc
-	move.l	24(sp),d1	; ySrc
-	move.l	28(sp),a1	; destRP
-	move.l	32(sp),d2	; xDest
-	move.l	36(sp),d3	; yDest
-	move.l	40(sp),d4	; xSize
-	move.l	44(sp),d5	; ySize
-	move.l	48(sp),d6	; minterm
-	move.l	_GfxBase,a6
-	jsr	-552(a6)	; ClipBlit()
-	movem.l	(sp)+,d0-d6/a0-a1/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	movea.l	16(sp),a1
+	move.l	20(sp),d2
+	move.l	24(sp),d3
+	move.l	28(sp),d4
+	move.l	32(sp),d5
+	move.l	36(sp),d6
+	movea.l	_GfxBase,a6
+	jsr	-552(a6)
 	rts
 
-; XorRectRegion(region, rectangle)
+	section	_XorRectRegion_stub,code
+
+; BOOL XorRectRegion(struct Region * region, const struct Rectangle * rectangle)
 	xdef	_XorRectRegion
 _XorRectRegion:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; region
-	move.l	16(sp),a1	; rectangle
-	move.l	_GfxBase,a6
-	jsr	-558(a6)	; XorRectRegion()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-558(a6)
 	rts
 
-; FreeCprList(cprList)
+	section	_FreeCprList_stub,code
+
+; VOID FreeCprList(struct cprlist * cprList)
 	xdef	_FreeCprList
 _FreeCprList:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; cprList
-	move.l	_GfxBase,a6
-	jsr	-564(a6)	; FreeCprList()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-564(a6)
 	rts
 
-; GetColorMap(entries)
+	section	_GetColorMap_stub,code
+
+; struct ColorMap * GetColorMap(LONG entries)
 	xdef	_GetColorMap
 _GetColorMap:
-	movem.l	d0/a6,-(sp)
-	move.l	12(sp),d0	; entries
-	move.l	_GfxBase,a6
-	jsr	-570(a6)	; GetColorMap()
-	movem.l	(sp)+,d0/a6
+	move.l	4(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-570(a6)
 	rts
 
-; FreeColorMap(colorMap)
+	section	_FreeColorMap_stub,code
+
+; VOID FreeColorMap(struct ColorMap * colorMap)
 	xdef	_FreeColorMap
 _FreeColorMap:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; colorMap
-	move.l	_GfxBase,a6
-	jsr	-576(a6)	; FreeColorMap()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-576(a6)
 	rts
 
-; GetRGB4(colorMap, entry)
+	section	_GetRGB4_stub,code
+
+; ULONG GetRGB4(struct ColorMap * colorMap, LONG entry)
 	xdef	_GetRGB4
 _GetRGB4:
-	movem.l	d0/a0/a6,-(sp)
-	move.l	16(sp),a0	; colorMap
-	move.l	20(sp),d0	; entry
-	move.l	_GfxBase,a6
-	jsr	-582(a6)	; GetRGB4()
-	movem.l	(sp)+,d0/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-582(a6)
 	rts
 
-; ScrollVPort(vp)
+	section	_ScrollVPort_stub,code
+
+; VOID ScrollVPort(struct ViewPort * vp)
 	xdef	_ScrollVPort
 _ScrollVPort:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; vp
-	move.l	_GfxBase,a6
-	jsr	-588(a6)	; ScrollVPort()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-588(a6)
 	rts
 
-; UCopperListInit(uCopList, n)
+	section	_UCopperListInit_stub,code
+
+; struct CopList * UCopperListInit(struct UCopList * uCopList, WORD n)
 	xdef	_UCopperListInit
 _UCopperListInit:
-	movem.l	d0/a0/a6,-(sp)
-	move.l	16(sp),a0	; uCopList
-	move.l	20(sp),d0	; n
-	move.l	_GfxBase,a6
-	jsr	-594(a6)	; UCopperListInit()
-	movem.l	(sp)+,d0/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-594(a6)
 	rts
 
-; FreeGBuffers(anOb, rp, flag)
+	section	_FreeGBuffers_stub,code
+
+; VOID FreeGBuffers(struct AnimOb * anOb, struct RastPort * rp, BOOL flag)
 	xdef	_FreeGBuffers
 _FreeGBuffers:
-	movem.l	d0/a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; anOb
-	move.l	20(sp),a1	; rp
-	move.l	24(sp),d0	; flag
-	move.l	_GfxBase,a6
-	jsr	-600(a6)	; FreeGBuffers()
-	movem.l	(sp)+,d0/a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-600(a6)
 	rts
 
-; BltBitMapRastPort(srcBitMap, xSrc, ySrc, destRP, xDest, yDest, xSize, ySize, minterm)
+	section	_BltBitMapRastPort_stub,code
+
+; VOID BltBitMapRastPort(const struct BitMap * srcBitMap, WORD xSrc, WORD ySrc, struct RastPort * destRP, WORD xDest, WORD yDest, WORD xSize, WORD ySize, UBYTE minterm)
 	xdef	_BltBitMapRastPort
 _BltBitMapRastPort:
-	movem.l	d0-d6/a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; srcBitMap
-	move.l	20(sp),d0	; xSrc
-	move.l	24(sp),d1	; ySrc
-	move.l	28(sp),a1	; destRP
-	move.l	32(sp),d2	; xDest
-	move.l	36(sp),d3	; yDest
-	move.l	40(sp),d4	; xSize
-	move.l	44(sp),d5	; ySize
-	move.l	48(sp),d6	; minterm
-	move.l	_GfxBase,a6
-	jsr	-606(a6)	; BltBitMapRastPort()
-	movem.l	(sp)+,d0-d6/a0-a1/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	movea.l	16(sp),a1
+	move.l	20(sp),d2
+	move.l	24(sp),d3
+	move.l	28(sp),d4
+	move.l	32(sp),d5
+	move.l	36(sp),d6
+	movea.l	_GfxBase,a6
+	jsr	-606(a6)
 	rts
 
-; OrRegionRegion(srcRegion, destRegion)
+	section	_OrRegionRegion_stub,code
+
+; BOOL OrRegionRegion(const struct Region * srcRegion, struct Region * destRegion)
 	xdef	_OrRegionRegion
 _OrRegionRegion:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; srcRegion
-	move.l	16(sp),a1	; destRegion
-	move.l	_GfxBase,a6
-	jsr	-612(a6)	; OrRegionRegion()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-612(a6)
 	rts
 
-; XorRegionRegion(srcRegion, destRegion)
+	section	_XorRegionRegion_stub,code
+
+; BOOL XorRegionRegion(const struct Region * srcRegion, struct Region * destRegion)
 	xdef	_XorRegionRegion
 _XorRegionRegion:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; srcRegion
-	move.l	16(sp),a1	; destRegion
-	move.l	_GfxBase,a6
-	jsr	-618(a6)	; XorRegionRegion()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-618(a6)
 	rts
 
-; AndRegionRegion(srcRegion, destRegion)
+	section	_AndRegionRegion_stub,code
+
+; BOOL AndRegionRegion(const struct Region * srcRegion, struct Region * destRegion)
 	xdef	_AndRegionRegion
 _AndRegionRegion:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; srcRegion
-	move.l	16(sp),a1	; destRegion
-	move.l	_GfxBase,a6
-	jsr	-624(a6)	; AndRegionRegion()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-624(a6)
 	rts
 
-; SetRGB4CM(colorMap, index, red, green, blue)
+	section	_SetRGB4CM_stub,code
+
+; VOID SetRGB4CM(struct ColorMap * colorMap, WORD index, UBYTE red, UBYTE green, UBYTE blue)
 	xdef	_SetRGB4CM
 _SetRGB4CM:
-	movem.l	d0-d3/a0/a6,-(sp)
-	move.l	16(sp),a0	; colorMap
-	move.l	20(sp),d0	; index
-	move.l	24(sp),d1	; red
-	move.l	28(sp),d2	; green
-	move.l	32(sp),d3	; blue
-	move.l	_GfxBase,a6
-	jsr	-630(a6)	; SetRGB4CM()
-	movem.l	(sp)+,d0-d3/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	move.l	16(sp),d2
+	move.l	20(sp),d3
+	movea.l	_GfxBase,a6
+	jsr	-630(a6)
 	rts
 
-; BltMaskBitMapRastPort(srcBitMap, xSrc, ySrc, destRP, xDest, yDest, xSize, ySize, minterm, bltMask)
+	section	_BltMaskBitMapRastPort_stub,code
+
+; VOID BltMaskBitMapRastPort(const struct BitMap * srcBitMap, WORD xSrc, WORD ySrc, struct RastPort * destRP, WORD xDest, WORD yDest, WORD xSize, WORD ySize, UBYTE minterm, const PLANEPTR bltMask)
 	xdef	_BltMaskBitMapRastPort
 _BltMaskBitMapRastPort:
-	movem.l	d0-d6/a0-a2/a6,-(sp)
-	move.l	16(sp),a0	; srcBitMap
-	move.l	20(sp),d0	; xSrc
-	move.l	24(sp),d1	; ySrc
-	move.l	28(sp),a1	; destRP
-	move.l	32(sp),d2	; xDest
-	move.l	36(sp),d3	; yDest
-	move.l	40(sp),d4	; xSize
-	move.l	44(sp),d5	; ySize
-	move.l	48(sp),d6	; minterm
-	move.l	52(sp),a2	; bltMask
-	move.l	_GfxBase,a6
-	jsr	-636(a6)	; BltMaskBitMapRastPort()
-	movem.l	(sp)+,d0-d6/a0-a2/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	movea.l	16(sp),a1
+	move.l	20(sp),d2
+	move.l	24(sp),d3
+	move.l	28(sp),d4
+	move.l	32(sp),d5
+	move.l	36(sp),d6
+	movea.l	40(sp),a2
+	movea.l	_GfxBase,a6
+	jsr	-636(a6)
 	rts
 
-; AttemptLockLayerRom(layer)
+	section	_AttemptLockLayerRom_stub,code
+
+; BOOL AttemptLockLayerRom(struct Layer * layer)
 	xdef	_AttemptLockLayerRom
 _AttemptLockLayerRom:
-	movem.l	a5/a6,-(sp)
-	move.l	12(sp),a5	; layer
-	move.l	_GfxBase,a6
-	jsr	-654(a6)	; AttemptLockLayerRom()
-	movem.l	(sp)+,a5/a6
+	movea.l	4(sp),a5
+	movea.l	_GfxBase,a6
+	jsr	-654(a6)
 	rts
 
-; GfxNew(gfxNodeType)
+	section	_GfxNew_stub,code
+
+; APTR GfxNew(ULONG gfxNodeType)
 	xdef	_GfxNew
 _GfxNew:
-	movem.l	d0/a6,-(sp)
-	move.l	12(sp),d0	; gfxNodeType
-	move.l	_GfxBase,a6
-	jsr	-660(a6)	; GfxNew()
-	movem.l	(sp)+,d0/a6
+	move.l	4(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-660(a6)
 	rts
 
-; GfxFree(gfxNodePtr)
+	section	_GfxFree_stub,code
+
+; VOID GfxFree(APTR gfxNodePtr)
 	xdef	_GfxFree
 _GfxFree:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; gfxNodePtr
-	move.l	_GfxBase,a6
-	jsr	-666(a6)	; GfxFree()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-666(a6)
 	rts
 
-; GfxAssociate(associateNode, gfxNodePtr)
+	section	_GfxAssociate_stub,code
+
+; VOID GfxAssociate(const APTR associateNode, APTR gfxNodePtr)
 	xdef	_GfxAssociate
 _GfxAssociate:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; associateNode
-	move.l	16(sp),a1	; gfxNodePtr
-	move.l	_GfxBase,a6
-	jsr	-672(a6)	; GfxAssociate()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-672(a6)
 	rts
 
-; BitMapScale(bitScaleArgs)
+	section	_BitMapScale_stub,code
+
+; VOID BitMapScale(struct BitScaleArgs * bitScaleArgs)
 	xdef	_BitMapScale
 _BitMapScale:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; bitScaleArgs
-	move.l	_GfxBase,a6
-	jsr	-678(a6)	; BitMapScale()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-678(a6)
 	rts
 
-; ScalerDiv(factor, numerator, denominator)
+	section	_ScalerDiv_stub,code
+
+; UWORD ScalerDiv(UWORD factor, UWORD numerator, UWORD denominator)
 	xdef	_ScalerDiv
 _ScalerDiv:
-	movem.l	d0-d2/a6,-(sp)
-	move.l	12(sp),d0	; factor
-	move.l	16(sp),d1	; numerator
-	move.l	20(sp),d2	; denominator
-	move.l	_GfxBase,a6
-	jsr	-684(a6)	; ScalerDiv()
-	movem.l	(sp)+,d0-d2/a6
+	move.l	4(sp),d0
+	move.l	8(sp),d1
+	move.l	12(sp),d2
+	movea.l	_GfxBase,a6
+	jsr	-684(a6)
 	rts
 
-; TextExtent(rp, string, count, textExtent)
+	section	_TextExtent_stub,code
+
+; WORD TextExtent(struct RastPort * rp, CONST_STRPTR string, WORD count, struct TextExtent * textExtent)
 	xdef	_TextExtent
 _TextExtent:
-	movem.l	d0/a0-a2/a6,-(sp)
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),a0	; string
-	move.l	24(sp),d0	; count
-	move.l	28(sp),a2	; textExtent
-	move.l	_GfxBase,a6
-	jsr	-690(a6)	; TextExtent()
-	movem.l	(sp)+,d0/a0-a2/a6
+	movea.l	4(sp),a1
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	movea.l	16(sp),a2
+	movea.l	_GfxBase,a6
+	jsr	-690(a6)
 	rts
 
-; TextFit(rp, string, strLen, textExtent, constrainingExtent, strDirection, constrainingBitWidth, constrainingBitHeight)
+	section	_TextFit_stub,code
+
+; ULONG TextFit(struct RastPort * rp, CONST_STRPTR string, UWORD strLen, const struct TextExtent * textExtent, const struct TextExtent * constrainingExtent, WORD strDirection, UWORD constrainingBitWidth, UWORD constrainingBitHeight)
 	xdef	_TextFit
 _TextFit:
-	movem.l	d0-d3/a0-a3/a6,-(sp)
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),a0	; string
-	move.l	24(sp),d0	; strLen
-	move.l	28(sp),a2	; textExtent
-	move.l	32(sp),a3	; constrainingExtent
-	move.l	36(sp),d1	; strDirection
-	move.l	40(sp),d2	; constrainingBitWidth
-	move.l	44(sp),d3	; constrainingBitHeight
-	move.l	_GfxBase,a6
-	jsr	-696(a6)	; TextFit()
-	movem.l	(sp)+,d0-d3/a0-a3/a6
+	movea.l	4(sp),a1
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	movea.l	16(sp),a2
+	movea.l	20(sp),a3
+	move.l	24(sp),d1
+	move.l	28(sp),d2
+	move.l	32(sp),d3
+	movea.l	_GfxBase,a6
+	jsr	-696(a6)
 	rts
 
-; GfxLookUp(associateNode)
+	section	_GfxLookUp_stub,code
+
+; APTR GfxLookUp(const APTR associateNode)
 	xdef	_GfxLookUp
 _GfxLookUp:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; associateNode
-	move.l	_GfxBase,a6
-	jsr	-702(a6)	; GfxLookUp()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-702(a6)
 	rts
 
-; VideoControl(colorMap, tagarray)
+	section	_VideoControl_stub,code
+
+; BOOL VideoControl(struct ColorMap * colorMap, struct TagItem * tagarray)
 	xdef	_VideoControl
 _VideoControl:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; colorMap
-	move.l	16(sp),a1	; tagarray
-	move.l	_GfxBase,a6
-	jsr	-708(a6)	; VideoControl()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-708(a6)
 	rts
 
-; OpenMonitor(monitorName, displayID)
+	section	_OpenMonitor_stub,code
+
+; struct MonitorSpec * OpenMonitor(CONST_STRPTR monitorName, ULONG displayID)
 	xdef	_OpenMonitor
 _OpenMonitor:
-	movem.l	d0/a1/a6,-(sp)
-	move.l	16(sp),a1	; monitorName
-	move.l	20(sp),d0	; displayID
-	move.l	_GfxBase,a6
-	jsr	-714(a6)	; OpenMonitor()
-	movem.l	(sp)+,d0/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-720(a6)
 	rts
 
-; CloseMonitor(monitorSpec)
+	section	_CloseMonitor_stub,code
+
+; BOOL CloseMonitor(struct MonitorSpec * monitorSpec)
 	xdef	_CloseMonitor
 _CloseMonitor:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; monitorSpec
-	move.l	_GfxBase,a6
-	jsr	-720(a6)	; CloseMonitor()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-726(a6)
 	rts
 
-; FindDisplayInfo(displayID)
+	section	_FindDisplayInfo_stub,code
+
+; DisplayInfoHandle FindDisplayInfo(ULONG displayID)
 	xdef	_FindDisplayInfo
 _FindDisplayInfo:
-	movem.l	d0/a6,-(sp)
-	move.l	12(sp),d0	; displayID
-	move.l	_GfxBase,a6
-	jsr	-726(a6)	; FindDisplayInfo()
-	movem.l	(sp)+,d0/a6
+	move.l	4(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-732(a6)
 	rts
 
-; NextDisplayInfo(displayID)
+	section	_NextDisplayInfo_stub,code
+
+; ULONG NextDisplayInfo(ULONG displayID)
 	xdef	_NextDisplayInfo
 _NextDisplayInfo:
-	movem.l	d0/a6,-(sp)
-	move.l	12(sp),d0	; displayID
-	move.l	_GfxBase,a6
-	jsr	-732(a6)	; NextDisplayInfo()
-	movem.l	(sp)+,d0/a6
+	move.l	4(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-738(a6)
 	rts
 
-; GetDisplayInfoData(handle, buf, size, tagID, displayID)
+	section	_GetDisplayInfoData_stub,code
+
+; ULONG GetDisplayInfoData(const DisplayInfoHandle handle, APTR buf, ULONG size, ULONG tagID, ULONG displayID)
 	xdef	_GetDisplayInfoData
 _GetDisplayInfoData:
-	movem.l	d0-d2/a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; handle
-	move.l	20(sp),a1	; buf
-	move.l	24(sp),d0	; size
-	move.l	28(sp),d1	; tagID
-	move.l	32(sp),d2	; displayID
-	move.l	_GfxBase,a6
-	jsr	-756(a6)	; GetDisplayInfoData()
-	movem.l	(sp)+,d0-d2/a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	move.l	16(sp),d1
+	move.l	20(sp),d2
+	movea.l	_GfxBase,a6
+	jsr	-762(a6)
 	rts
 
-; FontExtent(font, fontExtent)
+	section	_FontExtent_stub,code
+
+; VOID FontExtent(const struct TextFont * font, struct TextExtent * fontExtent)
 	xdef	_FontExtent
 _FontExtent:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; font
-	move.l	16(sp),a1	; fontExtent
-	move.l	_GfxBase,a6
-	jsr	-762(a6)	; FontExtent()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-768(a6)
 	rts
 
-; ReadPixelLine8(rp, xstart, ystart, width, array, tempRP)
+	section	_ReadPixelLine8_stub,code
+
+; LONG ReadPixelLine8(struct RastPort * rp, UWORD xstart, UWORD ystart, UWORD width, UBYTE * array, struct RastPort * tempRP)
 	xdef	_ReadPixelLine8
 _ReadPixelLine8:
-	movem.l	d0-d2/a0-a2/a6,-(sp)
-	move.l	16(sp),a0	; rp
-	move.l	20(sp),d0	; xstart
-	move.l	24(sp),d1	; ystart
-	move.l	28(sp),d2	; width
-	move.l	32(sp),a2	; array
-	move.l	36(sp),a1	; tempRP
-	move.l	_GfxBase,a6
-	jsr	-768(a6)	; ReadPixelLine8()
-	movem.l	(sp)+,d0-d2/a0-a2/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	move.l	16(sp),d2
+	movea.l	20(sp),a2
+	movea.l	24(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-774(a6)
 	rts
 
-; WritePixelLine8(rp, xstart, ystart, width, array, tempRP)
+	section	_WritePixelLine8_stub,code
+
+; LONG WritePixelLine8(struct RastPort * rp, UWORD xstart, UWORD ystart, UWORD width, UBYTE * array, struct RastPort * tempRP)
 	xdef	_WritePixelLine8
 _WritePixelLine8:
-	movem.l	d0-d2/a0-a2/a6,-(sp)
-	move.l	16(sp),a0	; rp
-	move.l	20(sp),d0	; xstart
-	move.l	24(sp),d1	; ystart
-	move.l	28(sp),d2	; width
-	move.l	32(sp),a2	; array
-	move.l	36(sp),a1	; tempRP
-	move.l	_GfxBase,a6
-	jsr	-774(a6)	; WritePixelLine8()
-	movem.l	(sp)+,d0-d2/a0-a2/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	move.l	16(sp),d2
+	movea.l	20(sp),a2
+	movea.l	24(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-780(a6)
 	rts
 
-; ReadPixelArray8(rp, xstart, ystart, xstop, ystop, array, temprp)
+	section	_ReadPixelArray8_stub,code
+
+; LONG ReadPixelArray8(struct RastPort * rp, UWORD xstart, UWORD ystart, UWORD xstop, UWORD ystop, UBYTE * array, struct RastPort * temprp)
 	xdef	_ReadPixelArray8
 _ReadPixelArray8:
-	movem.l	d0-d3/a0-a2/a6,-(sp)
-	move.l	16(sp),a0	; rp
-	move.l	20(sp),d0	; xstart
-	move.l	24(sp),d1	; ystart
-	move.l	28(sp),d2	; xstop
-	move.l	32(sp),d3	; ystop
-	move.l	36(sp),a2	; array
-	move.l	40(sp),a1	; temprp
-	move.l	_GfxBase,a6
-	jsr	-780(a6)	; ReadPixelArray8()
-	movem.l	(sp)+,d0-d3/a0-a2/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	move.l	16(sp),d2
+	move.l	20(sp),d3
+	movea.l	24(sp),a2
+	movea.l	28(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-786(a6)
 	rts
 
-; WritePixelArray8(rp, xstart, ystart, xstop, ystop, array, temprp)
+	section	_WritePixelArray8_stub,code
+
+; LONG WritePixelArray8(struct RastPort * rp, UWORD xstart, UWORD ystart, UWORD xstop, UWORD ystop, UBYTE * array, struct RastPort * temprp)
 	xdef	_WritePixelArray8
 _WritePixelArray8:
-	movem.l	d0-d3/a0-a2/a6,-(sp)
-	move.l	16(sp),a0	; rp
-	move.l	20(sp),d0	; xstart
-	move.l	24(sp),d1	; ystart
-	move.l	28(sp),d2	; xstop
-	move.l	32(sp),d3	; ystop
-	move.l	36(sp),a2	; array
-	move.l	40(sp),a1	; temprp
-	move.l	_GfxBase,a6
-	jsr	-786(a6)	; WritePixelArray8()
-	movem.l	(sp)+,d0-d3/a0-a2/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	move.l	16(sp),d2
+	move.l	20(sp),d3
+	movea.l	24(sp),a2
+	movea.l	28(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-792(a6)
 	rts
 
-; GetVPModeID(vp)
+	section	_GetVPModeID_stub,code
+
+; LONG GetVPModeID(const struct ViewPort * vp)
 	xdef	_GetVPModeID
 _GetVPModeID:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; vp
-	move.l	_GfxBase,a6
-	jsr	-792(a6)	; GetVPModeID()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-798(a6)
 	rts
 
-; ModeNotAvailable(modeID)
+	section	_ModeNotAvailable_stub,code
+
+; LONG ModeNotAvailable(ULONG modeID)
 	xdef	_ModeNotAvailable
 _ModeNotAvailable:
-	movem.l	d0/a6,-(sp)
-	move.l	12(sp),d0	; modeID
-	move.l	_GfxBase,a6
-	jsr	-798(a6)	; ModeNotAvailable()
-	movem.l	(sp)+,d0/a6
+	move.l	4(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-804(a6)
 	rts
 
-; EraseRect(rp, xMin, yMin, xMax, yMax)
+	section	_EraseRect_stub,code
+
+; VOID EraseRect(struct RastPort * rp, WORD xMin, WORD yMin, WORD xMax, WORD yMax)
 	xdef	_EraseRect
 _EraseRect:
-	movem.l	d0-d3/a1/a6,-(sp)
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),d0	; xMin
-	move.l	24(sp),d1	; yMin
-	move.l	28(sp),d2	; xMax
-	move.l	32(sp),d3	; yMax
-	move.l	_GfxBase,a6
-	jsr	-810(a6)	; EraseRect()
-	movem.l	(sp)+,d0-d3/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	move.l	16(sp),d2
+	move.l	20(sp),d3
+	movea.l	_GfxBase,a6
+	jsr	-816(a6)
 	rts
 
-; ExtendFont(font, fontTags)
+	section	_ExtendFont_stub,code
+
+; ULONG ExtendFont(struct TextFont * font, const struct TagItem * fontTags)
 	xdef	_ExtendFont
 _ExtendFont:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; font
-	move.l	16(sp),a1	; fontTags
-	move.l	_GfxBase,a6
-	jsr	-816(a6)	; ExtendFont()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-822(a6)
 	rts
 
-; StripFont(font)
+	section	_StripFont_stub,code
+
+; VOID StripFont(struct TextFont * font)
 	xdef	_StripFont
 _StripFont:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; font
-	move.l	_GfxBase,a6
-	jsr	-822(a6)	; StripFont()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-834(a6)
 	rts
 
-; CalcIVG(v, vp)
+	section	_CalcIVG_stub,code
+
+; UWORD CalcIVG(struct View * v, struct ViewPort * vp)
 	xdef	_CalcIVG
 _CalcIVG:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; v
-	move.l	16(sp),a1	; vp
-	move.l	_GfxBase,a6
-	jsr	-828(a6)	; CalcIVG()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-840(a6)
 	rts
 
-; AttachPalExtra(cm, vp)
+	section	_AttachPalExtra_stub,code
+
+; LONG AttachPalExtra(struct ColorMap * cm, struct ViewPort * vp)
 	xdef	_AttachPalExtra
 _AttachPalExtra:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; cm
-	move.l	16(sp),a1	; vp
-	move.l	_GfxBase,a6
-	jsr	-834(a6)	; AttachPalExtra()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-846(a6)
 	rts
 
-; ObtainBestPenA(cm, r, g, b, tags)
+	section	_ObtainBestPenA_stub,code
+
+; LONG ObtainBestPenA(struct ColorMap * cm, ULONG r, ULONG g, ULONG b, const struct TagItem * tags)
 	xdef	_ObtainBestPenA
 _ObtainBestPenA:
-	movem.l	d1-d3/a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; cm
-	move.l	20(sp),d1	; r
-	move.l	24(sp),d2	; g
-	move.l	28(sp),d3	; b
-	move.l	32(sp),a1	; tags
-	move.l	_GfxBase,a6
-	jsr	-840(a6)	; ObtainBestPenA()
-	movem.l	(sp)+,d1-d3/a0-a1/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d1
+	move.l	12(sp),d2
+	move.l	16(sp),d3
+	movea.l	20(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-852(a6)
 	rts
 
-; SetRGB32(vp, n, r, g, b)
+	section	_SetRGB32_stub,code
+
+; VOID SetRGB32(struct ViewPort * vp, ULONG n, ULONG r, ULONG g, ULONG b)
 	xdef	_SetRGB32
 _SetRGB32:
-	movem.l	d0-d3/a0/a6,-(sp)
-	move.l	16(sp),a0	; vp
-	move.l	20(sp),d0	; n
-	move.l	24(sp),d1	; r
-	move.l	28(sp),d2	; g
-	move.l	32(sp),d3	; b
-	move.l	_GfxBase,a6
-	jsr	-852(a6)	; SetRGB32()
-	movem.l	(sp)+,d0-d3/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	move.l	16(sp),d2
+	move.l	20(sp),d3
+	movea.l	_GfxBase,a6
+	jsr	-870(a6)
 	rts
 
-; GetAPen(rp)
+	section	_GetAPen_stub,code
+
+; ULONG GetAPen(struct RastPort * rp)
 	xdef	_GetAPen
 _GetAPen:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; rp
-	move.l	_GfxBase,a6
-	jsr	-858(a6)	; GetAPen()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-876(a6)
 	rts
 
-; GetBPen(rp)
+	section	_GetBPen_stub,code
+
+; ULONG GetBPen(struct RastPort * rp)
 	xdef	_GetBPen
 _GetBPen:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; rp
-	move.l	_GfxBase,a6
-	jsr	-864(a6)	; GetBPen()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-882(a6)
 	rts
 
-; GetDrMd(rp)
+	section	_GetDrMd_stub,code
+
+; ULONG GetDrMd(struct RastPort * rp)
 	xdef	_GetDrMd
 _GetDrMd:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; rp
-	move.l	_GfxBase,a6
-	jsr	-870(a6)	; GetDrMd()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-888(a6)
 	rts
 
-; GetOutlinePen(rp)
+	section	_GetOutlinePen_stub,code
+
+; ULONG GetOutlinePen(struct RastPort * rp)
 	xdef	_GetOutlinePen
 _GetOutlinePen:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; rp
-	move.l	_GfxBase,a6
-	jsr	-876(a6)	; GetOutlinePen()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-894(a6)
 	rts
 
-; LoadRGB32(vp, table)
+	section	_LoadRGB32_stub,code
+
+; VOID LoadRGB32(struct ViewPort * vp, const ULONG * table)
 	xdef	_LoadRGB32
 _LoadRGB32:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; vp
-	move.l	16(sp),a1	; table
-	move.l	_GfxBase,a6
-	jsr	-882(a6)	; LoadRGB32()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-900(a6)
 	rts
 
-; SetChipRev(want)
+	section	_SetChipRev_stub,code
+
+; ULONG SetChipRev(ULONG want)
 	xdef	_SetChipRev
 _SetChipRev:
-	movem.l	d0/a6,-(sp)
-	move.l	12(sp),d0	; want
-	move.l	_GfxBase,a6
-	jsr	-888(a6)	; SetChipRev()
-	movem.l	(sp)+,d0/a6
+	move.l	4(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-906(a6)
 	rts
 
-; SetABPenDrMd(rp, apen, bpen, drawmode)
+	section	_SetABPenDrMd_stub,code
+
+; VOID SetABPenDrMd(struct RastPort * rp, ULONG apen, ULONG bpen, ULONG drawmode)
 	xdef	_SetABPenDrMd
 _SetABPenDrMd:
-	movem.l	d0-d2/a1/a6,-(sp)
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),d0	; apen
-	move.l	24(sp),d1	; bpen
-	move.l	28(sp),d2	; drawmode
-	move.l	_GfxBase,a6
-	jsr	-894(a6)	; SetABPenDrMd()
-	movem.l	(sp)+,d0-d2/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	move.l	16(sp),d2
+	movea.l	_GfxBase,a6
+	jsr	-912(a6)
 	rts
 
-; GetRGB32(cm, firstcolor, ncolors, table)
+	section	_GetRGB32_stub,code
+
+; VOID GetRGB32(const struct ColorMap * cm, ULONG firstcolor, ULONG ncolors, ULONG * table)
 	xdef	_GetRGB32
 _GetRGB32:
-	movem.l	d0-d1/a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; cm
-	move.l	20(sp),d0	; firstcolor
-	move.l	24(sp),d1	; ncolors
-	move.l	28(sp),a1	; table
-	move.l	_GfxBase,a6
-	jsr	-900(a6)	; GetRGB32()
-	movem.l	(sp)+,d0-d1/a0-a1/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	movea.l	16(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-918(a6)
 	rts
 
-; AllocBitMap(sizex, sizey, depth, flags, friend_bitmap)
+	section	_AllocBitMap_stub,code
+
+; struct BitMap * AllocBitMap(ULONG sizex, ULONG sizey, ULONG depth, ULONG flags, const struct BitMap * friend_bitmap)
 	xdef	_AllocBitMap
 _AllocBitMap:
-	movem.l	d0-d3/a0/a6,-(sp)
-	move.l	16(sp),d0	; sizex
-	move.l	20(sp),d1	; sizey
-	move.l	24(sp),d2	; depth
-	move.l	28(sp),d3	; flags
-	move.l	32(sp),a0	; friend_bitmap
-	move.l	_GfxBase,a6
-	jsr	-918(a6)	; AllocBitMap()
-	movem.l	(sp)+,d0-d3/a0/a6
+	move.l	4(sp),d0
+	move.l	8(sp),d1
+	move.l	12(sp),d2
+	move.l	16(sp),d3
+	movea.l	20(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-936(a6)
 	rts
 
-; FreeBitMap(bm)
+	section	_FreeBitMap_stub,code
+
+; VOID FreeBitMap(struct BitMap * bm)
 	xdef	_FreeBitMap
 _FreeBitMap:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; bm
-	move.l	_GfxBase,a6
-	jsr	-924(a6)	; FreeBitMap()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-942(a6)
 	rts
 
-; GetExtSpriteA(ss, tags)
+	section	_GetExtSpriteA_stub,code
+
+; LONG GetExtSpriteA(struct ExtSprite * ss, const struct TagItem * tags)
 	xdef	_GetExtSpriteA
 _GetExtSpriteA:
-	movem.l	a1-a2/a6,-(sp)
-	move.l	12(sp),a2	; ss
-	move.l	16(sp),a1	; tags
-	move.l	_GfxBase,a6
-	jsr	-930(a6)	; GetExtSpriteA()
-	movem.l	(sp)+,a1-a2/a6
+	movea.l	4(sp),a2
+	movea.l	8(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-948(a6)
 	rts
 
-; CoerceMode(vp, monitorid, flags)
+	section	_CoerceMode_stub,code
+
+; ULONG CoerceMode(struct ViewPort * vp, ULONG monitorid, ULONG flags)
 	xdef	_CoerceMode
 _CoerceMode:
-	movem.l	d0-d1/a0/a6,-(sp)
-	move.l	16(sp),a0	; vp
-	move.l	20(sp),d0	; monitorid
-	move.l	24(sp),d1	; flags
-	move.l	_GfxBase,a6
-	jsr	-936(a6)	; CoerceMode()
-	movem.l	(sp)+,d0-d1/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	movea.l	_GfxBase,a6
+	jsr	-960(a6)
 	rts
 
-; ChangeVPBitMap(vp, bm, db)
+	section	_ChangeVPBitMap_stub,code
+
+; VOID ChangeVPBitMap(struct ViewPort * vp, struct BitMap * bm, struct DBufInfo * db)
 	xdef	_ChangeVPBitMap
 _ChangeVPBitMap:
-	movem.l	a0-a2/a6,-(sp)
-	move.l	12(sp),a0	; vp
-	move.l	16(sp),a1	; bm
-	move.l	20(sp),a2	; db
-	move.l	_GfxBase,a6
-	jsr	-942(a6)	; ChangeVPBitMap()
-	movem.l	(sp)+,a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	_GfxBase,a6
+	jsr	-966(a6)
 	rts
 
-; ReleasePen(cm, n)
+	section	_ReleasePen_stub,code
+
+; VOID ReleasePen(struct ColorMap * cm, ULONG n)
 	xdef	_ReleasePen
 _ReleasePen:
-	movem.l	d0/a0/a6,-(sp)
-	move.l	16(sp),a0	; cm
-	move.l	20(sp),d0	; n
-	move.l	_GfxBase,a6
-	jsr	-948(a6)	; ReleasePen()
-	movem.l	(sp)+,d0/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-972(a6)
 	rts
 
-; ObtainPen(cm, n, r, g, b, f)
+	section	_ObtainPen_stub,code
+
+; ULONG ObtainPen(struct ColorMap * cm, ULONG n, ULONG r, ULONG g, ULONG b, LONG f)
 	xdef	_ObtainPen
 _ObtainPen:
-	movem.l	d0-d4/a0/a6,-(sp)
-	move.l	16(sp),a0	; cm
-	move.l	20(sp),d0	; n
-	move.l	24(sp),d1	; r
-	move.l	28(sp),d2	; g
-	move.l	32(sp),d3	; b
-	move.l	36(sp),d4	; f
-	move.l	_GfxBase,a6
-	jsr	-954(a6)	; ObtainPen()
-	movem.l	(sp)+,d0-d4/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	move.l	16(sp),d2
+	move.l	20(sp),d3
+	move.l	24(sp),d4
+	movea.l	_GfxBase,a6
+	jsr	-978(a6)
 	rts
 
-; GetBitMapAttr(bm, attrnum)
+	section	_GetBitMapAttr_stub,code
+
+; ULONG GetBitMapAttr(const struct BitMap * bm, ULONG attrnum)
 	xdef	_GetBitMapAttr
 _GetBitMapAttr:
-	movem.l	d1/a0/a6,-(sp)
-	move.l	16(sp),a0	; bm
-	move.l	20(sp),d1	; attrnum
-	move.l	_GfxBase,a6
-	jsr	-960(a6)	; GetBitMapAttr()
-	movem.l	(sp)+,d1/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d1
+	movea.l	_GfxBase,a6
+	jsr	-984(a6)
 	rts
 
-; AllocDBufInfo(vp)
+	section	_AllocDBufInfo_stub,code
+
+; struct DBufInfo * AllocDBufInfo(struct ViewPort * vp)
 	xdef	_AllocDBufInfo
 _AllocDBufInfo:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; vp
-	move.l	_GfxBase,a6
-	jsr	-966(a6)	; AllocDBufInfo()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-990(a6)
 	rts
 
-; FreeDBufInfo(dbi)
+	section	_FreeDBufInfo_stub,code
+
+; VOID FreeDBufInfo(struct DBufInfo * dbi)
 	xdef	_FreeDBufInfo
 _FreeDBufInfo:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; dbi
-	move.l	_GfxBase,a6
-	jsr	-972(a6)	; FreeDBufInfo()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-996(a6)
 	rts
 
-; SetOutlinePen(rp, pen)
+	section	_SetOutlinePen_stub,code
+
+; ULONG SetOutlinePen(struct RastPort * rp, ULONG pen)
 	xdef	_SetOutlinePen
 _SetOutlinePen:
-	movem.l	d0/a0/a6,-(sp)
-	move.l	16(sp),a0	; rp
-	move.l	20(sp),d0	; pen
-	move.l	_GfxBase,a6
-	jsr	-978(a6)	; SetOutlinePen()
-	movem.l	(sp)+,d0/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-1002(a6)
 	rts
 
-; SetWriteMask(rp, msk)
+	section	_SetWriteMask_stub,code
+
+; ULONG SetWriteMask(struct RastPort * rp, ULONG msk)
 	xdef	_SetWriteMask
 _SetWriteMask:
-	movem.l	d0/a0/a6,-(sp)
-	move.l	16(sp),a0	; rp
-	move.l	20(sp),d0	; msk
-	move.l	_GfxBase,a6
-	jsr	-984(a6)	; SetWriteMask()
-	movem.l	(sp)+,d0/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-1008(a6)
 	rts
 
-; SetMaxPen(rp, maxpen)
+	section	_SetMaxPen_stub,code
+
+; VOID SetMaxPen(struct RastPort * rp, ULONG maxpen)
 	xdef	_SetMaxPen
 _SetMaxPen:
-	movem.l	d0/a0/a6,-(sp)
-	move.l	16(sp),a0	; rp
-	move.l	20(sp),d0	; maxpen
-	move.l	_GfxBase,a6
-	jsr	-990(a6)	; SetMaxPen()
-	movem.l	(sp)+,d0/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	movea.l	_GfxBase,a6
+	jsr	-1014(a6)
 	rts
 
-; SetRGB32CM(cm, n, r, g, b)
+	section	_SetRGB32CM_stub,code
+
+; VOID SetRGB32CM(struct ColorMap * cm, ULONG n, ULONG r, ULONG g, ULONG b)
 	xdef	_SetRGB32CM
 _SetRGB32CM:
-	movem.l	d0-d3/a0/a6,-(sp)
-	move.l	16(sp),a0	; cm
-	move.l	20(sp),d0	; n
-	move.l	24(sp),d1	; r
-	move.l	28(sp),d2	; g
-	move.l	32(sp),d3	; b
-	move.l	_GfxBase,a6
-	jsr	-996(a6)	; SetRGB32CM()
-	movem.l	(sp)+,d0-d3/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	move.l	16(sp),d2
+	move.l	20(sp),d3
+	movea.l	_GfxBase,a6
+	jsr	-1020(a6)
 	rts
 
-; ScrollRasterBF(rp, dx, dy, xMin, yMin, xMax, yMax)
+	section	_ScrollRasterBF_stub,code
+
+; VOID ScrollRasterBF(struct RastPort * rp, WORD dx, WORD dy, WORD xMin, WORD yMin, WORD xMax, WORD yMax)
 	xdef	_ScrollRasterBF
 _ScrollRasterBF:
-	movem.l	d0-d5/a1/a6,-(sp)
-	move.l	16(sp),a1	; rp
-	move.l	20(sp),d0	; dx
-	move.l	24(sp),d1	; dy
-	move.l	28(sp),d2	; xMin
-	move.l	32(sp),d3	; yMin
-	move.l	36(sp),d4	; xMax
-	move.l	40(sp),d5	; yMax
-	move.l	_GfxBase,a6
-	jsr	-1002(a6)	; ScrollRasterBF()
-	movem.l	(sp)+,d0-d5/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	move.l	16(sp),d2
+	move.l	20(sp),d3
+	move.l	24(sp),d4
+	move.l	28(sp),d5
+	movea.l	_GfxBase,a6
+	jsr	-1026(a6)
 	rts
 
-; FindColor(cm, r, g, b, maxcolor)
+	section	_FindColor_stub,code
+
+; LONG FindColor(struct ColorMap * cm, ULONG r, ULONG g, ULONG b, LONG maxcolor)
 	xdef	_FindColor
 _FindColor:
-	movem.l	d1-d4/a3/a6,-(sp)
-	move.l	16(sp),a3	; cm
-	move.l	20(sp),d1	; r
-	move.l	24(sp),d2	; g
-	move.l	28(sp),d3	; b
-	move.l	32(sp),d4	; maxcolor
-	move.l	_GfxBase,a6
-	jsr	-1008(a6)	; FindColor()
-	movem.l	(sp)+,d1-d4/a3/a6
+	movea.l	4(sp),a3
+	move.l	8(sp),d1
+	move.l	12(sp),d2
+	move.l	16(sp),d3
+	move.l	20(sp),d4
+	movea.l	_GfxBase,a6
+	jsr	-1032(a6)
 	rts
 
-; AllocSpriteDataA(bm, tags)
+	section	_AllocSpriteDataA_stub,code
+
+; struct ExtSprite * AllocSpriteDataA(const struct BitMap * bm, const struct TagItem * tags)
 	xdef	_AllocSpriteDataA
 _AllocSpriteDataA:
-	movem.l	a1-a2/a6,-(sp)
-	move.l	12(sp),a2	; bm
-	move.l	16(sp),a1	; tags
-	move.l	_GfxBase,a6
-	jsr	-1020(a6)	; AllocSpriteDataA()
-	movem.l	(sp)+,a1-a2/a6
+	movea.l	4(sp),a2
+	movea.l	8(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-1044(a6)
 	rts
 
-; ChangeExtSpriteA(vp, oldsprite, newsprite, tags)
+	section	_ChangeExtSpriteA_stub,code
+
+; LONG ChangeExtSpriteA(struct ViewPort * vp, struct ExtSprite * oldsprite, struct ExtSprite * newsprite, const struct TagItem * tags)
 	xdef	_ChangeExtSpriteA
 _ChangeExtSpriteA:
-	movem.l	a0-a3/a6,-(sp)
-	move.l	12(sp),a0	; vp
-	move.l	16(sp),a1	; oldsprite
-	move.l	20(sp),a2	; newsprite
-	move.l	24(sp),a3	; tags
-	move.l	_GfxBase,a6
-	jsr	-1026(a6)	; ChangeExtSpriteA()
-	movem.l	(sp)+,a0-a3/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	16(sp),a3
+	movea.l	_GfxBase,a6
+	jsr	-1056(a6)
 	rts
 
-; FreeSpriteData(sp)
+	section	_FreeSpriteData_stub,code
+
+; VOID FreeSpriteData(struct ExtSprite * sp)
 	xdef	_FreeSpriteData
 _FreeSpriteData:
-	movem.l	a2/a6,-(sp)
-	move.l	12(sp),a2	; sp
-	move.l	_GfxBase,a6
-	jsr	-1032(a6)	; FreeSpriteData()
-	movem.l	(sp)+,a2/a6
+	movea.l	4(sp),a2
+	movea.l	_GfxBase,a6
+	jsr	-1068(a6)
 	rts
 
-; SetRPAttrsA(rp, tags)
+	section	_SetRPAttrsA_stub,code
+
+; VOID SetRPAttrsA(struct RastPort * rp, const struct TagItem * tags)
 	xdef	_SetRPAttrsA
 _SetRPAttrsA:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; rp
-	move.l	16(sp),a1	; tags
-	move.l	_GfxBase,a6
-	jsr	-1038(a6)	; SetRPAttrsA()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-1074(a6)
 	rts
 
-; GetRPAttrsA(rp, tags)
+	section	_GetRPAttrsA_stub,code
+
+; VOID GetRPAttrsA(const struct RastPort * rp, const struct TagItem * tags)
 	xdef	_GetRPAttrsA
 _GetRPAttrsA:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	12(sp),a0	; rp
-	move.l	16(sp),a1	; tags
-	move.l	_GfxBase,a6
-	jsr	-1044(a6)	; GetRPAttrsA()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_GfxBase,a6
+	jsr	-1086(a6)
 	rts
 
-; BestModeIDA(tags)
+	section	_BestModeIDA_stub,code
+
+; ULONG BestModeIDA(const struct TagItem * tags)
 	xdef	_BestModeIDA
 _BestModeIDA:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; tags
-	move.l	_GfxBase,a6
-	jsr	-1050(a6)	; BestModeIDA()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_GfxBase,a6
+	jsr	-1098(a6)
 	rts
 
-; WriteChunkyPixels(rp, xstart, ystart, xstop, ystop, array, bytesperrow)
+	section	_WriteChunkyPixels_stub,code
+
+; VOID WriteChunkyPixels(struct RastPort * rp, UWORD xstart, UWORD ystart, UWORD xstop, UWORD ystop, const UBYTE * array, LONG bytesperrow)
 	xdef	_WriteChunkyPixels
 _WriteChunkyPixels:
-	movem.l	d0-d4/a0-a2/a6,-(sp)
-	move.l	16(sp),a0	; rp
-	move.l	20(sp),d0	; xstart
-	move.l	24(sp),d1	; ystart
-	move.l	28(sp),d2	; xstop
-	move.l	32(sp),d3	; ystop
-	move.l	36(sp),a2	; array
-	move.l	40(sp),d4	; bytesperrow
-	move.l	_GfxBase,a6
-	jsr	-1056(a6)	; WriteChunkyPixels()
-	movem.l	(sp)+,d0-d4/a0-a2/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	move.l	16(sp),d2
+	move.l	20(sp),d3
+	movea.l	24(sp),a2
+	move.l	28(sp),d4
+	movea.l	_GfxBase,a6
+	jsr	-1110(a6)
 	rts
 

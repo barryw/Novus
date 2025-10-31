@@ -1,45 +1,314 @@
-// layers.library FFI Bindings
-// Namespace: std::ffi::layers
-// Raw 1:1 mappings to layers.library
+// Generated from SFD file by Novus SFD Parser
+// Library: layers.library
+// Base: _LayersBase
 //
-// Auto-generated from NDK 3.9
-// - Functions from layers_lib.fd
-// - Structs from include/layers/*.h
-// - Constants from include/layers/*.h
+// NOTE: Import specific types from std::amiga_structs as needed
+// Example: from std::amiga_structs import Task, Node, List
 
 // ============================================================================
-// Functions
+// Constants
 // ============================================================================
 
-extern fn InitLayers(li: i32) -> i32
-extern fn CreateUpfrontLayer(li: i32, bm: i32, x0: i32, y0: i32, x1: i32, y1: i32, flags: i32, bm2: i32) -> i32
-extern fn CreateBehindLayer(li: i32, bm: i32, x0: i32, y0: i32, x1: i32, y1: i32, flags: i32, bm2: i32) -> i32
-extern fn UpfrontLayer(dummy: i32, layer: i32) -> i32
-extern fn BehindLayer(dummy: i32, layer: i32) -> i32
-extern fn MoveLayer(dummy: i32, layer: i32, dx: i32, dy: i32) -> i32
-extern fn SizeLayer(dummy: i32, layer: i32, dx: i32, dy: i32) -> i32
-extern fn ScrollLayer(dummy: i32, layer: i32, dx: i32, dy: i32) -> i32
-extern fn BeginUpdate(l: i32) -> i32
-extern fn EndUpdate(layer: i32, flag: i32) -> i32
-extern fn DeleteLayer(dummy: i32, layer: i32) -> i32
-extern fn LockLayer(dummy: i32, layer: i32) -> i32
-extern fn UnlockLayer(layer: i32) -> i32
-extern fn LockLayers(li: i32) -> i32
-extern fn UnlockLayers(li: i32) -> i32
-extern fn LockLayerInfo(li: i32) -> i32
-extern fn SwapBitsRastPortClipRect(rp: i32, cr: i32) -> i32
-extern fn WhichLayer(li: i32, x: i32, y: i32) -> i32
-extern fn UnlockLayerInfo(li: i32) -> i32
-extern fn NewLayerInfo() -> i32
-extern fn DisposeLayerInfo(li: i32) -> i32
-extern fn FattenLayerInfo(li: i32) -> i32
-extern fn ThinLayerInfo(li: i32) -> i32
-extern fn MoveLayerInFrontOf(layer_to_move: i32, other_layer: i32) -> i32
-extern fn InstallClipRegion(layer: i32, region: i32) -> i32
-extern fn MoveSizeLayer(layer: i32, dx: i32, dy: i32, dw: i32, dh: i32) -> i32
-extern fn CreateUpfrontHookLayer(li: i32, bm: i32, x0: i32, y0: i32, x1: i32, y1: i32, flags: i32, hook: i32, bm2: i32) -> i32
-extern fn CreateBehindHookLayer(li: i32, bm: i32, x0: i32, y0: i32, x1: i32, y1: i32, flags: i32, hook: i32, bm2: i32) -> i32
-extern fn InstallLayerHook(layer: i32, hook: i32) -> i32
-extern fn InstallLayerInfoHook(li: i32, hook: i32) -> i32
-extern fn SortLayerCR(layer: i32, dx: i32, dy: i32) -> i32
-extern fn DoHookClipRects(hook: i32, rport: i32, rect: i32) -> i32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const NT_UNKNOWN: u32 = 0u32
+pub const NT_TASK: u32 = 1u32
+pub const NT_INTERRUPT: u32 = 2u32
+pub const NT_DEVICE: u32 = 3u32
+pub const NT_MSGPORT: u32 = 4u32
+pub const NT_MESSAGE: u32 = 5u32
+pub const NT_FREEMSG: u32 = 6u32
+pub const NT_REPLYMSG: u32 = 7u32
+pub const NT_RESOURCE: u32 = 8u32
+pub const NT_LIBRARY: u32 = 9u32
+pub const NT_MEMORY: u32 = 10u32
+pub const NT_SOFTINT: u32 = 11u32
+pub const NT_FONT: u32 = 12u32
+pub const NT_PROCESS: u32 = 13u32
+pub const NT_SEMAPHORE: u32 = 14u32
+pub const NT_SIGNALSEM: u32 = 15u32
+pub const NT_BOOTNODE: u32 = 16u32
+pub const NT_KICKMEM: u32 = 17u32
+pub const NT_GRAPHICS: u32 = 18u32
+pub const NT_DEATHMESSAGE: u32 = 19u32
+pub const NT_USER: u32 = 254u32
+pub const NT_EXTENDED: u32 = 255u32
+pub const TB_PROCTIME: u32 = 0u32
+pub const TB_ETASK: u32 = 3u32
+pub const TB_STACKCHK: u32 = 4u32
+pub const TB_EXCEPT: u32 = 5u32
+pub const TB_SWITCH: u32 = 6u32
+pub const TB_LAUNCH: u32 = 7u32
+pub const TF_PROCTIME: u32 = (1u32 << 0)
+pub const TF_ETASK: u32 = (1u32 << 3)
+pub const TF_STACKCHK: u32 = (1u32 << 4)
+pub const TF_EXCEPT: u32 = (1u32 << 5)
+pub const TF_SWITCH: u32 = (1u32 << 6)
+pub const TF_LAUNCH: u32 = (1u32 << 7)
+pub const TS_INVALID: u32 = 0u32
+pub const TS_ADDED: u32 = 1u32
+pub const TS_RUN: u32 = 2u32
+pub const TS_READY: u32 = 3u32
+pub const TS_WAIT: u32 = 4u32
+pub const TS_EXCEPT: u32 = 5u32
+pub const TS_REMOVED: u32 = 6u32
+pub const SIGB_ABORT: u32 = 0u32
+pub const SIGB_CHILD: u32 = 1u32
+pub const SIGB_BLIT: u32 = 4u32
+pub const SIGB_SINGLE: u32 = 4u32
+pub const SIGB_INTUITION: u32 = 5u32
+pub const SIGB_NET: u32 = 7u32
+pub const SIGB_DOS: u32 = 8u32
+pub const SIGF_ABORT: u32 = (1u32 << 0)
+pub const SIGF_CHILD: u32 = (1u32 << 1)
+pub const SIGF_BLIT: u32 = (1u32 << 4)
+pub const SIGF_SINGLE: u32 = (1u32 << 4)
+pub const SIGF_INTUITION: u32 = (1u32 << 5)
+pub const SIGF_NET: u32 = (1u32 << 7)
+pub const SIGF_DOS: u32 = (1u32 << 8)
+pub const mp_SoftInt: u32 = 0 /* TODO: mp_SigTask */
+pub const PF_ACTION: u32 = 3u32
+pub const PA_SIGNAL: u32 = 0u32
+pub const PA_SOFTINT: u32 = 1u32
+pub const PA_IGNORE: u32 = 2u32
+pub const SM_SHARED: u32 = 1u32
+pub const SM_EXCLUSIVE: u32 = 0
+pub const sm_LockMsg: u32 = 0 /* TODO: mp_SigTask */
+pub const LAYERSIMPLE: u32 = 1u32
+pub const LAYERSMART: u32 = 2u32
+pub const LAYERSUPER: u32 = 4u32
+pub const LAYERUPDATING: u32 = $10u32
+pub const LAYERBACKDROP: u32 = $40u32
+pub const LAYERREFRESH: u32 = $80u32
+pub const LAYERIREFRESH: u32 = $200u32
+pub const LAYERIREFRESH2: u32 = $400u32
+pub const LAYER_CLIPRECTS_LOST: u32 = $100u32
+pub const NEWLAYERINFO_CALLED: u32 = 1u32
+pub const LAYERS_NOBACKFILL: u32 = 0 /* TODO: ((struct Hook *)1) */
+pub const LAYERS_BACKFILL: u32 = 0 /* TODO: ((struct Hook *)0) */
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const BITSET: u32 = $8000u32
+pub const BITCLR: u32 = 0u32
+pub const BMB_CLEAR: u32 = 0u32
+pub const BMB_DISPLAYABLE: u32 = 1u32
+pub const BMB_INTERLEAVED: u32 = 2u32
+pub const BMB_STANDARD: u32 = 3u32
+pub const BMB_MINPLANES: u32 = 4u32
+pub const BMF_CLEAR: u32 = 0 /* TODO: (1l<<BMB_CLEAR) */
+pub const BMF_DISPLAYABLE: u32 = 0 /* TODO: (1l<<BMB_DISPLAYABLE) */
+pub const BMF_INTERLEAVED: u32 = 0 /* TODO: (1l<<BMB_INTERLEAVED) */
+pub const BMF_STANDARD: u32 = 0 /* TODO: (1l<<BMB_STANDARD) */
+pub const BMF_MINPLANES: u32 = 0 /* TODO: (1l<<BMB_MINPLANES) */
+pub const BMA_HEIGHT: u32 = 0u32
+pub const BMA_DEPTH: u32 = 4u32
+pub const BMA_WIDTH: u32 = 8u32
+pub const BMA_FLAGS: u32 = 12u32
+pub const NT_UNKNOWN: u32 = 0u32
+pub const NT_TASK: u32 = 1u32
+pub const NT_INTERRUPT: u32 = 2u32
+pub const NT_DEVICE: u32 = 3u32
+pub const NT_MSGPORT: u32 = 4u32
+pub const NT_MESSAGE: u32 = 5u32
+pub const NT_FREEMSG: u32 = 6u32
+pub const NT_REPLYMSG: u32 = 7u32
+pub const NT_RESOURCE: u32 = 8u32
+pub const NT_LIBRARY: u32 = 9u32
+pub const NT_MEMORY: u32 = 10u32
+pub const NT_SOFTINT: u32 = 11u32
+pub const NT_FONT: u32 = 12u32
+pub const NT_PROCESS: u32 = 13u32
+pub const NT_SEMAPHORE: u32 = 14u32
+pub const NT_SIGNALSEM: u32 = 15u32
+pub const NT_BOOTNODE: u32 = 16u32
+pub const NT_KICKMEM: u32 = 17u32
+pub const NT_GRAPHICS: u32 = 18u32
+pub const NT_DEATHMESSAGE: u32 = 19u32
+pub const NT_USER: u32 = 254u32
+pub const NT_EXTENDED: u32 = 255u32
+pub const TB_PROCTIME: u32 = 0u32
+pub const TB_ETASK: u32 = 3u32
+pub const TB_STACKCHK: u32 = 4u32
+pub const TB_EXCEPT: u32 = 5u32
+pub const TB_SWITCH: u32 = 6u32
+pub const TB_LAUNCH: u32 = 7u32
+pub const TF_PROCTIME: u32 = (1u32 << 0)
+pub const TF_ETASK: u32 = (1u32 << 3)
+pub const TF_STACKCHK: u32 = (1u32 << 4)
+pub const TF_EXCEPT: u32 = (1u32 << 5)
+pub const TF_SWITCH: u32 = (1u32 << 6)
+pub const TF_LAUNCH: u32 = (1u32 << 7)
+pub const TS_INVALID: u32 = 0u32
+pub const TS_ADDED: u32 = 1u32
+pub const TS_RUN: u32 = 2u32
+pub const TS_READY: u32 = 3u32
+pub const TS_WAIT: u32 = 4u32
+pub const TS_EXCEPT: u32 = 5u32
+pub const TS_REMOVED: u32 = 6u32
+pub const SIGB_ABORT: u32 = 0u32
+pub const SIGB_CHILD: u32 = 1u32
+pub const SIGB_BLIT: u32 = 4u32
+pub const SIGB_SINGLE: u32 = 4u32
+pub const SIGB_INTUITION: u32 = 5u32
+pub const SIGB_NET: u32 = 7u32
+pub const SIGB_DOS: u32 = 8u32
+pub const SIGF_ABORT: u32 = (1u32 << 0)
+pub const SIGF_CHILD: u32 = (1u32 << 1)
+pub const SIGF_BLIT: u32 = (1u32 << 4)
+pub const SIGF_SINGLE: u32 = (1u32 << 4)
+pub const SIGF_INTUITION: u32 = (1u32 << 5)
+pub const SIGF_NET: u32 = (1u32 << 7)
+pub const SIGF_DOS: u32 = (1u32 << 8)
+pub const mp_SoftInt: u32 = 0 /* TODO: mp_SigTask */
+pub const PF_ACTION: u32 = 3u32
+pub const PA_SIGNAL: u32 = 0u32
+pub const PA_SOFTINT: u32 = 1u32
+pub const PA_IGNORE: u32 = 2u32
+pub const SM_SHARED: u32 = 1u32
+pub const SM_EXCLUSIVE: u32 = 0
+pub const sm_LockMsg: u32 = 0 /* TODO: mp_SigTask */
+pub const CR_NEEDS_NO_CONCEALED_RASTERS: u32 = 1u32
+pub const CR_NEEDS_NO_LAYERBLIT_DAMAGE: u32 = 2u32
+pub const ISLESSX: u32 = 1u32
+pub const ISLESSY: u32 = 2u32
+pub const ISGRTRX: u32 = 4u32
+pub const ISGRTRY: u32 = 8u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const BITSET: u32 = $8000u32
+pub const BITCLR: u32 = 0u32
+pub const BMB_CLEAR: u32 = 0u32
+pub const BMB_DISPLAYABLE: u32 = 1u32
+pub const BMB_INTERLEAVED: u32 = 2u32
+pub const BMB_STANDARD: u32 = 3u32
+pub const BMB_MINPLANES: u32 = 4u32
+pub const BMF_CLEAR: u32 = 0 /* TODO: (1l<<BMB_CLEAR) */
+pub const BMF_DISPLAYABLE: u32 = 0 /* TODO: (1l<<BMB_DISPLAYABLE) */
+pub const BMF_INTERLEAVED: u32 = 0 /* TODO: (1l<<BMB_INTERLEAVED) */
+pub const BMF_STANDARD: u32 = 0 /* TODO: (1l<<BMB_STANDARD) */
+pub const BMF_MINPLANES: u32 = 0 /* TODO: (1l<<BMB_MINPLANES) */
+pub const BMA_HEIGHT: u32 = 0u32
+pub const BMA_DEPTH: u32 = 4u32
+pub const BMA_WIDTH: u32 = 8u32
+pub const BMA_FLAGS: u32 = 12u32
+pub const JAM1: u32 = 0u32
+pub const JAM2: u32 = 1u32
+pub const COMPLEMENT: u32 = 2u32
+pub const INVERSVID: u32 = 4u32
+pub const FRST_DOT: u32 = $01u32
+pub const ONE_DOT: u32 = $02u32
+pub const DBUFFER: u32 = $04u32
+pub const AREAOUTLINE: u32 = $08u32
+pub const NOCROSSFILL: u32 = $20u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const BITSET: u32 = $8000u32
+pub const BITCLR: u32 = 0u32
+pub const BMB_CLEAR: u32 = 0u32
+pub const BMB_DISPLAYABLE: u32 = 1u32
+pub const BMB_INTERLEAVED: u32 = 2u32
+pub const BMB_STANDARD: u32 = 3u32
+pub const BMB_MINPLANES: u32 = 4u32
+pub const BMF_CLEAR: u32 = 0 /* TODO: (1l<<BMB_CLEAR) */
+pub const BMF_DISPLAYABLE: u32 = 0 /* TODO: (1l<<BMB_DISPLAYABLE) */
+pub const BMF_INTERLEAVED: u32 = 0 /* TODO: (1l<<BMB_INTERLEAVED) */
+pub const BMF_STANDARD: u32 = 0 /* TODO: (1l<<BMB_STANDARD) */
+pub const BMF_MINPLANES: u32 = 0 /* TODO: (1l<<BMB_MINPLANES) */
+pub const BMA_HEIGHT: u32 = 0u32
+pub const BMA_DEPTH: u32 = 4u32
+pub const BMA_WIDTH: u32 = 8u32
+pub const BMA_FLAGS: u32 = 12u32
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+extern pub fn InitLayers(li: *Layer_Info)
+extern pub fn CreateUpfrontLayer(li: *Layer_Info, bm: *BitMap, x0: i32, y0: i32, x1: i32, y1: i32, flags: i32, bm2: *BitMap) -> *Layer
+extern pub fn CreateBehindLayer(li: *Layer_Info, bm: *BitMap, x0: i32, y0: i32, x1: i32, y1: i32, flags: i32, bm2: *BitMap) -> *Layer
+extern pub fn UpfrontLayer(dummy: i32, layer: *Layer) -> i32
+extern pub fn BehindLayer(dummy: i32, layer: *Layer) -> i32
+extern pub fn MoveLayer(dummy: i32, layer: *Layer, dx: i32, dy: i32) -> i32
+extern pub fn SizeLayer(dummy: i32, layer: *Layer, dx: i32, dy: i32) -> i32
+extern pub fn ScrollLayer(dummy: i32, layer: *Layer, dx: i32, dy: i32)
+extern pub fn BeginUpdate(l: *Layer) -> i32
+extern pub fn EndUpdate(layer: *Layer, flag: u16)
+extern pub fn DeleteLayer(dummy: i32, layer: *Layer) -> i32
+extern pub fn LockLayer(dummy: i32, layer: *Layer)
+extern pub fn UnlockLayer(layer: *Layer)
+extern pub fn LockLayers(li: *Layer_Info)
+extern pub fn UnlockLayers(li: *Layer_Info)
+extern pub fn LockLayerInfo(li: *Layer_Info)
+extern pub fn SwapBitsRastPortClipRect(rp: *RastPort, cr: *ClipRect)
+extern pub fn WhichLayer(li: *Layer_Info, x: i16, y: i16) -> *Layer
+extern pub fn UnlockLayerInfo(li: *Layer_Info)
+extern pub fn NewLayerInfo() -> *Layer_Info
+extern pub fn DisposeLayerInfo(li: *Layer_Info)
+extern pub fn FattenLayerInfo(li: *Layer_Info) -> i32
+extern pub fn ThinLayerInfo(li: *Layer_Info)
+extern pub fn MoveLayerInFrontOf(layer_to_move: *Layer, other_layer: *Layer) -> i32
+extern pub fn InstallClipRegion(layer: *Layer, region: *Region) -> *Region
+extern pub fn MoveSizeLayer(layer: *Layer, dx: i32, dy: i32, dw: i32, dh: i32) -> i32
+extern pub fn CreateUpfrontHookLayer(li: *Layer_Info, bm: *BitMap, x0: i32, y0: i32, x1: i32, y1: i32, flags: i32, hook: *Hook, bm2: *BitMap) -> *Layer
+extern pub fn CreateBehindHookLayer(li: *Layer_Info, bm: *BitMap, x0: i32, y0: i32, x1: i32, y1: i32, flags: i32, hook: *Hook, bm2: *BitMap) -> *Layer
+extern pub fn InstallLayerHook(layer: *Layer, hook: *Hook) -> *Hook
+extern pub fn InstallLayerInfoHook(li: *Layer_Info, hook: *Hook) -> *Hook
+extern pub fn SortLayerCR(layer: *Layer, dx: i16, dy: i16)
+extern pub fn DoHookClipRects(hook: *Hook, rport: *RastPort, rect: *Rectangle)

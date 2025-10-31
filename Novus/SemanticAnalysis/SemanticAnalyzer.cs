@@ -859,7 +859,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         {
             if (item.functionDeclaration() != null)
             {
-                RegisterImplMethod(item.functionDeclaration(), implTypeName, genericParams);
+                RegisterImplMethod(item.functionDeclaration(), context, implTypeName, genericParams);
             }
         }
 
@@ -870,7 +870,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
     }
 
-    private void RegisterImplMethod(NovusParser.FunctionDeclarationContext context, string implTypeName, List<string> genericParams)
+    private void RegisterImplMethod(NovusParser.FunctionDeclarationContext context, NovusParser.ImplDeclarationContext implContext, string implTypeName, List<string> genericParams)
     {
         var methodName = context.IDENTIFIER().GetText();
         var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
@@ -911,22 +911,37 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 var selfParam = context.parameterList().selfParameter();
                 var selfLocation = SourceLocationHelper.FromToken(selfParam.KW_SELF().Symbol, _filePath, _sourceLines);
 
-                // Determine self type based on parameter form
+                // Determine the base self type - we need to properly handle generic impls
+                IrType baseType;
+
+                // Check if this is a generic impl with type arguments (e.g., impl<T> Allocation<T>)
+                // In this case, we need to keep the struct as generic with its parameters
+                if (_structs.ContainsKey(implTypeName))
+                {
+                    baseType = _structs[implTypeName];
+                }
+                else
+                {
+                    // Fallback to generic type if struct not found
+                    baseType = new IrGenericType(implTypeName);
+                }
+
+                // Now wrap in pointer if needed based on parameter form
                 IrType selfType;
                 if (selfParam.GetText().StartsWith("&mut"))
                 {
                     // &mut self
-                    selfType = new IrPointerType(_structs.ContainsKey(implTypeName) ? _structs[implTypeName] : new IrGenericType(implTypeName));
+                    selfType = new IrPointerType(baseType);
                 }
                 else if (selfParam.GetText().StartsWith("&"))
                 {
                     // &self (immutable reference - treat as pointer for now)
-                    selfType = new IrPointerType(_structs.ContainsKey(implTypeName) ? _structs[implTypeName] : new IrGenericType(implTypeName));
+                    selfType = new IrPointerType(baseType);
                 }
                 else
                 {
                     // self (by value)
-                    selfType = _structs.ContainsKey(implTypeName) ? _structs[implTypeName] : new IrGenericType(implTypeName);
+                    selfType = baseType;
                 }
 
                 parameters.Add(new ParameterSymbol("self", selfType, selfLocation));
@@ -979,7 +994,11 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
-        // Parse struct fields
+        // Register placeholder struct type FIRST to allow self-referential types
+        var placeholderStruct = new IrStructType(name, new List<IrStructField>(), genericParams);
+        _structs[name] = placeholderStruct;
+
+        // Now parse struct fields (can now reference the struct being defined)
         var fields = new List<IrStructField>();
         foreach (var fieldCtx in context.structField())
         {
@@ -994,6 +1013,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             _genericParams.Remove(paramName);
         }
 
+        // Replace placeholder with complete struct type
         var structType = new IrStructType(name, fields, genericParams);
 
         // Force offset calculation by accessing SizeInBytes
@@ -1161,7 +1181,23 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         // Analyze function body with unreachable code detection
-        AnalyzeBlock(context.block());
+        bool allPathsReturn = AnalyzeBlockReturns(context.block());
+
+        // Check if function with non-void return type has all paths returning
+        if (_currentFunction.ReturnType is not IrVoidType && !allPathsReturn)
+        {
+            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0030",
+                $"function '{name}' must return a value on all code paths",
+                location,
+                helpTexts: new List<string>
+                {
+                    $"this function is declared to return '{TypeToString(_currentFunction.ReturnType)}'",
+                    "ensure every possible execution path ends with a return statement"
+                }
+            );
+        }
 
         _currentFunction = null;
         return null;
@@ -1207,6 +1243,144 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 foundTerminal = true;
             }
         }
+    }
+
+    /// <summary>
+    /// Analyzes a block and returns true if all paths return a value
+    /// </summary>
+    private bool AnalyzeBlockReturns(NovusParser.BlockContext block)
+    {
+        var statements = block.statement();
+        if (statements.Length == 0)
+            return false;
+
+        // Check if any statement guarantees a return on all paths
+        for (int i = 0; i < statements.Length; i++)
+        {
+            var stmt = statements[i];
+
+            // Check if this statement guarantees a return on all paths
+            if (StatementAlwaysReturns(stmt))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Checks if a statement always returns a value on all code paths
+    /// </summary>
+    private bool StatementAlwaysReturns(NovusParser.StatementContext stmt)
+    {
+        // Return statement always returns
+        if (stmt.returnStatement() != null)
+            return true;
+
+        // If statement returns if both branches return
+        if (stmt.ifStatement() != null)
+        {
+            var ifStmt = stmt.ifStatement();
+            bool thenReturns = AnalyzeBlockReturns(ifStmt.block(0));
+
+            // Check if there's a simple else block (not else-if)
+            if (ifStmt.block().Length > 1)
+            {
+                // Has else block
+                bool elseReturns = AnalyzeBlockReturns(ifStmt.block(1));
+                return thenReturns && elseReturns;
+            }
+
+            // TODO: Handle else-if chains
+            // For now, we conservatively say if-else-if doesn't guarantee return
+            return false;
+        }
+
+        // Match statement returns if it's exhaustive and all arms return
+        if (stmt.matchStatement() != null)
+        {
+            var matchStmt = stmt.matchStatement();
+            var arms = matchStmt.matchArm();
+
+            if (arms.Length == 0)
+                return false;
+
+            // Note: We can't easily get the matched expression's type here without re-analyzing
+            // For now, we'll do a conservative check based on pattern structure
+            // The full exhaustiveness check happens in VisitMatchStatement
+
+            // Try to infer if this looks like an exhaustive match based on patterns
+            // This is conservative - we might miss some cases, but won't false positive
+
+            // Track which variant names are covered
+            var coveredVariants = new HashSet<string>();
+            bool hasWildcard = false;
+
+            // Check if all arms that have blocks end with a return
+            bool allArmsReturn = true;
+            foreach (var arm in arms)
+            {
+                var pattern = arm.pattern();
+
+                // Track coverage
+                if (pattern is NovusParser.WildcardPatternContext)
+                {
+                    hasWildcard = true;
+                }
+                else if (pattern is NovusParser.VariantPatternContext variantPattern)
+                {
+                    var variantNameCtx = variantPattern.variantName();
+                    var identifiers = variantNameCtx.IDENTIFIER();
+                    var variantName = identifiers[identifiers.Length - 1].GetText();
+                    coveredVariants.Add(variantName);
+                }
+                else if (pattern is NovusParser.SimpleVariantPatternContext simpleVariant)
+                {
+                    // Pattern like Option::None or Result::Ok
+                    var identifiers = simpleVariant.IDENTIFIER();
+                    var variantName = identifiers[identifiers.Length - 1].GetText();
+                    coveredVariants.Add(variantName);
+                }
+                else if (pattern is NovusParser.IdentifierPatternContext identPattern)
+                {
+                    // Bare identifier like "None" or "Ok" - could be a variant
+                    var variantName = identPattern.IDENTIFIER().GetText();
+                    coveredVariants.Add(variantName);
+                }
+
+                // Match arm can have a block or just an expression
+                if (arm.block() != null)
+                {
+                    // Block form: check if the last statement is a return
+                    var block = arm.block();
+                    var stmts = block.statement();
+                    if (stmts.Length == 0 || stmts[stmts.Length - 1].returnStatement() == null)
+                    {
+                        allArmsReturn = false;
+                        break;
+                    }
+                }
+                else
+                {
+                    // Expression form (e.g., Some(x) => x) - these don't have explicit returns
+                    // They evaluate to a value but don't return from the function
+                    allArmsReturn = false;
+                    break;
+                }
+            }
+
+            // Conservative exhaustiveness check for known patterns
+            // Full exhaustiveness is checked in VisitMatchStatement
+            bool looksExhaustive = hasWildcard ||
+                                   (coveredVariants.Contains("Some") && coveredVariants.Contains("None")) ||
+                                   (coveredVariants.Contains("Ok") && coveredVariants.Contains("Err"));
+
+            // Only guarantees return if it looks exhaustive AND all arms return
+            return looksExhaustive && allArmsReturn;
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -1316,31 +1490,56 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return null;
         }
 
-        // Set expected type for bidirectional type checking (enables type inference)
-        var savedExpectedType = _expectedType;
-        _expectedType = _currentFunction.ReturnType;
+        // Check if there's an expression (bare return for void functions)
+        var exprContext = context.expression();
+        IrType? exprType = null;
 
-        var exprType = Visit(context.expression());
-
-        // Restore previous expected type
-        _expectedType = savedExpectedType;
-
-        // Check return type compatibility
-        if (exprType != null && !TypesCompatible(_currentFunction.ReturnType, exprType))
+        if (exprContext != null)
         {
-            var expectedType = TypeToString(_currentFunction.ReturnType);
-            var actualType = TypeToString(exprType);
+            // Set expected type for bidirectional type checking (enables type inference)
+            var savedExpectedType = _expectedType;
+            _expectedType = _currentFunction.ReturnType;
 
-            _diagnostics.ReportError(
-                "E0003",
-                $"mismatched types in return statement",
-                location,
-                helpTexts: new List<string>
-                {
-                    $"expected type '{expectedType}', found '{actualType}'",
-                    $"consider using a cast: ({expectedType}){context.expression().GetText()}"
-                }
-            );
+            exprType = Visit(exprContext);
+
+            // Restore previous expected type
+            _expectedType = savedExpectedType;
+
+            // Check return type compatibility
+            if (exprType != null && !TypesCompatible(_currentFunction.ReturnType, exprType))
+            {
+                var expectedType = TypeToString(_currentFunction.ReturnType);
+                var actualType = TypeToString(exprType);
+
+                _diagnostics.ReportError(
+                    "E0003",
+                    $"mismatched types in return statement",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        $"expected type '{expectedType}', found '{actualType}'",
+                        $"consider using a cast: ({expectedType}){exprContext.GetText()}"
+                    }
+                );
+            }
+        }
+        else
+        {
+            // Bare return - only valid for void functions
+            if (_currentFunction.ReturnType is not IrVoidType)
+            {
+                var expectedType = TypeToString(_currentFunction.ReturnType);
+                _diagnostics.ReportError(
+                    "E0003",
+                    $"bare return in non-void function",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        $"this function is declared to return '{expectedType}'",
+                        "provide a return value or change the function to return void"
+                    }
+                );
+            }
         }
 
         return null;
@@ -2057,7 +2256,65 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return targetType;
     }
 
+    // Override VisitStatement to prevent double traversal via VisitChildren
+    // The base implementation calls VisitChildren, which would visit all child nodes
+    // after our specific Visit* methods have already processed them
+    public override IrType? VisitStatement([NotNull] NovusParser.StatementContext context)
+    {
+        // Visit only the first child, which is the actual statement
+        // This prevents the base VisitChildren from visiting ALL children
+        if (context.ChildCount > 0)
+        {
+            return Visit(context.GetChild(0));
+        }
+        return null;
+    }
+
     public override IrType? VisitIfStatement([NotNull] NovusParser.IfStatementContext context)
+    {
+        // Visit the condition (handles expression, if let, if var)
+        // This may set _pendingIfLetVariable
+        Visit(context.ifCondition());
+
+        // Save current variable scope before adding if let/var binding
+        var variablesBeforeIf = new HashSet<string>(_variables.Keys);
+
+        // If we have a pending if let/var variable, declare it in scope for the then block
+        if (_pendingIfLetVariable != null)
+        {
+            var (varName, varType, isMutable) = _pendingIfLetVariable.Value;
+            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            _variables[varName] = new VariableSymbol(varName, varType, isMutable, location);
+            _pendingIfLetVariable = null;
+        }
+
+        // Analyze then block with unreachable code detection
+        AnalyzeBlock(context.block(0));
+
+        // Remove if let/var binding before else block (not in scope there)
+        var keysToRemove = _variables.Keys.Where(k => !variablesBeforeIf.Contains(k)).ToList();
+        foreach (var key in keysToRemove)
+        {
+            _variables.Remove(key);
+        }
+
+        // Analyze else block if present
+        if (context.ifStatement() != null)
+        {
+            Visit(context.ifStatement());
+        }
+        else if (context.block().Length > 1)
+        {
+            AnalyzeBlock(context.block(1));
+        }
+
+        return null;
+    }
+
+    // Helper to pass variable info from condition to then block
+    private (string varName, IrType varType, bool isMutable)? _pendingIfLetVariable;
+
+    public override IrType? VisitIfConditionExpression([NotNull] NovusParser.IfConditionExpressionContext context)
     {
         var conditionType = Visit(context.expression());
         var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
@@ -2078,20 +2335,74 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             );
         }
 
-        // Analyze then block with unreachable code detection
-        AnalyzeBlock(context.block(0));
+        return null;
+    }
 
-        // Analyze else block if present
-        if (context.ifStatement() != null)
+    public override IrType? VisitIfConditionLet([NotNull] NovusParser.IfConditionLetContext context)
+    {
+        // if let binds a non-null value to an immutable variable
+        var exprType = Visit(context.expression());
+        var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+
+        // Check that the expression type is nullable (pointer or integer)
+        if (exprType != null && !IsNullableType(exprType))
         {
-            Visit(context.ifStatement());
+            _diagnostics.ReportError(
+                "E0031",
+                "if let requires a nullable type (pointer or integer)",
+                location,
+                helpTexts: new List<string>
+                {
+                    $"found type '{TypeToString(exprType)}', expected a pointer or integer type",
+                    "if let checks if a value is non-zero/non-null"
+                }
+            );
         }
-        else if (context.block().Length > 1)
+
+        // Store variable info for declaring in then block scope
+        if (exprType != null)
         {
-            AnalyzeBlock(context.block(1));
+            var varName = context.IDENTIFIER().GetText();
+            _pendingIfLetVariable = (varName, exprType, false); // false = immutable
         }
 
         return null;
+    }
+
+    public override IrType? VisitIfConditionVar([NotNull] NovusParser.IfConditionVarContext context)
+    {
+        // if var binds a non-null value to a mutable variable
+        var exprType = Visit(context.expression());
+        var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+
+        // Check that the expression type is nullable (pointer or integer)
+        if (exprType != null && !IsNullableType(exprType))
+        {
+            _diagnostics.ReportError(
+                "E0031",
+                "if var requires a nullable type (pointer or integer)",
+                location,
+                helpTexts: new List<string>
+                {
+                    $"found type '{TypeToString(exprType)}', expected a pointer or integer type",
+                    "if var checks if a value is non-zero/non-null"
+                }
+            );
+        }
+
+        // Store variable info for declaring in then block scope
+        if (exprType != null)
+        {
+            var varName = context.IDENTIFIER().GetText();
+            _pendingIfLetVariable = (varName, exprType, true); // true = mutable
+        }
+
+        return null;
+    }
+
+    private bool IsNullableType(IrType type)
+    {
+        return type is IrPointerType || type is IrIntType;
     }
 
     public override IrType? VisitWhileStatement([NotNull] NovusParser.WhileStatementContext context)
@@ -2197,12 +2508,21 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return null;
     }
 
-    public override IrType? VisitDeferStatement([NotNull] NovusParser.DeferStatementContext context)
+    // Handle: defer { statements }
+    public override IrType? VisitDeferBlock([NotNull] NovusParser.DeferBlockContext context)
     {
         // Analyze the deferred block
         // Variables captured in defer have their values at the time defer executes (end of scope)
         // not at the time defer is registered
         AnalyzeBlock(context.block());
+        return null;
+    }
+
+    // Handle: defer => expression
+    public override IrType? VisitDeferExpression([NotNull] NovusParser.DeferExpressionContext context)
+    {
+        // Analyze the deferred expression
+        Visit(context.expression());
         return null;
     }
 
@@ -3341,7 +3661,24 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Look up 'self' in the variable table
         if (_variables.ContainsKey("self"))
         {
-            return _variables["self"].Type;
+            var selfType = _variables["self"].Type;
+            Console.WriteLine($"[DEBUG] VisitSelfExpr: 'self' found in variable table");
+            Console.WriteLine($"[DEBUG]   Type: {selfType.Name}");
+            if (selfType is IrStructType structType)
+            {
+                Console.WriteLine($"[DEBUG]   Is Generic: {structType.GenericParameters.Count > 0}");
+                Console.WriteLine($"[DEBUG]   Generic params: {string.Join(", ", structType.GenericParameters)}");
+                Console.WriteLine($"[DEBUG]   Struct fields: {string.Join(", ", structType.Fields.Select(f => $"{f.Name}:{f.Type.Name}"))}");
+            }
+            else if (selfType is IrPointerType ptrType)
+            {
+                Console.WriteLine($"[DEBUG]   Is Pointer to: {ptrType.PointeeType.Name}");
+                if (ptrType.PointeeType is IrStructType innerStruct)
+                {
+                    Console.WriteLine($"[DEBUG]   Inner struct generic params: {string.Join(", ", innerStruct.GenericParameters)}");
+                }
+            }
+            return selfType;
         }
 
         var location = SourceLocationHelper.FromToken(context.KW_SELF().Symbol, _filePath, _sourceLines);
@@ -3450,28 +3787,56 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public override IrType? VisitMemberAccessExpr([NotNull] NovusParser.MemberAccessExprContext context)
     {
+        var exprText = context.expression().GetText();
+        Console.WriteLine($"[DEBUG] VisitMemberAccessExpr: accessing member on expression '{exprText}'");
+
         var baseType = Visit(context.expression());
         if (baseType == null)
         {
+            Console.WriteLine($"[DEBUG]   Base type is NULL");
             return null;
         }
 
         var memberName = context.IDENTIFIER().GetText();
+        Console.WriteLine($"[DEBUG]   Base type before auto-deref: {baseType.Name}");
+        Console.WriteLine($"[DEBUG]   Member being accessed: {memberName}");
+
+        if (exprText == "self")
+        {
+            Console.WriteLine($"[DEBUG]   *** SELF ACCESS DETECTED ***");
+            Console.WriteLine($"[DEBUG]   self has type: {baseType.Name}");
+            if (baseType is IrStructType st)
+            {
+                Console.WriteLine($"[DEBUG]   Is Generic: {st.GenericParameters.Count > 0}");
+                Console.WriteLine($"[DEBUG]   Generic params: {string.Join(", ", st.GenericParameters)}");
+                Console.WriteLine($"[DEBUG]   Fields: {string.Join(", ", st.Fields.Select(f => $"{f.Name}:{f.Type.Name}"))}");
+            }
+            else if (baseType is IrPointerType pt && pt.PointeeType is IrStructType pts)
+            {
+                Console.WriteLine($"[DEBUG]   Pointer to struct: {pts.Name}");
+                Console.WriteLine($"[DEBUG]   Generic params: {string.Join(", ", pts.GenericParameters)}");
+            }
+        }
 
         // Auto-dereference pointers (like Rust/Swift)
         // This allows `&self` to work like `self` for member access
         if (baseType is IrPointerType ptrType)
         {
+            Console.WriteLine($"[DEBUG]   Auto-dereferencing pointer: {baseType.Name} -> {ptrType.PointeeType.Name}");
             baseType = ptrType.PointeeType;
         }
         else if (baseType is IrReferenceType refType)
         {
+            Console.WriteLine($"[DEBUG]   Auto-dereferencing reference: {baseType.Name} -> {refType.PointeeType.Name}");
             baseType = refType.PointeeType;
         }
         else if (baseType is IrMutReferenceType mutRefType)
         {
+            Console.WriteLine($"[DEBUG]   Auto-dereferencing mut reference: {baseType.Name} -> {mutRefType.PointeeType.Name}");
             baseType = mutRefType.PointeeType;
         }
+
+        Console.WriteLine($"[DEBUG]   Base type after auto-deref: {baseType.Name}");
 
         // Handle String type member access (.ptr and .len)
         if (baseType is IrStringType)
@@ -4655,10 +5020,41 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     private IrType ParseArrayType(NovusParser.ArrayTypeContext context)
     {
-        var sizeText = context.INTEGER_LITERAL().GetText();
-        var size = int.Parse(sizeText);
+        // Evaluate the size expression as a compile-time constant
+        var sizeExpr = context.expression();
+        var evaluator = new ConstantExpressionEvaluator(
+            _constants.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.Value),
+            errorMsg => _diagnostics.ReportError(
+                "E0030",
+                $"error evaluating array size: {errorMsg}",
+                SourceLocationHelper.FromToken(sizeExpr.Start, _filePath, _sourceLines),
+                new List<string>
+                {
+                    "array sizes must be compile-time constant expressions",
+                    "only integer literals, constants, and arithmetic operations are allowed"
+                }
+            )
+        );
+
+        var sizeValue = evaluator.Visit(sizeExpr);
+
+        if (!sizeValue.HasValue)
+        {
+            _diagnostics.ReportError(
+                "E0031",
+                "array size must be a compile-time constant expression",
+                SourceLocationHelper.FromToken(sizeExpr.Start, _filePath, _sourceLines),
+                new List<string>
+                {
+                    "array sizes must be known at compile time",
+                    "use integer literals or const expressions"
+                }
+            );
+            sizeValue = 0; // fallback
+        }
+
         var elementType = ParseType(context.type());
-        return _typeInterner.GetArrayType(elementType, size);
+        return _typeInterner.GetArrayType(elementType, sizeValue.Value);
     }
 
     private IrType ParseFunctionPointerType(NovusParser.FunctionPointerTypeContext context)

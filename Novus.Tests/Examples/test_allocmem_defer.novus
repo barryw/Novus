@@ -1,0 +1,53 @@
+// Test AllocMem/FreeMem with Option and defer
+// Demonstrates safe memory allocation with automatic cleanup
+
+from std::core import AllocMem, FreeMem
+
+// Memory attributes from exec.library
+pub const MEMF_PUBLIC: u32 = 1
+pub const MEMF_CHIP: u32 = 2
+pub const MEMF_FAST: u32 = 4
+pub const MEMF_CLEAR: u32 = 65536
+
+pub fn main() -> i32 {
+    // Allocate 1024 bytes - returns Option<MemoryBlock>
+    let mem = AllocMem(1024, MEMF_PUBLIC | MEMF_CLEAR)
+
+    // Set up automatic cleanup - FreeMem knows the size!
+    defer => FreeMem(mem)
+
+    match mem {
+        Some(block) => {
+            // Use the memory - write some bytes
+            unsafe {
+                // Write test pattern at different offsets
+                block.ptr[0] = 66        // 0x42
+                block.ptr[100] = 19      // 0x13
+                block.ptr[500] = 171     // 0xAB
+
+                // Read them back to verify
+                let val0 = block.ptr[0]
+                let val1 = block.ptr[100]
+                let val2 = block.ptr[500]
+
+                // Check values
+                if val0 != 66 {
+                    return 1  // Failed: wrong value at offset 0
+                }
+                if val1 != 19 {
+                    return 2  // Failed: wrong value at offset 100
+                }
+                if val2 != 171 {
+                    return 3  // Failed: wrong value at offset 500
+                }
+            }
+
+            // Memory automatically freed by defer when function exits
+            return 0  // Success!
+        },
+        None => {
+            // Allocation failed - defer will do nothing since mem is None
+            return 255  // Error: out of memory
+        }
+    }
+}

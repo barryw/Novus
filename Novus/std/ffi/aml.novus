@@ -1,0 +1,553 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: aml.library
+// Base: _AmlBase
+//
+// NOTE: Import specific types from std::amiga_structs as needed
+// Example: from std::amiga_structs import Task, Node, List
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const TAG_DONE: u32 = 0
+pub const TAG_END: u32 = 0
+pub const TAG_IGNORE: u32 = 1u32
+pub const TAG_MORE: u32 = 2u32
+pub const TAG_SKIP: u32 = 3u32
+pub const TAG_USER: u32 = (1u32 << 31)
+pub const TAGFILTER_AND: u32 = 0u32
+pub const TAGFILTER_NOT: u32 = 1u32
+pub const MAP_REMOVE_NOT_FOUND: u32 = 0u32
+pub const MAP_KEEP_NOT_FOUND: u32 = 1u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const NT_UNKNOWN: u32 = 0u32
+pub const NT_TASK: u32 = 1u32
+pub const NT_INTERRUPT: u32 = 2u32
+pub const NT_DEVICE: u32 = 3u32
+pub const NT_MSGPORT: u32 = 4u32
+pub const NT_MESSAGE: u32 = 5u32
+pub const NT_FREEMSG: u32 = 6u32
+pub const NT_REPLYMSG: u32 = 7u32
+pub const NT_RESOURCE: u32 = 8u32
+pub const NT_LIBRARY: u32 = 9u32
+pub const NT_MEMORY: u32 = 10u32
+pub const NT_SOFTINT: u32 = 11u32
+pub const NT_FONT: u32 = 12u32
+pub const NT_PROCESS: u32 = 13u32
+pub const NT_SEMAPHORE: u32 = 14u32
+pub const NT_SIGNALSEM: u32 = 15u32
+pub const NT_BOOTNODE: u32 = 16u32
+pub const NT_KICKMEM: u32 = 17u32
+pub const NT_GRAPHICS: u32 = 18u32
+pub const NT_DEATHMESSAGE: u32 = 19u32
+pub const NT_USER: u32 = 254u32
+pub const NT_EXTENDED: u32 = 255u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const NT_UNKNOWN: u32 = 0u32
+pub const NT_TASK: u32 = 1u32
+pub const NT_INTERRUPT: u32 = 2u32
+pub const NT_DEVICE: u32 = 3u32
+pub const NT_MSGPORT: u32 = 4u32
+pub const NT_MESSAGE: u32 = 5u32
+pub const NT_FREEMSG: u32 = 6u32
+pub const NT_REPLYMSG: u32 = 7u32
+pub const NT_RESOURCE: u32 = 8u32
+pub const NT_LIBRARY: u32 = 9u32
+pub const NT_MEMORY: u32 = 10u32
+pub const NT_SOFTINT: u32 = 11u32
+pub const NT_FONT: u32 = 12u32
+pub const NT_PROCESS: u32 = 13u32
+pub const NT_SEMAPHORE: u32 = 14u32
+pub const NT_SIGNALSEM: u32 = 15u32
+pub const NT_BOOTNODE: u32 = 16u32
+pub const NT_KICKMEM: u32 = 17u32
+pub const NT_GRAPHICS: u32 = 18u32
+pub const NT_DEATHMESSAGE: u32 = 19u32
+pub const NT_USER: u32 = 254u32
+pub const NT_EXTENDED: u32 = 255u32
+pub const TB_PROCTIME: u32 = 0u32
+pub const TB_ETASK: u32 = 3u32
+pub const TB_STACKCHK: u32 = 4u32
+pub const TB_EXCEPT: u32 = 5u32
+pub const TB_SWITCH: u32 = 6u32
+pub const TB_LAUNCH: u32 = 7u32
+pub const TF_PROCTIME: u32 = (1u32 << 0)
+pub const TF_ETASK: u32 = (1u32 << 3)
+pub const TF_STACKCHK: u32 = (1u32 << 4)
+pub const TF_EXCEPT: u32 = (1u32 << 5)
+pub const TF_SWITCH: u32 = (1u32 << 6)
+pub const TF_LAUNCH: u32 = (1u32 << 7)
+pub const TS_INVALID: u32 = 0u32
+pub const TS_ADDED: u32 = 1u32
+pub const TS_RUN: u32 = 2u32
+pub const TS_READY: u32 = 3u32
+pub const TS_WAIT: u32 = 4u32
+pub const TS_EXCEPT: u32 = 5u32
+pub const TS_REMOVED: u32 = 6u32
+pub const SIGB_ABORT: u32 = 0u32
+pub const SIGB_CHILD: u32 = 1u32
+pub const SIGB_BLIT: u32 = 4u32
+pub const SIGB_SINGLE: u32 = 4u32
+pub const SIGB_INTUITION: u32 = 5u32
+pub const SIGB_NET: u32 = 7u32
+pub const SIGB_DOS: u32 = 8u32
+pub const SIGF_ABORT: u32 = (1u32 << 0)
+pub const SIGF_CHILD: u32 = (1u32 << 1)
+pub const SIGF_BLIT: u32 = (1u32 << 4)
+pub const SIGF_SINGLE: u32 = (1u32 << 4)
+pub const SIGF_INTUITION: u32 = (1u32 << 5)
+pub const SIGF_NET: u32 = (1u32 << 7)
+pub const SIGF_DOS: u32 = (1u32 << 8)
+pub const mp_SoftInt: u32 = 0 /* TODO: mp_SigTask */
+pub const PF_ACTION: u32 = 3u32
+pub const PA_SIGNAL: u32 = 0u32
+pub const PA_SOFTINT: u32 = 1u32
+pub const PA_IGNORE: u32 = 2u32
+pub const LIB_VECTSIZE: u32 = 6u32
+pub const LIB_RESERVED: u32 = 4u32
+pub const LIB_BASE: u32 = 0 /* TODO: (-LIB_VECTSIZE) */
+pub const LIB_USERDEF: u32 = 0 /* TODO: (LIB_BASE-(LIB_RESERVED*LIB_VECTSIZE)) */
+pub const LIB_NONSTD: u32 = 0 /* TODO: (LIB_USERDEF) */
+pub const LIB_OPEN: u32 = 0 /* TODO: (-6) */
+pub const LIB_CLOSE: u32 = 0 /* TODO: (-12) */
+pub const LIB_EXPUNGE: u32 = 0 /* TODO: (-18) */
+pub const LIB_EXTFUNC: u32 = 0 /* TODO: (-24) */
+pub const LIBF_SUMMING: u32 = (1u32 << 0)
+pub const LIBF_CHANGED: u32 = (1u32 << 1)
+pub const LIBF_SUMUSED: u32 = (1u32 << 2)
+pub const LIBF_DELEXP: u32 = (1u32 << 3)
+pub const lh_Node: u32 = 0 /* TODO: lib_Node */
+pub const lh_Flags: u32 = 0 /* TODO: lib_Flags */
+pub const lh_pad: u32 = 0 /* TODO: lib_pad */
+pub const lh_NegSize: u32 = 0 /* TODO: lib_NegSize */
+pub const lh_PosSize: u32 = 0 /* TODO: lib_PosSize */
+pub const lh_Version: u32 = 0 /* TODO: lib_Version */
+pub const lh_Revision: u32 = 0 /* TODO: lib_Revision */
+pub const lh_IdString: u32 = 0 /* TODO: lib_IdString */
+pub const lh_Sum: u32 = 0 /* TODO: lib_Sum */
+pub const lh_OpenCnt: u32 = 0 /* TODO: lib_OpenCnt */
+pub const NXADDLEN: u32 = 9u32
+pub const NSB_KEEP: u32 = 0u32
+pub const NSB_STRING: u32 = 1u32
+pub const NSB_NOTNUM: u32 = 2u32
+pub const NSB_NUMBER: u32 = 3u32
+pub const NSB_BINARY: u32 = 4u32
+pub const NSB_FLOAT: u32 = 5u32
+pub const NSB_EXT: u32 = 6u32
+pub const NSB_SOURCE: u32 = 7u32
+pub const NSF_KEEP: u32 = 0 /* TODO: (1 << NSB_KEEP  ) */
+pub const NSF_STRING: u32 = 0 /* TODO: (1 << NSB_STRING) */
+pub const NSF_NOTNUM: u32 = 0 /* TODO: (1 << NSB_NOTNUM) */
+pub const NSF_NUMBER: u32 = 0 /* TODO: (1 << NSB_NUMBER) */
+pub const NSF_BINARY: u32 = 0 /* TODO: (1 << NSB_BINARY) */
+pub const NSF_FLOAT: u32 = 0 /* TODO: (1 << NSB_FLOAT ) */
+pub const NSF_EXT: u32 = 0 /* TODO: (1 << NSB_EXT   ) */
+pub const NSF_SOURCE: u32 = 0 /* TODO: (1 << NSB_SOURCE) */
+pub const NSF_INTNUM: u32 = 0 /* TODO: (NSF_NUMBER | NSF_BINARY | NSF_STRING) */
+pub const NSF_DPNUM: u32 = 0 /* TODO: (NSF_NUMBER | NSF_FLOAT) */
+pub const NSF_ALPHA: u32 = 0 /* TODO: (NSF_NOTNUM | NSF_STRING) */
+pub const NSF_OWNED: u32 = 0 /* TODO: (NSF_SOURCE | NSF_EXT    | NSF_KEEP) */
+pub const KEEPSTR: u32 = 0 /* TODO: (NSF_STRING | NSF_SOURCE | NSF_NOTNUM) */
+pub const KEEPNUM: u32 = 0 /* TODO: (NSF_STRING | NSF_SOURCE | NSF_NUMBER | NSF_BINARY) */
+pub const MAXRMARG: u32 = 15u32
+pub const RXCOMM: u32 = $01000000u32
+pub const RXFUNC: u32 = $02000000u32
+pub const RXCLOSE: u32 = $03000000u32
+pub const RXQUERY: u32 = $04000000u32
+pub const RXADDFH: u32 = $07000000u32
+pub const RXADDLIB: u32 = $08000000u32
+pub const RXREMLIB: u32 = $09000000u32
+pub const RXADDCON: u32 = $0A000000u32
+pub const RXREMCON: u32 = $0B000000u32
+pub const RXTCOPN: u32 = $0C000000u32
+pub const RXTCCLS: u32 = $0D000000u32
+pub const RXFB_NOIO: u32 = 16u32
+pub const RXFB_RESULT: u32 = 17u32
+pub const RXFB_STRING: u32 = 18u32
+pub const RXFB_TOKEN: u32 = 19u32
+pub const RXFB_NONRET: u32 = 20u32
+pub const RXFF_NOIO: u32 = 0 /* TODO: (1L << RXFB_NOIO  ) */
+pub const RXFF_RESULT: u32 = 0 /* TODO: (1L << RXFB_RESULT) */
+pub const RXFF_STRING: u32 = 0 /* TODO: (1L << RXFB_STRING) */
+pub const RXFF_TOKEN: u32 = 0 /* TODO: (1L << RXFB_TOKEN ) */
+pub const RXFF_NONRET: u32 = 0 /* TODO: (1L << RXFB_NONRET) */
+pub const RXCODEMASK: u32 = $FF000000u32
+pub const RXARGMASK: u32 = $0000000Fu32
+pub const RRT_ANY: u32 = 0u32
+pub const RRT_LIB: u32 = 1u32
+pub const RRT_PORT: u32 = 2u32
+pub const RRT_FILE: u32 = 3u32
+pub const RRT_HOST: u32 = 4u32
+pub const RRT_CLIP: u32 = 5u32
+pub const GLOBALSZ: u32 = 200u32
+pub const RTFB_TRACE: u32 = 0u32
+pub const RTFB_HALT: u32 = 1u32
+pub const RTFB_SUSP: u32 = 2u32
+pub const RTFB_TCUSE: u32 = 3u32
+pub const RTFB_WAIT: u32 = 6u32
+pub const RTFB_CLOSE: u32 = 7u32
+pub const MEMQUANT: u32 = 16u32
+pub const MEMMASK: u32 = $FFFFFFF0u32
+pub const MEMQUICK: u32 = (1u32 << 0)
+pub const MEMCLEAR: u32 = (1u32 << 16)
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const NT_UNKNOWN: u32 = 0u32
+pub const NT_TASK: u32 = 1u32
+pub const NT_INTERRUPT: u32 = 2u32
+pub const NT_DEVICE: u32 = 3u32
+pub const NT_MSGPORT: u32 = 4u32
+pub const NT_MESSAGE: u32 = 5u32
+pub const NT_FREEMSG: u32 = 6u32
+pub const NT_REPLYMSG: u32 = 7u32
+pub const NT_RESOURCE: u32 = 8u32
+pub const NT_LIBRARY: u32 = 9u32
+pub const NT_MEMORY: u32 = 10u32
+pub const NT_SOFTINT: u32 = 11u32
+pub const NT_FONT: u32 = 12u32
+pub const NT_PROCESS: u32 = 13u32
+pub const NT_SEMAPHORE: u32 = 14u32
+pub const NT_SIGNALSEM: u32 = 15u32
+pub const NT_BOOTNODE: u32 = 16u32
+pub const NT_KICKMEM: u32 = 17u32
+pub const NT_GRAPHICS: u32 = 18u32
+pub const NT_DEATHMESSAGE: u32 = 19u32
+pub const NT_USER: u32 = 254u32
+pub const NT_EXTENDED: u32 = 255u32
+pub const TAG_DONE: u32 = 0
+pub const TAG_END: u32 = 0
+pub const TAG_IGNORE: u32 = 1u32
+pub const TAG_MORE: u32 = 2u32
+pub const TAG_SKIP: u32 = 3u32
+pub const TAG_USER: u32 = (1u32 << 31)
+pub const TAGFILTER_AND: u32 = 0u32
+pub const TAGFILTER_NOT: u32 = 1u32
+pub const MAP_REMOVE_NOT_FOUND: u32 = 0u32
+pub const MAP_KEEP_NOT_FOUND: u32 = 1u32
+pub const AmlName: u32 = 0 /* TODO: "aml.library" */
+pub const AML_TB: u32 = 0 /* TODO: (TAG_USER+0x80000) */
+pub const SERVERA_Dummy: u32 = 0 /* TODO: (TAG_USER+0x100) */
+pub const SERVERA_HostName: u32 = 0 /* TODO: (SERVERA_Dummy+0) */
+pub const SERVERA_HostPort: u32 = 0 /* TODO: (SERVERA_Dummy+1) */
+pub const SERVERA_Directory: u32 = 0 /* TODO: (SERVERA_Dummy+2) */
+pub const SERVERA_UserName: u32 = 0 /* TODO: (SERVERA_Dummy+3) */
+pub const SERVERA_PassWord: u32 = 0 /* TODO: (SERVERA_Dummy+4) */
+pub const SERVERA_Type: u32 = 0 /* TODO: (SERVERA_Dummy+5) */
+pub const SERVERA_Flags: u32 = 0 /* TODO: (SERVERA_Dummy+6) */
+pub const SERVERA_Socket: u32 = 0 /* TODO: (SERVERA_Dummy+7) */
+pub const SERVERA_UserData: u32 = 0 /* TODO: (SERVERA_Dummy+8) */
+pub const SERVERA_ProgressHook: u32 = 0 /* TODO: (SERVERA_Dummy+9) */
+pub const SERVERA_SpoolFile: u32 = 0 /* TODO: (SERVERA_Dummy+10) */
+pub const SERVERA_NewsGroup: u32 = 0 /* TODO: (SERVERA_Dummy+11) */
+pub const SERVERA_LogFile: u32 = 0 /* TODO: (SERVERA_Dummy+12) */
+pub const SERVERA_MaxSize: u32 = 0 /* TODO: (SERVERA_Dummy+13) */
+pub const SERVERA_MaxLines: u32 = 0 /* TODO: (SERVERA_Dummy+14) */
+pub const SERVERA_MaxWarning: u32 = 0 /* TODO: (SERVERA_Dummy+15) */
+pub const SVRTYPE_SMTP: u32 = 0
+pub const SVRTYPE_POP3: u32 = 1u32
+pub const SVRTYPE_IMAP: u32 = 2u32
+pub const SVRTYPE_NNTP: u32 = 3u32
+pub const SVRTYPE_LDAP: u32 = 4u32
+pub const SVRTYPE_FILE: u32 = 5u32
+pub const SPDT_SERVER: u32 = 0
+pub const SPDT_FOLDER: u32 = 1u32
+pub const SPDT_ARTICLE: u32 = 2u32
+pub const SPDT_PART: u32 = 3u32
+pub const SPDT_ADDRESS: u32 = 4u32
+pub const SPDT_DECODER: u32 = 5u32
+pub const SPDA_ERROR: u32 = 0 /* TODO: (~0) */
+pub const SPDA_NONE: u32 = 0
+pub const SPDA_SCANINDEX: u32 = 1u32
+pub const SPDA_EDITINDEX: u32 = 2u32
+pub const SPDA_DELETE: u32 = 3u32
+pub const SPDA_PARSING: u32 = 4u32
+pub const SPDA_POPGET: u32 = 5u32
+pub const SPDA_SMTPSEND: u32 = 6u32
+pub const SPDA_DECODING: u32 = 7u32
+pub const SPDA_CONNECT: u32 = 8u32
+pub const SPDA_DISCONNECT: u32 = 9u32
+pub const SPDA_SENDPASS: u32 = 10u32
+pub const SPDA_SENDUSER: u32 = 11u32
+pub const SPDF_INITIAL: u32 = (1u32 << 0)
+pub const SPDF_UPDATE: u32 = (1u32 << 1)
+pub const SPDF_END: u32 = (1u32 << 2)
+pub const SPDF_STATUS: u32 = (1u32 << 3)
+pub const GSAF_DELETE: u32 = 1u32
+pub const GSAF_SPOOL: u32 = 2u32
+pub const GSAF_STATUS: u32 = 4u32
+pub const FOLDERA_Dummy: u32 = 0 /* TODO: (TAG_USER+0x200) */
+pub const FOLDERA_Path: u32 = 0 /* TODO: (FOLDERA_Dummy+0) */
+pub const FOLDERA_Name: u32 = 0 /* TODO: (FOLDERA_Dummy+1) */
+pub const FOLDERA_DefaultName: u32 = 0 /* TODO: (FOLDERA_Dummy+2) */
+pub const FOLDERA_SpoolFile: u32 = 0 /* TODO: (FOLDERA_Dummy+3) */
+pub const FOLDERA_MsgCount: u32 = 0 /* TODO: (FOLDERA_Dummy+4) */
+pub const FOLDERA_Flags: u32 = 0 /* TODO: (FOLDERA_Dummy+5) */
+pub const FOLDERA_Accessed: u32 = 0 /* TODO: (FOLDERA_Dummy+6) */
+pub const FOLDERA_Created: u32 = 0 /* TODO: (FOLDERA_Dummy+7) */
+pub const FOLDERA_UserData: u32 = 0 /* TODO: (FOLDERA_Dummy+8) */
+pub const FOLDERA_FirstMsgID: u32 = 0 /* TODO: (FOLDERA_Dummy+9) */
+pub const FOLDERA_LastMsgID: u32 = 0 /* TODO: (FOLDERA_Dummy+10) */
+pub const FOLDERA_LastRead: u32 = 0 /* TODO: (FOLDERA_Dummy+11) */
+pub const FOLDERA_NumRead: u32 = 0 /* TODO: (FOLDERA_Dummy+12) */
+pub const FOLDER_DEF_INBOX: u32 = 0
+pub const FOLDER_DEF_OUTBOX: u32 = 1u32
+pub const FOLDER_DEF_TRASH: u32 = 2u32
+pub const FOLDER_DEF_DRAFTS: u32 = 3u32
+pub const FOLDER_DEF_SAVED: u32 = 4u32
+pub const FOLDER_DEF_SPOOL: u32 = 5u32
+pub const STATUS_UNREAD: u32 = (1u32 << 1)
+pub const STATUS_REPLIED: u32 = (1u32 << 2)
+pub const STATUS_EDITED: u32 = (1u32 << 3)
+pub const STATUS_FORWARD: u32 = (1u32 << 4)
+pub const STATUS_DELETED: u32 = (1u32 << 5)
+pub const STATUS_SAVED: u32 = (1u32 << 6)
+pub const STATUS_NEW: u32 = (1u32 << 7)
+pub const STATUS_MARKED: u32 = (1u32 << 8)
+pub const STATUS_MUNREAD: u32 = (1u32 << 9)
+pub const STATUS_UUCODE: u32 = (1u32 << 10)
+pub const STATUS_SECURE: u32 = (1u32 << 11)
+pub const STATUS_AUTH: u32 = (1u32 << 12)
+pub const STATUS_BOUNCED: u32 = (1u32 << 13)
+pub const FIELD_NUMBER: u32 = 0u32
+pub const FIELD_TO: u32 = 1u32
+pub const FIELD_SUBJECT: u32 = 2u32
+pub const FIELD_FROM: u32 = 3u32
+pub const FIELD_SIZE: u32 = 4u32
+pub const FIELD_DATE: u32 = 5u32
+pub const FIELD_THREAD: u32 = 6u32
+pub const ARTICLEA_Dummy: u32 = 0 /* TODO: (TAG_USER+0x300) */
+pub const ARTICLEA_To: u32 = 0 /* TODO: (ARTICLEA_Dummy+0) */
+pub const ARTICLEA_Cc: u32 = 0 /* TODO: (ARTICLEA_Dummy+1) */
+pub const ARTICLEA_Bcc: u32 = 0 /* TODO: (ARTICLEA_Dummy+2) */
+pub const ARTICLEA_From: u32 = 0 /* TODO: (ARTICLEA_Dummy+3) */
+pub const ARTICLEA_ReplyTo: u32 = 0 /* TODO: (ARTICLEA_Dummy+4) */
+pub const ARTICLEA_Date: u32 = 0 /* TODO: (ARTICLEA_Dummy+5) */
+pub const ARTICLEA_DateVal: u32 = 0 /* TODO: (ARTICLEA_Dummy+6) */
+pub const ARTICLEA_Subject: u32 = 0 /* TODO: (ARTICLEA_Dummy+7) */
+pub const ARTICLEA_ContentEncoding: u32 = 0 /* TODO: (ARTICLEA_Dummy+8) */
+pub const ARTICLEA_ContentType: u32 = 0 /* TODO: (ARTICLEA_Dummy+9) */
+pub const ARTICLEA_ContentSubType: u32 = 0 /* TODO: (ARTICLEA_Dummy+10) */
+pub const ARTICLEA_ContentTypeParams: u32 = 0 /* TODO: (ARTICLEA_Dummy+11) */
+pub const ARTICLEA_Flags: u32 = 0 /* TODO: (ARTICLEA_Dummy+12) */
+pub const ARTICLEA_Status: u32 = 0 /* TODO: ARTICLEA_Flags */
+pub const ARTICLEA_XFace: u32 = 0 /* TODO: (ARTICLEA_Dummy+13) */
+pub const ARTICLEA_MessageID: u32 = 0 /* TODO: (ARTICLEA_Dummy+14) */
+pub const ARTICLEA_Reference: u32 = 0 /* TODO: (ARTICLEA_Dummy+15) */
+pub const ARTICLEA_Groups: u32 = 0 /* TODO: (ARTICLEA_Dummy+16) */
+pub const ARTICLEA_UserData: u32 = 0 /* TODO: (ARTICLEA_Dummy+17) */
+pub const ARTICLEA_ReturnReceipt: u32 = 0 /* TODO: (ARTICLEA_Dummy+18) */
+pub const ARTICLEA_SigFile: u32 = 0 /* TODO: (ARTICLEA_Dummy+19) */
+pub const ARTICLEA_CustomHeaders: u32 = 0 /* TODO: (ARTICLEA_Dummy+20) */
+pub const ARTICLEA_NumParts: u32 = 0 /* TODO: (ARTICLEA_Dummy+21) */
+pub const ARTICLEA_Organization: u32 = 0 /* TODO: (ARTICLEA_Dummy+22) */
+pub const ARTICLEA_Number: u32 = 0 /* TODO: (ARTICLEA_Dummy+23) */
+pub const PARTA_Name: u32 = 0 /* TODO: (ARTICLEA_Dummy+50) */
+pub const PARTA_ContentType: u32 = 0 /* TODO: (ARTICLEA_Dummy+51) */
+pub const PARTA_ContentSubType: u32 = 0 /* TODO: (ARTICLEA_Dummy+52) */
+pub const PARTA_ContentTypeParams: u32 = 0 /* TODO: (ARTICLEA_Dummy+53) */
+pub const PARTA_Flags: u32 = 0 /* TODO: (ARTICLEA_Dummy+54) */
+pub const PARTA_ContentEncoding: u32 = 0 /* TODO: (ARTICLEA_Dummy+55) */
+pub const PARTA_DataFilename: u32 = 0 /* TODO: (ARTICLEA_Dummy+56) */
+pub const PARTA_DataFile: u32 = 0 /* TODO: (ARTICLEA_Dummy+57) */
+pub const PARTA_DataString: u32 = 0 /* TODO: (ARTICLEA_Dummy+58) */
+pub const PARTA_DataBuffer: u32 = 0 /* TODO: (ARTICLEA_Dummy+59) */
+pub const PARTA_DataLength: u32 = 0 /* TODO: (ARTICLEA_Dummy+60) */
+pub const PARTA_ContentDesc: u32 = 0 /* TODO: (ARTICLEA_Dummy+61) */
+pub const ARTICLE_TYPE_FILE: u32 = 0
+pub const ARTICLE_TYPE_ARTICLE: u32 = 1u32
+pub const ARTICLE_TYPE_BUFFER: u32 = 2u32
+pub const ADDRESSA_Dummy: u32 = 0 /* TODO: (TAG_USER+0x400) */
+pub const ADDRESSA_Name: u32 = 0 /* TODO: (ADDRESSA_Dummy+0) */
+pub const ADDRESSA_Address: u32 = 0 /* TODO: (ADDRESSA_Dummy+1) */
+pub const ADDRESSA_City: u32 = 0 /* TODO: (ADDRESSA_Dummy+2) */
+pub const ADDRESSA_State: u32 = 0 /* TODO: (ADDRESSA_Dummy+3) */
+pub const ADDRESSA_Zip: u32 = 0 /* TODO: (ADDRESSA_Dummy+4) */
+pub const ADDRESSA_Country: u32 = 0 /* TODO: (ADDRESSA_Dummy+5) */
+pub const ADDRESSA_Phone: u32 = 0 /* TODO: (ADDRESSA_Dummy+6) */
+pub const ADDRESSA_Fax: u32 = 0 /* TODO: (ADDRESSA_Dummy+7) */
+pub const ADDRESSA_Comments: u32 = 0 /* TODO: (ADDRESSA_Dummy+8) */
+pub const ADDRESSA_Group: u32 = 0 /* TODO: (ADDRESSA_Dummy+9) */
+pub const ADDRESSA_Flags: u32 = 0 /* TODO: (ADDRESSA_Dummy+10) */
+pub const ADDRESSA_URL: u32 = 0 /* TODO: (ADDRESSA_Dummy+11) */
+pub const ADDRESSA_EMail: u32 = 0 /* TODO: (ADDRESSA_Dummy+12) */
+pub const ADDRESSA_UserData: u32 = 0 /* TODO: (ADDRESSA_Dummy+13) */
+pub const ADDRESSA_PartialMatch: u32 = 0 /* TODO: (ADDRESSA_Dummy+14) */
+pub const ADDRESSA_ICQ: u32 = 0 /* TODO: (ADDRESSA_Dummy+15) */
+pub const ADDRESSA_FTP: u32 = 0 /* TODO: (ADDRESSA_Dummy+16) */
+pub const ADDRESSA_Company: u32 = 0 /* TODO: (ADDRESSA_Dummy+17) */
+pub const ADDRESSA_JobTitle: u32 = 0 /* TODO: (ADDRESSA_Dummy+18) */
+pub const ADDRESSA_MobilePhone: u32 = 0 /* TODO: (ADDRESSA_Dummy+19) */
+pub const ADDRESSA_ImageFile: u32 = 0 /* TODO: (ADDRESSA_Dummy+20) */
+pub const ADDRESSA_EntryType: u32 = 0 /* TODO: (ADDRESSA_Dummy+21) */
+pub const ADDRESSA_EntryID: u32 = 0 /* TODO: (ADDRESSA_Dummy+22) */
+pub const ADDRESSA_EntryGeneration: u32 = 0 /* TODO: (ADDRESSA_Dummy+23) */
+pub const ENTRY_USER: u32 = 1u32
+pub const ENTRY_WWW: u32 = 2u32
+pub const ENTRY_FTP: u32 = 3u32
+pub const ENTRY_CHAT: u32 = 4u32
+pub const ENTRY_GROUP: u32 = 5u32
+pub const DECODERA_Dummy: u32 = 0 /* TODO: (TAG_USER+0x500) */
+pub const DECODERA_SourceFile: u32 = 0 /* TODO: (DECODERA_Dummy+1) */
+pub const DECODERA_SourceHandle: u32 = 0 /* TODO: (DECODERA_Dummy+3) */
+pub const DECODERA_SourceBuffer: u32 = 0 /* TODO: (DECODERA_Dummy+5) */
+pub const DECODERA_SourceLen: u32 = 0 /* TODO: (DECODERA_Dummy+7) */
+pub const DECODERA_DestFile: u32 = 0 /* TODO: (DECODERA_Dummy+2) */
+pub const DECODERA_DestHandle: u32 = 0 /* TODO: (DECODERA_Dummy+4) */
+pub const DECODERA_DestBuffer: u32 = 0 /* TODO: (DECODERA_Dummy+6) */
+pub const DECODERA_DestLen: u32 = 0 /* TODO: (DECODERA_Dummy+8) */
+pub const DECODERA_Lines: u32 = 0 /* TODO: (DECODERA_Dummy+9) */
+pub const DECODERA_Flags: u32 = 0 /* TODO: (DECODERA_Dummy+10) */
+pub const DECODERA_Boundary: u32 = 0 /* TODO: (DECODERA_Dummy+11) */
+pub const DECF_USEBOUNDARY: u32 = (1u32 << 0)
+pub const DECODE_ERROR: u32 = 0 /* TODO: (-1) */
+pub const DECODE_COPY: u32 = 0
+pub const DECODE_QP: u32 = 1u32
+pub const DECODE_B64: u32 = 2u32
+pub const DECODE_UU: u32 = 3u32
+pub const DECODE_HEX: u32 = 6u32
+pub const DECODE_ROT: u32 = 7u32
+pub const ENCODE_ERROR: u32 = 0 /* TODO: (-1) */
+pub const ENCODE_COPY: u32 = 0
+pub const ENCODE_QP: u32 = 1u32
+pub const ENCODE_B64: u32 = 2u32
+pub const ENCODE_UU: u32 = 3u32
+pub const ENCODE_8BIT: u32 = 4u32
+pub const ENCODE_7BIT: u32 = 5u32
+pub const ENCODE_HEX: u32 = 6u32
+pub const ENCODE_ROT: u32 = 7u32
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+extern pub fn RexxDispatcher(rxm: *RexxMsg) -> i32
+extern pub fn CreateServerA(tags: *TagItem) -> *u8
+// Varargs function CreateServer skipped - needs manual implementation
+extern pub fn DisposeServer(server: *u8)
+extern pub fn SetServerAttrsA(server: *u8, tags: *TagItem) -> u32
+// Varargs function SetServerAttrs skipped - needs manual implementation
+extern pub fn GetServerAttrsA(server: *u8, tags: *TagItem) -> u32
+// Varargs function GetServerAttrs skipped - needs manual implementation
+extern pub fn GetServerHeaders(server: *u8, flags: u32) -> u32
+extern pub fn GetServerArticles(server: *u8, folder: *u8, hook: *Hook, flags: u32) -> i32
+extern pub fn CreateFolderA(server: *u8, tags: *TagItem) -> *u8
+// Varargs function CreateFolder skipped - needs manual implementation
+extern pub fn DisposeFolder(folder: *u8) -> i16
+extern pub fn OpenFolderA(server: *u8, tags: *TagItem) -> *u8
+// Varargs function OpenFolder skipped - needs manual implementation
+extern pub fn SaveFolder(folder: *u8) -> i16
+extern pub fn RemFolder(folder: *u8) -> i16
+extern pub fn SetFolderAttrsA(folder: *u8, tags: *TagItem) -> u32
+// Varargs function SetFolderAttrs skipped - needs manual implementation
+extern pub fn GetFolderAttrsA(folder: *u8, tags: *TagItem) -> u32
+// Varargs function GetFolderAttrs skipped - needs manual implementation
+extern pub fn AddFolderArticle(folder: *u8, _type: u32, data: *u8) -> i16
+extern pub fn RemFolderArticle(folder: *u8, article: *u8) -> i16
+extern pub fn ReadFolderSpool(folder: *u8, importfile: *u8, flags: u32) -> u32
+extern pub fn WriteFolderSpool(folder: *u8, exportfile: *u8, flags: u32) -> u32
+extern pub fn ScanFolderIndex(folder: *u8, hook: *Hook, flags: u32) -> u32
+extern pub fn ExpungeFolder(folder: *u8, trash: *u8, hook: *Hook) -> i16
+extern pub fn CreateFolderIndex(folder: *u8) -> u32
+extern pub fn SortFolderIndex(folder: *u8, field: u32) -> u32
+extern pub fn CreateArticleA(folder: *u8, tags: *TagItem) -> *u8
+// Varargs function CreateArticle skipped - needs manual implementation
+extern pub fn DisposeArticle(article: *u8) -> i16
+extern pub fn OpenArticle(server: *u8, folder: *u8, MsgID: u32, Flags: u32) -> *u8
+extern pub fn CopyArticle(folder: *u8, article: *u8) -> i16
+extern pub fn SetArticleAttrsA(article: *u8, tags: *TagItem) -> u32
+// Varargs function SetArticleAttrs skipped - needs manual implementation
+extern pub fn GetArticleAttrsA(article: *u8, tags: *TagItem) -> u32
+// Varargs function GetArticleAttrs skipped - needs manual implementation
+extern pub fn SendArticle(server: *u8, article: *u8, from_file: *u8) -> i16
+extern pub fn AddArticlePartA(article: *u8, part: *u8, tags: *TagItem) -> i16
+// Varargs function AddArticlePart skipped - needs manual implementation
+extern pub fn RemArticlePart(article: *u8, part: *u8)
+extern pub fn GetArticlePart(article: *u8, partnum: u32) -> *u8
+extern pub fn GetArticlePartAttrsA(part: *u8, tags: *TagItem) -> u32
+// Varargs function GetArticlePartAttrs skipped - needs manual implementation
+extern pub fn SetArticlePartAttrsA(part: *u8, tags: *TagItem) -> u32
+// Varargs function SetArticlePartAttrs skipped - needs manual implementation
+extern pub fn CreateArticlePartA(article: *u8, tags: *TagItem) -> *u8
+// Varargs function CreateArticlePart skipped - needs manual implementation
+extern pub fn DisposeArticlePart(part: *u8)
+extern pub fn GetArticlePartDataA(article: *u8, part: *u8, tags: *TagItem) -> i16
+// Varargs function GetArticlePartData skipped - needs manual implementation
+extern pub fn SetArticlePartDataA(part: *u8, tags: *TagItem) -> i16
+// Varargs function SetArticlePartData skipped - needs manual implementation
+extern pub fn CreateAddressEntryA(tags: *TagItem) -> *u8
+// Varargs function CreateAddressEntry skipped - needs manual implementation
+extern pub fn DisposeAddressEntry(addr: *u8) -> i16
+extern pub fn OpenAddressEntry(server: *u8, fileid: u32) -> *u8
+extern pub fn SaveAddressEntry(server: *u8, addr: *u8) -> i32
+extern pub fn RemAddressEntry(server: *u8, addr: *u8) -> i16
+extern pub fn GetAddressEntryAttrsA(addr: *u8, tags: *TagItem) -> u32
+// Varargs function GetAddressEntryAttrs skipped - needs manual implementation
+extern pub fn SetAddressEntryAttrsA(addr: *u8, tags: *TagItem) -> u32
+// Varargs function SetAddressEntryAttrs skipped - needs manual implementation
+extern pub fn MatchAddressA(addr: *u8, tags: *TagItem) -> i16
+// Varargs function MatchAddress skipped - needs manual implementation
+extern pub fn FindAddressEntryA(server: *u8, tags: *TagItem) -> *u8
+// Varargs function FindAddressEntry skipped - needs manual implementation
+extern pub fn HuntAddressEntryA(server: *u8, tags: *TagItem) -> *u8
+// Varargs function HuntAddressEntry skipped - needs manual implementation
+extern pub fn ScanAddressIndex(server: *u8, hook: *Hook, _type: u32, flags: u32) -> u32
+extern pub fn AddCustomField(addr: *u8, field: *u8, data: *u8) -> i16
+extern pub fn RemCustomField(addr: *u8, field: *u8) -> i16
+extern pub fn GetCustomFieldData(addr: *u8, field: *u8) -> *u8
+extern pub fn CreateDecoderA(tags: *TagItem) -> *u8
+// Varargs function CreateDecoder skipped - needs manual implementation
+extern pub fn DisposeDecoder(dec: *u8)
+extern pub fn GetDecoderAttrsA(dec: *u8, tags: *TagItem) -> u32
+// Varargs function GetDecoderAttrs skipped - needs manual implementation
+extern pub fn SetDecoderAttrsA(dec: *u8, tags: *TagItem) -> u32
+// Varargs function SetDecoderAttrs skipped - needs manual implementation
+extern pub fn Decode(dec: *u8, _type: u32) -> i32
+extern pub fn Encode(dec: *u8, _type: u32) -> i32

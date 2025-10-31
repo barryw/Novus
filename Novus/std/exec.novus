@@ -1,83 +1,24 @@
 // Novus Standard Library - Exec Wrappers
 // Namespace: std::exec
-// Thin wrappers around AmigaOS Exec library functions
-//
-// ⚠️  WARNING: These are LOW-LEVEL functions for expert use only!
-// ⚠️  Consider using std::mem instead for safer memory management.
-//
-// These wrappers only add Option types to indicate allocation failure.
-// They do NOT prevent:
-//   - Double-free (calling FreeMem twice on same pointer)
-//   - Use-after-free (using pointer after FreeMem)
-//   - Memory leaks (forgetting to call FreeMem)
-//   - Wrong size (passing incorrect size to FreeMem)
-//
-// For safer alternatives, see:
-//   - std::mem::Box<T>        - Single heap value with automatic size
-//   - std::mem::Allocation<T> - Typed bulk allocation with size tracking
-//   - defer pattern           - RAII-style cleanup (defer FreeMem(...))
+// Safe wrappers around AmigaOS Exec library functions
 
-// Declare extern functions directly instead of importing to avoid namespace pollution
-// These map directly to the exec.library functions in exec_stubs.s
+// Import constants from FFI (no functions/structs to avoid type mismatches)
+from std::ffi::exec import MEMF_ANY, MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, MEMF_LOCAL, MEMF_24BITDMA, MEMF_KICK, MEMF_CLEAR, MEMF_LARGEST, MEMF_REVERSE
+
+// Declare extern functions with C ABI signatures (i32 for all parameters)
 extern fn AllocMem(byteSize: i32, requirements: i32) -> i32
 extern fn FreeMem(memoryBlock: i32, byteSize: i32) -> i32
 
-// Memory allocation flags (MEMF_* constants)
-pub const MEMF_PUBLIC: u32 = 0u32         // Any memory
-pub const MEMF_CHIP: u32 = 2u32           // Chip memory (for custom chips)
-pub const MEMF_FAST: u32 = 4u32           // Fast memory (not accessible by custom chips)
-pub const MEMF_CLEAR: u32 = 65536u32      // Clear memory after allocation
-
-/// Raw wrapper for Exec AllocMem
-/// Allocates a memory block from the system free pool
-///
-/// # Parameters
-/// - byteSize: Size in bytes to allocate
-/// - attributes: MEMF_* flags controlling allocation behavior
-///
-/// # Returns
-/// *u8: Pointer on success, null (0) if allocation failed
-///
-/// # Note
-/// This returns a raw pointer. Use AllocMem wrapper in std::core for Option-wrapped version
+/// Safe wrapper for Exec AllocMem
+/// Returns raw pointer (*u8), 0 on failure
 pub fn SafeAllocMem(byteSize: u32, attributes: u32) -> *u8 {
-    // Call exec.library AllocMem (returns i32, 0 = null = failure)
     let result: i32 = AllocMem((i32)byteSize, (i32)attributes)
-
-    // Convert to pointer
     let ptr: *u8 = (*u8)(u32)result
     return ptr
 }
 
 /// Safe wrapper for Exec FreeMem
-/// Returns a memory block to the system free pool
-///
-/// # Parameters
-/// - memoryBlock: Pointer to memory block (must not be null)
-/// - byteSize: Size in bytes (must match size passed to AllocMem)
-///
-/// # Safety
-/// This function is inherently unsafe:
-/// - The pointer must be valid and allocated by AllocMem
-/// - The size must exactly match the original allocation size
-/// - Double-free will cause system corruption
-/// - Freeing null will cause a crash
-///
-/// # Example
-/// ```
-/// let mem = AllocMem(1024u32, MEMF_PUBLIC)
-/// match mem {
-///     Some(ptr) => {
-///         // use ptr...
-///         FreeMem(ptr, 1024u32)
-///     },
-///     None => {}
-/// }
-/// ```
 pub fn SafeFreeMem(memoryBlock: *u8, byteSize: u32) {
-    // Convert pointer to i32 address for FFI
     let addr: i32 = (i32)(u32)memoryBlock
-
-    // Call exec.library FreeMem (return value is ignored in AmigaOS)
     FreeMem(addr, (i32)byteSize)
 }

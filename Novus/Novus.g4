@@ -110,7 +110,7 @@ genericTypeArgs
 type
     : '&' KW_MUT? type                                        # ReferenceType
     | '*' type                                                # PointerType
-    | '[' INTEGER_LITERAL ']' type                           # ArrayType
+    | '[' expression ']' type                                 # ArrayType
     | '[' type ']'                                           # SliceType
     | '(' type (',' type)+ ')'                               # TupleType
     | KW_FN '(' typeList? ')' ('->' type)?                   # FunctionPointerType
@@ -160,7 +160,8 @@ statement
     ;
 
 deferStatement
-    : KW_DEFER block
+    : KW_DEFER block                 # DeferBlock
+    | KW_DEFER '=>' expression       # DeferExpression
     ;
 
 unsafeBlock
@@ -199,7 +200,7 @@ patternList
     ;
 
 returnStatement
-    : KW_RETURN expression
+    : KW_RETURN expression?
     ;
 
 variableDeclaration
@@ -218,7 +219,13 @@ lvalueSuffix
     ;
 
 ifStatement
-    : KW_IF expression block (KW_ELSE (ifStatement | block))?
+    : KW_IF ifCondition block (KW_ELSE (ifStatement | block))?
+    ;
+
+ifCondition
+    : expression                                           # IfConditionExpression
+    | KW_LET IDENTIFIER (':' type)? '=' expression        # IfConditionLet
+    | KW_VAR IDENTIFIER (':' type)? '=' expression        # IfConditionVar
     ;
 
 whileStatement

@@ -3,7 +3,7 @@
 // Dynamic data structures and collection types
 
 // Import core types and allocator functions
-from std::core import Option, AllocMem, FreeMem
+from std::core import Option, CoreAlloc, CoreFree
 from std::exec import MEMF_PUBLIC, MEMF_CLEAR
 
 // Vec<T> - dynamic array (growable)
@@ -36,7 +36,7 @@ impl<T> Vec<T> {
         let bytes_needed: u32 = capacity * element_size
 
         // Allocate with MEMF_PUBLIC | MEMF_CLEAR (clear memory to zero)
-        let mem_opt: Option<*u8> = AllocMem(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
+        let mem_opt: Option<*u8> = CoreAlloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
 
         match mem_opt {
             Some(mem) => {
@@ -92,7 +92,7 @@ impl<T> Vec<T> {
             let new_bytes: u32 = new_capacity * element_size
 
             // Allocate with MEMF_PUBLIC | MEMF_CLEAR (clear memory to zero)
-            let new_mem_opt: Option<*u8> = AllocMem(new_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+            let new_mem_opt: Option<*u8> = CoreAlloc(new_bytes, MEMF_PUBLIC | MEMF_CLEAR)
 
             match new_mem_opt {
                 Some(new_mem) => {
@@ -110,7 +110,7 @@ impl<T> Vec<T> {
                     if self.capacity > 0u32 {
                         let old_bytes: u32 = self.capacity * element_size
                         let old_mem: *u8 = (*u8)(self.ptr)
-                        FreeMem(old_mem, old_bytes)
+                        CoreFree(old_mem, old_bytes)
                     }
 
                     // Update vec fields
@@ -188,7 +188,7 @@ impl<T> Vec<T> {
             let bytes: u32 = self.capacity * element_size
             // Explicit pointer cast from *T to *u8
             let mem: *u8 = (*u8)(self.ptr)
-            FreeMem(mem, bytes)
+            CoreFree(mem, bytes)
 
             // Reset to null pointer (0 with type inference)
             self.ptr = 0

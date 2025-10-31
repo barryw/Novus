@@ -1,0 +1,117 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: timer.device
+// Base: _TimerBase
+//
+// NOTE: Import specific types from std::amiga_structs as needed
+// Example: from std::amiga_structs import Task, Node, List
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const NT_UNKNOWN: u32 = 0u32
+pub const NT_TASK: u32 = 1u32
+pub const NT_INTERRUPT: u32 = 2u32
+pub const NT_DEVICE: u32 = 3u32
+pub const NT_MSGPORT: u32 = 4u32
+pub const NT_MESSAGE: u32 = 5u32
+pub const NT_FREEMSG: u32 = 6u32
+pub const NT_REPLYMSG: u32 = 7u32
+pub const NT_RESOURCE: u32 = 8u32
+pub const NT_LIBRARY: u32 = 9u32
+pub const NT_MEMORY: u32 = 10u32
+pub const NT_SOFTINT: u32 = 11u32
+pub const NT_FONT: u32 = 12u32
+pub const NT_PROCESS: u32 = 13u32
+pub const NT_SEMAPHORE: u32 = 14u32
+pub const NT_SIGNALSEM: u32 = 15u32
+pub const NT_BOOTNODE: u32 = 16u32
+pub const NT_KICKMEM: u32 = 17u32
+pub const NT_GRAPHICS: u32 = 18u32
+pub const NT_DEATHMESSAGE: u32 = 19u32
+pub const NT_USER: u32 = 254u32
+pub const NT_EXTENDED: u32 = 255u32
+pub const TB_PROCTIME: u32 = 0u32
+pub const TB_ETASK: u32 = 3u32
+pub const TB_STACKCHK: u32 = 4u32
+pub const TB_EXCEPT: u32 = 5u32
+pub const TB_SWITCH: u32 = 6u32
+pub const TB_LAUNCH: u32 = 7u32
+pub const TF_PROCTIME: u32 = (1u32 << 0)
+pub const TF_ETASK: u32 = (1u32 << 3)
+pub const TF_STACKCHK: u32 = (1u32 << 4)
+pub const TF_EXCEPT: u32 = (1u32 << 5)
+pub const TF_SWITCH: u32 = (1u32 << 6)
+pub const TF_LAUNCH: u32 = (1u32 << 7)
+pub const TS_INVALID: u32 = 0u32
+pub const TS_ADDED: u32 = 1u32
+pub const TS_RUN: u32 = 2u32
+pub const TS_READY: u32 = 3u32
+pub const TS_WAIT: u32 = 4u32
+pub const TS_EXCEPT: u32 = 5u32
+pub const TS_REMOVED: u32 = 6u32
+pub const SIGB_ABORT: u32 = 0u32
+pub const SIGB_CHILD: u32 = 1u32
+pub const SIGB_BLIT: u32 = 4u32
+pub const SIGB_SINGLE: u32 = 4u32
+pub const SIGB_INTUITION: u32 = 5u32
+pub const SIGB_NET: u32 = 7u32
+pub const SIGB_DOS: u32 = 8u32
+pub const SIGF_ABORT: u32 = (1u32 << 0)
+pub const SIGF_CHILD: u32 = (1u32 << 1)
+pub const SIGF_BLIT: u32 = (1u32 << 4)
+pub const SIGF_SINGLE: u32 = (1u32 << 4)
+pub const SIGF_INTUITION: u32 = (1u32 << 5)
+pub const SIGF_NET: u32 = (1u32 << 7)
+pub const SIGF_DOS: u32 = (1u32 << 8)
+pub const mp_SoftInt: u32 = 0 /* TODO: mp_SigTask */
+pub const PF_ACTION: u32 = 3u32
+pub const PA_SIGNAL: u32 = 0u32
+pub const PA_SOFTINT: u32 = 1u32
+pub const PA_IGNORE: u32 = 2u32
+pub const DEV_BEGINIO: u32 = 0 /* TODO: (-30) */
+pub const DEV_ABORTIO: u32 = 0 /* TODO: (-36) */
+pub const IOB_QUICK: u32 = 0u32
+pub const IOF_QUICK: u32 = (1u32 << 0)
+pub const CMD_INVALID: u32 = 0u32
+pub const CMD_RESET: u32 = 1u32
+pub const CMD_READ: u32 = 2u32
+pub const CMD_WRITE: u32 = 3u32
+pub const CMD_UPDATE: u32 = 4u32
+pub const CMD_CLEAR: u32 = 5u32
+pub const CMD_STOP: u32 = 6u32
+pub const CMD_START: u32 = 7u32
+pub const CMD_FLUSH: u32 = 8u32
+pub const CMD_NONSTD: u32 = 9u32
+pub const UNIT_MICROHZ: u32 = 0u32
+pub const UNIT_VBLANK: u32 = 1u32
+pub const UNIT_ECLOCK: u32 = 2u32
+pub const UNIT_WAITUNTIL: u32 = 3u32
+pub const UNIT_WAITECLOCK: u32 = 4u32
+pub const TIMERNAME: u32 = 0 /* TODO: "timer.device" */
+pub const TR_ADDREQUEST: u32 = 0 /* TODO: CMD_NONSTD */
+pub const TR_GETSYSTIME: u32 = 0 /* TODO: (CMD_NONSTD+1) */
+pub const TR_SETSYSTIME: u32 = 0 /* TODO: (CMD_NONSTD+2) */
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+extern pub fn AddTime(dest: *timeval, src: *timeval)
+extern pub fn SubTime(dest: *timeval, src: *timeval)
+extern pub fn CmpTime(dest: *timeval, src: *timeval) -> i32
+extern pub fn ReadEClock(dest: *EClockVal) -> u32
+extern pub fn GetSysTime(dest: *timeval)

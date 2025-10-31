@@ -1,1573 +1,1324 @@
-; exec library stubs for Novus
-; Auto-generated from exec_lib.fd
-; Each function in its own section for vlink -gc-all dead code elimination
+; Generated from SFD file by Novus SFD Parser
+; Library: exec.library
+; Base: _SysBase
+; Each function is in its own section for dead code elimination
 
-	xref	_SysBase	; Provided by startup.o + -lamiga
+	xref	_SysBase
 
-	section	CODE_Supervisor,code
+	section	_Supervisor_stub,code
 
-; Supervisor(userFunction)
+; ULONG Supervisor(ULONG (*userFunction)() userFunction)
 	xdef	_Supervisor
 _Supervisor:
-	movem.l	a5/a6,-(sp)
-	move.l	12(sp),a5	; userFunction
-	move.l	_SysBase,a6
-	jsr	-30(a6)	; Supervisor()
-	movem.l	(sp)+,a5/a6
+	movea.l	4(sp),a5
+	movea.l	_SysBase,a6
+	jsr	-30(a6)
 	rts
 
-	section	CODE_InitCode,code
+	section	_InitCode_stub,code
 
-; InitCode(startClass, version)
+; VOID InitCode(ULONG startClass, ULONG version)
 	xdef	_InitCode
 _InitCode:
-	movem.l	d0-d1/a6,-(sp)
-	move.l	16(sp),d0	; startClass
-	move.l	20(sp),d1	; version
-	move.l	_SysBase,a6
-	jsr	-72(a6)	; InitCode()
-	movem.l	(sp)+,d0-d1/a6
+	move.l	4(sp),d0
+	move.l	8(sp),d1
+	movea.l	_SysBase,a6
+	jsr	-72(a6)
 	rts
 
-	section	CODE_InitStruct,code
+	section	_InitStruct_stub,code
 
-; InitStruct(initTable, memory, size)
+; VOID InitStruct(const APTR initTable, APTR memory, ULONG size)
 	xdef	_InitStruct
 _InitStruct:
-	movem.l	d0/a1-a2/a6,-(sp)
-	move.l	20(sp),a1	; initTable
-	move.l	24(sp),a2	; memory
-	move.l	28(sp),d0	; size
-	move.l	_SysBase,a6
-	jsr	-78(a6)	; InitStruct()
-	movem.l	(sp)+,d0/a1-a2/a6
+	movea.l	4(sp),a1
+	movea.l	8(sp),a2
+	move.l	12(sp),d0
+	movea.l	_SysBase,a6
+	jsr	-78(a6)
 	rts
 
-	section	CODE_MakeLibrary,code
+	section	_MakeLibrary_stub,code
 
-; MakeLibrary(funcInit, structInit, libInit, dataSize, segList)
+; struct Library * MakeLibrary(const APTR funcInit, const APTR structInit, ULONG (*libInit)() libInit, ULONG dataSize, ULONG segList)
 	xdef	_MakeLibrary
 _MakeLibrary:
-	movem.l	d0-d1/a0-a2/a6,-(sp)
-	move.l	28(sp),a0	; funcInit
-	move.l	32(sp),a1	; structInit
-	move.l	36(sp),a2	; libInit
-	move.l	40(sp),d0	; dataSize
-	move.l	44(sp),d1	; segList
-	move.l	_SysBase,a6
-	jsr	-84(a6)	; MakeLibrary()
-	movem.l	(sp)+,d0-d1/a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	move.l	16(sp),d0
+	move.l	20(sp),d1
+	movea.l	_SysBase,a6
+	jsr	-84(a6)
 	rts
 
-	section	CODE_MakeFunctions,code
+	section	_MakeFunctions_stub,code
 
-; MakeFunctions(target, functionArray, funcDispBase)
+; VOID MakeFunctions(APTR target, const APTR functionArray, const APTR funcDispBase)
 	xdef	_MakeFunctions
 _MakeFunctions:
-	movem.l	a0-a2/a6,-(sp)
-	move.l	20(sp),a0	; target
-	move.l	24(sp),a1	; functionArray
-	move.l	28(sp),a2	; funcDispBase
-	move.l	_SysBase,a6
-	jsr	-90(a6)	; MakeFunctions()
-	movem.l	(sp)+,a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	_SysBase,a6
+	jsr	-90(a6)
 	rts
 
-	section	CODE_FindResident,code
+	section	_FindResident_stub,code
 
-; FindResident(name)
+; struct Resident * FindResident(CONST_STRPTR name)
 	xdef	_FindResident
 _FindResident:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; name
-	move.l	_SysBase,a6
-	jsr	-96(a6)	; FindResident()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-96(a6)
 	rts
 
-	section	CODE_InitResident,code
+	section	_InitResident_stub,code
 
-; InitResident(resident, segList)
+; APTR InitResident(const struct Resident * resident, ULONG segList)
 	xdef	_InitResident
 _InitResident:
-	movem.l	d1/a1/a6,-(sp)
-	move.l	16(sp),a1	; resident
-	move.l	20(sp),d1	; segList
-	move.l	_SysBase,a6
-	jsr	-102(a6)	; InitResident()
-	movem.l	(sp)+,d1/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d1
+	movea.l	_SysBase,a6
+	jsr	-102(a6)
 	rts
 
-	section	CODE_Alert,code
+	section	_Alert_stub,code
 
-; Alert(alertNum)
+; VOID Alert(ULONG alertNum)
 	xdef	_Alert
 _Alert:
-	movem.l	d7/a6,-(sp)
-	move.l	12(sp),d7	; alertNum
-	move.l	_SysBase,a6
-	jsr	-108(a6)	; Alert()
-	movem.l	(sp)+,d7/a6
+	move.l	4(sp),d7
+	movea.l	_SysBase,a6
+	jsr	-108(a6)
 	rts
 
-	section	CODE_Debug,code
+	section	_Debug_stub,code
 
-; Debug(flags)
+; VOID Debug(ULONG flags)
 	xdef	_Debug
 _Debug:
-	movem.l	d0/a6,-(sp)
-	move.l	12(sp),d0	; flags
-	move.l	_SysBase,a6
-	jsr	-114(a6)	; Debug()
-	movem.l	(sp)+,d0/a6
+	move.l	4(sp),d0
+	movea.l	_SysBase,a6
+	jsr	-114(a6)
 	rts
 
-	section	CODE_Disable,code
+	section	_Disable_stub,code
 
-; Disable()
+; VOID Disable()
 	xdef	_Disable
 _Disable:
-	movem.l	a6,-(sp)
-	move.l	_SysBase,a6
-	jsr	-120(a6)	; Disable()
-	movem.l	(sp)+,a6
+	movea.l	_SysBase,a6
+	jsr	-120(a6)
 	rts
 
-	section	CODE_Enable,code
+	section	_Enable_stub,code
 
-; Enable()
+; VOID Enable()
 	xdef	_Enable
 _Enable:
-	movem.l	a6,-(sp)
-	move.l	_SysBase,a6
-	jsr	-126(a6)	; Enable()
-	movem.l	(sp)+,a6
+	movea.l	_SysBase,a6
+	jsr	-126(a6)
 	rts
 
-	section	CODE_Forbid,code
+	section	_Forbid_stub,code
 
-; Forbid()
+; VOID Forbid()
 	xdef	_Forbid
 _Forbid:
-	movem.l	a6,-(sp)
-	move.l	_SysBase,a6
-	jsr	-132(a6)	; Forbid()
-	movem.l	(sp)+,a6
+	movea.l	_SysBase,a6
+	jsr	-132(a6)
 	rts
 
-	section	CODE_Permit,code
+	section	_Permit_stub,code
 
-; Permit()
+; VOID Permit()
 	xdef	_Permit
 _Permit:
-	movem.l	a6,-(sp)
-	move.l	_SysBase,a6
-	jsr	-138(a6)	; Permit()
-	movem.l	(sp)+,a6
+	movea.l	_SysBase,a6
+	jsr	-138(a6)
 	rts
 
-	section	CODE_SetSR,code
+	section	_SetSR_stub,code
 
-; SetSR(newSR, mask)
+; ULONG SetSR(ULONG newSR, ULONG mask)
 	xdef	_SetSR
 _SetSR:
-	movem.l	d0-d1/a6,-(sp)
-	move.l	16(sp),d0	; newSR
-	move.l	20(sp),d1	; mask
-	move.l	_SysBase,a6
-	jsr	-144(a6)	; SetSR()
-	movem.l	(sp)+,d0-d1/a6
+	move.l	4(sp),d0
+	move.l	8(sp),d1
+	movea.l	_SysBase,a6
+	jsr	-144(a6)
 	rts
 
-	section	CODE_SuperState,code
+	section	_SuperState_stub,code
 
-; SuperState()
+; APTR SuperState()
 	xdef	_SuperState
 _SuperState:
-	movem.l	a6,-(sp)
-	move.l	_SysBase,a6
-	jsr	-150(a6)	; SuperState()
-	movem.l	(sp)+,a6
+	movea.l	_SysBase,a6
+	jsr	-150(a6)
 	rts
 
-	section	CODE_UserState,code
+	section	_UserState_stub,code
 
-; UserState(sysStack)
+; VOID UserState(APTR sysStack)
 	xdef	_UserState
 _UserState:
-	movem.l	d0/a6,-(sp)
-	move.l	12(sp),d0	; sysStack
-	move.l	_SysBase,a6
-	jsr	-156(a6)	; UserState()
-	movem.l	(sp)+,d0/a6
+	move.l	4(sp),d0
+	movea.l	_SysBase,a6
+	jsr	-156(a6)
 	rts
 
-	section	CODE_SetIntVector,code
+	section	_SetIntVector_stub,code
 
-; SetIntVector(intNumber, interrupt)
+; struct Interrupt * SetIntVector(LONG intNumber, const struct Interrupt * interrupt)
 	xdef	_SetIntVector
 _SetIntVector:
-	movem.l	d0/a1/a6,-(sp)
-	move.l	16(sp),d0	; intNumber
-	move.l	20(sp),a1	; interrupt
-	move.l	_SysBase,a6
-	jsr	-162(a6)	; SetIntVector()
-	movem.l	(sp)+,d0/a1/a6
+	move.l	4(sp),d0
+	movea.l	8(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-162(a6)
 	rts
 
-	section	CODE_AddIntServer,code
+	section	_AddIntServer_stub,code
 
-; AddIntServer(intNumber, interrupt)
+; VOID AddIntServer(LONG intNumber, struct Interrupt * interrupt)
 	xdef	_AddIntServer
 _AddIntServer:
-	movem.l	d0/a1/a6,-(sp)
-	move.l	16(sp),d0	; intNumber
-	move.l	20(sp),a1	; interrupt
-	move.l	_SysBase,a6
-	jsr	-168(a6)	; AddIntServer()
-	movem.l	(sp)+,d0/a1/a6
+	move.l	4(sp),d0
+	movea.l	8(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-168(a6)
 	rts
 
-	section	CODE_RemIntServer,code
+	section	_RemIntServer_stub,code
 
-; RemIntServer(intNumber, interrupt)
+; VOID RemIntServer(LONG intNumber, struct Interrupt * interrupt)
 	xdef	_RemIntServer
 _RemIntServer:
-	movem.l	d0/a1/a6,-(sp)
-	move.l	16(sp),d0	; intNumber
-	move.l	20(sp),a1	; interrupt
-	move.l	_SysBase,a6
-	jsr	-174(a6)	; RemIntServer()
-	movem.l	(sp)+,d0/a1/a6
+	move.l	4(sp),d0
+	movea.l	8(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-174(a6)
 	rts
 
-	section	CODE_Cause,code
+	section	_Cause_stub,code
 
-; Cause(interrupt)
+; VOID Cause(struct Interrupt * interrupt)
 	xdef	_Cause
 _Cause:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; interrupt
-	move.l	_SysBase,a6
-	jsr	-180(a6)	; Cause()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-180(a6)
 	rts
 
-	section	CODE_Allocate,code
+	section	_Allocate_stub,code
 
-; Allocate(freeList, byteSize)
+; APTR Allocate(struct MemHeader * freeList, ULONG byteSize)
 	xdef	_Allocate
 _Allocate:
-	movem.l	d0/a0/a6,-(sp)
-	move.l	16(sp),a0	; freeList
-	move.l	20(sp),d0	; byteSize
-	move.l	_SysBase,a6
-	jsr	-186(a6)	; Allocate()
-	movem.l	(sp)+,d0/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	movea.l	_SysBase,a6
+	jsr	-186(a6)
 	rts
 
-	section	CODE_Deallocate,code
+	section	_Deallocate_stub,code
 
-; Deallocate(freeList, memoryBlock, byteSize)
+; VOID Deallocate(struct MemHeader * freeList, APTR memoryBlock, ULONG byteSize)
 	xdef	_Deallocate
 _Deallocate:
-	movem.l	d0/a0-a1/a6,-(sp)
-	move.l	20(sp),a0	; freeList
-	move.l	24(sp),a1	; memoryBlock
-	move.l	28(sp),d0	; byteSize
-	move.l	_SysBase,a6
-	jsr	-192(a6)	; Deallocate()
-	movem.l	(sp)+,d0/a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	movea.l	_SysBase,a6
+	jsr	-192(a6)
 	rts
 
-	section	CODE_AllocMem,code
+	section	_AllocMem_stub,code
 
-; AllocMem(byteSize, requirements)
+; APTR AllocMem(ULONG byteSize, ULONG requirements)
 	xdef	_AllocMem
 _AllocMem:
-	movem.l	d0-d1/a6,-(sp)
-	move.l	16(sp),d0	; byteSize
-	move.l	20(sp),d1	; requirements
-	move.l	_SysBase,a6
-	jsr	-198(a6)	; AllocMem()
-	movem.l	(sp)+,d0-d1/a6
+	move.l	4(sp),d0
+	move.l	8(sp),d1
+	movea.l	_SysBase,a6
+	jsr	-198(a6)
 	rts
 
-	section	CODE_AllocAbs,code
+	section	_AllocAbs_stub,code
 
-; AllocAbs(byteSize, location)
+; APTR AllocAbs(ULONG byteSize, APTR location)
 	xdef	_AllocAbs
 _AllocAbs:
-	movem.l	d0/a1/a6,-(sp)
-	move.l	16(sp),d0	; byteSize
-	move.l	20(sp),a1	; location
-	move.l	_SysBase,a6
-	jsr	-204(a6)	; AllocAbs()
-	movem.l	(sp)+,d0/a1/a6
+	move.l	4(sp),d0
+	movea.l	8(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-204(a6)
 	rts
 
-	section	CODE_FreeMem,code
+	section	_FreeMem_stub,code
 
-; FreeMem(memoryBlock, byteSize)
+; VOID FreeMem(APTR memoryBlock, ULONG byteSize)
 	xdef	_FreeMem
 _FreeMem:
-	movem.l	d0/a1/a6,-(sp)
-	move.l	16(sp),a1	; memoryBlock
-	move.l	20(sp),d0	; byteSize
-	move.l	_SysBase,a6
-	jsr	-210(a6)	; FreeMem()
-	movem.l	(sp)+,d0/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	movea.l	_SysBase,a6
+	jsr	-210(a6)
 	rts
 
-	section	CODE_AvailMem,code
+	section	_AvailMem_stub,code
 
-; AvailMem(requirements)
+; ULONG AvailMem(ULONG requirements)
 	xdef	_AvailMem
 _AvailMem:
-	movem.l	d1/a6,-(sp)
-	move.l	12(sp),d1	; requirements
-	move.l	_SysBase,a6
-	jsr	-216(a6)	; AvailMem()
-	movem.l	(sp)+,d1/a6
+	move.l	4(sp),d1
+	movea.l	_SysBase,a6
+	jsr	-216(a6)
 	rts
 
-	section	CODE_AllocEntry,code
+	section	_AllocEntry_stub,code
 
-; AllocEntry(entry)
+; struct MemList * AllocEntry(struct MemList * entry)
 	xdef	_AllocEntry
 _AllocEntry:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; entry
-	move.l	_SysBase,a6
-	jsr	-222(a6)	; AllocEntry()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_SysBase,a6
+	jsr	-222(a6)
 	rts
 
-	section	CODE_FreeEntry,code
+	section	_FreeEntry_stub,code
 
-; FreeEntry(entry)
+; VOID FreeEntry(struct MemList * entry)
 	xdef	_FreeEntry
 _FreeEntry:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; entry
-	move.l	_SysBase,a6
-	jsr	-228(a6)	; FreeEntry()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_SysBase,a6
+	jsr	-228(a6)
 	rts
 
-	section	CODE_Insert,code
+	section	_Insert_stub,code
 
-; Insert(list, node, pred)
+; VOID Insert(struct List * list, struct Node * node, struct Node * pred)
 	xdef	_Insert
 _Insert:
-	movem.l	a0-a2/a6,-(sp)
-	move.l	20(sp),a0	; list
-	move.l	24(sp),a1	; node
-	move.l	28(sp),a2	; pred
-	move.l	_SysBase,a6
-	jsr	-234(a6)	; Insert()
-	movem.l	(sp)+,a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	_SysBase,a6
+	jsr	-234(a6)
 	rts
 
-	section	CODE_AddHead,code
+	section	_AddHead_stub,code
 
-; AddHead(list, node)
+; VOID AddHead(struct List * list, struct Node * node)
 	xdef	_AddHead
 _AddHead:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; list
-	move.l	20(sp),a1	; node
-	move.l	_SysBase,a6
-	jsr	-240(a6)	; AddHead()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-240(a6)
 	rts
 
-	section	CODE_AddTail,code
+	section	_AddTail_stub,code
 
-; AddTail(list, node)
+; VOID AddTail(struct List * list, struct Node * node)
 	xdef	_AddTail
 _AddTail:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; list
-	move.l	20(sp),a1	; node
-	move.l	_SysBase,a6
-	jsr	-246(a6)	; AddTail()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-246(a6)
 	rts
 
-	section	CODE_Remove,code
+	section	_Remove_stub,code
 
-; Remove(node)
+; VOID Remove(struct Node * node)
 	xdef	_Remove
 _Remove:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; node
-	move.l	_SysBase,a6
-	jsr	-252(a6)	; Remove()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-252(a6)
 	rts
 
-	section	CODE_RemHead,code
+	section	_RemHead_stub,code
 
-; RemHead(list)
+; struct Node * RemHead(struct List * list)
 	xdef	_RemHead
 _RemHead:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; list
-	move.l	_SysBase,a6
-	jsr	-258(a6)	; RemHead()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_SysBase,a6
+	jsr	-258(a6)
 	rts
 
-	section	CODE_RemTail,code
+	section	_RemTail_stub,code
 
-; RemTail(list)
+; struct Node * RemTail(struct List * list)
 	xdef	_RemTail
 _RemTail:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; list
-	move.l	_SysBase,a6
-	jsr	-264(a6)	; RemTail()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_SysBase,a6
+	jsr	-264(a6)
 	rts
 
-	section	CODE_Enqueue,code
+	section	_Enqueue_stub,code
 
-; Enqueue(list, node)
+; VOID Enqueue(struct List * list, struct Node * node)
 	xdef	_Enqueue
 _Enqueue:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; list
-	move.l	20(sp),a1	; node
-	move.l	_SysBase,a6
-	jsr	-270(a6)	; Enqueue()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-270(a6)
 	rts
 
-	section	CODE_FindName,code
+	section	_FindName_stub,code
 
-; FindName(list, name)
+; struct Node * FindName(struct List * list, CONST_STRPTR name)
 	xdef	_FindName
 _FindName:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; list
-	move.l	20(sp),a1	; name
-	move.l	_SysBase,a6
-	jsr	-276(a6)	; FindName()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-276(a6)
 	rts
 
-	section	CODE_AddTask,code
+	section	_AddTask_stub,code
 
-; AddTask(task, initPC, finalPC)
+; APTR AddTask(struct Task * task, const APTR initPC, const APTR finalPC)
 	xdef	_AddTask
 _AddTask:
-	movem.l	a1-a3/a6,-(sp)
-	move.l	20(sp),a1	; task
-	move.l	24(sp),a2	; initPC
-	move.l	28(sp),a3	; finalPC
-	move.l	_SysBase,a6
-	jsr	-282(a6)	; AddTask()
-	movem.l	(sp)+,a1-a3/a6
+	movea.l	4(sp),a1
+	movea.l	8(sp),a2
+	movea.l	12(sp),a3
+	movea.l	_SysBase,a6
+	jsr	-282(a6)
 	rts
 
-	section	CODE_RemTask,code
+	section	_RemTask_stub,code
 
-; RemTask(task)
+; VOID RemTask(struct Task * task)
 	xdef	_RemTask
 _RemTask:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; task
-	move.l	_SysBase,a6
-	jsr	-288(a6)	; RemTask()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-288(a6)
 	rts
 
-	section	CODE_FindTask,code
+	section	_FindTask_stub,code
 
-; FindTask(name)
+; struct Task * FindTask(CONST_STRPTR name)
 	xdef	_FindTask
 _FindTask:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; name
-	move.l	_SysBase,a6
-	jsr	-294(a6)	; FindTask()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-294(a6)
 	rts
 
-	section	CODE_SetTaskPri,code
+	section	_SetTaskPri_stub,code
 
-; SetTaskPri(task, priority)
+; BYTE SetTaskPri(struct Task * task, LONG priority)
 	xdef	_SetTaskPri
 _SetTaskPri:
-	movem.l	d0/a1/a6,-(sp)
-	move.l	16(sp),a1	; task
-	move.l	20(sp),d0	; priority
-	move.l	_SysBase,a6
-	jsr	-300(a6)	; SetTaskPri()
-	movem.l	(sp)+,d0/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	movea.l	_SysBase,a6
+	jsr	-300(a6)
 	rts
 
-	section	CODE_SetSignal,code
+	section	_SetSignal_stub,code
 
-; SetSignal(newSignals, signalSet)
+; ULONG SetSignal(ULONG newSignals, ULONG signalSet)
 	xdef	_SetSignal
 _SetSignal:
-	movem.l	d0-d1/a6,-(sp)
-	move.l	16(sp),d0	; newSignals
-	move.l	20(sp),d1	; signalSet
-	move.l	_SysBase,a6
-	jsr	-306(a6)	; SetSignal()
-	movem.l	(sp)+,d0-d1/a6
+	move.l	4(sp),d0
+	move.l	8(sp),d1
+	movea.l	_SysBase,a6
+	jsr	-306(a6)
 	rts
 
-	section	CODE_SetExcept,code
+	section	_SetExcept_stub,code
 
-; SetExcept(newSignals, signalSet)
+; ULONG SetExcept(ULONG newSignals, ULONG signalSet)
 	xdef	_SetExcept
 _SetExcept:
-	movem.l	d0-d1/a6,-(sp)
-	move.l	16(sp),d0	; newSignals
-	move.l	20(sp),d1	; signalSet
-	move.l	_SysBase,a6
-	jsr	-312(a6)	; SetExcept()
-	movem.l	(sp)+,d0-d1/a6
+	move.l	4(sp),d0
+	move.l	8(sp),d1
+	movea.l	_SysBase,a6
+	jsr	-312(a6)
 	rts
 
-	section	CODE_Wait,code
+	section	_Wait_stub,code
 
-; Wait(signalSet)
+; ULONG Wait(ULONG signalSet)
 	xdef	_Wait
 _Wait:
-	movem.l	d0/a6,-(sp)
-	move.l	12(sp),d0	; signalSet
-	move.l	_SysBase,a6
-	jsr	-318(a6)	; Wait()
-	movem.l	(sp)+,d0/a6
+	move.l	4(sp),d0
+	movea.l	_SysBase,a6
+	jsr	-318(a6)
 	rts
 
-	section	CODE_Signal,code
+	section	_Signal_stub,code
 
-; Signal(task, signalSet)
+; VOID Signal(struct Task * task, ULONG signalSet)
 	xdef	_Signal
 _Signal:
-	movem.l	d0/a1/a6,-(sp)
-	move.l	16(sp),a1	; task
-	move.l	20(sp),d0	; signalSet
-	move.l	_SysBase,a6
-	jsr	-324(a6)	; Signal()
-	movem.l	(sp)+,d0/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	movea.l	_SysBase,a6
+	jsr	-324(a6)
 	rts
 
-	section	CODE_AllocSignal,code
+	section	_AllocSignal_stub,code
 
-; AllocSignal(signalNum)
+; BYTE AllocSignal(BYTE signalNum)
 	xdef	_AllocSignal
 _AllocSignal:
-	movem.l	d0/a6,-(sp)
-	move.l	12(sp),d0	; signalNum
-	move.l	_SysBase,a6
-	jsr	-330(a6)	; AllocSignal()
-	movem.l	(sp)+,d0/a6
+	move.l	4(sp),d0
+	movea.l	_SysBase,a6
+	jsr	-330(a6)
 	rts
 
-	section	CODE_FreeSignal,code
+	section	_FreeSignal_stub,code
 
-; FreeSignal(signalNum)
+; VOID FreeSignal(BYTE signalNum)
 	xdef	_FreeSignal
 _FreeSignal:
-	movem.l	d0/a6,-(sp)
-	move.l	12(sp),d0	; signalNum
-	move.l	_SysBase,a6
-	jsr	-336(a6)	; FreeSignal()
-	movem.l	(sp)+,d0/a6
+	move.l	4(sp),d0
+	movea.l	_SysBase,a6
+	jsr	-336(a6)
 	rts
 
-	section	CODE_AllocTrap,code
+	section	_AllocTrap_stub,code
 
-; AllocTrap(trapNum)
+; LONG AllocTrap(LONG trapNum)
 	xdef	_AllocTrap
 _AllocTrap:
-	movem.l	d0/a6,-(sp)
-	move.l	12(sp),d0	; trapNum
-	move.l	_SysBase,a6
-	jsr	-342(a6)	; AllocTrap()
-	movem.l	(sp)+,d0/a6
+	move.l	4(sp),d0
+	movea.l	_SysBase,a6
+	jsr	-342(a6)
 	rts
 
-	section	CODE_FreeTrap,code
+	section	_FreeTrap_stub,code
 
-; FreeTrap(trapNum)
+; VOID FreeTrap(LONG trapNum)
 	xdef	_FreeTrap
 _FreeTrap:
-	movem.l	d0/a6,-(sp)
-	move.l	12(sp),d0	; trapNum
-	move.l	_SysBase,a6
-	jsr	-348(a6)	; FreeTrap()
-	movem.l	(sp)+,d0/a6
+	move.l	4(sp),d0
+	movea.l	_SysBase,a6
+	jsr	-348(a6)
 	rts
 
-	section	CODE_AddPort,code
+	section	_AddPort_stub,code
 
-; AddPort(port)
+; VOID AddPort(struct MsgPort * port)
 	xdef	_AddPort
 _AddPort:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; port
-	move.l	_SysBase,a6
-	jsr	-354(a6)	; AddPort()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-354(a6)
 	rts
 
-	section	CODE_RemPort,code
+	section	_RemPort_stub,code
 
-; RemPort(port)
+; VOID RemPort(struct MsgPort * port)
 	xdef	_RemPort
 _RemPort:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; port
-	move.l	_SysBase,a6
-	jsr	-360(a6)	; RemPort()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-360(a6)
 	rts
 
-	section	CODE_PutMsg,code
+	section	_PutMsg_stub,code
 
-; PutMsg(port, message)
+; VOID PutMsg(struct MsgPort * port, struct Message * message)
 	xdef	_PutMsg
 _PutMsg:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; port
-	move.l	20(sp),a1	; message
-	move.l	_SysBase,a6
-	jsr	-366(a6)	; PutMsg()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-366(a6)
 	rts
 
-	section	CODE_GetMsg,code
+	section	_GetMsg_stub,code
 
-; GetMsg(port)
+; struct Message * GetMsg(struct MsgPort * port)
 	xdef	_GetMsg
 _GetMsg:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; port
-	move.l	_SysBase,a6
-	jsr	-372(a6)	; GetMsg()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_SysBase,a6
+	jsr	-372(a6)
 	rts
 
-	section	CODE_ReplyMsg,code
+	section	_ReplyMsg_stub,code
 
-; ReplyMsg(message)
+; VOID ReplyMsg(struct Message * message)
 	xdef	_ReplyMsg
 _ReplyMsg:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; message
-	move.l	_SysBase,a6
-	jsr	-378(a6)	; ReplyMsg()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-378(a6)
 	rts
 
-	section	CODE_WaitPort,code
+	section	_WaitPort_stub,code
 
-; WaitPort(port)
+; struct Message * WaitPort(struct MsgPort * port)
 	xdef	_WaitPort
 _WaitPort:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; port
-	move.l	_SysBase,a6
-	jsr	-384(a6)	; WaitPort()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_SysBase,a6
+	jsr	-384(a6)
 	rts
 
-	section	CODE_FindPort,code
+	section	_FindPort_stub,code
 
-; FindPort(name)
+; struct MsgPort * FindPort(CONST_STRPTR name)
 	xdef	_FindPort
 _FindPort:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; name
-	move.l	_SysBase,a6
-	jsr	-390(a6)	; FindPort()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-390(a6)
 	rts
 
-	section	CODE_AddLibrary,code
+	section	_AddLibrary_stub,code
 
-; AddLibrary(library)
+; VOID AddLibrary(struct Library * library)
 	xdef	_AddLibrary
 _AddLibrary:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; library
-	move.l	_SysBase,a6
-	jsr	-396(a6)	; AddLibrary()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-396(a6)
 	rts
 
-	section	CODE_RemLibrary,code
+	section	_RemLibrary_stub,code
 
-; RemLibrary(library)
+; VOID RemLibrary(struct Library * library)
 	xdef	_RemLibrary
 _RemLibrary:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; library
-	move.l	_SysBase,a6
-	jsr	-402(a6)	; RemLibrary()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-402(a6)
 	rts
 
-	section	CODE_OldOpenLibrary,code
+	section	_OldOpenLibrary_stub,code
 
-; OldOpenLibrary(libName)
+; struct Library * OldOpenLibrary(CONST_STRPTR libName)
 	xdef	_OldOpenLibrary
 _OldOpenLibrary:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; libName
-	move.l	_SysBase,a6
-	jsr	-408(a6)	; OldOpenLibrary()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-408(a6)
 	rts
 
-	section	CODE_CloseLibrary,code
+	section	_CloseLibrary_stub,code
 
-; CloseLibrary(library)
+; VOID CloseLibrary(struct Library * library)
 	xdef	_CloseLibrary
 _CloseLibrary:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; library
-	move.l	_SysBase,a6
-	jsr	-414(a6)	; CloseLibrary()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-414(a6)
 	rts
 
-	section	CODE_SetFunction,code
+	section	_SetFunction_stub,code
 
-; SetFunction(library, funcOffset, newFunction)
+; APTR SetFunction(struct Library * library, LONG funcOffset, ULONG (*newFunction)() newFunction)
 	xdef	_SetFunction
 _SetFunction:
-	movem.l	d0/a0-a1/a6,-(sp)
-	move.l	20(sp),a1	; library
-	move.l	24(sp),a0	; funcOffset
-	move.l	28(sp),d0	; newFunction
-	move.l	_SysBase,a6
-	jsr	-420(a6)	; SetFunction()
-	movem.l	(sp)+,d0/a0-a1/a6
+	movea.l	4(sp),a1
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	movea.l	_SysBase,a6
+	jsr	-420(a6)
 	rts
 
-	section	CODE_SumLibrary,code
+	section	_SumLibrary_stub,code
 
-; SumLibrary(library)
+; VOID SumLibrary(struct Library * library)
 	xdef	_SumLibrary
 _SumLibrary:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; library
-	move.l	_SysBase,a6
-	jsr	-426(a6)	; SumLibrary()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-426(a6)
 	rts
 
-	section	CODE_AddDevice,code
+	section	_AddDevice_stub,code
 
-; AddDevice(device)
+; VOID AddDevice(struct Device * device)
 	xdef	_AddDevice
 _AddDevice:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; device
-	move.l	_SysBase,a6
-	jsr	-432(a6)	; AddDevice()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-432(a6)
 	rts
 
-	section	CODE_RemDevice,code
+	section	_RemDevice_stub,code
 
-; RemDevice(device)
+; VOID RemDevice(struct Device * device)
 	xdef	_RemDevice
 _RemDevice:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; device
-	move.l	_SysBase,a6
-	jsr	-438(a6)	; RemDevice()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-438(a6)
 	rts
 
-	section	CODE_OpenDevice,code
+	section	_OpenDevice_stub,code
 
-; OpenDevice(devName, unit, ioRequest, flags)
+; BYTE OpenDevice(CONST_STRPTR devName, ULONG unit, struct IORequest * ioRequest, ULONG flags)
 	xdef	_OpenDevice
 _OpenDevice:
-	movem.l	d0-d1/a0-a1/a6,-(sp)
-	move.l	24(sp),a0	; devName
-	move.l	28(sp),d0	; unit
-	move.l	32(sp),a1	; ioRequest
-	move.l	36(sp),d1	; flags
-	move.l	_SysBase,a6
-	jsr	-444(a6)	; OpenDevice()
-	movem.l	(sp)+,d0-d1/a0-a1/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	movea.l	12(sp),a1
+	move.l	16(sp),d1
+	movea.l	_SysBase,a6
+	jsr	-444(a6)
 	rts
 
-	section	CODE_CloseDevice,code
+	section	_CloseDevice_stub,code
 
-; CloseDevice(ioRequest)
+; VOID CloseDevice(struct IORequest * ioRequest)
 	xdef	_CloseDevice
 _CloseDevice:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; ioRequest
-	move.l	_SysBase,a6
-	jsr	-450(a6)	; CloseDevice()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-450(a6)
 	rts
 
-	section	CODE_DoIO,code
+	section	_DoIO_stub,code
 
-; DoIO(ioRequest)
+; BYTE DoIO(struct IORequest * ioRequest)
 	xdef	_DoIO
 _DoIO:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; ioRequest
-	move.l	_SysBase,a6
-	jsr	-456(a6)	; DoIO()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-456(a6)
 	rts
 
-	section	CODE_SendIO,code
+	section	_SendIO_stub,code
 
-; SendIO(ioRequest)
+; VOID SendIO(struct IORequest * ioRequest)
 	xdef	_SendIO
 _SendIO:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; ioRequest
-	move.l	_SysBase,a6
-	jsr	-462(a6)	; SendIO()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-462(a6)
 	rts
 
-	section	CODE_CheckIO,code
+	section	_CheckIO_stub,code
 
-; CheckIO(ioRequest)
+; struct IORequest * CheckIO(struct IORequest * ioRequest)
 	xdef	_CheckIO
 _CheckIO:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; ioRequest
-	move.l	_SysBase,a6
-	jsr	-468(a6)	; CheckIO()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-468(a6)
 	rts
 
-	section	CODE_WaitIO,code
+	section	_WaitIO_stub,code
 
-; WaitIO(ioRequest)
+; BYTE WaitIO(struct IORequest * ioRequest)
 	xdef	_WaitIO
 _WaitIO:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; ioRequest
-	move.l	_SysBase,a6
-	jsr	-474(a6)	; WaitIO()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-474(a6)
 	rts
 
-	section	CODE_AbortIO,code
+	section	_AbortIO_stub,code
 
-; AbortIO(ioRequest)
+; VOID AbortIO(struct IORequest * ioRequest)
 	xdef	_AbortIO
 _AbortIO:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; ioRequest
-	move.l	_SysBase,a6
-	jsr	-480(a6)	; AbortIO()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-480(a6)
 	rts
 
-	section	CODE_AddResource,code
+	section	_AddResource_stub,code
 
-; AddResource(resource)
+; VOID AddResource(APTR resource)
 	xdef	_AddResource
 _AddResource:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; resource
-	move.l	_SysBase,a6
-	jsr	-486(a6)	; AddResource()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-486(a6)
 	rts
 
-	section	CODE_RemResource,code
+	section	_RemResource_stub,code
 
-; RemResource(resource)
+; VOID RemResource(APTR resource)
 	xdef	_RemResource
 _RemResource:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; resource
-	move.l	_SysBase,a6
-	jsr	-492(a6)	; RemResource()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-492(a6)
 	rts
 
-	section	CODE_OpenResource,code
+	section	_OpenResource_stub,code
 
-; OpenResource(resName)
+; APTR OpenResource(CONST_STRPTR resName)
 	xdef	_OpenResource
 _OpenResource:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; resName
-	move.l	_SysBase,a6
-	jsr	-498(a6)	; OpenResource()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-498(a6)
 	rts
 
-	section	CODE_RawDoFmt,code
+	section	_RawDoFmt_stub,code
 
-; RawDoFmt(formatString, dataStream, putChProc, putChData)
+; APTR RawDoFmt(CONST_STRPTR formatString, const APTR dataStream, VOID (*putChProc)() putChProc, APTR putChData)
 	xdef	_RawDoFmt
 _RawDoFmt:
-	movem.l	a0-a3/a6,-(sp)
-	move.l	24(sp),a0	; formatString
-	move.l	28(sp),a1	; dataStream
-	move.l	32(sp),a2	; putChProc
-	move.l	36(sp),a3	; putChData
-	move.l	_SysBase,a6
-	jsr	-522(a6)	; RawDoFmt()
-	movem.l	(sp)+,a0-a3/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	16(sp),a3
+	movea.l	_SysBase,a6
+	jsr	-522(a6)
 	rts
 
-	section	CODE_GetCC,code
+	section	_GetCC_stub,code
 
-; GetCC()
+; ULONG GetCC()
 	xdef	_GetCC
 _GetCC:
-	movem.l	a6,-(sp)
-	move.l	_SysBase,a6
-	jsr	-528(a6)	; GetCC()
-	movem.l	(sp)+,a6
+	movea.l	_SysBase,a6
+	jsr	-528(a6)
 	rts
 
-	section	CODE_TypeOfMem,code
+	section	_TypeOfMem_stub,code
 
-; TypeOfMem(address)
+; ULONG TypeOfMem(const APTR address)
 	xdef	_TypeOfMem
 _TypeOfMem:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; address
-	move.l	_SysBase,a6
-	jsr	-534(a6)	; TypeOfMem()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-534(a6)
 	rts
 
-	section	CODE_Procure,code
+	section	_Procure_stub,code
 
-; Procure(sigSem, bidMsg)
+; ULONG Procure(struct SignalSemaphore * sigSem, struct SemaphoreMessage * bidMsg)
 	xdef	_Procure
 _Procure:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; sigSem
-	move.l	20(sp),a1	; bidMsg
-	move.l	_SysBase,a6
-	jsr	-540(a6)	; Procure()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-540(a6)
 	rts
 
-	section	CODE_Vacate,code
+	section	_Vacate_stub,code
 
-; Vacate(sigSem, bidMsg)
+; VOID Vacate(struct SignalSemaphore * sigSem, struct SemaphoreMessage * bidMsg)
 	xdef	_Vacate
 _Vacate:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; sigSem
-	move.l	20(sp),a1	; bidMsg
-	move.l	_SysBase,a6
-	jsr	-546(a6)	; Vacate()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-546(a6)
 	rts
 
-	section	CODE_OpenLibrary,code
+	section	_OpenLibrary_stub,code
 
-; OpenLibrary(libName, version)
+; struct Library * OpenLibrary(CONST_STRPTR libName, ULONG version)
 	xdef	_OpenLibrary
 _OpenLibrary:
-	movem.l	d0/a1/a6,-(sp)
-	move.l	16(sp),a1	; libName
-	move.l	20(sp),d0	; version
-	move.l	_SysBase,a6
-	jsr	-552(a6)	; OpenLibrary()
-	movem.l	(sp)+,d0/a1/a6
+	movea.l	4(sp),a1
+	move.l	8(sp),d0
+	movea.l	_SysBase,a6
+	jsr	-552(a6)
 	rts
 
-	section	CODE_InitSemaphore,code
+	section	_InitSemaphore_stub,code
 
-; InitSemaphore(sigSem)
+; VOID InitSemaphore(struct SignalSemaphore * sigSem)
 	xdef	_InitSemaphore
 _InitSemaphore:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; sigSem
-	move.l	_SysBase,a6
-	jsr	-558(a6)	; InitSemaphore()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_SysBase,a6
+	jsr	-558(a6)
 	rts
 
-	section	CODE_ObtainSemaphore,code
+	section	_ObtainSemaphore_stub,code
 
-; ObtainSemaphore(sigSem)
+; VOID ObtainSemaphore(struct SignalSemaphore * sigSem)
 	xdef	_ObtainSemaphore
 _ObtainSemaphore:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; sigSem
-	move.l	_SysBase,a6
-	jsr	-564(a6)	; ObtainSemaphore()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_SysBase,a6
+	jsr	-564(a6)
 	rts
 
-	section	CODE_ReleaseSemaphore,code
+	section	_ReleaseSemaphore_stub,code
 
-; ReleaseSemaphore(sigSem)
+; VOID ReleaseSemaphore(struct SignalSemaphore * sigSem)
 	xdef	_ReleaseSemaphore
 _ReleaseSemaphore:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; sigSem
-	move.l	_SysBase,a6
-	jsr	-570(a6)	; ReleaseSemaphore()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_SysBase,a6
+	jsr	-570(a6)
 	rts
 
-	section	CODE_AttemptSemaphore,code
+	section	_AttemptSemaphore_stub,code
 
-; AttemptSemaphore(sigSem)
+; ULONG AttemptSemaphore(struct SignalSemaphore * sigSem)
 	xdef	_AttemptSemaphore
 _AttemptSemaphore:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; sigSem
-	move.l	_SysBase,a6
-	jsr	-576(a6)	; AttemptSemaphore()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_SysBase,a6
+	jsr	-576(a6)
 	rts
 
-	section	CODE_ObtainSemaphoreList,code
+	section	_ObtainSemaphoreList_stub,code
 
-; ObtainSemaphoreList(sigSem)
+; VOID ObtainSemaphoreList(struct List * sigSem)
 	xdef	_ObtainSemaphoreList
 _ObtainSemaphoreList:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; sigSem
-	move.l	_SysBase,a6
-	jsr	-582(a6)	; ObtainSemaphoreList()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_SysBase,a6
+	jsr	-582(a6)
 	rts
 
-	section	CODE_ReleaseSemaphoreList,code
+	section	_ReleaseSemaphoreList_stub,code
 
-; ReleaseSemaphoreList(sigSem)
+; VOID ReleaseSemaphoreList(struct List * sigSem)
 	xdef	_ReleaseSemaphoreList
 _ReleaseSemaphoreList:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; sigSem
-	move.l	_SysBase,a6
-	jsr	-588(a6)	; ReleaseSemaphoreList()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_SysBase,a6
+	jsr	-588(a6)
 	rts
 
-	section	CODE_FindSemaphore,code
+	section	_FindSemaphore_stub,code
 
-; FindSemaphore(name)
+; struct SignalSemaphore * FindSemaphore(STRPTR name)
 	xdef	_FindSemaphore
 _FindSemaphore:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; name
-	move.l	_SysBase,a6
-	jsr	-594(a6)	; FindSemaphore()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-594(a6)
 	rts
 
-	section	CODE_AddSemaphore,code
+	section	_AddSemaphore_stub,code
 
-; AddSemaphore(sigSem)
+; VOID AddSemaphore(struct SignalSemaphore * sigSem)
 	xdef	_AddSemaphore
 _AddSemaphore:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; sigSem
-	move.l	_SysBase,a6
-	jsr	-600(a6)	; AddSemaphore()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-600(a6)
 	rts
 
-	section	CODE_RemSemaphore,code
+	section	_RemSemaphore_stub,code
 
-; RemSemaphore(sigSem)
+; VOID RemSemaphore(struct SignalSemaphore * sigSem)
 	xdef	_RemSemaphore
 _RemSemaphore:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; sigSem
-	move.l	_SysBase,a6
-	jsr	-606(a6)	; RemSemaphore()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-606(a6)
 	rts
 
-	section	CODE_SumKickData,code
+	section	_SumKickData_stub,code
 
-; SumKickData()
+; ULONG SumKickData()
 	xdef	_SumKickData
 _SumKickData:
-	movem.l	a6,-(sp)
-	move.l	_SysBase,a6
-	jsr	-612(a6)	; SumKickData()
-	movem.l	(sp)+,a6
+	movea.l	_SysBase,a6
+	jsr	-612(a6)
 	rts
 
-	section	CODE_AddMemList,code
+	section	_AddMemList_stub,code
 
-; AddMemList(size, attributes, pri, base, name)
+; VOID AddMemList(ULONG size, ULONG attributes, LONG pri, APTR base, CONST_STRPTR name)
 	xdef	_AddMemList
 _AddMemList:
-	movem.l	d0-d2/a0-a1/a6,-(sp)
-	move.l	28(sp),d0	; size
-	move.l	32(sp),d1	; attributes
-	move.l	36(sp),d2	; pri
-	move.l	40(sp),a0	; base
-	move.l	44(sp),a1	; name
-	move.l	_SysBase,a6
-	jsr	-618(a6)	; AddMemList()
-	movem.l	(sp)+,d0-d2/a0-a1/a6
+	move.l	4(sp),d0
+	move.l	8(sp),d1
+	move.l	12(sp),d2
+	movea.l	16(sp),a0
+	movea.l	20(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-618(a6)
 	rts
 
-	section	CODE_CopyMem,code
+	section	_CopyMem_stub,code
 
-; CopyMem(source, dest, size)
+; VOID CopyMem(const APTR source, APTR dest, ULONG size)
 	xdef	_CopyMem
 _CopyMem:
-	movem.l	d0/a0-a1/a6,-(sp)
-	move.l	20(sp),a0	; source
-	move.l	24(sp),a1	; dest
-	move.l	28(sp),d0	; size
-	move.l	_SysBase,a6
-	jsr	-624(a6)	; CopyMem()
-	movem.l	(sp)+,d0/a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	movea.l	_SysBase,a6
+	jsr	-624(a6)
 	rts
 
-	section	CODE_CopyMemQuick,code
+	section	_CopyMemQuick_stub,code
 
-; CopyMemQuick(source, dest, size)
+; VOID CopyMemQuick(const APTR source, APTR dest, ULONG size)
 	xdef	_CopyMemQuick
 _CopyMemQuick:
-	movem.l	d0/a0-a1/a6,-(sp)
-	move.l	20(sp),a0	; source
-	move.l	24(sp),a1	; dest
-	move.l	28(sp),d0	; size
-	move.l	_SysBase,a6
-	jsr	-630(a6)	; CopyMemQuick()
-	movem.l	(sp)+,d0/a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	movea.l	_SysBase,a6
+	jsr	-630(a6)
 	rts
 
-	section	CODE_CacheClearU,code
+	section	_CacheClearU_stub,code
 
-; CacheClearU()
+; VOID CacheClearU()
 	xdef	_CacheClearU
 _CacheClearU:
-	movem.l	a6,-(sp)
-	move.l	_SysBase,a6
-	jsr	-636(a6)	; CacheClearU()
-	movem.l	(sp)+,a6
+	movea.l	_SysBase,a6
+	jsr	-636(a6)
 	rts
 
-	section	CODE_CacheClearE,code
+	section	_CacheClearE_stub,code
 
-; CacheClearE(address, length, caches)
+; VOID CacheClearE(APTR address, ULONG length, ULONG caches)
 	xdef	_CacheClearE
 _CacheClearE:
-	movem.l	d0-d1/a0/a6,-(sp)
-	move.l	20(sp),a0	; address
-	move.l	24(sp),d0	; length
-	move.l	28(sp),d1	; caches
-	move.l	_SysBase,a6
-	jsr	-642(a6)	; CacheClearE()
-	movem.l	(sp)+,d0-d1/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	move.l	12(sp),d1
+	movea.l	_SysBase,a6
+	jsr	-642(a6)
 	rts
 
-	section	CODE_CacheControl,code
+	section	_CacheControl_stub,code
 
-; CacheControl(cacheBits, cacheMask)
+; ULONG CacheControl(ULONG cacheBits, ULONG cacheMask)
 	xdef	_CacheControl
 _CacheControl:
-	movem.l	d0-d1/a6,-(sp)
-	move.l	16(sp),d0	; cacheBits
-	move.l	20(sp),d1	; cacheMask
-	move.l	_SysBase,a6
-	jsr	-648(a6)	; CacheControl()
-	movem.l	(sp)+,d0-d1/a6
+	move.l	4(sp),d0
+	move.l	8(sp),d1
+	movea.l	_SysBase,a6
+	jsr	-648(a6)
 	rts
 
-	section	CODE_CreateIORequest,code
+	section	_CreateIORequest_stub,code
 
-; CreateIORequest(port, size)
+; APTR CreateIORequest(const struct MsgPort * port, ULONG size)
 	xdef	_CreateIORequest
 _CreateIORequest:
-	movem.l	d0/a0/a6,-(sp)
-	move.l	16(sp),a0	; port
-	move.l	20(sp),d0	; size
-	move.l	_SysBase,a6
-	jsr	-654(a6)	; CreateIORequest()
-	movem.l	(sp)+,d0/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	movea.l	_SysBase,a6
+	jsr	-654(a6)
 	rts
 
-	section	CODE_DeleteIORequest,code
+	section	_DeleteIORequest_stub,code
 
-; DeleteIORequest(iorequest)
+; VOID DeleteIORequest(APTR iorequest)
 	xdef	_DeleteIORequest
 _DeleteIORequest:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; iorequest
-	move.l	_SysBase,a6
-	jsr	-660(a6)	; DeleteIORequest()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_SysBase,a6
+	jsr	-660(a6)
 	rts
 
-	section	CODE_CreateMsgPort,code
+	section	_CreateMsgPort_stub,code
 
-; CreateMsgPort()
+; struct MsgPort * CreateMsgPort()
 	xdef	_CreateMsgPort
 _CreateMsgPort:
-	movem.l	a6,-(sp)
-	move.l	_SysBase,a6
-	jsr	-666(a6)	; CreateMsgPort()
-	movem.l	(sp)+,a6
+	movea.l	_SysBase,a6
+	jsr	-666(a6)
 	rts
 
-	section	CODE_DeleteMsgPort,code
+	section	_DeleteMsgPort_stub,code
 
-; DeleteMsgPort(port)
+; VOID DeleteMsgPort(struct MsgPort * port)
 	xdef	_DeleteMsgPort
 _DeleteMsgPort:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; port
-	move.l	_SysBase,a6
-	jsr	-672(a6)	; DeleteMsgPort()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_SysBase,a6
+	jsr	-672(a6)
 	rts
 
-	section	CODE_ObtainSemaphoreShared,code
+	section	_ObtainSemaphoreShared_stub,code
 
-; ObtainSemaphoreShared(sigSem)
+; VOID ObtainSemaphoreShared(struct SignalSemaphore * sigSem)
 	xdef	_ObtainSemaphoreShared
 _ObtainSemaphoreShared:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; sigSem
-	move.l	_SysBase,a6
-	jsr	-678(a6)	; ObtainSemaphoreShared()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_SysBase,a6
+	jsr	-678(a6)
 	rts
 
-	section	CODE_AllocVec,code
+	section	_AllocVec_stub,code
 
-; AllocVec(byteSize, requirements)
+; APTR AllocVec(ULONG byteSize, ULONG requirements)
 	xdef	_AllocVec
 _AllocVec:
-	movem.l	d0-d1/a6,-(sp)
-	move.l	16(sp),d0	; byteSize
-	move.l	20(sp),d1	; requirements
-	move.l	_SysBase,a6
-	jsr	-684(a6)	; AllocVec()
-	movem.l	(sp)+,d0-d1/a6
+	move.l	4(sp),d0
+	move.l	8(sp),d1
+	movea.l	_SysBase,a6
+	jsr	-684(a6)
 	rts
 
-	section	CODE_FreeVec,code
+	section	_FreeVec_stub,code
 
-; FreeVec(memoryBlock)
+; VOID FreeVec(APTR memoryBlock)
 	xdef	_FreeVec
 _FreeVec:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; memoryBlock
-	move.l	_SysBase,a6
-	jsr	-690(a6)	; FreeVec()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-690(a6)
 	rts
 
-	section	CODE_CreatePool,code
+	section	_CreatePool_stub,code
 
-; CreatePool(requirements, puddleSize, threshSize)
+; APTR CreatePool(ULONG requirements, ULONG puddleSize, ULONG threshSize)
 	xdef	_CreatePool
 _CreatePool:
-	movem.l	d0-d2/a6,-(sp)
-	move.l	20(sp),d0	; requirements
-	move.l	24(sp),d1	; puddleSize
-	move.l	28(sp),d2	; threshSize
-	move.l	_SysBase,a6
-	jsr	-696(a6)	; CreatePool()
-	movem.l	(sp)+,d0-d2/a6
+	move.l	4(sp),d0
+	move.l	8(sp),d1
+	move.l	12(sp),d2
+	movea.l	_SysBase,a6
+	jsr	-696(a6)
 	rts
 
-	section	CODE_DeletePool,code
+	section	_DeletePool_stub,code
 
-; DeletePool(poolHeader)
+; VOID DeletePool(APTR poolHeader)
 	xdef	_DeletePool
 _DeletePool:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; poolHeader
-	move.l	_SysBase,a6
-	jsr	-702(a6)	; DeletePool()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_SysBase,a6
+	jsr	-702(a6)
 	rts
 
-	section	CODE_AllocPooled,code
+	section	_AllocPooled_stub,code
 
-; AllocPooled(poolHeader, memSize)
+; APTR AllocPooled(APTR poolHeader, ULONG memSize)
 	xdef	_AllocPooled
 _AllocPooled:
-	movem.l	d0/a0/a6,-(sp)
-	move.l	16(sp),a0	; poolHeader
-	move.l	20(sp),d0	; memSize
-	move.l	_SysBase,a6
-	jsr	-708(a6)	; AllocPooled()
-	movem.l	(sp)+,d0/a0/a6
+	movea.l	4(sp),a0
+	move.l	8(sp),d0
+	movea.l	_SysBase,a6
+	jsr	-708(a6)
 	rts
 
-	section	CODE_FreePooled,code
+	section	_FreePooled_stub,code
 
-; FreePooled(poolHeader, memory, memSize)
+; VOID FreePooled(APTR poolHeader, APTR memory, ULONG memSize)
 	xdef	_FreePooled
 _FreePooled:
-	movem.l	d0/a0-a1/a6,-(sp)
-	move.l	20(sp),a0	; poolHeader
-	move.l	24(sp),a1	; memory
-	move.l	28(sp),d0	; memSize
-	move.l	_SysBase,a6
-	jsr	-714(a6)	; FreePooled()
-	movem.l	(sp)+,d0/a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	movea.l	_SysBase,a6
+	jsr	-714(a6)
 	rts
 
-	section	CODE_AttemptSemaphoreShared,code
+	section	_AttemptSemaphoreShared_stub,code
 
-; AttemptSemaphoreShared(sigSem)
+; ULONG AttemptSemaphoreShared(struct SignalSemaphore * sigSem)
 	xdef	_AttemptSemaphoreShared
 _AttemptSemaphoreShared:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; sigSem
-	move.l	_SysBase,a6
-	jsr	-720(a6)	; AttemptSemaphoreShared()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_SysBase,a6
+	jsr	-720(a6)
 	rts
 
-	section	CODE_ColdReboot,code
+	section	_ColdReboot_stub,code
 
-; ColdReboot()
+; VOID ColdReboot()
 	xdef	_ColdReboot
 _ColdReboot:
-	movem.l	a6,-(sp)
-	move.l	_SysBase,a6
-	jsr	-726(a6)	; ColdReboot()
-	movem.l	(sp)+,a6
+	movea.l	_SysBase,a6
+	jsr	-726(a6)
 	rts
 
-	section	CODE_StackSwap,code
+	section	_StackSwap_stub,code
 
-; StackSwap(newStack)
+; VOID StackSwap(struct StackSwapStruct * newStack)
 	xdef	_StackSwap
 _StackSwap:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; newStack
-	move.l	_SysBase,a6
-	jsr	-732(a6)	; StackSwap()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_SysBase,a6
+	jsr	-732(a6)
 	rts
 
-	section	CODE_CachePreDMA,code
+	section	_CachePreDMA_stub,code
 
-; CachePreDMA(address, length, flags)
+; APTR CachePreDMA(const APTR address, ULONG * length, ULONG flags)
 	xdef	_CachePreDMA
 _CachePreDMA:
-	movem.l	d0/a0-a1/a6,-(sp)
-	move.l	20(sp),a0	; address
-	move.l	24(sp),a1	; length
-	move.l	28(sp),d0	; flags
-	move.l	_SysBase,a6
-	jsr	-762(a6)	; CachePreDMA()
-	movem.l	(sp)+,d0/a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	movea.l	_SysBase,a6
+	jsr	-762(a6)
 	rts
 
-	section	CODE_CachePostDMA,code
+	section	_CachePostDMA_stub,code
 
-; CachePostDMA(address, length, flags)
+; VOID CachePostDMA(const APTR address, ULONG * length, ULONG flags)
 	xdef	_CachePostDMA
 _CachePostDMA:
-	movem.l	d0/a0-a1/a6,-(sp)
-	move.l	20(sp),a0	; address
-	move.l	24(sp),a1	; length
-	move.l	28(sp),d0	; flags
-	move.l	_SysBase,a6
-	jsr	-768(a6)	; CachePostDMA()
-	movem.l	(sp)+,d0/a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
+	movea.l	_SysBase,a6
+	jsr	-768(a6)
 	rts
 
-	section	CODE_AddMemHandler,code
+	section	_AddMemHandler_stub,code
 
-; AddMemHandler(memhand)
+; VOID AddMemHandler(struct Interrupt * memhand)
 	xdef	_AddMemHandler
 _AddMemHandler:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; memhand
-	move.l	_SysBase,a6
-	jsr	-774(a6)	; AddMemHandler()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-774(a6)
 	rts
 
-	section	CODE_RemMemHandler,code
+	section	_RemMemHandler_stub,code
 
-; RemMemHandler(memhand)
+; VOID RemMemHandler(struct Interrupt * memhand)
 	xdef	_RemMemHandler
 _RemMemHandler:
-	movem.l	a1/a6,-(sp)
-	move.l	12(sp),a1	; memhand
-	move.l	_SysBase,a6
-	jsr	-780(a6)	; RemMemHandler()
-	movem.l	(sp)+,a1/a6
+	movea.l	4(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-780(a6)
 	rts
 
-	section	CODE_ObtainQuickVector,code
+	section	_ObtainQuickVector_stub,code
 
-; ObtainQuickVector(interruptCode)
+; ULONG ObtainQuickVector(APTR interruptCode)
 	xdef	_ObtainQuickVector
 _ObtainQuickVector:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; interruptCode
-	move.l	_SysBase,a6
-	jsr	-786(a6)	; ObtainQuickVector()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_SysBase,a6
+	jsr	-786(a6)
 	rts
 
-	section	CODE_NewMinList,code
+	section	_NewMinList_stub,code
 
-; NewMinList(minlist)
+; VOID NewMinList(struct MinList * minlist)
 	xdef	_NewMinList
 _NewMinList:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; minlist
-	move.l	_SysBase,a6
-	jsr	-828(a6)	; NewMinList()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_SysBase,a6
+	jsr	-828(a6)
 	rts
 
-	section	CODE_AVL_AddNode,code
+	section	_AVL_AddNode_stub,code
 
-; AVL_AddNode(root, node, func)
+; struct AVLNode * AVL_AddNode(struct AVLNode ** root, struct AVLNode * node, APTR func)
 	xdef	_AVL_AddNode
 _AVL_AddNode:
-	movem.l	a0-a2/a6,-(sp)
-	move.l	20(sp),a0	; root
-	move.l	24(sp),a1	; node
-	move.l	28(sp),a2	; func
-	move.l	_SysBase,a6
-	jsr	-852(a6)	; AVL_AddNode()
-	movem.l	(sp)+,a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	_SysBase,a6
+	jsr	-852(a6)
 	rts
 
-	section	CODE_AVL_RemNodeByAddress,code
+	section	_AVL_RemNodeByAddress_stub,code
 
-; AVL_RemNodeByAddress(root, node)
+; struct AVLNode * AVL_RemNodeByAddress(struct AVLNode ** root, struct AVLNode * node)
 	xdef	_AVL_RemNodeByAddress
 _AVL_RemNodeByAddress:
-	movem.l	a0-a1/a6,-(sp)
-	move.l	16(sp),a0	; root
-	move.l	20(sp),a1	; node
-	move.l	_SysBase,a6
-	jsr	-858(a6)	; AVL_RemNodeByAddress()
-	movem.l	(sp)+,a0-a1/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	_SysBase,a6
+	jsr	-858(a6)
 	rts
 
-	section	CODE_AVL_RemNodeByKey,code
+	section	_AVL_RemNodeByKey_stub,code
 
-; AVL_RemNodeByKey(root, key, func)
+; struct AVLNode * AVL_RemNodeByKey(struct AVLNode ** root, APTR key, APTR func)
 	xdef	_AVL_RemNodeByKey
 _AVL_RemNodeByKey:
-	movem.l	a0-a2/a6,-(sp)
-	move.l	20(sp),a0	; root
-	move.l	24(sp),a1	; key
-	move.l	28(sp),a2	; func
-	move.l	_SysBase,a6
-	jsr	-864(a6)	; AVL_RemNodeByKey()
-	movem.l	(sp)+,a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	_SysBase,a6
+	jsr	-864(a6)
 	rts
 
-	section	CODE_AVL_FindNode,code
+	section	_AVL_FindNode_stub,code
 
-; AVL_FindNode(root, key, func)
+; struct AVLNode * AVL_FindNode(CONST struct AVLNode * root, APTR key, APTR func)
 	xdef	_AVL_FindNode
 _AVL_FindNode:
-	movem.l	a0-a2/a6,-(sp)
-	move.l	20(sp),a0	; root
-	move.l	24(sp),a1	; key
-	move.l	28(sp),a2	; func
-	move.l	_SysBase,a6
-	jsr	-870(a6)	; AVL_FindNode()
-	movem.l	(sp)+,a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	_SysBase,a6
+	jsr	-870(a6)
 	rts
 
-	section	CODE_AVL_FindPrevNodeByAddress,code
+	section	_AVL_FindPrevNodeByAddress_stub,code
 
-; AVL_FindPrevNodeByAddress(node)
+; struct AVLNode * AVL_FindPrevNodeByAddress(CONST struct AVLNode * node)
 	xdef	_AVL_FindPrevNodeByAddress
 _AVL_FindPrevNodeByAddress:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; node
-	move.l	_SysBase,a6
-	jsr	-876(a6)	; AVL_FindPrevNodeByAddress()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_SysBase,a6
+	jsr	-876(a6)
 	rts
 
-	section	CODE_AVL_FindPrevNodeByKey,code
+	section	_AVL_FindPrevNodeByKey_stub,code
 
-; AVL_FindPrevNodeByKey(root, key, func)
+; struct AVLNode * AVL_FindPrevNodeByKey(CONST struct AVLNode * root, APTR key, APTR func)
 	xdef	_AVL_FindPrevNodeByKey
 _AVL_FindPrevNodeByKey:
-	movem.l	a0-a2/a6,-(sp)
-	move.l	20(sp),a0	; root
-	move.l	24(sp),a1	; key
-	move.l	28(sp),a2	; func
-	move.l	_SysBase,a6
-	jsr	-882(a6)	; AVL_FindPrevNodeByKey()
-	movem.l	(sp)+,a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	_SysBase,a6
+	jsr	-882(a6)
 	rts
 
-	section	CODE_AVL_FindNextNodeByAddress,code
+	section	_AVL_FindNextNodeByAddress_stub,code
 
-; AVL_FindNextNodeByAddress(node)
+; struct AVLNode * AVL_FindNextNodeByAddress(CONST struct AVLNode * node)
 	xdef	_AVL_FindNextNodeByAddress
 _AVL_FindNextNodeByAddress:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; node
-	move.l	_SysBase,a6
-	jsr	-888(a6)	; AVL_FindNextNodeByAddress()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_SysBase,a6
+	jsr	-888(a6)
 	rts
 
-	section	CODE_AVL_FindNextNodeByKey,code
+	section	_AVL_FindNextNodeByKey_stub,code
 
-; AVL_FindNextNodeByKey(root, key, func)
+; struct AVLNode * AVL_FindNextNodeByKey(CONST struct AVLNode * root, APTR key, APTR func)
 	xdef	_AVL_FindNextNodeByKey
 _AVL_FindNextNodeByKey:
-	movem.l	a0-a2/a6,-(sp)
-	move.l	20(sp),a0	; root
-	move.l	24(sp),a1	; key
-	move.l	28(sp),a2	; func
-	move.l	_SysBase,a6
-	jsr	-894(a6)	; AVL_FindNextNodeByKey()
-	movem.l	(sp)+,a0-a2/a6
+	movea.l	4(sp),a0
+	movea.l	8(sp),a1
+	movea.l	12(sp),a2
+	movea.l	_SysBase,a6
+	jsr	-894(a6)
 	rts
 
-	section	CODE_AVL_FindFirstNode,code
+	section	_AVL_FindFirstNode_stub,code
 
-; AVL_FindFirstNode(root)
+; struct AVLNode * AVL_FindFirstNode(CONST struct AVLNode * root)
 	xdef	_AVL_FindFirstNode
 _AVL_FindFirstNode:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; root
-	move.l	_SysBase,a6
-	jsr	-900(a6)	; AVL_FindFirstNode()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_SysBase,a6
+	jsr	-900(a6)
 	rts
 
-	section	CODE_AVL_FindLastNode,code
+	section	_AVL_FindLastNode_stub,code
 
-; AVL_FindLastNode(root)
+; struct AVLNode * AVL_FindLastNode(CONST struct AVLNode * root)
 	xdef	_AVL_FindLastNode
 _AVL_FindLastNode:
-	movem.l	a0/a6,-(sp)
-	move.l	12(sp),a0	; root
-	move.l	_SysBase,a6
-	jsr	-906(a6)	; AVL_FindLastNode()
-	movem.l	(sp)+,a0/a6
+	movea.l	4(sp),a0
+	movea.l	_SysBase,a6
+	jsr	-906(a6)
 	rts
 

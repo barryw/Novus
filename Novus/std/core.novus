@@ -5,9 +5,10 @@
 // Import safe wrappers from std::exec
 from std::exec import SafeAllocMem, SafeFreeMem
 
-// Create local aliases for use in generic methods
+// Create local wrappers for use in generic methods
 // Note: These must be public so generic instantiation can find them
-pub fn AllocMem(byteSize: u32, attributes: u32) -> Option<*u8> {
+// Named CoreAlloc/CoreFree to avoid collision with FFI extern functions
+pub fn CoreAlloc(byteSize: u32, attributes: u32) -> Option<*u8> {
     let ptr: *u8 = SafeAllocMem(byteSize, attributes)
 
     // Check if null and wrap in Option
@@ -19,7 +20,7 @@ pub fn AllocMem(byteSize: u32, attributes: u32) -> Option<*u8> {
     return Option::Some(ptr)
 }
 
-pub fn FreeMem(memoryBlock: *u8, byteSize: u32) {
+pub fn CoreFree(memoryBlock: *u8, byteSize: u32) {
     SafeFreeMem(memoryBlock, byteSize)
 }
 
@@ -45,3 +46,9 @@ pub enum Result<T, E> {
 // - NovusError for multi-subsystem errors
 
 // Note: For collections like Vec, see std/collections.novus
+
+// Note: MemoryBlock - if needed, add it here or in std::mem
+pub struct MemoryBlock {
+    ptr: *u8,
+    size: u32,
+}

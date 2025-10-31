@@ -1,1495 +1,1733 @@
-// graphics.library FFI Bindings
-// Namespace: std::ffi::graphics
-// Raw 1:1 mappings to graphics.library
+// Generated from SFD file by Novus SFD Parser
+// Library: graphics.library
+// Base: _GfxBase
 //
-// Auto-generated from NDK 3.9
-// - Functions from graphics_lib.fd
-// - Structs from include/graphics/*.h
-// - Constants from include/graphics/*.h
+// NOTE: Import specific types from std::amiga_structs as needed
+// Example: from std::amiga_structs import Task, Node, List
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-pub const DTAG_DISP: u32 = $80000000
-pub const DTAG_DIMS: u32 = $80001000
-pub const DTAG_MNTR: u32 = $80002000
-pub const DTAG_NAME: u32 = $80003000
-pub const DTAG_VEC: u32 = $80004000 // internal use only
-pub const DI_AVAIL_NOCHIPS: u32 = $0001
-pub const DI_AVAIL_NOMONITOR: u32 = $0002
-pub const DI_AVAIL_NOTWITHGENLOCK: u32 = $0004
-pub const DIPF_IS_LACE: u32 = $00000001
-pub const DIPF_IS_DUALPF: u32 = $00000002
-pub const DIPF_IS_PF2PRI: u32 = $00000004
-pub const DIPF_IS_HAM: u32 = $00000008
-pub const DIPF_IS_AA: u32 = $00010000 // AA modes - may only be available
-pub const DIPF_IS_PAL: u32 = $00000020
-pub const DIPF_IS_SPRITES: u32 = $00000040
-pub const DIPF_IS_GENLOCK: u32 = $00000080
-pub const DIPF_IS_WB: u32 = $00000100
-pub const DIPF_IS_DRAGGABLE: u32 = $00000200
-pub const DIPF_IS_PANELLED: u32 = $00000400
-pub const DIPF_IS_BEAMSYNC: u32 = $00000800
-pub const DIPF_IS_EXTRAHALFBRITE: u32 = $00001000
-pub const DIPF_IS_SPRITES_ATT: u32 = $00002000 // supports attached sprites
-pub const DIPF_IS_SPRITES_CHNG_RES: u32 = $00004000 // supports variable sprite resolution
-pub const DIPF_IS_SPRITES_BORDER: u32 = $00008000 // sprite can be displayed in the border
-pub const DIPF_IS_SCANDBL: u32 = $00020000 // scan doubled
-pub const DIPF_IS_SPRITES_CHNG_BASE: u32 = $00040000
-pub const DIPF_IS_SPRITES_CHNG_PRI: u32 = $00080000
-pub const DIPF_IS_DBUFFER: u32 = $00100000 // can support double buffering
-pub const DIPF_IS_PROGBEAM: u32 = $00200000 // is a programmed beam-sync mode
-pub const DIPF_IS_FOREIGN: u32 = $80000000 // this mode is not native to the Amiga
-pub const MCOMPAT_MIXED: u32 = 0 // can share display with other MCOMPAT_MIXED
-pub const MCOMPAT_SELF: u32 = 1 // can share only within same monitor
-pub const DISPLAYNAMELEN: u32 = 32
-pub const NTSC: u32 = 1
-pub const GENLOC: u32 = 2
-pub const PAL: u32 = 4
-pub const TODA_SAFE: u32 = 8
-pub const REALLY_PAL: u32 = 16 // what is actual crystal frequency
-pub const LPEN_SWAP_FRAMES: u32 = 32
-pub const BLITMSG_FAULT: u32 = 4
-pub const GFXB_BIG_BLITS: u32 = 0
-pub const GFXB_HR_AGNUS: u32 = 0
-pub const GFXB_HR_DENISE: u32 = 1
-pub const GFXB_AA_ALICE: u32 = 2
-pub const GFXB_AA_LISA: u32 = 3
-pub const GFXB_AA_MLISA: u32 = 4 // internal use only.
-pub const GFXF_BIG_BLITS: u32 = 1
-pub const GFXF_HR_AGNUS: u32 = 1
-pub const GFXF_HR_DENISE: u32 = 2
-pub const GFXF_AA_ALICE: u32 = 4
-pub const GFXF_AA_LISA: u32 = 8
-pub const GFXF_AA_MLISA: u32 = 16 // internal use only
-pub const SETCHIPREV_BEST: u32 = $ffffffff
-pub const BUS_16: u32 = 0
-pub const NML_CAS: u32 = 0
-pub const BUS_32: u32 = 1
-pub const DBL_CAS: u32 = 2
-pub const NEW_DATABASE: u32 = 1
-pub const MONITOR_ID_MASK: u32 = $FFFF1000
-pub const DEFAULT_MONITOR_ID: u32 = $00000000
-pub const NTSC_MONITOR_ID: u32 = $00011000
-pub const PAL_MONITOR_ID: u32 = $00021000
-pub const LORES_KEY: u32 = $00000000
-pub const HIRES_KEY: u32 = $00008000
-pub const SUPER_KEY: u32 = $00008020
-pub const HAM_KEY: u32 = $00000800
-pub const LORESLACE_KEY: u32 = $00000004
-pub const HIRESLACE_KEY: u32 = $00008004
-pub const SUPERLACE_KEY: u32 = $00008024
-pub const HAMLACE_KEY: u32 = $00000804
-pub const LORESDPF_KEY: u32 = $00000400
-pub const HIRESDPF_KEY: u32 = $00008400
-pub const SUPERDPF_KEY: u32 = $00008420
-pub const LORESLACEDPF_KEY: u32 = $00000404
-pub const HIRESLACEDPF_KEY: u32 = $00008404
-pub const SUPERLACEDPF_KEY: u32 = $00008424
-pub const LORESDPF2_KEY: u32 = $00000440
-pub const HIRESDPF2_KEY: u32 = $00008440
-pub const SUPERDPF2_KEY: u32 = $00008460
-pub const LORESLACEDPF2_KEY: u32 = $00000444
-pub const HIRESLACEDPF2_KEY: u32 = $00008444
-pub const SUPERLACEDPF2_KEY: u32 = $00008464
-pub const EXTRAHALFBRITE_KEY: u32 = $00000080
-pub const EXTRAHALFBRITELACE_KEY: u32 = $00000084
-pub const HIRESHAM_KEY: u32 = $00008800
-pub const SUPERHAM_KEY: u32 = $00008820
-pub const HIRESEHB_KEY: u32 = $00008080
-pub const SUPEREHB_KEY: u32 = $000080a0
-pub const HIRESHAMLACE_KEY: u32 = $00008804
-pub const SUPERHAMLACE_KEY: u32 = $00008824
-pub const HIRESEHBLACE_KEY: u32 = $00008084
-pub const SUPEREHBLACE_KEY: u32 = $000080a4
-pub const LORESSDBL_KEY: u32 = $00000008
-pub const LORESHAMSDBL_KEY: u32 = $00000808
-pub const LORESEHBSDBL_KEY: u32 = $00000088
-pub const HIRESHAMSDBL_KEY: u32 = $00008808
-pub const VGA_MONITOR_ID: u32 = $00031000
-pub const VGAEXTRALORES_KEY: u32 = $00031004
-pub const VGALORES_KEY: u32 = $00039004
-pub const VGAPRODUCT_KEY: u32 = $00039024
-pub const VGAHAM_KEY: u32 = $00031804
-pub const VGAEXTRALORESLACE_KEY: u32 = $00031005
-pub const VGALORESLACE_KEY: u32 = $00039005
-pub const VGAPRODUCTLACE_KEY: u32 = $00039025
-pub const VGAHAMLACE_KEY: u32 = $00031805
-pub const VGAEXTRALORESDPF_KEY: u32 = $00031404
-pub const VGALORESDPF_KEY: u32 = $00039404
-pub const VGAPRODUCTDPF_KEY: u32 = $00039424
-pub const VGAEXTRALORESLACEDPF_KEY: u32 = $00031405
-pub const VGALORESLACEDPF_KEY: u32 = $00039405
-pub const VGAPRODUCTLACEDPF_KEY: u32 = $00039425
-pub const VGAEXTRALORESDPF2_KEY: u32 = $00031444
-pub const VGALORESDPF2_KEY: u32 = $00039444
-pub const VGAPRODUCTDPF2_KEY: u32 = $00039464
-pub const VGAEXTRALORESLACEDPF2_KEY: u32 = $00031445
-pub const VGALORESLACEDPF2_KEY: u32 = $00039445
-pub const VGAPRODUCTLACEDPF2_KEY: u32 = $00039465
-pub const VGAEXTRAHALFBRITE_KEY: u32 = $00031084
-pub const VGAEXTRAHALFBRITELACE_KEY: u32 = $00031085
-pub const VGAPRODUCTHAM_KEY: u32 = $00039824
-pub const VGALORESHAM_KEY: u32 = $00039804
-pub const VGAPRODUCTHAMLACE_KEY: u32 = $00039825
-pub const VGALORESHAMLACE_KEY: u32 = $00039805
-pub const VGALORESEHB_KEY: u32 = $00039084
-pub const VGALORESEHBLACE_KEY: u32 = $00039085
-pub const VGAEHB_KEY: u32 = $000390a4
-pub const VGAEHBLACE_KEY: u32 = $000390a5
-pub const VGAEXTRALORESDBL_KEY: u32 = $00031000
-pub const VGALORESDBL_KEY: u32 = $00039000
-pub const VGAPRODUCTDBL_KEY: u32 = $00039020
-pub const VGAEXTRALORESHAMDBL_KEY: u32 = $00031800
-pub const VGALORESHAMDBL_KEY: u32 = $00039800
-pub const VGAPRODUCTHAMDBL_KEY: u32 = $00039820
-pub const VGAEXTRALORESEHBDBL_KEY: u32 = $00031080
-pub const VGALORESEHBDBL_KEY: u32 = $00039080
-pub const VGAPRODUCTEHBDBL_KEY: u32 = $000390a0
-pub const A2024_MONITOR_ID: u32 = $00041000
-pub const A2024TENHERTZ_KEY: u32 = $00041000
-pub const A2024FIFTEENHERTZ_KEY: u32 = $00049000
-pub const PROTO_MONITOR_ID: u32 = $00051000
-pub const EURO72_MONITOR_ID: u32 = $00061000
-pub const EURO72EXTRALORES_KEY: u32 = $00061004
-pub const EURO72LORES_KEY: u32 = $00069004
-pub const EURO72PRODUCT_KEY: u32 = $00069024
-pub const EURO72HAM_KEY: u32 = $00061804
-pub const EURO72EXTRALORESLACE_KEY: u32 = $00061005
-pub const EURO72LORESLACE_KEY: u32 = $00069005
-pub const EURO72PRODUCTLACE_KEY: u32 = $00069025
-pub const EURO72HAMLACE_KEY: u32 = $00061805
-pub const EURO72EXTRALORESDPF_KEY: u32 = $00061404
-pub const EURO72LORESDPF_KEY: u32 = $00069404
-pub const EURO72PRODUCTDPF_KEY: u32 = $00069424
-pub const EURO72EXTRALORESLACEDPF_KEY: u32 = $00061405
-pub const EURO72LORESLACEDPF_KEY: u32 = $00069405
-pub const EURO72PRODUCTLACEDPF_KEY: u32 = $00069425
-pub const EURO72EXTRALORESDPF2_KEY: u32 = $00061444
-pub const EURO72LORESDPF2_KEY: u32 = $00069444
-pub const EURO72PRODUCTDPF2_KEY: u32 = $00069464
-pub const EURO72EXTRALORESLACEDPF2_KEY: u32 = $00061445
-pub const EURO72LORESLACEDPF2_KEY: u32 = $00069445
-pub const EURO72PRODUCTLACEDPF2_KEY: u32 = $00069465
-pub const EURO72EXTRAHALFBRITE_KEY: u32 = $00061084
-pub const EURO72EXTRAHALFBRITELACE_KEY: u32 = $00061085
-pub const EURO72PRODUCTHAM_KEY: u32 = $00069824
-pub const EURO72PRODUCTHAMLACE_KEY: u32 = $00069825
-pub const EURO72LORESHAM_KEY: u32 = $00069804
-pub const EURO72LORESHAMLACE_KEY: u32 = $00069805
-pub const EURO72LORESEHB_KEY: u32 = $00069084
-pub const EURO72LORESEHBLACE_KEY: u32 = $00069085
-pub const EURO72EHB_KEY: u32 = $000690a4
-pub const EURO72EHBLACE_KEY: u32 = $000690a5
-pub const EURO72EXTRALORESDBL_KEY: u32 = $00061000
-pub const EURO72LORESDBL_KEY: u32 = $00069000
-pub const EURO72PRODUCTDBL_KEY: u32 = $00069020
-pub const EURO72EXTRALORESHAMDBL_KEY: u32 = $00061800
-pub const EURO72LORESHAMDBL_KEY: u32 = $00069800
-pub const EURO72PRODUCTHAMDBL_KEY: u32 = $00069820
-pub const EURO72EXTRALORESEHBDBL_KEY: u32 = $00061080
-pub const EURO72LORESEHBDBL_KEY: u32 = $00069080
-pub const EURO72PRODUCTEHBDBL_KEY: u32 = $000690a0
-pub const EURO36_MONITOR_ID: u32 = $00071000
-pub const SUPER72_MONITOR_ID: u32 = $00081000
-pub const SUPER72LORESDBL_KEY: u32 = $00081008
-pub const SUPER72HIRESDBL_KEY: u32 = $00089008
-pub const SUPER72SUPERDBL_KEY: u32 = $00089028
-pub const SUPER72LORESHAMDBL_KEY: u32 = $00081808
-pub const SUPER72HIRESHAMDBL_KEY: u32 = $00089808
-pub const SUPER72SUPERHAMDBL_KEY: u32 = $00089828
-pub const SUPER72LORESEHBDBL_KEY: u32 = $00081088
-pub const SUPER72HIRESEHBDBL_KEY: u32 = $00089088
-pub const SUPER72SUPEREHBDBL_KEY: u32 = $000890a8
-pub const DBLNTSC_MONITOR_ID: u32 = $00091000
-pub const DBLNTSCLORES_KEY: u32 = $00091000
-pub const DBLNTSCLORESFF_KEY: u32 = $00091004
-pub const DBLNTSCLORESHAM_KEY: u32 = $00091800
-pub const DBLNTSCLORESHAMFF_KEY: u32 = $00091804
-pub const DBLNTSCLORESEHB_KEY: u32 = $00091080
-pub const DBLNTSCLORESEHBFF_KEY: u32 = $00091084
-pub const DBLNTSCLORESLACE_KEY: u32 = $00091005
-pub const DBLNTSCLORESHAMLACE_KEY: u32 = $00091805
-pub const DBLNTSCLORESEHBLACE_KEY: u32 = $00091085
-pub const DBLNTSCLORESDPF_KEY: u32 = $00091400
-pub const DBLNTSCLORESDPFFF_KEY: u32 = $00091404
-pub const DBLNTSCLORESDPFLACE_KEY: u32 = $00091405
-pub const DBLNTSCLORESDPF2_KEY: u32 = $00091440
-pub const DBLNTSCLORESDPF2FF_KEY: u32 = $00091444
-pub const DBLNTSCLORESDPF2LACE_KEY: u32 = $00091445
-pub const DBLNTSCHIRES_KEY: u32 = $00099000
-pub const DBLNTSCHIRESFF_KEY: u32 = $00099004
-pub const DBLNTSCHIRESHAM_KEY: u32 = $00099800
-pub const DBLNTSCHIRESHAMFF_KEY: u32 = $00099804
-pub const DBLNTSCHIRESLACE_KEY: u32 = $00099005
-pub const DBLNTSCHIRESHAMLACE_KEY: u32 = $00099805
-pub const DBLNTSCHIRESEHB_KEY: u32 = $00099080
-pub const DBLNTSCHIRESEHBFF_KEY: u32 = $00099084
-pub const DBLNTSCHIRESEHBLACE_KEY: u32 = $00099085
-pub const DBLNTSCHIRESDPF_KEY: u32 = $00099400
-pub const DBLNTSCHIRESDPFFF_KEY: u32 = $00099404
-pub const DBLNTSCHIRESDPFLACE_KEY: u32 = $00099405
-pub const DBLNTSCHIRESDPF2_KEY: u32 = $00099440
-pub const DBLNTSCHIRESDPF2FF_KEY: u32 = $00099444
-pub const DBLNTSCHIRESDPF2LACE_KEY: u32 = $00099445
-pub const DBLNTSCEXTRALORES_KEY: u32 = $00091200
-pub const DBLNTSCEXTRALORESHAM_KEY: u32 = $00091a00
-pub const DBLNTSCEXTRALORESEHB_KEY: u32 = $00091280
-pub const DBLNTSCEXTRALORESDPF_KEY: u32 = $00091600
-pub const DBLNTSCEXTRALORESDPF2_KEY: u32 = $00091640
-pub const DBLNTSCEXTRALORESFF_KEY: u32 = $00091204
-pub const DBLNTSCEXTRALORESHAMFF_KEY: u32 = $00091a04
-pub const DBLNTSCEXTRALORESEHBFF_KEY: u32 = $00091284
-pub const DBLNTSCEXTRALORESDPFFF_KEY: u32 = $00091604
-pub const DBLNTSCEXTRALORESDPF2FF_KEY: u32 = $00091644
-pub const DBLNTSCEXTRALORESLACE_KEY: u32 = $00091205
-pub const DBLNTSCEXTRALORESHAMLACE_KEY: u32 = $00091a05
-pub const DBLNTSCEXTRALORESEHBLACE_KEY: u32 = $00091285
-pub const DBLNTSCEXTRALORESDPFLACE_KEY: u32 = $00091605
-pub const DBLNTSCEXTRALORESDPF2LACE_KEY: u32 = $00091645
-pub const DBLPAL_MONITOR_ID: u32 = $000a1000
-pub const DBLPALLORES_KEY: u32 = $000a1000
-pub const DBLPALLORESFF_KEY: u32 = $000a1004
-pub const DBLPALLORESHAM_KEY: u32 = $000a1800
-pub const DBLPALLORESHAMFF_KEY: u32 = $000a1804
-pub const DBLPALLORESEHB_KEY: u32 = $000a1080
-pub const DBLPALLORESEHBFF_KEY: u32 = $000a1084
-pub const DBLPALLORESLACE_KEY: u32 = $000a1005
-pub const DBLPALLORESHAMLACE_KEY: u32 = $000a1805
-pub const DBLPALLORESEHBLACE_KEY: u32 = $000a1085
-pub const DBLPALLORESDPF_KEY: u32 = $000a1400
-pub const DBLPALLORESDPFFF_KEY: u32 = $000a1404
-pub const DBLPALLORESDPFLACE_KEY: u32 = $000a1405
-pub const DBLPALLORESDPF2_KEY: u32 = $000a1440
-pub const DBLPALLORESDPF2FF_KEY: u32 = $000a1444
-pub const DBLPALLORESDPF2LACE_KEY: u32 = $000a1445
-pub const DBLPALHIRES_KEY: u32 = $000a9000
-pub const DBLPALHIRESFF_KEY: u32 = $000a9004
-pub const DBLPALHIRESHAM_KEY: u32 = $000a9800
-pub const DBLPALHIRESHAMFF_KEY: u32 = $000a9804
-pub const DBLPALHIRESLACE_KEY: u32 = $000a9005
-pub const DBLPALHIRESHAMLACE_KEY: u32 = $000a9805
-pub const DBLPALHIRESEHB_KEY: u32 = $000a9080
-pub const DBLPALHIRESEHBFF_KEY: u32 = $000a9084
-pub const DBLPALHIRESEHBLACE_KEY: u32 = $000a9085
-pub const DBLPALHIRESDPF_KEY: u32 = $000a9400
-pub const DBLPALHIRESDPFFF_KEY: u32 = $000a9404
-pub const DBLPALHIRESDPFLACE_KEY: u32 = $000a9405
-pub const DBLPALHIRESDPF2_KEY: u32 = $000a9440
-pub const DBLPALHIRESDPF2FF_KEY: u32 = $000a9444
-pub const DBLPALHIRESDPF2LACE_KEY: u32 = $000a9445
-pub const DBLPALEXTRALORES_KEY: u32 = $000a1200
-pub const DBLPALEXTRALORESHAM_KEY: u32 = $000a1a00
-pub const DBLPALEXTRALORESEHB_KEY: u32 = $000a1280
-pub const DBLPALEXTRALORESDPF_KEY: u32 = $000a1600
-pub const DBLPALEXTRALORESDPF2_KEY: u32 = $000a1640
-pub const DBLPALEXTRALORESFF_KEY: u32 = $000a1204
-pub const DBLPALEXTRALORESHAMFF_KEY: u32 = $000a1a04
-pub const DBLPALEXTRALORESEHBFF_KEY: u32 = $000a1284
-pub const DBLPALEXTRALORESDPFFF_KEY: u32 = $000a1604
-pub const DBLPALEXTRALORESDPF2FF_KEY: u32 = $000a1644
-pub const DBLPALEXTRALORESLACE_KEY: u32 = $000a1205
-pub const DBLPALEXTRALORESHAMLACE_KEY: u32 = $000a1a05
-pub const DBLPALEXTRALORESEHBLACE_KEY: u32 = $000a1285
-pub const DBLPALEXTRALORESDPFLACE_KEY: u32 = $000a1605
-pub const DBLPALEXTRALORESDPF2LACE_KEY: u32 = $000a1645
-pub const BIDTAG_DIPFMustHave: u32 = $80000001 // mask of the DIPF_ flags the ModeID must have
-pub const BIDTAG_DIPFMustNotHave: u32 = $80000002 // mask of the DIPF_ flags the ModeID must not have
-pub const BIDTAG_ViewPort: u32 = $80000003 // ViewPort for which a ModeID is sought.
-pub const BIDTAG_NominalWidth: u32 = $80000004 // \ together make the aspect ratio and
-pub const BIDTAG_NominalHeight: u32 = $80000005 // / override the vp->Width/Height.
-pub const BIDTAG_DesiredWidth: u32 = $80000006 // \ Nominal Width and Height of the
-pub const BIDTAG_DesiredHeight: u32 = $80000007 // / returned ModeID.
-pub const BIDTAG_Depth: u32 = $80000008 // ModeID must support this depth.
-pub const BIDTAG_MonitorID: u32 = $80000009 // ModeID must use this monitor.
-pub const BIDTAG_SourceID: u32 = $8000000a // instead of a ViewPort.
-pub const BIDTAG_RedBits: u32 = $8000000b // \
-pub const BIDTAG_BlueBits: u32 = $8000000c // } Match up from the database
-pub const BIDTAG_GreenBits: u32 = $8000000d // /
-pub const BIDTAG_GfxPrivate: u32 = $8000000e // Private
-pub const FSF_UNDERLINED: u32 = $01
-pub const FSF_BOLD: u32 = $02
-pub const FSF_ITALIC: u32 = $04
-pub const FSF_EXTENDED: u32 = $08
-pub const FSB_COLORFONT: u32 = 6 // this uses ColorTextFont structure
-pub const FSF_COLORFONT: u32 = $40
-pub const FSB_TAGGED: u32 = 7 // the TextAttr is really an TTextAttr,
-pub const FSF_TAGGED: u32 = $80
-pub const FPB_ROMFONT: u32 = 0 // font is in rom
-pub const FPF_ROMFONT: u32 = $01
-pub const FPB_DISKFONT: u32 = 1 // font is from diskfont.library
-pub const FPF_DISKFONT: u32 = $02
-pub const FPF_REVPATH: u32 = $04
-pub const FPB_TALLDOT: u32 = 3 // designed for hires non-interlaced
-pub const FPF_TALLDOT: u32 = $08
-pub const FPB_WIDEDOT: u32 = 4 // designed for lores interlaced
-pub const FPF_WIDEDOT: u32 = $10
-pub const FPB_PROPORTIONAL: u32 = 5 // character sizes can vary from nominal
-pub const FPF_PROPORTIONAL: u32 = $20
-pub const FPB_DESIGNED: u32 = 6 // size explicitly designed, not constructed
-pub const FPF_DESIGNED: u32 = $40
-pub const FPB_REMOVED: u32 = 7 // the font has been removed
-pub const FPF_REMOVED: u32 = 128
-pub const MAXFONTMATCHWEIGHT: u32 = 32767 // perfect match from WeighTAMatch
-pub const TE0B_NOREMFONT: u32 = 0 // disallow RemFont for this font
-pub const TE0F_NOREMFONT: u32 = $01
-pub const CT_COLORMASK: u32 = $000F // mask to get to following color styles
-pub const CT_COLORFONT: u32 = $0001 // color map contains designer's colors
-pub const CT_GREYFONT: u32 = $0002 // color map describes even-stepped
-pub const CT_ANTIALIAS: u32 = $0004 // zero background thru fully saturated char
-pub const CTB_MAPCOLOR: u32 = 0 // map ctf_FgColor to the rp_FgPen if it's
-pub const CTF_MAPCOLOR: u32 = $0001 // is a valid color within ctf_Low..ctf_High
-pub const SS_GRAPHICS: u32 = $02
-pub const VIEW_EXTRA_TYPE: u32 = 1
-pub const VIEWPORT_EXTRA_TYPE: u32 = 2
-pub const SPECIAL_MONITOR_TYPE: u32 = 3
-pub const MONITOR_SPEC_TYPE: u32 = 4
-pub const RPTAG_Font: u32 = $80000000 // get/set font
-pub const RPTAG_APen: u32 = $80000002 // get/set apen
-pub const RPTAG_BPen: u32 = $80000003 // get/set bpen
-pub const RPTAG_DrMd: u32 = $80000004 // get/set draw mode
-pub const RPTAG_OutLinePen: u32 = $80000005 // get/set outline pen
-pub const RPTAG_OutlinePen: u32 = $80000005 // get/set outline pen. corrected case.
-pub const RPTAG_WriteMask: u32 = $80000006 // get/set WriteMask
-pub const RPTAG_MaxPen: u32 = $80000007 // get/set maxpen
-pub const RPTAG_DrawBounds: u32 = $80000008 // get only rastport draw bounds. pass &rect
-pub const VPXB_FREE_ME: u32 = 0
-pub const VPXB_LAST: u32 = 1
-pub const VPXB_STRADDLES_256: u32 = 4
-pub const VPXB_STRADDLES_512: u32 = 5
-pub const EXTEND_VSTRUCT: u32 = $1000 // unused bit in Modes field of View
-pub const VPF_A2024: u32 = $40 // VP?_ fields internal only
-pub const VPF_TENHZ: u32 = $20
-pub const VPB_A2024: u32 = 6
-pub const VPB_TENHZ: u32 = 4
-pub const GENLOCK_VIDEO: u32 = $0002
-pub const LACE: u32 = $0004
-pub const DOUBLESCAN: u32 = $0008
-pub const SUPERHIRES: u32 = $0020
-pub const PFBA: u32 = $0040
-pub const EXTRA_HALFBRITE: u32 = $0080
-pub const GENLOCK_AUDIO: u32 = $0100
-pub const DUALPF: u32 = $0400
-pub const HAM: u32 = $0800
-pub const EXTENDED_MODE: u32 = $1000
-pub const VP_HIDE: u32 = $2000
-pub const SPRITES: u32 = $4000
-pub const HIRES: u32 = $8000
-pub const COLORMAP_TYPE_V1_2: u32 = $00
-pub const COLORMAP_TYPE_V1_4: u32 = $01
-pub const COLORMAP_TYPE_V39: u32 = $02
-pub const COLORMAP_TRANSPARENCY: u32 = $01
-pub const COLORPLANE_TRANSPARENCY: u32 = $02
-pub const BORDER_BLANKING: u32 = $04
-pub const BORDER_NOTRANSPARENCY: u32 = $08
-pub const VIDEOCONTROL_BATCH: u32 = $10
-pub const USER_COPPER_CLIP: u32 = $20
-pub const BORDERSPRITES: u32 = $40
-pub const CMF_CMTRANS: u32 = 0
-pub const CMF_CPTRANS: u32 = 1
-pub const CMF_BRDRBLNK: u32 = 2
-pub const CMF_BRDNTRAN: u32 = 3
-pub const CMF_BRDRSPRT: u32 = 6
-pub const SPRITERESN_ECS: u32 = 0
-pub const SPRITERESN_140NS: u32 = 1
-pub const SPRITERESN_70NS: u32 = 2
-pub const SPRITERESN_35NS: u32 = 3
-pub const CMAB_FULLPALETTE: u32 = 0
-pub const CMAB_NO_INTERMED_UPDATE: u32 = 1
-pub const CMAB_NO_COLOR_LOAD: u32 = 2
-pub const CMAB_DUALPF_DISABLE: u32 = 3
-pub const PENB_EXCLUSIVE: u32 = 0
-pub const PENB_NO_SETCOLOR: u32 = 1
-pub const PRECISION_IMAGE: u32 = 0
-pub const PRECISION_ICON: u32 = 16
-pub const PRECISION_GUI: u32 = 32
-pub const OBP_Precision: u32 = $84000000
-pub const OBP_FailIfBad: u32 = $84000001
-pub const MVP_OK: u32 = 0 // you want to see this one
-pub const MVP_NO_MEM: u32 = 1 // insufficient memory for intermediate workspace
-pub const MVP_NO_VPE: u32 = 2 // ViewPort does not have a ViewPortExtra, and
-pub const MVP_NO_DSPINS: u32 = 3 // insufficient memory for intermidiate copper
-pub const MVP_NO_DISPLAY: u32 = 4 // BitMap data is misaligned for this viewport's
-pub const MVP_OFF_BOTTOM: u32 = 5 // PRIVATE - you will never see this.
-pub const MCOP_OK: u32 = 0 // you want to see this one
-pub const MCOP_NO_MEM: u32 = 1 // insufficient memory to allocate the system
-pub const MODE_640: u32 = $8000
-pub const PLNCNTMSK: u32 = $7 // how many bit planes?
-pub const PLNCNTSHFT: u32 = 12 // bits to shift for bplcon0
-pub const PF2PRI: u32 = $40 // bplcon2 bit
-pub const COLORON: u32 = $0200 // disable color burst
-pub const DBLPF: u32 = $400
-pub const HOLDNMODIFY: u32 = $800
-pub const INTERLACE: u32 = 4 // interlace mode for 400
-pub const PFA_FINE_SCROLL: u32 = $F
-pub const PFB_FINE_SCROLL_SHIFT: u32 = 4
-pub const PF_FINE_SCROLL_MASK: u32 = $F
-pub const DIW_HORIZ_POS: u32 = $7F // horizontal start/stop
-pub const DIW_VRTCL_POS: u32 = $1FF // vertical start/stop
-pub const DIW_VRTCL_POS_SHIFT: u32 = 7
-pub const DFTCH_MASK: u32 = $FF
-pub const VPOSRLOF: u32 = $8000
-pub const TO_MONITOR: u32 = 0
-pub const FROM_MONITOR: u32 = 1
-pub const STANDARD_XOFFSET: u32 = 9
-pub const STANDARD_YOFFSET: u32 = 0
-pub const MSB_REQUEST_NTSC: u32 = 0
-pub const MSB_REQUEST_PAL: u32 = 1
-pub const MSB_REQUEST_SPECIAL: u32 = 2
-pub const MSB_REQUEST_A2024: u32 = 3
-pub const MSB_DOUBLE_SPRITES: u32 = 4
-pub const STANDARD_NTSC_ROWS: u32 = 262
-pub const STANDARD_PAL_ROWS: u32 = 312
-pub const STANDARD_COLORCLOCKS: u32 = 226
-pub const STANDARD_DENISE_MAX: u32 = 455
-pub const STANDARD_DENISE_MIN: u32 = 93
-pub const STANDARD_NTSC_BEAMCON: u32 = ( $0000 )
-pub const MIN_NTSC_ROW: u32 = 21
-pub const MIN_PAL_ROW: u32 = 29
-pub const STANDARD_VIEW_X: u32 = $81
-pub const STANDARD_VIEW_Y: u32 = $2C
-pub const STANDARD_HBSTRT: u32 = $06
-pub const STANDARD_HSSTRT: u32 = $0B
-pub const STANDARD_HSSTOP: u32 = $1C
-pub const STANDARD_HBSTOP: u32 = $2C
-pub const STANDARD_VBSTRT: u32 = $0122
-pub const STANDARD_VSSTRT: u32 = $02A6
-pub const STANDARD_VSSTOP: u32 = $03AA
-pub const STANDARD_VBSTOP: u32 = $1066
-pub const VGA_DENISE_MIN: u32 = 59
-pub const MIN_VGA_ROW: u32 = 29
-pub const VGA_HBSTRT: u32 = $08
-pub const VGA_HSSTRT: u32 = $0E
-pub const VGA_HSSTOP: u32 = $1C
-pub const VGA_HBSTOP: u32 = $1E
-pub const VGA_VBSTRT: u32 = $0000
-pub const VGA_VSSTRT: u32 = $0153
-pub const VGA_VSSTOP: u32 = $0235
-pub const VGA_VBSTOP: u32 = $0CCD
-pub const VGA70_TOTAL_ROWS: u32 = 449
-pub const VGA70_DENISE_MIN: u32 = 59
-pub const MIN_VGA70_ROW: u32 = 35
-pub const VGA70_HBSTRT: u32 = $08
-pub const VGA70_HSSTRT: u32 = $0E
-pub const VGA70_HSSTOP: u32 = $1C
-pub const VGA70_HBSTOP: u32 = $1E
-pub const VGA70_VBSTRT: u32 = $0000
-pub const VGA70_VSSTRT: u32 = $02A6
-pub const VGA70_VSSTOP: u32 = $0388
-pub const VGA70_VBSTOP: u32 = $0F73
-pub const BROADCAST_HBSTRT: u32 = $01
-pub const BROADCAST_HSSTRT: u32 = $06
-pub const BROADCAST_HSSTOP: u32 = $17
-pub const BROADCAST_HBSTOP: u32 = $27
-pub const BROADCAST_VBSTRT: u32 = $0000
-pub const BROADCAST_VSSTRT: u32 = $02A6
-pub const BROADCAST_VSSTOP: u32 = $054C
-pub const BROADCAST_VBSTOP: u32 = $1C40
-pub const RATIO_FIXEDPART: u32 = 4
-pub const PRESERVE_COLORS: u32 = 1
-pub const AVOID_FLICKER: u32 = 2
-pub const IGNORE_MCOMPAT: u32 = 4
-pub const BIDTAG_COERCE: u32 = 1 // Private
-pub const SPRITE_ATTACHED: u32 = $80
-pub const SPRITEA_Width: u32 = $81000000
-pub const SPRITEA_XReplication: u32 = $81000002
-pub const SPRITEA_YReplication: u32 = $81000004
-pub const SPRITEA_OutputHeight: u32 = $81000006
-pub const SPRITEA_Attached: u32 = $81000008
-pub const SPRITEA_OldDataFormat: u32 = $8100000a // MUST pass in outputheight if using this tag
-pub const GSTAG_SPRITE_NUM: u32 = $82000020
-pub const GSTAG_ATTACHED: u32 = $82000022
-pub const GSTAG_SOFTSPRITE: u32 = $82000024
-pub const GSTAG_SCANDOUBLED: u32 = $83000000 // request "NTSC-Like" height if possible.
-pub const CR_NEEDS_NO_CONCEALED_RASTERS: u32 = 1
-pub const CR_NEEDS_NO_LAYERBLIT_DAMAGE: u32 = 2
-pub const ISLESSX: u32 = 1
-pub const ISLESSY: u32 = 2
-pub const ISGRTRX: u32 = 4
-pub const ISGRTRY: u32 = 8
-pub const BITSET: u32 = $8000
-pub const BITCLR: u32 = 0
-pub const BMB_CLEAR: u32 = 0
-pub const BMB_DISPLAYABLE: u32 = 1
-pub const BMB_INTERLEAVED: u32 = 2
-pub const BMB_STANDARD: u32 = 3
-pub const BMB_MINPLANES: u32 = 4
-pub const BMA_HEIGHT: u32 = 0
-pub const BMA_DEPTH: u32 = 4
-pub const BMA_WIDTH: u32 = 8
-pub const BMA_FLAGS: u32 = 12
-pub const SUSERFLAGS: u32 = $00FF // mask of all user-settable VSprite-flags
-pub const VSPRITE: u32 = $0001 // set if VSprite, clear if Bob
-pub const SAVEBACK: u32 = $0002 // set if background is to be saved/restored
-pub const OVERLAY: u32 = $0004 // set to mask image of Bob onto background
-pub const MUSTDRAW: u32 = $0008 // set if VSprite absolutely must be drawn
-pub const BACKSAVED: u32 = $0100 // this Bob's background has been saved
-pub const BOBUPDATE: u32 = $0200 // temporary flag, useless to outside world
-pub const BUSERFLAGS: u32 = $00FF // mask of all user-settable Bob-flags
-pub const SAVEBOB: u32 = $0001 // set to not erase Bob
-pub const BOBISCOMP: u32 = $0002 // set to identify Bob as AnimComp
-pub const BWAITING: u32 = $0100 // set while Bob is waiting on 'after'
-pub const BDRAWN: u32 = $0200 // set when Bob is drawn this DrawG pass
-pub const BOBSAWAY: u32 = $0400 // set to initiate removal of Bob
-pub const BOBNIX: u32 = $0800 // set when Bob is completely removed
-pub const SAVEPRESERVE: u32 = $1000 // for back-restore during double-buffer
-pub const OUTSTEP: u32 = $2000 // for double-clearing if double-buffer
-pub const ANFRACSIZE: u32 = 6
-pub const ANIMHALF: u32 = $0020
-pub const RINGTRIGGER: u32 = $0001
-pub const B2NORM: u32 = 0
-pub const B2SWAP: u32 = 1
-pub const B2BOBBER: u32 = 2
-pub const COPPER_MOVE: u32 = 0 // pseude opcode for move #XXXX,dir
-pub const COPPER_WAIT: u32 = 1 // pseudo opcode for wait y,x
-pub const CPRNXTBUF: u32 = 2 // continue processing with next buffer
-pub const CPR_NT_LOF: u32 = $8000 // copper instruction only for short frames
-pub const CPR_NT_SHT: u32 = $4000 // copper instruction only for long frames
-pub const CPR_NT_SYS: u32 = $2000 // copper user instruction only
-pub const EXACT_LINE: u32 = 1
-pub const HALF_LINE: u32 = 2
-pub const JAM1: u32 = 0 // jam 1 color into raster
-pub const JAM2: u32 = 1 // jam 2 colors into raster
-pub const COMPLEMENT: u32 = 2 // XOR bits into raster
-pub const INVERSVID: u32 = 4 // inverse video for drawing modes
-pub const FRST_DOT: u32 = $01 // draw the first dot of this line ?
-pub const ONE_DOT: u32 = $02 // use one dot mode for drawing lines
-pub const DBUFFER: u32 = $04 // flag set when RastPorts
-pub const AREAOUTLINE: u32 = $08 // used by areafiller
-pub const NOCROSSFILL: u32 = $20 // areafills have no crossovers
-pub const VTAG_END_CM: u32 = $00000000
-pub const VTAG_CHROMAKEY_CLR: u32 = $80000000
-pub const VTAG_CHROMAKEY_SET: u32 = $80000001
-pub const VTAG_BITPLANEKEY_CLR: u32 = $80000002
-pub const VTAG_BITPLANEKEY_SET: u32 = $80000003
-pub const VTAG_BORDERBLANK_CLR: u32 = $80000004
-pub const VTAG_BORDERBLANK_SET: u32 = $80000005
-pub const VTAG_BORDERNOTRANS_CLR: u32 = $80000006
-pub const VTAG_BORDERNOTRANS_SET: u32 = $80000007
-pub const VTAG_CHROMA_PEN_CLR: u32 = $80000008
-pub const VTAG_CHROMA_PEN_SET: u32 = $80000009
-pub const VTAG_CHROMA_PLANE_SET: u32 = $8000000A
-pub const VTAG_ATTACH_CM_SET: u32 = $8000000B
-pub const VTAG_NEXTBUF_CM: u32 = $8000000C
-pub const VTAG_BATCH_CM_CLR: u32 = $8000000D
-pub const VTAG_BATCH_CM_SET: u32 = $8000000E
-pub const VTAG_NORMAL_DISP_GET: u32 = $8000000F
-pub const VTAG_NORMAL_DISP_SET: u32 = $80000010
-pub const VTAG_COERCE_DISP_GET: u32 = $80000011
-pub const VTAG_COERCE_DISP_SET: u32 = $80000012
-pub const VTAG_VIEWPORTEXTRA_GET: u32 = $80000013
-pub const VTAG_VIEWPORTEXTRA_SET: u32 = $80000014
-pub const VTAG_CHROMAKEY_GET: u32 = $80000015
-pub const VTAG_BITPLANEKEY_GET: u32 = $80000016
-pub const VTAG_BORDERBLANK_GET: u32 = $80000017
-pub const VTAG_BORDERNOTRANS_GET: u32 = $80000018
-pub const VTAG_CHROMA_PEN_GET: u32 = $80000019
-pub const VTAG_CHROMA_PLANE_GET: u32 = $8000001A
-pub const VTAG_ATTACH_CM_GET: u32 = $8000001B
-pub const VTAG_BATCH_CM_GET: u32 = $8000001C
-pub const VTAG_BATCH_ITEMS_GET: u32 = $8000001D
-pub const VTAG_BATCH_ITEMS_SET: u32 = $8000001E
-pub const VTAG_BATCH_ITEMS_ADD: u32 = $8000001F
-pub const VTAG_VPMODEID_GET: u32 = $80000020
-pub const VTAG_VPMODEID_SET: u32 = $80000021
-pub const VTAG_VPMODEID_CLR: u32 = $80000022
-pub const VTAG_USERCLIP_GET: u32 = $80000023
-pub const VTAG_USERCLIP_SET: u32 = $80000024
-pub const VTAG_USERCLIP_CLR: u32 = $80000025
-pub const VTAG_PF1_BASE_GET: u32 = $80000026
-pub const VTAG_PF2_BASE_GET: u32 = $80000027
-pub const VTAG_SPEVEN_BASE_GET: u32 = $80000028
-pub const VTAG_SPODD_BASE_GET: u32 = $80000029
-pub const VTAG_PF1_BASE_SET: u32 = $8000002a
-pub const VTAG_PF2_BASE_SET: u32 = $8000002b
-pub const VTAG_SPEVEN_BASE_SET: u32 = $8000002c
-pub const VTAG_SPODD_BASE_SET: u32 = $8000002d
-pub const VTAG_BORDERSPRITE_GET: u32 = $8000002e
-pub const VTAG_BORDERSPRITE_SET: u32 = $8000002f
-pub const VTAG_BORDERSPRITE_CLR: u32 = $80000030
-pub const VTAG_SPRITERESN_SET: u32 = $80000031
-pub const VTAG_SPRITERESN_GET: u32 = $80000032
-pub const VTAG_PF1_TO_SPRITEPRI_SET: u32 = $80000033
-pub const VTAG_PF1_TO_SPRITEPRI_GET: u32 = $80000034
-pub const VTAG_PF2_TO_SPRITEPRI_SET: u32 = $80000035
-pub const VTAG_PF2_TO_SPRITEPRI_GET: u32 = $80000036
-pub const VTAG_IMMEDIATE: u32 = $80000037
-pub const VTAG_FULLPALETTE_SET: u32 = $80000038
-pub const VTAG_FULLPALETTE_GET: u32 = $80000039
-pub const VTAG_FULLPALETTE_CLR: u32 = $8000003A
-pub const VTAG_DEFSPRITERESN_SET: u32 = $8000003B
-pub const VTAG_DEFSPRITERESN_GET: u32 = $8000003C
-pub const VC_IntermediateCLUpdate: u32 = $80000080
-pub const VC_IntermediateCLUpdate_Query: u32 = $80000081
-pub const VC_NoColorPaletteLoad: u32 = $80000082
-pub const VC_NoColorPaletteLoad_Query: u32 = $80000083
-pub const VC_DUALPF_Disable: u32 = $80000084
-pub const VC_DUALPF_Disable_Query: u32 = $80000085
-pub const BORDERHIT: u32 = 0
-pub const TOPHIT: u32 = 1
-pub const BOTTOMHIT: u32 = 2
-pub const LEFTHIT: u32 = 4
-pub const RIGHTHIT: u32 = 8
-pub const LAYERSIMPLE: u32 = 1
-pub const LAYERSMART: u32 = 2
-pub const LAYERSUPER: u32 = 4
-pub const LAYERUPDATING: u32 = $10
-pub const LAYERBACKDROP: u32 = $40
-pub const LAYERREFRESH: u32 = $80
-pub const LAYERIREFRESH: u32 = $200
-pub const LAYERIREFRESH2: u32 = $400
-pub const LAYER_CLIPRECTS_LOST: u32 = $100 // during BeginUpdate
-pub const NEWLAYERINFO_CALLED: u32 = 1
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const BITSET: u32 = $8000u32
+pub const BITCLR: u32 = 0u32
+pub const BMB_CLEAR: u32 = 0u32
+pub const BMB_DISPLAYABLE: u32 = 1u32
+pub const BMB_INTERLEAVED: u32 = 2u32
+pub const BMB_STANDARD: u32 = 3u32
+pub const BMB_MINPLANES: u32 = 4u32
+pub const BMF_CLEAR: u32 = 0 /* TODO: (1l<<BMB_CLEAR) */
+pub const BMF_DISPLAYABLE: u32 = 0 /* TODO: (1l<<BMB_DISPLAYABLE) */
+pub const BMF_INTERLEAVED: u32 = 0 /* TODO: (1l<<BMB_INTERLEAVED) */
+pub const BMF_STANDARD: u32 = 0 /* TODO: (1l<<BMB_STANDARD) */
+pub const BMF_MINPLANES: u32 = 0 /* TODO: (1l<<BMB_MINPLANES) */
+pub const BMA_HEIGHT: u32 = 0u32
+pub const BMA_DEPTH: u32 = 4u32
+pub const BMA_WIDTH: u32 = 8u32
+pub const BMA_FLAGS: u32 = 12u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const BITSET: u32 = $8000u32
+pub const BITCLR: u32 = 0u32
+pub const BMB_CLEAR: u32 = 0u32
+pub const BMB_DISPLAYABLE: u32 = 1u32
+pub const BMB_INTERLEAVED: u32 = 2u32
+pub const BMB_STANDARD: u32 = 3u32
+pub const BMB_MINPLANES: u32 = 4u32
+pub const BMF_CLEAR: u32 = 0 /* TODO: (1l<<BMB_CLEAR) */
+pub const BMF_DISPLAYABLE: u32 = 0 /* TODO: (1l<<BMB_DISPLAYABLE) */
+pub const BMF_INTERLEAVED: u32 = 0 /* TODO: (1l<<BMB_INTERLEAVED) */
+pub const BMF_STANDARD: u32 = 0 /* TODO: (1l<<BMB_STANDARD) */
+pub const BMF_MINPLANES: u32 = 0 /* TODO: (1l<<BMB_MINPLANES) */
+pub const BMA_HEIGHT: u32 = 0u32
+pub const BMA_DEPTH: u32 = 4u32
+pub const BMA_WIDTH: u32 = 8u32
+pub const BMA_FLAGS: u32 = 12u32
+pub const NT_UNKNOWN: u32 = 0u32
+pub const NT_TASK: u32 = 1u32
+pub const NT_INTERRUPT: u32 = 2u32
+pub const NT_DEVICE: u32 = 3u32
+pub const NT_MSGPORT: u32 = 4u32
+pub const NT_MESSAGE: u32 = 5u32
+pub const NT_FREEMSG: u32 = 6u32
+pub const NT_REPLYMSG: u32 = 7u32
+pub const NT_RESOURCE: u32 = 8u32
+pub const NT_LIBRARY: u32 = 9u32
+pub const NT_MEMORY: u32 = 10u32
+pub const NT_SOFTINT: u32 = 11u32
+pub const NT_FONT: u32 = 12u32
+pub const NT_PROCESS: u32 = 13u32
+pub const NT_SEMAPHORE: u32 = 14u32
+pub const NT_SIGNALSEM: u32 = 15u32
+pub const NT_BOOTNODE: u32 = 16u32
+pub const NT_KICKMEM: u32 = 17u32
+pub const NT_GRAPHICS: u32 = 18u32
+pub const NT_DEATHMESSAGE: u32 = 19u32
+pub const NT_USER: u32 = 254u32
+pub const NT_EXTENDED: u32 = 255u32
+pub const TB_PROCTIME: u32 = 0u32
+pub const TB_ETASK: u32 = 3u32
+pub const TB_STACKCHK: u32 = 4u32
+pub const TB_EXCEPT: u32 = 5u32
+pub const TB_SWITCH: u32 = 6u32
+pub const TB_LAUNCH: u32 = 7u32
+pub const TF_PROCTIME: u32 = (1u32 << 0)
+pub const TF_ETASK: u32 = (1u32 << 3)
+pub const TF_STACKCHK: u32 = (1u32 << 4)
+pub const TF_EXCEPT: u32 = (1u32 << 5)
+pub const TF_SWITCH: u32 = (1u32 << 6)
+pub const TF_LAUNCH: u32 = (1u32 << 7)
+pub const TS_INVALID: u32 = 0u32
+pub const TS_ADDED: u32 = 1u32
+pub const TS_RUN: u32 = 2u32
+pub const TS_READY: u32 = 3u32
+pub const TS_WAIT: u32 = 4u32
+pub const TS_EXCEPT: u32 = 5u32
+pub const TS_REMOVED: u32 = 6u32
+pub const SIGB_ABORT: u32 = 0u32
+pub const SIGB_CHILD: u32 = 1u32
+pub const SIGB_BLIT: u32 = 4u32
+pub const SIGB_SINGLE: u32 = 4u32
+pub const SIGB_INTUITION: u32 = 5u32
+pub const SIGB_NET: u32 = 7u32
+pub const SIGB_DOS: u32 = 8u32
+pub const SIGF_ABORT: u32 = (1u32 << 0)
+pub const SIGF_CHILD: u32 = (1u32 << 1)
+pub const SIGF_BLIT: u32 = (1u32 << 4)
+pub const SIGF_SINGLE: u32 = (1u32 << 4)
+pub const SIGF_INTUITION: u32 = (1u32 << 5)
+pub const SIGF_NET: u32 = (1u32 << 7)
+pub const SIGF_DOS: u32 = (1u32 << 8)
+pub const mp_SoftInt: u32 = 0 /* TODO: mp_SigTask */
+pub const PF_ACTION: u32 = 3u32
+pub const PA_SIGNAL: u32 = 0u32
+pub const PA_SOFTINT: u32 = 1u32
+pub const PA_IGNORE: u32 = 2u32
+pub const SM_SHARED: u32 = 1u32
+pub const SM_EXCLUSIVE: u32 = 0
+pub const sm_LockMsg: u32 = 0 /* TODO: mp_SigTask */
+pub const SS_GRAPHICS: u32 = $02u32
+pub const VIEW_EXTRA_TYPE: u32 = 1u32
+pub const VIEWPORT_EXTRA_TYPE: u32 = 2u32
+pub const SPECIAL_MONITOR_TYPE: u32 = 3u32
+pub const MONITOR_SPEC_TYPE: u32 = 4u32
+pub const TO_MONITOR: u32 = 0u32
+pub const FROM_MONITOR: u32 = 1u32
+pub const STANDARD_XOFFSET: u32 = 9u32
+pub const STANDARD_YOFFSET: u32 = 0u32
+pub const MSB_REQUEST_NTSC: u32 = 0u32
+pub const MSB_REQUEST_PAL: u32 = 1u32
+pub const MSB_REQUEST_SPECIAL: u32 = 2u32
+pub const MSB_REQUEST_A2024: u32 = 3u32
+pub const MSB_DOUBLE_SPRITES: u32 = 4u32
+pub const MSF_REQUEST_NTSC: u32 = 0 /* TODO: (1 << MSB_REQUEST_NTSC) */
+pub const MSF_REQUEST_PAL: u32 = 0 /* TODO: (1 << MSB_REQUEST_PAL) */
+pub const MSF_REQUEST_SPECIAL: u32 = 0 /* TODO: (1 << MSB_REQUEST_SPECIAL) */
+pub const MSF_REQUEST_A2024: u32 = 0 /* TODO: (1 << MSB_REQUEST_A2024) */
+pub const MSF_DOUBLE_SPRITES: u32 = 0 /* TODO: (1 << MSB_DOUBLE_SPRITES) */
+pub const REQUEST_NTSC: u32 = 0 /* TODO: (1 << MSB_REQUEST_NTSC) */
+pub const REQUEST_PAL: u32 = 0 /* TODO: (1 << MSB_REQUEST_PAL) */
+pub const REQUEST_SPECIAL: u32 = 0 /* TODO: (1 << MSB_REQUEST_SPECIAL) */
+pub const REQUEST_A2024: u32 = 0 /* TODO: (1 << MSB_REQUEST_A2024) */
+pub const DEFAULT_MONITOR_NAME: u32 = 0 /* TODO: "default.monitor" */
+pub const NTSC_MONITOR_NAME: u32 = 0 /* TODO: "ntsc.monitor" */
+pub const PAL_MONITOR_NAME: u32 = 0 /* TODO: "pal.monitor" */
+pub const STANDARD_MONITOR_MASK: u32 = 0 /* TODO: ( REQUEST_NTSC | REQUEST_PAL ) */
+pub const STANDARD_NTSC_ROWS: u32 = 262u32
+pub const STANDARD_PAL_ROWS: u32 = 312u32
+pub const STANDARD_COLORCLOCKS: u32 = 226u32
+pub const STANDARD_DENISE_MAX: u32 = 455u32
+pub const STANDARD_DENISE_MIN: u32 = 93u32
+pub const STANDARD_NTSC_BEAMCON: u32 = 0 /* TODO: ( 0x0000 ) */
+pub const STANDARD_PAL_BEAMCON: u32 = 0 /* TODO: ( DISPLAYPAL ) */
+pub const SPECIAL_BEAMCON: u32 = 0 /* TODO: ( VARVBLANK | LOLDIS | VARVSYNC | VARHSYNC | VARBEAM | CSBLANK | VSYNCTRUE) */
+pub const MIN_NTSC_ROW: u32 = 21u32
+pub const MIN_PAL_ROW: u32 = 29u32
+pub const STANDARD_VIEW_X: u32 = $81u32
+pub const STANDARD_VIEW_Y: u32 = $2Cu32
+pub const STANDARD_HBSTRT: u32 = $06u32
+pub const STANDARD_HSSTRT: u32 = $0Bu32
+pub const STANDARD_HSSTOP: u32 = $1Cu32
+pub const STANDARD_HBSTOP: u32 = $2Cu32
+pub const STANDARD_VBSTRT: u32 = $0122u32
+pub const STANDARD_VSSTRT: u32 = $02A6u32
+pub const STANDARD_VSSTOP: u32 = $03AAu32
+pub const STANDARD_VBSTOP: u32 = $1066u32
+pub const VGA_COLORCLOCKS: u32 = 0 /* TODO: (STANDARD_COLORCLOCKS/2) */
+pub const VGA_TOTAL_ROWS: u32 = 0 /* TODO: (STANDARD_NTSC_ROWS*2) */
+pub const VGA_DENISE_MIN: u32 = 59u32
+pub const MIN_VGA_ROW: u32 = 29u32
+pub const VGA_HBSTRT: u32 = $08u32
+pub const VGA_HSSTRT: u32 = $0Eu32
+pub const VGA_HSSTOP: u32 = $1Cu32
+pub const VGA_HBSTOP: u32 = $1Eu32
+pub const VGA_VBSTRT: u32 = $0000u32
+pub const VGA_VSSTRT: u32 = $0153u32
+pub const VGA_VSSTOP: u32 = $0235u32
+pub const VGA_VBSTOP: u32 = $0CCDu32
+pub const VGA_MONITOR_NAME: u32 = 0 /* TODO: "vga.monitor" */
+pub const VGA70_COLORCLOCKS: u32 = 0 /* TODO: (STANDARD_COLORCLOCKS/2) */
+pub const VGA70_TOTAL_ROWS: u32 = 449u32
+pub const VGA70_DENISE_MIN: u32 = 59u32
+pub const MIN_VGA70_ROW: u32 = 35u32
+pub const VGA70_HBSTRT: u32 = $08u32
+pub const VGA70_HSSTRT: u32 = $0Eu32
+pub const VGA70_HSSTOP: u32 = $1Cu32
+pub const VGA70_HBSTOP: u32 = $1Eu32
+pub const VGA70_VBSTRT: u32 = $0000u32
+pub const VGA70_VSSTRT: u32 = $02A6u32
+pub const VGA70_VSSTOP: u32 = $0388u32
+pub const VGA70_VBSTOP: u32 = $0F73u32
+pub const VGA70_BEAMCON: u32 = 0 /* TODO: (SPECIAL_BEAMCON ^ VSYNCTRUE) */
+pub const VGA70_MONITOR_NAME: u32 = 0 /* TODO: "vga70.monitor" */
+pub const BROADCAST_HBSTRT: u32 = $01u32
+pub const BROADCAST_HSSTRT: u32 = $06u32
+pub const BROADCAST_HSSTOP: u32 = $17u32
+pub const BROADCAST_HBSTOP: u32 = $27u32
+pub const BROADCAST_VBSTRT: u32 = $0000u32
+pub const BROADCAST_VSSTRT: u32 = $02A6u32
+pub const BROADCAST_VSSTOP: u32 = $054Cu32
+pub const BROADCAST_VBSTOP: u32 = $1C40u32
+pub const BROADCAST_BEAMCON: u32 = 0 /* TODO: ( LOLDIS | CSBLANK ) */
+pub const RATIO_FIXEDPART: u32 = 4u32
+pub const RATIO_UNITY: u32 = 0 /* TODO: (1 << RATIO_FIXEDPART) */
+pub const INVALID_ID: u32 = 0 /* TODO: ~0 */
+pub const MONITOR_ID_MASK: u32 = $FFFF1000u32
+pub const DEFAULT_MONITOR_ID: u32 = $00000000u32
+pub const NTSC_MONITOR_ID: u32 = $00011000u32
+pub const PAL_MONITOR_ID: u32 = $00021000u32
+pub const LORES_KEY: u32 = $00000000u32
+pub const HIRES_KEY: u32 = $00008000u32
+pub const SUPER_KEY: u32 = $00008020u32
+pub const HAM_KEY: u32 = $00000800u32
+pub const LORESLACE_KEY: u32 = $00000004u32
+pub const HIRESLACE_KEY: u32 = $00008004u32
+pub const SUPERLACE_KEY: u32 = $00008024u32
+pub const HAMLACE_KEY: u32 = $00000804u32
+pub const LORESDPF_KEY: u32 = $00000400u32
+pub const HIRESDPF_KEY: u32 = $00008400u32
+pub const SUPERDPF_KEY: u32 = $00008420u32
+pub const LORESLACEDPF_KEY: u32 = $00000404u32
+pub const HIRESLACEDPF_KEY: u32 = $00008404u32
+pub const SUPERLACEDPF_KEY: u32 = $00008424u32
+pub const LORESDPF2_KEY: u32 = $00000440u32
+pub const HIRESDPF2_KEY: u32 = $00008440u32
+pub const SUPERDPF2_KEY: u32 = $00008460u32
+pub const LORESLACEDPF2_KEY: u32 = $00000444u32
+pub const HIRESLACEDPF2_KEY: u32 = $00008444u32
+pub const SUPERLACEDPF2_KEY: u32 = $00008464u32
+pub const EXTRAHALFBRITE_KEY: u32 = $00000080u32
+pub const EXTRAHALFBRITELACE_KEY: u32 = $00000084u32
+pub const HIRESHAM_KEY: u32 = $00008800u32
+pub const SUPERHAM_KEY: u32 = $00008820u32
+pub const HIRESEHB_KEY: u32 = $00008080u32
+pub const SUPEREHB_KEY: u32 = $000080a0u32
+pub const HIRESHAMLACE_KEY: u32 = $00008804u32
+pub const SUPERHAMLACE_KEY: u32 = $00008824u32
+pub const HIRESEHBLACE_KEY: u32 = $00008084u32
+pub const SUPEREHBLACE_KEY: u32 = $000080a4u32
+pub const LORESSDBL_KEY: u32 = $00000008u32
+pub const LORESHAMSDBL_KEY: u32 = $00000808u32
+pub const LORESEHBSDBL_KEY: u32 = $00000088u32
+pub const HIRESHAMSDBL_KEY: u32 = $00008808u32
+pub const VGA_MONITOR_ID: u32 = $00031000u32
+pub const VGAEXTRALORES_KEY: u32 = $00031004u32
+pub const VGALORES_KEY: u32 = $00039004u32
+pub const VGAPRODUCT_KEY: u32 = $00039024u32
+pub const VGAHAM_KEY: u32 = $00031804u32
+pub const VGAEXTRALORESLACE_KEY: u32 = $00031005u32
+pub const VGALORESLACE_KEY: u32 = $00039005u32
+pub const VGAPRODUCTLACE_KEY: u32 = $00039025u32
+pub const VGAHAMLACE_KEY: u32 = $00031805u32
+pub const VGAEXTRALORESDPF_KEY: u32 = $00031404u32
+pub const VGALORESDPF_KEY: u32 = $00039404u32
+pub const VGAPRODUCTDPF_KEY: u32 = $00039424u32
+pub const VGAEXTRALORESLACEDPF_KEY: u32 = $00031405u32
+pub const VGALORESLACEDPF_KEY: u32 = $00039405u32
+pub const VGAPRODUCTLACEDPF_KEY: u32 = $00039425u32
+pub const VGAEXTRALORESDPF2_KEY: u32 = $00031444u32
+pub const VGALORESDPF2_KEY: u32 = $00039444u32
+pub const VGAPRODUCTDPF2_KEY: u32 = $00039464u32
+pub const VGAEXTRALORESLACEDPF2_KEY: u32 = $00031445u32
+pub const VGALORESLACEDPF2_KEY: u32 = $00039445u32
+pub const VGAPRODUCTLACEDPF2_KEY: u32 = $00039465u32
+pub const VGAEXTRAHALFBRITE_KEY: u32 = $00031084u32
+pub const VGAEXTRAHALFBRITELACE_KEY: u32 = $00031085u32
+pub const VGAPRODUCTHAM_KEY: u32 = $00039824u32
+pub const VGALORESHAM_KEY: u32 = $00039804u32
+pub const VGAEXTRALORESHAM_KEY: u32 = 0 /* TODO: VGAHAM_KEY */
+pub const VGAPRODUCTHAMLACE_KEY: u32 = $00039825u32
+pub const VGALORESHAMLACE_KEY: u32 = $00039805u32
+pub const VGAEXTRALORESHAMLACE_KEY: u32 = 0 /* TODO: VGAHAMLACE_KEY */
+pub const VGAEXTRALORESEHB_KEY: u32 = 0 /* TODO: VGAEXTRAHALFBRITE_KEY */
+pub const VGAEXTRALORESEHBLACE_KEY: u32 = 0 /* TODO: VGAEXTRAHALFBRITELACE_KEY */
+pub const VGALORESEHB_KEY: u32 = $00039084u32
+pub const VGALORESEHBLACE_KEY: u32 = $00039085u32
+pub const VGAEHB_KEY: u32 = $000390a4u32
+pub const VGAEHBLACE_KEY: u32 = $000390a5u32
+pub const VGAEXTRALORESDBL_KEY: u32 = $00031000u32
+pub const VGALORESDBL_KEY: u32 = $00039000u32
+pub const VGAPRODUCTDBL_KEY: u32 = $00039020u32
+pub const VGAEXTRALORESHAMDBL_KEY: u32 = $00031800u32
+pub const VGALORESHAMDBL_KEY: u32 = $00039800u32
+pub const VGAPRODUCTHAMDBL_KEY: u32 = $00039820u32
+pub const VGAEXTRALORESEHBDBL_KEY: u32 = $00031080u32
+pub const VGALORESEHBDBL_KEY: u32 = $00039080u32
+pub const VGAPRODUCTEHBDBL_KEY: u32 = $000390a0u32
+pub const A2024_MONITOR_ID: u32 = $00041000u32
+pub const A2024TENHERTZ_KEY: u32 = $00041000u32
+pub const A2024FIFTEENHERTZ_KEY: u32 = $00049000u32
+pub const PROTO_MONITOR_ID: u32 = $00051000u32
+pub const EURO72_MONITOR_ID: u32 = $00061000u32
+pub const EURO72EXTRALORES_KEY: u32 = $00061004u32
+pub const EURO72LORES_KEY: u32 = $00069004u32
+pub const EURO72PRODUCT_KEY: u32 = $00069024u32
+pub const EURO72HAM_KEY: u32 = $00061804u32
+pub const EURO72EXTRALORESLACE_KEY: u32 = $00061005u32
+pub const EURO72LORESLACE_KEY: u32 = $00069005u32
+pub const EURO72PRODUCTLACE_KEY: u32 = $00069025u32
+pub const EURO72HAMLACE_KEY: u32 = $00061805u32
+pub const EURO72EXTRALORESDPF_KEY: u32 = $00061404u32
+pub const EURO72LORESDPF_KEY: u32 = $00069404u32
+pub const EURO72PRODUCTDPF_KEY: u32 = $00069424u32
+pub const EURO72EXTRALORESLACEDPF_KEY: u32 = $00061405u32
+pub const EURO72LORESLACEDPF_KEY: u32 = $00069405u32
+pub const EURO72PRODUCTLACEDPF_KEY: u32 = $00069425u32
+pub const EURO72EXTRALORESDPF2_KEY: u32 = $00061444u32
+pub const EURO72LORESDPF2_KEY: u32 = $00069444u32
+pub const EURO72PRODUCTDPF2_KEY: u32 = $00069464u32
+pub const EURO72EXTRALORESLACEDPF2_KEY: u32 = $00061445u32
+pub const EURO72LORESLACEDPF2_KEY: u32 = $00069445u32
+pub const EURO72PRODUCTLACEDPF2_KEY: u32 = $00069465u32
+pub const EURO72EXTRAHALFBRITE_KEY: u32 = $00061084u32
+pub const EURO72EXTRAHALFBRITELACE_KEY: u32 = $00061085u32
+pub const EURO72PRODUCTHAM_KEY: u32 = $00069824u32
+pub const EURO72PRODUCTHAMLACE_KEY: u32 = $00069825u32
+pub const EURO72LORESHAM_KEY: u32 = $00069804u32
+pub const EURO72LORESHAMLACE_KEY: u32 = $00069805u32
+pub const EURO72EXTRALORESHAM_KEY: u32 = 0 /* TODO: EURO72HAM_KEY */
+pub const EURO72EXTRALORESHAMLACE_KEY: u32 = 0 /* TODO: EURO72HAMLACE_KEY */
+pub const EURO72EXTRALORESEHB_KEY: u32 = 0 /* TODO: EURO72EXTRAHALFBRITE_KEY */
+pub const EURO72EXTRALORESEHBLACE_KEY: u32 = 0 /* TODO: EURO72EXTRAHALFBRITELACE_KEY */
+pub const EURO72LORESEHB_KEY: u32 = $00069084u32
+pub const EURO72LORESEHBLACE_KEY: u32 = $00069085u32
+pub const EURO72EHB_KEY: u32 = $000690a4u32
+pub const EURO72EHBLACE_KEY: u32 = $000690a5u32
+pub const EURO72EXTRALORESDBL_KEY: u32 = $00061000u32
+pub const EURO72LORESDBL_KEY: u32 = $00069000u32
+pub const EURO72PRODUCTDBL_KEY: u32 = $00069020u32
+pub const EURO72EXTRALORESHAMDBL_KEY: u32 = $00061800u32
+pub const EURO72LORESHAMDBL_KEY: u32 = $00069800u32
+pub const EURO72PRODUCTHAMDBL_KEY: u32 = $00069820u32
+pub const EURO72EXTRALORESEHBDBL_KEY: u32 = $00061080u32
+pub const EURO72LORESEHBDBL_KEY: u32 = $00069080u32
+pub const EURO72PRODUCTEHBDBL_KEY: u32 = $000690a0u32
+pub const EURO36_MONITOR_ID: u32 = $00071000u32
+pub const SUPER72_MONITOR_ID: u32 = $00081000u32
+pub const SUPER72LORESDBL_KEY: u32 = $00081008u32
+pub const SUPER72HIRESDBL_KEY: u32 = $00089008u32
+pub const SUPER72SUPERDBL_KEY: u32 = $00089028u32
+pub const SUPER72LORESHAMDBL_KEY: u32 = $00081808u32
+pub const SUPER72HIRESHAMDBL_KEY: u32 = $00089808u32
+pub const SUPER72SUPERHAMDBL_KEY: u32 = $00089828u32
+pub const SUPER72LORESEHBDBL_KEY: u32 = $00081088u32
+pub const SUPER72HIRESEHBDBL_KEY: u32 = $00089088u32
+pub const SUPER72SUPEREHBDBL_KEY: u32 = $000890a8u32
+pub const DBLNTSC_MONITOR_ID: u32 = $00091000u32
+pub const DBLNTSCLORES_KEY: u32 = $00091000u32
+pub const DBLNTSCLORESFF_KEY: u32 = $00091004u32
+pub const DBLNTSCLORESHAM_KEY: u32 = $00091800u32
+pub const DBLNTSCLORESHAMFF_KEY: u32 = $00091804u32
+pub const DBLNTSCLORESEHB_KEY: u32 = $00091080u32
+pub const DBLNTSCLORESEHBFF_KEY: u32 = $00091084u32
+pub const DBLNTSCLORESLACE_KEY: u32 = $00091005u32
+pub const DBLNTSCLORESHAMLACE_KEY: u32 = $00091805u32
+pub const DBLNTSCLORESEHBLACE_KEY: u32 = $00091085u32
+pub const DBLNTSCLORESDPF_KEY: u32 = $00091400u32
+pub const DBLNTSCLORESDPFFF_KEY: u32 = $00091404u32
+pub const DBLNTSCLORESDPFLACE_KEY: u32 = $00091405u32
+pub const DBLNTSCLORESDPF2_KEY: u32 = $00091440u32
+pub const DBLNTSCLORESDPF2FF_KEY: u32 = $00091444u32
+pub const DBLNTSCLORESDPF2LACE_KEY: u32 = $00091445u32
+pub const DBLNTSCHIRES_KEY: u32 = $00099000u32
+pub const DBLNTSCHIRESFF_KEY: u32 = $00099004u32
+pub const DBLNTSCHIRESHAM_KEY: u32 = $00099800u32
+pub const DBLNTSCHIRESHAMFF_KEY: u32 = $00099804u32
+pub const DBLNTSCHIRESLACE_KEY: u32 = $00099005u32
+pub const DBLNTSCHIRESHAMLACE_KEY: u32 = $00099805u32
+pub const DBLNTSCHIRESEHB_KEY: u32 = $00099080u32
+pub const DBLNTSCHIRESEHBFF_KEY: u32 = $00099084u32
+pub const DBLNTSCHIRESEHBLACE_KEY: u32 = $00099085u32
+pub const DBLNTSCHIRESDPF_KEY: u32 = $00099400u32
+pub const DBLNTSCHIRESDPFFF_KEY: u32 = $00099404u32
+pub const DBLNTSCHIRESDPFLACE_KEY: u32 = $00099405u32
+pub const DBLNTSCHIRESDPF2_KEY: u32 = $00099440u32
+pub const DBLNTSCHIRESDPF2FF_KEY: u32 = $00099444u32
+pub const DBLNTSCHIRESDPF2LACE_KEY: u32 = $00099445u32
+pub const DBLNTSCEXTRALORES_KEY: u32 = $00091200u32
+pub const DBLNTSCEXTRALORESHAM_KEY: u32 = $00091a00u32
+pub const DBLNTSCEXTRALORESEHB_KEY: u32 = $00091280u32
+pub const DBLNTSCEXTRALORESDPF_KEY: u32 = $00091600u32
+pub const DBLNTSCEXTRALORESDPF2_KEY: u32 = $00091640u32
+pub const DBLNTSCEXTRALORESFF_KEY: u32 = $00091204u32
+pub const DBLNTSCEXTRALORESHAMFF_KEY: u32 = $00091a04u32
+pub const DBLNTSCEXTRALORESEHBFF_KEY: u32 = $00091284u32
+pub const DBLNTSCEXTRALORESDPFFF_KEY: u32 = $00091604u32
+pub const DBLNTSCEXTRALORESDPF2FF_KEY: u32 = $00091644u32
+pub const DBLNTSCEXTRALORESLACE_KEY: u32 = $00091205u32
+pub const DBLNTSCEXTRALORESHAMLACE_KEY: u32 = $00091a05u32
+pub const DBLNTSCEXTRALORESEHBLACE_KEY: u32 = $00091285u32
+pub const DBLNTSCEXTRALORESDPFLACE_KEY: u32 = $00091605u32
+pub const DBLNTSCEXTRALORESDPF2LACE_KEY: u32 = $00091645u32
+pub const DBLPAL_MONITOR_ID: u32 = $000a1000u32
+pub const DBLPALLORES_KEY: u32 = $000a1000u32
+pub const DBLPALLORESFF_KEY: u32 = $000a1004u32
+pub const DBLPALLORESHAM_KEY: u32 = $000a1800u32
+pub const DBLPALLORESHAMFF_KEY: u32 = $000a1804u32
+pub const DBLPALLORESEHB_KEY: u32 = $000a1080u32
+pub const DBLPALLORESEHBFF_KEY: u32 = $000a1084u32
+pub const DBLPALLORESLACE_KEY: u32 = $000a1005u32
+pub const DBLPALLORESHAMLACE_KEY: u32 = $000a1805u32
+pub const DBLPALLORESEHBLACE_KEY: u32 = $000a1085u32
+pub const DBLPALLORESDPF_KEY: u32 = $000a1400u32
+pub const DBLPALLORESDPFFF_KEY: u32 = $000a1404u32
+pub const DBLPALLORESDPFLACE_KEY: u32 = $000a1405u32
+pub const DBLPALLORESDPF2_KEY: u32 = $000a1440u32
+pub const DBLPALLORESDPF2FF_KEY: u32 = $000a1444u32
+pub const DBLPALLORESDPF2LACE_KEY: u32 = $000a1445u32
+pub const DBLPALHIRES_KEY: u32 = $000a9000u32
+pub const DBLPALHIRESFF_KEY: u32 = $000a9004u32
+pub const DBLPALHIRESHAM_KEY: u32 = $000a9800u32
+pub const DBLPALHIRESHAMFF_KEY: u32 = $000a9804u32
+pub const DBLPALHIRESLACE_KEY: u32 = $000a9005u32
+pub const DBLPALHIRESHAMLACE_KEY: u32 = $000a9805u32
+pub const DBLPALHIRESEHB_KEY: u32 = $000a9080u32
+pub const DBLPALHIRESEHBFF_KEY: u32 = $000a9084u32
+pub const DBLPALHIRESEHBLACE_KEY: u32 = $000a9085u32
+pub const DBLPALHIRESDPF_KEY: u32 = $000a9400u32
+pub const DBLPALHIRESDPFFF_KEY: u32 = $000a9404u32
+pub const DBLPALHIRESDPFLACE_KEY: u32 = $000a9405u32
+pub const DBLPALHIRESDPF2_KEY: u32 = $000a9440u32
+pub const DBLPALHIRESDPF2FF_KEY: u32 = $000a9444u32
+pub const DBLPALHIRESDPF2LACE_KEY: u32 = $000a9445u32
+pub const DBLPALEXTRALORES_KEY: u32 = $000a1200u32
+pub const DBLPALEXTRALORESHAM_KEY: u32 = $000a1a00u32
+pub const DBLPALEXTRALORESEHB_KEY: u32 = $000a1280u32
+pub const DBLPALEXTRALORESDPF_KEY: u32 = $000a1600u32
+pub const DBLPALEXTRALORESDPF2_KEY: u32 = $000a1640u32
+pub const DBLPALEXTRALORESFF_KEY: u32 = $000a1204u32
+pub const DBLPALEXTRALORESHAMFF_KEY: u32 = $000a1a04u32
+pub const DBLPALEXTRALORESEHBFF_KEY: u32 = $000a1284u32
+pub const DBLPALEXTRALORESDPFFF_KEY: u32 = $000a1604u32
+pub const DBLPALEXTRALORESDPF2FF_KEY: u32 = $000a1644u32
+pub const DBLPALEXTRALORESLACE_KEY: u32 = $000a1205u32
+pub const DBLPALEXTRALORESHAMLACE_KEY: u32 = $000a1a05u32
+pub const DBLPALEXTRALORESEHBLACE_KEY: u32 = $000a1285u32
+pub const DBLPALEXTRALORESDPFLACE_KEY: u32 = $000a1605u32
+pub const DBLPALEXTRALORESDPF2LACE_KEY: u32 = $000a1645u32
+pub const SPECIAL_FLAGS: u32 = 0 /* TODO: (DIPF_IS_DUALPF | DIPF_IS_PF2PRI | DIPF_IS_HAM | DIPF_IS_EXTRAHALFBRITE) */
+pub const BIDTAG_DIPFMustHave: u32 = $80000001u32
+pub const BIDTAG_DIPFMustNotHave: u32 = $80000002u32
+pub const BIDTAG_ViewPort: u32 = $80000003u32
+pub const BIDTAG_NominalWidth: u32 = $80000004u32
+pub const BIDTAG_NominalHeight: u32 = $80000005u32
+pub const BIDTAG_DesiredWidth: u32 = $80000006u32
+pub const BIDTAG_DesiredHeight: u32 = $80000007u32
+pub const BIDTAG_Depth: u32 = $80000008u32
+pub const BIDTAG_MonitorID: u32 = $80000009u32
+pub const BIDTAG_SourceID: u32 = $8000000au32
+pub const BIDTAG_RedBits: u32 = $8000000bu32
+pub const BIDTAG_BlueBits: u32 = $8000000cu32
+pub const BIDTAG_GreenBits: u32 = $8000000du32
+pub const BIDTAG_GfxPrivate: u32 = $8000000eu32
+pub const TAG_DONE: u32 = 0
+pub const TAG_END: u32 = 0
+pub const TAG_IGNORE: u32 = 1u32
+pub const TAG_MORE: u32 = 2u32
+pub const TAG_SKIP: u32 = 3u32
+pub const TAG_USER: u32 = (1u32 << 31)
+pub const TAGFILTER_AND: u32 = 0u32
+pub const TAGFILTER_NOT: u32 = 1u32
+pub const MAP_REMOVE_NOT_FOUND: u32 = 0u32
+pub const MAP_KEEP_NOT_FOUND: u32 = 1u32
+pub const DTAG_DISP: u32 = $80000000u32
+pub const DTAG_DIMS: u32 = $80001000u32
+pub const DTAG_MNTR: u32 = $80002000u32
+pub const DTAG_NAME: u32 = $80003000u32
+pub const DTAG_VEC: u32 = $80004000u32
+pub const DI_AVAIL_NOCHIPS: u32 = $0001u32
+pub const DI_AVAIL_NOMONITOR: u32 = $0002u32
+pub const DI_AVAIL_NOTWITHGENLOCK: u32 = $0004u32
+pub const DIPF_IS_LACE: u32 = $00000001u32
+pub const DIPF_IS_DUALPF: u32 = $00000002u32
+pub const DIPF_IS_PF2PRI: u32 = $00000004u32
+pub const DIPF_IS_HAM: u32 = $00000008u32
+pub const DIPF_IS_ECS: u32 = $00000010u32
+pub const DIPF_IS_AA: u32 = $00010000u32
+pub const DIPF_IS_PAL: u32 = $00000020u32
+pub const DIPF_IS_SPRITES: u32 = $00000040u32
+pub const DIPF_IS_GENLOCK: u32 = $00000080u32
+pub const DIPF_IS_WB: u32 = $00000100u32
+pub const DIPF_IS_DRAGGABLE: u32 = $00000200u32
+pub const DIPF_IS_PANELLED: u32 = $00000400u32
+pub const DIPF_IS_BEAMSYNC: u32 = $00000800u32
+pub const DIPF_IS_EXTRAHALFBRITE: u32 = $00001000u32
+pub const DIPF_IS_SPRITES_ATT: u32 = $00002000u32
+pub const DIPF_IS_SPRITES_CHNG_RES: u32 = $00004000u32
+pub const DIPF_IS_SPRITES_BORDER: u32 = $00008000u32
+pub const DIPF_IS_SCANDBL: u32 = $00020000u32
+pub const DIPF_IS_SPRITES_CHNG_BASE: u32 = $00040000u32
+pub const DIPF_IS_SPRITES_CHNG_PRI: u32 = $00080000u32
+pub const DIPF_IS_DBUFFER: u32 = $00100000u32
+pub const DIPF_IS_PROGBEAM: u32 = $00200000u32
+pub const DIPF_IS_FOREIGN: u32 = $80000000u32
+pub const MCOMPAT_MIXED: u32 = 0u32
+pub const MCOMPAT_SELF: u32 = 1u32
+pub const MCOMPAT_NOBODY: u32 = 0 /* TODO: -1 */
+pub const DISPLAYNAMELEN: u32 = 32u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const SUSERFLAGS: u32 = $00FFu32
+pub const VSPRITE: u32 = $0001u32
+pub const SAVEBACK: u32 = $0002u32
+pub const OVERLAY: u32 = $0004u32
+pub const MUSTDRAW: u32 = $0008u32
+pub const BACKSAVED: u32 = $0100u32
+pub const BOBUPDATE: u32 = $0200u32
+pub const GELGONE: u32 = $0400u32
+pub const VSOVERFLOW: u32 = $0800u32
+pub const BUSERFLAGS: u32 = $00FFu32
+pub const SAVEBOB: u32 = $0001u32
+pub const BOBISCOMP: u32 = $0002u32
+pub const BWAITING: u32 = $0100u32
+pub const BDRAWN: u32 = $0200u32
+pub const BOBSAWAY: u32 = $0400u32
+pub const BOBNIX: u32 = $0800u32
+pub const SAVEPRESERVE: u32 = $1000u32
+pub const OUTSTEP: u32 = $2000u32
+pub const ANFRACSIZE: u32 = 6u32
+pub const ANIMHALF: u32 = $0020u32
+pub const RINGTRIGGER: u32 = $0001u32
+pub const VUserStuff: u32 = 0 /* TODO: WORD */
+pub const BUserStuff: u32 = 0 /* TODO: WORD */
+pub const AUserStuff: u32 = 0 /* TODO: WORD */
+pub const B2NORM: u32 = 0u32
+pub const B2SWAP: u32 = 1u32
+pub const B2BOBBER: u32 = 2u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const BITSET: u32 = $8000u32
+pub const BITCLR: u32 = 0u32
+pub const BMB_CLEAR: u32 = 0u32
+pub const BMB_DISPLAYABLE: u32 = 1u32
+pub const BMB_INTERLEAVED: u32 = 2u32
+pub const BMB_STANDARD: u32 = 3u32
+pub const BMB_MINPLANES: u32 = 4u32
+pub const BMF_CLEAR: u32 = 0 /* TODO: (1l<<BMB_CLEAR) */
+pub const BMF_DISPLAYABLE: u32 = 0 /* TODO: (1l<<BMB_DISPLAYABLE) */
+pub const BMF_INTERLEAVED: u32 = 0 /* TODO: (1l<<BMB_INTERLEAVED) */
+pub const BMF_STANDARD: u32 = 0 /* TODO: (1l<<BMB_STANDARD) */
+pub const BMF_MINPLANES: u32 = 0 /* TODO: (1l<<BMB_MINPLANES) */
+pub const BMA_HEIGHT: u32 = 0u32
+pub const BMA_DEPTH: u32 = 4u32
+pub const BMA_WIDTH: u32 = 8u32
+pub const BMA_FLAGS: u32 = 12u32
+pub const JAM1: u32 = 0u32
+pub const JAM2: u32 = 1u32
+pub const COMPLEMENT: u32 = 2u32
+pub const INVERSVID: u32 = 4u32
+pub const FRST_DOT: u32 = $01u32
+pub const ONE_DOT: u32 = $02u32
+pub const DBUFFER: u32 = $04u32
+pub const AREAOUTLINE: u32 = $08u32
+pub const NOCROSSFILL: u32 = $20u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const NT_UNKNOWN: u32 = 0u32
+pub const NT_TASK: u32 = 1u32
+pub const NT_INTERRUPT: u32 = 2u32
+pub const NT_DEVICE: u32 = 3u32
+pub const NT_MSGPORT: u32 = 4u32
+pub const NT_MESSAGE: u32 = 5u32
+pub const NT_FREEMSG: u32 = 6u32
+pub const NT_REPLYMSG: u32 = 7u32
+pub const NT_RESOURCE: u32 = 8u32
+pub const NT_LIBRARY: u32 = 9u32
+pub const NT_MEMORY: u32 = 10u32
+pub const NT_SOFTINT: u32 = 11u32
+pub const NT_FONT: u32 = 12u32
+pub const NT_PROCESS: u32 = 13u32
+pub const NT_SEMAPHORE: u32 = 14u32
+pub const NT_SIGNALSEM: u32 = 15u32
+pub const NT_BOOTNODE: u32 = 16u32
+pub const NT_KICKMEM: u32 = 17u32
+pub const NT_GRAPHICS: u32 = 18u32
+pub const NT_DEATHMESSAGE: u32 = 19u32
+pub const NT_USER: u32 = 254u32
+pub const NT_EXTENDED: u32 = 255u32
+pub const TB_PROCTIME: u32 = 0u32
+pub const TB_ETASK: u32 = 3u32
+pub const TB_STACKCHK: u32 = 4u32
+pub const TB_EXCEPT: u32 = 5u32
+pub const TB_SWITCH: u32 = 6u32
+pub const TB_LAUNCH: u32 = 7u32
+pub const TF_PROCTIME: u32 = (1u32 << 0)
+pub const TF_ETASK: u32 = (1u32 << 3)
+pub const TF_STACKCHK: u32 = (1u32 << 4)
+pub const TF_EXCEPT: u32 = (1u32 << 5)
+pub const TF_SWITCH: u32 = (1u32 << 6)
+pub const TF_LAUNCH: u32 = (1u32 << 7)
+pub const TS_INVALID: u32 = 0u32
+pub const TS_ADDED: u32 = 1u32
+pub const TS_RUN: u32 = 2u32
+pub const TS_READY: u32 = 3u32
+pub const TS_WAIT: u32 = 4u32
+pub const TS_EXCEPT: u32 = 5u32
+pub const TS_REMOVED: u32 = 6u32
+pub const SIGB_ABORT: u32 = 0u32
+pub const SIGB_CHILD: u32 = 1u32
+pub const SIGB_BLIT: u32 = 4u32
+pub const SIGB_SINGLE: u32 = 4u32
+pub const SIGB_INTUITION: u32 = 5u32
+pub const SIGB_NET: u32 = 7u32
+pub const SIGB_DOS: u32 = 8u32
+pub const SIGF_ABORT: u32 = (1u32 << 0)
+pub const SIGF_CHILD: u32 = (1u32 << 1)
+pub const SIGF_BLIT: u32 = (1u32 << 4)
+pub const SIGF_SINGLE: u32 = (1u32 << 4)
+pub const SIGF_INTUITION: u32 = (1u32 << 5)
+pub const SIGF_NET: u32 = (1u32 << 7)
+pub const SIGF_DOS: u32 = (1u32 << 8)
+pub const mp_SoftInt: u32 = 0 /* TODO: mp_SigTask */
+pub const PF_ACTION: u32 = 3u32
+pub const PA_SIGNAL: u32 = 0u32
+pub const PA_SOFTINT: u32 = 1u32
+pub const PA_IGNORE: u32 = 2u32
+pub const SM_SHARED: u32 = 1u32
+pub const SM_EXCLUSIVE: u32 = 0
+pub const sm_LockMsg: u32 = 0 /* TODO: mp_SigTask */
+pub const BITSET: u32 = $8000u32
+pub const BITCLR: u32 = 0u32
+pub const BMB_CLEAR: u32 = 0u32
+pub const BMB_DISPLAYABLE: u32 = 1u32
+pub const BMB_INTERLEAVED: u32 = 2u32
+pub const BMB_STANDARD: u32 = 3u32
+pub const BMB_MINPLANES: u32 = 4u32
+pub const BMF_CLEAR: u32 = 0 /* TODO: (1l<<BMB_CLEAR) */
+pub const BMF_DISPLAYABLE: u32 = 0 /* TODO: (1l<<BMB_DISPLAYABLE) */
+pub const BMF_INTERLEAVED: u32 = 0 /* TODO: (1l<<BMB_INTERLEAVED) */
+pub const BMF_STANDARD: u32 = 0 /* TODO: (1l<<BMB_STANDARD) */
+pub const BMF_MINPLANES: u32 = 0 /* TODO: (1l<<BMB_MINPLANES) */
+pub const BMA_HEIGHT: u32 = 0u32
+pub const BMA_DEPTH: u32 = 4u32
+pub const BMA_WIDTH: u32 = 8u32
+pub const BMA_FLAGS: u32 = 12u32
+pub const COPPER_MOVE: u32 = 0u32
+pub const COPPER_WAIT: u32 = 1u32
+pub const CPRNXTBUF: u32 = 2u32
+pub const CPR_NT_LOF: u32 = $8000u32
+pub const CPR_NT_SHT: u32 = $4000u32
+pub const CPR_NT_SYS: u32 = $2000u32
+pub const NXTLIST: u32 = 0 /* TODO: u3.nxtlist */
+pub const VWAITPOS: u32 = 0 /* TODO: u3.u4.u1.VWaitPos */
+pub const DESTADDR: u32 = 0 /* TODO: u3.u4.u1.DestAddr */
+pub const HWAITPOS: u32 = 0 /* TODO: u3.u4.u2.HWaitPos */
+pub const DESTDATA: u32 = 0 /* TODO: u3.u4.u2.DestData */
+pub const EXACT_LINE: u32 = 1u32
+pub const HALF_LINE: u32 = 2u32
+pub const SS_GRAPHICS: u32 = $02u32
+pub const VIEW_EXTRA_TYPE: u32 = 1u32
+pub const VIEWPORT_EXTRA_TYPE: u32 = 2u32
+pub const SPECIAL_MONITOR_TYPE: u32 = 3u32
+pub const MONITOR_SPEC_TYPE: u32 = 4u32
+pub const TO_MONITOR: u32 = 0u32
+pub const FROM_MONITOR: u32 = 1u32
+pub const STANDARD_XOFFSET: u32 = 9u32
+pub const STANDARD_YOFFSET: u32 = 0u32
+pub const MSB_REQUEST_NTSC: u32 = 0u32
+pub const MSB_REQUEST_PAL: u32 = 1u32
+pub const MSB_REQUEST_SPECIAL: u32 = 2u32
+pub const MSB_REQUEST_A2024: u32 = 3u32
+pub const MSB_DOUBLE_SPRITES: u32 = 4u32
+pub const MSF_REQUEST_NTSC: u32 = 0 /* TODO: (1 << MSB_REQUEST_NTSC) */
+pub const MSF_REQUEST_PAL: u32 = 0 /* TODO: (1 << MSB_REQUEST_PAL) */
+pub const MSF_REQUEST_SPECIAL: u32 = 0 /* TODO: (1 << MSB_REQUEST_SPECIAL) */
+pub const MSF_REQUEST_A2024: u32 = 0 /* TODO: (1 << MSB_REQUEST_A2024) */
+pub const MSF_DOUBLE_SPRITES: u32 = 0 /* TODO: (1 << MSB_DOUBLE_SPRITES) */
+pub const REQUEST_NTSC: u32 = 0 /* TODO: (1 << MSB_REQUEST_NTSC) */
+pub const REQUEST_PAL: u32 = 0 /* TODO: (1 << MSB_REQUEST_PAL) */
+pub const REQUEST_SPECIAL: u32 = 0 /* TODO: (1 << MSB_REQUEST_SPECIAL) */
+pub const REQUEST_A2024: u32 = 0 /* TODO: (1 << MSB_REQUEST_A2024) */
+pub const DEFAULT_MONITOR_NAME: u32 = 0 /* TODO: "default.monitor" */
+pub const NTSC_MONITOR_NAME: u32 = 0 /* TODO: "ntsc.monitor" */
+pub const PAL_MONITOR_NAME: u32 = 0 /* TODO: "pal.monitor" */
+pub const STANDARD_MONITOR_MASK: u32 = 0 /* TODO: ( REQUEST_NTSC | REQUEST_PAL ) */
+pub const STANDARD_NTSC_ROWS: u32 = 262u32
+pub const STANDARD_PAL_ROWS: u32 = 312u32
+pub const STANDARD_COLORCLOCKS: u32 = 226u32
+pub const STANDARD_DENISE_MAX: u32 = 455u32
+pub const STANDARD_DENISE_MIN: u32 = 93u32
+pub const STANDARD_NTSC_BEAMCON: u32 = 0 /* TODO: ( 0x0000 ) */
+pub const STANDARD_PAL_BEAMCON: u32 = 0 /* TODO: ( DISPLAYPAL ) */
+pub const SPECIAL_BEAMCON: u32 = 0 /* TODO: ( VARVBLANK | LOLDIS | VARVSYNC | VARHSYNC | VARBEAM | CSBLANK | VSYNCTRUE) */
+pub const MIN_NTSC_ROW: u32 = 21u32
+pub const MIN_PAL_ROW: u32 = 29u32
+pub const STANDARD_VIEW_X: u32 = $81u32
+pub const STANDARD_VIEW_Y: u32 = $2Cu32
+pub const STANDARD_HBSTRT: u32 = $06u32
+pub const STANDARD_HSSTRT: u32 = $0Bu32
+pub const STANDARD_HSSTOP: u32 = $1Cu32
+pub const STANDARD_HBSTOP: u32 = $2Cu32
+pub const STANDARD_VBSTRT: u32 = $0122u32
+pub const STANDARD_VSSTRT: u32 = $02A6u32
+pub const STANDARD_VSSTOP: u32 = $03AAu32
+pub const STANDARD_VBSTOP: u32 = $1066u32
+pub const VGA_COLORCLOCKS: u32 = 0 /* TODO: (STANDARD_COLORCLOCKS/2) */
+pub const VGA_TOTAL_ROWS: u32 = 0 /* TODO: (STANDARD_NTSC_ROWS*2) */
+pub const VGA_DENISE_MIN: u32 = 59u32
+pub const MIN_VGA_ROW: u32 = 29u32
+pub const VGA_HBSTRT: u32 = $08u32
+pub const VGA_HSSTRT: u32 = $0Eu32
+pub const VGA_HSSTOP: u32 = $1Cu32
+pub const VGA_HBSTOP: u32 = $1Eu32
+pub const VGA_VBSTRT: u32 = $0000u32
+pub const VGA_VSSTRT: u32 = $0153u32
+pub const VGA_VSSTOP: u32 = $0235u32
+pub const VGA_VBSTOP: u32 = $0CCDu32
+pub const VGA_MONITOR_NAME: u32 = 0 /* TODO: "vga.monitor" */
+pub const VGA70_COLORCLOCKS: u32 = 0 /* TODO: (STANDARD_COLORCLOCKS/2) */
+pub const VGA70_TOTAL_ROWS: u32 = 449u32
+pub const VGA70_DENISE_MIN: u32 = 59u32
+pub const MIN_VGA70_ROW: u32 = 35u32
+pub const VGA70_HBSTRT: u32 = $08u32
+pub const VGA70_HSSTRT: u32 = $0Eu32
+pub const VGA70_HSSTOP: u32 = $1Cu32
+pub const VGA70_HBSTOP: u32 = $1Eu32
+pub const VGA70_VBSTRT: u32 = $0000u32
+pub const VGA70_VSSTRT: u32 = $02A6u32
+pub const VGA70_VSSTOP: u32 = $0388u32
+pub const VGA70_VBSTOP: u32 = $0F73u32
+pub const VGA70_BEAMCON: u32 = 0 /* TODO: (SPECIAL_BEAMCON ^ VSYNCTRUE) */
+pub const VGA70_MONITOR_NAME: u32 = 0 /* TODO: "vga70.monitor" */
+pub const BROADCAST_HBSTRT: u32 = $01u32
+pub const BROADCAST_HSSTRT: u32 = $06u32
+pub const BROADCAST_HSSTOP: u32 = $17u32
+pub const BROADCAST_HBSTOP: u32 = $27u32
+pub const BROADCAST_VBSTRT: u32 = $0000u32
+pub const BROADCAST_VSSTRT: u32 = $02A6u32
+pub const BROADCAST_VSSTOP: u32 = $054Cu32
+pub const BROADCAST_VBSTOP: u32 = $1C40u32
+pub const BROADCAST_BEAMCON: u32 = 0 /* TODO: ( LOLDIS | CSBLANK ) */
+pub const RATIO_FIXEDPART: u32 = 4u32
+pub const RATIO_UNITY: u32 = 0 /* TODO: (1 << RATIO_FIXEDPART) */
+pub const INVALID_ID: u32 = 0 /* TODO: ~0 */
+pub const MONITOR_ID_MASK: u32 = $FFFF1000u32
+pub const DEFAULT_MONITOR_ID: u32 = $00000000u32
+pub const NTSC_MONITOR_ID: u32 = $00011000u32
+pub const PAL_MONITOR_ID: u32 = $00021000u32
+pub const LORES_KEY: u32 = $00000000u32
+pub const HIRES_KEY: u32 = $00008000u32
+pub const SUPER_KEY: u32 = $00008020u32
+pub const HAM_KEY: u32 = $00000800u32
+pub const LORESLACE_KEY: u32 = $00000004u32
+pub const HIRESLACE_KEY: u32 = $00008004u32
+pub const SUPERLACE_KEY: u32 = $00008024u32
+pub const HAMLACE_KEY: u32 = $00000804u32
+pub const LORESDPF_KEY: u32 = $00000400u32
+pub const HIRESDPF_KEY: u32 = $00008400u32
+pub const SUPERDPF_KEY: u32 = $00008420u32
+pub const LORESLACEDPF_KEY: u32 = $00000404u32
+pub const HIRESLACEDPF_KEY: u32 = $00008404u32
+pub const SUPERLACEDPF_KEY: u32 = $00008424u32
+pub const LORESDPF2_KEY: u32 = $00000440u32
+pub const HIRESDPF2_KEY: u32 = $00008440u32
+pub const SUPERDPF2_KEY: u32 = $00008460u32
+pub const LORESLACEDPF2_KEY: u32 = $00000444u32
+pub const HIRESLACEDPF2_KEY: u32 = $00008444u32
+pub const SUPERLACEDPF2_KEY: u32 = $00008464u32
+pub const EXTRAHALFBRITE_KEY: u32 = $00000080u32
+pub const EXTRAHALFBRITELACE_KEY: u32 = $00000084u32
+pub const HIRESHAM_KEY: u32 = $00008800u32
+pub const SUPERHAM_KEY: u32 = $00008820u32
+pub const HIRESEHB_KEY: u32 = $00008080u32
+pub const SUPEREHB_KEY: u32 = $000080a0u32
+pub const HIRESHAMLACE_KEY: u32 = $00008804u32
+pub const SUPERHAMLACE_KEY: u32 = $00008824u32
+pub const HIRESEHBLACE_KEY: u32 = $00008084u32
+pub const SUPEREHBLACE_KEY: u32 = $000080a4u32
+pub const LORESSDBL_KEY: u32 = $00000008u32
+pub const LORESHAMSDBL_KEY: u32 = $00000808u32
+pub const LORESEHBSDBL_KEY: u32 = $00000088u32
+pub const HIRESHAMSDBL_KEY: u32 = $00008808u32
+pub const VGA_MONITOR_ID: u32 = $00031000u32
+pub const VGAEXTRALORES_KEY: u32 = $00031004u32
+pub const VGALORES_KEY: u32 = $00039004u32
+pub const VGAPRODUCT_KEY: u32 = $00039024u32
+pub const VGAHAM_KEY: u32 = $00031804u32
+pub const VGAEXTRALORESLACE_KEY: u32 = $00031005u32
+pub const VGALORESLACE_KEY: u32 = $00039005u32
+pub const VGAPRODUCTLACE_KEY: u32 = $00039025u32
+pub const VGAHAMLACE_KEY: u32 = $00031805u32
+pub const VGAEXTRALORESDPF_KEY: u32 = $00031404u32
+pub const VGALORESDPF_KEY: u32 = $00039404u32
+pub const VGAPRODUCTDPF_KEY: u32 = $00039424u32
+pub const VGAEXTRALORESLACEDPF_KEY: u32 = $00031405u32
+pub const VGALORESLACEDPF_KEY: u32 = $00039405u32
+pub const VGAPRODUCTLACEDPF_KEY: u32 = $00039425u32
+pub const VGAEXTRALORESDPF2_KEY: u32 = $00031444u32
+pub const VGALORESDPF2_KEY: u32 = $00039444u32
+pub const VGAPRODUCTDPF2_KEY: u32 = $00039464u32
+pub const VGAEXTRALORESLACEDPF2_KEY: u32 = $00031445u32
+pub const VGALORESLACEDPF2_KEY: u32 = $00039445u32
+pub const VGAPRODUCTLACEDPF2_KEY: u32 = $00039465u32
+pub const VGAEXTRAHALFBRITE_KEY: u32 = $00031084u32
+pub const VGAEXTRAHALFBRITELACE_KEY: u32 = $00031085u32
+pub const VGAPRODUCTHAM_KEY: u32 = $00039824u32
+pub const VGALORESHAM_KEY: u32 = $00039804u32
+pub const VGAEXTRALORESHAM_KEY: u32 = 0 /* TODO: VGAHAM_KEY */
+pub const VGAPRODUCTHAMLACE_KEY: u32 = $00039825u32
+pub const VGALORESHAMLACE_KEY: u32 = $00039805u32
+pub const VGAEXTRALORESHAMLACE_KEY: u32 = 0 /* TODO: VGAHAMLACE_KEY */
+pub const VGAEXTRALORESEHB_KEY: u32 = 0 /* TODO: VGAEXTRAHALFBRITE_KEY */
+pub const VGAEXTRALORESEHBLACE_KEY: u32 = 0 /* TODO: VGAEXTRAHALFBRITELACE_KEY */
+pub const VGALORESEHB_KEY: u32 = $00039084u32
+pub const VGALORESEHBLACE_KEY: u32 = $00039085u32
+pub const VGAEHB_KEY: u32 = $000390a4u32
+pub const VGAEHBLACE_KEY: u32 = $000390a5u32
+pub const VGAEXTRALORESDBL_KEY: u32 = $00031000u32
+pub const VGALORESDBL_KEY: u32 = $00039000u32
+pub const VGAPRODUCTDBL_KEY: u32 = $00039020u32
+pub const VGAEXTRALORESHAMDBL_KEY: u32 = $00031800u32
+pub const VGALORESHAMDBL_KEY: u32 = $00039800u32
+pub const VGAPRODUCTHAMDBL_KEY: u32 = $00039820u32
+pub const VGAEXTRALORESEHBDBL_KEY: u32 = $00031080u32
+pub const VGALORESEHBDBL_KEY: u32 = $00039080u32
+pub const VGAPRODUCTEHBDBL_KEY: u32 = $000390a0u32
+pub const A2024_MONITOR_ID: u32 = $00041000u32
+pub const A2024TENHERTZ_KEY: u32 = $00041000u32
+pub const A2024FIFTEENHERTZ_KEY: u32 = $00049000u32
+pub const PROTO_MONITOR_ID: u32 = $00051000u32
+pub const EURO72_MONITOR_ID: u32 = $00061000u32
+pub const EURO72EXTRALORES_KEY: u32 = $00061004u32
+pub const EURO72LORES_KEY: u32 = $00069004u32
+pub const EURO72PRODUCT_KEY: u32 = $00069024u32
+pub const EURO72HAM_KEY: u32 = $00061804u32
+pub const EURO72EXTRALORESLACE_KEY: u32 = $00061005u32
+pub const EURO72LORESLACE_KEY: u32 = $00069005u32
+pub const EURO72PRODUCTLACE_KEY: u32 = $00069025u32
+pub const EURO72HAMLACE_KEY: u32 = $00061805u32
+pub const EURO72EXTRALORESDPF_KEY: u32 = $00061404u32
+pub const EURO72LORESDPF_KEY: u32 = $00069404u32
+pub const EURO72PRODUCTDPF_KEY: u32 = $00069424u32
+pub const EURO72EXTRALORESLACEDPF_KEY: u32 = $00061405u32
+pub const EURO72LORESLACEDPF_KEY: u32 = $00069405u32
+pub const EURO72PRODUCTLACEDPF_KEY: u32 = $00069425u32
+pub const EURO72EXTRALORESDPF2_KEY: u32 = $00061444u32
+pub const EURO72LORESDPF2_KEY: u32 = $00069444u32
+pub const EURO72PRODUCTDPF2_KEY: u32 = $00069464u32
+pub const EURO72EXTRALORESLACEDPF2_KEY: u32 = $00061445u32
+pub const EURO72LORESLACEDPF2_KEY: u32 = $00069445u32
+pub const EURO72PRODUCTLACEDPF2_KEY: u32 = $00069465u32
+pub const EURO72EXTRAHALFBRITE_KEY: u32 = $00061084u32
+pub const EURO72EXTRAHALFBRITELACE_KEY: u32 = $00061085u32
+pub const EURO72PRODUCTHAM_KEY: u32 = $00069824u32
+pub const EURO72PRODUCTHAMLACE_KEY: u32 = $00069825u32
+pub const EURO72LORESHAM_KEY: u32 = $00069804u32
+pub const EURO72LORESHAMLACE_KEY: u32 = $00069805u32
+pub const EURO72EXTRALORESHAM_KEY: u32 = 0 /* TODO: EURO72HAM_KEY */
+pub const EURO72EXTRALORESHAMLACE_KEY: u32 = 0 /* TODO: EURO72HAMLACE_KEY */
+pub const EURO72EXTRALORESEHB_KEY: u32 = 0 /* TODO: EURO72EXTRAHALFBRITE_KEY */
+pub const EURO72EXTRALORESEHBLACE_KEY: u32 = 0 /* TODO: EURO72EXTRAHALFBRITELACE_KEY */
+pub const EURO72LORESEHB_KEY: u32 = $00069084u32
+pub const EURO72LORESEHBLACE_KEY: u32 = $00069085u32
+pub const EURO72EHB_KEY: u32 = $000690a4u32
+pub const EURO72EHBLACE_KEY: u32 = $000690a5u32
+pub const EURO72EXTRALORESDBL_KEY: u32 = $00061000u32
+pub const EURO72LORESDBL_KEY: u32 = $00069000u32
+pub const EURO72PRODUCTDBL_KEY: u32 = $00069020u32
+pub const EURO72EXTRALORESHAMDBL_KEY: u32 = $00061800u32
+pub const EURO72LORESHAMDBL_KEY: u32 = $00069800u32
+pub const EURO72PRODUCTHAMDBL_KEY: u32 = $00069820u32
+pub const EURO72EXTRALORESEHBDBL_KEY: u32 = $00061080u32
+pub const EURO72LORESEHBDBL_KEY: u32 = $00069080u32
+pub const EURO72PRODUCTEHBDBL_KEY: u32 = $000690a0u32
+pub const EURO36_MONITOR_ID: u32 = $00071000u32
+pub const SUPER72_MONITOR_ID: u32 = $00081000u32
+pub const SUPER72LORESDBL_KEY: u32 = $00081008u32
+pub const SUPER72HIRESDBL_KEY: u32 = $00089008u32
+pub const SUPER72SUPERDBL_KEY: u32 = $00089028u32
+pub const SUPER72LORESHAMDBL_KEY: u32 = $00081808u32
+pub const SUPER72HIRESHAMDBL_KEY: u32 = $00089808u32
+pub const SUPER72SUPERHAMDBL_KEY: u32 = $00089828u32
+pub const SUPER72LORESEHBDBL_KEY: u32 = $00081088u32
+pub const SUPER72HIRESEHBDBL_KEY: u32 = $00089088u32
+pub const SUPER72SUPEREHBDBL_KEY: u32 = $000890a8u32
+pub const DBLNTSC_MONITOR_ID: u32 = $00091000u32
+pub const DBLNTSCLORES_KEY: u32 = $00091000u32
+pub const DBLNTSCLORESFF_KEY: u32 = $00091004u32
+pub const DBLNTSCLORESHAM_KEY: u32 = $00091800u32
+pub const DBLNTSCLORESHAMFF_KEY: u32 = $00091804u32
+pub const DBLNTSCLORESEHB_KEY: u32 = $00091080u32
+pub const DBLNTSCLORESEHBFF_KEY: u32 = $00091084u32
+pub const DBLNTSCLORESLACE_KEY: u32 = $00091005u32
+pub const DBLNTSCLORESHAMLACE_KEY: u32 = $00091805u32
+pub const DBLNTSCLORESEHBLACE_KEY: u32 = $00091085u32
+pub const DBLNTSCLORESDPF_KEY: u32 = $00091400u32
+pub const DBLNTSCLORESDPFFF_KEY: u32 = $00091404u32
+pub const DBLNTSCLORESDPFLACE_KEY: u32 = $00091405u32
+pub const DBLNTSCLORESDPF2_KEY: u32 = $00091440u32
+pub const DBLNTSCLORESDPF2FF_KEY: u32 = $00091444u32
+pub const DBLNTSCLORESDPF2LACE_KEY: u32 = $00091445u32
+pub const DBLNTSCHIRES_KEY: u32 = $00099000u32
+pub const DBLNTSCHIRESFF_KEY: u32 = $00099004u32
+pub const DBLNTSCHIRESHAM_KEY: u32 = $00099800u32
+pub const DBLNTSCHIRESHAMFF_KEY: u32 = $00099804u32
+pub const DBLNTSCHIRESLACE_KEY: u32 = $00099005u32
+pub const DBLNTSCHIRESHAMLACE_KEY: u32 = $00099805u32
+pub const DBLNTSCHIRESEHB_KEY: u32 = $00099080u32
+pub const DBLNTSCHIRESEHBFF_KEY: u32 = $00099084u32
+pub const DBLNTSCHIRESEHBLACE_KEY: u32 = $00099085u32
+pub const DBLNTSCHIRESDPF_KEY: u32 = $00099400u32
+pub const DBLNTSCHIRESDPFFF_KEY: u32 = $00099404u32
+pub const DBLNTSCHIRESDPFLACE_KEY: u32 = $00099405u32
+pub const DBLNTSCHIRESDPF2_KEY: u32 = $00099440u32
+pub const DBLNTSCHIRESDPF2FF_KEY: u32 = $00099444u32
+pub const DBLNTSCHIRESDPF2LACE_KEY: u32 = $00099445u32
+pub const DBLNTSCEXTRALORES_KEY: u32 = $00091200u32
+pub const DBLNTSCEXTRALORESHAM_KEY: u32 = $00091a00u32
+pub const DBLNTSCEXTRALORESEHB_KEY: u32 = $00091280u32
+pub const DBLNTSCEXTRALORESDPF_KEY: u32 = $00091600u32
+pub const DBLNTSCEXTRALORESDPF2_KEY: u32 = $00091640u32
+pub const DBLNTSCEXTRALORESFF_KEY: u32 = $00091204u32
+pub const DBLNTSCEXTRALORESHAMFF_KEY: u32 = $00091a04u32
+pub const DBLNTSCEXTRALORESEHBFF_KEY: u32 = $00091284u32
+pub const DBLNTSCEXTRALORESDPFFF_KEY: u32 = $00091604u32
+pub const DBLNTSCEXTRALORESDPF2FF_KEY: u32 = $00091644u32
+pub const DBLNTSCEXTRALORESLACE_KEY: u32 = $00091205u32
+pub const DBLNTSCEXTRALORESHAMLACE_KEY: u32 = $00091a05u32
+pub const DBLNTSCEXTRALORESEHBLACE_KEY: u32 = $00091285u32
+pub const DBLNTSCEXTRALORESDPFLACE_KEY: u32 = $00091605u32
+pub const DBLNTSCEXTRALORESDPF2LACE_KEY: u32 = $00091645u32
+pub const DBLPAL_MONITOR_ID: u32 = $000a1000u32
+pub const DBLPALLORES_KEY: u32 = $000a1000u32
+pub const DBLPALLORESFF_KEY: u32 = $000a1004u32
+pub const DBLPALLORESHAM_KEY: u32 = $000a1800u32
+pub const DBLPALLORESHAMFF_KEY: u32 = $000a1804u32
+pub const DBLPALLORESEHB_KEY: u32 = $000a1080u32
+pub const DBLPALLORESEHBFF_KEY: u32 = $000a1084u32
+pub const DBLPALLORESLACE_KEY: u32 = $000a1005u32
+pub const DBLPALLORESHAMLACE_KEY: u32 = $000a1805u32
+pub const DBLPALLORESEHBLACE_KEY: u32 = $000a1085u32
+pub const DBLPALLORESDPF_KEY: u32 = $000a1400u32
+pub const DBLPALLORESDPFFF_KEY: u32 = $000a1404u32
+pub const DBLPALLORESDPFLACE_KEY: u32 = $000a1405u32
+pub const DBLPALLORESDPF2_KEY: u32 = $000a1440u32
+pub const DBLPALLORESDPF2FF_KEY: u32 = $000a1444u32
+pub const DBLPALLORESDPF2LACE_KEY: u32 = $000a1445u32
+pub const DBLPALHIRES_KEY: u32 = $000a9000u32
+pub const DBLPALHIRESFF_KEY: u32 = $000a9004u32
+pub const DBLPALHIRESHAM_KEY: u32 = $000a9800u32
+pub const DBLPALHIRESHAMFF_KEY: u32 = $000a9804u32
+pub const DBLPALHIRESLACE_KEY: u32 = $000a9005u32
+pub const DBLPALHIRESHAMLACE_KEY: u32 = $000a9805u32
+pub const DBLPALHIRESEHB_KEY: u32 = $000a9080u32
+pub const DBLPALHIRESEHBFF_KEY: u32 = $000a9084u32
+pub const DBLPALHIRESEHBLACE_KEY: u32 = $000a9085u32
+pub const DBLPALHIRESDPF_KEY: u32 = $000a9400u32
+pub const DBLPALHIRESDPFFF_KEY: u32 = $000a9404u32
+pub const DBLPALHIRESDPFLACE_KEY: u32 = $000a9405u32
+pub const DBLPALHIRESDPF2_KEY: u32 = $000a9440u32
+pub const DBLPALHIRESDPF2FF_KEY: u32 = $000a9444u32
+pub const DBLPALHIRESDPF2LACE_KEY: u32 = $000a9445u32
+pub const DBLPALEXTRALORES_KEY: u32 = $000a1200u32
+pub const DBLPALEXTRALORESHAM_KEY: u32 = $000a1a00u32
+pub const DBLPALEXTRALORESEHB_KEY: u32 = $000a1280u32
+pub const DBLPALEXTRALORESDPF_KEY: u32 = $000a1600u32
+pub const DBLPALEXTRALORESDPF2_KEY: u32 = $000a1640u32
+pub const DBLPALEXTRALORESFF_KEY: u32 = $000a1204u32
+pub const DBLPALEXTRALORESHAMFF_KEY: u32 = $000a1a04u32
+pub const DBLPALEXTRALORESEHBFF_KEY: u32 = $000a1284u32
+pub const DBLPALEXTRALORESDPFFF_KEY: u32 = $000a1604u32
+pub const DBLPALEXTRALORESDPF2FF_KEY: u32 = $000a1644u32
+pub const DBLPALEXTRALORESLACE_KEY: u32 = $000a1205u32
+pub const DBLPALEXTRALORESHAMLACE_KEY: u32 = $000a1a05u32
+pub const DBLPALEXTRALORESEHBLACE_KEY: u32 = $000a1285u32
+pub const DBLPALEXTRALORESDPFLACE_KEY: u32 = $000a1605u32
+pub const DBLPALEXTRALORESDPF2LACE_KEY: u32 = $000a1645u32
+pub const SPECIAL_FLAGS: u32 = 0 /* TODO: (DIPF_IS_DUALPF | DIPF_IS_PF2PRI | DIPF_IS_HAM | DIPF_IS_EXTRAHALFBRITE) */
+pub const BIDTAG_DIPFMustHave: u32 = $80000001u32
+pub const BIDTAG_DIPFMustNotHave: u32 = $80000002u32
+pub const BIDTAG_ViewPort: u32 = $80000003u32
+pub const BIDTAG_NominalWidth: u32 = $80000004u32
+pub const BIDTAG_NominalHeight: u32 = $80000005u32
+pub const BIDTAG_DesiredWidth: u32 = $80000006u32
+pub const BIDTAG_DesiredHeight: u32 = $80000007u32
+pub const BIDTAG_Depth: u32 = $80000008u32
+pub const BIDTAG_MonitorID: u32 = $80000009u32
+pub const BIDTAG_SourceID: u32 = $8000000au32
+pub const BIDTAG_RedBits: u32 = $8000000bu32
+pub const BIDTAG_BlueBits: u32 = $8000000cu32
+pub const BIDTAG_GreenBits: u32 = $8000000du32
+pub const BIDTAG_GfxPrivate: u32 = $8000000eu32
+pub const TAG_DONE: u32 = 0
+pub const TAG_END: u32 = 0
+pub const TAG_IGNORE: u32 = 1u32
+pub const TAG_MORE: u32 = 2u32
+pub const TAG_SKIP: u32 = 3u32
+pub const TAG_USER: u32 = (1u32 << 31)
+pub const TAGFILTER_AND: u32 = 0u32
+pub const TAGFILTER_NOT: u32 = 1u32
+pub const MAP_REMOVE_NOT_FOUND: u32 = 0u32
+pub const MAP_KEEP_NOT_FOUND: u32 = 1u32
+pub const DTAG_DISP: u32 = $80000000u32
+pub const DTAG_DIMS: u32 = $80001000u32
+pub const DTAG_MNTR: u32 = $80002000u32
+pub const DTAG_NAME: u32 = $80003000u32
+pub const DTAG_VEC: u32 = $80004000u32
+pub const DI_AVAIL_NOCHIPS: u32 = $0001u32
+pub const DI_AVAIL_NOMONITOR: u32 = $0002u32
+pub const DI_AVAIL_NOTWITHGENLOCK: u32 = $0004u32
+pub const DIPF_IS_LACE: u32 = $00000001u32
+pub const DIPF_IS_DUALPF: u32 = $00000002u32
+pub const DIPF_IS_PF2PRI: u32 = $00000004u32
+pub const DIPF_IS_HAM: u32 = $00000008u32
+pub const DIPF_IS_ECS: u32 = $00000010u32
+pub const DIPF_IS_AA: u32 = $00010000u32
+pub const DIPF_IS_PAL: u32 = $00000020u32
+pub const DIPF_IS_SPRITES: u32 = $00000040u32
+pub const DIPF_IS_GENLOCK: u32 = $00000080u32
+pub const DIPF_IS_WB: u32 = $00000100u32
+pub const DIPF_IS_DRAGGABLE: u32 = $00000200u32
+pub const DIPF_IS_PANELLED: u32 = $00000400u32
+pub const DIPF_IS_BEAMSYNC: u32 = $00000800u32
+pub const DIPF_IS_EXTRAHALFBRITE: u32 = $00001000u32
+pub const DIPF_IS_SPRITES_ATT: u32 = $00002000u32
+pub const DIPF_IS_SPRITES_CHNG_RES: u32 = $00004000u32
+pub const DIPF_IS_SPRITES_BORDER: u32 = $00008000u32
+pub const DIPF_IS_SCANDBL: u32 = $00020000u32
+pub const DIPF_IS_SPRITES_CHNG_BASE: u32 = $00040000u32
+pub const DIPF_IS_SPRITES_CHNG_PRI: u32 = $00080000u32
+pub const DIPF_IS_DBUFFER: u32 = $00100000u32
+pub const DIPF_IS_PROGBEAM: u32 = $00200000u32
+pub const DIPF_IS_FOREIGN: u32 = $80000000u32
+pub const MCOMPAT_MIXED: u32 = 0u32
+pub const MCOMPAT_SELF: u32 = 1u32
+pub const MCOMPAT_NOBODY: u32 = 0 /* TODO: -1 */
+pub const DISPLAYNAMELEN: u32 = 32u32
+pub const VARVBLANK: u32 = $1000u32
+pub const LOLDIS: u32 = $0800u32
+pub const CSCBLANKEN: u32 = $0400u32
+pub const VARVSYNC: u32 = $0200u32
+pub const VARHSYNC: u32 = $0100u32
+pub const VARBEAM: u32 = $0080u32
+pub const DISPLAYDUAL: u32 = $0040u32
+pub const DISPLAYPAL: u32 = $0020u32
+pub const VARCSYNC: u32 = $0010u32
+pub const CSBLANK: u32 = $0008u32
+pub const CSYNCTRUE: u32 = $0004u32
+pub const VSYNCTRUE: u32 = $0002u32
+pub const HSYNCTRUE: u32 = $0001u32
+pub const USE_BPLCON3: u32 = 1u32
+pub const BPLCON2_ZDCTEN: u32 = (1u32 << 10)
+pub const BPLCON2_ZDBPEN: u32 = (1u32 << 11)
+pub const BPLCON2_ZDBPSEL0: u32 = (1u32 << 12)
+pub const BPLCON2_ZDBPSEL1: u32 = (1u32 << 13)
+pub const BPLCON2_ZDBPSEL2: u32 = (1u32 << 14)
+pub const BPLCON3_EXTBLNKEN: u32 = (1u32 << 0)
+pub const BPLCON3_EXTBLKZD: u32 = (1u32 << 1)
+pub const BPLCON3_ZDCLKEN: u32 = (1u32 << 2)
+pub const BPLCON3_BRDNTRAN: u32 = (1u32 << 4)
+pub const BPLCON3_BRDNBLNK: u32 = (1u32 << 5)
+pub const VPXB_FREE_ME: u32 = 0u32
+pub const VPXF_FREE_ME: u32 = 0 /* TODO: (1 << VPXB_FREE_ME) */
+pub const VPXB_LAST: u32 = 1u32
+pub const VPXF_LAST: u32 = 0 /* TODO: (1 << VPXB_LAST) */
+pub const VPXB_STRADDLES_256: u32 = 4u32
+pub const VPXF_STRADDLES_256: u32 = 0 /* TODO: (1 << VPXB_STRADDLES_256) */
+pub const VPXB_STRADDLES_512: u32 = 5u32
+pub const VPXF_STRADDLES_512: u32 = 0 /* TODO: (1 << VPXB_STRADDLES_512) */
+pub const EXTEND_VSTRUCT: u32 = $1000u32
+pub const VPF_A2024: u32 = $40u32
+pub const VPF_TENHZ: u32 = $20u32
+pub const VPB_A2024: u32 = 6u32
+pub const VPB_TENHZ: u32 = 4u32
+pub const GENLOCK_VIDEO: u32 = $0002u32
+pub const LACE: u32 = $0004u32
+pub const DOUBLESCAN: u32 = $0008u32
+pub const SUPERHIRES: u32 = $0020u32
+pub const PFBA: u32 = $0040u32
+pub const EXTRA_HALFBRITE: u32 = $0080u32
+pub const GENLOCK_AUDIO: u32 = $0100u32
+pub const DUALPF: u32 = $0400u32
+pub const HAM: u32 = $0800u32
+pub const EXTENDED_MODE: u32 = $1000u32
+pub const VP_HIDE: u32 = $2000u32
+pub const SPRITES: u32 = $4000u32
+pub const HIRES: u32 = $8000u32
+pub const COLORMAP_TYPE_V1_2: u32 = $00u32
+pub const COLORMAP_TYPE_V1_4: u32 = $01u32
+pub const COLORMAP_TYPE_V36: u32 = 0 /* TODO: COLORMAP_TYPE_V1_4 */
+pub const COLORMAP_TYPE_V39: u32 = $02u32
+pub const COLORMAP_TRANSPARENCY: u32 = $01u32
+pub const COLORPLANE_TRANSPARENCY: u32 = $02u32
+pub const BORDER_BLANKING: u32 = $04u32
+pub const BORDER_NOTRANSPARENCY: u32 = $08u32
+pub const VIDEOCONTROL_BATCH: u32 = $10u32
+pub const USER_COPPER_CLIP: u32 = $20u32
+pub const BORDERSPRITES: u32 = $40u32
+pub const CMF_CMTRANS: u32 = 0u32
+pub const CMF_CPTRANS: u32 = 1u32
+pub const CMF_BRDRBLNK: u32 = 2u32
+pub const CMF_BRDNTRAN: u32 = 3u32
+pub const CMF_BRDRSPRT: u32 = 6u32
+pub const SPRITERESN_ECS: u32 = 0u32
+pub const SPRITERESN_140NS: u32 = 1u32
+pub const SPRITERESN_70NS: u32 = 2u32
+pub const SPRITERESN_35NS: u32 = 3u32
+pub const SPRITERESN_DEFAULT: u32 = 0 /* TODO: -1 */
+pub const CMAB_FULLPALETTE: u32 = 0u32
+pub const CMAF_FULLPALETTE: u32 = 0 /* TODO: (1<<CMAB_FULLPALETTE) */
+pub const CMAB_NO_INTERMED_UPDATE: u32 = 1u32
+pub const CMAF_NO_INTERMED_UPDATE: u32 = 0 /* TODO: (1<<CMAB_NO_INTERMED_UPDATE) */
+pub const CMAB_NO_COLOR_LOAD: u32 = 2u32
+pub const CMAF_NO_COLOR_LOAD: u32 = 0 /* TODO: (1 << CMAB_NO_COLOR_LOAD) */
+pub const CMAB_DUALPF_DISABLE: u32 = 3u32
+pub const CMAF_DUALPF_DISABLE: u32 = 0 /* TODO: (1 << CMAB_DUALPF_DISABLE) */
+pub const PENB_EXCLUSIVE: u32 = 0u32
+pub const PENB_NO_SETCOLOR: u32 = 1u32
+pub const PENF_EXCLUSIVE: u32 = 0 /* TODO: (1l<<PENB_EXCLUSIVE) */
+pub const PENF_NO_SETCOLOR: u32 = 0 /* TODO: (1l<<PENB_NO_SETCOLOR) */
+pub const PEN_EXCLUSIVE: u32 = 0 /* TODO: PENF_EXCLUSIVE */
+pub const PEN_NO_SETCOLOR: u32 = 0 /* TODO: PENF_NO_SETCOLOR */
+pub const PRECISION_EXACT: u32 = 0 /* TODO: -1 */
+pub const PRECISION_IMAGE: u32 = 0u32
+pub const PRECISION_ICON: u32 = 16u32
+pub const PRECISION_GUI: u32 = 32u32
+pub const OBP_Precision: u32 = $84000000u32
+pub const OBP_FailIfBad: u32 = $84000001u32
+pub const MVP_OK: u32 = 0u32
+pub const MVP_NO_MEM: u32 = 1u32
+pub const MVP_NO_VPE: u32 = 2u32
+pub const MVP_NO_DSPINS: u32 = 3u32
+pub const MVP_NO_DISPLAY: u32 = 4u32
+pub const MVP_OFF_BOTTOM: u32 = 5u32
+pub const MCOP_OK: u32 = 0u32
+pub const MCOP_NO_MEM: u32 = 1u32
+pub const MCOP_NOP: u32 = 2u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const COPPER_MOVE: u32 = 0u32
+pub const COPPER_WAIT: u32 = 1u32
+pub const CPRNXTBUF: u32 = 2u32
+pub const CPR_NT_LOF: u32 = $8000u32
+pub const CPR_NT_SHT: u32 = $4000u32
+pub const CPR_NT_SYS: u32 = $2000u32
+pub const NXTLIST: u32 = 0 /* TODO: u3.nxtlist */
+pub const VWAITPOS: u32 = 0 /* TODO: u3.u4.u1.VWaitPos */
+pub const DESTADDR: u32 = 0 /* TODO: u3.u4.u1.DestAddr */
+pub const HWAITPOS: u32 = 0 /* TODO: u3.u4.u2.HWaitPos */
+pub const DESTDATA: u32 = 0 /* TODO: u3.u4.u2.DestData */
+pub const EXACT_LINE: u32 = 1u32
+pub const HALF_LINE: u32 = 2u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const BITSET: u32 = $8000u32
+pub const BITCLR: u32 = 0u32
+pub const BMB_CLEAR: u32 = 0u32
+pub const BMB_DISPLAYABLE: u32 = 1u32
+pub const BMB_INTERLEAVED: u32 = 2u32
+pub const BMB_STANDARD: u32 = 3u32
+pub const BMB_MINPLANES: u32 = 4u32
+pub const BMF_CLEAR: u32 = 0 /* TODO: (1l<<BMB_CLEAR) */
+pub const BMF_DISPLAYABLE: u32 = 0 /* TODO: (1l<<BMB_DISPLAYABLE) */
+pub const BMF_INTERLEAVED: u32 = 0 /* TODO: (1l<<BMB_INTERLEAVED) */
+pub const BMF_STANDARD: u32 = 0 /* TODO: (1l<<BMB_STANDARD) */
+pub const BMF_MINPLANES: u32 = 0 /* TODO: (1l<<BMB_MINPLANES) */
+pub const BMA_HEIGHT: u32 = 0u32
+pub const BMA_DEPTH: u32 = 4u32
+pub const BMA_WIDTH: u32 = 8u32
+pub const BMA_FLAGS: u32 = 12u32
+pub const NT_UNKNOWN: u32 = 0u32
+pub const NT_TASK: u32 = 1u32
+pub const NT_INTERRUPT: u32 = 2u32
+pub const NT_DEVICE: u32 = 3u32
+pub const NT_MSGPORT: u32 = 4u32
+pub const NT_MESSAGE: u32 = 5u32
+pub const NT_FREEMSG: u32 = 6u32
+pub const NT_REPLYMSG: u32 = 7u32
+pub const NT_RESOURCE: u32 = 8u32
+pub const NT_LIBRARY: u32 = 9u32
+pub const NT_MEMORY: u32 = 10u32
+pub const NT_SOFTINT: u32 = 11u32
+pub const NT_FONT: u32 = 12u32
+pub const NT_PROCESS: u32 = 13u32
+pub const NT_SEMAPHORE: u32 = 14u32
+pub const NT_SIGNALSEM: u32 = 15u32
+pub const NT_BOOTNODE: u32 = 16u32
+pub const NT_KICKMEM: u32 = 17u32
+pub const NT_GRAPHICS: u32 = 18u32
+pub const NT_DEATHMESSAGE: u32 = 19u32
+pub const NT_USER: u32 = 254u32
+pub const NT_EXTENDED: u32 = 255u32
+pub const TB_PROCTIME: u32 = 0u32
+pub const TB_ETASK: u32 = 3u32
+pub const TB_STACKCHK: u32 = 4u32
+pub const TB_EXCEPT: u32 = 5u32
+pub const TB_SWITCH: u32 = 6u32
+pub const TB_LAUNCH: u32 = 7u32
+pub const TF_PROCTIME: u32 = (1u32 << 0)
+pub const TF_ETASK: u32 = (1u32 << 3)
+pub const TF_STACKCHK: u32 = (1u32 << 4)
+pub const TF_EXCEPT: u32 = (1u32 << 5)
+pub const TF_SWITCH: u32 = (1u32 << 6)
+pub const TF_LAUNCH: u32 = (1u32 << 7)
+pub const TS_INVALID: u32 = 0u32
+pub const TS_ADDED: u32 = 1u32
+pub const TS_RUN: u32 = 2u32
+pub const TS_READY: u32 = 3u32
+pub const TS_WAIT: u32 = 4u32
+pub const TS_EXCEPT: u32 = 5u32
+pub const TS_REMOVED: u32 = 6u32
+pub const SIGB_ABORT: u32 = 0u32
+pub const SIGB_CHILD: u32 = 1u32
+pub const SIGB_BLIT: u32 = 4u32
+pub const SIGB_SINGLE: u32 = 4u32
+pub const SIGB_INTUITION: u32 = 5u32
+pub const SIGB_NET: u32 = 7u32
+pub const SIGB_DOS: u32 = 8u32
+pub const SIGF_ABORT: u32 = (1u32 << 0)
+pub const SIGF_CHILD: u32 = (1u32 << 1)
+pub const SIGF_BLIT: u32 = (1u32 << 4)
+pub const SIGF_SINGLE: u32 = (1u32 << 4)
+pub const SIGF_INTUITION: u32 = (1u32 << 5)
+pub const SIGF_NET: u32 = (1u32 << 7)
+pub const SIGF_DOS: u32 = (1u32 << 8)
+pub const mp_SoftInt: u32 = 0 /* TODO: mp_SigTask */
+pub const PF_ACTION: u32 = 3u32
+pub const PA_SIGNAL: u32 = 0u32
+pub const PA_SOFTINT: u32 = 1u32
+pub const PA_IGNORE: u32 = 2u32
+pub const SM_SHARED: u32 = 1u32
+pub const SM_EXCLUSIVE: u32 = 0
+pub const sm_LockMsg: u32 = 0 /* TODO: mp_SigTask */
+pub const CR_NEEDS_NO_CONCEALED_RASTERS: u32 = 1u32
+pub const CR_NEEDS_NO_LAYERBLIT_DAMAGE: u32 = 2u32
+pub const ISLESSX: u32 = 1u32
+pub const ISLESSY: u32 = 2u32
+pub const ISGRTRX: u32 = 4u32
+pub const ISGRTRY: u32 = 8u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const BITSET: u32 = $8000u32
+pub const BITCLR: u32 = 0u32
+pub const BMB_CLEAR: u32 = 0u32
+pub const BMB_DISPLAYABLE: u32 = 1u32
+pub const BMB_INTERLEAVED: u32 = 2u32
+pub const BMB_STANDARD: u32 = 3u32
+pub const BMB_MINPLANES: u32 = 4u32
+pub const BMF_CLEAR: u32 = 0 /* TODO: (1l<<BMB_CLEAR) */
+pub const BMF_DISPLAYABLE: u32 = 0 /* TODO: (1l<<BMB_DISPLAYABLE) */
+pub const BMF_INTERLEAVED: u32 = 0 /* TODO: (1l<<BMB_INTERLEAVED) */
+pub const BMF_STANDARD: u32 = 0 /* TODO: (1l<<BMB_STANDARD) */
+pub const BMF_MINPLANES: u32 = 0 /* TODO: (1l<<BMB_MINPLANES) */
+pub const BMA_HEIGHT: u32 = 0u32
+pub const BMA_DEPTH: u32 = 4u32
+pub const BMA_WIDTH: u32 = 8u32
+pub const BMA_FLAGS: u32 = 12u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const SPRITE_ATTACHED: u32 = $80u32
+pub const SPRITEA_Width: u32 = $81000000u32
+pub const SPRITEA_XReplication: u32 = $81000002u32
+pub const SPRITEA_YReplication: u32 = $81000004u32
+pub const SPRITEA_OutputHeight: u32 = $81000006u32
+pub const SPRITEA_Attached: u32 = $81000008u32
+pub const SPRITEA_OldDataFormat: u32 = $8100000au32
+pub const GSTAG_SPRITE_NUM: u32 = $82000020u32
+pub const GSTAG_ATTACHED: u32 = $82000022u32
+pub const GSTAG_SOFTSPRITE: u32 = $82000024u32
+pub const GSTAG_SCANDOUBLED: u32 = $83000000u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const NT_UNKNOWN: u32 = 0u32
+pub const NT_TASK: u32 = 1u32
+pub const NT_INTERRUPT: u32 = 2u32
+pub const NT_DEVICE: u32 = 3u32
+pub const NT_MSGPORT: u32 = 4u32
+pub const NT_MESSAGE: u32 = 5u32
+pub const NT_FREEMSG: u32 = 6u32
+pub const NT_REPLYMSG: u32 = 7u32
+pub const NT_RESOURCE: u32 = 8u32
+pub const NT_LIBRARY: u32 = 9u32
+pub const NT_MEMORY: u32 = 10u32
+pub const NT_SOFTINT: u32 = 11u32
+pub const NT_FONT: u32 = 12u32
+pub const NT_PROCESS: u32 = 13u32
+pub const NT_SEMAPHORE: u32 = 14u32
+pub const NT_SIGNALSEM: u32 = 15u32
+pub const NT_BOOTNODE: u32 = 16u32
+pub const NT_KICKMEM: u32 = 17u32
+pub const NT_GRAPHICS: u32 = 18u32
+pub const NT_DEATHMESSAGE: u32 = 19u32
+pub const NT_USER: u32 = 254u32
+pub const NT_EXTENDED: u32 = 255u32
+pub const TB_PROCTIME: u32 = 0u32
+pub const TB_ETASK: u32 = 3u32
+pub const TB_STACKCHK: u32 = 4u32
+pub const TB_EXCEPT: u32 = 5u32
+pub const TB_SWITCH: u32 = 6u32
+pub const TB_LAUNCH: u32 = 7u32
+pub const TF_PROCTIME: u32 = (1u32 << 0)
+pub const TF_ETASK: u32 = (1u32 << 3)
+pub const TF_STACKCHK: u32 = (1u32 << 4)
+pub const TF_EXCEPT: u32 = (1u32 << 5)
+pub const TF_SWITCH: u32 = (1u32 << 6)
+pub const TF_LAUNCH: u32 = (1u32 << 7)
+pub const TS_INVALID: u32 = 0u32
+pub const TS_ADDED: u32 = 1u32
+pub const TS_RUN: u32 = 2u32
+pub const TS_READY: u32 = 3u32
+pub const TS_WAIT: u32 = 4u32
+pub const TS_EXCEPT: u32 = 5u32
+pub const TS_REMOVED: u32 = 6u32
+pub const SIGB_ABORT: u32 = 0u32
+pub const SIGB_CHILD: u32 = 1u32
+pub const SIGB_BLIT: u32 = 4u32
+pub const SIGB_SINGLE: u32 = 4u32
+pub const SIGB_INTUITION: u32 = 5u32
+pub const SIGB_NET: u32 = 7u32
+pub const SIGB_DOS: u32 = 8u32
+pub const SIGF_ABORT: u32 = (1u32 << 0)
+pub const SIGF_CHILD: u32 = (1u32 << 1)
+pub const SIGF_BLIT: u32 = (1u32 << 4)
+pub const SIGF_SINGLE: u32 = (1u32 << 4)
+pub const SIGF_INTUITION: u32 = (1u32 << 5)
+pub const SIGF_NET: u32 = (1u32 << 7)
+pub const SIGF_DOS: u32 = (1u32 << 8)
+pub const mp_SoftInt: u32 = 0 /* TODO: mp_SigTask */
+pub const PF_ACTION: u32 = 3u32
+pub const PA_SIGNAL: u32 = 0u32
+pub const PA_SOFTINT: u32 = 1u32
+pub const PA_IGNORE: u32 = 2u32
+pub const BITSET: u32 = $8000u32
+pub const BITCLR: u32 = 0u32
+pub const BMB_CLEAR: u32 = 0u32
+pub const BMB_DISPLAYABLE: u32 = 1u32
+pub const BMB_INTERLEAVED: u32 = 2u32
+pub const BMB_STANDARD: u32 = 3u32
+pub const BMB_MINPLANES: u32 = 4u32
+pub const BMF_CLEAR: u32 = 0 /* TODO: (1l<<BMB_CLEAR) */
+pub const BMF_DISPLAYABLE: u32 = 0 /* TODO: (1l<<BMB_DISPLAYABLE) */
+pub const BMF_INTERLEAVED: u32 = 0 /* TODO: (1l<<BMB_INTERLEAVED) */
+pub const BMF_STANDARD: u32 = 0 /* TODO: (1l<<BMB_STANDARD) */
+pub const BMF_MINPLANES: u32 = 0 /* TODO: (1l<<BMB_MINPLANES) */
+pub const BMA_HEIGHT: u32 = 0u32
+pub const BMA_DEPTH: u32 = 4u32
+pub const BMA_WIDTH: u32 = 8u32
+pub const BMA_FLAGS: u32 = 12u32
+pub const TAG_DONE: u32 = 0
+pub const TAG_END: u32 = 0
+pub const TAG_IGNORE: u32 = 1u32
+pub const TAG_MORE: u32 = 2u32
+pub const TAG_SKIP: u32 = 3u32
+pub const TAG_USER: u32 = (1u32 << 31)
+pub const TAGFILTER_AND: u32 = 0u32
+pub const TAGFILTER_NOT: u32 = 1u32
+pub const MAP_REMOVE_NOT_FOUND: u32 = 0u32
+pub const MAP_KEEP_NOT_FOUND: u32 = 1u32
+pub const FS_NORMAL: u32 = 0u32
+pub const FSB_UNDERLINED: u32 = 0u32
+pub const FSF_UNDERLINED: u32 = $01u32
+pub const FSB_BOLD: u32 = 1u32
+pub const FSF_BOLD: u32 = $02u32
+pub const FSB_ITALIC: u32 = 2u32
+pub const FSF_ITALIC: u32 = $04u32
+pub const FSB_EXTENDED: u32 = 3u32
+pub const FSF_EXTENDED: u32 = $08u32
+pub const FSB_COLORFONT: u32 = 6u32
+pub const FSF_COLORFONT: u32 = $40u32
+pub const FSB_TAGGED: u32 = 7u32
+pub const FSF_TAGGED: u32 = $80u32
+pub const FPB_ROMFONT: u32 = 0u32
+pub const FPF_ROMFONT: u32 = $01u32
+pub const FPB_DISKFONT: u32 = 1u32
+pub const FPF_DISKFONT: u32 = $02u32
+pub const FPB_REVPATH: u32 = 2u32
+pub const FPF_REVPATH: u32 = $04u32
+pub const FPB_TALLDOT: u32 = 3u32
+pub const FPF_TALLDOT: u32 = $08u32
+pub const FPB_WIDEDOT: u32 = 4u32
+pub const FPF_WIDEDOT: u32 = $10u32
+pub const FPB_PROPORTIONAL: u32 = 5u32
+pub const FPF_PROPORTIONAL: u32 = $20u32
+pub const FPB_DESIGNED: u32 = 6u32
+pub const FPF_DESIGNED: u32 = $40u32
+pub const FPB_REMOVED: u32 = 7u32
+pub const FPF_REMOVED: u32 = (1u32 << 7)
+pub const TA_DeviceDPI: u32 = 0 /* TODO: (1|TAG_USER) */
+pub const MAXFONTMATCHWEIGHT: u32 = 32767u32
+pub const tf_Extension: u32 = 0 /* TODO: tf_Message.mn_ReplyPort */
+pub const TE0B_NOREMFONT: u32 = 0u32
+pub const TE0F_NOREMFONT: u32 = $01u32
+pub const CT_COLORMASK: u32 = $000Fu32
+pub const CT_COLORFONT: u32 = $0001u32
+pub const CT_GREYFONT: u32 = $0002u32
+pub const CT_ANTIALIAS: u32 = $0004u32
+pub const CTB_MAPCOLOR: u32 = 0u32
+pub const CTF_MAPCOLOR: u32 = $0001u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const HSIZEBITS: u32 = 6u32
+pub const VSIZEBITS: u32 = 0 /* TODO: 16-HSIZEBITS */
+pub const HSIZEMASK: u32 = $3fu32
+pub const VSIZEMASK: u32 = $3FFu32
+pub const MINBYTESPERROW: u32 = 128u32
+pub const MAXBYTESPERROW: u32 = 4096u32
+pub const MAXBYTESPERROW: u32 = 128u32
+pub const ABC: u32 = $80u32
+pub const ABNC: u32 = $40u32
+pub const ANBC: u32 = $20u32
+pub const ANBNC: u32 = $10u32
+pub const NABC: u32 = $8u32
+pub const NABNC: u32 = $4u32
+pub const NANBC: u32 = $2u32
+pub const NANBNC: u32 = $1u32
+pub const A_OR_B: u32 = 0 /* TODO: ABC|ANBC|NABC | ABNC|ANBNC|NABNC */
+pub const A_OR_C: u32 = 0 /* TODO: ABC|NABC|ABNC | ANBC|NANBC|ANBNC */
+pub const A_XOR_C: u32 = 0 /* TODO: NABC|ABNC   | NANBC|ANBNC */
+pub const A_TO_D: u32 = 0 /* TODO: ABC|ANBC|ABNC|ANBNC */
+pub const BC0B_DEST: u32 = 8u32
+pub const BC0B_SRCC: u32 = 9u32
+pub const BC0B_SRCB: u32 = 10u32
+pub const BC0B_SRCA: u32 = 11u32
+pub const BC0F_DEST: u32 = $100u32
+pub const BC0F_SRCC: u32 = $200u32
+pub const BC0F_SRCB: u32 = $400u32
+pub const BC0F_SRCA: u32 = $800u32
+pub const BC1F_DESC: u32 = 2u32
+pub const DEST: u32 = $100u32
+pub const SRCC: u32 = $200u32
+pub const SRCB: u32 = $400u32
+pub const SRCA: u32 = $800u32
+pub const ASHIFTSHIFT: u32 = 12u32
+pub const BSHIFTSHIFT: u32 = 12u32
+pub const LINEMODE: u32 = $1u32
+pub const FILL_OR: u32 = $8u32
+pub const FILL_XOR: u32 = $10u32
+pub const FILL_CARRYIN: u32 = $4u32
+pub const ONEDOT: u32 = $2u32
+pub const OVFLAG: u32 = $20u32
+pub const SIGNFLAG: u32 = $40u32
+pub const BLITREVERSE: u32 = $2u32
+pub const SUD: u32 = $10u32
+pub const SUL: u32 = $8u32
+pub const AUL: u32 = $4u32
+pub const OCTANT8: u32 = 24u32
+pub const OCTANT7: u32 = 4u32
+pub const OCTANT6: u32 = 12u32
+pub const OCTANT5: u32 = 28u32
+pub const OCTANT4: u32 = 20u32
+pub const OCTANT3: u32 = 8u32
+pub const OCTANT2: u32 = 0u32
+pub const OCTANT1: u32 = 16u32
+pub const CLEANUP: u32 = $40u32
+pub const CLEANME: u32 = 0 /* TODO: CLEANUP */
 
 // ============================================================================
-// Structs
+// Library Functions
 // ============================================================================
 
-pub struct RegionRectangle {
-    Next: *u8,
-    bounds: *u8,
-}
-
-pub struct Region {
-    bounds: *u8,
-    RegionRectangle: *u8,
-}
-
-pub struct QueryHeader {
-    StructID: u32,
-    DisplayID: u32,
-    SkipID: u32,
-    Length: u32,
-}
-
-pub struct DisplayInfo {
-    Header: i32,
-    NotAvailable: u16,
-    PropertyFlags: u32,
-    Resolution: i32,
-    PixelSpeed: u16,
-    NumStdSprites: u16,
-    PaletteRange: u16,
-    SpriteResolution: i32,
-    pad: [4]u8,
-    RedBits: u8,
-    GreenBits: u8,
-    BlueBits: u8,
-    pad2: [5]u8,
-    reserved: [2]u32,
-}
-
-pub struct DimensionInfo {
-    Header: i32,
-    MaxDepth: u16,
-    MinRasterWidth: u16,
-    MinRasterHeight: u16,
-    MaxRasterWidth: u16,
-    MaxRasterHeight: u16,
-    Nominal: i32,
-    MaxOScan: i32,
-    VideoOScan: i32,
-    TxtOScan: i32,
-    StdOScan: i32,
-    pad: [14]u8,
-    reserved: [2]u32,
-}
-
-pub struct MonitorInfo {
-    Header: i32,
-    Mspc: *u8,
-    ViewPosition: i32,
-    ViewResolution: i32,
-    ViewPositionRange: i32,
-    TotalRows: u16,
-    TotalColorClocks: u16,
-    MinRow: u16,
-    Compatibility: i16,
-    pad: [32]u8,
-    MouseTicks: i32,
-    DefaultViewPosition: i32,
-    PreferredModeID: u32,
-    reserved: [2]u32,
-}
-
-pub struct NameInfo {
-    Header: i32,
-    Name: u8,
-    reserved: [2]u32,
-}
-
-pub struct VecInfo {
-    Header: i32,
-    Vec: *u8,
-    Data: *u8,
-    Type: u16,
-    pad: [3]u16,
-    reserved: [2]u32,
-}
-
-pub struct BitScaleArgs {
-    bsa_SrcX: u16,
-    bsa_SrcWidth: u16,
-    bsa_XSrcFactor: u16,
-    bsa_DestX: u16,
-    bsa_DestWidth: u16,
-    bsa_XDestFactor: u16,
-    bsa_SrcBitMap: *u8,
-    bsa_DestBitMap: *u8,
-    bsa_Flags: u32,
-    bsa_XDDA: u16,
-    bsa_Reserved1: i32,
-    bsa_Reserved2: i32,
-}
-
-pub struct GfxBase {
-    LibNode: i32,
-    ActiView: *u8,
-    copinit: *u8,
-    cia: *u8,
-    blitter: *u8,
-    LOFlist: *u8,
-    SHFlist: *u8,
-    blthd: *u8,
-    bsblthd: *u8,
-    vbsrv: i32,
-    TextFonts: i32,
-    DefaultFont: *u8,
-    Modes: u16,
-    VBlank: i8,
-    Debug: i8,
-    BeamSync: i16,
-    system_bplcon0: i16,
-    SpriteReserved: u8,
-    bytereserved: u8,
-    Flags: u16,
-    BlitLock: i16,
-    BlitNest: i16,
-    BlitWaitQ: i32,
-    BlitOwner: *u8,
-    TOF_WaitQ: i32,
-    DisplayFlags: u16,
-    SimpleSprite: i32,
-    MaxDisplayRow: u16,
-    MaxDisplayColumn: u16,
-    NormalDisplayRows: u16,
-    NormalDisplayColumns: u16,
-    NormalDPMX: u16,
-    NormalDPMY: u16,
-    LastChanceMemory: *u8,
-    LCMptr: *u8,
-    MicrosPerLine: u16,
-    MinDisplayColumn: u16,
-    ChipRevBits0: u8,
-    MemType: u8,
-    crb_reserved: [4]u8,
-    monitor_id: u16,
-    hedley: [8]u32,
-    hedley_sprites: [8]u32,
-    hedley_sprites1: [8]u32,
-    hedley_count: i16,
-    hedley_flags: u16,
-    hedley_tmp: i16,
-    hash_table: *u8,
-    current_tot_rows: u16,
-    current_tot_cclks: u16,
-    hedley_hint: u8,
-    hedley_hint2: u8,
-    nreserved: [4]u32,
-    a2024_sync_raster: *u8,
-    control_delta_pal: u16,
-    control_delta_ntsc: u16,
-    current_monitor: *u8,
-    MonitorList: i32,
-    default_monitor: *u8,
-    MonitorListSemaphore: *u8,
-    DisplayInfoDataBase: *u8,
-    TopLine: u16,
-    ActiViewCprSemaphore: *u8,
-    UtilBase: *u8,
-    ExecBase: *u8,
-    bwshifts: *u8,
-    StrtFetchMasks: *u8,
-    StopFetchMasks: *u8,
-    Overrun: *u8,
-    RealStops: *u8,
-    SpriteWidth: u16,
-    SpriteFMode: u16,
-    SoftSprites: i8,
-    arraywidth: i8,
-    DefaultSpriteWidth: u16,
-    SprMoveDisable: i8,
-    WantChips: u8,
-    BoardMemType: u8,
-    Bugs: u8,
-    gb_LayersBase: *u8,
-    ColorMask: u32,
-    IVector: *u8,
-    IData: *u8,
-    SpecialCounter: u32,
-    DBList: *u8,
-    MonitorFlags: u16,
-    ScanDoubledSprites: u8,
-    BP3Bits: u8,
-    MonitorVBlank: i32,
-    natural_monitor: *u8,
-    ProgData: *u8,
-    ExtSprites: u8,
-    pad3: u8,
-    GfxFlags: u16,
-    VBCounter: u32,
-    HashTableSemaphore: *u8,
-    HWEmul: [9]*u8,
-}
-
-pub struct TextAttr {
-    ta_Name: *u8,
-    ta_YSize: u16,
-    ta_Style: u8,
-    ta_Flags: u8,
-}
-
-pub struct TTextAttr {
-    tta_Name: *u8,
-    tta_YSize: u16,
-    tta_Style: u8,
-    tta_Flags: u8,
-    tta_Tags: *u8,
-}
-
-pub struct TextFont {
-    tf_Message: *u8,
-    tf_YSize: u16,
-    tf_Style: u8,
-    tf_Flags: u8,
-    tf_XSize: u16,
-    tf_Baseline: u16,
-    tf_BoldSmear: u16,
-    tf_Accessors: u16,
-    tf_LoChar: u8,
-    tf_HiChar: u8,
-    tf_CharData: *u8,
-    tf_Modulo: u16,
-    tf_CharLoc: *u8,
-    tf_CharSpace: *u8,
-    tf_CharKern: *u8,
-}
-
-pub struct TextFontExtension {
-    tfe_MatchWord: u16,
-    tfe_Flags0: u8,
-    tfe_Flags1: u8,
-    tfe_BackPtr: *u8,
-    tfe_OrigReplyPort: *u8,
-    tfe_Tags: *u8,
-    tfe_OFontPatchS: *u8,
-    tfe_OFontPatchK: *u8,
-}
-
-pub struct ColorFontColors {
-    cfc_Reserved: u16,
-    cfc_Count: u16,
-    cfc_ColorTable: *u8,
-}
-
-pub struct ColorTextFont {
-    ctf_TF: *u8,
-    ctf_Flags: u16,
-    ctf_Depth: u8,
-    ctf_FgColor: u8,
-    ctf_Low: u8,
-    ctf_High: u8,
-    ctf_PlanePick: u8,
-    ctf_PlaneOnOff: u8,
-    ctf_ColorFontColors: *u8,
-    ctf_CharData: [8]*u8,
-}
-
-pub struct TextExtent {
-    te_Width: u16,
-    te_Height: u16,
-    te_Extent: *u8,
-}
-
-pub struct Isrvstr {
-    is_Node: *u8,
-    Iptr: *u8,
-    Carg: *u8,
-}
-
-pub struct ExtendedNode {
-    xln_Succ: *u8,
-    xln_Pred: *u8,
-    xln_Type: u8,
-    xln_Pri: i8,
-    xln_Name: *u8,
-    xln_Subsystem: u8,
-    xln_Subtype: u8,
-    xln_Library: i32,
-}
-
-pub struct ViewPort {
-    Next: *u8,
-    ColorMap: *u8,
-    DspIns: *u8,
-    SprIns: *u8,
-    ClrIns: *u8,
-    UCopIns: *u8,
-    DWidth: i16,
-    DxOffset: i16,
-    Modes: u16,
-    SpritePriorities: u8,
-    ExtendedModes: u8,
-    RasInfo: *u8,
-}
-
-pub struct View {
-    ViewPort: *u8,
-    LOFCprList: *u8,
-    SHFCprList: *u8,
-    DyOffset: i16,
-    Modes: u16,
-}
-
-pub struct ViewExtra {
-    n: *u8,
-    View: *u8,
-    Monitor: *u8,
-    TopLine: u16,
-}
-
-pub struct ViewPortExtra {
-    n: *u8,
-    ViewPort: *u8,
-    DisplayClip: *u8,
-    VecTable: *u8,
-    DriverData: [2]*u8,
-    Flags: u16,
-    Origin: [2]i32,
-    cop1ptr: u32,
-    cop2ptr: u32,
-}
-
-pub struct RasInfo {
-    Next: *u8,
-    BitMap: *u8,
-    RxOffset: i16,
-}
-
-pub struct ColorMap {
-    Flags: u8,
-    Type: u8,
-    Count: u16,
-    ColorTable: *u8,
-    cm_vpe: *u8,
-    LowColorBits: *u8,
-    TransparencyPlane: u8,
-    SpriteResolution: u8,
-    SpriteResDefault: u8,
-    AuxFlags: u8,
-    cm_vp: *u8,
-    NormalDisplayInfo: *u8,
-    CoerceDisplayInfo: *u8,
-    cm_batch_items: *u8,
-    VPModeID: u32,
-    PalExtra: *u8,
-    SpriteBase_Even: u16,
-    SpriteBase_Odd: u16,
-    Bp_0_base: u16,
-    Bp_1_base: u16,
-}
-
-pub struct PaletteExtra {
-    pe_Semaphore: *u8,
-    pe_FirstFree: u16,
-    pe_NFree: u16,
-    pe_FirstShared: u16,
-    pe_NShared: u16,
-    pe_RefCnt: *u8,
-    pe_AllocList: *u8,
-    pe_ViewPort: *u8,
-    pe_SharableColors: u16,
-}
-
-pub struct DBufInfo {
-    dbi_Link1: *u8,
-    dbi_Count1: u32,
-    dbi_SafeMessage: *u8,
-    dbi_UserData1: *u8,
-    dbi_Link2: *u8,
-    dbi_Count2: u32,
-    dbi_DispMessage: *u8,
-    dbi_UserData2: *u8,
-    dbi_MatchLong: u32,
-    dbi_CopPtr1: *u8,
-    dbi_CopPtr2: *u8,
-    dbi_CopPtr3: *u8,
-    dbi_BeamPos1: u16,
-    dbi_BeamPos2: u16,
-}
-
-pub struct MonitorSpec {
-    ms_Node: i32,
-    ms_Flags: u16,
-    ratioh: i32,
-    ratiov: i32,
-    total_rows: u16,
-    total_colorclocks: u16,
-    DeniseMaxDisplayColumn: u16,
-    BeamCon0: u16,
-    min_row: u16,
-    ms_Special: *u8,
-    ms_OpenCount: u16,
-    ms_xoffset: u16,
-    ms_yoffset: u16,
-    ms_LegalView: i32,
-    DeniseMinDisplayColumn: u16,
-    DisplayCompatible: u32,
-    DisplayInfoDataBase: i32,
-    DisplayInfoDataBaseSemaphore: i32,
-}
-
-pub struct AnalogSignalInterval {
-    asi_Start: u16,
-    asi_Stop: u16,
-}
-
-pub struct SpecialMonitor {
-    spm_Node: i32,
-    spm_Flags: u16,
-    hblank: i32,
-    vblank: i32,
-    hsync: i32,
-    vsync: i32,
-}
-
-pub struct SimpleSprite {
-    posctldata: *u8,
-    height: u16,
-    x: u16,
-    num: u16,
-}
-
-pub struct ExtSprite {
-    es_SimpleSprite: *u8,
-    es_wordwidth: u16,
-    es_flags: u16,
-}
-
-pub struct Layer {
-    front: *u8,
-    ClipRect: *u8,
-    rp: *u8,
-    bounds: *u8,
-    reserved: [4]u8,
-    priority: u16,
-    Flags: u16,
-    SuperBitMap: *u8,
-    SuperClipRect: *u8,
-    Window: *u8,
-    Scroll_X: i16,
-    cr: *u8,
-    SuperSaveClipRects: *u8,
-    _cliprects: *u8,
-    LayerInfo: *u8,
-    Lock: *u8,
-    BackFill: *u8,
-    reserved1: u32,
-    ClipRegion: *u8,
-    saveClipRects: *u8,
-    Width: i16,
-    reserved2: [18]u8,
-    DamageList: *u8,
-}
-
-pub struct ClipRect {
-    Next: *u8,
-    prev: *u8,
-    lobs: *u8,
-    BitMap: *u8,
-    bounds: *u8,
-    _p1: *u8,
-    _p2: *u8,
-    reserved: i32,
-}
-
-pub struct Rectangle {
-    MinX: i16,
-    MaxX: i16,
-}
-
-pub struct Rect32 {
-    MinX: i32,
-    MaxX: i32,
-}
-
-pub struct BitMap {
-    BytesPerRow: u16,
-    Rows: u16,
-    Flags: u8,
-    Depth: u8,
-    pad: u16,
-    Planes: [8]i32,
-}
-
-pub struct VSprite {
-    NextVSprite: *u8,
-    PrevVSprite: *u8,
-    DrawPath: *u8,
-    ClearPath: *u8,
-    OldY: i16,
-    Flags: i16,
-    Y: i16,
-    Height: i16,
-    Width: i16,
-    Depth: i16,
-    MeMask: i16,
-    HitMask: i16,
-    ImageData: *u8,
-    BorderLine: *u8,
-    CollMask: *u8,
-    SprColors: *u8,
-    VSBob: *u8,
-    PlanePick: i8,
-    PlaneOnOff: i8,
-    VUserExt: i32,
-}
-
-pub struct Bob {
-    Flags: i16,
-    SaveBuffer: *u8,
-    ImageShadow: *u8,
-    Before: *u8,
-    After: *u8,
-    BobVSprite: *u8,
-    BobComp: *u8,
-    DBuffer: *u8,
-    BUserExt: i32,
-}
-
-pub struct AnimComp {
-    Flags: i16,
-    Timer: i16,
-    TimeSet: i16,
-    NextComp: *u8,
-    PrevComp: *u8,
-    NextSeq: *u8,
-    PrevSeq: *u8,
-    AnimComp: i32,
-    YTrans: i16,
-    XTrans: i16,
-    HeadOb: *u8,
-    AnimBob: *u8,
-}
-
-pub struct AnimOb {
-    NextOb: *u8,
-    Clock: i32,
-    AnOldY: i16,
-    AnY: i16,
-    YVel: i16,
-    YAccel: i16,
-    RingYTrans: i16,
-    AnimOb: i32,
-    HeadComp: *u8,
-    AUserExt: i32,
-}
-
-pub struct DBufPacket {
-    BufY: i16,
-    BufPath: *u8,
-    BufBuffer: *u8,
-}
-
-pub struct collTable {
-    VSprite: i32,
-}
-
-pub struct cprlist {
-    Next: *u8,
-    start: *u8,
-    MaxCount: i16,
-}
-
-pub struct CopList {
-    Next: *u8,
-    _CopList: *u8,
-    _ViewPort: *u8,
-    CopIns: *u8,
-    CopPtr: *u8,
-    CopLStart: *u8,
-    CopSStart: *u8,
-    Count: i16,
-    MaxCount: i16,
-    DyOffset: i16,
-    Cop3Start: *u8,
-    Cop4Start: *u8,
-    Cop5Start: *u8,
-    Flags: u16,
-}
-
-pub struct UCopList {
-    Next: *u8,
-    FirstCopList: *u8,
-    CopList: *u8,
-}
-
-pub struct copinit {
-    vsync_hblank: [2]u16,
-    diagstrt: [12]u16,
-    fm0: [2]u16,
-    diwstart: [10]u16,
-    bplcon2: [2]u16,
-    sprfix: u16,
-    sprstrtup: u16,
-    wait14: [2]u16,
-    norm_hblank: [2]u16,
-    jump: [2]u16,
-    wait_forever: [6]u16,
-    sprstop: [8]u16,
-}
-
-pub struct AreaInfo {
-    VctrTbl: *u8,
-    VctrPtr: *u8,
-    FlagTbl: *u8,
-    FlagPtr: *u8,
-    Count: i16,
-    MaxCount: i16,
-    FirstX: i16,
-}
-
-pub struct TmpRas {
-    RasPtr: *u8,
-    Size: i32,
-}
-
-pub struct GelsInfo {
-    sprRsrvd: i8,
-    Flags: u8,
-    gelHead: *u8,
-    nextLine: *u8,
-    collHandler: *u8,
-    leftmost: i16,
-    firstBlissObj: *u8,
-}
-
-pub struct RastPort {
-    Layer: *u8,
-    BitMap: *u8,
-    AreaPtrn: *u8,
-    TmpRas: *u8,
-    AreaInfo: *u8,
-    GelsInfo: *u8,
-    Mask: u8,
-    FgPen: i8,
-    BgPen: i8,
-    AOlPen: i8,
-    DrawMode: i8,
-    AreaPtSz: i8,
-    linpatcnt: i8,
-    dummy: i8,
-    Flags: u16,
-    LinePtrn: u16,
-    cp_x: i16,
-    minterms: [8]u8,
-    PenWidth: i16,
-    PenHeight: i16,
-    Font: *u8,
-    AlgoStyle: u8,
-    TxFlags: u8,
-    TxHeight: u16,
-    TxWidth: u16,
-    TxBaseline: u16,
-    TxSpacing: i16,
-    RP_User: *u8,
-    longreserved: [2]u32,
-    reserved: [8]u8,
-}
-
-pub struct Layer_Info {
-    top_layer: *u8,
-    check_lp: *u8,
-    obs: *u8,
-    FreeClipRects: *u8,
-    PrivateReserve1: i32,
-    PrivateReserve2: i32,
-    Lock: i32,
-    gs_Head: i32,
-    PrivateReserve3: i16,
-    PrivateReserve4: *u8,
-    Flags: u16,
-    fatten_count: i8,
-    LockLayersCount: i8,
-    PrivateReserve5: i16,
-    BlankHook: *u8,
-    LayerInfo_extra: *u8,
-}
-
-// ============================================================================
-// Functions
-// ============================================================================
-
-extern fn BltBitMap(srcBitMap: i32, xSrc: i32, ySrc: i32, destBitMap: i32, xDest: i32, yDest: i32, xSize: i32, ySize: i32, minterm: i32, mask: i32, tempA: i32) -> i32
-extern fn BltTemplate(source: i32, xSrc: i32, srcMod: i32, destRP: i32, xDest: i32, yDest: i32, xSize: i32, ySize: i32) -> i32
-extern fn ClearEOL(rp: i32) -> i32
-extern fn ClearScreen(rp: i32) -> i32
-extern fn TextLength(rp: i32, string: i32, count: i32) -> i32
-extern fn Text(rp: i32, string: i32, count: i32) -> i32
-extern fn SetFont(rp: i32, textFont: i32) -> i32
-extern fn OpenFont(textAttr: i32) -> i32
-extern fn CloseFont(textFont: i32) -> i32
-extern fn AskSoftStyle(rp: i32) -> i32
-extern fn SetSoftStyle(rp: i32, style: i32, enable: i32) -> i32
-extern fn AddBob(bob: i32, rp: i32) -> i32
-extern fn AddVSprite(vSprite: i32, rp: i32) -> i32
-extern fn DoCollision(rp: i32) -> i32
-extern fn DrawGList(rp: i32, vp: i32) -> i32
-extern fn InitGels(head: i32, tail: i32, gelsInfo: i32) -> i32
-extern fn InitMasks(vSprite: i32) -> i32
-extern fn RemIBob(bob: i32, rp: i32, vp: i32) -> i32
-extern fn RemVSprite(vSprite: i32) -> i32
-extern fn SetCollision(num: i32, routine: i32, gelsInfo: i32) -> i32
-extern fn SortGList(rp: i32) -> i32
-extern fn AddAnimOb(anOb: i32, anKey: i32, rp: i32) -> i32
-extern fn Animate(anKey: i32, rp: i32) -> i32
-extern fn GetGBuffers(anOb: i32, rp: i32, flag: i32) -> i32
-extern fn InitGMasks(anOb: i32) -> i32
-extern fn DrawEllipse(rp: i32, xCenter: i32, yCenter: i32, a: i32, b: i32) -> i32
-extern fn AreaEllipse(rp: i32, xCenter: i32, yCenter: i32, a: i32, b: i32) -> i32
-extern fn LoadRGB4(vp: i32, colors: i32, count: i32) -> i32
-extern fn InitRastPort(rp: i32) -> i32
-extern fn InitVPort(vp: i32) -> i32
-extern fn MrgCop(view: i32) -> i32
-extern fn MakeVPort(view: i32, vp: i32) -> i32
-extern fn LoadView(view: i32) -> i32
-extern fn WaitBlit() -> i32
-extern fn SetRast(rp: i32, pen: i32) -> i32
-extern fn Move(rp: i32, x: i32, y: i32) -> i32
-extern fn Draw(rp: i32, x: i32, y: i32) -> i32
-extern fn AreaMove(rp: i32, x: i32, y: i32) -> i32
-extern fn AreaDraw(rp: i32, x: i32, y: i32) -> i32
-extern fn AreaEnd(rp: i32) -> i32
-extern fn WaitTOF() -> i32
-extern fn QBlit(blit: i32) -> i32
-extern fn InitArea(areaInfo: i32, vectorBuffer: i32, maxVectors: i32) -> i32
-extern fn SetRGB4(vp: i32, index: i32, red: i32, green: i32, blue: i32) -> i32
-extern fn QBSBlit(blit: i32) -> i32
-extern fn BltClear(memBlock: i32, byteCount: i32, flags: i32) -> i32
-extern fn RectFill(rp: i32, xMin: i32, yMin: i32, xMax: i32, yMax: i32) -> i32
-extern fn BltPattern(rp: i32, mask: i32, xMin: i32, yMin: i32, xMax: i32, yMax: i32, maskBPR: i32) -> i32
-extern fn ReadPixel(rp: i32, x: i32, y: i32) -> i32
-extern fn WritePixel(rp: i32, x: i32, y: i32) -> i32
-extern fn Flood(rp: i32, mode: i32, x: i32, y: i32) -> i32
-extern fn PolyDraw(rp: i32, count: i32, polyTable: i32) -> i32
-extern fn SetAPen(rp: i32, pen: i32) -> i32
-extern fn SetBPen(rp: i32, pen: i32) -> i32
-extern fn SetDrMd(rp: i32, drawMode: i32) -> i32
-extern fn InitView(view: i32) -> i32
-extern fn CBump(copList: i32) -> i32
-extern fn CMove(copList: i32, destination: i32, data: i32) -> i32
-extern fn CWait(copList: i32, v: i32, h: i32) -> i32
-extern fn VBeamPos() -> i32
-extern fn InitBitMap(bitMap: i32, depth: i32, width: i32, height: i32) -> i32
-extern fn ScrollRaster(rp: i32, dx: i32, dy: i32, xMin: i32, yMin: i32, xMax: i32, yMax: i32) -> i32
-extern fn WaitBOVP(vp: i32) -> i32
-extern fn GetSprite(sprite: i32, num: i32) -> i32
-extern fn FreeSprite(num: i32) -> i32
-extern fn ChangeSprite(vp: i32, sprite: i32, newData: i32) -> i32
-extern fn MoveSprite(vp: i32, sprite: i32, x: i32, y: i32) -> i32
-extern fn LockLayerRom(layer: i32) -> i32
-extern fn UnlockLayerRom(layer: i32) -> i32
-extern fn SyncSBitMap(layer: i32) -> i32
-extern fn CopySBitMap(layer: i32) -> i32
-extern fn OwnBlitter() -> i32
-extern fn DisownBlitter() -> i32
-extern fn InitTmpRas(tmpRas: i32, buffer: i32, size: i32) -> i32
-extern fn AskFont(rp: i32, textAttr: i32) -> i32
-extern fn AddFont(textFont: i32) -> i32
-extern fn RemFont(textFont: i32) -> i32
-extern fn AllocRaster(width: i32, height: i32) -> i32
-extern fn FreeRaster(p: i32, width: i32, height: i32) -> i32
-extern fn AndRectRegion(region: i32, rectangle: i32) -> i32
-extern fn OrRectRegion(region: i32, rectangle: i32) -> i32
-extern fn NewRegion() -> i32
-extern fn ClearRectRegion(region: i32, rectangle: i32) -> i32
-extern fn ClearRegion(region: i32) -> i32
-extern fn DisposeRegion(region: i32) -> i32
-extern fn FreeVPortCopLists(vp: i32) -> i32
-extern fn FreeCopList(copList: i32) -> i32
-extern fn ClipBlit(srcRP: i32, xSrc: i32, ySrc: i32, destRP: i32, xDest: i32, yDest: i32, xSize: i32, ySize: i32, minterm: i32) -> i32
-extern fn XorRectRegion(region: i32, rectangle: i32) -> i32
-extern fn FreeCprList(cprList: i32) -> i32
-extern fn GetColorMap(entries: i32) -> i32
-extern fn FreeColorMap(colorMap: i32) -> i32
-extern fn GetRGB4(colorMap: i32, entry: i32) -> i32
-extern fn ScrollVPort(vp: i32) -> i32
-extern fn UCopperListInit(uCopList: i32, n: i32) -> i32
-extern fn FreeGBuffers(anOb: i32, rp: i32, flag: i32) -> i32
-extern fn BltBitMapRastPort(srcBitMap: i32, xSrc: i32, ySrc: i32, destRP: i32, xDest: i32, yDest: i32, xSize: i32, ySize: i32, minterm: i32) -> i32
-extern fn OrRegionRegion(srcRegion: i32, destRegion: i32) -> i32
-extern fn XorRegionRegion(srcRegion: i32, destRegion: i32) -> i32
-extern fn AndRegionRegion(srcRegion: i32, destRegion: i32) -> i32
-extern fn SetRGB4CM(colorMap: i32, index: i32, red: i32, green: i32, blue: i32) -> i32
-extern fn BltMaskBitMapRastPort(srcBitMap: i32, xSrc: i32, ySrc: i32, destRP: i32, xDest: i32, yDest: i32, xSize: i32, ySize: i32, minterm: i32, bltMask: i32) -> i32
-extern fn AttemptLockLayerRom(layer: i32) -> i32
-extern fn GfxNew(gfxNodeType: i32) -> i32
-extern fn GfxFree(gfxNodePtr: i32) -> i32
-extern fn GfxAssociate(associateNode: i32, gfxNodePtr: i32) -> i32
-extern fn BitMapScale(bitScaleArgs: i32) -> i32
-extern fn ScalerDiv(factor: i32, numerator: i32, denominator: i32) -> i32
-extern fn TextExtent(rp: i32, string: i32, count: i32, textExtent: i32) -> i32
-extern fn TextFit(rp: i32, string: i32, strLen: i32, textExtent: i32, constrainingExtent: i32, strDirection: i32, constrainingBitWidth: i32, constrainingBitHeight: i32) -> i32
-extern fn GfxLookUp(associateNode: i32) -> i32
-extern fn VideoControl(colorMap: i32, tagarray: i32) -> i32
-extern fn OpenMonitor(monitorName: i32, displayID: i32) -> i32
-extern fn CloseMonitor(monitorSpec: i32) -> i32
-extern fn FindDisplayInfo(displayID: i32) -> i32
-extern fn NextDisplayInfo(displayID: i32) -> i32
-extern fn GetDisplayInfoData(handle: i32, buf: i32, size: i32, tagID: i32, displayID: i32) -> i32
-extern fn FontExtent(font: i32, fontExtent: i32) -> i32
-extern fn ReadPixelLine8(rp: i32, xstart: i32, ystart: i32, width: i32, array: i32, tempRP: i32) -> i32
-extern fn WritePixelLine8(rp: i32, xstart: i32, ystart: i32, width: i32, array: i32, tempRP: i32) -> i32
-extern fn ReadPixelArray8(rp: i32, xstart: i32, ystart: i32, xstop: i32, ystop: i32, array: i32, temprp: i32) -> i32
-extern fn WritePixelArray8(rp: i32, xstart: i32, ystart: i32, xstop: i32, ystop: i32, array: i32, temprp: i32) -> i32
-extern fn GetVPModeID(vp: i32) -> i32
-extern fn ModeNotAvailable(modeID: i32) -> i32
-extern fn EraseRect(rp: i32, xMin: i32, yMin: i32, xMax: i32, yMax: i32) -> i32
-extern fn ExtendFont(font: i32, fontTags: i32) -> i32
-extern fn StripFont(font: i32) -> i32
-extern fn CalcIVG(v: i32, vp: i32) -> i32
-extern fn AttachPalExtra(cm: i32, vp: i32) -> i32
-extern fn ObtainBestPenA(cm: i32, r: i32, g: i32, b: i32, tags: i32) -> i32
-extern fn SetRGB32(vp: i32, n: i32, r: i32, g: i32, b: i32) -> i32
-extern fn GetAPen(rp: i32) -> i32
-extern fn GetBPen(rp: i32) -> i32
-extern fn GetDrMd(rp: i32) -> i32
-extern fn GetOutlinePen(rp: i32) -> i32
-extern fn LoadRGB32(vp: i32, table: i32) -> i32
-extern fn SetChipRev(want: i32) -> i32
-extern fn SetABPenDrMd(rp: i32, apen: i32, bpen: i32, drawmode: i32) -> i32
-extern fn GetRGB32(cm: i32, firstcolor: i32, ncolors: i32, table: i32) -> i32
-extern fn AllocBitMap(sizex: i32, sizey: i32, depth: i32, flags: i32, friend_bitmap: i32) -> i32
-extern fn FreeBitMap(bm: i32) -> i32
-extern fn GetExtSpriteA(ss: i32, tags: i32) -> i32
-extern fn CoerceMode(vp: i32, monitorid: i32, flags: i32) -> i32
-extern fn ChangeVPBitMap(vp: i32, bm: i32, db: i32) -> i32
-extern fn ReleasePen(cm: i32, n: i32) -> i32
-extern fn ObtainPen(cm: i32, n: i32, r: i32, g: i32, b: i32, f: i32) -> i32
-extern fn GetBitMapAttr(bm: i32, attrnum: i32) -> i32
-extern fn AllocDBufInfo(vp: i32) -> i32
-extern fn FreeDBufInfo(dbi: i32) -> i32
-extern fn SetOutlinePen(rp: i32, pen: i32) -> i32
-extern fn SetWriteMask(rp: i32, msk: i32) -> i32
-extern fn SetMaxPen(rp: i32, maxpen: i32) -> i32
-extern fn SetRGB32CM(cm: i32, n: i32, r: i32, g: i32, b: i32) -> i32
-extern fn ScrollRasterBF(rp: i32, dx: i32, dy: i32, xMin: i32, yMin: i32, xMax: i32, yMax: i32) -> i32
-extern fn FindColor(cm: i32, r: i32, g: i32, b: i32, maxcolor: i32) -> i32
-extern fn AllocSpriteDataA(bm: i32, tags: i32) -> i32
-extern fn ChangeExtSpriteA(vp: i32, oldsprite: i32, newsprite: i32, tags: i32) -> i32
-extern fn FreeSpriteData(sp: i32) -> i32
-extern fn SetRPAttrsA(rp: i32, tags: i32) -> i32
-extern fn GetRPAttrsA(rp: i32, tags: i32) -> i32
-extern fn BestModeIDA(tags: i32) -> i32
-extern fn WriteChunkyPixels(rp: i32, xstart: i32, ystart: i32, xstop: i32, ystop: i32, array: i32, bytesperrow: i32) -> i32
+extern pub fn BltBitMap(srcBitMap: *BitMap, xSrc: i16, ySrc: i16, destBitMap: *BitMap, xDest: i16, yDest: i16, xSize: i16, ySize: i16, minterm: u8, mask: u8, tempA: *u8) -> i32
+extern pub fn BltTemplate(source: *u8, xSrc: i16, srcMod: i16, destRP: *RastPort, xDest: i16, yDest: i16, xSize: i16, ySize: i16)
+extern pub fn ClearEOL(rp: *RastPort)
+extern pub fn ClearScreen(rp: *RastPort)
+extern pub fn TextLength(rp: *RastPort, string: *u8, count: u16) -> i16
+extern pub fn Text(rp: *RastPort, string: *u8, count: u16) -> i32
+extern pub fn SetFont(rp: *RastPort, textFont: *TextFont) -> i32
+extern pub fn OpenFont(textAttr: *TextAttr) -> *TextFont
+extern pub fn CloseFont(textFont: *TextFont)
+extern pub fn AskSoftStyle(rp: *RastPort) -> u32
+extern pub fn SetSoftStyle(rp: *RastPort, style: u32, enable: u32) -> u32
+extern pub fn AddBob(bob: *Bob, rp: *RastPort)
+extern pub fn AddVSprite(vSprite: *VSprite, rp: *RastPort)
+extern pub fn DoCollision(rp: *RastPort)
+extern pub fn DrawGList(rp: *RastPort, vp: *ViewPort)
+extern pub fn InitGels(head: *VSprite, tail: *VSprite, gelsInfo: *GelsInfo)
+extern pub fn InitMasks(vSprite: *VSprite)
+extern pub fn RemIBob(bob: *Bob, rp: *RastPort, vp: *ViewPort)
+extern pub fn RemVSprite(vSprite: *VSprite)
+extern pub fn SetCollision(num: u32, routine: *u8, gelsInfo: *GelsInfo)
+extern pub fn SortGList(rp: *RastPort)
+extern pub fn AddAnimOb(anOb: *AnimOb, anKey: *AnimOb, rp: *RastPort)
+extern pub fn Animate(anKey: *AnimOb, rp: *RastPort)
+extern pub fn GetGBuffers(anOb: *AnimOb, rp: *RastPort, flag: i16) -> i16
+extern pub fn InitGMasks(anOb: *AnimOb)
+extern pub fn DrawEllipse(rp: *RastPort, xCenter: i16, yCenter: i16, a: i16, b: i16)
+extern pub fn AreaEllipse(rp: *RastPort, xCenter: i16, yCenter: i16, a: i16, b: i16) -> i32
+extern pub fn LoadRGB4(vp: *ViewPort, colors: *u8, count: i16)
+extern pub fn InitRastPort(rp: *RastPort)
+extern pub fn InitVPort(vp: *ViewPort)
+extern pub fn MrgCop(view: *View) -> u32
+extern pub fn MakeVPort(view: *View, vp: *ViewPort) -> u32
+extern pub fn LoadView(view: *View)
+extern pub fn WaitBlit()
+extern pub fn SetRast(rp: *RastPort, pen: u8)
+extern pub fn Move(rp: *RastPort, x: i16, y: i16)
+extern pub fn Draw(rp: *RastPort, x: i16, y: i16)
+extern pub fn AreaMove(rp: *RastPort, x: i16, y: i16) -> i32
+extern pub fn AreaDraw(rp: *RastPort, x: i16, y: i16) -> i32
+extern pub fn AreaEnd(rp: *RastPort) -> i32
+extern pub fn WaitTOF()
+extern pub fn QBlit(blit: *bltnode)
+extern pub fn InitArea(areaInfo: *AreaInfo, vectorBuffer: *u8, maxVectors: i16)
+extern pub fn SetRGB4(vp: *ViewPort, index: i16, red: u8, green: u8, blue: u8)
+extern pub fn QBSBlit(blit: *bltnode)
+extern pub fn BltClear(memBlock: *u8, byteCount: u32, flags: u32)
+extern pub fn RectFill(rp: *RastPort, xMin: i16, yMin: i16, xMax: i16, yMax: i16)
+extern pub fn BltPattern(rp: *RastPort, mask: *u8, xMin: i16, yMin: i16, xMax: i16, yMax: i16, maskBPR: u16)
+extern pub fn ReadPixel(rp: *RastPort, x: i16, y: i16) -> u32
+extern pub fn WritePixel(rp: *RastPort, x: i16, y: i16) -> i32
+extern pub fn Flood(rp: *RastPort, mode: u32, x: i16, y: i16) -> i16
+extern pub fn PolyDraw(rp: *RastPort, count: i16, polyTable: *u8)
+extern pub fn SetAPen(rp: *RastPort, pen: u8)
+extern pub fn SetBPen(rp: *RastPort, pen: u8)
+extern pub fn SetDrMd(rp: *RastPort, drawMode: u8)
+extern pub fn InitView(view: *View)
+extern pub fn CBump(copList: *UCopList)
+extern pub fn CMove(copList: *UCopList, destination: *u8, data: i16)
+extern pub fn CWait(copList: *UCopList, v: i16, h: i16)
+extern pub fn VBeamPos() -> i32
+extern pub fn InitBitMap(bitMap: *BitMap, depth: i8, width: i16, height: i16)
+extern pub fn ScrollRaster(rp: *RastPort, dx: i16, dy: i16, xMin: i16, yMin: i16, xMax: i16, yMax: i16)
+extern pub fn WaitBOVP(vp: *ViewPort)
+extern pub fn GetSprite(sprite: *SimpleSprite, num: i16) -> i16
+extern pub fn FreeSprite(num: i16)
+extern pub fn ChangeSprite(vp: *ViewPort, sprite: *SimpleSprite, newData: *u8)
+extern pub fn MoveSprite(vp: *ViewPort, sprite: *SimpleSprite, x: i16, y: i16)
+extern pub fn LockLayerRom(layer: *Layer)
+extern pub fn UnlockLayerRom(layer: *Layer)
+extern pub fn SyncSBitMap(layer: *Layer)
+extern pub fn CopySBitMap(layer: *Layer)
+extern pub fn OwnBlitter()
+extern pub fn DisownBlitter()
+extern pub fn InitTmpRas(tmpRas: *TmpRas, buffer: *u8, size: i32) -> *TmpRas
+extern pub fn AskFont(rp: *RastPort, textAttr: *TextAttr)
+extern pub fn AddFont(textFont: *TextFont)
+extern pub fn RemFont(textFont: *TextFont)
+extern pub fn AllocRaster(width: u16, height: u16) -> *u8
+extern pub fn FreeRaster(p: *u8, width: u16, height: u16)
+extern pub fn AndRectRegion(region: *Region, rectangle: *Rectangle)
+extern pub fn OrRectRegion(region: *Region, rectangle: *Rectangle) -> i16
+extern pub fn NewRegion() -> *Region
+extern pub fn ClearRectRegion(region: *Region, rectangle: *Rectangle) -> i16
+extern pub fn ClearRegion(region: *Region)
+extern pub fn DisposeRegion(region: *Region)
+extern pub fn FreeVPortCopLists(vp: *ViewPort)
+extern pub fn FreeCopList(copList: *CopList)
+extern pub fn ClipBlit(srcRP: *RastPort, xSrc: i16, ySrc: i16, destRP: *RastPort, xDest: i16, yDest: i16, xSize: i16, ySize: i16, minterm: u8)
+extern pub fn XorRectRegion(region: *Region, rectangle: *Rectangle) -> i16
+extern pub fn FreeCprList(cprList: *cprlist)
+extern pub fn GetColorMap(entries: i32) -> *ColorMap
+extern pub fn FreeColorMap(colorMap: *ColorMap)
+extern pub fn GetRGB4(colorMap: *ColorMap, entry: i32) -> u32
+extern pub fn ScrollVPort(vp: *ViewPort)
+extern pub fn UCopperListInit(uCopList: *UCopList, n: i16) -> *CopList
+extern pub fn FreeGBuffers(anOb: *AnimOb, rp: *RastPort, flag: i16)
+extern pub fn BltBitMapRastPort(srcBitMap: *BitMap, xSrc: i16, ySrc: i16, destRP: *RastPort, xDest: i16, yDest: i16, xSize: i16, ySize: i16, minterm: u8)
+extern pub fn OrRegionRegion(srcRegion: *Region, destRegion: *Region) -> i16
+extern pub fn XorRegionRegion(srcRegion: *Region, destRegion: *Region) -> i16
+extern pub fn AndRegionRegion(srcRegion: *Region, destRegion: *Region) -> i16
+extern pub fn SetRGB4CM(colorMap: *ColorMap, index: i16, red: u8, green: u8, blue: u8)
+extern pub fn BltMaskBitMapRastPort(srcBitMap: *BitMap, xSrc: i16, ySrc: i16, destRP: *RastPort, xDest: i16, yDest: i16, xSize: i16, ySize: i16, minterm: u8, bltMask: *u8)
+extern pub fn AttemptLockLayerRom(layer: *Layer) -> i16
+extern pub fn GfxNew(gfxNodeType: u32) -> *u8
+extern pub fn GfxFree(gfxNodePtr: *u8)
+extern pub fn GfxAssociate(associateNode: *u8, gfxNodePtr: *u8)
+extern pub fn BitMapScale(bitScaleArgs: *BitScaleArgs)
+extern pub fn ScalerDiv(factor: u16, numerator: u16, denominator: u16) -> u16
+extern pub fn TextExtent(rp: *RastPort, string: *u8, count: i16, textExtent: *TextExtent) -> i16
+extern pub fn TextFit(rp: *RastPort, string: *u8, strLen: u16, textExtent: *TextExtent, constrainingExtent: *TextExtent, strDirection: i16, constrainingBitWidth: u16, constrainingBitHeight: u16) -> u32
+extern pub fn GfxLookUp(associateNode: *u8) -> *u8
+extern pub fn VideoControl(colorMap: *ColorMap, tagarray: *TagItem) -> i16
+// Varargs function VideoControlTags skipped - needs manual implementation
+extern pub fn OpenMonitor(monitorName: *u8, displayID: u32) -> *MonitorSpec
+extern pub fn CloseMonitor(monitorSpec: *MonitorSpec) -> i16
+extern pub fn FindDisplayInfo(displayID: u32) -> *u8 /* DisplayInfoHandle */
+extern pub fn NextDisplayInfo(displayID: u32) -> u32
+extern pub fn GetDisplayInfoData(handle: *u8 /* const DisplayInfoHandle */, buf: *u8, size: u32, tagID: u32, displayID: u32) -> u32
+extern pub fn FontExtent(font: *TextFont, fontExtent: *TextExtent)
+extern pub fn ReadPixelLine8(rp: *RastPort, xstart: u16, ystart: u16, width: u16, array: *u8, tempRP: *RastPort) -> i32
+extern pub fn WritePixelLine8(rp: *RastPort, xstart: u16, ystart: u16, width: u16, array: *u8, tempRP: *RastPort) -> i32
+extern pub fn ReadPixelArray8(rp: *RastPort, xstart: u16, ystart: u16, xstop: u16, ystop: u16, array: *u8, temprp: *RastPort) -> i32
+extern pub fn WritePixelArray8(rp: *RastPort, xstart: u16, ystart: u16, xstop: u16, ystop: u16, array: *u8, temprp: *RastPort) -> i32
+extern pub fn GetVPModeID(vp: *ViewPort) -> i32
+extern pub fn ModeNotAvailable(modeID: u32) -> i32
+extern pub fn EraseRect(rp: *RastPort, xMin: i16, yMin: i16, xMax: i16, yMax: i16)
+extern pub fn ExtendFont(font: *TextFont, fontTags: *TagItem) -> u32
+// Varargs function ExtendFontTags skipped - needs manual implementation
+extern pub fn StripFont(font: *TextFont)
+extern pub fn CalcIVG(v: *View, vp: *ViewPort) -> u16
+extern pub fn AttachPalExtra(cm: *ColorMap, vp: *ViewPort) -> i32
+extern pub fn ObtainBestPenA(cm: *ColorMap, r: u32, g: u32, b: u32, tags: *TagItem) -> i32
+// Varargs function ObtainBestPen skipped - needs manual implementation
+extern pub fn SetRGB32(vp: *ViewPort, n: u32, r: u32, g: u32, b: u32)
+extern pub fn GetAPen(rp: *RastPort) -> u32
+extern pub fn GetBPen(rp: *RastPort) -> u32
+extern pub fn GetDrMd(rp: *RastPort) -> u32
+extern pub fn GetOutlinePen(rp: *RastPort) -> u32
+extern pub fn LoadRGB32(vp: *ViewPort, table: *u8)
+extern pub fn SetChipRev(want: u32) -> u32
+extern pub fn SetABPenDrMd(rp: *RastPort, apen: u32, bpen: u32, drawmode: u32)
+extern pub fn GetRGB32(cm: *ColorMap, firstcolor: u32, ncolors: u32, table: *u8)
+extern pub fn AllocBitMap(sizex: u32, sizey: u32, depth: u32, flags: u32, friend_bitmap: *BitMap) -> *BitMap
+extern pub fn FreeBitMap(bm: *BitMap)
+extern pub fn GetExtSpriteA(ss: *ExtSprite, tags: *TagItem) -> i32
+// Varargs function GetExtSprite skipped - needs manual implementation
+extern pub fn CoerceMode(vp: *ViewPort, monitorid: u32, flags: u32) -> u32
+extern pub fn ChangeVPBitMap(vp: *ViewPort, bm: *BitMap, db: *DBufInfo)
+extern pub fn ReleasePen(cm: *ColorMap, n: u32)
+extern pub fn ObtainPen(cm: *ColorMap, n: u32, r: u32, g: u32, b: u32, f: i32) -> u32
+extern pub fn GetBitMapAttr(bm: *BitMap, attrnum: u32) -> u32
+extern pub fn AllocDBufInfo(vp: *ViewPort) -> *DBufInfo
+extern pub fn FreeDBufInfo(dbi: *DBufInfo)
+extern pub fn SetOutlinePen(rp: *RastPort, pen: u32) -> u32
+extern pub fn SetWriteMask(rp: *RastPort, msk: u32) -> u32
+extern pub fn SetMaxPen(rp: *RastPort, maxpen: u32)
+extern pub fn SetRGB32CM(cm: *ColorMap, n: u32, r: u32, g: u32, b: u32)
+extern pub fn ScrollRasterBF(rp: *RastPort, dx: i16, dy: i16, xMin: i16, yMin: i16, xMax: i16, yMax: i16)
+extern pub fn FindColor(cm: *ColorMap, r: u32, g: u32, b: u32, maxcolor: i32) -> i32
+extern pub fn AllocSpriteDataA(bm: *BitMap, tags: *TagItem) -> *ExtSprite
+// Varargs function AllocSpriteData skipped - needs manual implementation
+extern pub fn ChangeExtSpriteA(vp: *ViewPort, oldsprite: *ExtSprite, newsprite: *ExtSprite, tags: *TagItem) -> i32
+// Varargs function ChangeExtSprite skipped - needs manual implementation
+extern pub fn FreeSpriteData(sp: *ExtSprite)
+extern pub fn SetRPAttrsA(rp: *RastPort, tags: *TagItem)
+// Varargs function SetRPAttrs skipped - needs manual implementation
+extern pub fn GetRPAttrsA(rp: *RastPort, tags: *TagItem)
+// Varargs function GetRPAttrs skipped - needs manual implementation
+extern pub fn BestModeIDA(tags: *TagItem) -> u32
+// Varargs function BestModeID skipped - needs manual implementation
+extern pub fn WriteChunkyPixels(rp: *RastPort, xstart: u16, ystart: u16, xstop: u16, ystop: u16, array: *u8, bytesperrow: i32)

@@ -1,0 +1,28 @@
+// Test that cross-module function calls work in general
+// This calls a custom function from std::core to verify
+// the extern declaration fix works for ANY function
+
+from std::core import AllocMem, FreeMem
+
+pub const MEMF_PUBLIC: u32 = 1
+pub const MEMF_CLEAR: u32 = 65536
+
+// Custom helper function that will be called from main
+pub fn DoSomething(value: u32) -> u32 {
+    return value + 42
+}
+
+pub fn main() -> i32 {
+    // Test 1: Call AllocMem (already tested)
+    let mem = AllocMem(1024, MEMF_PUBLIC | MEMF_CLEAR)
+    defer => FreeMem(mem)
+
+    // Test 2: Call custom function
+    let result = DoSomething(100)
+
+    if result != 142 {
+        return 1
+    }
+
+    return 0
+}

@@ -1,148 +1,132 @@
-; mathieeedoubbas library stubs for Novus
-; Auto-generated from mathieeedoubbas_lib.fd
+; Generated from SFD file by Novus SFD Parser
+; Library: mathieeedoubbas.library
+; Base: _MathIeeeDoubBasBase
+; Each function is in its own section for dead code elimination
 
-	xref	_MathIeeeDoubBasBase	; Provided by startup.o + -lamiga
+	xref	_MathIeeeDoubBasBase
 
-	section	"CODE",code
+	section	_IEEEDPFix_stub,code
 
-; IEEEDPFix(parm)
+; LONG IEEEDPFix(DOUBLE parm)
 	xdef	_IEEEDPFix
 _IEEEDPFix:
-	movem.l	d0-d1/a6,-(sp)
-	move.l	12(sp),d0	; parm
-	move.l	16(sp),d1	; reg1
-	move.l	_MathIeeeDoubBasBase,a6
-	jsr	-30(a6)	; IEEEDPFix()
-	movem.l	(sp)+,d0-d1/a6
+	move.l	4(sp),d0-d1
+	movea.l	_MathIeeeDoubBasBase,a6
+	jsr	-30(a6)
 	rts
 
-; IEEEDPFlt(integer)
+	section	_IEEEDPFlt_stub,code
+
+; DOUBLE IEEEDPFlt(LONG integer)
 	xdef	_IEEEDPFlt
 _IEEEDPFlt:
-	movem.l	d0/a6,-(sp)
-	move.l	12(sp),d0	; integer
-	move.l	_MathIeeeDoubBasBase,a6
-	jsr	-36(a6)	; IEEEDPFlt()
-	movem.l	(sp)+,d0/a6
+	move.l	4(sp),d0
+	movea.l	_MathIeeeDoubBasBase,a6
+	jsr	-36(a6)
 	rts
 
-; IEEEDPCmp(leftParm, rightParm)
+	section	_IEEEDPCmp_stub,code
+
+; LONG IEEEDPCmp(DOUBLE leftParm, DOUBLE rightParm)
 	xdef	_IEEEDPCmp
 _IEEEDPCmp:
-	movem.l	d0-d3/a6,-(sp)
-	move.l	12(sp),d0	; leftParm
-	move.l	16(sp),d1	; rightParm
-	move.l	20(sp),d2	; reg2
-	move.l	24(sp),d3	; reg3
-	move.l	_MathIeeeDoubBasBase,a6
-	jsr	-42(a6)	; IEEEDPCmp()
-	movem.l	(sp)+,d0-d3/a6
+	move.l	4(sp),d0-d1
+	move.l	8(sp),d2-d3
+	movea.l	_MathIeeeDoubBasBase,a6
+	jsr	-42(a6)
 	rts
 
-; IEEEDPTst(parm)
+	section	_IEEEDPTst_stub,code
+
+; LONG IEEEDPTst(DOUBLE parm)
 	xdef	_IEEEDPTst
 _IEEEDPTst:
-	movem.l	d0-d1/a6,-(sp)
-	move.l	12(sp),d0	; parm
-	move.l	16(sp),d1	; reg1
-	move.l	_MathIeeeDoubBasBase,a6
-	jsr	-48(a6)	; IEEEDPTst()
-	movem.l	(sp)+,d0-d1/a6
+	move.l	4(sp),d0-d1
+	movea.l	_MathIeeeDoubBasBase,a6
+	jsr	-48(a6)
 	rts
 
-; IEEEDPAbs(parm)
+	section	_IEEEDPAbs_stub,code
+
+; DOUBLE IEEEDPAbs(DOUBLE parm)
 	xdef	_IEEEDPAbs
 _IEEEDPAbs:
-	movem.l	d0-d1/a6,-(sp)
-	move.l	12(sp),d0	; parm
-	move.l	16(sp),d1	; reg1
-	move.l	_MathIeeeDoubBasBase,a6
-	jsr	-54(a6)	; IEEEDPAbs()
-	movem.l	(sp)+,d0-d1/a6
+	move.l	4(sp),d0-d1
+	movea.l	_MathIeeeDoubBasBase,a6
+	jsr	-54(a6)
 	rts
 
-; IEEEDPNeg(parm)
+	section	_IEEEDPNeg_stub,code
+
+; DOUBLE IEEEDPNeg(DOUBLE parm)
 	xdef	_IEEEDPNeg
 _IEEEDPNeg:
-	movem.l	d0-d1/a6,-(sp)
-	move.l	12(sp),d0	; parm
-	move.l	16(sp),d1	; reg1
-	move.l	_MathIeeeDoubBasBase,a6
-	jsr	-60(a6)	; IEEEDPNeg()
-	movem.l	(sp)+,d0-d1/a6
+	move.l	4(sp),d0-d1
+	movea.l	_MathIeeeDoubBasBase,a6
+	jsr	-60(a6)
 	rts
 
-; IEEEDPAdd(leftParm, rightParm)
+	section	_IEEEDPAdd_stub,code
+
+; DOUBLE IEEEDPAdd(DOUBLE leftParm, DOUBLE rightParm)
 	xdef	_IEEEDPAdd
 _IEEEDPAdd:
-	movem.l	d0-d3/a6,-(sp)
-	move.l	12(sp),d0	; leftParm
-	move.l	16(sp),d1	; rightParm
-	move.l	20(sp),d2	; reg2
-	move.l	24(sp),d3	; reg3
-	move.l	_MathIeeeDoubBasBase,a6
-	jsr	-66(a6)	; IEEEDPAdd()
-	movem.l	(sp)+,d0-d3/a6
+	move.l	4(sp),d0-d1
+	move.l	8(sp),d2-d3
+	movea.l	_MathIeeeDoubBasBase,a6
+	jsr	-66(a6)
 	rts
 
-; IEEEDPSub(leftParm, rightParm)
+	section	_IEEEDPSub_stub,code
+
+; DOUBLE IEEEDPSub(DOUBLE leftParm, DOUBLE rightParm)
 	xdef	_IEEEDPSub
 _IEEEDPSub:
-	movem.l	d0-d3/a6,-(sp)
-	move.l	12(sp),d0	; leftParm
-	move.l	16(sp),d1	; rightParm
-	move.l	20(sp),d2	; reg2
-	move.l	24(sp),d3	; reg3
-	move.l	_MathIeeeDoubBasBase,a6
-	jsr	-72(a6)	; IEEEDPSub()
-	movem.l	(sp)+,d0-d3/a6
+	move.l	4(sp),d0-d1
+	move.l	8(sp),d2-d3
+	movea.l	_MathIeeeDoubBasBase,a6
+	jsr	-72(a6)
 	rts
 
-; IEEEDPMul(factor1, factor2)
+	section	_IEEEDPMul_stub,code
+
+; DOUBLE IEEEDPMul(DOUBLE factor1, DOUBLE factor2)
 	xdef	_IEEEDPMul
 _IEEEDPMul:
-	movem.l	d0-d3/a6,-(sp)
-	move.l	12(sp),d0	; factor1
-	move.l	16(sp),d1	; factor2
-	move.l	20(sp),d2	; reg2
-	move.l	24(sp),d3	; reg3
-	move.l	_MathIeeeDoubBasBase,a6
-	jsr	-78(a6)	; IEEEDPMul()
-	movem.l	(sp)+,d0-d3/a6
+	move.l	4(sp),d0-d1
+	move.l	8(sp),d2-d3
+	movea.l	_MathIeeeDoubBasBase,a6
+	jsr	-78(a6)
 	rts
 
-; IEEEDPDiv(dividend, divisor)
+	section	_IEEEDPDiv_stub,code
+
+; DOUBLE IEEEDPDiv(DOUBLE dividend, DOUBLE divisor)
 	xdef	_IEEEDPDiv
 _IEEEDPDiv:
-	movem.l	d0-d3/a6,-(sp)
-	move.l	12(sp),d0	; dividend
-	move.l	16(sp),d1	; divisor
-	move.l	20(sp),d2	; reg2
-	move.l	24(sp),d3	; reg3
-	move.l	_MathIeeeDoubBasBase,a6
-	jsr	-84(a6)	; IEEEDPDiv()
-	movem.l	(sp)+,d0-d3/a6
+	move.l	4(sp),d0-d1
+	move.l	8(sp),d2-d3
+	movea.l	_MathIeeeDoubBasBase,a6
+	jsr	-84(a6)
 	rts
 
-; IEEEDPFloor(parm)
+	section	_IEEEDPFloor_stub,code
+
+; DOUBLE IEEEDPFloor(DOUBLE parm)
 	xdef	_IEEEDPFloor
 _IEEEDPFloor:
-	movem.l	d0-d1/a6,-(sp)
-	move.l	12(sp),d0	; parm
-	move.l	16(sp),d1	; reg1
-	move.l	_MathIeeeDoubBasBase,a6
-	jsr	-90(a6)	; IEEEDPFloor()
-	movem.l	(sp)+,d0-d1/a6
+	move.l	4(sp),d0-d1
+	movea.l	_MathIeeeDoubBasBase,a6
+	jsr	-90(a6)
 	rts
 
-; IEEEDPCeil(parm)
+	section	_IEEEDPCeil_stub,code
+
+; DOUBLE IEEEDPCeil(DOUBLE parm)
 	xdef	_IEEEDPCeil
 _IEEEDPCeil:
-	movem.l	d0-d1/a6,-(sp)
-	move.l	12(sp),d0	; parm
-	move.l	16(sp),d1	; reg1
-	move.l	_MathIeeeDoubBasBase,a6
-	jsr	-96(a6)	; IEEEDPCeil()
-	movem.l	(sp)+,d0-d1/a6
+	move.l	4(sp),d0-d1
+	movea.l	_MathIeeeDoubBasBase,a6
+	jsr	-96(a6)
 	rts
 

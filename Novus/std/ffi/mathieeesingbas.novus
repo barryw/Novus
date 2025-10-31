@@ -1,25 +1,41 @@
-// mathieeesingbas.library FFI Bindings
-// Namespace: std::ffi::mathieeesingbas
-// Raw 1:1 mappings to mathieeesingbas.library
+// Generated from SFD file by Novus SFD Parser
+// Library: mathieeesingbas.library
+// Base: _MathIeeeSingBasBase
 //
-// Auto-generated from NDK 3.9
-// - Functions from mathieeesingbas_lib.fd
-// - Structs from include/mathieeesingbas/*.h
-// - Constants from include/mathieeesingbas/*.h
+// NOTE: Import specific types from std::amiga_structs as needed
+// Example: from std::amiga_structs import Task, Node, List
 
 // ============================================================================
-// Functions
+// Constants
 // ============================================================================
 
-extern fn IEEESPFix(parm: i32) -> i32
-extern fn IEEESPFlt(integer: i32) -> i32
-extern fn IEEESPCmp(leftParm: i32, rightParm: i32) -> i32
-extern fn IEEESPTst(parm: i32) -> i32
-extern fn IEEESPAbs(parm: i32) -> i32
-extern fn IEEESPNeg(parm: i32) -> i32
-extern fn IEEESPAdd(leftParm: i32, rightParm: i32) -> i32
-extern fn IEEESPSub(leftParm: i32, rightParm: i32) -> i32
-extern fn IEEESPMul(leftParm: i32, rightParm: i32) -> i32
-extern fn IEEESPDiv(dividend: i32, divisor: i32) -> i32
-extern fn IEEESPFloor(parm: i32) -> i32
-extern fn IEEESPCeil(parm: i32) -> i32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+extern pub fn IEEESPFix(parm: *u8 /* FLOAT */) -> i32
+extern pub fn IEEESPFlt(integer: i32) -> *u8 /* FLOAT */
+extern pub fn IEEESPCmp(leftParm: *u8 /* FLOAT */, rightParm: *u8 /* FLOAT */) -> i32
+extern pub fn IEEESPTst(parm: *u8 /* FLOAT */) -> i32
+extern pub fn IEEESPAbs(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
+extern pub fn IEEESPNeg(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
+extern pub fn IEEESPAdd(leftParm: *u8 /* FLOAT */, rightParm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
+extern pub fn IEEESPSub(leftParm: *u8 /* FLOAT */, rightParm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
+extern pub fn IEEESPMul(leftParm: *u8 /* FLOAT */, rightParm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
+extern pub fn IEEESPDiv(dividend: *u8 /* FLOAT */, divisor: *u8 /* FLOAT */) -> *u8 /* FLOAT */
+extern pub fn IEEESPFloor(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
+extern pub fn IEEESPCeil(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */

@@ -3,6 +3,7 @@ using Antlr4.Runtime.Misc;
 using Antlr4.Runtime.Tree;
 using Novus.IR;
 using Novus.Parser;
+using Novus.SemanticAnalysis;
 
 namespace Novus.Frontend;
 
@@ -594,8 +595,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         // Track this module for compilation only if it has real implementations
         // (avoid duplicates)
-        // Exception: Never compile 'core' as a dependency - it's auto-imported everywhere
-        if (hasImplementation && !_importedModulePaths.Contains(modulePath) && moduleNamespace != "std::core")
+        if (hasImplementation && !_importedModulePaths.Contains(modulePath))
         {
             _importedModulePaths.Add(modulePath);
         }
@@ -1387,7 +1387,11 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
         }
 
-        // Parse struct fields
+        // Register placeholder struct FIRST to allow self-referential types
+        var placeholderStruct = new IrStructType(name, new List<IrStructField>(), genericParams);
+        _structs[name] = placeholderStruct;
+
+        // Now parse struct fields (can now reference the struct being defined)
         var fields = new List<IrStructField>();
         foreach (var fieldCtx in context.structField())
         {
@@ -1402,6 +1406,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             _genericParams.Remove(paramName);
         }
 
+        // Replace placeholder with complete struct type
         var structType = new IrStructType(name, fields, genericParams);
 
         // Force offset calculation by accessing SizeInBytes
@@ -1498,14 +1503,21 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     public override object? VisitReturnStatement([NotNull] NovusParser.ReturnStatementContext context)
     {
-        // Set expected type for bidirectional type checking
-        var savedExpectedType = _expectedType;
-        _expectedType = _currentFunction?.ReturnType;
+        // Check if there's an expression (bare return for void functions)
+        var exprContext = context.expression();
 
-        var value = (IrValue?)Visit(context.expression());
+        IrValue? value = null;
+        if (exprContext != null)
+        {
+            // Set expected type for bidirectional type checking
+            var savedExpectedType = _expectedType;
+            _expectedType = _currentFunction?.ReturnType;
 
-        // Restore previous expected type
-        _expectedType = savedExpectedType;
+            value = (IrValue?)Visit(exprContext);
+
+            // Restore previous expected type
+            _expectedType = savedExpectedType;
+        }
 
         _currentBlock!.AddInstruction(new IrReturn(value));
         return null;
@@ -1994,26 +2006,47 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     public override object? VisitIfStatement([NotNull] NovusParser.IfStatementContext context)
     {
-        var condition = (IrValue?)Visit(context.expression());
-
         var thenLabel = $"if_then_{_labelCounter}";
         var elseLabel = $"if_else_{_labelCounter}";
         var endLabel = $"if_end_{_labelCounter}";
         _labelCounter++;
 
-        // Branch based on condition
         var hasElse = context.GetChild(4) != null; // Check if 'else' keyword exists
         var falseTarget = hasElse ? elseLabel : endLabel;
-        _currentBlock!.AddInstruction(new IrConditionalBranch(condition!, thenLabel, falseTarget));
+
+        // Visit condition - this will emit the condition check and conditional branch
+        // Pass labels to the condition visitor via a tuple
+        _ifLabels = (thenLabel, falseTarget);
+        Visit(context.ifCondition());
+        _ifLabels = null;
 
         // Then block
         _currentBlock!.AddInstruction(new IrLabel(thenLabel));
+
+        // If we have a pending if let/var variable, declare it now
+        if (_pendingIfLetVariable != null)
+        {
+            var (varName, tempName, type, isMutable) = _pendingIfLetVariable.Value;
+
+            // Declare the variable and initialize it with the temp
+            var tempVar = new IrVariable(tempName, type);
+            var localVar = new IrLocalVariable(varName, type, isMutable);
+            _currentFunction!.LocalVariables.Add(localVar);
+            _localVariables[varName] = localVar;
+            _currentBlock!.AddInstruction(new IrLocalDecl(varName, type, isMutable, tempVar));
+
+            _pendingIfLetVariable = null;
+        }
+
         Visit(context.block(0));
+
+        // Track whether the then block terminates
+        bool thenBranchTerminates = CurrentBlockHasTerminator();
 
         // Jump to end if there's an else clause (but only if block doesn't already end with return/branch)
         if (hasElse)
         {
-            if (!CurrentBlockHasTerminator())
+            if (!thenBranchTerminates)
             {
                 _currentBlock!.AddInstruction(new IrBranch(endLabel));
             }
@@ -2030,12 +2063,142 @@ public class IrBuilder : NovusBaseVisitor<object?>
             {
                 Visit(context.block(1));
             }
+
+            // Track whether the else block terminates
+            bool elseBranchTerminates = CurrentBlockHasTerminator();
+
+            // Only emit the end label if at least one branch can reach it
+            if (!thenBranchTerminates || !elseBranchTerminates)
+            {
+                _currentBlock!.AddInstruction(new IrLabel(endLabel));
+            }
+        }
+        else
+        {
+            // No else clause - always need the end label for the false path
+            _currentBlock!.AddInstruction(new IrLabel(endLabel));
         }
 
-        // End label
-        _currentBlock!.AddInstruction(new IrLabel(endLabel));
         return null;
     }
+
+    // Helper to pass labels to condition visitors
+    private (string thenLabel, string falseTarget)? _ifLabels;
+
+    public override object? VisitIfConditionExpression([NotNull] NovusParser.IfConditionExpressionContext context)
+    {
+        var condition = (IrValue?)Visit(context.expression());
+        var (thenLabel, falseTarget) = _ifLabels!.Value;
+
+        // Branch based on condition
+        _currentBlock!.AddInstruction(new IrConditionalBranch(condition!, thenLabel, falseTarget));
+        return null;
+    }
+
+    public override object? VisitIfConditionLet([NotNull] NovusParser.IfConditionLetContext context)
+    {
+        // if let variable = expression { ... } else { ... }
+        // Translates to:
+        //   temp = expression
+        //   if temp != 0 goto then_label
+        //   goto else_label
+        // then_label:
+        //   variable = temp
+        //   ... (then block)
+
+        var (thenLabel, falseTarget) = _ifLabels!.Value;
+        var varName = context.IDENTIFIER().GetText();
+        var expression = (IrValue?)Visit(context.expression());
+
+        if (expression == null)
+            throw new Exception($"if let expression returned null");
+
+        // Store expression in a temp
+        var tempName = $"%if_let_{_labelCounter++}";
+        _currentBlock!.AddInstruction(new IrLocalDecl(tempName, expression.Type, true, expression));
+
+        // Check if non-zero
+        IrValue zeroValue;
+        if (expression.Type is IrPointerType)
+        {
+            zeroValue = new IrConstant(0, IrIntType.U32);
+        }
+        else if (expression.Type is IrIntType intType)
+        {
+            zeroValue = new IrConstant(0, intType);
+        }
+        else
+        {
+            throw new Exception($"if let only works with pointers or integers, got {expression.Type.Name}");
+        }
+
+        // Create comparison: temp != 0
+        var resultTemp = $"%t{_tempCounter++}";
+        var tempVar = new IrVariable(tempName, expression.Type);
+        var comparison = new IrBinaryOp(resultTemp, IrBinaryOp.OpKind.Ne, tempVar, zeroValue, IrBoolType.Instance);
+        _currentBlock!.AddInstruction(comparison);
+
+        // Branch: if (comparison) goto then, else goto false
+        var comparisonResult = new IrVariable(resultTemp, IrBoolType.Instance);
+        _currentBlock!.AddInstruction(new IrConditionalBranch(comparisonResult, thenLabel, falseTarget));
+
+        // In the then block, we need to declare the variable with the non-null value
+        // But we can't do it here because we haven't emitted the then label yet
+        // Store it for later
+        _pendingIfLetVariable = (varName, tempName, expression.Type, false); // false = immutable
+
+        return null;
+    }
+
+    public override object? VisitIfConditionVar([NotNull] NovusParser.IfConditionVarContext context)
+    {
+        // if var variable = expression { ... } else { ... }
+        // Same as if let, but variable is mutable
+
+        var (thenLabel, falseTarget) = _ifLabels!.Value;
+        var varName = context.IDENTIFIER().GetText();
+        var expression = (IrValue?)Visit(context.expression());
+
+        if (expression == null)
+            throw new Exception($"if var expression returned null");
+
+        // Store expression in a temp
+        var tempName = $"%if_var_{_labelCounter++}";
+        _currentBlock!.AddInstruction(new IrLocalDecl(tempName, expression.Type, true, expression));
+
+        // Check if non-zero
+        IrValue zeroValue;
+        if (expression.Type is IrPointerType)
+        {
+            zeroValue = new IrConstant(0, IrIntType.U32);
+        }
+        else if (expression.Type is IrIntType intType)
+        {
+            zeroValue = new IrConstant(0, intType);
+        }
+        else
+        {
+            throw new Exception($"if var only works with pointers or integers, got {expression.Type.Name}");
+        }
+
+        // Create comparison: temp != 0
+        var resultTemp = $"%t{_tempCounter++}";
+        var tempVar = new IrVariable(tempName, expression.Type);
+        var comparison = new IrBinaryOp(resultTemp, IrBinaryOp.OpKind.Ne, tempVar, zeroValue, IrBoolType.Instance);
+        _currentBlock!.AddInstruction(comparison);
+
+        // Branch: if (comparison) goto then, else goto false
+        var comparisonResult = new IrVariable(resultTemp, IrBoolType.Instance);
+        _currentBlock!.AddInstruction(new IrConditionalBranch(comparisonResult, thenLabel, falseTarget));
+
+        // Store for declaring in then block
+        _pendingIfLetVariable = (varName, tempName, expression.Type, true); // true = mutable
+
+        return null;
+    }
+
+    // Helper to declare the if let/var variable in the then block
+    private (string varName, string tempName, IrType type, bool isMutable)? _pendingIfLetVariable;
 
     public override object? VisitWhileStatement([NotNull] NovusParser.WhileStatementContext context)
     {
@@ -2179,7 +2342,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
         return null;
     }
 
-    public override object? VisitDeferStatement([NotNull] NovusParser.DeferStatementContext context)
+    // Handle: defer { statements }
+    public override object? VisitDeferBlock([NotNull] NovusParser.DeferBlockContext context)
     {
         // Create a new basic block for the deferred code (don't add to function's basic blocks)
         var deferLabel = $"defer_{_labelCounter++}";
@@ -2194,6 +2358,32 @@ public class IrBuilder : NovusBaseVisitor<object?>
         {
             Visit(statement);
         }
+
+        // Restore current block
+        _currentBlock = savedBlock;
+
+        // Add the defer block to the function's deferred blocks list (LIFO)
+        _currentFunction!.DeferredBlocks.Add(deferBlock);
+
+        // Add defer instruction to current block (marker only)
+        _currentBlock!.AddInstruction(new IrDefer(deferBlock));
+
+        return null;
+    }
+
+    // Handle: defer => expression
+    public override object? VisitDeferExpression([NotNull] NovusParser.DeferExpressionContext context)
+    {
+        // Create a new basic block for the deferred code
+        var deferLabel = $"defer_{_labelCounter++}";
+        var deferBlock = new IrBasicBlock(deferLabel);
+
+        // Save current block and switch to defer block
+        var savedBlock = _currentBlock;
+        _currentBlock = deferBlock;
+
+        // Visit the expression (typically a function call like FreeMem(mem))
+        Visit(context.expression());
 
         // Restore current block
         _currentBlock = savedBlock;
@@ -2855,10 +3045,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
             throw new Exception($"Cannot call methods on type: {receiverType.Name}");
         }
 
-        // Build the mangled function name: Type_method
-        // Note: We use underscore instead of :: because instantiated generic methods
-        // are created with underscore (Vec_is_empty, not Vec::is_empty)
-        var mangledMethodName = $"{typeName}_{methodName}";
+        // Build the mangled function name: Type::method
+        // Note: For monomorphized generic types, we'll try Type::method first,
+        // then fall back to instantiation if needed
+        var mangledMethodName = $"{typeName}::{methodName}";
 
         // Look up the method
         var method = _module.Functions.FirstOrDefault(f => f.Name == mangledMethodName);
@@ -3632,7 +3822,17 @@ public class IrBuilder : NovusBaseVisitor<object?>
                         // For unit variants (no associated data), create the enum value directly
                         if (variant.AssociatedData.Count == 0)
                         {
-                            return new IrEnumValue(enumType, memberName, variant.Tag, new List<IrValue>());
+                            // Use expected type if it's a more specific (concrete) version of this enum
+                            var concreteEnumType = enumType;
+                            if (_expectedType is IrEnumType expectedEnum &&
+                                expectedEnum.EnumName == enumType.EnumName &&
+                                expectedEnum.CacheKey != null)
+                            {
+                                // Use the concrete type from context (e.g., Option<MemoryBlock> instead of Option<T>)
+                                concreteEnumType = expectedEnum;
+                            }
+
+                            return new IrEnumValue(concreteEnumType, memberName, variant.Tag, new List<IrValue>());
                         }
 
                         // For variants with data, return a constructor for use in call expressions
@@ -3929,7 +4129,17 @@ public class IrBuilder : NovusBaseVisitor<object?>
             // For unit variants (no associated data), create the enum value directly
             if (variant.AssociatedData.Count == 0)
             {
-                return new IrEnumValue(enumType, memberName, variant.Tag, new List<IrValue>());
+                // Use expected type if it's a more specific (concrete) version of this enum
+                var concreteEnumType = enumType;
+                if (_expectedType is IrEnumType expectedEnum &&
+                    expectedEnum.EnumName == enumType.EnumName &&
+                    expectedEnum.CacheKey != null)
+                {
+                    // Use the concrete type from context (e.g., Option<MemoryBlock> instead of Option<T>)
+                    concreteEnumType = expectedEnum;
+                }
+
+                return new IrEnumValue(concreteEnumType, memberName, variant.Tag, new List<IrValue>());
             }
 
             // Return enum constructor for variants with data
@@ -4049,14 +4259,20 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
         }
 
+        // Track whether any arm can reach match_end (doesn't terminate)
+        bool anyArmReachesEnd = false;
+
         // Generate comparisons and branches for each arm
         for (int i = 0; i < context.matchArm().Length; i++)
         {
             var armCtx = context.matchArm()[i];
             var pattern = armCtx.pattern();
 
-            // Add label for this check
-            _currentBlock!.AddInstruction(new IrLabel(checkLabels[i]));
+            // Add label for this check (skip first one - execution falls through to it)
+            if (i > 0)
+            {
+                _currentBlock!.AddInstruction(new IrLabel(checkLabels[i]));
+            }
 
             // Check if this is a wildcard pattern
             if (pattern is NovusParser.WildcardPatternContext)
@@ -4197,11 +4413,43 @@ public class IrBuilder : NovusBaseVisitor<object?>
             if (!CurrentBlockHasTerminator())
             {
                 _currentBlock!.AddInstruction(new IrBranch(matchEndLabel));
+                anyArmReachesEnd = true;  // This arm can reach match_end
             }
         }
 
         // End label
         _currentBlock!.AddInstruction(new IrLabel(matchEndLabel));
+
+        // If no arms can reach match_end (all terminated), emit panic for invalid enum tags
+        // This is unreachable in correct programs but provides safety against corrupted memory
+        if (!anyArmReachesEnd)
+        {
+            // Call panic with an error message
+            // For now, mark the block as terminated with a return
+            // If function returns a value, emit a dummy return to avoid C warnings
+            // TODO: Once panic() is implemented, use that instead
+            if (_currentFunction?.ReturnType is not null and not IrVoidType)
+            {
+                // Non-void function: return zero as unreachable fallback
+                var returnType = _currentFunction.ReturnType;
+                IrValue defaultValue;
+                if (returnType is IrIntType intType)
+                {
+                    defaultValue = new IrConstant(0, intType);
+                }
+                else
+                {
+                    // For other types, use zero constant
+                    defaultValue = new IrConstant(0, returnType);
+                }
+                _currentBlock!.AddInstruction(new IrReturn(defaultValue));
+            }
+            else
+            {
+                // Void function: bare return is fine
+                _currentBlock!.AddInstruction(new IrReturn(null));
+            }
+        }
 
         // Return match result if we computed one
         if (matchResultType != null && matchResultVarName != null)
@@ -4495,10 +4743,23 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     private IrType ParseArrayType(NovusParser.ArrayTypeContext context)
     {
-        var sizeText = context.INTEGER_LITERAL().GetText();
-        var size = int.Parse(sizeText);
+        // Evaluate the size expression as a compile-time constant
+        var sizeExpr = context.expression();
+        var evaluator = new ConstantExpressionEvaluator(
+            _constants.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.Value),
+            errorMsg => {
+                // Error handling - will be caught by semantic analyzer
+            }
+        );
+
+        var sizeValue = evaluator.Visit(sizeExpr);
+        if (!sizeValue.HasValue)
+        {
+            sizeValue = 0; // fallback - error will be reported by semantic analyzer
+        }
+
         var elementType = ParseType(context.type());
-        return _typeInterner.GetArrayType(elementType, size);
+        return _typeInterner.GetArrayType(elementType, sizeValue.Value);
     }
 
     private IrType ParseFunctionPointerType(NovusParser.FunctionPointerTypeContext context)

@@ -146,18 +146,26 @@ public class CCodeGenerator
         }
 
         // Extern declarations for functions this function calls
-        var calledFunctions = GetCalledFunctions(function);
-        if (calledFunctions.Count > 0)
+        var calledFunctionsWithSigs = GetCalledFunctionsWithSignatures(function);
+        if (calledFunctionsWithSigs.Count > 0)
         {
             sb.AppendLine("// External function declarations");
-            foreach (var calledFunc in calledFunctions.OrderBy(f => f))
+            foreach (var (funcName, (returnType, arguments)) in calledFunctionsWithSigs.OrderBy(kv => kv.Key))
             {
-                var funcObj = _module.Functions.FirstOrDefault(f => f.Name == calledFunc);
+                var funcObj = _module.Functions.FirstOrDefault(f => f.Name == funcName);
                 if (funcObj != null)
                 {
-                    var returnType = GetCType(funcObj.ReturnType);
+                    var returnTypeStr = GetCType(funcObj.ReturnType);
                     var parameters = GetParameterList(funcObj);
-                    sb.AppendLine($"extern {returnType} {MangleName(calledFunc)}({parameters});");
+                    sb.AppendLine($"extern {returnTypeStr} {MangleName(funcName)}({parameters});");
+                }
+                else
+                {
+                    // Function not in current module - extract signature from call site
+                    var returnTypeStr = GetCType(returnType);
+                    var paramTypes = arguments.Select(arg => GetCType(arg.Type)).ToList();
+                    var paramList = paramTypes.Count > 0 ? string.Join(", ", paramTypes) : "void";
+                    sb.AppendLine($"extern {returnTypeStr} {MangleName(funcName)}({paramList});");
                 }
             }
             sb.AppendLine();
@@ -212,12 +220,19 @@ public class CCodeGenerator
             }
         }
 
-        // Emit deferred cleanup at end of function
-        var beforeCleanupLength = _output.Length;
-        EmitDeferredCleanup(function, 1);
-        var cleanupEmitted = _output.ToString().Substring(beforeCleanupLength);
-        targetBuilder.Append(cleanupEmitted);
-        _output.Length = beforeCleanupLength;
+        // Emit deferred cleanup at end of function ONLY if the last instruction is not a return
+        var lastBlock = function.BasicBlocks.LastOrDefault();
+        var lastInstruction = lastBlock?.Instructions.LastOrDefault();
+        var endsWithReturn = lastInstruction is IrReturn;
+
+        if (!endsWithReturn)
+        {
+            var beforeCleanupLength = _output.Length;
+            EmitDeferredCleanup(function, 1);
+            var cleanupEmitted = _output.ToString().Substring(beforeCleanupLength);
+            targetBuilder.Append(cleanupEmitted);
+            _output.Length = beforeCleanupLength;
+        }
 
         targetBuilder.AppendLine("}");
 
@@ -305,6 +320,41 @@ public class CCodeGenerator
 
         sb.AppendLine($"}} {structName};");
         sb.AppendLine();
+    }
+
+    /// <summary>
+    /// Get list of functions called by this function along with their signatures
+    /// </summary>
+    private Dictionary<string, (IrType ReturnType, List<IrValue> Arguments)> GetCalledFunctionsWithSignatures(IrFunction function)
+    {
+        var called = new Dictionary<string, (IrType ReturnType, List<IrValue> Arguments)>();
+
+        foreach (var block in function.BasicBlocks)
+        {
+            foreach (var instruction in block.Instructions)
+            {
+                if (instruction is IrCall call)
+                {
+                    if (!called.ContainsKey(call.FunctionName))
+                    {
+                        called[call.FunctionName] = (call.ReturnType, call.Arguments);
+                    }
+                }
+                else if (instruction is IrIndirectCall indirectCall)
+                {
+                    // Extract function name from function pointer
+                    if (indirectCall.FunctionPointer is IrFunctionAddress funcAddr)
+                    {
+                        if (!called.ContainsKey(funcAddr.FunctionName))
+                        {
+                            called[funcAddr.FunctionName] = (indirectCall.ReturnType, indirectCall.Arguments);
+                        }
+                    }
+                }
+            }
+        }
+
+        return called;
     }
 
     /// <summary>
@@ -827,15 +877,9 @@ public class CCodeGenerator
 
     private void EmitForwardDeclarations(HashSet<string> reachableFunctions)
     {
-        // Always emit DOS initialization function declaration if we have a main function
-        // DOS might be used transitively through other modules
-        bool hasMain = _module.Functions.Any(f => f.Name == "main");
-        if (hasMain)
-        {
-            _output.AppendLine("// DOS library initialization");
-            _output.AppendLine("extern void __dos_init(void);");
-            _output.AppendLine();
-        }
+        // DOS initialization is no longer unconditionally added
+        // DOS library will be initialized automatically when DOS functions are first used
+        // via the dos_init.o stub that gets linked only when DOS functions are detected
 
         // Emit extern declarations for extern functions (from FFI) - but only if they're reachable
         var externFunctions = _module.Functions
@@ -868,26 +912,53 @@ public class CCodeGenerator
             _module.Functions.Where(f => f.IsExtern).Select(f => f.Name)
         );
 
+        // Helper to scan a block for cross-module calls (handles nested defer blocks)
+        void ScanBlockForCalls(IrBasicBlock block)
+        {
+            foreach (var instruction in block.Instructions)
+            {
+                if (instruction is IrCall call)
+                {
+                    // If this function is not defined in current module, not an extern, and not already tracked
+                    if (!definedFunctionNames.Contains(call.FunctionName) &&
+                        !externFunctionNames.Contains(call.FunctionName) &&
+                        !crossModuleCalls.ContainsKey(call.FunctionName))
+                    {
+                        // Extract parameter types from call arguments
+                        var paramTypes = call.Arguments.Select(arg => arg.Type).ToList();
+                        crossModuleCalls[call.FunctionName] = (call.ReturnType, paramTypes);
+                    }
+                }
+                else if (instruction is IrIndirectCall indirectCall)
+                {
+                    // Extract function name from function pointer
+                    if (indirectCall.FunctionPointer is IrFunctionAddress funcAddr)
+                    {
+                        // If this function is not defined in current module, not an extern, and not already tracked
+                        if (!definedFunctionNames.Contains(funcAddr.FunctionName) &&
+                            !externFunctionNames.Contains(funcAddr.FunctionName) &&
+                            !crossModuleCalls.ContainsKey(funcAddr.FunctionName))
+                        {
+                            // Extract parameter types from call arguments
+                            var paramTypes = indirectCall.Arguments.Select(arg => arg.Type).ToList();
+                            crossModuleCalls[funcAddr.FunctionName] = (indirectCall.ReturnType, paramTypes);
+                        }
+                    }
+                }
+                else if (instruction is IrDefer defer)
+                {
+                    // Recursively scan the deferred block
+                    ScanBlockForCalls(defer.DeferredBlock);
+                }
+            }
+        }
+
         // Only scan reachable functions for cross-module calls
         foreach (var function in _module.Functions.Where(f => f.BasicBlocks.Count > 0 && reachableFunctions.Contains(f.Name)))
         {
             foreach (var block in function.BasicBlocks)
             {
-                foreach (var instruction in block.Instructions)
-                {
-                    if (instruction is IrCall call)
-                    {
-                        // If this function is not defined in current module, not an extern, and not already tracked
-                        if (!definedFunctionNames.Contains(call.FunctionName) &&
-                            !externFunctionNames.Contains(call.FunctionName) &&
-                            !crossModuleCalls.ContainsKey(call.FunctionName))
-                        {
-                            // Extract parameter types from call arguments
-                            var paramTypes = call.Arguments.Select(arg => arg.Type).ToList();
-                            crossModuleCalls[call.FunctionName] = (call.ReturnType, paramTypes);
-                        }
-                    }
-                }
+                ScanBlockForCalls(block);
             }
         }
 
@@ -968,14 +1039,6 @@ public class CCodeGenerator
 
         _output.AppendLine($"{returnType} {funcName}({parameters}) {{");
 
-        // If this is main, always initialize DOS library
-        // This is safe even if DOS isn't used (it's idempotent)
-        // We do this because DOS might be used transitively through other modules
-        if (funcName == "main")
-        {
-            _output.AppendLine("    __dos_init();");
-        }
-
         // Emit function body
         foreach (var block in function.BasicBlocks)
         {
@@ -989,8 +1052,16 @@ public class CCodeGenerator
             _inMatchArmScope = false;
         }
 
-        // Emit deferred cleanup at end of function (if no explicit return)
-        EmitDeferredCleanup(function, 1);
+        // Emit deferred cleanup at end of function ONLY if the last instruction is not a return
+        // (if it is a return, cleanup was already emitted before the return statement)
+        var lastBlock = function.BasicBlocks.LastOrDefault();
+        var lastInstruction = lastBlock?.Instructions.LastOrDefault();
+        var endsWithReturn = lastInstruction is IrReturn;
+
+        if (!endsWithReturn)
+        {
+            EmitDeferredCleanup(function, 1);
+        }
 
         _output.AppendLine("}");
 
@@ -1060,6 +1131,14 @@ public class CCodeGenerator
 
             case IrMemberAccess memberAccess:
                 EmitMemberAccess(memberAccess);
+                break;
+
+            case IrIndexAccess indexAccess:
+                EmitIndexAccess(indexAccess);
+                break;
+
+            case IrIndexStore indexStore:
+                EmitIndexStore(indexStore);
                 break;
 
             case IrDefer defer:
@@ -1383,6 +1462,25 @@ public class CCodeGenerator
         var fieldType = GetCType(memberAccess.FieldType);
 
         _output.AppendLine($"    {fieldType} {resultName} = {structValue}.{memberAccess.FieldName};");
+    }
+
+    private void EmitIndexAccess(IrIndexAccess indexAccess)
+    {
+        var arrayValue = EmitValue(indexAccess.Array);
+        var indexValue = EmitValue(indexAccess.Index);
+        var resultName = SanitizeVariableName(indexAccess.ResultName);
+        var elementType = GetCType(indexAccess.ElementType);
+
+        _output.AppendLine($"    {elementType} {resultName} = {arrayValue}[{indexValue}];");
+    }
+
+    private void EmitIndexStore(IrIndexStore indexStore)
+    {
+        var arrayValue = EmitValue(indexStore.Array);
+        var indexValue = EmitValue(indexStore.Index);
+        var storeValue = EmitValue(indexStore.Value);
+
+        _output.AppendLine($"    {arrayValue}[{indexValue}] = {storeValue};");
     }
 
     private string EmitValue(IrValue value)

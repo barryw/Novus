@@ -124,12 +124,12 @@ public class VbccToolchain
             args.Add("-lvc");
         }
 
-        // Add standard Amiga libraries
+        // Add standard Amiga libraries path (but don't link -lamiga)
+        // We provide our own library base storage via exec_base.o and dos_base.o
         var libPath = Path.Combine(_ndkPath, "lib");
         if (Directory.Exists(libPath))
         {
             args.Add($"-L{libPath}");
-            args.Add("-lamiga");  // Link with amiga.lib (provides _DOSBase, etc.)
         }
 
         // Don't print here - caller shows final success message
@@ -248,21 +248,24 @@ public class VbccToolchain
         // Add main program object file
         objFiles.Add(objFile);
 
-        // Assemble library_bases.o (required for _SysBase, _DOSBase)
-        var libBasesSource = Path.Combine(compilerDir, "stubs", "library_bases.s");
-        if (File.Exists(libBasesSource))
+        // Assemble exec_base.o (required for _SysBase - always needed)
+        var execBaseSource = Path.Combine(compilerDir, "stubs", "exec_base.s");
+        if (File.Exists(execBaseSource))
         {
-            var libBasesObj = Path.Combine(outputPath, "library_bases.o");
-            if (!await Assemble(libBasesSource, libBasesObj, assemblyCpu, false))
+            var execBaseObj = Path.Combine(outputPath, "exec_base.o");
+            if (!await Assemble(execBaseSource, execBaseObj, assemblyCpu, false))
             {
-                Console.WriteLine("library_bases assembly failed");
+                Console.WriteLine("exec_base assembly failed");
                 return false;
             }
-            objFiles.Add(libBasesObj);
+            objFiles.Add(execBaseObj);
         }
 
         // Detect which library stubs are needed and assemble them
+        Console.WriteLine("\n=== DEBUG: CompileToExecutable - Detecting libraries ===");
+        Console.WriteLine($"Scanning main assembly source for library references...");
         var requiredLibraries = DetectRequiredLibraries(asmSource);
+        Console.WriteLine($"Required libraries: {string.Join(", ", requiredLibraries)}");
 
         foreach (var library in requiredLibraries)
         {
@@ -280,9 +283,25 @@ public class VbccToolchain
 
                 objFiles.Add(stubsObj);
 
-                // If using DOS library, also include dos_init.o for automatic DOSBase initialization
+                // If using DOS library, also include dos_base.o and dos_init.o
                 if (library == "dos")
                 {
+                    // Add dos_base.o (provides _DOSBase storage)
+                    var dosBaseSource = Path.Combine(compilerDir, "stubs", "dos_base.s");
+                    if (File.Exists(dosBaseSource))
+                    {
+                        var dosBaseObj = Path.Combine(outputPath, "dos_base.o");
+
+                        if (!await Assemble(dosBaseSource, dosBaseObj, assemblyCpu, false))
+                        {
+                            Console.WriteLine("dos_base assembly failed");
+                            return false;
+                        }
+
+                        objFiles.Add(dosBaseObj);
+                    }
+
+                    // Add dos_init.o (automatic DOSBase initialization)
                     var dosInitSource = Path.Combine(compilerDir, "stubs", "dos_init.s");
                     if (File.Exists(dosInitSource))
                     {
@@ -359,17 +378,17 @@ public class VbccToolchain
         }
         objFiles.Add(mainObjFile);
 
-        // Assemble library_bases.o (required for _SysBase, _DOSBase)
-        var libBasesSource = Path.Combine(compilerDir, "stubs", "library_bases.s");
-        if (File.Exists(libBasesSource))
+        // Assemble exec_base.o (required for _SysBase - always needed)
+        var execBaseSource = Path.Combine(compilerDir, "stubs", "exec_base.s");
+        if (File.Exists(execBaseSource))
         {
-            var libBasesObj = Path.Combine(outputPath, "library_bases.o");
-            if (!await Assemble(libBasesSource, libBasesObj, assemblyCpu, false))
+            var execBaseObj = Path.Combine(outputPath, "exec_base.o");
+            if (!await Assemble(execBaseSource, execBaseObj, assemblyCpu, false))
             {
-                Console.WriteLine("library_bases assembly failed");
+                Console.WriteLine("exec_base assembly failed");
                 return false;
             }
-            objFiles.Add(libBasesObj);
+            objFiles.Add(execBaseObj);
         }
 
         // Extract symbols referenced by the main assembly
@@ -405,7 +424,9 @@ public class VbccToolchain
         }
 
         // Detect which library stubs are needed (scan only linked assemblies)
+        Console.WriteLine("\n=== DEBUG: CompileToExecutableWithDependencies - Detecting libraries ===");
         var linkedAssemblies = new List<string> { mainAsmSource };
+        Console.WriteLine($"Starting with main assembly source ({mainAsmSource.Length} chars)");
 
         // Add only the dependency assemblies that were actually linked
         foreach (var (modulePath, asmSource) in dependencyAssemblies)
@@ -413,19 +434,29 @@ public class VbccToolchain
             var exportedSymbols = ExtractExportedSymbols(asmSource);
             if (exportedSymbols.Any(sym => referencedSymbols.Contains(sym)))
             {
+                Console.WriteLine($"Adding linked dependency: {Path.GetFileNameWithoutExtension(modulePath)} ({asmSource.Length} chars)");
                 linkedAssemblies.Add(asmSource);
             }
         }
 
+        Console.WriteLine($"\nScanning {linkedAssemblies.Count} linked assembly source(s) for library references...");
         var requiredLibraries = new HashSet<string>();
+        int assemblyIndex = 0;
         foreach (var asm in linkedAssemblies)
         {
+            Console.WriteLine($"\n--- Scanning assembly #{++assemblyIndex} ---");
             var libs = DetectRequiredLibraries(asm);
             foreach (var lib in libs)
             {
+                if (!requiredLibraries.Contains(lib))
+                {
+                    Console.WriteLine($"  Adding library '{lib}' to required set");
+                }
                 requiredLibraries.Add(lib);
             }
         }
+
+        Console.WriteLine($"\n=== Final required libraries: {string.Join(", ", requiredLibraries)} ===\n");
 
         // Assemble library stubs (only once per library)
         foreach (var library in requiredLibraries)
@@ -444,9 +475,25 @@ public class VbccToolchain
 
                 objFiles.Add(stubsObj);
 
-                // If using DOS library, also include dos_init.o for automatic DOSBase initialization
+                // If using DOS library, also include dos_base.o and dos_init.o
                 if (library == "dos")
                 {
+                    // Add dos_base.o (provides _DOSBase storage)
+                    var dosBaseSource = Path.Combine(compilerDir, "stubs", "dos_base.s");
+                    if (File.Exists(dosBaseSource))
+                    {
+                        var dosBaseObj = Path.Combine(outputPath, "dos_base.o");
+
+                        if (!await Assemble(dosBaseSource, dosBaseObj, assemblyCpu, false))
+                        {
+                            Console.WriteLine("dos_base assembly failed");
+                            return false;
+                        }
+
+                        objFiles.Add(dosBaseObj);
+                    }
+
+                    // Add dos_init.o (automatic DOSBase initialization)
                     var dosInitSource = Path.Combine(compilerDir, "stubs", "dos_init.s");
                     if (File.Exists(dosInitSource))
                     {
@@ -530,13 +577,17 @@ public class VbccToolchain
     /// </summary>
     private HashSet<string> DetectRequiredLibraries(string asmSource)
     {
+        Console.WriteLine("\n=== DEBUG: DetectRequiredLibraries called ===");
+        Console.WriteLine($"Assembly source length: {asmSource.Length} characters");
+        Console.WriteLine($"First 500 chars of assembly:\n{asmSource.Substring(0, Math.Min(500, asmSource.Length))}\n");
+
         var libraries = new HashSet<string>();
 
         // Map of library names to their available stub files
         var libraryFunctions = new Dictionary<string, string[]>
         {
             ["dos"] = new[] { "_Output", "_Input", "_Error", "_Write", "_Read", "_Printf", "_Open", "_Close", "_CurrentDir", "_CreateDir", "_DeleteFile", "_Execute", "_Delay", "_IoErr", "_Seek", "_Rename", "_Lock", "_UnLock" },
-            ["exec"] = new[] { "_AllocMem", "_FreeMem", "_OpenLibrary", "_CloseLibrary", "_FindTask", "_Wait", "_Signal", "_AllocSignal", "_FreeSignal" },
+            ["exec"] = new[] { "_AllocMem", "_FreeMem", "_ExecAllocMem", "_ExecFreeMem", "_OpenLibrary", "_CloseLibrary", "_FindTask", "_Wait", "_Signal", "_AllocSignal", "_FreeSignal" },
             ["intuition"] = new[] { "_OpenWindow", "_CloseWindow", "_OpenScreen", "_CloseScreen", "_DisplayAlert", "_AutoRequest" },
             ["graphics"] = new[] { "_LoadRGB4", "_SetRast", "_Move", "_Draw", "_Text", "_OpenFont", "_CloseFont", "_SetAPen", "_SetBPen" },
             ["diskfont"] = new[] { "_OpenDiskFont", "_AvailFonts" },
@@ -555,14 +606,37 @@ public class VbccToolchain
         };
 
         // Check each library's functions
+        Console.WriteLine("Checking for library function references...");
         foreach (var (library, functions) in libraryFunctions)
         {
-            if (functions.Any(func => asmSource.Contains($"xref\t{func}")))
+            var foundFunctions = new List<string>();
+
+            foreach (var func in functions)
+            {
+                var pattern = $"xref\t{func}";
+                if (asmSource.Contains(pattern))
+                {
+                    foundFunctions.Add(func);
+                }
+            }
+
+            if (foundFunctions.Count > 0)
             {
                 libraries.Add(library);
+                Console.WriteLine($"  ✓ Detected library '{library}': found {foundFunctions.Count} function(s)");
+                foreach (var func in foundFunctions)
+                {
+                    Console.WriteLine($"    - {func}");
+                }
             }
         }
 
+        if (libraries.Count == 0)
+        {
+            Console.WriteLine("  No library references detected");
+        }
+
+        Console.WriteLine($"=== Total detected libraries: {libraries.Count} ===\n");
         return libraries;
     }
 

@@ -1,0 +1,156 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: card.resource
+// Base: _CardResource
+//
+// NOTE: Import specific types from std::amiga_structs as needed
+// Example: from std::amiga_structs import Task, Node, List
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const RTC_MATCHWORD: u32 = $4AFCu32
+pub const RTF_AUTOINIT: u32 = (1u32 << 7)
+pub const RTF_AFTERDOS: u32 = (1u32 << 2)
+pub const RTF_SINGLETASK: u32 = (1u32 << 1)
+pub const RTF_COLDSTART: u32 = (1u32 << 0)
+pub const RTW_NEVER: u32 = 0u32
+pub const RTW_COLDSTART: u32 = 1u32
+pub const INCLUDE_VERSION: u32 = 45u32
+pub const GLOBAL: u32 = 0 /* TODO: extern */
+pub const IMPORT: u32 = 0 /* TODO: extern */
+pub const STATIC: u32 = 0 /* TODO: static */
+pub const REGISTER: u32 = 0 /* TODO: register */
+pub const VOID: u32 = 0 /* TODO: void */
+pub const CONST: u32 = 0 /* TODO: const */
+pub const VOLATILE: u32 = 0 /* TODO: volatile */
+pub const TRUE: u32 = 1u32
+pub const FALSE: u32 = 0u32
+pub const NULL: u32 = 0
+pub const BYTEMASK: u32 = $FFu32
+pub const LIBRARY_MINIMUM: u32 = 40u32
+pub const NT_UNKNOWN: u32 = 0u32
+pub const NT_TASK: u32 = 1u32
+pub const NT_INTERRUPT: u32 = 2u32
+pub const NT_DEVICE: u32 = 3u32
+pub const NT_MSGPORT: u32 = 4u32
+pub const NT_MESSAGE: u32 = 5u32
+pub const NT_FREEMSG: u32 = 6u32
+pub const NT_REPLYMSG: u32 = 7u32
+pub const NT_RESOURCE: u32 = 8u32
+pub const NT_LIBRARY: u32 = 9u32
+pub const NT_MEMORY: u32 = 10u32
+pub const NT_SOFTINT: u32 = 11u32
+pub const NT_FONT: u32 = 12u32
+pub const NT_PROCESS: u32 = 13u32
+pub const NT_SEMAPHORE: u32 = 14u32
+pub const NT_SIGNALSEM: u32 = 15u32
+pub const NT_BOOTNODE: u32 = 16u32
+pub const NT_KICKMEM: u32 = 17u32
+pub const NT_GRAPHICS: u32 = 18u32
+pub const NT_DEATHMESSAGE: u32 = 19u32
+pub const NT_USER: u32 = 254u32
+pub const NT_EXTENDED: u32 = 255u32
+pub const SIH_PRIMASK: u32 = 0 /* TODO: (0xf0) */
+pub const INTB_NMI: u32 = 15u32
+pub const INTF_NMI: u32 = (1u32 << 15)
+pub const CARDRESNAME: u32 = 0 /* TODO: "card.resource" */
+pub const CARDB_RESETREMOVE: u32 = 0u32
+pub const CARDF_RESETREMOVE: u32 = 0 /* TODO: (1<<CARDB_RESETREMOVE) */
+pub const CARDB_IFAVAILABLE: u32 = 1u32
+pub const CARDF_IFAVAILABLE: u32 = 0 /* TODO: (1<<CARDB_IFAVAILABLE) */
+pub const CARDB_DELAYOWNERSHIP: u32 = 2u32
+pub const CARDF_DELAYOWNERSHIP: u32 = 0 /* TODO: (1<<CARDB_DELAYOWNERSHIP) */
+pub const CARDB_POSTSTATUS: u32 = 3u32
+pub const CARDF_POSTSTATUS: u32 = 0 /* TODO: (1<<CARDB_POSTSTATUS) */
+pub const CARDB_REMOVEHANDLE: u32 = 0u32
+pub const CARDF_REMOVEHANDLE: u32 = 0 /* TODO: (1<<CARDB_REMOVEHANDLE) */
+pub const CARD_STATUSB_CCDET: u32 = 6u32
+pub const CARD_STATUSF_CCDET: u32 = 0 /* TODO: (1<<CARD_STATUSB_CCDET) */
+pub const CARD_STATUSB_BVD1: u32 = 5u32
+pub const CARD_STATUSF_BVD1: u32 = 0 /* TODO: (1<<CARD_STATUSB_BVD1) */
+pub const CARD_STATUSB_SC: u32 = 5u32
+pub const CARD_STATUSF_SC: u32 = 0 /* TODO: (1<<CARD_STATUSB_SC) */
+pub const CARD_STATUSB_BVD2: u32 = 4u32
+pub const CARD_STATUSF_BVD2: u32 = 0 /* TODO: (1<<CARD_STATUSB_BVD2) */
+pub const CARD_STATUSB_DA: u32 = 4u32
+pub const CARD_STATUSF_DA: u32 = 0 /* TODO: (1<<CARD_STATUSB_DA) */
+pub const CARD_STATUSB_WR: u32 = 3u32
+pub const CARD_STATUSF_WR: u32 = 0 /* TODO: (1<<CARD_STATUSB_WR) */
+pub const CARD_STATUSB_BSY: u32 = 2u32
+pub const CARD_STATUSF_BSY: u32 = 0 /* TODO: (1<<CARD_STATUSB_BSY) */
+pub const CARD_STATUSB_IRQ: u32 = 2u32
+pub const CARD_STATUSF_IRQ: u32 = 0 /* TODO: (1<<CARD_STATUSB_IRQ) */
+pub const CARD_VOLTAGE_0V: u32 = 0u32
+pub const CARD_VOLTAGE_5V: u32 = 1u32
+pub const CARD_VOLTAGE_12V: u32 = 2u32
+pub const CARD_ENABLEB_DIGAUDIO: u32 = 1u32
+pub const CARD_ENABLEF_DIGAUDIO: u32 = 0 /* TODO: (1<<CARD_ENABLEB_DIGAUDIO) */
+pub const CARD_DISABLEB_WP: u32 = 3u32
+pub const CARD_DISABLEF_WP: u32 = 0 /* TODO: (1<<CARD_DISABLEB_WP) */
+pub const CARD_INTB_SETCLR: u32 = 7u32
+pub const CARD_INTF_SETCLR: u32 = 0 /* TODO: (1<<CARD_INTB_SETCLR) */
+pub const CARD_INTB_BVD1: u32 = 5u32
+pub const CARD_INTF_BVD1: u32 = 0 /* TODO: (1<<CARD_INTB_BVD1) */
+pub const CARD_INTB_SC: u32 = 5u32
+pub const CARD_INTF_SC: u32 = 0 /* TODO: (1<<CARD_INTB_SC) */
+pub const CARD_INTB_BVD2: u32 = 4u32
+pub const CARD_INTF_BVD2: u32 = 0 /* TODO: (1<<CARD_INTB_BVD2) */
+pub const CARD_INTB_DA: u32 = 4u32
+pub const CARD_INTF_DA: u32 = 0 /* TODO: (1<<CARD_INTB_DA) */
+pub const CARD_INTB_BSY: u32 = 2u32
+pub const CARD_INTF_BSY: u32 = 0 /* TODO: (1<<CARD_INTB_BSY) */
+pub const CARD_INTB_IRQ: u32 = 2u32
+pub const CARD_INTF_IRQ: u32 = 0 /* TODO: (1<<CARD_INTB_IRQ) */
+pub const CARD_INTERFACE_AMIGA_0: u32 = 0u32
+pub const CISTPL_AMIGAXIP: u32 = $91u32
+pub const XIPFLAGSB_AUTORUN: u32 = 0u32
+pub const XIPFLAGSF_AUTORUN: u32 = 0 /* TODO: (1<<XIPFLAGSB_AUTORUN) */
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+extern pub fn OwnCard(handle: *CardHandle) -> *CardHandle
+extern pub fn ReleaseCard(handle: *CardHandle, flags: u32)
+extern pub fn GetCardMap() -> *CardMemoryMap
+extern pub fn BeginCardAccess(handle: *CardHandle) -> i16
+extern pub fn EndCardAccess(handle: *CardHandle) -> i16
+extern pub fn ReadCardStatus() -> u8
+extern pub fn CardResetRemove(handle: *CardHandle, flag: u32) -> i16
+extern pub fn CardMiscControl(handle: *CardHandle, control_bits: u8) -> u8
+extern pub fn CardAccessSpeed(handle: *CardHandle, nanoseconds: u32) -> u32
+extern pub fn CardProgramVoltage(handle: *CardHandle, voltage: u32) -> i32
+extern pub fn CardResetCard(handle: *CardHandle) -> i16
+extern pub fn CopyTuple(handle: *CardHandle, buffer: *u8, tuplecode: u32, size: u32) -> i16
+extern pub fn DeviceTuple(tuple_data: *u8, storage: *DeviceTData) -> u32
+extern pub fn IfAmigaXIP(handle: *CardHandle) -> *Resident
+extern pub fn CardForceChange() -> i16
+extern pub fn CardChangeCount() -> u32
+extern pub fn CardInterface() -> u32
