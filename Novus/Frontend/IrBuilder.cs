@@ -3716,18 +3716,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
             return new IrVariable(name, _enums["SystemChipset"]);
         }
 
-        // Check if it's a function name being used as a value (for function pointers)
+        // Check if it's a function name (for both calls and function pointers)
         var funcRef = _module.Functions.FirstOrDefault(f => f.Name == name);
         if (funcRef != null)
         {
-            // Create a function pointer type for this function
-            var funcPtrType = _typeInterner.GetFunctionPointerType(
-                funcRef.Parameters.Select(p => p.Type).ToList(),
-                funcRef.ReturnType
-            );
-
-            // Return a function address value
-            return new IrFunctionAddress(name, funcPtrType);
+            // Return a function reference that can be called or used as a function pointer
+            return new IrFunctionRef(funcRef);
         }
 
         // Otherwise, assume it's a temporary variable or function name

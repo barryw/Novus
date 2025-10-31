@@ -504,13 +504,12 @@ fn test(x: i32) -> i32 {
         var block = module.Functions[0].BasicBlocks[0];
         var instructions = block.Instructions;
 
-        // Should have: comparison, conditional branch, then label, else label, end label
+        // Should have: comparison, conditional branch, then label, else label
         Assert.Contains(instructions, i => i is IrConditionalBranch);
         Assert.Contains(instructions, i => i is IrLabel label && label.Name.StartsWith("if_then_"));
         Assert.Contains(instructions, i => i is IrLabel label && label.Name.StartsWith("if_else_"));
-        Assert.Contains(instructions, i => i is IrLabel label && label.Name.StartsWith("if_end_"));
 
-        // Note: No branch from then to end because both blocks return directly (dead code elimination)
+        // Note: No if_end label because both blocks return directly (no fall-through)
     }
 
     [Fact]
@@ -753,14 +752,14 @@ pub fn exported() -> u32 {
     public void BuildIr_PrivateFunction_MarkedAsPrivate()
     {
         var source = @"
-fn internal() -> u32 {
+fn helper() -> u32 {
     return 42
 }";
         var module = BuildIr(source);
 
         Assert.Single(module.Functions);
         var func = module.Functions[0];
-        Assert.Equal("internal", func.Name);
+        Assert.Equal("helper", func.Name);
         Assert.False(func.IsPublic);
     }
 
