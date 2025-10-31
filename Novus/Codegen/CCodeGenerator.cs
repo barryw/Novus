@@ -1118,13 +1118,13 @@ public class CCodeGenerator
             _inMatchArmScope = false;
         }
 
-        // Emit deferred cleanup at end of function ONLY if the last instruction is not a return
-        // (if it is a return, cleanup was already emitted before the return statement)
-        var lastBlock = function.BasicBlocks.LastOrDefault();
-        var lastInstruction = lastBlock?.Instructions.LastOrDefault();
-        var endsWithReturn = lastInstruction is IrReturn;
+        // Build CFG to check if all paths return
+        var cfg = new ControlFlowGraph(function);
+        var allPathsReturn = cfg.AllPathsReturn();
 
-        if (!endsWithReturn)
+        // Emit deferred cleanup at end of function ONLY if not all paths return
+        // (if all paths return, cleanup was already emitted before each return statement)
+        if (!allPathsReturn)
         {
             EmitDeferredCleanup(function, 1);
         }

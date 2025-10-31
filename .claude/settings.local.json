@@ -163,7 +163,8 @@
       "Bash(do echo \"Testing: $f\")",
       "Bash(rm:*)",
       "Bash(grep:*)",
-      "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Debug/net9.0/Novus:*)"
+      "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Debug/net9.0/Novus:*)",
+      "Bash([Theory]\" \"$file\" 2>/dev/null || echo 0) tests\")"
     ],
     "deny": [],
     "ask": []

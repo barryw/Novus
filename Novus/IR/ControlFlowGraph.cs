@@ -359,6 +359,57 @@ public class ControlFlowGraph
         DFS(EntryNode);
         return reachable;
     }
+
+    /// <summary>
+    /// Check if all paths from entry reach the exit node (i.e., all paths end with a return).
+    /// Returns true if the function is guaranteed to return on all code paths.
+    /// </summary>
+    public bool AllPathsReturn()
+    {
+        // If there's no exit node, no paths return
+        if (ExitNode == null)
+            return false;
+
+        // Find all nodes reachable from entry
+        var reachableFromEntry = new HashSet<CFGNode>();
+        void MarkReachable(CFGNode node)
+        {
+            if (reachableFromEntry.Contains(node)) return;
+            reachableFromEntry.Add(node);
+            foreach (var edge in node.Successors)
+            {
+                MarkReachable(edge.Destination);
+            }
+        }
+        MarkReachable(EntryNode);
+
+        // Find all nodes that can reach exit (work backwards from exit)
+        var canReachExit = new HashSet<CFGNode>();
+        void MarkCanReachExit(CFGNode node)
+        {
+            if (canReachExit.Contains(node)) return;
+            canReachExit.Add(node);
+            foreach (var pred in node.Predecessors)
+            {
+                MarkCanReachExit(pred);
+            }
+        }
+        MarkCanReachExit(ExitNode);
+
+        // All paths return if every reachable node (except entry/exit) can reach exit
+        foreach (var node in reachableFromEntry)
+        {
+            // Skip entry and exit nodes themselves
+            if (node == EntryNode || node == ExitNode)
+                continue;
+
+            // If this node is reachable but can't reach exit, there's a path that doesn't return
+            if (!canReachExit.Contains(node))
+                return false;
+        }
+
+        return true;
+    }
 }
 
 /// <summary>
