@@ -2,9 +2,10 @@
 //
 // Description:
 //   Demonstrates defer blocks for cleanup that execute in LIFO order at scope exit.
+//   IMPORTANT: Return value is computed BEFORE defer blocks execute!
 //
 // Expected Output:
-//   Exit code: 0 if defers execute correctly
+//   Exit code: 0 (defers execute after return value is computed)
 
 fn cleanup_resource(id: i32) -> i32 {
     // In a real scenario, this might close files, free memory, etc.
@@ -17,15 +18,13 @@ fn open_resource(id: i32) -> i32 {
 }
 
 pub fn main() -> i32 {
-    var result = 0
-
     // Open first resource
     var resource1 = open_resource(1)
 
-    // Defer cleanup - will execute when function returns
+    // Defer cleanup - will execute when function returns (LIFO order)
     defer {
         var cleanup1 = cleanup_resource(1)
-        result = result + cleanup1
+        // In a real program, this would close file handles, free memory, etc.
     }
 
     // Open second resource
@@ -34,7 +33,6 @@ pub fn main() -> i32 {
     // Another deferred cleanup
     defer {
         var cleanup2 = cleanup_resource(2)
-        result = result + cleanup2
     }
 
     // Open third resource
@@ -43,14 +41,17 @@ pub fn main() -> i32 {
     // Third deferred cleanup
     defer {
         var cleanup3 = cleanup_resource(3)
-        result = result + cleanup3
     }
 
-    // Defers execute in LIFO order when function returns:
-    // 1. Third defer: cleanup(3)  -> result = 0 + 3 = 3
-    // 2. Second defer: cleanup(2) -> result = 3 + 2 = 5
-    // 3. First defer: cleanup(1)  -> result = 5 + 1 = 6
+    // Execution order:
+    // 1. Return value (0) is computed
+    // 2. Third defer executes: cleanup_resource(3)
+    // 3. Second defer executes: cleanup_resource(2)
+    // 4. First defer executes: cleanup_resource(1)
+    // 5. Function returns with value 0
+    //
+    // Note: Defer blocks execute AFTER return value is computed,
+    // so they cannot affect the return value!
 
-    // Return the accumulated result (should be 6)
-    return result
+    return 0
 }
