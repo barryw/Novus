@@ -404,8 +404,8 @@ fn test() -> u8 {
     public void Parse_InvalidSyntax_ReportsErrors()
     {
         var source = @"
-fn test() -> u32 {
-    return
+fn test() -> u32
+    return 42
 }";
         var parser = CreateParser(source);
         var tree = parser.compilationUnit();
@@ -652,7 +652,7 @@ pub fn exported() -> u32 {
     public void Parse_PrivateFunction_Success()
     {
         var source = @"
-fn internal() -> u32 {
+fn helper() -> u32 {
     return 42
 }";
         var parser = CreateParser(source);
