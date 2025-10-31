@@ -111,8 +111,8 @@ type
     : '&' KW_MUT? type                                        # ReferenceType
     | '*' type                                                # PointerType
     | '[' expression ']' type                                 # ArrayType
-    | '[' type ']'                                           # SliceType
-    | '(' type (',' type)+ ')'                               # TupleType
+    | '[' type ']'                                           # SliceType       // TODO: Not yet implemented in IrBuilder/codegen
+    | '(' type (',' type)+ ')'                               # TupleType       // TODO: Not yet implemented in IrBuilder/codegen
     | KW_FN '(' typeList? ')' ('->' type)?                   # FunctionPointerType
     | KW_U8                                                   # PrimitiveType
     | KW_U16                                                  # PrimitiveType
@@ -257,8 +257,8 @@ expression
     | expression '[' expression ']'                        # IndexExpr
     | expression '++' # PostIncrementExpr
     | expression '--'                                      # PostDecrementExpr
-    | expression '..' expression                           # RangeExpr
-    | expression '..=' expression                          # RangeInclusiveExpr
+    | expression '..' expression                           # RangeExpr            // TODO: Not yet implemented in IrBuilder/codegen
+    | expression '..=' expression                          # RangeInclusiveExpr   // TODO: Not yet implemented in IrBuilder/codegen
     | '&' KW_MUT? expression                               # BorrowExpr
     | ('!' | '~' | '-') expression                         # UnaryExpr
     | '++' expression                                      # PreIncrementExpr
