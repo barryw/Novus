@@ -8,6 +8,30 @@
 // Struct Definitions
 // ============================================================================
 
+// ============================================================================
+// Graphics Library Structs
+// ============================================================================
+
+pub struct Rectangle {
+    MinX: i16,
+    MinY: i16,
+    MaxX: i16,
+    MaxY: i16,
+}
+
+pub struct BitMap {
+    BytesPerRow: u16,
+    Rows: u16,
+    Flags: u8,
+    Depth: u8,
+    pad: u16,
+    Planes: [8]*u8,
+}
+
+// ============================================================================
+// Exec Library Structs
+// ============================================================================
+
 pub struct Node {
     ln_Succ: *Node,
     ln_Pred: *Node,
@@ -53,6 +77,13 @@ pub struct TagItem {
     ti_Data: u32,
 }
 
+pub struct Hook {
+    h_MinNode: MinNode,
+    h_Entry: *u8,
+    h_SubEntry: *u8,
+    h_Data: *u8,
+}
+
 pub struct Task {
     tc_Node: Node,
     tc_Flags: u8,
@@ -82,6 +113,15 @@ pub struct StackSwapStruct {
     stk_Lower: *u8,
     stk_Upper: u32,
     stk_Pointer: *u8,
+}
+
+pub struct SignalSemaphore {
+    ss_Link: Node,
+    ss_NestCount: i16,
+    ss_WaitQueue: MinList,
+    ss_MultipleLink: MinNode,
+    ss_Owner: *Task,
+    ss_QueueCount: i16,
 }
 
 pub struct MsgPort {
@@ -292,6 +332,255 @@ pub struct TextExtent {
     te_Extent: Rectangle,
 }
 
+pub struct Layer {
+    front: *Layer,
+    back: *Layer,
+    ClipRect: *u8,
+    rp: *u8,
+    bounds: Rectangle,
+    reserved: [4]u8,
+    priority: u16,
+    Flags: u16,
+    SuperBitMap: *BitMap,
+    SuperClipRect: *u8,
+    Window: *u8,
+    Scroll_X: i16,
+    Scroll_Y: i16,
+    cr: *u8,
+    cr2: *u8,
+    crnew: *u8,
+    SuperSaveClipRects: *u8,
+    _cliprects: *u8,
+    LayerInfo: *u8,
+    Lock: SignalSemaphore,
+    BackFill: *Hook,
+    reserved1: u32,
+    ClipRegion: *u8,
+    saveClipRects: *u8,
+    Width: i16,
+    Height: i16,
+    reserved2: [18]u8,
+    DamageList: *u8,
+}
+
+pub struct RastPort {
+    Layer: *Layer,
+    BitMap: *BitMap,
+    AreaPtrn: *u16,
+    TmpRas: *u8,
+    AreaInfo: *u8,
+    GelsInfo: *u8,
+    Mask: u8,
+    FgPen: i8,
+    BgPen: i8,
+    AOlPen: i8,
+    DrawMode: i8,
+    AreaPtSz: i8,
+    linpatcnt: i8,
+    dummy: i8,
+    Flags: u16,
+    LinePtrn: u16,
+    cp_x: i16,
+    cp_y: i16,
+    minterms: [8]u8,
+    PenWidth: i16,
+    PenHeight: i16,
+    Font: *TextFont,
+    AlgoStyle: u8,
+    TxFlags: u8,
+    TxHeight: u16,
+    TxWidth: u16,
+    TxBaseline: u16,
+    TxSpacing: i16,
+    RP_User: *u8,
+    longreserved: [2]u32,
+    wordreserved: [7]u16,
+    reserved: [8]u8,
+}
+
+// ============================================================================
+// Intuition Library Structs
+// ============================================================================
+
+pub struct IBox {
+    Left: i16,
+    Top: i16,
+    Width: i16,
+    Height: i16,
+}
+
+pub struct DrawInfo {
+    dri_Version: u16,
+    dri_NumPens: u16,
+    dri_Pens: *u16,
+    dri_Font: *TextFont,
+    dri_Depth: u16,
+    dri_Resolution_X: u16,
+    dri_Resolution_Y: u16,
+    dri_Flags: u32,
+    dri_CheckMark: *u8,
+    dri_AmigaKey: *u8,
+    dri_Reserved: [5]u32,
+}
+
+pub struct Gadget {
+    NextGadget: *Gadget,
+    LeftEdge: i16,
+    TopEdge: i16,
+    Width: i16,
+    Height: i16,
+    Flags: u16,
+    Activation: u16,
+    GadgetType: u16,
+    GadgetRender: *u8,
+    SelectRender: *u8,
+    GadgetText: *u8,
+    MutualExclude: i32,
+    SpecialInfo: *u8,
+    GadgetID: u16,
+    UserData: *u8,
+}
+
+pub struct Requester {
+    OlderRequest: *Requester,
+    LeftEdge: i16,
+    TopEdge: i16,
+    Width: i16,
+    Height: i16,
+    RelLeft: i16,
+    RelTop: i16,
+    ReqGadget: *Gadget,
+    ReqBorder: *u8,
+    ReqText: *u8,
+    Flags: u16,
+    BackFill: u8,
+    ReqLayer: *Layer,
+    ReqPad1: [32]u8,
+    ImageBMap: *BitMap,
+    RWindow: *u8,
+    ReqImage: *u8,
+    ReqPad2: [32]u8,
+}
+
+pub struct Screen {
+    NextScreen: *Screen,
+    FirstWindow: *u8,
+    LeftEdge: i16,
+    TopEdge: i16,
+    Width: i16,
+    Height: i16,
+    MouseY: i16,
+    MouseX: i16,
+    Flags: u16,
+    Title: *u8,
+    DefaultTitle: *u8,
+    BarHeight: i8,
+    BarVBorder: i8,
+    BarHBorder: i8,
+    MenuVBorder: i8,
+    MenuHBorder: i8,
+    WBorTop: i8,
+    WBorLeft: i8,
+    WBorRight: i8,
+    WBorBottom: i8,
+    Font: *TextAttr,
+    ViewPort: *u8,
+    RastPort: RastPort,
+    BitMap: BitMap,
+    LayerInfo: *u8,
+    FirstGadget: *u8,
+    DetailPen: u8,
+    BlockPen: u8,
+    SaveColor0: u16,
+    BarLayer: *Layer,
+    ExtData: *u8,
+    UserData: *u8,
+}
+
+pub struct Window {
+    NextWindow: *Window,
+    LeftEdge: i16,
+    TopEdge: i16,
+    Width: i16,
+    Height: i16,
+    MouseY: i16,
+    MouseX: i16,
+    MinWidth: i16,
+    MinHeight: i16,
+    MaxWidth: u16,
+    MaxHeight: u16,
+    Flags: u32,
+    MenuStrip: *u8,
+    Title: *u8,
+    FirstRequest: *Requester,
+    DMRequest: *Requester,
+    ReqCount: i16,
+    WScreen: *u8,
+    RPort: *RastPort,
+    BorderLeft: i8,
+    BorderTop: i8,
+    BorderRight: i8,
+    BorderBottom: i8,
+    BorderRPort: *RastPort,
+    FirstGadget: *u8,
+    Parent: *Window,
+    Descendant: *Window,
+    Pointer: *u16,
+    PtrHeight: i8,
+    PtrWidth: i8,
+    XOffset: i8,
+    YOffset: i8,
+    IDCMPFlags: u32,
+    UserPort: *MsgPort,
+    WindowPort: *MsgPort,
+    MessageKey: *u8,
+    DetailPen: u8,
+    BlockPen: u8,
+    CheckMark: *u8,
+    ScreenTitle: *u8,
+    GZZMouseX: i16,
+    GZZMouseY: i16,
+    GZZWidth: i16,
+    GZZHeight: i16,
+    ExtData: *u8,
+    UserData: *i8,
+    WLayer: *Layer,
+    IFont: *TextFont,
+    MoreFlags: u32,
+}
+
+pub struct NewWindow {
+    LeftEdge: i16,
+    TopEdge: i16,
+    Width: i16,
+    Height: i16,
+    DetailPen: u8,
+    BlockPen: u8,
+    IDCMPFlags: u32,
+    Flags: u32,
+    FirstGadget: *Gadget,
+    CheckMark: *u8,
+    Title: *u8,
+    Screen: *Screen,
+    BitMap: *BitMap,
+    MinWidth: i16,
+    MinHeight: i16,
+    MaxWidth: u16,
+    MaxHeight: u16,
+    Type: u16,
+}
+
+pub struct GadgetInfo {
+    gi_Screen: *u8,
+    gi_Window: *u8,
+    gi_Requester: *Requester,
+    gi_RastPort: *RastPort,
+    gi_Layer: *Layer,
+    gi_Domain: IBox,
+    DetailPen: u8,
+    BlockPen: u8,
+}
+
 pub struct IORequest {
     io_Message: Message,
     io_Device: *Device,
@@ -490,7 +779,7 @@ pub struct RexxRsrc {
 }
 
 pub struct RexxTask {
-    rt_Global: [GLOBALSZ]i8,
+    rt_Global: [200]i8,
     rt_MsgPort: MsgPort,
     rt_Flags: u8,
     rt_SigBit: i8,
@@ -565,7 +854,7 @@ pub struct IoBuff {
     iobDFH: i32,
     iobLock: *u8,
     iobBct: i32,
-    iobArea: [RXBUFFSZ]i8,
+    iobArea: [204]i8,
 }
 
 pub struct RexxMsgPort {
@@ -654,6 +943,11 @@ pub struct DiskObject {
 pub struct FreeList {
     fl_NumFree: i16,
     fl_MemList: List,
+}
+
+pub struct WBArg {
+    wa_Lock: i32,
+    wa_Name: *u8,
 }
 
 pub struct AppMessage {
@@ -832,19 +1126,6 @@ pub struct ErrorString {
     estr_Strings: *u8,
 }
 
-pub struct DosLibrary {
-    dl_lib: Library,
-    dl_Root: *RootNode,
-    dl_GV: *u8,
-    dl_A2: i32,
-    dl_A5: i32,
-    dl_A6: i32,
-    dl_Errors: *ErrorString,
-    dl_TimeReq: *timerequest,
-    dl_UtilityBase: *Library,
-    dl_IntuitionBase: *Library,
-}
-
 pub struct RootNode {
     rn_TaskArray: i32,
     rn_ConsoleSegment: i32,
@@ -856,6 +1137,19 @@ pub struct RootNode {
     rn_BootProc: *MsgPort,
     rn_ShellSegment: i32,
     rn_Flags: i32,
+}
+
+pub struct DosLibrary {
+    dl_lib: Library,
+    dl_Root: *RootNode,
+    dl_GV: *u8,
+    dl_A2: i32,
+    dl_A5: i32,
+    dl_A6: i32,
+    dl_Errors: *ErrorString,
+    dl_TimeReq: *timerequest,
+    dl_UtilityBase: *Library,
+    dl_IntuitionBase: *Library,
 }
 
 pub struct CliProcList {
@@ -968,6 +1262,15 @@ pub struct RecordLock {
     rec_Mode: u32,
 }
 
+pub struct AChain {
+    an_Child: *AChain,
+    an_Parent: *AChain,
+    an_Lock: i32,
+    an_Info: FileInfoBlock,
+    an_Flags: i8,
+    an_String: [1]u8,
+}
+
 pub struct AnchorPath {
     ap_Base: *AChain,
     ap_Last: *AChain,
@@ -980,29 +1283,11 @@ pub struct AnchorPath {
     ap_Buf: [1]u8,
 }
 
-pub struct AChain {
-    an_Child: *AChain,
-    an_Parent: *AChain,
-    an_Lock: i32,
-    an_Info: FileInfoBlock,
-    an_Flags: i8,
-    an_String: [1]u8,
-}
-
 pub struct LocalVar {
     lv_Node: Node,
     lv_Flags: u16,
     lv_Value: *u8,
     lv_Len: u32,
-}
-
-pub struct NotifyMessage {
-    nm_ExecMessage: Message,
-    nm_Class: u32,
-    nm_Code: u16,
-    nm_NReq: *NotifyRequest,
-    nm_DoNotTouch: u32,
-    nm_DoNotTouch2: u32,
 }
 
 pub struct NotifyRequest {
@@ -1012,6 +1297,15 @@ pub struct NotifyRequest {
     nr_UserData: u32,
     nr_Flags: u32,
     nr_Port: *MsgPort,
+}
+
+pub struct NotifyMessage {
+    nm_ExecMessage: Message,
+    nm_Class: u32,
+    nm_Code: u16,
+    nm_NReq: *NotifyRequest,
+    nm_DoNotTouch: u32,
+    nm_DoNotTouch2: u32,
 }
 
 pub struct DateTime {
@@ -1229,11 +1523,6 @@ pub struct WBStartup {
     sm_ArgList: *WBArg,
 }
 
-pub struct WBArg {
-    wa_Lock: i32,
-    wa_Name: *u8,
-}
-
 pub struct BitScaleArgs {
     bsa_SrcY: *u8 /* UWORD bsa_SrcX, */,
     bsa_SrcHeight: *u8 /* UWORD bsa_SrcWidth, */,
@@ -1250,14 +1539,14 @@ pub struct BitScaleArgs {
 }
 
 pub struct FontContents {
-    fc_FileName: [MAXFONTPATH]*u8 /* char */,
+    fc_FileName: [256]*u8 /* char */,
     fc_YSize: u16,
     fc_Style: u8,
     fc_Flags: u8,
 }
 
 pub struct TFontContents {
-    tfc_FileName: [MAXFONTPATH-2]*u8 /* char */,
+    tfc_FileName: [254]*u8 /* char */,
     tfc_TagCount: u16,
     tfc_YSize: u16,
     tfc_Style: u8,
@@ -1274,7 +1563,7 @@ pub struct DiskFontHeader {
     dfh_FileID: u16,
     dfh_Revision: u16,
     dfh_Segment: i32,
-    dfh_Name: [MAXFONTNAME]*u8 /* char */,
+    dfh_Name: [32]*u8 /* char */,
     dfh_TF: TextFont,
 }
 
@@ -1311,17 +1600,6 @@ pub struct KeyMapNode {
 pub struct KeyMapResource {
     kr_Node: Node,
     kr_List: List,
-}
-
-pub struct GadgetInfo {
-    gi_Screen: *Screen,
-    gi_Window: *Window,
-    gi_Requester: *Requester,
-    gi_RastPort: *RastPort,
-    gi_Layer: *Layer,
-    gi_Domain: IBox,
-    DetailPen: u8,
-    BlockPen: u8,
 }
 
 pub struct PGX {
