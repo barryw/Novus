@@ -1,42 +1,179 @@
 // Novus Standard Library - Safe Memory Management
 // Namespace: std::mem
-// RAII-style memory abstractions for safe heap allocation
+// Unified memory management API with automatic size tracking
 
-from std::core import CoreAlloc, CoreFree, MemoryBlock, Option
-from std::ffi::exec import MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, MEMF_CLEAR
+from std::core import Option, Result
+from std::error import ExecError
+from std::ffi::exec import AllocMem, FreeMem, CopyMem
+from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, MEMF_CLEAR, MEMF_ANY
+
+/// MemoryBlock - Raw memory allocation with automatic size tracking
+///
+/// This is the fundamental building block for all memory operations.
+/// Contains both pointer and size, eliminating manual size tracking bugs.
+///
+/// Use this for:
+/// - Low-level memory operations
+/// - Building higher-level abstractions
+/// - FFI buffers where you need raw bytes
+///
+/// For type-safe allocations, prefer Allocation<T> or Box<T>.
+///
+/// Example:
+/// ```novus
+/// let block = MemoryBlock::alloc(1024, MEMF_FAST)
+/// match block {
+///     Some(mut b) => {
+///         defer b.free()
+///         // Use b.ptr() and b.size()
+///         let ptr: *u8 = b.ptr()
+///         ptr[0] = 42
+///     },
+///     None => {
+///         // Allocation failed
+///     }
+/// }
+/// ```
+pub struct MemoryBlock {
+    ptr: *u8,
+    size: u32,
+}
+
+impl MemoryBlock {
+    /// Allocate raw memory of specified size
+    /// Returns None if allocation fails
+    ///
+    /// Example:
+    /// ```novus
+    /// let mem = MemoryBlock::alloc(1024, MEMF_FAST)
+    /// match mem {
+    ///     Some(mut block) => {
+    ///         defer block.free()
+    ///         // Use block
+    ///     },
+    ///     None => { /* failed */ }
+    /// }
+    /// ```
+    pub fn alloc(size: u32, flags: u32) -> Option<MemoryBlock> {
+        if size == 0 {
+            // Zero-size allocation returns valid empty block
+            return Option::Some(MemoryBlock { ptr: (*u8)0, size: 0 })
+        }
+
+        let ptr: *u8 = AllocMem(size, flags)
+
+        // Check if allocation failed (returns null pointer)
+        if (u32)ptr == 0 {
+            return Option::None
+        }
+
+        return Option::Some(MemoryBlock { ptr: ptr, size: size })
+    }
+
+    /// Allocate and return Result with typed error
+    ///
+    /// Example:
+    /// ```novus
+    /// let block = MemoryBlock::try_alloc(1024, MEMF_FAST)?
+    /// defer block.free()
+    /// ```
+    pub fn try_alloc(size: u32, flags: u32) -> Result<MemoryBlock, ExecError> {
+        match MemoryBlock::alloc(size, flags) {
+            Some(block) => return Result::Ok(block),
+            None => return Result::Err(ExecError::NoMem)
+        }
+    }
+
+    /// Get pointer to allocated memory
+    pub fn ptr(&self) -> *u8 {
+        return self.ptr
+    }
+
+    /// Get size of allocated memory in bytes
+    pub fn size(&self) -> u32 {
+        return self.size
+    }
+
+    /// Check if this is an empty (zero-size) block
+    pub fn is_empty(&self) -> bool {
+        return self.size == 0
+    }
+
+    /// Free the memory block
+    /// After calling free(), the block becomes invalid
+    ///
+    /// NOTE: No size parameter needed! Size is tracked automatically.
+    pub fn free(&mut self) {
+        if self.size > 0 {
+            FreeMem(self.ptr, self.size)
+            self.ptr = (*u8)0
+            self.size = 0
+        }
+    }
+
+    /// Resize the memory block (realloc equivalent)
+    /// Returns true on success, false if reallocation fails
+    /// On failure, original block is unchanged
+    pub fn resize(&mut self, new_size: u32, flags: u32) -> bool {
+        if new_size == self.size {
+            return true
+        }
+
+        let new_block_opt = MemoryBlock::alloc(new_size, flags)
+        match new_block_opt {
+            Some(new_block) => {
+                // Copy old data to new block
+                var copy_size: u32 = self.size
+                if new_size < self.size {
+                    copy_size = new_size
+                }
+
+                if copy_size > 0 {
+                    CopyMem(self.ptr, new_block.ptr(), copy_size)
+                }
+
+                // Free old block
+                self.free()
+
+                // Update to new block
+                self.ptr = new_block.ptr()
+                self.size = new_block.size()
+
+                return true
+            },
+            None => {
+                return false
+            }
+        }
+    }
+}
 
 /// Allocation<T> - Type-safe bulk memory allocation
 ///
-/// This is a safer alternative to raw AllocMem/FreeMem:
-/// - Remembers the size automatically (can't pass wrong size to free)
-/// - Type-safe (can't mix T* with U*)
-/// - Prevents double-free (drop() invalidates the handle)
-/// - Explicit lifetime management
+/// Safer alternative to MemoryBlock with compile-time type checking.
+/// Automatically tracks element count and total size.
 ///
 /// Use this for:
-/// - Arrays/buffers of T
+/// - Arrays/buffers of typed elements
 /// - Manual memory pools
-/// - FFI buffers
+/// - Collections implementation (Vec, HashMap internals)
 ///
 /// Example:
-/// ```
-/// let alloc = Allocation::new(100, MEMF_FAST)  // 100 i32s
-/// match alloc {
-///     Some(mut a) => {
-///         // Use a.as_mut_ptr() to access memory
-///         let ptr = a.as_mut_ptr()
-///         ptr[0] = 42
+/// ```novus
+/// let buffer = Allocation::new(1024, MEMF_CHIP)
+/// match buffer {
+///     Some(mut alloc) => {
+///         defer alloc.free()
 ///
-///         // Explicit cleanup
-///         a.drop()
+///         let ptr: *u8 = alloc.as_mut_ptr()
+///         ptr[0] = 42
 ///     },
-///     None => { /* allocation failed */ }
+///     None => { /* failed */ }
 /// }
 /// ```
 pub struct Allocation<T> {
-    ptr: *T,
-    count: u32,      // Number of T elements
-    flags: u32,      // MEMF_* flags used for allocation
+    block: MemoryBlock,
+    count: u32,
 }
 
 impl<T> Allocation<T> {
@@ -44,171 +181,180 @@ impl<T> Allocation<T> {
     /// Returns None if allocation fails
     pub fn new(count: u32, flags: u32) -> Option<Allocation<T>> {
         if count == 0 {
-            // Zero-size allocation - return valid but empty allocation
             return Option::Some(Allocation {
-                ptr: (*T)0,
+                block: MemoryBlock { ptr: (*u8)0, size: 0 },
                 count: 0,
-                flags: flags,
             })
         }
 
         let element_size: u32 = @sizeof(T)
-        let bytes_needed: u32 = count * element_size
+        let total_bytes: u32 = count * element_size
 
-        // Allocate using safe std::core API
-        let mem_result = CoreAlloc(bytes_needed, flags)
-
-        match mem_result {
-            Some(ptr) => {
-                let typed_ptr: *T = (*T)(u32)ptr  // Fixed: added parentheses
+        match MemoryBlock::alloc(total_bytes, flags) {
+            Some(block) => {
                 return Option::Some(Allocation {
-                    ptr: typed_ptr,
+                    block: block,
                     count: count,
-                    flags: flags,
                 })
             },
-            None => {
-                return Option::None
-            }
+            None => return Option::None
         }
     }
 
-    /// Get the number of elements in this allocation
+    /// Allocate and return Result with typed error
+    pub fn try_new(count: u32, flags: u32) -> Result<Allocation<T>, ExecError> {
+        if count == 0 {
+            let empty_alloc = Allocation {
+                block: MemoryBlock { ptr: (*u8)0, size: 0 },
+                count: 0,
+            }
+            return Result::Ok(empty_alloc)
+        }
+
+        let element_size: u32 = @sizeof(T)
+        let total_bytes: u32 = count * element_size
+
+        match MemoryBlock::alloc(total_bytes, flags) {
+            Some(block) => {
+                let alloc = Allocation {
+                    block: block,
+                    count: count,
+                }
+                return Result::Ok(alloc)
+            },
+            None => return Result::Err(ExecError::NoMem)
+        }
+    }
+
+    /// Get number of elements
     pub fn count(&self) -> u32 {
         return self.count
     }
 
-    /// Get the size in bytes
+    /// Get total size in bytes
     pub fn size_bytes(&self) -> u32 {
-        let element_size: u32 = @sizeof(T)
-        return self.count * element_size
+        return self.block.size()
     }
 
-    /// Get immutable pointer to the allocated memory
-    /// The pointer is valid until drop() is called
+    /// Get immutable pointer
     pub fn as_ptr(&self) -> *T {
-        return self.ptr
+        return (*T)self.block.ptr()
     }
 
-    /// Get mutable pointer to the allocated memory
-    /// The pointer is valid until drop() is called
+    /// Get mutable pointer
     pub fn as_mut_ptr(&mut self) -> *T {
-        return self.ptr
+        return (*T)self.block.ptr()
     }
 
-    /// Check if this is a zero-size allocation
+    /// Check if empty
     pub fn is_empty(&self) -> bool {
         return self.count == 0
     }
 
-    /// Free the allocated memory
-    /// After calling drop(), the allocation is invalid and cannot be used
-    ///
-    /// Safety: You must not use the pointer returned by as_ptr()/as_mut_ptr()
-    /// after calling drop(). The Novus compiler cannot enforce this yet.
-    pub fn drop(&mut self) {
-        if self.count > 0 {
-            let bytes: u32 = self.size_bytes()
-            let mem: *u8 = (*u8)(u32)(self.ptr)  // Fixed: added parentheses
+    /// Free the allocation
+    /// NOTE: No size parameter needed!
+    pub fn free(&mut self) {
+        self.block.free()
+        self.count = 0
+    }
 
-            // Free using safe std::core API
-            CoreFree(mem, bytes)
+    /// Resize allocation to new element count
+    pub fn resize(&mut self, new_count: u32, flags: u32) -> bool {
+        let element_size: u32 = @sizeof(T)
+        let new_bytes: u32 = new_count * element_size
 
-            // Invalidate the allocation to detect use-after-free in debug builds
-            self.ptr = (*T)0
-            self.count = 0
+        if self.block.resize(new_bytes, flags) {
+            self.count = new_count
+            return true
         }
+        return false
     }
 }
 
 /// Box<T> - Single heap-allocated value
 ///
-/// Box provides safe single-value heap allocation:
-/// - Size is automatic (no need to pass @sizeof(T))
-/// - Type-safe
-/// - Prevents double-free
-/// - Simple API for single values
+/// Simplest way to allocate a single value on the heap.
+/// Size is completely automatic.
 ///
 /// Use this for:
-/// - Single large structs
+/// - Large structs that don't fit on stack
 /// - Recursive data structures
 /// - Heap-allocated values
 ///
 /// Example:
-/// ```
-/// let boxed = Box::new(42)
+/// ```novus
+/// struct BigData {
+///     buffer: [4096]u8,
+/// }
+///
+/// let boxed = Box::new(BigData { buffer: [0; 4096] })
 /// match boxed {
 ///     Some(mut b) => {
-///         let value = *b.get()  // Get the value
-///         *b.get_mut() = 100    // Modify the value
-///         b.drop()              // Cleanup
+///         defer b.free()
+///
+///         let val: *BigData = b.get_mut()
+///         val.buffer[0] = 42
 ///     },
-///     None => { /* allocation failed */ }
+///     None => { /* failed */ }
 /// }
 /// ```
 pub struct Box<T> {
-    ptr: *T,
+    alloc: Allocation<T>,
 }
 
 impl<T> Box<T> {
     /// Allocate and initialize a Box with the given value
     /// Uses MEMF_PUBLIC by default
-    /// Returns None if allocation fails
     pub fn new(value: T) -> Option<Box<T>> {
         return Box::new_in(value, MEMF_PUBLIC)
     }
 
-    /// Allocate and initialize a Box with specific memory flags
-    /// Returns None if allocation fails
+    /// Allocate with specific memory flags
     pub fn new_in(value: T, flags: u32) -> Option<Box<T>> {
-        let bytes: u32 = @sizeof(T)
+        let element_size: u32 = @sizeof(T)
+        let total_bytes: u32 = element_size
 
-        // Allocate using safe std::core API
-        let mem_result = CoreAlloc(bytes, flags)
-
-        match mem_result {
-            Some(ptr) => {
-                let typed_ptr: *T = (*T)(u32)ptr  // Fixed: added parentheses
-                // Initialize the value
-                *typed_ptr = value
-                return Option::Some(Box { ptr: typed_ptr })
+        match MemoryBlock::alloc(total_bytes, flags) {
+            Some(block) => {
+                var alloc = Allocation {
+                    block: block,
+                    count: 1,
+                }
+                let ptr: *T = alloc.as_mut_ptr()
+                *ptr = value
+                return Option::Some(Box { alloc: alloc })
             },
-            None => {
-                return Option::None
-            }
+            None => return Option::None
         }
     }
 
-    /// Get immutable reference to the boxed value
+    /// Try allocate with Result
+    pub fn try_new(value: T) -> Result<Box<T>, ExecError> {
+        return Box::try_new_in(value, MEMF_PUBLIC)
+    }
+
+    /// Try allocate with specific flags
+    pub fn try_new_in(value: T, flags: u32) -> Result<Box<T>, ExecError> {
+        match Box::new_in(value, flags) {
+            Some(box) => return Result::Ok(box),
+            None => return Result::Err(ExecError::NoMem)
+        }
+    }
+
+    /// Get immutable reference
     pub fn get(&self) -> *T {
-        return self.ptr
+        return self.alloc.as_ptr()
     }
 
-    /// Get mutable reference to the boxed value
+    /// Get mutable reference
     pub fn get_mut(&mut self) -> *T {
-        return self.ptr
+        return self.alloc.as_mut_ptr()
     }
 
-    // TODO: Fix generic type inference for dereferencing
-    // /// Extract the value and free the box
-    // /// This is safer than drop() because it ensures you get the value out
-    // pub fn into_inner(&mut self) -> T {
-    //     let value: T = *self.ptr
-    //     self.drop()
-    //     return value
-    // }
-
-    /// Free the boxed value
-    /// After calling drop(), the box is invalid and cannot be used
-    pub fn drop(&mut self) {
-        let bytes: u32 = @sizeof(T)
-        let mem: *u8 = (*u8)(u32)(self.ptr)  // Fixed: added parentheses
-
-        // Free using safe std::core API
-        CoreFree(mem, bytes)
-
-        // Invalidate to detect use-after-free
-        self.ptr = (*T)0
+    /// Free the box
+    /// NOTE: No size parameter needed!
+    pub fn free(&mut self) {
+        self.alloc.free()
     }
 }
 

@@ -1,24 +1,8 @@
 // Novus Standard Library - Exec Wrappers
 // Namespace: std::exec
-// Safe wrappers around AmigaOS Exec library functions
+// Re-exports of AmigaOS Exec library functions
+//
+// NOTE: For memory management, prefer using std::mem::MemoryBlock instead of AllocMem/FreeMem directly
 
-// Import constants from FFI (no functions/structs to avoid type mismatches)
-from std::ffi::exec import MEMF_ANY, MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, MEMF_LOCAL, MEMF_24BITDMA, MEMF_KICK, MEMF_CLEAR, MEMF_LARGEST, MEMF_REVERSE
-
-// Declare extern functions with C ABI signatures (i32 for all parameters)
-extern fn AllocMem(byteSize: i32, requirements: i32) -> i32
-extern fn FreeMem(memoryBlock: i32, byteSize: i32) -> i32
-
-/// Safe wrapper for Exec AllocMem
-/// Returns raw pointer (*u8), 0 on failure
-pub fn SafeAllocMem(byteSize: u32, attributes: u32) -> *u8 {
-    let result: i32 = AllocMem((i32)byteSize, (i32)attributes)
-    let ptr: *u8 = (*u8)(u32)result
-    return ptr
-}
-
-/// Safe wrapper for Exec FreeMem
-pub fn SafeFreeMem(memoryBlock: *u8, byteSize: u32) {
-    let addr: i32 = (i32)(u32)memoryBlock
-    FreeMem(addr, (i32)byteSize)
-}
+from std::ffi::exec import AllocMem, FreeMem, AllocVec, FreeVec, CopyMem
+from std::ffi::amiga_consts import MEMF_ANY, MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, MEMF_LOCAL, MEMF_24BITDMA, MEMF_KICK, MEMF_CLEAR, MEMF_LARGEST, MEMF_REVERSE

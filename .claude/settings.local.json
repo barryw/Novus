@@ -5,7 +5,14 @@
       "Bash(do echo '=== $(basename $f) ===')",
       "Bash(paste:*)",
       "Bash(do [ -f \"$f\" ])",
-      "Bash([ ! -d \"$f\" ])"
+      "Bash([ ! -d \"$f\" ])",
+      "Bash(do if [ -f \"$file\" ])",
+      "Bash(! echo \"$file\")",
+      "Bash(then echo '=== $(basename $file) ===')",
+      "Bash(fi)",
+      "Bash(tree:*)",
+      "Bash(git -C /Users/barry/RiderProjects/Novus add -A)",
+      "Bash(git -C /Users/barry/RiderProjects/Novus status --short)"
     ],
     "deny": [],
     "ask": []

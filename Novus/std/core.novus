@@ -2,21 +2,6 @@
 // Namespace: std::core
 // Generic enums for safe error handling and optional values
 
-// Import safe wrappers from std::exec
-from std::exec import SafeAllocMem, SafeFreeMem
-
-// Create local wrappers for use in generic methods
-// Note: These must be public so generic instantiation can find them
-// Named CoreAlloc/CoreFree to avoid collision with FFI extern functions
-pub fn CoreAlloc(byteSize: u32, attributes: u32) -> Option<*u8> {
-    let ptr: *u8 = SafeAllocMem(byteSize, attributes)
-    return Option::FromPointer(ptr)
-}
-
-pub fn CoreFree(memoryBlock: *u8, byteSize: u32) {
-    SafeFreeMem(memoryBlock, byteSize)
-}
-
 // Option<T> - represents an optional value
 // Use this instead of null pointers!
 pub enum Option<T> {
@@ -30,8 +15,11 @@ impl<T> Option<T> {
     ///
     /// Example:
     /// ```novus
-    /// let ptr: *u8 = SafeAllocMem(...)
-    /// return Option::FromPointer(ptr)  // Some(ptr) if non-null, None if null
+    /// let block_opt = MemoryBlock::alloc(1024, MEMF_FAST)
+    /// match block_opt {
+    ///     Some(block) => return Option::FromPointer(block.ptr()),
+    ///     None => return Option::None
+    /// }
     /// ```
     pub fn FromPointer(ptr: *T) -> Option<*T> {
         if let p = ptr {
@@ -56,9 +44,4 @@ pub enum Result<T, E> {
 // - NovusError for multi-subsystem errors
 
 // Note: For collections like Vec, see std/collections.novus
-
-// Note: MemoryBlock - if needed, add it here or in std::mem
-pub struct MemoryBlock {
-    ptr: *u8,
-    size: u32,
-}
+// Note: For memory management, see std/mem.novus (MemoryBlock, Allocation<T>, Box<T>)
