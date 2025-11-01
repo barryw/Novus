@@ -58,7 +58,7 @@ globalVariableDeclaration
     ;
 
 functionDeclaration
-    : attribute* KW_EXTERN? (KW_PUB | KW_INTERNAL)? KW_FN IDENTIFIER '(' parameterList? ')' ('->' type)? block? NEWLINE*
+    : attribute* KW_EXTERN? (KW_PUB | KW_INTERNAL)? KW_FN IDENTIFIER genericParams? '(' parameterList? ')' ('->' type)? block? NEWLINE*
     ;
 
 parameterList

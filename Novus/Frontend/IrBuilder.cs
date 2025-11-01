@@ -36,6 +36,14 @@ public class IrBuilder : NovusBaseVisitor<object?>
     // Key: "TypeName<ConcreteType>::methodName" (e.g., "Vec<i32>::push")
     private readonly HashSet<string> _instantiatedMethods = new();
 
+    // Store generic function templates for later instantiation (standalone functions, not methods)
+    // Key: function name (e.g., "identity"), Value: (genericParams, context, constants)
+    private readonly Dictionary<string, (List<string> GenericParams, NovusParser.FunctionDeclarationContext Context, Dictionary<string, (IrType Type, object Value)> Constants)> _genericFunctionTemplates = new();
+
+    // Track which generic functions have been instantiated with which types
+    // Key: "functionName<ConcreteType1,ConcreteType2>" (e.g., "identity<i32>")
+    private readonly HashSet<string> _instantiatedGenericFunctions = new();
+
     private IrType? _expectedType = null; // Expected type for bidirectional type checking
     public readonly List<IrStringLiteral> StringLiterals = new(); // Track all string literals for data section
     private string _stdLibPath = "std"; // Path to standard library
@@ -146,6 +154,26 @@ public class IrBuilder : NovusBaseVisitor<object?>
         foreach (var funcContext in context.functionDeclaration())
         {
             var name = funcContext.IDENTIFIER().GetText();
+
+            // Check if this is a generic function
+            var genericParams = new List<string>();
+            if (funcContext.genericParams() != null)
+            {
+                foreach (var paramId in funcContext.genericParams().IDENTIFIER())
+                {
+                    genericParams.Add(paramId.GetText());
+                }
+            }
+
+            // If generic, store as template for later instantiation
+            if (genericParams.Count > 0)
+            {
+                var templateConstants = new Dictionary<string, (IrType Type, object Value)>(_constants);
+                _genericFunctionTemplates[name] = (genericParams, funcContext, templateConstants);
+                continue; // Don't add to _module.Functions yet
+            }
+
+            // Non-generic function: register normally
             var returnType = funcContext.type() != null ? ParseType(funcContext.type()) : IrVoidType.Instance;
 
             // Check for extern, pub, and internal keywords
@@ -281,6 +309,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         foreach (var funcContext in context.functionDeclaration())
         {
             var funcName = funcContext.IDENTIFIER().GetText();
+
+            // Skip generic function templates - they'll be instantiated on-demand
+            if (_genericFunctionTemplates.ContainsKey(funcName))
+            {
+                continue;
+            }
+
             _currentFunction = _module.Functions.FirstOrDefault(f => f.Name == funcName);
             if (_currentFunction == null)
             {
@@ -1017,6 +1052,198 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         // Mark as instantiated
         _instantiatedMethods.Add(instantiationKey);
+
+        return function;
+    }
+
+    /// <summary>
+    /// Infer generic type arguments for a generic function from call site arguments
+    /// </summary>
+    private Dictionary<string, IrType>? InferGenericFunctionTypes(List<string> genericParams, List<IrParameter> templateParams, List<IrValue> arguments)
+    {
+        if (arguments.Count != templateParams.Count)
+        {
+            return null; // Argument count mismatch
+        }
+
+        var typeSubstitutions = new Dictionary<string, IrType>();
+
+        // Match each argument to its parameter and extract type mappings
+        for (int i = 0; i < arguments.Count; i++)
+        {
+            var argType = arguments[i].Type;
+            var paramType = templateParams[i].Type;
+
+            // Recursively extract generic type mappings
+            ExtractGenericTypeMapping(paramType, argType, typeSubstitutions);
+        }
+
+        // Verify all generic parameters were resolved
+        foreach (var genericParam in genericParams)
+        {
+            if (!typeSubstitutions.ContainsKey(genericParam))
+            {
+                return null; // Could not infer all type parameters
+            }
+        }
+
+        return typeSubstitutions;
+    }
+
+    /// <summary>
+    /// Build mangled name for instantiated generic function (e.g., "identity_i32")
+    /// </summary>
+    private string BuildGenericFunctionMangledName(string functionName, Dictionary<string, IrType> typeSubstitutions)
+    {
+        var mangledName = functionName;
+        foreach (var kvp in typeSubstitutions.OrderBy(kv => kv.Key))
+        {
+            mangledName += "_" + kvp.Value.Name.Replace("*", "ptr").Replace("&", "ref").Replace("[", "arr").Replace("]", "");
+        }
+        return mangledName;
+    }
+
+    /// <summary>
+    /// Instantiate a generic function with concrete type arguments
+    /// </summary>
+    private IrFunction? InstantiateGenericFunction(string functionName, Dictionary<string, IrType> typeSubstitutions)
+    {
+        // Check if we have a template for this function
+        if (!_genericFunctionTemplates.TryGetValue(functionName, out var template))
+        {
+            return null; // No template found
+        }
+
+        var (genericParams, funcDecl, templateConstants) = template;
+
+        // Build instantiation key (e.g., "identity<i32>")
+        var instantiationKey = functionName + "<" + string.Join(",", typeSubstitutions.OrderBy(kv => kv.Key).Select(kv => kv.Value.Name)) + ">";
+
+        // Check if already instantiated
+        if (_instantiatedGenericFunctions.Contains(instantiationKey))
+        {
+            // Already generated, look it up
+            var existingMangledName = BuildGenericFunctionMangledName(functionName, typeSubstitutions);
+            return _module.Functions.FirstOrDefault(f => f.Name == existingMangledName);
+        }
+
+        // Save current constants and MERGE template constants with current module constants
+        var savedConstants = new Dictionary<string, (IrType Type, object Value)>(_constants);
+
+        // Start with template constants
+        _constants.Clear();
+        foreach (var kvp in templateConstants)
+        {
+            _constants[kvp.Key] = kvp.Value;
+        }
+
+        // Overlay current module constants (allows transitive imports to work)
+        foreach (var kvp in savedConstants)
+        {
+            _constants[kvp.Key] = kvp.Value;
+        }
+
+        // Set up concrete types for substitution during parsing
+        var savedGenericParams = new Dictionary<string, IrGenericType>();
+        foreach (var paramName in genericParams)
+        {
+            if (_genericParams.ContainsKey(paramName))
+            {
+                savedGenericParams[paramName] = _genericParams[paramName];
+            }
+            _genericParams[paramName] = new IrGenericType(paramName);
+        }
+
+        // Set active type substitutions for the duration of this instantiation
+        var savedSubstitutions = _currentTypeSubstitutions;
+        _currentTypeSubstitutions = typeSubstitutions;
+
+        // Create the function with substituted return type
+        var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
+        returnType = SubstituteGenericTypes(returnType, typeSubstitutions);
+
+        // Check for pub/internal keywords
+        var visibility = Visibility.Private;
+        for (int i = 0; i < Math.Min(4, funcDecl.ChildCount); i++)
+        {
+            var childText = funcDecl.GetChild(i)?.GetText();
+            if (childText == "pub") visibility = Visibility.Public;
+            if (childText == "internal") visibility = Visibility.Internal;
+        }
+
+        var mangledFunctionName = BuildGenericFunctionMangledName(functionName, typeSubstitutions);
+        var function = new IrFunction(mangledFunctionName, returnType, visibility, false);
+
+        // Parse parameters with substitutions
+        if (funcDecl.parameterList() != null)
+        {
+            foreach (var paramCtx in funcDecl.parameterList().parameter())
+            {
+                var paramName = paramCtx.IDENTIFIER().GetText();
+                var paramType = ParseType(paramCtx.type());
+
+                // Substitute generic types recursively
+                paramType = SubstituteGenericTypes(paramType, typeSubstitutions);
+
+                function.Parameters.Add(new IrParameter(paramName, paramType));
+            }
+        }
+
+        _module.AddFunction(function);
+
+        // Build the function body - save all state to avoid corrupting caller
+        var savedFunction = _currentFunction;
+        var savedBlock = _currentBlock;
+        var savedLocalVars = new Dictionary<string, IrLocalVariable>(_localVariables);
+
+        _currentFunction = function;
+        _localVariables.Clear();
+
+        // Add parameters to local variables
+        foreach (var param in function.Parameters)
+        {
+            _localVariables[param.Name] = new IrLocalVariable(param.Name, param.Type, false);
+        }
+
+        // Create entry block
+        var entryBlock = new IrBasicBlock("entry");
+        function.BasicBlocks.Add(entryBlock);
+        _currentBlock = entryBlock;
+
+        // Visit the function body with type substitutions active
+        if (funcDecl.block() != null)
+        {
+            Visit(funcDecl.block());
+        }
+
+        // Restore all state
+        _currentFunction = savedFunction;
+        _currentBlock = savedBlock;
+        _localVariables.Clear();
+        foreach (var kvp in savedLocalVars)
+        {
+            _localVariables[kvp.Key] = kvp.Value;
+        }
+
+        // Restore type substitutions
+        _currentTypeSubstitutions = savedSubstitutions;
+
+        // Restore constants
+        _constants.Clear();
+        foreach (var kvp in savedConstants)
+        {
+            _constants[kvp.Key] = kvp.Value;
+        }
+
+        // Restore generic params
+        _genericParams.Clear();
+        foreach (var kvp in savedGenericParams)
+        {
+            _genericParams[kvp.Key] = kvp.Value;
+        }
+
+        // Mark as instantiated
+        _instantiatedGenericFunctions.Add(instantiationKey);
 
         return function;
     }
@@ -2230,6 +2457,15 @@ public class IrBuilder : NovusBaseVisitor<object?>
             return HandleMethodCallIr(context, memberAccessCtx);
         }
 
+        // Check if this is a call to a generic function template (before evaluating funcExpr)
+        // Generic functions aren't in _module.Functions yet, so we need to check the template dictionary
+        string? genericFuncName = null;
+        if (context.expression() is NovusParser.PrimaryExprContext primaryCtx &&
+            primaryCtx.primaryExpression() is NovusParser.IdentifierExprContext identExpr)
+        {
+            genericFuncName = identExpr.identifier().GetText();
+        }
+
         var funcExpr = (IrValue?)Visit(context.expression());
 
         // Parse arguments
@@ -2276,6 +2512,64 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 }
                 argIdx++;
             }
+        }
+
+        // If it's a generic function template, infer types and instantiate
+        if (genericFuncName != null && _genericFunctionTemplates.ContainsKey(genericFuncName))
+        {
+            // Get template and parse parameters
+            var template = _genericFunctionTemplates[genericFuncName];
+
+            // Set up generic params temporarily
+            var savedGenericParams = new Dictionary<string, IrGenericType>(_genericParams);
+            _genericParams.Clear();
+            foreach (var paramName in template.GenericParams)
+            {
+                _genericParams[paramName] = new IrGenericType(paramName);
+            }
+
+            // Parse template parameters
+            var templateParams = new List<IrParameter>();
+            if (template.Context.parameterList() != null)
+            {
+                foreach (var paramCtx in template.Context.parameterList().parameter())
+                {
+                    var paramName = paramCtx.IDENTIFIER().GetText();
+                    var paramType = ParseType(paramCtx.type());
+                    templateParams.Add(new IrParameter(paramName, paramType));
+                }
+            }
+
+            // Restore generic params
+            _genericParams.Clear();
+            foreach (var kvp in savedGenericParams)
+            {
+                _genericParams[kvp.Key] = kvp.Value;
+            }
+
+            // Infer types
+            var typeSubstitutions = InferGenericFunctionTypes(template.GenericParams, templateParams, arguments);
+            if (typeSubstitutions == null)
+            {
+                throw new Exception($"Cannot infer type arguments for '{genericFuncName}'");
+            }
+
+            // Instantiate
+            var instantiatedFunc = InstantiateGenericFunction(genericFuncName, typeSubstitutions);
+            if (instantiatedFunc == null)
+            {
+                throw new Exception($"Failed to instantiate '{genericFuncName}'");
+            }
+
+            // Create call
+            var genericCallResult = $"%t{_tempCounter++}";
+            var genericCall = new IrCall(instantiatedFunc.Name, instantiatedFunc.ReturnType, genericCallResult);
+            foreach (var arg in arguments)
+            {
+                genericCall.Arguments.Add(arg);
+            }
+            _currentBlock!.AddInstruction(genericCall);
+            return new IrVariable(genericCallResult, instantiatedFunc.ReturnType);
         }
 
         // Handle generic associated function calls (e.g., Vec::new())
