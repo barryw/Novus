@@ -555,6 +555,7 @@ public class CCodeGenerator
         if (libraryGen.IsLibrary)
         {
             _output.AppendLine();
+            _output.AppendLine(libraryGen.GenerateLibraryBaseStruct());
             _output.AppendLine(libraryGen.GenerateROMTag());
             _output.AppendLine(libraryGen.GenerateDefaultLifecycleFunctions());
         }

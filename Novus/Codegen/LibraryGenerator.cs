@@ -31,6 +31,7 @@ public class LibraryGenerator
     private class LibraryFunction
     {
         public string Name { get; set; } = "";
+        public string CName { get; set; } = "";  // Mangled C name
         public IrFunction Function { get; set; } = null!;
         public int VectorOffset { get; set; }
         public bool IsLifecycleFunction { get; set; }
@@ -109,6 +110,14 @@ public class LibraryGenerator
     }
 
     /// <summary>
+    /// Mangle a Novus name to a C-compatible name (same as CCodeGenerator).
+    /// </summary>
+    private string MangleName(string name)
+    {
+        return name.Replace("::", "_");
+    }
+
+    /// <summary>
     /// Analyze which functions belong to the library.
     /// </summary>
     private void AnalyzeLibraryFunctions()
@@ -144,6 +153,7 @@ public class LibraryGenerator
             var libFunc = new LibraryFunction
             {
                 Name = function.Name,
+                CName = MangleName(function.Name),
                 Function = function
             };
 
@@ -205,10 +215,8 @@ public class LibraryGenerator
         sb.AppendLine("// initialization information.");
         sb.AppendLine();
 
-        // Include necessary headers
-        sb.AppendLine("#include <exec/types.h>");
+        // Include resident header (libraries.h already included in library base struct)
         sb.AppendLine("#include <exec/resident.h>");
-        sb.AppendLine("#include <exec/libraries.h>");
         sb.AppendLine();
 
         // Library name and ID string
@@ -217,11 +225,13 @@ public class LibraryGenerator
         sb.AppendLine();
 
         // Forward declarations
+        var structName = $"{_libraryStruct.StructName}Base";
         sb.AppendLine("// Forward declarations");
-        sb.AppendLine("struct Library* LibInit(BPTR segList, struct Library *sysBase);");
-        sb.AppendLine("struct Library* LibOpen(void);");
-        sb.AppendLine("BPTR LibClose(void);");
-        sb.AppendLine("BPTR LibExpunge(void);");
+        sb.AppendLine("static const ULONG InitTable[];  // Defined below");
+        sb.AppendLine($"struct Library* LibInit(BPTR segList, struct {structName}* base);");
+        sb.AppendLine($"struct Library* LibOpen(struct {structName}* base);");
+        sb.AppendLine($"BPTR LibClose(struct {structName}* base);");
+        sb.AppendLine($"BPTR LibExpunge(struct {structName}* base);");
         sb.AppendLine("LONG LibReserved(void);");
         sb.AppendLine();
 
@@ -237,7 +247,7 @@ public class LibraryGenerator
         {
             if (!func.IsLifecycleFunction)
             {
-                sb.AppendLine($"    (APTR){func.Name},  // Offset {func.VectorOffset}");
+                sb.AppendLine($"    (APTR){func.CName},  // Offset {func.VectorOffset}");
             }
         }
 
@@ -262,12 +272,9 @@ public class LibraryGenerator
         sb.AppendLine();
 
         // AutoInit structure
-        int libBaseSize = CalculateLibraryBaseSize();
-        int negSize = _libraryFunctions.Count * 6;
-
         sb.AppendLine("// AutoInit structure");
         sb.AppendLine("static const ULONG InitTable[] = {");
-        sb.AppendLine($"    sizeof(struct Library),  // Data size");
+        sb.AppendLine($"    sizeof(struct {structName}),  // Data size");
         sb.AppendLine("    (ULONG)FuncTable,         // Function table");
         sb.AppendLine("    0,                        // Data table");
         sb.AppendLine("    (ULONG)LibInit            // Init routine");
@@ -312,15 +319,73 @@ public class LibraryGenerator
     }
 
     /// <summary>
-    /// Generate default lifecycle functions if not provided by user.
+    /// Get the C type name for an IR type (simplified version from CCodeGenerator).
     /// </summary>
-    public string GenerateDefaultLifecycleFunctions()
+    private string GetCType(IrType type)
     {
-        if (!IsLibrary)
+        return type switch
+        {
+            IrIntType intType => intType.IsSigned
+                ? $"int{intType.SizeInBytes * 8}_t"
+                : $"uint{intType.SizeInBytes * 8}_t",
+            IrBoolType => "bool",
+            IrPointerType ptrType => $"{GetCType(ptrType.PointeeType)}*",
+            _ => "void*"
+        };
+    }
+
+    /// <summary>
+    /// Generate the library base structure definition.
+    /// Includes necessary headers for struct Library definition.
+    /// </summary>
+    public string GenerateLibraryBaseStruct()
+    {
+        if (!IsLibrary || _libraryStruct == null)
             return "";
 
         var sb = new StringBuilder();
         var libName = GetLibraryName();
+        var structName = $"{_libraryStruct.StructName}Base";
+
+        sb.AppendLine("// ============================================================================");
+        sb.AppendLine("// Library Base Structure");
+        sb.AppendLine("// ============================================================================");
+        sb.AppendLine();
+
+        // Include headers needed for struct Library
+        sb.AppendLine("#include <exec/types.h>");
+        sb.AppendLine("#include <exec/nodes.h>");
+        sb.AppendLine("#include <exec/libraries.h>");
+        sb.AppendLine("#include <dos/dos.h>");  // For BPTR
+        sb.AppendLine();
+
+        sb.AppendLine($"// The library base includes the standard Library header plus custom fields.");
+        sb.AppendLine($"struct {structName} {{");
+        sb.AppendLine("    struct Library lib_Node;");
+
+        // Add custom fields from the @library struct
+        foreach (var field in _libraryStruct.Fields)
+        {
+            var cType = GetCType(field.Type);
+            sb.AppendLine($"    {cType} {field.Name};");
+        }
+
+        sb.AppendLine("};");
+        sb.AppendLine();
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Generate default lifecycle functions if not provided by user.
+    /// </summary>
+    public string GenerateDefaultLifecycleFunctions()
+    {
+        if (!IsLibrary || _libraryStruct == null)
+            return "";
+
+        var sb = new StringBuilder();
+        var structName = $"{_libraryStruct.StructName}Base";
 
         // Check which lifecycle functions are missing
         bool hasOpen = _libraryFunctions.Any(f => f.VectorOffset == -6);
@@ -328,31 +393,51 @@ public class LibraryGenerator
         bool hasExpunge = _libraryFunctions.Any(f => f.VectorOffset == -18);
         bool hasReserved = _libraryFunctions.Any(f => f.VectorOffset == -24);
 
+        // Use extern SysBase from runtime, or get it from location 4
+        sb.AppendLine("// Get exec.library base from absolute location 4");
+        sb.AppendLine("#define SysBase (*(struct ExecBase**)4)");
+        sb.AppendLine();
+
         sb.AppendLine("// ============================================================================");
-        sb.AppendLine("// Default Lifecycle Functions");
+        sb.AppendLine("// Lifecycle Functions");
         sb.AppendLine("// ============================================================================");
+        sb.AppendLine();
+
+        // LibInit - always generate this as it's required
+        sb.AppendLine($"struct Library* LibInit(BPTR segList, struct {structName}* base) {{");
+        sb.AppendLine("    // Initialize library base fields");
+        sb.AppendLine("    // (SysBase is available via macro #define at location 4)");
+        sb.AppendLine("    base->lib_Node.lib_Node.ln_Type = NT_LIBRARY;");
+        sb.AppendLine("    base->lib_Node.lib_Node.ln_Pri = 0;");
+        sb.AppendLine("    base->lib_Node.lib_Node.ln_Name = (char*)LibName;");
+        sb.AppendLine("    base->lib_Node.lib_Flags = LIBF_CHANGED | LIBF_SUMUSED;");
+        sb.AppendLine($"    base->lib_Node.lib_Version = {GetLibraryVersion()};");
+        sb.AppendLine($"    base->lib_Node.lib_Revision = {GetLibraryRevision()};");
+        sb.AppendLine("    base->lib_Node.lib_IdString = (char*)LibIdString;");
+        sb.AppendLine();
+        sb.AppendLine("    // Store segment list for later unloading");
+        sb.AppendLine("    // TODO: Store segList in library base");
+        sb.AppendLine();
+        sb.AppendLine("    return &base->lib_Node;");
+        sb.AppendLine("}");
         sb.AppendLine();
 
         if (!hasOpen)
         {
-            sb.AppendLine("struct Library* LibOpen(void) {");
-            sb.AppendLine("    struct Library* base;");
-            sb.AppendLine("    __asm volatile (\"move.l %%a6,%0\" : \"=r\"(base));");
-            sb.AppendLine("    base->lib_OpenCnt++;");
-            sb.AppendLine("    base->lib_Flags &= ~LIBF_DELEXP;");
-            sb.AppendLine("    return base;");
+            sb.AppendLine($"struct Library* LibOpen(struct {structName}* base) {{");
+            sb.AppendLine("    base->lib_Node.lib_OpenCnt++;");
+            sb.AppendLine("    base->lib_Node.lib_Flags &= ~LIBF_DELEXP;");
+            sb.AppendLine("    return &base->lib_Node;");
             sb.AppendLine("}");
             sb.AppendLine();
         }
 
         if (!hasClose)
         {
-            sb.AppendLine("BPTR LibClose(void) {");
-            sb.AppendLine("    struct Library* base;");
-            sb.AppendLine("    __asm volatile (\"move.l %%a6,%0\" : \"=r\"(base));");
-            sb.AppendLine("    base->lib_OpenCnt--;");
-            sb.AppendLine("    if (base->lib_OpenCnt == 0 && (base->lib_Flags & LIBF_DELEXP)) {");
-            sb.AppendLine("        return LibExpunge();");
+            sb.AppendLine($"BPTR LibClose(struct {structName}* base) {{");
+            sb.AppendLine("    base->lib_Node.lib_OpenCnt--;");
+            sb.AppendLine("    if (base->lib_Node.lib_OpenCnt == 0 && (base->lib_Node.lib_Flags & LIBF_DELEXP)) {");
+            sb.AppendLine("        return LibExpunge(base);");
             sb.AppendLine("    }");
             sb.AppendLine("    return 0;");
             sb.AppendLine("}");
@@ -361,16 +446,20 @@ public class LibraryGenerator
 
         if (!hasExpunge)
         {
-            sb.AppendLine("BPTR LibExpunge(void) {");
-            sb.AppendLine("    struct Library* base;");
-            sb.AppendLine("    __asm volatile (\"move.l %%a6,%0\" : \"=r\"(base));");
-            sb.AppendLine("    if (base->lib_OpenCnt > 0) {");
-            sb.AppendLine("        base->lib_Flags |= LIBF_DELEXP;");
+            sb.AppendLine($"BPTR LibExpunge(struct {structName}* base) {{");
+            sb.AppendLine("    if (base->lib_Node.lib_OpenCnt > 0) {");
+            sb.AppendLine("        base->lib_Node.lib_Flags |= LIBF_DELEXP;");
             sb.AppendLine("        return 0;");
             sb.AppendLine("    }");
-            sb.AppendLine("    // TODO: Remove from library list");
-            sb.AppendLine("    // TODO: Free library base");
-            sb.AppendLine("    return 0;  // Return seglist");
+            sb.AppendLine();
+            sb.AppendLine("    // Remove library from system list");
+            sb.AppendLine("    // Remove((struct Node*)base);");
+            sb.AppendLine();
+            sb.AppendLine("    // Free library base memory");
+            sb.AppendLine($"    // FreeMem(base, sizeof(struct {structName}));");
+            sb.AppendLine();
+            sb.AppendLine("    // Return segment list for DOS to unload");
+            sb.AppendLine("    return 0;  // TODO: return actual segList");
             sb.AppendLine("}");
             sb.AppendLine();
         }
