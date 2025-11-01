@@ -3259,134 +3259,229 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     public override object? VisitPostIncrementExpr([NotNull] NovusParser.PostIncrementExprContext context)
     {
-        // Post-increment: return old value, but increment the variable
-        var operand = (IrValue)Visit(context.expression())!;
-
-        // Get the variable name
-        string varName;
-        if (context.expression() is NovusParser.PrimaryExprContext primaryCtx &&
-            primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext identCtx)
-        {
-            varName = identCtx.identifier().GetText();
-        }
-        else
-        {
-            throw new Exception("Post-increment requires a variable");
-        }
-
-        // Create a local variable to save the old value FIRST
-        var oldValueTemp = $"%postinc_save{_tempCounter++}";
-        var oldValueLocal = new IrLocalVariable(oldValueTemp, operand.Type, false);
-        _currentFunction!.LocalVariables.Add(oldValueLocal);
-
-        // Store the old value (current value of operand) to our save variable
-        _currentBlock!.AddInstruction(new IrStore(oldValueTemp, operand));
-
-        // Now increment the variable: var = var + 1
-        var incrementTemp = $"%t{_tempCounter++}";
-        var addOp = new IrBinaryOp(incrementTemp, IrBinaryOp.OpKind.Add, operand, new IrConstant(1, operand.Type), operand.Type);
-        _currentBlock.AddInstruction(addOp);
-
-        // Store the new value back to the variable
-        _currentBlock.AddInstruction(new IrStore(varName, new IrVariable(incrementTemp, operand.Type)));
-
-        // Return the old value from the saved local
-        return new IrVariable(oldValueTemp, operand.Type);
+        // Post-increment: return old value, but increment the lvalue
+        return HandlePostIncrementDecrement(context.expression(), isIncrement: true);
     }
 
     public override object? VisitPostDecrementExpr([NotNull] NovusParser.PostDecrementExprContext context)
     {
-        // Post-decrement: return old value, but decrement the variable
-        var operand = (IrValue)Visit(context.expression())!;
+        // Post-decrement: return old value, but decrement the lvalue
+        return HandlePostIncrementDecrement(context.expression(), isIncrement: false);
+    }
 
-        // Get the variable name
-        string varName;
-        if (context.expression() is NovusParser.PrimaryExprContext primaryCtx &&
+    private IrValue HandlePostIncrementDecrement(ParserRuleContext exprContext, bool isIncrement)
+    {
+        // For post-inc/dec, we need to:
+        // 1. Load current value and save it
+        // 2. Increment/decrement the lvalue
+        // 3. Return the saved old value
+
+        // First, use the same logic as pre-inc/dec to compute and store the new value
+        // But we need to save the old value first
+
+        // Load the current value
+        var currentValue = (IrValue)Visit(exprContext)!;
+
+        // Save the old value to return later
+        var oldValueTemp = $"%post{(isIncrement ? "inc" : "dec")}_save{_tempCounter++}";
+        var oldValueLocal = new IrLocalVariable(oldValueTemp, currentValue.Type, false);
+        _currentFunction!.LocalVariables.Add(oldValueLocal);
+        _currentBlock!.AddInstruction(new IrStore(oldValueTemp, currentValue));
+
+        // Compute the new value (current +/- 1)
+        var newValueTemp = $"%t{_tempCounter++}";
+        var op = isIncrement
+            ? new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Add, currentValue, new IrConstant(1, currentValue.Type), currentValue.Type)
+            : new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Sub, currentValue, new IrConstant(1, currentValue.Type), currentValue.Type);
+        _currentBlock.AddInstruction(op);
+
+        var newValue = new IrVariable(newValueTemp, currentValue.Type);
+
+        // Now store the new value back to the lvalue (same logic as pre-inc/dec)
+        StoreToLvalue(exprContext, newValue);
+
+        // Return the old value
+        return new IrVariable(oldValueTemp, currentValue.Type);
+    }
+
+    private void StoreToLvalue(ParserRuleContext exprContext, IrValue value)
+    {
+        // Case 1: Simple variable (identifier)
+        if (exprContext is NovusParser.PrimaryExprContext primaryCtx &&
             primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext identCtx)
         {
-            varName = identCtx.identifier().GetText();
+            var varName = identCtx.identifier().GetText();
+            _currentBlock!.AddInstruction(new IrStore(varName, value));
+            return;
         }
-        else
+
+        // Case 2: Member access (obj.field)
+        if (exprContext is NovusParser.MemberAccessExprContext memberCtx)
         {
-            throw new Exception("Post-decrement requires a variable");
+            var baseExpr = (IrValue)Visit(memberCtx.expression())!;
+            var memberName = memberCtx.IDENTIFIER().GetText();
+
+            if (baseExpr.Type is not IrStructType structType)
+            {
+                throw new Exception($"Cannot access member '{memberName}' on non-struct type '{baseExpr.Type}'");
+            }
+
+            var field = structType.Fields.FirstOrDefault(f => f.Name == memberName);
+            if (field == null)
+            {
+                throw new Exception($"Struct '{structType.Name}' has no field '{memberName}'");
+            }
+
+            _currentBlock!.AddInstruction(new IrMemberStore(baseExpr, memberName, field.Offset, value));
+            return;
         }
 
-        // Create a local variable to save the old value FIRST
-        var oldValueTemp = $"%postdec_save{_tempCounter++}";
-        var oldValueLocal = new IrLocalVariable(oldValueTemp, operand.Type, false);
-        _currentFunction!.LocalVariables.Add(oldValueLocal);
+        // Case 3: Index access (arr[i])
+        if (exprContext is NovusParser.IndexExprContext indexCtx)
+        {
+            var arrayExpr = (IrValue)Visit(indexCtx.expression(0))!;
+            var indexExpr = (IrValue)Visit(indexCtx.expression(1))!;
 
-        // Store the old value (current value of operand) to our save variable
-        _currentBlock!.AddInstruction(new IrStore(oldValueTemp, operand));
+            _currentBlock!.AddInstruction(new IrIndexStore(arrayExpr, indexExpr, value));
+            return;
+        }
 
-        // Now decrement the variable: var = var - 1
-        var decrementTemp = $"%t{_tempCounter++}";
-        var subOp = new IrBinaryOp(decrementTemp, IrBinaryOp.OpKind.Sub, operand, new IrConstant(1, operand.Type), operand.Type);
-        _currentBlock.AddInstruction(subOp);
+        // Case 4: Dereference (*ptr)
+        if (exprContext is NovusParser.DereferenceExprContext derefCtx)
+        {
+            var ptrExpr = (IrValue)Visit(derefCtx.expression())!;
+            _currentBlock!.AddInstruction(new IrDereferenceStore(ptrExpr, value));
+            return;
+        }
 
-        // Store the new value back to the variable
-        _currentBlock.AddInstruction(new IrStore(varName, new IrVariable(decrementTemp, operand.Type)));
-
-        // Return the old value from the saved local
-        return new IrVariable(oldValueTemp, operand.Type);
+        throw new Exception($"Cannot store to expression type: {exprContext.GetType().Name}");
     }
 
     public override object? VisitPreIncrementExpr([NotNull] NovusParser.PreIncrementExprContext context)
     {
-        // Pre-increment: increment the variable and return new value
-        var operand = (IrValue)Visit(context.expression())!;
-
-        // Get the variable name
-        string varName;
-        if (context.expression() is NovusParser.PrimaryExprContext primaryCtx &&
-            primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext identCtx)
-        {
-            varName = identCtx.identifier().GetText();
-        }
-        else
-        {
-            throw new Exception("Pre-increment requires a variable");
-        }
-
-        // Increment the variable: var = var + 1
-        var incrementTemp = $"%t{_tempCounter++}";
-        var addOp = new IrBinaryOp(incrementTemp, IrBinaryOp.OpKind.Add, operand, new IrConstant(1, operand.Type), operand.Type);
-        _currentBlock!.AddInstruction(addOp);
-
-        // Store back to the variable
-        _currentBlock.AddInstruction(new IrStore(varName, new IrVariable(incrementTemp, operand.Type)));
-
-        // Return the new value
-        return new IrVariable(incrementTemp, operand.Type);
+        // Pre-increment: increment the lvalue and return new value
+        return HandlePreIncrementDecrement(context.expression(), isIncrement: true);
     }
 
     public override object? VisitPreDecrementExpr([NotNull] NovusParser.PreDecrementExprContext context)
     {
-        // Pre-decrement: decrement the variable and return new value
-        var operand = (IrValue)Visit(context.expression())!;
+        // Pre-decrement: decrement the lvalue and return new value
+        return HandlePreIncrementDecrement(context.expression(), isIncrement: false);
+    }
 
-        // Get the variable name
-        string varName;
-        if (context.expression() is NovusParser.PrimaryExprContext primaryCtx &&
+    private IrValue HandlePreIncrementDecrement(ParserRuleContext exprContext, bool isIncrement)
+    {
+        // Case 1: Simple variable (identifier)
+        if (exprContext is NovusParser.PrimaryExprContext primaryCtx &&
             primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext identCtx)
         {
-            varName = identCtx.identifier().GetText();
+            var varName = identCtx.identifier().GetText();
+            var currentValue = (IrValue)Visit(exprContext)!;
+
+            var newValueTemp = $"%t{_tempCounter++}";
+            var op = isIncrement
+                ? new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Add, currentValue, new IrConstant(1, currentValue.Type), currentValue.Type)
+                : new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Sub, currentValue, new IrConstant(1, currentValue.Type), currentValue.Type);
+            _currentBlock!.AddInstruction(op);
+
+            var newValue = new IrVariable(newValueTemp, currentValue.Type);
+            _currentBlock.AddInstruction(new IrStore(varName, newValue));
+            return newValue;
         }
-        else
+
+        // Case 2: Member access (obj.field)
+        if (exprContext is NovusParser.MemberAccessExprContext memberCtx)
         {
-            throw new Exception("Pre-decrement requires a variable");
+            var baseExpr = (IrValue)Visit(memberCtx.expression())!;
+            var memberName = memberCtx.IDENTIFIER().GetText();
+
+            // Get the struct type and field info
+            if (baseExpr.Type is not IrStructType structType)
+            {
+                throw new Exception($"Cannot access member '{memberName}' on non-struct type '{baseExpr.Type}'");
+            }
+
+            var field = structType.Fields.FirstOrDefault(f => f.Name == memberName);
+            if (field == null)
+            {
+                throw new Exception($"Struct '{structType.Name}' has no field '{memberName}'");
+            }
+
+            // Load current value
+            var loadTemp = $"%member_load_{_tempCounter++}";
+            _currentBlock!.AddInstruction(new IrMemberAccess(loadTemp, baseExpr, memberName, field.Type, field.Offset));
+            var currentValue = new IrVariable(loadTemp, field.Type);
+
+            // Increment/decrement
+            var newValueTemp = $"%t{_tempCounter++}";
+            var op = isIncrement
+                ? new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Add, currentValue, new IrConstant(1, field.Type), field.Type)
+                : new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Sub, currentValue, new IrConstant(1, field.Type), field.Type);
+            _currentBlock.AddInstruction(op);
+
+            var newValue = new IrVariable(newValueTemp, field.Type);
+            _currentBlock.AddInstruction(new IrMemberStore(baseExpr, memberName, field.Offset, newValue));
+            return newValue;
         }
 
-        // Decrement the variable: var = var - 1
-        var decrementTemp = $"%t{_tempCounter++}";
-        var subOp = new IrBinaryOp(decrementTemp, IrBinaryOp.OpKind.Sub, operand, new IrConstant(1, operand.Type), operand.Type);
-        _currentBlock!.AddInstruction(subOp);
+        // Case 3: Index access (arr[i])
+        if (exprContext is NovusParser.IndexExprContext indexCtx)
+        {
+            var arrayExpr = (IrValue)Visit(indexCtx.expression(0))!;
+            var indexExpr = (IrValue)Visit(indexCtx.expression(1))!;
 
-        // Store back to the variable
-        _currentBlock.AddInstruction(new IrStore(varName, new IrVariable(decrementTemp, operand.Type)));
+            // Determine element type
+            IrType elementType;
+            if (arrayExpr.Type is IrPointerType pt)
+                elementType = pt.PointeeType;
+            else if (arrayExpr.Type is IrArrayType at)
+                elementType = at.ElementType;
+            else
+                throw new Exception($"Cannot index type '{arrayExpr.Type}'");
 
-        // Return the new value
-        return new IrVariable(decrementTemp, operand.Type);
+            // Load current value
+            var loadTemp = $"%index_load_{_tempCounter++}";
+            _currentBlock!.AddInstruction(new IrIndexAccess(loadTemp, arrayExpr, indexExpr, elementType));
+            var currentValue = new IrVariable(loadTemp, elementType);
+
+            // Increment/decrement
+            var newValueTemp = $"%t{_tempCounter++}";
+            var op = isIncrement
+                ? new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Add, currentValue, new IrConstant(1, elementType), elementType)
+                : new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Sub, currentValue, new IrConstant(1, elementType), elementType);
+            _currentBlock.AddInstruction(op);
+
+            var newValue = new IrVariable(newValueTemp, elementType);
+            _currentBlock.AddInstruction(new IrIndexStore(arrayExpr, indexExpr, newValue));
+            return newValue;
+        }
+
+        // Case 4: Dereference (*ptr)
+        if (exprContext is NovusParser.DereferenceExprContext derefCtx)
+        {
+            var ptrExpr = (IrValue)Visit(derefCtx.expression())!;
+
+            if (ptrExpr.Type is not IrPointerType ptrType)
+            {
+                throw new Exception($"Cannot dereference non-pointer type '{ptrExpr.Type}'");
+            }
+
+            // Load current value (dereference)
+            var currentValue = new IrDereferenceValue(ptrExpr, ptrType.PointeeType);
+
+            // Increment/decrement
+            var newValueTemp = $"%t{_tempCounter++}";
+            var op = isIncrement
+                ? new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Add, currentValue, new IrConstant(1, ptrType.PointeeType), ptrType.PointeeType)
+                : new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Sub, currentValue, new IrConstant(1, ptrType.PointeeType), ptrType.PointeeType);
+            _currentBlock!.AddInstruction(op);
+
+            var newValue = new IrVariable(newValueTemp, ptrType.PointeeType);
+            _currentBlock.AddInstruction(new IrDereferenceStore(ptrExpr, newValue));
+            return newValue;
+        }
+
+        throw new Exception($"Pre-{(isIncrement ? "increment" : "decrement")} not supported for expression type: {exprContext.GetType().Name}");
     }
 
     public override object? VisitLogicalAndExpr([NotNull] NovusParser.LogicalAndExprContext context)
