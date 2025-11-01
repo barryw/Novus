@@ -1,0 +1,51 @@
+// Test if let syntax
+
+pub fn main() -> i32 {
+    // Test 1: if let with non-null pointer
+    let ptr1: *u8 = (*u8)100
+
+    if let p = ptr1 {
+        // p should be bound to ptr1 (non-null)
+        if (u32)p == 100 {
+            // Success
+        } else {
+            return 1  // Wrong value
+        }
+    } else {
+        return 2  // Should not reach here (ptr1 is non-null)
+    }
+
+    // Test 2: if let with null pointer
+    let ptr2: *u8 = 0
+
+    if let p = ptr2 {
+        return 3  // Should not reach here (ptr2 is null)
+    } else {
+        // Correct path
+    }
+
+    // Test 3: if let with non-zero integer
+    let x: u32 = 42
+
+    if let y = x {
+        // y should be bound to x
+        if y == 42 {
+            // Success
+        } else {
+            return 4  // Wrong value
+        }
+    } else {
+        return 5  // Should not reach here
+    }
+
+    // Test 4: if let with zero integer
+    let z: u32 = 0
+
+    if let w = z {
+        return 6  // Should not reach here
+    } else {
+        // Correct path
+    }
+
+    return 0  // All tests passed
+}

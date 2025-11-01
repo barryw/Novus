@@ -1,0 +1,16 @@
+// Test preprocessor directives
+
+pub fn main() -> i32 {
+    #if DEBUG
+        // Debug mode - return 1
+        return 1
+    #endif
+
+    #if RELEASE
+        // Release mode - return 2
+        return 2
+    #endif
+
+    // Should never reach here
+    return 0
+}
