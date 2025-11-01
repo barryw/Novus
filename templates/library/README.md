@@ -330,21 +330,68 @@ movem.l (sp)+,d2-d7/a2-a6   ; Restore at end
 
 `ExampleLibraryBase_SIZEOF` in `library_base.s` MUST match the actual struct size from `lib.novus`. If you add fields, update both!
 
-## Future Language Improvements
+## Current Safety Requirements
 
-When Novus implements the planned attributes (`@resident`, `@libvec`, `@autoinit`), library creation will become much simpler:
+### Unsafe Blocks
+
+As of the latest version, Novus requires `unsafe {}` blocks for dangerous FFI operations:
 
 ```novus
-@resident(name="example.library", version=1)
-@autoinit
+// ❌ ERROR: AllocMem requires unsafe block
+let ptr = AllocMem(100, MEMF_PUBLIC)
 
-@libvec(-30)
-pub fn GetVersion(base: *ExampleLibraryBase) -> u32 {
-    return 0x00010000
+// ✅ CORRECT: Wrap in unsafe block
+let ptr = unsafe {
+    AllocMem(100, MEMF_PUBLIC)
 }
 ```
 
-The compiler will generate all the assembly glue code automatically.
+**Why?** This makes it explicit that you're performing operations that could:
+- Leak memory if not freed properly
+- Corrupt memory with wrong sizes
+- Cause system instability
+
+**Where used in this template:**
+- `ExampleLibraryBase::create()` - AllocMem for library base
+- `ExampleLibraryBase::destroy()` - FreeMem for library base
+
+## Future Language Improvements
+
+The attribute system is now implemented! When code generation is added, library creation will become much simpler:
+
+```novus
+@library(name = "example.library", version = 1)
+pub struct ExampleLibrary {
+    counter: u32,
+}
+
+impl ExampleLibrary {
+    @libfunc
+    pub fn get_version() -> u32 {
+        return 0x00010000
+    }
+
+    @libfunc
+    pub fn increment() -> u32 {
+        self.counter += 1
+        return self.counter
+    }
+}
+```
+
+**The compiler will automatically generate:**
+- ✅ ROMTag with magic word 0x4AFC
+- ✅ Library base with standard Library header
+- ✅ AutoInit structure
+- ✅ Function vector table (offsets auto-assigned)
+- ✅ A6 calling convention wrappers
+- ✅ Default open/close/expunge implementations
+- ✅ Open count management
+- ✅ Thread safety (Forbid/Permit wrapping)
+
+**No more manual assembly required!**
+
+See `docs/LIBRARY_ATTRIBUTES_DESIGN.md` for the complete vision.
 
 ## Troubleshooting
 

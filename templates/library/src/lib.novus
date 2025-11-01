@@ -3,12 +3,15 @@
 // This is a "Hello World" skeleton library that demonstrates:
 // - Library lifecycle (Open, Close, Expunge)
 // - Adding library functions
-// - Proper memory management
+// - Proper memory management with unsafe blocks
 // - AmigaOS conventions
 //
 // This library provides two simple functions:
 // - GetVersion() -> Returns the library version
 // - Multiply(a, b) -> Returns a * b
+//
+// FUTURE: When @library attributes are implemented, this will become much simpler!
+// See LIBRARY_ATTRIBUTES_DESIGN.md for the vision.
 
 from std::ffi::exec import AllocMem, FreeMem, MEMF_PUBLIC, MEMF_CLEAR
 from std::ffi::amiga_structs import Library, Node
@@ -50,10 +53,16 @@ impl ExampleLibraryBase {
     ///
     /// LIFECYCLE: This is the first function called when the library loads.
     /// It allocates memory for the library base and initializes it.
+    ///
+    /// SAFETY: Uses unsafe block for raw memory allocation via AllocMem FFI.
     pub fn create(seglist: u32) -> *ExampleLibraryBase {
         // Allocate memory for the library base
         let size: u32 = @sizeof(ExampleLibraryBase)
-        let base_ptr: *u8 = AllocMem(size, MEMF_PUBLIC | MEMF_CLEAR)
+
+        let base_ptr: *u8 = unsafe {
+            // Raw FFI memory allocation - must be in unsafe block
+            AllocMem(size, MEMF_PUBLIC | MEMF_CLEAR)
+        }
 
         // Check if allocation succeeded
         if (u32)base_ptr == 0 {
@@ -81,6 +90,8 @@ impl ExampleLibraryBase {
     ///
     /// LIFECYCLE: This is called when the library is being removed from memory
     /// (typically during system shutdown or when no longer needed).
+    ///
+    /// SAFETY: Uses unsafe block for raw memory deallocation via FreeMem FFI.
     pub fn destroy(base: *ExampleLibraryBase) {
         if (u32)base == 0 {
             return
@@ -88,7 +99,11 @@ impl ExampleLibraryBase {
 
         let size: u32 = @sizeof(ExampleLibraryBase)
         let base_ptr: *u8 = base as *u8
-        FreeMem(base_ptr, size)
+
+        unsafe {
+            // Raw FFI memory deallocation - must be in unsafe block
+            FreeMem(base_ptr, size)
+        }
     }
 }
 

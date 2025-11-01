@@ -20,7 +20,10 @@ pub fn main() -> i32 {
     let lib_name: *u8 = "example.library\0" as *u8
     let min_version: u32 = 0  // Accept any version
 
-    let base: *u8 = OpenLibrary(lib_name, min_version)
+    let base: *u8 = unsafe {
+        // OpenLibrary is a dangerous FFI call that requires unsafe block
+        OpenLibrary(lib_name, min_version)
+    }
 
     if (u32)base == 0 {
         println("ERROR: Could not open example.library!")
@@ -48,7 +51,10 @@ pub fn main() -> i32 {
     // Step 3: Close the library
     // This decrements the open count and allows the library
     // to be expunged if no longer in use
-    CloseLibrary(base)
+    unsafe {
+        // CloseLibrary is a dangerous FFI call that requires unsafe block
+        CloseLibrary(base)
+    }
 
     println("Library closed. Test complete!")
 
