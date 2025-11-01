@@ -247,10 +247,14 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Mark this module as imported
         _importedModules.Add(modulePath);
 
-        // Note: We DON'T process the module's own imports here (transitive dependencies)
-        // Each module handles its own imports when it's compiled as a separate dependency
-        // This prevents duplicate symbols and circular dependencies
-        // Only process reexports, which are explicitly made public by the module
+        // Process the module's imports to make types available for analyzing its declarations
+        // This is safe because _importedModules prevents circular dependencies
+        // When we import a module, we need to process its imports so that types used in
+        // function signatures, struct fields, etc. are available
+        foreach (var importDecl in moduleContext.importDeclaration())
+        {
+            ProcessImport(importDecl);
+        }
 
         // CRITICAL: Process pub use reexports, before parsing any function signatures
         // Function signatures may reference reexported types, so those types must be in scope
@@ -341,13 +345,16 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             _importedNames[constName] = moduleNamespace;
         }
 
-        // Register imported structs in symbol table
+        // CRITICAL: Register ALL pub structs from the module BEFORE registering impl blocks
+        // This is necessary because impl block methods may reference other structs from the same module
+        // For example, MemoryBlock::resize returns bool, but other methods might return Allocation<T>
+        // Even if we only import MemoryBlock, we need Allocation<T> and Box<T> available for type checking
         foreach (var structDecl in moduleContext.structDeclaration())
         {
             var structName = structDecl.IDENTIFIER().GetText();
 
-            // Skip if not in the import list
-            if (!namesToImport.Contains(structName))
+            // Skip private structs
+            if (!ModuleImportHelper.IsPub(structDecl))
             {
                 continue;
             }
@@ -358,9 +365,15 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 continue;
             }
 
-            // Register the struct from the imported module
+            // Register ALL pub structs from the module (not just explicitly imported ones)
+            // This ensures types are available when parsing impl block method signatures
             RegisterStruct(structDecl);
-            _importedNames[structName] = moduleNamespace;
+
+            // Only mark as imported if it was explicitly requested
+            if (namesToImport.Contains(structName))
+            {
+                _importedNames[structName] = moduleNamespace;
+            }
         }
 
         // Register imported functions in symbol table
