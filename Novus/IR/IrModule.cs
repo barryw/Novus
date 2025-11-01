@@ -654,14 +654,16 @@ public class IrStructType : IrType
     public List<IrStructField> Fields { get; }
     public List<string> GenericParameters { get; }  // Type parameter names (e.g., ["T"])
     public string? CacheKey { get; set; }  // Cache key for monomorphized types (e.g., "Vec<i32>")
+    public Novus.SemanticAnalysis.AttributeCollection? Attributes { get; set; }  // Struct attributes (@library, @packed, etc.)
     private int? _cachedSize;
 
-    public IrStructType(string structName, List<IrStructField> fields, List<string>? genericParams = null, string? cacheKey = null)
+    public IrStructType(string structName, List<IrStructField> fields, List<string>? genericParams = null, string? cacheKey = null, Novus.SemanticAnalysis.AttributeCollection? attributes = null)
     {
         StructName = structName;
         Fields = fields;
         GenericParameters = genericParams ?? new List<string>();
         CacheKey = cacheKey;
+        Attributes = attributes;
     }
 
     public override int SizeInBytes

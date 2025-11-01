@@ -839,6 +839,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var name = context.IDENTIFIER().GetText();
         var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
 
+        // Parse attributes
+        var attributes = ParseAttributes(context.attribute());
+
         // Check for duplicate struct names
         if (_structs.ContainsKey(name))
         {
@@ -869,7 +872,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         // Register placeholder struct type FIRST to allow self-referential types
-        var placeholderStruct = new IrStructType(name, new List<IrStructField>(), genericParams);
+        var placeholderStruct = new IrStructType(name, new List<IrStructField>(), genericParams, null, attributes);
         _structs[name] = placeholderStruct;
 
         // Now parse struct fields (can now reference the struct being defined)
@@ -888,7 +891,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         // Replace placeholder with complete struct type
-        var structType = new IrStructType(name, fields, genericParams);
+        var structType = new IrStructType(name, fields, genericParams, null, attributes);
 
         // Force offset calculation by accessing SizeInBytes
         _ = structType.SizeInBytes;
@@ -900,6 +903,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     {
         var name = context.IDENTIFIER().GetText();
         var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+
+        // Parse attributes
+        var attributes = ParseAttributes(context.attribute());
 
         // Check for duplicate enum names
         if (_enums.ContainsKey(name))
@@ -952,7 +958,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             variants.Add(new IrEnumVariant(variantName, tag++, associatedData));
         }
 
-        var enumType = new IrEnumType(name, variants, genericParams.Count > 0 ? genericParams : null);
+        var enumType = new IrEnumType(name, variants, genericParams.Count > 0 ? genericParams : null, null, attributes);
 
         // Force size calculation
         if (genericParams.Count == 0)
@@ -2541,6 +2547,98 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
             RequireUnsafe(context, functionName + "()", reason, help);
         }
+    }
+
+    // ============================================================================
+    // Attribute Parsing
+    // ============================================================================
+
+    /// <summary>
+    /// Parse attributes from an array of attribute contexts
+    /// </summary>
+    private AttributeCollection ParseAttributes(NovusParser.AttributeContext[]? attributeContexts)
+    {
+        var collection = new AttributeCollection();
+
+        if (attributeContexts == null || attributeContexts.Length == 0)
+            return collection;
+
+        foreach (var attrCtx in attributeContexts)
+        {
+            var attrName = attrCtx.IDENTIFIER().GetText();
+            var location = SourceLocationHelper.FromToken(attrCtx.IDENTIFIER().Symbol, _filePath, _sourceLines);
+
+            var attr = new AttributeInfo(attrName, location);
+
+            // Parse arguments if present
+            if (attrCtx.attributeArgList() != null)
+            {
+                foreach (var argCtx in attrCtx.attributeArgList().attributeArg())
+                {
+                    // Named argument: name = value
+                    if (argCtx.IDENTIFIER() != null)
+                    {
+                        var argName = argCtx.IDENTIFIER().GetText();
+                        var value = EvaluateConstantExpression(argCtx.expression());
+                        attr.NamedArgs[argName] = value ?? "null";
+                    }
+                    // Positional argument: value
+                    else
+                    {
+                        var value = EvaluateConstantExpression(argCtx.expression());
+                        attr.PositionalArgs.Add(value ?? "null");
+                    }
+                }
+            }
+
+            // Validate attribute name
+            if (!KnownAttributes.IsKnown(attrName))
+            {
+                _diagnostics.ReportWarning(
+                    "W2001",
+                    $"unknown attribute '{attrName}'",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "This attribute is not recognized and will be ignored",
+                        $"Known attributes: {string.Join(", ", KnownAttributes.All.Take(10))}, ..."
+                    }
+                );
+            }
+
+            collection.Add(attr);
+        }
+
+        return collection;
+    }
+
+    /// <summary>
+    /// Evaluate a constant expression for attribute arguments
+    /// Currently handles: integers, strings, booleans, identifiers
+    /// </summary>
+    private object? EvaluateConstantExpression(NovusParser.ExpressionContext expr)
+    {
+        var text = expr.GetText();
+
+        // Try to parse as integer
+        if (int.TryParse(text.TrimStart('-'), out var intValue))
+        {
+            return text.StartsWith("-") ? -intValue : intValue;
+        }
+
+        // String literal
+        if (text.StartsWith("\"") && text.EndsWith("\""))
+        {
+            // Remove quotes and handle escape sequences
+            return text.Trim('"').Replace("\\n", "\n").Replace("\\t", "\t").Replace("\\\"", "\"").Replace("\\\\", "\\");
+        }
+
+        // Boolean literals
+        if (text == "true") return true;
+        if (text == "false") return false;
+
+        // Default: return as string (identifier or unknown)
+        return text;
     }
 
     public override IrType? VisitMatchStatement([NotNull] NovusParser.MatchStatementContext context)
@@ -6012,8 +6110,21 @@ public record FunctionSymbol(
     List<ParameterSymbol> Parameters,
     SourceLocation Location,
     bool IsExtern = false,
-    List<string>? GenericParameters = null  // Generic type parameters (e.g., ["T"] for Option::FromPointer)
+    List<string>? GenericParameters = null,  // Generic type parameters (e.g., ["T"] for Option::FromPointer)
+    AttributeCollection? Attributes = null   // Function attributes (@inline, @test, etc.)
 );
 public record ParameterSymbol(string Name, IrType Type, SourceLocation Location);
-public record VariableSymbol(string Name, IrType Type, bool IsMutable, SourceLocation Location);
-public record ConstantSymbol(string Name, IrType Type, object Value, SourceLocation Location);
+public record VariableSymbol(
+    string Name,
+    IrType Type,
+    bool IsMutable,
+    SourceLocation Location,
+    AttributeCollection? Attributes = null  // Variable attributes
+);
+public record ConstantSymbol(
+    string Name,
+    IrType Type,
+    object Value,
+    SourceLocation Location,
+    AttributeCollection? Attributes = null  // Constant attributes
+);

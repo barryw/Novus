@@ -10,14 +10,16 @@ public class IrEnumType : IrType
     public List<IrEnumVariant> Variants { get; }
     public List<string> GenericParameters { get; }  // Type parameter names (e.g., ["T", "E"])
     public string? CacheKey { get; set; }  // Cache key for monomorphized types (e.g., "Option<i32>")
+    public Novus.SemanticAnalysis.AttributeCollection? Attributes { get; set; }  // Enum attributes
     private int? _cachedSize;
 
-    public IrEnumType(string enumName, List<IrEnumVariant> variants, List<string>? genericParams = null, string? cacheKey = null)
+    public IrEnumType(string enumName, List<IrEnumVariant> variants, List<string>? genericParams = null, string? cacheKey = null, Novus.SemanticAnalysis.AttributeCollection? attributes = null)
     {
         EnumName = enumName;
         Variants = variants;
         GenericParameters = genericParams ?? new List<string>();
         CacheKey = cacheKey;
+        Attributes = attributes;
     }
 
     public override int SizeInBytes
