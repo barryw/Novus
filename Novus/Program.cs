@@ -517,6 +517,21 @@ class Program
 
             Console.WriteLine($"  → {Path.GetFileName(mainCFile)}");
 
+            // For libraries, generate A6 wrapper assembly
+            // (isLibrary/isDevice will be defined later in the assembly section)
+            var projectType = options.ProjectType.ToLowerInvariant();
+            if (projectType == "library" || projectType == "device")
+            {
+                var libraryGen = new LibraryGenerator(mainIR.IrModule);
+                if (libraryGen.IsLibrary)
+                {
+                    var wrapperAsm = libraryGen.GenerateA6Wrappers();
+                    var wrapperAsmFile = Path.Combine(outputDir, $"{baseName}_wrappers.s");
+                    await File.WriteAllTextAsync(wrapperAsmFile, wrapperAsm);
+                    Console.WriteLine($"  → {Path.GetFileName(wrapperAsmFile)} (A6 wrappers)");
+                }
+            }
+
             // Library modules: generate one C file per function
             foreach (var (modulePath, moduleIR) in allModulesIR)
             {
@@ -593,6 +608,23 @@ class Program
                         }
                         objectFiles.Add(coreObj);
                     }
+                }
+            }
+
+            // For libraries, assemble the A6 wrapper file
+            if (isLibrary || isDevice)
+            {
+                var wrapperAsmFile = Path.Combine(outputDir, $"{baseName}_wrappers.s");
+                if (File.Exists(wrapperAsmFile))
+                {
+                    var wrapperObj = Path.Combine(outputDir, $"{baseName}_wrappers.o");
+                    if (!await toolchain.Assemble(wrapperAsmFile, wrapperObj, assemblyCpu, false))
+                    {
+                        Console.WriteLine("Failed to assemble A6 wrappers");
+                        return 1;
+                    }
+                    objectFiles.Add(wrapperObj);
+                    Console.WriteLine($"  ✓ Assembled A6 wrappers: {baseName}_wrappers.o");
                 }
             }
 
