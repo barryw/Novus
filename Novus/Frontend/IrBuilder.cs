@@ -3276,6 +3276,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // 2. Increment/decrement the lvalue
         // 3. Return the saved old value
 
+        // Unwrap parentheses if present (e.g., (*p)++ should work)
+        exprContext = UnwrapParentheses(exprContext);
+
         // First, use the same logic as pre-inc/dec to compute and store the new value
         // But we need to save the old value first
 
@@ -3306,6 +3309,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     private void StoreToLvalue(ParserRuleContext exprContext, IrValue value)
     {
+        // Case 0: Parenthesized expression - unwrap and recurse
+        if (exprContext is NovusParser.ParenExprContext parenCtx)
+        {
+            StoreToLvalue(parenCtx.expression(), value);
+            return;
+        }
+
         // Case 1: Simple variable (identifier)
         if (exprContext is NovusParser.PrimaryExprContext primaryCtx &&
             primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext identCtx)
@@ -3354,6 +3364,21 @@ public class IrBuilder : NovusBaseVisitor<object?>
             return;
         }
 
+        // Case 5: If we have a PrimaryExpr that we haven't handled yet, it might be wrapping something
+        // This can happen with certain parse tree structures
+        if (exprContext is NovusParser.PrimaryExprContext unhandledPrimaryCtx)
+        {
+            var child = unhandledPrimaryCtx.GetChild(0);
+
+            // Try dereference
+            if (child is NovusParser.DereferenceExprContext derefChild)
+            {
+                var ptrExpr = (IrValue)Visit(derefChild.expression())!;
+                _currentBlock!.AddInstruction(new IrDereferenceStore(ptrExpr, value));
+                return;
+            }
+        }
+
         throw new Exception($"Cannot store to expression type: {exprContext.GetType().Name}");
     }
 
@@ -3369,8 +3394,45 @@ public class IrBuilder : NovusBaseVisitor<object?>
         return HandlePreIncrementDecrement(context.expression(), isIncrement: false);
     }
 
+    private ParserRuleContext UnwrapParentheses(ParserRuleContext exprContext)
+    {
+        // Recursively unwrap parenthesized expressions: (((*p))) -> *p
+        // Parse tree structure:
+        // PrimaryExprContext (expression) -> ParenExprContext (primaryExpression) -> inner expression
+
+        bool changed = true;
+        while (changed)
+        {
+            changed = false;
+
+            // If it's a ParenExpr, unwrap it
+            if (exprContext is NovusParser.ParenExprContext parenCtx)
+            {
+                exprContext = parenCtx.expression();
+                changed = true;
+            }
+            // If it's a PrimaryExpr wrapping a ParenExpr, unwrap the ParenExpr
+            else if (exprContext is NovusParser.PrimaryExprContext primaryCtx)
+            {
+                // The first child of PrimaryExpr is the primaryExpression
+                // Check if it's a ParenExpr
+                if (primaryCtx.GetChild(0) is NovusParser.ParenExprContext parenChild)
+                {
+                    // Get the expression inside the parentheses
+                    exprContext = parenChild.expression();
+                    changed = true;
+                }
+            }
+        }
+
+        return exprContext;
+    }
+
     private IrValue HandlePreIncrementDecrement(ParserRuleContext exprContext, bool isIncrement)
     {
+        // Unwrap parentheses if present (e.g., ++(*p) should work)
+        exprContext = UnwrapParentheses(exprContext);
+
         // Case 1: Simple variable (identifier)
         if (exprContext is NovusParser.PrimaryExprContext primaryCtx &&
             primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext identCtx)
@@ -3456,27 +3518,41 @@ public class IrBuilder : NovusBaseVisitor<object?>
             return newValue;
         }
 
-        // Case 4: Dereference (*ptr)
+        // Case 4: Dereference (*ptr or *ref)
         if (exprContext is NovusParser.DereferenceExprContext derefCtx)
         {
             var ptrExpr = (IrValue)Visit(derefCtx.expression())!;
 
-            if (ptrExpr.Type is not IrPointerType ptrType)
+            // Determine pointee type (handle pointers and references)
+            IrType pointeeType;
+            if (ptrExpr.Type is IrPointerType ptrType)
             {
-                throw new Exception($"Cannot dereference non-pointer type '{ptrExpr.Type}'");
+                pointeeType = ptrType.PointeeType;
+            }
+            else if (ptrExpr.Type is IrReferenceType refType)
+            {
+                pointeeType = refType.PointeeType;
+            }
+            else if (ptrExpr.Type is IrMutReferenceType mutRefType)
+            {
+                pointeeType = mutRefType.PointeeType;
+            }
+            else
+            {
+                throw new Exception($"Cannot dereference non-pointer/reference type '{ptrExpr.Type}'");
             }
 
             // Load current value (dereference)
-            var currentValue = new IrDereferenceValue(ptrExpr, ptrType.PointeeType);
+            var currentValue = new IrDereferenceValue(ptrExpr, pointeeType);
 
             // Increment/decrement
             var newValueTemp = $"%t{_tempCounter++}";
             var op = isIncrement
-                ? new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Add, currentValue, new IrConstant(1, ptrType.PointeeType), ptrType.PointeeType)
-                : new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Sub, currentValue, new IrConstant(1, ptrType.PointeeType), ptrType.PointeeType);
+                ? new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Add, currentValue, new IrConstant(1, pointeeType), pointeeType)
+                : new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Sub, currentValue, new IrConstant(1, pointeeType), pointeeType);
             _currentBlock!.AddInstruction(op);
 
-            var newValue = new IrVariable(newValueTemp, ptrType.PointeeType);
+            var newValue = new IrVariable(newValueTemp, pointeeType);
             _currentBlock.AddInstruction(new IrDereferenceStore(ptrExpr, newValue));
             return newValue;
         }
