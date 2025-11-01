@@ -288,6 +288,12 @@ public class CCodeGenerator
             {
                 if (variant.HasAssociatedData)
                 {
+                    // BUG FIX #3: Validate AssociatedData before accessing
+                    if (variant.AssociatedData == null)
+                    {
+                        throw new InvalidOperationException($"Variant '{variant.Name}' has HasAssociatedData=true but AssociatedData is null");
+                    }
+
                     sb.AppendLine($"    struct {{");
                     for (int i = 0; i < variant.AssociatedData.Count; i++)
                     {
@@ -854,6 +860,12 @@ public class CCodeGenerator
         {
             if (variant.HasAssociatedData)
             {
+                // BUG FIX #3: Validate AssociatedData before accessing
+                if (variant.AssociatedData == null)
+                {
+                    throw new InvalidOperationException($"Variant '{variant.Name}' has HasAssociatedData=true but AssociatedData is null");
+                }
+
                 _output.AppendLine($"    struct {{");
                 for (int i = 0; i < variant.AssociatedData.Count; i++)
                 {

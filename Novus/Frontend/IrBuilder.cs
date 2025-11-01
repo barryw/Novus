@@ -281,7 +281,11 @@ public class IrBuilder : NovusBaseVisitor<object?>
         foreach (var funcContext in context.functionDeclaration())
         {
             var funcName = funcContext.IDENTIFIER().GetText();
-            _currentFunction = _module.Functions.First(f => f.Name == funcName);
+            _currentFunction = _module.Functions.FirstOrDefault(f => f.Name == funcName);
+            if (_currentFunction == null)
+            {
+                throw new Exception($"Function '{funcName}' not found in module. This indicates a compiler bug in an earlier pass.");
+            }
 
             // Skip extern functions - they have no body
             if (_currentFunction.IsExtern || funcContext.block() == null)
@@ -335,7 +339,11 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 var methodName = funcDecl.IDENTIFIER().GetText();
                 var mangledName = $"{typeName}::{methodName}";
 
-                _currentFunction = _module.Functions.First(f => f.Name == mangledName);
+                _currentFunction = _module.Functions.FirstOrDefault(f => f.Name == mangledName);
+                if (_currentFunction == null)
+                {
+                    throw new Exception($"Method '{mangledName}' not found in module. This indicates a compiler bug in an earlier pass.");
+                }
 
                 // Skip extern functions or methods with no body
                 if (_currentFunction.IsExtern || funcDecl.block() == null)
