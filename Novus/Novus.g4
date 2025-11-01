@@ -46,7 +46,7 @@ reexportList
     ;
 
 constDeclaration
-    : attribute* (KW_PUB | KW_INTERNAL)? KW_CONST IDENTIFIER ':' type '=' expression NEWLINE*
+    : attribute* (KW_PUB | KW_INTERNAL)? KW_CONST IDENTIFIER (':' type)? '=' expression NEWLINE*
     ;
 
 staticDeclaration

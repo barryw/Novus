@@ -1024,7 +1024,6 @@ public class IrBuilder : NovusBaseVisitor<object?>
     private void RegisterConstant(NovusParser.ConstDeclarationContext context)
     {
         var name = context.IDENTIFIER().GetText();
-        var type = ParseType(context.type());
 
         // Check for pub/internal keywords
         var visibility = Visibility.Private;
@@ -1049,6 +1048,20 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         if (value != null)
         {
+            // Handle type - either explicit or inferred
+            IrType type;
+            if (context.type() != null)
+            {
+                // Explicit type annotation provided
+                type = ParseType(context.type());
+            }
+            else
+            {
+                // Infer type from the evaluated value
+                // Default to i32 for integer literals
+                type = IrIntType.I32;
+            }
+
             _constants[name] = (type, value);
             // Also store in the IR module for code generator access
             _module.Constants[name] = (visibility, type, value);
