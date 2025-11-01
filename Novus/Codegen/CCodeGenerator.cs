@@ -540,6 +540,9 @@ public class CCodeGenerator
         // Second pass: analyze reachable functions (dead code elimination)
         var reachableFunctions = AnalyzeReachableFunctions();
 
+        // Check if this is a library module
+        var libraryGen = new LibraryGenerator(_module);
+
         EmitHeaders();
         EmitTypedefs(reachableFunctions);
         EmitStringLiterals();
@@ -547,6 +550,14 @@ public class CCodeGenerator
         EmitStaticVariables();
         EmitForwardDeclarations(reachableFunctions);
         EmitFunctions(reachableFunctions);
+
+        // Generate library boilerplate if @library attribute is present
+        if (libraryGen.IsLibrary)
+        {
+            _output.AppendLine();
+            _output.AppendLine(libraryGen.GenerateROMTag());
+            _output.AppendLine(libraryGen.GenerateDefaultLifecycleFunctions());
+        }
 
         return _output.ToString();
     }
