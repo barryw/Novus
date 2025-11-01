@@ -1644,7 +1644,20 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     else
                     {
                         // This is an intermediate index - load it for the next suffix
-                        var elementType = currentLValue.Type is IrPointerType pt ? pt.PointeeType : throw new Exception("Cannot index non-pointer type");
+                        IrType elementType;
+                        if (currentLValue.Type is IrPointerType pt)
+                        {
+                            elementType = pt.PointeeType;
+                        }
+                        else if (currentLValue.Type is IrArrayType at)
+                        {
+                            elementType = at.ElementType;
+                        }
+                        else
+                        {
+                            throw new Exception($"Cannot index type '{currentLValue.Type}' - must be pointer or array");
+                        }
+
                         var tempName = $"_indexed_{_tempCounter++}";
                         var loadIndex = new IrIndexAccess(tempName, currentLValue, indexExpr, elementType);
                         _currentBlock!.AddInstruction(loadIndex);
