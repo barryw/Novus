@@ -1056,6 +1056,217 @@ public class IrBuilder : NovusBaseVisitor<object?>
         return function;
     }
 
+    private IrFunction? InstantiateGenericEnumMethod(IrEnumType enumType, string methodName, List<IrValue> arguments)
+    {
+        var baseTypeName = enumType.EnumName;
+        var templateKey = $"{baseTypeName}::{methodName}";
+
+
+        // Check if we have a template for this method
+        if (!_genericMethodTemplates.TryGetValue(templateKey, out var template))
+        {
+            return null; // No template found
+        }
+
+        var (genericParams, funcDecl, templateConstants) = template;
+
+        // Register generic parameters temporarily so ParseType can find them
+        var savedGenericParams = new Dictionary<string, IrGenericType>();
+        foreach (var paramName in genericParams)
+        {
+            if (_genericParams.ContainsKey(paramName))
+            {
+                savedGenericParams[paramName] = _genericParams[paramName];
+            }
+            _genericParams[paramName] = new IrGenericType(paramName);
+        }
+
+        // Infer type substitutions from arguments
+        // First, parse the template to get parameter types
+        var templateParams = new List<IrParameter>();
+        if (funcDecl.parameterList() != null)
+        {
+            foreach (var paramCtx in funcDecl.parameterList().parameter())
+            {
+                var paramName = paramCtx.IDENTIFIER().GetText();
+                var savedSubstitutions = _currentTypeSubstitutions;
+                _currentTypeSubstitutions = null; // Parse without substitutions to get generic types
+                var paramType = ParseType(paramCtx.type());
+                _currentTypeSubstitutions = savedSubstitutions;
+                templateParams.Add(new IrParameter(paramName, paramType));
+            }
+        }
+
+        // Keep generic params registered for later use during function instantiation
+        // They will be restored at the end
+
+        // Infer generic types from arguments
+        var typeSubstitutions = InferGenericFunctionTypes(genericParams, templateParams, arguments);
+        if (typeSubstitutions == null)
+        {
+            return null; // Type inference failed
+        }
+
+
+        // Build monomorphized enum with inferred types
+        var monomorphizedEnum = MonomorphizeEnum(enumType, typeSubstitutions);
+        if (monomorphizedEnum == null)
+        {
+            return null;
+        }
+
+        // Build instantiation key
+        var instantiationKey = $"{monomorphizedEnum.CacheKey}::{methodName}";
+
+        // Check if already instantiated
+        if (_instantiatedMethods.Contains(instantiationKey))
+        {
+            // Already generated, look it up
+            var cachedTypeArgKeys = genericParams.Select(p => GetTypeCacheKey(typeSubstitutions[p]));
+            var cachedMangledName = $"{baseTypeName}::{methodName}_{string.Join("_", cachedTypeArgKeys.Select(k => k.Replace("<", "_").Replace(">", "_").Replace(",", "_").Replace("*", "ptr_")))}";
+            return _module.Functions.FirstOrDefault(f => f.Name == cachedMangledName);
+        }
+
+        // Save current state
+        var savedConstants = new Dictionary<string, (IrType Type, object Value)>(_constants);
+        _constants.Clear();
+        foreach (var kvp in templateConstants)
+        {
+            _constants[kvp.Key] = kvp.Value;
+        }
+        foreach (var kvp in savedConstants)
+        {
+            _constants[kvp.Key] = kvp.Value;
+        }
+
+        // Generic params already registered from earlier - just set up type substitutions
+        var savedTypeSubstitutions = _currentTypeSubstitutions;
+        _currentTypeSubstitutions = typeSubstitutions;
+
+        // Create the function manually (don't use Visit)
+        var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
+        returnType = SubstituteGenericTypes(returnType, typeSubstitutions);
+
+        // Create mangled name from type arguments
+        var typeArgKeys = genericParams.Select(p => GetTypeCacheKey(typeSubstitutions[p]));
+        var mangledName = $"{baseTypeName}::{methodName}_{string.Join("_", typeArgKeys.Select(k => k.Replace("<", "_").Replace(">", "_").Replace(",", "_").Replace("*", "ptr_")))}";
+
+        var function = new IrFunction(mangledName, returnType, Visibility.Private, false);
+
+        // Parse parameters with substitutions
+        if (funcDecl.parameterList() != null)
+        {
+            foreach (var paramCtx in funcDecl.parameterList().parameter())
+            {
+                var paramName = paramCtx.IDENTIFIER().GetText();
+                var paramType = ParseType(paramCtx.type());
+                paramType = SubstituteGenericTypes(paramType, typeSubstitutions);
+                function.Parameters.Add(new IrParameter(paramName, paramType));
+            }
+        }
+
+        // Check if function already exists in module (could be from import or previous instantiation)
+        var existingFunc = _module.Functions.FirstOrDefault(f => f.Name == mangledName);
+        if (existingFunc != null)
+        {
+            // Already exists, return it
+            return existingFunc;
+        }
+
+        _module.AddFunction(function);
+
+        // Build function body
+        var savedFunction = _currentFunction;
+        _currentFunction = function;
+        var entryBlock = new IrBasicBlock("entry");
+        function.BasicBlocks.Add(entryBlock);
+        var savedBlock = _currentBlock;
+        _currentBlock = entryBlock;
+
+        // Visit the function body
+        if (funcDecl.block() != null)
+        {
+            Visit(funcDecl.block());
+        }
+
+        // Restore state
+        _currentBlock = savedBlock;
+        _currentFunction = savedFunction;
+        _currentTypeSubstitutions = savedTypeSubstitutions;
+        _constants.Clear();
+        foreach (var kvp in savedConstants)
+        {
+            _constants[kvp.Key] = kvp.Value;
+        }
+        foreach (var paramName in typeSubstitutions.Keys)
+        {
+            _genericParams.Remove(paramName);
+        }
+        foreach (var kvp in savedGenericParams)
+        {
+            _genericParams[kvp.Key] = kvp.Value;
+        }
+
+        _instantiatedMethods.Add(instantiationKey);
+
+        return function;
+    }
+
+    private IrEnumType? MonomorphizeEnum(IrEnumType enumType, Dictionary<string, IrType> typeSubstitutions)
+    {
+        // Build cache key
+        var typeArgKeys = enumType.GenericParameters.Select(p =>
+        {
+            var key = typeSubstitutions.ContainsKey(p) ? GetTypeCacheKey(typeSubstitutions[p]) : p;
+            return key;
+        });
+        var cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
+
+        // Check cache
+        if (_monomorphizedEnums.ContainsKey(cacheKey))
+        {
+            return _monomorphizedEnums[cacheKey];
+        }
+
+        // Create monomorphized variants
+        var monomorphizedVariants = new List<IrEnumVariant>();
+        foreach (var variant in enumType.Variants)
+        {
+            var monomorphizedData = new List<IrType>();
+            foreach (var dataType in variant.AssociatedData)
+            {
+                monomorphizedData.Add(SubstituteType(dataType, typeSubstitutions));
+            }
+            monomorphizedVariants.Add(new IrEnumVariant(variant.Name, variant.Tag, monomorphizedData));
+        }
+
+        var monomorphizedEnum = new IrEnumType(enumType.EnumName, monomorphizedVariants, null, cacheKey);
+        _monomorphizedEnums[cacheKey] = monomorphizedEnum;
+
+        return monomorphizedEnum;
+    }
+
+    private IrType SubstituteType(IrType type, Dictionary<string, IrType> substitutions)
+    {
+        if (type is IrGenericType gt && substitutions.ContainsKey(gt.ParameterName))
+        {
+            return substitutions[gt.ParameterName];
+        }
+
+        if (type is IrPointerType ptrType)
+        {
+            var substitutedPointee = SubstituteType(ptrType.PointeeType, substitutions);
+            if (substitutedPointee != ptrType.PointeeType)
+            {
+                return _typeInterner.GetPointerType(substitutedPointee);
+            }
+            return ptrType;
+        }
+
+        // For other types, return as-is
+        return type;
+    }
+
     /// <summary>
     /// Infer generic type arguments for a generic function from call site arguments
     /// </summary>
@@ -1468,12 +1679,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         // Check if function is extern by looking for 'extern' keyword in children
         var isExtern = false;
-        var isPublic = false;
         for (int i = 0; i < Math.Min(3, context.ChildCount); i++)
         {
             var childText = context.GetChild(i)?.GetText();
             if (childText == "extern") isExtern = true;
-            if (childText == "pub") isPublic = true;
         }
 
         // Parse visibility
@@ -2879,6 +3088,37 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         var functionName = funcVar.Name;
 
+        // Check if this is an associated function on an enum that needs instantiation (e.g., Option::FromPointer)
+        if (functionName.Contains("::"))
+        {
+            var parts = functionName.Split("::");
+            if (parts.Length == 2)
+            {
+                var typeName = parts[0];
+                var methodName = parts[1];
+
+                // Check if it's an enum type
+                if (_enums.ContainsKey(typeName))
+                {
+                    var enumType = _enums[typeName];
+                    if (enumType.GenericParameters.Count > 0)
+                    {
+                        // Try to instantiate the generic method for this enum
+                        var instantiatedFunc = InstantiateGenericEnumMethod(enumType, methodName, arguments);
+                        if (instantiatedFunc != null)
+                        {
+                            functionName = instantiatedFunc.Name;
+                        }
+                        else
+                        {
+                            // Try just the method name (impl methods are currently stored without type prefix)
+                            functionName = methodName;
+                        }
+                    }
+                }
+            }
+        }
+
         // Look up the function in the module to get its return type
         var function = _module.Functions.FirstOrDefault(f => f.Name == functionName);
         if (function == null)
@@ -4089,7 +4329,16 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     private string ProcessEscapeSequences(string input)
     {
-        return input
+        // First handle hex escapes (\xNN) before other replacements
+        // This prevents issues with backslashes in the hex escape pattern
+        var result = System.Text.RegularExpressions.Regex.Replace(
+            input,
+            @"\\x([0-9A-Fa-f]{2})",
+            m => ((char)Convert.ToByte(m.Groups[1].Value, 16)).ToString()
+        );
+
+        // Then handle standard escape sequences
+        return result
             .Replace("\\n", "\n")
             .Replace("\\t", "\t")
             .Replace("\\r", "\r")
@@ -4098,7 +4347,6 @@ public class IrBuilder : NovusBaseVisitor<object?>
             .Replace("\\\"", "\"")
             .Replace("\\'", "'")
             .Replace("\\\\", "\\");
-        // TODO: Handle \xNN hex escapes
     }
 
     public override object? VisitIdentifierExpr([NotNull] NovusParser.IdentifierExprContext context)

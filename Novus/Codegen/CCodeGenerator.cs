@@ -29,6 +29,85 @@ public class CCodeGenerator
     // Track current function being emitted (for defer cleanup)
     private IrFunction? _currentEmittingFunction = null;
 
+    /// <summary>
+    /// Determines if a function is a monomorphized generic function.
+    /// Monomorphized functions should be emitted as 'static inline' to avoid duplicate symbols.
+    /// </summary>
+    private bool IsMonomorphizedFunction(IrFunction function)
+    {
+        // All monomorphized functions are created with Private visibility
+        if (function.Visibility != Visibility.Private)
+            return false;
+
+        // Extern functions are never monomorphized
+        if (function.IsExtern)
+            return false;
+
+        // Check for naming patterns that indicate monomorphization:
+        // 1. Enum methods: "Type::method_typeArgs" (e.g., "Option::FromPointer_u8")
+        // 2. Struct methods: "Type_method" (e.g., "Vec_push")
+        // 3. Generic functions: "function_typeArgs" (e.g., "identity_i32")
+
+        var name = function.Name;
+
+        // Pattern 1: Contains :: which indicates enum method with type args
+        if (name.Contains("::"))
+        {
+            // Check if it has type args after the method name
+            // Format: Type::method_typeArgs
+            var parts = name.Split("::");
+            if (parts.Length == 2)
+            {
+                var methodPart = parts[1];
+                // If method part contains underscore, it likely has type args
+                // This catches cases like "FromPointer_u8", "unwrap_u8"
+                return methodPart.Contains("_");
+            }
+        }
+
+        // Pattern 2: Struct method or generic function with type args
+        // These use underscore separator: "Vec_push", "identity_i32"
+        // We need to distinguish between:
+        //   - Regular functions with underscores: "my_function"
+        //   - Monomorphized functions: "Vec_push", "identity_i32"
+        //
+        // Heuristic: If the name has underscore and contains a known type suffix,
+        // it's likely monomorphized. Known type suffixes: i8, i16, i32, i64, u8, u16, u32, u64,
+        // bool, ptr_, String, etc.
+
+        var knownTypeSuffixes = new[] {
+            "_i8", "_i16", "_i32", "_i64",
+            "_u8", "_u16", "_u32", "_u64",
+            "_bool", "_ptr_", "_String",
+            "_f32", "_f64", "_fixed16", "_fixed32"
+        };
+
+        foreach (var suffix in knownTypeSuffixes)
+        {
+            if (name.Contains(suffix))
+                return true;
+        }
+
+        // Pattern 3: Check if name contains struct/enum type names followed by underscore
+        // This catches "Vec_push", "Option_unwrap", etc.
+        // We can check against registered struct/enum types
+        foreach (var structType in _module.MonomorphizedTypes.Values)
+        {
+            var baseName = structType.BaseName;
+            if (name.StartsWith($"{baseName}_"))
+                return true;
+        }
+
+        foreach (var enumType in _module.Enums)
+        {
+            var baseName = enumType.EnumName;
+            if (name.StartsWith($"{baseName}_"))
+                return true;
+        }
+
+        return false;
+    }
+
     public CCodeGenerator(IrModule module, List<IrStringLiteral> stringLiterals, string cpuTarget, string fpuMode, HashSet<string>? explicitEntryPoints = null, bool useSharedTypesHeader = false)
     {
         _module = module;
@@ -145,12 +224,33 @@ public class CCodeGenerator
             sb.AppendLine();
         }
 
-        // Extern declarations for functions this function calls
+        // Separate called functions into two categories:
+        // 1. Monomorphized functions (will be inlined)
+        // 2. Regular functions (need extern declarations)
         var calledFunctionsWithSigs = GetCalledFunctionsWithSignatures(function);
-        if (calledFunctionsWithSigs.Count > 0)
+        var monomorphizedFunctions = new List<IrFunction>();
+        var externalFunctions = new List<(string FuncName, IrType ReturnType, List<IrValue> Arguments)>();
+
+        foreach (var (funcName, (returnType, arguments)) in calledFunctionsWithSigs.OrderBy(kv => kv.Key))
+        {
+            var funcObj = _module.Functions.FirstOrDefault(f => f.Name == funcName);
+            if (funcObj != null && IsMonomorphizedFunction(funcObj))
+            {
+                // This is a monomorphized function - we'll inline it
+                monomorphizedFunctions.Add(funcObj);
+            }
+            else
+            {
+                // Regular function - needs extern declaration
+                externalFunctions.Add((funcName, returnType, arguments));
+            }
+        }
+
+        // Emit extern declarations for regular functions
+        if (externalFunctions.Count > 0)
         {
             sb.AppendLine("// External function declarations");
-            foreach (var (funcName, (returnType, arguments)) in calledFunctionsWithSigs.OrderBy(kv => kv.Key))
+            foreach (var (funcName, returnType, arguments) in externalFunctions)
             {
                 var funcObj = _module.Functions.FirstOrDefault(f => f.Name == funcName);
                 if (funcObj != null)
@@ -169,6 +269,19 @@ public class CCodeGenerator
                 }
             }
             sb.AppendLine();
+        }
+
+        // Inline monomorphized functions
+        if (monomorphizedFunctions.Count > 0)
+        {
+            sb.AppendLine("// Monomorphized generic functions (inlined)");
+            foreach (var monoFunc in monomorphizedFunctions)
+            {
+                var monoFuncOutput = new StringBuilder();
+                EmitFunctionToBuilder(monoFuncOutput, monoFunc);
+                sb.Append(monoFuncOutput.ToString());
+                sb.AppendLine();
+            }
         }
 
         // Function implementation
@@ -200,7 +313,17 @@ public class CCodeGenerator
             returnType = "int";
         }
 
-        targetBuilder.AppendLine($"{returnType} {funcName}({parameters}) {{");
+        // Add 'static' for monomorphized generic functions
+        // Note: We use 'static' only (not 'static inline') because VBCC C99 mode
+        // doesn't allow 'inline' in function definitions (error 301).
+        // The 'static' linkage prevents duplicate symbol errors.
+        var functionModifiers = "";
+        if (IsMonomorphizedFunction(function))
+        {
+            functionModifiers = "static ";
+        }
+
+        targetBuilder.AppendLine($"{functionModifiers}{returnType} {funcName}({parameters}) {{");
 
         // Emit all basic blocks
         foreach (var block in function.BasicBlocks)
@@ -250,6 +373,10 @@ public class CCodeGenerator
         // Check if this enum has any associated data
         bool hasAnyData = enumType.Variants.Any(v => v.HasAssociatedData);
 
+        // Add header guard to prevent redefinition (matches the guard used in .c files)
+        var guardName = $"NOVUS_TYPE_{enumName.ToUpper()}_DEFINED";
+        sb.AppendLine($"#ifndef {guardName}");
+        sb.AppendLine($"#define {guardName}");
         sb.AppendLine($"// Enum: {enumType.Name}");
 
         if (!hasAnyData)
@@ -263,6 +390,7 @@ public class CCodeGenerator
                 sb.AppendLine($"    {enumName}_{variant.Name} = {variant.Tag}{comma}");
             }
             sb.AppendLine($"}} {enumName};");
+            sb.AppendLine($"#endif // {guardName}");
             sb.AppendLine();
             return;
         }
@@ -314,6 +442,7 @@ public class CCodeGenerator
             sb.AppendLine($"    union {enumName}_Data data;");
         }
         sb.AppendLine($"}} {enumName};");
+        sb.AppendLine($"#endif // {guardName}");
         sb.AppendLine();
     }
 
@@ -708,10 +837,16 @@ public class CCodeGenerator
 
     private void EmitTypedefs(HashSet<string> reachableFunctions)
     {
-        // Skip type definitions if using shared types header
+        // When using shared types header, we only need to emit types that aren't in the header
+        // (e.g., monomorphized types with new type arguments not used in the stdlib)
         if (_useSharedTypesHeader)
+        {
+            // Emit only enum types used in this compilation but not in the shared header
+            EmitEnumTypes(reachableFunctions);
             return;
+        }
 
+        // Full typedef emission (no shared header)
         // String type (fat pointer)
         _output.AppendLine("// String type (fat pointer: pointer + length)");
         _output.AppendLine("typedef struct {");
@@ -823,6 +958,10 @@ public class CCodeGenerator
         // Check if this enum has any associated data
         bool hasAnyData = enumType.Variants.Any(v => v.HasAssociatedData);
 
+        // Add header guard to prevent redefinition (especially when using shared types header)
+        var guardName = $"NOVUS_TYPE_{enumName.ToUpper()}_DEFINED";
+        _output.AppendLine($"#ifndef {guardName}");
+        _output.AppendLine($"#define {guardName}");
         _output.AppendLine($"// Enum: {enumType.Name}");
 
         if (!hasAnyData)
@@ -837,6 +976,7 @@ public class CCodeGenerator
                 _output.AppendLine($"    {enumName}_{variant.Name} = {variant.Tag}{comma}");
             }
             _output.AppendLine($"}} {enumName};");
+            _output.AppendLine($"#endif // {guardName}");
             _output.AppendLine();
             return;
         }
@@ -883,6 +1023,7 @@ public class CCodeGenerator
         _output.AppendLine($"    enum {enumName}_Tag tag;");
         _output.AppendLine($"    union {enumName}_Data data;");
         _output.AppendLine($"}} {enumName};");
+        _output.AppendLine($"#endif // {guardName}");
         _output.AppendLine();
     }
 
@@ -1064,8 +1205,12 @@ public class CCodeGenerator
         }
 
         // Only emit declarations for reachable implemented functions
+        // SKIP monomorphized functions since they're static inline
         var implementedFunctions = _module.Functions
-            .Where(f => !f.IsExtern && f.BasicBlocks.Count > 0 && reachableFunctions.Contains(f.Name))
+            .Where(f => !f.IsExtern
+                        && f.BasicBlocks.Count > 0
+                        && reachableFunctions.Contains(f.Name)
+                        && !IsMonomorphizedFunction(f))
             .ToList();
 
         if (implementedFunctions.Count == 0)
@@ -1098,8 +1243,26 @@ public class CCodeGenerator
         if (implementedFunctions.Count == 0)
             return;
 
+        // Separate monomorphized functions from regular functions
+        // Monomorphized functions must be emitted FIRST (before any callers) to avoid implicit declarations
+        var monomorphizedFunctions = implementedFunctions.Where(f => IsMonomorphizedFunction(f)).ToList();
+        var regularFunctions = implementedFunctions.Where(f => !IsMonomorphizedFunction(f)).ToList();
+
         _output.AppendLine("// Function implementations");
-        foreach (var function in implementedFunctions)
+
+        // Emit monomorphized functions first (static inline)
+        if (monomorphizedFunctions.Count > 0)
+        {
+            _output.AppendLine("// Monomorphized generic functions (must be defined before use)");
+            foreach (var function in monomorphizedFunctions)
+            {
+                EmitFunction(function);
+                _output.AppendLine();
+            }
+        }
+
+        // Then emit regular functions
+        foreach (var function in regularFunctions)
         {
             EmitFunction(function);
             _output.AppendLine();
@@ -1124,7 +1287,17 @@ public class CCodeGenerator
             returnType = "int";
         }
 
-        _output.AppendLine($"{returnType} {funcName}({parameters}) {{");
+        // Add 'static' for monomorphized generic functions
+        // Note: We use 'static' only (not 'static inline') because VBCC C99 mode
+        // doesn't allow 'inline' in function definitions (error 301).
+        // The 'static' linkage prevents duplicate symbol errors.
+        var functionModifiers = "";
+        if (IsMonomorphizedFunction(function))
+        {
+            functionModifiers = "static ";
+        }
+
+        _output.AppendLine($"{functionModifiers}{returnType} {funcName}({parameters}) {{");
 
         // Emit function body
         foreach (var block in function.BasicBlocks)
@@ -1356,9 +1529,28 @@ public class CCodeGenerator
         var resultName = SanitizeVariableName(binaryOp.ResultName);
         var left = EmitValue(binaryOp.Left);
         var right = EmitValue(binaryOp.Right);
-        var op = GetBinaryOperator(binaryOp.Operation);
 
-        _output.AppendLine($"    {cType} {resultName} = {left} {op} {right};");
+        // Special handling for shift operations: mask shift amount to bit width
+        if (binaryOp.Operation == IrBinaryOp.OpKind.Shl || binaryOp.Operation == IrBinaryOp.OpKind.Shr)
+        {
+            // Determine bit width of the type being shifted
+            int bitWidth = binaryOp.Type switch
+            {
+                IrIntType intType => intType.BitWidth,
+                _ => 32  // Default to 32-bit for other types
+            };
+
+            var mask = bitWidth - 1;  // 31 for 32-bit, 15 for 16-bit, 7 for 8-bit
+            var op = binaryOp.Operation == IrBinaryOp.OpKind.Shl ? "<<" : ">>";
+
+            // Mask the shift amount to prevent undefined behavior
+            _output.AppendLine($"    {cType} {resultName} = {left} {op} (({right}) & {mask});");
+        }
+        else
+        {
+            var op = GetBinaryOperator(binaryOp.Operation);
+            _output.AppendLine($"    {cType} {resultName} = {left} {op} {right};");
+        }
     }
 
     private void EmitCall(IrCall call)
@@ -1594,13 +1786,13 @@ public class CCodeGenerator
         var resultName = SanitizeVariableName(indexAccess.ResultName);
         var elementType = GetCType(indexAccess.ElementType);
 
-        // TODO: Make bounds checking conditional on debug build flag
         // Add runtime bounds check if array type information is available
+        // TODO: Make conditional on debug build flag
         if (indexAccess.Array.Type is IrArrayType arrayType)
         {
             _output.AppendLine($"    if ((uint32_t){indexValue} >= {arrayType.Length}) {{");
-            _output.AppendLine($"        // Bounds check failed - index out of range");
-            _output.AppendLine($"        abort();  // TODO: Better error handling");
+            _output.AppendLine($"        /* PANIC: Array index out of bounds (length={arrayType.Length}) */");
+            _output.AppendLine($"        abort();");
             _output.AppendLine($"    }}");
         }
 
@@ -1613,13 +1805,13 @@ public class CCodeGenerator
         var indexValue = EmitValue(indexStore.Index);
         var storeValue = EmitValue(indexStore.Value);
 
-        // TODO: Make bounds checking conditional on debug build flag
         // Add runtime bounds check if array type information is available
+        // TODO: Make conditional on debug build flag
         if (indexStore.Array.Type is IrArrayType arrayType)
         {
             _output.AppendLine($"    if ((uint32_t){indexValue} >= {arrayType.Length}) {{");
-            _output.AppendLine($"        // Bounds check failed - index out of range");
-            _output.AppendLine($"        abort();  // TODO: Better error handling");
+            _output.AppendLine($"        /* PANIC: Array index out of bounds (length={arrayType.Length}) */");
+            _output.AppendLine($"        abort();");
             _output.AppendLine($"    }}");
         }
 

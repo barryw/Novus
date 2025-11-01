@@ -1,0 +1,21 @@
+from std::core import Option
+
+// Simple test for generic associated function type inference
+// Tests that Option::FromPointer can infer T from expected type
+
+pub fn make_option() -> Option<*u8> {
+    let ptr: *u8 = (*u8)42
+    return Option::FromPointer(ptr)
+}
+
+pub fn test_from_var_type() -> i32 {
+    let ptr: *u8 = (*u8)100
+    let opt: Option<*u8> = Option::FromPointer(ptr)
+    return 0
+}
+
+pub fn main() -> i32 {
+    let opt1 = make_option()
+    let r = test_from_var_type()
+    return 0
+}

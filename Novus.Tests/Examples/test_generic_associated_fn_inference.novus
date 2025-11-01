@@ -1,0 +1,31 @@
+from std::core import Option
+
+// Test that generic associated functions work with type inference from expected types
+// This tests the feature where Vec::new(), Option::FromPointer(), etc. can infer
+// their generic type parameters from the expected return type or variable declaration type
+
+// Test 1: Inference from return type annotation
+pub fn test_return_type() -> Option<*u8> {
+    return Option::FromPointer((*u8)42)
+}
+
+// Test 2: Inference from variable declaration type
+pub fn test_var_type() -> i32 {
+    let opt: Option<*i32> = Option::FromPointer((*i32)100)
+    return 0
+}
+
+// Test 3: Multiple different instantiations
+pub fn test_multiple_types() -> i32 {
+    let opt1: Option<*u8> = Option::FromPointer((*u8)1)
+    let opt2: Option<*i32> = Option::FromPointer((*i32)2)
+    let opt3: Option<*u8> = Option::FromPointer((*u8)3)
+    return 0
+}
+
+pub fn main() -> i32 {
+    let r1 = test_return_type()
+    let r2 = test_var_type()
+    let r3 = test_multiple_types()
+    return 0
+}

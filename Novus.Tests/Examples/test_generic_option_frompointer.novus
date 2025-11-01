@@ -1,0 +1,9 @@
+from std::core import Option
+
+// Test that generic associated functions work correctly
+// Option::FromPointer<T> should infer T from the pointer type
+pub fn main() -> i32 {
+    let ptr: *u8 = (*u8)42
+    let opt = Option::FromPointer(ptr)
+    return 0
+}
