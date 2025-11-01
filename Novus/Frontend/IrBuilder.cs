@@ -1451,8 +1451,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Replace placeholder with complete struct type
         var structType = new IrStructType(name, fields, genericParams);
 
-        // Force offset calculation by accessing SizeInBytes
-        _ = structType.SizeInBytes;
+        // Force offset calculation by accessing SizeInBytes (only for non-generic structs)
+        // Generic structs will be monomorphized later when instantiated with concrete types
+        if (genericParams.Count == 0)
+        {
+            _ = structType.SizeInBytes;
+        }
 
         _structs[name] = structType;
     }
@@ -2508,7 +2512,24 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                 if (argValue != null)
                 {
-                    arguments.Add(argValue);
+                    // IMPORTANT: Apply current type substitutions to argument type
+                    // This handles the case where a generic function calls another generic function
+                    // with generic arguments (e.g., double<T> calling identity(x) where x: T)
+                    var argType = argValue.Type;
+                    if (_currentTypeSubstitutions != null)
+                    {
+                        argType = SubstituteGenericTypes(argType, _currentTypeSubstitutions);
+                    }
+
+                    // If type was substituted, create a new IrVariable with the substituted type
+                    if (argType != argValue.Type && argValue is IrVariable argVar)
+                    {
+                        arguments.Add(new IrVariable(argVar.Name, argType));
+                    }
+                    else
+                    {
+                        arguments.Add(argValue);
+                    }
                 }
                 argIdx++;
             }
@@ -2519,6 +2540,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
         {
             // Get template and parse parameters
             var template = _genericFunctionTemplates[genericFuncName];
+
+            // Save and clear type substitutions so we get the generic template types
+            var savedTypeSubstitutions = _currentTypeSubstitutions;
+            _currentTypeSubstitutions = null;
 
             // Set up generic params temporarily
             var savedGenericParams = new Dictionary<string, IrGenericType>(_genericParams);
@@ -2546,6 +2571,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
             {
                 _genericParams[kvp.Key] = kvp.Value;
             }
+
+            // Restore type substitutions
+            _currentTypeSubstitutions = savedTypeSubstitutions;
 
             // Infer types
             var typeSubstitutions = InferGenericFunctionTypes(template.GenericParams, templateParams, arguments);
@@ -4248,6 +4276,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
             throw new Exception($"Unknown struct type '{structName}'");
         }
 
+        // Get the base struct type
+        var baseStructType = _structs[structName];
+
         // Use expected type for bidirectional type checking if it's a monomorphized version of this struct
         IrStructType structType;
         if (_expectedType is IrStructType expectedStruct && expectedStruct.StructName == structName)
@@ -4258,7 +4289,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         else
         {
             // Use the base generic type (e.g., Vec<T>)
-            structType = _structs[structName];
+            structType = baseStructType;
         }
 
         var fieldValues = new Dictionary<string, IrValue>();
@@ -4275,6 +4306,67 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
 
             fieldValues[fieldName] = fieldValue;
+        }
+
+        // If the base struct is generic and we don't have an expected type, infer the concrete type from field values
+        if (baseStructType.GenericParameters.Count > 0 && _expectedType == null)
+        {
+            // Infer generic type parameters from field values
+            var typeSubstitutions = new Dictionary<string, IrType>();
+
+            foreach (var field in baseStructType.Fields)
+            {
+                if (fieldValues.TryGetValue(field.Name, out var fieldValue))
+                {
+                    // Extract generic type mappings from field type and value type
+                    ExtractGenericTypeMapping(field.Type, fieldValue.Type, typeSubstitutions);
+                }
+            }
+
+            // Check if all generic parameters were inferred
+            if (typeSubstitutions.Count == baseStructType.GenericParameters.Count)
+            {
+                // Create monomorphized struct type
+                var typeArgs = baseStructType.GenericParameters.Select(p => typeSubstitutions[p]).ToList();
+                var typeArgKeys = typeArgs.Select(t => GetTypeCacheKey(t));
+                var cacheKey = $"{baseStructType.StructName}<{string.Join(",", typeArgKeys)}>";
+
+                // Check cache first
+                if (_monomorphizedStructs.ContainsKey(cacheKey))
+                {
+                    structType = _monomorphizedStructs[cacheKey];
+                }
+                else
+                {
+                    // Create monomorphized fields using recursive substitution
+                    var monomorphizedFields = new List<IrStructField>();
+                    bool fullyMonomorphized = true;
+
+                    foreach (var origField in baseStructType.Fields)
+                    {
+                        var fieldType = SubstituteGenericTypes(origField.Type, typeSubstitutions);
+                        monomorphizedFields.Add(new IrStructField(origField.Name, fieldType));
+
+                        // Check if field type is still generic
+                        if (ContainsGenericTypes(fieldType))
+                        {
+                            fullyMonomorphized = false;
+                        }
+                    }
+
+                    // Create new struct type with concrete types
+                    structType = new IrStructType(baseStructType.StructName, monomorphizedFields, null, cacheKey);
+
+                    // Force calculation of field offsets only if fully monomorphized
+                    if (fullyMonomorphized)
+                    {
+                        _ = structType.SizeInBytes;
+                    }
+
+                    // Cache it for future use
+                    _monomorphizedStructs[cacheKey] = structType;
+                }
+            }
         }
 
         // Validate that all fields are initialized
@@ -4805,31 +4897,31 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     typeSubstitutions[structType.GenericParameters[i]] = typeArgs[i];
                 }
 
-                // Create monomorphized fields
+                // Create monomorphized fields using recursive substitution
                 var monomorphizedFields = new List<IrStructField>();
+                bool fullyMonomorphized = true;
+
                 foreach (var origField in structType.Fields)
                 {
-                    var fieldType = origField.Type;
-
-                    // Substitute generic types in field
-                    if (fieldType is IrGenericType gt && typeSubstitutions.ContainsKey(gt.ParameterName))
-                    {
-                        fieldType = typeSubstitutions[gt.ParameterName];
-                    }
-                    // Handle nested generic types (e.g., *T where T is generic)
-                    else if (fieldType is IrPointerType ptrType && ptrType.PointeeType is IrGenericType ptrGt && typeSubstitutions.ContainsKey(ptrGt.ParameterName))
-                    {
-                        fieldType = _typeInterner.GetPointerType(typeSubstitutions[ptrGt.ParameterName]);
-                    }
-
+                    var fieldType = SubstituteGenericTypes(origField.Type, typeSubstitutions);
                     monomorphizedFields.Add(new IrStructField(origField.Name, fieldType));
+
+                    // Check if field type is still generic
+                    if (ContainsGenericTypes(fieldType))
+                    {
+                        fullyMonomorphized = false;
+                    }
                 }
 
                 // Create new struct type with concrete types (no generic parameters)
                 var monomorphizedStruct = new IrStructType(structType.StructName, monomorphizedFields, null, cacheKey);
 
-                // Force calculation of field offsets by accessing SizeInBytes
-                _ = monomorphizedStruct.SizeInBytes;
+                // Force calculation of field offsets only if fully monomorphized
+                // If still contains generic types, offset calculation will happen later
+                if (fullyMonomorphized)
+                {
+                    _ = monomorphizedStruct.SizeInBytes;
+                }
 
                 // Cache it for future use
                 _monomorphizedStructs[cacheKey] = monomorphizedStruct;
@@ -4907,6 +4999,24 @@ public class IrBuilder : NovusBaseVisitor<object?>
     }
 
     /// <summary>
+    /// Check if a type contains any generic type parameters
+    /// </summary>
+    private bool ContainsGenericTypes(IrType type)
+    {
+        return type switch
+        {
+            IrGenericType => true,
+            IrPointerType ptrType => ContainsGenericTypes(ptrType.PointeeType),
+            IrReferenceType refType => ContainsGenericTypes(refType.PointeeType),
+            IrMutReferenceType mutRefType => ContainsGenericTypes(mutRefType.PointeeType),
+            IrArrayType arrayType => ContainsGenericTypes(arrayType.ElementType),
+            IrStructType structType => structType.Fields.Any(f => ContainsGenericTypes(f.Type)),
+            IrEnumType enumType => enumType.Variants.Any(v => v.AssociatedData.Any(ContainsGenericTypes)),
+            _ => false
+        };
+    }
+
+    /// <summary>
     /// Recursively substitute generic type parameters with concrete types
     /// </summary>
     private IrType SubstituteGenericTypes(IrType type, Dictionary<string, IrType> substitutions)
@@ -4945,6 +5055,60 @@ public class IrBuilder : NovusBaseVisitor<object?>
             if (substitutedElement != arrayType.ElementType)
             {
                 return _typeInterner.GetArrayType(substitutedElement, arrayType.Length);
+            }
+        }
+        else if (type is IrStructType structType)
+        {
+            // Check if any field types contain generics that need substitution
+            bool needsSubstitution = false;
+            var substitutedFields = new List<IrStructField>();
+
+            foreach (var field in structType.Fields)
+            {
+                var substitutedFieldType = SubstituteGenericTypes(field.Type, substitutions);
+                substitutedFields.Add(new IrStructField(field.Name, substitutedFieldType));
+
+                if (substitutedFieldType != field.Type)
+                {
+                    needsSubstitution = true;
+                }
+            }
+
+            if (needsSubstitution)
+            {
+                // Create a new struct type with substituted field types
+                var substitutedStruct = new IrStructType(structType.StructName, substitutedFields);
+                return substitutedStruct;
+            }
+        }
+        else if (type is IrEnumType enumType)
+        {
+            // Check if any variant types contain generics that need substitution
+            bool needsSubstitution = false;
+            var substitutedVariants = new List<IrEnumVariant>();
+
+            foreach (var variant in enumType.Variants)
+            {
+                var substitutedData = new List<IrType>();
+                foreach (var dataType in variant.AssociatedData)
+                {
+                    var substitutedDataType = SubstituteGenericTypes(dataType, substitutions);
+                    substitutedData.Add(substitutedDataType);
+
+                    if (substitutedDataType != dataType)
+                    {
+                        needsSubstitution = true;
+                    }
+                }
+
+                substitutedVariants.Add(new IrEnumVariant(variant.Name, variant.Tag, substitutedData));
+            }
+
+            if (needsSubstitution)
+            {
+                // Create a new enum type with substituted variant types
+                var substitutedEnum = new IrEnumType(enumType.EnumName, substitutedVariants);
+                return substitutedEnum;
             }
         }
 
@@ -5486,6 +5650,42 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 if (baseArrayType.Length == monoArrayType.Length)
                 {
                     ExtractGenericTypeMapping(baseArrayType.ElementType, monoArrayType.ElementType, substitutions);
+                }
+                break;
+
+            case IrStructType baseStructType when monomorphizedType is IrStructType monoStructType:
+                // Recurse into struct field types to extract generic mappings
+                // For example: Box<T> matched with Box<i32> should extract T -> i32
+                if (baseStructType.StructName == monoStructType.StructName &&
+                    baseStructType.Fields.Count == monoStructType.Fields.Count)
+                {
+                    for (int i = 0; i < baseStructType.Fields.Count; i++)
+                    {
+                        ExtractGenericTypeMapping(baseStructType.Fields[i].Type, monoStructType.Fields[i].Type, substitutions);
+                    }
+                }
+                break;
+
+            case IrEnumType baseEnumType when monomorphizedType is IrEnumType monoEnumType:
+                // Recurse into enum variant types to extract generic mappings
+                // For example: Option<T> matched with Option<i32> should extract T -> i32
+                if (baseEnumType.EnumName == monoEnumType.EnumName &&
+                    baseEnumType.Variants.Count == monoEnumType.Variants.Count)
+                {
+                    for (int i = 0; i < baseEnumType.Variants.Count; i++)
+                    {
+                        var baseVariant = baseEnumType.Variants[i];
+                        var monoVariant = monoEnumType.Variants[i];
+
+                        if (baseVariant.Name == monoVariant.Name &&
+                            baseVariant.AssociatedData.Count == monoVariant.AssociatedData.Count)
+                        {
+                            for (int j = 0; j < baseVariant.AssociatedData.Count; j++)
+                            {
+                                ExtractGenericTypeMapping(baseVariant.AssociatedData[j], monoVariant.AssociatedData[j], substitutions);
+                            }
+                        }
+                    }
                 }
                 break;
 
