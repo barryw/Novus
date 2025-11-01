@@ -1626,6 +1626,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
     {
         var name = context.IDENTIFIER().GetText();
 
+        // Parse attributes (for @library and other struct attributes)
+        var attributes = ParseAttributesSimple(context.attribute());
+
         // Handle generic parameters if present
         var genericParams = new List<string>();
         if (context.genericParams() != null)
@@ -1641,7 +1644,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         // Register placeholder struct FIRST to allow self-referential types
-        var placeholderStruct = new IrStructType(name, new List<IrStructField>(), genericParams);
+        var placeholderStruct = new IrStructType(name, new List<IrStructField>(), genericParams, null, attributes);
         _structs[name] = placeholderStruct;
 
         // Now parse struct fields (can now reference the struct being defined)
@@ -1660,16 +1663,86 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         // Replace placeholder with complete struct type
-        var structType = new IrStructType(name, fields, genericParams);
+        var structType = new IrStructType(name, fields, genericParams, null, attributes);
 
         // Force offset calculation by accessing SizeInBytes (only for non-generic structs)
         // Generic structs will be monomorphized later when instantiated with concrete types
         if (genericParams.Count == 0)
         {
             _ = structType.SizeInBytes;
+
+            // Add non-generic structs to the module (for library generation, etc.)
+            _module.Structs.Add(structType);
         }
 
         _structs[name] = structType;
+    }
+
+    /// <summary>
+    /// Simple attribute parser for IrBuilder (doesn't validate - just extracts)
+    /// </summary>
+    private Novus.SemanticAnalysis.AttributeCollection ParseAttributesSimple(NovusParser.AttributeContext[]? attributeContexts)
+    {
+        var collection = new Novus.SemanticAnalysis.AttributeCollection();
+        if (attributeContexts == null || attributeContexts.Length == 0)
+            return collection;
+
+        foreach (var attrCtx in attributeContexts)
+        {
+            var attrName = attrCtx.IDENTIFIER().GetText();
+            // Simple location - just use line/column from token
+            var location = new Novus.Diagnostics.SourceLocation(_inputFilePath, attrCtx.Start.Line, attrCtx.Start.Column, 0, "");
+            var attr = new Novus.SemanticAnalysis.AttributeInfo(attrName, location);
+
+            // Parse attribute arguments if present
+            if (attrCtx.attributeArgList() != null)
+            {
+                foreach (var argCtx in attrCtx.attributeArgList().attributeArg())
+                {
+                    var expr = argCtx.expression();
+                    var exprText = expr.GetText();
+
+                    // Simple value extraction
+                    object? value = null;
+                    if (int.TryParse(exprText, out var intValue))
+                    {
+                        value = intValue;
+                    }
+                    else if (exprText.StartsWith("\"") && exprText.EndsWith("\""))
+                    {
+                        value = exprText.Trim('"');
+                    }
+                    else if (exprText == "true")
+                    {
+                        value = true;
+                    }
+                    else if (exprText == "false")
+                    {
+                        value = false;
+                    }
+                    else
+                    {
+                        value = exprText;
+                    }
+
+                    // Check if it's a named argument
+                    if (argCtx.IDENTIFIER() != null)
+                    {
+                        var argName = argCtx.IDENTIFIER().GetText();
+                        attr.NamedArgs[argName] = value;
+                    }
+                    else
+                    {
+                        // Positional argument
+                        attr.PositionalArgs.Add(value);
+                    }
+                }
+            }
+
+            collection.Add(attr);
+        }
+
+        return collection;
     }
 
     public override object? VisitFunctionDeclaration([NotNull] NovusParser.FunctionDeclarationContext context)

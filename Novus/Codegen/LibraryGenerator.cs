@@ -42,10 +42,9 @@ public class LibraryGenerator
         _libraryFunctions = new List<LibraryFunction>();
 
         // Find the struct with @library attribute
-        foreach (var monotype in module.MonomorphizedTypes.Values)
+        foreach (var structType in module.Structs)
         {
-            if (monotype.ConcreteType is IrStructType structType &&
-                structType.Attributes?.Has(KnownAttributes.Library) == true)
+            if (structType.Attributes?.Has(KnownAttributes.Library) == true)
             {
                 _libraryStruct = structType;
                 _libraryAttribute = structType.Attributes.Get(KnownAttributes.Library);

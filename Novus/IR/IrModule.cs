@@ -19,6 +19,7 @@ public class IrModule
 {
     public List<IrFunction> Functions { get; } = new();
     public List<IrEnumType> Enums { get; } = new();
+    public List<IrStructType> Structs { get; } = new();
     public Dictionary<string, IrMonomorphizedType> MonomorphizedTypes { get; } = new();
 
     /// <summary>
