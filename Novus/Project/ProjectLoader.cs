@@ -25,6 +25,7 @@ public class ProjectLoader
         {
             project.Package.Name = GetString(packageTable, "name") ?? "";
             project.Package.Version = GetString(packageTable, "version") ?? "0.1.0";
+            project.Package.Type = GetString(packageTable, "type") ?? "cli";
             project.Package.Description = GetString(packageTable, "description");
             project.Package.Entry = GetString(packageTable, "entry");
             project.Package.License = GetString(packageTable, "license");

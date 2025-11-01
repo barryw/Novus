@@ -41,4 +41,9 @@ public class CompilerOptions
     /// Build mode (Debug or Release). Set by build command based on --debug/--release flags.
     /// </summary>
     public BuildMode BuildMode { get; set; } = BuildMode.Debug;
+
+    /// <summary>
+    /// Project type (cli, library, device, etc.). Used to determine linking strategy.
+    /// </summary>
+    public string ProjectType { get; set; } = "cli";
 }

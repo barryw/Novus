@@ -208,6 +208,17 @@ public class LibraryGenerator
         var revision = GetLibraryRevision();
 
         sb.AppendLine("// ============================================================================");
+        sb.AppendLine("// Library Entry Point");
+        sb.AppendLine("// ============================================================================");
+        sb.AppendLine("// Libraries need a _start() function that returns -1 to discourage");
+        sb.AppendLine("// running from the shell. The real entry is the ROMTag structure.");
+        sb.AppendLine();
+        sb.AppendLine("LONG _start(void) {");
+        sb.AppendLine("    return -1;  // Cannot run from CLI");
+        sb.AppendLine("}");
+        sb.AppendLine();
+        sb.AppendLine();
+        sb.AppendLine("// ============================================================================");
         sb.AppendLine("// ROMTag (Resident Structure)");
         sb.AppendLine("// ============================================================================");
         sb.AppendLine("// The ROMTag is scanned by exec.library when the library loads.");

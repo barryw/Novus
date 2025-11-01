@@ -204,12 +204,11 @@ public static class BuildCommand
         }
 
         // Determine entry point based on project type
+        var projectType = project.Package.Type ?? "cli";
         var entryFile = project.Package.Entry;
         if (string.IsNullOrEmpty(entryFile))
         {
             // Auto-detect based on project type
-            var projectType = project.Package.Type ?? "cli";
-
             switch (projectType.ToLowerInvariant())
             {
                 case "library":
@@ -327,7 +326,8 @@ public static class BuildCommand
             EmitAsmOnly = buildOptions.EmitAsmOnly || project.Build.EmitAsm,
             VbccPath = buildOptions.VbccPath ?? "/Users/barry/amiga-cc/vbcc",
             NdkPath = buildOptions.NdkPath ?? "/Users/barry/amiga-cc/NDK3.9",
-            Verbose = buildOptions.Verbose
+            Verbose = buildOptions.Verbose,
+            ProjectType = projectType
         };
 
         if (workspace == null)

@@ -572,20 +572,27 @@ class Program
             // Map "auto" CPU to a concrete target for assembly (vasm doesn't understand "auto")
             var assemblyCpu = options.Cpu == "auto" ? "68020" : options.Cpu;
 
-            // Assemble core Novus runtime files (always needed)
-            var coreFiles = new[] { "novus_startup", "exec_base" };
-            foreach (var coreFile in coreFiles)
+            // Assemble core Novus runtime files (only for executables, not libraries)
+            var isLibrary = options.ProjectType.ToLowerInvariant() == "library";
+            var isDevice = options.ProjectType.ToLowerInvariant() == "device";
+
+            if (!isLibrary && !isDevice)
             {
-                var coreSource = Path.Combine(compilerDir, "stubs", $"{coreFile}.s");
-                if (File.Exists(coreSource))
+                // Only executables need startup code and SysBase
+                var coreFiles = new[] { "novus_startup", "exec_base" };
+                foreach (var coreFile in coreFiles)
                 {
-                    var coreObj = Path.Combine(outputDir, $"{coreFile}.o");
-                    if (!await toolchain.Assemble(coreSource, coreObj, assemblyCpu, false))
+                    var coreSource = Path.Combine(compilerDir, "stubs", $"{coreFile}.s");
+                    if (File.Exists(coreSource))
                     {
-                        Console.WriteLine($"Failed to assemble {coreFile}");
-                        return 1;
+                        var coreObj = Path.Combine(outputDir, $"{coreFile}.o");
+                        if (!await toolchain.Assemble(coreSource, coreObj, assemblyCpu, false))
+                        {
+                            Console.WriteLine($"Failed to assemble {coreFile}");
+                            return 1;
+                        }
+                        objectFiles.Add(coreObj);
                     }
-                    objectFiles.Add(coreObj);
                 }
             }
 
@@ -635,11 +642,13 @@ class Program
                 }
             }
 
-            // Assemble library stubs
-            foreach (var stub in requiredLibraries)
+            // Assemble library stubs (skip for libraries/devices - they handle SysBase differently)
+            if (!isLibrary && !isDevice)
             {
-                var stubSource = Path.Combine(compilerDir, "stubs", $"{stub}_stubs.s");
-                if (File.Exists(stubSource))
+                foreach (var stub in requiredLibraries)
+                {
+                    var stubSource = Path.Combine(compilerDir, "stubs", $"{stub}_stubs.s");
+                    if (File.Exists(stubSource))
                 {
                     var stubObj = Path.Combine(outputDir, $"{stub}_stubs.o");
                     if (!await toolchain.Assemble(stubSource, stubObj, assemblyCpu, false))
@@ -664,6 +673,7 @@ class Program
                             objectFiles.Add(dosInitObj);
                         }
                     }
+                }
                 }
             }
 
