@@ -15,6 +15,7 @@ public class PackageSection
 {
     public string Name { get; set; } = "";
     public string Version { get; set; } = "0.1.0";
+    public string Type { get; set; } = "cli";  // cli, workbench, dual, library, device, handler, resource
     public string? Description { get; set; }
     public string? Entry { get; set; }  // Entry point file (defaults to main.novus or <name>.novus)
     public string[] Authors { get; set; } = Array.Empty<string>();

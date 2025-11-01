@@ -36,4 +36,9 @@ public class CompilerOptions
 
     [Option('v', "verbose", Required = false, HelpText = "Verbose output")]
     public bool Verbose { get; set; }
+
+    /// <summary>
+    /// Build mode (Debug or Release). Set by build command based on --debug/--release flags.
+    /// </summary>
+    public BuildMode BuildMode { get; set; } = BuildMode.Debug;
 }
