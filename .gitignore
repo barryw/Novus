@@ -57,7 +57,7 @@ Desktop.ini
 *.o
 *.out
 a.out
-test_*
+/test_*
 !Novus.Tests/
 !Novus.Tests/Examples/test_*.novus
 
@@ -86,4 +86,4 @@ exec_*.c
 novus_types.h
 
 # Test build configs (generated, not source)
-Novus.Tests/Examples/novus.toml
+/Novus.Tests/Examples/novus.toml

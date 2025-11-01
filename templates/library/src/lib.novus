@@ -1,0 +1,371 @@
+// example.library - A simple AmigaOS shared library written in Novus
+//
+// This is a "Hello World" skeleton library that demonstrates:
+// - Library lifecycle (Open, Close, Expunge)
+// - Adding library functions
+// - Proper memory management
+// - AmigaOS conventions
+//
+// This library provides two simple functions:
+// - GetVersion() -> Returns the library version
+// - Multiply(a, b) -> Returns a * b
+
+from std::ffi::exec import AllocMem, FreeMem, MEMF_PUBLIC, MEMF_CLEAR
+from std::ffi::amiga_structs import Library, Node
+
+// ============================================================================
+// Library Base Structure
+// ============================================================================
+
+/// ExampleLibraryBase - The library's base structure
+///
+/// IMPORTANT: The first field MUST be the standard Library structure.
+/// AmigaOS expects this layout. Custom library data follows the Library header.
+///
+/// LIFECYCLE:
+/// - Created during LibInit (when library first loaded)
+/// - Passed to all library functions via A6 register
+/// - Freed during LibExpunge (when library removed from memory)
+///
+/// MEMORY LAYOUT:
+/// ```
+/// +0: Library header (Node + version info)
+/// +sizeof(Library): Custom data begins here
+/// ```
+pub struct ExampleLibraryBase {
+    lib: Library,           // MUST be first! (AmigaOS requirement)
+    seglist: u32,          // BPTR to library code segment
+    open_count: u32,       // Number of times library is opened
+}
+
+impl ExampleLibraryBase {
+    /// Create a new library base structure
+    ///
+    /// WHEN CALLED: During LibInit (library initialization)
+    ///
+    /// PARAMETERS:
+    /// - seglist: BPTR to the library code segment (for unloading)
+    ///
+    /// RETURNS: Pointer to initialized ExampleLibraryBase, or null on failure
+    ///
+    /// LIFECYCLE: This is the first function called when the library loads.
+    /// It allocates memory for the library base and initializes it.
+    pub fn create(seglist: u32) -> *ExampleLibraryBase {
+        // Allocate memory for the library base
+        let size: u32 = @sizeof(ExampleLibraryBase)
+        let base_ptr: *u8 = AllocMem(size, MEMF_PUBLIC | MEMF_CLEAR)
+
+        // Check if allocation succeeded
+        if (u32)base_ptr == 0 {
+            return 0 as *ExampleLibraryBase
+        }
+
+        // Cast to our library base type
+        let base: *ExampleLibraryBase = base_ptr as *ExampleLibraryBase
+
+        // Initialize the Library header
+        // Note: The ROMTag and exec.library will set most fields for us,
+        // but we can set custom fields here
+        (*base).seglist = seglist
+        (*base).open_count = 0
+
+        return base
+    }
+
+    /// Free the library base structure
+    ///
+    /// WHEN CALLED: During LibExpunge (when library is removed from memory)
+    ///
+    /// PARAMETERS:
+    /// - base: Pointer to the library base to free
+    ///
+    /// LIFECYCLE: This is called when the library is being removed from memory
+    /// (typically during system shutdown or when no longer needed).
+    pub fn destroy(base: *ExampleLibraryBase) {
+        if (u32)base == 0 {
+            return
+        }
+
+        let size: u32 = @sizeof(ExampleLibraryBase)
+        let base_ptr: *u8 = base as *u8
+        FreeMem(base_ptr, size)
+    }
+}
+
+// ============================================================================
+// Library Lifecycle Functions
+// ============================================================================
+// These four functions are REQUIRED by AmigaOS for every library:
+// - Open: Called when a program opens the library
+// - Close: Called when a program closes the library
+// - Expunge: Called to remove the library from memory
+// - Reserved: Reserved for future use (must return 0)
+//
+// VECTOR OFFSETS: These functions are accessed via negative offsets from
+// the library base address:
+// - Open:     -6
+// - Close:    -12
+// - Expunge:  -18
+// - Reserved: -24
+// ============================================================================
+
+/// LibOpen - Open the library
+///
+/// WHEN CALLED: When a program calls OpenLibrary("example.library", 0)
+///
+/// PARAMETERS:
+/// - base: Pointer to ExampleLibraryBase (passed in A6)
+/// - version: Minimum version requested by caller (currently unused)
+///
+/// RETURNS: Library base pointer on success, 0 on failure
+///
+/// VECTOR OFFSET: -6
+///
+/// LIFECYCLE: Called every time a program opens the library. Increments
+/// the open count to prevent the library from being expunged while in use.
+///
+/// EXAMPLE FLOW:
+/// 1. Program calls: OpenLibrary("example.library", 0)
+/// 2. exec.library finds the library in memory
+/// 3. exec.library calls JSR base-6 (this function)
+/// 4. open_count incremented
+/// 5. Library base returned to caller
+///
+/// IMPORTANT: This function MUST NOT FAIL. If the library cannot be opened,
+/// it should return 0, but this typically only happens if memory is exhausted
+/// or the library is corrupted.
+pub fn LibOpen(base: *ExampleLibraryBase, version: u32) -> *ExampleLibraryBase {
+    // Prevent expunge while library is in use
+    (*base).open_count = (*base).open_count + 1
+
+    // Return library base to caller
+    // The caller will use this pointer for all library function calls
+    return base
+}
+
+/// LibClose - Close the library
+///
+/// WHEN CALLED: When a program calls CloseLibrary(base)
+///
+/// PARAMETERS:
+/// - base: Pointer to ExampleLibraryBase (passed in A6)
+///
+/// RETURNS: Segment list (for expunge), or 0 if library should stay resident
+///
+/// VECTOR OFFSET: -12
+///
+/// LIFECYCLE: Called every time a program closes the library. Decrements
+/// the open count. If count reaches 0 and expunge is pending, returns
+/// the segment list so exec.library can unload the code.
+///
+/// EXAMPLE FLOW:
+/// 1. Program calls: CloseLibrary(base)
+/// 2. exec.library calls JSR base-12 (this function)
+/// 3. open_count decremented
+/// 4. If count == 0 and expunge pending, return seglist
+/// 5. Otherwise return 0 (keep library resident)
+pub fn LibClose(base: *ExampleLibraryBase) -> u32 {
+    // Decrement open count
+    (*base).open_count = (*base).open_count - 1
+
+    // Check if library should be expunged
+    // Expunge is pending if lib_Flags has LIBF_DELEXP set
+    let lib_ptr: *Library = base as *Library
+    let flags: u16 = (*lib_ptr).lib_Flags
+    let LIBF_DELEXP: u16 = 0x0001
+
+    if ((*base).open_count == 0) && ((flags & LIBF_DELEXP) != 0) {
+        // Last close and expunge is pending - allow expunge
+        // Note: LibExpunge will be called next to actually free memory
+        return (*base).seglist
+    }
+
+    // Library still in use or no expunge pending - stay resident
+    return 0
+}
+
+/// LibExpunge - Remove library from memory
+///
+/// WHEN CALLED: When system wants to reclaim memory, or during shutdown
+///
+/// PARAMETERS:
+/// - base: Pointer to ExampleLibraryBase (passed in A6)
+///
+/// RETURNS: Segment list if library was expunged, 0 if it's still in use
+///
+/// VECTOR OFFSET: -18
+///
+/// LIFECYCLE: Called when the system wants to remove the library from memory.
+/// This can happen during:
+/// - System shutdown
+/// - AvailMem(MEMF_LARGEST) when memory is low
+/// - Explicit RemLibrary() call
+///
+/// EXAMPLE FLOW:
+/// 1. System calls RemLibrary() or AvailMem forces cleanup
+/// 2. exec.library calls JSR base-18 (this function)
+/// 3. If open_count > 0, mark LIBF_DELEXP and return 0 (delayed expunge)
+/// 4. If open_count == 0, free memory and return seglist
+/// 5. exec.library unloads the code segment
+///
+/// IMPORTANT: This function MUST check the open count. Never expunge a
+/// library that's still open! Set LIBF_DELEXP flag and wait for last Close.
+pub fn LibExpunge(base: *ExampleLibraryBase) -> u32 {
+    // Check if library is still in use
+    if (*base).open_count > 0 {
+        // Library is still open - mark for delayed expunge
+        let lib_ptr: *Library = base as *Library
+        let LIBF_DELEXP: u16 = 0x0001
+        (*lib_ptr).lib_Flags = (*lib_ptr).lib_Flags | LIBF_DELEXP
+        return 0
+    }
+
+    // Library is not in use - proceed with expunge
+    let seglist: u32 = (*base).seglist
+
+    // TODO: Remove library from exec library list
+    // This would require calling Remove(&base->lib.lib_Node)
+    // For now, exec.library handles this
+
+    // Free the library base
+    ExampleLibraryBase::destroy(base)
+
+    // Return segment list so exec.library can unload the code
+    return seglist
+}
+
+/// LibReserved - Reserved for future use
+///
+/// WHEN CALLED: Never (reserved for future AmigaOS versions)
+///
+/// PARAMETERS:
+/// - base: Pointer to ExampleLibraryBase (passed in A6)
+///
+/// RETURNS: Always returns 0
+///
+/// VECTOR OFFSET: -24
+///
+/// LIFECYCLE: This function is reserved by Commodore for future use.
+/// It must exist (AmigaOS expects it), but should always return 0.
+///
+/// IMPORTANT: Never remove this function! AmigaOS expects all libraries
+/// to have this vector, even if it does nothing.
+pub fn LibReserved(base: *ExampleLibraryBase) -> u32 {
+    return 0
+}
+
+// ============================================================================
+// User-Callable Library Functions
+// ============================================================================
+// These are the actual functions your library provides to users.
+// Each function is accessed via a negative offset from the library base.
+//
+// ADDING NEW FUNCTIONS:
+// 1. Add the Novus function here
+// 2. Add an assembly wrapper in src/wrappers.s
+// 3. Add to vector table in src/library_base.s
+// 4. Update NegSize in library_base.s
+// 5. Rebuild and test
+// ============================================================================
+
+/// GetVersion - Return the library version
+///
+/// WHEN CALLED: Anytime after OpenLibrary()
+///
+/// PARAMETERS:
+/// - base: Pointer to ExampleLibraryBase (passed in A6)
+///
+/// RETURNS: Version number as u32 (format: 0xVVVVRRRR where V=version, R=revision)
+///
+/// VECTOR OFFSET: -30
+///
+/// EXAMPLE USAGE (from user program):
+/// ```novus
+/// let base = OpenLibrary("example.library", 0)
+/// if base != 0 {
+///     let version = GetVersion()  // A6 already set to base
+///     // version = 0x00010000 (version 1.0)
+///     CloseLibrary(base)
+/// }
+/// ```
+///
+/// IMPLEMENTATION NOTE:
+/// Version format is standard AmigaOS:
+/// - High word (bits 16-31): Major version
+/// - Low word (bits 0-15): Revision number
+/// - Example: Version 1.5 = 0x00010005
+pub fn GetVersion(base: *ExampleLibraryBase) -> u32 {
+    // Return version 1.0
+    // In a real library, this might come from the Library struct
+    return 0x00010000  // Version 1, Revision 0
+}
+
+/// Multiply - Multiply two numbers
+///
+/// WHEN CALLED: Anytime after OpenLibrary()
+///
+/// PARAMETERS:
+/// - base: Pointer to ExampleLibraryBase (passed in A6)
+/// - a: First number to multiply
+/// - b: Second number to multiply
+///
+/// RETURNS: Product of a * b
+///
+/// VECTOR OFFSET: -36
+///
+/// EXAMPLE USAGE (from user program):
+/// ```novus
+/// let base = OpenLibrary("example.library", 0)
+/// if base != 0 {
+///     let result = Multiply(7, 6)  // Returns 42
+///     CloseLibrary(base)
+/// }
+/// ```
+///
+/// IMPLEMENTATION NOTE:
+/// This is a simple example function to demonstrate passing parameters.
+/// In a real library, you'd implement useful functionality here.
+pub fn Multiply(base: *ExampleLibraryBase, a: i32, b: i32) -> i32 {
+    return a * b
+}
+
+// ============================================================================
+// Library Initialization
+// ============================================================================
+
+/// LibInit - Initialize the library
+///
+/// WHEN CALLED: When the library is first loaded into memory
+///
+/// PARAMETERS:
+/// - seglist: BPTR to library code segment
+/// - exec_base: Pointer to exec.library base
+///
+/// RETURNS: Library base pointer on success, 0 on failure
+///
+/// LIFECYCLE: This is the VERY FIRST function called when the library loads.
+/// It's called by exec.library during the library scanning process.
+///
+/// EXAMPLE FLOW:
+/// 1. exec.library scans LIBS: directory
+/// 2. Finds example.library with valid ROMTag
+/// 3. Calls LibInit (via InitResident or MakeLibrary)
+/// 4. LibInit allocates and initializes ExampleLibraryBase
+/// 5. exec.library adds library to system library list
+/// 6. Library is now ready for OpenLibrary() calls
+///
+/// IMPORTANT: If this function returns 0, the library load fails and
+/// exec.library will unload the code segment immediately.
+pub fn LibInit(seglist: u32, exec_base: *u8) -> *ExampleLibraryBase {
+    // Create and initialize the library base
+    let base: *ExampleLibraryBase = ExampleLibraryBase::create(seglist)
+
+    if (u32)base == 0 {
+        // Allocation failed - library will not load
+        return 0
+    }
+
+    // Library initialized successfully
+    // exec.library will add us to the system library list
+    return base
+}

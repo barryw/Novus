@@ -1,0 +1,11 @@
+[project]
+name = "test_example"
+version = "1.0.0"
+type = "executable"
+
+[build]
+output = "test_example"
+target = "amiga"
+
+[dependencies]
+# Link against example.library (will be opened at runtime)
