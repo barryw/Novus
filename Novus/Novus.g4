@@ -156,6 +156,7 @@ statement
     | deferStatement
     | unsafeBlock
     | usingStatement
+    | block
     | expressionStatement
     ;
 
