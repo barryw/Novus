@@ -63,13 +63,12 @@ pub fn CreateProcess(tags_ptr: *TagItem, count: u32) -> Result<*Process, NovusEr
     let tag_list = make_tags(tags_ptr, count)
     let process = CreateNewProc(tag_list.as_ptr())
 
-    // Check if process creation succeeded
-    let process_int: u32 = (u32)process
-    if process_int == 0u32 {
-        return Result::Err(novus_error_from_dos(DosError::NoFreeStore))
+    // Check if process creation succeeded (null check)
+    if let proc = process {
+        return Result::Ok(proc)
     }
 
-    return Result::Ok(process)
+    return Result::Err(novus_error_from_dos(DosError::NoFreeStore))
 }
 
 // ============================================================================
@@ -95,13 +94,12 @@ pub fn AllocDos(obj_type: u32, tags_ptr: *TagItem, count: u32) -> Result<*u8, No
     let tag_list = make_tags(tags_ptr, count)
     let obj = AllocDosObject(obj_type, tag_list.as_ptr())
 
-    // Check if allocation succeeded
-    let obj_int: u32 = (u32)obj
-    if obj_int == 0u32 {
-        return Result::Err(novus_error_from_dos(DosError::NoFreeStore))
+    // Check if allocation succeeded (null check)
+    if let o = obj {
+        return Result::Ok(o)
     }
 
-    return Result::Ok(obj)
+    return Result::Err(novus_error_from_dos(DosError::NoFreeStore))
 }
 
 /// Load a program segment with tag-based parameters

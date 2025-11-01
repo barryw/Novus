@@ -10,14 +10,7 @@ from std::exec import SafeAllocMem, SafeFreeMem
 // Named CoreAlloc/CoreFree to avoid collision with FFI extern functions
 pub fn CoreAlloc(byteSize: u32, attributes: u32) -> Option<*u8> {
     let ptr: *u8 = SafeAllocMem(byteSize, attributes)
-
-    // Check if null and wrap in Option
-    let ptr_as_int: u32 = (u32)ptr
-    if ptr_as_int == 0u32 {
-        return Option::None
-    }
-
-    return Option::Some(ptr)
+    return Option::FromPointer(ptr)
 }
 
 pub fn CoreFree(memoryBlock: *u8, byteSize: u32) {
@@ -29,6 +22,23 @@ pub fn CoreFree(memoryBlock: *u8, byteSize: u32) {
 pub enum Option<T> {
     Some(T),
     None,
+}
+
+impl<T> Option<T> {
+    /// Create an Option from a pointer
+    /// Returns Some(ptr) if ptr is non-null, None otherwise
+    ///
+    /// Example:
+    /// ```novus
+    /// let ptr: *u8 = SafeAllocMem(...)
+    /// return Option::FromPointer(ptr)  // Some(ptr) if non-null, None if null
+    /// ```
+    pub fn FromPointer(ptr: *T) -> Option<*T> {
+        if let p = ptr {
+            return Option::Some(p)
+        }
+        return Option::None
+    }
 }
 
 // Result<T, E> - represents success or failure

@@ -28,9 +28,9 @@
 // Constants
 // ============================================================================
 
-pub const TRUE: i16 = 1i16
-pub const FALSE: i16 = 0i16
-pub const NULL: u32 = 0u32
+pub const TRUE: i16 = 1
+pub const FALSE: i16 = 0
+pub const NULL: u32 = 0
 
 // Memory allocation flags - import from std::amiga_structs (source of truth)
 

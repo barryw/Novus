@@ -32,7 +32,7 @@ from std::ffi::intuition import OpenWindowTagList, OpenScreenTagList, CloseWindo
 ///     TagItem { ti_Tag: WA_Title, ti_Data: "My Application".ptr as u32 },
 ///     TagItem { ti_Tag: WA_Flags, ti_Data: WFLG_CLOSEGADGET }
 /// ]
-/// let window = OpenWindow(&input_tags, 4u32)?
+/// let window = OpenWindow(&input_tags, 4)?
 /// defer CloseWindow(window)
 /// ```
 pub fn OpenWindow(tags_ptr: *TagItem, count: u32) -> Result<*Window, NovusError> {
@@ -40,13 +40,12 @@ pub fn OpenWindow(tags_ptr: *TagItem, count: u32) -> Result<*Window, NovusError>
     let null_new_window: *NewWindow = 0
     let window = OpenWindowTagList(null_new_window, tag_list.as_ptr())
 
-    // Check if window opened successfully
-    let window_int: u32 = (u32)window
-    if window_int == 0u32 {
-        return Result::Err(novus_error_from_intuition(IntuitionError::WindowOpenFailed))
+    // Check if window opened successfully (null check)
+    if let win = window {
+        return Result::Ok(win)
     }
 
-    return Result::Ok(window)
+    return Result::Err(novus_error_from_intuition(IntuitionError::WindowOpenFailed))
 }
 
 /// Open an Intuition screen with tag-based parameters
@@ -65,7 +64,7 @@ pub fn OpenWindow(tags_ptr: *TagItem, count: u32) -> Result<*Window, NovusError>
 ///     TagItem { ti_Tag: SA_Depth, ti_Data: 8 },
 ///     TagItem { ti_Tag: SA_Title, ti_Data: "My Screen".ptr as u32 }
 /// ]
-/// let screen = OpenScreen(&input_tags, 4u32)?
+/// let screen = OpenScreen(&input_tags, 4)?
 /// defer CloseScreen(screen)
 /// ```
 pub fn OpenScreen(tags_ptr: *TagItem, count: u32) -> Result<*Screen, NovusError> {
@@ -73,13 +72,12 @@ pub fn OpenScreen(tags_ptr: *TagItem, count: u32) -> Result<*Screen, NovusError>
     let null_new_screen: *NewScreen = 0
     let screen = OpenScreenTagList(null_new_screen, tag_list.as_ptr())
 
-    // Check if screen opened successfully
-    let screen_int: u32 = (u32)screen
-    if screen_int == 0u32 {
-        return Result::Err(novus_error_from_intuition(IntuitionError::ScreenOpenFailed))
+    // Check if screen opened successfully (null check)
+    if let scr = screen {
+        return Result::Ok(scr)
     }
 
-    return Result::Ok(screen)
+    return Result::Err(novus_error_from_intuition(IntuitionError::ScreenOpenFailed))
 }
 
 // ============================================================================

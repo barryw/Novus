@@ -20,7 +20,7 @@ from std::ffi::exec import MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, MEMF_CLEAR
 ///
 /// Example:
 /// ```
-/// let alloc = Allocation::new(100u32, MEMF_FAST)  // 100 i32s
+/// let alloc = Allocation::new(100, MEMF_FAST)  // 100 i32s
 /// match alloc {
 ///     Some(mut a) => {
 ///         // Use a.as_mut_ptr() to access memory
@@ -43,11 +43,11 @@ impl<T> Allocation<T> {
     /// Allocate memory for `count` elements of type T
     /// Returns None if allocation fails
     pub fn new(count: u32, flags: u32) -> Option<Allocation<T>> {
-        if count == 0u32 {
+        if count == 0 {
             // Zero-size allocation - return valid but empty allocation
             return Option::Some(Allocation {
                 ptr: (*T)0,
-                count: 0u32,
+                count: 0,
                 flags: flags,
             })
         }
@@ -98,7 +98,7 @@ impl<T> Allocation<T> {
 
     /// Check if this is a zero-size allocation
     pub fn is_empty(&self) -> bool {
-        return self.count == 0u32
+        return self.count == 0
     }
 
     /// Free the allocated memory
@@ -107,7 +107,7 @@ impl<T> Allocation<T> {
     /// Safety: You must not use the pointer returned by as_ptr()/as_mut_ptr()
     /// after calling drop(). The Novus compiler cannot enforce this yet.
     pub fn drop(&mut self) {
-        if self.count > 0u32 {
+        if self.count > 0 {
             let bytes: u32 = self.size_bytes()
             let mem: *u8 = (*u8)(u32)(self.ptr)  // Fixed: added parentheses
 
@@ -116,7 +116,7 @@ impl<T> Allocation<T> {
 
             // Invalidate the allocation to detect use-after-free in debug builds
             self.ptr = (*T)0
-            self.count = 0u32
+            self.count = 0
         }
     }
 }
