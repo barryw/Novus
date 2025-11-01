@@ -608,7 +608,8 @@ class Program
                     cCode.Contains("_Input(") ||
                     cCode.Contains("_Write(") ||
                     cCode.Contains("_Read(") ||
-                    cCode.Contains("_Printf("))
+                    cCode.Contains("_Printf(") ||
+                    cCode.Contains("IoErr("))
                 {
                     requiredLibraries.Add("dos");
                     Console.WriteLine($"  ✓ Detected DOS library usage in {Path.GetFileName(cFile)}");
