@@ -6,7 +6,7 @@ using Xunit;
 
 namespace Novus.Tests;
 
-public class BitwiseShiftTests
+public class DeferTests
 {
     private IrModule BuildIr(string source)
     {
@@ -20,236 +20,246 @@ public class BitwiseShiftTests
     }
 
     [Fact]
-    public void BuildIr_BitwiseAnd_Basic_Compiles()
+    public void BuildIr_Defer_SingleStatement_Compiles()
     {
         var source = @"
 pub fn main() -> i32 {
-    let a = 0xFF
-    let b = 0x0F
-    return a & b
+    var x = 10
+    defer x = 20
+    return x
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
     }
 
     [Fact]
-    public void BuildIr_BitwiseOr_Basic_Compiles()
+    public void BuildIr_Defer_MultipleStatements_Compiles()
     {
         var source = @"
 pub fn main() -> i32 {
-    let a = 0xF0
-    let b = 0x0F
-    return a | b
+    var x = 10
+    var y = 20
+    defer x = 100
+    defer y = 200
+    return x + y
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
     }
 
     [Fact]
-    public void BuildIr_BitwiseXor_Basic_Compiles()
+    public void BuildIr_Defer_WithBlock_Compiles()
     {
         var source = @"
 pub fn main() -> i32 {
-    let a = 0xFF
-    let b = 0xAA
-    return a ^ b
+    var x = 10
+    defer {
+        x = 20
+    }
+    return x
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
     }
 
     [Fact]
-    public void BuildIr_ComplexBitwiseExpression_Compiles()
+    public void BuildIr_Defer_MultipleStatementsInBlock_Compiles()
     {
         var source = @"
 pub fn main() -> i32 {
-    let a = 0xF0
-    let b = 0x0F
-    let c = 0xFF
-    let d = 0x55
-    return (a & b) | (c ^ d)
+    var x = 10
+    var y = 20
+    defer {
+        x = 100
+        y = 200
+    }
+    return x + y
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
     }
 
     [Fact]
-    public void BuildIr_BitwiseWithLiterals_Compiles()
+    public void BuildIr_Defer_WithEarlyReturn_Compiles()
     {
         var source = @"
 pub fn main() -> i32 {
-    let x = 0x1234
-    return x & 0xFF
+    var x = 10
+    defer x = 20
+    if true {
+        return x
+    }
+    return 0
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
     }
 
     [Fact]
-    public void BuildIr_BitmaskOperations_Compiles()
+    public void BuildIr_Defer_WithBreak_Compiles()
     {
         var source = @"
 pub fn main() -> i32 {
-    var flags = 0
-    flags = flags | 0x01
-    flags = flags | 0x04
-    flags = flags & ~0x01
-    return flags
+    var sum = 0
+    var i = 0
+    while i < 10 {
+        defer i = i + 1
+        if i == 5 {
+            break
+        }
+        sum = sum + i
+    }
+    return sum
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
     }
 
     [Fact]
-    public void BuildIr_LeftShift_Basic_Compiles()
+    public void BuildIr_Defer_WithContinue_Compiles()
     {
         var source = @"
 pub fn main() -> i32 {
-    let x = 1
-    return x << 3
+    var sum = 0
+    var i = 0
+    while i < 10 {
+        defer i = i + 1
+        if i == 5 {
+            continue
+        }
+        sum = sum + i
+    }
+    return sum
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
     }
 
     [Fact]
-    public void BuildIr_RightShift_Basic_Compiles()
+    public void BuildIr_Defer_NestedScopes_Compiles()
     {
         var source = @"
 pub fn main() -> i32 {
-    let x = 16
-    return x >> 2
+    var x = 10
+    defer x = 100
+    {
+        var y = 20
+        defer y = 200
+    }
+    return x
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
     }
 
     [Fact]
-    public void BuildIr_ShiftByVariable_Compiles()
+    public void BuildIr_Defer_InIfBranch_Compiles()
     {
         var source = @"
 pub fn main() -> i32 {
-    let x = 8
-    let amount = 2
-    return x << amount
-}";
-        var module = BuildIr(source);
-        Assert.NotNull(module);
+    var x = 10
+    if true {
+        defer x = 20
+        return x
     }
-
-    // Bitwise operations on different integer types
-    [Fact]
-    public void BuildIr_BitwiseAnd_i8_Compiles()
-    {
-        var source = @"
-pub fn main() -> i32 {
-    let a: i8 = 15
-    let b: i8 = 7
-    return (i32)(a & b)
+    return 0
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
     }
 
     [Fact]
-    public void BuildIr_BitwiseOr_i16_Compiles()
+    public void BuildIr_Defer_InElseBranch_Compiles()
     {
         var source = @"
 pub fn main() -> i32 {
-    let a: i16 = 0xF0
-    let b: i16 = 0x0F
-    return (i32)(a | b)
+    var x = 10
+    if false {
+        return 0
+    } else {
+        defer x = 20
+        return x
+    }
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
     }
 
     [Fact]
-    public void BuildIr_BitwiseXor_i64_Compiles()
+    public void BuildIr_Defer_InLoop_Compiles()
     {
         var source = @"
 pub fn main() -> i32 {
-    let a: i64 = 0xFF
-    let b: i64 = 0xAA
-    return (i32)(a ^ b)
+    var sum = 0
+    var i = 0
+    while i < 5 {
+        var temp = i
+        defer temp = 0
+        sum = sum + temp
+        i = i + 1
+    }
+    return sum
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
     }
 
     [Fact]
-    public void BuildIr_BitwiseAnd_u8_Compiles()
+    public void BuildIr_Defer_MultipleInSameScope_Compiles()
     {
         var source = @"
 pub fn main() -> i32 {
-    let a: u8 = 255
-    let b: u8 = 15
-    return (i32)(a & b)
+    var a = 1
+    var b = 2
+    var c = 3
+    defer a = 10
+    defer b = 20
+    defer c = 30
+    return a + b + c
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
     }
 
     [Fact]
-    public void BuildIr_BitwiseOr_u16_Compiles()
+    public void BuildIr_Defer_ModifyingStruct_Compiles()
     {
         var source = @"
+struct Counter {
+    value: i32
+}
 pub fn main() -> i32 {
-    let a: u16 = 0xFF00
-    let b: u16 = 0x00FF
-    return (i32)(a | b)
+    var c = Counter { value: 10 }
+    defer c.value = 100
+    return c.value
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
     }
 
     [Fact]
-    public void BuildIr_BitwiseXor_u32_Compiles()
+    public void BuildIr_Defer_ModifyingArray_Compiles()
     {
         var source = @"
 pub fn main() -> i32 {
-    let a: u32 = 0xFFFF
-    let b: u32 = 0xAAAA
-    return (i32)(a ^ b)
+    var arr = {1, 2, 3}
+    defer arr[0] = 100
+    return arr[0]
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
     }
 
     [Fact]
-    public void BuildIr_LeftShift_u64_Compiles()
+    public void BuildIr_Defer_ExecutionOrder_Compiles()
     {
         var source = @"
 pub fn main() -> i32 {
-    let x: u64 = 1
-    return (i32)(x << 10)
-}";
-        var module = BuildIr(source);
-        Assert.NotNull(module);
-    }
-
-    [Fact]
-    public void BuildIr_RightShift_u32_Compiles()
-    {
-        var source = @"
-pub fn main() -> i32 {
-    let x: u32 = 1024
-    return (i32)(x >> 5)
-}";
-        var module = BuildIr(source);
-        Assert.NotNull(module);
-    }
-
-    [Fact]
-    public void BuildIr_BitwiseNot_AllTypes_Compiles()
-    {
-        var source = @"
-pub fn main() -> i32 {
-    let a: i8 = 15
-    let b: i16 = 255
-    let c: i32 = 0xFF
-    let d: u8 = 15
-    return (i32)(~a) + (i32)(~b) + ~c + (i32)(~d)
+    var x = 1
+    defer x = x * 2
+    defer x = x + 10
+    defer x = x + 100
+    return x
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);

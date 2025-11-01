@@ -420,4 +420,87 @@ pub fn main() -> i32 {
         var module = BuildIr(source);
         Assert.NotNull(module);
     }
+
+    [Fact]
+    public void BuildIr_Struct_PartialFieldInit_Compiles()
+    {
+        var source = @"
+struct Config {
+    width: i32,
+    height: i32,
+    depth: i32
+}
+pub fn main() -> i32 {
+    let c = Config { width: 800, height: 600, depth: 32 }
+    return c.width + c.height + c.depth
+}";
+        var module = BuildIr(source);
+        Assert.NotNull(module);
+    }
+
+    [Fact]
+    public void BuildIr_Struct_ZeroInitFields_Compiles()
+    {
+        var source = @"
+struct Stats {
+    count: i32,
+    sum: i32
+}
+pub fn main() -> i32 {
+    let s = Stats { count: 0, sum: 0 }
+    return s.count + s.sum
+}";
+        var module = BuildIr(source);
+        Assert.NotNull(module);
+    }
+
+    [Fact]
+    public void BuildIr_Struct_BooleanFields_Compiles()
+    {
+        var source = @"
+struct Flags {
+    enabled: bool,
+    visible: bool,
+    active: bool
+}
+pub fn main() -> i32 {
+    let f = Flags { enabled: true, visible: false, active: true }
+    if f.enabled && f.active {
+        return 1
+    }
+    return 0
+}";
+        var module = BuildIr(source);
+        Assert.NotNull(module);
+    }
+
+    [Fact]
+    public void BuildIr_Struct_MixedSignedUnsigned_Compiles()
+    {
+        var source = @"
+struct Mixed {
+    signed: i32,
+    unsigned: u32
+}
+pub fn main() -> i32 {
+    let m = Mixed { signed: -10, unsigned: 10 }
+    return m.signed + (i32)m.unsigned
+}";
+        var module = BuildIr(source);
+        Assert.NotNull(module);
+    }
+
+    [Fact]
+    public void BuildIr_Struct_EmptyStruct_Compiles()
+    {
+        var source = @"
+struct Empty {
+}
+pub fn main() -> i32 {
+    let e = Empty { }
+    return 0
+}";
+        var module = BuildIr(source);
+        Assert.NotNull(module);
+    }
 }

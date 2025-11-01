@@ -248,8 +248,7 @@ expressionStatement
     ;
 
 expression
-    : '(' type ')' expression                              # CastExpr
-    | primaryExpression                                     # PrimaryExpr
+    : primaryExpression                                     # PrimaryExpr
     | expression '::' IDENTIFIER                           # PathExpr
     | expression '.' IDENTIFIER                            # MemberAccessExpr
     | expression '(' argumentList? ')'                     # CallExpr
@@ -258,6 +257,7 @@ expression
     | expression '--'                                      # PostDecrementExpr
     | expression '..' expression                           # RangeExpr            // TODO: Not yet implemented in IrBuilder/codegen
     | expression '..=' expression                          # RangeInclusiveExpr   // TODO: Not yet implemented in IrBuilder/codegen
+    | '(' type ')' expression                              # CastExpr
     | '&' KW_MUT? expression                               # BorrowExpr
     | ('!' | '~' | '-') expression                         # UnaryExpr
     | '++' expression                                      # PreIncrementExpr
