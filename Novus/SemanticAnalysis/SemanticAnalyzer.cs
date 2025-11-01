@@ -31,6 +31,21 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     private int _loopDepth = 0; // Track loop nesting for break validation
     private readonly string _stdLibPath; // Path to standard library
 
+    // Unsafe block tracking
+    private int _unsafeDepth = 0; // Track unsafe block nesting
+    private readonly List<UnsafeBlockInfo> _unsafeBlocks = new(); // Collect unsafe blocks for warnings
+
+    public class UnsafeBlockInfo
+    {
+        public string FilePath { get; set; } = "";
+        public int Line { get; set; }
+        public int Column { get; set; }
+        public int LineCount { get; set; }
+        public string Reason { get; set; } = "";
+    }
+
+    public IReadOnlyList<UnsafeBlockInfo> UnsafeBlocks => _unsafeBlocks;
+
     // Generic type parameters in scope (for generic enum/struct definitions)
     private readonly Dictionary<string, IrGenericType> _genericParams = new();
 
@@ -2403,6 +2418,131 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return null;
     }
 
+    // Handle: unsafe { statements }
+    public override IrType? VisitUnsafeBlock([NotNull] NovusParser.UnsafeBlockContext context)
+    {
+        // Track this unsafe block for warnings
+        var startLine = context.Start.Line;
+        var startColumn = context.Start.Column;
+        var endLine = context.Stop.Line;
+        var lineCount = endLine - startLine + 1;
+
+        _unsafeBlocks.Add(new UnsafeBlockInfo
+        {
+            FilePath = _filePath,
+            Line = startLine,
+            Column = startColumn,
+            LineCount = lineCount,
+            Reason = "Manual unsafe block"
+        });
+
+        // Enter unsafe context
+        _unsafeDepth++;
+
+        try
+        {
+            // Analyze the block with unsafe operations allowed
+            AnalyzeBlock(context.block());
+        }
+        finally
+        {
+            // Exit unsafe context
+            _unsafeDepth--;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Check if we're currently in an unsafe context
+    /// </summary>
+    public bool IsInUnsafeContext()
+    {
+        return _unsafeDepth > 0;
+    }
+
+    /// <summary>
+    /// Require that we're in an unsafe context for the given operation
+    /// </summary>
+    private void RequireUnsafe(ParserRuleContext context, string operation, string reason, List<string>? helpTexts = null)
+    {
+        if (!IsInUnsafeContext())
+        {
+            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+
+            var help = helpTexts ?? new List<string>();
+            help.Add($"{operation} is unsafe because {reason}");
+            help.Add($"Wrap this code in an unsafe block:");
+            help.Add($"");
+            help.Add($"    unsafe {{");
+            help.Add($"        {operation}");
+            help.Add($"    }}");
+
+            _diagnostics.ReportError(
+                "E1001",
+                $"{operation} requires unsafe block",
+                location,
+                helpTexts: help
+            );
+        }
+    }
+
+    /// <summary>
+    /// List of dangerous FFI functions that require unsafe blocks
+    /// </summary>
+    private static readonly Dictionary<string, string> UnsafeFunctions = new()
+    {
+        // Memory management - can leak, double-free, wrong size
+        ["AllocMem"] = "it returns raw addresses and can leak memory",
+        ["FreeMem"] = "it can double-free or use wrong size",
+        ["AllocAbs"] = "it returns raw addresses and can leak memory",
+        ["Allocate"] = "it returns raw addresses and can leak memory",
+        ["Deallocate"] = "it can double-free or use wrong size",
+        ["AllocEntry"] = "it returns raw addresses and can leak memory",
+        ["FreeEntry"] = "it can double-free",
+
+        // Library/Device management - can leak handles
+        ["OpenLibrary"] = "it can leak library handles if not closed",
+        ["OldOpenLibrary"] = "it can leak library handles if not closed",
+        ["CloseLibrary"] = "it can close wrong library base",
+        ["OpenDevice"] = "it can leak device handles if not closed",
+        ["CloseDevice"] = "it can close wrong device",
+
+        // Direct hardware/system access
+        ["Supervisor"] = "it executes code in supervisor mode",
+        ["SuperState"] = "it switches to supervisor mode",
+        ["UserState"] = "it manipulates system stack",
+        ["SetSR"] = "it modifies status register",
+        ["SetIntVector"] = "it manipulates interrupt vectors",
+        ["Disable"] = "it disables interrupts system-wide",
+        ["Enable"] = "it enables interrupts system-wide",
+
+        // Raw pointer manipulation
+        ["CopyMem"] = "it performs raw memory copies",
+        ["CopyMemQuick"] = "it performs raw memory copies",
+    };
+
+    /// <summary>
+    /// Check if a function call requires an unsafe block
+    /// </summary>
+    private void CheckUnsafeFunctionCall(ParserRuleContext context, string functionName)
+    {
+        if (UnsafeFunctions.TryGetValue(functionName, out var reason))
+        {
+            var help = new List<string>
+            {
+                $"Use safe alternatives instead:",
+                $"  - Allocation::new() for tracked allocations",
+                $"  - Box::new() for single heap values",
+                $"  - defer block.drop() for RAII cleanup",
+                $"",
+                $"Or wrap in unsafe block if you need raw control:"
+            };
+
+            RequireUnsafe(context, functionName + "()", reason, help);
+        }
+    }
+
     public override IrType? VisitMatchStatement([NotNull] NovusParser.MatchStatementContext context)
     {
         // Analyze the value being matched
@@ -3619,6 +3759,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         var function = _functions[functionName];
+
+        // Check if this function requires unsafe context
+        CheckUnsafeFunctionCall(context, functionName);
 
         // Check if this is a generic function that needs monomorphization
         if (function.GenericParameters != null && function.GenericParameters.Count > 0)
