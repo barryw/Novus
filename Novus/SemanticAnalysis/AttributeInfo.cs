@@ -56,12 +56,22 @@ public record AttributeInfo
     /// <summary>
     /// Get a named argument as int, or null if not present
     /// </summary>
-    public int? GetInt(string argName) => GetNamedArg<int>(argName);
+    public int? GetInt(string argName)
+    {
+        if (NamedArgs.TryGetValue(argName, out var value) && value is int intValue)
+            return intValue;
+        return null;
+    }
 
     /// <summary>
     /// Get a named argument as bool, or null if not present
     /// </summary>
-    public bool? GetBool(string argName) => GetNamedArg<bool>(argName);
+    public bool? GetBool(string argName)
+    {
+        if (NamedArgs.TryGetValue(argName, out var value) && value is bool boolValue)
+            return boolValue;
+        return null;
+    }
 
     /// <summary>
     /// Check if a named argument exists
