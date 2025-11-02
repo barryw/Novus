@@ -707,6 +707,20 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return;
         }
 
+        // Handle generic parameters if present (e.g., fn identity<T>(x: T) -> T)
+        var genericParams = new List<string>();
+        if (context.genericParams() != null)
+        {
+            foreach (var paramId in context.genericParams().IDENTIFIER())
+            {
+                var paramName = paramId.GetText();
+                genericParams.Add(paramName);
+
+                // Add to generic param scope for parameter/return type parsing
+                _genericParams[paramName] = new IrGenericType(paramName);
+            }
+        }
+
         var returnType = context.type() != null ? ParseType(context.type()) : IrVoidType.Instance;
         var parameters = new List<ParameterSymbol>();
 
@@ -736,7 +750,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
-        _functions[name] = new FunctionSymbol(name, returnType, parameters, location, isExtern, IsVariadic: hasVariadic);
+        _functions[name] = new FunctionSymbol(name, returnType, parameters, location, isExtern, genericParams.Count > 0 ? genericParams : null, IsVariadic: hasVariadic);
+
+        // Clear generic params from scope after function registration
+        foreach (var paramName in genericParams)
+        {
+            _genericParams.Remove(paramName);
+        }
     }
 
     private void RegisterImpl(NovusParser.ImplDeclarationContext context)
@@ -937,8 +957,11 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Replace placeholder with complete struct type
         var structType = new IrStructType(name, fields, genericParams, null, attributes);
 
-        // Force offset calculation by accessing SizeInBytes
-        _ = structType.SizeInBytes;
+        // Force offset calculation by accessing SizeInBytes (only for non-generic structs)
+        if (genericParams.Count == 0)
+        {
+            _ = structType.SizeInBytes;
+        }
 
         _structs[name] = structType;
     }
@@ -1098,6 +1121,18 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return null;
         }
 
+        // Restore generic parameters to scope for function body analysis
+        var genericParams = new List<string>();
+        if (context.genericParams() != null)
+        {
+            foreach (var paramId in context.genericParams().IDENTIFIER())
+            {
+                var paramName = paramId.GetText();
+                genericParams.Add(paramName);
+                _genericParams[paramName] = new IrGenericType(paramName);
+            }
+        }
+
         // Add parameters to symbol table (parameters are immutable)
         foreach (var param in _currentFunction.Parameters)
         {
@@ -1124,6 +1159,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     "ensure every possible execution path ends with a return statement"
                 }
             );
+        }
+
+        // Clear generic params after function body analysis
+        foreach (var paramName in genericParams)
+        {
+            _genericParams.Remove(paramName);
         }
 
         _currentFunction = null;
