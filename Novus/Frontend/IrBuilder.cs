@@ -234,10 +234,21 @@ public class IrBuilder : NovusBaseVisitor<object?>
             // Check if this is a trait implementation
             bool isTraitImpl = implContext.KW_FOR() != null;
             string? traitName = null;
+            List<IrType> traitTypeArgs = new();
 
             if (isTraitImpl)
             {
                 traitName = typeNames[0].IDENTIFIER(0).GetText();
+
+                // Parse trait type arguments if present (e.g., Iterator<i32>)
+                if (implContext.genericTypeArgs() != null)
+                {
+                    var typeList = implContext.genericTypeArgs().typeList();
+                    foreach (var typeCtx in typeList.type())
+                    {
+                        traitTypeArgs.Add(ParseType(typeCtx));
+                    }
+                }
             }
 
             // Extract generic parameters from impl if present (e.g., impl<T> Vec<T>)
@@ -286,12 +297,15 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 }
 
                 // Methods are registered with mangled names
-                // Trait impls: Type_Trait_method
+                // Trait impls: Type_Trait_TypeArg1_TypeArg2_method (e.g., Counter_Iterator_i32_next)
                 // Inherent impls: Type::method
                 string mangledName;
                 if (isTraitImpl && traitName != null)
                 {
-                    mangledName = $"{typeName}_{traitName}_{methodName}";
+                    var typeArgsSuffix = traitTypeArgs.Count > 0
+                        ? "_" + string.Join("_", traitTypeArgs.Select(t => t.Name.Replace("::", "_")))
+                        : "";
+                    mangledName = $"{typeName}_{traitName}{typeArgsSuffix}_{methodName}";
                 }
                 else
                 {
@@ -413,10 +427,21 @@ public class IrBuilder : NovusBaseVisitor<object?>
             // Check if this is a trait implementation
             bool isTraitImpl = implContext.KW_FOR() != null;
             string? traitName = null;
+            List<IrType> traitTypeArgs = new();
 
             if (isTraitImpl)
             {
                 traitName = typeNames[0].IDENTIFIER(0).GetText();
+
+                // Parse trait type arguments if present (e.g., Iterator<i32>)
+                if (implContext.genericTypeArgs() != null)
+                {
+                    var typeList = implContext.genericTypeArgs().typeList();
+                    foreach (var typeCtx in typeList.type())
+                    {
+                        traitTypeArgs.Add(ParseType(typeCtx));
+                    }
+                }
             }
 
             // Check if this is a generic impl block
@@ -440,7 +465,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 string mangledName;
                 if (isTraitImpl && traitName != null)
                 {
-                    mangledName = $"{typeName}_{traitName}_{methodName}";
+                    var typeArgsSuffix = traitTypeArgs.Count > 0
+                        ? "_" + string.Join("_", traitTypeArgs.Select(t => t.Name.Replace("::", "_")))
+                        : "";
+                    mangledName = $"{typeName}_{traitName}{typeArgsSuffix}_{methodName}";
                 }
                 else
                 {

@@ -790,11 +790,22 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Check if this is a trait implementation (has KW_FOR)
         bool isTraitImpl = context.KW_FOR() != null;
         string? traitName = null;
+        List<IrType> traitTypeArgs = new();
 
         if (isTraitImpl)
         {
             // This is "impl Trait for Type"
             traitName = typeNames[0].IDENTIFIER(0).GetText();
+
+            // Parse trait type arguments if present (e.g., Iterator<i32>)
+            if (context.genericTypeArgs() != null)
+            {
+                var typeList = context.genericTypeArgs().typeList();
+                foreach (var typeCtx in typeList.type())
+                {
+                    traitTypeArgs.Add(ParseType(typeCtx));
+                }
+            }
 
             // Validate that the trait exists
             if (!_traits.ContainsKey(traitName))
@@ -818,7 +829,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         {
             if (item.functionDeclaration() != null)
             {
-                RegisterImplMethod(item.functionDeclaration(), context, implTypeName, genericParams, traitName);
+                RegisterImplMethod(item.functionDeclaration(), context, implTypeName, genericParams, traitName, traitTypeArgs);
             }
         }
 
@@ -829,18 +840,21 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
     }
 
-    private void RegisterImplMethod(NovusParser.FunctionDeclarationContext context, NovusParser.ImplDeclarationContext implContext, string implTypeName, List<string> genericParams, string? traitName = null)
+    private void RegisterImplMethod(NovusParser.FunctionDeclarationContext context, NovusParser.ImplDeclarationContext implContext, string implTypeName, List<string> genericParams, string? traitName = null, List<IrType>? traitTypeArgs = null)
     {
         var methodName = context.IDENTIFIER().GetText();
         var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
 
         // Generate mangled name for the method
-        // For trait impls: TypeName_TraitName_methodName
+        // For trait impls: TypeName_TraitName_TypeArg1_TypeArg2_methodName (e.g., Counter_Iterator_i32_next)
         // For inherent impls: TypeName::methodName
         string mangledName;
         if (traitName != null)
         {
-            mangledName = $"{implTypeName}_{traitName}_{methodName}";
+            var typeArgsSuffix = (traitTypeArgs != null && traitTypeArgs.Count > 0)
+                ? "_" + string.Join("_", traitTypeArgs.Select(t => t.Name.Replace("::", "_")))
+                : "";
+            mangledName = $"{implTypeName}_{traitName}{typeArgsSuffix}_{methodName}";
         }
         else
         {
@@ -1219,12 +1233,32 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var typeNames = context.typeName();
         var implTypeName = typeNames[typeNames.Length - 1].IDENTIFIER(0).GetText();
 
+        // Check if this is a trait implementation
+        bool isTraitImpl = context.KW_FOR() != null;
+        string? traitName = null;
+        List<IrType> traitTypeArgs = new();
+
+        if (isTraitImpl)
+        {
+            traitName = typeNames[0].IDENTIFIER(0).GetText();
+
+            // Parse trait type arguments if present (e.g., Iterator<i32>)
+            if (context.genericTypeArgs() != null)
+            {
+                var typeList = context.genericTypeArgs().typeList();
+                foreach (var typeCtx in typeList.type())
+                {
+                    traitTypeArgs.Add(ParseType(typeCtx));
+                }
+            }
+        }
+
         // Analyze each method
         foreach (var item in context.implItem())
         {
             if (item.functionDeclaration() != null)
             {
-                AnalyzeImplMethod(item.functionDeclaration(), implTypeName);
+                AnalyzeImplMethod(item.functionDeclaration(), implTypeName, traitName, traitTypeArgs);
             }
         }
 
@@ -1235,10 +1269,23 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
     }
 
-    private void AnalyzeImplMethod(NovusParser.FunctionDeclarationContext context, string implTypeName)
+    private void AnalyzeImplMethod(NovusParser.FunctionDeclarationContext context, string implTypeName, string? traitName = null, List<IrType>? traitTypeArgs = null)
     {
         var methodName = context.IDENTIFIER().GetText();
-        var mangledName = $"{implTypeName}::{methodName}";
+
+        // Use correct mangling for trait impls vs inherent impls
+        string mangledName;
+        if (traitName != null)
+        {
+            var typeArgsSuffix = (traitTypeArgs != null && traitTypeArgs.Count > 0)
+                ? "_" + string.Join("_", traitTypeArgs.Select(t => t.Name.Replace("::", "_")))
+                : "";
+            mangledName = $"{implTypeName}_{traitName}{typeArgsSuffix}_{methodName}";
+        }
+        else
+        {
+            mangledName = $"{implTypeName}::{methodName}";
+        }
 
         // Look up the method using the mangled name
         if (!_functions.ContainsKey(mangledName))
