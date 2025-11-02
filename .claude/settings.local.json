@@ -58,7 +58,8 @@
       "Bash(VAMOS_LIBS=\"/Users/barry/Emulation/Amiga/A4000-DH0/LIBS\" vamos test_generic_multi:*)",
       "Bash(VAMOS_LIBS=\"/Users/barry/Emulation/Amiga/A4000-DH0/LIBS\" vamos test_generic_struct:*)",
       "Bash(tr:*)",
-      "Bash(./Novus/bin/Debug/net9.0/Novus:*)"
+      "Bash(./Novus/bin/Debug/net9.0/Novus:*)",
+      "Bash(VAMOS_LIBS=\"/Users/barry/Emulation/Amiga/A4000-DH0/LIBS\" vamos:*)"
     ],
     "deny": [],
     "ask": []

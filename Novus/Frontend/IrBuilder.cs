@@ -22,6 +22,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
     private readonly Dictionary<string, IrLocalVariable> _localVariables = new(); // Track local variables in current function
     private readonly Dictionary<string, IrStructType> _structs = new(); // Track struct types
     private readonly Dictionary<string, IrEnumType> _enums = new(); // Track enum types
+    private readonly Dictionary<string, IrTrait> _traits = new(); // Track trait types
     private readonly Dictionary<string, IrGenericType> _genericParams = new(); // Track generic type parameters
     private readonly Dictionary<string, (IrType Type, object Value)> _constants = new(); // Track constant values
     private readonly Dictionary<string, IrEnumType> _monomorphizedEnums = new(); // Cache for monomorphized generic enums
@@ -142,6 +143,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
         foreach (var structContext in context.structDeclaration())
         {
             RegisterStruct(structContext);
+        }
+
+        // Pass 3.25: Register all trait types
+        foreach (var traitContext in context.traitDeclaration())
+        {
+            RegisterTrait(traitContext);
         }
 
         // Pass 3.5: Register all external variables (after types are registered)
@@ -1793,6 +1800,128 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         _structs[name] = structType;
+    }
+
+    private void RegisterTrait(NovusParser.TraitDeclarationContext context)
+    {
+        var name = context.IDENTIFIER().GetText();
+
+        // Parse attributes
+        var attributes = ParseAttributesSimple(context.attribute());
+
+        // Handle generic parameters if present
+        var genericParams = new List<string>();
+        if (context.genericParams() != null)
+        {
+            foreach (var paramId in context.genericParams().IDENTIFIER())
+            {
+                var paramName = paramId.GetText();
+                genericParams.Add(paramName);
+                _genericParams[paramName] = new IrGenericType(paramName);
+            }
+        }
+
+        // Parse trait method signatures
+        var methods = new List<IrTraitMethod>();
+        foreach (var itemCtx in context.traitItem())
+        {
+            var funcSig = itemCtx.functionSignature();
+            if (funcSig != null)
+            {
+                var methodName = funcSig.IDENTIFIER().GetText();
+
+                // Parse method generic parameters (if any)
+                var methodGenericParams = new List<string>();
+                if (funcSig.genericParams() != null)
+                {
+                    foreach (var paramId in funcSig.genericParams().IDENTIFIER())
+                    {
+                        var paramName = paramId.GetText();
+                        methodGenericParams.Add(paramName);
+                        _genericParams[paramName] = new IrGenericType(paramName);
+                    }
+                }
+
+                // Parse parameters
+                var parameters = new List<IrParameter>();
+                if (funcSig.parameterList() != null)
+                {
+                    var paramList = funcSig.parameterList();
+
+                    // Handle self parameter
+                    if (paramList.selfParameter() != null)
+                    {
+                        var selfParam = paramList.selfParameter();
+                        var selfText = selfParam.GetText();
+
+                        // Create placeholder self type (will be replaced during trait impl)
+                        IrType selfType;
+                        if (selfText.StartsWith("&mut"))
+                        {
+                            selfType = new IrMutReferenceType(IrVoidType.Instance); // Placeholder
+                        }
+                        else if (selfText.StartsWith("&"))
+                        {
+                            selfType = new IrReferenceType(IrVoidType.Instance); // Placeholder
+                        }
+                        else
+                        {
+                            selfType = IrVoidType.Instance; // Placeholder
+                        }
+
+                        parameters.Add(new IrParameter("self", selfType));
+                    }
+
+                    // Regular parameters
+                    foreach (var paramCtx in paramList.parameter())
+                    {
+                        var paramName = paramCtx.IDENTIFIER().GetText();
+                        var paramType = ParseType(paramCtx.type());
+                        parameters.Add(new IrParameter(paramName, paramType));
+                    }
+
+                    // Variadic parameters
+                    if (paramList.variadicParameter() != null)
+                    {
+                        var variadicCtx = paramList.variadicParameter();
+                        var variadicName = variadicCtx.IDENTIFIER().GetText();
+                        var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
+                        parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
+                    }
+                }
+
+                // Parse return type
+                IrType returnType = IrVoidType.Instance;
+                if (funcSig.type() != null)
+                {
+                    returnType = ParseType(funcSig.type());
+                }
+
+                methods.Add(new IrTraitMethod(methodName, parameters, returnType, methodGenericParams.Count > 0 ? methodGenericParams : null));
+
+                // Clear method-level generic params
+                foreach (var param in methodGenericParams)
+                {
+                    _genericParams.Remove(param);
+                }
+            }
+        }
+
+        // Parse visibility
+        var visibility = Visibility.Private;
+        for (int i = 0; i < Math.Min(3, context.ChildCount); i++)
+        {
+            var childText = context.GetChild(i)?.GetText();
+            if (childText == "pub") visibility = Visibility.Public;
+            if (childText == "internal") visibility = Visibility.Internal;
+        }
+
+        var trait = new IrTrait(name, methods, genericParams.Count > 0 ? genericParams : null, visibility, attributes);
+        _traits[name] = trait;
+        _module.AddTrait(trait);
+
+        // Clear generic parameters after trait registration
+        _genericParams.Clear();
     }
 
     /// <summary>
