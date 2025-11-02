@@ -1,0 +1,9 @@
+[package]
+name = "greeting"
+version = "1.0.0"
+type = "library"
+entry = "./src/lib.novus"
+
+[build]
+target_cpu = "68020"
+fpu = "auto"

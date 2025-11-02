@@ -46,4 +46,19 @@ public class CompilerOptions
     /// Project type (cli, library, device, etc.). Used to determine linking strategy.
     /// </summary>
     public string ProjectType { get; set; } = "cli";
+
+    /// <summary>
+    /// Additional library object files to link (for workspace dependencies)
+    /// </summary>
+    public List<string> AdditionalLibraries { get; set; } = new();
+
+    /// <summary>
+    /// Additional C source files to compile and link (e.g., library wrappers)
+    /// </summary>
+    public List<string> AdditionalCFiles { get; set; } = new();
+
+    /// <summary>
+    /// Additional assembly files to assemble and link (e.g., library wrappers)
+    /// </summary>
+    public List<string> AdditionalAsmFiles { get; set; } = new();
 }

@@ -1,0 +1,102 @@
+Sections:
+00: "CODE" (0-72)
+01: "DATA" (0-16)
+
+
+Source: "greeting_calls.s"
+                            	     1: ; Assembly wrappers for calling greeting.library from Novus
+                            	     2: ; These manually open the library and call functions
+                            	     3: ;
+                            	     4: ; FIXED: Use absolute addressing and separate data section to avoid
+                            	     5: ; PC-relative offset calculation errors during linking
+                            	     6: 
+                            	     7:         SECTION CODE
+                            	     8: 
+                            	     9: ; Open library (called first time)
+                            	    10: OpenLib:
+00:00000000 4AB900000000    	    11:         tst.l   GreetingLibraryBase.l
+00:00000006 661E            	    12:         bne.s   .already_open
+                            	    13: 
+00:00000008 48E7C0C2        	    14:         movem.l d0-d1/a0-a1/a6,-(sp)
+00:0000000C 2C780004        	    15:         move.l  4.w,a6                  ; ExecBase
+00:00000010 43F900000004    	    16:         lea     LibName,a1              ; Library name (PC-relative OK for lea)
+00:00000016 7001            	    17:         moveq   #1,d0                   ; Min version
+00:00000018 4EAEFDD8        	    18:         jsr     -552(a6)                ; OpenLibrary
+00:0000001C 23C000000000    	    19:         move.l  d0,GreetingLibraryBase.l ; Store with absolute addressing
+00:00000022 4CDF4303        	    20:         movem.l (sp)+,d0-d1/a0-a1/a6
+                            	    21: .already_open:
+00:00000026 4E75            	    22:         rts
+                            	    23: 
+                            	    24: ; uint32_t call_GreetingLibrary_GetVersion(void)
+                            	    25:         XDEF    _call_GreetingLibrary_GetVersion
+                            	    26: _call_GreetingLibrary_GetVersion:
+00:00000028 61D6            	    27:         jsr     OpenLib
+00:0000002A 2C7900000000    	    28:         move.l  GreetingLibraryBase.l,a6  ; Absolute addressing
+00:00000030 4A8E            	    29:         cmp.l   #0,a6                      ; 68000-compatible test
+00:00000032 6706            	    30:         beq.s   .fail
+00:00000034 4EAEFFE2        	    31:         jsr     -30(a6)                    ; Call GetVersion
+00:00000038 4E75            	    32:         rts
+                            	    33: .fail:
+00:0000003A 7000            	    34:         moveq   #0,d0
+00:0000003C 4E75            	    35:         rts
+                            	    36: 
+                            	    37: ; int32_t call_GreetingLibrary_Add(int32_t a, int32_t b)
+                            	    38:         XDEF    _call_GreetingLibrary_Add
+                            	    39: _call_GreetingLibrary_Add:
+00:0000003E 61C0            	    40:         jsr     OpenLib
+00:00000040 2C7900000000    	    41:         move.l  GreetingLibraryBase.l,a6  ; Absolute addressing
+00:00000046 4A8E            	    42:         cmp.l   #0,a6                      ; 68000-compatible test
+00:00000048 670E            	    43:         beq.s   .fail
+00:0000004A 202F0004        	    44:         move.l  4(sp),d0                   ; First param (a)
+00:0000004E 222F0008        	    45:         move.l  8(sp),d1                   ; Second param (b)
+00:00000052 4EAEFFDC        	    46:         jsr     -36(a6)                    ; Call Add
+00:00000056 4E75            	    47:         rts
+                            	    48: .fail:
+00:00000058 7000            	    49:         moveq   #0,d0
+00:0000005A 4E75            	    50:         rts
+                            	    51: 
+                            	    52: ; uint32_t call_GreetingLibrary_GetCallCount(void)
+                            	    53:         XDEF    _call_GreetingLibrary_GetCallCount
+                            	    54: _call_GreetingLibrary_GetCallCount:
+00:0000005C 61A2            	    55:         jsr     OpenLib
+00:0000005E 2C7900000000    	    56:         move.l  GreetingLibraryBase.l,a6  ; Absolute addressing
+00:00000064 4A8E            	    57:         cmp.l   #0,a6                      ; 68000-compatible test
+00:00000066 6706            	    58:         beq.s   .fail
+00:00000068 4EAEFFD6        	    59:         jsr     -42(a6)                    ; Call GetCallCount
+00:0000006C 4E75            	    60:         rts
+                            	    61: .fail:
+00:0000006E 7000            	    62:         moveq   #0,d0
+00:00000070 4E75            	    63:         rts
+                            	    64: 
+                            	    65: ; Put data in separate section for proper linking
+                            	    66:         SECTION DATA
+                            	    67: 
+                            	    68:         EVEN
+                            	    69: GreetingLibraryBase:
+01:00000000 00000000        	    70:         dc.l    0
+                            	    71: 
+                            	    72: LibName:
+01:00000004 6772656574696E67	    73:         dc.b    'greeting.library',0
+01:0000000C 2E6C696272617279
+01:00000014 00
+                            	    74:         EVEN
+                            	    75: 
+                            	    76:         END
+                            	    77: 
+
+
+Symbols by name:
+GreetingLibraryBase             01:00000000
+LibName                         01:00000004
+OpenLib                         00:00000000
+_call_GreetingLibrary_Add       00:0000003E EXP
+_call_GreetingLibrary_GetCallCo 00:0000005C EXP
+_call_GreetingLibrary_GetVersio 00:00000028 EXP
+
+Symbols by value:
+00000000 GreetingLibraryBase
+00000000 OpenLib
+00000004 LibName
+00000028 _call_GreetingLibrary_GetVersion
+0000003E _call_GreetingLibrary_Add
+0000005C _call_GreetingLibrary_GetCallCount

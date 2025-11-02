@@ -517,7 +517,7 @@ class Program
 
             Console.WriteLine($"  → {Path.GetFileName(mainCFile)}");
 
-            // For libraries, generate A6 wrapper assembly
+            // For libraries, generate A6 wrapper assembly and interface files
             // (isLibrary/isDevice will be defined later in the assembly section)
             var projectType = options.ProjectType.ToLowerInvariant();
             if (projectType == "library" || projectType == "device")
@@ -525,10 +525,35 @@ class Program
                 var libraryGen = new LibraryGenerator(mainIR.IrModule);
                 if (libraryGen.IsLibrary)
                 {
+                    // Generate A6 wrappers
                     var wrapperAsm = libraryGen.GenerateA6Wrappers();
                     var wrapperAsmFile = Path.Combine(outputDir, $"{baseName}_wrappers.s");
                     await File.WriteAllTextAsync(wrapperAsmFile, wrapperAsm);
                     Console.WriteLine($"  → {Path.GetFileName(wrapperAsmFile)} (A6 wrappers)");
+
+                    // Generate C header
+                    var cHeader = libraryGen.GenerateCHeader();
+                    var headerFile = Path.Combine(outputDir, $"{baseName}.h");
+                    await File.WriteAllTextAsync(headerFile, cHeader);
+                    Console.WriteLine($"  → {Path.GetFileName(headerFile)} (C header)");
+
+                    // Generate Novus FFI binding
+                    var novusFfi = libraryGen.GenerateNovusFFI();
+                    var ffiFile = Path.Combine(outputDir, $"{baseName}.novus");
+                    await File.WriteAllTextAsync(ffiFile, novusFfi);
+                    Console.WriteLine($"  → {Path.GetFileName(ffiFile)} (Novus FFI)");
+
+                    // Generate FD file for VBCC auto-library support
+                    var fdFile = libraryGen.GenerateFDFile();
+                    var fdFilePath = Path.Combine(outputDir, $"{baseName}_lib.fd");
+                    await File.WriteAllTextAsync(fdFilePath, fdFile);
+                    Console.WriteLine($"  → {Path.GetFileName(fdFilePath)} (FD file)");
+
+                    // Generate library stub for auto-open/close
+                    var stubAsm = libraryGen.GenerateLibraryStub();
+                    var stubAsmFile = Path.Combine(outputDir, $"{baseName}_lib.s");
+                    await File.WriteAllTextAsync(stubAsmFile, stubAsm);
+                    Console.WriteLine($"  → {Path.GetFileName(stubAsmFile)} (library stub)");
                 }
             }
 
@@ -611,20 +636,36 @@ class Program
                 }
             }
 
-            // For libraries, assemble the A6 wrapper file
+            // For libraries, assemble the A6 wrapper file and library stub
+            // BUT DON'T ADD TO objectFiles YET - wrappers must come AFTER C code
+            string? wrapperObj = null;
             if (isLibrary || isDevice)
             {
                 var wrapperAsmFile = Path.Combine(outputDir, $"{baseName}_wrappers.s");
                 if (File.Exists(wrapperAsmFile))
                 {
-                    var wrapperObj = Path.Combine(outputDir, $"{baseName}_wrappers.o");
+                    wrapperObj = Path.Combine(outputDir, $"{baseName}_wrappers.o");
                     if (!await toolchain.Assemble(wrapperAsmFile, wrapperObj, assemblyCpu, false))
                     {
                         Console.WriteLine("Failed to assemble A6 wrappers");
                         return 1;
                     }
-                    objectFiles.Add(wrapperObj);
-                    Console.WriteLine($"  ✓ Assembled A6 wrappers: {baseName}_wrappers.o");
+                    // DO NOT add to objectFiles here - will add after C files
+                    Console.WriteLine($"  ✓ Assembled A6 wrappers: {baseName}_wrappers.o (will link after C code)");
+                }
+
+                // Assemble library stub for auto-open support
+                var stubAsmFile = Path.Combine(outputDir, $"{baseName}_lib.s");
+                if (File.Exists(stubAsmFile))
+                {
+                    var stubObj = Path.Combine(outputDir, $"{baseName}_lib.o");
+                    if (!await toolchain.Assemble(stubAsmFile, stubObj, assemblyCpu, false))
+                    {
+                        Console.WriteLine("Failed to assemble library stub");
+                        return 1;
+                    }
+                    // Don't add to objectFiles - this is for users to link against
+                    Console.WriteLine($"  ✓ Assembled library stub: {baseName}_lib.o");
                 }
             }
 
@@ -709,6 +750,34 @@ class Program
                 }
             }
 
+            // Add any additional C files from the project (e.g., library wrappers)
+            if (options.AdditionalCFiles.Count > 0)
+            {
+                cFiles.AddRange(options.AdditionalCFiles);
+                Console.WriteLine($"\nIncluding {options.AdditionalCFiles.Count} additional C file(s)");
+            }
+
+            // Assemble any additional assembly files from the project (e.g., library wrappers)
+            if (options.AdditionalAsmFiles.Count > 0)
+            {
+                Console.WriteLine($"\nIncluding {options.AdditionalAsmFiles.Count} additional ASM file(s)");
+                Console.WriteLine("Assembling additional files...");
+                foreach (var asmFile in options.AdditionalAsmFiles)
+                {
+                    var asmFileName = Path.GetFileName(asmFile);
+                    var objFile = Path.Combine(outputDir, Path.GetFileNameWithoutExtension(asmFile) + ".o");
+
+                    Console.WriteLine($"  → {asmFileName}");
+                    if (!await toolchain.Assemble(asmFile, objFile, assemblyCpu, false))
+                    {
+                        Console.WriteLine($"\n✗ Failed to assemble {asmFileName}");
+                        return 1;
+                    }
+
+                    objectFiles.Add(objFile);
+                }
+            }
+
             // Step 1: Compile each C file to an object file
             Console.WriteLine("\nCompiling C files...");
             foreach (var cFile in cFiles)
@@ -726,16 +795,36 @@ class Program
                 objectFiles.Add(objFile);
             }
 
+            // CRITICAL: Add wrapper object AFTER C code so linker can resolve symbols correctly
+            // Wrappers call C functions, so C functions must be linked first
+            if (wrapperObj != null)
+            {
+                objectFiles.Add(wrapperObj);
+                Console.WriteLine($"  → {Path.GetFileName(wrapperObj)} (added after C code for correct symbol resolution)");
+            }
+
+            // Add additional library object files from workspace dependencies
+            if (options.AdditionalLibraries.Count > 0)
+            {
+                objectFiles.AddRange(options.AdditionalLibraries);
+            }
+
             // Step 2: Link all object files with dead code elimination
-            var exeFile = Path.Combine(outputDir, baseName);
+            // Use the full output filename (with extension) for the final binary
+            var exeFile = options.OutputFile;
             Console.WriteLine("\nLinking with dead code elimination...");
             Console.WriteLine($"  → {objectFiles.Count} object files");
+            if (options.AdditionalLibraries.Count > 0)
+            {
+                Console.WriteLine($"  → {options.AdditionalLibraries.Count} dependency libraries");
+            }
 
             var success = await toolchain.Link(
                 objectFiles.ToArray(),
                 exeFile,
                 options.Fpu,
-                includeStartup: false  // startup already in objectFiles
+                includeStartup: false,  // startup already in objectFiles
+                isLibrary: isLibrary || isDevice  // libraries and devices need relocations
             );
 
             if (success)

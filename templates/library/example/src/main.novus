@@ -1,0 +1,20 @@
+// Example program demonstrating greeting.library usage
+//
+// This calls the library functions to demonstrate the complete workflow.
+// The library is automatically opened at startup when linked with greeting_lib.o.
+
+// Declare external C wrapper functions
+// These are provided by greeting_calls.c which uses VBCC inline pragmas
+extern fn call_GreetingLibrary_GetVersion() -> u32
+extern fn call_GreetingLibrary_Add(a: i32, b: i32) -> i32
+extern fn call_GreetingLibrary_GetCallCount() -> u32
+
+pub fn main() -> i32 {
+    // Call library functions
+    let version: u32 = call_GreetingLibrary_GetVersion()
+    let sum: i32 = call_GreetingLibrary_Add(5, 3)
+    let count: u32 = call_GreetingLibrary_GetCallCount()
+
+    // Return the sum as exit code (should be 8)
+    return sum
+}

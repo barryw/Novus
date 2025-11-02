@@ -105,6 +105,33 @@ public static class BuildCommand
         Console.WriteLine($"Projects: {string.Join(", ", workspace.Workspace.Members)}");
         Console.WriteLine();
 
+        // Load all projects to build dependency graph
+        var projects = new Dictionary<string, NovusProject>();
+        foreach (var projectName in workspace.Workspace.Members)
+        {
+            var projectDir = Path.Combine(workspaceDir, projectName);
+            var projectFile = Path.Combine(projectDir, "project.toml");
+
+            if (!File.Exists(projectFile))
+            {
+                Console.WriteLine($"Warning: Project file not found: {projectFile}");
+                continue;
+            }
+
+            try
+            {
+                var project = ProjectLoader.LoadFromFile(projectFile);
+                projects[projectName] = project;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Failed to load project {projectName}: {ex.Message}");
+            }
+        }
+
+        // Create build context for tracking outputs
+        var buildContext = new BuildContext(workspaceDir, projects);
+
         // Check if a specific project was requested via the --project option
         if (!string.IsNullOrEmpty(buildOptions.ProjectPath) &&
             !Path.IsPathRooted(buildOptions.ProjectPath) &&
@@ -119,21 +146,31 @@ public static class BuildCommand
                 return 1;
             }
 
-            // Build just this one project
+            // Build just this one project (with dependencies)
             var projectDir = Path.Combine(workspaceDir, requestedProject);
-            return await BuildProject(projectDir, buildOptions, workspace);
+            return await BuildProject(projectDir, buildOptions, workspace, buildContext, workspaceDir);
         }
 
-        // Build all projects in the workspace
+        // Compute build order based on dependencies
+        var buildOrder = ComputeBuildOrder(projects);
+        if (buildOrder == null)
+        {
+            Console.WriteLine("Error: Circular dependency detected in workspace projects");
+            return 1;
+        }
+
+        Console.WriteLine($"Build order: {string.Join(" → ", buildOrder)}\n");
+
+        // Build all projects in dependency order
         int failedCount = 0;
         int successCount = 0;
 
-        for (int i = 0; i < workspace.Workspace.Members.Length; i++)
+        for (int i = 0; i < buildOrder.Count; i++)
         {
-            var projectName = workspace.Workspace.Members[i];
+            var projectName = buildOrder[i];
             var projectDir = Path.Combine(workspaceDir, projectName);
 
-            Console.WriteLine($"[{i + 1}/{workspace.Workspace.Members.Length}] Building {projectName}...");
+            Console.WriteLine($"[{i + 1}/{buildOrder.Count}] Building {projectName}...");
             Console.WriteLine(new string('─', 60));
 
             if (!Directory.Exists(projectDir))
@@ -143,11 +180,26 @@ public static class BuildCommand
                 continue;
             }
 
-            var result = await BuildProject(projectDir, buildOptions, workspace);
+            var result = await BuildProject(projectDir, buildOptions, workspace, buildContext, workspaceDir);
             if (result == 0)
             {
                 Console.WriteLine($"  ✓ {projectName} built successfully\n");
                 successCount++;
+
+                // Record the output path for this project
+                // For workspace builds, output goes to centralized target directory
+                var project = projects[projectName];
+                var buildModeStr = buildOptions.Release ? "release" : "debug";
+                var typeSubdir = (project.Package.Type ?? "cli").ToLowerInvariant() switch
+                {
+                    "library" => "libs",
+                    "device" => "libs",
+                    "handler" => "libs",
+                    "test" => "tests",
+                    _ => "bins"
+                };
+                var outputDir = Path.Combine(workspaceDir, "target", buildModeStr, typeSubdir);
+                buildContext.RecordBuildOutput(projectName, outputDir);
             }
             else
             {
@@ -165,12 +217,140 @@ public static class BuildCommand
     }
 
     /// <summary>
+    /// Compute build order using topological sort
+    /// Returns null if circular dependency detected
+    /// </summary>
+    private static List<string>? ComputeBuildOrder(Dictionary<string, NovusProject> projects)
+    {
+        var graph = new Dictionary<string, List<string>>();
+        var inDegree = new Dictionary<string, int>();
+
+        // Initialize graph
+        foreach (var (projectName, project) in projects)
+        {
+            graph[projectName] = new List<string>();
+            inDegree[projectName] = 0;
+        }
+
+        // Build dependency graph
+        foreach (var (projectName, project) in projects)
+        {
+            foreach (var (depName, depInfo) in project.Dependencies)
+            {
+                // Only consider workspace-internal dependencies (path-based)
+                if (depInfo.Path != null && projects.ContainsKey(depName))
+                {
+                    // projectName depends on depName, so depName must be built first
+                    graph[depName].Add(projectName);
+                    inDegree[projectName]++;
+                }
+            }
+        }
+
+        // Topological sort using Kahn's algorithm
+        var queue = new Queue<string>();
+        var result = new List<string>();
+
+        // Start with projects that have no dependencies
+        foreach (var (projectName, degree) in inDegree)
+        {
+            if (degree == 0)
+            {
+                queue.Enqueue(projectName);
+            }
+        }
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            result.Add(current);
+
+            foreach (var dependent in graph[current])
+            {
+                inDegree[dependent]--;
+                if (inDegree[dependent] == 0)
+                {
+                    queue.Enqueue(dependent);
+                }
+            }
+        }
+
+        // Check if all projects were processed (no cycles)
+        if (result.Count != projects.Count)
+        {
+            return null;  // Circular dependency
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Context for building projects in a workspace
+    /// Tracks build outputs for linking dependencies
+    /// </summary>
+    private class BuildContext
+    {
+        private readonly string _workspaceDir;
+        private readonly Dictionary<string, NovusProject> _projects;
+        private readonly Dictionary<string, string> _buildOutputs = new();
+
+        public BuildContext(string workspaceDir, Dictionary<string, NovusProject> projects)
+        {
+            _workspaceDir = workspaceDir;
+            _projects = projects;
+        }
+
+        public void RecordBuildOutput(string projectName, string outputDir)
+        {
+            _buildOutputs[projectName] = outputDir;
+        }
+
+        public List<string> GetDependencyLibraryPaths(NovusProject project)
+        {
+            var libraryPaths = new List<string>();
+
+            foreach (var (depName, depInfo) in project.Dependencies)
+            {
+                // Only handle workspace-internal dependencies
+                if (depInfo.Path != null && _projects.ContainsKey(depName))
+                {
+                    if (_buildOutputs.TryGetValue(depName, out var outputDir))
+                    {
+                        var depProject = _projects[depName];
+
+                        // For library projects, add path to the library artifact
+                        if (depProject.Package.Type == "library")
+                        {
+                            // The outputDir for libraries already points to the .library directory
+                            // (e.g., "/path/to/project/greeting.library")
+                            var libName = depProject.Package.Name;
+                            var libFile = Path.Combine(outputDir, $"{libName}_lib.o");
+
+                            Console.WriteLine($"  DEBUG: Checking for lib stub: {libFile}");
+                            Console.WriteLine($"  DEBUG: File exists: {File.Exists(libFile)}");
+
+                            if (File.Exists(libFile))
+                            {
+                                libraryPaths.Add(libFile);
+                            }
+                        }
+                    }
+                }
+            }
+
+            return libraryPaths;
+        }
+    }
+
+    /// <summary>
     /// Build a single project
     /// </summary>
     private static async Task<int> BuildProject(
         string projectDir,
         BuildOptions buildOptions,
-        NovusWorkspace? workspace = null)
+        NovusWorkspace? workspace = null,
+        BuildContext? buildContext = null,
+        string? workspaceDir = null)
     {
         var projectFile = Path.Combine(projectDir, "project.toml");
         if (!File.Exists(projectFile))
@@ -269,15 +449,40 @@ public static class BuildCommand
             return 1;
         }
 
-        // Create output directory
-        var outputDir = Path.Combine(projectDir, project.Build.Output);
-        Directory.CreateDirectory(outputDir);
-
         // Determine build mode (Debug or Release)
         // Default to Debug unless --release is specified
         var buildMode = buildOptions.Release ? BuildMode.Release :
                        buildOptions.Debug ? BuildMode.Debug :
                        BuildMode.Debug;  // Default to debug
+
+        // Determine output directory
+        string outputDir;
+        if (workspace != null)
+        {
+            // Workspace build - use centralized target directory
+            var workspaceRoot = Path.GetDirectoryName(Path.Combine(workspaceDir!, "solution.toml"))!;
+            var targetRoot = Path.Combine(workspaceRoot, "target");
+
+            // For now, simple structure: target/<config>/<type>/
+            var config = buildMode == BuildMode.Release ? "release" : "debug";
+            var typeSubdir = projectType.ToLowerInvariant() switch
+            {
+                "library" => "libs",
+                "device" => "libs",
+                "handler" => "libs",
+                "test" => "tests",
+                _ => "bins"
+            };
+
+            outputDir = Path.Combine(targetRoot, config, typeSubdir);
+            Directory.CreateDirectory(outputDir);
+        }
+        else
+        {
+            // Standalone project - use project's output directory
+            outputDir = Path.Combine(projectDir, project.Build.Output);
+            Directory.CreateDirectory(outputDir);
+        }
 
         // Merge workspace build settings with project settings
         // Project settings override workspace settings
@@ -314,11 +519,63 @@ public static class BuildCommand
                 : workspace.Workspace.Build.OptimizationLevel;
         }
 
+        // Get dependency library paths if in workspace build
+        var additionalLibraries = new List<string>();
+        if (buildContext != null)
+        {
+            additionalLibraries = buildContext.GetDependencyLibraryPaths(project);
+            if (additionalLibraries.Count > 0)
+            {
+                Console.WriteLine($"  Dependencies: {string.Join(", ", additionalLibraries.Select(Path.GetFileName))}");
+            }
+        }
+
+        // Find any additional C files in the project directory (for library wrappers, etc.)
+        var additionalCFiles = new List<string>();
+        var cFiles = Directory.GetFiles(projectDir, "*.c", SearchOption.AllDirectories);
+        foreach (var cFile in cFiles)
+        {
+            // Skip files in build output directories
+            if (!cFile.Contains("/target/") && !cFile.Contains("\\target\\"))
+            {
+                additionalCFiles.Add(cFile);
+            }
+        }
+        if (additionalCFiles.Count > 0)
+        {
+            Console.WriteLine($"  Additional C files: {string.Join(", ", additionalCFiles.Select(Path.GetFileName))}");
+        }
+
+        // Find any additional assembly files in the project directory
+        var additionalAsmFiles = new List<string>();
+        var asmFiles = Directory.GetFiles(projectDir, "*.s", SearchOption.AllDirectories);
+        foreach (var asmFile in asmFiles)
+        {
+            // Skip files in build output directories
+            if (!asmFile.Contains("/target/") && !asmFile.Contains("\\target\\"))
+            {
+                additionalAsmFiles.Add(asmFile);
+            }
+        }
+        if (additionalAsmFiles.Count > 0)
+        {
+            Console.WriteLine($"  Additional ASM files: {string.Join(", ", additionalAsmFiles.Select(Path.GetFileName))}");
+        }
+
+        // Determine output filename based on project type
+        string outputFileName = projectType.ToLowerInvariant() switch
+        {
+            "library" => $"{project.Package.Name}.library",
+            "device" => $"{project.Package.Name}.device",
+            "handler" => $"{project.Package.Name}.handler",
+            _ => project.Package.Name  // CLI and other executables use name as-is
+        };
+
         // Convert to CompilerOptions
         var compilerOptions = new CompilerOptions
         {
             InputFile = inputFile,
-            OutputFile = Path.Combine(outputDir, project.Package.Name),
+            OutputFile = Path.Combine(outputDir, outputFileName),
             Cpu = targetCpu,
             Fpu = fpu,
             OptimizationLevel = optimizationLevel,
@@ -327,7 +584,10 @@ public static class BuildCommand
             VbccPath = buildOptions.VbccPath ?? "/Users/barry/amiga-cc/vbcc",
             NdkPath = buildOptions.NdkPath ?? "/Users/barry/amiga-cc/NDK3.9",
             Verbose = buildOptions.Verbose,
-            ProjectType = projectType
+            ProjectType = projectType,
+            AdditionalLibraries = additionalLibraries,
+            AdditionalCFiles = additionalCFiles,
+            AdditionalAsmFiles = additionalAsmFiles
         };
 
         if (workspace == null)

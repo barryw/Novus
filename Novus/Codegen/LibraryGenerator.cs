@@ -157,24 +157,25 @@ public class LibraryGenerator
                 Function = function
             };
 
-            // Check if it's a lifecycle function by name
-            var lowerName = function.Name.ToLower();
-            if (lowerName.Contains("open") && !lowerName.Contains("library"))
+            // Check if it's a lifecycle function by exact name match
+            // Standard AmigaOS lifecycle functions: Open, Close, Expunge, Reserved
+            var funcName = function.Name;
+            if (funcName == "Open" || funcName == $"{_libraryStruct.StructName}::Open")
             {
                 libFunc.VectorOffset = -6;
                 libFunc.IsLifecycleFunction = true;
             }
-            else if (lowerName.Contains("close") && !lowerName.Contains("library"))
+            else if (funcName == "Close" || funcName == $"{_libraryStruct.StructName}::Close")
             {
                 libFunc.VectorOffset = -12;
                 libFunc.IsLifecycleFunction = true;
             }
-            else if (lowerName.Contains("expunge"))
+            else if (funcName == "Expunge" || funcName == $"{_libraryStruct.StructName}::Expunge")
             {
                 libFunc.VectorOffset = -18;
                 libFunc.IsLifecycleFunction = true;
             }
-            else if (lowerName.Contains("reserved"))
+            else if (funcName == "Reserved" || funcName == $"{_libraryStruct.StructName}::Reserved")
             {
                 libFunc.VectorOffset = -24;
                 libFunc.IsLifecycleFunction = true;
@@ -190,8 +191,9 @@ public class LibraryGenerator
             _libraryFunctions.Add(libFunc);
         }
 
-        // Sort by vector offset (most negative first, which is standard AmigaOS order)
-        _libraryFunctions.Sort((a, b) => a.VectorOffset.CompareTo(b.VectorOffset));
+        // Sort by vector offset (DESCENDING - least negative first)
+        // This ensures the first function gets offset -30, second gets -36, etc.
+        _libraryFunctions.Sort((a, b) => b.VectorOffset.CompareTo(a.VectorOffset));
     }
 
     /// <summary>
@@ -238,8 +240,13 @@ public class LibraryGenerator
         // Forward declarations
         var structName = $"{_libraryStruct.StructName}Base";
         sb.AppendLine("// Forward declarations for C functions");
-        sb.AppendLine("static const ULONG InitTable[];  // Defined below");
-        sb.AppendLine($"struct Library* LibInit(BPTR segList, struct {structName}* base);");
+        sb.AppendLine("struct InitData {");
+        sb.AppendLine("    ULONG LibSize;");
+        sb.AppendLine("    APTR  FuncTable;");
+        sb.AppendLine("    APTR  DataTable;");
+        sb.AppendLine("    APTR  InitFunc;");
+        sb.AppendLine("};");
+        sb.AppendLine($"struct Library* LibInit(__reg(\"d0\") struct {structName}* base, __reg(\"a0\") BPTR segList, __reg(\"a6\") struct ExecBase* sysBase);");
         sb.AppendLine($"struct Library* LibOpen(struct {structName}* base);");
         sb.AppendLine($"BPTR LibClose(struct {structName}* base);");
         sb.AppendLine($"BPTR LibExpunge(struct {structName}* base);");
@@ -248,22 +255,22 @@ public class LibraryGenerator
 
         // Forward declarations for A6 wrapper functions (defined in assembly)
         sb.AppendLine("// Forward declarations for A6 wrapper functions (in assembly)");
-        sb.AppendLine("extern void* LibOpen_Wrapper(void);");
-        sb.AppendLine("extern void* LibClose_Wrapper(void);");
-        sb.AppendLine("extern void* LibExpunge_Wrapper(void);");
-        sb.AppendLine("extern void* LibReserved_Wrapper(void);");
+        sb.AppendLine("extern void LibOpen_Wrapper(void);");
+        sb.AppendLine("extern void LibClose_Wrapper(void);");
+        sb.AppendLine("extern void LibExpunge_Wrapper(void);");
+        sb.AppendLine("extern void LibReserved_Wrapper(void);");
         foreach (var func in _libraryFunctions)
         {
             if (!func.IsLifecycleFunction)
             {
-                sb.AppendLine($"extern void* {func.CName}_Wrapper(void);");
+                sb.AppendLine($"extern void {func.CName}_Wrapper(void);");
             }
         }
         sb.AppendLine();
 
         // Function table - use wrapper functions for AmigaOS calling convention
-        sb.AppendLine("// Function vector table (uses A6 wrappers)");
-        sb.AppendLine("static const APTR FuncTable[] = {");
+        sb.AppendLine("// Function vector table (uses A6 wrappers, non-const for relocations)");
+        sb.AppendLine("static APTR FuncTable[] = {");
         sb.AppendLine("    (APTR)LibOpen_Wrapper,");
         sb.AppendLine("    (APTR)LibClose_Wrapper,");
         sb.AppendLine("    (APTR)LibExpunge_Wrapper,");
@@ -281,12 +288,22 @@ public class LibraryGenerator
         sb.AppendLine("};");
         sb.AppendLine();
 
+        // AutoInit structure - MUST be defined BEFORE RomTag since RomTag references it
+        sb.AppendLine("// AutoInit structure (no forward declaration needed)");
+        sb.AppendLine("static struct InitData InitTable = {");
+        sb.AppendLine($"    sizeof(struct {structName}),  // Data size");
+        sb.AppendLine("    (APTR)FuncTable,         // Function table");
+        sb.AppendLine("    NULL,                    // Data table");
+        sb.AppendLine("    (APTR)LibInit            // Init routine");
+        sb.AppendLine("};");
+        sb.AppendLine();
+
         // ROMTag structure
-        sb.AppendLine("// ROMTag structure");
-        sb.AppendLine("const struct Resident RomTag = {");
+        sb.AppendLine("// ROMTag structure (non-const so relocations are applied correctly)");
+        sb.AppendLine("struct Resident RomTag = {");
         sb.AppendLine("    RTC_MATCHWORD,       // Magic word");
         sb.AppendLine("    &RomTag,             // Pointer to itself");
-        sb.AppendLine("    &RomTag + 1,         // End marker");
+        sb.AppendLine("    (APTR)((UBYTE*)&RomTag + sizeof(struct Resident)),  // End marker");
         sb.AppendLine("    RTF_AUTOINIT,        // Flags");
         sb.AppendLine($"    {version},                 // Version");
         sb.AppendLine("    NT_LIBRARY,          // Type");
@@ -294,16 +311,6 @@ public class LibraryGenerator
         sb.AppendLine("    (char*)LibName,      // Name");
         sb.AppendLine("    (char*)LibIdString,  // ID string");
         sb.AppendLine("    (APTR)&InitTable     // Init table pointer");
-        sb.AppendLine("};");
-        sb.AppendLine();
-
-        // AutoInit structure
-        sb.AppendLine("// AutoInit structure");
-        sb.AppendLine("static const ULONG InitTable[] = {");
-        sb.AppendLine($"    sizeof(struct {structName}),  // Data size");
-        sb.AppendLine("    (ULONG)FuncTable,         // Function table");
-        sb.AppendLine("    0,                        // Data table");
-        sb.AppendLine("    (ULONG)LibInit            // Init routine");
         sb.AppendLine("};");
         sb.AppendLine();
 
@@ -385,9 +392,15 @@ public class LibraryGenerator
         sb.AppendLine("#include <dos/dos.h>");  // For BPTR
         sb.AppendLine();
 
+        // Include proto files for Exec functions (VBCC inlines)
+        sb.AppendLine("// Exec library proto for inline functions");
+        sb.AppendLine("#include <proto/exec.h>");
+        sb.AppendLine();
+
         sb.AppendLine($"// The library base includes the standard Library header plus custom fields.");
         sb.AppendLine($"struct {structName} {{");
-        sb.AppendLine("    struct Library lib_Node;");
+        sb.AppendLine("    struct Library lib;");
+        sb.AppendLine("    BPTR lib_SegList;  // Segment list for library unloading");
 
         // Add custom fields from the @library struct
         foreach (var field in _libraryStruct.Fields)
@@ -430,30 +443,45 @@ public class LibraryGenerator
         sb.AppendLine();
 
         // LibInit - always generate this as it's required
-        sb.AppendLine($"struct Library* LibInit(BPTR segList, struct {structName}* base) {{");
+        // AutoInit calls with: D0=base, A0=segList, A6=SysBase (per NDK examples)
+        sb.AppendLine($"struct Library* LibInit(__reg(\"d0\") struct {structName}* base, __reg(\"a0\") BPTR segList, __reg(\"a6\") struct ExecBase* sysBase) {{");
         sb.AppendLine("    // Initialize library base fields");
-        sb.AppendLine("    // (SysBase is available via macro #define at location 4)");
-        sb.AppendLine("    base->lib_Node.lib_Node.ln_Type = NT_LIBRARY;");
-        sb.AppendLine("    base->lib_Node.lib_Node.ln_Pri = 0;");
-        sb.AppendLine("    base->lib_Node.lib_Node.ln_Name = (char*)LibName;");
-        sb.AppendLine("    base->lib_Node.lib_Flags = LIBF_CHANGED | LIBF_SUMUSED;");
-        sb.AppendLine($"    base->lib_Node.lib_Version = {GetLibraryVersion()};");
-        sb.AppendLine($"    base->lib_Node.lib_Revision = {GetLibraryRevision()};");
-        sb.AppendLine("    base->lib_Node.lib_IdString = (char*)LibIdString;");
+        sb.AppendLine("    // Node fields (ln_Succ and ln_Pred set by Exec's AddLibrary)");
+        sb.AppendLine("    base->lib.lib_Node.ln_Type = NT_LIBRARY;");
+        sb.AppendLine("    base->lib.lib_Node.ln_Pri = 0;");
+        sb.AppendLine("    base->lib.lib_Node.ln_Name = (char*)LibName;");
+        sb.AppendLine("    // Library fields (NegSize/PosSize set by MakeLibrary)");
+        sb.AppendLine("    base->lib.lib_Flags = LIBF_CHANGED;  // Don't use SUMUSED without initializing lib_Sum");
+        sb.AppendLine("    base->lib.lib_OpenCnt = 0;  // Initialize to zero");
+        sb.AppendLine($"    base->lib.lib_Version = {GetLibraryVersion()};");
+        sb.AppendLine($"    base->lib.lib_Revision = {GetLibraryRevision()};");
+        sb.AppendLine("    base->lib.lib_IdString = (char*)LibIdString;");
         sb.AppendLine();
         sb.AppendLine("    // Store segment list for later unloading");
-        sb.AppendLine("    // TODO: Store segList in library base");
+        sb.AppendLine("    base->lib_SegList = segList;");
         sb.AppendLine();
-        sb.AppendLine("    return &base->lib_Node;");
+
+        // Initialize custom fields from @library struct
+        if (_libraryStruct.Fields.Count > 0)
+        {
+            sb.AppendLine("    // Initialize custom library fields");
+            foreach (var field in _libraryStruct.Fields)
+            {
+                sb.AppendLine($"    base->{field.Name} = 0;  // Initialize to zero");
+            }
+            sb.AppendLine();
+        }
+
+        sb.AppendLine("    return &base->lib;");
         sb.AppendLine("}");
         sb.AppendLine();
 
         if (!hasOpen)
         {
             sb.AppendLine($"struct Library* LibOpen(struct {structName}* base) {{");
-            sb.AppendLine("    base->lib_Node.lib_OpenCnt++;");
-            sb.AppendLine("    base->lib_Node.lib_Flags &= ~LIBF_DELEXP;");
-            sb.AppendLine("    return &base->lib_Node;");
+            sb.AppendLine("    base->lib.lib_OpenCnt++;");
+            sb.AppendLine("    base->lib.lib_Flags &= ~LIBF_DELEXP;");
+            sb.AppendLine("    return &base->lib;");
             sb.AppendLine("}");
             sb.AppendLine();
         }
@@ -461,8 +489,8 @@ public class LibraryGenerator
         if (!hasClose)
         {
             sb.AppendLine($"BPTR LibClose(struct {structName}* base) {{");
-            sb.AppendLine("    base->lib_Node.lib_OpenCnt--;");
-            sb.AppendLine("    if (base->lib_Node.lib_OpenCnt == 0 && (base->lib_Node.lib_Flags & LIBF_DELEXP)) {");
+            sb.AppendLine("    base->lib.lib_OpenCnt--;");
+            sb.AppendLine("    if (base->lib.lib_OpenCnt == 0 && (base->lib.lib_Flags & LIBF_DELEXP)) {");
             sb.AppendLine("        return LibExpunge(base);");
             sb.AppendLine("    }");
             sb.AppendLine("    return 0;");
@@ -473,19 +501,26 @@ public class LibraryGenerator
         if (!hasExpunge)
         {
             sb.AppendLine($"BPTR LibExpunge(struct {structName}* base) {{");
-            sb.AppendLine("    if (base->lib_Node.lib_OpenCnt > 0) {");
-            sb.AppendLine("        base->lib_Node.lib_Flags |= LIBF_DELEXP;");
+            sb.AppendLine("    if (base->lib.lib_OpenCnt > 0) {");
+            sb.AppendLine("        base->lib.lib_Flags |= LIBF_DELEXP;");
             sb.AppendLine("        return 0;");
             sb.AppendLine("    }");
             sb.AppendLine();
+            sb.AppendLine("    // Save segList before freeing base");
+            sb.AppendLine("    BPTR segList = base->lib_SegList;");
+            sb.AppendLine();
             sb.AppendLine("    // Remove library from system list");
-            sb.AppendLine("    // Remove((struct Node*)base);");
+            sb.AppendLine("    Remove((struct Node*)&base->lib);");
+            sb.AppendLine();
+            sb.AppendLine("    // Calculate total memory size (including negative space for function vectors)");
+            sb.AppendLine("    ULONG memSize = base->lib.lib_NegSize + base->lib.lib_PosSize;");
+            sb.AppendLine("    void* memStart = (void*)((UBYTE*)base - base->lib.lib_NegSize);");
             sb.AppendLine();
             sb.AppendLine("    // Free library base memory");
-            sb.AppendLine($"    // FreeMem(base, sizeof(struct {structName}));");
+            sb.AppendLine("    FreeMem(memStart, memSize);");
             sb.AppendLine();
             sb.AppendLine("    // Return segment list for DOS to unload");
-            sb.AppendLine("    return 0;  // TODO: return actual segList");
+            sb.AppendLine("    return segList;");
             sb.AppendLine("}");
             sb.AppendLine();
         }
@@ -608,14 +643,13 @@ public class LibraryGenerator
 
         if (parameters.Count == 0)
         {
-            // No parameters, just call
+            // No parameters - just call the function directly
             sb.AppendLine($"        jsr     {cFuncName}");
         }
         else
         {
             // Push parameters in reverse order (right to left for C convention)
-            // For now, assume parameters come in D0, D1, A0, A1 order
-            // This is a simplified version - full implementation needs parameter analysis
+            // User parameters come in D0, D1, A0, A1 order
 
             for (int i = parameters.Count - 1; i >= 0; i--)
             {
@@ -659,5 +693,383 @@ public class LibraryGenerator
     private bool IsPointerType(IrType type)
     {
         return type is IrPointerType;
+    }
+
+    /// <summary>
+    /// Generate C header file for the library.
+    /// This allows C programs to use the library.
+    /// </summary>
+    public string GenerateCHeader()
+    {
+        if (!IsLibrary || _libraryStruct == null)
+            return "";
+
+        var sb = new StringBuilder();
+        var libName = GetLibraryName();
+        var structName = $"{_libraryStruct.StructName}Base";
+        var headerGuard = $"_{libName.Replace(".", "_").ToUpper()}_H";
+
+        sb.AppendLine($"#ifndef {headerGuard}");
+        sb.AppendLine($"#define {headerGuard}");
+        sb.AppendLine();
+        sb.AppendLine("/*");
+        sb.AppendLine($" * {libName} - C Interface");
+        sb.AppendLine($" * Generated by Novus compiler");
+        sb.AppendLine($" * Version: {GetLibraryVersion()}.{GetLibraryRevision()}");
+        sb.AppendLine(" */");
+        sb.AppendLine();
+        sb.AppendLine("#include <exec/types.h>");
+        sb.AppendLine("#include <exec/libraries.h>");
+        sb.AppendLine();
+
+        // Library base structure
+        sb.AppendLine("/* Library base structure */");
+        sb.AppendLine($"struct {structName} {{");
+        sb.AppendLine("    struct Library lib;");
+
+        // Add custom fields
+        foreach (var field in _libraryStruct.Fields)
+        {
+            var cType = GetCType(field.Type);
+            sb.AppendLine($"    {cType} {field.Name};");
+        }
+        sb.AppendLine("};");
+        sb.AppendLine();
+
+        // Library base pointer (auto-opened by linker stub)
+        sb.AppendLine($"/* Library base pointer (auto-opened at program startup) */");
+        sb.AppendLine($"extern struct {structName}* _{_libraryStruct.StructName}Base;");
+        sb.AppendLine($"#define {_libraryStruct.StructName}Base _{_libraryStruct.StructName}Base");
+        sb.AppendLine();
+
+        // Function prototypes (using library base in A6)
+        sb.AppendLine("/* Library functions */");
+        sb.AppendLine("#ifdef __VBCC__");
+        sb.AppendLine("/* VBCC inline calling convention */");
+
+        foreach (var func in _libraryFunctions)
+        {
+            if (!func.IsLifecycleFunction)
+            {
+                var returnType = GetCType(func.Function.ReturnType);
+                var paramList = string.Join(", ", func.Function.Parameters.Select(p =>
+                    $"{GetCType(p.Type)} {p.Name}"));
+
+                if (string.IsNullOrEmpty(paramList))
+                    paramList = "void";
+
+                var offset = Math.Abs(func.VectorOffset);
+                sb.AppendLine($"{returnType} {func.CName}({paramList})");
+                sb.AppendLine($"    = \"\\tjsr\\t-{offset}(a6)\";");
+            }
+        }
+
+        sb.AppendLine("#else");
+        sb.AppendLine("/* Standard C prototypes */");
+        foreach (var func in _libraryFunctions)
+        {
+            if (!func.IsLifecycleFunction)
+            {
+                var returnType = GetCType(func.Function.ReturnType);
+                var paramList = string.Join(", ", func.Function.Parameters.Select(p =>
+                    $"{GetCType(p.Type)} {p.Name}"));
+
+                if (string.IsNullOrEmpty(paramList))
+                    paramList = "void";
+
+                sb.AppendLine($"{returnType} {func.CName}({paramList});");
+            }
+        }
+        sb.AppendLine("#endif");
+        sb.AppendLine();
+
+        sb.AppendLine($"#endif /* {headerGuard} */");
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Generate Novus FFI binding for the library.
+    /// This allows Novus programs to import and use the library.
+    /// </summary>
+    public string GenerateNovusFFI()
+    {
+        if (!IsLibrary || _libraryStruct == null)
+            return "";
+
+        var sb = new StringBuilder();
+        var libName = GetLibraryName();
+        var moduleName = _libraryStruct.StructName.ToLower();
+
+        sb.AppendLine("//");
+        sb.AppendLine($"// {libName} - Novus FFI Binding");
+        sb.AppendLine("// Generated by Novus compiler");
+        sb.AppendLine($"// Version: {GetLibraryVersion()}.{GetLibraryRevision()}");
+        sb.AppendLine("//");
+        sb.AppendLine();
+        sb.AppendLine("from std::ffi::exec import Library, OpenLibrary, CloseLibrary");
+        sb.AppendLine();
+
+        // Library base type
+        sb.AppendLine("// Library base structure");
+        sb.AppendLine($"pub struct {_libraryStruct.StructName}Base {{");
+        sb.AppendLine("    lib_node: Library,");
+
+        // Add custom fields with Novus types
+        foreach (var field in _libraryStruct.Fields)
+        {
+            var novusType = GetNovusType(field.Type);
+            sb.AppendLine($"    {field.Name}: {novusType},");
+        }
+        sb.AppendLine("}");
+        sb.AppendLine();
+
+        // Library handle
+        sb.AppendLine("// Global library base (initialized via open_library)");
+        sb.AppendLine($"static mut {_libraryStruct.StructName}_BASE: *{_libraryStruct.StructName}Base = 0 as *{_libraryStruct.StructName}Base;");
+        sb.AppendLine();
+
+        // Open library function
+        sb.AppendLine("// Open the library");
+        sb.AppendLine($"pub fn open_{moduleName}(version: u32) -> bool {{");
+        sb.AppendLine($"    unsafe {{");
+        sb.AppendLine($"        {_libraryStruct.StructName}_BASE = OpenLibrary(\"{libName}\", version) as *{_libraryStruct.StructName}Base;");
+        sb.AppendLine($"        return {_libraryStruct.StructName}_BASE != 0 as *{_libraryStruct.StructName}Base;");
+        sb.AppendLine("    }");
+        sb.AppendLine("}");
+        sb.AppendLine();
+
+        // Close library function
+        sb.AppendLine("// Close the library");
+        sb.AppendLine($"pub fn close_{moduleName}() {{");
+        sb.AppendLine("    unsafe {");
+        sb.AppendLine($"        if {_libraryStruct.StructName}_BASE != 0 as *{_libraryStruct.StructName}Base {{");
+        sb.AppendLine($"            CloseLibrary({_libraryStruct.StructName}_BASE as *Library);");
+        sb.AppendLine($"            {_libraryStruct.StructName}_BASE = 0 as *{_libraryStruct.StructName}Base;");
+        sb.AppendLine("        }");
+        sb.AppendLine("    }");
+        sb.AppendLine("}");
+        sb.AppendLine();
+
+        // FFI function declarations
+        sb.AppendLine("// Library functions (FFI declarations)");
+        foreach (var func in _libraryFunctions)
+        {
+            if (!func.IsLifecycleFunction)
+            {
+                var returnType = GetNovusType(func.Function.ReturnType);
+                var offset = Math.Abs(func.VectorOffset);
+                var cleanName = func.Function.Name.Replace("::", "_");
+
+                sb.AppendLine($"#[link_name = \"@{offset}\"]");
+                sb.Append($"extern fn {cleanName}_ffi(base: *{_libraryStruct.StructName}Base");
+
+                foreach (var param in func.Function.Parameters)
+                {
+                    sb.Append($", {param.Name}: {GetNovusType(param.Type)}");
+                }
+
+                sb.AppendLine($") -> {returnType};");
+                sb.AppendLine();
+            }
+        }
+        sb.AppendLine();
+
+        // Safe wrapper functions
+        sb.AppendLine("// Safe wrapper functions");
+        foreach (var func in _libraryFunctions)
+        {
+            if (!func.IsLifecycleFunction)
+            {
+                var returnType = GetNovusType(func.Function.ReturnType);
+                var cleanName = func.Function.Name.Replace("::", "_");
+
+                sb.Append($"pub fn {cleanName}(");
+
+                var paramList = string.Join(", ", func.Function.Parameters.Select(p =>
+                    $"{p.Name}: {GetNovusType(p.Type)}"));
+
+                sb.Append(paramList);
+                sb.AppendLine($") -> {returnType} {{");
+                sb.AppendLine("    unsafe {");
+
+                sb.Append($"        return {cleanName}_ffi({_libraryStruct.StructName}_BASE");
+
+                foreach (var param in func.Function.Parameters)
+                {
+                    sb.Append($", {param.Name}");
+                }
+
+                sb.AppendLine(");");
+                sb.AppendLine("    }");
+                sb.AppendLine("}");
+                sb.AppendLine();
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Generate FD (Function Description) file for VBCC auto-library support.
+    /// This allows VBCC to automatically open/close the library like NDK libraries.
+    /// </summary>
+    public string GenerateFDFile()
+    {
+        if (!IsLibrary || _libraryStruct == null)
+            return "";
+
+        var sb = new StringBuilder();
+        var baseName = $"_{_libraryStruct.StructName}Base";
+
+        sb.AppendLine($"##base {baseName}");
+        sb.AppendLine("##bias 30");
+        sb.AppendLine("##public");
+
+        // Generate FD entries for each user function
+        foreach (var func in _libraryFunctions)
+        {
+            if (!func.IsLifecycleFunction)
+            {
+                var funcName = func.CName;
+                var parameters = func.Function.Parameters;
+
+                // Build parameter list
+                var paramNames = string.Join(",", parameters.Select(p => p.Name));
+
+                // Build register list (d0, d1, a0, a1, etc.)
+                var registers = new List<string>();
+                for (int i = 0; i < parameters.Count && i < 4; i++)
+                {
+                    var param = parameters[i];
+                    // Use data registers for integers, address registers for pointers
+                    if (IsPointerType(param.Type))
+                    {
+                        registers.Add(i == 0 ? "a0" : i == 1 ? "a1" : "a2");
+                    }
+                    else
+                    {
+                        registers.Add(i == 0 ? "d0" : i == 1 ? "d1" : "d2");
+                    }
+                }
+
+                var registerList = string.Join("/", registers);
+
+                // FD format: FunctionName(param1,param2)(d0/d1)
+                if (parameters.Count == 0)
+                {
+                    sb.AppendLine($"{funcName}()()");
+                }
+                else
+                {
+                    sb.AppendLine($"{funcName}({paramNames})({registerList})");
+                }
+            }
+        }
+
+        sb.AppendLine("##end");
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Generate library stub assembly for auto-open/close support.
+    /// This creates the library base variable and auto-init/cleanup code.
+    /// </summary>
+    public string GenerateLibraryStub()
+    {
+        if (!IsLibrary || _libraryStruct == null)
+            return "";
+
+        var sb = new StringBuilder();
+        var baseName = $"_{_libraryStruct.StructName}Base";
+        var libName = GetLibraryName();
+        var minVersion = GetLibraryVersion();
+        var initName = $"__INIT_{libName.Replace(".", "_")}";
+        var exitName = $"__EXIT_{libName.Replace(".", "_")}";
+
+        sb.AppendLine("; Auto-generated library stub for VBCC");
+        sb.AppendLine($"; Opens {libName} automatically");
+        sb.AppendLine();
+        sb.AppendLine("        SECTION __MERGED,DATA");
+        sb.AppendLine();
+        sb.AppendLine($"; Library base variable (exported for use in programs)");
+        sb.AppendLine($"        XDEF    {baseName}");
+        sb.AppendLine($"{baseName}:");
+        sb.AppendLine("        dc.l    0");
+        sb.AppendLine();
+        sb.AppendLine("; Library name string");
+        sb.AppendLine("LibName:");
+        sb.AppendLine($"        dc.b    '{libName}',0");
+        sb.AppendLine("        EVEN");
+        sb.AppendLine();
+        sb.AppendLine("; Constructor (called at program startup)");
+        sb.AppendLine("        SECTION CODE");
+        sb.AppendLine($"        XDEF    {initName}");
+        sb.AppendLine($"{initName}:");
+        sb.AppendLine("        movem.l d0-d1/a0-a1/a6,-(sp)");
+        sb.AppendLine("        move.l  4.w,a6          ; Get ExecBase");
+        sb.AppendLine("        lea     LibName(pc),a1  ; Library name");
+        sb.AppendLine($"        moveq   #{minVersion},d0         ; Minimum version");
+        sb.AppendLine("        jsr     -552(a6)        ; OpenLibrary");
+        sb.AppendLine($"        lea     {baseName}(pc),a0");
+        sb.AppendLine("        move.l  d0,(a0)         ; Store library base");
+        sb.AppendLine("        movem.l (sp)+,d0-d1/a0-a1/a6");
+        sb.AppendLine("        rts");
+        sb.AppendLine();
+        sb.AppendLine("; Destructor (called at program exit)");
+        sb.AppendLine($"        XDEF    {exitName}");
+        sb.AppendLine($"{exitName}:");
+        sb.AppendLine("        movem.l a1/a6,-(sp)");
+        sb.AppendLine($"        move.l  {baseName}(pc),d0");
+        sb.AppendLine("        beq.s   .skip");
+        sb.AppendLine("        move.l  d0,a1           ; Library base");
+        sb.AppendLine("        move.l  4.w,a6          ; Get ExecBase");
+        sb.AppendLine("        jsr     -414(a6)        ; CloseLibrary");
+        sb.AppendLine(".skip:");
+        sb.AppendLine("        movem.l (sp)+,a1/a6");
+        sb.AppendLine("        rts");
+        sb.AppendLine();
+        sb.AppendLine("; Register constructor/destructor with linker sets");
+        sb.AppendLine("        SECTION ___CTOR_LIST__,DATA");
+        sb.AppendLine($"        dc.l    {initName}");
+        sb.AppendLine("        SECTION ___DTOR_LIST__,DATA");
+        sb.AppendLine($"        dc.l    {exitName}");
+        sb.AppendLine();
+        sb.AppendLine("        END");
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Convert IR type to Novus type string.
+    /// </summary>
+    private string GetNovusType(IrType type)
+    {
+        return type switch
+        {
+            IrIntType intType => intType.IsSigned
+                ? intType.BitWidth switch
+                {
+                    8 => "i8",
+                    16 => "i16",
+                    32 => "i32",
+                    64 => "i64",
+                    _ => "i32"
+                }
+                : intType.BitWidth switch
+                {
+                    8 => "u8",
+                    16 => "u16",
+                    32 => "u32",
+                    64 => "u64",
+                    _ => "u32"
+                },
+            IrBoolType => "bool",
+            IrVoidType => "()",
+            IrPointerType pt => $"*{GetNovusType(pt.PointeeType)}",
+            IrStructType st => st.Name,
+            _ => "i32"
+        };
     }
 }

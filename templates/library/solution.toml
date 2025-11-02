@@ -1,0 +1,7 @@
+[workspace]
+name = "greeting"
+description = "A simple 'Hello World' library demonstrating Novus library development"
+version = "1.0.0"
+
+# Member projects (directory names)
+members = ["library", "example"]

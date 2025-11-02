@@ -1,436 +1,253 @@
-# example.library - AmigaOS Shared Library Template
+# Novus Library Template - greeting
 
-This is a "Hello World" skeleton for creating AmigaOS shared libraries (.library files) in Novus. It demonstrates the complete library lifecycle and provides a working foundation you can build upon.
+This is a complete solution template for creating AmigaOS shared libraries (.library files) in Novus.
 
-## What This Template Provides
-
-- ✅ Complete working library that compiles and runs
-- ✅ ROMTag structure for library identification
-- ✅ Open/Close/Expunge/Reserved lifecycle functions
-- ✅ Two example functions (GetVersion, Multiply)
-- ✅ Test program demonstrating library usage
-- ✅ Extensive documentation throughout the code
-- ✅ Step-by-step guide for adding new functions
-
-## Project Structure
+## Solution Structure
 
 ```
-example-library/
-├── novus.toml              # Library project configuration
-├── src/
-│   ├── lib.novus           # Main library code (Novus)
-│   ├── library_base.s      # ROMTag and AutoInit (Assembly)
-│   └── wrappers.s          # A6 calling convention wrappers (Assembly)
-├── examples/
-│   ├── test_example.novus  # Test program
-│   └── novus.toml          # Test project configuration
-└── README.md               # This file
+greeting/
+├── solution.toml          # Solution configuration
+├── README.md              # This file
+├── library/               # Library project
+│   ├── project.toml       # Library build configuration
+│   ├── README.md          # Library-specific documentation
+│   └── src/
+│       └── lib.novus      # Library source code
+└── example/               # Example program project
+    ├── project.toml       # Example build configuration
+    ├── README.md          # Example-specific documentation
+    └── src/
+        └── main.novus     # Example program source
 ```
 
 ## Quick Start
 
-### 1. Build the Library
+### 1. Build Everything
 
-```bash
-# Compile Novus code to object file
-novusc build
-
-# Assemble the assembly files
-vasmm68k_mot -Fhunk -o build/library_base.o src/library_base.s
-vasmm68k_mot -Fhunk -o build/wrappers.o src/wrappers.s
-
-# Link everything together
-vlink -bamigahunk -o build/example.library \
-    build/library_base.o \
-    build/wrappers.o \
-    build/lib.o
-```
-
-### 2. Install the Library
-
-```bash
-# Copy to LIBS: on your Amiga (or shared folder)
-cp build/example.library /Users/barry/Emulation/Amiga/A4000-DH0/Barry/LIBS/
-```
-
-### 3. Test the Library
-
-```bash
-cd examples
-novusc build
-./test_example
-```
-
-Expected output:
-```
-example.library opened successfully!
-Multiply(7, 6) called successfully
-Library closed. Test complete!
-```
-
-## Understanding the Code
-
-### Three-Layer Architecture
-
-This library uses a three-layer architecture to separate concerns:
-
-```
-┌──────────────────────────────┐
-│  lib.novus (Business Logic)  │  ← Your library functions
-│  - Type-safe Novus code      │  ← Easy to write and maintain
-│  - Modern language features  │  ← Option, Result, match, etc.
-└──────────────────────────────┘
-             ↓ Called by
-┌──────────────────────────────┐
-│  wrappers.s (Translation)    │  ← Calling convention glue
-│  - Register → Stack params   │  ← Mechanical translation
-│  - A6 base handling          │  ← One wrapper per function
-└──────────────────────────────┘
-             ↓ Pointed to by
-┌──────────────────────────────┐
-│  library_base.s (Bootstrap)  │  ← System interface
-│  - ROMTag structure          │  ← Exec scans for this
-│  - Function vector table     │  ← Jump table for functions
-└──────────────────────────────┘
-```
-
-### The Library Lifecycle
-
-AmigaOS libraries go through a well-defined lifecycle:
-
-```
-1. LOAD (exec.library scans LIBS:)
-   ↓
-2. INIT (LibInit called, library base allocated)
-   ↓
-3. READY (library added to system library list)
-   ↓
-4. OPEN (program calls OpenLibrary)
-   ↓
-5. IN USE (program calls library functions)
-   ↓
-6. CLOSE (program calls CloseLibrary)
-   ↓
-7. EXPUNGE (library removed from memory)
-```
-
-### Required Functions
-
-Every AmigaOS library MUST provide these four functions:
-
-| Function | Offset | When Called | Purpose |
-|----------|--------|-------------|---------|
-| Open | -6 | OpenLibrary() | Increment open count, return base |
-| Close | -12 | CloseLibrary() | Decrement open count |
-| Expunge | -18 | System cleanup | Remove library from memory |
-| Reserved | -24 | Never | Reserved for future use |
-
-### Example Functions
-
-This template includes two example functions:
-
-| Function | Offset | Parameters | Returns | Purpose |
-|----------|--------|------------|---------|---------|
-| GetVersion | -30 | (none) | u32 | Return library version |
-| Multiply | -36 | i32 a, i32 b | i32 | Return a * b |
-
-## Adding New Functions
-
-Here's how to add a new function to your library. Let's add an `Add` function:
-
-### Step 1: Add Novus Function (lib.novus)
-
-```novus
-/// Add - Add two numbers
-///
-/// VECTOR OFFSET: -42
-pub fn Add(base: *ExampleLibraryBase, a: i32, b: i32) -> i32 {
-    return a + b
-}
-```
-
-### Step 2: Add Assembly Wrapper (wrappers.s)
-
-```asm
-    XDEF    _Add                 ; Export wrapper
-    XREF    _novus_Add           ; Import Novus function
-
-_Add:
-    movem.l d2-d7/a2-a6,-(sp)    ; Save registers
-    move.l  a6,-(sp)             ; Push base
-    move.l  d0,-(sp)             ; Push a
-    move.l  d1,-(sp)             ; Push b
-    jsr     _novus_Add           ; Call Novus function
-    lea     12(sp),sp            ; Clean up 3 parameters
-    movem.l (sp)+,d2-d7/a2-a6    ; Restore registers
-    rts                          ; Return
-```
-
-### Step 3: Add to Vector Table (library_base.s)
-
-```asm
-FuncTable:
-    dc.l    _LibOpen
-    dc.l    _LibClose
-    dc.l    _LibExpunge
-    dc.l    _LibReserved
-    dc.l    _GetVersion
-    dc.l    _Multiply
-    dc.l    _Add             ; Add your new function here
-    dc.l    -1               ; Terminator
-```
-
-### Step 4: Update NegSize (library_base.s)
-
-```asm
-; Old: 6 functions * 6 = 36
-NegSize equ 42            ; New: 7 functions * 6 = 42
-```
-
-### Step 5: Rebuild and Test
-
+From this directory:
 ```bash
 novusc build
-vasmm68k_mot -Fhunk -o build/library_base.o src/library_base.s
-vasmm68k_mot -Fhunk -o build/wrappers.o src/wrappers.s
-vlink -bamigahunk -o build/example.library \
-    build/library_base.o \
-    build/wrappers.o \
-    build/lib.o
 ```
 
-## Calling Library Functions from Other Programs
+This builds both projects to the centralized `target/` directory:
+- `target/debug/libs/greeting.library` - The library binary
+- `target/debug/bins/greeting-example` - The example program
 
-To call library functions from another Novus program, you need to:
+All build artifacts go into `target/<config>/<type>/` keeping source directories clean.
 
-1. **Open the library**:
+### 2. Install to Amiga
+
+Copy these two files to your Amiga:
+
+```bash
+# Copy library to LIBS:
+cp target/debug/libs/greeting.library /path/to/amiga/LIBS:/
+
+# Copy example to test
+cp target/debug/bins/greeting-example /path/to/amiga/
+```
+
+### 3. Run on Amiga
+
+The library is already in LIBS:, so just run the example:
+```bash
+./greeting-example
+echo $?  # Should print 8
+```
+
+### 4. Run
+
+**Novus example:**
+```bash
+cd Barry
+./test-greeting
+echo $?  # Should print 8
+```
+
+**C example** (demonstrates actual library calls):
+```bash
+# Build the C example
+cd example
+vc +aos68k test_greeting.c ../library/greeting.library/greeting_lib.o -o test_greeting_c
+
+# Run it
+./test_greeting_c
+echo $?  # Should print 8 (result of Add(5,3))
+```
+
+## What Gets Built
+
+All artifacts are built to `target/debug/` (or `target/release/` with `--release`):
+
+### Library Artifacts (`target/debug/libs/`)
+
+| File | Purpose |
+|------|---------|
+| `greeting.library` | Library binary (copy to LIBS:) |
+| `greeting.h` | C header with function declarations |
+| `greeting_lib.o` | Auto-open/close stub for linking |
+| `greeting_lib.fd` | VBCC function description file |
+| `greeting.novus` | Novus FFI bindings |
+
+### Example Artifacts (`target/debug/bins/`)
+
+| File | Purpose |
+|------|---------|
+| `greeting-example` | Executable that uses the library |
+
+## Solution Configuration
+
+Edit `solution.toml` to configure the solution:
+
+```toml
+[workspace]
+name = "greeting"
+description = "A simple 'Hello World' library"
+version = "1.0.0"
+
+# Member projects (directory names)
+members = ["library", "example"]
+```
+
+Projects are built in dependency order - if `example` depends on `library`, then `library` is built first automatically.
+
+## Building Individual Projects
+
+### Build just the library:
+```bash
+cd library
+novusc build
+```
+
+### Build just the example:
+```bash
+cd example
+novusc build
+```
+
+## Project-Level Configuration
+
+Each project has its own `project.toml` with settings for:
+
+- **Type**: `library`, `cli`, `workbench`, or `device`
+- **Optimization**: Level 0-2
+- **CPU Target**: 68000, 68020, 68030, 68040, 68060
+- **FPU**: `auto`, `soft`, `68881`, `68882`, `68040`, `68060`
+- **Features**: Project-specific feature flags
+
+See each project's README for details.
+
+## How It Works
+
+### The @library Attribute
+
+The library uses a single attribute to define itself:
+
 ```novus
-let base = OpenLibrary("example.library", 0)
-```
+@library(name = "greeting.library", version = 1, revision = 0)
+pub struct GreetingLibrary {
+    call_count: u32,
+}
 
-2. **Set up registers and call** (currently requires assembly):
-```asm
-move.l  base,a6          ; Load library base into A6
-move.l  #7,d0            ; First parameter
-move.l  #6,d1            ; Second parameter
-jsr     -36(a6)          ; Call Multiply (offset -36)
-; Result in D0
-```
-
-3. **Close the library**:
-```novus
-CloseLibrary(base)
-```
-
-**Note**: Future versions of Novus will provide easier FFI declarations to call library functions directly from Novus code.
-
-## Memory Layout
-
-### Library Base in Memory
-
-```
-+0:  Library header (34 bytes)
-     ├─ ln_Succ, ln_Pred (Node links)
-     ├─ ln_Type (NT_LIBRARY = 9)
-     ├─ ln_Pri (priority)
-     ├─ ln_Name (pointer to name string)
-     ├─ lib_Flags
-     ├─ lib_pad
-     ├─ lib_NegSize (size of function vectors)
-     ├─ lib_PosSize (size of library base)
-     ├─ lib_Version
-     ├─ lib_Revision
-     ├─ lib_IdString (pointer to ID string)
-     ├─ lib_Sum (checksum)
-     └─ lib_OpenCnt (open count)
-+34: seglist (4 bytes) - BPTR to code segment
-+38: open_count (4 bytes) - Custom open counter
-Total: 42 bytes
-```
-
-### Function Vector Table in Memory
-
-```
-Base-4:  -> Start of vector table (for safety)
-Base-6:  -> Open function
-Base-12: -> Close function
-Base-18: -> Expunge function
-Base-24: -> Reserved function
-Base-30: -> GetVersion function
-Base-36: -> Multiply function
-Base-42: -> (next function would go here)
-```
-
-## Important Notes
-
-### Register Usage
-
-AmigaOS libraries use a special calling convention:
-
-- **A6**: Library base pointer (ALWAYS)
-- **D0-D1, A0-A1**: Function parameters (left to right)
-- **Stack**: Additional parameters (right to left push)
-- **D0**: Return value
-- **D2-D7, A2-A6**: Must be preserved
-
-### Memory Allocation
-
-The library base is allocated with:
-- `MEMF_PUBLIC`: Accessible from all tasks
-- `MEMF_CLEAR`: Zeroed on allocation
-
-Always free memory in LibExpunge!
-
-### Open Count
-
-The library maintains two open counts:
-- `lib_OpenCnt` in Library header (managed by exec.library)
-- `open_count` in ExampleLibraryBase (custom counter)
-
-Use the custom counter for your own logic.
-
-### Expunge Handling
-
-Never expunge a library with open_count > 0!
-
-Set `LIBF_DELEXP` flag and wait for the last Close:
-```novus
-if (*base).open_count > 0 {
-    let LIBF_DELEXP: u16 = 0x0001
-    (*lib_ptr).lib_Flags = (*lib_ptr).lib_Flags | LIBF_DELEXP
-    return 0
+impl GreetingLibrary {
+    pub fn GetVersion() -> u32 { return 65536 }
+    pub fn Add(a: i32, b: i32) -> i32 { return a + b }
+    pub fn GetCallCount() -> u32 { return 42 }
 }
 ```
 
-## Common Pitfalls
+The compiler automatically generates:
+- Library base structure with standard Library header
+- ROMTag and initialization code
+- A6 wrapper functions for AmigaOS calling convention
+- C headers, FFI bindings, FD files, and auto-open stubs
 
-### ❌ Forgetting to Update NegSize
+### Auto-Open/Close
 
-When adding functions, you MUST update `NegSize` in `library_base.s`:
-```asm
-; Each function adds 6 bytes
-NegSize equ (number_of_functions * 6)
-```
+C programs can link `greeting_lib.o` to get automatic library management:
 
-### ❌ Wrong Parameter Order in Wrappers
+```c
+#include "greeting.h"
 
-AmigaOS passes parameters in D0, D1, A0, A1, but C expects stack order.
-Always push base first, then parameters in order!
-
-### ❌ Not Preserving Registers
-
-Always save/restore D2-D7 and A2-A6:
-```asm
-movem.l d2-d7/a2-a6,-(sp)   ; Save at start
-; ... your code ...
-movem.l (sp)+,d2-d7/a2-a6   ; Restore at end
-```
-
-### ❌ Incorrect Structure Size
-
-`ExampleLibraryBase_SIZEOF` in `library_base.s` MUST match the actual struct size from `lib.novus`. If you add fields, update both!
-
-## Current Safety Requirements
-
-### Unsafe Blocks
-
-As of the latest version, Novus requires `unsafe {}` blocks for dangerous FFI operations:
-
-```novus
-// ❌ ERROR: AllocMem requires unsafe block
-let ptr = AllocMem(100, MEMF_PUBLIC)
-
-// ✅ CORRECT: Wrap in unsafe block
-let ptr = unsafe {
-    AllocMem(100, MEMF_PUBLIC)
+int main() {
+    // Library already opened by greeting_lib.o!
+    ULONG version = GreetingLibrary_GetVersion();
+    // Library closes automatically at exit
+    return 0;
 }
 ```
 
-**Why?** This makes it explicit that you're performing operations that could:
-- Leak memory if not freed properly
-- Corrupt memory with wrong sizes
-- Cause system instability
+Compile with:
+```bash
+vc +aos68k myprogram.c ../library/greeting.library/greeting_lib.o -o myprogram
+```
 
-**Where used in this template:**
-- `ExampleLibraryBase::create()` - AllocMem for library base
-- `ExampleLibraryBase::destroy()` - FreeMem for library base
+## Customizing
 
-## Future Language Improvements
+### Add Library Functions
 
-The attribute system is now implemented! When code generation is added, library creation will become much simpler:
+Edit `library/src/lib.novus` and add methods to the impl block:
 
 ```novus
-@library(name = "example.library", version = 1)
-pub struct ExampleLibrary {
-    counter: u32,
-}
-
-impl ExampleLibrary {
-    @libfunc
-    pub fn get_version() -> u32 {
-        return 0x00010000
-    }
-
-    @libfunc
-    pub fn increment() -> u32 {
-        self.counter += 1
-        return self.counter
+impl GreetingLibrary {
+    pub fn Multiply(a: i32, b: i32) -> i32 {
+        return a * b
     }
 }
 ```
 
-**The compiler will automatically generate:**
-- ✅ ROMTag with magic word 0x4AFC
-- ✅ Library base with standard Library header
-- ✅ AutoInit structure
-- ✅ Function vector table (offsets auto-assigned)
-- ✅ A6 calling convention wrappers
-- ✅ Default open/close/expunge implementations
-- ✅ Open count management
-- ✅ Thread safety (Forbid/Permit wrapping)
+Rebuild - everything updates automatically!
 
-**No more manual assembly required!**
+### Add Library State
 
-See `docs/LIBRARY_ATTRIBUTES_DESIGN.md` for the complete vision.
+Add fields to the struct:
 
-## Troubleshooting
+```novus
+@library(name = "greeting.library", version = 1, revision = 0)
+pub struct GreetingLibrary {
+    call_count: u32,
+    error_count: u32,     // NEW
+    last_caller: *u8,     // NEW
+}
+```
 
-### Library Won't Load
+### Change Settings
 
-Check:
-- ✅ ROMTag MatchWord is 0x4AFC
-- ✅ Library file is in LIBS: directory
-- ✅ Filename ends with ".library"
-- ✅ ExampleLibraryBase_SIZEOF matches actual size
+Each project's `project.toml` controls:
+- Optimization level
+- CPU target
+- FPU requirements
+- Output names
+- Entry points
 
-### Function Calls Crash
+## Additional Examples
 
-Check:
-- ✅ Vector offsets are correct (multiples of 6)
-- ✅ A6 contains library base before JSR
-- ✅ Registers are preserved in wrappers
-- ✅ Stack cleanup is correct (param_count * 4)
+The `examples/` directory contains additional usage examples:
 
-### Expunge Problems
+- `test_greeting.c` - Complete C example using AmigaOS Write() for output
 
-Check:
-- ✅ open_count is decremented in LibClose
-- ✅ LIBF_DELEXP is set when expunge is delayed
-- ✅ Memory is freed in LibExpunge
-- ✅ Seglist is returned for code unload
+See `examples/README.md` for build instructions.
 
-## Resources
+## Learn More
 
-- [AmigaOS Library Creation Guide](http://amigadev.elowar.com/read/ADCD_2.1/Libraries_Manual_guide/node0001.html)
-- [Exec Library Functions](http://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node0200.html)
-- [ROMTag (Resident) Structure](http://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node05DA.html)
-- [MakeLibrary Function](http://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node0262.html)
+- `library/README.md` - Library project configuration
+- `example/README.md` - Example project configuration
+- `examples/README.md` - Additional example programs
 
-## License
+## Template Design
 
-This template is provided as-is for use with the Novus programming language.
-Use it as a foundation for your own AmigaOS libraries!
+This template follows the ".NET solution" pattern:
 
----
+```
+Solution (solution.toml)
+  ├── Project 1 (project.toml)
+  │   └── Source files
+  └── Project 2 (project.toml)
+      └── Source files
+```
 
-**Happy library development! 🚀**
+Benefits:
+- ✅ Build everything with one command
+- ✅ Clear separation of concerns
+- ✅ Each project independently configurable
+- ✅ Easy to add more projects (tests, tools, etc.)

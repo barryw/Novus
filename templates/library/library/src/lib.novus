@@ -1,0 +1,20 @@
+// greeting.library - A simple "Hello World" library for AmigaOS
+
+@library(name = "greeting.library", version = 1, revision = 0)
+pub struct GreetingLibrary {
+    call_count: u32,
+}
+
+impl GreetingLibrary {
+    pub fn GetVersion() -> u32 {
+        return 65536
+    }
+
+    pub fn Add(a: i32, b: i32) -> i32 {
+        return a + b
+    }
+
+    pub fn GetCallCount() -> u32 {
+        return 42
+    }
+}

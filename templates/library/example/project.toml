@@ -1,0 +1,12 @@
+[package]
+name = "greeting-example"
+version = "1.0.0"
+type = "cli"
+entry = "./src/main.novus"
+
+[build]
+target_cpu = "68020"
+fpu = "auto"
+
+[dependencies]
+library = { path = "../library" }

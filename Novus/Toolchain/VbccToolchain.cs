@@ -52,7 +52,7 @@ public class VbccToolchain
     /// <summary>
     /// Link object files to create an Amiga executable using vlink
     /// </summary>
-    public async Task<bool> Link(string[] objFiles, string outputFile, string fpuMode = "auto", bool includeStartup = true)
+    public async Task<bool> Link(string[] objFiles, string outputFile, string fpuMode = "auto", bool includeStartup = true, bool isLibrary = false)
     {
         var vlinkPath = Path.Combine(_vbccPath, "bin", "vlink");
 
@@ -62,11 +62,25 @@ public class VbccToolchain
             "-o", outputFile    // Output executable
         };
 
-        // Add linker flags
+        // Add linker flags (library-specific behavior)
         args.Add("-x");  // Discard local symbols
-        args.Add("-Bstatic");  // Static linking
-        args.Add("-Cvbcc");  // VBCC calling convention
-        args.Add("-gc-all");  // Dead code elimination - remove all unreferenced sections
+
+        if (isLibrary)
+        {
+            // For shared libraries: MUST keep relocations, no dead code elimination of wrappers
+            // -Bstatic would strip relocations needed for &RomTag self-reference
+            // -gc-all would remove wrapper functions that appear "unreferenced"
+            args.Add("-Cvbcc");  // VBCC calling convention
+            // NO -Bstatic
+            // NO -gc-all
+        }
+        else
+        {
+            // For executables: standard static linking with dead code elimination
+            args.Add("-Bstatic");  // Static linking
+            args.Add("-Cvbcc");  // VBCC calling convention (also enables constructor/destructor support)
+            args.Add("-gc-all");  // Dead code elimination - remove all unreferenced sections
+        }
 
         // Add startup code first (must come before user object files)
         if (includeStartup)

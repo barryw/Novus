@@ -1,13 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(vbccm68k:*)",
-      "Bash(vlink:*)",
-      "WebFetch(domain:github.com)",
-      "WebFetch(domain:sun.hasenbraten.de)",
-      "WebFetch(domain:raw.githubusercontent.com)",
-      "WebFetch(domain:forum.amiga.org)",
-      "WebFetch(domain:wiki.amigaos.net)"
+      "Bash(/tmp/greeting_complete_disasm.txt)",
+      "Bash(/Users/barry/amiga-cc/vbcc/bin/vc:*)",
+      "Bash(dd:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []
