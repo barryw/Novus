@@ -278,6 +278,7 @@ expression
     | expression ('==' | '!=' | '<' | '>' | '<=' | '>=') expression  # ComparisonExpr
     | expression '&&' expression                           # LogicalAndExpr
     | expression '||' expression                           # LogicalOrExpr
+    | <assoc=right> expression '?' expression ':' expression  # TernaryExpr
     ;
 
 argumentList

@@ -4804,6 +4804,42 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return IrBoolType.Instance;
     }
 
+    public override IrType? VisitTernaryExpr([NotNull] NovusParser.TernaryExprContext context)
+    {
+        // Visit all three expressions
+        var conditionType = Visit(context.expression(0));
+        var trueType = Visit(context.expression(1));
+        var falseType = Visit(context.expression(2));
+
+        if (conditionType == null || trueType == null || falseType == null)
+            return null;
+
+        // Check that condition is boolean or numeric
+        if (!IsBoolOrNumericType(conditionType))
+        {
+            var location = SourceLocationHelper.FromContext(context.expression(0), _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0040",
+                $"ternary condition must be boolean or numeric type, found '{TypeToString(conditionType)}'",
+                location
+            );
+        }
+
+        // Both branches must have compatible types
+        if (!TypesCompatible(trueType, falseType) && !TypesCompatible(falseType, trueType))
+        {
+            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0041",
+                $"ternary branches have incompatible types: '{TypeToString(trueType)}' and '{TypeToString(falseType)}'",
+                location
+            );
+        }
+
+        // Return the type of the true branch (they should be compatible)
+        return trueType;
+    }
+
     public override IrType? VisitUnaryExpr([NotNull] NovusParser.UnaryExprContext context)
     {
         var op = context.GetChild(0).GetText();

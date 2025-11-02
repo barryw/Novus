@@ -4447,6 +4447,44 @@ public class IrBuilder : NovusBaseVisitor<object?>
         return new IrVariable(resultTemp, IrIntType.I32);
     }
 
+    public override object? VisitTernaryExpr([NotNull] NovusParser.TernaryExprContext context)
+    {
+        // Ternary operator: condition ? trueExpr : falseExpr
+        var condition = (IrValue)Visit(context.expression(0))!;
+
+        var trueLabel = $"ternary_true_{_labelCounter}";
+        var falseLabel = $"ternary_false_{_labelCounter}";
+        var endLabel = $"ternary_end_{_labelCounter}";
+        _labelCounter++;
+
+        var resultTemp = $"%t{_tempCounter++}";
+
+        // Branch based on condition
+        _currentBlock!.AddInstruction(new IrConditionalBranch(condition, trueLabel, falseLabel));
+
+        // True branch
+        _currentBlock!.AddInstruction(new IrLabel(trueLabel));
+        var trueValue = (IrValue)Visit(context.expression(1))!;
+        var resultType = trueValue.Type; // Get type from the true branch value
+
+        // Add to function's local variables for stack allocation
+        var localVar = new IrLocalVariable(resultTemp, resultType, false);
+        _currentFunction!.LocalVariables.Add(localVar);
+
+        _currentBlock!.AddInstruction(new IrLocalDecl(resultTemp, resultType, false, trueValue));
+        _currentBlock!.AddInstruction(new IrBranch(endLabel));
+
+        // False branch
+        _currentBlock!.AddInstruction(new IrLabel(falseLabel));
+        var falseValue = (IrValue)Visit(context.expression(2))!;
+        _currentBlock!.AddInstruction(new IrLocalDecl(resultTemp, resultType, false, falseValue));
+
+        // End
+        _currentBlock!.AddInstruction(new IrLabel(endLabel));
+
+        return new IrVariable(resultTemp, resultType);
+    }
+
     public override object? VisitFloatLiteral([NotNull] NovusParser.FloatLiteralContext context)
     {
         var isNegative = context.GetText().StartsWith("-");
