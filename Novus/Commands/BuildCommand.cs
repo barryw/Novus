@@ -340,6 +340,48 @@ public static class BuildCommand
 
             return libraryPaths;
         }
+
+        /// <summary>
+        /// Get assembly files that dependent projects need to link against (call stubs, etc.)
+        /// </summary>
+        public List<string> GetDependencyAsmFiles(NovusProject project)
+        {
+            var asmFiles = new List<string>();
+
+            foreach (var (depName, depInfo) in project.Dependencies)
+            {
+                // Only handle workspace-internal dependencies
+                if (depInfo.Path != null && _projects.ContainsKey(depName))
+                {
+                    if (_buildOutputs.TryGetValue(depName, out var outputDir))
+                    {
+                        var depProject = _projects[depName];
+
+                        // For library projects, include the call stubs
+                        if (depProject.Package.Type == "library")
+                        {
+                            var libName = depProject.Package.Name;
+                            var callStubsFile = Path.Combine(outputDir, $"{libName}_calls.s");
+                            var libStubFile = Path.Combine(outputDir, $"{libName}_lib.s");
+
+                            if (File.Exists(callStubsFile))
+                            {
+                                Console.WriteLine($"  ✓ Found library call stubs: {Path.GetFileName(callStubsFile)}");
+                                asmFiles.Add(callStubsFile);
+                            }
+
+                            if (File.Exists(libStubFile))
+                            {
+                                Console.WriteLine($"  ✓ Found library stub: {Path.GetFileName(libStubFile)}");
+                                asmFiles.Add(libStubFile);
+                            }
+                        }
+                    }
+                }
+            }
+
+            return asmFiles;
+        }
     }
 
     /// <summary>
@@ -558,6 +600,24 @@ public static class BuildCommand
                 additionalAsmFiles.Add(asmFile);
             }
         }
+
+        // Add dependency ASM files (library call stubs, etc.) from built libraries
+        if (buildContext != null)
+        {
+            var depAsmFiles = buildContext.GetDependencyAsmFiles(project);
+            // Add only if not already in the list (avoid duplicates by comparing normalized paths)
+            var normalizedExisting = additionalAsmFiles.Select(f => Path.GetFullPath(f)).ToHashSet();
+            foreach (var depAsmFile in depAsmFiles)
+            {
+                var normalizedPath = Path.GetFullPath(depAsmFile);
+                if (!normalizedExisting.Contains(normalizedPath))
+                {
+                    additionalAsmFiles.Add(depAsmFile);
+                    normalizedExisting.Add(normalizedPath);
+                }
+            }
+        }
+
         if (additionalAsmFiles.Count > 0)
         {
             Console.WriteLine($"  Additional ASM files: {string.Join(", ", additionalAsmFiles.Select(Path.GetFileName))}");

@@ -17,8 +17,38 @@ pub fn main() -> i32 {
     let version: LibraryVersion = call_GreetingLibrary_GetLibraryVersion()
 
     // Print version using write() with format specifiers
-    let msg: String = "greeting.library version: %ld.%ld.%ld\n"
-    write(msg.ptr, version.major(), version.minor(), version.patch())
+    let msg1: String = "greeting.library version: %ld.%ld.%ld\n\n"
+    write(msg1.ptr, version.major(), version.minor(), version.patch())
+
+    // Get initial call count
+    let count_before: u32 = call_GreetingLibrary_GetCallCount()
+    let msg_before: String = "Call count BEFORE Add calls: %lu\n"
+    write(msg_before.ptr, count_before)
+
+    // Call the Add function a few times to increment the call counter
+    let result1: i32 = call_GreetingLibrary_Add(5, 3)
+    let msg2: String = "5 + 3 = %ld\n"
+    write(msg2.ptr, result1)
+
+    let result2: i32 = call_GreetingLibrary_Add(10, 20)
+    let msg3: String = "10 + 20 = %ld\n"
+    write(msg3.ptr, result2)
+
+    let result3: i32 = call_GreetingLibrary_Add(100, 200)
+    let msg4: String = "100 + 200 = %ld\n"
+    write(msg4.ptr, result3)
+
+    // Get the total call count (should be count_before + 3)
+    let count_after: u32 = call_GreetingLibrary_GetCallCount()
+    let msg5: String = "\nCall count AFTER Add calls: %lu\n"
+    write(msg5.ptr, count_after)
+
+    let delta: u32 = count_after - count_before
+    let msg6: String = "Calls made by this program: %lu (should be 3)\n"
+    write(msg6.ptr, delta)
+
+    let msg7: String = "\n(Note: GetLibraryVersion and GetCallCount don't increment the counter)\n"
+    write(msg7.ptr)
 
     return 0
 }
