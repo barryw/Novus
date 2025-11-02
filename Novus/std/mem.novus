@@ -60,7 +60,10 @@ impl MemoryBlock {
             return Option::Some(MemoryBlock { ptr: (*u8)0, size: 0 })
         }
 
-        let ptr: *u8 = AllocMem(size, flags)
+        var ptr: *u8 = (*u8)0
+        unsafe {
+            ptr = AllocMem(size, flags)
+        }
 
         // Check if allocation failed (returns null pointer)
         if (u32)ptr == 0 {
@@ -105,7 +108,7 @@ impl MemoryBlock {
     /// NOTE: No size parameter needed! Size is tracked automatically.
     pub fn free(&mut self) {
         if self.size > 0 {
-            FreeMem(self.ptr, self.size)
+            unsafe { FreeMem(self.ptr, self.size) }
             self.ptr = (*u8)0
             self.size = 0
         }
@@ -129,7 +132,7 @@ impl MemoryBlock {
                 }
 
                 if copy_size > 0 {
-                    CopyMem(self.ptr, new_block.ptr(), copy_size)
+                    unsafe { CopyMem(self.ptr, new_block.ptr(), copy_size) }
                 }
 
                 // Free old block

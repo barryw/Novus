@@ -61,4 +61,9 @@ public class CompilerOptions
     /// Additional assembly files to assemble and link (e.g., library wrappers)
     /// </summary>
     public List<string> AdditionalAsmFiles { get; set; } = new();
+
+    /// <summary>
+    /// Project version in semver format (e.g., "1.0.0"). Used for @library version generation.
+    /// </summary>
+    public string? ProjectVersion { get; set; }
 }

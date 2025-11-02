@@ -69,17 +69,19 @@ public class IrFunction
     public IrType ReturnType { get; set; }
     public Visibility Visibility { get; set; }
     public bool IsExtern { get; set; }  // true if 'extern' keyword used
+    public bool IsVariadic { get; set; }  // true if function has variadic parameters (...)
     public List<IrParameter> Parameters { get; } = new();
     public List<IrLocalVariable> LocalVariables { get; } = new();
     public List<IrBasicBlock> BasicBlocks { get; } = new();
     public List<IrBasicBlock> DeferredBlocks { get; } = new();  // Blocks to execute on function exit (LIFO)
 
-    public IrFunction(string name, IrType returnType, Visibility visibility = Visibility.Private, bool isExtern = false)
+    public IrFunction(string name, IrType returnType, Visibility visibility = Visibility.Private, bool isExtern = false, bool isVariadic = false)
     {
         Name = name;
         ReturnType = returnType;
         Visibility = visibility;
         IsExtern = isExtern;
+        IsVariadic = isVariadic;
     }
 
     // Compatibility property for code that checks IsPublic
@@ -100,11 +102,13 @@ public class IrParameter
 {
     public string Name { get; set; }
     public IrType Type { get; set; }
+    public bool IsVariadic { get; set; }  // true if this is a variadic parameter (...)
 
-    public IrParameter(string name, IrType type)
+    public IrParameter(string name, IrType type, bool isVariadic = false)
     {
         Name = name;
         Type = type;
+        IsVariadic = isVariadic;
     }
 }
 

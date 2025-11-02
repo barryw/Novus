@@ -62,12 +62,17 @@ functionDeclaration
     ;
 
 parameterList
-    : selfParameter (',' parameter)*
-    | parameter (',' parameter)*
+    : selfParameter (',' parameter)* (',' variadicParameter)?
+    | parameter (',' parameter)* (',' variadicParameter)?
+    | variadicParameter
     ;
 
 parameter
     : IDENTIFIER ':' type
+    ;
+
+variadicParameter
+    : '...' IDENTIFIER
     ;
 
 selfParameter

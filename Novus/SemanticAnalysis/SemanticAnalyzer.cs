@@ -430,20 +430,35 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
             var parameters = new List<ParameterSymbol>();
 
+            bool hasVariadic = false;
             if (funcDecl.parameterList() != null)
             {
-                foreach (var paramCtx in funcDecl.parameterList().parameter())
+                var paramList = funcDecl.parameterList();
+
+                foreach (var paramCtx in paramList.parameter())
                 {
                     var paramName = paramCtx.IDENTIFIER().GetText();
                     var paramType = ParseType(paramCtx.type());
                     var paramLocation = SourceLocationHelper.FromToken(paramCtx.IDENTIFIER().Symbol, modulePath, new string[] { });
                     parameters.Add(new ParameterSymbol(paramName, paramType, paramLocation));
                 }
+
+                // Add variadic parameter if present
+                if (paramList.variadicParameter() != null)
+                {
+                    var variadicCtx = paramList.variadicParameter();
+                    var variadicName = variadicCtx.IDENTIFIER().GetText();
+                    var variadicLocation = SourceLocationHelper.FromToken(variadicCtx.IDENTIFIER().Symbol, modulePath, new string[] { });
+                    // Variadic parameters have void* type for semantic analysis
+                    var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
+                    parameters.Add(new ParameterSymbol(variadicName, variadicType, variadicLocation, IsVariadic: true));
+                    hasVariadic = true;
+                }
             }
 
             // Register the function as extern
             var funcLocation = SourceLocationHelper.FromToken(funcDecl.IDENTIFIER().Symbol, modulePath, new string[] { });
-            _functions[funcName] = new FunctionSymbol(funcName, returnType, parameters, funcLocation, IsExtern: true);
+            _functions[funcName] = new FunctionSymbol(funcName, returnType, parameters, funcLocation, IsExtern: true, IsVariadic: hasVariadic);
             _importedNames[funcName] = moduleNamespace;
         }
 
@@ -695,18 +710,33 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var returnType = context.type() != null ? ParseType(context.type()) : IrVoidType.Instance;
         var parameters = new List<ParameterSymbol>();
 
+        bool hasVariadic = false;
         if (context.parameterList() != null)
         {
-            foreach (var paramCtx in context.parameterList().parameter())
+            var paramList = context.parameterList();
+
+            foreach (var paramCtx in paramList.parameter())
             {
                 var paramName = paramCtx.IDENTIFIER().GetText();
                 var paramType = ParseType(paramCtx.type());
                 var paramLocation = SourceLocationHelper.FromToken(paramCtx.IDENTIFIER().Symbol, _filePath, _sourceLines);
                 parameters.Add(new ParameterSymbol(paramName, paramType, paramLocation));
             }
+
+            // Add variadic parameter if present
+            if (paramList.variadicParameter() != null)
+            {
+                var variadicCtx = paramList.variadicParameter();
+                var variadicName = variadicCtx.IDENTIFIER().GetText();
+                var variadicLocation = SourceLocationHelper.FromToken(variadicCtx.IDENTIFIER().Symbol, _filePath, _sourceLines);
+                // Variadic parameters have void* type for semantic analysis
+                var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
+                parameters.Add(new ParameterSymbol(variadicName, variadicType, variadicLocation, IsVariadic: true));
+                hasVariadic = true;
+            }
         }
 
-        _functions[name] = new FunctionSymbol(name, returnType, parameters, location, isExtern);
+        _functions[name] = new FunctionSymbol(name, returnType, parameters, location, isExtern, IsVariadic: hasVariadic);
     }
 
     private void RegisterImpl(NovusParser.ImplDeclarationContext context)
@@ -775,6 +805,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         var returnType = context.type() != null ? ParseType(context.type()) : IrVoidType.Instance;
         var parameters = new List<ParameterSymbol>();
+        bool hasVariadic = false;
 
         // Parse parameters (including self parameter if present)
         if (context.parameterList() != null)
@@ -822,16 +853,29 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
 
             // Parse regular parameters
-            foreach (var paramCtx in context.parameterList().parameter())
+            var paramList = context.parameterList();
+            foreach (var paramCtx in paramList.parameter())
             {
                 var paramName = paramCtx.IDENTIFIER().GetText();
                 var paramType = ParseType(paramCtx.type());
                 var paramLocation = SourceLocationHelper.FromToken(paramCtx.IDENTIFIER().Symbol, _filePath, _sourceLines);
                 parameters.Add(new ParameterSymbol(paramName, paramType, paramLocation));
             }
+
+            // Add variadic parameter if present
+            if (paramList.variadicParameter() != null)
+            {
+                var variadicCtx = paramList.variadicParameter();
+                var variadicName = variadicCtx.IDENTIFIER().GetText();
+                var variadicLocation = SourceLocationHelper.FromToken(variadicCtx.IDENTIFIER().Symbol, _filePath, _sourceLines);
+                // Variadic parameters have void* type for semantic analysis
+                var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
+                parameters.Add(new ParameterSymbol(variadicName, variadicType, variadicLocation, IsVariadic: true));
+                hasVariadic = true;
+            }
         }
 
-        _functions[mangledName] = new FunctionSymbol(mangledName, returnType, parameters, location, false, genericParams.Count > 0 ? genericParams : null);
+        _functions[mangledName] = new FunctionSymbol(mangledName, returnType, parameters, location, false, genericParams.Count > 0 ? genericParams : null, IsVariadic: hasVariadic);
     }
 
     private void RegisterStruct(NovusParser.StructDeclarationContext context)
@@ -3271,7 +3315,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         // Substitute types in parameters
         var monomorphizedParams = genericFunc.Parameters.Select(p =>
-            new ParameterSymbol(p.Name, SubstituteGenericTypes(p.Type, substitutions), p.Location)
+            new ParameterSymbol(p.Name, SubstituteGenericTypes(p.Type, substitutions), p.Location, p.IsVariadic)
         ).ToList();
 
         // Substitute return type
@@ -3289,7 +3333,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             monomorphizedParams,
             genericFunc.Location,
             genericFunc.IsExtern,
-            null  // No longer generic
+            null,  // No longer generic
+            genericFunc.Attributes,
+            genericFunc.IsVariadic
         );
 
         // Cache it
@@ -3935,18 +3981,26 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         // Validate argument count
-        if (argCount != function.Parameters.Count)
+        // For variadic functions, we need at least as many args as non-variadic parameters
+        var nonVariadicParamCount = function.Parameters.Count(p => !p.IsVariadic);
+        var minArgCount = nonVariadicParamCount;
+        var maxArgCount = function.IsVariadic ? int.MaxValue : function.Parameters.Count;
+
+        if (argCount < minArgCount || argCount > maxArgCount)
         {
             var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            var expectedMsg = function.IsVariadic
+                ? $"at least {minArgCount} argument(s)"
+                : $"{function.Parameters.Count} argument(s)";
             _diagnostics.ReportError(
                 "E0014",
-                $"function '{functionName}' expects {function.Parameters.Count} argument(s), but {argCount} were provided",
+                $"function '{functionName}' expects {expectedMsg}, but {argCount} were provided",
                 location,
                 helpTexts: new List<string>
                 {
                     function.Parameters.Count == 0
                         ? $"try calling: {functionName}()"
-                        : $"expected: {functionName}({string.Join(", ", function.Parameters.Select(p => $"{p.Name}: {TypeToString(p.Type)}"))})"
+                        : $"expected: {functionName}({string.Join(", ", function.Parameters.Where(p => !p.IsVariadic).Select(p => $"{p.Name}: {TypeToString(p.Type)}"))})"
                 }
             );
             return function.ReturnType;
@@ -3956,9 +4010,17 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         if (context.argumentList() != null)
         {
             var arguments = context.argumentList().expression();
+
             for (int i = 0; i < arguments.Length; i++)
             {
                 var argType = Visit(arguments[i]);
+
+                // For variadic functions, skip type checking for args beyond non-variadic params
+                if (function.IsVariadic && i >= nonVariadicParamCount)
+                {
+                    continue; // Extra args for variadic function - no type checking needed
+                }
+
                 var paramType = function.Parameters[i].Type;
 
                 if (argType != null && !TypesCompatible(paramType, argType))
@@ -6111,9 +6173,10 @@ public record FunctionSymbol(
     SourceLocation Location,
     bool IsExtern = false,
     List<string>? GenericParameters = null,  // Generic type parameters (e.g., ["T"] for Option::FromPointer)
-    AttributeCollection? Attributes = null   // Function attributes (@inline, @test, etc.)
+    AttributeCollection? Attributes = null,  // Function attributes (@inline, @test, etc.)
+    bool IsVariadic = false  // true if function accepts variable number of arguments (...)
 );
-public record ParameterSymbol(string Name, IrType Type, SourceLocation Location);
+public record ParameterSymbol(string Name, IrType Type, SourceLocation Location, bool IsVariadic = false);
 public record VariableSymbol(
     string Name,
     IrType Type,

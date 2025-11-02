@@ -536,7 +536,8 @@ public static class BuildCommand
         foreach (var cFile in cFiles)
         {
             // Skip files in build output directories
-            if (!cFile.Contains("/target/") && !cFile.Contains("\\target\\"))
+            if (!cFile.Contains("/target/") && !cFile.Contains("\\target\\") &&
+                !cFile.Contains("/build/") && !cFile.Contains("\\build\\"))
             {
                 additionalCFiles.Add(cFile);
             }
@@ -585,6 +586,7 @@ public static class BuildCommand
             NdkPath = buildOptions.NdkPath ?? "/Users/barry/amiga-cc/NDK3.9",
             Verbose = buildOptions.Verbose,
             ProjectType = projectType,
+            ProjectVersion = project.Package.Version,  // Pass version for @library generation
             AdditionalLibraries = additionalLibraries,
             AdditionalCFiles = additionalCFiles,
             AdditionalAsmFiles = additionalAsmFiles

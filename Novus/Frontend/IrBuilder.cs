@@ -192,11 +192,23 @@ public class IrBuilder : NovusBaseVisitor<object?>
             // Parse parameters
             if (funcContext.parameterList() != null)
             {
-                foreach (var paramCtx in funcContext.parameterList().parameter())
+                var paramList = funcContext.parameterList();
+                foreach (var paramCtx in paramList.parameter())
                 {
                     var paramName = paramCtx.IDENTIFIER().GetText();
                     var paramType = ParseType(paramCtx.type());
                     function.Parameters.Add(new IrParameter(paramName, paramType));
+                }
+
+                // Add variadic parameter if present
+                if (paramList.variadicParameter() != null)
+                {
+                    var variadicCtx = paramList.variadicParameter();
+                    var variadicName = variadicCtx.IDENTIFIER().GetText();
+                    // Variadic parameters have opaque type for now (we'll handle type checking later)
+                    var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
+                    function.Parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
+                    function.IsVariadic = true;
                 }
             }
 
@@ -292,6 +304,17 @@ public class IrBuilder : NovusBaseVisitor<object?>
                         var paramName = paramCtx.IDENTIFIER().GetText();
                         var paramType = ParseType(paramCtx.type());
                         function.Parameters.Add(new IrParameter(paramName, paramType));
+                    }
+
+                    // Add variadic parameter if present
+                    if (paramList.variadicParameter() != null)
+                    {
+                        var variadicCtx = paramList.variadicParameter();
+                        var variadicName = variadicCtx.IDENTIFIER().GetText();
+                        // Variadic parameters have opaque type for now (we'll handle type checking later)
+                        var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
+                        function.Parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
+                        function.IsVariadic = true;
                     }
                 }
 
@@ -680,11 +703,23 @@ public class IrBuilder : NovusBaseVisitor<object?>
             // Parse parameters
             if (funcDecl.parameterList() != null)
             {
-                foreach (var paramCtx in funcDecl.parameterList().parameter())
+                var paramList = funcDecl.parameterList();
+                foreach (var paramCtx in paramList.parameter())
                 {
                     var paramName = paramCtx.IDENTIFIER().GetText();
                     var paramType = ParseType(paramCtx.type());
                     function.Parameters.Add(new IrParameter(paramName, paramType));
+                }
+
+                // Add variadic parameter if present
+                if (paramList.variadicParameter() != null)
+                {
+                    var variadicCtx = paramList.variadicParameter();
+                    var variadicName = variadicCtx.IDENTIFIER().GetText();
+                    // Variadic parameters have opaque type for now (we'll handle type checking later)
+                    var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
+                    function.Parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
+                    function.IsVariadic = true;
                 }
             }
 
@@ -708,6 +743,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             // Get only the base type name (Vec, not Vec<T>)
             var typeName = implDecl.typeName().IDENTIFIER(0).GetText();
+
+            // Skip if the type this impl is for is not in the import list
+            // This prevents importing methods for types we don't have access to
+            if (!namesToImport.Contains(typeName))
+            {
+                continue;
+            }
 
             foreach (var implItem in implDecl.implItem())
             {
@@ -786,6 +828,17 @@ public class IrBuilder : NovusBaseVisitor<object?>
                         var paramType = ParseType(paramCtx.type());
                         function.Parameters.Add(new IrParameter(paramName, paramType));
                     }
+
+                    // Add variadic parameter if present
+                    if (paramList.variadicParameter() != null)
+                    {
+                        var variadicCtx = paramList.variadicParameter();
+                        var variadicName = variadicCtx.IDENTIFIER().GetText();
+                        // Variadic parameters have opaque type for now (we'll handle type checking later)
+                        var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
+                        function.Parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
+                        function.IsVariadic = true;
+                    }
                 }
 
                 _module.AddFunction(function);
@@ -832,11 +885,23 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 // Parse parameters
                 if (funcDecl.parameterList() != null)
                 {
-                    foreach (var paramCtx in funcDecl.parameterList().parameter())
+                    var paramList = funcDecl.parameterList();
+                    foreach (var paramCtx in paramList.parameter())
                     {
                         var paramName = paramCtx.IDENTIFIER().GetText();
                         var paramType = ParseType(paramCtx.type());
                         function.Parameters.Add(new IrParameter(paramName, paramType));
+                    }
+
+                    // Add variadic parameter if present
+                    if (paramList.variadicParameter() != null)
+                    {
+                        var variadicCtx = paramList.variadicParameter();
+                        var variadicName = variadicCtx.IDENTIFIER().GetText();
+                        // Variadic parameters have opaque type for now (we'll handle type checking later)
+                        var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
+                        function.Parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
+                        function.IsVariadic = true;
                     }
                 }
 
@@ -996,6 +1061,17 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                 function.Parameters.Add(new IrParameter(paramName, paramType));
             }
+
+            // Add variadic parameter if present
+            if (paramList.variadicParameter() != null)
+            {
+                var variadicCtx = paramList.variadicParameter();
+                var variadicName = variadicCtx.IDENTIFIER().GetText();
+                // Variadic parameters have opaque type for now (we'll handle type checking later)
+                var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
+                function.Parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
+                function.IsVariadic = true;
+            }
         }
 
         _module.AddFunction(function);
@@ -1086,7 +1162,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var templateParams = new List<IrParameter>();
         if (funcDecl.parameterList() != null)
         {
-            foreach (var paramCtx in funcDecl.parameterList().parameter())
+            var paramList = funcDecl.parameterList();
+            foreach (var paramCtx in paramList.parameter())
             {
                 var paramName = paramCtx.IDENTIFIER().GetText();
                 var savedSubstitutions = _currentTypeSubstitutions;
@@ -1094,6 +1171,16 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 var paramType = ParseType(paramCtx.type());
                 _currentTypeSubstitutions = savedSubstitutions;
                 templateParams.Add(new IrParameter(paramName, paramType));
+            }
+
+            // Add variadic parameter if present (for template analysis)
+            if (paramList.variadicParameter() != null)
+            {
+                var variadicCtx = paramList.variadicParameter();
+                var variadicName = variadicCtx.IDENTIFIER().GetText();
+                // Variadic parameters have opaque type for now (we'll handle type checking later)
+                var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
+                templateParams.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
             }
         }
 
@@ -1156,12 +1243,24 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Parse parameters with substitutions
         if (funcDecl.parameterList() != null)
         {
-            foreach (var paramCtx in funcDecl.parameterList().parameter())
+            var paramList = funcDecl.parameterList();
+            foreach (var paramCtx in paramList.parameter())
             {
                 var paramName = paramCtx.IDENTIFIER().GetText();
                 var paramType = ParseType(paramCtx.type());
                 paramType = SubstituteGenericTypes(paramType, typeSubstitutions);
                 function.Parameters.Add(new IrParameter(paramName, paramType));
+            }
+
+            // Add variadic parameter if present
+            if (paramList.variadicParameter() != null)
+            {
+                var variadicCtx = paramList.variadicParameter();
+                var variadicName = variadicCtx.IDENTIFIER().GetText();
+                // Variadic parameters have opaque type for now (we'll handle type checking later)
+                var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
+                function.Parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
+                function.IsVariadic = true;
             }
         }
 
@@ -1388,7 +1487,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Parse parameters with substitutions
         if (funcDecl.parameterList() != null)
         {
-            foreach (var paramCtx in funcDecl.parameterList().parameter())
+            var paramList = funcDecl.parameterList();
+            foreach (var paramCtx in paramList.parameter())
             {
                 var paramName = paramCtx.IDENTIFIER().GetText();
                 var paramType = ParseType(paramCtx.type());
@@ -1397,6 +1497,17 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 paramType = SubstituteGenericTypes(paramType, typeSubstitutions);
 
                 function.Parameters.Add(new IrParameter(paramName, paramType));
+            }
+
+            // Add variadic parameter if present
+            if (paramList.variadicParameter() != null)
+            {
+                var variadicCtx = paramList.variadicParameter();
+                var variadicName = variadicCtx.IDENTIFIER().GetText();
+                // Variadic parameters have opaque type for now (we'll handle type checking later)
+                var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
+                function.Parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
+                function.IsVariadic = true;
             }
         }
 
@@ -1774,11 +1885,23 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Parse parameters
         if (context.parameterList() != null)
         {
-            foreach (var paramCtx in context.parameterList().parameter())
+            var paramList = context.parameterList();
+            foreach (var paramCtx in paramList.parameter())
             {
                 var paramName = paramCtx.IDENTIFIER().GetText();
                 var paramType = ParseType(paramCtx.type());
                 function.Parameters.Add(new IrParameter(paramName, paramType));
+            }
+
+            // Add variadic parameter if present
+            if (paramList.variadicParameter() != null)
+            {
+                var variadicCtx = paramList.variadicParameter();
+                var variadicName = variadicCtx.IDENTIFIER().GetText();
+                // Variadic parameters have opaque type for now (we'll handle type checking later)
+                var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
+                function.Parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
+                function.IsVariadic = true;
             }
         }
 
@@ -2839,11 +2962,22 @@ public class IrBuilder : NovusBaseVisitor<object?>
             var templateParams = new List<IrParameter>();
             if (template.Context.parameterList() != null)
             {
-                foreach (var paramCtx in template.Context.parameterList().parameter())
+                var paramList = template.Context.parameterList();
+                foreach (var paramCtx in paramList.parameter())
                 {
                     var paramName = paramCtx.IDENTIFIER().GetText();
                     var paramType = ParseType(paramCtx.type());
                     templateParams.Add(new IrParameter(paramName, paramType));
+                }
+
+                // Add variadic parameter if present (for template analysis)
+                if (paramList.variadicParameter() != null)
+                {
+                    var variadicCtx = paramList.variadicParameter();
+                    var variadicName = variadicCtx.IDENTIFIER().GetText();
+                    // Variadic parameters have opaque type for now (we'll handle type checking later)
+                    var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
+                    templateParams.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
                 }
             }
 
@@ -2947,9 +3081,16 @@ public class IrBuilder : NovusBaseVisitor<object?>
         if (funcExpr is IrFunctionRef funcRef)
         {
             // Validate argument count
-            if (arguments.Count != funcRef.Function.Parameters.Count)
+            var funcRefNonVariadicCount = funcRef.Function.Parameters.Count(p => !p.IsVariadic);
+            if (funcRef.Function.IsVariadic)
             {
-                throw new Exception($"Function '{funcRef.Function.Name}' expects {funcRef.Function.Parameters.Count} arguments, got {arguments.Count}");
+                if (arguments.Count < funcRefNonVariadicCount)
+                    throw new Exception($"Variadic function '{funcRef.Function.Name}' expects at least {funcRefNonVariadicCount} arguments, got {arguments.Count}");
+            }
+            else
+            {
+                if (arguments.Count != funcRef.Function.Parameters.Count)
+                    throw new Exception($"Function '{funcRef.Function.Name}' expects {funcRef.Function.Parameters.Count} arguments, got {arguments.Count}");
             }
 
             // Generate call instruction
@@ -3200,9 +3341,16 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         // Check argument count matches parameter count
-        if (arguments.Count != function.Parameters.Count)
+        var nonVariadicCount = function.Parameters.Count(p => !p.IsVariadic);
+        if (function.IsVariadic)
         {
-            throw new Exception($"Function {functionName} expects {function.Parameters.Count} arguments, got {arguments.Count}");
+            if (arguments.Count < nonVariadicCount)
+                throw new Exception($"Variadic function '{functionName}' expects at least {nonVariadicCount} arguments, got {arguments.Count}");
+        }
+        else
+        {
+            if (arguments.Count != function.Parameters.Count)
+                throw new Exception($"Function {functionName} expects {function.Parameters.Count} arguments, got {arguments.Count}");
         }
 
         // Insert implicit casts for arguments where needed
@@ -3567,9 +3715,16 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         // Validate argument count
-        if (arguments.Count != method.Parameters.Count)
+        var nonVariadicCount = method.Parameters.Count(p => !p.IsVariadic);
+        if (method.IsVariadic)
         {
-            throw new Exception($"Method {methodName} expects {method.Parameters.Count} arguments, got {arguments.Count}");
+            if (arguments.Count < nonVariadicCount)
+                throw new Exception($"Variadic method '{methodName}' expects at least {nonVariadicCount} arguments, got {arguments.Count}");
+        }
+        else
+        {
+            if (arguments.Count != method.Parameters.Count)
+                throw new Exception($"Method {methodName} expects {method.Parameters.Count} arguments, got {arguments.Count}");
         }
 
         // Create the call instruction

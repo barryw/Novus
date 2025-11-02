@@ -24,6 +24,10 @@ public class LibraryGenerator
     private readonly IrStructType? _libraryStruct;
     private readonly AttributeInfo? _libraryAttribute;
     private readonly List<LibraryFunction> _libraryFunctions;
+    private readonly string? _projectVersion;
+    private readonly int _versionMajor;
+    private readonly int _versionMinor;
+    private readonly int _versionPatch;
 
     /// <summary>
     /// Represents a library function with its metadata.
@@ -37,10 +41,27 @@ public class LibraryGenerator
         public bool IsLifecycleFunction { get; set; }
     }
 
-    public LibraryGenerator(IrModule module)
+    public LibraryGenerator(IrModule module, string? projectVersion = null)
     {
         _module = module;
         _libraryFunctions = new List<LibraryFunction>();
+        _projectVersion = projectVersion;
+
+        // Parse semver version (e.g., "1.0.0" -> major=1, minor=0, patch=0)
+        if (!string.IsNullOrEmpty(projectVersion))
+        {
+            var parts = projectVersion.Split('.');
+            _versionMajor = parts.Length > 0 && int.TryParse(parts[0], out var major) ? major : 1;
+            _versionMinor = parts.Length > 1 && int.TryParse(parts[1], out var minor) ? minor : 0;
+            _versionPatch = parts.Length > 2 && int.TryParse(parts[2], out var patch) ? patch : 0;
+        }
+        else
+        {
+            // Default to 1.0.0 if no version specified
+            _versionMajor = 1;
+            _versionMinor = 0;
+            _versionPatch = 0;
+        }
 
         // Find the struct with @library attribute
         foreach (var structType in module.Structs)
@@ -85,28 +106,28 @@ public class LibraryGenerator
     /// <summary>
     /// Get the library version from the @library attribute.
     /// </summary>
+    /// <summary>
+    /// Get the library major version (from project.toml version field).
+    /// </summary>
     public int GetLibraryVersion()
     {
-        if (_libraryAttribute == null)
-            return 0;
-
-        var version = _libraryAttribute.GetInt("version");
-        if (version == null)
-            throw new InvalidOperationException("@library attribute requires 'version' parameter");
-
-        return version.Value;
+        return _versionMajor;
     }
 
     /// <summary>
-    /// Get the library revision from the @library attribute.
+    /// Get the library minor version / revision (from project.toml version field).
     /// </summary>
     public int GetLibraryRevision()
     {
-        if (_libraryAttribute == null)
-            return 0;
+        return _versionMinor;
+    }
 
-        var revision = _libraryAttribute.GetInt("revision");
-        return revision ?? 0;
+    /// <summary>
+    /// Get the library patch version (from project.toml version field).
+    /// </summary>
+    public int GetLibraryPatch()
+    {
+        return _versionPatch;
     }
 
     /// <summary>
@@ -266,6 +287,8 @@ public class LibraryGenerator
                 sb.AppendLine($"extern void {func.CName}_Wrapper(void);");
             }
         }
+        // Add auto-generated GetLibraryVersion wrapper forward declaration
+        sb.AppendLine($"extern void {_libraryStruct.StructName}_GetLibraryVersion_Wrapper(void);");
         sb.AppendLine();
 
         // Function table - use wrapper functions for AmigaOS calling convention
@@ -283,6 +306,11 @@ public class LibraryGenerator
                 sb.AppendLine($"    (APTR){func.CName}_Wrapper,  // Offset {func.VectorOffset}");
             }
         }
+
+        // Add auto-generated GetLibraryVersion function to vector table
+        var nextOffset = _libraryFunctions.Count(f => !f.IsLifecycleFunction) * 6 + 30;
+        var getVersionName = $"{_libraryStruct.StructName}_GetLibraryVersion";
+        sb.AppendLine($"    (APTR){getVersionName}_Wrapper,  // Offset -{nextOffset}");
 
         sb.AppendLine("    (APTR)-1");
         sb.AppendLine("};");
@@ -401,6 +429,7 @@ public class LibraryGenerator
         sb.AppendLine($"struct {structName} {{");
         sb.AppendLine("    struct Library lib;");
         sb.AppendLine("    BPTR lib_SegList;  // Segment list for library unloading");
+        sb.AppendLine("    UWORD lib_Patch;   // Patch version for full semver support (major.minor.patch)");
 
         // Add custom fields from the @library struct
         foreach (var field in _libraryStruct.Fields)
@@ -457,8 +486,9 @@ public class LibraryGenerator
         sb.AppendLine($"    base->lib.lib_Revision = {GetLibraryRevision()};");
         sb.AppendLine("    base->lib.lib_IdString = (char*)LibIdString;");
         sb.AppendLine();
-        sb.AppendLine("    // Store segment list for later unloading");
+        sb.AppendLine("    // Store segment list and version info");
         sb.AppendLine("    base->lib_SegList = segList;");
+        sb.AppendLine($"    base->lib_Patch = {GetLibraryPatch()};  // Semver patch version");
         sb.AppendLine();
 
         // Initialize custom fields from @library struct
@@ -532,6 +562,27 @@ public class LibraryGenerator
             sb.AppendLine("}");
             sb.AppendLine();
         }
+
+        // Auto-generate GetLibraryVersion function for all libraries
+        sb.AppendLine("// ============================================================================");
+        sb.AppendLine("// Auto-Generated Version Function");
+        sb.AppendLine("// ============================================================================");
+        sb.AppendLine();
+        sb.AppendLine("// LibraryVersion struct (matches std::core::LibraryVersion)");
+        sb.AppendLine("struct LibraryVersion {");
+        sb.AppendLine("    uint16_t major;");
+        sb.AppendLine("    uint16_t minor;");
+        sb.AppendLine("    uint16_t patch;");
+        sb.AppendLine("};");
+        sb.AppendLine();
+        sb.AppendLine($"// Auto-generated function to get library version from {structName}");
+        sb.AppendLine($"// Uses pointer parameter to avoid VBCC struct return hidden pointer issues");
+        sb.AppendLine($"void {_libraryStruct.StructName}_GetLibraryVersion(struct {structName}* base, struct LibraryVersion* result) {{");
+        sb.AppendLine("    result->major = base->lib.lib_Version;");
+        sb.AppendLine("    result->minor = base->lib.lib_Revision;");
+        sb.AppendLine("    result->patch = base->lib_Patch;");
+        sb.AppendLine("}");
+        sb.AppendLine();
 
         return sb.ToString();
     }
@@ -617,6 +668,22 @@ public class LibraryGenerator
                 GenerateUserFunctionWrapper(sb, func);
             }
         }
+
+        // Generate wrapper for auto-generated GetLibraryVersion function
+        sb.AppendLine("; Auto-Generated Function Wrappers");
+        sb.AppendLine();
+        var getVersionName = $"{_libraryStruct.StructName}_GetLibraryVersion";
+        sb.AppendLine($"; Wrapper for {getVersionName}");
+        sb.AppendLine($"; Note: Caller passes result pointer in A0, library base in A6");
+        sb.AppendLine($"        XDEF    _{getVersionName}_Wrapper");
+        sb.AppendLine($"        XREF    _{getVersionName}");
+        sb.AppendLine($"_{getVersionName}_Wrapper:");
+        sb.AppendLine("        move.l  a0,-(sp)        ; Push result pointer from A0");
+        sb.AppendLine("        move.l  a6,-(sp)        ; Push library base as first parameter");
+        sb.AppendLine($"        jsr     _{getVersionName} ; Call C function");
+        sb.AppendLine("        addq.l  #8,sp           ; Clean up parameters (base + result pointer)");
+        sb.AppendLine("        rts                     ; No return value (result written via pointer)");
+        sb.AppendLine();
 
         sb.AppendLine("        END");
         sb.AppendLine();
@@ -966,6 +1033,10 @@ public class LibraryGenerator
                 }
             }
         }
+
+        // Add auto-generated GetLibraryVersion function
+        // This function takes a pointer parameter for the result (avoids struct return issues)
+        sb.AppendLine($"{_libraryStruct.StructName}_GetLibraryVersion(result)(a0)");
 
         sb.AppendLine("##end");
 

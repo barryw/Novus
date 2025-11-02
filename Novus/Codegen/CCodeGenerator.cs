@@ -21,6 +21,7 @@ public class CCodeGenerator
     private readonly HashSet<string> _requiredProtoHeaders;
     private readonly HashSet<string>? _explicitEntryPoints;
     private readonly bool _useSharedTypesHeader;
+    private readonly string? _projectVersion;
 
     // Track which variables have been declared in the current function
     // to avoid redeclaration errors when the same variable is assigned in multiple branches
@@ -108,7 +109,7 @@ public class CCodeGenerator
         return false;
     }
 
-    public CCodeGenerator(IrModule module, List<IrStringLiteral> stringLiterals, string cpuTarget, string fpuMode, HashSet<string>? explicitEntryPoints = null, bool useSharedTypesHeader = false)
+    public CCodeGenerator(IrModule module, List<IrStringLiteral> stringLiterals, string cpuTarget, string fpuMode, HashSet<string>? explicitEntryPoints = null, bool useSharedTypesHeader = false, string? projectVersion = null)
     {
         _module = module;
         _stringLiterals = stringLiterals;
@@ -117,6 +118,7 @@ public class CCodeGenerator
         _output = new StringBuilder();
         _requiredProtoHeaders = new HashSet<string>();
         _explicitEntryPoints = explicitEntryPoints;
+        _projectVersion = projectVersion;
         _useSharedTypesHeader = useSharedTypesHeader;
     }
 
@@ -541,7 +543,7 @@ public class CCodeGenerator
         var reachableFunctions = AnalyzeReachableFunctions();
 
         // Check if this is a library module
-        var libraryGen = new LibraryGenerator(_module);
+        var libraryGen = new LibraryGenerator(_module, _projectVersion);
 
         EmitHeaders();
         EmitTypedefs(reachableFunctions);
@@ -2124,7 +2126,7 @@ public class CCodeGenerator
             return "void";
 
         var parameters = function.Parameters
-            .Select(p => GetCParameter(p.Type, p.Name))
+            .Select(p => p.IsVariadic ? "..." : GetCParameter(p.Type, p.Name))
             .ToList();
 
         return string.Join(", ", parameters);

@@ -36,6 +36,36 @@ pub enum Result<T, E> {
     Err(E),
 }
 
+// LibraryVersion - semantic version information for AmigaOS libraries
+// Represents a version in major.minor.patch format (semver)
+pub struct LibraryVersion {
+    major: u16,
+    minor: u16,
+    patch: u16,
+}
+
+impl LibraryVersion {
+    /// Create a new LibraryVersion
+    pub fn new(major: u16, minor: u16, patch: u16) -> LibraryVersion {
+        return LibraryVersion { major: major, minor: minor, patch: patch }
+    }
+
+    /// Get the major version number
+    pub fn major(self) -> u16 {
+        return self.major
+    }
+
+    /// Get the minor version number
+    pub fn minor(self) -> u16 {
+        return self.minor
+    }
+
+    /// Get the patch version number
+    pub fn patch(self) -> u16 {
+        return self.patch
+    }
+}
+
 // Note: For AmigaOS error types, see std/error.novus
 // - DosError for file/disk operations
 // - ExecError for memory/tasks/signals

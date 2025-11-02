@@ -324,7 +324,7 @@ class Program
                 explicitEntryPoints = new HashSet<string> { "dos_last_error" };
             }
 
-            var codegen = new CCodeGenerator(module, irBuilder.StringLiterals, options.Cpu, options.Fpu, explicitEntryPoints);
+            var codegen = new CCodeGenerator(module, irBuilder.StringLiterals, options.Cpu, options.Fpu, explicitEntryPoints, false, options.ProjectVersion);
             var cCode = codegen.Generate();
 
             return (cCode, irBuilder.GetImportedModules());
@@ -508,7 +508,8 @@ class Program
                 options.Cpu,
                 options.Fpu,
                 explicitEntryPoints: null,
-                useSharedTypesHeader: true);
+                useSharedTypesHeader: true,
+                projectVersion: options.ProjectVersion);
 
             var mainCCode = mainCodegen.Generate();
             var mainCFile = Path.Combine(outputDir, $"{baseName}.c");
@@ -577,7 +578,8 @@ class Program
                     options.Cpu,
                     options.Fpu,
                     explicitEntryPoints: null,
-                    useSharedTypesHeader: true);
+                    useSharedTypesHeader: true,
+                    projectVersion: options.ProjectVersion);
 
                 // Generate one C file per function
                 foreach (var function in functions)
@@ -590,6 +592,20 @@ class Program
 
                 var displayName = isStdModule ? $"std::{moduleName}" : moduleName;
                 Console.WriteLine($"  → {displayName} ({functions.Count} function{(functions.Count > 1 ? "s" : "")})");
+            }
+
+            // Add runtime library C files
+            // These provide runtime support functions (like write() for formatted I/O)
+            var runtimeFiles = new[] { "novus_io.c" };
+            var hasRuntimeFiles = false;
+            foreach (var runtimeFile in runtimeFiles)
+            {
+                var runtimeSource = Path.Combine(compilerDir, "runtime", runtimeFile);
+                if (File.Exists(runtimeSource))
+                {
+                    cFiles.Add(runtimeSource);
+                    hasRuntimeFiles = true;
+                }
             }
 
             // Handle emit-only mode (just generate C files and stop)
@@ -667,6 +683,27 @@ class Program
                     // Don't add to objectFiles - this is for users to link against
                     Console.WriteLine($"  ✓ Assembled library stub: {baseName}_lib.o");
                 }
+
+                // Libraries that use runtime files (novus_io.c) need library base objects
+                // These provide the global _SysBase and _DOSBase symbols needed by VBCC's proto headers
+                if (hasRuntimeFiles)
+                {
+                    var libraryBases = new[] { "exec_base", "dos_base" };
+                    foreach (var baseFile in libraryBases)
+                    {
+                        var baseSource = Path.Combine(compilerDir, "stubs", $"{baseFile}.s");
+                        if (File.Exists(baseSource))
+                        {
+                            var baseObj = Path.Combine(outputDir, $"{baseFile}.o");
+                            if (!await toolchain.Assemble(baseSource, baseObj, assemblyCpu, false))
+                            {
+                                Console.WriteLine($"Failed to assemble {baseFile}");
+                                return 1;
+                            }
+                            objectFiles.Add(baseObj);
+                        }
+                    }
+                }
             }
 
             // Detect which library stubs are actually needed by scanning generated C code
@@ -677,6 +714,13 @@ class Program
             // Always include exec (needed for basic Amiga operations like AllocMem/FreeMem)
             requiredLibraries.Add("exec");
             Console.WriteLine("  ✓ Always including 'exec' library");
+
+            // Include DOS library when runtime files are present (they use Output, Write, etc.)
+            if (hasRuntimeFiles)
+            {
+                requiredLibraries.Add("dos");
+                Console.WriteLine("  ✓ Including 'dos' library (needed by runtime)");
+            }
 
             // Scan generated C files for DOS library function calls
             foreach (var cFile in cFiles)
@@ -699,8 +743,9 @@ class Program
 
             Console.WriteLine($"=== Required libraries: {string.Join(", ", requiredLibraries)} ===\n");
 
-            // If DOS library is needed, also assemble dos_base.o
-            if (requiredLibraries.Contains("dos"))
+            // If DOS library is needed by executables, assemble dos_base.o
+            // (Libraries handle this separately when runtime files are present)
+            if (requiredLibraries.Contains("dos") && !isLibrary && !isDevice)
             {
                 var dosBaseSource = Path.Combine(compilerDir, "stubs", "dos_base.s");
                 if (File.Exists(dosBaseSource))

@@ -21,17 +21,25 @@ OpenLib:
 .already_open:
         rts
 
-; uint32_t call_GreetingLibrary_GetVersion(void)
-        XDEF    _call_GreetingLibrary_GetVersion
-_call_GreetingLibrary_GetVersion:
+; LibraryVersion call_GreetingLibrary_GetLibraryVersion(void)
+; Returns LibraryVersion struct (6 bytes: major u16, minor u16, patch u16)
+; VBCC calling convention: Caller pushes hidden result pointer on stack as first parameter
+; This function receives that pointer in 4(sp) and passes it to the library in A0
+        XDEF    _call_GreetingLibrary_GetLibraryVersion
+_call_GreetingLibrary_GetLibraryVersion:
         jsr     OpenLib
         move.l  GreetingLibraryBase.l,a6  ; Absolute addressing
         cmp.l   #0,a6                      ; 68000-compatible test
         beq.s   .fail
-        jsr     -30(a6)                    ; Call GetVersion
-        rts
+        move.l  4(sp),a0                   ; A0 = result pointer passed by VBCC
+        jsr     -42(a6)                    ; Call GetLibraryVersion (writes to *a0)
+        rts                                ; Return (result already written via pointer)
 .fail:
-        moveq   #0,d0
+        ; On failure, zero out the result struct
+        move.l  4(sp),a0                   ; Get result pointer
+        clr.w   (a0)+                      ; major = 0
+        clr.w   (a0)+                      ; minor = 0
+        clr.w   (a0)+                      ; patch = 0
         rts
 
 ; int32_t call_GreetingLibrary_Add(int32_t a, int32_t b)
@@ -43,7 +51,7 @@ _call_GreetingLibrary_Add:
         beq.s   .fail
         move.l  4(sp),d0                   ; First param (a)
         move.l  8(sp),d1                   ; Second param (b)
-        jsr     -36(a6)                    ; Call Add
+        jsr     -30(a6)                    ; Call Add (offset -30)
         rts
 .fail:
         moveq   #0,d0
@@ -56,7 +64,7 @@ _call_GreetingLibrary_GetCallCount:
         move.l  GreetingLibraryBase.l,a6  ; Absolute addressing
         cmp.l   #0,a6                      ; 68000-compatible test
         beq.s   .fail
-        jsr     -42(a6)                    ; Call GetCallCount
+        jsr     -36(a6)                    ; Call GetCallCount (offset -36)
         rts
 .fail:
         moveq   #0,d0

@@ -14,11 +14,11 @@ namespace Novus.Frontend;
 /// </summary>
 public class AngleBracketTokenStream : CommonTokenStream
 {
-    // Token type constants (from Novus.tokens file)
-    private const int TOKEN_LESS = 16;      // '<'
-    private const int TOKEN_GREATER = 17;   // '>'
-    private const int TOKEN_LSHIFT = 42;    // '<<'
-    private const int TOKEN_RSHIFT = 43;    // '>>'
+    // Token type constants - dynamically determined from lexer vocabulary
+    private readonly int TOKEN_LESS;
+    private readonly int TOKEN_GREATER;
+    private readonly int TOKEN_LSHIFT;
+    private readonly int TOKEN_RSHIFT;
 
     private int _angleBracketDepth = 0;
     private readonly Queue<IToken> _splitTokenBuffer = new();
@@ -26,6 +26,42 @@ public class AngleBracketTokenStream : CommonTokenStream
 
     public AngleBracketTokenStream(ITokenSource tokenSource) : base(tokenSource)
     {
+        // Dynamically find token types from the lexer's vocabulary
+        // This ensures we always have the correct token types even when the grammar changes
+        // ITokenSource doesn't expose Vocabulary, but Lexer does
+        var vocabulary = (tokenSource as Lexer)?.Vocabulary;
+
+        if (vocabulary == null)
+        {
+            throw new InvalidOperationException("TokenSource must be a Lexer with a Vocabulary");
+        }
+
+        TOKEN_LESS = FindTokenType(vocabulary, "<");
+        TOKEN_GREATER = FindTokenType(vocabulary, ">");
+        TOKEN_LSHIFT = FindTokenType(vocabulary, "<<");
+        TOKEN_RSHIFT = FindTokenType(vocabulary, ">>");
+
+        if (TOKEN_LESS == -1 || TOKEN_GREATER == -1 || TOKEN_LSHIFT == -1 || TOKEN_RSHIFT == -1)
+        {
+            throw new InvalidOperationException(
+                $"Failed to find required token types in lexer vocabulary: " +
+                $"< = {TOKEN_LESS}, > = {TOKEN_GREATER}, << = {TOKEN_LSHIFT}, >> = {TOKEN_RSHIFT}");
+        }
+    }
+
+    private static int FindTokenType(IVocabulary vocabulary, string literalName)
+    {
+        // Search through all token types to find the one matching our literal
+        // We need to iterate a reasonable range since IVocabulary doesn't expose MaxTokenType
+        for (int i = 0; i < 200; i++)  // Should be enough for any reasonable grammar
+        {
+            var literal = vocabulary.GetLiteralName(i);
+            if (literal != null && literal == $"'{literalName}'")
+            {
+                return i;
+            }
+        }
+        return -1;
     }
 
     public override IToken LT(int k)

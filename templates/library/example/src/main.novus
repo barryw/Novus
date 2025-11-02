@@ -3,18 +3,22 @@
 // This calls the library functions to demonstrate the complete workflow.
 // The library is automatically opened at startup when linked with greeting_lib.o.
 
+from std::core import LibraryVersion
+from std::io import write
+
 // Declare external C wrapper functions
-// These are provided by greeting_calls.c which uses VBCC inline pragmas
-extern fn call_GreetingLibrary_GetVersion() -> u32
+// These are provided by greeting_calls.s which uses assembly wrappers
+extern fn call_GreetingLibrary_GetLibraryVersion() -> LibraryVersion
 extern fn call_GreetingLibrary_Add(a: i32, b: i32) -> i32
 extern fn call_GreetingLibrary_GetCallCount() -> u32
 
 pub fn main() -> i32 {
-    // Call library functions
-    let version: u32 = call_GreetingLibrary_GetVersion()
-    let sum: i32 = call_GreetingLibrary_Add(5, 3)
-    let count: u32 = call_GreetingLibrary_GetCallCount()
+    // Get library version
+    let version: LibraryVersion = call_GreetingLibrary_GetLibraryVersion()
 
-    // Return the sum as exit code (should be 8)
-    return sum
+    // Print version using write() with format specifiers
+    let msg: String = "greeting.library version: %ld.%ld.%ld\n"
+    write(msg.ptr, version.major(), version.minor(), version.patch())
+
+    return 0
 }
