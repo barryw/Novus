@@ -370,6 +370,7 @@ public class LibraryGenerator
 
         // ROMTag structure
         sb.AppendLine("// ROMTag structure (non-const so relocations are applied correctly)");
+        sb.AppendLine("// VBCC automatically aligns struct Resident to LONG (4-byte) boundary");
         sb.AppendLine("struct Resident RomTag = {");
         sb.AppendLine("    RTC_MATCHWORD,       // Magic word");
         sb.AppendLine("    &RomTag,             // Pointer to itself");
@@ -417,7 +418,7 @@ public class LibraryGenerator
             IrIntType intType => intType.SizeInBytes,
             IrPointerType => 4, // 32-bit pointers on 68k
             IrBoolType => 1,
-            _ => 4 // Default to 4 bytes for unknown types
+            _ => throw new InvalidOperationException($"Cannot determine field size for unsupported IR type: {type.GetType().Name}")
         };
     }
 
@@ -433,7 +434,7 @@ public class LibraryGenerator
                 : $"uint{intType.SizeInBytes * 8}_t",
             IrBoolType => "bool",
             IrPointerType ptrType => $"{GetCType(ptrType.PointeeType)}*",
-            _ => "void*"
+            _ => throw new InvalidOperationException($"Cannot generate C type for unsupported IR type: {type.GetType().Name}")
         };
     }
 
@@ -518,7 +519,7 @@ public class LibraryGenerator
         sb.AppendLine();
 
         // LibInit - always generate this as it's required
-        // AutoInit calls with: D0=base, A0=segList, A6=SysBase (per NDK examples)
+        // AutoInit calls with: D0=base, A0=segList, A6=SysBase
         sb.AppendLine($"struct Library* LibInit(__reg(\"d0\") struct {structName}* base, __reg(\"a0\") BPTR segList, __reg(\"a6\") struct ExecBase* sysBase) {{");
         sb.AppendLine("    // Initialize library base fields");
         sb.AppendLine("    // Node fields (ln_Succ and ln_Pred set by Exec's AddLibrary)");
@@ -1264,7 +1265,7 @@ public class LibraryGenerator
             sb.AppendLine($"{callName}:");
             sb.AppendLine("        jsr     OpenLib");
             sb.AppendLine($"        move.l  {baseName}.l,a6      ; Load library base");
-            sb.AppendLine("        cmp.l   #0,a6                    ; Check if library opened");
+            sb.AppendLine("        tst.l   a6                       ; Check if library opened");
             sb.AppendLine("        beq.s   .fail");
 
             // Handle struct return (VBCC passes hidden result pointer as first param on stack)
@@ -1321,7 +1322,7 @@ public class LibraryGenerator
             sb.AppendLine($"_call_{_libraryStruct.StructName}_{autoFunc.Name}:");
             sb.AppendLine("        jsr     OpenLib");
             sb.AppendLine($"        move.l  {baseName}.l,a6      ; Load library base");
-            sb.AppendLine("        cmp.l   #0,a6                    ; Check if library opened");
+            sb.AppendLine("        tst.l   a6                       ; Check if library opened");
             sb.AppendLine("        beq.s   .fail");
 
             if (autoFunc.ReturnsStruct)

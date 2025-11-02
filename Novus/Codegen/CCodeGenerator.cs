@@ -1949,23 +1949,24 @@ public class CCodeGenerator
         }
 
         // For enums WITH associated data, use compound literal
-        var result = $"({enumName}){{ .tag = {enumName}_{enumValue.VariantName}";
+        var sb = new StringBuilder();
+        sb.Append($"({enumName}){{ .tag = {enumName}_{enumValue.VariantName}");
 
         if (enumValue.AssociatedValues.Count > 0)
         {
-            result += ", .data = { ." + enumValue.VariantName + " = {";
+            sb.Append($", .data = {{ .{enumValue.VariantName} = {{");
             for (int i = 0; i < enumValue.AssociatedValues.Count; i++)
             {
                 var assocValue = EmitValue(enumValue.AssociatedValues[i]);
-                result += $" ._{i} = {assocValue}";
+                sb.Append($" ._{i} = {assocValue}");
                 if (i < enumValue.AssociatedValues.Count - 1)
-                    result += ",";
+                    sb.Append(",");
             }
-            result += " } }";
+            sb.Append(" } }");
         }
 
-        result += " }";
-        return result;
+        sb.Append(" }");
+        return sb.ToString();
     }
 
     private string EmitFloatConstant(IrFloatConstant floatConst)

@@ -33,7 +33,19 @@
       "Bash(/Users/barry/amiga-cc/vbcc/bin/vobjdump:*)",
       "Bash(./Novus/bin/Debug/net9.0/osx-arm64/publish/Novus build:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(/opt/amiga/vbcc/bin/vobjdump:*)",
+      "Bash(Novus/bin/Debug/net9.0/Novus build:*)",
+      "Bash(./Novus/bin/Release/net9.0/Novus build:*)",
+      "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Release/net9.0/Novus build:*)",
+      "Bash(VAMOS_LIBS=\"/Users/barry/RiderProjects/Novus/templates/library/library/build\" vamos:*)",
+      "Bash(vamos:*)",
+      "Bash(git rm:*)",
+      "Bash(VAMOS_LIBS=\"./target/debug/libs\" vamos target/debug/bins/greeting-example:*)",
+      "Bash(VAMOS_LIBS=\"./library/build\" vamos:*)",
+      "WebFetch(domain:wiki.amigaos.net)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:franke.ms)"
     ],
     "deny": [],
     "ask": []

@@ -25,11 +25,13 @@ public class CompilerOptions
     [Option("emit-ir", Required = false, HelpText = "Emit IR (intermediate representation) to stdout")]
     public bool EmitIr { get; set; }
 
-    [Option("vbcc-path", Required = false, HelpText = "Path to VBCC installation (default: /Users/barry/amiga-cc/vbcc)")]
-    public string VbccPath { get; set; } = "/Users/barry/amiga-cc/vbcc";
+    [Option("vbcc-path", Required = false, HelpText = "Path to VBCC installation (default: $VBCC or ~/amiga-cc/vbcc)")]
+    public string VbccPath { get; set; } = Environment.GetEnvironmentVariable("VBCC")
+        ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "amiga-cc", "vbcc");
 
-    [Option("ndk-path", Required = false, HelpText = "Path to NDK installation (default: /Users/barry/amiga-cc/NDK3.9)")]
-    public string NdkPath { get; set; } = "/Users/barry/amiga-cc/NDK3.9";
+    [Option("ndk-path", Required = false, HelpText = "Path to NDK installation (default: $NDK or ~/amiga-cc/NDK3.9)")]
+    public string NdkPath { get; set; } = Environment.GetEnvironmentVariable("NDK")
+        ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "amiga-cc", "NDK3.9");
 
     [Option('O', "optimize", Required = false, Default = 0, HelpText = "Optimization level (0-3)")]
     public int OptimizationLevel { get; set; } = 0;
