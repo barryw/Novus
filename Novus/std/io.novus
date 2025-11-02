@@ -1,7 +1,9 @@
 // io.novus - High-level I/O for Amiga DOS
 // Namespace: std::io
 
-// Printf-style formatted output using RawDoFmt
+from std::ffi::dos import VPrintf
+
+// Printf-style formatted output using AmigaOS VPrintf
 // Format string uses AmigaOS RawDoFmt syntax:
 //   %d   - signed decimal (16-bit word)
 //   %ld  - signed decimal (32-bit long)
@@ -16,5 +18,20 @@
 // Note: All numeric args are passed as 32-bit values on the stack,
 // so use 'l' prefix for proper formatting (e.g., "%ld" not "%d")
 //
-// Implemented in novus_io.c runtime library
+// Variadic version - implemented in novus_io.s runtime (forwards to VPrintf)
 extern fn write(format: *u8, ...args) -> i32
+
+// Array-based version - pure Novus implementation
+// Use this when building args programmatically or calling from pure Novus code
+//
+// Example:
+//   let args: [3]i32 = [version.major() as i32, version.minor() as i32, version.patch() as i32]
+//   write_array("Version: %ld.%ld.%ld\n", &args)
+//
+pub fn write_array(format: *u8, args: *i32) -> i32 {
+    var result: i32 = 0
+    unsafe {
+        result = VPrintf(format, args)
+    }
+    return result
+}

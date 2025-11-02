@@ -594,19 +594,8 @@ class Program
                 Console.WriteLine($"  → {displayName} ({functions.Count} function{(functions.Count > 1 ? "s" : "")})");
             }
 
-            // Add runtime library C files
-            // These provide runtime support functions (like write() for formatted I/O)
-            var runtimeFiles = new[] { "novus_io.c" };
-            var hasRuntimeFiles = false;
-            foreach (var runtimeFile in runtimeFiles)
-            {
-                var runtimeSource = Path.Combine(compilerDir, "runtime", runtimeFile);
-                if (File.Exists(runtimeSource))
-                {
-                    cFiles.Add(runtimeSource);
-                    hasRuntimeFiles = true;
-                }
-            }
+            // Runtime library has been moved to assembly (novus_io.s) - handled below with core files
+            // No C runtime files to add
 
             // Handle emit-only mode (just generate C files and stop)
             if (options.EmitAsmOnly)
@@ -634,8 +623,8 @@ class Program
 
             if (!isLibrary && !isDevice)
             {
-                // Only executables need startup code and SysBase
-                var coreFiles = new[] { "novus_startup", "exec_base" };
+                // Only executables need startup code and library initialization
+                var coreFiles = new[] { "novus_startup", "library_bases", "dos_init" };
                 foreach (var coreFile in coreFiles)
                 {
                     var coreSource = Path.Combine(compilerDir, "stubs", $"{coreFile}.s");
@@ -649,6 +638,23 @@ class Program
                         }
                         objectFiles.Add(coreObj);
                     }
+                }
+            }
+
+            // Assemble runtime library files (needed for all project types)
+            var runtimeFiles = new[] { "novus_io" };
+            foreach (var runtimeFile in runtimeFiles)
+            {
+                var runtimeSource = Path.Combine(compilerDir, "runtime", $"{runtimeFile}.s");
+                if (File.Exists(runtimeSource))
+                {
+                    var runtimeObj = Path.Combine(outputDir, $"{runtimeFile}.o");
+                    if (!await toolchain.Assemble(runtimeSource, runtimeObj, assemblyCpu, false))
+                    {
+                        Console.WriteLine($"Failed to assemble {runtimeFile}");
+                        return 1;
+                    }
+                    objectFiles.Add(runtimeObj);
                 }
             }
 
@@ -684,9 +690,9 @@ class Program
                     Console.WriteLine($"  ✓ Assembled library stub: {baseName}_lib.o");
                 }
 
-                // Libraries that use runtime files (novus_io.c) need library base objects
-                // These provide the global _SysBase and _DOSBase symbols needed by VBCC's proto headers
-                if (hasRuntimeFiles)
+                // Libraries need library base objects for AmigaOS calls
+                // These provide the global _SysBase and _DOSBase symbols
+                if (true) // Always include for libraries
                 {
                     var libraryBases = new[] { "exec_base", "dos_base" };
                     foreach (var baseFile in libraryBases)
@@ -715,12 +721,9 @@ class Program
             requiredLibraries.Add("exec");
             Console.WriteLine("  ✓ Always including 'exec' library");
 
-            // Include DOS library when runtime files are present (they use Output, Write, etc.)
-            if (hasRuntimeFiles)
-            {
-                requiredLibraries.Add("dos");
-                Console.WriteLine("  ✓ Including 'dos' library (needed by runtime)");
-            }
+            // Include DOS library (needed by novus_io.s runtime for VPrintf)
+            requiredLibraries.Add("dos");
+            Console.WriteLine("  ✓ Including 'dos' library (needed by runtime)");
 
             // Scan generated C files for DOS library function calls
             foreach (var cFile in cFiles)

@@ -297,39 +297,8 @@ public class VbccToolchain
 
                 objFiles.Add(stubsObj);
 
-                // If using DOS library, also include dos_base.o and dos_init.o
-                if (library == "dos")
-                {
-                    // Add dos_base.o (provides _DOSBase storage)
-                    var dosBaseSource = Path.Combine(compilerDir, "stubs", "dos_base.s");
-                    if (File.Exists(dosBaseSource))
-                    {
-                        var dosBaseObj = Path.Combine(outputPath, "dos_base.o");
-
-                        if (!await Assemble(dosBaseSource, dosBaseObj, assemblyCpu, false))
-                        {
-                            Console.WriteLine("dos_base assembly failed");
-                            return false;
-                        }
-
-                        objFiles.Add(dosBaseObj);
-                    }
-
-                    // Add dos_init.o (automatic DOSBase initialization)
-                    var dosInitSource = Path.Combine(compilerDir, "stubs", "dos_init.s");
-                    if (File.Exists(dosInitSource))
-                    {
-                        var dosInitObj = Path.Combine(outputPath, "dos_init.o");
-
-                        if (!await Assemble(dosInitSource, dosInitObj, assemblyCpu, false))
-                        {
-                            Console.WriteLine("dos_init assembly failed");
-                            return false;
-                        }
-
-                        objFiles.Add(dosInitObj);
-                    }
-                }
+                // NOTE: dos_base.o and dos_init.o are now added explicitly in Program.cs
+                // as part of the core runtime files for all executables
             }
             else
             {
@@ -489,39 +458,8 @@ public class VbccToolchain
 
                 objFiles.Add(stubsObj);
 
-                // If using DOS library, also include dos_base.o and dos_init.o
-                if (library == "dos")
-                {
-                    // Add dos_base.o (provides _DOSBase storage)
-                    var dosBaseSource = Path.Combine(compilerDir, "stubs", "dos_base.s");
-                    if (File.Exists(dosBaseSource))
-                    {
-                        var dosBaseObj = Path.Combine(outputPath, "dos_base.o");
-
-                        if (!await Assemble(dosBaseSource, dosBaseObj, assemblyCpu, false))
-                        {
-                            Console.WriteLine("dos_base assembly failed");
-                            return false;
-                        }
-
-                        objFiles.Add(dosBaseObj);
-                    }
-
-                    // Add dos_init.o (automatic DOSBase initialization)
-                    var dosInitSource = Path.Combine(compilerDir, "stubs", "dos_init.s");
-                    if (File.Exists(dosInitSource))
-                    {
-                        var dosInitObj = Path.Combine(outputPath, "dos_init.o");
-
-                        if (!await Assemble(dosInitSource, dosInitObj, assemblyCpu, false))
-                        {
-                            Console.WriteLine("dos_init assembly failed");
-                            return false;
-                        }
-
-                        objFiles.Add(dosInitObj);
-                    }
-                }
+                // NOTE: dos_base.o and dos_init.o are now added explicitly in Program.cs
+                // as part of the core runtime files for all executables
             }
             else
             {
