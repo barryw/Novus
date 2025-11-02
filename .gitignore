@@ -87,3 +87,7 @@ novus_types.h
 
 # Test build configs (generated, not source)
 /Novus.Tests/Examples/novus.toml
+
+# Template build outputs
+templates/**/target/
+templates/**/build/

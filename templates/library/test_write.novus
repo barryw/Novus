@@ -1,8 +1,0 @@
-// Test write() function only - no library calls
-from std::io import write
-
-pub fn main() -> i32 {
-    let msg: String = "Testing write function: %ld\\n"
-    write(msg.ptr, 42)
-    return 0
-}

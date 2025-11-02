@@ -555,6 +555,12 @@ class Program
                     var stubAsmFile = Path.Combine(outputDir, $"{baseName}_lib.s");
                     await File.WriteAllTextAsync(stubAsmFile, stubAsm);
                     Console.WriteLine($"  → {Path.GetFileName(stubAsmFile)} (library stub)");
+
+                    // Generate client call stubs for calling the library from other programs
+                    var callStubAsm = libraryGen.GenerateClientCallStubs();
+                    var callStubFile = Path.Combine(outputDir, $"{baseName}_calls.s");
+                    await File.WriteAllTextAsync(callStubFile, callStubAsm);
+                    Console.WriteLine($"  → {Path.GetFileName(callStubFile)} (client call stubs)");
                 }
             }
 
@@ -746,22 +752,10 @@ class Program
 
             Console.WriteLine($"=== Required libraries: {string.Join(", ", requiredLibraries)} ===\n");
 
-            // If DOS library is needed by executables, assemble dos_base.o
-            // (Libraries handle this separately when runtime files are present)
-            if (requiredLibraries.Contains("dos") && !isLibrary && !isDevice)
-            {
-                var dosBaseSource = Path.Combine(compilerDir, "stubs", "dos_base.s");
-                if (File.Exists(dosBaseSource))
-                {
-                    var dosBaseObj = Path.Combine(outputDir, "dos_base.o");
-                    if (!await toolchain.Assemble(dosBaseSource, dosBaseObj, assemblyCpu, false))
-                    {
-                        Console.WriteLine("Failed to assemble dos_base");
-                        return 1;
-                    }
-                    objectFiles.Add(dosBaseObj);
-                }
-            }
+            // NOTE: Library bases are handled differently for different project types:
+            // - Executables: Use library_bases.s (provides both _SysBase and _DOSBase) - assembled at line 627
+            // - Libraries: Use exec_base.s and dos_base.s separately - assembled at line 697
+            // No additional dos_base assembly needed here
 
             // Assemble library stubs (skip for libraries/devices - they handle SysBase differently)
             if (!isLibrary && !isDevice)
@@ -779,21 +773,8 @@ class Program
                     }
                     objectFiles.Add(stubObj);
 
-                    // If using DOS library, also include dos_init.o for automatic DOSBase initialization
-                    if (stub == "dos")
-                    {
-                        var dosInitSource = Path.Combine(compilerDir, "stubs", "dos_init.s");
-                        if (File.Exists(dosInitSource))
-                        {
-                            var dosInitObj = Path.Combine(outputDir, "dos_init.o");
-                            if (!await toolchain.Assemble(dosInitSource, dosInitObj, assemblyCpu, false))
-                            {
-                                Console.WriteLine("Failed to assemble dos_init");
-                                return 1;
-                            }
-                            objectFiles.Add(dosInitObj);
-                        }
-                    }
+                    // NOTE: dos_init.o is already assembled at line 627 for executables
+                    // No need to assemble it again here
                 }
                 }
             }
@@ -813,6 +794,13 @@ class Program
                 foreach (var asmFile in options.AdditionalAsmFiles)
                 {
                     var asmFileName = Path.GetFileName(asmFile);
+
+                    // Skip wrapper files - they're already assembled and added above
+                    if (asmFileName.EndsWith("_wrappers.s") || asmFileName.EndsWith("_lib.s"))
+                    {
+                        continue;
+                    }
+
                     var objFile = Path.Combine(outputDir, Path.GetFileNameWithoutExtension(asmFile) + ".o");
 
                     Console.WriteLine($"  → {asmFileName}");
