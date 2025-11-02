@@ -20,6 +20,8 @@ public class IrModule
     public List<IrFunction> Functions { get; } = new();
     public List<IrEnumType> Enums { get; } = new();
     public List<IrStructType> Structs { get; } = new();
+    public List<IrTrait> Traits { get; } = new();
+    public List<IrTraitImpl> TraitImpls { get; } = new();
     public Dictionary<string, IrMonomorphizedType> MonomorphizedTypes { get; } = new();
 
     /// <summary>
@@ -57,6 +59,26 @@ public class IrModule
     public IrEnumType? GetEnum(string name)
     {
         return Enums.FirstOrDefault(e => e.EnumName == name);
+    }
+
+    public void AddTrait(IrTrait trait)
+    {
+        Traits.Add(trait);
+    }
+
+    public IrTrait? GetTrait(string name)
+    {
+        return Traits.FirstOrDefault(t => t.TraitName == name);
+    }
+
+    public void AddTraitImpl(IrTraitImpl traitImpl)
+    {
+        TraitImpls.Add(traitImpl);
+    }
+
+    public IrTraitImpl? GetTraitImpl(string traitName, string typeName)
+    {
+        return TraitImpls.FirstOrDefault(ti => ti.TraitName == traitName && ti.TypeName == typeName);
     }
 }
 

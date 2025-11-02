@@ -45,7 +45,20 @@
       "Bash(VAMOS_LIBS=\"./library/build\" vamos:*)",
       "WebFetch(domain:wiki.amigaos.net)",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:franke.ms)"
+      "WebFetch(domain:franke.ms)",
+      "Bash(./Novus/bin/Debug/net9.0/Novus compile:*)",
+      "Bash(VAMOS_LIBS=\"./stdlib/target/debug/libs\" vamos test_ternary_simple:*)",
+      "Bash(VAMOS_LIBS=\"/Users/barry/Emulation/Amiga/A4000-DH0/LIBS\" vamos test_ternary_simple:*)",
+      "Bash(echo:*)",
+      "Bash(VAMOS_LIBS=\"/Users/barry/Emulation/Amiga/A4000-DH0/LIBS\" vamos test_ternary:*)",
+      "Bash(VAMOS_LIBS=\"/Users/barry/Emulation/Amiga/A4000-DH0/LIBS\" vamos test_ternary_return:*)",
+      "Bash(./bin/Debug/net9.0/Novus:*)",
+      "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Debug/net9.0/Novus compile:*)",
+      "Bash(VAMOS_LIBS=\"/Users/barry/Emulation/Amiga/A4000-DH0/LIBS\" vamos test_generic_simple:*)",
+      "Bash(VAMOS_LIBS=\"/Users/barry/Emulation/Amiga/A4000-DH0/LIBS\" vamos test_generic_multi:*)",
+      "Bash(VAMOS_LIBS=\"/Users/barry/Emulation/Amiga/A4000-DH0/LIBS\" vamos test_generic_struct:*)",
+      "Bash(tr:*)",
+      "Bash(./Novus/bin/Debug/net9.0/Novus:*)"
     ],
     "deny": [],
     "ask": []

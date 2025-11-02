@@ -24,6 +24,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     private readonly Dictionary<string, VariableSymbol> _globalVariables = new(); // Module-level extern vars
     private readonly Dictionary<string, IrStructType> _structs = new();
     private readonly Dictionary<string, IrEnumType> _enums = new();
+    private readonly Dictionary<string, IrTrait> _traits = new();
     private readonly Dictionary<string, ConstantSymbol> _constants = new();
     private readonly Dictionary<string, string> _importedNames = new(); // Maps imported name -> module name
     private readonly HashSet<string> _importedModules = new(); // Track which modules have been imported (by path)
@@ -112,6 +113,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         foreach (var structDecl in context.structDeclaration())
         {
             RegisterStruct(structDecl);
+        }
+
+        // 3.5 pass: collect all trait declarations
+        foreach (var traitDecl in context.traitDeclaration())
+        {
+            RegisterTrait(traitDecl);
         }
 
         // Fourth pass: collect all extern variable declarations
@@ -780,12 +787,38 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var typeNames = context.typeName();
         var implTypeName = typeNames[typeNames.Length - 1].IDENTIFIER(0).GetText();
 
+        // Check if this is a trait implementation (has KW_FOR)
+        bool isTraitImpl = context.KW_FOR() != null;
+        string? traitName = null;
+
+        if (isTraitImpl)
+        {
+            // This is "impl Trait for Type"
+            traitName = typeNames[0].IDENTIFIER(0).GetText();
+
+            // Validate that the trait exists
+            if (!_traits.ContainsKey(traitName))
+            {
+                var location = SourceLocationHelper.FromToken(typeNames[0].IDENTIFIER(0).Symbol, _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0032",
+                    $"trait '{traitName}' not found",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        $"ensure the trait '{traitName}' is defined or imported"
+                    }
+                );
+                return;
+            }
+        }
+
         // Register each method in the impl block
         foreach (var item in context.implItem())
         {
             if (item.functionDeclaration() != null)
             {
-                RegisterImplMethod(item.functionDeclaration(), context, implTypeName, genericParams);
+                RegisterImplMethod(item.functionDeclaration(), context, implTypeName, genericParams, traitName);
             }
         }
 
@@ -796,14 +829,23 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
     }
 
-    private void RegisterImplMethod(NovusParser.FunctionDeclarationContext context, NovusParser.ImplDeclarationContext implContext, string implTypeName, List<string> genericParams)
+    private void RegisterImplMethod(NovusParser.FunctionDeclarationContext context, NovusParser.ImplDeclarationContext implContext, string implTypeName, List<string> genericParams, string? traitName = null)
     {
         var methodName = context.IDENTIFIER().GetText();
         var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
 
-        // Generate mangled name for the method: TypeName::methodName
-        // For generic types, we'll need monomorphization later
-        var mangledName = $"{implTypeName}::{methodName}";
+        // Generate mangled name for the method
+        // For trait impls: TypeName_TraitName_methodName
+        // For inherent impls: TypeName::methodName
+        string mangledName;
+        if (traitName != null)
+        {
+            mangledName = $"{implTypeName}_{traitName}_{methodName}";
+        }
+        else
+        {
+            mangledName = $"{implTypeName}::{methodName}";
+        }
 
         // Check for duplicate function names
         if (_functions.ContainsKey(mangledName))
@@ -1036,6 +1078,123 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         _enums[name] = enumType;
+
+        // Clear generic param scope
+        _genericParams.Clear();
+    }
+
+    private void RegisterTrait(NovusParser.TraitDeclarationContext context)
+    {
+        var name = context.IDENTIFIER().GetText();
+        var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+
+        // Parse attributes
+        var attributes = ParseAttributes(context.attribute());
+
+        // Check for duplicate trait names
+        if (_traits.ContainsKey(name))
+        {
+            _diagnostics.ReportError(
+                "E0031",
+                $"trait '{name}' is defined multiple times",
+                location,
+                helpTexts: new List<string>
+                {
+                    "consider renaming one of the traits"
+                }
+            );
+            return;
+        }
+
+        // Handle generic parameters if present
+        var genericParams = new List<string>();
+        if (context.genericParams() != null)
+        {
+            foreach (var paramId in context.genericParams().IDENTIFIER())
+            {
+                var paramName = paramId.GetText();
+                genericParams.Add(paramName);
+
+                // Add to generic param scope for method signature parsing
+                _genericParams[paramName] = new IrGenericType(paramName);
+            }
+        }
+
+        // Parse trait method signatures
+        var methods = new List<IrTraitMethod>();
+
+        foreach (var itemCtx in context.traitItem())
+        {
+            var funcSig = itemCtx.functionSignature();
+            if (funcSig != null)
+            {
+                var methodName = funcSig.IDENTIFIER().GetText();
+
+                // Parse method generic parameters (if any)
+                var methodGenericParams = new List<string>();
+                if (funcSig.genericParams() != null)
+                {
+                    foreach (var paramId in funcSig.genericParams().IDENTIFIER())
+                    {
+                        var paramName = paramId.GetText();
+                        methodGenericParams.Add(paramName);
+                        _genericParams[paramName] = new IrGenericType(paramName);
+                    }
+                }
+
+                // Parse parameters
+                var parameters = new List<IrParameter>();
+                if (funcSig.parameterList() != null)
+                {
+                    var paramList = funcSig.parameterList();
+
+                    foreach (var paramCtx in paramList.parameter())
+                    {
+                        var paramName = paramCtx.IDENTIFIER().GetText();
+                        var paramType = ParseType(paramCtx.type());
+                        parameters.Add(new IrParameter(paramName, paramType));
+                    }
+
+                    // Handle variadic parameter if present
+                    if (paramList.variadicParameter() != null)
+                    {
+                        var variadicCtx = paramList.variadicParameter();
+                        var variadicName = variadicCtx.IDENTIFIER().GetText();
+                        var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
+                        parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
+                    }
+                }
+
+                // Parse return type
+                IrType returnType = IrVoidType.Instance;
+                if (funcSig.type() != null)
+                {
+                    returnType = ParseType(funcSig.type());
+                }
+
+                methods.Add(new IrTraitMethod(methodName, parameters, returnType, methodGenericParams.Count > 0 ? methodGenericParams : null));
+
+                // Clear method-level generic params
+                foreach (var param in methodGenericParams)
+                {
+                    _genericParams.Remove(param);
+                }
+            }
+        }
+
+        // Parse visibility
+        var visibility = Visibility.Private;
+        if (context.KW_PUB() != null)
+        {
+            visibility = Visibility.Public;
+        }
+        else if (context.KW_INTERNAL() != null)
+        {
+            visibility = Visibility.Internal;
+        }
+
+        var trait = new IrTrait(name, methods, genericParams.Count > 0 ? genericParams : null, visibility, attributes);
+        _traits[name] = trait;
 
         // Clear generic param scope
         _genericParams.Clear();
