@@ -231,6 +231,15 @@ public class IrBuilder : NovusBaseVisitor<object?>
             var typeNames = implContext.typeName();
             var typeName = typeNames[typeNames.Length - 1].IDENTIFIER(0).GetText();
 
+            // Check if this is a trait implementation
+            bool isTraitImpl = implContext.KW_FOR() != null;
+            string? traitName = null;
+
+            if (isTraitImpl)
+            {
+                traitName = typeNames[0].IDENTIFIER(0).GetText();
+            }
+
             // Extract generic parameters from impl if present (e.g., impl<T> Vec<T>)
             var genericParams = new List<string>();
             if (implContext.genericParams() != null)
@@ -276,8 +285,19 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     if (childText == "internal") visibility = Visibility.Internal;
                 }
 
-                // Methods are registered with mangled names: Type::method
-                var mangledName = $"{typeName}::{methodName}";
+                // Methods are registered with mangled names
+                // Trait impls: Type_Trait_method
+                // Inherent impls: Type::method
+                string mangledName;
+                if (isTraitImpl && traitName != null)
+                {
+                    mangledName = $"{typeName}_{traitName}_{methodName}";
+                }
+                else
+                {
+                    mangledName = $"{typeName}::{methodName}";
+                }
+
                 var function = new IrFunction(mangledName, returnType, visibility, isExtern);
 
                 // Parse parameters (including self)
@@ -390,6 +410,15 @@ public class IrBuilder : NovusBaseVisitor<object?>
             var typeNames = implContext.typeName();
             var typeName = typeNames[typeNames.Length - 1].IDENTIFIER(0).GetText();
 
+            // Check if this is a trait implementation
+            bool isTraitImpl = implContext.KW_FOR() != null;
+            string? traitName = null;
+
+            if (isTraitImpl)
+            {
+                traitName = typeNames[0].IDENTIFIER(0).GetText();
+            }
+
             // Check if this is a generic impl block
             var isGeneric = implContext.genericParams() != null;
 
@@ -406,7 +435,17 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 if (funcDecl == null) continue;
 
                 var methodName = funcDecl.IDENTIFIER().GetText();
-                var mangledName = $"{typeName}::{methodName}";
+
+                // Use correct mangling for trait impls vs inherent impls
+                string mangledName;
+                if (isTraitImpl && traitName != null)
+                {
+                    mangledName = $"{typeName}_{traitName}_{methodName}";
+                }
+                else
+                {
+                    mangledName = $"{typeName}::{methodName}";
+                }
 
                 _currentFunction = _module.Functions.FirstOrDefault(f => f.Name == mangledName);
                 if (_currentFunction == null)
