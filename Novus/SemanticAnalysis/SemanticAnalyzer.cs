@@ -776,7 +776,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         // Get the type being implemented (e.g., Vec, Vec<T>, Point)
-        var implTypeName = context.typeName().IDENTIFIER(0).GetText();
+        // typeName() returns an array: [Type] for "impl Type" or [Trait, Type] for "impl Trait for Type"
+        var typeNames = context.typeName();
+        var implTypeName = typeNames[typeNames.Length - 1].IDENTIFIER(0).GetText();
 
         // Register each method in the impl block
         foreach (var item in context.implItem())
@@ -1054,7 +1056,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         // Get the type being implemented
-        var implTypeName = context.typeName().IDENTIFIER(0).GetText();
+        // typeName() returns an array: [Type] for "impl Type" or [Trait, Type] for "impl Trait for Type"
+        var typeNames = context.typeName();
+        var implTypeName = typeNames[typeNames.Length - 1].IDENTIFIER(0).GetText();
 
         // Analyze each method
         foreach (var item in context.implItem())

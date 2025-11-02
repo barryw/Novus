@@ -3,7 +3,7 @@ grammar Novus;
 // Parser Rules
 
 compilationUnit
-    : NEWLINE* importDeclaration* reexportDeclaration* (constDeclaration | staticDeclaration | globalVariableDeclaration | structDeclaration | enumDeclaration | implDeclaration | functionDeclaration)* EOF
+    : NEWLINE* importDeclaration* reexportDeclaration* (constDeclaration | staticDeclaration | globalVariableDeclaration | structDeclaration | enumDeclaration | traitDeclaration | implDeclaration | functionDeclaration)* EOF
     ;
 
 attribute
@@ -96,8 +96,21 @@ enumVariant
     : IDENTIFIER ('(' typeList ')')?
     ;
 
+traitDeclaration
+    : attribute* (KW_PUB | KW_INTERNAL)? KW_TRAIT IDENTIFIER genericParams? '{' NEWLINE* traitItem* '}' NEWLINE*
+    ;
+
+traitItem
+    : functionSignature
+    ;
+
+functionSignature
+    : KW_FN IDENTIFIER genericParams? '(' parameterList? ')' ('->' type)? NEWLINE*
+    ;
+
 implDeclaration
-    : attribute* KW_IMPL genericParams? typeName genericTypeArgs? '{' NEWLINE* implItem* '}' NEWLINE*
+    : attribute* KW_IMPL genericParams? typeName genericTypeArgs? KW_FOR typeName '{' NEWLINE* implItem* '}' NEWLINE*
+    | attribute* KW_IMPL genericParams? typeName genericTypeArgs? '{' NEWLINE* implItem* '}' NEWLINE*
     ;
 
 implItem
@@ -330,6 +343,7 @@ KW_IMPL     : 'impl';
 KW_SELF     : 'self';
 KW_STRUCT   : 'struct';
 KW_ENUM     : 'enum';
+KW_TRAIT    : 'trait';
 KW_RETURN   : 'return';
 KW_IF       : 'if';
 KW_ELSE     : 'else';

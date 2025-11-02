@@ -220,7 +220,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
         {
             // Get the type name this impl is for
             // Get only the base type name (Vec, not Vec<T>)
-            var typeName = implContext.typeName().IDENTIFIER(0).GetText();
+            // typeName() returns an array: [Type] for "impl Type" or [Trait, Type] for "impl Trait for Type"
+            var typeNames = implContext.typeName();
+            var typeName = typeNames[typeNames.Length - 1].IDENTIFIER(0).GetText();
 
             // Extract generic parameters from impl if present (e.g., impl<T> Vec<T>)
             var genericParams = new List<string>();
@@ -377,7 +379,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
         foreach (var implContext in context.implDeclaration())
         {
             // Get only the base type name (Vec, not Vec<T>)
-            var typeName = implContext.typeName().IDENTIFIER(0).GetText();
+            // typeName() returns an array: [Type] for "impl Type" or [Trait, Type] for "impl Trait for Type"
+            var typeNames = implContext.typeName();
+            var typeName = typeNames[typeNames.Length - 1].IDENTIFIER(0).GetText();
 
             // Check if this is a generic impl block
             var isGeneric = implContext.genericParams() != null;
@@ -742,7 +746,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
 
             // Get only the base type name (Vec, not Vec<T>)
-            var typeName = implDecl.typeName().IDENTIFIER(0).GetText();
+            // typeName() returns an array: [Type] for "impl Type" or [Trait, Type] for "impl Trait for Type"
+            var typeNames = implDecl.typeName();
+            var typeName = typeNames[typeNames.Length - 1].IDENTIFIER(0).GetText();
 
             // Skip if the type this impl is for is not in the import list
             // This prevents importing methods for types we don't have access to
