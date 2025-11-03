@@ -1,0 +1,32 @@
+// Example: Assertion Failure Demo with Defer Cleanup
+//
+// This example demonstrates assertion failure with proper cleanup.
+// Compile and run on Amiga to verify assert! handles failures correctly.
+//
+// Expected behavior:
+//   - First assertion passes
+//   - Second assertion fails
+//   - Defer blocks execute (cleanup happens)
+//   - Program exits with code 1 (failure)
+
+pub fn main() -> i32 {
+    var cleanup_executed = 0
+
+    // Simulate resource allocation
+    let resource_handle = 12345
+    defer {
+        // This cleanup MUST execute even when assert fails
+        cleanup_executed = 1
+    }
+
+    // This assertion passes
+    let x = 10
+    assert!(x == 10)
+
+    // This assertion will FAIL and trigger cleanup
+    let y = 5
+    assert!(y > 10, "Expected y to be greater than 10")
+
+    // This code should never execute
+    return 0
+}

@@ -2808,6 +2808,26 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return null;
     }
 
+    // Handle: assert!(condition) or assert!(condition, "message")
+    public override IrType? VisitAssertStatement([NotNull] NovusParser.AssertStatementContext context)
+    {
+        // Analyze the condition expression
+        var conditionType = Visit(context.expression());
+
+        // Verify condition is boolean or numeric (C-style truthiness)
+        if (conditionType != null && !IsBoolOrNumericType(conditionType))
+        {
+            var location = SourceLocationHelper.FromToken(context.Start, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0308",
+                $"assert condition must be a boolean or numeric expression, found '{TypeToString(conditionType)}'",
+                location
+            );
+        }
+
+        return null;
+    }
+
     // Handle: unsafe { statements }
     public override IrType? VisitUnsafeBlock([NotNull] NovusParser.UnsafeBlockContext context)
     {

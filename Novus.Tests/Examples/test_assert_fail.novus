@@ -1,0 +1,19 @@
+// Example: Assert - Failing Condition with Message
+//
+// Description:
+//   Tests that assertions fail gracefully with a descriptive error message.
+//   This test is EXPECTED TO FAIL - it demonstrates error reporting.
+//
+// Expected Output:
+//   Exit code: 1
+//   stderr: "Assertion failed at test_assert_fail.novus:17:4: Value must be positive"
+
+pub fn main() -> i32 {
+    let x = -5
+
+    // This assertion will fail and print an error message
+    assert!(x > 0, "Value must be positive")
+
+    // This code should never execute
+    return 0
+}

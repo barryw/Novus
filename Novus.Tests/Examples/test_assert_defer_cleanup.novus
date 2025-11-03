@@ -1,0 +1,48 @@
+// Example: Assert - Defer Block Cleanup on Failure
+//
+// Description:
+//   CRITICAL TEST: Verifies that defer blocks execute when an assertion fails.
+//   This ensures resources are properly cleaned up even during assertion failures,
+//   preventing memory leaks and resource leaks.
+//
+//   The defer blocks should execute in LIFO order (last registered, first executed)
+//   before the program exits.
+//
+//   To manually verify this works, inspect the generated C code and look for:
+//   1. Defer blocks executing before exit(1) in the assert failure path
+//   2. Defer blocks in LIFO order (resource2 cleanup, then resource1 cleanup)
+//
+// Expected Output:
+//   Exit code: 1
+//   The generated C code should execute defer blocks before exit(1)
+
+pub fn test_with_defers() -> i32 {
+    // Variables to hold cleanup results
+    var x = 0
+    var y = 0
+
+    // Simulate resource allocation
+    let resource1 = 100
+    defer {
+        // This cleanup should execute even though assert fails
+        // (In real code, this would be Close(), Free(), etc.)
+        x = resource1 + 1
+    }
+
+    let resource2 = 200
+    defer {
+        // This cleanup should execute first (LIFO order)
+        // (In real code, this would be Close(), Free(), etc.)
+        y = resource2 + 1
+    }
+
+    // This assertion will fail, but defers should still run
+    assert!(false, "Simulated assertion failure")
+
+    // This code should never execute
+    return 0
+}
+
+pub fn main() -> i32 {
+    return test_with_defers()
+}

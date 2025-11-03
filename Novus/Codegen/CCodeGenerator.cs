@@ -1274,6 +1274,9 @@ public class CCodeGenerator
 
             _output.AppendLine($"{returnType} {MangleName(function.Name)}({parameters});");
         }
+
+        // Runtime assert handler (implemented in novus_runtime.c)
+        _output.AppendLine("void __novus_assert_failed(const char* file, int32_t line, int32_t col, const char* message);");
         _output.AppendLine();
     }
 
@@ -1421,6 +1424,10 @@ public class CCodeGenerator
 
             case IrReturn returnInst:
                 EmitReturn(returnInst);
+                break;
+
+            case IrAssert assert:
+                EmitAssert(assert);
                 break;
 
             case IrMatch match:
@@ -1750,6 +1757,47 @@ public class CCodeGenerator
         {
             _output.AppendLine("    return;");
         }
+    }
+
+    private void EmitAssert(IrAssert assert)
+    {
+        // Evaluate the condition
+        var condition = EmitValue(assert.Condition);
+
+        // Generate the assertion check
+        _output.AppendLine($"    if (!({condition})) {{");
+
+        // Call runtime assert handler to display error (uses EasyRequest on Amiga)
+        var fileName = assert.Location.FilePath;
+        var line = assert.Location.Line;
+        var col = assert.Location.Column;
+
+        if (assert.Message != null)
+        {
+            // Escape the message for C string literal
+            var escapedMessage = assert.Message
+                .Replace("\\", "\\\\")
+                .Replace("\"", "\\\"")
+                .Replace("\n", "\\n")
+                .Replace("\r", "\\r")
+                .Replace("\t", "\\t");
+
+            _output.AppendLine($"        __novus_assert_failed(\"{fileName}\", {line}, {col}, \"{escapedMessage}\");");
+        }
+        else
+        {
+            _output.AppendLine($"        __novus_assert_failed(\"{fileName}\", {line}, {col}, NULL);");
+        }
+
+        // Execute deferred cleanup before exiting (CRITICAL for resource safety)
+        if (_currentEmittingFunction != null)
+        {
+            EmitDeferredCleanup(_currentEmittingFunction, 2); // indent level 2 for inside the if block
+        }
+
+        // Exit with error code
+        _output.AppendLine("        return 1;  // Assert failed");
+        _output.AppendLine("    }");
     }
 
     private void EmitMatch(IrMatch match)

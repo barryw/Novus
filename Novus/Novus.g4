@@ -185,6 +185,7 @@ statement
     | breakStatement
     | matchStatement
     | deferStatement
+    | assertStatement
     | unsafeBlock
     | usingStatement
     | block
@@ -194,6 +195,10 @@ statement
 deferStatement
     : KW_DEFER block                 # DeferBlock
     | KW_DEFER '=>' expression       # DeferExpression
+    ;
+
+assertStatement
+    : 'assert' '!' '(' expression (',' STRING_LITERAL)? ')'
     ;
 
 unsafeBlock

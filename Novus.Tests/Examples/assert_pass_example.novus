@@ -1,0 +1,35 @@
+// Example: Assertion Success Demo
+//
+// This example demonstrates assertions that pass successfully.
+// Compile and run on Amiga to verify assert! works correctly.
+//
+// Expected behavior:
+//   - All assertions pass
+//   - Program exits with code 0 (success)
+
+pub fn main() -> i32 {
+    // Test basic assertions
+    let x = 42
+    assert!(x == 42)
+    assert!(x > 0)
+    assert!(x != 100)
+
+    // Test with boolean values
+    let is_valid = true
+    assert!(is_valid)
+
+    // Test numeric truthiness (C-style)
+    assert!(1)
+    assert!(42)
+
+    // Test comparison chains
+    let a = 10
+    let b = 20
+    let c = 30
+    assert!(a < b)
+    assert!(b < c)
+    assert!(a < c)
+
+    // If we get here, all assertions passed!
+    return 0
+}

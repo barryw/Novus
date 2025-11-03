@@ -600,8 +600,13 @@ class Program
                 Console.WriteLine($"  → {displayName} ({functions.Count} function{(functions.Count > 1 ? "s" : "")})");
             }
 
-            // Runtime library has been moved to assembly (novus_io.s) - handled below with core files
-            // No C runtime files to add
+            // Add Novus runtime library (novus_runtime.c - contains assert handler with EasyRequest)
+            var runtimeCFile = Path.Combine(compilerDir, "..", "..", "..", "..", "runtime", "novus_runtime.c");
+            if (File.Exists(runtimeCFile))
+            {
+                cFiles.Add(runtimeCFile);
+                Console.WriteLine($"  → novus_runtime.c (assert handler)");
+            }
 
             // Handle emit-only mode (just generate C files and stop)
             if (options.EmitAsmOnly)
@@ -731,7 +736,7 @@ class Program
             requiredLibraries.Add("dos");
             Console.WriteLine("  ✓ Including 'dos' library (needed by runtime)");
 
-            // Scan generated C files for DOS library function calls
+            // Scan generated C files for DOS and Intuition library function calls
             foreach (var cFile in cFiles)
             {
                 var cCode = await File.ReadAllTextAsync(cFile);
@@ -746,7 +751,14 @@ class Program
                 {
                     requiredLibraries.Add("dos");
                     Console.WriteLine($"  ✓ Detected DOS library usage in {Path.GetFileName(cFile)}");
-                    break; // Only need to find it once
+                }
+
+                // Check for Intuition library function calls (used by assert handler)
+                if (cCode.Contains("EasyRequest") ||
+                    cCode.Contains("__novus_assert_failed"))
+                {
+                    requiredLibraries.Add("intuition");
+                    Console.WriteLine($"  ✓ Detected Intuition library usage in {Path.GetFileName(cFile)}");
                 }
             }
 

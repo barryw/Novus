@@ -1,3 +1,4 @@
+using Novus.Diagnostics;
 using Novus.HIR;
 
 namespace Novus.IR;
@@ -224,6 +225,24 @@ public class IrDefer : IrInstruction
     public IrDefer(IrBasicBlock deferredBlock)
     {
         DeferredBlock = deferredBlock;
+    }
+}
+
+/// <summary>
+/// Assert instruction - runtime assertion that panics on failure
+/// Stripped in release builds unless explicitly enabled
+/// </summary>
+public class IrAssert : IrInstruction
+{
+    public IrValue Condition { get; set; }
+    public string? Message { get; set; }
+    public SourceLocation Location { get; set; }
+
+    public IrAssert(IrValue condition, string? message, SourceLocation location)
+    {
+        Condition = condition;
+        Message = message;
+        Location = location;
     }
 }
 

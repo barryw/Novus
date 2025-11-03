@@ -1,6 +1,7 @@
 using Antlr4.Runtime;
 using Antlr4.Runtime.Misc;
 using Antlr4.Runtime.Tree;
+using Novus.Diagnostics;
 using Novus.IR;
 using Novus.Parser;
 using Novus.SemanticAnalysis;
@@ -3334,6 +3335,36 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         // Add defer instruction to current block (marker only)
         _currentBlock!.AddInstruction(new IrDefer(deferBlock));
+
+        return null;
+    }
+
+    // Handle: assert!(condition) or assert!(condition, "message")
+    public override object? VisitAssertStatement([NotNull] NovusParser.AssertStatementContext context)
+    {
+        // Evaluate the condition expression
+        var condition = (IrValue)Visit(context.expression())!;
+
+        // Get optional message
+        string? message = null;
+        if (context.STRING_LITERAL() != null)
+        {
+            var messageText = context.STRING_LITERAL().GetText();
+            // Strip quotes from string literal
+            message = messageText.Substring(1, messageText.Length - 2);
+        }
+
+        // Get source location for error reporting
+        var location = new SourceLocation(
+            _inputFilePath ?? "unknown",
+            context.Start.Line,
+            context.Start.Column,
+            context.GetText().Length,
+            context.Start.InputStream.ToString() ?? ""
+        );
+
+        // Add assert instruction to current block
+        _currentBlock!.AddInstruction(new IrAssert(condition, message, location));
 
         return null;
     }

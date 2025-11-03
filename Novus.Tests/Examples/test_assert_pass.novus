@@ -1,0 +1,25 @@
+// Example: Assert - Passing Condition
+//
+// Description:
+//   Tests that assertions pass when the condition is true.
+//   The program should run successfully and return 0.
+//
+// Expected Output:
+//   Exit code: 0
+
+pub fn main() -> i32 {
+    let x = 10
+    let y = 20
+
+    // These assertions should all pass
+    assert!(x == 10)
+    assert!(y > x)
+    assert!(x + y == 30)
+    assert!(true)
+
+    // Numeric truthiness (C-style)
+    assert!(1)
+    assert!(42)
+
+    return 0
+}

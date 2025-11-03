@@ -1,27 +1,18 @@
 ; ============================================================================
-; Library Base Storage for Novus
+; Intuition Library Base Storage for Novus
 ; ============================================================================
-; Provides storage for library base pointers used by Novus programs
-; This replaces the auto-library feature from VBCC's -lamiga
+; Provides storage for intuition.library base pointer (_IntuitionBase)
 ; ============================================================================
 
 	section	__MERGED,bss
 
 ; ============================================================================
-; Exported Library Bases
+; Exported Library Base
 ; ============================================================================
-	xdef	_SysBase	; exec.library base
-	xdef	_DOSBase	; dos.library base
 	xdef	_IntuitionBase	; intuition.library base
 
 ; ============================================================================
 ; Storage (initialized to 0 by loader)
 ; ============================================================================
-_SysBase:
-	ds.l	1		; Reserve 1 longword for SysBase
-
-_DOSBase:
-	ds.l	1		; Reserve 1 longword for DOSBase
-
 _IntuitionBase:
 	ds.l	1		; Reserve 1 longword for IntuitionBase
