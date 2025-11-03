@@ -80,6 +80,27 @@ public class IrModule
     {
         return TraitImpls.FirstOrDefault(ti => ti.TraitName == traitName && ti.TypeName == typeName);
     }
+
+    /// <summary>
+    /// Find trait implementation for a type that has a specific method
+    /// Returns the mangled method name if found
+    /// </summary>
+    public string? FindTraitMethod(string typeName, string methodName)
+    {
+        // Look through all trait implementations for this type
+        foreach (var traitImpl in TraitImpls.Where(ti => ti.TypeName == typeName))
+        {
+            // Check if this trait has the method
+            var trait = GetTrait(traitImpl.TraitName);
+            if (trait != null && trait.GetMethod(methodName) != null)
+            {
+                // Return the mangled name
+                return traitImpl.GetMangledMethodName(methodName);
+            }
+        }
+
+        return null;
+    }
 }
 
 /// <summary>
@@ -201,6 +222,28 @@ public class IrDefer : IrInstruction
     public IrDefer(IrBasicBlock deferredBlock)
     {
         DeferredBlock = deferredBlock;
+    }
+}
+
+/// <summary>
+/// Structured for-loop hint - tells C codegen to emit natural C for-loop
+/// This is a marker that precedes the loop variable initialization
+/// </summary>
+public class IrStructuredForLoopHint : IrInstruction
+{
+    public string LoopVarName { get; set; }
+    public string LengthVarName { get; set; }
+    public string BodyLabel { get; set; }
+    public string CondLabel { get; set; }
+    public string EndLabel { get; set; }
+
+    public IrStructuredForLoopHint(string loopVarName, string lengthVarName, string bodyLabel, string condLabel, string endLabel)
+    {
+        LoopVarName = loopVarName;
+        LengthVarName = lengthVarName;
+        BodyLabel = bodyLabel;
+        CondLabel = condLabel;
+        EndLabel = endLabel;
     }
 }
 

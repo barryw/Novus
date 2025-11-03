@@ -257,8 +257,9 @@ public class CCodeGenerator
                 var funcObj = _module.Functions.FirstOrDefault(f => f.Name == funcName);
                 if (funcObj != null)
                 {
-                    var returnTypeStr = GetCType(funcObj.ReturnType);
-                    var parameters = GetParameterList(funcObj);
+                    var isStructOrEnumReturn = funcObj.ReturnType is IrStructType or IrEnumType;
+                    var returnTypeStr = isStructOrEnumReturn ? "void" : GetCType(funcObj.ReturnType);
+                    var parameters = GetParameterList(funcObj, isStructOrEnumReturn);
                     sb.AppendLine($"extern {returnTypeStr} {MangleName(funcName)}({parameters});");
                 }
                 else
@@ -305,8 +306,10 @@ public class CCodeGenerator
         _currentEmittingFunction = function;
         _declaredVariables.Clear();
 
-        var returnType = GetCType(function.ReturnType);
-        var parameters = GetParameterList(function);
+        // VBCC FIX: For struct/enum returns on 68k, use output parameter pattern
+        var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType;
+        var returnType = isStructOrEnumReturn ? "void" : GetCType(function.ReturnType);
+        var parameters = GetParameterList(function, isStructOrEnumReturn);
         var funcName = MangleName(function.Name);
 
         // Special case: main must return 'int' for VBCC compatibility
@@ -562,7 +565,12 @@ public class CCodeGenerator
             _output.AppendLine(libraryGen.GenerateDefaultLifecycleFunctions());
         }
 
-        return _output.ToString();
+        // VBCC FIX: Transform goto-based for-loops to natural C for-loops
+        // This works around vbcc stack allocation bugs with goto-based control flow
+        var generatedCode = _output.ToString();
+        generatedCode = TransformForLoopsForVbcc(generatedCode);
+
+        return generatedCode;
     }
 
     private void DetectRequiredProtoHeaders()
@@ -1099,7 +1107,6 @@ public class CCodeGenerator
         _output.AppendLine("// Static variables");
         foreach (var staticVar in _module.StaticVariables)
         {
-            var cType = GetCType(staticVar.Type);
             var staticKeyword = staticVar.Visibility == Visibility.Private ? "static" : "";
             var constKeyword = !staticVar.IsMutable ? "const" : "";
 
@@ -1112,7 +1119,18 @@ public class CCodeGenerator
             if (!string.IsNullOrEmpty(constKeyword)) keywords.Add(constKeyword);
 
             var keywordStr = keywords.Count > 0 ? string.Join(" ", keywords) + " " : "";
-            _output.AppendLine($"{keywordStr}{cType} {staticVar.Name} = {initialValue};");
+
+            // Special handling for arrays - use array syntax instead of pointer syntax
+            if (staticVar.Type is IrArrayType arrayType)
+            {
+                var elementType = GetCType(arrayType.ElementType);
+                _output.AppendLine($"{keywordStr}{elementType} {staticVar.Name}[{arrayType.Length}] = {initialValue};");
+            }
+            else
+            {
+                var cType = GetCType(staticVar.Type);
+                _output.AppendLine($"{keywordStr}{cType} {staticVar.Name} = {initialValue};");
+            }
         }
         _output.AppendLine();
     }
@@ -1210,9 +1228,19 @@ public class CCodeGenerator
             _output.AppendLine("// Cross-module function declarations");
             foreach (var (funcName, (returnType, paramTypes)) in crossModuleCalls)
             {
-                var cReturnType = GetCType(returnType);
-                var parameters = paramTypes.Count == 0 ? "void" :
-                    string.Join(", ", paramTypes.Select((type, index) => $"{GetCType(type)} p{index}"));
+                // VBCC FIX: Match function definition signature (use void + __out for struct/enum returns)
+                var isStructOrEnumReturn = returnType is IrStructType or IrEnumType;
+                var cReturnType = isStructOrEnumReturn ? "void" : GetCType(returnType);
+
+                // Build parameter list with __out if needed
+                var paramList = new List<string>();
+                if (isStructOrEnumReturn)
+                {
+                    paramList.Add($"{GetCType(returnType)}* __out");
+                }
+                paramList.AddRange(paramTypes.Select((type, index) => $"{GetCType(type)} p{index}"));
+
+                var parameters = paramList.Count == 0 ? "void" : string.Join(", ", paramList);
                 _output.AppendLine($"{cReturnType} {MangleName(funcName)}({parameters});");
             }
             _output.AppendLine();
@@ -1233,8 +1261,10 @@ public class CCodeGenerator
         _output.AppendLine("// Forward declarations");
         foreach (var function in implementedFunctions)
         {
-            var returnType = GetCType(function.ReturnType);
-            var parameters = GetParameterList(function);
+            // VBCC FIX: Match function definition signature (use void + __out for struct/enum returns)
+            var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType;
+            var returnType = isStructOrEnumReturn ? "void" : GetCType(function.ReturnType);
+            var parameters = GetParameterList(function, isStructOrEnumReturn);
 
             // Special case: main returns int, not int32_t
             if (function.Name == "main" && returnType == "int32_t")
@@ -1291,8 +1321,10 @@ public class CCodeGenerator
         // Set current function for defer cleanup
         _currentEmittingFunction = function;
 
-        var returnType = GetCType(function.ReturnType);
-        var parameters = GetParameterList(function);
+        // VBCC FIX: For struct/enum returns on 68k, use output parameter pattern
+        var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType;
+        var returnType = isStructOrEnumReturn ? "void" : GetCType(function.ReturnType);
+        var parameters = GetParameterList(function, isStructOrEnumReturn);
         var funcName = MangleName(function.Name);
 
         // Special case: main must return 'int' for VBCC compatibility
@@ -1594,17 +1626,39 @@ public class CCodeGenerator
             args.Add(argValue);
         }
 
-        var callExpr = $"{MangleName(call.FunctionName)}({string.Join(", ", args)})";
+        // VBCC FIX: For struct/enum returns on 68k, use output parameter pattern to avoid vbcc bugs
+        var isStructOrEnumReturn = call.ReturnType is IrStructType or IrEnumType;
 
-        if (call.ResultName != null && call.ReturnType is not IrVoidType)
+        if (isStructOrEnumReturn && call.ResultName != null)
         {
+            // Use output parameter pattern: void func(Result* out, args...)
             var cType = GetCType(call.ReturnType);
             var resultName = SanitizeVariableName(call.ResultName);
-            _output.AppendLine($"    {cType} {resultName} = {callExpr};");
+
+            // Declare result variable
+            _output.AppendLine($"    {cType} {resultName};");
+
+            // Call function with output parameter
+            var allArgs = new List<string> { $"&{resultName}" };
+            allArgs.AddRange(args);
+            var callExpr = $"{MangleName(call.FunctionName)}({string.Join(", ", allArgs)})";
+            _output.AppendLine($"    {callExpr};");
         }
         else
         {
-            _output.AppendLine($"    {callExpr};");
+            // Normal return value
+            var callExpr = $"{MangleName(call.FunctionName)}({string.Join(", ", args)})";
+
+            if (call.ResultName != null && call.ReturnType is not IrVoidType)
+            {
+                var cType = GetCType(call.ReturnType);
+                var resultName = SanitizeVariableName(call.ResultName);
+                _output.AppendLine($"    {cType} {resultName} = {callExpr};");
+            }
+            else
+            {
+                _output.AppendLine($"    {callExpr};");
+            }
         }
     }
 
@@ -1676,8 +1730,21 @@ public class CCodeGenerator
 
         if (returnInst.Value != null)
         {
-            var value = EmitValue(returnInst.Value);
-            _output.AppendLine($"    return {value};");
+            // VBCC FIX: For struct/enum returns, write to output parameter instead of returning directly
+            var isStructOrEnumReturn = _currentEmittingFunction != null &&
+                                      (_currentEmittingFunction.ReturnType is IrStructType or IrEnumType);
+
+            if (isStructOrEnumReturn)
+            {
+                var value = EmitValue(returnInst.Value);
+                _output.AppendLine($"    *__out = {value};");
+                _output.AppendLine("    return;");
+            }
+            else
+            {
+                var value = EmitValue(returnInst.Value);
+                _output.AppendLine($"    return {value};");
+            }
         }
         else
         {
@@ -2121,16 +2188,22 @@ public class CCodeGenerator
         return $"{returnType} (*)({paramTypes})";
     }
 
-    private string GetParameterList(IrFunction function)
+    private string GetParameterList(IrFunction function, bool hasOutputParameter = false)
     {
-        if (function.Parameters.Count == 0)
-            return "void";
+        var parameters = new List<string>();
 
-        var parameters = function.Parameters
-            .Select(p => p.IsVariadic ? "..." : GetCParameter(p.Type, p.Name))
-            .ToList();
+        // VBCC FIX: Add output parameter as first parameter for struct/enum returns
+        if (hasOutputParameter)
+        {
+            var returnType = GetCType(function.ReturnType);
+            parameters.Add($"{returnType}* __out");
+        }
 
-        return string.Join(", ", parameters);
+        // Add regular parameters
+        parameters.AddRange(function.Parameters
+            .Select(p => p.IsVariadic ? "..." : GetCParameter(p.Type, p.Name)));
+
+        return parameters.Count > 0 ? string.Join(", ", parameters) : "void";
     }
 
     /// <summary>
@@ -2192,5 +2265,61 @@ public class CCodeGenerator
                    .Replace(",", "")
                    .Replace("*", "ptr_")
                    .Replace(" ", "");
+    }
+
+    /// <summary>
+    /// VBCC FIX: Transform goto-based for-loop patterns into natural C for-loops.
+    /// This works around vbcc's stack allocation bugs with goto-based control flow.
+    ///
+    /// Pattern to transform:
+    ///   uint32_t _for_idx_N = 0;
+    ///   goto for_cond_N;
+    /// for_cond_N:;
+    ///   bool _tX = _for_idx_N < _for_len_N;
+    ///   if (_tX) goto for_body_N;
+    ///   goto for_end_N;
+    /// for_body_N:;
+    ///   ... body ...
+    ///   uint32_t _tY = _for_idx_N + 1;
+    ///   _for_idx_N = _tY;
+    ///   goto for_cond_N;
+    /// for_end_N:;
+    ///
+    /// Into:
+    ///   for (uint32_t _for_idx_N = 0; _for_idx_N < _for_len_N; _for_idx_N++) {
+    ///     ... body ...
+    ///   }
+    /// </summary>
+    private string TransformForLoopsForVbcc(string code)
+    {
+        // Use regex to find and transform for-loop patterns
+        // This is a simple pattern matcher that looks for the specific structure emitted by VisitForInLoop
+
+        var pattern = @"    (?<type>uint32_t) (?<idx>_for_idx_\d+) = 0;\s+" +
+                     @"    goto (?<cond>for_cond_\d+);\s+" +
+                     @"(?<cond_label>\k<cond>):;\s+" +
+                     @"    bool _t\d+ = \k<idx> < (?<len>_for_len_\d+);\s+" +
+                     @"    if \(_t\d+\) goto (?<body>for_body_\d+);\s+" +
+                     @"    goto (?<end>for_end_\d+);\s+" +
+                     @"(?<body_label>\k<body>):;\s+" +
+                     @"(?<body_content>(?:(?!uint32_t _t\d+ = \k<idx> \+ 1;).)+)" +
+                     @"    uint32_t _t\d+ = \k<idx> \+ 1;\s+" +
+                     @"    \k<idx> = _t\d+;\s+" +
+                     @"    goto \k<cond>;\s+" +
+                     @"(?<end_label>\k<end>):;";
+
+        var transformed = System.Text.RegularExpressions.Regex.Replace(code, pattern, match =>
+        {
+            var type = match.Groups["type"].Value;
+            var idx = match.Groups["idx"].Value;
+            var len = match.Groups["len"].Value;
+            var end = match.Groups["end"].Value;
+            var bodyContent = match.Groups["body_content"].Value.Trim();
+
+            // Keep the end label after the for-loop for break statements
+            return $"    for ({type} {idx} = 0; {idx} < {len}; {idx}++) {{\n{bodyContent}\n    }}\n{end}:;";
+        }, System.Text.RegularExpressions.RegexOptions.Singleline);
+
+        return transformed;
     }
 }

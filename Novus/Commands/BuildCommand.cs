@@ -9,6 +9,42 @@ namespace Novus.Commands;
 /// </summary>
 public static class BuildCommand
 {
+    /// <summary>
+    /// Valid CPU values that VBCC/VASM accept
+    /// </summary>
+    private static readonly string[] ValidCpuValues = { "68000", "68010", "68020", "68030", "68040", "68060", "68080", "auto" };
+
+    /// <summary>
+    /// Valid FPU values
+    /// </summary>
+    private static readonly string[] ValidFpuValues = { "auto", "soft", "68881", "68040" };
+
+    /// <summary>
+    /// Validate CPU value and return error message if invalid
+    /// </summary>
+    private static string? ValidateCpu(string? cpu)
+    {
+        if (cpu == null) return null;
+        if (!ValidCpuValues.Contains(cpu))
+        {
+            return $"Invalid CPU value '{cpu}'. Valid values are: {string.Join(", ", ValidCpuValues)}";
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Validate FPU value and return error message if invalid
+    /// </summary>
+    private static string? ValidateFpu(string? fpu)
+    {
+        if (fpu == null) return null;
+        if (!ValidFpuValues.Contains(fpu))
+        {
+            return $"Invalid FPU value '{fpu}'. Valid values are: {string.Join(", ", ValidFpuValues)}";
+        }
+        return null;
+    }
+
     public static async Task<int> Run(BuildOptions buildOptions)
     {
         // First, check if we're in a workspace by looking at the ACTUAL current directory
@@ -537,6 +573,21 @@ public static class BuildCommand
             ?? project.Build.Fpu
             ?? workspace?.Workspace.Build?.Fpu
             ?? "auto";
+
+        // Validate CPU and FPU values
+        var cpuError = ValidateCpu(targetCpu);
+        if (cpuError != null)
+        {
+            Console.WriteLine($"Error: {cpuError}");
+            return 1;
+        }
+
+        var fpuError = ValidateFpu(fpu);
+        if (fpuError != null)
+        {
+            Console.WriteLine($"Error: {fpuError}");
+            return 1;
+        }
 
         // Optimization level: explicit > release default > project > workspace > 0
         int optimizationLevel;

@@ -3,7 +3,7 @@
 // Dynamic data structures and collection types
 
 // Import core types and memory management
-from std::core import Option
+from std::core import Option, Result, Iterable
 from std::mem import MemoryBlock
 from std::ffi::exec import MEMF_PUBLIC, MEMF_CLEAR, CopyMem, FreeMem
 
@@ -30,7 +30,7 @@ impl<T> Vec<T> {
     // Returns None if allocation fails
     pub fn with_capacity(capacity: u32) -> Option<Vec<T>> {
         if capacity == 0 {
-            return Option::Some(Vec::new())
+            return Option::Some(Vec { ptr: 0, len: 0, capacity: 0 })
         }
 
         let element_size: u32 = @sizeof(T)
@@ -54,11 +54,6 @@ impl<T> Vec<T> {
                 return Option::None
             }
         }
-    }
-
-    // Get the number of elements in the vector
-    pub fn len(&self) -> u32 {
-        return self.len
     }
 
     // Check if the vector is empty
@@ -111,7 +106,9 @@ impl<T> Vec<T> {
                     if self.capacity > 0 {
                         let old_bytes: u32 = self.capacity * element_size
                         let old_mem: *u8 = (*u8)(self.ptr)
-                        FreeMem(old_mem, old_bytes)
+                        unsafe {
+                            FreeMem(old_mem, old_bytes)
+                        }
                     }
 
                     // Update vec fields
@@ -157,16 +154,6 @@ impl<T> Vec<T> {
         return Option::Some(value)
     }
 
-    // Get element at index (safe, returns Option)
-    pub fn get(&self, index: u32) -> Option<T> {
-        if index >= self.len {
-            return Option::None
-        }
-
-        let value: T = self.ptr[index]
-        return Option::Some(value)
-    }
-
     // Set element at index (returns true if successful)
     pub fn set(&mut self, index: u32, value: T) -> bool {
         if index >= self.len {
@@ -199,12 +186,32 @@ impl<T> Vec<T> {
             let bytes: u32 = self.capacity * element_size
             // Explicit pointer cast from *T to *u8
             let mem: *u8 = (*u8)(self.ptr)
-            FreeMem(mem, bytes)
+            unsafe {
+                FreeMem(mem, bytes)
+            }
 
             // Reset to null pointer (0 with type inference)
             self.ptr = 0
             self.len = 0
             self.capacity = 0
         }
+    }
+}
+
+// Vec<T> implements Iterable<T> - allows use in for-in loops
+impl<T> Iterable<T> for Vec<T> {
+    // Get the number of elements in the vector
+    fn len(&self) -> u32 {
+        return self.len
+    }
+
+    // Get element at index (safe, returns Option)
+    fn get(&self, index: u32) -> Option<T> {
+        if index >= self.len {
+            return Option::None
+        }
+
+        let value: T = self.ptr[index]
+        return Option::Some(value)
     }
 }

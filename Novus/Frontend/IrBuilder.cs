@@ -18,6 +18,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
     private int _tempCounter = 0;
     private int _labelCounter = 0;
     private int _stringCounter = 0;  // Counter for string literal labels
+    private int _staticVarCounter = 0;  // Counter for auto-generated static variables
     private readonly Stack<string> _loopExitLabels = new(); // Track loop exit labels for break
     private readonly Dictionary<string, IrLocalVariable> _localVariables = new(); // Track local variables in current function
     private readonly Dictionary<string, IrStructType> _structs = new(); // Track struct types
@@ -231,6 +232,19 @@ public class IrBuilder : NovusBaseVisitor<object?>
             var typeNames = implContext.typeName();
             var typeName = typeNames[typeNames.Length - 1].IDENTIFIER(0).GetText();
 
+            // IMPORTANT: Extract generic parameters FIRST before parsing trait type args
+            // This ensures that 'T' is in scope when parsing 'Iterable<T>'
+            var genericParams = new List<string>();
+            if (implContext.genericParams() != null)
+            {
+                foreach (var paramId in implContext.genericParams().IDENTIFIER())
+                {
+                    var paramName = paramId.GetText();
+                    genericParams.Add(paramName);
+                    _genericParams[paramName] = new IrGenericType(paramName);
+                }
+            }
+
             // Check if this is a trait implementation
             bool isTraitImpl = implContext.KW_FOR() != null;
             string? traitName = null;
@@ -241,25 +255,15 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 traitName = typeNames[0].IDENTIFIER(0).GetText();
 
                 // Parse trait type arguments if present (e.g., Iterator<i32>)
-                if (implContext.genericTypeArgs() != null)
+                // Generic params are now in scope, so 'T' in 'Iterable<T>' can be resolved
+                var traitGenericArgs = implContext.genericTypeArgs().Length > 0 ? implContext.genericTypeArgs(0) : null;
+                if (traitGenericArgs != null)
                 {
-                    var typeList = implContext.genericTypeArgs().typeList();
+                    var typeList = traitGenericArgs.typeList();
                     foreach (var typeCtx in typeList.type())
                     {
                         traitTypeArgs.Add(ParseType(typeCtx));
                     }
-                }
-            }
-
-            // Extract generic parameters from impl if present (e.g., impl<T> Vec<T>)
-            var genericParams = new List<string>();
-            if (implContext.genericParams() != null)
-            {
-                foreach (var paramId in implContext.genericParams().IDENTIFIER())
-                {
-                    var paramName = paramId.GetText();
-                    genericParams.Add(paramName);
-                    _genericParams[paramName] = new IrGenericType(paramName);
                 }
             }
 
@@ -364,6 +368,20 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 _module.AddFunction(function);
             }
 
+            // Register trait implementation if this is a trait impl
+            if (isTraitImpl && traitName != null && genericParams.Count == 0)
+            {
+                // Look up the implementing type
+                if (!_structs.TryGetValue(typeName, out var implementingType))
+                {
+                    throw new Exception($"Type '{typeName}' not found for trait implementation");
+                }
+
+                // Create IrTraitImpl and add to module
+                var traitImpl = new IrTraitImpl(traitName, traitTypeArgs, typeName, implementingType);
+                _module.TraitImpls.Add(traitImpl);
+            }
+
             // Clear generic parameters after processing impl block
             foreach (var paramName in genericParams)
             {
@@ -419,6 +437,14 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Pass 6: Build impl method bodies (only for non-generic impl blocks)
         foreach (var implContext in context.implDeclaration())
         {
+            // Check if this is a generic impl block and skip early
+            // Skip generic impl blocks - they will be instantiated on demand
+            var isGeneric = implContext.genericParams() != null;
+            if (isGeneric)
+            {
+                continue;
+            }
+
             // Get only the base type name (Vec, not Vec<T>)
             // typeName() returns an array: [Type] for "impl Type" or [Trait, Type] for "impl Trait for Type"
             var typeNames = implContext.typeName();
@@ -434,23 +460,15 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 traitName = typeNames[0].IDENTIFIER(0).GetText();
 
                 // Parse trait type arguments if present (e.g., Iterator<i32>)
-                if (implContext.genericTypeArgs() != null)
+                var traitGenericArgs = implContext.genericTypeArgs().Length > 0 ? implContext.genericTypeArgs(0) : null;
+                if (traitGenericArgs != null)
                 {
-                    var typeList = implContext.genericTypeArgs().typeList();
+                    var typeList = traitGenericArgs.typeList();
                     foreach (var typeCtx in typeList.type())
                     {
                         traitTypeArgs.Add(ParseType(typeCtx));
                     }
                 }
-            }
-
-            // Check if this is a generic impl block
-            var isGeneric = implContext.genericParams() != null;
-
-            // Skip generic impl blocks - they will be instantiated on demand
-            if (isGeneric)
-            {
-                continue;
             }
 
             // Non-generic impl blocks: build method bodies
@@ -2893,7 +2911,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         return null;
     }
 
-    public override object? VisitForStatement([NotNull] NovusParser.ForStatementContext context)
+    public override object? VisitForCStyle([NotNull] NovusParser.ForCStyleContext context)
     {
         var condLabel = $"for_cond_{_labelCounter}";
         var bodyLabel = $"for_body_{_labelCounter}";
@@ -2946,6 +2964,251 @@ public class IrBuilder : NovusBaseVisitor<object?>
             {
                 Visit(incrAssignment);
             }
+
+            // Jump back to condition
+            _currentBlock!.AddInstruction(new IrBranch(condLabel));
+        }
+
+        // End label
+        _currentBlock!.AddInstruction(new IrLabel(endLabel));
+
+        // Pop exit label
+        _loopExitLabels.Pop();
+
+        return null;
+    }
+    public override object? VisitForInLoop([NotNull] NovusParser.ForInLoopContext context)
+    {
+        // Desugar: for item in collection { body }
+        // Into:    let _coll = collection
+        //          let _idx = 0
+        //          let _len = _coll.len()
+        //          while _idx < _len {
+        //              let _opt = _coll.get(_idx)
+        //              match _opt {
+        //                  Option::Some(item) => { body }
+        //                  Option::None => break
+        //              }
+        //              _idx = _idx + 1
+        //          }
+
+        var itemName = context.IDENTIFIER().GetText();
+        var collVarName = $"_for_coll_{_labelCounter}";
+        var idxVarName = $"_for_idx_{_labelCounter}";
+        var lenVarName = $"_for_len_{_labelCounter}";
+        var condLabel = $"for_cond_{_labelCounter}";
+        var bodyLabel = $"for_body_{_labelCounter}";
+        var endLabel = $"for_end_{_labelCounter}";
+        var matchSomeLabel = $"for_some_{_labelCounter}";
+        var matchNoneLabel = $"for_none_{_labelCounter}";
+        _labelCounter++;
+
+        // Evaluate the collection expression
+        var collection = (IrValue)Visit(context.expression())!;
+        var collectionType = collection.Type;
+
+        // Store the collection in a local variable
+        var collVar = new IrLocalVariable(collVarName, collectionType, false);
+        _currentFunction!.LocalVariables.Add(collVar);
+        _localVariables[collVarName] = collVar;
+        _currentBlock!.AddInstruction(new IrLocalDecl(collVarName, collectionType, false, collection));
+
+        // Get the type name for method lookup
+        var typeName = collectionType is IrStructType st ? st.StructName : collectionType.Name;
+
+        // For-in loops require the Iterable trait (with get() and len() methods)
+        // Priority: 1) Iterable trait methods, 2) regular methods (fallback for backward compatibility)
+
+        string? lenMethodName = null;
+        IrFunction? lenMethod = null;
+
+        // First, try to find Iterable trait implementation
+        lenMethodName = _module.FindTraitMethod(typeName, "len");
+        if (lenMethodName != null)
+        {
+            lenMethod = _module.Functions.FirstOrDefault(f => f.Name == lenMethodName);
+        }
+
+        // If no trait method found, fall back to regular methods for backward compatibility
+        if (lenMethod == null)
+        {
+            lenMethodName = $"{typeName}::len";
+            lenMethod = _module.Functions.FirstOrDefault(f => f.Name == lenMethodName);
+
+            // If method not found, try to instantiate it for monomorphized structs
+            if (lenMethod == null && collectionType is IrStructType collectionStruct && collectionStruct.CacheKey != null)
+            {
+                lenMethod = InstantiateGenericMethod(collectionStruct, "len");
+                if (lenMethod != null)
+                {
+                    lenMethodName = lenMethod.Name;
+                }
+            }
+        }
+
+        if (lenMethod == null)
+        {
+            throw new Exception($"Type '{typeName}' does not implement Iterable trait (missing len() method). For-in loops require types to implement Iterable<T>.");
+        }
+
+        // Call len()
+        var collVarRef = new IrVariable(collVarName, collectionType);
+        var lenReceiverArg = new IrBorrowValue(collVarRef, lenMethod.Parameters[0].Type, false);
+        var lenResultName = $"%t{_tempCounter++}";
+        var lenCall = new IrCall(lenMethodName, lenMethod.ReturnType, lenResultName);
+        lenCall.Arguments.Add(lenReceiverArg);
+        _currentBlock!.AddInstruction(lenCall);
+
+        // Store length in local variable
+        var lenVar = new IrLocalVariable(lenVarName, lenMethod.ReturnType, false);
+        _currentFunction!.LocalVariables.Add(lenVar);
+        _localVariables[lenVarName] = lenVar;
+        var lenResult = new IrVariable(lenResultName, lenMethod.ReturnType);
+        _currentBlock!.AddInstruction(new IrLocalDecl(lenVarName, lenMethod.ReturnType, false, lenResult));
+
+        // Initialize index to 0
+        var idxVar = new IrLocalVariable(idxVarName, IrIntType.U32, true);
+        _currentFunction!.LocalVariables.Add(idxVar);
+        _localVariables[idxVarName] = idxVar;
+        var zeroLiteral = new IrConstant(0, IrIntType.U32);
+        _currentBlock!.AddInstruction(new IrLocalDecl(idxVarName, IrIntType.U32, true, zeroLiteral));
+
+        // Push exit label for break statements
+        _loopExitLabels.Push(endLabel);
+
+        // Jump to condition check
+        _currentBlock!.AddInstruction(new IrBranch(condLabel));
+
+        // Condition label
+        _currentBlock!.AddInstruction(new IrLabel(condLabel));
+
+        // Check: _idx < _len
+        var idxVarRef = new IrVariable(idxVarName, IrIntType.U32);
+        var lenVarRef = new IrVariable(lenVarName, lenMethod.ReturnType);
+        var condResultName = $"%t{_tempCounter++}";
+        var condCheck = new IrBinaryOp(condResultName, IrBinaryOp.OpKind.Lt, idxVarRef, lenVarRef, IrBoolType.Instance);
+        _currentBlock!.AddInstruction(condCheck);
+        var condResult = new IrVariable(condResultName, IrBoolType.Instance);
+        _currentBlock!.AddInstruction(new IrConditionalBranch(condResult, bodyLabel, endLabel));
+
+        // Body label
+        _currentBlock!.AddInstruction(new IrLabel(bodyLabel));
+
+        // Call get(_idx) to get the item
+        // Priority: 1) Iterable trait methods, 2) regular methods (fallback)
+
+        string? getMethodName = null;
+        IrFunction? getMethod = null;
+
+        // First, try to find Iterable trait implementation
+        getMethodName = _module.FindTraitMethod(typeName, "get");
+        if (getMethodName != null)
+        {
+            getMethod = _module.Functions.FirstOrDefault(f => f.Name == getMethodName);
+        }
+
+        // If no trait method found, fall back to regular methods for backward compatibility
+        if (getMethod == null)
+        {
+            getMethodName = $"{typeName}::get";
+            getMethod = _module.Functions.FirstOrDefault(f => f.Name == getMethodName);
+
+            // If method not found, try to instantiate it for monomorphized structs
+            if (getMethod == null && collectionType is IrStructType collectionStruct2 && collectionStruct2.CacheKey != null)
+            {
+                getMethod = InstantiateGenericMethod(collectionStruct2, "get");
+                if (getMethod != null)
+                {
+                    getMethodName = getMethod.Name;
+                }
+            }
+        }
+
+        if (getMethod == null)
+        {
+            throw new Exception($"Type '{typeName}' does not implement Iterable trait (missing get() method). For-in loops require types to implement Iterable<T>.");
+        }
+
+        // Call get(index)
+        var getReceiverArg = new IrBorrowValue(collVarRef, getMethod.Parameters[0].Type, false);
+        var getResultName = $"%t{_tempCounter++}";
+        var getCall = new IrCall(getMethodName, getMethod.ReturnType, getResultName);
+        getCall.Arguments.Add(getReceiverArg);
+        getCall.Arguments.Add(idxVarRef);
+        _currentBlock!.AddInstruction(getCall);
+
+        // Match on the Option result
+        var getResult = new IrVariable(getResultName, getMethod.ReturnType);
+
+        // Get the Option enum type to extract the inner type T
+        if (getMethod.ReturnType is not IrEnumType optionType || optionType.EnumName != "Option")
+        {
+            throw new Exception($"Iterator::get must return Option<T>, but returned {getMethod.ReturnType.Name}");
+        }
+
+        // Find the Some variant to get the inner type
+        var someVariant = optionType.Variants.FirstOrDefault(v => v.Name == "Some");
+        if (someVariant == null || someVariant.AssociatedData.Count == 0)
+        {
+            throw new Exception("Option::Some variant not found or has no associated data");
+        }
+
+        var innerType = someVariant.AssociatedData[0];
+
+        // Extract the tag and check if it's Some or None
+        var tagResultName = $"%t{_tempCounter++}";
+        var extractTag = new IrExtractTag(tagResultName, getResult);
+        _currentBlock!.AddInstruction(extractTag);
+
+        // Get the Some and None variant tags
+        var noneVariant = optionType.Variants.FirstOrDefault(v => v.Name == "None");
+        if (noneVariant == null)
+        {
+            throw new Exception("Option::None variant not found");
+        }
+
+        // Compare tag with None variant tag
+        var tagVar = new IrVariable(tagResultName, IrIntType.I32);
+        var noneTagConst = new IrConstant(noneVariant.Tag, IrIntType.I32);
+        var isNoneResultName = $"%t{_tempCounter++}";
+        var isNoneCheck = new IrBinaryOp(isNoneResultName, IrBinaryOp.OpKind.Eq, tagVar, noneTagConst, IrBoolType.Instance);
+        _currentBlock!.AddInstruction(isNoneCheck);
+
+        // Branch: if None, break; otherwise continue to Some case
+        var isNoneResult = new IrVariable(isNoneResultName, IrBoolType.Instance);
+        _currentBlock!.AddInstruction(new IrConditionalBranch(isNoneResult, matchNoneLabel, matchSomeLabel));
+
+        // None case: break out of loop
+        _currentBlock!.AddInstruction(new IrLabel(matchNoneLabel));
+        _currentBlock!.AddInstruction(new IrBranch(endLabel));
+
+        // Some case: unwrap and bind to item variable
+        _currentBlock!.AddInstruction(new IrLabel(matchSomeLabel));
+
+        // Extract the value from Option::Some
+        var unwrapResultName = $"%t{_tempCounter++}";
+        var unwrapInstr = new IrExtractVariantData(unwrapResultName, getResult, "Some", 0, innerType);
+        _currentBlock!.AddInstruction(unwrapInstr);
+
+        // Bind to item variable
+        var itemVar = new IrLocalVariable(itemName, innerType, false);
+        _currentFunction!.LocalVariables.Add(itemVar);
+        _localVariables[itemName] = itemVar;
+        var unwrappedValue = new IrVariable(unwrapResultName, innerType);
+        _currentBlock!.AddInstruction(new IrLocalDecl(itemName, innerType, false, unwrappedValue));
+
+        // Visit the loop body
+        Visit(context.block());
+
+        // Increment index: _idx = _idx + 1
+        if (!CurrentBlockHasTerminator())
+        {
+            var incResultName = $"%t{_tempCounter++}";
+            var oneLiteral = new IrConstant(1, IrIntType.U32);
+            var incOp = new IrBinaryOp(incResultName, IrBinaryOp.OpKind.Add, idxVarRef, oneLiteral, IrIntType.U32);
+            _currentBlock!.AddInstruction(incOp);
+            var incResult = new IrVariable(incResultName, IrIntType.U32);
+            _currentBlock!.AddInstruction(new IrStore(idxVarName, incResult));
 
             // Jump back to condition
             _currentBlock!.AddInstruction(new IrBranch(condLabel));
@@ -5095,6 +5358,122 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         return new IrStructLiteral(structType, fieldValues);
+    }
+
+    public override object? VisitStructArrayInit([NotNull] NovusParser.StructArrayInitContext context)
+    {
+        // Handle Vec { {10, 20, 30} } syntax
+        // This is syntactic sugar for collections that can be initialized from an array literal
+
+        var structName = context.typeName().GetText();
+
+        if (!_structs.ContainsKey(structName))
+        {
+            throw new Exception($"Unknown struct type '{structName}'");
+        }
+
+        var baseStructType = _structs[structName];
+
+        // Get the array literal expression
+        var arrayExpr = (IrValue?)Visit(context.expression());
+        if (arrayExpr == null)
+        {
+            throw new Exception("Struct array initializer requires an expression");
+        }
+
+        // Verify it's an array literal
+        if (arrayExpr is not IrArrayLiteral arrayLiteral)
+        {
+            throw new Exception($"Struct array initializer for '{structName}' requires an array literal, got {arrayExpr.GetType().Name}");
+        }
+
+        // For now, only support this for Vec type
+        if (structName != "Vec")
+        {
+            throw new Exception($"Struct array initializer syntax is only supported for Vec, not '{structName}'");
+        }
+
+        // Extract element type from array
+        if (arrayLiteral.Type is not IrArrayType arrayType)
+        {
+            throw new Exception($"Expected array type, got {arrayLiteral.Type}");
+        }
+
+        var elementType = arrayType.ElementType;
+        var arrayLength = arrayType.Length;
+
+        // Create a static variable to hold the array data
+        var staticVarName = $"_vec_data_{_staticVarCounter++}";
+        var staticVar = new IrStaticVariable(staticVarName, arrayType, Visibility.Private, false, arrayLiteral);
+        _module.StaticVariables.Add(staticVar);
+
+        // Monomorphize Vec<T> to Vec<elementType> if it's generic
+        IrStructType vecType;
+        if (baseStructType.GenericParameters.Count > 0)
+        {
+            // Vec is generic (e.g., Vec<T> from std::collections)
+            // Monomorphize to Vec<elementType>
+            var typeArgs = new List<IrType> { elementType };
+            var typeArgKeys = typeArgs.Select(t => GetTypeCacheKey(t));
+            var cacheKey = $"{baseStructType.StructName}<{string.Join(",", typeArgKeys)}>";
+
+            // Check cache first
+            if (_monomorphizedStructs.ContainsKey(cacheKey))
+            {
+                vecType = _monomorphizedStructs[cacheKey];
+            }
+            else
+            {
+                // Create type substitution map
+                var typeSubstitutions = new Dictionary<string, IrType>();
+                for (int i = 0; i < baseStructType.GenericParameters.Count && i < typeArgs.Count; i++)
+                {
+                    typeSubstitutions[baseStructType.GenericParameters[i]] = typeArgs[i];
+                }
+
+                // Create monomorphized fields
+                var monomorphizedFields = new List<IrStructField>();
+                foreach (var origField in baseStructType.Fields)
+                {
+                    var fieldType = SubstituteGenericTypes(origField.Type, typeSubstitutions);
+                    monomorphizedFields.Add(new IrStructField(origField.Name, fieldType));
+                }
+
+                // Create monomorphized struct type
+                vecType = new IrStructType(baseStructType.StructName, monomorphizedFields, null, cacheKey);
+                _ = vecType.SizeInBytes; // Force size calculation
+
+                // Cache it
+                _monomorphizedStructs[cacheKey] = vecType;
+            }
+        }
+        else
+        {
+            // Vec is not generic (custom Vec with concrete types)
+            vecType = baseStructType;
+        }
+
+        // Build field values: ptr/data = &static_array, len = array_length, capacity = array_length
+        var fieldValues = new Dictionary<string, IrValue>();
+
+        // Determine pointer field name (ptr for std::collections::Vec, data for custom Vec)
+        var pointerFieldName = vecType.GetField("ptr") != null ? "ptr" : "data";
+
+        // Pointer field: cast static var to pointer
+        var staticVarRef = new IrVariable(staticVarName, arrayType);
+        var refType = new IrReferenceType(arrayType);
+        var borrowExpr = new IrBorrowValue(staticVarRef, refType, false);
+        var pointerType = new IrPointerType(elementType);
+        var dataPtr = new IrCastValue(borrowExpr, refType, pointerType);
+        fieldValues[pointerFieldName] = dataPtr;
+
+        // len and capacity fields
+        // IMPORTANT: capacity must be 0 for static-backed Vecs so Vec_drop won't try to free the static data
+        // Static const data cannot be freed on AmigaOS - it would cause a crash (error 81000005)
+        fieldValues["len"] = new IrConstant(arrayLength, IrIntType.U32);
+        fieldValues["capacity"] = new IrConstant(0, IrIntType.U32);
+
+        return new IrStructLiteral(vecType, fieldValues);
     }
 
     public override object? VisitMemberAccessExpr([NotNull] NovusParser.MemberAccessExprContext context)

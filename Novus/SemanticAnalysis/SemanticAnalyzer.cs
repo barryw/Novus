@@ -502,6 +502,39 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             _importedNames[varName] = moduleNamespace;
         }
 
+        // Register imported traits from the module
+        foreach (var traitDecl in moduleContext.traitDeclaration())
+        {
+            var traitName = traitDecl.IDENTIFIER().GetText();
+
+            // Skip if not in the import list
+            if (!namesToImport.Contains(traitName))
+            {
+                continue;
+            }
+
+            // Check if trait is pub
+            bool isPub = traitDecl.KW_PUB() != null;
+
+            if (!isPub)
+            {
+                _diagnostics.ReportError(
+                    "E0029",
+                    $"cannot import private trait '{traitName}' from module '{moduleNamespace}'",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "only pub traits can be imported from modules"
+                    }
+                );
+                continue;
+            }
+
+            // Register the trait from the imported module
+            RegisterTrait(traitDecl);
+            _importedNames[traitName] = moduleNamespace;
+        }
+
         // Register all impl blocks from the module (methods are always imported with their types)
         foreach (var implDecl in moduleContext.implDeclaration())
         {
@@ -798,9 +831,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             traitName = typeNames[0].IDENTIFIER(0).GetText();
 
             // Parse trait type arguments if present (e.g., Iterator<i32>)
-            if (context.genericTypeArgs() != null)
+            var traitGenericArgs = context.genericTypeArgs().Length > 0 ? context.genericTypeArgs(0) : null;
+            if (traitGenericArgs != null)
             {
-                var typeList = context.genericTypeArgs().typeList();
+                var typeList = traitGenericArgs.typeList();
                 foreach (var typeCtx in typeList.type())
                 {
                     traitTypeArgs.Add(ParseType(typeCtx));
@@ -1243,9 +1277,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             traitName = typeNames[0].IDENTIFIER(0).GetText();
 
             // Parse trait type arguments if present (e.g., Iterator<i32>)
-            if (context.genericTypeArgs() != null)
+            var traitGenericArgs = context.genericTypeArgs().Length > 0 ? context.genericTypeArgs(0) : null;
+            if (traitGenericArgs != null)
             {
-                var typeList = context.genericTypeArgs().typeList();
+                var typeList = traitGenericArgs.typeList();
                 foreach (var typeCtx in typeList.type())
                 {
                     traitTypeArgs.Add(ParseType(typeCtx));
@@ -2410,11 +2445,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return targetType;
 
         // Check if cast is valid
-        // Allow: numeric -> numeric, pointer -> integer, integer -> pointer, pointer -> pointer
+        // Allow: numeric -> numeric, pointer -> integer, integer -> pointer, pointer -> pointer, &T -> *T
         bool isValidCast = (IsNumericType(targetType) && IsNumericType(exprType)) ||
                            (IsNumericType(targetType) && exprType is IrPointerType) ||
                            (targetType is IrPointerType && IsNumericType(exprType)) ||
-                           (targetType is IrPointerType && exprType is IrPointerType);
+                           (targetType is IrPointerType && exprType is IrPointerType) ||
+                           (targetType is IrPointerType && exprType is IrReferenceType) ||
+                           (targetType is IrPointerType && exprType is IrMutReferenceType);
 
         if (!isValidCast)
         {
@@ -2625,7 +2662,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return null;
     }
 
-    public override IrType? VisitForStatement([NotNull] NovusParser.ForStatementContext context)
+    public override IrType? VisitForCStyle([NotNull] NovusParser.ForCStyleContext context)
     {
         // Visit initialization if present
         if (context.GetChild(2) is NovusParser.VariableDeclarationContext varDecl)
@@ -2668,6 +2705,30 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             // Note: This is validated in the loop context during IR building
             // We don't validate it here separately
         }
+
+        return null;
+    }
+
+    public override IrType? VisitForInLoop([NotNull] NovusParser.ForInLoopContext context)
+    {
+        // for item in collection { ... }
+        var itemName = context.IDENTIFIER().GetText();
+        var collectionType = Visit(context.expression());
+
+        // TODO: Validate that collection implements Iterator trait
+        // For now, just add the item variable with a placeholder type
+        // The IR builder will properly type it when it unwraps the Option
+        var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+        var itemSymbol = new VariableSymbol(itemName, IrIntType.I32, false, location!);  // Placeholder type
+        _variables[itemName] = itemSymbol;
+
+        // Enter loop context
+        _loopDepth++;
+        AnalyzeBlock(context.block());
+        _loopDepth--;
+
+        // Remove the item variable from scope
+        _variables.Remove(itemName);
 
         return null;
     }
@@ -5646,6 +5707,34 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         return structType;
+    }
+
+    public override IrType? VisitStructArrayInit([NotNull] NovusParser.StructArrayInitContext context)
+    {
+        // Handle Vec { {10, 20, 30} } syntax
+        var structName = context.typeName().GetText();
+
+        // Check if struct type exists
+        if (!_structs.ContainsKey(structName))
+        {
+            var location = SourceLocationHelper.FromContext(context.typeName(), _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0023",
+                $"unknown struct type '{structName}'",
+                location
+            );
+            return null;
+        }
+
+        // Validate the array literal expression
+        var arrayType = Visit(context.expression());
+        if (arrayType == null)
+        {
+            return null;  // Error already reported
+        }
+
+        // Return the struct type
+        return _structs[structName];
     }
 
     private IrType ParseAndValidateIntegerLiteral(ParserRuleContext context, string text)

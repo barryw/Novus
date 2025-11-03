@@ -1,0 +1,22 @@
+// Example: for-in loop with std::collections::Vec
+// Demonstrates:
+// - Using Vec from the standard library
+// - Collection initializer syntax: Vec { {...} }
+// - For-in loops that work with types having get() and len() methods
+
+from std::collections import Vec
+
+pub fn main() -> i32 {
+    // Create a Vec<i32> using collection initializer syntax
+    let vec: Vec<i32> = Vec { {10, 20, 30, 40, 50, 60, 70, 80} }
+
+    // Sum all values using for-in loop
+    // The for-in loop automatically calls vec.get(index) and vec.len()
+    let mut sum: i32 = 0
+    for value in vec {
+        sum += value
+    }
+
+    // The sum should be 360 (10 + 20 + 30 + 40 + 50 + 60 + 70 + 80)
+    return sum
+}

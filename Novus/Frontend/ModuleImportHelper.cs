@@ -180,6 +180,15 @@ public static class ModuleImportHelper
                 }
             }
 
+            // Import all pub traits
+            foreach (var traitDecl in context.traitDeclaration())
+            {
+                if (IsPub(traitDecl))
+                {
+                    namesToImport.Add(traitDecl.IDENTIFIER().GetText());
+                }
+            }
+
             // Import all pub/extern functions
             foreach (var funcDecl in context.functionDeclaration())
             {

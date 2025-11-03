@@ -109,7 +109,7 @@ functionSignature
     ;
 
 implDeclaration
-    : attribute* KW_IMPL genericParams? typeName genericTypeArgs? KW_FOR typeName '{' NEWLINE* implItem* '}' NEWLINE*
+    : attribute* KW_IMPL genericParams? typeName genericTypeArgs? KW_FOR typeName genericTypeArgs? '{' NEWLINE* implItem* '}' NEWLINE*
     | attribute* KW_IMPL genericParams? typeName genericTypeArgs? '{' NEWLINE* implItem* '}' NEWLINE*
     ;
 
@@ -251,7 +251,8 @@ whileStatement
     ;
 
 forStatement
-    : KW_FOR '(' (variableDeclaration | assignmentStatement)? ';' expression? ';' assignmentStatement? ')' block
+    : KW_FOR '(' (variableDeclaration | assignmentStatement)? ';' expression? ';' assignmentStatement? ')' block  # ForCStyle
+    | KW_FOR IDENTIFIER KW_IN expression block                                                                      # ForInLoop
     ;
 
 foreverStatement
@@ -309,6 +310,7 @@ primaryExpression
     | '-'? BINARY_LITERAL                          # BinaryLiteral
     | '-'? HEX_LITERAL                             # HexLiteral
     | typeName '{' NEWLINE* structFieldInit (',' NEWLINE* structFieldInit)* ','? NEWLINE* '}'  # StructLiteral
+    | typeName '{' NEWLINE* expression NEWLINE* '}'                                           # StructArrayInit
     | identifier                                   # IdentifierExpr
     | '(' expression ')'                           # ParenExpr
     | '{' NEWLINE* (expression (',' NEWLINE* expression)*)? NEWLINE* '}'     # ArrayLiteral
@@ -349,6 +351,7 @@ KW_IF       : 'if';
 KW_ELSE     : 'else';
 KW_WHILE    : 'while';
 KW_FOR      : 'for';
+KW_IN       : 'in';
 KW_FOREVER  : 'forever';
 KW_BREAK    : 'break';
 KW_MATCH    : 'match';

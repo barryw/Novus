@@ -75,3 +75,26 @@ impl LibraryVersion {
 
 // Note: For collections like Vec, see std/collections.novus
 // Note: For memory management, see std/mem.novus (MemoryBlock, Allocation<T>, Box<T>)
+
+// ============================================================================
+// Iterable Trait - Foundation for For-In Loops
+// ============================================================================
+
+// Iterable<T> - allows types to be used in for-in loops
+// Types implementing this trait can be iterated over with: for item in collection { ... }
+//
+// Requirements:
+// - get(index: u32) -> Option<T>: Access element at index, returns None if out of bounds
+// - len() -> u32: Total number of elements in the collection
+//
+// Example implementation:
+// ```novus
+// impl<T> Iterable<T> for Vec<T> {
+//     fn get(&self, index: u32) -> Option<T> { ... }
+//     fn len(&self) -> u32 { ... }
+// }
+// ```
+pub trait Iterable<T> {
+    fn get(&self, index: u32) -> Option<T>
+    fn len(&self) -> u32
+}
