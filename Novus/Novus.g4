@@ -58,7 +58,7 @@ globalVariableDeclaration
     ;
 
 functionDeclaration
-    : attribute* KW_EXTERN? (KW_PUB | KW_INTERNAL)? KW_FN IDENTIFIER genericParams? '(' parameterList? ')' ('->' type)? block? NEWLINE*
+    : attribute* KW_EXTERN? (KW_PUB | KW_INTERNAL)? KW_FN IDENTIFIER genericParams? '(' parameterList? ')' ('->' type)? whereClause? block? NEWLINE*
     ;
 
 parameterList
@@ -81,7 +81,7 @@ selfParameter
     ;
 
 structDeclaration
-    : attribute* (KW_PUB | KW_INTERNAL)? KW_STRUCT IDENTIFIER genericParams? '{' NEWLINE* structField* '}' NEWLINE*
+    : attribute* (KW_PUB | KW_INTERNAL)? KW_STRUCT IDENTIFIER genericParams? whereClause? '{' NEWLINE* structField* '}' NEWLINE*
     ;
 
 structField
@@ -89,7 +89,7 @@ structField
     ;
 
 enumDeclaration
-    : attribute* (KW_PUB | KW_INTERNAL)? KW_ENUM IDENTIFIER genericParams? '{' NEWLINE* enumVariant (',' NEWLINE* enumVariant)* ','? NEWLINE* '}' NEWLINE*
+    : attribute* (KW_PUB | KW_INTERNAL)? KW_ENUM IDENTIFIER genericParams? whereClause? '{' NEWLINE* enumVariant (',' NEWLINE* enumVariant)* ','? NEWLINE* '}' NEWLINE*
     ;
 
 enumVariant
@@ -109,8 +109,8 @@ functionSignature
     ;
 
 implDeclaration
-    : attribute* KW_IMPL genericParams? typeName genericTypeArgs? KW_FOR typeName genericTypeArgs? '{' NEWLINE* implItem* '}' NEWLINE*
-    | attribute* KW_IMPL genericParams? typeName genericTypeArgs? '{' NEWLINE* implItem* '}' NEWLINE*
+    : attribute* KW_IMPL genericParams? typeName genericTypeArgs? KW_FOR typeName genericTypeArgs? whereClause? '{' NEWLINE* implItem* '}' NEWLINE*
+    | attribute* KW_IMPL genericParams? typeName genericTypeArgs? whereClause? '{' NEWLINE* implItem* '}' NEWLINE*
     ;
 
 implItem
@@ -123,6 +123,19 @@ genericParams
 
 genericTypeArgs
     : '<' typeList '>'
+    ;
+
+whereClause
+    : KW_WHERE whereBound (',' whereBound)*
+    ;
+
+whereBound
+    : IDENTIFIER ':' traitBound
+    ;
+
+traitBound
+    : typeName genericTypeArgs?  # SingleTraitBound
+    | traitBound '+' traitBound  # MultipleTraitBound
     ;
 
 type
@@ -269,6 +282,7 @@ expressionStatement
 
 expression
     : primaryExpression                                     # PrimaryExpr
+    | expression '::' genericTypeArgs                      # TurboFishExpr
     | expression '::' IDENTIFIER                           # PathExpr
     | expression '.' IDENTIFIER                            # MemberAccessExpr
     | expression '(' argumentList? ')'                     # CallExpr
@@ -346,6 +360,7 @@ KW_SELF     : 'self';
 KW_STRUCT   : 'struct';
 KW_ENUM     : 'enum';
 KW_TRAIT    : 'trait';
+KW_WHERE    : 'where';
 KW_RETURN   : 'return';
 KW_IF       : 'if';
 KW_ELSE     : 'else';

@@ -59,7 +59,13 @@
       "Bash(VAMOS_LIBS=\"/Users/barry/Emulation/Amiga/A4000-DH0/LIBS\" vamos test_generic_struct:*)",
       "Bash(tr:*)",
       "Bash(./Novus/bin/Debug/net9.0/Novus:*)",
-      "Bash(VAMOS_LIBS=\"/Users/barry/Emulation/Amiga/A4000-DH0/LIBS\" vamos:*)"
+      "Bash(VAMOS_LIBS=\"/Users/barry/Emulation/Amiga/A4000-DH0/LIBS\" vamos:*)",
+      "Bash(./novusc build:*)",
+      "Bash(git diff:*)",
+      "Bash(git --no-pager diff:*)",
+      "Bash(git log:*)",
+      "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Debug/net9.0/novusc build:*)",
+      "Bash(git restore:*)"
     ],
     "deny": [],
     "ask": []

@@ -117,6 +117,8 @@ public class IrFunction
     public List<IrLocalVariable> LocalVariables { get; } = new();
     public List<IrBasicBlock> BasicBlocks { get; } = new();
     public List<IrBasicBlock> DeferredBlocks { get; } = new();  // Blocks to execute on function exit (LIFO)
+    public List<string> GenericParameters { get; } = new();  // Generic type parameters (e.g., ["T", "U"])
+    public IrWhereClause? WhereClause { get; set; }  // Generic type constraints (e.g., where T: Sortable)
 
     public IrFunction(string name, IrType returnType, Visibility visibility = Visibility.Private, bool isExtern = false, bool isVariadic = false)
     {
@@ -725,15 +727,17 @@ public class IrStructType : IrType
     public List<string> GenericParameters { get; }  // Type parameter names (e.g., ["T"])
     public string? CacheKey { get; set; }  // Cache key for monomorphized types (e.g., "Vec<i32>")
     public Novus.SemanticAnalysis.AttributeCollection? Attributes { get; set; }  // Struct attributes (@library, @packed, etc.)
+    public IrWhereClause? WhereClause { get; set; }  // Generic type constraints (e.g., where T: Sortable)
     private int? _cachedSize;
 
-    public IrStructType(string structName, List<IrStructField> fields, List<string>? genericParams = null, string? cacheKey = null, Novus.SemanticAnalysis.AttributeCollection? attributes = null)
+    public IrStructType(string structName, List<IrStructField> fields, List<string>? genericParams = null, string? cacheKey = null, Novus.SemanticAnalysis.AttributeCollection? attributes = null, IrWhereClause? whereClause = null)
     {
         StructName = structName;
         Fields = fields;
         GenericParameters = genericParams ?? new List<string>();
         CacheKey = cacheKey;
         Attributes = attributes;
+        WhereClause = whereClause;
     }
 
     public override int SizeInBytes

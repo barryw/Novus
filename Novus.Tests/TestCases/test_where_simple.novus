@@ -1,0 +1,21 @@
+// Test generic constraint enforcement with where clauses
+
+// Define a trait that types can implement
+pub trait Sortable {
+    fn compare() -> i32
+}
+
+// Generic struct with constraint
+pub struct SortedList<T> where T: Sortable {
+    ptr: *T,
+    len: u32,
+}
+
+// Generic function with constraint
+pub fn sort<T>(items: *T, count: u32) -> i32 where T: Sortable {
+    return 0
+}
+
+pub fn main() -> i32 {
+    return 0
+}

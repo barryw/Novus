@@ -11,15 +11,17 @@ public class IrEnumType : IrType
     public List<string> GenericParameters { get; }  // Type parameter names (e.g., ["T", "E"])
     public string? CacheKey { get; set; }  // Cache key for monomorphized types (e.g., "Option<i32>")
     public Novus.SemanticAnalysis.AttributeCollection? Attributes { get; set; }  // Enum attributes
+    public IrWhereClause? WhereClause { get; set; }  // Generic type constraints (e.g., where T: Sortable)
     private int? _cachedSize;
 
-    public IrEnumType(string enumName, List<IrEnumVariant> variants, List<string>? genericParams = null, string? cacheKey = null, Novus.SemanticAnalysis.AttributeCollection? attributes = null)
+    public IrEnumType(string enumName, List<IrEnumVariant> variants, List<string>? genericParams = null, string? cacheKey = null, Novus.SemanticAnalysis.AttributeCollection? attributes = null, IrWhereClause? whereClause = null)
     {
         EnumName = enumName;
         Variants = variants;
         GenericParameters = genericParams ?? new List<string>();
         CacheKey = cacheKey;
         Attributes = attributes;
+        WhereClause = whereClause;
     }
 
     public override int SizeInBytes
@@ -165,6 +167,23 @@ public class IrEnumValue : IrValue
 }
 
 /// <summary>
+/// Turbo-fish parameterized type (e.g., Vec::<u32> before accessing members)
+/// This is an intermediate value that stores type name and explicit type arguments
+/// </summary>
+public class IrTurboFishType : IrValue
+{
+    public string TypeName { get; set; }
+    public List<IrType> TypeArguments { get; set; }
+
+    public IrTurboFishType(string typeName, List<IrType> typeArguments)
+        : base(IrVoidType.Instance)  // Placeholder type
+    {
+        TypeName = typeName;
+        TypeArguments = typeArguments;
+    }
+}
+
+/// <summary>
 /// Generic associated function reference (e.g., Vec::new before type parameters are known)
 /// This is a placeholder that will be resolved to a concrete function when called
 /// </summary>
@@ -173,13 +192,15 @@ public class IrGenericAssociatedFunction : IrValue
     public string TypeName { get; set; }
     public string MethodName { get; set; }
     public List<string> GenericParameters { get; set; }
+    public List<IrType>? ExplicitTypeArgs { get; set; }  // For turbo-fish syntax: Vec::<u32>::new
 
-    public IrGenericAssociatedFunction(string typeName, string methodName, List<string> genericParameters)
+    public IrGenericAssociatedFunction(string typeName, string methodName, List<string> genericParameters, List<IrType>? explicitTypeArgs = null)
         : base(IrVoidType.Instance)  // Type will be determined when instantiated
     {
         TypeName = typeName;
         MethodName = methodName;
         GenericParameters = genericParameters;
+        ExplicitTypeArgs = explicitTypeArgs;
     }
 }
 

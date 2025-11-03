@@ -1,0 +1,29 @@
+// Test that valid constraints are accepted
+
+pub trait Sortable {
+    fn compare() -> i32
+}
+
+// This type implements Sortable
+pub struct Counter {
+    value: u32,
+}
+
+impl Sortable for Counter {
+    fn compare() -> i32 {
+        return 0
+    }
+}
+
+// Generic struct with constraint
+pub struct SortedList<T> where T: Sortable {
+    ptr: *T,
+    len: u32,
+}
+
+pub fn main() -> i32 {
+    // This should work - Counter implements Sortable
+    let list: SortedList<Counter> = SortedList { ptr: 0, len: 0 }
+
+    return 0
+}

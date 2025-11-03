@@ -59,6 +59,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     // Cache for monomorphized generic functions (ensures same instance for same signature)
     private readonly Dictionary<string, FunctionSymbol> _monomorphizedFunctions = new();
 
+    // Track trait implementations: key = "TypeName::TraitName<TypeArg1,TypeArg2,...>"
+    // This allows us to check if a type implements a trait during constraint validation
+    private readonly Dictionary<string, TraitImplInfo> _traitImpls = new();
+
     // Expected type for bidirectional type checking (flows down from context)
     private IrType? _expectedType = null;
 
@@ -856,6 +860,24 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 );
                 return;
             }
+
+            // Store trait implementation for constraint checking
+            // Create a unique key for this trait impl
+            // Format: "TypeName::TraitName<Arg1,Arg2,...>"
+            var traitArgsStr = traitTypeArgs.Count > 0
+                ? $"<{string.Join(",", traitTypeArgs.Select(t => GetTypeCacheKey(t)))}>"
+                : "";
+            var implKey = $"{implTypeName}::{traitName}{traitArgsStr}";
+
+            // Store the trait impl info
+            var implLocation = SourceLocationHelper.FromToken(context.KW_IMPL().Symbol, _filePath, _sourceLines);
+            _traitImpls[implKey] = new TraitImplInfo(
+                implTypeName,
+                traitName,
+                traitTypeArgs,
+                genericParams,
+                implLocation
+            );
         }
 
         // Register each method in the impl block
@@ -1027,8 +1049,11 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
+        // Parse where clause
+        var whereClause = ParseWhereClause(context.whereClause());
+
         // Register placeholder struct type FIRST to allow self-referential types
-        var placeholderStruct = new IrStructType(name, new List<IrStructField>(), genericParams, null, attributes);
+        var placeholderStruct = new IrStructType(name, new List<IrStructField>(), genericParams, null, attributes, whereClause);
         _structs[name] = placeholderStruct;
 
         // Now parse struct fields (can now reference the struct being defined)
@@ -1047,7 +1072,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         // Replace placeholder with complete struct type
-        var structType = new IrStructType(name, fields, genericParams, null, attributes);
+        var structType = new IrStructType(name, fields, genericParams, null, attributes, whereClause);
 
         // Force offset calculation by accessing SizeInBytes (only for non-generic structs)
         if (genericParams.Count == 0)
@@ -1117,7 +1142,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             variants.Add(new IrEnumVariant(variantName, tag++, associatedData));
         }
 
-        var enumType = new IrEnumType(name, variants, genericParams.Count > 0 ? genericParams : null, null, attributes);
+        // Parse where clause
+        var whereClause = ParseWhereClause(context.whereClause());
+
+        var enumType = new IrEnumType(name, variants, genericParams.Count > 0 ? genericParams : null, null, attributes, whereClause);
 
         // Force size calculation
         if (genericParams.Count == 0)
@@ -5443,18 +5471,48 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return Visit(context.expression());
     }
 
+    public override IrType? VisitTurboFishExpr([NotNull] NovusParser.TurboFishExprContext context)
+    {
+        // Turbo-fish expressions (Type::<Args>) are allowed through semantic analysis
+        // Type checking will be handled in IR building phase
+        return null;
+    }
+
     public override IrType? VisitPathExpr([NotNull] NovusParser.PathExprContext context)
     {
-        // Handle path expressions: Type::name
+        // Handle path expressions: Type::name or Type::<Args>::name
         // This can be:
         // 1. Enum variants: Option::Some, Result::Ok
         // 2. Associated functions (static methods): Vec::new, Vec::with_capacity
+        // 3. Generic associated functions: Vec::<u32>::with_capacity
         var baseExpr = context.expression();
         var memberName = context.IDENTIFIER().GetText();
 
-        // The base expression should be a primary expression containing an identifier
+        // The base expression should be either:
+        // 1. A primary expression containing an identifier (Vec::method)
+        // 2. A turbo-fish expression (Vec::<u32>::method)
         string? typeName = null;
-        if (baseExpr is NovusParser.PrimaryExprContext primaryCtx &&
+        List<IrType>? explicitTypeArgs = null;
+
+        if (baseExpr is NovusParser.TurboFishExprContext turboFishCtx)
+        {
+            // Extract type name from the turbo-fish expression
+            var turboBaseExpr = turboFishCtx.expression();
+            if (turboBaseExpr is NovusParser.PrimaryExprContext primaryCtx &&
+                primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext identCtx)
+            {
+                typeName = identCtx.identifier().GetText();
+
+                // Parse the explicit type arguments
+                explicitTypeArgs = new List<IrType>();
+                foreach (var typeCtx in turboFishCtx.genericTypeArgs().typeList().type())
+                {
+                    var irType = ParseType(typeCtx);
+                    explicitTypeArgs.Add(irType);
+                }
+            }
+        }
+        else if (baseExpr is NovusParser.PrimaryExprContext primaryCtx &&
             primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext identCtx)
         {
             typeName = identCtx.identifier().GetText();
@@ -5465,11 +5523,11 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
             _diagnostics.ReportError(
                 "E0032",
-                "path expression base must be a type identifier",
+                "path expression base must be a type identifier or turbo-fish expression",
                 location,
                 helpTexts: new List<string>
                 {
-                    "expected format: TypeName::member"
+                    "expected format: TypeName::member or TypeName::<Args>::member"
                 }
             );
             return null;
@@ -5539,7 +5597,37 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
 
             // Return the function's return type
-            // This is a special marker that indicates "this is an associated function reference"
+            // If we have explicit type arguments (turbo-fish), substitute them in the return type
+            if (explicitTypeArgs != null && explicitTypeArgs.Count > 0)
+            {
+                // Get the struct to find its generic parameters
+                if (_structs.ContainsKey(typeName))
+                {
+                    var structType = _structs[typeName];
+                    if (structType.GenericParameters.Count != explicitTypeArgs.Count)
+                    {
+                        var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                        _diagnostics.ReportError(
+                            "E0050",
+                            $"wrong number of type arguments for '{typeName}': expected {structType.GenericParameters.Count}, got {explicitTypeArgs.Count}",
+                            location
+                        );
+                        return null;
+                    }
+
+                    // Build substitution map: generic param name -> concrete type
+                    var substitutions = new Dictionary<string, IrType>();
+                    for (int i = 0; i < structType.GenericParameters.Count; i++)
+                    {
+                        substitutions[structType.GenericParameters[i]] = explicitTypeArgs[i];
+                    }
+
+                    // Substitute generic parameters in the return type
+                    return SubstituteGenericTypes(funcSymbol.ReturnType, substitutions);
+                }
+            }
+
+            // No explicit type args - return the function's return type as-is
             return funcSymbol.ReturnType;
         }
 
@@ -5981,6 +6069,14 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     return IrIntType.I32;
                 }
 
+                // Validate generic constraints
+                var structLocation = SourceLocationHelper.FromToken(context.typeName().Start, _filePath, _sourceLines);
+                if (!ValidateGenericConstraints(structType.WhereClause, structType.GenericParameters, typeArgs, structLocation))
+                {
+                    // Error already reported by ValidateGenericConstraints
+                    return IrIntType.I32;
+                }
+
                 // NOTE: Even if type arguments contain generics (e.g., *T), we proceed to create a specialized struct
                 // This allows Vec<*T> to be distinct from Vec<T>
 
@@ -6055,6 +6151,14 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                         $"enum '{typeName}' expects {enumType.GenericParameters.Count} type arguments but got {typeArgs.Count}",
                         loc
                     );
+                    return IrIntType.I32;
+                }
+
+                // Validate generic constraints
+                var enumLocation = SourceLocationHelper.FromToken(context.typeName().Start, _filePath, _sourceLines);
+                if (!ValidateGenericConstraints(enumType.WhereClause, enumType.GenericParameters, typeArgs, enumLocation))
+                {
+                    // Error already reported by ValidateGenericConstraints
                     return IrIntType.I32;
                 }
 
@@ -6539,6 +6643,231 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
         return "unknown";
     }
+
+    /// <summary>
+    /// Parse a where clause from the AST into an IrWhereClause
+    /// </summary>
+    private IrWhereClause? ParseWhereClause(NovusParser.WhereClauseContext? context)
+    {
+        if (context == null)
+            return null;
+
+        var constraints = new List<IrTypeConstraint>();
+
+        foreach (var boundCtx in context.whereBound())
+        {
+            var typeParam = boundCtx.IDENTIFIER().GetText();
+            var bounds = ParseTraitBound(boundCtx.traitBound());
+            constraints.Add(new IrTypeConstraint(typeParam, bounds));
+        }
+
+        return new IrWhereClause(constraints);
+    }
+
+    /// <summary>
+    /// Parse a trait bound (potentially with multiple traits separated by +)
+    /// </summary>
+    private List<IrTraitBound> ParseTraitBound(NovusParser.TraitBoundContext context)
+    {
+        var bounds = new List<IrTraitBound>();
+
+        if (context is NovusParser.SingleTraitBoundContext singleBound)
+        {
+            // Parse trait name and optional type arguments
+            var traitName = singleBound.typeName().GetText();
+            var typeArgs = new List<IrType>();
+
+            if (singleBound.genericTypeArgs() != null)
+            {
+                foreach (var typeCtx in singleBound.genericTypeArgs().typeList().type())
+                {
+                    typeArgs.Add(ParseType(typeCtx));
+                }
+            }
+
+            bounds.Add(new IrTraitBound(traitName, typeArgs));
+        }
+        else if (context is NovusParser.MultipleTraitBoundContext multipleBound)
+        {
+            // Recursively parse both sides of the +
+            bounds.AddRange(ParseTraitBound(multipleBound.traitBound(0)));
+            bounds.AddRange(ParseTraitBound(multipleBound.traitBound(1)));
+        }
+
+        return bounds;
+    }
+
+    /// <summary>
+    /// Check if a type satisfies all trait bounds
+    /// </summary>
+    private bool TypeSatisfiesBounds(IrType type, List<IrTraitBound> bounds, SourceLocation location)
+    {
+        foreach (var bound in bounds)
+        {
+            if (!TypeImplementsTrait(type, bound.TraitName, bound.TraitTypeArgs))
+            {
+                _diagnostics.ReportError(
+                    "E0100",
+                    $"type '{TypeToString(type)}' does not implement trait '{bound}'",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        $"the trait bound '{TypeToString(type)}: {bound}' is not satisfied",
+                        $"add an impl block: impl {bound} for {TypeToString(type)}"
+                    }
+                );
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Check if a type implements a specific trait
+    /// </summary>
+    private bool TypeImplementsTrait(IrType type, string traitName, List<IrType> traitTypeArgs)
+    {
+        // Validate that the trait exists
+        if (!_traits.ContainsKey(traitName))
+        {
+            return false; // Unknown trait
+        }
+
+        // Extract the base type name from the IR type
+        string typeName = GetBaseTypeName(type);
+
+        // Build the lookup key for this specific trait impl
+        // Format: "TypeName::TraitName<Arg1,Arg2,...>"
+        var traitArgsStr = traitTypeArgs.Count > 0
+            ? $"<{string.Join(",", traitTypeArgs.Select(t => GetTypeCacheKey(t)))}>"
+            : "";
+        var implKey = $"{typeName}::{traitName}{traitArgsStr}";
+
+        // Check if we have an exact match for this trait impl
+        if (_traitImpls.ContainsKey(implKey))
+        {
+            return true;
+        }
+
+        // For generic impls, we need to check if there's a generic impl that could satisfy this
+        // Example: impl<T> Iterator<T> for Vec<T> should match Vec<i32> with Iterator<i32>
+        foreach (var kvp in _traitImpls)
+        {
+            var implInfo = kvp.Value;
+
+            // Check if this is the right trait
+            if (implInfo.TraitName != traitName)
+                continue;
+
+            // Check if the type names match
+            if (implInfo.TypeName != typeName)
+                continue;
+
+            // If the impl has generic parameters, we need to check if the trait type args
+            // can be unified with the constraint's trait type args
+            if (implInfo.ImplGenericParams.Count > 0)
+            {
+                // Generic impl exists - assume it can be monomorphized to satisfy this constraint
+                // Full unification would require more complex type checking
+                return true;
+            }
+
+            // Check if trait type arguments match exactly
+            if (TraitTypeArgsMatch(implInfo.TraitTypeArgs, traitTypeArgs))
+            {
+                return true;
+            }
+        }
+
+        return false; // No impl found
+    }
+
+    /// <summary>
+    /// Extract the base type name from an IR type
+    /// Handles various type wrappers (pointers, arrays, etc.)
+    /// </summary>
+    private string GetBaseTypeName(IrType type)
+    {
+        return type switch
+        {
+            IrStructType structType => structType.StructName,
+            IrEnumType enumType => enumType.EnumName,
+            IrPointerType ptrType => GetBaseTypeName(ptrType.PointeeType),
+            IrArrayType arrayType => GetBaseTypeName(arrayType.ElementType),
+            IrIntType intType => intType.IsSigned ? $"i{intType.BitWidth}" : $"u{intType.BitWidth}",
+            IrBoolType => "bool",
+            IrStringType => "String",
+            _ => type.Name
+        };
+    }
+
+    /// <summary>
+    /// Check if two lists of trait type arguments match
+    /// </summary>
+    private bool TraitTypeArgsMatch(List<IrType> args1, List<IrType> args2)
+    {
+        if (args1.Count != args2.Count)
+            return false;
+
+        for (int i = 0; i < args1.Count; i++)
+        {
+            // For now, do simple cache key comparison
+            // A more sophisticated implementation would need full type unification
+            if (GetTypeCacheKey(args1[i]) != GetTypeCacheKey(args2[i]))
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Validate generic constraints when monomorphizing a type
+    /// </summary>
+    private bool ValidateGenericConstraints(
+        IrWhereClause? whereClause,
+        List<string> genericParams,
+        List<IrType> typeArgs,
+        SourceLocation location)
+    {
+        if (whereClause == null || whereClause.Constraints.Count == 0)
+            return true;
+
+        // Build substitution map from generic parameters to concrete types
+        var substitutions = new Dictionary<string, IrType>();
+        for (int i = 0; i < genericParams.Count; i++)
+        {
+            substitutions[genericParams[i]] = typeArgs[i];
+        }
+
+        // Check each constraint
+        foreach (var constraint in whereClause.Constraints)
+        {
+            // Get the concrete type for this constrained parameter
+            if (!substitutions.ContainsKey(constraint.TypeParameter))
+                continue;
+
+            var concreteType = substitutions[constraint.TypeParameter];
+
+            // Check if the concrete type satisfies all bounds
+            if (!TypeSatisfiesBounds(concreteType, constraint.Bounds, location))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Helper record to store trait implementation information for constraint checking
+    /// </summary>
+    private record TraitImplInfo(
+        string TypeName,              // The type implementing the trait (e.g., "Vec", "Counter")
+        string TraitName,             // Trait being implemented (e.g., "Iterator")
+        List<IrType> TraitTypeArgs,   // Type args for the trait (e.g., [i32] for Iterator<i32>)
+        List<string> ImplGenericParams, // Generic params on the impl block itself
+        SourceLocation Location       // Where the impl was declared
+    );
 }
 
 // Symbol table classes

@@ -1,0 +1,38 @@
+// Test that constraint violations are properly detected
+
+pub trait Sortable {
+    fn compare() -> i32
+}
+
+// This type implements Sortable
+pub struct Counter {
+    value: u32,
+}
+
+impl Sortable for Counter {
+    fn compare() -> i32 {
+        return 0
+    }
+}
+
+// This type does NOT implement Sortable
+pub struct Window {
+    width: u32,
+    height: u32,
+}
+
+// Generic struct with constraint
+pub struct SortedList<T> where T: Sortable {
+    ptr: *T,
+    len: u32,
+}
+
+pub fn main() -> i32 {
+    // This should work - Counter implements Sortable
+    let list1: SortedList<Counter> = SortedList { ptr: 0, len: 0 }
+
+    // This should FAIL - Window does NOT implement Sortable
+    let list2: SortedList<Window> = SortedList { ptr: 0, len: 0 }
+
+    return 0
+}

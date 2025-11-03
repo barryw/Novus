@@ -1,0 +1,57 @@
+from std::core import Option
+from std::core import Result
+
+// Comprehensive tests for generic pointer type resolution
+
+// Test 1: Simple pointer generic with i32
+pub fn test_simple_pointer() -> Option<*i32> {
+    let ptr: *i32 = (*i32)100
+    return Option::FromPointer(ptr)
+}
+
+// Test 2: Multiple indirection levels (**)
+pub fn test_double_pointer() -> Option<**u8> {
+    let ptr: **u8 = (**u8)0
+    if let p = ptr {
+        return Option::Some(p)
+    }
+    return Option::None
+}
+
+// Test 3: Mix of pointers and non-pointers in same generic context
+pub fn test_mixed_generics() -> Result<*u8, i32> {
+    let ptr: *u8 = (*u8)42
+    if let p = ptr {
+        return Result::Ok(p)
+    }
+    return Result::Err(1)
+}
+
+// Test 4: Nested generic with pointers (commented out due to C codegen ordering issue)
+// pub fn test_nested_option() -> Option<Option<*u8>> {
+//     let ptr: *u8 = (*u8)99
+//     let inner = Option::FromPointer(ptr)
+//     return Option::Some(inner)
+// }
+
+// Test 5: Different pointer types
+pub fn test_different_types() -> i32 {
+    let ptr_u8: *u8 = (*u8)1
+    let ptr_i32: *i32 = (*i32)2
+    let ptr_u64: *u64 = (*u64)3
+
+    let opt1 = Option::FromPointer(ptr_u8)
+    let opt2 = Option::FromPointer(ptr_i32)
+    let opt3 = Option::FromPointer(ptr_u64)
+
+    return 0
+}
+
+pub fn main() -> i32 {
+    let t1 = test_simple_pointer()
+    let t2 = test_double_pointer()
+    let t3 = test_mixed_generics()
+    // let t4 = test_nested_option()
+    let t5 = test_different_types()
+    return 0
+}

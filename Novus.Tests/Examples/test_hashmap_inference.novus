@@ -1,0 +1,18 @@
+// Test Vec with explicit generic type parameters
+from std::collections import Vec
+
+fn main() {
+    // Call with explicit type parameter
+    let vec_opt = Vec::<u32>::with_capacity(16)
+
+    match vec_opt {
+        Some(vec) => {
+            var vec_mut = vec
+            // Push u32 value
+            let success = vec_mut.push(42)
+        },
+        None => {
+            let dummy = 0
+        }
+    }
+}

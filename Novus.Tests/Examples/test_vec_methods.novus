@@ -1,0 +1,39 @@
+// Test multiple Vec generic method instantiations
+from std::collections import Vec
+
+fn main() {
+    // Create a Vec<u32> with capacity
+    let vec_opt = Vec::<u32>::with_capacity(8)
+
+    match vec_opt {
+        Some(vec) => {
+            var v = vec
+
+            // Test push (returns bool)
+            let push1 = v.push(10)
+            let push2 = v.push(20)
+            let push3 = v.push(30)
+
+            // Test pop (returns Option<T>)
+            let popped = v.pop()
+
+            // Test set (returns bool)
+            let set_success = v.set(0, 100)
+
+            // Test clear (returns void)
+            v.clear()
+
+            // Test is_empty (returns bool)
+            let empty = v.is_empty()
+
+            // Test capacity (returns u32)
+            let cap = v.capacity()
+
+            // Clean up
+            v.drop()
+        },
+        None => {
+            let dummy = 0
+        }
+    }
+}

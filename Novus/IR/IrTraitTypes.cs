@@ -86,6 +86,7 @@ public class IrTraitImpl
     public List<IrFunction> Methods { get; }  // Implementations of trait methods
     public Visibility Visibility { get; set; }
     public Novus.SemanticAnalysis.AttributeCollection? Attributes { get; set; }
+    public IrWhereClause? WhereClause { get; set; }  // Generic type constraints (e.g., where T: Sortable)
 
     public IrTraitImpl(
         string traitName,
@@ -94,7 +95,8 @@ public class IrTraitImpl
         IrType implementingType,
         List<string>? genericParams = null,
         Visibility visibility = Visibility.Private,
-        Novus.SemanticAnalysis.AttributeCollection? attributes = null)
+        Novus.SemanticAnalysis.AttributeCollection? attributes = null,
+        IrWhereClause? whereClause = null)
     {
         TraitName = traitName;
         TraitTypeArgs = traitTypeArgs;
@@ -104,6 +106,7 @@ public class IrTraitImpl
         Methods = new List<IrFunction>();
         Visibility = visibility;
         Attributes = attributes;
+        WhereClause = whereClause;
     }
 
     /// <summary>

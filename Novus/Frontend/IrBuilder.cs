@@ -18,6 +18,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
     private int _tempCounter = 0;
     private int _labelCounter = 0;
     private int _stringCounter = 0;  // Counter for string literal labels
+
+    // Track defer blocks registered in the current scope (for scope-specific cleanup)
+    // Each element in the stack represents a scope; the list contains defers registered in that scope
+    private Stack<List<IrBasicBlock>> _scopeDeferStack = new();
     private int _staticVarCounter = 0;  // Counter for auto-generated static variables
     private readonly Stack<string> _loopExitLabels = new(); // Track loop exit labels for break
     private readonly Dictionary<string, IrLocalVariable> _localVariables = new(); // Track local variables in current function
@@ -1816,7 +1820,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
             variants.Add(new IrEnumVariant(variantName, tag++, associatedData));
         }
 
-        var enumType = new IrEnumType(name, variants, genericParams.Count > 0 ? genericParams : null);
+        // Parse where clause
+        var whereClause = ParseWhereClause(context.whereClause());
+
+        var enumType = new IrEnumType(name, variants, genericParams.Count > 0 ? genericParams : null, whereClause: whereClause);
 
         // Force size calculation for non-generic enums
         if (genericParams.Count == 0)
@@ -1865,6 +1872,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
             fields.Add(new IrStructField(fieldName, fieldType));
         }
 
+        // Parse where clause
+        var whereClause = ParseWhereClause(context.whereClause());
+
         // Clear generic params from scope after struct registration
         foreach (var paramName in genericParams)
         {
@@ -1872,18 +1882,17 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         // Replace placeholder with complete struct type
-        var structType = new IrStructType(name, fields, genericParams, null, attributes);
+        var structType = new IrStructType(name, fields, genericParams, null, attributes, whereClause);
 
         // Force offset calculation by accessing SizeInBytes (only for non-generic structs)
         // Generic structs will be monomorphized later when instantiated with concrete types
         if (genericParams.Count == 0)
         {
             _ = structType.SizeInBytes;
-
-            // Add non-generic structs to the module (for library generation, etc.)
-            _module.Structs.Add(structType);
         }
 
+        // Add all structs to the module (both generic and non-generic)
+        _module.Structs.Add(structType);
         _structs[name] = structType;
     }
 
@@ -2101,6 +2110,18 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var function = new IrFunction(name, returnType, visibility, isExtern);
         _module.AddFunction(function);
         _currentFunction = function;
+
+        // Parse generic parameters
+        if (context.genericParams() != null)
+        {
+            foreach (var paramId in context.genericParams().IDENTIFIER())
+            {
+                function.GenericParameters.Add(paramId.GetText());
+            }
+        }
+
+        // Parse where clause
+        function.WhereClause = ParseWhereClause(context.whereClause());
 
         // Parse parameters
         if (context.parameterList() != null)
@@ -3485,8 +3506,78 @@ public class IrBuilder : NovusBaseVisitor<object?>
         if (funcExpr is IrGenericAssociatedFunction genericAssocFunc)
         {
             // We need to determine the concrete type parameters
-            // Try to infer from expected type
-            if (_expectedType == null)
+            // Priority: 1) Explicit type args (turbo-fish), 2) Expected type, 3) Unresolved
+
+            IrStructType? monomorphizedStruct = null;
+
+            // 1. Check for explicit type arguments (turbo-fish syntax: Vec::<u32>::with_capacity)
+            if (genericAssocFunc.ExplicitTypeArgs != null && genericAssocFunc.ExplicitTypeArgs.Count > 0)
+            {
+                // User provided explicit type arguments
+                if (genericAssocFunc.ExplicitTypeArgs.Count != genericAssocFunc.GenericParameters.Count)
+                {
+                    throw new Exception($"Wrong number of type arguments for '{genericAssocFunc.TypeName}::{genericAssocFunc.MethodName}': expected {genericAssocFunc.GenericParameters.Count}, got {genericAssocFunc.ExplicitTypeArgs.Count}");
+                }
+
+                // Build monomorphized struct from explicit type args (same logic as ParseNamedType)
+                var baseStruct = _structs[genericAssocFunc.TypeName];
+                var typeArgs = genericAssocFunc.ExplicitTypeArgs;
+
+                // Create cache key
+                var typeArgKeys = typeArgs.Select(t => GetTypeCacheKey(t));
+                var cacheKey = $"{baseStruct.StructName}<{string.Join(",", typeArgKeys)}>";
+
+                // Check cache first
+                if (_monomorphizedStructs.ContainsKey(cacheKey))
+                {
+                    monomorphizedStruct = _monomorphizedStructs[cacheKey];
+                }
+                else
+                {
+                    // Create monomorphized struct with concrete types
+                    var typeSubstitutions = new Dictionary<string, IrType>();
+                    for (int i = 0; i < baseStruct.GenericParameters.Count; i++)
+                    {
+                        typeSubstitutions[baseStruct.GenericParameters[i]] = typeArgs[i];
+                    }
+
+                    // Create monomorphized fields using recursive substitution
+                    var monomorphizedFields = new List<IrStructField>();
+                    bool fullyMonomorphized = true;
+
+                    foreach (var origField in baseStruct.Fields)
+                    {
+                        var fieldType = SubstituteGenericTypes(origField.Type, typeSubstitutions);
+                        monomorphizedFields.Add(new IrStructField(origField.Name, fieldType));
+
+                        // Check if field type is still generic
+                        if (ContainsGenericTypes(fieldType))
+                        {
+                            fullyMonomorphized = false;
+                        }
+                    }
+
+                    // Create new struct type with concrete types (no generic parameters)
+                    monomorphizedStruct = new IrStructType(baseStruct.StructName, monomorphizedFields, null, cacheKey);
+
+                    // Force calculation of field offsets only if fully monomorphized
+                    if (fullyMonomorphized)
+                    {
+                        _ = monomorphizedStruct.SizeInBytes;
+                    }
+
+                    // Cache it for future use
+                    _monomorphizedStructs[cacheKey] = monomorphizedStruct;
+                }
+            }
+            // 2. Try to infer from expected type
+            else if (_expectedType != null && _expectedType is IrStructType expectedStruct && expectedStruct.GenericParameters.Count == 0)
+            {
+                // Expected type is a monomorphized struct like Vec<i32>
+                monomorphizedStruct = expectedStruct;
+            }
+            // 3. No explicit type args and no expected type - create unresolved generic
+            else if (_expectedType == null)
             {
                 // No expected type - create unresolved generic that will be inferred from usage
                 // Example: let vec = Vec::new() → vec has type Vec<UnresolvedGeneric>
@@ -3509,18 +3600,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 return new IrVariable(placeholderResult, partiallyResolvedType);
             }
 
-            // Extract concrete type parameters from expected type
-            IrStructType? monomorphizedStruct = null;
-
-            if (_expectedType is IrStructType expectedStruct && expectedStruct.GenericParameters.Count == 0)
-            {
-                // Expected type is a monomorphized struct like Vec<i32>
-                monomorphizedStruct = expectedStruct;
-            }
-
             if (monomorphizedStruct == null)
             {
-                throw new Exception($"Cannot determine concrete type parameters for '{genericAssocFunc.TypeName}::{genericAssocFunc.MethodName}()' from expected type '{_expectedType.Name}'");
+                throw new Exception($"Could not infer generic type parameters for '{genericAssocFunc.TypeName}::{genericAssocFunc.MethodName}()'. Consider using turbo-fish syntax: {genericAssocFunc.TypeName}::<Type>::{genericAssocFunc.MethodName}");
             }
 
             // Instantiate the generic method with the monomorphized struct
@@ -4193,10 +4275,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         // Create the call instruction
+        // Use the actual function name from the method (e.g., "Vec_push" for monomorphized generics)
+        // instead of the mangled name (e.g., "Vec::push")
         var returnType = method.ReturnType;
         var resultName = returnType is not IrVoidType ? $"%t{_tempCounter++}" : null;
 
-        var call = new IrCall(mangledMethodName, returnType, resultName);
+        var call = new IrCall(method.Name, returnType, resultName);
         foreach (var arg in arguments)
         {
             call.Arguments.Add(arg);
@@ -5547,18 +5631,61 @@ public class IrBuilder : NovusBaseVisitor<object?>
         return new IrVariable(resultName, field.Type);
     }
 
+    public override object? VisitTurboFishExpr([NotNull] NovusParser.TurboFishExprContext context)
+    {
+        // Handle turbo-fish syntax: Type::<Args>
+        // This creates a parameterized type expression that can then be used with :: to access members
+        var baseExpr = context.expression();
+        var genericArgsCtx = context.genericTypeArgs();
+
+        // Parse the generic type arguments
+        var explicitTypeArgs = new List<IrType>();
+        foreach (var typeCtx in genericArgsCtx.typeList().type())
+        {
+            var irType = ParseType(typeCtx);
+            explicitTypeArgs.Add(irType);
+        }
+
+        // The base expression should be an identifier for the type
+        string? typeName = null;
+        if (baseExpr is NovusParser.PrimaryExprContext primaryCtx &&
+            primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext identCtx)
+        {
+            typeName = identCtx.identifier().GetText();
+        }
+
+        if (typeName == null)
+        {
+            throw new Exception($"Turbo-fish expression must reference a type");
+        }
+
+        // Return a marker that stores the type name and explicit type arguments
+        // This will be consumed by PathExpr when accessing members
+        return new IrTurboFishType(typeName, explicitTypeArgs);
+    }
+
     public override object? VisitPathExpr([NotNull] NovusParser.PathExprContext context)
     {
         // Handle path expressions: Type::name
         // This can be:
         // 1. Enum variants: Option::Some, Result::Ok
         // 2. Associated functions (static methods): Vec::new, Vec::with_capacity
+        // 3. Members accessed on turbo-fish types: (Vec::<u32>)::with_capacity
         var baseExpr = context.expression();
         var memberName = context.IDENTIFIER().GetText();
 
-        // The base expression should be an identifier for the type
+        // Check if base expression is a turbo-fish type
+        List<IrType>? explicitTypeArgs = null;
         string? typeName = null;
-        if (baseExpr is NovusParser.PrimaryExprContext primaryCtx &&
+
+        var baseValue = Visit(baseExpr);
+        if (baseValue is IrTurboFishType turboFish)
+        {
+            typeName = turboFish.TypeName;
+            explicitTypeArgs = turboFish.TypeArguments;
+        }
+        // The base expression should be an identifier for the type
+        else if (baseExpr is NovusParser.PrimaryExprContext primaryCtx &&
             primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext identCtx)
         {
             typeName = identCtx.identifier().GetText();
@@ -5616,7 +5743,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 {
                     // Return a special marker for generic associated function
                     // This will be instantiated later when we know the concrete types
-                    return new IrGenericAssociatedFunction(typeName, memberName, structType.GenericParameters);
+                    return new IrGenericAssociatedFunction(typeName, memberName, structType.GenericParameters, explicitTypeArgs);
                 }
             }
         }
@@ -5784,6 +5911,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             _currentBlock!.AddInstruction(new IrLabel(armLabels[i]));
 
+            // Push a new defer scope for this match arm
+            // Variables declared in this arm will have their cleanup emitted before jumping to match_end
+            PushDeferScope();
+
             // Extract associated data for variant patterns
             if (pattern is NovusParser.VariantPatternContext variantPattern)
             {
@@ -5863,11 +5994,27 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 _currentBlock!.AddInstruction(new IrStore(matchResultVarName, armResult));
             }
 
+            // Pop defer scope and emit cleanup BEFORE jumping to match_end
+            // This ensures variables declared in this match arm are cleaned up before leaving the scope
+            if (!CurrentBlockHasTerminator())
+            {
+                PopDeferScope();
+            }
+
             // Jump to end (if not already terminated)
             if (!CurrentBlockHasTerminator())
             {
                 _currentBlock!.AddInstruction(new IrBranch(matchEndLabel));
                 anyArmReachesEnd = true;  // This arm can reach match_end
+            }
+            else
+            {
+                // Block already terminated (e.g., return statement)
+                // Still need to pop the scope to balance the stack
+                if (_scopeDeferStack.Count > 0)
+                {
+                    _scopeDeferStack.Pop();  // Discard without emitting (unreachable)
+                }
             }
         }
 
@@ -5886,16 +6033,20 @@ public class IrBuilder : NovusBaseVisitor<object?>
             {
                 // Non-void function: return zero as unreachable fallback
                 var returnType = _currentFunction.ReturnType;
-                IrValue defaultValue;
+                IrValue? defaultValue = null;
+
                 if (returnType is IrIntType intType)
                 {
                     defaultValue = new IrConstant(0, intType);
                 }
-                else
+                else if (returnType is IrBoolType)
                 {
-                    // For other types, use zero constant
-                    defaultValue = new IrConstant(0, returnType);
+                    defaultValue = new IrBoolConstant(false);
                 }
+                // For struct/enum types, we can't create a valid constant
+                // Since this code is unreachable, just emit a bare return
+                // The C code generator will handle this via output parameter
+
                 _currentBlock!.AddInstruction(new IrReturn(defaultValue));
             }
             else
@@ -6654,6 +6805,46 @@ public class IrBuilder : NovusBaseVisitor<object?>
     }
 
     /// <summary>
+    /// Push a new defer scope. Variables declared in this scope will have their
+    /// defer cleanup emitted when PopDeferScope() is called.
+    /// </summary>
+    private void PushDeferScope()
+    {
+        _scopeDeferStack.Push(new List<IrBasicBlock>());
+    }
+
+    /// <summary>
+    /// Pop the current defer scope and emit cleanup for all defers registered in this scope.
+    /// Returns the list of defer blocks that were emitted (in LIFO order).
+    /// </summary>
+    private List<IrBasicBlock> PopDeferScope()
+    {
+        if (_scopeDeferStack.Count == 0)
+        {
+            return new List<IrBasicBlock>();
+        }
+
+        var scopeDefers = _scopeDeferStack.Pop();
+
+        // Emit defers in LIFO order (last registered, first executed)
+        for (int i = scopeDefers.Count - 1; i >= 0; i--)
+        {
+            var deferBlock = scopeDefers[i];
+
+            // Emit all instructions in the defer block
+            foreach (var instruction in deferBlock.Instructions)
+            {
+                _currentBlock!.AddInstruction(instruction);
+            }
+
+            // Remove from function-level defer list (so it doesn't get emitted again at function exit)
+            _currentFunction!.DeferredBlocks.Remove(deferBlock);
+        }
+
+        return scopeDefers;
+    }
+
+    /// <summary>
     /// Inject an automatic defer block that calls drop() on a variable.
     /// This implements RAII-style cleanup for types with drop() methods.
     /// </summary>
@@ -6704,6 +6895,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         // Add the defer block to the function's deferred blocks list (LIFO)
         _currentFunction!.DeferredBlocks.Add(deferBlock);
+
+        // ALSO add to current scope's defer list if we're in a scope
+        if (_scopeDeferStack.Count > 0)
+        {
+            _scopeDeferStack.Peek().Add(deferBlock);
+        }
 
         // Add defer instruction to current block (marker)
         _currentBlock!.AddInstruction(new IrDefer(deferBlock));
@@ -6788,5 +6985,58 @@ public class IrBuilder : NovusBaseVisitor<object?>
             default:
                 break;
         }
+    }
+
+    /// <summary>
+    /// Parse a where clause from the AST into an IrWhereClause
+    /// </summary>
+    private IrWhereClause? ParseWhereClause(NovusParser.WhereClauseContext? context)
+    {
+        if (context == null)
+            return null;
+
+        var constraints = new List<IrTypeConstraint>();
+
+        foreach (var boundCtx in context.whereBound())
+        {
+            var typeParam = boundCtx.IDENTIFIER().GetText();
+            var bounds = ParseTraitBound(boundCtx.traitBound());
+            constraints.Add(new IrTypeConstraint(typeParam, bounds));
+        }
+
+        return new IrWhereClause(constraints);
+    }
+
+    /// <summary>
+    /// Parse a trait bound (potentially with multiple traits separated by +)
+    /// </summary>
+    private List<IrTraitBound> ParseTraitBound(NovusParser.TraitBoundContext context)
+    {
+        var bounds = new List<IrTraitBound>();
+
+        if (context is NovusParser.SingleTraitBoundContext singleBound)
+        {
+            // Parse trait name and optional type arguments
+            var traitName = singleBound.typeName().GetText();
+            var typeArgs = new List<IrType>();
+
+            if (singleBound.genericTypeArgs() != null)
+            {
+                foreach (var typeCtx in singleBound.genericTypeArgs().typeList().type())
+                {
+                    typeArgs.Add(ParseType(typeCtx));
+                }
+            }
+
+            bounds.Add(new IrTraitBound(traitName, typeArgs));
+        }
+        else if (context is NovusParser.MultipleTraitBoundContext multipleBound)
+        {
+            // Recursively parse both sides of the +
+            bounds.AddRange(ParseTraitBound(multipleBound.traitBound(0)));
+            bounds.AddRange(ParseTraitBound(multipleBound.traitBound(1)));
+        }
+
+        return bounds;
     }
 }
