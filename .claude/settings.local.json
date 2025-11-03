@@ -1,7 +1,16 @@
 {
   "permissions": {
     "allow": [
-      "Bash(VAMOS_LIBS=\"/Users/barry/Emulation/Amiga/A4000-DH0/LIBS\" vamos:*)"
+      "Bash(VAMOS_LIBS=\"/Users/barry/Emulation/Amiga/A4000-DH0/LIBS\" vamos:*)",
+      "Bash(time ./Novus/bin/Debug/net9.0/Novus:*)",
+      "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Debug/net9.0/stdlib/68020/debug/manifest.json)",
+      "Bash(for i in {1..5})",
+      "Bash(do /usr/bin/time -p ./Novus/bin/Debug/net9.0/Novus:*)",
+      "Bash(done)",
+      "Bash(Novus/std/core.novus)",
+      "Bash(jq:*)",
+      "Bash(xargs:*)",
+      "Bash(shasum:*)"
     ],
     "deny": [],
     "ask": []

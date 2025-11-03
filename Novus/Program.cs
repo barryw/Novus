@@ -16,12 +16,13 @@ class Program
 {
     static async Task<int> Main(string[] args)
     {
-        return await CommandLine.Parser.Default.ParseArguments<CompilerOptions, BuildOptions, GenerateStubsOptions, NewCommandOptions>(args)
+        return await CommandLine.Parser.Default.ParseArguments<CompilerOptions, BuildOptions, GenerateStubsOptions, NewCommandOptions, StdlibBuildOptions>(args)
             .MapResult(
                 (CompilerOptions options) => RunCompiler(options),
                 (BuildOptions options) => RunBuild(options),
                 (GenerateStubsOptions options) => Task.FromResult(RunGenerateStubs(options)),
                 (NewCommandOptions options) => Task.FromResult(Commands.NewCommand.Run(options)),
+                (StdlibBuildOptions options) => RunStdlibBuild(options),
                 errors => Task.FromResult(1)
             );
     }
@@ -37,6 +38,52 @@ class Program
         // Generate FFI bindings from SFD files (NDK 3.9+)
         var sfdGenerator = new SfdGenerator(options.NdkPath, options.OutputPath);
         sfdGenerator.GenerateAllBindings();
+        return 0;
+    }
+
+    static async Task<int> RunStdlibBuild(StdlibBuildOptions options)
+    {
+        // Pre-compile standard library to .o files for faster linking
+        var cpus = options.Cpu == "all"
+            ? new[] { "68000", "68020", "68040", "68060" }
+            : new[] { options.Cpu };
+
+        var modes = options.Mode == "both"
+            ? new[] { BuildMode.Debug, BuildMode.Release }
+            : new[] { options.Mode == "release" ? BuildMode.Release : BuildMode.Debug };
+
+        int totalSuccess = 0;
+        int totalFailed = 0;
+
+        foreach (var cpu in cpus)
+        {
+            foreach (var mode in modes)
+            {
+                var result = await Commands.StdlibBuildCommand.BuildForTarget(
+                    cpu,
+                    mode,
+                    options.VbccPath,
+                    options.NdkPath,
+                    options.Verbose);
+
+                if (result == 0)
+                {
+                    totalSuccess++;
+                }
+                else
+                {
+                    totalFailed++;
+                }
+            }
+        }
+
+        if (totalFailed > 0)
+        {
+            Console.WriteLine($"\nStdlib build completed with {totalFailed} failure(s)");
+            return 1;
+        }
+
+        Console.WriteLine($"\n✓ Stdlib build completed successfully ({totalSuccess} target(s))");
         return 0;
     }
 
@@ -828,9 +875,145 @@ class Program
                 }
             }
 
-            // Step 1: Compile each C file to an object file
-            Console.WriteLine("\nCompiling C files...");
+            // ============================================================================
+            // OPTIMIZATION: Use pre-compiled stdlib .o files if available
+            // Auto-compile stdlib on first use for this CPU/mode combination
+            // ============================================================================
+
+            var buildModeStr = options.BuildMode == BuildMode.Release ? "release" : "debug";
+            var stdlibPrecompiledDir = Path.Combine(compilerDir, "stdlib", assemblyCpu, buildModeStr);
+
+            // Check if stdlib cache exists and is up-to-date (hash-based invalidation)
+            var usePrecompiledStdlib = Directory.Exists(stdlibPrecompiledDir)
+                && !Commands.StdlibBuildCommand.NeedsRebuild(compilerDir, assemblyCpu, options.BuildMode);
+
+            // Separate stdlib C files from user C files
+            var stdlibCFiles = new List<string>();
+            var userCFiles = new List<string>();
+
             foreach (var cFile in cFiles)
+            {
+                var cFileName = Path.GetFileNameWithoutExtension(cFile);
+                // Check if this is a stdlib module by matching pattern: moduleName_functionName.c
+                // User's main file is just baseName.c, so it won't match
+                var isStdlibModule = false;
+                foreach (var (modulePath, moduleIR) in allModulesIR)
+                {
+                    if (modulePath.Contains("/std/") && cFileName.StartsWith(moduleIR.ModuleName + "_"))
+                    {
+                        isStdlibModule = true;
+                        break;
+                    }
+                }
+
+                if (isStdlibModule)
+                {
+                    stdlibCFiles.Add(cFile);
+                }
+                else
+                {
+                    userCFiles.Add(cFile);
+                }
+            }
+
+            // Step 1: Link pre-compiled stdlib .o files (if available) or compile stdlib from scratch
+            var stdlibOFilesToCache = new List<(string source, string obj)>();
+
+            if (usePrecompiledStdlib && stdlibCFiles.Count > 0)
+            {
+                Console.WriteLine($"\nUsing pre-compiled stdlib modules ({stdlibCFiles.Count} files)...");
+
+                // Map stdlib C files to their corresponding .o files
+                var precompiledFiles = new HashSet<string>();
+                foreach (var cFile in stdlibCFiles)
+                {
+                    var cFileName = Path.GetFileNameWithoutExtension(cFile);
+                    var precompiledObj = Path.Combine(stdlibPrecompiledDir, $"{cFileName}.o");
+
+                    if (File.Exists(precompiledObj))
+                    {
+                        objectFiles.Add(precompiledObj);
+                        precompiledFiles.Add(cFileName);
+                    }
+                }
+
+                Console.WriteLine($"  ✓ Linked {precompiledFiles.Count} pre-compiled stdlib object files");
+
+                // If some stdlib files are missing from precompiled dir, compile and cache them
+                if (precompiledFiles.Count < stdlibCFiles.Count)
+                {
+                    Console.WriteLine($"  → Compiling {stdlibCFiles.Count - precompiledFiles.Count} missing stdlib files...");
+
+                    // Compile missing stdlib files
+                    foreach (var cFile in stdlibCFiles)
+                    {
+                        var cFileName = Path.GetFileNameWithoutExtension(cFile);
+                        if (!precompiledFiles.Contains(cFileName))
+                        {
+                            var objFile = Path.Combine(outputDir, cFileName + ".o");
+                            Console.WriteLine($"    → {Path.GetFileName(cFile)}");
+
+                            if (!await toolchain.CompileToObject(cFile, objFile, assemblyCpu, options.OptimizationLevel))
+                            {
+                                Console.WriteLine($"\n✗ Failed to compile {Path.GetFileName(cFile)}");
+                                return 1;
+                            }
+
+                            objectFiles.Add(objFile);
+                            stdlibOFilesToCache.Add((cFile, objFile));  // Mark for caching
+                        }
+                    }
+                }
+            }
+            else if (stdlibCFiles.Count > 0)
+            {
+                // No pre-compiled stdlib cache exists - compile and cache all stdlib files
+                Console.WriteLine($"\nCompiling stdlib modules ({stdlibCFiles.Count} files)...");
+                foreach (var cFile in stdlibCFiles)
+                {
+                    var cFileName = Path.GetFileName(cFile);
+                    var objFile = Path.Combine(outputDir, Path.GetFileNameWithoutExtension(cFile) + ".o");
+
+                    Console.WriteLine($"  → {cFileName}");
+                    if (!await toolchain.CompileToObject(cFile, objFile, assemblyCpu, options.OptimizationLevel))
+                    {
+                        Console.WriteLine($"\n✗ Failed to compile {cFileName}");
+                        return 1;
+                    }
+
+                    objectFiles.Add(objFile);
+                    stdlibOFilesToCache.Add((cFile, objFile));  // Mark for caching
+                }
+
+                // After successful compilation, cache all stdlib .o files
+                if (stdlibOFilesToCache.Count > 0)
+                {
+                    Console.WriteLine($"\n  ✓ Caching {stdlibOFilesToCache.Count} stdlib object files for future builds...");
+                    Directory.CreateDirectory(stdlibPrecompiledDir);
+
+                    foreach (var (source, obj) in stdlibOFilesToCache)
+                    {
+                        var cachedPath = Path.Combine(stdlibPrecompiledDir, Path.GetFileName(obj));
+                        File.Copy(obj, cachedPath, overwrite: true);
+                    }
+
+                    // Write manifest with source file hashes for cache invalidation
+                    var stdlibSourcePaths = allModulesIR
+                        .Where(kvp => kvp.Key.Contains("/std/"))
+                        .Select(kvp => kvp.Key)
+                        .ToList();
+
+                    await Commands.StdlibBuildCommand.WriteManifest(
+                        stdlibPrecompiledDir,
+                        assemblyCpu,
+                        options.BuildMode,
+                        stdlibSourcePaths);
+                }
+            }
+
+            // Step 2: Compile user C files (always compiled fresh)
+            Console.WriteLine("\nCompiling user code...");
+            foreach (var cFile in userCFiles)
             {
                 var cFileName = Path.GetFileName(cFile);
                 var objFile = Path.Combine(outputDir, Path.GetFileNameWithoutExtension(cFile) + ".o");
