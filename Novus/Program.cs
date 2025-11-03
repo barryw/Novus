@@ -324,7 +324,7 @@ class Program
                 explicitEntryPoints = new HashSet<string> { "dos_last_error" };
             }
 
-            var codegen = new CCodeGenerator(module, irBuilder.StringLiterals, options.Cpu, options.Fpu, explicitEntryPoints, false, options.ProjectVersion);
+            var codegen = new CCodeGenerator(module, irBuilder.StringLiterals, options.Cpu, options.Fpu, options.BuildMode, explicitEntryPoints, false, options.ProjectVersion);
             var cCode = codegen.Generate();
 
             return (cCode, irBuilder.GetImportedModules());
@@ -507,6 +507,7 @@ class Program
                 mainIR.StringLiterals,
                 options.Cpu,
                 options.Fpu,
+                options.BuildMode,
                 explicitEntryPoints: null,
                 useSharedTypesHeader: true,
                 projectVersion: options.ProjectVersion);
@@ -583,6 +584,7 @@ class Program
                     moduleIR.StringLiterals,
                     options.Cpu,
                     options.Fpu,
+                    options.BuildMode,
                     explicitEntryPoints: null,
                     useSharedTypesHeader: true,
                     projectVersion: options.ProjectVersion);

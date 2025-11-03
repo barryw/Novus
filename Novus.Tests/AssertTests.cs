@@ -1,4 +1,5 @@
 using Antlr4.Runtime;
+using Novus.Codegen;
 using Novus.Frontend;
 using Novus.IR;
 using Novus.Parser;
@@ -17,6 +18,12 @@ public class AssertTests
         var tree = parser.compilationUnit();
         var builder = new IrBuilder(skipAutoImports: true);
         return builder.BuildModule(tree);
+    }
+
+    private string GenerateCCode(IrModule module, BuildMode buildMode)
+    {
+        var codegen = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft", buildMode);
+        return codegen.Generate();
     }
 
     [Fact]
@@ -216,5 +223,39 @@ pub fn main() -> i32 {
 
         var mainFunction = module.Functions.FirstOrDefault(f => f.Name == "main");
         Assert.NotNull(mainFunction);
+    }
+
+    [Fact]
+    public void CodeGen_Assert_InDebugMode_GeneratesAssertCode()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    let x = 10
+    assert!(x == 10, ""x should be 10"")
+    return 0
+}";
+        var module = BuildIr(source);
+        var cCode = GenerateCCode(module, BuildMode.Debug);
+
+        // In debug mode, assert code should be present
+        Assert.Contains("__novus_assert_failed", cCode);
+        Assert.Contains("x should be 10", cCode);
+    }
+
+    [Fact]
+    public void CodeGen_Assert_InReleaseMode_ElidesAssertCode()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    let x = 10
+    assert!(x == 10, ""x should be 10"")
+    return 0
+}";
+        var module = BuildIr(source);
+        var cCode = GenerateCCode(module, BuildMode.Release);
+
+        // In release mode, assert code should be completely elided
+        Assert.DoesNotContain("__novus_assert_failed", cCode);
+        Assert.DoesNotContain("x should be 10", cCode);
     }
 }

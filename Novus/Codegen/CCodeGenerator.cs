@@ -22,6 +22,7 @@ public class CCodeGenerator
     private readonly HashSet<string>? _explicitEntryPoints;
     private readonly bool _useSharedTypesHeader;
     private readonly string? _projectVersion;
+    private readonly BuildMode _buildMode;
 
     // Track which variables have been declared in the current function
     // to avoid redeclaration errors when the same variable is assigned in multiple branches
@@ -109,12 +110,13 @@ public class CCodeGenerator
         return false;
     }
 
-    public CCodeGenerator(IrModule module, List<IrStringLiteral> stringLiterals, string cpuTarget, string fpuMode, HashSet<string>? explicitEntryPoints = null, bool useSharedTypesHeader = false, string? projectVersion = null)
+    public CCodeGenerator(IrModule module, List<IrStringLiteral> stringLiterals, string cpuTarget, string fpuMode, BuildMode buildMode = BuildMode.Debug, HashSet<string>? explicitEntryPoints = null, bool useSharedTypesHeader = false, string? projectVersion = null)
     {
         _module = module;
         _stringLiterals = stringLiterals;
         _cpuTarget = cpuTarget;
         _fpuMode = fpuMode;
+        _buildMode = buildMode;
         _output = new StringBuilder();
         _requiredProtoHeaders = new HashSet<string>();
         _explicitEntryPoints = explicitEntryPoints;
@@ -1276,8 +1278,12 @@ public class CCodeGenerator
         }
 
         // Runtime assert handler (implemented in novus_runtime.c)
-        _output.AppendLine("void __novus_assert_failed(const char* file, int32_t line, int32_t col, const char* message);");
-        _output.AppendLine();
+        // Only include in debug mode
+        if (_buildMode == BuildMode.Debug)
+        {
+            _output.AppendLine("void __novus_assert_failed(const char* file, int32_t line, int32_t col, const char* message);");
+            _output.AppendLine();
+        }
     }
 
     private void EmitFunctions(HashSet<string> reachableFunctions)
@@ -1761,6 +1767,12 @@ public class CCodeGenerator
 
     private void EmitAssert(IrAssert assert)
     {
+        // In release mode, asserts are completely elided (no-op)
+        if (_buildMode == BuildMode.Release)
+        {
+            return;
+        }
+
         // Evaluate the condition
         var condition = EmitValue(assert.Condition);
 
