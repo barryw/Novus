@@ -1,0 +1,65 @@
+// Example demonstrating the ? operator for error propagation
+// The ? operator automatically unwraps Result<T, E> values
+// and propagates errors up the call stack
+
+from std::core import Result
+from std::error import DosError
+
+// Simulates a file operation that might fail
+fn open_file(valid: bool) -> Result<i32, DosError> {
+    if !valid {
+        return Result::Err(DosError::NotFound)
+    }
+    return Result::Ok(42)  // Return file handle
+}
+
+// Simulates reading from a file
+fn read_file(handle: i32) -> Result<i32, DosError> {
+    if handle <= 0 {
+        return Result::Err(DosError::NoFreeStore)
+    }
+    return Result::Ok(1024)  // Return bytes read
+}
+
+// Simulates closing a file
+fn close_file(handle: i32) -> Result<i32, DosError> {
+    if handle <= 0 {
+        return Result::Err(DosError::InvalidInput)
+    }
+    return Result::Ok(0)
+}
+
+// NEW WAY: Using the ? operator (concise and readable!)
+fn process_file_with_try(is_valid: bool) -> Result<i32, DosError> {
+    // The ? operator automatically:
+    // 1. Unwraps Ok values
+    // 2. Returns early with Err if the operation failed
+    let handle = open_file(is_valid)?
+    let bytes = read_file(handle)?
+    let _close_status = close_file(handle)?
+
+    return Result::Ok(bytes)
+}
+
+// Using ? in expressions
+fn get_file_size(is_valid: bool) -> Result<i32, DosError> {
+    // The ? operator works in expressions too!
+    let handle = open_file(is_valid)?
+    let bytes = read_file(handle)?
+    return Result::Ok(bytes + 100)
+}
+
+pub fn main() -> i32 {
+    // Test with valid file operation
+    let is_valid = true
+
+    let result = process_file_with_try(is_valid)
+    match result {
+        Result::Ok(bytes) => {
+            return bytes  // Should be 1024
+        },
+        Result::Err(_err) => {
+            return -1
+        }
+    }
+}

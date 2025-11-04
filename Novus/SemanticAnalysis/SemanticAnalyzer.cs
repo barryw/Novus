@@ -264,9 +264,11 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return;
         }
 
-        // Skip if this module has already been imported
+        // Check for circular imports before processing
+        // This is different from checking if already imported - circular imports are an error
         if (_importedModules.Contains(modulePath))
         {
+            // Module already imported - skip to avoid duplicate processing and circular dependencies
             return;
         }
 
@@ -327,7 +329,33 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
-        // Register imported enums in symbol table
+        // Register imported enums using two-pass approach
+        // Pass 1: Register stub enum types for ALL enums in the module (even non-imported)
+        // This allows forward references between enums (e.g., NovusError referencing ExecError)
+        var enumStubsToCleanup = new List<string>();
+        foreach (var enumDecl in moduleContext.enumDeclaration())
+        {
+            var enumName = enumDecl.IDENTIFIER().GetText();
+
+            // Skip if this enum has already been imported (transitive dependencies)
+            if (_enums.ContainsKey(enumName))
+            {
+                continue;
+            }
+
+            // Register a stub enum type with no variants yet
+            // This makes the type name resolvable during variant parsing and trait impl type arg parsing
+            var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), null);
+            _enums[enumName] = stubEnum;
+
+            // Track stubs that aren't in the import list so we can remove them later
+            if (!namesToImport.Contains(enumName))
+            {
+                enumStubsToCleanup.Add(enumName);
+            }
+        }
+
+        // Pass 2: Fill in enum variants for imported enums only
         foreach (var enumDecl in moduleContext.enumDeclaration())
         {
             var enumName = enumDecl.IDENTIFIER().GetText();
@@ -338,13 +366,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 continue;
             }
 
-            // Skip if this enum has already been imported (transitive dependencies)
-            if (_enums.ContainsKey(enumName))
-            {
-                continue;
-            }
-
-            // Register the enum from the imported module
+            // Now register the full enum with variants (replacing the stub)
+            // At this point, all enum names are resolvable for variant type parsing
             RegisterEnum(enumDecl);
             _importedNames[enumName] = moduleNamespace;
         }
@@ -543,6 +566,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         foreach (var implDecl in moduleContext.implDeclaration())
         {
             RegisterImpl(implDecl);
+        }
+
+        // Clean up stub enum types that weren't actually imported
+        // This happens at the very end, after all parsing (enums, structs, traits, impls) is complete
+        foreach (var stubName in enumStubsToCleanup)
+        {
+            _enums.Remove(stubName);
         }
     }
 
@@ -1091,19 +1121,26 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Parse attributes
         var attributes = ParseAttributes(context.attribute());
 
-        // Check for duplicate enum names
+        // Check for duplicate enum names (but allow replacing stubs)
         if (_enums.ContainsKey(name))
         {
-            _diagnostics.ReportError(
-                "E0030",
-                $"enum '{name}' is defined multiple times",
-                location,
-                helpTexts: new List<string>
-                {
-                    "consider renaming one of the enums"
-                }
-            );
-            return;
+            var existingEnum = _enums[name];
+            // Allow replacing stub enums (which have no variants)
+            // This happens during two-pass enum registration in ImportModule
+            if (existingEnum.Variants.Count > 0)
+            {
+                _diagnostics.ReportError(
+                    "E0030",
+                    $"enum '{name}' is defined multiple times",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "consider renaming one of the enums"
+                    }
+                );
+                return;
+            }
+            // Otherwise, this is a stub being replaced - continue
         }
 
         // Handle generic parameters if present
@@ -2531,6 +2568,50 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         return targetType;
+    }
+
+    public override IrType? VisitTryExpr([NotNull] NovusParser.TryExprContext context)
+    {
+        // The ? operator for Result propagation
+        // expr? unwraps Result<T, E> to T or returns early with Err
+
+        var innerExprType = Visit(context.expression());
+
+        if (innerExprType == null)
+            return null;
+
+        // Verify it's a Result<T, E> type
+        if (innerExprType is not IrEnumType enumType || enumType.EnumName != "Result")
+        {
+            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0040",
+                $"? operator requires a Result<T, E> type, got {TypeToString(innerExprType)}",
+                location,
+                helpTexts: new List<string>
+                {
+                    "the ? operator can only be used on Result types",
+                    "if you have an Option<T>, match on it explicitly"
+                }
+            );
+            return null;
+        }
+
+        // Extract the Ok payload type from Result<T, E>
+        var okVariant = enumType.Variants.FirstOrDefault(v => v.Name == "Ok");
+        if (okVariant == null || okVariant.AssociatedData.Count == 0)
+        {
+            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0040",
+                "Result type is missing Ok variant or associated data",
+                location
+            );
+            return null;
+        }
+
+        // The ? operator evaluates to the Ok payload type
+        return okVariant.AssociatedData[0];
     }
 
     // Override VisitStatement to prevent double traversal via VisitChildren

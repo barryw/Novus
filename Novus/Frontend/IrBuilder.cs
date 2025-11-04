@@ -143,9 +143,30 @@ public class IrBuilder : NovusBaseVisitor<object?>
             RegisterStatic(staticContext);
         }
 
-        // Pass 2: Register all enum types
+        // Pass 2: Register all enum types using two-pass approach
+        // Pass 2a: Register stub enum types for ALL enums in the module
+        // This allows forward references between enums (e.g., NovusError referencing ExecError)
         foreach (var enumContext in context.enumDeclaration())
         {
+            var enumName = enumContext.IDENTIFIER().GetText();
+
+            // Skip if this enum has already been imported (transitive dependencies)
+            if (_enums.ContainsKey(enumName))
+            {
+                continue;
+            }
+
+            // Register a stub enum type with no variants yet
+            // This makes the type name resolvable during variant parsing
+            var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), null);
+            _enums[enumName] = stubEnum;
+        }
+
+        // Pass 2b: Fill in enum variants for all enums
+        foreach (var enumContext in context.enumDeclaration())
+        {
+            // Now register the full enum with variants (replacing the stub)
+            // At this point, all enum names are resolvable for variant type parsing
             RegisterEnum(enumContext);
         }
 
@@ -412,8 +433,15 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     throw new Exception($"Type '{typeName}' not found for trait implementation");
                 }
 
+                // Construct full trait name with type arguments (e.g., "From<DosError>")
+                var fullTraitName = traitName;
+                if (traitTypeArgs.Count > 0)
+                {
+                    fullTraitName = $"{traitName}<{string.Join(", ", traitTypeArgs.Select(t => t.Name))}>";
+                }
+
                 // Create IrTraitImpl and add to module
-                var traitImpl = new IrTraitImpl(traitName, traitTypeArgs, typeName, _currentSelfType);
+                var traitImpl = new IrTraitImpl(fullTraitName, traitTypeArgs, typeName, _currentSelfType);
                 _module.TraitImpls.Add(traitImpl);
             }
 
@@ -766,12 +794,14 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Build the list of names to import
         var namesToImport = ModuleImportHelper.BuildImportNameSet(moduleContext, importAll, importList);
 
-        // Register imported enums in the module
+        // Register imported enums in the module using two-pass approach
+        // Pass 1: Register stub enum types ONLY for enums in the import list
+        // This allows forward references between imported enums
         foreach (var enumDecl in moduleContext.enumDeclaration())
         {
             var enumName = enumDecl.IDENTIFIER().GetText();
 
-            // Skip if not in the import list
+            // Only create stubs for enums we're actually importing
             if (!namesToImport.Contains(enumName))
             {
                 continue;
@@ -783,7 +813,32 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 continue;
             }
 
-            // Register the enum from the imported module
+            // Register a stub enum type with no variants yet
+            // This makes the type name resolvable during variant parsing
+            var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), null);
+            _enums[enumName] = stubEnum;
+        }
+
+        // Pass 2: Fill in enum variants for imported enums only
+        foreach (var enumDecl in moduleContext.enumDeclaration())
+        {
+            var enumName = enumDecl.IDENTIFIER().GetText();
+
+            // Skip if not in the import list
+            if (!namesToImport.Contains(enumName))
+            {
+                continue;
+            }
+
+            // Skip if this enum has already been fully registered (not just a stub)
+            // This happens when the same module is imported multiple times (e.g., std::core auto-import + explicit import)
+            if (_enums.TryGetValue(enumName, out var existingEnum) && existingEnum.Variants.Count > 0)
+            {
+                continue;
+            }
+
+            // Now register the full enum with variants (replacing the stub)
+            // At this point, all enum names are resolvable for variant parsing
             RegisterEnum(enumDecl);
         }
 
@@ -945,9 +1000,38 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 implementingType = enumType;
             }
 
-            if (implementingType != null)
+            // Skip if implementing type not found (type not imported or not registered yet)
+            if (implementingType == null)
             {
-                _currentSelfType = implementingType;
+                // Clear generic params before skipping
+                foreach (var paramName in genericParams)
+                {
+                    _genericParams.Remove(paramName);
+                }
+                continue;
+            }
+
+            _currentSelfType = implementingType;
+
+            // Check if this is a trait implementation
+            bool isTraitImpl = implDecl.KW_FOR() != null;
+            string? traitName = null;
+            List<IrType> traitTypeArgs = new();
+
+            if (isTraitImpl)
+            {
+                traitName = typeNames[0].IDENTIFIER(0).GetText();
+
+                // Parse trait type arguments if present (e.g., Iterator<i32>)
+                var traitGenericArgs = implDecl.genericTypeArgs().Length > 0 ? implDecl.genericTypeArgs(0) : null;
+                if (traitGenericArgs != null)
+                {
+                    var typeList = traitGenericArgs.typeList();
+                    foreach (var typeCtx in typeList.type())
+                    {
+                        traitTypeArgs.Add(ParseType(typeCtx));
+                    }
+                }
             }
 
             foreach (var implItem in implDecl.implItem())
@@ -989,8 +1073,21 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 // For non-generic impl blocks, create the function normally
                 var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
 
-                // Methods are registered with mangled names: Type::method
-                var mangledName = $"{typeName}::{methodName}";
+                // Methods are registered with mangled names
+                // Trait impls: Type_Trait_TypeArg1_TypeArg2_method (e.g., Counter_Iterator_i32_next)
+                // Inherent impls: Type::method
+                string mangledName;
+                if (isTraitImpl && traitName != null)
+                {
+                    var typeArgsSuffix = traitTypeArgs.Count > 0
+                        ? "_" + string.Join("_", traitTypeArgs.Select(t => t.Name.Replace("::", "_")))
+                        : "";
+                    mangledName = $"{typeName}_{traitName}{typeArgsSuffix}_{methodName}";
+                }
+                else
+                {
+                    mangledName = $"{typeName}::{methodName}";
+                }
                 var function = new IrFunction(mangledName, returnType, Visibility.Private, false);
 
                 // Parse parameters (including self)
@@ -1050,6 +1147,26 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 }
 
                 _module.AddFunction(function);
+            }
+
+            // Register trait implementation if this is a trait impl (and not generic)
+            if (isTraitImpl && traitName != null && genericParams.Count == 0)
+            {
+                if (implementingType == null)
+                {
+                    throw new Exception($"Type '{typeName}' not found for trait implementation");
+                }
+
+                // Construct full trait name with type arguments (e.g., "From<DosError>")
+                var fullTraitName = traitName;
+                if (traitTypeArgs.Count > 0)
+                {
+                    fullTraitName = $"{traitName}<{string.Join(", ", traitTypeArgs.Select(t => t.Name))}>";
+                }
+
+                // Create IrTraitImpl and add to module
+                var traitImpl = new IrTraitImpl(fullTraitName, traitTypeArgs, typeName, implementingType);
+                _module.TraitImpls.Add(traitImpl);
             }
 
             // Clear generic params and Self type from scope after impl registration
@@ -4776,24 +4893,185 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // expr? desugars to:
         // match expr {
         //     Ok(val) => val,
-        //     Err(err) => return Err(TargetError::from(err))  // Auto-convert if needed
+        //     Err(err) => return Err(TargetError::convert(err))  // Auto-convert if needed
         // }
 
         var innerExpr = Visit(context.expression()) as IrValue
             ?? throw new Exception("? operator requires an expression that returns a value");
 
-        // TODO: Full implementation requires:
         // 1. Verify innerExpr type is Result<T, E>
-        // 2. Extract T and E types
-        // 3. Get current function's return type Result<T2, E2>
-        // 4. If E != E2, look for From<E> impl for E2
-        // 5. Generate match expression:
-        //    - Ok branch: unwrap and return value
-        //    - Err branch: convert error (if needed) and return early
+        if (innerExpr.Type is not IrEnumType resultType || resultType.EnumName != "Result")
+        {
+            throw new Exception($"? operator requires a Result<T, E> type, got {innerExpr.Type}");
+        }
 
-        // For now, return a placeholder that will need semantic analysis
-        throw new NotImplementedException("? operator (try expression) is not yet fully implemented. " +
-            "This requires trait resolution and automatic From<T> conversion.");
+        // Extract T and E types from Result<T, E>
+        // Result has two variants: Ok(T) and Err(E)
+        var okVariant = resultType.Variants.FirstOrDefault(v => v.Name == "Ok")
+            ?? throw new Exception("Result type missing Ok variant");
+        var errVariant = resultType.Variants.FirstOrDefault(v => v.Name == "Err")
+            ?? throw new Exception("Result type missing Err variant");
+
+        if (okVariant.AssociatedData.Count == 0)
+        {
+            throw new Exception("Result::Ok variant missing associated data");
+        }
+        if (errVariant.AssociatedData.Count == 0)
+        {
+            throw new Exception("Result::Err variant missing associated data");
+        }
+
+        var okPayloadType = okVariant.AssociatedData[0];
+        var sourceErrorType = errVariant.AssociatedData[0];
+
+        // 2. Get current function's return type Result<T2, E2>
+        if (_currentFunction == null)
+        {
+            throw new Exception("? operator can only be used inside a function");
+        }
+
+        if (_currentFunction.ReturnType is not IrEnumType funcResultType || funcResultType.EnumName != "Result")
+        {
+            throw new Exception($"? operator requires current function to return Result<T, E>, got {_currentFunction.ReturnType}");
+        }
+
+        var funcErrVariant = funcResultType.Variants.FirstOrDefault(v => v.Name == "Err")
+            ?? throw new Exception("Function return type Result missing Err variant");
+
+        if (funcErrVariant.AssociatedData.Count == 0)
+        {
+            throw new Exception("Function return type Result::Err missing associated data");
+        }
+
+        var targetErrorType = funcErrVariant.AssociatedData[0];
+
+        // 3. Generate match expression to unwrap Result
+        // This is similar to VisitMatchExpr, but we generate the match structure in IR directly
+
+        // Create temporary variable to hold the result expression
+        var resultTemp = $"%try_result_{_tempCounter++}";
+        var resultLocal = new IrLocalVariable(resultTemp, innerExpr.Type, false);
+        _currentFunction.LocalVariables.Add(resultLocal);
+        _currentBlock!.AddInstruction(new IrLocalDecl(resultTemp, innerExpr.Type, false, innerExpr));
+        var resultVar = new IrVariable(resultTemp, innerExpr.Type);
+
+        // Create a variable to hold the unwrapped Ok value (declared before branching)
+        var okValueTemp = $"%try_ok_val_{_tempCounter++}";
+        var okValueLocal = new IrLocalVariable(okValueTemp, okPayloadType, true);
+        _currentFunction.LocalVariables.Add(okValueLocal);
+        _localVariables[okValueTemp] = okValueLocal;
+
+        // Initialize with a default value (will be overwritten in Ok branch)
+        IrValue defaultValue = okPayloadType is IrIntType intType
+            ? new IrConstant(0, intType)
+            : okPayloadType is IrBoolType
+                ? new IrBoolConstant(false)
+                : new IrConstant(0, okPayloadType);
+        _currentBlock.AddInstruction(new IrLocalDecl(okValueTemp, okPayloadType, true, defaultValue));
+
+        // Create blocks for Ok and Err branches
+        var okBlock = _currentFunction.CreateBasicBlock($"try_ok_{_tempCounter}");
+        var errBlock = _currentFunction.CreateBasicBlock($"try_err_{_tempCounter}");
+        var continueBlock = _currentFunction.CreateBasicBlock($"try_continue_{_tempCounter}");
+
+        // Test which variant we have
+        var tagTemp = $"%try_tag_{_tempCounter++}";
+        _currentBlock.AddInstruction(new IrExtractTag(tagTemp, resultVar));
+        var tagVar = new IrVariable(tagTemp, IrIntType.I32);
+
+        // Branch on tag: compare with Ok tag
+        var okTagValue = new IrConstant(okVariant.Tag, IrIntType.I32);
+        var isOkTemp = $"%try_isok_{_tempCounter++}";
+        _currentBlock.AddInstruction(new IrBinaryOp(
+            isOkTemp,
+            IrBinaryOp.OpKind.Eq,
+            tagVar,
+            okTagValue,
+            IrBoolType.Instance
+        ));
+        _currentBlock.AddInstruction(new IrConditionalBranch(
+            new IrVariable(isOkTemp, IrBoolType.Instance),
+            okBlock.Label,
+            errBlock.Label
+        ));
+
+        // Ok branch: extract value, store it, and continue
+        _currentBlock = okBlock;
+        okBlock.AddInstruction(new IrLabel(okBlock.Label));
+        var extractedTemp = $"%try_extracted_{_tempCounter++}";
+        okBlock.AddInstruction(new IrExtractVariantData(extractedTemp, resultVar, "Ok", 0, okPayloadType));
+        okBlock.AddInstruction(new IrStore(okValueTemp, new IrVariable(extractedTemp, okPayloadType)));
+        okBlock.AddInstruction(new IrBranch(continueBlock.Label));
+
+        // Err branch: extract error, optionally convert, and return
+        _currentBlock = errBlock;
+        errBlock.AddInstruction(new IrLabel(errBlock.Label));
+        var errValueTemp = $"%try_err_val_{_tempCounter++}";
+        errBlock.AddInstruction(new IrExtractVariantData(errValueTemp, resultVar, "Err", 0, sourceErrorType));
+        var errVar = new IrVariable(errValueTemp, sourceErrorType);
+
+        // 4. If E != E2, look for From<E> impl for E2 and call convert()
+        IrValue finalError;
+        if (!TypesEqual(sourceErrorType, targetErrorType))
+        {
+            // Need to convert error via From<E>::convert()
+            // Look for From<sourceErrorType> impl for targetErrorType
+            var sourceTypeName = GetTypeName(sourceErrorType);
+            var targetTypeName = GetTypeName(targetErrorType);
+
+            // Find the From<sourceType> trait impl for targetType
+            var convertMethodName = _module.FindTraitMethod(targetTypeName, "convert");
+
+            if (convertMethodName == null)
+            {
+                throw new Exception($"Cannot convert {sourceTypeName} to {targetTypeName}: no From<{sourceTypeName}> implementation found for {targetTypeName}");
+            }
+
+            // Call the convert method
+            var convertedTemp = $"%try_converted_{_tempCounter++}";
+            var convertCall = new IrCall(convertMethodName, targetErrorType, convertedTemp);
+            convertCall.Arguments.Add(errVar);
+            errBlock.AddInstruction(convertCall);
+            finalError = new IrVariable(convertedTemp, targetErrorType);
+        }
+        else
+        {
+            // No conversion needed
+            finalError = errVar;
+        }
+
+        // Construct Result::Err(finalError) and return it
+        var returnErrTemp = $"%try_return_err_{_tempCounter++}";
+        var returnErrLocal = new IrLocalVariable(returnErrTemp, funcResultType, false);
+        _currentFunction.LocalVariables.Add(returnErrLocal);
+        var funcErrTag = funcErrVariant.Tag;
+        var returnErrValue = new IrEnumValue(funcResultType, "Err", funcErrTag, new List<IrValue> { finalError });
+        errBlock.AddInstruction(new IrLocalDecl(returnErrTemp, funcResultType, false, returnErrValue));
+        errBlock.AddInstruction(new IrReturn(new IrVariable(returnErrTemp, funcResultType)));
+
+        // Continue block: the value from Ok is the result of this expression
+        _currentBlock = continueBlock;
+        continueBlock.AddInstruction(new IrLabel(continueBlock.Label));
+        return new IrVariable(okValueTemp, okPayloadType);
+    }
+
+    private bool TypesEqual(IrType a, IrType b)
+    {
+        // Simple type equality check - could be more sophisticated
+        return a.ToString() == b.ToString();
+    }
+
+    private string GetTypeName(IrType type)
+    {
+        return type switch
+        {
+            IrEnumType enumType => enumType.Name,
+            IrStructType structType => structType.Name,
+            IrIntType intType => intType.IsSigned ? $"i{intType.BitWidth}" : $"u{intType.BitWidth}",
+            IrBoolType => "bool",
+            IrPointerType ptrType => $"*{GetTypeName(ptrType.PointeeType)}",
+            _ => type.ToString()
+        };
     }
 
     private IrValue HandlePostIncrementDecrement(ParserRuleContext exprContext, bool isIncrement)

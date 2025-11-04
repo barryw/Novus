@@ -245,8 +245,47 @@ pub enum NovusError {
     Graphics(GraphicsError),    // Graphics library error
 }
 
-// Convert any subsystem error to top-level NovusError
-// This enables the ? operator to work across subsystems
+// ============================================================================
+// From<T> Trait Implementations - Automatic Error Conversion
+// ============================================================================
+
+// These implementations enable the ? operator to automatically convert
+// subsystem errors to NovusError when propagating errors up the call stack
+
+// From<DosError> for NovusError
+impl From<DosError> for NovusError {
+    fn convert(err: DosError) -> NovusError {
+        return NovusError::Dos(err)
+    }
+}
+
+// From<ExecError> for NovusError
+impl From<ExecError> for NovusError {
+    fn convert(err: ExecError) -> NovusError {
+        return NovusError::Exec(err)
+    }
+}
+
+// From<IntuitionError> for NovusError
+impl From<IntuitionError> for NovusError {
+    fn convert(err: IntuitionError) -> NovusError {
+        return NovusError::Intuition(err)
+    }
+}
+
+// From<GraphicsError> for NovusError
+impl From<GraphicsError> for NovusError {
+    fn convert(err: GraphicsError) -> NovusError {
+        return NovusError::Graphics(err)
+    }
+}
+
+// ============================================================================
+// Legacy Conversion Functions (Deprecated - Use From<T> trait instead)
+// ============================================================================
+
+// Note: These functions are kept for backward compatibility but should be
+// replaced with the ? operator and From<T> trait implementations above
 
 // From<DosError> for NovusError
 pub fn novus_error_from_dos(err: DosError) -> NovusError {

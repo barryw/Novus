@@ -3,7 +3,7 @@
 // Dynamic data structures and collection types
 
 // Import core types and memory management
-from std::core import Option, Result, Iterable
+from std::core import Option, Result, Iterable, From
 from std::mem import MemoryBlock
 from std::ffi::exec import MEMF_PUBLIC, MEMF_CLEAR, CopyMem, FreeMem
 
