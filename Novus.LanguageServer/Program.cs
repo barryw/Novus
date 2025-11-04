@@ -54,13 +54,18 @@ class Program
                 .WithServices(services =>
                 {
                     // Register our services here
-                    services.AddSingleton(new DocumentManager(stdLibPath));
+                    var docManager = new DocumentManager(stdLibPath);
+                    services.AddSingleton(docManager);
+                    services.AddSingleton(stdLibPath);  // Make stdLibPath available for injection
                 })
                 .WithHandler<TextDocumentHandler>()
                 .WithHandler<DefinitionHandler>()
                 .WithHandler<HoverHandler>()
                 .WithHandler<SignatureHelpHandler>()
                 .WithHandler<CompletionHandler>()
+                .WithHandler<CodeActionHandler>()
+                .WithHandler<ReferencesHandler>()
+                .WithHandler<RenameHandler>()
                 .OnInitialize((server, request, cancellationToken) =>
                 {
                     Console.Error.WriteLine("[LSP] Server initialized!");

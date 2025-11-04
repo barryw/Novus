@@ -37,6 +37,7 @@ public class HoverHandler : IHoverHandler
         {
             // Create symbol resolver
             var resolver = new SymbolResolver(state.SemanticAnalyzer, state.ParseTree, state.Text);
+            var analyzer = state.SemanticAnalyzer;
 
             // Find symbol at cursor position (LSP uses 0-based line/column)
             var symbolInfo = resolver.FindSymbolAtPosition((int)position.Line, (int)position.Character);
@@ -50,7 +51,7 @@ public class HoverHandler : IHoverHandler
             Console.Error.WriteLine($"[LSP] Found {symbolInfo.Kind} symbol: {symbolInfo.Name}");
 
             // Build hover content based on symbol kind
-            var content = BuildHoverContent(symbolInfo);
+            var content = BuildHoverContent(symbolInfo, analyzer);
 
             var hover = new Hover
             {
@@ -84,7 +85,7 @@ public class HoverHandler : IHoverHandler
         }
     }
 
-    private string BuildHoverContent(SymbolInfo symbolInfo)
+    private string BuildHoverContent(SymbolInfo symbolInfo, Novus.SemanticAnalysis.SemanticAnalyzer analyzer)
     {
         var content = new System.Text.StringBuilder();
 
@@ -215,6 +216,16 @@ public class HoverHandler : IHoverHandler
                     content.AppendLine($"**Variants:** {en.Variants.Count}");
                 }
                 break;
+        }
+
+        // Add documentation comment if available
+        var docComment = DocCommentExtractor.ExtractDocComment(analyzer.SourceText, symbolInfo.Location.Line);
+        if (!string.IsNullOrWhiteSpace(docComment))
+        {
+            content.AppendLine();
+            content.AppendLine("---");
+            content.AppendLine();
+            content.AppendLine(docComment);
         }
 
         return content.ToString();

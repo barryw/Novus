@@ -37,6 +37,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     private readonly Dictionary<string, SourceLocation> _enumLocations = new();
     private readonly Dictionary<string, SourceLocation> _traitLocations = new();
 
+    // Documentation comments (LSP support)
+    private readonly Dictionary<string, string> _docComments = new();  // key = symbol name, value = doc comment text
+
     // Unsafe block tracking
     private int _unsafeDepth = 0; // Track unsafe block nesting
     private readonly List<UnsafeBlockInfo> _unsafeBlocks = new(); // Collect unsafe blocks for warnings
@@ -90,11 +93,16 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     public IReadOnlyDictionary<string, SourceLocation> EnumLocations => _enumLocations;
     public IReadOnlyDictionary<string, SourceLocation> TraitLocations => _traitLocations;
 
+    // Public read-only access to documentation comments (for LSP hover/completion)
+    public IReadOnlyDictionary<string, string> DocComments => _docComments;
+    public string SourceText { get; }  // Store source text for doc comment extraction
+
     public SemanticAnalyzer(string filePath, string sourceCode, string stdLibPath)
     {
         _filePath = filePath;
         _sourceLines = sourceCode.Split('\n');
         _stdLibPath = stdLibPath;
+        SourceText = sourceCode;
     }
 
     public bool Analyze(NovusParser.CompilationUnitContext context)
