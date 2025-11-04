@@ -1,8 +1,251 @@
-// Novus Standard Library - Exec Wrappers
+// Novus Standard Library - Exec (High-Level)
 // Namespace: std::exec
-// Re-exports of AmigaOS Exec library functions
+//
+// High-level wrappers for exec.library functions
+// For low-level FFI access, use std::ffi::exec
 //
 // NOTE: For memory management, prefer using std::mem::MemoryBlock instead of AllocMem/FreeMem directly
 
+from std::core import Option, Result
+from std::error import ExecError, NovusError, novus_error_from_exec
 from std::ffi::exec import AllocMem, FreeMem, AllocVec, FreeVec, CopyMem
+from std::ffi::exec import FindTask, SetTaskPri, AllocSignal, FreeSignal, Wait, Signal
+from std::ffi::exec import Forbid, Permit, Disable, Enable
 from std::ffi::amiga_consts import MEMF_ANY, MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, MEMF_LOCAL, MEMF_24BITDMA, MEMF_KICK, MEMF_CLEAR, MEMF_LARGEST, MEMF_REVERSE
+
+// ============================================================================
+// Task Management
+// ============================================================================
+//
+// Task pointers are i32 values returned by FindTask()
+
+/// Get pointer to the current task
+///
+/// Returns None if called from interrupt context (no current task).
+///
+/// Example:
+/// ```novus
+/// from std::exec import get_current_task
+///
+/// match get_current_task() {
+///     Some(task) => {
+///         // Use task pointer
+///     },
+///     None => {
+///         // No task (interrupt context?)
+///     }
+/// }
+/// ```
+pub fn get_current_task() -> Option<i32> {
+    unsafe {
+        let task = FindTask(0)  // 0 = current task
+        if task == 0 {
+            return Option::None
+        }
+        return Option::Some(task)
+    }
+}
+
+/// Find a task by name
+///
+/// Returns Some(task) if found, None otherwise.
+///
+/// Example:
+/// ```novus
+/// from std::exec import find_task
+///
+/// match find_task("My Task".ptr) {
+///     Some(task) => {
+///         // Found the task
+///     },
+///     None => {
+///         // Task not found
+///     }
+/// }
+/// ```
+pub fn find_task(name: *u8) -> Option<i32> {
+    unsafe {
+        let task = FindTask((i32)name)
+        if task == 0 {
+            return Option::None
+        }
+        return Option::Some(task)
+    }
+}
+
+/// Set task priority
+///
+/// Returns the old priority.
+/// Priority range is typically -128 to 127, with higher being more important.
+///
+/// Example:
+/// ```novus
+/// from std::exec import get_current_task, set_task_priority
+///
+/// let task = get_current_task()?
+/// let old_pri = set_task_priority(task, 10)  // Raise to priority 10
+/// ```
+pub fn set_task_priority(task: i32, priority: i32) -> i32 {
+    unsafe {
+        return SetTaskPri(task, priority)
+    }
+}
+
+// ============================================================================
+// Signals
+// ============================================================================
+
+/// Allocate a signal bit
+///
+/// Returns Some(signal_num) with a signal bit number (0-31), or None if no signals available.
+/// Pass -1 to allocate any available signal.
+///
+/// Example:
+/// ```novus
+/// from std::exec import allocate_signal, free_signal
+///
+/// match allocate_signal(-1) {
+///     Some(sig) => {
+///         defer {
+///             free_signal(sig)
+///         }
+///         // Use signal bit
+///         let signal_mask = 1 << sig
+///     },
+///     None => {
+///         // No signals available
+///     }
+/// }
+/// ```
+pub fn allocate_signal(signal_num: i32) -> Option<i32> {
+    unsafe {
+        let result = AllocSignal(signal_num)
+        if result == -1 {
+            return Option::None
+        }
+        return Option::Some(result)
+    }
+}
+
+/// Free a previously allocated signal
+///
+/// Should be called for every successfully allocated signal.
+/// Best used with defer for automatic cleanup.
+pub fn free_signal(signal_num: i32) {
+    unsafe {
+        FreeSignal(signal_num)
+    }
+}
+
+/// Wait for one or more signals
+///
+/// Blocks until at least one of the specified signals arrives.
+/// Returns the mask of signals that arrived.
+///
+/// Example:
+/// ```novus
+/// from std::exec import wait_for_signals
+///
+/// let signal_mask = 1 << 4  // Wait for signal bit 4
+/// let received = wait_for_signals(signal_mask)
+/// if (received & signal_mask) != 0 {
+///     // Signal 4 arrived
+/// }
+/// ```
+pub fn wait_for_signals(signal_mask: u32) -> u32 {
+    unsafe {
+        return (u32)Wait((i32)signal_mask)
+    }
+}
+
+/// Send a signal to a task
+///
+/// The target task will wake up if it's waiting on this signal.
+///
+/// Example:
+/// ```novus
+/// from std::exec import find_task, send_signal
+///
+/// match find_task("My Task".ptr) {
+///     Some(task) => {
+///         let signal_mask = 1 << 4
+///         send_signal(task, signal_mask)
+///     },
+///     None => {}
+/// }
+/// ```
+pub fn send_signal(task: i32, signal_mask: u32) {
+    unsafe {
+        Signal(task, (i32)signal_mask)
+    }
+}
+
+// ============================================================================
+// Critical Sections
+// ============================================================================
+
+/// Disable task rescheduling
+///
+/// Prevents other tasks from running until Permit() is called.
+/// Can be nested - must call Permit() the same number of times as Forbid().
+/// Does NOT disable interrupts.
+///
+/// IMPORTANT: Keep Forbid()den sections as short as possible!
+///
+/// Example:
+/// ```novus
+/// from std::exec import forbid, permit
+///
+/// forbid()
+/// defer {
+///     permit()  // Automatically permit when leaving scope
+/// }
+/// // Critical section - no task switches
+/// ```
+pub fn forbid() {
+    unsafe {
+        Forbid()
+    }
+}
+
+/// Re-enable task rescheduling
+///
+/// Must be paired with every Forbid() call.
+pub fn permit() {
+    unsafe {
+        Permit()
+    }
+}
+
+/// Disable all interrupts
+///
+/// EXTREMELY DANGEROUS - system will hang if held too long!
+/// Must be paired with Enable().
+/// Can be nested.
+///
+/// Only use when absolutely necessary (e.g., hardware access that can't be interrupted).
+///
+/// Example:
+/// ```novus
+/// from std::exec import disable, enable
+///
+/// disable()
+/// defer {
+///     enable()  // Automatically enable when leaving scope
+/// }
+/// // VERY brief critical section
+/// ```
+pub fn disable() {
+    unsafe {
+        Disable()
+    }
+}
+
+/// Re-enable interrupts
+///
+/// Must be paired with every Disable() call.
+pub fn enable() {
+    unsafe {
+        Enable()
+    }
+}

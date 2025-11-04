@@ -227,6 +227,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             var function = new IrFunction(name, returnType, visibility, isExtern);
 
+            // Check for #[export] attribute
+            var attributes = ParseAttributesSimple(funcContext.attribute());
+            if (attributes.Has("export"))
+            {
+                function.IsExported = true;
+            }
+
             // Parse parameters
             if (funcContext.parameterList() != null)
             {
@@ -2346,6 +2353,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var function = new IrFunction(name, returnType, visibility, isExtern);
         _module.AddFunction(function);
         _currentFunction = function;
+
+        // Check for #[export] attribute
+        var attributes = ParseAttributesSimple(context.attribute());
+        if (attributes.Has("export"))
+        {
+            function.IsExported = true;
+        }
 
         // Parse generic parameters
         if (context.genericParams() != null)

@@ -1,6 +1,96 @@
 // strings.novus - String utility functions
 // Namespace: std::strings
-// Low-level string operations implemented in assembly for performance
+// Low-level string operations - wrappers around C standard library functions
 
-// Calculate length of null-terminated string
-extern fn strlen(str: i32) -> i32
+/// Calculate length of null-terminated string
+///
+/// Returns the number of characters in the string, not including the null terminator.
+///
+/// Example:
+/// ```novus
+/// let str = "Hello"
+/// let len = strlen(str.ptr)  // Returns 5
+/// ```
+extern fn strlen(str: *u8) -> u32
+
+/// Compare two null-terminated strings
+///
+/// Returns:
+/// - 0 if strings are equal
+/// - < 0 if s1 is less than s2
+/// - > 0 if s1 is greater than s2
+///
+/// Example:
+/// ```novus
+/// let result = strcmp("abc".ptr, "def".ptr)  // Returns negative
+/// ```
+extern fn strcmp(s1: *u8, s2: *u8) -> i32
+
+/// Compare first n characters of two strings
+///
+/// Returns same as strcmp, but only compares up to n characters.
+extern fn strncmp(s1: *u8, s2: *u8, n: u32) -> i32
+
+/// Copy string from src to dest
+///
+/// SAFETY: Caller must ensure dest has enough space.
+/// Consider using strncpy for bounds checking.
+///
+/// Returns pointer to dest.
+extern fn strcpy(dest: *u8, src: *u8) -> *u8
+
+/// Copy at most n characters from src to dest
+///
+/// Safer alternative to strcpy with bounds checking.
+/// If src is shorter than n, dest is padded with null bytes.
+///
+/// Returns pointer to dest.
+extern fn strncpy(dest: *u8, src: *u8, n: u32) -> *u8
+
+/// Concatenate src string to end of dest
+///
+/// SAFETY: Caller must ensure dest has enough space.
+///
+/// Returns pointer to dest.
+extern fn strcat(dest: *u8, src: *u8) -> *u8
+
+/// Concatenate at most n characters from src to dest
+///
+/// Safer alternative to strcat with bounds checking.
+///
+/// Returns pointer to dest.
+extern fn strncat(dest: *u8, src: *u8, n: u32) -> *u8
+
+/// Find first occurrence of character in string
+///
+/// Returns pointer to first occurrence, or null if not found.
+extern fn strchr(str: *u8, ch: i32) -> *u8
+
+/// Find last occurrence of character in string
+///
+/// Returns pointer to last occurrence, or null if not found.
+extern fn strrchr(str: *u8, ch: i32) -> *u8
+
+/// Find first occurrence of substring in string
+///
+/// Returns pointer to first occurrence, or null if not found.
+extern fn strstr(haystack: *u8, needle: *u8) -> *u8
+
+/// Copy memory from src to dest (may overlap)
+///
+/// Use this when memory regions may overlap.
+/// For non-overlapping regions, CopyMem is more efficient.
+extern fn memmove(dest: *u8, src: *u8, n: u32) -> *u8
+
+/// Set n bytes of memory to value
+///
+/// Example:
+/// ```novus
+/// memset(buffer, 0, 1024)  // Zero out 1024 bytes
+/// ```
+extern fn memset(ptr: *u8, value: i32, n: u32) -> *u8
+
+/// Compare n bytes of memory
+///
+/// Returns same as strcmp.
+extern fn memcmp(s1: *u8, s2: *u8, n: u32) -> i32

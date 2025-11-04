@@ -600,6 +600,25 @@ class Program
                     cFiles.Add(staticsCFile);
                 }
 
+                // Generate exports header if there are any exported functions
+                var exportsHeader = mainCodegen.GenerateHeader();
+                var exportedFunctions = mainIR.IrModule.Functions.Where(f => f.IsExported && !f.IsExtern).ToList();
+                if (exportedFunctions.Count > 0)
+                {
+                    var exportsHeaderPath = Path.Combine(outputDir, $"{baseName}_exports.h");
+                    await File.WriteAllTextAsync(exportsHeaderPath, exportsHeader);
+                    Console.WriteLine($"  → {baseName}_exports.h ({exportedFunctions.Count} exported function{(exportedFunctions.Count > 1 ? "s" : "")})");
+                }
+                else if (options.Verbose)
+                {
+                    // Debug: show which functions exist and their export status
+                    Console.WriteLine($"  Debug: {mainIR.IrModule.Functions.Count} functions in module:");
+                    foreach (var f in mainIR.IrModule.Functions.Take(10))
+                    {
+                        Console.WriteLine($"    - {f.Name}: IsExported={f.IsExported}, IsExtern={f.IsExtern}");
+                    }
+                }
+
                 Console.WriteLine($"  → {baseName} ({mainFunctions.Count} function{(mainFunctions.Count > 1 ? "s" : "")})");
             }
 

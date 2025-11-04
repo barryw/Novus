@@ -24,7 +24,9 @@ from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, MEMF_CLEAR
 /// let block = MemoryBlock::alloc(1024, MEMF_FAST)
 /// match block {
 ///     Some(mut b) => {
-///         defer b.free()
+///         defer {
+///             b.free()
+///         }
 ///         // Use b.ptr() and b.size()
 ///         let ptr: *u8 = b.ptr()
 ///         ptr[0] = 42
@@ -48,7 +50,9 @@ impl MemoryBlock {
     /// let mem = MemoryBlock::alloc(1024, MEMF_FAST)
     /// match mem {
     ///     Some(mut block) => {
-    ///         defer block.free()
+    ///         defer {
+    ///             block.free()
+    ///         }
     ///         // Use block
     ///     },
     ///     None => { /* failed */ }
@@ -77,8 +81,10 @@ impl MemoryBlock {
     ///
     /// Example:
     /// ```novus
-    /// let block = MemoryBlock::try_alloc(1024, MEMF_FAST)?
-    /// defer block.free()
+    /// var block = MemoryBlock::try_alloc(1024, MEMF_FAST)?
+    /// defer {
+    ///     block.free()
+    /// }
     /// ```
     pub fn try_alloc(size: u32, flags: u32) -> Result<MemoryBlock, ExecError> {
         match MemoryBlock::alloc(size, flags) {
@@ -166,7 +172,9 @@ impl MemoryBlock {
 /// let buffer = Allocation::new(1024, MEMF_CHIP)
 /// match buffer {
 ///     Some(mut alloc) => {
-///         defer alloc.free()
+///         defer {
+///             alloc.free()
+///         }
 ///
 ///         let ptr: *u8 = alloc.as_mut_ptr()
 ///         ptr[0] = 42
@@ -191,6 +199,12 @@ impl<T> Allocation<T> {
         }
 
         let element_size: u32 = @sizeof(T)
+
+        // Check for overflow: count * element_size
+        if element_size > ($FFFFFFFFu32 / count) {
+            return Option::None  // Would overflow
+        }
+
         let total_bytes: u32 = count * element_size
 
         match MemoryBlock::alloc(total_bytes, flags) {
@@ -215,6 +229,12 @@ impl<T> Allocation<T> {
         }
 
         let element_size: u32 = @sizeof(T)
+
+        // Check for overflow: count * element_size
+        if element_size > ($FFFFFFFFu32 / count) {
+            return Result::Err(ExecError::NoMem)  // Treat overflow as allocation failure
+        }
+
         let total_bytes: u32 = count * element_size
 
         match MemoryBlock::alloc(total_bytes, flags) {
@@ -264,6 +284,12 @@ impl<T> Allocation<T> {
     /// Resize allocation to new element count
     pub fn resize(&mut self, new_count: u32, flags: u32) -> bool {
         let element_size: u32 = @sizeof(T)
+
+        // Check for overflow: new_count * element_size
+        if new_count > 0 && element_size > ($FFFFFFFFu32 / new_count) {
+            return false  // Would overflow
+        }
+
         let new_bytes: u32 = new_count * element_size
 
         if self.block.resize(new_bytes, flags) {
@@ -293,7 +319,9 @@ impl<T> Allocation<T> {
 /// let boxed = Box::new(BigData { buffer: [0; 4096] })
 /// match boxed {
 ///     Some(mut b) => {
-///         defer b.free()
+///         defer {
+///             b.free()
+///         }
 ///
 ///         let val: *BigData = b.get_mut()
 ///         val.buffer[0] = 42

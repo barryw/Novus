@@ -39,7 +39,8 @@ public class Preprocessor
             var trimmed = line.TrimStart();
 
             // Check if this is a preprocessor directive
-            if (trimmed.StartsWith("#"))
+            // Note: #[ is attribute syntax, not a preprocessor directive
+            if (trimmed.StartsWith("#") && !trimmed.StartsWith("#["))
             {
                 var directive = ParseDirective(trimmed, lineNumber);
                 if (directive == null)

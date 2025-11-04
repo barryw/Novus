@@ -33,10 +33,16 @@ from std::ffi::intuition import OpenWindowTagList, OpenScreenTagList, CloseWindo
 ///     TagItem { ti_Tag: WA_Flags, ti_Data: WFLG_CLOSEGADGET }
 /// ]
 /// let window = OpenWindow(&input_tags, 4)?
-/// defer CloseWindow(window)
+/// defer {
+///     CloseWindow(window)
+/// }
 /// ```
 pub fn OpenWindow(tags_ptr: *TagItem, count: u32) -> Result<*Window, NovusError> {
-    let tag_list = make_tags(tags_ptr, count)
+    var tag_list = make_tags(tags_ptr, count)
+    defer {
+        tag_list.drop()  // Automatic cleanup at scope exit
+    }
+
     let null_new_window: *NewWindow = 0
     let window = OpenWindowTagList(null_new_window, tag_list.as_ptr())
 
@@ -65,10 +71,16 @@ pub fn OpenWindow(tags_ptr: *TagItem, count: u32) -> Result<*Window, NovusError>
 ///     TagItem { ti_Tag: SA_Title, ti_Data: "My Screen".ptr as u32 }
 /// ]
 /// let screen = OpenScreen(&input_tags, 4)?
-/// defer CloseScreen(screen)
+/// defer {
+///     CloseScreen(screen)
+/// }
 /// ```
 pub fn OpenScreen(tags_ptr: *TagItem, count: u32) -> Result<*Screen, NovusError> {
-    let tag_list = make_tags(tags_ptr, count)
+    var tag_list = make_tags(tags_ptr, count)
+    defer {
+        tag_list.drop()  // Automatic cleanup at scope exit
+    }
+
     let null_new_screen: *NewScreen = 0
     let screen = OpenScreenTagList(null_new_screen, tag_list.as_ptr())
 

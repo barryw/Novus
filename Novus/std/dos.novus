@@ -29,7 +29,11 @@ from std::ffi::dos import NewLoadSeg, UnLoadSeg
 /// ])?
 /// ```
 pub fn System(command: *u8, tags_ptr: *TagItem, count: u32) -> Result<i32, NovusError> {
-    let tag_list = make_tags(tags_ptr, count)
+    var tag_list = make_tags(tags_ptr, count)
+    defer {
+        tag_list.drop()  // Automatic cleanup at scope exit
+    }
+
     let result = SystemTagList(command, tag_list.as_ptr())
 
     // SystemTagList returns -1 on error
@@ -60,7 +64,11 @@ pub fn System(command: *u8, tags_ptr: *TagItem, count: u32) -> Result<i32, Novus
 /// ])?
 /// ```
 pub fn CreateProcess(tags_ptr: *TagItem, count: u32) -> Result<*Process, NovusError> {
-    let tag_list = make_tags(tags_ptr, count)
+    var tag_list = make_tags(tags_ptr, count)
+    defer {
+        tag_list.drop()  // Automatic cleanup at scope exit
+    }
+
     let process = CreateNewProc(tag_list.as_ptr())
 
     // Check if process creation succeeded (null check)
@@ -88,10 +96,16 @@ pub fn CreateProcess(tags_ptr: *TagItem, count: u32) -> Result<*Process, NovusEr
 ///     (ADO_FH_Mode, MODE_NEWFILE),
 /// ])?
 ///
-/// defer FreeDosObject(DOS_STDPKT, obj)
+/// defer {
+///     FreeDosObject(DOS_STDPKT, obj)
+/// }
 /// ```
 pub fn AllocDos(obj_type: u32, tags_ptr: *TagItem, count: u32) -> Result<*u8, NovusError> {
-    let tag_list = make_tags(tags_ptr, count)
+    var tag_list = make_tags(tags_ptr, count)
+    defer {
+        tag_list.drop()  // Automatic cleanup at scope exit
+    }
+
     let obj = AllocDosObject(obj_type, tag_list.as_ptr())
 
     // Check if allocation succeeded (null check)
@@ -111,10 +125,16 @@ pub fn AllocDos(obj_type: u32, tags_ptr: *TagItem, count: u32) -> Result<*u8, No
 /// from std::dos import LoadSeg
 ///
 /// let seglist = LoadSeg("SYS:C/Dir", &[])?
-/// defer UnLoadSeg(seglist)
+/// defer {
+///     UnLoadSeg(seglist)
+/// }
 /// ```
 pub fn LoadSeg(file: *u8, tags_ptr: *TagItem, count: u32) -> Result<i32, NovusError> {
-    let tag_list = make_tags(tags_ptr, count)
+    var tag_list = make_tags(tags_ptr, count)
+    defer {
+        tag_list.drop()  // Automatic cleanup at scope exit
+    }
+
     let seglist = NewLoadSeg(file, tag_list.as_ptr())
 
     // NewLoadSeg returns 0 on failure
@@ -123,6 +143,116 @@ pub fn LoadSeg(file: *u8, tags_ptr: *TagItem, count: u32) -> Result<i32, NovusEr
     }
 
     return Result::Ok(seglist)
+}
+
+// ============================================================================
+// File I/O
+// ============================================================================
+// Note: These wrappers use the low-level FFI functions. For proper error handling,
+// check IoErr() after operations. Future enhancement: wrap with proper Result types.
+//
+// File handles are i32 values returned by Open()
+
+/// Open a file for reading or writing
+///
+/// Mode should be one of:
+/// - MODE_OLDFILE (1005): Open existing file read/write
+/// - MODE_READWRITE (1004): Open with shared lock
+///
+/// Returns Some(handle) on success, None on failure.
+/// Use IoErr() to get error details on failure.
+///
+/// Example:
+/// ```novus
+/// from std::dos import open_file, close_file
+/// from std::ffi::dos import MODE_OLDFILE
+///
+/// match open_file("S:Startup-Sequence", MODE_OLDFILE) {
+///     Some(fh) => {
+///         defer {
+///             close_file(fh)
+///         }
+///         // Read/write operations
+///     },
+///     None => {
+///         // Handle error
+///     }
+/// }
+/// ```
+pub fn open_file(path: *u8, mode: i32) -> Option<i32> {
+    unsafe {
+        let fh = std::ffi::dos::Open((i32)path, mode)
+        if fh == 0 {
+            return Option::None
+        }
+        return Option::Some(fh)
+    }
+}
+
+/// Close a file handle
+///
+/// Should be called for every successfully opened file.
+/// Best used with defer for automatic cleanup.
+pub fn close_file(fh: i32) {
+    unsafe {
+        std::ffi::dos::Close(fh)
+    }
+}
+
+/// Read bytes from file into buffer
+///
+/// Returns number of bytes actually read (may be less than requested).
+/// Returns 0 on end-of-file or error (check IoErr() to distinguish).
+///
+/// Example:
+/// ```novus
+/// let buffer: [u8; 1024]
+/// let bytes_read = read_file(fh, &buffer, 1024)
+/// ```
+pub fn read_file(fh: i32, buffer: *u8, length: u32) -> i32 {
+    unsafe {
+        return std::ffi::dos::Read(fh, (i32)buffer, (i32)length)
+    }
+}
+
+/// Write bytes from buffer to file
+///
+/// Returns number of bytes actually written.
+/// Returns -1 on error (check IoErr() for details).
+///
+/// Example:
+/// ```novus
+/// let data = "Hello, Amiga!\n"
+/// let bytes_written = write_file(fh, data.ptr, 14)
+/// ```
+pub fn write_file(fh: i32, buffer: *u8, length: u32) -> i32 {
+    unsafe {
+        return std::ffi::dos::Write(fh, (i32)buffer, (i32)length)
+    }
+}
+
+/// Seek to a position in the file
+///
+/// offset: position relative to mode
+/// mode: one of OFFSET_BEGINNING (seek from start), OFFSET_CURRENT (from current pos), OFFSET_END (from end)
+///
+/// Returns old position, or -1 on error.
+///
+/// Example:
+/// ```novus
+/// // Seek to beginning
+/// seek_file(fh, 0, OFFSET_BEGINNING)
+///
+/// // Seek 10 bytes forward from current position
+/// seek_file(fh, 10, OFFSET_CURRENT)
+///
+/// // Seek to end
+/// let file_size = seek_file(fh, 0, OFFSET_END)
+/// ```
+pub fn seek_file(fh: i32, position: i32, offset: i32) -> i32 {
+    unsafe {
+        return std::ffi::dos::Seek(fh, position, offset)
+    }
 }
 
 // ============================================================================

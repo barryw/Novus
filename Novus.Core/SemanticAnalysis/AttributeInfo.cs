@@ -199,6 +199,9 @@ public static class KnownAttributes
     public const string Target = "target";
     public const string Cfg = "cfg";
 
+    // C interop attributes
+    public const string Export = "export";
+
     /// <summary>
     /// All known attribute names for validation
     /// </summary>
@@ -210,7 +213,8 @@ public static class KnownAttributes
         Deprecated, Since, Experimental,
         Unsafe, ThreadSafe, SingleThreaded,
         Cold, Hot, Const,
-        Target, Cfg
+        Target, Cfg,
+        Export
     };
 
     /// <summary>

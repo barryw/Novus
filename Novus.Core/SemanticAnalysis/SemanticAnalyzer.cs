@@ -720,6 +720,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var name = context.IDENTIFIER().GetText();
         var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
 
+        // Parse attributes
+        var attributes = ParseAttributes(context.attribute());
+
         // Check if function is extern by looking for 'extern' keyword
         var isExtern = false;
         for (int i = 0; i < Math.Min(3, context.ChildCount); i++)
@@ -824,7 +827,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
-        _functions[name] = new FunctionSymbol(name, returnType, parameters, location, isExtern, genericParams.Count > 0 ? genericParams : null, IsVariadic: hasVariadic);
+        _functions[name] = new FunctionSymbol(name, returnType, parameters, location, isExtern, genericParams.Count > 0 ? genericParams : null, attributes, hasVariadic);
 
         // Clear generic params from scope after function registration
         foreach (var paramName in genericParams)

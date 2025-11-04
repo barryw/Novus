@@ -114,6 +114,7 @@ public class IrFunction
     public Visibility Visibility { get; set; }
     public bool IsExtern { get; set; }  // true if 'extern' keyword used
     public bool IsVariadic { get; set; }  // true if function has variadic parameters (...)
+    public bool IsExported { get; set; }  // true if #[export] attribute is present
     public List<IrParameter> Parameters { get; } = new();
     public List<IrLocalVariable> LocalVariables { get; } = new();
     public List<IrBasicBlock> BasicBlocks { get; } = new();

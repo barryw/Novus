@@ -179,6 +179,163 @@ impl<T> Vec<T> {
         return self.ptr
     }
 
+    /// Insert an element at the given index, shifting all elements after it to the right
+    ///
+    /// Returns true on success, false if index is out of bounds or allocation failed.
+    ///
+    /// Example:
+    /// ```novus
+    /// var vec = Vec::new()
+    /// vec.push(1)
+    /// vec.push(3)
+    /// vec.insert(1, 2)  // vec is now [1, 2, 3]
+    /// ```
+    pub fn insert(&mut self, index: u32, value: T) -> bool {
+        // Check bounds - can insert at len (append position)
+        if index > self.len {
+            return false
+        }
+
+        // Ensure we have capacity
+        if self.len >= self.capacity {
+            let success: bool = self.reserve(1)
+            if !success {
+                return false  // Allocation failed
+            }
+        }
+
+        // Shift elements right to make room
+        var i: u32 = self.len
+        while i > index {
+            self.ptr[i] = self.ptr[i - 1]
+            i = i - 1
+        }
+
+        // Insert the element
+        self.ptr[index] = value
+        self.len = self.len + 1
+        return true
+    }
+
+    /// Remove element at the given index, shifting all elements after it to the left
+    ///
+    /// Returns Some(value) if successful, None if index is out of bounds.
+    ///
+    /// Example:
+    /// ```novus
+    /// var vec = Vec::new()
+    /// vec.push(1)
+    /// vec.push(2)
+    /// vec.push(3)
+    /// let removed = vec.remove(1)  // Returns Some(2), vec is now [1, 3]
+    /// ```
+    pub fn remove(&mut self, index: u32) -> Option<T> {
+        if index >= self.len {
+            return Option::None
+        }
+
+        // Save the value to return
+        let value: T = self.ptr[index]
+
+        // Shift elements left
+        var i: u32 = index
+        while i < self.len - 1 {
+            self.ptr[i] = self.ptr[i + 1]
+            i = i + 1
+        }
+
+        self.len = self.len - 1
+        return Option::Some(value)
+    }
+
+    /// Shorten the vector to the given length
+    ///
+    /// If new_len is greater than or equal to the current length, this does nothing.
+    /// Capacity is unchanged.
+    ///
+    /// Example:
+    /// ```novus
+    /// var vec = Vec::new()
+    /// vec.push(1)
+    /// vec.push(2)
+    /// vec.push(3)
+    /// vec.truncate(1)  // vec is now [1]
+    /// ```
+    pub fn truncate(&mut self, new_len: u32) {
+        if new_len < self.len {
+            self.len = new_len
+        }
+    }
+
+    /// Shrink the capacity to match the length
+    ///
+    /// Returns true on success, false if reallocation failed.
+    /// On failure, the vector is unchanged.
+    ///
+    /// Example:
+    /// ```novus
+    /// var vec = Vec::with_capacity(100)?
+    /// vec.push(1)
+    /// vec.push(2)
+    /// vec.shrink_to_fit()  // Reduces capacity from 100 to 2
+    /// ```
+    pub fn shrink_to_fit(&mut self) -> bool {
+        // Nothing to do if already optimal
+        if self.len == self.capacity {
+            return true
+        }
+
+        // Special case: empty vector
+        if self.len == 0 {
+            if self.capacity > 0 {
+                let element_size: u32 = @sizeof(T)
+                let bytes: u32 = self.capacity * element_size
+                let mem: *u8 = (*u8)(self.ptr)
+                unsafe {
+                    FreeMem(mem, bytes)
+                }
+                self.ptr = 0
+                self.capacity = 0
+            }
+            return true
+        }
+
+        // Allocate new smaller buffer
+        let element_size: u32 = @sizeof(T)
+        let new_bytes: u32 = self.len * element_size
+
+        let new_block_opt: Option<MemoryBlock> = MemoryBlock::alloc(new_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+
+        match new_block_opt {
+            Some(new_block) => {
+                let new_ptr: *T = (*T)new_block.ptr()
+
+                // Copy existing elements to new allocation
+                var i: u32 = 0
+                while i < self.len {
+                    new_ptr[i] = self.ptr[i]
+                    i = i + 1
+                }
+
+                // Free old memory
+                let old_bytes: u32 = self.capacity * element_size
+                let old_mem: *u8 = (*u8)(self.ptr)
+                unsafe {
+                    FreeMem(old_mem, old_bytes)
+                }
+
+                // Update vec fields
+                self.ptr = new_ptr
+                self.capacity = self.len
+                return true
+            },
+            None => {
+                // Allocation failed - keep the old allocation
+                return false
+            }
+        }
+    }
+
     // Free the vector's memory
     pub fn drop(&mut self) {
         if self.capacity > 0 {

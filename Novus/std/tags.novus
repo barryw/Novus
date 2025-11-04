@@ -7,7 +7,8 @@
 
 from std::core import Option
 from std::collections import Vec
-from std::ffi::amiga_structs import TagItem, TAG_DONE
+from std::ffi::amiga_structs import TagItem
+from std::ffi::amiga_consts import TAG_DONE
 
 // ============================================================================
 // TagList Builder

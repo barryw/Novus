@@ -908,6 +908,70 @@ public class CCodeGenerator
         return generatedCode;
     }
 
+    /// <summary>
+    /// Generate a C header file containing declarations for all exported functions.
+    /// This header can be included by C programs that want to call Novus functions.
+    /// </summary>
+    public string GenerateHeader()
+    {
+        var sb = new StringBuilder();
+
+        // Header guard
+        sb.AppendLine("#ifndef NOVUS_EXPORTS_H");
+        sb.AppendLine("#define NOVUS_EXPORTS_H");
+        sb.AppendLine();
+
+        // Include standard types needed for function signatures
+        sb.AppendLine("#include <stdint.h>");
+        sb.AppendLine("#include <stdbool.h>");
+        sb.AppendLine();
+
+        // Include shared types header if using per-function compilation
+        if (_useSharedTypesHeader)
+        {
+            sb.AppendLine("#include \"novus_types.h\"");
+            sb.AppendLine();
+        }
+
+        // Add extern "C" for C++ compatibility
+        sb.AppendLine("#ifdef __cplusplus");
+        sb.AppendLine("extern \"C\" {");
+        sb.AppendLine("#endif");
+        sb.AppendLine();
+
+        // Generate function declarations for exported functions
+        var exportedFunctions = _module.Functions.Where(f => f.IsExported && !f.IsExtern).ToList();
+
+        if (exportedFunctions.Count > 0)
+        {
+            sb.AppendLine("// Exported Novus functions");
+            sb.AppendLine();
+
+            foreach (var function in exportedFunctions)
+            {
+                var returnType = GetCType(function.ReturnType);
+                var funcName = function.Name;  // Don't mangle exported names
+                var parameters = GetParameterList(function, hasOutputParameter: false);
+
+                // Generate function declaration
+                sb.AppendLine($"{returnType} {funcName}({parameters});");
+            }
+        }
+        else
+        {
+            sb.AppendLine("// No exported functions");
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("#ifdef __cplusplus");
+        sb.AppendLine("}");
+        sb.AppendLine("#endif");
+        sb.AppendLine();
+        sb.AppendLine("#endif // NOVUS_EXPORTS_H");
+
+        return sb.ToString();
+    }
+
     private void DetectRequiredProtoHeaders()
     {
         // Map of function names to their proto headers
@@ -1687,7 +1751,9 @@ public class CCodeGenerator
         var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType;
         var returnType = isStructOrEnumReturn ? "void" : GetCType(function.ReturnType);
         var parameters = GetParameterList(function, isStructOrEnumReturn);
-        var funcName = MangleName(function.Name);
+
+        // Don't mangle exported functions - use original name for C linkage
+        var funcName = function.IsExported ? function.Name : MangleName(function.Name);
 
         // Special case: main must return 'int' for VBCC compatibility
         if (funcName == "main" && returnType == "int32_t")
@@ -1699,8 +1765,9 @@ public class CCodeGenerator
         // Note: We use 'static' only (not 'static inline') because VBCC C99 mode
         // doesn't allow 'inline' in function definitions (error 301).
         // The 'static' linkage prevents duplicate symbol errors.
+        // Exception: exported functions must NOT be static - they need external linkage
         var functionModifiers = "";
-        if (IsMonomorphizedFunction(function))
+        if (IsMonomorphizedFunction(function) && !function.IsExported)
         {
             functionModifiers = "static ";
         }
@@ -2022,6 +2089,9 @@ public class CCodeGenerator
         // VBCC FIX: For struct/enum returns on 68k, use output parameter pattern to avoid vbcc bugs
         var isStructOrEnumReturn = call.ReturnType is IrStructType or IrEnumType;
 
+        // Don't mangle exported function names in calls
+        var callFuncName = (function != null && function.IsExported) ? function.Name : MangleName(call.FunctionName);
+
         if (isStructOrEnumReturn && call.ResultName != null)
         {
             // Use output parameter pattern: void func(Result* out, args...)
@@ -2034,13 +2104,13 @@ public class CCodeGenerator
             // Call function with output parameter
             var allArgs = new List<string> { $"&{resultName}" };
             allArgs.AddRange(args);
-            var callExpr = $"{MangleName(call.FunctionName)}({string.Join(", ", allArgs)})";
+            var callExpr = $"{callFuncName}({string.Join(", ", allArgs)})";
             _output.AppendLine($"    {callExpr};");
         }
         else
         {
             // Normal return value
-            var callExpr = $"{MangleName(call.FunctionName)}({string.Join(", ", args)})";
+            var callExpr = $"{callFuncName}({string.Join(", ", args)})";
 
             if (call.ResultName != null && call.ReturnType is not IrVoidType)
             {
