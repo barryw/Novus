@@ -113,7 +113,12 @@ public class DocumentManager
         // Run semantic analysis to catch type errors, etc.
         try
         {
-            var analyzer = new SemanticAnalyzer(state.Uri, state.Text, _stdLibPath);
+            // Convert URI to file path (remove file:// prefix)
+            var filePath = state.Uri.StartsWith("file://")
+                ? Uri.UnescapeDataString(state.Uri.Substring("file://".Length))
+                : state.Uri;
+
+            var analyzer = new SemanticAnalyzer(filePath, state.Text, _stdLibPath);
             analyzer.Analyze(tree);
 
             // Merge semantic analysis diagnostics
