@@ -371,7 +371,8 @@ class Program
                 explicitEntryPoints = new HashSet<string> { "dos_last_error" };
             }
 
-            var codegen = new CCodeGenerator(module, irBuilder.StringLiterals, options.Cpu, options.Fpu, options.BuildMode, explicitEntryPoints, false, options.ProjectVersion);
+            var safetyLevel = options.GetSafetyLevel();
+            var codegen = new CCodeGenerator(module, irBuilder.StringLiterals, options.Cpu, options.Fpu, options.BuildMode, safetyLevel, explicitEntryPoints, false, options.ProjectVersion);
             var cCode = codegen.Generate();
 
             return (cCode, irBuilder.GetImportedModules());
@@ -392,6 +393,9 @@ class Program
         Console.WriteLine($"Target: {options.Cpu.ToUpper()}");
         Console.WriteLine($"FPU Mode: {options.Fpu}");
         Console.WriteLine("==================================\n");
+
+        // Compute safety level from command-line options
+        var safetyLevel = options.GetSafetyLevel();
 
         try
         {
@@ -573,6 +577,7 @@ class Program
                     options.Cpu,
                     options.Fpu,
                     options.BuildMode,
+                    safetyLevel: safetyLevel,
                     explicitEntryPoints: null,
                     useSharedTypesHeader: true,
                     projectVersion: options.ProjectVersion);
@@ -664,6 +669,7 @@ class Program
                     options.Cpu,
                     options.Fpu,
                     options.BuildMode,
+                    safetyLevel: safetyLevel,
                     explicitEntryPoints: null,
                     useSharedTypesHeader: true,
                     projectVersion: options.ProjectVersion);

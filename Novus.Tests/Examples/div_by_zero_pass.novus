@@ -1,0 +1,11 @@
+// Test division - valid division should work fine
+
+pub fn main() -> i32 {
+    let a = 42
+    let b = 7
+
+    // Valid division
+    let result = a / b
+
+    return result  // Should return 6
+}

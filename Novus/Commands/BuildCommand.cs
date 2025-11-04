@@ -700,7 +700,10 @@ public static class BuildCommand
             ProjectVersion = project.Package.Version,  // Pass version for @library generation
             AdditionalLibraries = additionalLibraries,
             AdditionalCFiles = additionalCFiles,
-            AdditionalAsmFiles = additionalAsmFiles
+            AdditionalAsmFiles = additionalAsmFiles,
+            // Forward safety level flags from BuildOptions (critical fix - was missing!)
+            SafetyLevelOption = buildOptions.SafetyLevel,
+            UnsafeMode = buildOptions.UnsafeMode
         };
 
         if (workspace == null)

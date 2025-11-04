@@ -1,0 +1,11 @@
+// Test division-by-zero check - should trigger panic
+
+pub fn main() -> i32 {
+    let a = 42
+    let b = 0
+
+    // This will trigger division-by-zero panic with safety checks enabled
+    let result = a / b
+
+    return result
+}

@@ -2928,6 +2928,15 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return null;
     }
 
+    // Handle: panic!("message")
+    public override IrType? VisitPanicStatement([NotNull] NovusParser.PanicStatementContext context)
+    {
+        // Panic statement is straightforward - just needs a message string
+        // The message is validated by the parser (must be STRING_LITERAL)
+        // No additional semantic checks needed
+        return null;
+    }
+
     // Handle: unsafe { statements }
     public override IrType? VisitUnsafeBlock([NotNull] NovusParser.UnsafeBlockContext context)
     {

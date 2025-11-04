@@ -36,4 +36,10 @@ public class BuildOptions
 
     [Option("debug", Required = false, HelpText = "Build in debug mode (no optimization, debug symbols, bounds checking) - this is the default")]
     public bool Debug { get; set; }
+
+    [Option("safety-level", Required = false, HelpText = "Safety level (0=unsafe, 1=basic, 2=full, 3=paranoid). Default: 2 for debug, 1 for release")]
+    public int? SafetyLevel { get; set; }
+
+    [Option("unsafe", Required = false, HelpText = "Disable all safety checks (equivalent to --safety-level 0)")]
+    public bool UnsafeMode { get; set; }
 }

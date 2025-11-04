@@ -186,6 +186,7 @@ statement
     | breakStatement
     | deferStatement
     | assertStatement
+    | panicStatement
     | unsafeBlock
     | usingStatement
     | block
@@ -199,6 +200,10 @@ deferStatement
 
 assertStatement
     : 'assert' '!' '(' expression (',' STRING_LITERAL)? ')'
+    ;
+
+panicStatement
+    : 'panic' '!' '(' STRING_LITERAL ')'
     ;
 
 unsafeBlock

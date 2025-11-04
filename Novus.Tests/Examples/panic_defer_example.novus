@@ -1,0 +1,30 @@
+// Example: Panic with Defer Cleanup
+//
+// This example demonstrates that defer blocks execute before panic halts.
+// Compile and run on Amiga to see panic with proper cleanup.
+//
+// Expected behavior:
+//   - Defer block executes (sets cleanup_flag = 1)
+//   - AmigaOS EasyRequest dialog appears with:
+//     * Title: "Novus Runtime Error"
+//     * Message: "PANIC: Negative value not allowed!"
+//     * File/line/column location
+//   - Program hangs after clicking OK
+
+pub fn validate(x: i32) -> i32 {
+    var cleanup_flag = 0
+
+    // This defer block will execute even when panic occurs
+    defer { cleanup_flag = 1 }
+
+    if x < 0 {
+        panic!("Negative value not allowed!")
+    }
+
+    return x
+}
+
+pub fn main() -> i32 {
+    // This will trigger the panic, but defer will run first
+    return validate(-5)
+}

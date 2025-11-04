@@ -258,4 +258,137 @@ pub fn main() -> i32 {
         Assert.DoesNotContain("__novus_assert_failed", cCode);
         Assert.DoesNotContain("x should be 10", cCode);
     }
+
+    [Fact]
+    public void BuildIr_Panic_SimpleMessage_Compiles()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    panic!(""Something went wrong"")
+    return 0
+}";
+        var module = BuildIr(source);
+        Assert.NotNull(module);
+
+        var mainFunction = module.Functions.FirstOrDefault(f => f.Name == "main");
+        Assert.NotNull(mainFunction);
+    }
+
+    [Fact]
+    public void BuildIr_Panic_InIfBlock_Compiles()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    let x = 10
+    if x < 0 {
+        panic!(""x cannot be negative"")
+    }
+    return 0
+}";
+        var module = BuildIr(source);
+        Assert.NotNull(module);
+
+        var mainFunction = module.Functions.FirstOrDefault(f => f.Name == "main");
+        Assert.NotNull(mainFunction);
+    }
+
+    [Fact]
+    public void BuildIr_Panic_WithDefer_Compiles()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    var cleanup = 0
+    defer cleanup = 1
+
+    let file_found = 0
+    if file_found == 0 {
+        panic!(""File not found"")
+    }
+
+    return 0
+}";
+        var module = BuildIr(source);
+        Assert.NotNull(module);
+
+        var mainFunction = module.Functions.FirstOrDefault(f => f.Name == "main");
+        Assert.NotNull(mainFunction);
+    }
+
+    [Fact]
+    public void BuildIr_Panic_InFunction_Compiles()
+    {
+        var source = @"
+pub fn divide(a: i32, b: i32) -> i32 {
+    if b == 0 {
+        panic!(""Division by zero"")
+    }
+    return a / b
+}
+
+pub fn main() -> i32 {
+    return divide(10, 2)
+}";
+        var module = BuildIr(source);
+        Assert.NotNull(module);
+
+        var divideFunction = module.Functions.FirstOrDefault(f => f.Name == "divide");
+        Assert.NotNull(divideFunction);
+    }
+
+    [Fact]
+    public void CodeGen_Panic_InDebugMode_GeneratesPanicCode()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    panic!(""Unrecoverable error"")
+    return 0
+}";
+        var module = BuildIr(source);
+        var cCode = GenerateCCode(module, BuildMode.Debug);
+
+        // Panic code should be present in debug mode
+        Assert.Contains("__novus_panic", cCode);
+        Assert.Contains("Unrecoverable error", cCode);
+    }
+
+    [Fact]
+    public void CodeGen_Panic_InReleaseMode_KeepsPanicCode()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    panic!(""Unrecoverable error"")
+    return 0
+}";
+        var module = BuildIr(source);
+        var cCode = GenerateCCode(module, BuildMode.Release);
+
+        // Unlike assert, panic is NEVER elided (even in release mode)
+        Assert.Contains("__novus_panic", cCode);
+        Assert.Contains("Unrecoverable error", cCode);
+    }
+
+    [Fact]
+    public void CodeGen_Panic_VersusAssert_BehaviorDifference()
+    {
+        var sourceWithPanic = @"
+pub fn main() -> i32 {
+    panic!(""error"")
+    return 0
+}";
+        var sourceWithAssert = @"
+pub fn main() -> i32 {
+    assert!(false, ""error"")
+    return 0
+}";
+
+        var panicModule = BuildIr(sourceWithPanic);
+        var assertModule = BuildIr(sourceWithAssert);
+
+        // In release mode: panic stays, assert disappears
+        var panicCodeRelease = GenerateCCode(panicModule, BuildMode.Release);
+        var assertCodeRelease = GenerateCCode(assertModule, BuildMode.Release);
+
+        Assert.Contains("__novus_panic", panicCodeRelease);
+        Assert.DoesNotContain("__novus_assert_failed", assertCodeRelease);
+    }
 }

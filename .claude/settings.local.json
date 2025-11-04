@@ -29,7 +29,15 @@
       "Bash(cat:*)",
       "Bash(chmod:*)",
       "Bash(./build.sh:*)",
-      "Bash(git reset:*)"
+      "Bash(git reset:*)",
+      "Bash(./Novus/bin/Debug/net9.0/Novus build:*)",
+      "Bash(./build_panic_examples.sh)",
+      "Bash(find:*)",
+      "Bash(./Novus/bin/Debug/net9.0/Novus:*)",
+      "Bash(./build_panic_tests.sh)",
+      "Bash(dotnet run:*)",
+      "Bash(for test in bounds_check_pass bounds_check_fail div_by_zero_pass div_by_zero_fail)",
+      "Bash(do ./Novus/bin/Debug/net9.0/Novus compile:*)"
     ],
     "deny": [],
     "ask": []

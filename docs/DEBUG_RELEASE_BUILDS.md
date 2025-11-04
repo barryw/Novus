@@ -18,8 +18,8 @@ Novus needs clear debug and release build modes for Amiga 68k development. These
 | **Optimization** | `-O0` (none) | `-O2` or `-O3` |
 | **Debug Symbols** | Yes (HUNK debug) | No |
 | **Bounds Checking** | Yes (runtime) | No (removed) |
-| **Assertions** | Enabled | Disabled |
-| **Panic Messages** | Verbose | Minimal/stripped |
+| **Assertions (`assert!`)** | Enabled | **Elided** |
+| **Panics (`panic!`)** | Enabled | **Enabled** (never elided) |
 | **Dead Code Elimination** | Minimal | Aggressive |
 | **Inline Functions** | Never | Aggressive |
 | **Register Allocation** | Simple | Optimal |
@@ -64,13 +64,18 @@ Novus needs clear debug and release build modes for Amiga 68k development. These
 4. **Assertions Enabled**
    ```novus
    assert!(x > 0, "x must be positive")
-   // Compiled into runtime check + panic on failure
+   // Compiled into runtime check
+   // Shows GUI dialog on failure (AmigaOS EasyRequest)
+   // Then executes defer blocks and exits
    ```
 
-5. **Verbose Panics**
+5. **Panics Always Present**
    ```novus
-   panic!("Array index out of bounds: index={}, len={}", index, len)
-   // Full message included in binary
+   panic!("Division by zero!")
+   // panic! is NEVER elided (even in release mode)
+   // Shows GUI dialog with message + file/line/column
+   // Executes defer blocks before halting
+   // Note: Format strings not yet implemented
    ```
 
 6. **Stack Frame Preservation**
@@ -120,14 +125,16 @@ Novus needs clear debug and release build modes for Amiga 68k development. These
 4. **Assertions Removed**
    ```novus
    assert!(x > 0, "x must be positive")
-   // Compiled to nothing! Completely removed.
+   // Compiled to nothing! Completely elided in release mode.
    ```
 
-5. **Minimal Panics**
+5. **Panics Remain (Not Elided!)**
    ```novus
-   panic!("Array index out of bounds")
-   // Message might be stripped to just error code
-   // Or just call abort() with no message
+   panic!("Division by zero!")
+   // panic! is NEVER elided, even in release mode
+   // Still shows GUI dialog with full message
+   // This is for truly unrecoverable errors
+   // Use assert! for debug-only checks instead
    ```
 
 6. **Aggressive Inlining**
@@ -277,41 +284,36 @@ int32_t divide(int32_t a, int32_t b) {
 
 **Source:**
 ```novus
-pub fn validate(x: i32) {
-    if x < 0 {
-        panic!("Invalid value: {} (must be >= 0)", x)
+pub fn divide(a: i32, b: i32) -> i32 {
+    if b == 0 {
+        panic!("Division by zero!")
     }
+    return a / b
 }
 ```
 
-**Debug Build:**
+**Both Debug AND Release Build (panic! is never elided):**
 ```c
-void validate(int32_t x) {
-    if (x < 0) {
-        fprintf(stderr, "PANIC: Invalid value: %d (must be >= 0)\n", x);
-        fprintf(stderr, "  at src/validate.novus:12\n");
-        abort();
+int32_t divide(int32_t a, int32_t b) {
+    if (b == 0) {
+        __novus_panic("Division by zero!", "src/math.novus", 3, 9);
+        return 1;  // Unreachable
     }
+    return a / b;
 }
 ```
 
-**Release Build (Option 1: Stripped Messages):**
-```c
-void validate(int32_t x) {
-    if (x < 0) {
-        abort();  // No message, just crash
-    }
-}
-```
+**Runtime Behavior:**
+- Opens `intuition.library`
+- Displays AmigaOS EasyRequest dialog:
+  - Title: "Novus Runtime Error"
+  - Message: "PANIC: Division by zero!"
+  - Location: "File: src/math.novus, Line: 3, Column: 9"
+  - Button: "OK"
+- Executes any defer blocks in the current function
+- Loops forever after user clicks OK
 
-**Release Build (Option 2: Error Codes):**
-```c
-void validate(int32_t x) {
-    if (x < 0) {
-        _panic_with_code(0x1001);  // Lookup table maps to message
-    }
-}
-```
+**Note:** Format strings (e.g., `panic!("Value: {}", x)`) are not yet implemented.
 
 ---
 

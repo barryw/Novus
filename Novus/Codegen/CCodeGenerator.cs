@@ -23,6 +23,7 @@ public class CCodeGenerator
     private readonly bool _useSharedTypesHeader;
     private readonly string? _projectVersion;
     private readonly BuildMode _buildMode;
+    private readonly SafetyLevel _safetyLevel;
 
     // Track which variables have been declared in the current function
     // to avoid redeclaration errors when the same variable is assigned in multiple branches
@@ -110,13 +111,14 @@ public class CCodeGenerator
         return false;
     }
 
-    public CCodeGenerator(IrModule module, List<IrStringLiteral> stringLiterals, string cpuTarget, string fpuMode, BuildMode buildMode = BuildMode.Debug, HashSet<string>? explicitEntryPoints = null, bool useSharedTypesHeader = false, string? projectVersion = null)
+    public CCodeGenerator(IrModule module, List<IrStringLiteral> stringLiterals, string cpuTarget, string fpuMode, BuildMode buildMode = BuildMode.Debug, SafetyLevel? safetyLevel = null, HashSet<string>? explicitEntryPoints = null, bool useSharedTypesHeader = false, string? projectVersion = null)
     {
         _module = module;
         _stringLiterals = stringLiterals;
         _cpuTarget = cpuTarget;
         _fpuMode = fpuMode;
         _buildMode = buildMode;
+        _safetyLevel = safetyLevel ?? SafetyLevelExtensions.GetDefaultForBuildMode(buildMode);
         _output = new StringBuilder();
         _requiredProtoHeaders = new HashSet<string>();
         _explicitEntryPoints = explicitEntryPoints;
@@ -182,6 +184,33 @@ public class CCodeGenerator
                 codegen.EmitEnumTypeToBuilder(sb, enumType);
             }
         }
+
+        // Runtime function declarations
+        // These are needed for per-function compilation where each file includes this header
+        sb.AppendLine("// ============================================================================");
+        sb.AppendLine("// Runtime Function Declarations");
+        sb.AppendLine("// ============================================================================");
+        sb.AppendLine();
+
+        // Always include panic (never elided)
+        sb.AppendLine("// Panic handler - displays error and exits (never elided, even in release)");
+        sb.AppendLine("void __novus_panic(const char* message, const char* file, int32_t line, int32_t col);");
+        sb.AppendLine();
+
+        // Assert handler (debug builds only, but declared here for simplicity)
+        sb.AppendLine("// Assert handler - displays error and returns (debug builds only)");
+        sb.AppendLine("void __novus_assert_failed(const char* file, int32_t line, int32_t col, const char* message);");
+        sb.AppendLine();
+
+        // Bounds check failure handler
+        sb.AppendLine("// Bounds check failure handler - displays error when array index is out of bounds");
+        sb.AppendLine("void __novus_bounds_check_failed(int32_t index, int32_t length, const char* file, int32_t line);");
+        sb.AppendLine();
+
+        // Division by zero check
+        sb.AppendLine("// Division by zero check - displays error if divisor is zero");
+        sb.AppendLine("void __novus_div_check(int32_t divisor, const char* file, int32_t line);");
+        sb.AppendLine();
 
         sb.AppendLine("#endif // NOVUS_TYPES_H");
 
@@ -1586,8 +1615,28 @@ public class CCodeGenerator
         if (_buildMode == BuildMode.Debug)
         {
             _output.AppendLine("void __novus_assert_failed(const char* file, int32_t line, int32_t col, const char* message);");
-            _output.AppendLine();
         }
+
+        // Runtime panic handler (implemented in novus_runtime.c)
+        // Always included (panic is never elided)
+        _output.AppendLine("void __novus_panic(const char* message, const char* file, int32_t line, int32_t col);");
+
+        // Runtime bounds check failure handler (implemented in novus_runtime.c)
+        // Included when bounds checking is enabled
+        // Note: The actual check is inlined in generated code; this function only handles failures
+        if (_safetyLevel.EnableBoundsChecking())
+        {
+            _output.AppendLine("void __novus_bounds_check_failed(int32_t index, int32_t length, const char* file, int32_t line);");
+        }
+
+        // Runtime division by zero check (implemented in novus_runtime.c)
+        // Included when division-by-zero checking is enabled
+        if (_safetyLevel.EnableDivisionByZeroChecks())
+        {
+            _output.AppendLine("void __novus_div_check(int32_t divisor, const char* file, int32_t line);");
+        }
+
+        _output.AppendLine();
     }
 
     private void EmitFunctions(HashSet<string> reachableFunctions)
@@ -1738,6 +1787,10 @@ public class CCodeGenerator
 
             case IrAssert assert:
                 EmitAssert(assert);
+                break;
+
+            case IrPanic panic:
+                EmitPanic(panic);
                 break;
 
             case IrMatch match:
@@ -1893,8 +1946,31 @@ public class CCodeGenerator
         var left = EmitValue(binaryOp.Left);
         var right = EmitValue(binaryOp.Right);
 
+        // Special handling for division/modulo with safety checks
+        if (_safetyLevel.EnableDivisionByZeroChecks() &&
+            (binaryOp.Operation == IrBinaryOp.OpKind.Div || binaryOp.Operation == IrBinaryOp.OpKind.Mod))
+        {
+            var op = GetBinaryOperator(binaryOp.Operation);
+
+            // Emit conditional: if divisor is zero, show error and return safe value
+            // Otherwise perform the actual division
+            _output.AppendLine($"    {cType} {resultName};");
+            _output.AppendLine($"    if ({right} == 0) {{");
+            _output.AppendLine($"        __novus_div_check({right}, \"<compiler-generated>\", 0);");
+
+            // Execute deferred cleanup before returning
+            if (_currentEmittingFunction != null)
+            {
+                EmitDeferredCleanup(_currentEmittingFunction, 2); // indent level 2
+            }
+
+            _output.AppendLine($"        return 1;  // Exit after division by zero error");
+            _output.AppendLine($"    }} else {{");
+            _output.AppendLine($"        {resultName} = {left} {op} {right};");
+            _output.AppendLine($"    }}");
+        }
         // Special handling for shift operations: mask shift amount to bit width
-        if (binaryOp.Operation == IrBinaryOp.OpKind.Shl || binaryOp.Operation == IrBinaryOp.OpKind.Shr)
+        else if (binaryOp.Operation == IrBinaryOp.OpKind.Shl || binaryOp.Operation == IrBinaryOp.OpKind.Shr)
         {
             // Determine bit width of the type being shifted
             int bitWidth = binaryOp.Type switch
@@ -2116,6 +2192,36 @@ public class CCodeGenerator
         _output.AppendLine("    }");
     }
 
+    private void EmitPanic(IrPanic panic)
+    {
+        // Panic is NEVER elided (even in release mode) - it's for unrecoverable runtime errors
+
+        // Call runtime panic handler to display error (uses EasyRequest on Amiga)
+        var fileName = panic.Location.FilePath;
+        var line = panic.Location.Line;
+        var col = panic.Location.Column;
+
+        // Escape the message for C string literal
+        var escapedMessage = panic.Message
+            .Replace("\\", "\\\\")
+            .Replace("\"", "\\\"")
+            .Replace("\n", "\\n")
+            .Replace("\r", "\\r")
+            .Replace("\t", "\\t");
+
+        _output.AppendLine($"    __novus_panic(\"{escapedMessage}\", \"{fileName}\", {line}, {col});");
+
+        // Execute deferred cleanup before halting (CRITICAL for resource safety)
+        if (_currentEmittingFunction != null)
+        {
+            EmitDeferredCleanup(_currentEmittingFunction, 1); // indent level 1
+        }
+
+        // __novus_panic never returns, but for C semantics we add unreachable return
+        // This helps the C compiler understand control flow
+        _output.AppendLine("    return 1;  // Unreachable (panic never returns)");
+    }
+
     private void EmitMatch(IrMatch match)
     {
         var matchValue = EmitValue(match.MatchValue);
@@ -2231,17 +2337,34 @@ public class CCodeGenerator
         var resultName = SanitizeVariableName(indexAccess.ResultName);
         var elementType = GetCType(indexAccess.ElementType);
 
-        // Add runtime bounds check if array type information is available
-        // TODO: Make conditional on debug build flag
-        if (indexAccess.Array.Type is IrArrayType arrayType)
+        // Add runtime bounds check if enabled and array type information is available
+        if (_safetyLevel.EnableBoundsChecking() && indexAccess.Array.Type is IrArrayType arrayType)
         {
-            _output.AppendLine($"    if ((uint32_t){indexValue} >= {arrayType.Length}) {{");
-            _output.AppendLine($"        /* PANIC: Array index out of bounds (length={arrayType.Length}) */");
-            _output.AppendLine($"        abort();");
+            // Emit conditional: if index is out of bounds, show error and return
+            // Otherwise perform the actual array access
+            _output.AppendLine($"    {elementType} {resultName};");
+            _output.AppendLine($"    if ((uint32_t){indexValue} >= (uint32_t){arrayType.Length}) {{");
+
+            // Note: We don't have location info on IR instructions yet, so we use 0
+            // TODO: Add location tracking to IR instructions
+            _output.AppendLine($"        __novus_bounds_check_failed({indexValue}, {arrayType.Length}, \"<compiler-generated>\", 0);");
+
+            // Execute deferred cleanup before returning
+            if (_currentEmittingFunction != null)
+            {
+                EmitDeferredCleanup(_currentEmittingFunction, 2); // indent level 2
+            }
+
+            _output.AppendLine($"        return 0;  // Exit after bounds check failure");
+            _output.AppendLine($"    }} else {{");
+            _output.AppendLine($"        {resultName} = {arrayValue}[{indexValue}];");
             _output.AppendLine($"    }}");
         }
-
-        _output.AppendLine($"    {elementType} {resultName} = {arrayValue}[{indexValue}];");
+        else
+        {
+            // No bounds checking - direct access
+            _output.AppendLine($"    {elementType} {resultName} = {arrayValue}[{indexValue}];");
+        }
     }
 
     private void EmitIndexStore(IrIndexStore indexStore)
@@ -2250,13 +2373,24 @@ public class CCodeGenerator
         var indexValue = EmitValue(indexStore.Index);
         var storeValue = EmitValue(indexStore.Value);
 
-        // Add runtime bounds check if array type information is available
-        // TODO: Make conditional on debug build flag
-        if (indexStore.Array.Type is IrArrayType arrayType)
+        // Add runtime bounds check if enabled and array type information is available
+        if (_safetyLevel.EnableBoundsChecking() && indexStore.Array.Type is IrArrayType arrayType)
         {
-            _output.AppendLine($"    if ((uint32_t){indexValue} >= {arrayType.Length}) {{");
-            _output.AppendLine($"        /* PANIC: Array index out of bounds (length={arrayType.Length}) */");
-            _output.AppendLine($"        abort();");
+            // Emit conditional: if index is out of bounds, show error and return
+            // Otherwise perform the actual array store
+            _output.AppendLine($"    if ((uint32_t){indexValue} >= (uint32_t){arrayType.Length}) {{");
+
+            // Note: We don't have location info on IR instructions yet, so we use 0
+            // TODO: Add location tracking to IR instructions
+            _output.AppendLine($"        __novus_bounds_check_failed({indexValue}, {arrayType.Length}, \"<compiler-generated>\", 0);");
+
+            // Execute deferred cleanup before returning
+            if (_currentEmittingFunction != null)
+            {
+                EmitDeferredCleanup(_currentEmittingFunction, 2); // indent level 2
+            }
+
+            _output.AppendLine($"        return 0;  // Exit after bounds check failure");
             _output.AppendLine($"    }}");
         }
 

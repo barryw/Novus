@@ -39,10 +39,52 @@ public class CompilerOptions
     [Option('v', "verbose", Required = false, HelpText = "Verbose output")]
     public bool Verbose { get; set; }
 
+    [Option("safety-level", Required = false, HelpText = "Safety level (0=unsafe, 1=basic, 2=full, 3=paranoid). Default: 2 for debug, 1 for release")]
+    public int? SafetyLevelOption { get; set; }
+
+    [Option("unsafe", Required = false, HelpText = "Disable all safety checks (equivalent to --safety-level 0)")]
+    public bool UnsafeMode { get; set; }
+
     /// <summary>
     /// Build mode (Debug or Release). Set by build command based on --debug/--release flags.
     /// </summary>
     public BuildMode BuildMode { get; set; } = BuildMode.Debug;
+
+    /// <summary>
+    /// Computed safety level based on command-line flags and build mode
+    /// </summary>
+    public SafetyLevel GetSafetyLevel()
+    {
+        // Validate conflicting flags
+        if (UnsafeMode && SafetyLevelOption.HasValue)
+        {
+            throw new ArgumentException(
+                "Cannot specify both --unsafe and --safety-level. " +
+                "Use --unsafe for no checks, or --safety-level N for specific level.");
+        }
+
+        // --unsafe flag overrides everything
+        if (UnsafeMode)
+            return SafetyLevel.Unsafe;
+
+        // Explicit --safety-level flag
+        if (SafetyLevelOption.HasValue)
+        {
+            // Validate range
+            if (SafetyLevelOption.Value < 0 || SafetyLevelOption.Value > 3)
+            {
+                throw new ArgumentException(
+                    $"Invalid safety level: {SafetyLevelOption.Value}. " +
+                    "Must be 0 (unsafe), 1 (basic), 2 (full), or 3 (paranoid).");
+            }
+
+            // Safe to cast after validation
+            return (SafetyLevel)SafetyLevelOption.Value;
+        }
+
+        // Default based on build mode
+        return SafetyLevelExtensions.GetDefaultForBuildMode(BuildMode);
+    }
 
     /// <summary>
     /// Project type (cli, library, device, etc.). Used to determine linking strategy.

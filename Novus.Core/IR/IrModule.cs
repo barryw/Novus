@@ -247,6 +247,22 @@ public class IrAssert : IrInstruction
 }
 
 /// <summary>
+/// Runtime panic - unrecoverable error that displays GUI dialog and halts execution
+/// Always emitted (never stripped, even in release builds)
+/// </summary>
+public class IrPanic : IrInstruction
+{
+    public string Message { get; set; }
+    public SourceLocation Location { get; set; }
+
+    public IrPanic(string message, SourceLocation location)
+    {
+        Message = message;
+        Location = location;
+    }
+}
+
+/// <summary>
 /// Structured for-loop hint - tells C codegen to emit natural C for-loop
 /// This is a marker that precedes the loop variable initialization
 /// </summary>

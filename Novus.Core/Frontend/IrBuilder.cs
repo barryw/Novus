@@ -3604,6 +3604,28 @@ public class IrBuilder : NovusBaseVisitor<object?>
         return null;
     }
 
+    public override object? VisitPanicStatement([NotNull] NovusParser.PanicStatementContext context)
+    {
+        // Get the panic message
+        var messageText = context.STRING_LITERAL().GetText();
+        // Strip quotes from string literal
+        var message = messageText.Substring(1, messageText.Length - 2);
+
+        // Get source location for error reporting
+        var location = new SourceLocation(
+            _inputFilePath ?? "unknown",
+            context.Start.Line,
+            context.Start.Column,
+            context.GetText().Length,
+            context.Start.InputStream.ToString() ?? ""
+        );
+
+        // Add panic instruction to current block
+        _currentBlock!.AddInstruction(new IrPanic(message, location));
+
+        return null;
+    }
+
     public override object? VisitPrimaryExpr([NotNull] NovusParser.PrimaryExprContext context)
     {
         return Visit(context.primaryExpression());

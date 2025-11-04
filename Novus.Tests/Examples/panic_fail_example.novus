@@ -1,0 +1,25 @@
+// Example: Panic Statement - Will Trigger
+//
+// This example demonstrates panic! statement that WILL trigger.
+// Compile and run on Amiga to see the panic GUI dialog.
+//
+// Expected behavior:
+//   - AmigaOS EasyRequest dialog appears with:
+//     * Title: "Novus Runtime Error"
+//     * Message: "PANIC: Division by zero!"
+//     * File/line/column location
+//     * "OK" button
+//   - After clicking OK, program hangs (loops forever)
+
+pub fn divide(a: i32, b: i32) -> i32 {
+    if b == 0 {
+        panic!("Division by zero!")
+    }
+    return a / b
+}
+
+pub fn main() -> i32 {
+    // This will trigger the panic!
+    let result = divide(10, 0)
+    return result
+}

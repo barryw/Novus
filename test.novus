@@ -1,0 +1,7 @@
+from std::core import Result
+
+pub fn main() -> i32 {
+    let x = 42
+    let y = "hello"
+    return x + y  // ERROR: Can't add i32 + string!
+}

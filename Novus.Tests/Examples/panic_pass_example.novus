@@ -1,0 +1,23 @@
+// Example: Panic Statement - No Trigger
+//
+// This example demonstrates panic! statement that does NOT trigger.
+// Compile and run on Amiga to verify panic! is properly included but doesn't fire.
+//
+// Expected behavior:
+//   - No panic occurs
+//   - Program exits with code 5 (success)
+
+pub fn divide(a: i32, b: i32) -> i32 {
+    if b == 0 {
+        panic!("Division by zero!")
+    }
+    return a / b
+}
+
+pub fn main() -> i32 {
+    // Safe division - no panic will occur
+    let result = divide(10, 2)
+
+    // If we get here, panic was not triggered (as expected)
+    return result
+}
