@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Antlr4.Runtime;
 using Novus.Codegen;
+using Novus.Diagnostics;
 using Novus.Frontend;
 using Novus.IR;
 using Novus.Parser;
@@ -244,14 +245,17 @@ public static class StdlibBuildCommand
         {
             // Parse the source file
             var sourceText = await File.ReadAllTextAsync(sourceFile);
-            var inputStream = new AntlrInputStream(sourceText);
-            var lexer = new NovusLexer(inputStream);
-            var tokenStream = new AngleBracketTokenStream(lexer);
-            var parser = new NovusParser(tokenStream);
+            var diagnostics = new DiagnosticBag();
+            var parser = NovusParserFactory.CreateParser(
+                sourceText,
+                diagnostics,
+                sourceFile,
+                NovusParserFactory.ParseMode.Compilation
+            );
             var tree = parser.compilationUnit();
 
             // Check for parse errors
-            if (parser.NumberOfSyntaxErrors > 0)
+            if (diagnostics.HasErrors)
             {
                 Console.WriteLine($"  Parse errors in {sourceFile}");
                 return 1;

@@ -1,0 +1,32 @@
+# Files and directories to exclude from the extension package
+
+# Source files (we only need compiled output)
+src/**
+tsconfig.json
+
+# Build artifacts
+.vscode-test/**
+.vscode/**
+
+# Development files
+.gitignore
+.editorconfig
+*.map
+
+# Documentation (included in main package.json)
+# Keep README.md for the marketplace
+
+# Node modules that aren't needed at runtime
+node_modules/**/test/**
+node_modules/**/tests/**
+node_modules/**/*.md
+node_modules/**/LICENSE
+node_modules/**/.github/**
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/**
+.gitattributes

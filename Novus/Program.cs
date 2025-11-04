@@ -168,15 +168,13 @@ class Program
             }
             else
             {
-                // Cache miss - parse the file
-                var inputStream = new AntlrInputStream(source);
-                var lexer = new NovusLexer(inputStream);
-                var tokenStream = new AngleBracketTokenStream(lexer);
-                var parser = new NovusParser(tokenStream);
-
-                // Remove default error listeners and add our custom one
-                parser.RemoveErrorListeners();
-                parser.AddErrorListener(new NovusErrorListener(diagnostics, inputFile, source));
+                // Cache miss - parse the file using factory
+                var parser = NovusParserFactory.CreateParser(
+                    source,
+                    diagnostics,
+                    inputFile,
+                    NovusParserFactory.ParseMode.Compilation
+                );
 
                 compilationUnit = parser.compilationUnit();
 
@@ -297,15 +295,13 @@ class Program
             }
             else
             {
-                // Cache miss - parse the file
-                var inputStream = new AntlrInputStream(source);
-                var lexer = new NovusLexer(inputStream);
-                var tokenStream = new AngleBracketTokenStream(lexer);
-                var parser = new NovusParser(tokenStream);
-
-                // Remove default error listeners and add our custom one
-                parser.RemoveErrorListeners();
-                parser.AddErrorListener(new NovusErrorListener(diagnostics, inputFile, source));
+                // Cache miss - parse the file using factory
+                var parser = NovusParserFactory.CreateParser(
+                    source,
+                    diagnostics,
+                    inputFile,
+                    NovusParserFactory.ParseMode.Compilation
+                );
 
                 compilationUnit = parser.compilationUnit();
 

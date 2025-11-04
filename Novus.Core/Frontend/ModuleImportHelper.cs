@@ -1,5 +1,6 @@
 using Antlr4.Runtime;
 using Antlr4.Runtime.Tree;
+using Novus.Diagnostics;
 using Novus.Parser;
 
 namespace Novus.Frontend;
@@ -50,13 +51,16 @@ public static class ModuleImportHelper
         }
 
         var moduleSource = File.ReadAllText(modulePath);
-        var inputStream = new AntlrInputStream(moduleSource);
-        var lexer = new NovusLexer(inputStream);
-        var tokenStream = new AngleBracketTokenStream(lexer);
-        var parser = new NovusParser(tokenStream);
+        var diagnostics = new DiagnosticBag();
+        var parser = NovusParserFactory.CreateParser(
+            moduleSource,
+            diagnostics,
+            modulePath,
+            NovusParserFactory.ParseMode.Compilation
+        );
         var moduleContext = parser.compilationUnit();
 
-        return (moduleContext, parser.NumberOfSyntaxErrors);
+        return (moduleContext, diagnostics.ErrorCount);
     }
 
     /// <summary>

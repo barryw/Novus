@@ -1,0 +1,75 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Novus",
+  "scopeName": "source.novus",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#keywords" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#types" },
+    { "include": "#functions" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.novus",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.novus",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.novus",
+          "match": "\\b(if|else|while|for|match|return|break|defer|let|var|const|static|mut)\\b"
+        },
+        {
+          "name": "keyword.other.novus",
+          "match": "\\b(fn|struct|enum|impl|trait|pub|from|import|use|as|unsafe|extern)\\b"
+        },
+        {
+          "name": "keyword.operator.novus",
+          "match": "(\\+|\\-|\\*|/|%|==|!=|<|>|<=|>=|&&|\\|\\||!|&|\\||\\^|<<|>>)"
+        }
+      ]
+    },
+    "strings": {
+      "name": "string.quoted.double.novus",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.novus",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.novus",
+          "match": "\\b0x[0-9a-fA-F]+\\b"
+        },
+        {
+          "name": "constant.numeric.decimal.novus",
+          "match": "\\b[0-9]+(\\.[0-9]+)?\\b"
+        }
+      ]
+    },
+    "types": {
+      "name": "storage.type.novus",
+      "match": "\\b(i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|bool|str|Self)\\b"
+    },
+    "functions": {
+      "name": "entity.name.function.novus",
+      "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\("
+    }
+  }
+}

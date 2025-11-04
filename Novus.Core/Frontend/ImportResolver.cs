@@ -1,5 +1,6 @@
 using Antlr4.Runtime;
 using Antlr4.Runtime.Tree;
+using Novus.Diagnostics;
 using Novus.IR;
 using Novus.Parser;
 
@@ -324,13 +325,16 @@ public class ImportResolver
     private ParsedModule? ParseModule(string modulePath)
     {
         var moduleSource = File.ReadAllText(modulePath);
-        var inputStream = new AntlrInputStream(moduleSource);
-        var lexer = new NovusLexer(inputStream);
-        var tokenStream = new AngleBracketTokenStream(lexer);
-        var parser = new NovusParser(tokenStream);
+        var diagnostics = new DiagnosticBag();
+        var parser = NovusParserFactory.CreateParser(
+            moduleSource,
+            diagnostics,
+            modulePath,
+            NovusParserFactory.ParseMode.Compilation
+        );
         var moduleContext = parser.compilationUnit();
 
-        if (parser.NumberOfSyntaxErrors > 0)
+        if (diagnostics.HasErrors)
         {
             _registry.ReportError("E0027", $"Module has syntax errors at {modulePath}");
             return null;

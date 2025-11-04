@@ -1,0 +1,52 @@
+{
+  "name": "novus-language-support",
+  "displayName": "Novus Language Support",
+  "description": "Language support for Novus - a modern systems programming language for Amiga 68k",
+  "version": "0.1.0",
+  "publisher": "novus",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:novus"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "novus",
+        "aliases": [
+          "Novus",
+          "novus"
+        ],
+        "extensions": [
+          ".novus"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "novus",
+        "scopeName": "source.novus",
+        "path": "./syntaxes/novus.tmLanguage.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.75.0",
+    "typescript": "^5.3.0"
+  }
+}

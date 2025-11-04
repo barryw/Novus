@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
@@ -16,36 +16,30 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Antlr4.Runtime.Standard" Version="4.13.1" />
-      <PackageReference Include="Antlr4BuildTasks" Version="12.10.0" PrivateAssets="all" />
-      <PackageReference Include="CommandLineParser" Version="2.9.1" />
-      <PackageReference Include="Tomlyn" Version="0.17.0" />
+        <PackageReference Include="CommandLineParser" Version="2.9.1" />
+        <PackageReference Include="Tomlyn" Version="0.17.0" />
     </ItemGroup>
 
     <ItemGroup>
-      <Antlr4 Include="Novus.g4">
-        <Package>Novus.Parser</Package>
-        <Listener>false</Listener>
-        <Visitor>true</Visitor>
-      </Antlr4>
+        <ProjectReference Include="../Novus.Core/Novus.Core.csproj" />
     </ItemGroup>
 
     <ItemGroup>
-      <None Include="std/**/*.novus">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </None>
-      <None Include="stdlib/**/*.novus">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </None>
-      <None Include="stubs/**/*.s">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </None>
-      <None Include="runtime/**/*.c">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </None>
-      <None Include="runtime/**/*.s">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </None>
+        <None Include="std/**/*.novus">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+        <None Include="stdlib/**/*.novus">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+        <None Include="stubs/**/*.s">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+        <None Include="runtime/**/*.c">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+        <None Include="runtime/**/*.s">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
     </ItemGroup>
 
 </Project>
