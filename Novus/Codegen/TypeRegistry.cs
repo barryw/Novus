@@ -133,6 +133,70 @@ public class TypeRegistry
                 }
             }
         }
+
+        // After collecting all struct types, scan struct fields for transitively referenced enum types
+        // This ensures enums referenced by struct fields are included in the shared types header
+        CollectTransitiveEnumTypes();
+    }
+
+    /// <summary>
+    /// Recursively collect enum types that are transitively referenced by struct fields, arrays, pointers, etc.
+    /// This ensures all enum types needed by the shared types header are included.
+    /// </summary>
+    private void CollectTransitiveEnumTypes()
+    {
+        // Process each struct type and collect any enum types from its fields
+        foreach (var structType in _structTypes.ToList())  // ToList() to avoid modification during iteration
+        {
+            foreach (var field in structType.Fields)
+            {
+                CollectEnumTypesFromType(field.Type);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Recursively collect all enum types from a type, including those nested in structs, arrays, and pointers
+    /// </summary>
+    private void CollectEnumTypesFromType(IrType type)
+    {
+        switch (type)
+        {
+            case IrEnumType enumType when enumType.GenericParameters.Count == 0:
+                if (!_enumTypes.Any(e => GetEnumName(e) == GetEnumName(enumType)))
+                    _enumTypes.Add(enumType);
+                break;
+
+            case IrArrayType arrayType:
+                // Recursively check the element type
+                CollectEnumTypesFromType(arrayType.ElementType);
+                break;
+
+            case IrStructType structType:
+                // Recursively check all field types
+                foreach (var field in structType.Fields)
+                {
+                    CollectEnumTypesFromType(field.Type);
+                }
+                break;
+
+            case IrPointerType pointerType:
+                // Recursively check the pointee type
+                CollectEnumTypesFromType(pointerType.PointeeType);
+                break;
+
+            case IrReferenceType refType:
+                // Recursively check the pointee type
+                CollectEnumTypesFromType(refType.PointeeType);
+                break;
+
+            case IrMutReferenceType mutRefType:
+                // Recursively check the pointee type
+                CollectEnumTypesFromType(mutRefType.PointeeType);
+                break;
+
+            // For other types (primitive, function pointers, etc.) we don't need to recurse
+        }
     }
 
     private string GetStructName(IrStructType structType)
