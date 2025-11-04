@@ -16,32 +16,12 @@ namespace Novus.LanguageServer;
 public class CodeActionHandler : ICodeActionHandler
 {
     private readonly DocumentManager _documentManager;
-    private readonly string _stdLibPath;
+    private readonly StdlibIndexer _stdlibIndexer;
 
-    // Known stdlib modules and what they export
-    private static readonly Dictionary<string, string[]> StdLibModules = new()
-    {
-        { "std::core", new[] { "Option", "Result", "Some", "None", "Ok", "Err" } },
-        { "std::error", new[] { "ExecError", "DosError", "IntuitionError", "NovusError" } },
-        { "std::mem", new[] { "MemoryBlock", "Allocation", "Box" } },
-        { "std::collections", new[] { "Vec" } },
-        { "std::strings", new[] { "strlen", "strcmp", "strcpy", "strncpy", "strcat", "strncat", "memset", "memcpy", "memmove", "memcmp" } },
-        { "std::io", new[] { "print", "println", "eprint", "eprintln" } },
-        { "std::exec", new[] { "get_current_task", "find_task", "set_task_priority", "allocate_signal", "free_signal", "wait_for_signals", "send_signal", "forbid", "permit", "disable", "enable" } },
-        { "std::dos", new[] { "System", "CreateProcess", "AllocDos", "LoadSeg", "open_file", "close_file", "read_file", "write_file", "seek_file" } },
-        { "std::intuition", new[] { "OpenWindow", "OpenScreen" } },
-        { "std::tags", new[] { "make_tags" } },
-        { "std::ffi::exec", new[] { "AllocMem", "FreeMem", "AllocVec", "FreeVec", "CopyMem", "FindTask", "SetTaskPri", "AllocSignal", "FreeSignal", "Wait", "Signal", "Forbid", "Permit", "Disable", "Enable" } },
-        { "std::ffi::dos", new[] { "Open", "Close", "Read", "Write", "Seek", "SystemTagList", "CreateNewProc", "AllocDosObject", "FreeDosObject", "NewLoadSeg", "UnLoadSeg" } },
-        { "std::ffi::intuition", new[] { "OpenWindowTagList", "OpenScreenTagList", "CloseWindow", "CloseScreen", "EasyRequest" } },
-        { "std::ffi::amiga_structs", new[] { "TagItem", "Window", "Screen", "NewWindow", "NewScreen", "IntuiMessage", "EasyStruct" } },
-        { "std::ffi::amiga_consts", new[] { "MEMF_ANY", "MEMF_PUBLIC", "MEMF_CHIP", "MEMF_FAST", "MEMF_CLEAR", "TAG_DONE", "TAG_END", "TAG_SKIP", "TAG_MORE" } },
-    };
-
-    public CodeActionHandler(DocumentManager documentManager, string stdLibPath)
+    public CodeActionHandler(DocumentManager documentManager, StdlibIndexer stdlibIndexer)
     {
         _documentManager = documentManager;
-        _stdLibPath = stdLibPath;
+        _stdlibIndexer = stdlibIndexer;
     }
 
     public Task<CommandOrCodeActionContainer?> Handle(CodeActionParams request, CancellationToken cancellationToken)
@@ -138,20 +118,7 @@ public class CodeActionHandler : ICodeActionHandler
     /// </summary>
     private List<string> FindModulesExportingSymbol(string symbolName)
     {
-        var modules = new List<string>();
-
-        foreach (var (moduleName, exports) in StdLibModules)
-        {
-            if (exports.Contains(symbolName))
-            {
-                modules.Add(moduleName);
-            }
-        }
-
-        // TODO: In the future, scan the actual module files instead of using hardcoded list
-        // This would support user modules and dynamically discover exports
-
-        return modules;
+        return _stdlibIndexer.FindModulesExportingSymbol(symbolName);
     }
 
     /// <summary>

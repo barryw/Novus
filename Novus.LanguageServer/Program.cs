@@ -55,7 +55,13 @@ class Program
                 {
                     // Register our services here
                     var docManager = new DocumentManager(stdLibPath);
+                    var stdlibIndexer = new StdlibIndexer(stdLibPath);
+
+                    // Index stdlib at startup for auto-import feature
+                    stdlibIndexer.IndexStdlib();
+
                     services.AddSingleton(docManager);
+                    services.AddSingleton(stdlibIndexer);
                     services.AddSingleton(stdLibPath);  // Make stdLibPath available for injection
                 })
                 .WithHandler<TextDocumentHandler>()
