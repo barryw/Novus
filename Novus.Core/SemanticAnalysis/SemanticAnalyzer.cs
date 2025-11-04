@@ -32,6 +32,11 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     private int _loopDepth = 0; // Track loop nesting for break validation
     private readonly string _stdLibPath; // Path to standard library
 
+    // Location tracking for types (LSP support)
+    private readonly Dictionary<string, SourceLocation> _structLocations = new();
+    private readonly Dictionary<string, SourceLocation> _enumLocations = new();
+    private readonly Dictionary<string, SourceLocation> _traitLocations = new();
+
     // Unsafe block tracking
     private int _unsafeDepth = 0; // Track unsafe block nesting
     private readonly List<UnsafeBlockInfo> _unsafeBlocks = new(); // Collect unsafe blocks for warnings
@@ -70,6 +75,20 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     private readonly TypeInterner _typeInterner = new();
 
     public DiagnosticBag Diagnostics => _diagnostics;
+
+    // Public read-only access to symbol tables for language server features (go to definition, hover, etc.)
+    public IReadOnlyDictionary<string, FunctionSymbol> Functions => _functions;
+    public IReadOnlyDictionary<string, VariableSymbol> Variables => _variables;
+    public IReadOnlyDictionary<string, VariableSymbol> GlobalVariables => _globalVariables;
+    public IReadOnlyDictionary<string, IrStructType> Structs => _structs;
+    public IReadOnlyDictionary<string, IrEnumType> Enums => _enums;
+    public IReadOnlyDictionary<string, IrTrait> Traits => _traits;
+    public IReadOnlyDictionary<string, ConstantSymbol> Constants => _constants;
+
+    // Public read-only access to type locations (for LSP go-to-definition)
+    public IReadOnlyDictionary<string, SourceLocation> StructLocations => _structLocations;
+    public IReadOnlyDictionary<string, SourceLocation> EnumLocations => _enumLocations;
+    public IReadOnlyDictionary<string, SourceLocation> TraitLocations => _traitLocations;
 
     public SemanticAnalyzer(string filePath, string sourceCode, string stdLibPath)
     {
@@ -1114,6 +1133,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         _structs[name] = structType;
+        _structLocations[name] = location;  // Track location for LSP
     }
 
     private void RegisterEnum(NovusParser.EnumDeclarationContext context)
@@ -1194,6 +1214,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         _enums[name] = enumType;
+        _enumLocations[name] = location;  // Track location for LSP
 
         // Clear generic param scope
         _genericParams.Clear();
@@ -1311,6 +1332,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         var trait = new IrTrait(name, methods, genericParams.Count > 0 ? genericParams : null, visibility, attributes);
         _traits[name] = trait;
+        _traitLocations[name] = location;  // Track location for LSP
 
         // Clear generic param scope
         _genericParams.Clear();

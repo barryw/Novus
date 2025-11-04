@@ -37,7 +37,10 @@
       "Bash(./build_panic_tests.sh)",
       "Bash(dotnet run:*)",
       "Bash(for test in bounds_check_pass bounds_check_fail div_by_zero_pass div_by_zero_fail)",
-      "Bash(do ./Novus/bin/Debug/net9.0/Novus compile:*)"
+      "Bash(do ./Novus/bin/Debug/net9.0/Novus compile:*)",
+      "Bash(/tmp/simple_test.novus)",
+      "Bash(echo:*)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []

@@ -57,6 +57,10 @@ class Program
                     services.AddSingleton(new DocumentManager(stdLibPath));
                 })
                 .WithHandler<TextDocumentHandler>()
+                .WithHandler<DefinitionHandler>()
+                .WithHandler<HoverHandler>()
+                .WithHandler<SignatureHelpHandler>()
+                .WithHandler<CompletionHandler>()
                 .OnInitialize((server, request, cancellationToken) =>
                 {
                     Console.Error.WriteLine("[LSP] Server initialized!");

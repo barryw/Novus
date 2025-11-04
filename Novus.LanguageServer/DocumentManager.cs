@@ -122,6 +122,9 @@ public class DocumentManager
                 diagnostics.Add(diagnostic);
             }
 
+            // Store the analyzer for language server features (go-to-definition, hover, etc.)
+            state.SemanticAnalyzer = analyzer;
+
             Console.Error.WriteLine($"[LSP] Semantic analysis completed. Total diagnostics: {diagnostics.Diagnostics.Count}");
         }
         catch (Exception ex)
@@ -168,6 +171,12 @@ public class DocumentState
     /// Includes both syntax errors from parsing and semantic errors from analysis.
     /// </summary>
     public DiagnosticBag? Diagnostics { get; set; }
+
+    /// <summary>
+    /// Gets or sets the semantic analyzer for the document.
+    /// Used for language server features like go-to-definition, hover, etc.
+    /// </summary>
+    public SemanticAnalyzer? SemanticAnalyzer { get; set; }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DocumentState"/> class.
