@@ -14,6 +14,10 @@ namespace Novus;
 
 class Program
 {
+    // Codegen format version - increment to invalidate all cached object files
+    // when making breaking changes to code generation (e.g., static variable handling)
+    private const int CODEGEN_VERSION = 3;
+
     static async Task<int> Main(string[] args)
     {
         return await CommandLine.Parser.Default.ParseArguments<CompilerOptions, BuildOptions, GenerateStubsOptions, NewCommandOptions, StdlibBuildOptions>(args)
@@ -545,26 +549,58 @@ class Program
             var typesHeaderPath = Path.Combine(outputDir, "novus_types.h");
             await File.WriteAllTextAsync(typesHeaderPath, sharedTypesHeader);
 
+            // Helper function to compute file hash
+            string ComputeFileHash(string filePath)
+            {
+                using var sha256 = System.Security.Cryptography.SHA256.Create();
+                using var stream = File.OpenRead(filePath);
+                var hashBytes = sha256.ComputeHash(stream);
+                return Convert.ToHexString(hashBytes).ToLowerInvariant();
+            }
+
+            // Compute hash of types header for cache invalidation
+            var typesHeaderHash = ComputeFileHash(typesHeaderPath);
+
             // Generate C files - collect all file paths
             var cFiles = new List<string>();
 
-            // Main module: generate monolithic C file (with string literals and main function)
-            var mainCodegen = new CCodeGenerator(
-                mainIR.IrModule,
-                mainIR.StringLiterals,
-                options.Cpu,
-                options.Fpu,
-                options.BuildMode,
-                explicitEntryPoints: null,
-                useSharedTypesHeader: true,
-                projectVersion: options.ProjectVersion);
+            // Main module: generate one C file per function (consistent with library modules)
+            var mainFunctions = mainIR.IrModule.Functions
+                .Where(f => !f.IsExtern && f.BasicBlocks.Count > 0)
+                .ToList();
 
-            var mainCCode = mainCodegen.Generate();
-            var mainCFile = Path.Combine(outputDir, $"{baseName}.c");
-            await File.WriteAllTextAsync(mainCFile, mainCCode);
-            cFiles.Add(mainCFile);
+            if (mainFunctions.Count > 0)
+            {
+                var mainCodegen = new CCodeGenerator(
+                    mainIR.IrModule,
+                    mainIR.StringLiterals,
+                    options.Cpu,
+                    options.Fpu,
+                    options.BuildMode,
+                    explicitEntryPoints: null,
+                    useSharedTypesHeader: true,
+                    projectVersion: options.ProjectVersion);
 
-            Console.WriteLine($"  → {Path.GetFileName(mainCFile)}");
+                // Generate one C file per function
+                foreach (var function in mainFunctions)
+                {
+                    var functionCCode = mainCodegen.GenerateFunctionFile(function);
+                    var functionCFile = Path.Combine(outputDir, $"{baseName}_{function.Name}.c");
+                    await File.WriteAllTextAsync(functionCFile, functionCCode);
+                    cFiles.Add(functionCFile);
+                }
+
+                // Generate statics file if module has static variables
+                var staticsCCode = mainCodegen.GenerateStaticsFile();
+                if (!string.IsNullOrEmpty(staticsCCode))
+                {
+                    var staticsCFile = Path.Combine(outputDir, $"{baseName}_statics.c");
+                    await File.WriteAllTextAsync(staticsCFile, staticsCCode);
+                    cFiles.Add(staticsCFile);
+                }
+
+                Console.WriteLine($"  → {baseName} ({mainFunctions.Count} function{(mainFunctions.Count > 1 ? "s" : "")})");
+            }
 
             // For libraries, generate A6 wrapper assembly and interface files
             // (isLibrary/isDevice will be defined later in the assembly section)
@@ -643,6 +679,15 @@ class Program
                     var functionCFile = Path.Combine(outputDir, $"{moduleName}_{function.Name}.c");
                     await File.WriteAllTextAsync(functionCFile, functionCCode);
                     cFiles.Add(functionCFile);
+                }
+
+                // Generate statics file if module has static variables
+                var staticsCCode = moduleCodegen.GenerateStaticsFile();
+                if (!string.IsNullOrEmpty(staticsCCode))
+                {
+                    var staticsCFile = Path.Combine(outputDir, $"{moduleName}_statics.c");
+                    await File.WriteAllTextAsync(staticsCFile, staticsCCode);
+                    cFiles.Add(staticsCFile);
                 }
 
                 var displayName = isStdModule ? $"std::{moduleName}" : moduleName;
@@ -887,31 +932,59 @@ class Program
             var usePrecompiledStdlib = Directory.Exists(stdlibPrecompiledDir)
                 && !Commands.StdlibBuildCommand.NeedsRebuild(compilerDir, assemblyCpu, options.BuildMode);
 
+            // Build mapping of C files to their source Novus files for caching
+            // Format: cFile -> (sourcePath, sourceHash)
+            var cFileToSource = new Dictionary<string, (string path, string hash)>();
+
+            // Map main module functions to source file
+            var mainSourcePath = options.InputFile;
+            var mainSourceHash = ComputeFileHash(mainSourcePath);
+            foreach (var cFile in cFiles)
+            {
+                var cFileName = Path.GetFileNameWithoutExtension(cFile);
+                if (cFileName.StartsWith(baseName + "_"))
+                {
+                    cFileToSource[cFile] = (mainSourcePath, mainSourceHash);
+                }
+            }
+
+            // Map imported module functions to their source files
+            foreach (var (modulePath, moduleIR) in allModulesIR)
+            {
+                var moduleHash = ComputeFileHash(modulePath);
+                var moduleName = moduleIR.ModuleName;
+
+                foreach (var cFile in cFiles)
+                {
+                    var cFileName = Path.GetFileNameWithoutExtension(cFile);
+                    if (cFileName.StartsWith(moduleName + "_"))
+                    {
+                        cFileToSource[cFile] = (modulePath, moduleHash);
+                    }
+                }
+            }
+
             // Separate stdlib C files from user C files
             var stdlibCFiles = new List<string>();
             var userCFiles = new List<string>();
 
             foreach (var cFile in cFiles)
             {
-                var cFileName = Path.GetFileNameWithoutExtension(cFile);
-                // Check if this is a stdlib module by matching pattern: moduleName_functionName.c
-                // User's main file is just baseName.c, so it won't match
-                var isStdlibModule = false;
-                foreach (var (modulePath, moduleIR) in allModulesIR)
+                if (cFileToSource.TryGetValue(cFile, out var sourceInfo))
                 {
-                    if (modulePath.Contains("/std/") && cFileName.StartsWith(moduleIR.ModuleName + "_"))
+                    var (sourcePath, _) = sourceInfo;
+                    if (sourcePath.Contains("/std/"))
                     {
-                        isStdlibModule = true;
-                        break;
+                        stdlibCFiles.Add(cFile);
                     }
-                }
-
-                if (isStdlibModule)
-                {
-                    stdlibCFiles.Add(cFile);
+                    else
+                    {
+                        userCFiles.Add(cFile);
+                    }
                 }
                 else
                 {
+                    // No source mapping (e.g., runtime files) - treat as user code
                     userCFiles.Add(cFile);
                 }
             }
@@ -1011,21 +1084,119 @@ class Program
                 }
             }
 
-            // Step 2: Compile user C files (always compiled fresh)
+            // Step 2: Compile user C files with caching and parallelization
             Console.WriteLine("\nCompiling user code...");
+
+            // Create user code cache directory: {outputDir}/usercache/{cpu}/{buildMode}/
+            var userCacheDir = Path.Combine(outputDir, "usercache", assemblyCpu, buildModeStr);
+            Directory.CreateDirectory(userCacheDir);
+
+            // Track which files need compilation
+            var filesToCompile = new List<(string cFile, string objFile, bool cached)>();
+
             foreach (var cFile in userCFiles)
             {
-                var cFileName = Path.GetFileName(cFile);
-                var objFile = Path.Combine(outputDir, Path.GetFileNameWithoutExtension(cFile) + ".o");
+                var cFileName = Path.GetFileNameWithoutExtension(cFile);
+                var objFile = Path.Combine(outputDir, cFileName + ".o");
 
-                Console.WriteLine($"  → {cFileName}");
-                if (!await toolchain.CompileToObject(cFile, objFile, assemblyCpu, options.OptimizationLevel))
+                // Check if we have a cached .o file
+                // Note: _statics.c files are NEVER cached - they must be compiled fresh
+                var cached = false;
+                if (!cFileName.EndsWith("_statics") && cFileToSource.TryGetValue(cFile, out var sourceInfo))
                 {
-                    Console.WriteLine($"\n✗ Failed to compile {cFileName}");
+                    var (sourcePath, sourceHash) = sourceInfo;
+                    // Cache key must match the format used when caching: codegen version + source + header + CPU + optlevel
+                    var cacheKey = $"v{CODEGEN_VERSION}_{sourceHash}_{typesHeaderHash.Substring(0, 8)}_{assemblyCpu}_O{options.OptimizationLevel}_{cFileName}.o";
+                    var cachedObjFile = Path.Combine(userCacheDir, cacheKey);
+
+                    if (File.Exists(cachedObjFile))
+                    {
+                        // Use cached .o file
+                        File.Copy(cachedObjFile, objFile, overwrite: true);
+                        objectFiles.Add(objFile);
+                        cached = true;
+                    }
+                }
+
+                filesToCompile.Add((cFile, objFile, cached));
+            }
+
+            // Count how many are cached vs need compilation
+            var cachedCount = filesToCompile.Count(f => f.cached);
+            var compileCount = filesToCompile.Count - cachedCount;
+
+            if (cachedCount > 0)
+            {
+                Console.WriteLine($"  ✓ Using {cachedCount} cached object file{(cachedCount > 1 ? "s" : "")}");
+            }
+
+            if (compileCount > 0)
+            {
+                Console.WriteLine($"  → Compiling {compileCount} file{(compileCount > 1 ? "s" : "")}...");
+
+                // Compile files in parallel
+                var compileTasks = filesToCompile
+                    .Where(f => !f.cached)
+                    .Select(async f =>
+                    {
+                        var (cFile, objFile, _) = f;
+                        var cFileName = Path.GetFileName(cFile);
+
+                        // Compile
+                        var success = await toolchain.CompileToObject(cFile, objFile, assemblyCpu, options.OptimizationLevel);
+                        if (!success)
+                        {
+                            return (success: false, cFileName, objFile, cFile, cacheInfo: (string.Empty, string.Empty));
+                        }
+
+                        // Prepare cache info (but don't copy yet - wait until all succeed)
+                        // Note: _statics.c files are NEVER cached - skip them
+                        var cacheInfo = ("", "");
+                        var cFileNameNoExt = Path.GetFileNameWithoutExtension(cFile);
+                        if (!cFileNameNoExt.EndsWith("_statics") && cFileToSource.TryGetValue(cFile, out var sourceInfo))
+                        {
+                            var (sourcePath, sourceHash) = sourceInfo;
+                            // Cache key includes: codegen version + source hash + types header hash + CPU + optimization level
+                            // This ensures cache invalidation when any of these change
+                            var cacheKey = $"v{CODEGEN_VERSION}_{sourceHash}_{typesHeaderHash.Substring(0, 8)}_{assemblyCpu}_O{options.OptimizationLevel}_{cFileNameNoExt}.o";
+                            var cachedObjFile = Path.Combine(userCacheDir, cacheKey);
+                            cacheInfo = (objFile, cachedObjFile);
+                        }
+
+                        return (success: true, cFileName, objFile, cFile, cacheInfo);
+                    })
+                    .ToArray();
+
+                // Wait for all compilations to complete
+                var results = await Task.WhenAll(compileTasks);
+
+                // Check for failures
+                var failures = results.Where(r => !r.success).ToList();
+                if (failures.Any())
+                {
+                    Console.WriteLine($"\n✗ Failed to compile:");
+                    foreach (var failure in failures)
+                    {
+                        Console.WriteLine($"  → {failure.cFileName}");
+                    }
                     return 1;
                 }
 
-                objectFiles.Add(objFile);
+                // All compilations succeeded - now cache the .o files and add to objectFiles list
+                foreach (var result in results.Where(r => r.success))
+                {
+                    // Cache the .o file if applicable
+                    if (!string.IsNullOrEmpty(result.cacheInfo.Item1))
+                    {
+                        File.Copy(result.cacheInfo.Item1, result.cacheInfo.Item2, overwrite: true);
+                    }
+
+                    // Thread-safe: Add to objectFiles list sequentially after all compilations complete
+                    objectFiles.Add(result.objFile);
+
+                    // Show what was compiled
+                    Console.WriteLine($"    → {result.cFileName}");
+                }
             }
 
             // CRITICAL: Add wrapper object AFTER C code so linker can resolve symbols correctly
