@@ -64,6 +64,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
     // Key: generic param name (e.g., "T"), Value: concrete type (e.g., i32)
     private Dictionary<string, IrType>? _currentTypeSubstitutions = null;
 
+    // Track the implementing type when processing impl blocks for Self type resolution
+    // Example: impl From<DosError> for NovusError { ... } -> _currentSelfType = NovusError
+    private IrType? _currentSelfType = null;
+
     /// <summary>
     /// Constructor for IrBuilder
     /// </summary>
@@ -250,6 +254,23 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 }
             }
 
+            // Set the current Self type for this impl block
+            // Look up the implementing type to resolve Self (could be struct or enum)
+            IrType? implementingType = null;
+            if (_structs.TryGetValue(typeName, out var structType))
+            {
+                implementingType = structType;
+            }
+            else if (_enums.TryGetValue(typeName, out var enumType))
+            {
+                implementingType = enumType;
+            }
+            else
+            {
+                throw new Exception($"Type '{typeName}' not found for impl block");
+            }
+            _currentSelfType = implementingType;
+
             // Check if this is a trait implementation
             bool isTraitImpl = implContext.KW_FOR() != null;
             string? traitName = null;
@@ -335,13 +356,22 @@ public class IrBuilder : NovusBaseVisitor<object?>
                         var isMutable = selfParam.KW_MUT() != null;
                         var isBorrowed = selfParam.GetChild(0).GetText() == "&";
 
-                        // Determine self type - look up the struct type
-                        if (!_structs.TryGetValue(typeName, out var structType))
+                        // Determine self type - look up the implementing type (struct or enum)
+                        IrType? implType = null;
+                        if (_structs.TryGetValue(typeName, out var foundStruct))
+                        {
+                            implType = foundStruct;
+                        }
+                        else if (_enums.TryGetValue(typeName, out var foundEnum))
+                        {
+                            implType = foundEnum;
+                        }
+                        else
                         {
                             throw new Exception($"Type '{typeName}' not found for impl block");
                         }
 
-                        IrType selfType = structType;
+                        IrType selfType = implType;
                         if (isBorrowed)
                         {
                             selfType = _typeInterner.GetPointerType(selfType);
@@ -376,22 +406,23 @@ public class IrBuilder : NovusBaseVisitor<object?>
             // Register trait implementation if this is a trait impl
             if (isTraitImpl && traitName != null && genericParams.Count == 0)
             {
-                // Look up the implementing type
-                if (!_structs.TryGetValue(typeName, out var implementingType))
+                // _currentSelfType already contains the implementing type (set earlier)
+                if (_currentSelfType == null)
                 {
                     throw new Exception($"Type '{typeName}' not found for trait implementation");
                 }
 
                 // Create IrTraitImpl and add to module
-                var traitImpl = new IrTraitImpl(traitName, traitTypeArgs, typeName, implementingType);
+                var traitImpl = new IrTraitImpl(traitName, traitTypeArgs, typeName, _currentSelfType);
                 _module.TraitImpls.Add(traitImpl);
             }
 
-            // Clear generic parameters after processing impl block
+            // Clear generic parameters and Self type after processing impl block
             foreach (var paramName in genericParams)
             {
                 _genericParams.Remove(paramName);
             }
+            _currentSelfType = null;
         }
 
         // Pass 5: Build function bodies
@@ -454,6 +485,22 @@ public class IrBuilder : NovusBaseVisitor<object?>
             // typeName() returns an array: [Type] for "impl Type" or [Trait, Type] for "impl Trait for Type"
             var typeNames = implContext.typeName();
             var typeName = typeNames[typeNames.Length - 1].IDENTIFIER(0).GetText();
+
+            // Set the current Self type for this impl block (could be struct or enum)
+            IrType? implementingType = null;
+            if (_structs.TryGetValue(typeName, out var structType))
+            {
+                implementingType = structType;
+            }
+            else if (_enums.TryGetValue(typeName, out var enumType))
+            {
+                implementingType = enumType;
+            }
+            else
+            {
+                throw new Exception($"Type '{typeName}' not found for impl block");
+            }
+            _currentSelfType = implementingType;
 
             // Check if this is a trait implementation
             bool isTraitImpl = implContext.KW_FOR() != null;
@@ -543,6 +590,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     }
                 }
             }
+
+            // Clear Self type after processing impl block
+            _currentSelfType = null;
         }
 
         return _module;
@@ -618,6 +668,15 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 if (structDecl.IDENTIFIER().GetText() == symbolName)
                 {
                     RegisterStruct(structDecl);
+                    return; // Found it
+                }
+            }
+            // Check traits
+            foreach (var traitDecl in moduleContext.traitDeclaration())
+            {
+                if (traitDecl.IDENTIFIER().GetText() == symbolName)
+                {
+                    RegisterTrait(traitDecl);
                     return; // Found it
                 }
             }
@@ -770,6 +829,27 @@ public class IrBuilder : NovusBaseVisitor<object?>
             RegisterStruct(structDecl);
         }
 
+        // Register imported traits in the module
+        foreach (var traitDecl in moduleContext.traitDeclaration())
+        {
+            var traitName = traitDecl.IDENTIFIER().GetText();
+
+            // Skip if not in the import list
+            if (!namesToImport.Contains(traitName))
+            {
+                continue;
+            }
+
+            // Skip if this trait has already been imported (transitive dependencies)
+            if (_traits.ContainsKey(traitName))
+            {
+                continue;
+            }
+
+            // Register the trait from the imported module
+            RegisterTrait(traitDecl);
+        }
+
         // Register imported functions in the module
         foreach (var funcDecl in moduleContext.functionDeclaration())
         {
@@ -854,6 +934,22 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 continue;
             }
 
+            // Set the current Self type for this impl block (could be struct or enum)
+            IrType? implementingType = null;
+            if (_structs.TryGetValue(typeName, out var structType))
+            {
+                implementingType = structType;
+            }
+            else if (_enums.TryGetValue(typeName, out var enumType))
+            {
+                implementingType = enumType;
+            }
+
+            if (implementingType != null)
+            {
+                _currentSelfType = implementingType;
+            }
+
             foreach (var implItem in implDecl.implItem())
             {
                 var funcDecl = implItem.functionDeclaration();
@@ -909,13 +1005,22 @@ public class IrBuilder : NovusBaseVisitor<object?>
                         var isMutable = selfParam.KW_MUT() != null;
                         var isBorrowed = selfParam.GetChild(0).GetText() == "&";
 
-                        // Determine self type - look up the struct type
-                        if (!_structs.TryGetValue(typeName, out var structType))
+                        // Determine self type - look up the implementing type (struct or enum)
+                        IrType? implType = null;
+                        if (_structs.TryGetValue(typeName, out var foundStruct))
+                        {
+                            implType = foundStruct;
+                        }
+                        else if (_enums.TryGetValue(typeName, out var foundEnum))
+                        {
+                            implType = foundEnum;
+                        }
+                        else
                         {
                             throw new Exception($"Type '{typeName}' not found for impl block");
                         }
 
-                        IrType selfType = structType;
+                        IrType selfType = implType;
                         if (isBorrowed)
                         {
                             selfType = _typeInterner.GetPointerType(selfType);
@@ -947,11 +1052,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 _module.AddFunction(function);
             }
 
-            // Clear generic params from scope after impl registration
+            // Clear generic params and Self type from scope after impl registration
             foreach (var paramName in genericParams)
             {
                 _genericParams.Remove(paramName);
             }
+            _currentSelfType = null;
         }
 
         // If we're importing any impl blocks (generic or not), also import all transitive dependencies
@@ -1124,6 +1230,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var savedSubstitutions = _currentTypeSubstitutions;
         _currentTypeSubstitutions = typeSubstitutions;
 
+        // Set Self type to the monomorphized struct for Self type resolution
+        var savedSelfType = _currentSelfType;
+        _currentSelfType = monomorphizedStruct;
+
         // Create the function
         var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
 
@@ -1215,6 +1325,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         // Restore type substitutions
         _currentTypeSubstitutions = savedSubstitutions;
+
+        // Restore Self type
+        _currentSelfType = savedSelfType;
 
         // Restore constants
         _constants.Clear();
@@ -1333,6 +1446,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var savedTypeSubstitutions = _currentTypeSubstitutions;
         _currentTypeSubstitutions = typeSubstitutions;
 
+        // Set Self type to the monomorphized enum for Self type resolution
+        var savedSelfType = _currentSelfType;
+        _currentSelfType = monomorphizedEnum;
+
         // Create the function manually (don't use Visit)
         var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
         returnType = SubstituteGenericTypes(returnType, typeSubstitutions);
@@ -1395,6 +1512,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         _currentBlock = savedBlock;
         _currentFunction = savedFunction;
         _currentTypeSubstitutions = savedTypeSubstitutions;
+        _currentSelfType = savedSelfType;
         _constants.Clear();
         foreach (var kvp in savedConstants)
         {
@@ -4652,6 +4770,32 @@ public class IrBuilder : NovusBaseVisitor<object?>
         return HandlePostIncrementDecrement(context.expression(), isIncrement: false);
     }
 
+    public override object? VisitTryExpr([NotNull] NovusParser.TryExprContext context)
+    {
+        // The ? operator for Result propagation with automatic error conversion via From trait
+        // expr? desugars to:
+        // match expr {
+        //     Ok(val) => val,
+        //     Err(err) => return Err(TargetError::from(err))  // Auto-convert if needed
+        // }
+
+        var innerExpr = Visit(context.expression()) as IrValue
+            ?? throw new Exception("? operator requires an expression that returns a value");
+
+        // TODO: Full implementation requires:
+        // 1. Verify innerExpr type is Result<T, E>
+        // 2. Extract T and E types
+        // 3. Get current function's return type Result<T2, E2>
+        // 4. If E != E2, look for From<E> impl for E2
+        // 5. Generate match expression:
+        //    - Ok branch: unwrap and return value
+        //    - Err branch: convert error (if needed) and return early
+
+        // For now, return a placeholder that will need semantic analysis
+        throw new NotImplementedException("? operator (try expression) is not yet fully implemented. " +
+            "This requires trait resolution and automatic From<T> conversion.");
+    }
+
     private IrValue HandlePostIncrementDecrement(ParserRuleContext exprContext, bool isIncrement)
     {
         // For post-inc/dec, we need to:
@@ -5806,10 +5950,15 @@ public class IrBuilder : NovusBaseVisitor<object?>
             throw new Exception("Match expression requires a value");
         }
 
-        if (matchValue.Type is not IrEnumType enumType)
+        bool isEnumMatch = matchValue.Type is IrEnumType;
+        bool isIntegerMatch = matchValue.Type is IrIntType;
+
+        if (!isEnumMatch && !isIntegerMatch)
         {
-            throw new Exception($"Match can only be used with enum types, got '{matchValue.Type.Name}'");
+            throw new Exception($"Match can only be used with enum or integer types, got '{matchValue.Type.Name}'");
         }
+
+        IrEnumType? enumType = isEnumMatch ? (IrEnumType)matchValue.Type : null;
 
         // Generate labels for match arms and end
         var matchEndLabel = $"match_end_{_labelCounter}";
@@ -5830,9 +5979,14 @@ public class IrBuilder : NovusBaseVisitor<object?>
         string? matchResultVarName = null;
 
         // Extract tag from enum value (before declaring match result, so it appears first)
-        var tagName = $"%t{_tempCounter++}";
-        _currentBlock!.AddInstruction(new IrExtractTag(tagName, matchValue));
-        var tagVar = new IrVariable(tagName, IrIntType.I32);
+        // Only needed for enum matches
+        IrVariable? tagVar = null;
+        if (isEnumMatch)
+        {
+            var tagName = $"%t{_tempCounter++}";
+            _currentBlock!.AddInstruction(new IrExtractTag(tagName, matchValue));
+            tagVar = new IrVariable(tagName, IrIntType.I32);
+        }
 
         // Declare match result variable if arms produce values
         if (armsProduceValues)
@@ -5894,43 +6048,95 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 break;
             }
 
-            // Handle variant patterns
-            string? variantName = null;
-            if (pattern is NovusParser.VariantPatternContext variantPattern)
+            // Handle patterns based on match type
+            if (isEnumMatch)
             {
-                // Extract the last identifier from the qualified name (e.g., SimpleResult::Ok -> Ok)
-                var identifiers = variantPattern.variantName().IDENTIFIER();
-                variantName = identifiers[identifiers.Length - 1].GetText();
-            }
-            else if (pattern is NovusParser.SimpleVariantPatternContext simpleVariantPattern)
-            {
-                // SimpleVariantPattern is IDENTIFIER '::' IDENTIFIER ('::' IDENTIFIER)*
-                // Extract the last identifier from the qualified name (e.g., SimpleResult::Ok -> Ok)
-                var identifiers = simpleVariantPattern.IDENTIFIER();
-                variantName = identifiers[identifiers.Length - 1].GetText();
-            }
-            else if (pattern is NovusParser.IdentifierPatternContext identPattern)
-            {
-                variantName = identPattern.IDENTIFIER().GetText();
-            }
-
-            if (variantName != null)
-            {
-                var variant = enumType.GetVariant(variantName);
-                if (variant == null)
+                // Handle variant patterns
+                string? variantName = null;
+                if (pattern is NovusParser.VariantPatternContext variantPattern)
                 {
-                    throw new Exception($"Enum '{enumType.EnumName}' has no variant '{variantName}'");
+                    // Extract the last identifier from the qualified name (e.g., SimpleResult::Ok -> Ok)
+                    var identifiers = variantPattern.variantName().IDENTIFIER();
+                    variantName = identifiers[identifiers.Length - 1].GetText();
+                }
+                else if (pattern is NovusParser.SimpleVariantPatternContext simpleVariantPattern)
+                {
+                    // SimpleVariantPattern is IDENTIFIER '::' IDENTIFIER ('::' IDENTIFIER)*
+                    // Extract the last identifier from the qualified name (e.g., SimpleResult::Ok -> Ok)
+                    var identifiers = simpleVariantPattern.IDENTIFIER();
+                    variantName = identifiers[identifiers.Length - 1].GetText();
+                }
+                else if (pattern is NovusParser.IdentifierPatternContext identPattern)
+                {
+                    variantName = identPattern.IDENTIFIER().GetText();
                 }
 
-                // Compare tag with variant tag
-                var cmpName = $"%t{_tempCounter++}";
-                var tagConst = new IrConstant(variant.Tag, IrIntType.I32);
-                _currentBlock!.AddInstruction(new IrBinaryOp(cmpName, IrBinaryOp.OpKind.Eq, tagVar, tagConst, IrBoolType.Instance));
-                var cmpVar = new IrVariable(cmpName, IrBoolType.Instance);
+                if (variantName != null)
+                {
+                    var variant = enumType!.GetVariant(variantName);
+                    if (variant == null)
+                    {
+                        throw new Exception($"Enum '{enumType.EnumName}' has no variant '{variantName}'");
+                    }
 
-                // Branch: if match, go to arm, otherwise continue to next check
-                var nextLabel = i < checkLabels.Count - 1 ? checkLabels[i + 1] : matchEndLabel;
-                _currentBlock!.AddInstruction(new IrConditionalBranch(cmpVar, armLabels[i], nextLabel));
+                    // Compare tag with variant tag
+                    var cmpName = $"%t{_tempCounter++}";
+                    var tagConst = new IrConstant(variant.Tag, IrIntType.I32);
+                    _currentBlock!.AddInstruction(new IrBinaryOp(cmpName, IrBinaryOp.OpKind.Eq, tagVar!, tagConst, IrBoolType.Instance));
+                    var cmpVar = new IrVariable(cmpName, IrBoolType.Instance);
+
+                    // Branch: if match, go to arm, otherwise continue to next check
+                    var nextLabel = i < checkLabels.Count - 1 ? checkLabels[i + 1] : matchEndLabel;
+                    _currentBlock!.AddInstruction(new IrConditionalBranch(cmpVar, armLabels[i], nextLabel));
+                }
+            }
+            else if (isIntegerMatch)
+            {
+                // Handle integer literal patterns (decimal, hex, or binary)
+                if (pattern is NovusParser.LiteralPatternContext literalPattern)
+                {
+                    long value;
+                    bool parsed = false;
+
+                    // Try decimal integer literal
+                    if (literalPattern.INTEGER_LITERAL() != null)
+                    {
+                        var literalText = literalPattern.INTEGER_LITERAL().GetText();
+                        (value, _) = ParseIntegerLiteral(literalText);
+                        parsed = true;
+                    }
+                    // Try hex literal ($FF, $DEADBEEF, etc.)
+                    else if (literalPattern.HEX_LITERAL() != null)
+                    {
+                        var literalText = literalPattern.HEX_LITERAL().GetText();
+                        (value, _) = ParseHexLiteral(literalText);
+                        parsed = true;
+                    }
+                    // Try binary literal (%1010, %11110000, etc.)
+                    else if (literalPattern.BINARY_LITERAL() != null)
+                    {
+                        var literalText = literalPattern.BINARY_LITERAL().GetText();
+                        (value, _) = ParseBinaryLiteral(literalText);
+                        parsed = true;
+                    }
+                    else
+                    {
+                        value = 0;
+                    }
+
+                    if (parsed)
+                    {
+                        // Compare match value with literal
+                        var cmpName = $"%t{_tempCounter++}";
+                        var literalConst = new IrConstant(value, matchValue.Type);
+                        _currentBlock!.AddInstruction(new IrBinaryOp(cmpName, IrBinaryOp.OpKind.Eq, matchValue, literalConst, IrBoolType.Instance));
+                        var cmpVar = new IrVariable(cmpName, IrBoolType.Instance);
+
+                        // Branch: if match, go to arm, otherwise continue to next check
+                        var nextLabel = i < checkLabels.Count - 1 ? checkLabels[i + 1] : matchEndLabel;
+                        _currentBlock!.AddInstruction(new IrConditionalBranch(cmpVar, armLabels[i], nextLabel));
+                    }
+                }
             }
         }
 
@@ -5946,13 +6152,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
             // Variables declared in this arm will have their cleanup emitted before jumping to match_end
             PushDeferScope();
 
-            // Extract associated data for variant patterns
-            if (pattern is NovusParser.VariantPatternContext variantPattern)
+            // Extract associated data for variant patterns (enum matches only)
+            if (isEnumMatch && pattern is NovusParser.VariantPatternContext variantPattern)
             {
                 // Extract the last identifier from the qualified name (e.g., SimpleResult::Ok -> Ok)
                 var identifiers = variantPattern.variantName().IDENTIFIER();
                 var variantName = identifiers[identifiers.Length - 1].GetText();
-                var variant = enumType.GetVariant(variantName);
+                var variant = enumType!.GetVariant(variantName);
 
                 // Extract associated data and bind to pattern variables
                 if (variantPattern.patternList() != null)
@@ -5983,6 +6189,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     }
                 }
             }
+            // Integer matches don't have associated data to extract
 
             // Visit the arm body and capture result if it's an expression
             IrValue? armResult = null;
@@ -6017,6 +6224,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     _currentFunction!.LocalVariables.Add(matchResultVar);
                     _localVariables[matchResultVarName] = matchResultVar;
                 }
+            }
+            else if (armCtx.returnStatement() != null)
+            {
+                // Handle return statement in match arm
+                Visit(armCtx.returnStatement());
+                // Return statements terminate the block, so no result to store
             }
 
             // If we have a result value, result type, and variable name, store it
@@ -6102,12 +6315,28 @@ public class IrBuilder : NovusBaseVisitor<object?>
         {
             NovusParser.ReferenceTypeContext refCtx => ParseReferenceType(refCtx),
             NovusParser.PointerTypeContext ptrCtx => ParsePointerType(ptrCtx),
-            NovusParser.ArrayTypeContext arrayCtx => ParseArrayType(arrayCtx),
+            NovusParser.ArrayTypeWithSizeContext arrayWithSizeCtx => ParseArrayTypeWithSize(arrayWithSizeCtx),
+            NovusParser.ArrayTypeInferredContext arrayInferredCtx => ParseArrayTypeInferred(arrayInferredCtx),
             NovusParser.FunctionPointerTypeContext fpCtx => ParseFunctionPointerType(fpCtx),
+            NovusParser.SelfTypeContext selfCtx => ResolveSelfType(),
             NovusParser.PrimitiveTypeContext primCtx => ParsePrimitiveType(primCtx),
             NovusParser.NamedTypeContext namedCtx => ParseNamedType(namedCtx),
             _ => throw new Exception($"Unknown type context: {context.GetType().Name}")
         };
+    }
+
+    private IrType ResolveSelfType()
+    {
+        // If we have a current Self type (in impl block), resolve to it
+        if (_currentSelfType != null)
+        {
+            return _currentSelfType;
+        }
+
+        // Otherwise, keep it as IrSelfType for trait definitions
+        // This allows Self to be used in trait method signatures
+        // It will be resolved when the trait is implemented
+        return IrSelfType.Instance;
     }
 
     private IrType ParseReferenceType(NovusParser.ReferenceTypeContext context)
@@ -6298,7 +6527,16 @@ public class IrBuilder : NovusBaseVisitor<object?>
     /// </summary>
     private IrType SubstituteGenericTypes(IrType type, Dictionary<string, IrType> substitutions)
     {
-        if (type is IrGenericType gt && substitutions.ContainsKey(gt.ParameterName))
+        // Handle Self type - resolve to current implementing type
+        if (type is IrSelfType)
+        {
+            if (_currentSelfType == null)
+            {
+                throw new Exception("'Self' type encountered outside of impl block context");
+            }
+            return _currentSelfType;
+        }
+        else if (type is IrGenericType gt && substitutions.ContainsKey(gt.ParameterName))
         {
             return substitutions[gt.ParameterName];
         }
@@ -6449,7 +6687,11 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
     }
 
-    private IrType ParseArrayType(NovusParser.ArrayTypeContext context)
+    /// <summary>
+    /// Parse array type with explicit size: [u8; 100]
+    /// Used for uninitialized fixed-size arrays
+    /// </summary>
+    private IrType ParseArrayTypeWithSize(NovusParser.ArrayTypeWithSizeContext context)
     {
         // Evaluate the size expression as a compile-time constant
         var sizeExpr = context.expression();
@@ -6468,6 +6710,20 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         var elementType = ParseType(context.type());
         return _typeInterner.GetArrayType(elementType, sizeValue.Value);
+    }
+
+    /// <summary>
+    /// Parse array type with inferred size: [i32]
+    /// Size will be inferred from the initializer expression
+    /// Returns a placeholder array type with size 0 - will be fixed during expression parsing
+    /// </summary>
+    private IrType ParseArrayTypeInferred(NovusParser.ArrayTypeInferredContext context)
+    {
+        // For inferred size arrays, we create a placeholder with size 0
+        // The actual size will be determined when we parse the array literal initializer
+        var elementType = ParseType(context.type());
+        // Use size -1 as a sentinel value to indicate "size to be inferred"
+        return _typeInterner.GetArrayType(elementType, -1);
     }
 
     private IrType ParseFunctionPointerType(NovusParser.FunctionPointerTypeContext context)

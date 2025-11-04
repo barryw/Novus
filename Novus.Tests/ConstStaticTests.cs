@@ -149,7 +149,7 @@ pub fn main() -> i32 {
         var source = @"
 const ARRAY_SIZE = 5
 pub fn main() -> i32 {
-    let arr: [ARRAY_SIZE]i32 = {1, 2, 3, 4, 5}
+    let arr: [i32; ARRAY_SIZE] = [1, 2, 3, 4, 5]
     return arr[0]
 }";
         var module = BuildIr(source);

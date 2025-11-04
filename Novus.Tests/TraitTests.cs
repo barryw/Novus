@@ -266,4 +266,23 @@ pub fn main() -> i32 {
         var method = module.Functions.FirstOrDefault(f => f.Name == mangledName);
         Assert.NotNull(method);
     }
+
+    [Fact]
+    public void BuildIr_FromTrait_Compiles()
+    {
+        var source = @"
+trait From<T> {
+    fn convert(value: T) -> Self
+}
+
+pub fn main() -> i32 {
+    return 0
+}";
+        var module = BuildIr(source);
+        Assert.NotNull(module);
+        Assert.Single(module.Traits);
+        Assert.Equal("From", module.Traits[0].TraitName);
+        Assert.Single(module.Traits[0].GenericParameters);
+        Assert.Equal("T", module.Traits[0].GenericParameters[0]);
+    }
 }

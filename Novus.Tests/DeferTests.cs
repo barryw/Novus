@@ -242,7 +242,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    var arr = {1, 2, 3}
+    var arr = [1, 2, 3]
     defer arr[0] = 100
     return arr[0]
 }";

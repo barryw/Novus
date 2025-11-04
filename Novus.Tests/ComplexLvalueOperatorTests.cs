@@ -25,7 +25,7 @@ public class ComplexLvalueOperatorTests
     {
         var source = @"
 pub fn main() -> i32 {
-    var arr = {1, 2, 3, 4, 5}
+    var arr = [1, 2, 3, 4, 5]
     arr[0] += 10
     return arr[0]
 }";
@@ -38,7 +38,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    var arr = {10, 20, 30}
+    var arr = [10, 20, 30]
     arr[1] -= 5
     return arr[1]
 }";
@@ -51,7 +51,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    var arr = {2, 3, 4}
+    var arr = [2, 3, 4]
     arr[2] *= 5
     return arr[2]
 }";
@@ -64,7 +64,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    var arr = {100, 50, 25}
+    var arr = [100, 50, 25]
     arr[0] /= 10
     return arr[0]
 }";
@@ -77,7 +77,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    var arr = {1, 2, 3}
+    var arr = [1, 2, 3]
     arr[1]++
     return arr[1]
 }";
@@ -90,7 +90,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    var arr = {10, 20, 30}
+    var arr = [10, 20, 30]
     arr[2]--
     return arr[2]
 }";
@@ -103,7 +103,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    var arr = {1, 2, 3}
+    var arr = [1, 2, 3]
     ++arr[0]
     return arr[0]
 }";
@@ -116,7 +116,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    var arr = {10, 20, 30}
+    var arr = [10, 20, 30]
     --arr[1]
     return arr[1]
 }";
@@ -416,10 +416,10 @@ struct Point {
     y: i32
 }
 pub fn main() -> i32 {
-    var points = {
+    var points = [
         Point { x: 1, y: 2 },
         Point { x: 3, y: 4 }
-    }
+    ]
     points[0].x++
     return points[0].x
 }";
@@ -436,10 +436,10 @@ struct Point {
     y: i32
 }
 pub fn main() -> i32 {
-    var points = {
+    var points = [
         Point { x: 1, y: 2 },
         Point { x: 3, y: 4 }
-    }
+    ]
     points[1].y += 10
     return points[1].y
 }";
@@ -453,10 +453,10 @@ pub fn main() -> i32 {
     {
         var source = @"
 struct Container {
-    data: [5]i32
+    data: [i32; 5]
 }
 pub fn main() -> i32 {
-    var c = Container { data: {1, 2, 3, 4, 5} }
+    var c = Container { data: [1, 2, 3, 4, 5] }
     c.data[2]++
     return c.data[2]
 }";
@@ -469,10 +469,10 @@ pub fn main() -> i32 {
     {
         var source = @"
 struct Container {
-    values: [3]i32
+    values: [i32; 3]
 }
 pub fn main() -> i32 {
-    var c = Container { values: {10, 20, 30} }
+    var c = Container { values: [10, 20, 30] }
     c.values[1] += 5
     return c.values[1]
 }";
@@ -485,13 +485,13 @@ pub fn main() -> i32 {
     {
         var source = @"
 struct Inner {
-    data: [3]i32
+    data: [i32; 3]
 }
 pub fn main() -> i32 {
-    var arr = {
-        Inner { data: {1, 2, 3} },
-        Inner { data: {4, 5, 6} }
-    }
+    var arr = [
+        Inner { data: [1, 2, 3] },
+        Inner { data: [4, 5, 6] }
+    ]
     arr[0].data[1]++
     return arr[0].data[1]
 }";

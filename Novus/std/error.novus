@@ -8,6 +8,7 @@
 // - From<T> conversions allow ergonomic ? operator across subsystems
 // - Raw error codes preserved for debugging
 
+from std::core import From, Option, Result
 from std::ffi::dos import IoErr
 
 // ============================================================================
@@ -69,89 +70,36 @@ pub fn dos_last_error() -> DosError {
 
 // Convert raw IoErr code to DosError enum
 pub fn dos_error_from_code(code: i32) -> DosError {
-    // Map common DOS error codes to enum variants
-    // Note: This is a subset - extend as needed
-    if code == 205 {
-        return DosError::NotFound
+    // Map common DOS error codes to enum variants (sorted by code for readability)
+    match code {
+        103 => return DosError::NoFreeStore,
+        115 => return DosError::BadNumber,
+        202 => return DosError::ObjectInUse,
+        203 => return DosError::AlreadyExists,
+        204 => return DosError::DirNotFound,
+        205 => return DosError::NotFound,
+        206 => return DosError::BadStreamName,
+        207 => return DosError::ObjectTooLarge,
+        211 => return DosError::InvalidLock,
+        213 => return DosError::DiskNotValidated,
+        214 => return DosError::DiskWriteProtected,
+        216 => return DosError::DirectoryNotEmpty,
+        217 => return DosError::TooManyLevels,
+        218 => return DosError::DeviceNotMounted,
+        219 => return DosError::SeekError,
+        221 => return DosError::DiskFull,
+        222 => return DosError::DeleteProtected,
+        223 => return DosError::WriteProtected,
+        224 => return DosError::ReadProtected,
+        225 => return DosError::NotADosDisk,
+        226 => return DosError::NoDisk,
+        236 => return DosError::NotImplemented,
+        240 => return DosError::RecordNotLocked,
+        241 => return DosError::LockCollision,
+        242 => return DosError::LockTimeout,
+        303 => return DosError::BufferOverflow,
+        _   => return DosError::Unknown  // Unknown error code
     }
-    if code == 203 {
-        return DosError::AlreadyExists
-    }
-    if code == 204 {
-        return DosError::DirNotFound
-    }
-    if code == 216 {
-        return DosError::DirectoryNotEmpty
-    }
-    if code == 223 {
-        return DosError::WriteProtected
-    }
-    if code == 224 {
-        return DosError::ReadProtected
-    }
-    if code == 222 {
-        return DosError::DeleteProtected
-    }
-    if code == 221 {
-        return DosError::DiskFull
-    }
-    if code == 213 {
-        return DosError::DiskNotValidated
-    }
-    if code == 214 {
-        return DosError::DiskWriteProtected
-    }
-    if code == 226 {
-        return DosError::NoDisk
-    }
-    if code == 225 {
-        return DosError::NotADosDisk
-    }
-    if code == 218 {
-        return DosError::DeviceNotMounted
-    }
-    if code == 219 {
-        return DosError::SeekError
-    }
-    if code == 303 {
-        return DosError::BufferOverflow
-    }
-    if code == 206 {
-        return DosError::BadStreamName
-    }
-    if code == 103 {
-        return DosError::NoFreeStore
-    }
-    if code == 202 {
-        return DosError::ObjectInUse
-    }
-    if code == 207 {
-        return DosError::ObjectTooLarge
-    }
-    if code == 217 {
-        return DosError::TooManyLevels
-    }
-    if code == 211 {
-        return DosError::InvalidLock
-    }
-    if code == 240 {
-        return DosError::RecordNotLocked
-    }
-    if code == 241 {
-        return DosError::LockCollision
-    }
-    if code == 242 {
-        return DosError::LockTimeout
-    }
-    if code == 236 {
-        return DosError::NotImplemented
-    }
-    if code == 115 {
-        return DosError::BadNumber
-    }
-
-    // Unknown error code - caller can check IoErr() for raw value
-    return DosError::Unknown
 }
 
 // Convert DosError back to error code (for debugging/logging)

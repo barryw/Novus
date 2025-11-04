@@ -150,8 +150,8 @@ pub const P_NOT: u32 = $85 // Token for '~'
 pub const P_NOTEND: u32 = $86 // Token for
 pub const P_NOTCLASS: u32 = $87 // Token for '^'
 pub const P_CLASS: u32 = $88 // Token for '[]'
-pub const P_REPBEG: u32 = $89 // Token for '['
-pub const P_REPEND: u32 = $8A // Token for ']'
+pub const P_REPBEG: u32 = $89 // Token for '[u32 = $8A // Token for '; '
+pub const P_REPEND]'
 pub const P_STOP: u32 = $8B // token to force end of evaluation
 pub const COMPLEX_BIT: u32 = 1 // Parsing complex pattern
 pub const EXAMINE_BIT: u32 = 2 // Searching directory
@@ -494,7 +494,7 @@ pub struct Segment {
     seg_Next: i32,
     seg_UC: i32,
     seg_Seg: i32,
-    seg_Name: [4]u8,
+    seg_Name: [u8; 4],
 }
 
 pub struct CommandLineInterface {
@@ -589,7 +589,7 @@ pub struct AnchorPath {
     ap_Flags: i8,
     ap_Reserved: i8,
     ap_Strlen: i16,
-    ap_Buf: [1]u8,
+    ap_Buf: [u8; 1],
 }
 
 pub struct AChain {
@@ -598,7 +598,7 @@ pub struct AChain {
     an_Lock: i32,
     an_Info: *u8,
     an_Flags: i8,
-    an_String: [1]u8,
+    an_String: [u8; 1],
 }
 
 pub struct LocalVar {
@@ -701,16 +701,16 @@ pub struct DateStamp {
 pub struct FileInfoBlock {
     fib_DiskKey: i32,
     fib_DirEntryType: i32,
-    fib_FileName: [108]i8,
+    fib_FileName: [i8; 108],
     fib_Protection: i32,
     fib_EntryType: i32,
     fib_Size: i32,
     fib_NumBlocks: i32,
     fib_Date: *u8,
-    fib_Comment: [80]i8,
+    fib_Comment: [i8; 80],
     fib_OwnerUID: u16,
     fib_OwnerGID: u16,
-    fib_Reserved: [32]i8,
+    fib_Reserved: [i8; 32],
 }
 
 pub struct InfoData {

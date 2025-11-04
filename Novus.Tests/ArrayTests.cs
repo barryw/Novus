@@ -24,7 +24,7 @@ public class ArrayTests
     {
         var source = @"
 pub fn main() -> i32 {
-    let arr = {1, 2, 3, 4, 5}
+    let arr = [1, 2, 3, 4, 5]
     return 0
 }";
         var module = BuildIr(source);
@@ -36,7 +36,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let arr = {10, 20, 30}
+    let arr = [10, 20, 30]
     return arr[1]
 }";
         var module = BuildIr(source);
@@ -48,7 +48,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    var arr = {1, 2, 3}
+    var arr = [1, 2, 3]
     arr[0] = 10
     return arr[0]
 }";
@@ -61,7 +61,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let arr: [3]i32 = {1, 2, 3}
+    let arr: [i32; 3] = [1, 2, 3]
     return 0
 }";
         var module = BuildIr(source);
@@ -73,7 +73,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let arr = {1, 2, 3, 4, 5}
+    let arr = [1, 2, 3, 4, 5]
     var sum = 0
     for (var i = 0; i < 5; i++) {
         sum += arr[i]
@@ -88,11 +88,11 @@ pub fn main() -> i32 {
     public void BuildIr_ArrayAsParameter_Compiles()
     {
         var source = @"
-fn getFirst(arr: [3]i32) -> i32 {
+fn getFirst(arr: [i32; 3]) -> i32 {
     return arr[0]
 }
 pub fn main() -> i32 {
-    let arr = {10, 20, 30}
+    let arr = [10, 20, 30]
     return getFirst(arr)
 }";
         var module = BuildIr(source);
@@ -103,7 +103,7 @@ pub fn main() -> i32 {
     public void BuildIr_ArrayAsReturnType_Compiles()
     {
         var source = @"
-fn makeArray() -> [3]i32 {
+fn makeArray() -> [i32; 3] {
     return {1, 2, 3}
 }
 pub fn main() -> i32 {
@@ -119,7 +119,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let arr: [3]i8 = {1, 2, 3}
+    let arr: [i8; 3] = [1, 2, 3]
     let val = arr[0]
     return (i32)val
 }";
@@ -132,7 +132,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let arr: [3]u32 = {100, 200, 300}
+    let arr: [u32; 3] = [100, 200, 300]
     let val = arr[0]
     return (i32)val
 }";
@@ -145,7 +145,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    var arr = {0, 0, 0, 0, 0}
+    var arr = [0, 0, 0, 0, 0]
     for (var i = 0; i < 5; i++) {
         arr[i] = i * 2
     }
@@ -160,12 +160,12 @@ pub fn main() -> i32 {
     {
         var source = @"
 struct Container {
-    data: [5]i32,
+    data: [i32; 5],
     count: i32
 }
 pub fn main() -> i32 {
     let c = Container {
-        data: {1, 2, 3, 4, 5},
+        data: [1, 2, 3, 4, 5],
         count: 5
     }
     return c.data[0]
@@ -179,7 +179,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let arr = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+    let arr = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     return arr[5]
 }";
         var module = BuildIr(source);
@@ -191,7 +191,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    var arr = {1, 2, 3}
+    var arr = [1, 2, 3]
     arr[0] += 10
     return arr[0]
 }";
@@ -204,7 +204,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let arr = {10, 20, 30, 40, 50}
+    let arr = [10, 20, 30, 40, 50]
     var idx = 2
     return arr[idx]
 }";
@@ -217,8 +217,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let arr1 = {1, 2, 3}
-    let arr2 = {4, 5, 6}
+    let arr1 = [1, 2, 3]
+    let arr2 = [4, 5, 6]
     return arr1[arr2[0] - 4]
 }";
         var module = BuildIr(source);

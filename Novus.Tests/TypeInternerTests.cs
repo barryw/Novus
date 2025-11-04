@@ -216,11 +216,11 @@ public class TypeInternerTests
     {
         var interner = new TypeInterner();
 
-        // Create *[10]i32
+        // Create *[i32; 10]
         var arr1 = interner.GetArrayType(IrIntType.I32, 10);
         var ptr1 = interner.GetPointerType(arr1);
 
-        // Create *[10]i32 again
+        // Create *[i32; 10] again
         var arr2 = interner.GetArrayType(IrIntType.I32, 10);
         var ptr2 = interner.GetPointerType(arr2);
 
@@ -251,7 +251,7 @@ public class TypeInternerTests
     {
         var interner = new TypeInterner();
 
-        // Create fn(&[10]*i32) -> &mut i16
+        // Create fn(&[10:]*i32) -> &mut i16
         var intType = IrIntType.I32;
         var ptrToInt = interner.GetPointerType(intType);
         var arrayOfPtrs = interner.GetArrayType(ptrToInt, 10);

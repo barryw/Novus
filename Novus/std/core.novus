@@ -98,3 +98,39 @@ pub trait Iterable<T> {
     fn get(&self, index: u32) -> Option<T>
     fn len(&self) -> u32
 }
+
+// ============================================================================
+// From Trait - Automatic Type Conversions
+// ============================================================================
+
+// From<T> - enables automatic type conversions
+// Primary use case: automatic error conversions with the ? operator
+//
+// When you implement From<SourceType> for TargetType, the compiler automatically
+// converts SourceType to TargetType when needed (e.g., in ? operator error propagation)
+//
+// Requirements:
+// - convert(value: T) -> Self: Convert from T to Self
+//
+// Note: We use 'convert' instead of 'from' because 'from' is a keyword in Novus
+// (used in import statements: `from std::core import Option`)
+//
+// Example implementation:
+// ```novus
+// impl From<DosError> for NovusError {
+//     fn convert(err: DosError) -> NovusError {
+//         return NovusError::Dos(err)
+//     }
+// }
+//
+// // Now the ? operator can automatically convert DosError to NovusError:
+// fn foo() -> Result<i32, NovusError> {
+//     let file = open_file("test.txt")?  // Returns Result<File, DosError>
+//     // If open_file returns Err(dos_err), ? automatically calls
+//     // NovusError::convert(dos_err) and returns Err(converted_error)
+//     return Ok(42)
+// }
+// ```
+pub trait From<T> {
+    fn convert(value: T) -> Self
+}

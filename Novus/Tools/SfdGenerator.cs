@@ -477,8 +477,8 @@ public class SfdGenerator
 
             if (field.IsArray)
             {
-                // Novus arrays: fieldName: [size]Type
-                sb.AppendLine($"    {field.Name}: [{field.ArraySize}]{fieldType},");
+                // Novus arrays: fieldName: [Type; size]
+                sb.AppendLine($"    {field.Name}: [{fieldType}; {field.ArraySize}],");
             }
             else
             {

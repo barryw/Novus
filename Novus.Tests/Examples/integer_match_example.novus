@@ -1,0 +1,143 @@
+// Example: Integer Pattern Matching
+//
+// Description:
+//   Demonstrates pattern matching on integers using the match expression.
+//   Shows various use cases: simple values, negative numbers, hex literals,
+//   and binary literals.
+//
+// Expected Output:
+//   Exit code: 42
+
+// Convert HTTP status code to category
+pub fn http_status_category(code: i32) -> i32 {
+    match code {
+        200 => return 1,  // Success
+        201 => return 1,
+        204 => return 1,
+        400 => return 2,  // Client Error
+        401 => return 2,
+        403 => return 2,
+        404 => return 2,
+        500 => return 3,  // Server Error
+        502 => return 3,
+        503 => return 3,
+        _   => return 0   // Unknown
+    }
+}
+
+// Classify a number as positive, negative, or zero
+pub fn sign(n: i32) -> i32 {
+    match n {
+        0  => return 0,   // Zero
+        _  => {
+            if n > 0 {
+                return 1  // Positive
+            }
+            return -1     // Negative
+        }
+    }
+}
+
+// Parse permission bits (Unix-style)
+pub fn parse_permission(bits: i32) -> i32 {
+    match bits {
+        %111 => return 7,  // rwx
+        %110 => return 6,  // rw-
+        %101 => return 5,  // r-x
+        %100 => return 4,  // r--
+        %011 => return 3,  // -wx
+        %010 => return 2,  // -w-
+        %001 => return 1,  // --x
+        %000 => return 0,  // ---
+        _    => return -1  // Invalid
+    }
+}
+
+// Hex color code to RGB component
+pub fn hex_to_component(hex: i32) -> i32 {
+    match hex {
+        $00 => return 0,
+        $FF => return 255,
+        $80 => return 128,
+        _   => return hex  // Return as-is for other values
+    }
+}
+
+// Day of week (1=Monday, 7=Sunday)
+pub fn day_of_week_name(day: i32) -> i32 {
+    match day {
+        1 => return 1,   // Monday
+        2 => return 2,   // Tuesday
+        3 => return 3,   // Wednesday
+        4 => return 4,   // Thursday
+        5 => return 5,   // Friday
+        6 => return 6,   // Saturday
+        7 => return 7,   // Sunday
+        _ => return 0    // Invalid
+    }
+}
+
+pub fn main() -> i32 {
+    // Test HTTP status category
+    let ok_status = http_status_category(200)
+    if ok_status != 1 {
+        return 1  // Failed
+    }
+
+    let not_found = http_status_category(404)
+    if not_found != 2 {
+        return 2  // Failed
+    }
+
+    // Test sign function
+    let pos = sign(10)
+    if pos != 1 {
+        return 3  // Failed
+    }
+
+    let neg = sign(-5)
+    if neg != -1 {
+        return 4  // Failed
+    }
+
+    let zero = sign(0)
+    if zero != 0 {
+        return 5  // Failed
+    }
+
+    // Test permission parsing
+    let rwx = parse_permission(%111)
+    if rwx != 7 {
+        return 6  // Failed
+    }
+
+    let r_only = parse_permission(%100)
+    if r_only != 4 {
+        return 7  // Failed
+    }
+
+    // Test hex parsing
+    let white = hex_to_component($FF)
+    if white != 255 {
+        return 8  // Failed
+    }
+
+    let black = hex_to_component($00)
+    if black != 0 {
+        return 9  // Failed
+    }
+
+    // Test day of week
+    let monday = day_of_week_name(1)
+    if monday != 1 {
+        return 10  // Failed
+    }
+
+    let sunday = day_of_week_name(7)
+    if sunday != 7 {
+        return 11  // Failed
+    }
+
+    // All tests passed!
+    return 42
+}

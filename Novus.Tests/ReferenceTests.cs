@@ -173,8 +173,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let arr = {1, 2, 3, 4, 5}
-    let r: &[5]i32 = &arr
+    let arr = [1, 2, 3, 4, 5]
+    let r: &[i32; 5] = &arr
     return 0
 }";
         var module = BuildIr(source);

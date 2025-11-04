@@ -43,12 +43,12 @@ pub fn main() -> i32 {
     {
         var source = @"
 struct Container {
-    data: [5]i32,
+    data: [i32; 5],
     count: i32
 }
 pub fn main() -> i32 {
     let c = Container {
-        data: {1, 2, 3, 4, 5},
+        data: [1, 2, 3, 4, 5],
         count: 5
     }
     return c.data[0] + c.count
@@ -250,11 +250,11 @@ struct Point {
     y: i32
 }
 pub fn main() -> i32 {
-    let points = {
+    let points = [
         Point { x: 1, y: 2 },
         Point { x: 3, y: 4 },
         Point { x: 5, y: 6 }
-    }
+    ]
     return points[0].x + points[1].y
 }";
         var module = BuildIr(source);
@@ -270,10 +270,10 @@ struct Point {
     y: i32
 }
 pub fn main() -> i32 {
-    var points = {
+    var points = [
         Point { x: 1, y: 2 },
         Point { x: 3, y: 4 }
-    }
+    ]
     points[0].x = 100
     return points[0].x
 }";

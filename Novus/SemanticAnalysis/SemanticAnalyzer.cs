@@ -3054,24 +3054,28 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return null;
         }
 
-        // Ensure we're matching on an enum type
-        if (matchValueType is not IrEnumType enumType)
+        // Ensure we're matching on an enum type or integer type
+        bool isEnumMatch = matchValueType is IrEnumType;
+        bool isIntegerMatch = matchValueType is IrIntType;
+
+        if (!isEnumMatch && !isIntegerMatch)
         {
             var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
             _diagnostics.ReportError(
                 "E0035",
-                $"match expression can only be used with enum types, got '{matchValueType.Name}'",
+                $"match expression can only be used with enum or integer types, got '{matchValueType.Name}'",
                 location,
                 helpTexts: new List<string>
                 {
-                    "match is used for pattern matching on enum variants"
+                    "match is used for pattern matching on enum variants or integer literals"
                 }
             );
             return null;
         }
 
-        // Track which variants are covered
+        // Track which variants/values are covered
         var coveredVariants = new HashSet<string>();
+        var coveredIntegerValues = new HashSet<long>();
         bool hasWildcard = false;
 
         // Analyze each match arm
@@ -3083,7 +3087,14 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             var variablesBeforePattern = new HashSet<string>(_variables.Keys);
 
             // Analyze pattern and bind variables
-            AnalyzePatternAndBind(pattern, enumType, coveredVariants, ref hasWildcard);
+            if (isEnumMatch)
+            {
+                AnalyzePatternAndBind(pattern, (IrEnumType)matchValueType, coveredVariants, ref hasWildcard);
+            }
+            else // isIntegerMatch
+            {
+                AnalyzeIntegerPatternAndBind(pattern, (IrIntType)matchValueType, coveredIntegerValues, ref hasWildcard);
+            }
 
             // Analyze the arm body (expression, block, or return statement) with bound variables in scope
             if (armCtx.expression() != null)
@@ -3107,25 +3118,45 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
-        // Check exhaustiveness - either all variants covered or wildcard present
+        // Check exhaustiveness
         if (!hasWildcard)
         {
-            var uncoveredVariants = enumType.Variants
-                .Select(v => v.Name)
-                .Where(v => !coveredVariants.Contains(v))
-                .ToList();
-
-            if (uncoveredVariants.Any())
+            if (isEnumMatch)
             {
+                var enumType = (IrEnumType)matchValueType;
+                var uncoveredVariants = enumType.Variants
+                    .Select(v => v.Name)
+                    .Where(v => !coveredVariants.Contains(v))
+                    .ToList();
+
+                if (uncoveredVariants.Any())
+                {
+                    var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                    _diagnostics.ReportError(
+                        "E0036",
+                        "match is not exhaustive",
+                        location,
+                        helpTexts: new List<string>
+                        {
+                            $"missing patterns: {string.Join(", ", uncoveredVariants)}",
+                            "add missing patterns or use a wildcard pattern '_'"
+                        }
+                    );
+                }
+            }
+            else // isIntegerMatch
+            {
+                // For integer matches, exhaustiveness is practically impossible (too many values)
+                // So we require a wildcard pattern for integers
                 var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
                 _diagnostics.ReportError(
                     "E0036",
-                    "match is not exhaustive",
+                    "match on integer type is not exhaustive",
                     location,
                     helpTexts: new List<string>
                     {
-                        $"missing patterns: {string.Join(", ", uncoveredVariants)}",
-                        "add missing patterns or use a wildcard pattern '_'"
+                        "integer types have too many values to enumerate",
+                        "add a wildcard pattern '_' to handle all other cases"
                     }
                 );
             }
@@ -3275,6 +3306,124 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 }
 
                 coveredVariants.Add(variantName);
+                break;
+            }
+        }
+    }
+
+    private void AnalyzeIntegerPatternAndBind(NovusParser.PatternContext pattern, IrIntType intType,
+        HashSet<long> coveredValues, ref bool hasWildcard)
+    {
+        switch (pattern)
+        {
+            case NovusParser.WildcardPatternContext:
+                hasWildcard = true;
+                break;
+
+            case NovusParser.LiteralPatternContext literalPattern:
+            {
+                // Integer literal pattern
+                if (literalPattern.INTEGER_LITERAL() != null)
+                {
+                    var literalText = literalPattern.INTEGER_LITERAL().GetText();
+                    if (long.TryParse(literalText, out long value))
+                    {
+                        // Check if value is already covered
+                        if (coveredValues.Contains(value))
+                        {
+                            var location = SourceLocationHelper.FromToken(literalPattern.Start, _filePath, _sourceLines);
+                            _diagnostics.ReportWarning(
+                                "W0001",
+                                $"duplicate match pattern for value {value}",
+                                location,
+                                helpTexts: new List<string>
+                                {
+                                    "this pattern will never be reached because an earlier pattern matches the same value"
+                                }
+                            );
+                        }
+
+                        // Validate that value fits in the integer type
+                        bool valueInRange = intType.BitWidth switch
+                        {
+                            8 when intType.IsSigned => value >= sbyte.MinValue && value <= sbyte.MaxValue,
+                            8 when !intType.IsSigned => value >= byte.MinValue && value <= byte.MaxValue,
+                            16 when intType.IsSigned => value >= short.MinValue && value <= short.MaxValue,
+                            16 when !intType.IsSigned => value >= ushort.MinValue && value <= ushort.MaxValue,
+                            32 when intType.IsSigned => value >= int.MinValue && value <= int.MaxValue,
+                            32 when !intType.IsSigned => value >= uint.MinValue && value <= uint.MaxValue,
+                            64 => true, // long can represent all i64 values, u64 would need ulong but we'll accept it
+                            _ => false
+                        };
+
+                        if (!valueInRange)
+                        {
+                            var location = SourceLocationHelper.FromToken(literalPattern.Start, _filePath, _sourceLines);
+                            _diagnostics.ReportError(
+                                "E0040",
+                                $"literal value {value} does not fit in type '{intType.Name}'",
+                                location
+                            );
+                        }
+
+                        coveredValues.Add(value);
+                    }
+                    else
+                    {
+                        var location = SourceLocationHelper.FromToken(literalPattern.Start, _filePath, _sourceLines);
+                        _diagnostics.ReportError(
+                            "E0041",
+                            $"invalid integer literal '{literalText}'",
+                            location
+                        );
+                    }
+                }
+                else if (literalPattern.STRING_LITERAL() != null)
+                {
+                    var location = SourceLocationHelper.FromToken(literalPattern.Start, _filePath, _sourceLines);
+                    _diagnostics.ReportError(
+                        "E0042",
+                        "cannot use string literal in integer match pattern",
+                        location,
+                        helpTexts: new List<string>
+                        {
+                            "integer match patterns only accept integer literals or wildcards"
+                        }
+                    );
+                }
+                break;
+            }
+
+            case NovusParser.BoolLiteralPatternContext boolPattern:
+            {
+                var location = SourceLocationHelper.FromToken(boolPattern.Start, _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0043",
+                    "cannot use boolean literal in integer match pattern",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "integer match patterns only accept integer literals or wildcards"
+                    }
+                );
+                break;
+            }
+
+            case NovusParser.IdentifierPatternContext identPattern:
+            case NovusParser.VariantPatternContext:
+            case NovusParser.SimpleVariantPatternContext:
+            {
+                var location = SourceLocationHelper.FromToken(pattern.Start, _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0044",
+                    "invalid pattern for integer match",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "integer match patterns only accept integer literals or wildcards",
+                        $"example: match value {{ 0 => ..., 1 => ..., _ => ... }}"
+                    }
+                );
                 break;
             }
         }
@@ -6027,7 +6176,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         {
             NovusParser.ReferenceTypeContext refCtx => ParseReferenceType(refCtx),
             NovusParser.PointerTypeContext ptrCtx => ParsePointerType(ptrCtx),
-            NovusParser.ArrayTypeContext arrayCtx => ParseArrayType(arrayCtx),
+            NovusParser.ArrayTypeWithSizeContext arrayWithSizeCtx => ParseArrayTypeWithSize(arrayWithSizeCtx),
+            NovusParser.ArrayTypeInferredContext arrayInferredCtx => ParseArrayTypeInferred(arrayInferredCtx),
             NovusParser.FunctionPointerTypeContext fpCtx => ParseFunctionPointerType(fpCtx),
             NovusParser.PrimitiveTypeContext primCtx => ParsePrimitiveType(primCtx),
             NovusParser.NamedTypeContext namedCtx => ParseNamedType(namedCtx),
@@ -6250,7 +6400,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return IrIntType.I32;
     }
 
-    private IrType ParseArrayType(NovusParser.ArrayTypeContext context)
+    private IrType ParseArrayTypeWithSize(NovusParser.ArrayTypeWithSizeContext context)
     {
         // Evaluate the size expression as a compile-time constant
         var sizeExpr = context.expression();
@@ -6287,6 +6437,15 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         var elementType = ParseType(context.type());
         return _typeInterner.GetArrayType(elementType, sizeValue.Value);
+    }
+
+    private IrType ParseArrayTypeInferred(NovusParser.ArrayTypeInferredContext context)
+    {
+        // For inferred size arrays, we create a placeholder with size -1
+        // The actual size will be determined when we parse the array literal initializer
+        var elementType = ParseType(context.type());
+        // Use size -1 as a sentinel value to indicate "size to be inferred"
+        return _typeInterner.GetArrayType(elementType, -1);
     }
 
     private IrType ParseFunctionPointerType(NovusParser.FunctionPointerTypeContext context)

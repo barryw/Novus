@@ -452,7 +452,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 struct Container {
-    data: [5]i32,
+    data: [i32; 5],
     count: i32
 }
 impl Container {
@@ -462,7 +462,7 @@ impl Container {
 }
 pub fn main() -> i32 {
     let c = Container {
-        data: {1, 2, 3, 4, 5},
+        data: [1, 2, 3, 4, 5],
         count: 5
     }
     return c.getFirst()

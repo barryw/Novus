@@ -57,7 +57,7 @@ pub struct MyLibrary {
 @packed
 @align(4)
 pub struct AlignedStruct {
-    data: [100]u8,
+    data: [u8; 100],
 }";
         var (diagnostics, _) = Analyze(source);
 

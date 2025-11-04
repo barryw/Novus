@@ -25,7 +25,7 @@ pub struct BitMap {
     Flags: u8,
     Depth: u8,
     pad: u16,
-    Planes: [8]*u8,
+    Planes: [*u8; 8],
 }
 
 // ============================================================================
@@ -210,11 +210,11 @@ pub struct Custom {
     bltbmod: u16,
     bltamod: u16,
     bltdmod: u16,
-    pad34: [4]u16,
+    pad34: [u16; 4],
     bltcdat: u16,
     bltbdat: u16,
     bltadat: u16,
-    pad3b: [3]u16,
+    pad3b: [u16; 3],
     deniseid: u16,
     dsksync: u16,
     cop1lc: u32,
@@ -236,7 +236,7 @@ pub struct Custom {
     ac_per: u16,
     ac_vol: u16,
     ac_dat: u16,
-    ac_pad: [2]u16,
+    ac_pad: [u16; 2],
 }
 
 pub struct SpriteDef {
@@ -323,7 +323,7 @@ pub struct ColorTextFont {
     ctf_PlanePick: u8,
     ctf_PlaneOnOff: u8,
     ctf_ColorFontColors: *ColorFontColors,
-    ctf_CharData: [8]*u8,
+    ctf_CharData: [*u8; 8],
 }
 
 pub struct TextExtent {
@@ -338,7 +338,7 @@ pub struct Layer {
     ClipRect: *u8,
     rp: *u8,
     bounds: Rectangle,
-    reserved: [4]u8,
+    reserved: [u8; 4],
     priority: u16,
     Flags: u16,
     SuperBitMap: *BitMap,
@@ -359,7 +359,7 @@ pub struct Layer {
     saveClipRects: *u8,
     Width: i16,
     Height: i16,
-    reserved2: [18]u8,
+    reserved2: [u8; 18],
     DamageList: *u8,
 }
 
@@ -382,7 +382,7 @@ pub struct RastPort {
     LinePtrn: u16,
     cp_x: i16,
     cp_y: i16,
-    minterms: [8]u8,
+    minterms: [u8; 8],
     PenWidth: i16,
     PenHeight: i16,
     Font: *TextFont,
@@ -393,9 +393,9 @@ pub struct RastPort {
     TxBaseline: u16,
     TxSpacing: i16,
     RP_User: *u8,
-    longreserved: [2]u32,
-    wordreserved: [7]u16,
-    reserved: [8]u8,
+    longreserved: [u32; 2],
+    wordreserved: [u16; 7],
+    reserved: [u8; 8],
 }
 
 // ============================================================================
@@ -420,7 +420,7 @@ pub struct DrawInfo {
     dri_Flags: u32,
     dri_CheckMark: *u8,
     dri_AmigaKey: *u8,
-    dri_Reserved: [5]u32,
+    dri_Reserved: [u32; 5],
 }
 
 pub struct Gadget {
@@ -455,11 +455,11 @@ pub struct Requester {
     Flags: u16,
     BackFill: u8,
     ReqLayer: *Layer,
-    ReqPad1: [32]u8,
+    ReqPad1: [u8; 32],
     ImageBMap: *BitMap,
     RWindow: *u8,
     ReqImage: *u8,
-    ReqPad2: [32]u8,
+    ReqPad2: [u8; 32],
 }
 
 pub struct Screen {
@@ -684,16 +684,16 @@ pub struct DateStamp {
 pub struct FileInfoBlock {
     fib_DiskKey: i32,
     fib_DirEntryType: i32,
-    fib_FileName: [108]*u8 /* char */,
+    fib_FileName: [*u8; 108], /* char */
     fib_Protection: i32,
     fib_EntryType: i32,
     fib_Size: i32,
     fib_NumBlocks: i32,
     fib_Date: DateStamp,
-    fib_Comment: [80]*u8 /* char */,
+    fib_Comment: [*u8; 80], /* char */
     fib_OwnerUID: u16,
     fib_OwnerGID: u16,
-    fib_Reserved: [32]*u8 /* char */,
+    fib_Reserved: [*u8; 32], /* char */
 }
 
 pub struct InfoData {
@@ -742,7 +742,7 @@ pub struct NexxStr {
     ns_Length: u16,
     ns_Flags: u8,
     ns_Hash: u8,
-    ns_Buff: [8]i8,
+    ns_Buff: [i8; 8],
 }
 
 pub struct RexxArg {
@@ -750,7 +750,7 @@ pub struct RexxArg {
     ra_Length: u16,
     ra_Flags: u8,
     ra_Hash: u8,
-    ra_Buff: [8]i8,
+    ra_Buff: [i8; 8],
 }
 
 pub struct RexxMsg {
@@ -760,7 +760,7 @@ pub struct RexxMsg {
     rm_Action: i32,
     rm_Result1: i32,
     rm_Result2: i32,
-    rm_Args: [16]*u8,
+    rm_Args: [*u8; 16],
     rm_PassPort: *MsgPort,
     rm_CommAddr: *u8,
     rm_FileExt: *u8,
@@ -779,7 +779,7 @@ pub struct RexxRsrc {
 }
 
 pub struct RexxTask {
-    rt_Global: [200]i8,
+    rt_Global: [i8; 200],
     rt_MsgPort: MsgPort,
     rt_Flags: u8,
     rt_SigBit: i8,
@@ -854,7 +854,7 @@ pub struct IoBuff {
     iobDFH: i32,
     iobLock: *u8,
     iobBct: i32,
-    iobArea: [204]i8,
+    iobArea: [i8; 204],
 }
 
 pub struct RexxMsgPort {
@@ -894,7 +894,7 @@ pub struct MemEntry {
 pub struct MemList {
     ml_Node: Node,
     ml_NumEntries: u16,
-    ml_ME: [1]MemEntry,
+    ml_ME: [MemEntry; 1],
 }
 
 pub struct CSource {
@@ -963,7 +963,7 @@ pub struct AppMessage {
     am_MouseY: i16,
     am_Seconds: u32,
     am_Micros: u32,
-    am_Reserved: [8]u32,
+    am_Reserved: [u32; 8],
 }
 
 pub struct AppWindow {
@@ -1173,7 +1173,7 @@ pub struct Segment {
     seg_Next: i32,
     seg_UC: i32,
     seg_Seg: i32,
-    seg_Name: [4]u8,
+    seg_Name: [u8; 4],
 }
 
 pub struct CommandLineInterface {
@@ -1268,7 +1268,7 @@ pub struct AChain {
     an_Lock: i32,
     an_Info: FileInfoBlock,
     an_Flags: i8,
-    an_String: [1]u8,
+    an_String: [u8; 1],
 }
 
 pub struct AnchorPath {
@@ -1280,7 +1280,7 @@ pub struct AnchorPath {
     ap_Reserved: i8,
     ap_Strlen: i16,
     ap_Info: FileInfoBlock,
-    ap_Buf: [1]u8,
+    ap_Buf: [u8; 1],
 }
 
 pub struct LocalVar {
@@ -1393,7 +1393,7 @@ pub struct ConfigDev {
     cd_SlotSize: u16,
     cd_Driver: *u8,
     cd_NextCD: *ConfigDev,
-    cd_Unused: [4]u32,
+    cd_Unused: [u32; 4],
 }
 
 pub struct CurrentBinding {
@@ -1461,7 +1461,7 @@ pub struct DiscResource {
     dr_pad: u8,
     dr_SysLib: *Library,
     dr_CiaResource: *Library,
-    dr_UnitID: [4]u32,
+    dr_UnitID: [u32; 4],
     dr_Waiting: List,
     dr_DiscBlock: Interrupt,
     dr_DiscSync: Interrupt,
@@ -1509,7 +1509,7 @@ pub struct CardMemoryMap {
 pub struct TP_AmigaXIP {
     TPL_CODE: u8,
     TPL_LINK: u8,
-    TP_XIPLOC: [4]u8,
+    TP_XIPLOC: [u8; 4],
     TP_XIPFLAGS: u8,
     TP_XIPRESRV: u8,
 }
@@ -1539,14 +1539,14 @@ pub struct BitScaleArgs {
 }
 
 pub struct FontContents {
-    fc_FileName: [256]*u8 /* char */,
+    fc_FileName: [*u8; 256], /* char */
     fc_YSize: u16,
     fc_Style: u8,
     fc_Flags: u8,
 }
 
 pub struct TFontContents {
-    tfc_FileName: [254]*u8 /* char */,
+    tfc_FileName: [*u8; 254], /* char */
     tfc_TagCount: u16,
     tfc_YSize: u16,
     tfc_Style: u8,
@@ -1563,7 +1563,7 @@ pub struct DiskFontHeader {
     dfh_FileID: u16,
     dfh_Revision: u16,
     dfh_Segment: i32,
-    dfh_Name: [32]*u8 /* char */,
+    dfh_Name: [*u8; 32], /* char */
     dfh_TF: TextFont,
 }
 

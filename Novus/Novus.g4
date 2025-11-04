@@ -141,10 +141,11 @@ traitBound
 type
     : '&' KW_MUT? type                                        # ReferenceType
     | '*' type                                                # PointerType
-    | '[' expression ']' type                                 # ArrayType
-    | '[' type ']'                                           # SliceType       // TODO: Not yet implemented in IrBuilder/codegen
+    | '[' type ';' expression ']'                            # ArrayTypeWithSize      // [u8; 100] - fixed-size uninitialized array
+    | '[' type ']'                                           # ArrayTypeInferred      // [i32] - size inferred from initializer
     | '(' type (',' type)+ ')'                               # TupleType       // TODO: Not yet implemented in IrBuilder/codegen
     | KW_FN '(' typeList? ')' ('->' type)?                   # FunctionPointerType
+    | KW_SELF_TYPE                                           # SelfType              // Self - refers to implementing type in trait context
     | KW_U8                                                   # PrimitiveType
     | KW_U16                                                  # PrimitiveType
     | KW_U32                                                  # PrimitiveType
@@ -222,6 +223,8 @@ pattern
     | IDENTIFIER '::' IDENTIFIER ('::' IDENTIFIER)*  # SimpleVariantPattern
     | IDENTIFIER                                # IdentifierPattern
     | INTEGER_LITERAL                           # LiteralPattern
+    | HEX_LITERAL                               # LiteralPattern
+    | BINARY_LITERAL                            # LiteralPattern
     | STRING_LITERAL                            # LiteralPattern
     | KW_TRUE                                   # BoolLiteralPattern
     | KW_FALSE                                  # BoolLiteralPattern
@@ -294,6 +297,7 @@ expression
     | expression '[' expression ']'                        # IndexExpr
     | expression '++' # PostIncrementExpr
     | expression '--'                                      # PostDecrementExpr
+    | expression '?'                                       # TryExpr               // Result propagation with auto-conversion
     | expression '..' expression                           # RangeExpr            // TODO: Not yet implemented in IrBuilder/codegen
     | expression '..=' expression                          # RangeInclusiveExpr   // TODO: Not yet implemented in IrBuilder/codegen
     | '(' type ')' expression                              # CastExpr
@@ -332,7 +336,7 @@ primaryExpression
     | typeName '{' NEWLINE* expression NEWLINE* '}'                                           # StructArrayInit
     | identifier                                   # IdentifierExpr
     | '(' expression ')'                           # ParenExpr
-    | '{' NEWLINE* (expression (',' NEWLINE* expression)*)? NEWLINE* '}'     # ArrayLiteral
+    | '[' NEWLINE* (expression (',' NEWLINE* expression)*)? NEWLINE* ']'     # ArrayLiteral
     ;
 
 identifier
@@ -359,10 +363,11 @@ KW_VAR      : 'var';
 KW_AT       : 'at';
 KW_LET      : 'let';
 KW_MUT      : 'mut';
-KW_FN       : 'fn';
-KW_IMPL     : 'impl';
-KW_SELF     : 'self';
-KW_STRUCT   : 'struct';
+KW_FN         : 'fn';
+KW_IMPL       : 'impl';
+KW_SELF       : 'self';
+KW_SELF_TYPE  : 'Self';
+KW_STRUCT     : 'struct';
 KW_ENUM     : 'enum';
 KW_TRAIT    : 'trait';
 KW_WHERE    : 'where';
