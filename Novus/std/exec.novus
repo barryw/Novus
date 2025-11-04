@@ -7,7 +7,8 @@
 // NOTE: For memory management, prefer using std::mem::MemoryBlock instead of AllocMem/FreeMem directly
 
 from std::core import Option, Result
-from std::error import ExecError, NovusError, novus_error_from_exec
+from std::error import DosError, ExecError, IntuitionError, GraphicsError, NovusError, novus_error_from_exec
+from std::ffi::amiga_structs import *
 from std::ffi::exec import AllocMem, FreeMem, AllocVec, FreeVec, CopyMem
 from std::ffi::exec import FindTask, SetTaskPri, AllocSignal, FreeSignal, Wait, Signal
 from std::ffi::exec import Forbid, Permit, Disable, Enable
@@ -16,8 +17,6 @@ from std::ffi::amiga_consts import MEMF_ANY, MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, 
 // ============================================================================
 // Task Management
 // ============================================================================
-//
-// Task pointers are i32 values returned by FindTask()
 
 /// Get pointer to the current task
 ///
@@ -36,14 +35,15 @@ from std::ffi::amiga_consts import MEMF_ANY, MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, 
 ///     }
 /// }
 /// ```
-pub fn get_current_task() -> Option<i32> {
+pub fn get_current_task() -> Option<*Task> {
+    var task: *Task = (*Task)0
     unsafe {
-        let task = FindTask(0)  // 0 = current task
-        if task == 0 {
-            return Option::None
-        }
-        return Option::Some(task)
+        task = FindTask((*u8)0)  // null = current task
     }
+    if let t = task {
+        return Option::Some(t)
+    }
+    return Option::None
 }
 
 /// Find a task by name
@@ -63,14 +63,15 @@ pub fn get_current_task() -> Option<i32> {
 ///     }
 /// }
 /// ```
-pub fn find_task(name: *u8) -> Option<i32> {
+pub fn find_task(name: *u8) -> Option<*Task> {
+    var task: *Task = (*Task)0
     unsafe {
-        let task = FindTask((i32)name)
-        if task == 0 {
-            return Option::None
-        }
-        return Option::Some(task)
+        task = FindTask(name)
     }
+    if let t = task {
+        return Option::Some(t)
+    }
+    return Option::None
 }
 
 /// Set task priority
@@ -82,13 +83,16 @@ pub fn find_task(name: *u8) -> Option<i32> {
 /// ```novus
 /// from std::exec import get_current_task, set_task_priority
 ///
-/// let task = get_current_task()?
-/// let old_pri = set_task_priority(task, 10)  // Raise to priority 10
+/// if let Some(task) = get_current_task() {
+///     let old_pri = set_task_priority(task, 10)  // Raise to priority 10
+/// }
 /// ```
-pub fn set_task_priority(task: i32, priority: i32) -> i32 {
+pub fn set_task_priority(task: *Task, priority: i32) -> i8 {
+    var result: i8 = 0
     unsafe {
-        return SetTaskPri(task, priority)
+        result = SetTaskPri(task, priority)
     }
+    return result
 }
 
 // ============================================================================
@@ -118,13 +122,14 @@ pub fn set_task_priority(task: i32, priority: i32) -> i32 {
 /// }
 /// ```
 pub fn allocate_signal(signal_num: i32) -> Option<i32> {
+    var result: i32 = 0
     unsafe {
-        let result = AllocSignal(signal_num)
-        if result == -1 {
-            return Option::None
-        }
-        return Option::Some(result)
+        result = AllocSignal(signal_num)
     }
+    if result == -1 {
+        return Option::None
+    }
+    return Option::Some(result)
 }
 
 /// Free a previously allocated signal
@@ -153,9 +158,11 @@ pub fn free_signal(signal_num: i32) {
 /// }
 /// ```
 pub fn wait_for_signals(signal_mask: u32) -> u32 {
+    var result: i32 = 0
     unsafe {
-        return (u32)Wait((i32)signal_mask)
+        result = Wait((i32)signal_mask)
     }
+    return (u32)result
 }
 
 /// Send a signal to a task
@@ -166,17 +173,14 @@ pub fn wait_for_signals(signal_mask: u32) -> u32 {
 /// ```novus
 /// from std::exec import find_task, send_signal
 ///
-/// match find_task("My Task".ptr) {
-///     Some(task) => {
-///         let signal_mask = 1 << 4
-///         send_signal(task, signal_mask)
-///     },
-///     None => {}
+/// if let Some(task) = find_task("My Task".ptr) {
+///     let signal_mask = 1 << 4
+///     send_signal(task, signal_mask)
 /// }
 /// ```
-pub fn send_signal(task: i32, signal_mask: u32) {
+pub fn send_signal(task: *Task, signal_mask: u32) {
     unsafe {
-        Signal(task, (i32)signal_mask)
+        Signal(task, signal_mask)
     }
 }
 

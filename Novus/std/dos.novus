@@ -5,11 +5,12 @@
 // For low-level FFI access, use std::ffi::dos
 
 from std::core import Option, Result
-from std::error import DosError, NovusError, novus_error_from_dos
+from std::ffi::amiga_structs import *
+from std::error import DosError, ExecError, IntuitionError, GraphicsError, NovusError, novus_error_from_dos
 from std::tags import make_tags
-from std::ffi::amiga_structs import TagItem, Process
 from std::ffi::dos import SystemTagList, CreateNewProc, AllocDosObject, FreeDosObject
 from std::ffi::dos import NewLoadSeg, UnLoadSeg
+from std::ffi::dos import Open, Close, Read, Write, Seek
 
 // ============================================================================
 // Command Execution
@@ -34,7 +35,7 @@ pub fn System(command: *u8, tags_ptr: *TagItem, count: u32) -> Result<i32, Novus
         tag_list.drop()  // Automatic cleanup at scope exit
     }
 
-    let result = SystemTagList(command, tag_list.as_ptr())
+    let result = SystemTagList(command, (*TagItem)tag_list.as_ptr())
 
     // SystemTagList returns -1 on error
     if result == -1 {
@@ -69,7 +70,7 @@ pub fn CreateProcess(tags_ptr: *TagItem, count: u32) -> Result<*Process, NovusEr
         tag_list.drop()  // Automatic cleanup at scope exit
     }
 
-    let process = CreateNewProc(tag_list.as_ptr())
+    let process = CreateNewProc((*TagItem)tag_list.as_ptr())
 
     // Check if process creation succeeded (null check)
     if let proc = process {
@@ -106,7 +107,7 @@ pub fn AllocDos(obj_type: u32, tags_ptr: *TagItem, count: u32) -> Result<*u8, No
         tag_list.drop()  // Automatic cleanup at scope exit
     }
 
-    let obj = AllocDosObject(obj_type, tag_list.as_ptr())
+    let obj = AllocDosObject(obj_type, (*TagItem)tag_list.as_ptr())
 
     // Check if allocation succeeded (null check)
     if let o = obj {
@@ -135,7 +136,7 @@ pub fn LoadSeg(file: *u8, tags_ptr: *TagItem, count: u32) -> Result<i32, NovusEr
         tag_list.drop()  // Automatic cleanup at scope exit
     }
 
-    let seglist = NewLoadSeg(file, tag_list.as_ptr())
+    let seglist = NewLoadSeg(file, (*TagItem)tag_list.as_ptr())
 
     // NewLoadSeg returns 0 on failure
     if seglist == 0 {
@@ -180,13 +181,14 @@ pub fn LoadSeg(file: *u8, tags_ptr: *TagItem, count: u32) -> Result<i32, NovusEr
 /// }
 /// ```
 pub fn open_file(path: *u8, mode: i32) -> Option<i32> {
+    var fh: i32 = 0
     unsafe {
-        let fh = std::ffi::dos::Open((i32)path, mode)
-        if fh == 0 {
-            return Option::None
-        }
-        return Option::Some(fh)
+        fh = Open(path, mode)
     }
+    if fh == 0 {
+        return Option::None
+    }
+    return Option::Some(fh)
 }
 
 /// Close a file handle
@@ -195,7 +197,7 @@ pub fn open_file(path: *u8, mode: i32) -> Option<i32> {
 /// Best used with defer for automatic cleanup.
 pub fn close_file(fh: i32) {
     unsafe {
-        std::ffi::dos::Close(fh)
+        Close(fh)
     }
 }
 
@@ -210,9 +212,11 @@ pub fn close_file(fh: i32) {
 /// let bytes_read = read_file(fh, &buffer, 1024)
 /// ```
 pub fn read_file(fh: i32, buffer: *u8, length: u32) -> i32 {
+    var result: i32 = 0
     unsafe {
-        return std::ffi::dos::Read(fh, (i32)buffer, (i32)length)
+        result = Read(fh, buffer, (i32)length)
     }
+    return result
 }
 
 /// Write bytes from buffer to file
@@ -226,9 +230,11 @@ pub fn read_file(fh: i32, buffer: *u8, length: u32) -> i32 {
 /// let bytes_written = write_file(fh, data.ptr, 14)
 /// ```
 pub fn write_file(fh: i32, buffer: *u8, length: u32) -> i32 {
+    var result: i32 = 0
     unsafe {
-        return std::ffi::dos::Write(fh, (i32)buffer, (i32)length)
+        result = Write(fh, buffer, (i32)length)
     }
+    return result
 }
 
 /// Seek to a position in the file
@@ -250,9 +256,11 @@ pub fn write_file(fh: i32, buffer: *u8, length: u32) -> i32 {
 /// let file_size = seek_file(fh, 0, OFFSET_END)
 /// ```
 pub fn seek_file(fh: i32, position: i32, offset: i32) -> i32 {
+    var result: i32 = 0
     unsafe {
-        return std::ffi::dos::Seek(fh, position, offset)
+        result = Seek(fh, position, offset)
     }
+    return result
 }
 
 // ============================================================================

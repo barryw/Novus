@@ -729,15 +729,6 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     private void ImportModule(string moduleNamespace, bool importAll, NovusParser.ImportListContext? importList = null)
     {
-        // Skip if this module has already been processed (prevent circular imports)
-        if (_processedModules.Contains(moduleNamespace))
-        {
-            return;
-        }
-
-        // Mark this module as being processed
-        _processedModules.Add(moduleNamespace);
-
         // Convert namespace path to file path
         string modulePath = ModuleImportHelper.ResolveModulePath(moduleNamespace, _stdLibPath);
 
@@ -748,6 +739,135 @@ public class IrBuilder : NovusBaseVisitor<object?>
         {
             throw new Exception($"Module '{moduleNamespace}' not found at {modulePath} or has syntax errors");
         }
+
+        // Check if module has already been fully processed
+        bool alreadyProcessed = _processedModules.Contains(moduleNamespace);
+
+        if (alreadyProcessed)
+        {
+            // Even if module is already processed, we still need to handle selective imports
+            // This allows: from std::ffi::dos import SystemTagList
+            //         AND: from std::ffi::dos import IoErr
+            // Both imports from the same module
+            if (!importAll && importList != null)
+            {
+                // Build the list of names to import for this specific import statement
+                var selectiveImports = ModuleImportHelper.BuildImportNameSet(moduleContext, importAll, importList);
+
+                // Register functions from the already-parsed module
+                foreach (var funcDecl in moduleContext.functionDeclaration())
+                {
+                    var funcName = funcDecl.IDENTIFIER().GetText();
+                    if (selectiveImports.Contains(funcName))
+                    {
+                        // Check if not already imported
+                        if (!_module.Functions.Any(f => f.Name == funcName))
+                        {
+                            // Parse and add the function
+                            var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
+
+                            var isExtern = false;
+                            var visibility = Visibility.Private;
+                            for (int i = 0; i < Math.Min(4, funcDecl.ChildCount); i++)
+                            {
+                                var childText = funcDecl.GetChild(i)?.GetText();
+                                if (childText == "extern") isExtern = true;
+                                if (childText == "pub") visibility = Visibility.Public;
+                                if (childText == "internal") visibility = Visibility.Internal;
+                            }
+
+                            var function = new IrFunction(funcName, returnType, visibility, isExtern);
+
+                            // Parse parameters
+                            if (funcDecl.parameterList() != null)
+                            {
+                                var paramList = funcDecl.parameterList();
+                                foreach (var paramCtx in paramList.parameter())
+                                {
+                                    var paramName = paramCtx.IDENTIFIER().GetText();
+                                    var paramType = ParseType(paramCtx.type());
+                                    function.Parameters.Add(new IrParameter(paramName, paramType));
+                                }
+                            }
+
+                            _module.AddFunction(function);
+                        }
+                    }
+                }
+
+                // Register constants
+                foreach (var constDecl in moduleContext.constDeclaration())
+                {
+                    var constName = constDecl.IDENTIFIER().GetText();
+                    if (selectiveImports.Contains(constName))
+                    {
+                        if (!_constants.ContainsKey(constName))
+                        {
+                            RegisterConstant(constDecl);
+                        }
+                    }
+                }
+
+                // Register structs
+                foreach (var structDecl in moduleContext.structDeclaration())
+                {
+                    var structName = structDecl.IDENTIFIER().GetText();
+                    if (selectiveImports.Contains(structName))
+                    {
+                        if (!_structs.ContainsKey(structName))
+                        {
+                            RegisterStruct(structDecl);
+                        }
+                    }
+                }
+
+                // Register enums (need two-pass for forward references)
+                // Pass 1: Register stubs
+                foreach (var enumDecl in moduleContext.enumDeclaration())
+                {
+                    var enumName = enumDecl.IDENTIFIER().GetText();
+                    if (selectiveImports.Contains(enumName))
+                    {
+                        if (!_enums.ContainsKey(enumName))
+                        {
+                            var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), null);
+                            _enums[enumName] = stubEnum;
+                        }
+                    }
+                }
+
+                // Pass 2: Fill in variants
+                foreach (var enumDecl in moduleContext.enumDeclaration())
+                {
+                    var enumName = enumDecl.IDENTIFIER().GetText();
+                    if (selectiveImports.Contains(enumName))
+                    {
+                        if (_enums.TryGetValue(enumName, out var existingEnum) && existingEnum.Variants.Count == 0)
+                        {
+                            RegisterEnum(enumDecl);
+                        }
+                    }
+                }
+
+                // Register traits
+                foreach (var traitDecl in moduleContext.traitDeclaration())
+                {
+                    var traitName = traitDecl.IDENTIFIER().GetText();
+                    if (selectiveImports.Contains(traitName))
+                    {
+                        if (!_traits.ContainsKey(traitName))
+                        {
+                            RegisterTrait(traitDecl);
+                        }
+                    }
+                }
+            }
+
+            return; // Don't reprocess the entire module
+        }
+
+        // Mark this module as being processed
+        _processedModules.Add(moduleNamespace);
 
         // Check if this module has any pub (non-extern) functions that need compilation
         // FFI modules (only extern functions) don't need to be compiled separately
