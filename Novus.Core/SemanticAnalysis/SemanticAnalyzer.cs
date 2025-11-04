@@ -291,12 +291,91 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return;
         }
 
-        // Check for circular imports before processing
-        // This is different from checking if already imported - circular imports are an error
-        if (_importedModules.Contains(modulePath))
+        // Check if module has already been fully processed
+        bool alreadyProcessed = _importedModules.Contains(modulePath);
+
+        if (alreadyProcessed)
         {
-            // Module already imported - skip to avoid duplicate processing and circular dependencies
-            return;
+            // Even if module is already processed, we still need to handle selective imports
+            // This allows: from std::ffi::exec import AllocMem
+            //         AND: from std::ffi::exec import FindTask
+            // Both imports from the same module
+            if (!importAll && importList != null)
+            {
+                // Build the list of names to import for this specific import statement
+                var selectiveImports = ModuleImportHelper.BuildImportNameSet(moduleContext, importAll, importList);
+
+                // Register functions from the already-parsed module
+                foreach (var funcDecl in moduleContext.functionDeclaration())
+                {
+                    var funcName = funcDecl.IDENTIFIER().GetText();
+                    if (selectiveImports.Contains(funcName))
+                    {
+                        // Check if not already imported
+                        if (!_functions.ContainsKey(funcName))
+                        {
+                            RegisterFunction(funcDecl);
+                        }
+                        _importedNames[funcName] = moduleNamespace;
+                    }
+                }
+
+                // Register constants
+                foreach (var constDecl in moduleContext.constDeclaration())
+                {
+                    var constName = constDecl.IDENTIFIER().GetText();
+                    if (selectiveImports.Contains(constName))
+                    {
+                        if (!_constants.ContainsKey(constName))
+                        {
+                            RegisterConstant(constDecl);
+                        }
+                        _importedNames[constName] = moduleNamespace;
+                    }
+                }
+
+                // Register types (enums, structs, traits)
+                foreach (var enumDecl in moduleContext.enumDeclaration())
+                {
+                    var enumName = enumDecl.IDENTIFIER().GetText();
+                    if (selectiveImports.Contains(enumName))
+                    {
+                        if (!_enums.ContainsKey(enumName))
+                        {
+                            RegisterEnum(enumDecl);
+                        }
+                        _importedNames[enumName] = moduleNamespace;
+                    }
+                }
+
+                foreach (var structDecl in moduleContext.structDeclaration())
+                {
+                    var structName = structDecl.IDENTIFIER().GetText();
+                    if (selectiveImports.Contains(structName))
+                    {
+                        if (!_structs.ContainsKey(structName))
+                        {
+                            RegisterStruct(structDecl);
+                        }
+                        _importedNames[structName] = moduleNamespace;
+                    }
+                }
+
+                foreach (var traitDecl in moduleContext.traitDeclaration())
+                {
+                    var traitName = traitDecl.IDENTIFIER().GetText();
+                    if (selectiveImports.Contains(traitName))
+                    {
+                        if (!_traits.ContainsKey(traitName))
+                        {
+                            RegisterTrait(traitDecl);
+                        }
+                        _importedNames[traitName] = moduleNamespace;
+                    }
+                }
+            }
+
+            return; // Don't reprocess the entire module
         }
 
         // Mark this module as imported
