@@ -281,11 +281,14 @@ impl From<GraphicsError> for NovusError {
 }
 
 // ============================================================================
-// Legacy Conversion Functions (Deprecated - Use From<T> trait instead)
+// Manual Conversion Functions
 // ============================================================================
 
-// Note: These functions are kept for backward compatibility but should be
-// replaced with the ? operator and From<T> trait implementations above
+// Note: These functions are currently necessary because the compiler doesn't
+// yet support automatic From<T> trait conversion in Result::Err contexts.
+// Once the compiler implements this feature, these can be replaced with direct
+// error construction: Result::Err(DosError::NotFound) will automatically
+// convert to Result::Err(NovusError::Dos(DosError::NotFound))
 
 // From<DosError> for NovusError
 pub fn novus_error_from_dos(err: DosError) -> NovusError {
