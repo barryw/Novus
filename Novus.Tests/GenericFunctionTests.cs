@@ -126,8 +126,8 @@ enum Option<T> {
 }
 fn unwrap<T>(opt: Option<T>, default: T) -> T {
     match opt {
-        Option::Some(v) => return v
-        Option::None => return default
+        Option::Some(v) => return v,
+        Option::None => return default,
     }
 }
 pub fn main() -> i32 {

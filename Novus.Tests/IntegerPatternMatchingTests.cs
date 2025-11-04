@@ -28,7 +28,7 @@ pub fn classify_number(n: i32) -> i32 {
         0 => return 10,
         1 => return 20,
         2 => return 30,
-        _ => return 99
+        _ => return 99,
     }
 }
 
@@ -50,7 +50,7 @@ pub fn classify_byte(b: u8) -> i32 {
     match b {
         0u8 => return 1,
         255u8 => return 2,
-        _ => return 0
+        _ => return 0,
     }
 }
 
@@ -72,7 +72,7 @@ pub fn classify_signed(n: i32) -> i32 {
         0 => return 3,
         5 => return 4,
         10 => return 5,
-        _ => return 0
+        _ => return 0,
     }
 }
 
@@ -89,14 +89,14 @@ pub fn main() -> i32 {
         var code = @"
 pub fn day_name(day: i32) -> i32 {
     match day {
-        1 => return 1,   // Monday
-        2 => return 2,   // Tuesday
-        3 => return 3,   // Wednesday
-        4 => return 4,   // Thursday
-        5 => return 5,   // Friday
-        6 => return 6,   // Saturday
-        7 => return 7,   // Sunday
-        _ => return 0    // Invalid
+        1 => return 1,   // Monday,
+        2 => return 2,   // Tuesday,
+        3 => return 3,   // Wednesday,
+        4 => return 4,   // Thursday,
+        5 => return 5,   // Friday,
+        6 => return 6,   // Saturday,
+        7 => return 7,   // Sunday,
+        _ => return 0    // Invalid,
     }
 }
 
@@ -119,7 +119,7 @@ pub fn duplicate_case(n: i32) -> i32 {
     match n {
         5 => return 1,
         5 => return 2,
-        _ => return 0
+        _ => return 0,
     }
 }
 
@@ -144,7 +144,7 @@ pub fn classify_large(n: i64) -> i32 {
     match n {
         1000000000i64 => return 1,
         2000000000i64 => return 2,
-        _ => return 0
+        _ => return 0,
     }
 }
 
@@ -164,7 +164,7 @@ pub fn classify_hex(n: i32) -> i32 {
         $FF => return 1,
         $100 => return 2,
         $200 => return 3,
-        _ => return 0
+        _ => return 0,
     }
 }
 
@@ -185,7 +185,7 @@ pub fn classify_binary(n: i32) -> i32 {
         %0010 => return 2,
         %0100 => return 4,
         %1000 => return 8,
-        _ => return 0
+        _ => return 0,
     }
 }
 
@@ -204,7 +204,7 @@ pub fn early_return(n: i32) -> i32 {
     match n {
         0 => return 100,
         1 => return 200,
-        _ => return 300
+        _ => return 300,
     }
 }
 
@@ -229,7 +229,7 @@ pub fn block_pattern(n: i32) -> i32 {
             let y = 20
             return y
         },
-        _ => return 0
+        _ => return 0,
     }
 }
 

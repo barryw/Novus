@@ -192,8 +192,8 @@ enum Message {
 pub fn main() -> i32 {
     let m = Message::Text(""test"")
     match m {
-        Message::Text(s) => return 1
-        Message::Value(v) => return v
+        Message::Text(s) => return 1,
+        Message::Value(v) => return v,
     }
 }";
         var module = BuildIr(source);

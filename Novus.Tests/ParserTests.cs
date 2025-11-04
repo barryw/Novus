@@ -783,7 +783,7 @@ pub fn double(x: u32) -> u32 {
 fn test(opt: Option<i32>) -> i32 {
     match opt {
         Some(value) => return value,
-        None => return 0
+        None => return 0,
     }
 }";
         var parser = CreateParser(source);

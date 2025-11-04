@@ -1577,18 +1577,20 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return false;
         }
 
-        // Match statement returns if it's exhaustive and all arms return
-        if (stmt.matchStatement() != null)
+        // Match expression (as statement) returns if it's exhaustive and all arms return
+        if (stmt.expressionStatement() != null)
         {
-            var matchStmt = stmt.matchStatement();
-            var arms = matchStmt.matchArm();
+            var matchExpr = FindMatchExpr(stmt.expressionStatement().expression());
+            if (matchExpr != null)
+            {
+                var arms = matchExpr.matchArm();
 
-            if (arms.Length == 0)
-                return false;
+                if (arms.Length == 0)
+                    return false;
 
-            // Note: We can't easily get the matched expression's type here without re-analyzing
-            // For now, we'll do a conservative check based on pattern structure
-            // The full exhaustiveness check happens in VisitMatchStatement
+                // Note: We can't easily get the matched expression's type here without re-analyzing
+                // For now, we'll do a conservative check based on pattern structure
+                // The full exhaustiveness check happens in VisitMatchExpr
 
             // Try to infer if this looks like an exhaustive match based on patterns
             // This is conservative - we might miss some cases, but won't false positive
@@ -1662,11 +1664,28 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                                    (coveredVariants.Contains("Ok") && coveredVariants.Contains("Err")) ||
                                    (coveredVariants.Count >= 3);  // Heuristic: 3+ variants likely means exhaustive enum match
 
-            // Only guarantees return if it looks exhaustive AND all arms return
-            return looksExhaustive && allArmsReturn;
+                // Only guarantees return if it looks exhaustive AND all arms return
+                return looksExhaustive && allArmsReturn;
+            }
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Finds a MatchExprContext within an expression tree (helper for match-as-expression)
+    /// </summary>
+    private NovusParser.MatchExprContext? FindMatchExpr(NovusParser.ExpressionContext expr)
+    {
+        // Check if the expression's child is a PrimaryExprContext with MatchExpr
+        if (expr is NovusParser.PrimaryExprContext primaryExpr)
+        {
+            if (primaryExpr.primaryExpression() is NovusParser.MatchExprContext matchExpr)
+            {
+                return matchExpr;
+            }
+        }
+        return null;
     }
 
     /// <summary>
@@ -3045,7 +3064,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return text;
     }
 
-    public override IrType? VisitMatchStatement([NotNull] NovusParser.MatchStatementContext context)
+    public override IrType? VisitMatchExpr([NotNull] NovusParser.MatchExprContext context)
     {
         // Analyze the value being matched
         var matchValueType = Visit(context.expression());

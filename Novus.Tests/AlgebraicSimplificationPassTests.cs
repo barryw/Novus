@@ -420,7 +420,7 @@ public class AlgebraicSimplificationPassTests
     [Fact]
     public void SimplifyInReturn_Statement()
     {
-        // return x + 0; => return x;
+        // return x + 0; => return x;,
         var block = new IrBasicBlock("test");
         var varX = new IrVariable("x", IrIntType.I32);
         var zero = new IrConstant(0, IrIntType.I32);

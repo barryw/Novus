@@ -187,8 +187,8 @@ enum Color {
 }
 fn colorToInt(c: Color) -> i32 {
     match c {
-        Color::Red => { return 1 }
-        Color::Green => { return 2 }
+        Color::Red => { return 1 },
+        Color::Green => { return 2 },
         Color::Blue => { return 3 }
     }
 }

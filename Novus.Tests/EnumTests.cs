@@ -97,9 +97,9 @@ enum Color {
 pub fn main() -> i32 {
     let c = Color::Red
     match c {
-        Color::Red => return 1
-        Color::Green => return 2
-        Color::Blue => return 3
+        Color::Red => return 1,
+        Color::Green => return 2,
+        Color::Blue => return 3,
     }
 }";
         var module = BuildIr(source);
@@ -118,8 +118,8 @@ enum Status {
 pub fn main() -> i32 {
     let s = Status::Active
     match s {
-        Status::Active => return 1
-        _ => return 0
+        Status::Active => return 1,
+        _ => return 0,
     }
 }";
         var module = BuildIr(source);
@@ -137,8 +137,8 @@ enum Point {
 pub fn main() -> i32 {
     let p = Point::TwoD(10, 20)
     match p {
-        Point::TwoD(x, y) => return x + y
-        Point::ThreeD(x, y, z) => return x + y + z
+        Point::TwoD(x, y) => return x + y,
+        Point::ThreeD(x, y, z) => return x + y + z,
     }
 }";
         var module = BuildIr(source);
@@ -188,8 +188,8 @@ enum Option<T> {
 pub fn main() -> i32 {
     let x: Option<i32> = Option::Some(42)
     match x {
-        Option::Some(v) => return v
-        Option::None => return 0
+        Option::Some(v) => return v,
+        Option::None => return 0,
     }
 }";
         var module = BuildIr(source);
@@ -206,8 +206,8 @@ enum Status {
 }
 fn check(s: Status) -> i32 {
     match s {
-        Status::Active => return 1
-        Status::Inactive => return 0
+        Status::Active => return 1,
+        Status::Inactive => return 0,
     }
 }
 pub fn main() -> i32 {
@@ -325,8 +325,8 @@ enum Point {
 pub fn main() -> i32 {
     let p = Point::ThreeD(1, 2, 3)
     match p {
-        Point::TwoD(x, y) => return x
-        Point::ThreeD(x, y, z) => return x + y + z
+        Point::TwoD(x, y) => return x,
+        Point::ThreeD(x, y, z) => return x + y + z,
     }
 }";
         var module = BuildIr(source);
@@ -366,9 +366,9 @@ enum Color {
 pub fn main() -> i32 {
     let c = Color::Green
     match c {
-        Color::Red => return 0
-        Color::Green => return 1
-        Color::Blue => return 2
+        Color::Red => return 0,
+        Color::Green => return 1,
+        Color::Blue => return 2,
     }
 }";
         var module = BuildIr(source);

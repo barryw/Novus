@@ -5868,7 +5868,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         if (typeName == null)
         {
-            throw new Exception($"Path expression must reference a type");
+            var baseExprType = baseExpr?.GetType().Name ?? "null";
+            var baseExprText = baseExpr?.GetText() ?? "null";
+            throw new Exception($"Path expression must reference a type (got {baseExprType}: '{baseExprText}')");
         }
 
         // Try enum variant first
@@ -5942,7 +5944,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         throw new Exception($"Type '{typeName}' has no associated function or variant '{memberName}'");
     }
 
-    public override object? VisitMatchStatement([NotNull] NovusParser.MatchStatementContext context)
+    public override object? VisitMatchExpr([NotNull] NovusParser.MatchExprContext context)
     {
         var matchValue = (IrValue?)Visit(context.expression());
         if (matchValue == null)

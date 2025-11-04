@@ -188,8 +188,8 @@ enum Value {
 pub fn main() -> i32 {
     let v = Value::Int(42)
     match v {
-        Value::Int(x) => return x
-        Value::Ptr(p) => return 0
+        Value::Int(x) => return x,
+        Value::Ptr(p) => return 0,
     }
 }";
         var module = BuildIr(source);

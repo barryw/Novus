@@ -184,7 +184,6 @@ statement
     | forStatement
     | foreverStatement
     | breakStatement
-    | matchStatement
     | deferStatement
     | assertStatement
     | unsafeBlock
@@ -208,10 +207,6 @@ unsafeBlock
 
 usingStatement
     : KW_USING expression block
-    ;
-
-matchStatement
-    : KW_MATCH expression '{' NEWLINE* matchArm (',' NEWLINE* matchArm)* ','? NEWLINE* '}'
     ;
 
 matchArm
@@ -335,6 +330,7 @@ primaryExpression
     | typeName '{' NEWLINE* structFieldInit (',' NEWLINE* structFieldInit)* ','? NEWLINE* '}'  # StructLiteral
     | typeName '{' NEWLINE* expression NEWLINE* '}'                                           # StructArrayInit
     | identifier                                   # IdentifierExpr
+    | KW_MATCH expression '{' NEWLINE* matchArm (',' NEWLINE* matchArm)* ','? NEWLINE* '}'  # MatchExpr
     | '(' expression ')'                           # ParenExpr
     | '[' NEWLINE* (expression (',' NEWLINE* expression)*)? NEWLINE* ']'     # ArrayLiteral
     ;
