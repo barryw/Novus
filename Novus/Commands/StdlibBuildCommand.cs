@@ -179,41 +179,6 @@ public static class StdlibBuildCommand
 
         int compiledCount = StdlibModules.Length;
 
-        // Also compile novus_io.c (runtime C helper)
-        var cSourceFile = Path.Combine(stdlibSourceDir, "novus_io.c");
-        if (File.Exists(cSourceFile))
-        {
-            var cOutputFile = Path.Combine(outputDir, "novus_io.o");
-            if (verbose)
-            {
-                Console.WriteLine("  Compiling novus_io.c...");
-            }
-
-            var toolchain = new VbccToolchain(vbccPath, ndkPath);
-            var optimizationLevel = buildMode == BuildMode.Release ? 2 : 0;
-            var cResult = await toolchain.CompileToObject(
-                cSourceFile,
-                cOutputFile,
-                cpu,
-                optimizationLevel);
-
-            if (!cResult)
-            {
-                Console.WriteLine("  Error: Failed to compile novus_io.c");
-                return 1;
-            }
-
-            var cHash = ComputeFileHash(cSourceFile);
-            manifest.Modules["novus_io"] = new StdlibModuleInfo
-            {
-                SourceFile = "novus_io.c",
-                OutputFile = "novus_io.o",
-                Hash = cHash
-            };
-
-            compiledCount++;
-        }
-
         // Write manifest
         var manifestPath = Path.Combine(outputDir, "manifest.json");
         var manifestJson = JsonSerializer.Serialize(manifest, StdlibManifestJsonContext.Default.StdlibManifest);
