@@ -1574,6 +1574,22 @@ public class IrBuilder : NovusBaseVisitor<object?>
             return ptrType;
         }
 
+        if (type is IrEnumType enumType)
+        {
+            // If the enum has generic parameters, monomorphize it
+            if (enumType.GenericParameters.Count > 0)
+            {
+                // Check if any of the enum's generic parameters need substitution
+                bool needsSubstitution = enumType.GenericParameters.Any(p => substitutions.ContainsKey(p));
+                if (needsSubstitution)
+                {
+                    return MonomorphizeEnum(enumType, substitutions);
+                }
+            }
+            // Already monomorphized or no generic parameters
+            return enumType;
+        }
+
         // For other types, return as-is
         return type;
     }
@@ -1610,6 +1626,107 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         return typeSubstitutions;
+    }
+
+    /// <summary>
+    /// Infer generic type arguments for an enum associated function from call site
+    /// Handles both argument-based inference and return-type-based inference
+    /// Example: Option::FromPointer(ptr: *u8) should infer T=u8
+    /// </summary>
+    private Dictionary<string, IrType>? InferGenericEnumTypeArguments(
+        IrEnumType baseEnum,
+        string methodName,
+        List<IrValue> arguments,
+        IrType? expectedReturnType)
+    {
+        // Look up the method template to get parameter types
+        var templateKey = $"{baseEnum.EnumName}::{methodName}";
+        if (!_genericMethodTemplates.TryGetValue(templateKey, out var template))
+        {
+            return null; // No template found
+        }
+
+        var (genericParams, funcDecl, _) = template;
+
+        // Register generic parameters temporarily so we can parse the template
+        var savedGenericParams = new Dictionary<string, IrGenericType>();
+        foreach (var paramName in genericParams)
+        {
+            if (_symbols.HasGenericParameter(paramName))
+            {
+                var genericParam = _symbols.LookupGenericParameter(paramName);
+                if (genericParam != null) savedGenericParams[paramName] = genericParam;
+            }
+            _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
+        }
+
+        try
+        {
+            // Parse template parameters to get their generic types
+            var templateParams = new List<IrParameter>();
+            if (funcDecl.parameterList() != null)
+            {
+                var paramList = funcDecl.parameterList();
+
+                // Skip self parameter if present (it doesn't contribute to type inference for enum T)
+                var regularParams = paramList.parameter();
+
+                foreach (var paramCtx in regularParams)
+                {
+                    var paramName = paramCtx.IDENTIFIER().GetText();
+                    var savedSubstitutions = _currentTypeSubstitutions;
+                    _currentTypeSubstitutions = null; // Parse without substitutions to get generic types
+                    var paramType = ParseType(paramCtx.type());
+                    _currentTypeSubstitutions = savedSubstitutions;
+                    templateParams.Add(new IrParameter(paramName, paramType));
+                }
+            }
+
+            var typeSubstitutions = new Dictionary<string, IrType>();
+
+            // Step 1: Infer from arguments if available
+            if (arguments.Count == templateParams.Count)
+            {
+                for (int i = 0; i < arguments.Count; i++)
+                {
+                    var argType = arguments[i].Type;
+                    var paramType = templateParams[i].Type;
+                    ExtractGenericTypeMapping(paramType, argType, typeSubstitutions);
+                }
+            }
+
+            // Step 2: Try to infer from expected return type if we still have unresolved generics
+            if (expectedReturnType != null && funcDecl.type() != null)
+            {
+                var savedSubstitutions = _currentTypeSubstitutions;
+                _currentTypeSubstitutions = null; // Parse without substitutions
+                var templateReturnType = ParseType(funcDecl.type());
+                _currentTypeSubstitutions = savedSubstitutions;
+
+                // Extract type mappings from return type
+                ExtractGenericTypeMapping(templateReturnType, expectedReturnType, typeSubstitutions);
+            }
+
+            // Verify all generic parameters from the enum were resolved
+            foreach (var genericParam in baseEnum.GenericParameters)
+            {
+                if (!typeSubstitutions.ContainsKey(genericParam))
+                {
+                    return null; // Could not infer all required type parameters
+                }
+            }
+
+            return typeSubstitutions;
+        }
+        finally
+        {
+            // Restore generic parameters
+            _symbols.ClearGenericParameters();
+            foreach (var kvp in savedGenericParams)
+            {
+                _symbols.RegisterGenericParameter(kvp.Key, kvp.Value);
+            }
+        }
     }
 
     /// <summary>
@@ -2839,31 +2956,108 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     throw new Exception($"Variable {name} not found");
                 }
 
-                // Process lvalue suffix chain to build the expression context
-                // For now, handle single member access (most common case)
-                if (lvalueSuffixes.Length == 1 && lvalueSuffixes[0].GetChild(0).GetText() == ".")
+                // Process lvalue suffix chain for increment/decrement
+                // We need to build the chain of intermediate loads, then do load-increment-store on the final element
+                IrValue currentLValue = baseVar;
+
+                // Process all but the last suffix to build intermediate loads
+                for (int i = 0; i < lvalueSuffixes.Length - 1; i++)
                 {
-                    var memberName = lvalueSuffixes[0].IDENTIFIER().GetText();
+                    var suffix = lvalueSuffixes[i];
+
+                    if (suffix.GetChild(0).GetText() == ".")
+                    {
+                        // Field access
+                        var memberName = suffix.IDENTIFIER().GetText();
+
+                        // Auto-dereference pointers to structs
+                        IrValue actualBase = currentLValue;
+                        var structType = currentLValue.Type;
+                        if (structType is IrPointerType ptrType && ptrType.PointeeType is IrStructType)
+                        {
+                            actualBase = new IrDereferenceValue(currentLValue, ptrType.PointeeType);
+                            structType = ptrType.PointeeType;
+                        }
+
+                        if (structType is not IrStructType irStructType)
+                        {
+                            throw new Exception($"Cannot access member '{memberName}' on non-struct type");
+                        }
+
+                        var field = irStructType.Fields.FirstOrDefault(f => f.Name == memberName);
+                        if (field == null)
+                        {
+                            throw new Exception($"Field '{memberName}' not found in struct '{irStructType.Name}'");
+                        }
+
+                        // Load the intermediate field value
+                        var tempName = $"_field_{memberName}_{_tempCounter++}";
+                        var loadMember = new IrMemberAccess(tempName, actualBase, memberName, field.Type, field.Offset);
+                        _currentBlock!.AddInstruction(loadMember);
+                        currentLValue = new IrVariable(tempName, field.Type);
+                    }
+                    else if (suffix.GetChild(0).GetText() == "[")
+                    {
+                        // Index access
+                        var indexExpr = (IrValue?)Visit(suffix.expression());
+                        if (indexExpr == null)
+                        {
+                            throw new Exception("Index expression is required");
+                        }
+
+                        // Determine element type
+                        IrType elementType;
+                        if (currentLValue.Type is IrPointerType pt)
+                        {
+                            elementType = pt.PointeeType;
+                        }
+                        else if (currentLValue.Type is IrArrayType at)
+                        {
+                            elementType = at.ElementType;
+                        }
+                        else
+                        {
+                            throw new Exception($"Cannot index type '{currentLValue.Type}' - must be pointer or array");
+                        }
+
+                        // Load the intermediate indexed value
+                        var tempName = $"_indexed_{_tempCounter++}";
+                        var loadIndex = new IrIndexAccess(tempName, currentLValue, indexExpr, elementType);
+                        _currentBlock!.AddInstruction(loadIndex);
+                        currentLValue = new IrVariable(tempName, elementType);
+                    }
+                    else
+                    {
+                        throw new Exception($"Unexpected lvalue suffix: {suffix.GetText()}");
+                    }
+                }
+
+                // Now handle the last suffix - this is where we do the load-increment-store
+                var lastSuffix = lvalueSuffixes[lvalueSuffixes.Length - 1];
+
+                if (lastSuffix.GetChild(0).GetText() == ".")
+                {
+                    // Final field access: load, increment, store
+                    var memberName = lastSuffix.IDENTIFIER().GetText();
 
                     // Auto-dereference pointers to structs
-                    IrValue actualBase = baseVar;
-                    IrType baseType = baseVar.Type;
-
-                    if (baseType is IrPointerType ptrType && ptrType.PointeeType is IrStructType)
+                    IrValue actualBase = currentLValue;
+                    var structType = currentLValue.Type;
+                    if (structType is IrPointerType ptrType && ptrType.PointeeType is IrStructType)
                     {
-                        actualBase = new IrDereferenceValue(actualBase, ptrType.PointeeType);
-                        baseType = ptrType.PointeeType;
+                        actualBase = new IrDereferenceValue(currentLValue, ptrType.PointeeType);
+                        structType = ptrType.PointeeType;
                     }
 
-                    if (baseType is not IrStructType structType)
+                    if (structType is not IrStructType irStructType)
                     {
-                        throw new Exception($"Cannot access member '{memberName}' on non-struct type '{baseType}'");
+                        throw new Exception($"Cannot access member '{memberName}' on non-struct type");
                     }
 
-                    var field = structType.Fields.FirstOrDefault(f => f.Name == memberName);
+                    var field = irStructType.Fields.FirstOrDefault(f => f.Name == memberName);
                     if (field == null)
                     {
-                        throw new Exception($"Struct '{structType.Name}' has no field '{memberName}'");
+                        throw new Exception($"Field '{memberName}' not found in struct '{irStructType.Name}'");
                     }
 
                     // Load current value
@@ -2877,15 +3071,56 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     var binOp = new IrBinaryOp(newValueTemp, opKind, currentValue, new IrConstant(1, field.Type), field.Type);
                     _currentBlock.AddInstruction(binOp);
 
+                    // Store back
                     var newValue = new IrVariable(newValueTemp, field.Type);
                     _currentBlock.AddInstruction(new IrMemberStore(actualBase, memberName, field.Offset, newValue));
 
                     return null;
                 }
+                else if (lastSuffix.GetChild(0).GetText() == "[")
+                {
+                    // Final index access: load, increment, store
+                    var indexExpr = (IrValue?)Visit(lastSuffix.expression());
+                    if (indexExpr == null)
+                    {
+                        throw new Exception("Index expression is required");
+                    }
+
+                    // Determine element type
+                    IrType elementType;
+                    if (currentLValue.Type is IrPointerType pt)
+                    {
+                        elementType = pt.PointeeType;
+                    }
+                    else if (currentLValue.Type is IrArrayType at)
+                    {
+                        elementType = at.ElementType;
+                    }
+                    else
+                    {
+                        throw new Exception($"Cannot index type '{currentLValue.Type}' - must be pointer or array");
+                    }
+
+                    // Load current value
+                    var loadTemp = $"%index_load_{_tempCounter++}";
+                    _currentBlock!.AddInstruction(new IrIndexAccess(loadTemp, currentLValue, indexExpr, elementType));
+                    var currentValue = new IrVariable(loadTemp, elementType);
+
+                    // Increment/decrement
+                    var newValueTemp = $"%t{_tempCounter++}";
+                    var opKind = (op == "++" ? IrBinaryOp.OpKind.Add : IrBinaryOp.OpKind.Sub);
+                    var binOp = new IrBinaryOp(newValueTemp, opKind, currentValue, new IrConstant(1, elementType), elementType);
+                    _currentBlock.AddInstruction(binOp);
+
+                    // Store back
+                    var newValue = new IrVariable(newValueTemp, elementType);
+                    _currentBlock.AddInstruction(new IrIndexStore(currentLValue, indexExpr, newValue));
+
+                    return null;
+                }
                 else
                 {
-                    // TODO: Handle more complex lvalue chains (e.g., arr[i]++, self.field1.field2++)
-                    throw new Exception("Complex lvalue post-increment/decrement not yet implemented");
+                    throw new Exception($"Unexpected lvalue suffix: {lastSuffix.GetText()}");
                 }
             }
             else
@@ -4478,16 +4713,33 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     var enumType = _symbols.LookupEnum(typeName)!;
                     if (enumType.GenericParameters.Count > 0)
                     {
-                        // Try to instantiate the generic method for this enum
-                        var instantiatedFunc = InstantiateGenericEnumMethod(enumType, methodName, arguments);
-                        if (instantiatedFunc != null)
+                        // Need to infer type arguments and monomorphize the enum before instantiation
+                        var typeSubstitutions = InferGenericEnumTypeArguments(enumType, methodName, arguments, _expectedType);
+
+                        if (typeSubstitutions != null)
                         {
-                            functionName = instantiatedFunc.Name;
+                            // Monomorphize the enum with inferred type arguments
+                            var monomorphizedEnum = MonomorphizeEnum(enumType, typeSubstitutions);
+
+                            if (monomorphizedEnum != null)
+                            {
+                                // Now instantiate the method with the monomorphized enum
+                                var instantiatedFunc = InstantiateGenericEnumMethod(monomorphizedEnum, methodName, arguments);
+                                if (instantiatedFunc != null)
+                                {
+                                    functionName = instantiatedFunc.Name;
+                                }
+                                else
+                                {
+                                    // Try just the method name (impl methods are currently stored without type prefix)
+                                    functionName = methodName;
+                                }
+                            }
                         }
                         else
                         {
-                            // Try just the method name (impl methods are currently stored without type prefix)
-                            functionName = methodName;
+                            // Could not infer type arguments
+                            throw new Exception($"Cannot infer generic type arguments for {typeName}::{methodName}. Please provide explicit type arguments.");
                         }
                     }
                 }
@@ -7203,6 +7455,42 @@ public class IrBuilder : NovusBaseVisitor<object?>
     /// <summary>
     /// Recursively substitute generic type parameters with concrete types
     /// </summary>
+    /// <summary>
+    /// Check if a type contains a specific generic parameter
+    /// </summary>
+    private bool TypeContainsGeneric(IrType type, string genericParamName)
+    {
+        if (type is IrGenericType gt)
+        {
+            return gt.ParameterName == genericParamName;
+        }
+        if (type is IrPointerType ptrType)
+        {
+            return TypeContainsGeneric(ptrType.PointeeType, genericParamName);
+        }
+        if (type is IrReferenceType refType)
+        {
+            return TypeContainsGeneric(refType.PointeeType, genericParamName);
+        }
+        if (type is IrMutReferenceType mutRefType)
+        {
+            return TypeContainsGeneric(mutRefType.PointeeType, genericParamName);
+        }
+        if (type is IrArrayType arrayType)
+        {
+            return TypeContainsGeneric(arrayType.ElementType, genericParamName);
+        }
+        if (type is IrStructType structType)
+        {
+            return structType.Fields.Any(f => TypeContainsGeneric(f.Type, genericParamName));
+        }
+        if (type is IrEnumType enumType)
+        {
+            return enumType.Variants.Any(v => v.AssociatedData.Any(d => TypeContainsGeneric(d, genericParamName)));
+        }
+        return false;
+    }
+
     private IrType SubstituteGenericTypes(IrType type, Dictionary<string, IrType> substitutions)
     {
         // Handle Self type - resolve to current implementing type
@@ -7378,15 +7666,57 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             if (needsSubstitution)
             {
-                // Create a new enum type with substituted variant types
-                // Preserve generic parameters from original
-                // Clear cache key if enum still has generic parameters (not fully monomorphized)
-                string? cacheKey = enumType.GenericParameters.Count > 0 ? null : enumType.CacheKey;
+                // Determine which generic parameters remain after substitution
+                var remainingGenericParams = new List<string>();
+                foreach (var genericParam in enumType.GenericParameters)
+                {
+                    // If this generic parameter was NOT substituted, keep it
+                    if (!substitutions.ContainsKey(genericParam) ||
+                        substitutions[genericParam] is IrGenericType)
+                    {
+                        remainingGenericParams.Add(genericParam);
+                    }
+                }
+
+                // Generate new cache key for the substituted enum
+                string? cacheKey = null;
+                if (remainingGenericParams.Count == 0)
+                {
+                    // Fully monomorphized - generate cache key from the actual variant types
+                    // Check if we had any actual substitutions that changed types
+                    bool hadSubstitutions = substitutions.Count > 0;
+
+                    if (hadSubstitutions)
+                    {
+                        // Build cache key from the substituted variant types
+                        // For single-type-param enums like Option<T>, use the first variant's first data type
+                        // This works for common patterns like Option<*u8> where Some variant holds the type arg
+                        var typeArgs = new List<IrType>();
+
+                        // Find the first non-empty variant to extract type args from
+                        foreach (var variant in substitutedVariants)
+                        {
+                            if (variant.AssociatedData.Count > 0)
+                            {
+                                // For now, assume single-type-param enums (like Option, Result)
+                                // Take the first data type as the type argument
+                                typeArgs.Add(variant.AssociatedData[0]);
+                                break; // Only need one
+                            }
+                        }
+
+                        if (typeArgs.Count > 0)
+                        {
+                            var typeArgKeys = typeArgs.Select(t => GetTypeCacheKey(t));
+                            cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
+                        }
+                    }
+                }
 
                 var substitutedEnum = new IrEnumType(
                     enumType.EnumName,
                     substitutedVariants,
-                    enumType.GenericParameters,
+                    remainingGenericParams,
                     cacheKey
                 );
                 return substitutedEnum;
