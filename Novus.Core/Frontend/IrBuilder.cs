@@ -419,10 +419,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 // For generic impl blocks, store methods as templates for later instantiation
                 if (genericParams.Count > 0)
                 {
-                    var templateKey = $"{typeName}::{methodName}";
-                    // Capture current constants dictionary (make a copy so imports don't affect templates)
-                    var templateConstants = GetConstantsAsTuples();
-                    _genericMethodTemplates[templateKey] = (genericParams, funcDecl, templateConstants);
+                    StoreGenericMethodTemplate(typeName, methodName, genericParams, funcDecl);
                     // Don't create function yet - it will be instantiated when called with concrete types
                     continue;
                 }
@@ -434,20 +431,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 var (visibility, isExtern, _) = AstModifierHelper.ParseModifiers(funcDecl, 4);
 
                 // Methods are registered with mangled names
-                // Trait impls: Type_Trait_TypeArg1_TypeArg2_method (e.g., Counter_Iterator_i32_next)
-                // Inherent impls: Type::method
-                string mangledName;
-                if (isTraitImpl && traitName != null)
-                {
-                    var typeArgsSuffix = traitTypeArgs.Count > 0
-                        ? "_" + string.Join("_", traitTypeArgs.Select(t => t.Name.Replace("::", "_")))
-                        : "";
-                    mangledName = $"{typeName}_{traitName}{typeArgsSuffix}_{methodName}";
-                }
-                else
-                {
-                    mangledName = $"{typeName}::{methodName}";
-                }
+                var mangledName = GenerateMethodMangledName(typeName, methodName, isTraitImpl, traitName, traitTypeArgs);
 
                 var function = new IrFunction(mangledName, returnType, visibility, isExtern);
 
@@ -457,57 +441,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     var paramList = funcDecl.parameterList();
 
                     // Handle self parameter if present
-                    if (paramList.selfParameter() != null)
-                    {
-                        var selfParam = paramList.selfParameter();
-                        var isMutable = selfParam.KW_MUT() != null;
-                        var isBorrowed = selfParam.GetChild(0).GetText() == "&";
+                    ParseSelfParameter(paramList.selfParameter(), function, typeName);
 
-                        // Determine self type - look up the implementing type (struct or enum)
-                        IrType? implType = null;
-                        var foundStruct = _symbols.LookupStruct(typeName);
-                        var foundEnum = _symbols.LookupEnum(typeName);
-
-                        if (foundStruct != null)
-                        {
-                            implType = foundStruct;
-                        }
-                        else if (foundEnum != null)
-                        {
-                            implType = foundEnum;
-                        }
-                        else
-                        {
-                            throw new Exception($"Type '{typeName}' not found for impl block");
-                        }
-
-                        IrType selfType = implType;
-                        if (isBorrowed)
-                        {
-                            selfType = _typeInterner.GetPointerType(selfType);
-                        }
-
-                        function.Parameters.Add(new IrParameter("self", selfType));
-                    }
-
-                    // Add regular parameters
-                    foreach (var paramCtx in paramList.parameter())
-                    {
-                        var paramName = paramCtx.IDENTIFIER().GetText();
-                        var paramType = ParseType(paramCtx.type());
-                        function.Parameters.Add(new IrParameter(paramName, paramType));
-                    }
-
-                    // Add variadic parameter if present
-                    if (paramList.variadicParameter() != null)
-                    {
-                        var variadicCtx = paramList.variadicParameter();
-                        var variadicName = variadicCtx.IDENTIFIER().GetText();
-                        // Variadic parameters have opaque type for now (we'll handle type checking later)
-                        var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
-                        function.Parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
-                        function.IsVariadic = true;
-                    }
+                    // Add regular and variadic parameters
+                    ParseFunctionParameters(funcDecl, function);
                 }
 
                 _module.AddFunction(function);
@@ -853,16 +790,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                             var function = new IrFunction(funcName, returnType, visibility, isExtern);
 
                             // Parse parameters
-                            if (funcDecl.parameterList() != null)
-                            {
-                                var paramList = funcDecl.parameterList();
-                                foreach (var paramCtx in paramList.parameter())
-                                {
-                                    var paramName = paramCtx.IDENTIFIER().GetText();
-                                    var paramType = ParseType(paramCtx.type());
-                                    function.Parameters.Add(new IrParameter(paramName, paramType));
-                                }
-                            }
+                            ParseFunctionParameters(funcDecl, function);
 
                             _module.AddFunction(function);
                         }
@@ -870,124 +798,27 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 }
 
                 // Register constants
-                foreach (var constDecl in moduleContext.constDeclaration())
-                {
-                    var constName = constDecl.IDENTIFIER().GetText();
-                    if (selectiveImports.Contains(constName))
-                    {
-                        if (!_symbols.HasConstant(constName))
-                        {
-                            RegisterConstant(constDecl);
-                        }
-                    }
-                }
+                RegisterConstantsForImport(moduleContext, selectiveImports);
 
                 // Register structs (with dependency expansion)
                 // First, expand selective imports to include struct dependencies
-                var expandedStructImports = new HashSet<string>(selectiveImports);
-                bool addedNewDeps;
-                do
-                {
-                    addedNewDeps = false;
-                    foreach (var structDecl in moduleContext.structDeclaration())
-                    {
-                        var structName = structDecl.IDENTIFIER().GetText();
-                        if (expandedStructImports.Contains(structName))
-                        {
-                            foreach (var fieldCtx in structDecl.structField())
-                            {
-                                var fieldTypeDeps = ExtractTypeNameDependencies(fieldCtx.type());
-                                foreach (var dep in fieldTypeDeps)
-                                {
-                                    if (expandedStructImports.Add(dep))
-                                    {
-                                        addedNewDeps = true;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } while (addedNewDeps);
+                var expandedStructImports = ExpandStructDependencies(moduleContext, selectiveImports);
 
                 // Register placeholder structs
-                foreach (var structDecl in moduleContext.structDeclaration())
-                {
-                    var structName = structDecl.IDENTIFIER().GetText();
-                    if (expandedStructImports.Contains(structName))
-                    {
-                        if (!_symbols.HasStruct(structName))
-                        {
-                            var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), new List<string>(), null, null);
-                            _symbols.RegisterStruct(structName, placeholderStruct);
-                        }
-                    }
-                }
+                RegisterStructPlaceholdersForImport(moduleContext, expandedStructImports);
 
                 // Fill in struct fields
-                foreach (var structDecl in moduleContext.structDeclaration())
-                {
-                    var structName = structDecl.IDENTIFIER().GetText();
-                    if (expandedStructImports.Contains(structName))
-                    {
-                        var existingStruct = _symbols.LookupStruct(structName);
-                        if (existingStruct != null && existingStruct.Fields.Count == 0)
-                        {
-                            RegisterStruct(structDecl);
-                        }
-                    }
-                }
+                FillStructFieldsForImport(moduleContext, expandedStructImports);
 
                 // Register enums (need two-pass for forward references)
                 // Pass 1: Register stubs
-                foreach (var enumDecl in moduleContext.enumDeclaration())
-                {
-                    var enumName = enumDecl.IDENTIFIER().GetText();
-                    if (selectiveImports.Contains(enumName))
-                    {
-                        if (!_symbols.HasEnum(enumName))
-                        {
-                            // Parse generic parameters for stub so type checking works correctly
-                            List<string>? genericParams = null;
-                            if (enumDecl.genericParams() != null)
-                            {
-                                genericParams = new List<string>();
-                                foreach (var paramId in enumDecl.genericParams().IDENTIFIER())
-                                {
-                                    genericParams.Add(paramId.GetText());
-                                }
-                            }
-                            var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), genericParams);
-                            _symbols.RegisterEnum(enumName, stubEnum);
-                        }
-                    }
-                }
+                RegisterEnumStubsForImport(moduleContext, selectiveImports);
 
                 // Pass 2: Fill in variants
-                foreach (var enumDecl in moduleContext.enumDeclaration())
-                {
-                    var enumName = enumDecl.IDENTIFIER().GetText();
-                    if (selectiveImports.Contains(enumName))
-                    {
-                        var existingEnum = _symbols.LookupEnum(enumName);
-                        if (existingEnum != null && existingEnum.Variants.Count == 0)
-                        {
-                            RegisterEnum(enumDecl);
-                        }
-                    }
-                }
+                FillEnumVariantsForImport(moduleContext, selectiveImports);
 
                 // Register traits
-                foreach (var traitDecl in moduleContext.traitDeclaration())
-                {
-                    var traitName = traitDecl.IDENTIFIER().GetText();
-                    if (selectiveImports.Contains(traitName))
-                    {
-                        if (!_symbols.HasTrait(traitName))
-                        {
-                            RegisterTrait(traitDecl);
-                        }
-                    }
-                }
+                RegisterTraitsForImport(moduleContext, selectiveImports);
             }
 
             return; // Don't reprocess the entire module
@@ -1051,237 +882,32 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Register imported enums in the module using two-pass approach
         // Pass 1: Register stub enum types ONLY for enums in the import list
         // This allows forward references between imported enums
-        foreach (var enumDecl in moduleContext.enumDeclaration())
-        {
-            var enumName = enumDecl.IDENTIFIER().GetText();
-
-            // Only create stubs for enums we're actually importing
-            if (!namesToImport.Contains(enumName))
-            {
-                continue;
-            }
-
-            // Skip if this enum has already been imported (transitive dependencies)
-            if (_symbols.HasEnum(enumName))
-            {
-                continue;
-            }
-
-            // Register a stub enum type with no variants yet
-            // This makes the type name resolvable during variant parsing
-            // Parse generic parameters for stub so type checking works correctly
-            List<string>? genericParams = null;
-            if (enumDecl.genericParams() != null)
-            {
-                genericParams = new List<string>();
-                foreach (var paramId in enumDecl.genericParams().IDENTIFIER())
-                {
-                    genericParams.Add(paramId.GetText());
-                }
-            }
-            var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), genericParams);
-            _symbols.RegisterEnum(enumName, stubEnum);
-        }
+        RegisterEnumStubsForImport(moduleContext, namesToImport);
 
         // Pass 2: Fill in enum variants for imported enums only
-        foreach (var enumDecl in moduleContext.enumDeclaration())
-        {
-            var enumName = enumDecl.IDENTIFIER().GetText();
-
-            // Skip if not in the import list
-            if (!namesToImport.Contains(enumName))
-            {
-                continue;
-            }
-
-            // Skip if this enum has already been fully registered (not just a stub)
-            // This happens when the same module is imported multiple times (e.g., std::core auto-import + explicit import)
-            var existingEnum = _symbols.LookupEnum(enumName);
-            if (existingEnum != null && existingEnum.Variants.Count > 0)
-            {
-                continue;
-            }
-
-            // Now register the full enum with variants (replacing the stub)
-            // At this point, all enum names are resolvable for variant parsing
-            RegisterEnum(enumDecl);
-        }
+        FillEnumVariantsForImport(moduleContext, namesToImport);
 
         // Register imported constants in the module
-        foreach (var constDecl in moduleContext.constDeclaration())
-        {
-            var constName = constDecl.IDENTIFIER().GetText();
-
-            // Skip if not in the import list
-            if (!namesToImport.Contains(constName))
-            {
-                continue;
-            }
-
-            // Skip if this constant has already been imported (transitive dependencies)
-            if (_symbols.HasConstant(constName))
-            {
-                continue;
-            }
-
-            // Register the constant from the imported module
-            RegisterConstant(constDecl);
-        }
+        RegisterConstantsForImport(moduleContext, namesToImport);
 
         // Register imported structs in the module using multi-pass approach to handle dependencies
         // Pass 1: Expand the import list to include all struct dependencies
         // When importing NewScreen, we also need to import TextAttr and BitMap that it references
-        var expandedStructNames = new HashSet<string>(namesToImport);
-        bool addedNewDependencies;
-        do
-        {
-            addedNewDependencies = false;
-            foreach (var structDecl in moduleContext.structDeclaration())
-            {
-                var structName = structDecl.IDENTIFIER().GetText();
-
-                // If this struct is in our expanded list, check its dependencies
-                if (expandedStructNames.Contains(structName))
-                {
-                    // Extract type names from struct fields
-                    foreach (var fieldCtx in structDecl.structField())
-                    {
-                        var fieldTypeDeps = ExtractTypeNameDependencies(fieldCtx.type());
-                        foreach (var dep in fieldTypeDeps)
-                        {
-                            // Add dependency to expanded list if not already present
-                            if (expandedStructNames.Add(dep))
-                            {
-                                addedNewDependencies = true;
-                            }
-                        }
-                    }
-                }
-            }
-        } while (addedNewDependencies);
+        var expandedStructNames = ExpandStructDependencies(moduleContext, namesToImport);
 
         // Pass 2: Register placeholder struct types for ALL structs in expanded list
         // This allows structs to reference each other (e.g., NewScreen references TextAttr)
-        foreach (var structDecl in moduleContext.structDeclaration())
-        {
-            var structName = structDecl.IDENTIFIER().GetText();
-
-            // Skip if not in the expanded import list
-            if (!expandedStructNames.Contains(structName))
-            {
-                continue;
-            }
-
-            // Skip if this struct has already been imported (transitive dependencies)
-            if (_symbols.HasStruct(structName))
-            {
-                continue;
-            }
-
-            // Register a placeholder struct with no fields yet
-            // This makes the type name resolvable during field parsing
-            var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), new List<string>(), null, null);
-            _symbols.RegisterStruct(structName, placeholderStruct);
-        }
+        RegisterStructPlaceholdersForImport(moduleContext, expandedStructNames);
 
         // Pass 3: Fill in struct fields for all structs in expanded list
         // At this point, all struct names are resolvable for field type parsing
-        foreach (var structDecl in moduleContext.structDeclaration())
-        {
-            var structName = structDecl.IDENTIFIER().GetText();
-
-            // Skip if not in the expanded import list
-            if (!expandedStructNames.Contains(structName))
-            {
-                continue;
-            }
-
-            // Check if this is just a placeholder (empty fields list)
-            var existingStruct = _symbols.LookupStruct(structName);
-                        if (existingStruct != null && existingStruct.Fields.Count == 0)
-            {
-                // Now register the full struct with fields (replacing the placeholder)
-                RegisterStruct(structDecl);
-            }
-        }
+        FillStructFieldsForImport(moduleContext, expandedStructNames);
 
         // Register imported traits in the module
-        foreach (var traitDecl in moduleContext.traitDeclaration())
-        {
-            var traitName = traitDecl.IDENTIFIER().GetText();
-
-            // Skip if not in the import list
-            if (!namesToImport.Contains(traitName))
-            {
-                continue;
-            }
-
-            // Skip if this trait has already been imported (transitive dependencies)
-            if (_symbols.HasTrait(traitName))
-            {
-                continue;
-            }
-
-            // Register the trait from the imported module
-            RegisterTrait(traitDecl);
-        }
+        RegisterTraitsForImport(moduleContext, namesToImport);
 
         // Register imported functions in the module
-        foreach (var funcDecl in moduleContext.functionDeclaration())
-        {
-            var funcName = funcDecl.IDENTIFIER().GetText();
-
-            // Skip if not in the import list
-            if (!namesToImport.Contains(funcName))
-            {
-                continue;
-            }
-
-            // Check if function is pub or extern
-            var (isPub, isExtern) = ModuleImportHelper.GetFunctionVisibility(funcDecl);
-
-            if (!isPub && !isExtern)
-            {
-                throw new Exception($"Cannot import private function '{funcName}' from module '{moduleNamespace}'");
-            }
-
-            // Skip if this function has already been imported (transitive dependencies)
-            if (_module.Functions.Any(f => f.Name == funcName))
-            {
-                continue;
-            }
-
-            // Parse function signature
-            var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
-            // Only mark as extern if it's truly an extern function (FFI)
-            // Pub functions from Novus modules are real implementations that need linking
-            var function = new IrFunction(funcName, returnType, Visibility.Private, isExtern);
-
-            // Parse parameters
-            if (funcDecl.parameterList() != null)
-            {
-                var paramList = funcDecl.parameterList();
-                foreach (var paramCtx in paramList.parameter())
-                {
-                    var paramName = paramCtx.IDENTIFIER().GetText();
-                    var paramType = ParseType(paramCtx.type());
-                    function.Parameters.Add(new IrParameter(paramName, paramType));
-                }
-
-                // Add variadic parameter if present
-                if (paramList.variadicParameter() != null)
-                {
-                    var variadicCtx = paramList.variadicParameter();
-                    var variadicName = variadicCtx.IDENTIFIER().GetText();
-                    // Variadic parameters have opaque type for now (we'll handle type checking later)
-                    var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
-                    function.Parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
-                    function.IsVariadic = true;
-                }
-            }
-
-            _module.AddFunction(function);
-        }
+        RegisterFunctionsForImport(moduleContext, namesToImport, moduleNamespace);
 
         // Register imported impl block methods in the module
         foreach (var implDecl in moduleContext.implDeclaration())
@@ -1369,10 +995,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 // because instantiating one method may need to call private helper methods
                 if (genericParams.Count > 0)
                 {
-                    var templateKey = $"{typeName}::{methodName}";
-                    // Capture current constants dictionary (make a copy so imports don't affect templates)
-                    var templateConstants = GetConstantsAsTuples();
-                    _genericMethodTemplates[templateKey] = (genericParams, funcDecl, templateConstants);
+                    StoreGenericMethodTemplate(typeName, methodName, genericParams, funcDecl);
                     // Don't create function yet - it will be instantiated when called with concrete types
                     continue;
                 }
@@ -1387,20 +1010,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
 
                 // Methods are registered with mangled names
-                // Trait impls: Type_Trait_TypeArg1_TypeArg2_method (e.g., Counter_Iterator_i32_next)
-                // Inherent impls: Type::method
-                string mangledName;
-                if (isTraitImpl && traitName != null)
-                {
-                    var typeArgsSuffix = traitTypeArgs.Count > 0
-                        ? "_" + string.Join("_", traitTypeArgs.Select(t => t.Name.Replace("::", "_")))
-                        : "";
-                    mangledName = $"{typeName}_{traitName}{typeArgsSuffix}_{methodName}";
-                }
-                else
-                {
-                    mangledName = $"{typeName}::{methodName}";
-                }
+                var mangledName = GenerateMethodMangledName(typeName, methodName, isTraitImpl, traitName, traitTypeArgs);
                 var function = new IrFunction(mangledName, returnType, Visibility.Private, false);
 
                 // Parse parameters (including self)
@@ -1409,57 +1019,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     var paramList = funcDecl.parameterList();
 
                     // Handle self parameter if present
-                    if (paramList.selfParameter() != null)
-                    {
-                        var selfParam = paramList.selfParameter();
-                        var isMutable = selfParam.KW_MUT() != null;
-                        var isBorrowed = selfParam.GetChild(0).GetText() == "&";
+                    ParseSelfParameter(paramList.selfParameter(), function, typeName);
 
-                        // Determine self type - look up the implementing type (struct or enum)
-                        IrType? implType = null;
-                        var foundStruct = _symbols.LookupStruct(typeName);
-                        var foundEnum = _symbols.LookupEnum(typeName);
-
-                        if (foundStruct != null)
-                        {
-                            implType = foundStruct;
-                        }
-                        else if (foundEnum != null)
-                        {
-                            implType = foundEnum;
-                        }
-                        else
-                        {
-                            throw new Exception($"Type '{typeName}' not found for impl block");
-                        }
-
-                        IrType selfType = implType;
-                        if (isBorrowed)
-                        {
-                            selfType = _typeInterner.GetPointerType(selfType);
-                        }
-
-                        function.Parameters.Add(new IrParameter("self", selfType));
-                    }
-
-                    // Add regular parameters
-                    foreach (var paramCtx in paramList.parameter())
-                    {
-                        var paramName = paramCtx.IDENTIFIER().GetText();
-                        var paramType = ParseType(paramCtx.type());
-                        function.Parameters.Add(new IrParameter(paramName, paramType));
-                    }
-
-                    // Add variadic parameter if present
-                    if (paramList.variadicParameter() != null)
-                    {
-                        var variadicCtx = paramList.variadicParameter();
-                        var variadicName = variadicCtx.IDENTIFIER().GetText();
-                        // Variadic parameters have opaque type for now (we'll handle type checking later)
-                        var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
-                        function.Parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
-                        function.IsVariadic = true;
-                    }
+                    // Add regular and variadic parameters
+                    ParseFunctionParameters(funcDecl, function);
                 }
 
                 _module.AddFunction(function);
@@ -1514,27 +1077,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 var function = new IrFunction(funcName, returnType, Visibility.Private, true);
 
                 // Parse parameters
-                if (funcDecl.parameterList() != null)
-                {
-                    var paramList = funcDecl.parameterList();
-                    foreach (var paramCtx in paramList.parameter())
-                    {
-                        var paramName = paramCtx.IDENTIFIER().GetText();
-                        var paramType = ParseType(paramCtx.type());
-                        function.Parameters.Add(new IrParameter(paramName, paramType));
-                    }
-
-                    // Add variadic parameter if present
-                    if (paramList.variadicParameter() != null)
-                    {
-                        var variadicCtx = paramList.variadicParameter();
-                        var variadicName = variadicCtx.IDENTIFIER().GetText();
-                        // Variadic parameters have opaque type for now (we'll handle type checking later)
-                        var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
-                        function.Parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
-                        function.IsVariadic = true;
-                    }
-                }
+                ParseFunctionParameters(funcDecl, function);
 
                 _module.AddFunction(function);
             }
@@ -1661,19 +1204,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             var paramList = funcDecl.parameterList();
 
             // Handle self parameter
-            if (paramList.selfParameter() != null)
-            {
-                var selfParam = paramList.selfParameter();
-                var isBorrowed = selfParam.GetChild(0).GetText() == "&";
-
-                IrType selfType = monomorphizedStruct;
-                if (isBorrowed)
-                {
-                    selfType = _typeInterner.GetPointerType(selfType);
-                }
-
-                function.Parameters.Add(new IrParameter("self", selfType));
-            }
+            ParseSelfParameter(paramList.selfParameter(), function, monomorphizedStruct);
 
             // Add regular parameters - need to substitute generic types
             foreach (var paramCtx in paramList.parameter())
@@ -2177,6 +1708,298 @@ public class IrBuilder : NovusBaseVisitor<object?>
         _instantiatedGenericFunctions.Add(instantiationKey);
 
         return function;
+    }
+
+    private void RegisterEnumStubsForImport(NovusParser.CompilationUnitContext moduleContext, HashSet<string> namesToImport)
+    {
+        foreach (var enumDecl in moduleContext.enumDeclaration())
+        {
+            var enumName = enumDecl.IDENTIFIER().GetText();
+            if (namesToImport.Contains(enumName))
+            {
+                if (!_symbols.HasEnum(enumName))
+                {
+                    // Parse generic parameters for stub so type checking works correctly
+                    List<string>? genericParams = null;
+                    if (enumDecl.genericParams() != null)
+                    {
+                        genericParams = new List<string>();
+                        foreach (var paramId in enumDecl.genericParams().IDENTIFIER())
+                        {
+                            genericParams.Add(paramId.GetText());
+                        }
+                    }
+                    var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), genericParams);
+                    _symbols.RegisterEnum(enumName, stubEnum);
+                }
+            }
+        }
+    }
+
+    private void FillEnumVariantsForImport(NovusParser.CompilationUnitContext moduleContext, HashSet<string> namesToImport)
+    {
+        foreach (var enumDecl in moduleContext.enumDeclaration())
+        {
+            var enumName = enumDecl.IDENTIFIER().GetText();
+            if (namesToImport.Contains(enumName))
+            {
+                var existingEnum = _symbols.LookupEnum(enumName);
+                if (existingEnum != null && existingEnum.Variants.Count == 0)
+                {
+                    RegisterEnum(enumDecl);
+                }
+            }
+        }
+    }
+
+    private HashSet<string> ExpandStructDependencies(NovusParser.CompilationUnitContext moduleContext, HashSet<string> initialStructNames)
+    {
+        var expandedStructNames = new HashSet<string>(initialStructNames);
+        bool addedNewDependencies;
+        do
+        {
+            addedNewDependencies = false;
+            foreach (var structDecl in moduleContext.structDeclaration())
+            {
+                var structName = structDecl.IDENTIFIER().GetText();
+                if (expandedStructNames.Contains(structName))
+                {
+                    foreach (var fieldCtx in structDecl.structField())
+                    {
+                        var fieldTypeDeps = ExtractTypeNameDependencies(fieldCtx.type());
+                        foreach (var dep in fieldTypeDeps)
+                        {
+                            if (expandedStructNames.Add(dep))
+                            {
+                                addedNewDependencies = true;
+                            }
+                        }
+                    }
+                }
+            }
+        } while (addedNewDependencies);
+        return expandedStructNames;
+    }
+
+    private void RegisterStructPlaceholdersForImport(NovusParser.CompilationUnitContext moduleContext, HashSet<string> expandedStructNames)
+    {
+        foreach (var structDecl in moduleContext.structDeclaration())
+        {
+            var structName = structDecl.IDENTIFIER().GetText();
+            if (expandedStructNames.Contains(structName))
+            {
+                if (!_symbols.HasStruct(structName))
+                {
+                    var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), new List<string>(), null, null);
+                    _symbols.RegisterStruct(structName, placeholderStruct);
+                }
+            }
+        }
+    }
+
+    private void FillStructFieldsForImport(NovusParser.CompilationUnitContext moduleContext, HashSet<string> expandedStructNames)
+    {
+        foreach (var structDecl in moduleContext.structDeclaration())
+        {
+            var structName = structDecl.IDENTIFIER().GetText();
+            if (expandedStructNames.Contains(structName))
+            {
+                var existingStruct = _symbols.LookupStruct(structName);
+                if (existingStruct != null && existingStruct.Fields.Count == 0)
+                {
+                    RegisterStruct(structDecl);
+                }
+            }
+        }
+    }
+
+    private void RegisterConstantsForImport(NovusParser.CompilationUnitContext moduleContext, HashSet<string> namesToImport)
+    {
+        foreach (var constDecl in moduleContext.constDeclaration())
+        {
+            var constName = constDecl.IDENTIFIER().GetText();
+            if (namesToImport.Contains(constName))
+            {
+                if (!_symbols.HasConstant(constName))
+                {
+                    RegisterConstant(constDecl);
+                }
+            }
+        }
+    }
+
+    private void RegisterTraitsForImport(NovusParser.CompilationUnitContext moduleContext, HashSet<string> namesToImport)
+    {
+        foreach (var traitDecl in moduleContext.traitDeclaration())
+        {
+            var traitName = traitDecl.IDENTIFIER().GetText();
+            if (namesToImport.Contains(traitName))
+            {
+                if (!_symbols.HasTrait(traitName))
+                {
+                    RegisterTrait(traitDecl);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Parse function parameters (regular and variadic) and add them to the function.
+    /// </summary>
+    private void ParseFunctionParameters(NovusParser.FunctionDeclarationContext funcDecl, IrFunction function)
+    {
+        if (funcDecl.parameterList() == null) return;
+
+        var paramList = funcDecl.parameterList();
+
+        // Add regular parameters
+        foreach (var paramCtx in paramList.parameter())
+        {
+            var paramName = paramCtx.IDENTIFIER().GetText();
+            var paramType = ParseType(paramCtx.type());
+            function.Parameters.Add(new IrParameter(paramName, paramType));
+        }
+
+        // Add variadic parameter if present
+        if (paramList.variadicParameter() != null)
+        {
+            var variadicCtx = paramList.variadicParameter();
+            var variadicName = variadicCtx.IDENTIFIER().GetText();
+            // Variadic parameters have opaque type for now (we'll handle type checking later)
+            var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
+            function.Parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
+            function.IsVariadic = true;
+        }
+    }
+
+    /// <summary>
+    /// Register functions from a module for import.
+    /// </summary>
+    private void RegisterFunctionsForImport(NovusParser.CompilationUnitContext moduleContext, HashSet<string> namesToImport, string moduleNamespace)
+    {
+        foreach (var funcDecl in moduleContext.functionDeclaration())
+        {
+            var funcName = funcDecl.IDENTIFIER().GetText();
+
+            // Skip if not in the import list
+            if (!namesToImport.Contains(funcName))
+            {
+                continue;
+            }
+
+            // Check if function is pub or extern
+            var (isPub, isExtern) = ModuleImportHelper.GetFunctionVisibility(funcDecl);
+
+            if (!isPub && !isExtern)
+            {
+                throw new Exception($"Cannot import private function '{funcName}' from module '{moduleNamespace}'");
+            }
+
+            // Skip if this function has already been imported (transitive dependencies)
+            if (_module.Functions.Any(f => f.Name == funcName))
+            {
+                continue;
+            }
+
+            // Parse function signature
+            var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
+            // Only mark as extern if it's truly an extern function (FFI)
+            // Pub functions from Novus modules are real implementations that need linking
+            var function = new IrFunction(funcName, returnType, Visibility.Private, isExtern);
+
+            // Parse parameters
+            ParseFunctionParameters(funcDecl, function);
+
+            _module.AddFunction(function);
+        }
+    }
+
+    /// <summary>
+    /// Store a generic method template for later instantiation.
+    /// </summary>
+    private void StoreGenericMethodTemplate(string typeName, string methodName, List<string> genericParams, NovusParser.FunctionDeclarationContext funcDecl)
+    {
+        var templateKey = $"{typeName}::{methodName}";
+        // Capture current constants dictionary (make a copy so imports don't affect templates)
+        var templateConstants = GetConstantsAsTuples();
+        _genericMethodTemplates[templateKey] = (genericParams, funcDecl, templateConstants);
+    }
+
+    /// <summary>
+    /// Generate a mangled name for a method.
+    /// Trait impls: Type_Trait_TypeArg1_TypeArg2_method (e.g., Counter_Iterator_i32_next)
+    /// Inherent impls: Type::method
+    /// </summary>
+    private string GenerateMethodMangledName(string typeName, string methodName, bool isTraitImpl, string? traitName, List<IrType> traitTypeArgs)
+    {
+        if (isTraitImpl && traitName != null)
+        {
+            var typeArgsSuffix = traitTypeArgs.Count > 0
+                ? "_" + string.Join("_", traitTypeArgs.Select(t => t.Name.Replace("::", "_")))
+                : "";
+            return $"{typeName}_{traitName}{typeArgsSuffix}_{methodName}";
+        }
+        else
+        {
+            return $"{typeName}::{methodName}";
+        }
+    }
+
+    /// <summary>
+    /// Parse self parameter and add it to the function.
+    /// Looks up the implementing type by name from the symbol table.
+    /// </summary>
+    private void ParseSelfParameter(NovusParser.SelfParameterContext? selfParam, IrFunction function, string typeName)
+    {
+        if (selfParam == null) return;
+
+        var isMutable = selfParam.KW_MUT() != null;
+        var isBorrowed = selfParam.GetChild(0).GetText() == "&";
+
+        // Determine self type - look up the implementing type (struct or enum)
+        IrType? implType = null;
+        var foundStruct = _symbols.LookupStruct(typeName);
+        var foundEnum = _symbols.LookupEnum(typeName);
+
+        if (foundStruct != null)
+        {
+            implType = foundStruct;
+        }
+        else if (foundEnum != null)
+        {
+            implType = foundEnum;
+        }
+        else
+        {
+            throw new Exception($"Type '{typeName}' not found for impl block");
+        }
+
+        IrType selfType = implType;
+        if (isBorrowed)
+        {
+            selfType = _typeInterner.GetPointerType(selfType);
+        }
+
+        function.Parameters.Add(new IrParameter("self", selfType));
+    }
+
+    /// <summary>
+    /// Parse self parameter and add it to the function.
+    /// Uses the provided implementing type directly (useful for monomorphized types).
+    /// </summary>
+    private void ParseSelfParameter(NovusParser.SelfParameterContext? selfParam, IrFunction function, IrType implementingType)
+    {
+        if (selfParam == null) return;
+
+        var isBorrowed = selfParam.GetChild(0).GetText() == "&";
+
+        IrType selfType = implementingType;
+        if (isBorrowed)
+        {
+            selfType = _typeInterner.GetPointerType(selfType);
+        }
+
+        function.Parameters.Add(new IrParameter("self", selfType));
     }
 
     private void RegisterConstant(NovusParser.ConstDeclarationContext context)
