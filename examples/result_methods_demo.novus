@@ -1,0 +1,38 @@
+// Example demonstrating Result<T,E> methods
+// Shows error handling with generic enum methods
+
+from std::core import Result
+
+fn parse_number(value: i32) -> Result<i32, i32> {
+    if value < 0 {
+        return Result::Err(1)  // Error code 1: negative number
+    }
+    if value > 100 {
+        return Result::Err(2)  // Error code 2: too large
+    }
+    return Result::Ok(value)
+}
+
+fn main() -> i32 {
+    // Test with valid number
+    let result1: Result<i32, i32> = parse_number(42)
+
+    if result1.is_ok() {
+        let value: i32 = result1.unwrap_or(0)
+        // value is 42
+    }
+
+    // Test with negative number
+    let result2: Result<i32, i32> = parse_number(-5)
+
+    if result2.is_err() {
+        let default_value: i32 = result2.unwrap_or(0)
+        // default_value is 0 (used because of error)
+    }
+
+    // Test with number too large
+    let result3: Result<i32, i32> = parse_number(150)
+    let final_value: i32 = result3.unwrap_or(100)
+
+    return final_value  // Returns 100
+}

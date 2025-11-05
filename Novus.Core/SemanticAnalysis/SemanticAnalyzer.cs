@@ -5005,6 +5005,51 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 }
             }
         }
+        else if (receiverType is IrEnumType receiverEnum && receiverEnum.CacheKey != null)
+        {
+            // Receiver is a monomorphized enum (e.g., Option<i32>)
+            // Get the base generic enum to find generic parameter names
+            var baseEnum = _symbols.LookupEnum(receiverEnum.EnumName);
+            if (baseEnum != null && baseEnum.GenericParameters.Count > 0)
+            {
+                // Extract type mappings by comparing base enum variants with monomorphized enum variants
+                for (int varIdx = 0; varIdx < baseEnum.Variants.Count && varIdx < receiverEnum.Variants.Count; varIdx++)
+                {
+                    var baseVariant = baseEnum.Variants[varIdx];
+                    var monoVariant = receiverEnum.Variants[varIdx];
+
+                    if (baseVariant.Name == monoVariant.Name &&
+                        baseVariant.AssociatedData.Count == monoVariant.AssociatedData.Count)
+                    {
+                        for (int dataIdx = 0; dataIdx < baseVariant.AssociatedData.Count; dataIdx++)
+                        {
+                            var baseDataType = baseVariant.AssociatedData[dataIdx];
+                            var monoDataType = monoVariant.AssociatedData[dataIdx];
+
+                            // If base variant data is generic type T, map T to the monomorphized type
+                            if (baseDataType is IrGenericType gt)
+                            {
+                                if (!typeSubstitutions.ContainsKey(gt.ParameterName))
+                                {
+                                    typeSubstitutions[gt.ParameterName] = monoDataType;
+                                }
+                            }
+                            // If base variant data is *T, extract T from monomorphized *i32
+                            else if (baseDataType is IrPointerType basePtrType && basePtrType.PointeeType is IrGenericType ptrGt)
+                            {
+                                if (monoDataType is IrPointerType monoPtrType)
+                                {
+                                    if (!typeSubstitutions.ContainsKey(ptrGt.ParameterName))
+                                    {
+                                        typeSubstitutions[ptrGt.ParameterName] = monoPtrType.PointeeType;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         // Check if method has a self parameter
         bool hasSelfParam = method.Parameters.Count > 0 && method.Parameters[0].Name == "self";
@@ -5062,7 +5107,14 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
-        return method.ReturnType;
+        // Apply type substitutions to the return type
+        var returnType = method.ReturnType;
+        if (returnType is IrGenericType genericReturnType && typeSubstitutions.ContainsKey(genericReturnType.ParameterName))
+        {
+            returnType = typeSubstitutions[genericReturnType.ParameterName];
+        }
+
+        return returnType;
     }
 
     public override IrType? VisitBoolLiteral([NotNull] NovusParser.BoolLiteralContext context)
