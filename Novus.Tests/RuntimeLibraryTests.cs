@@ -27,9 +27,10 @@ public class RuntimeLibraryTests
     {
         var source = @"
 from std::io import write
+from std::strings import Str
 
 pub fn main() -> i32 {
-    let msg: String = ""Hello\n""
+    let msg: Str = ""Hello\n""
     write(msg.ptr, 0)
     return 0
 }";
@@ -47,9 +48,10 @@ pub fn main() -> i32 {
     {
         var source = @"
 from std::io import write
+from std::strings import Str
 
 pub fn main() -> i32 {
-    let msg: String = ""Value: %ld\n""
+    let msg: Str = ""Value: %ld\n""
     write(msg.ptr, 42)
     return 0
 }";
@@ -66,9 +68,10 @@ pub fn main() -> i32 {
     {
         var source = @"
 from std::io import write
+from std::strings import Str
 
 pub fn main() -> i32 {
-    let msg: String = ""Values: %ld, %ld, %ld\n""
+    let msg: Str = ""Values: %ld, %ld, %ld\n""
     write(msg.ptr, 1, 2, 3)
     return 0
 }";
@@ -131,13 +134,14 @@ pub fn main() -> i32 {
         var source = @"
 from std::core import LibraryVersion
 from std::io import write
+from std::strings import Str
 
 pub fn main() -> i32 {
     let maj: u16 = 1
     let min: u16 = 0
     let pat: u16 = 0
     let version: LibraryVersion = LibraryVersion { major: maj, minor: min, patch: pat }
-    let msg: String = ""Version: %ld.%ld.%ld\n""
+    let msg: Str = ""Version: %ld.%ld.%ld\n""
     write(msg.ptr, version.major(), version.minor(), version.patch())
     return 0
 }";

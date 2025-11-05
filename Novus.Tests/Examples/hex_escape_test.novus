@@ -6,14 +6,16 @@
 // Expected Output:
 //   Exit code: 0 (hex escapes work correctly)
 
+from std::strings import Str
+
 pub fn main() -> i32 {
     // Test basic hex escapes - verify they compile and have correct lengths
     // NOTE: \x00 (null byte) is not tested here because it requires special
     // handling in C codegen (can't use string literals for embedded nulls)
-    let space: String = "\x20"       // Space character (ASCII 32)
-    let newline: String = "\x0A"     // Newline (ASCII 10)
-    let a_char: String = "\x41"      // 'A' (ASCII 65)
-    let z_char: String = "\x5A"      // 'Z' (ASCII 90)
+    let space: Str = "\x20"       // Space character (ASCII 32)
+    let newline: Str = "\x0A"     // Newline (ASCII 10)
+    let a_char: Str = "\x41"      // 'A' (ASCII 65)
+    let z_char: Str = "\x5A"      // 'Z' (ASCII 90)
 
     // Verify lengths
     if space.len != 1 { return 1 }
@@ -22,15 +24,15 @@ pub fn main() -> i32 {
     if z_char.len != 1 { return 4 }
 
     // Test mixed escapes with regular characters
-    let mixed: String = "Hello\x20World\x21"  // "Hello World!"
+    let mixed: Str = "Hello\x20World\x21"  // "Hello World!"
     if mixed.len != 12 { return 5 }
 
     // Test lowercase hex
-    let lowercase: String = "\x0a\x0d"  // LF CR
+    let lowercase: Str = "\x0a\x0d"  // LF CR
     if lowercase.len != 2 { return 6 }
 
     // Test hex with other escapes
-    let combo: String = "\x41\n\x42"  // A\nB
+    let combo: Str = "\x41\n\x42"  // A\nB
     if combo.len != 3 { return 7 }
 
     return 0  // All tests passed

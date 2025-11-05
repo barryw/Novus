@@ -321,8 +321,9 @@ public class CCodeGenerator
             var returnType = GetCType(function.ReturnType);
             var isVoidReturn = returnType == "void";
             var paramList = string.Join(", ", function.Parameters.Select(p => $"{GetCType(p.Type)} {p.Name}"));
+            var mangledName = MangleName(function.Name);
 
-            stubSb.AppendLine($"{returnType} {function.Name}({paramList}) {{");
+            stubSb.AppendLine($"{returnType} {mangledName}({paramList}) {{");
             stubSb.AppendLine($"    __novus_panic(\"Function {function.Name} contains un-monomorphized generic types\", __FILE__, __LINE__, 0);");
             if (!isVoidReturn)
             {

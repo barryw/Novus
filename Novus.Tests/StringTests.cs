@@ -23,6 +23,7 @@ public class StringTests
     public void BuildIr_StringLiteral_Compiles()
     {
         var source = @"
+from std::strings import Str
 pub fn main() -> i32 {
     let s = ""Hello, World!""
     return 0
@@ -35,8 +36,9 @@ pub fn main() -> i32 {
     public void BuildIr_StringType_Explicit_Compiles()
     {
         var source = @"
+from std::strings import Str
 pub fn main() -> i32 {
-    let s: String = ""test""
+    let s: Str = ""test""
     return 0
 }";
         var module = BuildIr(source);
@@ -47,7 +49,8 @@ pub fn main() -> i32 {
     public void BuildIr_StringAsParameter_Compiles()
     {
         var source = @"
-fn process(s: String) -> i32 {
+from std::strings import Str
+fn process(s: Str) -> i32 {
     return 42
 }
 pub fn main() -> i32 {
@@ -61,7 +64,8 @@ pub fn main() -> i32 {
     public void BuildIr_StringAsReturnType_Compiles()
     {
         var source = @"
-fn getMessage() -> String {
+from std::strings import Str
+fn getMessage() -> Str {
     return ""Hello""
 }
 pub fn main() -> i32 {
@@ -76,6 +80,7 @@ pub fn main() -> i32 {
     public void BuildIr_StringEscapeSequence_Newline_Compiles()
     {
         var source = @"
+from std::strings import Str
 pub fn main() -> i32 {
     let s = ""Line 1\nLine 2""
     return 0
@@ -88,6 +93,7 @@ pub fn main() -> i32 {
     public void BuildIr_StringEscapeSequence_Tab_Compiles()
     {
         var source = @"
+from std::strings import Str
 pub fn main() -> i32 {
     let s = ""Column1\tColumn2""
     return 0
@@ -100,6 +106,7 @@ pub fn main() -> i32 {
     public void BuildIr_StringEscapeSequence_Quote_Compiles()
     {
         var source = @"
+from std::strings import Str
 pub fn main() -> i32 {
     let s = ""He said \""Hello\""""
     return 0
@@ -112,6 +119,7 @@ pub fn main() -> i32 {
     public void BuildIr_StringEscapeSequence_Backslash_Compiles()
     {
         var source = @"
+from std::strings import Str
 pub fn main() -> i32 {
     let s = ""Path\\To\\File""
     return 0
@@ -124,8 +132,9 @@ pub fn main() -> i32 {
     public void BuildIr_StringInStruct_Compiles()
     {
         var source = @"
+from std::strings import Str
 struct Person {
-    name: String,
+    name: Str,
     age: i32
 }
 pub fn main() -> i32 {
@@ -143,6 +152,7 @@ pub fn main() -> i32 {
     public void BuildIr_StringEmpty_Compiles()
     {
         var source = @"
+from std::strings import Str
 pub fn main() -> i32 {
     let s = """"
     return 0
@@ -155,6 +165,7 @@ pub fn main() -> i32 {
     public void BuildIr_MultipleStrings_Compiles()
     {
         var source = @"
+from std::strings import Str
 pub fn main() -> i32 {
     let s1 = ""First""
     let s2 = ""Second""
@@ -169,8 +180,9 @@ pub fn main() -> i32 {
     public void BuildIr_StringInEnum_Compiles()
     {
         var source = @"
+from std::strings import Str
 enum Message {
-    Text(String),
+    Text(Str),
     Number(i32)
 }
 pub fn main() -> i32 {
@@ -185,8 +197,9 @@ pub fn main() -> i32 {
     public void BuildIr_StringInMatch_Compiles()
     {
         var source = @"
+from std::strings import Str
 enum Message {
-    Text(String),
+    Text(Str),
     Value(i32)
 }
 pub fn main() -> i32 {

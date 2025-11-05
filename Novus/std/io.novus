@@ -18,9 +18,9 @@ from std::ffi::dos import VPrintf
 // Note: All numeric args are passed as 32-bit values on the stack,
 // so use 'l' prefix for proper formatting (e.g., "%ld" not "%d")
 //
-// Variadic version - NOT YET IMPLEMENTED
-// Use write_array() below for printf-style formatting
-// extern fn write(format: *u8, ...args) -> i32
+// Variadic version - provided by runtime assembly (novus_io.s)
+// This is the primary printf-style write function
+extern fn write(format: *u8, ...args) -> i32
 
 // Array-based version - pure Novus implementation
 // Use this when building args programmatically or calling from pure Novus code

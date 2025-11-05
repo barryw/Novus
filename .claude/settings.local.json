@@ -59,7 +59,10 @@
       "Bash(/Users/barry/.vbcc/bin/vc:*)",
       "Bash(/Users/barry/amiga-cc/vbcc/bin/vc:*)",
       "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Release/net9.0/novusc build:*)",
-      "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Release/net9.0/Novus build:*)"
+      "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Release/net9.0/Novus build:*)",
+      "Bash(/dev/null)",
+      "Bash(dotnet-script:*)",
+      "Bash(nm:*)"
     ],
     "deny": [],
     "ask": []

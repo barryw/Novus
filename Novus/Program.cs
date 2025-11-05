@@ -591,17 +591,11 @@ class Program
                 foreach (var function in generableMainFunctions)
                 {
                     var functionCCode = mainCodegen.GenerateFunctionFile(function);
-                    // Skip writing function files for functions that were skipped due to unresolved types
-                    if (functionCCode.Contains("SKIPPED") && functionCCode.Length < 150)
-                    {
-                        Console.WriteLine($"  Skipped generating C file for {function.Name}");
-                    }
-                    else
-                    {
-                        var functionCFile = Path.Combine(outputDir, $"{baseName}_{function.Name}.c");
-                        await File.WriteAllTextAsync(functionCFile, functionCCode);
-                        cFiles.Add(functionCFile);
-                    }
+                    // Always write the C file (even if it's a stub that panics)
+                    // This ensures linking succeeds even if the function isn't called
+                    var functionCFile = Path.Combine(outputDir, $"{baseName}_{function.Name}.c");
+                    await File.WriteAllTextAsync(functionCFile, functionCCode);
+                    cFiles.Add(functionCFile);
                 }
 
                 // Generate statics file if module has static variables
@@ -687,13 +681,6 @@ class Program
                 var moduleName = moduleIR.ModuleName;
                 var isStdModule = modulePath.Contains("/std/");
 
-                // Skip per-function generation for stdlib modules
-                // They're already included in the main module's monolithic generation
-                if (isStdModule)
-                {
-                    continue;
-                }
-
                 // Get all non-extern functions with implementations
                 var functions = moduleIR.IrModule.Functions
                     .Where(f => !f.IsExtern && f.BasicBlocks.Count > 0)
@@ -730,17 +717,11 @@ class Program
                 foreach (var function in generableFunctions)
                 {
                     var functionCCode = moduleCodegen.GenerateFunctionFile(function);
-                    // Skip writing function files for functions that were skipped due to unresolved types
-                    if (functionCCode.Contains("SKIPPED") && functionCCode.Length < 150)
-                    {
-                        Console.WriteLine($"  Skipped generating C file for {function.Name}");
-                    }
-                    else
-                    {
-                        var functionCFile = Path.Combine(outputDir, $"{moduleName}_{function.Name}.c");
-                        await File.WriteAllTextAsync(functionCFile, functionCCode);
-                        cFiles.Add(functionCFile);
-                    }
+                    // Always write the C file (even if it's a stub that panics)
+                    // This ensures linking succeeds even if the function isn't called
+                    var functionCFile = Path.Combine(outputDir, $"{moduleName}_{function.Name}.c");
+                    await File.WriteAllTextAsync(functionCFile, functionCCode);
+                    cFiles.Add(functionCFile);
                 }
 
                 // Generate statics file if module has static variables

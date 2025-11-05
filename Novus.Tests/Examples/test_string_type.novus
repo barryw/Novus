@@ -6,6 +6,8 @@
 // Expected Output:
 //   Exit code: 0
 
+from std::strings import Str
+
 pub fn main() -> i32 {
     let s = "Hello"
     return 0
