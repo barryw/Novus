@@ -20,37 +20,70 @@ The language server will be at:
 Novus.LanguageServer/bin/Debug/net9.0/Novus.LanguageServer
 ```
 
-## Step 2: Install LSP Support Plugin in Rider
+## Step 2: Install LSP4IJ Plugin in Rider
 
 1. Open Rider
-2. Go to **Settings** → **Plugins**
-3. Search for **"LSP Support"**
-4. Install the plugin
-5. Restart Rider
+2. Go to **Settings** → **Plugins** (Cmd+, on Mac, Ctrl+Alt+S on Windows)
+3. Click **Marketplace** tab
+4. Search for **"LSP4IJ"**
+5. Click **Install** on the LSP4IJ plugin
+6. Click **Restart IDE** when prompted
 
 ## Step 3: Configure the Novus Language Server
 
-### Option A: Using Rider's LSP Settings UI
+### Method 1: Using LSP4IJ Console Settings (Recommended)
 
-1. Go to **Settings** → **Languages & Frameworks** → **Language Server Protocol**
-2. Click **+** to add a new server
-3. Configure:
-   - **Name:** `Novus`
-   - **Extension/Language ID:** `novus`
-   - **File extensions:** `*.novus`
-   - **Command:** `/Users/barry/RiderProjects/Novus/Novus.LanguageServer/bin/Debug/net9.0/Novus.LanguageServer`
-   - **Arguments:** (leave empty)
+1. Go to **Settings** → **Languages & Frameworks** → **Language Servers** (or search "Language Servers" in settings)
+2. Under **Server Definitions**, click **+** to add a new server
+3. Fill in the configuration:
+   - **Language:** Create new or select "Text"
+   - **Server name:** `Novus Language Server`
+   - **Command:**
+     ```
+     /Users/barry/RiderProjects/Novus/Novus.LanguageServer/bin/Debug/net9.0/Novus.LanguageServer
+     ```
+   - **File name patterns:** `*.novus`
+   - **Configuration:** (leave empty)
 4. Click **OK**
+5. Click **Apply**
 
-### Option B: Manual Configuration (if .idea config files work)
+### Method 2: Create Language Server Mapping File
 
-The project already has `.idea/novus-lsp.xml` and `.idea/fileTypes.xml` configured.
+Create a file at `.idea/languageServers.xml`:
 
-If Rider doesn't pick these up automatically:
-1. Close Rider
-2. Delete `.idea/` folder (it will regenerate)
-3. Reopen project
-4. Follow Option A above
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="LanguageServerMappings">
+    <server id="novus-lsp">
+      <executable>
+        <command>/Users/barry/RiderProjects/Novus/Novus.LanguageServer/bin/Debug/net9.0/Novus.LanguageServer</command>
+      </executable>
+      <mappings>
+        <file pattern="*.novus" />
+      </mappings>
+    </server>
+  </component>
+</project>
+```
+
+Then restart Rider.
+
+### Method 3: Associate File Type First
+
+Sometimes LSP4IJ works better if you set up the file type association first:
+
+1. **Create custom file type:**
+   - Settings → Editor → File Types
+   - Click **+** to add new file type
+   - Name: `Novus`
+   - Line comment: `//`
+   - Block comment start: `/*`
+   - Block comment end: `*/`
+   - Add pattern: `*.novus`
+   - Click OK
+
+2. **Then configure language server** using Method 1 above, selecting "Novus" as the language
 
 ## Step 4: Test It Out
 
@@ -66,8 +99,8 @@ If Rider doesn't pick these up automatically:
 
 ### Language Server Not Starting
 
-**Check if LSP plugin is enabled:**
-- Settings → Plugins → Look for "LSP Support" - should be enabled
+**Check if LSP4IJ plugin is enabled:**
+- Settings → Plugins → Look for "LSP4IJ" - should be enabled and active
 
 **Check language server is executable:**
 ```bash
@@ -97,9 +130,15 @@ Press Ctrl+C to stop it.
 3. Choose **Text** or create a custom **Novus** file type
 
 **Check language server logs:**
-1. Settings → Languages & Frameworks → Language Server Protocol
-2. Select Novus server
-3. Click **Show Logs**
+1. Settings → Languages & Frameworks → Language Servers
+2. Find Novus Language Server in the list
+3. Check the **Status** column - should show "Running"
+4. Click on the server to see logs in the bottom panel
+
+**Check LSP4IJ console:**
+1. View → Tool Windows → LSP Console
+2. You should see language server startup messages
+3. Look for errors in red
 
 ### Rebuild After Compiler Changes
 
@@ -109,9 +148,9 @@ dotnet build Novus.LanguageServer/Novus.LanguageServer.csproj
 ```
 
 Then restart the language server:
-1. Settings → Languages & Frameworks → Language Server Protocol
-2. Select Novus
-3. Click **Restart**
+1. Settings → Languages & Frameworks → Language Servers
+2. Find "Novus Language Server"
+3. Click **Restart** button (or just close/reopen the `.novus` file)
 
 ## Features Supported
 
