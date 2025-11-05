@@ -47,7 +47,8 @@
       "Bash(git mv:*)",
       "Bash(git stash:*)",
       "Bash(timeout 120 dotnet test:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(antlr4:*)"
     ],
     "deny": [],
     "ask": []

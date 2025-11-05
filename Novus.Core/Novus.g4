@@ -34,7 +34,13 @@ importList
     ;
 
 importName
-    : IDENTIFIER (KW_AS IDENTIFIER)?
+    : importWildcard (KW_AS IDENTIFIER)?
+    | IDENTIFIER (KW_AS IDENTIFIER)?
+    ;
+
+importWildcard
+    : IDENTIFIER '*'     // Prefix wildcard: MEMF_*
+    | '*' IDENTIFIER     // Suffix wildcard: *Mem
     ;
 
 reexportDeclaration

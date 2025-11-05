@@ -1,0 +1,33 @@
+// Demonstration of wildcard import syntax
+// This shows how to use prefix and suffix wildcards to import groups of symbols
+
+// Example 1: Prefix wildcard - Import all MEMF_ constants
+from std::ffi::amiga_consts import MEMF_*
+
+// Example 2: Suffix wildcard - Import all memory functions ending in Mem
+from std::ffi::exec import *Mem
+
+// Example 3: Mix wildcards with regular imports
+from std::ffi::exec import *Mem, Wait, Signal
+
+// Example 4: Multiple wildcards in one import
+from std::ffi::amiga_consts import MEMF_*, TAG_*
+
+pub fn main() -> i32 {
+    // Now we can use all the MEMF_ constants without listing them individually
+    // MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, MEMF_CLEAR, etc. are all available
+
+    // And all the *Mem functions: AllocMem, FreeMem, CopyMem, etc.
+
+    return 0
+}
+
+// Before wildcards, you had to do this:
+// from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, MEMF_CLEAR, MEMF_ANY, MEMF_24BITDMA
+// from std::ffi::exec import AllocMem, FreeMem, CopyMem, CopyMemQuick
+//
+// Now you can just:
+// from std::ffi::amiga_consts import MEMF_*
+// from std::ffi::exec import *Mem
+//
+// Much cleaner! 🎉

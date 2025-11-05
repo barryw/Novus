@@ -187,10 +187,182 @@ public static class ModuleImportHelper
         }
         else if (importList != null)
         {
-            // Import specific names
+            // Import specific names (including wildcard patterns)
             foreach (var importNameCtx in importList.importName())
             {
-                namesToImport.Add(importNameCtx.IDENTIFIER(0).GetText());
+                var wildcardCtx = importNameCtx.importWildcard();
+                if (wildcardCtx != null)
+                {
+                    // Handle wildcard pattern
+                    var identifierNode = wildcardCtx.IDENTIFIER();
+                    if (wildcardCtx.GetChild(0).GetText() == "*")
+                    {
+                        // Suffix wildcard: *Mem
+                        var suffix = identifierNode.GetText();
+
+                        // Match all pub enums with this suffix
+                        foreach (var enumDecl in context.enumDeclaration())
+                        {
+                            if (IsPub(enumDecl))
+                            {
+                                var name = enumDecl.IDENTIFIER().GetText();
+                                if (name.EndsWith(suffix))
+                                {
+                                    namesToImport.Add(name);
+                                }
+                            }
+                        }
+
+                        // Match all pub constants with this suffix
+                        foreach (var constDecl in context.constDeclaration())
+                        {
+                            if (IsPub(constDecl))
+                            {
+                                var name = constDecl.IDENTIFIER().GetText();
+                                if (name.EndsWith(suffix))
+                                {
+                                    namesToImport.Add(name);
+                                }
+                            }
+                        }
+
+                        // Match all pub structs with this suffix
+                        foreach (var structDecl in context.structDeclaration())
+                        {
+                            if (IsPub(structDecl))
+                            {
+                                var name = structDecl.IDENTIFIER().GetText();
+                                if (name.EndsWith(suffix))
+                                {
+                                    namesToImport.Add(name);
+                                }
+                            }
+                        }
+
+                        // Match all pub traits with this suffix
+                        foreach (var traitDecl in context.traitDeclaration())
+                        {
+                            if (IsPub(traitDecl))
+                            {
+                                var name = traitDecl.IDENTIFIER().GetText();
+                                if (name.EndsWith(suffix))
+                                {
+                                    namesToImport.Add(name);
+                                }
+                            }
+                        }
+
+                        // Match all pub/extern functions with this suffix
+                        foreach (var funcDecl in context.functionDeclaration())
+                        {
+                            var (isPub, isExtern) = GetFunctionVisibility(funcDecl);
+                            if (isPub || isExtern)
+                            {
+                                var name = funcDecl.IDENTIFIER().GetText();
+                                if (name.EndsWith(suffix))
+                                {
+                                    namesToImport.Add(name);
+                                }
+                            }
+                        }
+
+                        // Match all extern global variables with this suffix
+                        foreach (var globalVarDecl in context.globalVariableDeclaration())
+                        {
+                            var name = globalVarDecl.IDENTIFIER().GetText();
+                            if (name.EndsWith(suffix))
+                            {
+                                namesToImport.Add(name);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Prefix wildcard: MEMF_*
+                        var prefix = identifierNode.GetText();
+
+                        // Match all pub enums with this prefix
+                        foreach (var enumDecl in context.enumDeclaration())
+                        {
+                            if (IsPub(enumDecl))
+                            {
+                                var name = enumDecl.IDENTIFIER().GetText();
+                                if (name.StartsWith(prefix))
+                                {
+                                    namesToImport.Add(name);
+                                }
+                            }
+                        }
+
+                        // Match all pub constants with this prefix
+                        foreach (var constDecl in context.constDeclaration())
+                        {
+                            if (IsPub(constDecl))
+                            {
+                                var name = constDecl.IDENTIFIER().GetText();
+                                if (name.StartsWith(prefix))
+                                {
+                                    namesToImport.Add(name);
+                                }
+                            }
+                        }
+
+                        // Match all pub structs with this prefix
+                        foreach (var structDecl in context.structDeclaration())
+                        {
+                            if (IsPub(structDecl))
+                            {
+                                var name = structDecl.IDENTIFIER().GetText();
+                                if (name.StartsWith(prefix))
+                                {
+                                    namesToImport.Add(name);
+                                }
+                            }
+                        }
+
+                        // Match all pub traits with this prefix
+                        foreach (var traitDecl in context.traitDeclaration())
+                        {
+                            if (IsPub(traitDecl))
+                            {
+                                var name = traitDecl.IDENTIFIER().GetText();
+                                if (name.StartsWith(prefix))
+                                {
+                                    namesToImport.Add(name);
+                                }
+                            }
+                        }
+
+                        // Match all pub/extern functions with this prefix
+                        foreach (var funcDecl in context.functionDeclaration())
+                        {
+                            var (isPub, isExtern) = GetFunctionVisibility(funcDecl);
+                            if (isPub || isExtern)
+                            {
+                                var name = funcDecl.IDENTIFIER().GetText();
+                                if (name.StartsWith(prefix))
+                                {
+                                    namesToImport.Add(name);
+                                }
+                            }
+                        }
+
+                        // Match all extern global variables with this prefix
+                        foreach (var globalVarDecl in context.globalVariableDeclaration())
+                        {
+                            var name = globalVarDecl.IDENTIFIER().GetText();
+                            if (name.StartsWith(prefix))
+                            {
+                                namesToImport.Add(name);
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    // Regular identifier import
+                    namesToImport.Add(importNameCtx.IDENTIFIER(0).GetText());
+                }
             }
         }
 
