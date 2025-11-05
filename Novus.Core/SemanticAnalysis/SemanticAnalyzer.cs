@@ -74,6 +74,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     // Type interning system for efficient type equality
     private readonly TypeInterner _typeInterner = new();
 
+    // Type parser for shared parsing logic
+    private readonly TypeParser _typeParser;
+
     public DiagnosticBag Diagnostics => _diagnostics;
 
     // Public read-only access to symbol tables for language server features (go to definition, hover, etc.)
@@ -100,6 +103,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         _sourceLines = sourceCode.Split('\n');
         _stdLibPath = stdLibPath;
         SourceText = sourceCode;
+        _typeParser = new TypeParser(new SemanticAnalyzerTypeContext(this));
     }
 
     public bool Analyze(NovusParser.CompilationUnitContext context)
@@ -6434,34 +6438,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     {
         return context switch
         {
-            NovusParser.ReferenceTypeContext refCtx => ParseReferenceType(refCtx),
-            NovusParser.PointerTypeContext ptrCtx => ParsePointerType(ptrCtx),
-            NovusParser.ArrayTypeWithSizeContext arrayWithSizeCtx => ParseArrayTypeWithSize(arrayWithSizeCtx),
-            NovusParser.ArrayTypeInferredContext arrayInferredCtx => ParseArrayTypeInferred(arrayInferredCtx),
-            NovusParser.FunctionPointerTypeContext fpCtx => ParseFunctionPointerType(fpCtx),
-            NovusParser.PrimitiveTypeContext primCtx => ParsePrimitiveType(primCtx),
+            // For named types, use our own implementation that includes validation
             NovusParser.NamedTypeContext namedCtx => ParseNamedType(namedCtx),
-            _ => IrIntType.I32
+            // For all other types, delegate to TypeParser for shared parsing logic
+            _ => _typeParser.ParseType(context)
         };
     }
 
-    private IrType ParseReferenceType(NovusParser.ReferenceTypeContext context)
-    {
-        var pointeeType = ParseType(context.type());
-
-        // Check if this is a mutable reference (&mut T) or immutable reference (&T)
-        bool isMutable = context.GetChild(1)?.GetText() == "mut";
-
-        return isMutable
-            ? _typeInterner.GetMutReferenceType(pointeeType)
-            : _typeInterner.GetReferenceType(pointeeType);
-    }
-
-    private IrType ParsePointerType(NovusParser.PointerTypeContext context)
-    {
-        var pointeeType = ParseType(context.type());
-        return _typeInterner.GetPointerType(pointeeType);
-    }
 
     private IrType ParseNamedType(NovusParser.NamedTypeContext context)
     {
@@ -6660,93 +6643,6 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return IrIntType.I32;
     }
 
-    private IrType ParseArrayTypeWithSize(NovusParser.ArrayTypeWithSizeContext context)
-    {
-        // Evaluate the size expression as a compile-time constant
-        var sizeExpr = context.expression();
-        var evaluator = new ConstantExpressionEvaluator(
-            _symbols.GetLocalConstants().ToDictionary(kvp => kvp.Key, kvp => kvp.Value.Value),
-            errorMsg => _diagnostics.ReportError(
-                "E0030",
-                $"error evaluating array size: {errorMsg}",
-                SourceLocationHelper.FromToken(sizeExpr.Start, _filePath, _sourceLines),
-                new List<string>
-                {
-                    "array sizes must be compile-time constant expressions",
-                    "only integer literals, constants, and arithmetic operations are allowed"
-                }
-            )
-        );
-
-        var sizeValue = evaluator.Visit(sizeExpr);
-
-        if (!sizeValue.HasValue)
-        {
-            _diagnostics.ReportError(
-                "E0031",
-                "array size must be a compile-time constant expression",
-                SourceLocationHelper.FromToken(sizeExpr.Start, _filePath, _sourceLines),
-                new List<string>
-                {
-                    "array sizes must be known at compile time",
-                    "use integer literals or const expressions"
-                }
-            );
-            sizeValue = 0; // fallback
-        }
-
-        var elementType = ParseType(context.type());
-        return _typeInterner.GetArrayType(elementType, sizeValue.Value);
-    }
-
-    private IrType ParseArrayTypeInferred(NovusParser.ArrayTypeInferredContext context)
-    {
-        // For inferred size arrays, we create a placeholder with size -1
-        // The actual size will be determined when we parse the array literal initializer
-        var elementType = ParseType(context.type());
-        // Use size -1 as a sentinel value to indicate "size to be inferred"
-        return _typeInterner.GetArrayType(elementType, -1);
-    }
-
-    private IrType ParseFunctionPointerType(NovusParser.FunctionPointerTypeContext context)
-    {
-        var paramTypes = new List<IrType>();
-
-        if (context.typeList() != null)
-        {
-            foreach (var typeCtx in context.typeList().type())
-            {
-                paramTypes.Add(ParseType(typeCtx));
-            }
-        }
-
-        var returnType = context.type() != null ? ParseType(context.type()) : IrVoidType.Instance;
-
-        return _typeInterner.GetFunctionPointerType(paramTypes, returnType);
-    }
-
-    private IrType ParsePrimitiveType(NovusParser.PrimitiveTypeContext context)
-    {
-        var typeText = context.GetText();
-        return typeText switch
-        {
-            "u8" => IrIntType.U8,
-            "u16" => IrIntType.U16,
-            "u32" => IrIntType.U32,
-            "u64" => IrIntType.U64,
-            "i8" => IrIntType.I8,
-            "i16" => IrIntType.I16,
-            "i32" => IrIntType.I32,
-            "i64" => IrIntType.I64,
-            "bool" => IrBoolType.Instance,
-            "f32" => IrFloatType.F32,
-            "f64" => IrFloatType.F64,
-            "fixed16" => IrFixedType.Fixed16,
-            "fixed32" => IrFixedType.Fixed32,
-            "String" => IrStringType.Instance,
-            _ => IrIntType.I32
-        };
-    }
 
     private bool TypesCompatible(IrType expected, IrType actual)
     {
@@ -7330,6 +7226,112 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// ITypeParsingContext implementation for SemanticAnalyzer.
+    /// Provides access to symbol lookups and error reporting.
+    /// </summary>
+    private class SemanticAnalyzerTypeContext : ITypeParsingContext
+    {
+        private readonly SemanticAnalyzer _analyzer;
+
+        public SemanticAnalyzerTypeContext(SemanticAnalyzer analyzer)
+        {
+            _analyzer = analyzer;
+        }
+
+        // Lookups
+        public IrType? LookupGenericParameter(string name)
+        {
+            return _analyzer._genericParams.ContainsKey(name) ? _analyzer._genericParams[name] : null;
+        }
+
+        public IrStructType? LookupStruct(string name)
+        {
+            return _analyzer._symbols.LookupStruct(name);
+        }
+
+        public IrEnumType? LookupEnum(string name)
+        {
+            return _analyzer._symbols.LookupEnum(name);
+        }
+
+        public IrStructType? LookupMonomorphizedStruct(string cacheKey)
+        {
+            return _analyzer._monomorphizedStructs.ContainsKey(cacheKey)
+                ? _analyzer._monomorphizedStructs[cacheKey]
+                : null;
+        }
+
+        public IrEnumType? LookupMonomorphizedEnum(string cacheKey)
+        {
+            return _analyzer._monomorphizedEnums.ContainsKey(cacheKey)
+                ? _analyzer._monomorphizedEnums[cacheKey]
+                : null;
+        }
+
+        // Registration
+        public void RegisterMonomorphizedStruct(string key, IrStructType type)
+        {
+            _analyzer._monomorphizedStructs[key] = type;
+        }
+
+        public void RegisterMonomorphizedEnum(string key, IrEnumType type)
+        {
+            _analyzer._monomorphizedEnums[key] = type;
+        }
+
+        // Type interning
+        public IrType GetReferenceType(IrType pointeeType)
+        {
+            return _analyzer._typeInterner.GetReferenceType(pointeeType);
+        }
+
+        public IrType GetMutReferenceType(IrType pointeeType)
+        {
+            return _analyzer._typeInterner.GetMutReferenceType(pointeeType);
+        }
+
+        public IrType GetPointerType(IrType pointeeType)
+        {
+            return _analyzer._typeInterner.GetPointerType(pointeeType);
+        }
+
+        public IrType GetArrayType(IrType elementType, long length)
+        {
+            return _analyzer._typeInterner.GetArrayType(elementType, (int)length);
+        }
+
+        public IrType GetFunctionPointerType(List<IrType> paramTypes, IrType returnType)
+        {
+            return _analyzer._typeInterner.GetFunctionPointerType(paramTypes, returnType);
+        }
+
+        // Current state (SemanticAnalyzer doesn't track these)
+        public IrType? CurrentSelfType => null;
+        public Dictionary<string, IrType>? CurrentTypeSubstitutions => null;
+
+        // Constant values
+        public Dictionary<string, (IrType Type, object Value)> GetConstantValues()
+        {
+            // Convert ConstantSymbol dictionary to the expected format
+            return _analyzer._symbols.GetLocalConstants()
+                .ToDictionary(kvp => kvp.Key, kvp => (kvp.Value.Type, kvp.Value.Value));
+        }
+
+        // Error reporting
+        public Action<string>? ErrorReporter => (msg) =>
+        {
+            // SemanticAnalyzer uses diagnostics, but we need a location
+            // For now, report with a generic error code and empty location
+            // The TypeParser will typically be called from contexts where we have proper location
+            _analyzer._diagnostics.ReportError(
+                "E0020",
+                msg,
+                new SourceLocation(_analyzer._filePath, 0, 0, 0, "")
+            );
+        };
     }
 
     /// <summary>

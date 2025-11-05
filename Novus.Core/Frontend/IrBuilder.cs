@@ -65,12 +65,57 @@ public class IrBuilder : NovusBaseVisitor<object?>
     // Example: impl From<DosError> for NovusError { ... } -> _currentSelfType = NovusError
     private IrType? _currentSelfType = null;
 
+    // Type parser for unified type parsing logic
+    private readonly TypeParser _typeParser;
+
+    /// <summary>
+    /// Nested class that implements ITypeParsingContext for IrBuilder
+    /// </summary>
+    private class IrBuilderTypeContext : ITypeParsingContext
+    {
+        private readonly IrBuilder _builder;
+
+        public IrBuilderTypeContext(IrBuilder builder)
+        {
+            _builder = builder;
+        }
+
+        // Lookups
+        public IrType? LookupGenericParameter(string name) => _builder._symbols.LookupGenericParameter(name);
+        public IrStructType? LookupStruct(string name) => _builder._symbols.LookupStruct(name);
+        public IrEnumType? LookupEnum(string name) => _builder._symbols.LookupEnum(name);
+        public IrStructType? LookupMonomorphizedStruct(string cacheKey) => _builder._symbols.LookupMonomorphizedStruct(cacheKey);
+        public IrEnumType? LookupMonomorphizedEnum(string cacheKey) => _builder._symbols.LookupMonomorphizedEnum(cacheKey);
+
+        // Registration
+        public void RegisterMonomorphizedStruct(string key, IrStructType type) => _builder._symbols.RegisterMonomorphizedStruct(key, type);
+        public void RegisterMonomorphizedEnum(string key, IrEnumType type) => _builder._symbols.RegisterMonomorphizedEnum(key, type);
+
+        // Type interning
+        public IrType GetReferenceType(IrType pointeeType) => _builder._typeInterner.GetReferenceType(pointeeType);
+        public IrType GetMutReferenceType(IrType pointeeType) => _builder._typeInterner.GetMutReferenceType(pointeeType);
+        public IrType GetPointerType(IrType pointeeType) => _builder._typeInterner.GetPointerType(pointeeType);
+        public IrType GetArrayType(IrType elementType, long length) => _builder._typeInterner.GetArrayType(elementType, (int)length);
+        public IrType GetFunctionPointerType(List<IrType> paramTypes, IrType returnType) => _builder._typeInterner.GetFunctionPointerType(paramTypes, returnType);
+
+        // Current state
+        public IrType? CurrentSelfType => _builder._currentSelfType;
+        public Dictionary<string, IrType>? CurrentTypeSubstitutions => _builder._currentTypeSubstitutions;
+
+        // Constant values
+        public Dictionary<string, (IrType Type, object Value)> GetConstantValues() => _builder.GetConstantsAsTuples();
+
+        // Error reporting (null = throw exceptions)
+        public Action<string>? ErrorReporter => null;
+    }
+
     /// <summary>
     /// Constructor for IrBuilder
     /// </summary>
     public IrBuilder(bool skipAutoImports = false)
     {
         _skipAutoImports = skipAutoImports;
+        _typeParser = new TypeParser(new IrBuilderTypeContext(this));
     }
 
     /// <summary>
@@ -6850,200 +6895,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
         return null;
     }
 
+    /// <summary>
+    /// Parse a type from the AST - delegates to TypeParser for unified type parsing logic
+    /// </summary>
     private IrType ParseType(NovusParser.TypeContext context)
     {
-        return context switch
-        {
-            NovusParser.ReferenceTypeContext refCtx => ParseReferenceType(refCtx),
-            NovusParser.PointerTypeContext ptrCtx => ParsePointerType(ptrCtx),
-            NovusParser.ArrayTypeWithSizeContext arrayWithSizeCtx => ParseArrayTypeWithSize(arrayWithSizeCtx),
-            NovusParser.ArrayTypeInferredContext arrayInferredCtx => ParseArrayTypeInferred(arrayInferredCtx),
-            NovusParser.FunctionPointerTypeContext fpCtx => ParseFunctionPointerType(fpCtx),
-            NovusParser.SelfTypeContext selfCtx => ResolveSelfType(),
-            NovusParser.PrimitiveTypeContext primCtx => ParsePrimitiveType(primCtx),
-            NovusParser.NamedTypeContext namedCtx => ParseNamedType(namedCtx),
-            _ => throw new Exception($"Unknown type context: {context.GetType().Name}")
-        };
-    }
-
-    private IrType ResolveSelfType()
-    {
-        // If we have a current Self type (in impl block), resolve to it
-        if (_currentSelfType != null)
-        {
-            return _currentSelfType;
-        }
-
-        // Otherwise, keep it as IrSelfType for trait definitions
-        // This allows Self to be used in trait method signatures
-        // It will be resolved when the trait is implemented
-        return IrSelfType.Instance;
-    }
-
-    private IrType ParseReferenceType(NovusParser.ReferenceTypeContext context)
-    {
-        var pointeeType = ParseType(context.type());
-
-        // Check if this is a mutable reference (&mut T) or immutable reference (&T)
-        bool isMutable = context.GetChild(1)?.GetText() == "mut";
-
-        return isMutable
-            ? _typeInterner.GetMutReferenceType(pointeeType)
-            : _typeInterner.GetReferenceType(pointeeType);
-    }
-
-    private IrType ParsePointerType(NovusParser.PointerTypeContext context)
-    {
-        var pointeeType = ParseType(context.type());
-        return _typeInterner.GetPointerType(pointeeType);
-    }
-
-    private IrType ParseNamedType(NovusParser.NamedTypeContext context)
-    {
-        var typeName = context.typeName().GetText();
-
-        // Check if it's a generic type parameter (T, E, etc.)
-        var genericParam = _symbols.LookupGenericParameter(typeName);
-        if (genericParam != null)
-        {
-            // If we're inside a generic method instantiation and have a concrete type, use it
-            if (_currentTypeSubstitutions != null && _currentTypeSubstitutions.ContainsKey(typeName))
-            {
-                return _currentTypeSubstitutions[typeName];
-            }
-            return genericParam;
-        }
-
-        // Check if it's a struct type
-        if (_symbols.HasStruct(typeName))
-        {
-            var structType = _symbols.LookupStruct(typeName)!;
-
-            // Handle generic instantiation (e.g., Vec<i32>)
-            if (context.typeList() != null)
-            {
-                var typeArgs = new List<IrType>();
-                foreach (var typeCtx in context.typeList().type())
-                {
-                    typeArgs.Add(ParseType(typeCtx));
-                }
-
-                // Create cache key
-                var typeArgKeys = typeArgs.Select(t => GetTypeCacheKey(t));
-                var cacheKey = $"{structType.StructName}<{string.Join(",", typeArgKeys)}>";
-
-                // Check cache first
-                if (_symbols.LookupMonomorphizedStruct(cacheKey) != null)
-                {
-                    return _symbols.LookupMonomorphizedStruct(cacheKey)!;
-                }
-
-                // Create monomorphized struct with concrete types
-                var typeSubstitutions = new Dictionary<string, IrType>();
-                for (int i = 0; i < structType.GenericParameters.Count; i++)
-                {
-                    typeSubstitutions[structType.GenericParameters[i]] = typeArgs[i];
-                }
-
-                // Create monomorphized fields using recursive substitution
-                var monomorphizedFields = new List<IrStructField>();
-                bool fullyMonomorphized = true;
-
-                foreach (var origField in structType.Fields)
-                {
-                    var fieldType = SubstituteGenericTypes(origField.Type, typeSubstitutions);
-                    monomorphizedFields.Add(new IrStructField(origField.Name, fieldType));
-
-                    // Check if field type is still generic
-                    if (ContainsGenericTypes(fieldType))
-                    {
-                        fullyMonomorphized = false;
-                    }
-                }
-
-                // Create new struct type with concrete types (no generic parameters)
-                var monomorphizedStruct = new IrStructType(structType.StructName, monomorphizedFields, null, cacheKey);
-
-                // Force calculation of field offsets only if fully monomorphized
-                // If still contains generic types, offset calculation will happen later
-                if (fullyMonomorphized)
-                {
-                    _ = monomorphizedStruct.SizeInBytes;
-                }
-
-                // Cache it for future use
-                _symbols.RegisterMonomorphizedStruct(cacheKey, monomorphizedStruct);
-
-                return monomorphizedStruct;
-            }
-
-            return structType;
-        }
-
-        // Check if it's an enum type
-        if (_symbols.HasEnum(typeName))
-        {
-            var enumType = _symbols.LookupEnum(typeName)!;
-
-            // Handle generic instantiation (e.g., Option<i32>)
-            if (context.typeList() != null)
-            {
-                var typeArgs = new List<IrType>();
-                foreach (var typeCtx in context.typeList().type())
-                {
-                    typeArgs.Add(ParseType(typeCtx));
-                }
-
-                // Create cache key using proper type keys that handle nested generics
-                var typeArgKeys = typeArgs.Select(t => GetTypeCacheKey(t));
-                var cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
-
-                // Check cache first
-                if (_symbols.LookupMonomorphizedEnum(cacheKey) != null)
-                {
-                    return _symbols.LookupMonomorphizedEnum(cacheKey)!;
-                }
-
-                // Create monomorphized enum with concrete types
-                var typeSubstitutions = new Dictionary<string, IrType>();
-                for (int i = 0; i < enumType.GenericParameters.Count; i++)
-                {
-                    typeSubstitutions[enumType.GenericParameters[i]] = typeArgs[i];
-                }
-
-                // Create monomorphized variants
-                var monomorphizedVariants = new List<IrEnumVariant>();
-                foreach (var origVariant in enumType.Variants)
-                {
-                    var monomorphizedData = new List<IrType>();
-                    foreach (var dataType in origVariant.AssociatedData)
-                    {
-                        if (dataType is IrGenericType gt && typeSubstitutions.ContainsKey(gt.ParameterName))
-                        {
-                            var substituted = typeSubstitutions[gt.ParameterName];
-                            monomorphizedData.Add(substituted);
-                        }
-                        else
-                        {
-                            monomorphizedData.Add(dataType);
-                        }
-                    }
-                    monomorphizedVariants.Add(new IrEnumVariant(origVariant.Name, origVariant.Tag, monomorphizedData));
-                }
-
-                // Create new enum type with concrete types (no generic parameters)
-                var monomorphizedEnum = new IrEnumType(enumType.EnumName, monomorphizedVariants, null, cacheKey);
-
-                // Cache it for future use
-                _symbols.RegisterMonomorphizedEnum(cacheKey, monomorphizedEnum);
-
-                return monomorphizedEnum;
-            }
-
-            return enumType;
-        }
-
-        throw new Exception($"Unknown type '{typeName}'");
+        return _typeParser.ParseType(context);
     }
 
     /// <summary>
@@ -7228,85 +7085,6 @@ public class IrBuilder : NovusBaseVisitor<object?>
         {
             return type.Name;
         }
-    }
-
-    /// <summary>
-    /// Parse array type with explicit size: [u8; 100]
-    /// Used for uninitialized fixed-size arrays
-    /// </summary>
-    private IrType ParseArrayTypeWithSize(NovusParser.ArrayTypeWithSizeContext context)
-    {
-        // Evaluate the size expression as a compile-time constant
-        var sizeExpr = context.expression();
-        var evaluator = new ConstantExpressionEvaluator(
-            GetConstantValues(),
-            errorMsg => {
-                // Error handling - will be caught by semantic analyzer
-            }
-        );
-
-        var sizeValue = evaluator.Visit(sizeExpr);
-        if (!sizeValue.HasValue)
-        {
-            sizeValue = 0; // fallback - error will be reported by semantic analyzer
-        }
-
-        var elementType = ParseType(context.type());
-        return _typeInterner.GetArrayType(elementType, sizeValue.Value);
-    }
-
-    /// <summary>
-    /// Parse array type with inferred size: [i32]
-    /// Size will be inferred from the initializer expression
-    /// Returns a placeholder array type with size 0 - will be fixed during expression parsing
-    /// </summary>
-    private IrType ParseArrayTypeInferred(NovusParser.ArrayTypeInferredContext context)
-    {
-        // For inferred size arrays, we create a placeholder with size 0
-        // The actual size will be determined when we parse the array literal initializer
-        var elementType = ParseType(context.type());
-        // Use size -1 as a sentinel value to indicate "size to be inferred"
-        return _typeInterner.GetArrayType(elementType, -1);
-    }
-
-    private IrType ParseFunctionPointerType(NovusParser.FunctionPointerTypeContext context)
-    {
-        var paramTypes = new List<IrType>();
-
-        if (context.typeList() != null)
-        {
-            foreach (var typeCtx in context.typeList().type())
-            {
-                paramTypes.Add(ParseType(typeCtx));
-            }
-        }
-
-        var returnType = context.type() != null ? ParseType(context.type()) : IrVoidType.Instance;
-
-        return _typeInterner.GetFunctionPointerType(paramTypes, returnType);
-    }
-
-    private IrType ParsePrimitiveType(NovusParser.PrimitiveTypeContext context)
-    {
-        var typeText = context.GetText();
-        return typeText switch
-        {
-            "u8" => IrIntType.U8,
-            "u16" => IrIntType.U16,
-            "u32" => IrIntType.U32,
-            "u64" => IrIntType.U64,
-            "i8" => IrIntType.I8,
-            "i16" => IrIntType.I16,
-            "i32" => IrIntType.I32,
-            "i64" => IrIntType.I64,
-            "bool" => IrBoolType.Instance,
-            "f32" => IrFloatType.F32,
-            "f64" => IrFloatType.F64,
-            "fixed16" => IrFixedType.Fixed16,
-            "fixed32" => IrFixedType.Fixed32,
-            "String" => IrStringType.Instance,
-            _ => throw new Exception($"Unknown primitive type: {typeText}")
-        };
     }
 
     private (long value, IrType type) ParseIntegerLiteral(string text)
