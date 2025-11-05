@@ -1341,26 +1341,48 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
         }
 
-        // Keep generic params registered for later use during function instantiation
-        // They will be restored at the end
-
-        // Infer generic types from arguments
-        var typeSubstitutions = InferGenericFunctionTypes(genericParams, templateParams, arguments);
-        if (typeSubstitutions == null)
+        // Build type substitution map from monomorphized enum (same approach as structs)
+        var typeSubstitutions = new Dictionary<string, IrType>();
+        var baseEnum = _symbols.LookupEnum(baseTypeName);
+        if (baseEnum == null)
         {
-            return null; // Type inference failed
+            throw new Exception($"Enum '{baseTypeName}' not found");
         }
 
-
-        // Build monomorphized enum with inferred types
-        var monomorphizedEnum = MonomorphizeEnum(enumType, typeSubstitutions);
-        if (monomorphizedEnum == null)
+        // Extract type mappings by comparing base enum variants with monomorphized enum variants
+        // For example: Option<T> vs Option<i32> should extract T -> i32
+        if (enumType.CacheKey != null) // enum is monomorphized (e.g., Option<i32>)
         {
-            return null;
+            for (int varIdx = 0; varIdx < baseEnum.Variants.Count && varIdx < enumType.Variants.Count; varIdx++)
+            {
+                var baseVariant = baseEnum.Variants[varIdx];
+                var monoVariant = enumType.Variants[varIdx];
+
+                if (baseVariant.Name == monoVariant.Name &&
+                    baseVariant.AssociatedData.Count == monoVariant.AssociatedData.Count)
+                {
+                    for (int dataIdx = 0; dataIdx < baseVariant.AssociatedData.Count; dataIdx++)
+                    {
+                        ExtractGenericTypeMapping(baseVariant.AssociatedData[dataIdx], monoVariant.AssociatedData[dataIdx], typeSubstitutions);
+                    }
+                }
+            }
         }
+
+        // Verify all generic parameters were resolved
+        foreach (var genericParam in baseEnum.GenericParameters)
+        {
+            if (!typeSubstitutions.ContainsKey(genericParam))
+            {
+                throw new Exception($"Generic parameter '{genericParam}' not found in monomorphized enum {enumType.CacheKey ?? enumType.EnumName}");
+            }
+        }
+
+        // Use the already-monomorphized enum (no need to monomorphize again)
+        // enumType is already monomorphized (e.g., Option<i32>) since it came from the call site
 
         // Build instantiation key
-        var instantiationKey = $"{monomorphizedEnum.CacheKey}::{methodName}";
+        var instantiationKey = $"{enumType.CacheKey}::{methodName}";
 
         // Check if already instantiated
         if (_instantiatedMethods.Contains(instantiationKey))
@@ -1382,7 +1404,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         // Set Self type to the monomorphized enum for Self type resolution
         var savedSelfType = _currentSelfType;
-        _currentSelfType = monomorphizedEnum;
+        _currentSelfType = enumType;
 
         // Create the function manually (don't use Visit)
         var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
@@ -4581,6 +4603,47 @@ public class IrBuilder : NovusBaseVisitor<object?>
             if (monomorphizedStruct != null)
             {
                 method = InstantiateGenericMethod(monomorphizedStruct, methodName);
+            }
+        }
+
+        // If method not found for structs, try to instantiate it for monomorphized enums
+        if (method == null)
+        {
+            IrEnumType? monomorphizedEnum = null;
+
+            // Check if receiver is a monomorphized enum (e.g., Option<i32>)
+            if (receiverType is IrEnumType receiverEnum && receiverEnum.CacheKey != null)
+            {
+                monomorphizedEnum = receiverEnum;
+            }
+            // Check if receiver is a pointer to a monomorphized enum
+            else if (receiverType is IrPointerType ptrType && ptrType.PointeeType is IrEnumType pointeeEnum && pointeeEnum.CacheKey != null)
+            {
+                monomorphizedEnum = pointeeEnum;
+            }
+
+            if (monomorphizedEnum != null)
+            {
+                // Build complete arguments list: [receiver, ...user_args]
+                // This is needed for type inference to work properly
+                var allArgs = new List<IrValue> { receiver };
+
+                // Add user-provided arguments
+                if (callCtx.argumentList() != null)
+                {
+                    foreach (var argCtx in callCtx.argumentList().expression())
+                    {
+                        var argValue = (IrValue?)Visit(argCtx);
+                        if (argValue != null)
+                        {
+                            allArgs.Add(argValue);
+                        }
+                    }
+                }
+
+                // Instantiate the generic enum method with all arguments (including receiver)
+                // The method will infer generic type parameters from the argument types
+                method = InstantiateGenericEnumMethod(monomorphizedEnum, methodName, allArgs);
             }
         }
 
