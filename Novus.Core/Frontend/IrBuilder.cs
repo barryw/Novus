@@ -2637,41 +2637,120 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Handle post-increment/decrement statements (no expression)
         if (isPostIncDec)
         {
-            // Get the variable
-            IrVariable? variable = null;
-            IrType? varType = null;
+            // Check if there are lvalue suffixes (member/index access)
+            if (lvalueSuffixes.Length > 0)
+            {
+                // Complex lvalue: self.field++ or arr[i]++
+                // Build the full lvalue expression and use HandlePostIncrementDecrement
 
-            if (_localVariables.ContainsKey(name))
-            {
-                var localVar = _localVariables[name];
-                variable = new IrVariable(name, localVar.Type);
-                varType = localVar.Type;
-            }
-            else if (_currentFunction != null)
-            {
-                var param = _currentFunction.Parameters.FirstOrDefault(p => p.Name == name);
-                if (param != null)
+                // Get the variable
+                IrVariable? baseVar = null;
+                if (_localVariables.ContainsKey(name))
                 {
-                    variable = new IrVariable(name, param.Type);
-                    varType = param.Type;
+                    var localVar = _localVariables[name];
+                    baseVar = new IrVariable(name, localVar.Type);
+                }
+                else if (_currentFunction != null)
+                {
+                    var param = _currentFunction.Parameters.FirstOrDefault(p => p.Name == name);
+                    if (param != null)
+                    {
+                        baseVar = new IrVariable(name, param.Type);
+                    }
+                }
+
+                if (baseVar == null)
+                {
+                    throw new Exception($"Variable {name} not found");
+                }
+
+                // Process lvalue suffix chain to build the expression context
+                // For now, handle single member access (most common case)
+                if (lvalueSuffixes.Length == 1 && lvalueSuffixes[0].GetChild(0).GetText() == ".")
+                {
+                    var memberName = lvalueSuffixes[0].IDENTIFIER().GetText();
+
+                    // Auto-dereference pointers to structs
+                    IrValue actualBase = baseVar;
+                    IrType baseType = baseVar.Type;
+
+                    if (baseType is IrPointerType ptrType && ptrType.PointeeType is IrStructType)
+                    {
+                        actualBase = new IrDereferenceValue(actualBase, ptrType.PointeeType);
+                        baseType = ptrType.PointeeType;
+                    }
+
+                    if (baseType is not IrStructType structType)
+                    {
+                        throw new Exception($"Cannot access member '{memberName}' on non-struct type '{baseType}'");
+                    }
+
+                    var field = structType.Fields.FirstOrDefault(f => f.Name == memberName);
+                    if (field == null)
+                    {
+                        throw new Exception($"Struct '{structType.Name}' has no field '{memberName}'");
+                    }
+
+                    // Load current value
+                    var loadTemp = $"%member_load_{_tempCounter++}";
+                    _currentBlock!.AddInstruction(new IrMemberAccess(loadTemp, actualBase, memberName, field.Type, field.Offset));
+                    var currentValue = new IrVariable(loadTemp, field.Type);
+
+                    // Increment/decrement
+                    var newValueTemp = $"%t{_tempCounter++}";
+                    var opKind = (op == "++" ? IrBinaryOp.OpKind.Add : IrBinaryOp.OpKind.Sub);
+                    var binOp = new IrBinaryOp(newValueTemp, opKind, currentValue, new IrConstant(1, field.Type), field.Type);
+                    _currentBlock.AddInstruction(binOp);
+
+                    var newValue = new IrVariable(newValueTemp, field.Type);
+                    _currentBlock.AddInstruction(new IrMemberStore(actualBase, memberName, field.Offset, newValue));
+
+                    return null;
+                }
+                else
+                {
+                    // TODO: Handle more complex lvalue chains (e.g., arr[i]++, self.field1.field2++)
+                    throw new Exception("Complex lvalue post-increment/decrement not yet implemented");
                 }
             }
-
-            if (variable == null || varType == null)
+            else
             {
-                throw new Exception($"Variable {name} not found");
+                // Simple variable increment/decrement: var++
+                IrVariable? variable = null;
+                IrType? varType = null;
+
+                if (_localVariables.ContainsKey(name))
+                {
+                    var localVar = _localVariables[name];
+                    variable = new IrVariable(name, localVar.Type);
+                    varType = localVar.Type;
+                }
+                else if (_currentFunction != null)
+                {
+                    var param = _currentFunction.Parameters.FirstOrDefault(p => p.Name == name);
+                    if (param != null)
+                    {
+                        variable = new IrVariable(name, param.Type);
+                        varType = param.Type;
+                    }
+                }
+
+                if (variable == null || varType == null)
+                {
+                    throw new Exception($"Variable {name} not found");
+                }
+
+                // Increment or decrement: var = var +/- 1
+                var resultTemp = $"%t{_tempCounter++}";
+                var opKind = (op == "++" ? IrBinaryOp.OpKind.Add : IrBinaryOp.OpKind.Sub);
+                var binOp = new IrBinaryOp(resultTemp, opKind, variable, new IrConstant(1, varType), varType);
+                _currentBlock!.AddInstruction(binOp);
+
+                // Store back to the variable
+                _currentBlock.AddInstruction(new IrStore(name, new IrVariable(resultTemp, varType)));
+
+                return null;
             }
-
-            // Increment or decrement: var = var +/- 1
-            var resultTemp = $"%t{_tempCounter++}";
-            var opKind = (op == "++" ? IrBinaryOp.OpKind.Add : IrBinaryOp.OpKind.Sub);
-            var binOp = new IrBinaryOp(resultTemp, opKind, variable, new IrConstant(1, varType), varType);
-            _currentBlock!.AddInstruction(binOp);
-
-            // Store back to the variable
-            _currentBlock.AddInstruction(new IrStore(name, new IrVariable(resultTemp, varType)));
-
-            return null;
         }
 
         // Check if this is a member or index assignment (has lvalueSuffix elements)
@@ -5265,9 +5344,20 @@ public class IrBuilder : NovusBaseVisitor<object?>
             var baseExpr = (IrValue)Visit(memberCtx.expression())!;
             var memberName = memberCtx.IDENTIFIER().GetText();
 
-            if (baseExpr.Type is not IrStructType structType)
+            // Auto-dereference pointers to structs (like in VisitMemberAccessExpr)
+            IrValue actualBase = baseExpr;
+            IrType baseType = baseExpr.Type;
+
+            if (baseType is IrPointerType ptrType && ptrType.PointeeType is IrStructType)
             {
-                throw new Exception($"Cannot access member '{memberName}' on non-struct type '{baseExpr.Type}'");
+                // Auto-dereference the pointer - wrap in IrDereferenceValue
+                actualBase = new IrDereferenceValue(actualBase, ptrType.PointeeType);
+                baseType = ptrType.PointeeType;
+            }
+
+            if (baseType is not IrStructType structType)
+            {
+                throw new Exception($"Cannot access member '{memberName}' on non-struct type '{baseType}'");
             }
 
             var field = structType.Fields.FirstOrDefault(f => f.Name == memberName);
@@ -5276,7 +5366,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 throw new Exception($"Struct '{structType.Name}' has no field '{memberName}'");
             }
 
-            _currentBlock!.AddInstruction(new IrMemberStore(baseExpr, memberName, field.Offset, value));
+            _currentBlock!.AddInstruction(new IrMemberStore(actualBase, memberName, field.Offset, value));
             return;
         }
 
@@ -5391,10 +5481,21 @@ public class IrBuilder : NovusBaseVisitor<object?>
             var baseExpr = (IrValue)Visit(memberCtx.expression())!;
             var memberName = memberCtx.IDENTIFIER().GetText();
 
-            // Get the struct type and field info
-            if (baseExpr.Type is not IrStructType structType)
+            // Auto-dereference pointers to structs (like in VisitMemberAccessExpr)
+            IrValue actualBase = baseExpr;
+            IrType baseType = baseExpr.Type;
+
+            if (baseType is IrPointerType ptrType && ptrType.PointeeType is IrStructType)
             {
-                throw new Exception($"Cannot access member '{memberName}' on non-struct type '{baseExpr.Type}'");
+                // Auto-dereference the pointer - wrap in IrDereferenceValue
+                actualBase = new IrDereferenceValue(actualBase, ptrType.PointeeType);
+                baseType = ptrType.PointeeType;
+            }
+
+            // Get the struct type and field info
+            if (baseType is not IrStructType structType)
+            {
+                throw new Exception($"Cannot access member '{memberName}' on non-struct type '{baseType}'");
             }
 
             var field = structType.Fields.FirstOrDefault(f => f.Name == memberName);
@@ -5405,7 +5506,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             // Load current value
             var loadTemp = $"%member_load_{_tempCounter++}";
-            _currentBlock!.AddInstruction(new IrMemberAccess(loadTemp, baseExpr, memberName, field.Type, field.Offset));
+            _currentBlock!.AddInstruction(new IrMemberAccess(loadTemp, actualBase, memberName, field.Type, field.Offset));
             var currentValue = new IrVariable(loadTemp, field.Type);
 
             // Increment/decrement
@@ -5416,7 +5517,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             _currentBlock.AddInstruction(op);
 
             var newValue = new IrVariable(newValueTemp, field.Type);
-            _currentBlock.AddInstruction(new IrMemberStore(baseExpr, memberName, field.Offset, newValue));
+            _currentBlock.AddInstruction(new IrMemberStore(actualBase, memberName, field.Offset, newValue));
             return newValue;
         }
 

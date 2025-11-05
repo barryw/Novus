@@ -2183,31 +2183,37 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
             var incDecVariable = _variables.ContainsKey(name) ? _variables[name] : _globalVariables[name];
 
-            // Check if variable is mutable
-            if (!incDecVariable.IsMutable)
+            // Only check mutability if it's a simple variable (no member/index access)
+            // For member/index access (e.g., self.len++), we're modifying the field, not the variable
+            if (lvalueSuffixes.Length == 0)
             {
-                _diagnostics.ReportError(
-                    "E0019",
-                    $"cannot apply operator '{op}' to immutable variable '{name}'",
-                    location,
-                    helpTexts: new List<string>
-                    {
-                        "this variable was declared with 'let', which makes it immutable",
-                        "consider declaring it with 'var' if you need to modify it"
-                    }
-                );
-                return null;
-            }
+                // Simple variable increment/decrement: check if variable is mutable
+                if (!incDecVariable.IsMutable)
+                {
+                    _diagnostics.ReportError(
+                        "E0019",
+                        $"cannot apply operator '{op}' to immutable variable '{name}'",
+                        location,
+                        helpTexts: new List<string>
+                        {
+                            "this variable was declared with 'let', which makes it immutable",
+                            "consider declaring it with 'var' if you need to modify it"
+                        }
+                    );
+                    return null;
+                }
 
-            // Check that it's a numeric type
-            if (!IsNumericType(incDecVariable.Type))
-            {
-                _diagnostics.ReportError(
-                    "E0024",
-                    $"operator '{op}' requires numeric type, found '{TypeToString(incDecVariable.Type)}'",
-                    location
-                );
+                // Check that it's a numeric type
+                if (!IsNumericType(incDecVariable.Type))
+                {
+                    _diagnostics.ReportError(
+                        "E0024",
+                        $"operator '{op}' requires numeric type, found '{TypeToString(incDecVariable.Type)}'",
+                        location
+                    );
+                }
             }
+            // For member/index access, the type checking is already done in VisitPostIncrementExpr/VisitPostDecrementExpr
 
             return null;
         }
