@@ -6,7 +6,7 @@
 
 from std::core import Option, Result
 from std::ffi::amiga_structs import *
-from std::error import DosError, ExecError, IntuitionError, GraphicsError, NovusError, novus_error_from_dos
+from std::error import DosError, ExecError, IntuitionError, GraphicsError, NovusError
 from std::tags import make_tags
 from std::ffi::dos import SystemTagList, CreateNewProc, AllocDosObject, FreeDosObject
 from std::ffi::dos import NewLoadSeg, UnLoadSeg
@@ -39,7 +39,7 @@ pub fn System(command: *u8, tags_ptr: *TagItem, count: u32) -> Result<i32, Novus
 
     // SystemTagList returns -1 on error
     if result == -1 {
-        return Result::Err(novus_error_from_dos(DosError::NotImplemented))
+        return Result::Err(DosError::NotImplemented)
     }
 
     return Result::Ok(result)
@@ -77,7 +77,7 @@ pub fn CreateProcess(tags_ptr: *TagItem, count: u32) -> Result<*Process, NovusEr
         return Result::Ok(proc)
     }
 
-    return Result::Err(novus_error_from_dos(DosError::NoFreeStore))
+    return Result::Err(DosError::NoFreeStore)
 }
 
 // ============================================================================
@@ -114,7 +114,7 @@ pub fn AllocDos(obj_type: u32, tags_ptr: *TagItem, count: u32) -> Result<*u8, No
         return Result::Ok(o)
     }
 
-    return Result::Err(novus_error_from_dos(DosError::NoFreeStore))
+    return Result::Err(DosError::NoFreeStore)
 }
 
 /// Load a program segment with tag-based parameters
@@ -140,7 +140,7 @@ pub fn LoadSeg(file: *u8, tags_ptr: *TagItem, count: u32) -> Result<i32, NovusEr
 
     // NewLoadSeg returns 0 on failure
     if seglist == 0 {
-        return Result::Err(novus_error_from_dos(DosError::NotFound))
+        return Result::Err(DosError::NotFound)
     }
 
     return Result::Ok(seglist)

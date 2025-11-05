@@ -7,7 +7,7 @@
 // NOTE: For memory management, prefer using std::mem::MemoryBlock instead of AllocMem/FreeMem directly
 
 from std::core import Option, Result
-from std::error import DosError, ExecError, IntuitionError, GraphicsError, NovusError, novus_error_from_exec
+from std::error import DosError, ExecError, IntuitionError, GraphicsError, NovusError
 from std::ffi::amiga_structs import *
 from std::ffi::exec import AllocMem, FreeMem, AllocVec, FreeVec, CopyMem
 from std::ffi::exec import FindTask, SetTaskPri, AllocSignal, FreeSignal, Wait, Signal

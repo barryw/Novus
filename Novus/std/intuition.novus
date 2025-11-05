@@ -5,7 +5,7 @@
 // For low-level FFI access, use std::ffi::intuition
 
 from std::core import Option, Result
-from std::error import IntuitionError, NovusError, novus_error_from_intuition
+from std::error import DosError, ExecError, IntuitionError, GraphicsError, NovusError
 from std::tags import make_tags
 from std::ffi::amiga_structs import TagItem, Window, Screen, NewWindow, NewScreen
 from std::ffi::intuition import OpenWindowTagList, OpenScreenTagList, CloseWindow, CloseScreen
@@ -44,14 +44,14 @@ pub fn OpenWindow(tags_ptr: *TagItem, count: u32) -> Result<*Window, NovusError>
     }
 
     let null_new_window: *NewWindow = 0
-    let window = OpenWindowTagList(null_new_window, tag_list.as_ptr())
+    let window = OpenWindowTagList(null_new_window, (*TagItem)tag_list.as_ptr())
 
     // Check if window opened successfully (null check)
     if let win = window {
         return Result::Ok(win)
     }
 
-    return Result::Err(novus_error_from_intuition(IntuitionError::WindowOpenFailed))
+    return Result::Err(IntuitionError::WindowOpenFailed)
 }
 
 /// Open an Intuition screen with tag-based parameters
@@ -81,15 +81,15 @@ pub fn OpenScreen(tags_ptr: *TagItem, count: u32) -> Result<*Screen, NovusError>
         tag_list.drop()  // Automatic cleanup at scope exit
     }
 
-    let null_new_screen: *NewScreen = 0
-    let screen = OpenScreenTagList(null_new_screen, tag_list.as_ptr())
+    let null_new_screen: *NewScreen = (*NewScreen)0
+    let screen = OpenScreenTagList(null_new_screen, (*TagItem)tag_list.as_ptr())
 
     // Check if screen opened successfully (null check)
     if let scr = screen {
         return Result::Ok(scr)
     }
 
-    return Result::Err(novus_error_from_intuition(IntuitionError::ScreenOpenFailed))
+    return Result::Err(IntuitionError::ScreenOpenFailed)
 }
 
 // ============================================================================

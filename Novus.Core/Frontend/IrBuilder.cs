@@ -808,13 +808,54 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     }
                 }
 
-                // Register structs
+                // Register structs (with dependency expansion)
+                // First, expand selective imports to include struct dependencies
+                var expandedStructImports = new HashSet<string>(selectiveImports);
+                bool addedNewDeps;
+                do
+                {
+                    addedNewDeps = false;
+                    foreach (var structDecl in moduleContext.structDeclaration())
+                    {
+                        var structName = structDecl.IDENTIFIER().GetText();
+                        if (expandedStructImports.Contains(structName))
+                        {
+                            foreach (var fieldCtx in structDecl.structField())
+                            {
+                                var fieldTypeDeps = ExtractTypeNameDependencies(fieldCtx.type());
+                                foreach (var dep in fieldTypeDeps)
+                                {
+                                    if (expandedStructImports.Add(dep))
+                                    {
+                                        addedNewDeps = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } while (addedNewDeps);
+
+                // Register placeholder structs
                 foreach (var structDecl in moduleContext.structDeclaration())
                 {
                     var structName = structDecl.IDENTIFIER().GetText();
-                    if (selectiveImports.Contains(structName))
+                    if (expandedStructImports.Contains(structName))
                     {
                         if (!_structs.ContainsKey(structName))
+                        {
+                            var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), new List<string>(), null, null);
+                            _structs[structName] = placeholderStruct;
+                        }
+                    }
+                }
+
+                // Fill in struct fields
+                foreach (var structDecl in moduleContext.structDeclaration())
+                {
+                    var structName = structDecl.IDENTIFIER().GetText();
+                    if (expandedStructImports.Contains(structName))
+                    {
+                        if (_structs.TryGetValue(structName, out var existingStruct) && existingStruct.Fields.Count == 0)
                         {
                             RegisterStruct(structDecl);
                         }
@@ -990,13 +1031,46 @@ public class IrBuilder : NovusBaseVisitor<object?>
             RegisterConstant(constDecl);
         }
 
-        // Register imported structs in the module
+        // Register imported structs in the module using multi-pass approach to handle dependencies
+        // Pass 1: Expand the import list to include all struct dependencies
+        // When importing NewScreen, we also need to import TextAttr and BitMap that it references
+        var expandedStructNames = new HashSet<string>(namesToImport);
+        bool addedNewDependencies;
+        do
+        {
+            addedNewDependencies = false;
+            foreach (var structDecl in moduleContext.structDeclaration())
+            {
+                var structName = structDecl.IDENTIFIER().GetText();
+
+                // If this struct is in our expanded list, check its dependencies
+                if (expandedStructNames.Contains(structName))
+                {
+                    // Extract type names from struct fields
+                    foreach (var fieldCtx in structDecl.structField())
+                    {
+                        var fieldTypeDeps = ExtractTypeNameDependencies(fieldCtx.type());
+                        foreach (var dep in fieldTypeDeps)
+                        {
+                            // Add dependency to expanded list if not already present
+                            if (expandedStructNames.Add(dep))
+                            {
+                                addedNewDependencies = true;
+                            }
+                        }
+                    }
+                }
+            }
+        } while (addedNewDependencies);
+
+        // Pass 2: Register placeholder struct types for ALL structs in expanded list
+        // This allows structs to reference each other (e.g., NewScreen references TextAttr)
         foreach (var structDecl in moduleContext.structDeclaration())
         {
             var structName = structDecl.IDENTIFIER().GetText();
 
-            // Skip if not in the import list
-            if (!namesToImport.Contains(structName))
+            // Skip if not in the expanded import list
+            if (!expandedStructNames.Contains(structName))
             {
                 continue;
             }
@@ -1007,8 +1081,30 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 continue;
             }
 
-            // Register the struct from the imported module
-            RegisterStruct(structDecl);
+            // Register a placeholder struct with no fields yet
+            // This makes the type name resolvable during field parsing
+            var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), new List<string>(), null, null);
+            _structs[structName] = placeholderStruct;
+        }
+
+        // Pass 3: Fill in struct fields for all structs in expanded list
+        // At this point, all struct names are resolvable for field type parsing
+        foreach (var structDecl in moduleContext.structDeclaration())
+        {
+            var structName = structDecl.IDENTIFIER().GetText();
+
+            // Skip if not in the expanded import list
+            if (!expandedStructNames.Contains(structName))
+            {
+                continue;
+            }
+
+            // Check if this is just a placeholder (empty fields list)
+            if (_structs.TryGetValue(structName, out var existingStruct) && existingStruct.Fields.Count == 0)
+            {
+                // Now register the full struct with fields (replacing the placeholder)
+                RegisterStruct(structDecl);
+            }
         }
 
         // Register imported traits in the module
@@ -4100,8 +4196,50 @@ public class IrBuilder : NovusBaseVisitor<object?>
             IrEnumType finalEnumType = enumType;
             if (enumType.GenericParameters.Count > 0)
             {
-                // Build type substitutions from argument types
                 var typeSubstitutions = new Dictionary<string, IrType>();
+
+                // PRIORITY 1: Use expected type for monomorphization if available
+                // This allows From<T> trait conversions to work correctly
+                if (_expectedType is IrEnumType expectedEnumType &&
+                    expectedEnumType.EnumName == enumType.EnumName &&
+                    expectedEnumType.GenericParameters.Count == 0) // Expected type is monomorphized
+                {
+                    // Extract concrete types from expected enum by matching variant structure
+                    for (int paramIdx = 0; paramIdx < enumType.GenericParameters.Count; paramIdx++)
+                    {
+                        var paramName = enumType.GenericParameters[paramIdx];
+
+                        // Find this parameter in a variant and extract the concrete type
+                        for (int varIdx = 0; varIdx < enumType.Variants.Count; varIdx++)
+                        {
+                            var origVariant = enumType.Variants[varIdx];
+                            var expectedVar = expectedEnumType.Variants[varIdx];
+
+                            for (int dataIdx = 0; dataIdx < origVariant.AssociatedData.Count; dataIdx++)
+                            {
+                                var expectedTypeFromVariant = expectedVar.AssociatedData[dataIdx];
+                                if (origVariant.AssociatedData[dataIdx] is IrGenericType gt &&
+                                    gt.ParameterName == paramName)
+                                {
+                                    typeSubstitutions[paramName] = expectedTypeFromVariant;
+                                    break;
+                                }
+                            }
+
+                            if (typeSubstitutions.ContainsKey(paramName))
+                                break;
+                        }
+                    }
+
+                    // Use the expected type directly if it matches
+                    if (typeSubstitutions.Count == enumType.GenericParameters.Count)
+                    {
+                        finalEnumType = expectedEnumType;
+                    }
+                }
+
+                // PRIORITY 2: Fall back to argument types for any missing parameters
+                // This handles cases where expected type is not available or incomplete
                 for (int i = 0; i < arguments.Count; i++)
                 {
                     var argType = arguments[i].Type;
@@ -4116,68 +4254,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     }
                 }
 
-                // Special case: If this is a unit variant (no arguments) and we have an expected type,
-                // use the expected type directly for monomorphization
-                if (arguments.Count == 0 &&
-                    _expectedType is IrEnumType expectedEnumType &&
-                    expectedEnumType.EnumName == enumType.EnumName &&
-                    expectedEnumType.GenericParameters.Count == 0)
+                // PRIORITY 3: If not using expected type, create monomorphized enum from type substitutions
+                if (finalEnumType == enumType) // Haven't assigned finalEnumType yet
                 {
-                    // The expected type is already fully monomorphized, use it directly
-                    finalEnumType = expectedEnumType;
-                }
-                // Bidirectional type checking: use expected type to fill in missing parameters
-                else if (_expectedType is IrEnumType expectedEnumType2 &&
-                    expectedEnumType2.EnumName == enumType.EnumName &&
-                    expectedEnumType2.GenericParameters.Count == 0) // Expected type is monomorphized
-                {
-                    // Extract concrete types from expected enum by matching variant structure
-                    for (int paramIdx = 0; paramIdx < enumType.GenericParameters.Count; paramIdx++)
-                    {
-                        var paramName = enumType.GenericParameters[paramIdx];
-
-                        // Check if we need to refine or replace the existing substitution
-                        bool needsRefinement = false;
-                        if (typeSubstitutions.ContainsKey(paramName))
-                        {
-                            var existing = typeSubstitutions[paramName];
-                            // Check if the existing substitution is still generic (contains IrGenericType)
-                            if (existing is IrEnumType existingEnum)
-                            {
-                                bool hasGenericData = existingEnum.Variants.Any(v =>
-                                    v.AssociatedData.Any(d => d is IrGenericType));
-                                if (hasGenericData || existingEnum.GenericParameters.Count > 0)
-                                {
-                                    needsRefinement = true;
-                                }
-                            }
-                        }
-
-                        if (!typeSubstitutions.ContainsKey(paramName) || needsRefinement)
-                        {
-                            // Find this parameter in a variant and extract the concrete type
-                            for (int varIdx = 0; varIdx < enumType.Variants.Count; varIdx++)
-                            {
-                                var origVariant = enumType.Variants[varIdx];
-                                var expectedVar = expectedEnumType2.Variants[varIdx];
-
-                                for (int dataIdx = 0; dataIdx < origVariant.AssociatedData.Count; dataIdx++)
-                                {
-                                    var expectedType = expectedVar.AssociatedData[dataIdx];
-                                    if (origVariant.AssociatedData[dataIdx] is IrGenericType gt &&
-                                        gt.ParameterName == paramName)
-                                    {
-                                        typeSubstitutions[paramName] = expectedType;
-                                        break;
-                                    }
-                                }
-
-                                if (typeSubstitutions.ContainsKey(paramName) && !needsRefinement)
-                                    break;
-                            }
-                        }
-                    }
-
                     // Create cache key using proper type keys
                     var typeArgKeys = enumType.GenericParameters.Select(p =>
                     {
@@ -4227,9 +4306,39 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 }
             }
 
-            // Create the enum value with the monomorphized type
+            // Apply From<T> trait conversions if needed for arguments
             var finalVariant = finalEnumType.GetVariant(enumCtor.VariantName);
-            return new IrEnumValue(finalEnumType, enumCtor.VariantName, finalVariant!.Tag, arguments);
+            var convertedArguments = new List<IrValue>();
+
+            for (int i = 0; i < arguments.Count; i++)
+            {
+                var arg = arguments[i];
+                var expectedType = finalVariant!.AssociatedData[i];
+
+                // Check if type conversion is needed
+                if (!TypesEqual(arg.Type, expectedType))
+                {
+                    // Try to convert via From<ArgType> trait
+                    var convertedArg = TryConvertViaFromTrait(arg, expectedType);
+                    if (convertedArg != null)
+                    {
+                        convertedArguments.Add(convertedArg);
+                    }
+                    else
+                    {
+                        // No conversion available, use original (will fail at runtime or be caught elsewhere)
+                        convertedArguments.Add(arg);
+                    }
+                }
+                else
+                {
+                    // No conversion needed
+                    convertedArguments.Add(arg);
+                }
+            }
+
+            // Create the enum value with the monomorphized type
+            return new IrEnumValue(finalEnumType, enumCtor.VariantName, finalVariant.Tag, convertedArguments);
         }
 
         string? resultName;
@@ -5213,8 +5322,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     private bool TypesEqual(IrType a, IrType b)
     {
-        // Simple type equality check - could be more sophisticated
-        return a.ToString() == b.ToString();
+        // Simple type equality check - uses Name property for comparison
+        return a.Name == b.Name;
     }
 
     private string GetTypeName(IrType type)
@@ -5228,6 +5337,41 @@ public class IrBuilder : NovusBaseVisitor<object?>
             IrPointerType ptrType => $"*{GetTypeName(ptrType.PointeeType)}",
             _ => type.ToString()
         };
+    }
+
+    /// <summary>
+    /// Attempts to convert a value to a target type using the From<SourceType> trait.
+    /// Returns the converted value if successful, or null if no conversion is available.
+    /// This enables automatic error conversion in Result::Err and similar contexts.
+    /// </summary>
+    private IrValue? TryConvertViaFromTrait(IrValue sourceValue, IrType targetType)
+    {
+        var sourceType = sourceValue.Type;
+        var sourceTypeName = GetTypeName(sourceType);
+        var targetTypeName = GetTypeName(targetType);
+
+        // Look for From<sourceType> trait implementation for targetType
+        var convertMethodName = _module.FindTraitMethod(targetTypeName, "convert");
+
+        if (convertMethodName == null)
+        {
+            // No From trait implementation found
+            return null;
+        }
+
+        // Generate IR to call the convert method
+        // Pattern from ? operator: call From<SourceType>::convert(sourceValue)
+        var convertedTemp = $"%from_converted_{_tempCounter++}";
+        var convertCall = new IrCall(convertMethodName, targetType, convertedTemp);
+        convertCall.Arguments.Add(sourceValue);
+
+        // Add the call instruction to current block
+        if (_currentBlock != null)
+        {
+            _currentBlock.AddInstruction(convertCall);
+        }
+
+        return new IrVariable(convertedTemp, targetType);
     }
 
     private IrValue HandlePostIncrementDecrement(ParserRuleContext exprContext, bool isIncrement)
@@ -7761,5 +7905,87 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         return bounds;
+    }
+
+    /// <summary>
+    /// Extract all struct/enum type names referenced in a type expression
+    /// This is used to find dependencies when importing structs
+    /// Example: *TextAttr returns ["TextAttr"], [*BitMap; 8] returns ["BitMap"]
+    /// </summary>
+    private HashSet<string> ExtractTypeNameDependencies(NovusParser.TypeContext typeContext)
+    {
+        var dependencies = new HashSet<string>();
+
+        if (typeContext is NovusParser.PointerTypeContext ptrCtx)
+        {
+            // *T - extract from T
+            dependencies.UnionWith(ExtractTypeNameDependencies(ptrCtx.type()));
+        }
+        else if (typeContext is NovusParser.ReferenceTypeContext refCtx)
+        {
+            // &T or &mut T - extract from T
+            dependencies.UnionWith(ExtractTypeNameDependencies(refCtx.type()));
+        }
+        else if (typeContext is NovusParser.ArrayTypeWithSizeContext arrayCtx)
+        {
+            // [T; N] - extract from T
+            dependencies.UnionWith(ExtractTypeNameDependencies(arrayCtx.type()));
+        }
+        else if (typeContext is NovusParser.ArrayTypeInferredContext arrayInferredCtx)
+        {
+            // [T] - extract from T
+            dependencies.UnionWith(ExtractTypeNameDependencies(arrayInferredCtx.type()));
+        }
+        else if (typeContext is NovusParser.NamedTypeContext namedCtx)
+        {
+            // Type name like TextAttr, Vec<i32>, etc.
+            var typeName = namedCtx.typeName().GetText();
+
+            // Only add if it's not a primitive type
+            if (!IsPrimitiveTypeName(typeName))
+            {
+                dependencies.Add(typeName);
+            }
+
+            // If it has generic arguments, extract from those too
+            if (namedCtx.typeList() != null)
+            {
+                foreach (var typeArg in namedCtx.typeList().type())
+                {
+                    dependencies.UnionWith(ExtractTypeNameDependencies(typeArg));
+                }
+            }
+        }
+        else if (typeContext is NovusParser.FunctionPointerTypeContext fpCtx)
+        {
+            // fn(T1, T2) -> R - extract from parameters and return type
+            if (fpCtx.typeList() != null)
+            {
+                foreach (var paramType in fpCtx.typeList().type())
+                {
+                    dependencies.UnionWith(ExtractTypeNameDependencies(paramType));
+                }
+            }
+            if (fpCtx.type() != null)
+            {
+                dependencies.UnionWith(ExtractTypeNameDependencies(fpCtx.type()));
+            }
+        }
+
+        return dependencies;
+    }
+
+    /// <summary>
+    /// Check if a type name is a primitive type (not a struct/enum)
+    /// </summary>
+    private bool IsPrimitiveTypeName(string typeName)
+    {
+        return typeName switch
+        {
+            "i8" or "i16" or "i32" or "i64" or
+            "u8" or "u16" or "u32" or "u64" or
+            "bool" or "void" or "f32" or "f64" or "Self" => true,
+            _ => false
+        };
     }
 }

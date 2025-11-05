@@ -4212,12 +4212,22 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                                     // Check consistency - all uses of T must have same type
                                     if (argType != null && !TypesCompatible(typeSubstitutions[paramName], argType))
                                     {
-                                        var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
-                                        _diagnostics.ReportError(
-                                            "E0042",
-                                            $"type parameter '{paramName}' inferred as both '{TypeToString(typeSubstitutions[paramName])}' and '{TypeToString(argType)}'",
-                                            location
-                                        );
+                                        // Before reporting error, check if From<ArgType> trait exists for the expected type
+                                        // This allows: Result::Err(DosError) when Result<T, NovusError> is expected
+                                        if (!CanConvertViaFromTrait(argType, typeSubstitutions[paramName]))
+                                        {
+                                            var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
+                                            _diagnostics.ReportError(
+                                                "E0042",
+                                                $"type parameter '{paramName}' inferred as both '{TypeToString(typeSubstitutions[paramName])}' and '{TypeToString(argType)}'",
+                                                location,
+                                                helpTexts: new List<string>
+                                                {
+                                                    $"consider implementing From<{TypeToString(argType)}> for {TypeToString(typeSubstitutions[paramName])}"
+                                                }
+                                            );
+                                        }
+                                        // else: conversion is possible via From trait, allow it
                                     }
                                 }
                             }
@@ -4226,16 +4236,23 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                                 // Concrete type - validate compatibility
                                 if (argType != null && !TypesCompatible(expectedParamType, argType))
                                 {
-                                    var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
-                                    _diagnostics.ReportError(
-                                        "E0041",
-                                        $"argument {i + 1} type mismatch",
-                                        location,
-                                        helpTexts: new List<string>
-                                        {
-                                            $"expected '{TypeToString(expectedParamType)}', got '{TypeToString(argType)}'"
-                                        }
-                                    );
+                                    // Before reporting error, check if From<ArgType> trait exists for ExpectedType
+                                    // This enables automatic conversion: Result::Err(DosError) -> Result<T, NovusError>
+                                    if (!CanConvertViaFromTrait(argType, expectedParamType))
+                                    {
+                                        var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
+                                        _diagnostics.ReportError(
+                                            "E0041",
+                                            $"argument {i + 1} type mismatch",
+                                            location,
+                                            helpTexts: new List<string>
+                                            {
+                                                $"expected '{TypeToString(expectedParamType)}', got '{TypeToString(argType)}'",
+                                                $"consider implementing From<{TypeToString(argType)}> for {TypeToString(expectedParamType)}"
+                                            }
+                                        );
+                                    }
+                                    // else: conversion is possible, allow it - IrBuilder will generate the conversion
                                 }
                             }
                         }
@@ -4461,12 +4478,21 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                                         // Check consistency - all uses of T must have same type
                                         if (argType != null && !TypesCompatible(typeSubstitutions[paramName], argType))
                                         {
-                                            var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
-                                            _diagnostics.ReportError(
-                                                "E0042",
-                                                $"type parameter '{paramName}' inferred as both '{TypeToString(typeSubstitutions[paramName])}' and '{TypeToString(argType)}'",
-                                                location
-                                            );
+                                            // Before reporting error, check if From<ArgType> trait exists for the expected type
+                                            if (!CanConvertViaFromTrait(argType, typeSubstitutions[paramName]))
+                                            {
+                                                var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
+                                                _diagnostics.ReportError(
+                                                    "E0042",
+                                                    $"type parameter '{paramName}' inferred as both '{TypeToString(typeSubstitutions[paramName])}' and '{TypeToString(argType)}'",
+                                                    location,
+                                                    helpTexts: new List<string>
+                                                    {
+                                                        $"consider implementing From<{TypeToString(argType)}> for {TypeToString(typeSubstitutions[paramName])}"
+                                                    }
+                                                );
+                                            }
+                                            // else: conversion is possible via From trait, allow it
                                         }
                                     }
                                 }
@@ -7256,6 +7282,41 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Checks if a From<SourceType> trait implementation exists for the target type.
+    /// This is used to enable automatic type conversion in Result::Err and similar contexts.
+    /// </summary>
+    /// <param name="sourceType">The type being converted from</param>
+    /// <param name="targetType">The type being converted to</param>
+    /// <returns>True if From<SourceType> is implemented for targetType</returns>
+    private bool CanConvertViaFromTrait(IrType sourceType, IrType targetType)
+    {
+        // Get the base type names (handle generics)
+        var sourceTypeName = GetBaseTypeName(sourceType);
+        var targetTypeName = GetBaseTypeName(targetType);
+
+        // Build the trait name: "From<SourceType>"
+        var fromTraitName = $"From<{sourceTypeName}>";
+
+        // Look for an impl From<SourceType> for TargetType
+        foreach (var (key, implInfo) in _traitImpls)
+        {
+            if (implInfo.TypeName == targetTypeName &&
+                implInfo.TraitName == "From" &&
+                implInfo.TraitTypeArgs.Count == 1)
+            {
+                // Check if the trait type arg matches the source type
+                var traitArg = implInfo.TraitTypeArgs[0];
+                if (TypesCompatible(traitArg, sourceType))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

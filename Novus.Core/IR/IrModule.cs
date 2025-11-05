@@ -91,8 +91,17 @@ public class IrModule
         // Look through all trait implementations for this type
         foreach (var traitImpl in TraitImpls.Where(ti => ti.TypeName == typeName))
         {
+            // Extract base trait name from potentially generic trait name
+            // e.g., "From<DosError>" -> "From"
+            var baseTraitName = traitImpl.TraitName;
+            var genericIndex = baseTraitName.IndexOf('<');
+            if (genericIndex > 0)
+            {
+                baseTraitName = baseTraitName.Substring(0, genericIndex);
+            }
+
             // Check if this trait has the method
-            var trait = GetTrait(traitImpl.TraitName);
+            var trait = GetTrait(baseTraitName);
             if (trait != null && trait.GetMethod(methodName) != null)
             {
                 // Return the mangled name

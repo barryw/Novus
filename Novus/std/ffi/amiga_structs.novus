@@ -462,6 +462,22 @@ pub struct Requester {
     ReqPad2: [u8; 32],
 }
 
+pub struct NewScreen {
+    LeftEdge: i16,
+    TopEdge: i16,
+    Width: i16,
+    Height: i16,
+    Depth: i16,
+    DetailPen: u8,
+    BlockPen: u8,
+    ViewModes: u16,
+    Type: u16,
+    Font: *TextAttr,
+    DefaultTitle: *u8,
+    Gadgets: *u8,
+    CustomBitMap: *BitMap,
+}
+
 pub struct Screen {
     NextScreen: *Screen,
     FirstWindow: *u8,
