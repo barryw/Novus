@@ -4839,6 +4839,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
                 if (argType != null && !TypesCompatible(paramType, argType))
                 {
+                    // Check if we can coerce Str to *u8
+                    if (CanCoerceStrToU8Ptr(paramType, argType))
+                    {
+                        // Allow this coercion - IrBuilder will handle field extraction
+                        continue;
+                    }
+
                     var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
 
                     // Check if this is a function pointer mismatch - give detailed error
@@ -5111,16 +5118,20 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 {
                     if (argType != null && !TypesCompatible(paramType, argType))
                     {
-                        var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
-                        _diagnostics.ReportError(
-                            "E0015",
-                            $"mismatched types in method call",
-                            location,
-                            helpTexts: new List<string>
-                            {
-                                $"argument {i + 1} ('{method.Parameters[paramStartIndex + i].Name}'): expected '{TypeToString(paramType)}', found '{TypeToString(argType)}'"
-                            }
-                        );
+                        // Check if we can coerce Str to *u8
+                        if (!CanCoerceStrToU8Ptr(paramType, argType))
+                        {
+                            var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
+                            _diagnostics.ReportError(
+                                "E0015",
+                                $"mismatched types in method call",
+                                location,
+                                helpTexts: new List<string>
+                                {
+                                    $"argument {i + 1} ('{method.Parameters[paramStartIndex + i].Name}'): expected '{TypeToString(paramType)}', found '{TypeToString(argType)}'"
+                                }
+                            );
+                        }
                     }
                 }
             }
@@ -6975,6 +6986,25 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Allow integer (especially 0) to be used as null pointer
         // This enables: let ptr: *T = 0
         if (expected is IrPointerType && actual is IrIntType)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Check if we can automatically coerce Str to *u8
+    /// This is safe because Str has ptr: *u8 as its first field
+    /// </summary>
+    private bool CanCoerceStrToU8Ptr(IrType expectedType, IrType actualType)
+    {
+        // Check if expected is *u8 and actual is Str
+        if (expectedType is IrPointerType ptrType &&
+            ptrType.PointeeType is IrIntType intType &&
+            intType == IrIntType.U8 &&
+            actualType is IrStructType structType &&
+            structType.StructName == "Str")
         {
             return true;
         }

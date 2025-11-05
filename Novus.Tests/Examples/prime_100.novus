@@ -1,0 +1,60 @@
+// Prime Numbers up to 100
+// Simple example demonstrating loops and Vec
+
+from std::io import write
+from std::strings import Str
+from std::collections import Vec
+
+pub fn main() -> i32 {
+    write("Prime numbers up to 100:\n\n")
+
+    // Create sieve
+    var sieve = Vec::<bool>::new()
+
+    // Initialize with all true
+    var i: u32 = 0
+    while i <= 100 {
+        sieve.push(true)
+        i = i + 1
+    }
+
+    // Mark 0 and 1 as not prime
+    sieve.set(0, false)
+    sieve.set(1, false)
+
+    // Sieve of Eratosthenes
+    var p: u32 = 2
+    while p * p <= 100 {
+        let ptr = sieve.as_ptr()
+        let is_prime = ptr[p]
+        let check = (u32)is_prime
+        if check != 0 {
+            var m: u32 = p * p
+            while m <= 100 {
+                sieve.set(m, false)
+                m = m + p
+            }
+        }
+        p = p + 1
+    }
+
+    // Print primes
+    var count: u32 = 0
+    i = 2
+    while i <= 100 {
+        let data = sieve.as_ptr()
+        let val = data[i]
+        let check = (u32)val
+        if check != 0 {
+            write("%ld ", i)
+            count = count + 1
+            if count % 10 == 0 {
+                write("\n")
+            }
+        }
+        i = i + 1
+    }
+
+    write("\n\nFound %ld primes\n", count)
+    return 0
+}

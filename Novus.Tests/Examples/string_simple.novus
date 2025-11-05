@@ -1,0 +1,103 @@
+// Simple String Test - Basic string operations
+from std::io import write
+from std::strings import Str
+
+fn print_banner(msg: Str) {
+    write("=== %s ===\n", msg.as_ptr())
+}
+
+pub fn main() -> i32 {
+    let banner: Str = "Novus String Test"
+    print_banner(banner)
+
+    // Test 1: Basic string properties
+    let text: Str = "Hello, Amiga!"
+    write("Text: %s\n", text.as_ptr())
+    write("Length: %ld bytes\n\n", text.len())
+
+    // Test 2: String slicing
+    let original: Str = "The quick brown fox"
+    write("Original: %s\n", original.as_ptr())
+
+    let slice1 = original.slice(0, 3)
+    match slice1 {
+        Ok(s) => write("First 3 chars: %s\n", s.as_ptr()),
+        Err(_) => write("ERROR: Slice failed\n")
+    }
+
+    let slice2 = original.slice(10, 15)
+    match slice2 {
+        Ok(s) => write("Chars 10-15: %s\n\n", s.as_ptr()),
+        Err(_) => write("ERROR: Slice failed\n\n")
+    }
+
+    // Test 3: Character access
+    let word: Str = "NOVUS"
+    write("Spelling: %s = ", word.as_ptr())
+    var i: u32 = 0
+    while i < word.len() {
+        let ch_opt = word.get(i)
+        match ch_opt {
+            Some(ch) => write("%c ", ch),
+            None => write("? ")
+        }
+        i = i + 1
+    }
+    write("\n\n")
+
+    // Test 4: String searching
+    let sentence: Str = "Find the needle"
+    write("Sentence: %s\n", sentence.as_ptr())
+
+    let pos = sentence.find_byte(110)  // 'n'
+    match pos {
+        Some(p) => write("First 'n' at position: %ld\n\n", p),
+        None => write("'n' not found\n\n")
+    }
+
+    // Test 5: String comparison
+    let a: Str = "Apple"
+    let b: Str = "Apple"
+    let c: Str = "Banana"
+
+    write("Comparing strings:\n")
+    write("  a = %s\n", a.as_ptr())
+    write("  b = %s\n", b.as_ptr())
+    write("  c = %s\n", c.as_ptr())
+
+    if a.equals(b) {
+        write("  a equals b: YES\n")
+    } else {
+        write("  a equals b: NO\n")
+    }
+
+    if a.equals(c) {
+        write("  a equals c: YES\n\n")
+    } else {
+        write("  a equals c: NO\n\n")
+    }
+
+    // Test 6: Prefix/Suffix
+    let filename: Str = "document.txt"
+    let prefix: Str = "doc"
+    let suffix: Str = ".txt"
+
+    write("Filename: %s\n", filename.as_ptr())
+
+    if filename.starts_with(prefix) {
+        write("  Starts with 'doc': YES\n")
+    } else {
+        write("  Starts with 'doc': NO\n")
+    }
+
+    if filename.ends_with(suffix) {
+        write("  Ends with '.txt': YES\n\n")
+    } else {
+        write("  Ends with '.txt': NO\n\n")
+    }
+
+    let final_banner: Str = "Tests Complete"
+    print_banner(final_banner)
+
+    return 0
+}

@@ -62,7 +62,8 @@
       "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Release/net9.0/Novus build:*)",
       "Bash(/dev/null)",
       "Bash(dotnet-script:*)",
-      "Bash(nm:*)"
+      "Bash(nm:*)",
+      "Bash(pkill:*)"
     ],
     "deny": [],
     "ask": []

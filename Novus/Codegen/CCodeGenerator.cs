@@ -2742,11 +2742,24 @@ public class CCodeGenerator
 
     private void EmitMemberAccess(IrMemberAccess memberAccess)
     {
-        var structValue = EmitValue(memberAccess.Struct);
         var resultName = SanitizeVariableName(memberAccess.ResultName);
         var fieldType = GetCType(memberAccess.FieldType);
 
-        _output.AppendLine($"    {fieldType} {resultName} = {structValue}.{memberAccess.FieldName};");
+        // Special handling for struct literals: VBCC doesn't support member access on compound literals
+        // We need to create a temporary variable first
+        if (memberAccess.Struct is IrStructLiteral)
+        {
+            var tempVarName = $"_str_tmp_{_tempCounter++}";
+            var structType = GetCType(memberAccess.Struct.Type);
+            var structValue = EmitValue(memberAccess.Struct);
+            _output.AppendLine($"    {structType} {tempVarName} = {structValue};");
+            _output.AppendLine($"    {fieldType} {resultName} = {tempVarName}.{memberAccess.FieldName};");
+        }
+        else
+        {
+            var structValue = EmitValue(memberAccess.Struct);
+            _output.AppendLine($"    {fieldType} {resultName} = {structValue}.{memberAccess.FieldName};");
+        }
     }
 
     private void EmitIndexAccess(IrIndexAccess indexAccess)

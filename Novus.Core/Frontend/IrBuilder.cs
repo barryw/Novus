@@ -4265,6 +4265,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
         }
 
+        // NOTE: Str → *u8 coercion is now handled later, after function lookup,
+        // so we can check the actual parameter types and only coerce when needed
+
         // If it's a generic function template, infer types and instantiate
         if (genericFuncName != null && _genericFunctionTemplates.ContainsKey(genericFuncName))
         {
@@ -4476,6 +4479,37 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     throw new Exception($"Function '{funcRef.Function.Name}' expects {funcRef.Function.Parameters.Count} arguments, got {arguments.Count}");
             }
 
+            // Apply automatic Str → *u8 coercion only when parameter type is *u8
+            for (int i = 0; i < arguments.Count; i++)
+            {
+                // Skip variadic parameters (they don't have a declared type)
+                if (i >= funcRef.Function.Parameters.Count || funcRef.Function.Parameters[i].IsVariadic)
+                    continue;
+
+                var paramType = funcRef.Function.Parameters[i].Type;
+                var argValue = arguments[i];
+
+                // Only coerce if parameter is *u8 and argument is Str
+                if (paramType is IrPointerType ptrType &&
+                    ptrType.PointeeType.Equals(IrIntType.U8) &&
+                    argValue.Type is IrStructType structType &&
+                    structType.StructName == "Str")
+                {
+                    // Extract the 'ptr' field from the Str struct
+                    var ptrField = structType.GetField("ptr");
+                    if (ptrField == null)
+                    {
+                        throw new Exception("Str struct must have a 'ptr' field");
+                    }
+
+                    var ptrTempName = $"%t{_tempCounter++}";
+                    var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
+                    var ptrFieldAccess = new IrMemberAccess(ptrTempName, argValue, "ptr", u8PtrType, ptrField.Offset);
+                    _currentBlock!.AddInstruction(ptrFieldAccess);
+                    arguments[i] = new IrVariable(ptrTempName, u8PtrType);
+                }
+            }
+
             // Generate call instruction
             var callResultName = $"%t{_tempCounter++}";
             var callInstruction = new IrCall(funcRef.Function.Name, funcRef.Function.ReturnType, callResultName);
@@ -4671,6 +4705,33 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 throw new Exception($"Function pointer expects {fpType.ParameterTypes.Count} arguments, got {arguments.Count}");
             }
 
+            // Apply automatic Str → *u8 coercion only when parameter type is *u8
+            for (int i = 0; i < arguments.Count; i++)
+            {
+                var paramType = fpType.ParameterTypes[i];
+                var argValue = arguments[i];
+
+                // Only coerce if parameter is *u8 and argument is Str
+                if (paramType is IrPointerType ptrType &&
+                    ptrType.PointeeType.Equals(IrIntType.U8) &&
+                    argValue.Type is IrStructType structType &&
+                    structType.StructName == "Str")
+                {
+                    // Extract the 'ptr' field from the Str struct
+                    var ptrField = structType.GetField("ptr");
+                    if (ptrField == null)
+                    {
+                        throw new Exception("Str struct must have a 'ptr' field");
+                    }
+
+                    var ptrTempName = $"%t{_tempCounter++}";
+                    var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
+                    var ptrFieldAccess = new IrMemberAccess(ptrTempName, argValue, "ptr", u8PtrType, ptrField.Offset);
+                    _currentBlock!.AddInstruction(ptrFieldAccess);
+                    arguments[i] = new IrVariable(ptrTempName, u8PtrType);
+                }
+            }
+
             returnType = fpType.ReturnType;
             resultName = returnType is not IrVoidType ? $"%t{_tempCounter++}" : null;
 
@@ -4766,15 +4827,54 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 throw new Exception($"Function {functionName} expects {function.Parameters.Count} arguments, got {arguments.Count}");
         }
 
+        // Apply automatic Str → *u8 coercion only when parameter type is *u8
+        for (int i = 0; i < arguments.Count; i++)
+        {
+            // Skip variadic parameters (they don't have a declared type)
+            if (i >= function.Parameters.Count || function.Parameters[i].IsVariadic)
+                continue;
+
+            var paramType = function.Parameters[i].Type;
+            var argValue = arguments[i];
+
+            // Only coerce if parameter is *u8 and argument is Str
+            if (paramType is IrPointerType ptrType &&
+                ptrType.PointeeType.Equals(IrIntType.U8) &&
+                argValue.Type is IrStructType structType &&
+                structType.StructName == "Str")
+            {
+                // Extract the 'ptr' field from the Str struct
+                var ptrField = structType.GetField("ptr");
+                if (ptrField == null)
+                {
+                    throw new Exception("Str struct must have a 'ptr' field");
+                }
+
+                var ptrTempName = $"%t{_tempCounter++}";
+                var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
+                var ptrFieldAccess = new IrMemberAccess(ptrTempName, argValue, "ptr", u8PtrType, ptrField.Offset);
+                _currentBlock!.AddInstruction(ptrFieldAccess);
+                arguments[i] = new IrVariable(ptrTempName, u8PtrType);
+            }
+        }
+
         // Insert implicit casts for arguments where needed
         // (e.g., u32 -> i32 for same-bit-width conversions)
+        // Note: Str -> *u8 coercion is handled above (only when param type is *u8)
         for (int i = 0; i < arguments.Count; i++)
         {
             var argType = arguments[i].Type;
-            var paramType = function.Parameters[i].Type;
 
-            // If types don't exactly match but are compatible integer types of same width
-            if (!argType.Equals(paramType) &&
+            // For variadic functions, arguments beyond the non-variadic params don't have a corresponding parameter
+            IrType? paramType = null;
+            if (i < function.Parameters.Count && !function.Parameters[i].IsVariadic)
+            {
+                paramType = function.Parameters[i].Type;
+            }
+
+            // If types don't exactly match but are compatible integer types of same width (non-variadic only)
+            if (paramType != null &&
+                !argType.Equals(paramType) &&
                 argType is IrIntType argInt &&
                 paramType is IrIntType paramInt &&
                 argInt.BitWidth == paramInt.BitWidth)
@@ -5202,6 +5302,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
             if (arguments.Count != method.Parameters.Count)
                 throw new Exception($"Method {methodName} expects {method.Parameters.Count} arguments, got {arguments.Count}");
         }
+
+        // Note: Str -> *u8 coercion is already handled in VisitCallExpr
 
         // Create the call instruction
         // Use the actual function name from the method (e.g., "Vec_push" for monomorphized generics)
