@@ -1,4 +1,5 @@
 using Novus.IR;
+using Novus.IR.Analysis;
 
 namespace Novus.Optimizer.Passes;
 
@@ -7,8 +8,8 @@ namespace Novus.Optimizer.Passes;
 /// Uses liveness analysis across basic blocks to identify and remove dead instructions
 /// More powerful than basic DCE because it can eliminate dead code across block boundaries
 ///
-/// REFACTORED: Now uses IrVisitor for collecting uses and defs instead of manual switch statements.
-/// The visitor pattern automatically handles all instruction and value types.
+/// REFACTORED: Now uses DefUseAnalysis infrastructure instead of manually collecting uses.
+/// The centralized analysis provides def-use information across the entire function.
 /// </summary>
 public class CFGDeadCodeEliminationPass : FunctionPassBase
 {
@@ -40,10 +41,13 @@ public class CFGDeadCodeEliminationPass : FunctionPassBase
             {
                 var instruction = block.Instructions[i];
 
-                // Check if this instruction defines a variable
-                string? definedVar = GetDefinedVariable(instruction);
-                if (definedVar != null)
+                // Check if this instruction defines a variable using DefUseAnalysis
+                var definedVars = DefUseAnalysis.GetDefinedVariables(instruction);
+                if (definedVars.Count > 0)
                 {
+                    // For simplicity, assume single definition per instruction (typical case)
+                    var definedVar = definedVars[0];
+
                     // Check if the variable is live after this instruction (instruction-level)
                     bool isLive = liveVars.Contains(definedVar);
 
@@ -61,8 +65,11 @@ public class CFGDeadCodeEliminationPass : FunctionPassBase
                     else
                     {
                         // Instruction kept - update liveness
-                        // Remove the defined variable from live set (it's now dead before this instruction)
-                        liveVars.Remove(definedVar);
+                        // Remove all defined variables from live set (they're now dead before this instruction)
+                        foreach (var defVar in definedVars)
+                        {
+                            liveVars.Remove(defVar);
+                        }
                     }
                 }
 
@@ -183,44 +190,35 @@ public class CFGDeadCodeEliminationPass : FunctionPassBase
     }
 
     /// <summary>
-    /// Get all variables used in a basic block using visitor pattern
+    /// Get all variables used in a basic block
+    /// Uses visitor pattern to collect all variables that are used by any instruction in this block
     /// </summary>
     private HashSet<string> GetUses(IrBasicBlock block)
     {
+        var uses = new HashSet<string>();
+
+        // Collect all variables used by instructions in this block
         var collector = new UseCollectorVisitor();
         collector.VisitBasicBlock(block, null);
-        return collector.UsedVariables;
+        uses.UnionWith(collector.UsedVariables);
+
+        return uses;
     }
 
     /// <summary>
     /// Get all variables defined in a basic block
+    /// Uses DefUseAnalysis.GetDefinedVariables() for each instruction
     /// </summary>
     private HashSet<string> GetDefs(IrBasicBlock block)
     {
         var defs = new HashSet<string>();
         foreach (var instruction in block.Instructions)
         {
-            var def = GetDefinedVariable(instruction);
-            if (def != null)
-            {
-                defs.Add(def);
-            }
+            // Use the static DefUseAnalysis method to get defined variables
+            var definedVars = DefUseAnalysis.GetDefinedVariables(instruction);
+            defs.UnionWith(definedVars);
         }
         return defs;
-    }
-
-    /// <summary>
-    /// Get the variable defined by an instruction, if any
-    /// </summary>
-    private string? GetDefinedVariable(IrInstruction instruction)
-    {
-        return instruction switch
-        {
-            IrBinaryOp binOp => binOp.ResultName,
-            IrCall call when !string.IsNullOrEmpty(call.ResultName) => call.ResultName,
-            IrIndexAccess indexAccess => indexAccess.ResultName,
-            _ => null
-        };
     }
 
     /// <summary>

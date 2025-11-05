@@ -1,4 +1,5 @@
 using Novus.IR;
+using Novus.IR.Analysis;
 
 namespace Novus.Optimizer.Passes;
 
@@ -7,8 +8,8 @@ namespace Novus.Optimizer.Passes;
 /// Removes instructions whose results are never used
 /// Example: let x = 5; return 10; // x is never used, can be removed
 ///
-/// REFACTORED: Now uses IrVisitor for collecting uses instead of manual switch statements.
-/// The visitor pattern automatically handles all instruction and value types.
+/// REFACTORED: Now uses DefUseAnalysis infrastructure instead of manually collecting uses.
+/// The centralized analysis provides def-use information across the entire function.
 /// </summary>
 public class DeadCodeEliminationPass : FunctionPassBase
 {
@@ -16,22 +17,20 @@ public class DeadCodeEliminationPass : FunctionPassBase
 
     public override bool RunOnFunction(IrFunction function)
     {
+        // Perform def-use analysis once for the entire function
+        var defUse = DefUseAnalysis.Analyze(function);
+
         bool changed = false;
 
         foreach (var block in function.BasicBlocks)
         {
-            // Build a set of all used variables in this block using the visitor
-            var collector = new UseCollectorVisitor();
-            collector.VisitBasicBlock(block, null);
-            var usedVars = collector.UsedVariables;
-
-            // Second pass: remove unused instructions
+            // Remove unused instructions
             for (int i = 0; i < block.Instructions.Count; i++)
             {
                 if (block.Instructions[i] is IrBinaryOp binOp)
                 {
-                    // If this result is never used, remove it
-                    if (!usedVars.Contains(binOp.ResultName))
+                    // Use DefUseAnalysis.IsUsed() instead of checking if variable in set
+                    if (!defUse.IsUsed(binOp.ResultName))
                     {
                         block.Instructions.RemoveAt(i);
                         i--; // Adjust index after removal
@@ -42,24 +41,5 @@ public class DeadCodeEliminationPass : FunctionPassBase
         }
 
         return changed;
-    }
-
-    /// <summary>
-    /// Visitor that collects all used variable names
-    /// </summary>
-    private class UseCollectorVisitor : IrVisitor<object?, object?>
-    {
-        public HashSet<string> UsedVariables { get; } = new();
-
-        public override object? VisitVariable(IrVariable variable, object? context)
-        {
-            UsedVariables.Add(variable.Name);
-            return null;
-        }
-
-        // Note: The base visitor automatically traverses all instructions and values,
-        // so we only need to override the specific value types we care about.
-        // IrDereferenceValue, IrBorrowValue, etc. are automatically handled because
-        // the base class calls VisitValue recursively on their inner values.
     }
 }
