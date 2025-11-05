@@ -1,96 +1,788 @@
-// strings.novus - String utility functions
+// Novus Standard Library - Strings Module
 // Namespace: std::strings
-// Low-level string operations - wrappers around C standard library functions
+// Powerful, ergonomic, Amiga-optimized string types
 
-/// Calculate length of null-terminated string
+from std::core import Option, Result
+from std::collections import Vec
+from std::mem import MemoryBlock
+from std::ffi::exec import MEMF_PUBLIC, MEMF_CLEAR, FreeMem
+
+// ============================================================================
+// Error Types
+// ============================================================================
+
+/// Errors that can occur during string operations
+pub enum StringError {
+    /// Index out of bounds: (index, length)
+    OutOfBounds(u32, u32),
+    /// Invalid UTF-8 byte sequence at position
+    InvalidUtf8(u32),
+    /// Memory allocation failed
+    AllocationFailed,
+    /// String too long (for BCPL strings: max 255 bytes)
+    TooLong(u32),
+    /// Invalid format during parsing or formatting
+    InvalidFormat,
+    /// Null pointer passed where valid pointer expected
+    NullPointer,
+}
+
+// ============================================================================
+// Str - Borrowed String Slice (Fat Pointer)
+// ============================================================================
+
+/// Borrowed string slice - immutable view into string data
 ///
-/// Returns the number of characters in the string, not including the null terminator.
+/// This is a "fat pointer" containing a pointer and length.
+/// It does NOT own the data - just a view into existing memory.
+/// Size: 8 bytes (4 bytes ptr + 4 bytes len).
+///
+/// Use this for:
+/// - Function parameters (avoid copying)
+/// - Temporary views / substrings
+/// - String slices
 ///
 /// Example:
 /// ```novus
-/// let str = "Hello"
-/// let len = strlen(str.ptr)  // Returns 5
+/// fn greet(name: Str) {
+///     // name is just a view, no allocation
+/// }
+/// let s: Str = Str::from_cstr("Hello")
+/// greet(s)  // Zero-cost pass
 /// ```
+pub struct Str {
+    ptr: *u8,
+    len: u32,
+}
+
+impl Str {
+    /// Create a Str from a raw pointer and length
+    ///
+    /// SAFETY: Caller must ensure ptr points to valid memory of at least len bytes
+    pub fn from_raw(ptr: *u8, len: u32) -> Str {
+        return Str { ptr: ptr, len: len }
+    }
+
+    /// Create a Str from a null-terminated C string
+    /// Scans for null terminator to determine length
+    ///
+    /// Returns None if ptr is null
+    pub fn from_cstr(ptr: *u8) -> Option<Str> {
+        // Check for null pointer by casting to u32
+        let ptr_addr: u32 = (u32)ptr
+        if ptr_addr == 0 {
+            return Option::None
+        }
+
+        // Calculate length by scanning for null terminator
+        let len: u32 = strlen(ptr)
+        return Option::Some(Str { ptr: ptr, len: len })
+    }
+
+    /// Get the length of the string in bytes
+    pub fn len(&self) -> u32 {
+        return self.len
+    }
+
+    /// Check if the string is empty
+    pub fn is_empty(&self) -> bool {
+        return self.len == 0
+    }
+
+    /// Get a pointer to the string data
+    pub fn as_ptr(&self) -> *u8 {
+        return self.ptr
+    }
+
+    /// Get the byte at the given index
+    /// Returns None if index is out of bounds
+    pub fn get(&self, index: u32) -> Option<u8> {
+        if index >= self.len {
+            return Option::None
+        }
+        return Option::Some(self.ptr[index])
+    }
+
+    /// Create a substring slice
+    /// Returns Result with bounds checking
+    ///
+    /// Example:
+    /// ```novus
+    /// let s = Str::from_cstr("Hello, World!")
+    /// let hello_result = s.slice(0, 5)
+    /// match hello_result {
+    ///     Ok(hello) => // use hello
+    ///     Err(e) => // handle error
+    /// }
+    /// ```
+    pub fn slice(&self, start: u32, end: u32) -> Result<Str, StringError> {
+        if start > end {
+            return Result::Err(StringError::OutOfBounds(start, self.len))
+        }
+        if end > self.len {
+            return Result::Err(StringError::OutOfBounds(end, self.len))
+        }
+
+        let new_len: u32 = end - start
+        let new_ptr: *u8 = self.ptr + start
+
+        return Result::Ok(Str { ptr: new_ptr, len: new_len })
+    }
+
+    /// Create a slice from start to end of string
+    pub fn slice_from(&self, start: u32) -> Result<Str, StringError> {
+        if start > self.len {
+            return Result::Err(StringError::OutOfBounds(start, self.len))
+        }
+
+        let new_len: u32 = self.len - start
+        let new_ptr: *u8 = self.ptr + start
+
+        return Result::Ok(Str { ptr: new_ptr, len: new_len })
+    }
+
+    /// Create a slice from beginning to end
+    pub fn slice_to(&self, end: u32) -> Result<Str, StringError> {
+        if end > self.len {
+            return Result::Err(StringError::OutOfBounds(end, self.len))
+        }
+
+        return Result::Ok(Str { ptr: self.ptr, len: end })
+    }
+
+    /// Compare two strings for equality
+    pub fn equals(&self, other: Str) -> bool {
+        if self.len != other.len {
+            return false
+        }
+
+        // Compare byte by byte
+        var i: u32 = 0
+        while i < self.len {
+            if self.ptr[i] != other.ptr[i] {
+                return false
+            }
+            i = i + 1
+        }
+
+        return true
+    }
+
+    /// Compare two strings lexicographically
+    /// Returns: <0 if self < other, 0 if equal, >0 if self > other
+    pub fn compare(&self, other: Str) -> i32 {
+        var min_len: u32 = self.len
+        if other.len < self.len {
+            min_len = other.len
+        }
+
+        var i: u32 = 0
+        while i < min_len {
+            let a: u8 = self.ptr[i]
+            let b: u8 = other.ptr[i]
+            if a != b {
+                return (i32)a - (i32)b
+            }
+            i = i + 1
+        }
+
+        // All common bytes equal, compare lengths
+        return (i32)self.len - (i32)other.len
+    }
+
+    /// Check if string starts with prefix
+    pub fn starts_with(&self, prefix: Str) -> bool {
+        if prefix.len > self.len {
+            return false
+        }
+
+        var i: u32 = 0
+        while i < prefix.len {
+            if self.ptr[i] != prefix.ptr[i] {
+                return false
+            }
+            i = i + 1
+        }
+
+        return true
+    }
+
+    /// Check if string ends with suffix
+    pub fn ends_with(&self, suffix: Str) -> bool {
+        if suffix.len > self.len {
+            return false
+        }
+
+        let offset: u32 = self.len - suffix.len
+        var i: u32 = 0
+        while i < suffix.len {
+            if self.ptr[offset + i] != suffix.ptr[i] {
+                return false
+            }
+            i = i + 1
+        }
+
+        return true
+    }
+
+    /// Check if string contains substring
+    pub fn contains(&self, needle: Str) -> bool {
+        return self.find(needle).is_some()
+    }
+
+    /// Find first occurrence of substring
+    /// Returns Some(index) if found, None if not found
+    pub fn find(&self, needle: Str) -> Option<u32> {
+        if needle.len == 0 {
+            return Option::Some(0)
+        }
+        if needle.len > self.len {
+            return Option::None
+        }
+
+        let last_pos: u32 = self.len - needle.len
+        var i: u32 = 0
+
+        while i <= last_pos {
+            // Check if needle matches at position i
+            var j: u32 = 0
+            var matches: bool = true
+            while j < needle.len {
+                if self.ptr[i + j] != needle.ptr[j] {
+                    matches = false
+                    j = needle.len  // Break inner loop
+                }
+                j = j + 1
+            }
+
+            if matches {
+                return Option::Some(i)
+            }
+            i = i + 1
+        }
+
+        return Option::None
+    }
+
+    /// Find first occurrence of byte
+    pub fn find_byte(&self, byte: u8) -> Option<u32> {
+        var i: u32 = 0
+        while i < self.len {
+            if self.ptr[i] == byte {
+                return Option::Some(i)
+            }
+            i = i + 1
+        }
+        return Option::None
+    }
+
+    /// Find last occurrence of byte
+    pub fn rfind_byte(&self, byte: u8) -> Option<u32> {
+        if self.len == 0 {
+            return Option::None
+        }
+
+        var i: u32 = self.len - 1
+        var found: bool = false
+        while !found {
+            if self.ptr[i] == byte {
+                return Option::Some(i)
+            }
+            if i == 0 {
+                return Option::None
+            }
+            i = i - 1
+        }
+        return Option::None
+    }
+
+    /// Trim whitespace from both ends
+    pub fn trim(&self) -> Str {
+        let s1: Str = self.trim_start()
+        return s1.trim_end()
+    }
+
+    /// Trim whitespace from start
+    pub fn trim_start(&self) -> Str {
+        var start: u32 = 0
+        while start < self.len {
+            let ch: u8 = self.ptr[start]
+            if ch != $20 && ch != $09 && ch != $0A && ch != $0D {
+                // Not space, tab, LF, or CR - stop trimming
+                let new_len: u32 = self.len - start
+                let new_ptr: *u8 = self.ptr + start
+                return Str { ptr: new_ptr, len: new_len }
+            }
+            start = start + 1
+        }
+
+        // All whitespace
+        return Str { ptr: self.ptr, len: 0 }
+    }
+
+    /// Trim whitespace from end
+    pub fn trim_end(&self) -> Str {
+        if self.len == 0 {
+            return Str { ptr: self.ptr, len: 0 }
+        }
+
+        var end: u32 = self.len
+        var done: bool = false
+        while !done {
+            let ch: u8 = self.ptr[end - 1]
+            if ch != $20 && ch != $09 && ch != $0A && ch != $0D {
+                // Not whitespace - we found the end
+                return Str { ptr: self.ptr, len: end }
+            }
+            end = end - 1
+            if end == 0 {
+                // All whitespace
+                return Str { ptr: self.ptr, len: 0 }
+            }
+        }
+        return Str { ptr: self.ptr, len: 0 }
+    }
+
+    /// Convert to owned String (allocates)
+    pub fn to_string(&self) -> Result<String, StringError> {
+        return String::new_from_str(Str { ptr: self.ptr, len: self.len })
+    }
+
+    /// Get a null-terminated C string pointer
+    /// WARNING: Only safe if the underlying data is null-terminated!
+    /// For string literals this is safe. For slices, you must ensure null termination.
+    pub fn as_cstr(&self) -> *u8 {
+        return self.ptr
+    }
+}
+
+// ============================================================================
+// String - Owned, Heap-Allocated, Mutable String
+// ============================================================================
+
+/// Owned string backed by Vec<u8>
+///
+/// Heap-allocated, growable, mutable string.
+/// Uses Vec<u8> for storage (same growth strategy).
+///
+/// Use this for:
+/// - Building strings dynamically
+/// - Mutable string data
+/// - Concatenation and modifications
+/// - Owning string data
+///
+/// Example:
+/// ```novus
+/// var s = String::new()
+/// s.push_str(Str::from_cstr("Hello"))
+/// s.push_str(Str::from_cstr(", World!"))
+/// ```
+pub struct String {
+    vec: Vec<u8>,
+}
+
+impl String {
+    /// Create a new empty string
+    pub fn new() -> String {
+        return String { vec: Vec::<u8>::new() }
+    }
+
+    /// Create a string with pre-allocated capacity
+    pub fn with_capacity(capacity: u32) -> Option<String> {
+        let vec_opt = Vec::<u8>::with_capacity(capacity)
+        match vec_opt {
+            Some(vec) => {
+                return Option::Some(String { vec: vec })
+            },
+            None => {
+                return Option::None
+            }
+        }
+    }
+
+    /// Create a String from a Str slice (allocates and copies)
+    pub fn new_from_str(s: Str) -> Result<String, StringError> {
+        let vec_opt = Vec::<u8>::with_capacity(s.len())
+        match vec_opt {
+            Some(vec) => {
+                var string = String { vec: vec }
+
+                // Copy bytes from Str into Vec
+                var i: u32 = 0
+                while i < s.len() {
+                    let success: bool = string.vec.push(s.as_ptr()[i])
+                    if !success {
+                        return Result::Err(StringError::AllocationFailed)
+                    }
+                    i = i + 1
+                }
+
+                return Result::Ok(string)
+            },
+            None => {
+                return Result::Err(StringError::AllocationFailed)
+            }
+        }
+    }
+
+    /// Get the length of the string in bytes
+    pub fn len(&self) -> u32 {
+        return self.vec.len
+    }
+
+    /// Check if the string is empty
+    pub fn is_empty(&self) -> bool {
+        return self.vec.is_empty()
+    }
+
+    /// Get the capacity
+    pub fn capacity(&self) -> u32 {
+        return self.vec.capacity()
+    }
+
+    /// Get the string as a Str slice
+    pub fn as_str(&self) -> Str {
+        return Str::from_raw((*u8)self.vec.as_ptr(), self.vec.len)
+    }
+
+    /// Push a string slice onto the end
+    /// Returns true on success, false if allocation failed
+    pub fn push_str(&mut self, s: Str) -> bool {
+        if s.is_empty() {
+            return true
+        }
+
+        // Copy bytes from Str
+        var i: u32 = 0
+        while i < s.len() {
+            let success: bool = self.vec.push(s.as_ptr()[i])
+            if !success {
+                return false
+            }
+            i = i + 1
+        }
+
+        return true
+    }
+
+    /// Push a single byte onto the end
+    /// Returns true on success, false if allocation failed
+    pub fn push_byte(&mut self, byte: u8) -> bool {
+        return self.vec.push(byte)
+    }
+
+    /// Clear the string (keeps capacity)
+    pub fn clear(&mut self) {
+        self.vec.clear()
+    }
+
+    /// Reserve additional capacity
+    pub fn reserve(&mut self, additional: u32) -> bool {
+        let success: bool = self.vec.reserve(additional)
+        if !success {
+            return false
+        }
+        return true
+    }
+
+    /// Get mutable pointer to underlying buffer
+    pub fn as_mut_ptr(&mut self) -> *u8 {
+        return (*u8)self.vec.as_mut_ptr()
+    }
+
+    /// Get immutable pointer to underlying buffer
+    pub fn as_ptr(&self) -> *u8 {
+        return (*u8)self.vec.as_ptr()
+    }
+}
+
+// ============================================================================
+// Fixed-Size String Types (Stack-Allocated)
+// ============================================================================
+
+/// 32-byte fixed string for short names
+pub struct NameString {
+    buf: [u8; 32],
+    len: u32,
+}
+
+impl NameString {
+    pub fn new() -> NameString {
+        return NameString { buf: [0u8; 32], len: 0 }
+    }
+
+    pub fn len(&self) -> u32 {
+        return self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        return self.len == 0
+    }
+
+    pub fn capacity(&self) -> u32 {
+        return 32
+    }
+
+    pub fn as_str(&self) -> Str {
+        return Str::from_raw((*u8)(&self.buf), self.len)
+    }
+
+    pub fn as_mut_ptr(&mut self) -> *u8 {
+        return (*u8)(&self.buf)
+    }
+
+    pub fn push_str(&mut self, s: Str) -> bool {
+        if self.len + s.len() > 32 {
+            return false
+        }
+
+        var i: u32 = 0
+        while i < s.len() {
+            self.buf[self.len + i] = s.as_ptr()[i]
+            i = i + 1
+        }
+
+        self.len = self.len + s.len()
+        return true
+    }
+
+    pub fn push_byte(&mut self, byte: u8) -> bool {
+        if self.len >= 32 {
+            return false
+        }
+
+        self.buf[self.len] = byte
+        self.len = self.len + 1
+        return true
+    }
+
+    pub fn clear(&mut self) {
+        self.len = 0
+    }
+}
+
+/// 128-byte fixed string for gadget buffers
+pub struct GadgetString {
+    buf: [u8; 128],
+    len: u32,
+}
+
+impl GadgetString {
+    pub fn new() -> GadgetString {
+        return GadgetString { buf: [0u8; 128], len: 0 }
+    }
+
+    pub fn len(&self) -> u32 {
+        return self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        return self.len == 0
+    }
+
+    pub fn capacity(&self) -> u32 {
+        return 128
+    }
+
+    pub fn as_str(&self) -> Str {
+        return Str::from_raw((*u8)(&self.buf), self.len)
+    }
+
+    pub fn as_mut_ptr(&mut self) -> *u8 {
+        return (*u8)(&self.buf)
+    }
+
+    pub fn push_str(&mut self, s: Str) -> bool {
+        if self.len + s.len() > 128 {
+            return false
+        }
+
+        var i: u32 = 0
+        while i < s.len() {
+            self.buf[self.len + i] = s.as_ptr()[i]
+            i = i + 1
+        }
+
+        self.len = self.len + s.len()
+        return true
+    }
+
+    pub fn push_byte(&mut self, byte: u8) -> bool {
+        if self.len >= 128 {
+            return false
+        }
+
+        self.buf[self.len] = byte
+        self.len = self.len + 1
+        return true
+    }
+
+    pub fn clear(&mut self) {
+        self.len = 0
+    }
+}
+
+/// 256-byte fixed string for file paths
+pub struct PathString {
+    buf: [u8; 256],
+    len: u32,
+}
+
+impl PathString {
+    pub fn new() -> PathString {
+        return PathString { buf: [0u8; 256], len: 0 }
+    }
+
+    pub fn len(&self) -> u32 {
+        return self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        return self.len == 0
+    }
+
+    pub fn capacity(&self) -> u32 {
+        return 256
+    }
+
+    pub fn as_str(&self) -> Str {
+        return Str::from_raw((*u8)(&self.buf), self.len)
+    }
+
+    pub fn as_mut_ptr(&mut self) -> *u8 {
+        return (*u8)(&self.buf)
+    }
+
+    pub fn push_str(&mut self, s: Str) -> bool {
+        if self.len + s.len() > 256 {
+            return false
+        }
+
+        var i: u32 = 0
+        while i < s.len() {
+            self.buf[self.len + i] = s.as_ptr()[i]
+            i = i + 1
+        }
+
+        self.len = self.len + s.len()
+        return true
+    }
+
+    pub fn push_byte(&mut self, byte: u8) -> bool {
+        if self.len >= 256 {
+            return false
+        }
+
+        self.buf[self.len] = byte
+        self.len = self.len + 1
+        return true
+    }
+
+    pub fn clear(&mut self) {
+        self.len = 0
+    }
+}
+
+// ============================================================================
+// BStr - BCPL String for AmigaDOS
+// ============================================================================
+
+/// BCPL string (BSTR) for AmigaDOS compatibility
+/// Format: [length_byte][char1][char2]...
+/// Maximum length: 255 bytes
+/// BPTR = address / 4
+pub struct BStr {
+    bptr: u32,  // BPTR (address divided by 4)
+}
+
+impl BStr {
+    /// Create a BStr from a Str (allocates BCPL format)
+    pub fn new_from_str(s: Str) -> Result<BStr, StringError> {
+        if s.len() > 255 {
+            return Result::Err(StringError::TooLong(s.len()))
+        }
+
+        // Allocate length byte + string data
+        let total_bytes: u32 = 1 + s.len()
+        let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(total_bytes, MEMF_PUBLIC)
+
+        match block_opt {
+            Some(block) => {
+                let ptr: *u8 = block.ptr()
+
+                // Set length byte
+                ptr[0] = (u8)s.len()
+
+                // Copy string data
+                var i: u32 = 0
+                while i < s.len() {
+                    ptr[1 + i] = s.as_ptr()[i]
+                    i = i + 1
+                }
+
+                // Convert address to BPTR
+                let addr: u32 = (u32)ptr
+                let bptr: u32 = addr / 4
+
+                return Result::Ok(BStr { bptr: bptr })
+            },
+            None => {
+                return Result::Err(StringError::AllocationFailed)
+            }
+        }
+    }
+
+    /// Get the BPTR value for passing to DOS functions
+    pub fn as_bptr(&self) -> u32 {
+        return self.bptr
+    }
+
+    /// Get the actual memory address
+    pub fn as_ptr(&self) -> *u8 {
+        let addr: u32 = self.bptr * 4
+        return (*u8)addr
+    }
+
+    /// Get the length
+    pub fn len(&self) -> u32 {
+        let ptr: *u8 = self.as_ptr()
+        return (u32)ptr[0]
+    }
+
+    /// Convert to Str slice
+    pub fn as_str(&self) -> Str {
+        let ptr: *u8 = self.as_ptr()
+        let len: u32 = (u32)ptr[0]
+        let data_ptr: *u8 = ptr + 1
+        return Str::from_raw(data_ptr, len)
+    }
+
+    /// Free the BCPL string memory
+    pub fn drop(&self) {
+        let ptr: *u8 = self.as_ptr()
+        let len: u32 = self.len()
+        let total_bytes: u32 = 1 + len
+
+        unsafe {
+            FreeMem(ptr, total_bytes)
+        }
+    }
+}
+
+// ============================================================================
+// C String FFI Functions
+// ============================================================================
+
 extern fn strlen(str: *u8) -> u32
-
-/// Compare two null-terminated strings
-///
-/// Returns:
-/// - 0 if strings are equal
-/// - < 0 if s1 is less than s2
-/// - > 0 if s1 is greater than s2
-///
-/// Example:
-/// ```novus
-/// let result = strcmp("abc".ptr, "def".ptr)  // Returns negative
-/// ```
 extern fn strcmp(s1: *u8, s2: *u8) -> i32
-
-/// Compare first n characters of two strings
-///
-/// Returns same as strcmp, but only compares up to n characters.
 extern fn strncmp(s1: *u8, s2: *u8, n: u32) -> i32
-
-/// Copy string from src to dest
-///
-/// SAFETY: Caller must ensure dest has enough space.
-/// Consider using strncpy for bounds checking.
-///
-/// Returns pointer to dest.
 extern fn strcpy(dest: *u8, src: *u8) -> *u8
-
-/// Copy at most n characters from src to dest
-///
-/// Safer alternative to strcpy with bounds checking.
-/// If src is shorter than n, dest is padded with null bytes.
-///
-/// Returns pointer to dest.
 extern fn strncpy(dest: *u8, src: *u8, n: u32) -> *u8
-
-/// Concatenate src string to end of dest
-///
-/// SAFETY: Caller must ensure dest has enough space.
-///
-/// Returns pointer to dest.
 extern fn strcat(dest: *u8, src: *u8) -> *u8
-
-/// Concatenate at most n characters from src to dest
-///
-/// Safer alternative to strcat with bounds checking.
-///
-/// Returns pointer to dest.
 extern fn strncat(dest: *u8, src: *u8, n: u32) -> *u8
-
-/// Find first occurrence of character in string
-///
-/// Returns pointer to first occurrence, or null if not found.
 extern fn strchr(str: *u8, ch: i32) -> *u8
-
-/// Find last occurrence of character in string
-///
-/// Returns pointer to last occurrence, or null if not found.
 extern fn strrchr(str: *u8, ch: i32) -> *u8
-
-/// Find first occurrence of substring in string
-///
-/// Returns pointer to first occurrence, or null if not found.
 extern fn strstr(haystack: *u8, needle: *u8) -> *u8
-
-/// Copy memory from src to dest (may overlap)
-///
-/// Use this when memory regions may overlap.
-/// For non-overlapping regions, CopyMem is more efficient.
 extern fn memmove(dest: *u8, src: *u8, n: u32) -> *u8
-
-/// Set n bytes of memory to value
-///
-/// Example:
-/// ```novus
-/// memset(buffer, 0, 1024)  // Zero out 1024 bytes
-/// ```
 extern fn memset(ptr: *u8, value: i32, n: u32) -> *u8
-
-/// Compare n bytes of memory
-///
-/// Returns same as strcmp.
 extern fn memcmp(s1: *u8, s2: *u8, n: u32) -> i32

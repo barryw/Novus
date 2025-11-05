@@ -165,7 +165,6 @@ type
     | KW_F64                                                  # PrimitiveType
     | KW_FIXED16                                              # PrimitiveType
     | KW_FIXED32                                              # PrimitiveType
-    | KW_STRING                                               # PrimitiveType
     | typeName ('<' typeList '>')?                          # NamedType
     ;
 
@@ -343,6 +342,7 @@ primaryExpression
     | identifier                                   # IdentifierExpr
     | KW_MATCH expression '{' NEWLINE* matchArm (',' NEWLINE* matchArm)* ','? NEWLINE* '}'  # MatchExpr
     | '(' expression ')'                           # ParenExpr
+    | '[' NEWLINE* expression NEWLINE* ';' NEWLINE* expression NEWLINE* ']'  # ArrayRepeatLiteral
     | '[' NEWLINE* (expression (',' NEWLINE* expression)*)? NEWLINE* ']'     # ArrayLiteral
     ;
 
@@ -408,7 +408,6 @@ KW_F32      : 'f32';
 KW_F64      : 'f64';
 KW_FIXED16  : 'fixed16';
 KW_FIXED32  : 'fixed32';
-KW_STRING   : 'String';
 
 FLOAT_LITERAL
     : [0-9]+ '.' [0-9]* ('f32' | 'f64' | 'fixed16' | 'fixed32')?

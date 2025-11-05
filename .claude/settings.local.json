@@ -48,7 +48,18 @@
       "Bash(git stash:*)",
       "Bash(timeout 120 dotnet test:*)",
       "Bash(git checkout:*)",
-      "Bash(antlr4:*)"
+      "Bash(antlr4:*)",
+      "Bash(git cherry-pick:*)",
+      "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Release/net9.0/Novus compile:*)",
+      "WebSearch",
+      "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Debug/net8.0/novusc build:*)",
+      "Bash(/tmp/string_system_changes.patch)",
+      "Bash(git apply:*)",
+      "Bash(/tmp/strings_before_my_changes.novus)",
+      "Bash(/Users/barry/.vbcc/bin/vc:*)",
+      "Bash(/Users/barry/amiga-cc/vbcc/bin/vc:*)",
+      "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Release/net9.0/novusc build:*)",
+      "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Release/net9.0/Novus build:*)"
     ],
     "deny": [],
     "ask": []

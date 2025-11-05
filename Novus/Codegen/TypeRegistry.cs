@@ -140,18 +140,58 @@ public class TypeRegistry
     }
 
     /// <summary>
-    /// Recursively collect enum types that are transitively referenced by struct fields, arrays, pointers, etc.
+    /// Recursively collect enum types that are transitively referenced by struct fields, enum variants, arrays, pointers, etc.
     /// This ensures all enum types needed by the shared types header are included.
+    /// Uses fixed-point iteration to handle mutually recursive types.
     /// </summary>
     private void CollectTransitiveEnumTypes()
     {
-        // Process each struct type and collect any enum types from its fields
-        foreach (var structType in _structTypes.ToList())  // ToList() to avoid modification during iteration
+        // Fixed-point iteration: keep scanning until no new types are discovered
+        bool changed = true;
+        while (changed)
         {
-            foreach (var field in structType.Fields)
+            changed = false;
+            int startCount = _enumTypes.Count;
+            int startStructCount = _structTypes.Count;
+
+            // Process each struct type and collect any enum types from its fields
+            foreach (var structType in _structTypes.ToList())  // ToList() to avoid modification during iteration
             {
-                CollectEnumTypesFromType(field.Type);
+                foreach (var field in structType.Fields)
+                {
+                    CollectEnumTypesFromType(field.Type);
+                }
             }
+
+            // Process each enum type and collect any enum/struct types from its variant associated data
+            // This is crucial for catching types like Result<Str, StringError> where StringError
+            // is buried in the associated data of the Err variant, and Result<BStr, StringError>
+            // where BStr struct is in the Ok variant
+            foreach (var enumType in _enumTypes.ToList())  // ToList() to avoid modification during iteration
+            {
+                foreach (var variant in enumType.Variants)
+                {
+                    if (variant.HasAssociatedData && variant.AssociatedData != null)
+                    {
+                        foreach (var dataType in variant.AssociatedData)
+                        {
+                            // Collect enums
+                            CollectEnumTypesFromType(dataType);
+
+                            // Also collect structs! (BStr in Result<BStr, E>)
+                            if (dataType is IrStructType structType && structType.GenericParameters.Count == 0)
+                            {
+                                if (!_structTypes.Any(s => GetStructName(s) == GetStructName(structType)))
+                                    _structTypes.Add(structType);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Check if we discovered any new types
+            if (_enumTypes.Count > startCount || _structTypes.Count > startStructCount)
+                changed = true;
         }
     }
 

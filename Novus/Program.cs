@@ -583,12 +583,25 @@ class Program
                     projectVersion: options.ProjectVersion);
 
                 // Generate one C file per function
-                foreach (var function in mainFunctions)
+                // Filter out functions with unresolved types to avoid symbol conflicts
+                var generableMainFunctions = mainFunctions
+                    .Where(f => !mainCodegen.HasUnresolvedTypes(f))
+                    .ToList();
+
+                foreach (var function in generableMainFunctions)
                 {
                     var functionCCode = mainCodegen.GenerateFunctionFile(function);
-                    var functionCFile = Path.Combine(outputDir, $"{baseName}_{function.Name}.c");
-                    await File.WriteAllTextAsync(functionCFile, functionCCode);
-                    cFiles.Add(functionCFile);
+                    // Skip writing function files for functions that were skipped due to unresolved types
+                    if (functionCCode.Contains("SKIPPED") && functionCCode.Length < 150)
+                    {
+                        Console.WriteLine($"  Skipped generating C file for {function.Name}");
+                    }
+                    else
+                    {
+                        var functionCFile = Path.Combine(outputDir, $"{baseName}_{function.Name}.c");
+                        await File.WriteAllTextAsync(functionCFile, functionCCode);
+                        cFiles.Add(functionCFile);
+                    }
                 }
 
                 // Generate statics file if module has static variables
@@ -674,6 +687,13 @@ class Program
                 var moduleName = moduleIR.ModuleName;
                 var isStdModule = modulePath.Contains("/std/");
 
+                // Skip per-function generation for stdlib modules
+                // They're already included in the main module's monolithic generation
+                if (isStdModule)
+                {
+                    continue;
+                }
+
                 // Get all non-extern functions with implementations
                 var functions = moduleIR.IrModule.Functions
                     .Where(f => !f.IsExtern && f.BasicBlocks.Count > 0)
@@ -694,12 +714,33 @@ class Program
                     projectVersion: options.ProjectVersion);
 
                 // Generate one C file per function
-                foreach (var function in functions)
+                // Filter out functions with unresolved types to avoid symbol conflicts
+                var generableFunctions = functions
+                    .Where(f =>
+                    {
+                        bool hasUnresolved = moduleCodegen.HasUnresolvedTypes(f);
+                        if (hasUnresolved)
+                        {
+                            Console.WriteLine($"    [FILTERED OUT] {f.Name} has unresolved types");
+                        }
+                        return !hasUnresolved;
+                    })
+                    .ToList();
+
+                foreach (var function in generableFunctions)
                 {
                     var functionCCode = moduleCodegen.GenerateFunctionFile(function);
-                    var functionCFile = Path.Combine(outputDir, $"{moduleName}_{function.Name}.c");
-                    await File.WriteAllTextAsync(functionCFile, functionCCode);
-                    cFiles.Add(functionCFile);
+                    // Skip writing function files for functions that were skipped due to unresolved types
+                    if (functionCCode.Contains("SKIPPED") && functionCCode.Length < 150)
+                    {
+                        Console.WriteLine($"  Skipped generating C file for {function.Name}");
+                    }
+                    else
+                    {
+                        var functionCFile = Path.Combine(outputDir, $"{moduleName}_{function.Name}.c");
+                        await File.WriteAllTextAsync(functionCFile, functionCCode);
+                        cFiles.Add(functionCFile);
+                    }
                 }
 
                 // Generate statics file if module has static variables

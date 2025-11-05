@@ -1,0 +1,12 @@
+// Test string literal automatic Str struct creation
+from std::strings import Str
+
+pub fn main() -> i32 {
+    // String literal should automatically create Str struct
+    let s: Str = "Hello, World!"
+
+    // Should be able to access len field
+    let len: u32 = s.len
+
+    return 0
+}

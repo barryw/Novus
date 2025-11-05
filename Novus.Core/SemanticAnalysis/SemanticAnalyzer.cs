@@ -3304,6 +3304,11 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         if (isEnumMatch)
         {
             enumTypeForValidation = (IrEnumType)matchValueType;
+            Console.WriteLine($"DEBUG SemanticAnalyzer: Match on enum '{enumTypeForValidation.EnumName}' with CacheKey='{enumTypeForValidation.CacheKey}'");
+            foreach (var v in enumTypeForValidation.Variants)
+            {
+                Console.WriteLine($"  Variant '{v.Name}': AssociatedData=[{string.Join(", ", v.AssociatedData.Select(d => $"{d.Name} (CacheKey={(d is IrStructType st ? st.CacheKey : "N/A")})"))}]");
+            }
         }
         else if (!isIntegerMatch && matchValueType is IrGenericType genericType)
         {
@@ -3856,7 +3861,6 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             case "u64": return IrIntType.U64;
             case "bool": return IrBoolType.Instance;
             case "void": return IrVoidType.Instance;
-            case "String": return IrStringType.Instance;
         }
 
         // Handle pointer types (ptr_T)
@@ -3984,13 +3988,14 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
-        // Handle struct types (e.g., Vec<T> -> Vec<i32>)
-        // Check if the struct contains generic types in its cache key
-        if (type is IrStructType structType)
+        // Handle struct types (e.g., Vec<T> -> Vec<u8>)
+        if (type is IrStructType structType && structType.GenericParameters.Count > 0)
         {
+            // This struct still has generic parameters that may need substitution
+            // Extract the current type arguments from the cache key
             var cacheKey = structType.CacheKey ?? structType.Name;
 
-            // If cache key contains type arguments with generics, substitute them
+            // Parse type arguments from cache key (e.g., "Vec<T>" -> ["T"])
             if (cacheKey.Contains("<") && cacheKey.Contains(">"))
             {
                 var startIdx = cacheKey.IndexOf('<');
@@ -3998,21 +4003,18 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 var typeArgsStr = cacheKey.Substring(startIdx + 1, endIdx - startIdx - 1);
                 var typeArgKeys = typeArgsStr.Split(',').Select(s => s.Trim()).ToList();
 
-                // Check if any type argument is a generic parameter
-                bool hasGenerics = false;
+                // Substitute each type argument
                 var substitutedTypeArgs = new List<IrType>();
-
                 foreach (var typeArgKey in typeArgKeys)
                 {
-                    // Check if this is a generic parameter (single capital letter)
-                    if (typeArgKey.Length == 1 && char.IsUpper(typeArgKey[0]) && substitutions.ContainsKey(typeArgKey))
+                    // Check if this is a generic parameter that needs substitution
+                    if (substitutions.ContainsKey(typeArgKey))
                     {
                         substitutedTypeArgs.Add(substitutions[typeArgKey]);
-                        hasGenerics = true;
                     }
                     else
                     {
-                        // Try to parse the type arg key
+                        // Try to parse the type arg key as-is
                         var parsedType = ParseTypeFromCacheKey(typeArgKey);
                         if (parsedType != null)
                         {
@@ -4026,32 +4028,34 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     }
                 }
 
-                // If we found and substituted generics, create/lookup monomorphized struct
-                if (hasGenerics && substitutedTypeArgs.All(t => !ContainsGenericType(t)))
+                // If all type args are now concrete, create monomorphized struct
+                if (substitutedTypeArgs.All(t => !ContainsGenericType(t)))
                 {
-                    var newCacheKey = $"{structType.Name}<{string.Join(",", substitutedTypeArgs.Select(GetTypeCacheKey))}>";
+                    var newCacheKey = $"{structType.StructName}<{string.Join(",", substitutedTypeArgs.Select(GetTypeCacheKey))}>";
+
+                    // Check cache
                     if (_monomorphizedStructs.ContainsKey(newCacheKey))
                     {
                         return _monomorphizedStructs[newCacheKey];
                     }
 
-                    // Create the monomorphized struct by substituting field types
+                    // Get the base struct definition
                     var baseStruct = _symbols.LookupStruct(structType.Name) ?? structType;
-                    var typeSubstitutions = new Dictionary<string, IrType>();
 
-                    // Build substitution map from generic params to concrete types
+                    // Build substitution map
+                    var typeSubstitutions = new Dictionary<string, IrType>();
                     for (int i = 0; i < Math.Min(baseStruct.GenericParameters.Count, substitutedTypeArgs.Count); i++)
                     {
                         typeSubstitutions[baseStruct.GenericParameters[i]] = substitutedTypeArgs[i];
                     }
 
-                    // Substitute field types
+                    // Substitute field types recursively
                     var monomorphizedFields = baseStruct.Fields.Select(f =>
                         new IrStructField(f.Name, SubstituteGenericTypes(f.Type, typeSubstitutions))
                     ).ToList();
 
                     var monomorphizedStruct = new IrStructType(
-                        baseStruct.Name,
+                        baseStruct.StructName,  // Use StructName not Name to avoid including old type args
                         monomorphizedFields,
                         new List<string>(), // No generic parameters - fully concrete
                         newCacheKey
@@ -4059,6 +4063,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
                     _monomorphizedStructs[newCacheKey] = monomorphizedStruct;
                     return monomorphizedStruct;
+                }
+                else
+                {
+                    // Still contains generics - return partially substituted struct
+                    // This shouldn't normally happen in a well-formed program but handle it gracefully
+                    return structType;
                 }
             }
         }
@@ -4446,11 +4456,20 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
                         // FIRST: Extract type substitutions from expected type (if available)
                         // This enables nested generic constructors to work correctly
+                        // Note: We check for both fully monomorphized (GenericParameters.Count == 0)
+                        // AND partially monomorphized (has CacheKey) types. This handles cases like
+                        // Result<T, ExecError> in a generic function where T is still generic but E is concrete.
                         if (_expectedType is IrEnumType expectedEnumType &&
                             expectedEnumType.EnumName == enumType.EnumName &&
-                            expectedEnumType.GenericParameters.Count == 0) // Expected type is monomorphized
+                            (expectedEnumType.GenericParameters.Count == 0 || expectedEnumType.CacheKey != null))
                         {
-                            // Build a mapping from generic parameters to concrete types by comparing variants
+                            // Build a mapping from generic parameters to concrete types
+                            // We need to extract ALL generic parameters from the expected type,
+                            // not just those that appear in the current variant being constructed.
+                            // For example: Result::Ok(value) with expected type Result<T, ExecError>
+                            // should extract both T and E=ExecError, even though E doesn't appear in Ok's data.
+
+                            // Strategy: Look through ALL variants to build the complete substitution map
                             for (int paramIdx = 0; paramIdx < enumType.GenericParameters.Count; paramIdx++)
                             {
                                 var paramName = enumType.GenericParameters[paramIdx];
@@ -5124,10 +5143,26 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public override IrType? VisitStringLiteral([NotNull] NovusParser.StringLiteralContext context)
     {
-        // String literals are String type (fat pointer: {ptr: *u8, len: i32})
-        // This is safer than raw *u8 and matches Rust/Swift string semantics
-        // To get the raw pointer for FFI, use string_literal.ptr
-        return IrStringType.Instance;
+        // String literals create Str struct instances from std::strings
+        // Str { ptr: *u8, len: u32 }
+        var strType = _symbols.LookupStruct("Str");
+        if (strType == null)
+        {
+            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0999",
+                "string literals require Str type from std::strings module",
+                location,
+                helpTexts: new List<string>
+                {
+                    "ensure std::strings is imported",
+                    "the Str struct must be available to use string literals"
+                }
+            );
+            return null;
+        }
+
+        return strType;
     }
 
     public override IrType? VisitSizeofExpr([NotNull] NovusParser.SizeofExprContext context)
@@ -5358,33 +5393,6 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             baseType = mutRefType.PointeeType;
         }
 
-
-        // Handle String type member access (.ptr and .len)
-        if (baseType is IrStringType)
-        {
-            if (memberName == "ptr")
-            {
-                return _typeInterner.GetPointerType(IrIntType.U8);
-            }
-            else if (memberName == "len")
-            {
-                return IrIntType.I32;
-            }
-            else
-            {
-                var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
-                _diagnostics.ReportError(
-                    "E0022",
-                    $"String type does not have a field named '{memberName}'",
-                    location,
-                    helpTexts: new List<string>
-                    {
-                        "available fields: ptr, len"
-                    }
-                );
-                return null;
-            }
-        }
 
         // Check if the base type is a struct
         if (baseType is not IrStructType structType)
@@ -6191,6 +6199,50 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return _typeInterner.GetArrayType(firstType!, expressions.Length);
     }
 
+    public override IrType? VisitArrayRepeatLiteral([NotNull] NovusParser.ArrayRepeatLiteralContext context)
+    {
+        // Array repeat literals: [value; count]
+        var expressions = context.expression();
+        if (expressions.Length != 2)
+        {
+            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            _diagnostics.ReportError("E0999", "array repeat literal must have exactly 2 expressions", location);
+            return null;
+        }
+
+        // First expression is the value
+        var valueType = Visit(expressions[0]);
+        if (valueType == null)
+        {
+            return null;
+        }
+
+        // Second expression is the count (must be compile-time constant integer)
+        var countType = Visit(expressions[1]);
+        if (countType == null)
+        {
+            return null;
+        }
+
+        // Validate that count is an integer type
+        if (countType is not IrIntType)
+        {
+            var location = SourceLocationHelper.FromContext(expressions[1], _filePath, _sourceLines);
+            _diagnostics.ReportError("E0999", "array repeat count must be an integer", location);
+            return null;
+        }
+
+        // Try to evaluate the count expression if it's a compile-time constant
+        if (!TryEvaluateIntegerLiteral(expressions[1], out int arraySize) || arraySize < 0)
+        {
+            var loc = SourceLocationHelper.FromContext(expressions[1], _filePath, _sourceLines);
+            _diagnostics.ReportError("E0999", "array repeat count must be a compile-time constant integer literal (non-negative)", loc);
+            return null;
+        }
+
+        return _typeInterner.GetArrayType(valueType, arraySize);
+    }
+
     public override IrType? VisitStructLiteral([NotNull] NovusParser.StructLiteralContext context)
     {
         var structName = context.typeName().GetText();
@@ -6592,22 +6644,16 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 {
                     var fieldType = origField.Type;
 
-                    // Substitute generic types in field
-                    if (fieldType is IrGenericType gt && typeSubstitutions.ContainsKey(gt.ParameterName))
-                    {
-                        fieldType = typeSubstitutions[gt.ParameterName];
-                    }
-                    // Handle nested generic types (e.g., *T where T is generic)
-                    else if (fieldType is IrPointerType ptrType && ptrType.PointeeType is IrGenericType ptrGt && typeSubstitutions.ContainsKey(ptrGt.ParameterName))
-                    {
-                        fieldType = _typeInterner.GetPointerType(typeSubstitutions[ptrGt.ParameterName]);
-                    }
+                    // Use SubstituteGenericTypes to handle all cases including nested generics
+                    fieldType = SubstituteGenericTypes(fieldType, typeSubstitutions);
 
                     monomorphizedFields.Add(new IrStructField(origField.Name, fieldType));
                 }
 
-                // Create new struct type with concrete types (no generic parameters)
-                var monomorphizedStruct = new IrStructType(structType.StructName, monomorphizedFields, null, cacheKey);
+                // Create new struct type - preserve generic parameters if any type args still contain generics
+                var hasGenerics = typeArgs.Any(t => ContainsGenericType(t));
+                var genericParams = hasGenerics ? structType.GenericParameters : null;
+                var monomorphizedStruct = new IrStructType(structType.StructName, monomorphizedFields, genericParams, cacheKey);
 
                 // Cache it for future use
                 _monomorphizedStructs[cacheKey] = monomorphizedStruct;
@@ -6679,14 +6725,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     var monomorphizedData = new List<IrType>();
                     foreach (var dataType in origVariant.AssociatedData)
                     {
-                        if (dataType is IrGenericType gt && typeSubstitutions.ContainsKey(gt.ParameterName))
-                        {
-                            monomorphizedData.Add(typeSubstitutions[gt.ParameterName]);
-                        }
-                        else
-                        {
-                            monomorphizedData.Add(dataType);
-                        }
+                        // Use SubstituteGenericTypes to handle nested generic types (e.g., Vec<T> in Option<Vec<T>>)
+                        monomorphizedData.Add(SubstituteGenericTypes(dataType, typeSubstitutions));
                     }
                     monomorphizedVariants.Add(new IrEnumVariant(origVariant.Name, origVariant.Tag, monomorphizedData));
                 }
@@ -6874,13 +6914,6 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
-        // Allow String to i32 conversion for FFI interop
-        // Automatically extracts the .ptr field when passing String to functions expecting i32
-        if (expected is IrIntType && actual is IrStringType)
-        {
-            return true;
-        }
-
         // Struct types - allow generic to concrete matching (e.g., Vec<T> can match Vec<i32>)
         if (expected is IrStructType expectedStruct && actual is IrStructType actualStruct)
         {
@@ -6888,6 +6921,35 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             if (expectedStruct.StructName != actualStruct.StructName)
             {
                 return false;
+            }
+
+            // For monomorphized structs, compare by cache key (handles Vec<u8> vs Vec<u8>)
+            // This is essential because two different IrStructType instances representing the same
+            // monomorphized type (e.g., Vec<u8>) won't be reference-equal, but should be considered compatible
+            if (expectedStruct.CacheKey != null && actualStruct.CacheKey != null)
+            {
+                Console.WriteLine($"DEBUG: Comparing struct CacheKeys: expected='{expectedStruct.CacheKey}' actual='{actualStruct.CacheKey}'");
+                return expectedStruct.CacheKey == actualStruct.CacheKey;
+            }
+
+            // Debug: Check if one has CacheKey and the other doesn't
+            if (expectedStruct.CacheKey != null || actualStruct.CacheKey != null)
+            {
+                Console.WriteLine($"DEBUG: CacheKey mismatch - expected CacheKey='{expectedStruct.CacheKey}' (GenericParams={expectedStruct.GenericParameters.Count}), actual CacheKey='{actualStruct.CacheKey}' (GenericParams={actualStruct.GenericParameters.Count})");
+                Console.WriteLine($"  Expected fields: {string.Join(", ", expectedStruct.Fields.Select(f => $"{f.Name}:{f.Type.Name}"))}");
+                Console.WriteLine($"  Actual fields: {string.Join(", ", actualStruct.Fields.Select(f => $"{f.Name}:{f.Type.Name}"))}");
+                Console.WriteLine($"  ReferenceEquals: {ReferenceEquals(expectedStruct, actualStruct)}");
+
+                // Special case: if both are generic (same number of generic parameters),
+                // and one has a cache key while the other doesn't, consider them compatible.
+                // This handles the case where Allocation<T> in one context has a cache key
+                // but in another context doesn't, but they're the same generic template.
+                if (expectedStruct.GenericParameters.Count > 0 &&
+                    expectedStruct.GenericParameters.Count == actualStruct.GenericParameters.Count)
+                {
+                    Console.WriteLine($"  Both are generic with same param count - treating as compatible");
+                    return true;
+                }
             }
 
             // If actual type is generic (has generic parameters), allow matching with concrete expected type
@@ -6906,7 +6968,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 return true;
             }
 
-            // Both are concrete or both are generic - must match exactly (handled by Equals above)
+            // Both are non-monomorphized generics - must match exactly (handled by Equals above)
             return false;
         }
 
@@ -6980,6 +7042,24 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 return enumType.EnumName;
             }
         }
+        else if (type is IrStructType structType)
+        {
+            if (structType.GenericParameters.Count > 0)
+            {
+                // Still generic - include parameter names
+                return $"{structType.StructName}<{string.Join(",", structType.GenericParameters)}>";
+            }
+            else if (structType.CacheKey != null)
+            {
+                // Monomorphized struct - use stored cache key (e.g., "Vec<u8>")
+                return structType.CacheKey;
+            }
+            else
+            {
+                // Non-generic struct - just use the name
+                return structType.StructName;
+            }
+        }
         else if (type is IrGenericType gt)
         {
             return gt.ParameterName;
@@ -7024,10 +7104,6 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         if (type is IrBoolType)
         {
             return "bool";
-        }
-        if (type is IrStringType)
-        {
-            return "String";
         }
         if (type is IrVoidType)
         {
@@ -7208,7 +7284,6 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             IrArrayType arrayType => GetBaseTypeName(arrayType.ElementType),
             IrIntType intType => intType.IsSigned ? $"i{intType.BitWidth}" : $"u{intType.BitWidth}",
             IrBoolType => "bool",
-            IrStringType => "String",
             _ => type.Name
         };
     }
@@ -7421,6 +7496,105 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         List<string> ImplGenericParams, // Generic params on the impl block itself
         SourceLocation Location       // Where the impl was declared
     );
+
+    /// <summary>
+    /// Attempts to evaluate a compile-time integer literal from an expression context.
+    /// Supports decimal, hexadecimal ($), and binary (%) literals with optional type suffixes.
+    /// </summary>
+    /// <param name="exprCtx">The expression context to evaluate</param>
+    /// <param name="value">The evaluated integer value</param>
+    /// <returns>True if evaluation succeeded, false otherwise</returns>
+    private bool TryEvaluateIntegerLiteral(NovusParser.ExpressionContext exprCtx, out int value)
+    {
+        value = 0;
+
+        // Navigate through the expression hierarchy
+        // ExpressionContext -> PrimaryExprContext -> PrimaryExpressionContext
+        if (exprCtx is not NovusParser.PrimaryExprContext primaryExpr)
+        {
+            return false;
+        }
+
+        var innerExpr = primaryExpr.primaryExpression();
+        if (innerExpr == null)
+        {
+            return false;
+        }
+
+        // Get the full text of the literal (includes optional minus sign from grammar: '-'? INTEGER_LITERAL)
+        string text = innerExpr.GetText();
+        bool isNegative = text.StartsWith('-');
+        if (isNegative)
+        {
+            text = text[1..]; // Remove the minus sign for parsing
+        }
+
+        // Remove underscores (used as digit separators)
+        text = text.Replace("_", "");
+
+        // Remove type suffix if present
+        if (text.EndsWith("u8") || text.EndsWith("i8"))
+        {
+            text = text[..^2];
+        }
+        else if (text.EndsWith("u16") || text.EndsWith("i16") ||
+                 text.EndsWith("u32") || text.EndsWith("i32") ||
+                 text.EndsWith("u64") || text.EndsWith("i64"))
+        {
+            text = text[..^3];
+        }
+
+        int parsedValue;
+        bool success;
+
+        // Handle different literal types based on prefix
+        if (innerExpr is NovusParser.HexLiteralContext)
+        {
+            // Hexadecimal literal: $FF, $DEADBEEF
+            if (!text.StartsWith('$'))
+            {
+                return false;
+            }
+            text = text[1..]; // Remove $ prefix
+            success = int.TryParse(text, System.Globalization.NumberStyles.HexNumber, null, out parsedValue);
+        }
+        else if (innerExpr is NovusParser.BinaryLiteralContext)
+        {
+            // Binary literal: %1010, %11110000
+            if (!text.StartsWith('%'))
+            {
+                return false;
+            }
+            text = text[1..]; // Remove % prefix
+            try
+            {
+                parsedValue = Convert.ToInt32(text, 2);
+                success = true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+        else if (innerExpr is NovusParser.IntegerLiteralContext)
+        {
+            // Decimal literal: 42, 1000
+            success = int.TryParse(text, out parsedValue);
+        }
+        else
+        {
+            // Not a supported literal type
+            return false;
+        }
+
+        if (!success)
+        {
+            return false;
+        }
+
+        value = isNegative ? -parsedValue : parsedValue;
+        return true;
+    }
 }
 
 // Symbol table classes

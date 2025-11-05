@@ -4,6 +4,8 @@
 
 **READ THIS FIRST - These rules override everything else:**
 
+- **Never use the java ANTLR CLI**: We have the ANTLR nuget package which will rebuild the grammar on build.
+
 - **Testing Amiga executables**: Copy to `/Users/barry/Emulation/Amiga/A4000-DH0/Barry` (shared drive for A4000 with 68040)
 
 - **Documentation**: You have extensive docs in the `docs/` folder. Read them when needed.

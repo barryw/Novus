@@ -457,13 +457,25 @@ public class ImportResolver
         string moduleNamespace,
         string modulePath)
     {
-        // Register imported enums
+        // TWO-PHASE ENUM REGISTRATION
+        // Phase 1: Register all enum names as placeholders (allows circular references)
+        // This is critical because enum variants can reference other enums in the same module
         foreach (var enumDecl in context.enumDeclaration())
         {
             var enumName = enumDecl.IDENTIFIER().GetText();
             if (namesToImport.Contains(enumName) && !_registry.HasSymbol(enumName, SymbolKind.Enum))
             {
-                _registry.RegisterEnum(enumDecl);
+                _registry.RegisterEnum(enumDecl);  // Creates placeholder with empty variants
+            }
+        }
+
+        // Phase 2: Fill in enum variants (can now resolve references to other enums)
+        foreach (var enumDecl in context.enumDeclaration())
+        {
+            var enumName = enumDecl.IDENTIFIER().GetText();
+            if (namesToImport.Contains(enumName))
+            {
+                _registry.RegisterEnum(enumDecl);  // Fills in variants if enum exists
             }
         }
 

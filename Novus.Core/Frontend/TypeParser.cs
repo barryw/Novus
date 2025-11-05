@@ -175,21 +175,48 @@ public class TypeParser
     /// </summary>
     private IrType MonomorphizeStruct(IrStructType structType, NovusParser.NamedTypeContext context)
     {
+        // First, create a preliminary cache key to check if we're already processing this type
+        // This prevents infinite recursion when the struct's type arguments reference the struct itself
+        var typeArgNames = context.typeList()!.type().Select(t => t.GetText());
+        var preliminaryCacheKey = $"{structType.StructName}<{string.Join(",", typeArgNames)}>";
+
+        // Check cache first - this catches already-completed monomorphizations
+        var cached = _context.LookupMonomorphizedStruct(preliminaryCacheKey);
+        if (cached != null)
+        {
+            return cached;
+        }
+
+        // Create placeholder struct and register it BEFORE parsing type arguments
+        // This breaks cycles when parsing recursive types
+        var placeholderFields = new List<IrStructField>();
+        var placeholderStruct = new IrStructType(
+            structType.StructName,
+            placeholderFields,
+            null,  // No generic parameters on monomorphized type
+            preliminaryCacheKey
+        );
+        _context.RegisterMonomorphizedStruct(preliminaryCacheKey, placeholderStruct);
+
+        // Now parse type arguments (this can recurse safely because we've cached the placeholder)
         var typeArgs = new List<IrType>();
         foreach (var typeCtx in context.typeList()!.type())
         {
             typeArgs.Add(ParseType(typeCtx));
         }
 
-        // Create cache key
+        // Create final cache key using actual parsed types
         var typeArgKeys = typeArgs.Select(t => GetTypeCacheKey(t));
-        var cacheKey = $"{structType.StructName}<{string.Join(",", typeArgKeys)}>";
+        var finalCacheKey = $"{structType.StructName}<{string.Join(",", typeArgKeys)}>";
 
-        // Check cache first
-        var cached = _context.LookupMonomorphizedStruct(cacheKey);
-        if (cached != null)
+        // If the final cache key is different (shouldn't happen often), check cache again
+        if (finalCacheKey != preliminaryCacheKey)
         {
-            return cached;
+            cached = _context.LookupMonomorphizedStruct(finalCacheKey);
+            if (cached != null)
+            {
+                return cached;
+            }
         }
 
         // Create monomorphized struct with concrete types
@@ -215,25 +242,27 @@ public class TypeParser
             }
         }
 
-        // Create new struct type with concrete types (no generic parameters)
-        var monomorphizedStruct = new IrStructType(
-            structType.StructName,
-            monomorphizedFields,
-            null,  // No generic parameters on monomorphized type
-            cacheKey
-        );
+        // Update the placeholder with the actual fields
+        placeholderStruct.Fields.Clear();
+        foreach (var field in monomorphizedFields)
+        {
+            placeholderStruct.Fields.Add(field);
+        }
 
         // Force calculation of field offsets only if fully monomorphized
         // If still contains generic types, offset calculation will happen later
         if (fullyMonomorphized)
         {
-            _ = monomorphizedStruct.SizeInBytes;
+            _ = placeholderStruct.SizeInBytes;
         }
 
-        // Cache it for future use
-        _context.RegisterMonomorphizedStruct(cacheKey, monomorphizedStruct);
+        // If we used a different final cache key, register under that too
+        if (finalCacheKey != preliminaryCacheKey)
+        {
+            _context.RegisterMonomorphizedStruct(finalCacheKey, placeholderStruct);
+        }
 
-        return monomorphizedStruct;
+        return placeholderStruct;
     }
 
     /// <summary>
@@ -242,21 +271,49 @@ public class TypeParser
     /// </summary>
     private IrType MonomorphizeEnum(IrEnumType enumType, NovusParser.NamedTypeContext context)
     {
+        // First, create a preliminary cache key to check if we're already processing this type
+        // This prevents infinite recursion when the enum's type arguments reference the enum itself
+        var typeArgNames = context.typeList()!.type().Select(t => t.GetText());
+        var preliminaryCacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgNames)}>";
+
+        // Check cache first - this catches already-completed monomorphizations
+        var cached = _context.LookupMonomorphizedEnum(preliminaryCacheKey);
+        if (cached != null)
+        {
+            return cached;
+        }
+
+        // Create placeholder enum and register it BEFORE parsing type arguments
+        // This breaks cycles when parsing recursive types like Result<String, DosError>
+        // where DosError might contain Result in its variants
+        var placeholderVariants = new List<IrEnumVariant>();
+        var placeholderEnum = new IrEnumType(
+            enumType.EnumName,
+            placeholderVariants,
+            null,  // No generic parameters on monomorphized type
+            preliminaryCacheKey
+        );
+        _context.RegisterMonomorphizedEnum(preliminaryCacheKey, placeholderEnum);
+
+        // Now parse type arguments (this can recurse safely because we've cached the placeholder)
         var typeArgs = new List<IrType>();
         foreach (var typeCtx in context.typeList()!.type())
         {
             typeArgs.Add(ParseType(typeCtx));
         }
 
-        // Create cache key using proper type keys that handle nested generics
+        // Create final cache key using actual parsed types
         var typeArgKeys = typeArgs.Select(t => GetTypeCacheKey(t));
-        var cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
+        var finalCacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
 
-        // Check cache first
-        var cached = _context.LookupMonomorphizedEnum(cacheKey);
-        if (cached != null)
+        // If the final cache key is different (shouldn't happen often), check cache again
+        if (finalCacheKey != preliminaryCacheKey)
         {
-            return cached;
+            cached = _context.LookupMonomorphizedEnum(finalCacheKey);
+            if (cached != null)
+            {
+                return cached;
+            }
         }
 
         // Create monomorphized enum with concrete types
@@ -283,18 +340,20 @@ public class TypeParser
             ));
         }
 
-        // Create new enum type with concrete types (no generic parameters)
-        var monomorphizedEnum = new IrEnumType(
-            enumType.EnumName,
-            monomorphizedVariants,
-            null,  // No generic parameters on monomorphized type
-            cacheKey
-        );
+        // Update the placeholder with the actual variants
+        placeholderEnum.Variants.Clear();
+        foreach (var variant in monomorphizedVariants)
+        {
+            placeholderEnum.Variants.Add(variant);
+        }
 
-        // Cache it for future use
-        _context.RegisterMonomorphizedEnum(cacheKey, monomorphizedEnum);
+        // If we used a different final cache key, register under that too
+        if (finalCacheKey != preliminaryCacheKey)
+        {
+            _context.RegisterMonomorphizedEnum(finalCacheKey, placeholderEnum);
+        }
 
-        return monomorphizedEnum;
+        return placeholderEnum;
     }
 
     /// <summary>
@@ -381,7 +440,6 @@ public class TypeParser
             "f64" => IrFloatType.F64,
             "fixed16" => IrFixedType.Fixed16,
             "fixed32" => IrFixedType.Fixed32,
-            "String" => IrStringType.Instance,
             _ => throw new Exception($"Unknown primitive type: {typeText}")
         };
     }
@@ -402,6 +460,76 @@ public class TypeParser
             IrEnumType enumType => enumType.Variants.Any(v => v.AssociatedData.Any(ContainsGenericTypes)),
             _ => false
         };
+    }
+
+    /// <summary>
+    /// Check if two types are semantically equal
+    /// This is needed because reference equality doesn't work for types that are constructed separately
+    /// </summary>
+    private bool TypesAreEqual(IrType a, IrType b)
+    {
+        // Fast path: reference equality
+        if (ReferenceEquals(a, b)) return true;
+
+        // Different type classes
+        if (a.GetType() != b.GetType()) return false;
+
+        // Generic types: compare parameter names
+        if (a is IrGenericType gtA && b is IrGenericType gtB)
+        {
+            return gtA.ParameterName == gtB.ParameterName;
+        }
+
+        // Pointer types: compare pointee types recursively
+        if (a is IrPointerType ptrA && b is IrPointerType ptrB)
+        {
+            return TypesAreEqual(ptrA.PointeeType, ptrB.PointeeType);
+        }
+
+        // Reference types: compare pointee types recursively
+        if (a is IrReferenceType refA && b is IrReferenceType refB)
+        {
+            return TypesAreEqual(refA.PointeeType, refB.PointeeType);
+        }
+
+        // Mutable reference types: compare pointee types recursively
+        if (a is IrMutReferenceType mutRefA && b is IrMutReferenceType mutRefB)
+        {
+            return TypesAreEqual(mutRefA.PointeeType, mutRefB.PointeeType);
+        }
+
+        // Array types: compare element type and length
+        if (a is IrArrayType arrA && b is IrArrayType arrB)
+        {
+            return arrA.Length == arrB.Length && TypesAreEqual(arrA.ElementType, arrB.ElementType);
+        }
+
+        // Struct types: compare by name and cache key
+        // We use cache key when available because it uniquely identifies monomorphized versions
+        if (a is IrStructType structA && b is IrStructType structB)
+        {
+            if (structA.CacheKey != null && structB.CacheKey != null)
+            {
+                return structA.CacheKey == structB.CacheKey;
+            }
+            return structA.StructName == structB.StructName &&
+                   structA.GenericParameters.Count == structB.GenericParameters.Count;
+        }
+
+        // Enum types: compare by name and cache key
+        if (a is IrEnumType enumA && b is IrEnumType enumB)
+        {
+            if (enumA.CacheKey != null && enumB.CacheKey != null)
+            {
+                return enumA.CacheKey == enumB.CacheKey;
+            }
+            return enumA.EnumName == enumB.EnumName &&
+                   enumA.GenericParameters.Count == enumB.GenericParameters.Count;
+        }
+
+        // For primitive types, reference equality should have caught it
+        // but as a fallback, we consider them equal by default
+        return false;
     }
 
     /// <summary>
@@ -468,6 +596,41 @@ public class TypeParser
         // Struct type substitution (recursive field substitution)
         if (type is IrStructType structType)
         {
+            // If the struct still has generic parameters and we're in a generic context,
+            // we should not create a new struct type - just return the original
+            // This prevents creating duplicate generic struct instances
+            if (structType.GenericParameters.Count > 0)
+            {
+                // Check if any of the substitutions actually change generic to concrete
+                bool hasConcreteSubstitution = false;
+                foreach (var genericParam in structType.GenericParameters)
+                {
+                    if (substitutions.ContainsKey(genericParam))
+                    {
+                        var substType = substitutions[genericParam];
+                        // Check if it's being replaced with a concrete (non-generic) type
+                        if (!(substType is IrGenericType))
+                        {
+                            hasConcreteSubstitution = true;
+                            Console.WriteLine($"DEBUG TypeParser.SubstituteGenericTypes: Struct {structType.StructName} generic param '{genericParam}' substituted with concrete type {substType.Name}");
+                            break;
+                        }
+                        else
+                        {
+                            Console.WriteLine($"DEBUG TypeParser.SubstituteGenericTypes: Struct {structType.StructName} generic param '{genericParam}' substituted with generic type {substType.Name}");
+                        }
+                    }
+                }
+
+                // If no generic parameters are being replaced with concrete types,
+                // return the original struct unchanged
+                if (!hasConcreteSubstitution)
+                {
+                    Console.WriteLine($"DEBUG TypeParser.SubstituteGenericTypes: Returning original struct {structType.StructName}<{string.Join(",", structType.GenericParameters)}> unchanged (no concrete substitution)");
+                    return structType;
+                }
+            }
+
             // Check if any field types contain generics that need substitution
             bool needsSubstitution = false;
             var substitutedFields = new List<IrStructField>();
@@ -477,7 +640,7 @@ public class TypeParser
                 var substitutedFieldType = SubstituteGenericTypes(field.Type, substitutions);
                 substitutedFields.Add(new IrStructField(field.Name, substitutedFieldType));
 
-                if (substitutedFieldType != field.Type)
+                if (!TypesAreEqual(substitutedFieldType, field.Type))
                 {
                     needsSubstitution = true;
                 }
@@ -486,7 +649,18 @@ public class TypeParser
             if (needsSubstitution)
             {
                 // Create a new struct type with substituted field types
-                var substitutedStruct = new IrStructType(structType.StructName, substitutedFields);
+                // Preserve generic parameters from original
+                // Clear cache key if struct still has generic parameters (not fully monomorphized)
+                string? cacheKey = structType.GenericParameters.Count > 0 ? null : structType.CacheKey;
+
+                var substitutedStruct = new IrStructType(
+                    structType.StructName,
+                    substitutedFields,
+                    structType.GenericParameters,
+                    cacheKey,
+                    structType.Attributes,
+                    structType.WhereClause
+                );
                 return substitutedStruct;
             }
         }
@@ -494,6 +668,35 @@ public class TypeParser
         // Enum type substitution (recursive variant substitution)
         if (type is IrEnumType enumType)
         {
+            // If the enum still has generic parameters and we're in a generic context,
+            // we should not create a new enum type - just return the original
+            // This prevents creating duplicate generic enum instances
+            if (enumType.GenericParameters.Count > 0)
+            {
+                // Check if any of the substitutions actually change generic to concrete
+                bool hasConcreteSubstitution = false;
+                foreach (var genericParam in enumType.GenericParameters)
+                {
+                    if (substitutions.ContainsKey(genericParam))
+                    {
+                        var substType = substitutions[genericParam];
+                        // Check if it's being replaced with a concrete (non-generic) type
+                        if (!(substType is IrGenericType))
+                        {
+                            hasConcreteSubstitution = true;
+                            break;
+                        }
+                    }
+                }
+
+                // If no generic parameters are being replaced with concrete types,
+                // return the original enum unchanged
+                if (!hasConcreteSubstitution)
+                {
+                    return enumType;
+                }
+            }
+
             // Check if any variant types contain generics that need substitution
             bool needsSubstitution = false;
             var substitutedVariants = new List<IrEnumVariant>();
@@ -506,7 +709,7 @@ public class TypeParser
                     var substitutedDataType = SubstituteGenericTypes(dataType, substitutions);
                     substitutedData.Add(substitutedDataType);
 
-                    if (substitutedDataType != dataType)
+                    if (!TypesAreEqual(substitutedDataType, dataType))
                     {
                         needsSubstitution = true;
                     }
@@ -518,11 +721,15 @@ public class TypeParser
             if (needsSubstitution)
             {
                 // Create a new enum type with substituted variant types
-                // Preserve the generic parameters from the original enum
+                // Preserve generic parameters from original
+                // Clear cache key if enum still has generic parameters (not fully monomorphized)
+                string? cacheKey = enumType.GenericParameters.Count > 0 ? null : enumType.CacheKey;
+
                 var substitutedEnum = new IrEnumType(
                     enumType.EnumName,
                     substitutedVariants,
-                    enumType.GenericParameters
+                    enumType.GenericParameters,
+                    cacheKey
                 );
                 return substitutedEnum;
             }

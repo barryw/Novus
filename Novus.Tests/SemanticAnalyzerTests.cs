@@ -1448,4 +1448,118 @@ pub fn main() -> i32 {
         var diagnostics = Analyze(source);
         Assert.False(diagnostics.HasErrors);
     }
+
+    // Array repeat literal tests
+    [Fact]
+    public void Analyze_ArrayRepeatLiteralWithDecimalSize_NoErrors()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    let arr = [42; 10]
+    return 0
+}";
+        var diagnostics = Analyze(source);
+        Assert.False(diagnostics.HasErrors);
+    }
+
+    [Fact]
+    public void Analyze_ArrayRepeatLiteralWithHexSize_NoErrors()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    let arr = [1; $A]
+    return 0
+}";
+        var diagnostics = Analyze(source);
+        Assert.False(diagnostics.HasErrors);
+    }
+
+    [Fact]
+    public void Analyze_ArrayRepeatLiteralWithBinarySize_NoErrors()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    let arr = [2; %1010]
+    return 0
+}";
+        var diagnostics = Analyze(source);
+        Assert.False(diagnostics.HasErrors);
+    }
+
+    [Fact]
+    public void Analyze_ArrayRepeatLiteralWithUnderscoresInSize_NoErrors()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    let arr = [3; 1_000]
+    return 0
+}";
+        var diagnostics = Analyze(source);
+        Assert.False(diagnostics.HasErrors);
+    }
+
+    [Fact]
+    public void Analyze_ArrayRepeatLiteralWithTypeSuffix_NoErrors()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    let arr1 = [4; 20i32]
+    let arr2 = [5; 15u32]
+    return 0
+}";
+        var diagnostics = Analyze(source);
+        Assert.False(diagnostics.HasErrors);
+    }
+
+    [Fact]
+    public void Analyze_ArrayRepeatLiteralWithNegativeSize_ReportsError()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    let arr = [42; -5]
+    return 0
+}";
+        var diagnostics = Analyze(source);
+        Assert.True(diagnostics.HasErrors);
+        Assert.Contains(diagnostics.Diagnostics, d => d.Code == "E0999" && d.Message.Contains("non-negative"));
+    }
+
+    [Fact]
+    public void Analyze_ArrayRepeatLiteralWithZeroSize_NoErrors()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    let arr = [42; 0]
+    return 0
+}";
+        var diagnostics = Analyze(source);
+        Assert.False(diagnostics.HasErrors);
+    }
+
+    [Fact]
+    public void Analyze_ArrayRepeatLiteralWithNonConstantSize_ReportsError()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    let n = 10
+    let arr = [42; n]
+    return 0
+}";
+        var diagnostics = Analyze(source);
+        Assert.True(diagnostics.HasErrors);
+        Assert.Contains(diagnostics.Diagnostics, d => d.Code == "E0999" && d.Message.Contains("compile-time constant"));
+    }
+
+    [Fact]
+    public void Analyze_ArrayRepeatLiteralWithNonIntegerSize_ReportsError()
+    {
+        var source = @"
+pub fn main() -> i32 {
+    let arr = [42; true]
+    return 0
+}";
+        var diagnostics = Analyze(source);
+        Assert.True(diagnostics.HasErrors);
+        Assert.Contains(diagnostics.Diagnostics, d => d.Code == "E0999" && d.Message.Contains("integer"));
+    }
 }

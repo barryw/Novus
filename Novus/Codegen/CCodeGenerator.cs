@@ -147,14 +147,6 @@ public class CCodeGenerator
         sb.AppendLine("#include <stdbool.h>");
         sb.AppendLine();
 
-        // String type (always include - it's fundamental)
-        sb.AppendLine("// String type (fat pointer: pointer + length)");
-        sb.AppendLine("typedef struct {");
-        sb.AppendLine("    uint8_t* ptr;");
-        sb.AppendLine("    int32_t len;");
-        sb.AppendLine("} String;");
-        sb.AppendLine();
-
         var codegen = new CCodeGenerator(new IrModule(), new List<IrStringLiteral>(), "68020", "auto");
 
         // Struct types
@@ -165,7 +157,14 @@ public class CCodeGenerator
             sb.AppendLine("// ============================================================================");
             sb.AppendLine();
 
-            foreach (var structType in typeRegistry.StructTypes.OrderBy(s => s.Name))
+            // Filter out generic structs (they should have been monomorphized already)
+            // and sort by dependencies
+            var concreteStructs = typeRegistry.StructTypes
+                .Where(s => s.GenericParameters.Count == 0)
+                .ToHashSet();
+            var sortedStructs = codegen.TopologicalSortStructTypes(concreteStructs);
+
+            foreach (var structType in sortedStructs)
             {
                 codegen.EmitStructTypeToBuilder(sb, structType);
             }
@@ -223,6 +222,22 @@ public class CCodeGenerator
     /// </summary>
     public string GenerateFunctionFile(IrFunction function)
     {
+        // Skip functions that use BStr type directly (BStr itself is not exported in the types header)
+        // This is fine because BStr is typically only used internally and not by user code
+        var functionNameLower = function.Name.ToLower();
+        if (functionNameLower.Contains("bstr::"))
+        {
+            Console.WriteLine($"WARNING: Skipping function file '{function.Name}' (uses BStr type not in shared header)");
+            return $"// SKIPPED: Function '{function.Name}' uses BStr which is not exported\n";
+        }
+
+        // Check if function has unresolved types - skip it entirely
+        if (HasUnresolvedTypes(function))
+        {
+            Console.WriteLine($"WARNING: Skipping function file '{function.Name}' due to unresolved types");
+            return $"// SKIPPED: Function '{function.Name}' has unresolved types (not used by this build)\n// This function file is not needed.\n";
+        }
+
         var sb = new StringBuilder();
 
         // Header
@@ -249,16 +264,97 @@ public class CCodeGenerator
         sb.AppendLine("typedef struct TagItem TagItem;");
         sb.AppendLine();
 
-        // Emit enum typedefs for types used by this function
+        // Check for generic types (both enums and structs) in the function
         var enumTypes = CollectEnumTypesForFunction(function);
+        Console.WriteLine($"DEBUG GenFunction({function.Name}): Found {enumTypes.Count} enum types: {string.Join(", ", enumTypes.Select(e => $"{e.Name}/{e.EnumName}"))}");
+        foreach (var et in enumTypes)
+        {
+            Console.WriteLine($"  - {et.Name} (EnumName={et.EnumName}, GenericParams={et.GenericParameters.Count})");
+            foreach (var v in et.Variants)
+            {
+                if (v.HasAssociatedData && v.AssociatedData != null)
+                {
+                    foreach (var ad in v.AssociatedData)
+                    {
+                        if (ad is IrStructType st)
+                            Console.WriteLine($"      variant {v.Name} has struct {st.Name} (GenericParams={st.GenericParameters.Count}, CacheKey={st.CacheKey})");
+                        else if (ad is IrEnumType et2)
+                            Console.WriteLine($"      variant {v.Name} has enum {et2.Name} (GenericParams={et2.GenericParameters.Count}, CacheKey={et2.CacheKey})");
+                    }
+                }
+            }
+        }
+        var genericEnums = enumTypes.Where(e => !IsConcreteEnum(e)).ToList();
+
+        // Also check for generic structs by scanning the function's types
+        var allTypes = new List<IrType>();
+        allTypes.Add(function.ReturnType);
+        allTypes.AddRange(function.Parameters.Select(p => p.Type));
+        allTypes.AddRange(function.LocalVariables.Select(l => l.Type));
+        var hasGenericStructs = allTypes.Any(t => t is IrStructType st && st.GenericParameters.Count > 0);
+
+        if (genericEnums.Any() || hasGenericStructs)
+        {
+            // ERROR: Function references generic types that weren't properly monomorphized
+            var messages = new List<string>();
+            if (genericEnums.Any())
+                messages.Add($"generic enums: {string.Join(", ", genericEnums.Select(e => e.Name))}");
+            if (hasGenericStructs)
+                messages.Add("generic structs");
+
+            Console.WriteLine($"WARNING: Skipping function '{function.Name}' - references un-monomorphized generic types");
+            Console.WriteLine($"         {string.Join("; ", messages)}");
+            Console.WriteLine($"         This is an IR bug - the function should only reference concrete types.");
+
+            // Generate a stub that calls panic so if it's accidentally called, we get an error
+            var stubSb = new StringBuilder();
+            stubSb.AppendLine($"// SKIPPED: Function '{function.Name}' references un-monomorphized generic types");
+            stubSb.AppendLine($"// Generated by Novus compiler - STUB ONLY");
+            stubSb.AppendLine();
+            stubSb.AppendLine("#include <stdint.h>");
+            stubSb.AppendLine("#include <stdbool.h>");
+            stubSb.AppendLine();
+            stubSb.AppendLine($"void __novus_panic(const char* message, const char* file, int32_t line, int32_t col);");
+            stubSb.AppendLine();
+
+            // Generate a stub function signature
+            var returnType = GetCType(function.ReturnType);
+            var isVoidReturn = returnType == "void";
+            var paramList = string.Join(", ", function.Parameters.Select(p => $"{GetCType(p.Type)} {p.Name}"));
+
+            stubSb.AppendLine($"{returnType} {function.Name}({paramList}) {{");
+            stubSb.AppendLine($"    __novus_panic(\"Function {function.Name} contains un-monomorphized generic types\", __FILE__, __LINE__, 0);");
+            if (!isVoidReturn)
+            {
+                // Need to return something to satisfy C compiler (unreachable code after panic)
+                if (function.ReturnType is IrPointerType)
+                    stubSb.AppendLine($"    return NULL;");
+                else if (function.ReturnType is IrBoolType)
+                    stubSb.AppendLine($"    return false;");
+                else if (function.ReturnType is IrIntType || function.ReturnType is IrFloatType || function.ReturnType is IrFixedType)
+                    stubSb.AppendLine($"    return 0;");
+                else
+                    stubSb.AppendLine($"    return ({returnType}){{0}};"); // Zero-initialize struct/enum
+            }
+            stubSb.AppendLine($"}}");
+
+            return stubSb.ToString();
+        }
+
         if (enumTypes.Count > 0)
         {
-            sb.AppendLine("// Enum types used by this function");
-            foreach (var enumType in enumTypes.OrderBy(e => e.Name))
+            var concreteEnums = enumTypes.Where(e => IsConcreteEnum(e)).ToHashSet();
+            if (concreteEnums.Any())
             {
-                EmitEnumTypeToBuilder(sb, enumType);
+                sb.AppendLine("// Enum types used by this function");
+                // Sort enum types in dependency order: emit leaf types first, then types that depend on them
+                var sortedEnumTypes = TopologicalSortEnumTypes(concreteEnums);
+                foreach (var enumType in sortedEnumTypes)
+                {
+                    EmitEnumTypeToBuilder(sb, enumType);
+                }
+                sb.AppendLine();
             }
-            sb.AppendLine();
         }
 
         // Emit module static variables as extern declarations
@@ -688,7 +784,7 @@ public class CCodeGenerator
     }
 
     /// <summary>
-    /// Recursively collect all enum types from a type, including those nested in structs and arrays
+    /// Recursively collect all enum types from a type, including those nested in structs, arrays, and enum variant associated data
     /// </summary>
     private void CollectEnumTypesFromType(IrType type, HashSet<IrEnumType> enumTypes)
     {
@@ -696,6 +792,19 @@ public class CCodeGenerator
         {
             case IrEnumType enumType:
                 enumTypes.Add(enumType);
+
+                // Also recursively scan enum variant associated data for nested enum types
+                // This is crucial for types like Result<T, E> where E might be another enum
+                foreach (var variant in enumType.Variants)
+                {
+                    if (variant.HasAssociatedData && variant.AssociatedData != null)
+                    {
+                        foreach (var dataType in variant.AssociatedData)
+                        {
+                            CollectEnumTypesFromType(dataType, enumTypes);
+                        }
+                    }
+                }
                 break;
 
             case IrArrayType arrayType:
@@ -716,8 +825,177 @@ public class CCodeGenerator
                 CollectEnumTypesFromType(pointerType.PointeeType, enumTypes);
                 break;
 
+            case IrReferenceType refType:
+                // Recursively check the pointee type
+                CollectEnumTypesFromType(refType.PointeeType, enumTypes);
+                break;
+
+            case IrMutReferenceType mutRefType:
+                // Recursively check the pointee type
+                CollectEnumTypesFromType(mutRefType.PointeeType, enumTypes);
+                break;
+
             // For other types (primitive, function pointers, etc.) we don't need to recurse
         }
+    }
+
+    /// <summary>
+    /// Check if an enum type is fully concrete (no generic parameters in it or its associated data).
+    /// Returns false if the enum itself has generic parameters OR if any variant contains a generic type.
+    /// </summary>
+    private bool IsConcreteEnum(IrEnumType enumType)
+    {
+        // Check if the enum itself has generic parameters
+        if (enumType.GenericParameters.Count > 0)
+        {
+            Console.WriteLine($"DEBUG IsConcreteEnum: {enumType.Name} has {enumType.GenericParameters.Count} generic parameters - NOT CONCRETE");
+            return false;
+        }
+
+        // Check if any variant contains a generic type in its associated data
+        foreach (var variant in enumType.Variants)
+        {
+            if (variant.HasAssociatedData && variant.AssociatedData != null)
+            {
+                foreach (var dataType in variant.AssociatedData)
+                {
+                    if (IsGenericType(dataType))
+                    {
+                        var typeName = dataType switch
+                        {
+                            IrStructType st => $"struct {st.Name} (generic params: {st.GenericParameters.Count})",
+                            IrEnumType et => $"enum {et.Name} (generic params: {et.GenericParameters.Count})",
+                            _ => dataType.ToString()
+                        };
+                        Console.WriteLine($"DEBUG IsConcreteEnum: {enumType.Name} variant {variant.Name} contains generic type {typeName} - NOT CONCRETE");
+                        return false;
+                    }
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Check if a type is generic or contains generic types.
+    /// WORKAROUND: GenericParameters.Count isn't reliable for structs/enums created by IR builder,
+    /// so we also check CacheKey for generic type parameters like <T>.
+    /// </summary>
+    private bool IsGenericType(IrType type)
+    {
+        return type switch
+        {
+            IrEnumType enumType => enumType.GenericParameters.Count > 0 ||
+                                   (enumType.CacheKey != null && enumType.CacheKey.Contains("<T")),
+            IrStructType structType => structType.GenericParameters.Count > 0 ||
+                                        (structType.CacheKey != null && structType.CacheKey.Contains("<T")),
+            IrArrayType arrayType => IsGenericType(arrayType.ElementType),
+            IrPointerType pointerType => IsGenericType(pointerType.PointeeType),
+            IrReferenceType refType => IsGenericType(refType.PointeeType),
+            IrMutReferenceType mutRefType => IsGenericType(mutRefType.PointeeType),
+            _ => false
+        };
+    }
+
+    /// <summary>
+    /// Topologically sort enum types by dependencies.
+    /// Returns a list where each enum appears after all enums it depends on.
+    /// This ensures that when we emit StringError before Result[Str, StringError].
+    /// </summary>
+    private List<IrEnumType> TopologicalSortEnumTypes(HashSet<IrEnumType> enumTypes)
+    {
+        var result = new List<IrEnumType>();
+        var visited = new HashSet<IrEnumType>();
+        var visiting = new HashSet<IrEnumType>();
+
+        // DFS visit function
+        void Visit(IrEnumType enumType)
+        {
+            // Check for cycles (shouldn't happen in valid code, but be safe)
+            if (visiting.Contains(enumType))
+                return; // Skip cycles
+
+            if (visited.Contains(enumType))
+                return; // Already processed
+
+            visiting.Add(enumType);
+
+            // Visit all enum dependencies first (enums used in variant associated data)
+            foreach (var variant in enumType.Variants)
+            {
+                if (variant.HasAssociatedData && variant.AssociatedData != null)
+                {
+                    foreach (var dataType in variant.AssociatedData)
+                    {
+                        // Find enum types in the associated data
+                        if (dataType is IrEnumType dependentEnum && enumTypes.Contains(dependentEnum))
+                        {
+                            Visit(dependentEnum);
+                        }
+                    }
+                }
+            }
+
+            visiting.Remove(enumType);
+            visited.Add(enumType);
+            result.Add(enumType);
+        }
+
+        // Visit all enum types
+        foreach (var enumType in enumTypes.OrderBy(e => e.Name)) // Stable sort for determinism
+        {
+            Visit(enumType);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Topologically sort struct types by dependencies.
+    /// Returns a list where each struct appears after all structs it depends on.
+    /// This ensures that when we emit Vec_u8 before String (which contains Vec_u8).
+    /// </summary>
+    private List<IrStructType> TopologicalSortStructTypes(HashSet<IrStructType> structTypes)
+    {
+        var result = new List<IrStructType>();
+        var visited = new HashSet<IrStructType>();
+        var visiting = new HashSet<IrStructType>();
+
+        // DFS visit function
+        void Visit(IrStructType structType)
+        {
+            // Check for cycles (shouldn't happen in valid code, but be safe)
+            if (visiting.Contains(structType))
+                return; // Skip cycles
+
+            if (visited.Contains(structType))
+                return; // Already processed
+
+            visiting.Add(structType);
+
+            // Visit all struct dependencies first (structs used in fields)
+            foreach (var field in structType.Fields)
+            {
+                // Find struct types in the field type
+                if (field.Type is IrStructType dependentStruct && structTypes.Contains(dependentStruct))
+                {
+                    Visit(dependentStruct);
+                }
+            }
+
+            visiting.Remove(structType);
+            visited.Add(structType);
+            result.Add(structType);
+        }
+
+        // Visit all struct types
+        foreach (var structType in structTypes.OrderBy(s => s.Name)) // Stable sort for determinism
+        {
+            Visit(structType);
+        }
+
+        return result;
     }
 
     /// <summary>
@@ -1703,12 +1981,82 @@ public class CCodeGenerator
         _output.AppendLine();
     }
 
+    /// <summary>
+    /// Check if a function has unresolved types that prevent C code generation.
+    /// PUBLIC: Can be called from Program.cs to filter functions before generation.
+    /// </summary>
+    public bool HasUnresolvedTypes(IrFunction function)
+    {
+        // Special case: Don't skip String and Str functions - they're important for the stdlib
+        var funcNameLower = function.Name.ToLower();
+        if (funcNameLower.Contains("string::")  || funcNameLower.Contains("str::"))
+        {
+            return false;
+        }
+
+        // Check return type
+        if (ContainsUnresolvedType(function.ReturnType))
+            return true;
+
+        // Check parameter types
+        foreach (var param in function.Parameters)
+        {
+            if (ContainsUnresolvedType(param.Type))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Recursively check if a type contains unresolved generic types.
+    /// </summary>
+    private bool ContainsUnresolvedType(IrType type)
+    {
+        return type switch
+        {
+            IrUnresolvedGenericType => true,
+            IrPartiallyResolvedGenericType => true,
+            IrPointerType ptrType => ContainsUnresolvedType(ptrType.PointeeType),
+            IrArrayType arrType => ContainsUnresolvedType(arrType.ElementType),
+            IrReferenceType refType => ContainsUnresolvedType(refType.PointeeType),
+            IrMutReferenceType mutRefType => ContainsUnresolvedType(mutRefType.PointeeType),
+            IrFunctionPointerType fpType =>
+                ContainsUnresolvedType(fpType.ReturnType) ||
+                fpType.ParameterTypes.Any(pt => ContainsUnresolvedType(pt)),
+            _ => false
+        };
+    }
+
     private void EmitFunctions(HashSet<string> reachableFunctions)
     {
         // Only emit reachable functions (dead code elimination)
         var implementedFunctions = _module.Functions
             .Where(f => !f.IsExtern && f.BasicBlocks.Count > 0 && reachableFunctions.Contains(f.Name))
             .ToList();
+
+        if (implementedFunctions.Count == 0)
+            return;
+
+        // Check for functions with unresolved types and skip them with a warning
+        var skippedFunctions = new List<string>();
+        implementedFunctions = implementedFunctions
+            .Where(f =>
+            {
+                if (HasUnresolvedTypes(f))
+                {
+                    skippedFunctions.Add(f.Name);
+                    return false;
+                }
+                return true;
+            })
+            .ToList();
+
+        // Warn about skipped functions
+        foreach (var skipped in skippedFunctions)
+        {
+            System.Console.WriteLine($"WARNING: Skipping function '{skipped}' due to unresolved types (not used by this build)");
+        }
 
         if (implementedFunctions.Count == 0)
             return;
@@ -2493,7 +2841,7 @@ public class CCodeGenerator
             IrFixedConstant fixedConst => EmitFixedConstant(fixedConst),
             IrVariable variable => EmitVariable(variable),
             IrGlobalVariable globalVar => globalVar.Name,  // Global variables use their name directly
-            IrStringLiteral stringLit => $"(String){{ .ptr = (uint8_t*){stringLit.Label}, .len = {stringLit.Length} }}",
+            IrStringLiteral stringLit => $"(uint8_t*){stringLit.Label}",  // Just a pointer to null-terminated string data
             IrEnumValue enumValue => EmitEnumValue(enumValue),
             IrEnumConstructor enumCtor => EmitEnumConstructor(enumCtor),
             IrBorrowValue borrowValue => $"&{EmitValue(borrowValue.BorrowedValue)}",
@@ -2733,7 +3081,6 @@ public class CCodeGenerator
             IrFloatType floatType => floatType.BitWidth == 32 ? "float" : "double",
             IrFixedType fixedType => fixedType.BitWidth == 16 ? "int16_t" : "int32_t",
             IrPointerType ptrType => $"{GetCType(ptrType.PointeeType)}*",
-            IrStringType => "String",
             IrEnumType enumType => MangleName(enumType),
             IrStructType structType => MangleName(structType),
             IrArrayType arrayType => $"{GetCType(arrayType.ElementType)}*",  // Arrays as pointers for now

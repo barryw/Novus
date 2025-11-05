@@ -762,6 +762,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Check if module has already been fully processed
         bool alreadyProcessed = _processedModules.Contains(moduleNamespace);
 
+
         if (alreadyProcessed)
         {
             // Even if module is already processed, we still need to handle selective imports
@@ -773,7 +774,20 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 // Build the list of names to import for this specific import statement
                 var selectiveImports = ModuleImportHelper.BuildImportNameSet(moduleContext, importAll, importList);
 
+                // CRITICAL: Register ALL type stubs FIRST before parsing any signatures
+                // Function signatures, struct fields, and impl blocks all need types to be registered
+
+                // Step 1: Register ALL enum stubs (not just selective imports)
+                RegisterAllEnumStubsForImport(moduleContext);
+
+                // Step 2: Register ALL struct placeholders (not just selective imports)
+                RegisterAllStructPlaceholdersForImport(moduleContext);
+
+                // Step 3: Fill in enum variants for selective imports only
+                FillEnumVariantsForImport(moduleContext, selectiveImports);
+
                 // Register functions from the already-parsed module
+                // At this point, all type stubs are registered so function signatures can reference any type
                 foreach (var funcDecl in moduleContext.functionDeclaration())
                 {
                     var funcName = funcDecl.IDENTIFIER().GetText();
@@ -808,14 +822,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 RegisterStructPlaceholdersForImport(moduleContext, expandedStructImports);
 
                 // Fill in struct fields
+                // At this point, enum stubs are registered so struct fields can reference enums
                 FillStructFieldsForImport(moduleContext, expandedStructImports);
-
-                // Register enums (need two-pass for forward references)
-                // Pass 1: Register stubs
-                RegisterEnumStubsForImport(moduleContext, selectiveImports);
-
-                // Pass 2: Fill in variants
-                FillEnumVariantsForImport(moduleContext, selectiveImports);
 
                 // Register traits
                 RegisterTraitsForImport(moduleContext, selectiveImports);
@@ -879,28 +887,35 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Build the list of names to import
         var namesToImport = ModuleImportHelper.BuildImportNameSet(moduleContext, importAll, importList);
 
-        // Register imported enums in the module using two-pass approach
-        // Pass 1: Register stub enum types ONLY for enums in the import list
-        // This allows forward references between imported enums
-        RegisterEnumStubsForImport(moduleContext, namesToImport);
 
-        // Pass 2: Fill in enum variants for imported enums only
+        // CRITICAL PHASE 1: Register ALL type stubs BEFORE parsing any signatures
+        // This is essential because impl block method signatures may reference ANY type from the module,
+        // even types not being explicitly imported. For example:
+        //   - User imports Str (struct) from std::strings
+        //   - Str has methods that return Result<Str, StringError>
+        //   - StringError enum must be resolvable during impl block processing
+        //   - Similarly, String struct may be referenced even if not imported
+
+        // Step 1a: Register ALL enum stubs from the module (not just imported ones)
+        RegisterAllEnumStubsForImport(moduleContext);
+
+        // Step 1b: Register ALL struct placeholders from the module (not just imported ones)
+        RegisterAllStructPlaceholdersForImport(moduleContext);
+
+        // CRITICAL PHASE 2: Fill in type details for explicitly imported types only
+
+        // Step 2a: Fill in enum variants for imported enums only
         FillEnumVariantsForImport(moduleContext, namesToImport);
 
-        // Register imported constants in the module
+        // Step 2b: Register imported constants
         RegisterConstantsForImport(moduleContext, namesToImport);
 
-        // Register imported structs in the module using multi-pass approach to handle dependencies
-        // Pass 1: Expand the import list to include all struct dependencies
+        // Step 2c: Expand struct import list to include dependencies and fill in fields
         // When importing NewScreen, we also need to import TextAttr and BitMap that it references
         var expandedStructNames = ExpandStructDependencies(moduleContext, namesToImport);
 
-        // Pass 2: Register placeholder struct types for ALL structs in expanded list
-        // This allows structs to reference each other (e.g., NewScreen references TextAttr)
-        RegisterStructPlaceholdersForImport(moduleContext, expandedStructNames);
-
-        // Pass 3: Fill in struct fields for all structs in expanded list
-        // At this point, all struct names are resolvable for field type parsing
+        // Fill in struct fields for expanded struct list
+        // At this point, all type names (enums + structs) are resolvable for field type parsing
         FillStructFieldsForImport(moduleContext, expandedStructNames);
 
         // Register imported traits in the module
@@ -1756,6 +1771,41 @@ public class IrBuilder : NovusBaseVisitor<object?>
         return function;
     }
 
+    /// <summary>
+    /// Register ALL enum stubs from a module (not just imported ones).
+    /// This is critical because impl block method signatures may reference ANY enum from the module,
+    /// even if that enum is not being explicitly imported.
+    /// </summary>
+    private void RegisterAllEnumStubsForImport(NovusParser.CompilationUnitContext moduleContext)
+    {
+        foreach (var enumDecl in moduleContext.enumDeclaration())
+        {
+            var enumName = enumDecl.IDENTIFIER().GetText();
+
+            // Skip if already registered
+            if (_symbols.HasEnum(enumName))
+            {
+                continue;
+            }
+
+            // Parse generic parameters for stub so type checking works correctly
+            List<string>? genericParams = null;
+            if (enumDecl.genericParams() != null)
+            {
+                genericParams = new List<string>();
+                foreach (var paramId in enumDecl.genericParams().IDENTIFIER())
+                {
+                    genericParams.Add(paramId.GetText());
+                }
+            }
+
+            // Register the stub enum in symbol table (but NOT in module.Enums yet)
+            // The stub will be filled in later only if it's in the import list
+            var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), genericParams);
+            _symbols.RegisterEnum(enumName, stubEnum);
+        }
+    }
+
     private void RegisterEnumStubsForImport(NovusParser.CompilationUnitContext moduleContext, HashSet<string> namesToImport)
     {
         foreach (var enumDecl in moduleContext.enumDeclaration())
@@ -1825,6 +1875,30 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
         } while (addedNewDependencies);
         return expandedStructNames;
+    }
+
+    /// <summary>
+    /// Register ALL struct placeholders from a module (not just imported ones).
+    /// Similar to RegisterAllEnumStubsForImport, this is critical because impl block method signatures
+    /// may reference ANY struct from the module, even if that struct is not being explicitly imported.
+    /// </summary>
+    private void RegisterAllStructPlaceholdersForImport(NovusParser.CompilationUnitContext moduleContext)
+    {
+        foreach (var structDecl in moduleContext.structDeclaration())
+        {
+            var structName = structDecl.IDENTIFIER().GetText();
+
+            // Skip if already registered
+            if (_symbols.HasStruct(structName))
+            {
+                continue;
+            }
+
+            // Register placeholder struct in symbol table (but NOT in module.Structs yet)
+            // The struct will be filled in later only if it's in the import list
+            var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), new List<string>(), null, null);
+            _symbols.RegisterStruct(structName, placeholderStruct);
+        }
     }
 
     private void RegisterStructPlaceholdersForImport(NovusParser.CompilationUnitContext moduleContext, HashSet<string> expandedStructNames)
@@ -2143,7 +2217,59 @@ public class IrBuilder : NovusBaseVisitor<object?>
     {
         var name = context.IDENTIFIER().GetText();
 
+        // Check if this enum is already registered (two-phase registration during imports)
+        var existingEnum = _symbols.LookupEnum(name);
+        if (existingEnum != null)
+        {
+            // This is phase 2 - fill in the variants for a placeholder enum
+            FillEnumVariants(context, existingEnum);
+
+            // Ensure the enum is in the module (in case it was registered by RegisterEnumStubsForImport)
+            if (!_module.Enums.Contains(existingEnum))
+            {
+                _module.AddEnum(existingEnum);
+            }
+            return;
+        }
+
+        // Phase 1: Register placeholder enum FIRST to allow circular references
+        // This is especially important during imports where enums may reference each other
+
         // Handle generic parameters if present
+        var genericParams = new List<string>();
+        if (context.genericParams() != null)
+        {
+            foreach (var paramId in context.genericParams().IDENTIFIER())
+            {
+                var paramName = paramId.GetText();
+                genericParams.Add(paramName);
+                _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
+            }
+        }
+
+        // Create placeholder enum with empty variants
+        var placeholderEnum = new IrEnumType(name, new List<IrEnumVariant>(), genericParams.Count > 0 ? genericParams : null);
+        _symbols.RegisterEnum(name, placeholderEnum);
+        _module.AddEnum(placeholderEnum);
+
+        // Phase 2: Now parse and fill in the variants (can now reference other enums including this one)
+        FillEnumVariants(context, placeholderEnum);
+
+        // Clear generic parameters after enum registration
+        _symbols.ClearGenericParameters();
+    }
+
+    private void FillEnumVariants(NovusParser.EnumDeclarationContext context, IrEnumType enumType)
+    {
+        // If variants are already filled (non-empty), skip
+        if (enumType.Variants.Count > 0)
+        {
+            return;
+        }
+
+        var name = context.IDENTIFIER().GetText();
+
+        // Handle generic parameters if present (need them in scope for variant type parsing)
         var genericParams = new List<string>();
         if (context.genericParams() != null)
         {
@@ -2176,10 +2302,16 @@ public class IrBuilder : NovusBaseVisitor<object?>
             variants.Add(new IrEnumVariant(variantName, tag++, associatedData));
         }
 
-        // Parse where clause
+        // Parse where clause and update enum
         var whereClause = ParseWhereClause(context.whereClause());
+        enumType.WhereClause = whereClause;
 
-        var enumType = new IrEnumType(name, variants, genericParams.Count > 0 ? genericParams : null, whereClause: whereClause);
+        // Fill in the variants
+        enumType.Variants.Clear();
+        foreach (var variant in variants)
+        {
+            enumType.Variants.Add(variant);
+        }
 
         // Force size calculation for non-generic enums
         if (genericParams.Count == 0)
@@ -2187,10 +2319,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             _ = enumType.SizeInBytes;
         }
 
-        _symbols.RegisterEnum(name, enumType);
-        _module.AddEnum(enumType);
-
-        // Clear generic parameters after enum registration
+        // Clear generic parameters after variant parsing
         _symbols.ClearGenericParameters();
     }
 
@@ -4386,57 +4515,14 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         // Insert implicit casts for arguments where needed
-        // (e.g., u32 -> i32 for same-bit-width conversions, String -> i32 for FFI)
+        // (e.g., u32 -> i32 for same-bit-width conversions)
         for (int i = 0; i < arguments.Count; i++)
         {
             var argType = arguments[i].Type;
             var paramType = function.Parameters[i].Type;
 
-            // Handle String to i32 conversion for FFI
-            if (argType is IrStringType && paramType is IrIntType)
-            {
-                // String literal - need to create temp String variable first, then extract .ptr
-                if (arguments[i] is IrStringLiteral stringLit)
-                {
-                    // Create a temporary String variable to hold the {ptr, len} struct
-                    var stringTempName = $"_str_temp_{_tempCounter++}";
-                    var stringVar = new IrLocalVariable(stringTempName, IrStringType.Instance, false);
-                    _currentFunction!.LocalVariables.Add(stringVar);
-
-                    var stringDecl = new IrLocalDecl(stringTempName, IrStringType.Instance, false, stringLit);
-                    _currentBlock!.AddInstruction(stringDecl);
-
-                    // Now extract the .ptr field
-                    var ptrTempName = $"%t{_tempCounter++}";
-                    var ptrAccess = new IrMemberAccess(
-                        ptrTempName,
-                        new IrVariable(stringTempName, IrStringType.Instance),
-                        "ptr",
-                        _typeInterner.GetPointerType(IrIntType.U8),
-                        0  // ptr is at offset 0
-                    );
-                    _currentBlock!.AddInstruction(ptrAccess);
-
-                    // Replace argument with the extracted pointer (cast to i32 for compatibility)
-                    arguments[i] = new IrVariable(ptrTempName, paramType);
-                }
-                else
-                {
-                    // String variable - extract .ptr field
-                    var ptrTempName = $"%t{_tempCounter++}";
-                    var ptrAccess = new IrMemberAccess(
-                        ptrTempName,
-                        arguments[i],
-                        "ptr",
-                        _typeInterner.GetPointerType(IrIntType.U8),
-                        0  // ptr is at offset 0
-                    );
-                    _currentBlock!.AddInstruction(ptrAccess);
-                    arguments[i] = new IrVariable(ptrTempName, paramType);
-                }
-            }
             // If types don't exactly match but are compatible integer types of same width
-            else if (!argType.Equals(paramType) &&
+            if (!argType.Equals(paramType) &&
                 argType is IrIntType argInt &&
                 paramType is IrIntType paramInt &&
                 argInt.BitWidth == paramInt.BitWidth)
@@ -4991,6 +5077,68 @@ public class IrBuilder : NovusBaseVisitor<object?>
         return arrayLiteral;
     }
 
+    public override object? VisitArrayRepeatLiteral([NotNull] NovusParser.ArrayRepeatLiteralContext context)
+    {
+        // Array repeat literal: [value; count]
+        var expressions = context.expression();
+        if (expressions.Length != 2)
+        {
+            throw new Exception("Array repeat literal must have exactly 2 expressions");
+        }
+
+        // Visit the value expression
+        var value = (IrValue)Visit(expressions[0])!;
+
+        // Visit the count expression - must be a constant
+        var countExpr = (IrValue)Visit(expressions[1])!;
+        if (countExpr is not IrConstant countConstant)
+        {
+            throw new Exception("Array repeat count must be a compile-time constant");
+        }
+
+        // Extract count value (handle all integer types)
+        int count = countConstant.Type switch
+        {
+            IrIntType intType => intType.IsSigned switch
+            {
+                true => intType.BitWidth switch
+                {
+                    8 => (sbyte)countConstant.Value,
+                    16 => (short)countConstant.Value,
+                    32 => (int)countConstant.Value,
+                    64 => (int)(long)countConstant.Value,
+                    _ => throw new Exception($"Unsupported signed integer bit width: {intType.BitWidth}")
+                },
+                false => intType.BitWidth switch
+                {
+                    8 => (byte)countConstant.Value,
+                    16 => (ushort)countConstant.Value,
+                    32 => (int)(uint)countConstant.Value,
+                    64 => (int)(ulong)countConstant.Value,
+                    _ => throw new Exception($"Unsupported unsigned integer bit width: {intType.BitWidth}")
+                }
+            },
+            _ => throw new Exception("Array repeat count must be an integer")
+        };
+
+        if (count < 0)
+        {
+            throw new Exception("Array repeat count must be non-negative");
+        }
+
+        // Create array type
+        var arrayType = _typeInterner.GetArrayType(value.Type, count);
+
+        // Create array literal with repeated value
+        var arrayLiteral = new IrArrayLiteral(arrayType);
+        for (int i = 0; i < count; i++)
+        {
+            arrayLiteral.Elements.Add(value);
+        }
+
+        return arrayLiteral;
+    }
+
     public override object? VisitAdditiveExpr([NotNull] NovusParser.AdditiveExprContext context)
     {
         var left = (IrValue)Visit(context.expression(0))!;
@@ -5064,23 +5212,6 @@ public class IrBuilder : NovusBaseVisitor<object?>
         if (value is IrConstant constant)
         {
             return new IrConstant(constant.Value, targetType);
-        }
-
-        // Handle String to integer cast - extract the .ptr field
-        // This allows FFI interop: extern fn foo(s: i32) can accept String arguments
-        if (value.Type is IrStringType && targetType is IrIntType)
-        {
-            // Create a member access to extract the .ptr field
-            var ptrTempName = $"_str_ptr_{_tempCounter++}";
-            var ptrAccess = new IrMemberAccess(
-                ptrTempName,
-                value,
-                "ptr",
-                new IrPointerType(IrIntType.U8),
-                0  // ptr is at offset 0
-            );
-            _currentBlock!.AddInstruction(ptrAccess);
-            return new IrVariable(ptrTempName, _typeInterner.GetPointerType(IrIntType.U8));
         }
 
         // Create an explicit cast value
@@ -5953,12 +6084,26 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Process escape sequences
         stringValue = ProcessEscapeSequences(stringValue);
 
-        // Create unique label for this string
+        // Create unique label for this string (still null-terminated in data section for C FFI)
         var label = $"_str{_stringCounter++}";
         var stringLiteral = new IrStringLiteral(stringValue, label);
         StringLiterals.Add(stringLiteral);
 
-        return stringLiteral;
+        // String literals now create Str struct instances: Str { ptr: *u8, len: u32 }
+        var strType = _symbols.LookupStruct("Str");
+        if (strType == null)
+        {
+            throw new Exception("String literals require Str type from std::strings module");
+        }
+
+        // Create struct literal with ptr and len fields
+        var fieldValues = new Dictionary<string, IrValue>
+        {
+            ["ptr"] = stringLiteral,  // IrStringLiteral is still *u8 pointer to data
+            ["len"] = new IrConstant(stringValue.Length, IrIntType.U32)  // Length without null terminator
+        };
+
+        return new IrStructLiteral(strType, fieldValues);
     }
 
     public override object? VisitSizeofExpr([NotNull] NovusParser.SizeofExprContext context)
@@ -6224,46 +6369,55 @@ public class IrBuilder : NovusBaseVisitor<object?>
             // Check if all generic parameters were inferred
             if (typeSubstitutions.Count == baseStructType.GenericParameters.Count)
             {
-                // Create monomorphized struct type
+                // Check if all type arguments are concrete (not generic)
                 var typeArgs = baseStructType.GenericParameters.Select(p => typeSubstitutions[p]).ToList();
-                var typeArgKeys = typeArgs.Select(t => GetTypeCacheKey(t));
-                var cacheKey = $"{baseStructType.StructName}<{string.Join(",", typeArgKeys)}>";
+                Console.WriteLine($"DEBUG IrBuilder.VisitStructLiteral: {baseStructType.StructName} typeSubstitutions={string.Join(", ", typeSubstitutions.Select(kv => $"{kv.Key}->{kv.Value.Name}"))}");
+                bool allConcrete = typeArgs.All(t => !(t is IrGenericType));
+                Console.WriteLine($"DEBUG IrBuilder.VisitStructLiteral: {baseStructType.StructName} allConcrete={allConcrete}");
 
-                // Check cache first
-                if (_symbols.LookupMonomorphizedStruct(cacheKey) != null)
+                if (allConcrete)
                 {
-                    structType = _symbols.LookupMonomorphizedStruct(cacheKey)!;
-                }
-                else
-                {
-                    // Create monomorphized fields using recursive substitution
-                    var monomorphizedFields = new List<IrStructField>();
-                    bool fullyMonomorphized = true;
+                    // All type arguments are concrete - create monomorphized struct type
+                    var typeArgKeys = typeArgs.Select(t => GetTypeCacheKey(t));
+                    var cacheKey = $"{baseStructType.StructName}<{string.Join(",", typeArgKeys)}>";
 
-                    foreach (var origField in baseStructType.Fields)
+                    // Check cache first
+                    if (_symbols.LookupMonomorphizedStruct(cacheKey) != null)
                     {
-                        var fieldType = SubstituteGenericTypes(origField.Type, typeSubstitutions);
-                        monomorphizedFields.Add(new IrStructField(origField.Name, fieldType));
+                        structType = _symbols.LookupMonomorphizedStruct(cacheKey)!;
+                    }
+                    else
+                    {
+                        // Create monomorphized fields using recursive substitution
+                        var monomorphizedFields = new List<IrStructField>();
+                        bool fullyMonomorphized = true;
 
-                        // Check if field type is still generic
-                        if (ContainsGenericTypes(fieldType))
+                        foreach (var origField in baseStructType.Fields)
                         {
-                            fullyMonomorphized = false;
+                            var fieldType = SubstituteGenericTypes(origField.Type, typeSubstitutions);
+                            monomorphizedFields.Add(new IrStructField(origField.Name, fieldType));
+
+                            // Check if field type is still generic
+                            if (ContainsGenericTypes(fieldType))
+                            {
+                                fullyMonomorphized = false;
+                            }
                         }
+
+                        // Create new struct type with concrete types
+                        structType = new IrStructType(baseStructType.StructName, monomorphizedFields, null, cacheKey);
+
+                        // Force calculation of field offsets only if fully monomorphized
+                        if (fullyMonomorphized)
+                        {
+                            _ = structType.SizeInBytes;
+                        }
+
+                        // Cache it for future use
+                        _symbols.RegisterMonomorphizedStruct(cacheKey, structType);
                     }
-
-                    // Create new struct type with concrete types
-                    structType = new IrStructType(baseStructType.StructName, monomorphizedFields, null, cacheKey);
-
-                    // Force calculation of field offsets only if fully monomorphized
-                    if (fullyMonomorphized)
-                    {
-                        _ = structType.SizeInBytes;
-                    }
-
-                    // Cache it for future use
-                    _symbols.RegisterMonomorphizedStruct(cacheKey, structType);
                 }
+                // else: some type arguments are still generic, use base generic type
             }
         }
 
@@ -6404,35 +6558,6 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         var memberName = context.IDENTIFIER().GetText();
-
-        // Handle String type member access
-        if (baseExpr.Type is IrStringType)
-        {
-            IrType fieldType;
-            int fieldOffset;
-
-            if (memberName == "ptr")
-            {
-                fieldType = _typeInterner.GetPointerType(IrIntType.U8);
-                fieldOffset = 0;  // ptr is at offset 0
-            }
-            else if (memberName == "len")
-            {
-                fieldType = IrIntType.I32;
-                fieldOffset = 4;  // len is at offset 4 (after the 4-byte ptr)
-            }
-            else
-            {
-                throw new Exception($"String type does not have a field named '{memberName}'. Available fields: ptr, len");
-            }
-
-            // Generate a member access instruction for String
-            var strResultName = $"%t{_tempCounter++}";
-            var strMemberAccess = new IrMemberAccess(strResultName, baseExpr, memberName, fieldType, fieldOffset);
-            _currentBlock!.AddInstruction(strMemberAccess);
-
-            return new IrVariable(strResultName, fieldType);
-        }
 
         // Auto-dereference pointers to structs
         IrValue actualBase = baseExpr;
@@ -6621,6 +6746,14 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         IrEnumType? enumType = isEnumMatch ? (IrEnumType)matchValue.Type : null;
+        if (enumType != null)
+        {
+            Console.WriteLine($"DEBUG IrBuilder: Match on enum '{enumType.EnumName}' with CacheKey='{enumType.CacheKey}'");
+            foreach (var v in enumType.Variants)
+            {
+                Console.WriteLine($"  Variant '{v.Name}': AssociatedData=[{string.Join(", ", v.AssociatedData.Select(d => $"{d.Name} (CacheKey={(d is IrStructType st ? st.CacheKey : "N/A")})"))}]");
+            }
+        }
 
         // Generate labels for match arms and end
         var matchEndLabel = $"match_end_{_labelCounter}";
@@ -6998,6 +7131,76 @@ public class IrBuilder : NovusBaseVisitor<object?>
     }
 
     /// <summary>
+    /// Check if two types are semantically equal
+    /// This is needed because reference equality doesn't work for types that are constructed separately
+    /// </summary>
+    private bool TypesAreEqual(IrType a, IrType b)
+    {
+        // Fast path: reference equality
+        if (ReferenceEquals(a, b)) return true;
+
+        // Different type classes
+        if (a.GetType() != b.GetType()) return false;
+
+        // Generic types: compare parameter names
+        if (a is IrGenericType gtA && b is IrGenericType gtB)
+        {
+            return gtA.ParameterName == gtB.ParameterName;
+        }
+
+        // Pointer types: compare pointee types recursively
+        if (a is IrPointerType ptrA && b is IrPointerType ptrB)
+        {
+            return TypesAreEqual(ptrA.PointeeType, ptrB.PointeeType);
+        }
+
+        // Reference types: compare pointee types recursively
+        if (a is IrReferenceType refA && b is IrReferenceType refB)
+        {
+            return TypesAreEqual(refA.PointeeType, refB.PointeeType);
+        }
+
+        // Mutable reference types: compare pointee types recursively
+        if (a is IrMutReferenceType mutRefA && b is IrMutReferenceType mutRefB)
+        {
+            return TypesAreEqual(mutRefA.PointeeType, mutRefB.PointeeType);
+        }
+
+        // Array types: compare element type and length
+        if (a is IrArrayType arrA && b is IrArrayType arrB)
+        {
+            return arrA.Length == arrB.Length && TypesAreEqual(arrA.ElementType, arrB.ElementType);
+        }
+
+        // Struct types: compare by name and cache key
+        // We use cache key when available because it uniquely identifies monomorphized versions
+        if (a is IrStructType structA && b is IrStructType structB)
+        {
+            if (structA.CacheKey != null && structB.CacheKey != null)
+            {
+                return structA.CacheKey == structB.CacheKey;
+            }
+            return structA.StructName == structB.StructName &&
+                   structA.GenericParameters.Count == structB.GenericParameters.Count;
+        }
+
+        // Enum types: compare by name and cache key
+        if (a is IrEnumType enumA && b is IrEnumType enumB)
+        {
+            if (enumA.CacheKey != null && enumB.CacheKey != null)
+            {
+                return enumA.CacheKey == enumB.CacheKey;
+            }
+            return enumA.EnumName == enumB.EnumName &&
+                   enumA.GenericParameters.Count == enumB.GenericParameters.Count;
+        }
+
+        // For primitive types, reference equality should have caught it
+        // but as a fallback, we consider them equal by default
+        return false;
+    }
+
+    /// <summary>
     /// Recursively substitute generic type parameters with concrete types
     /// </summary>
     private IrType SubstituteGenericTypes(IrType type, Dictionary<string, IrType> substitutions)
@@ -7049,6 +7252,45 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
         else if (type is IrStructType structType)
         {
+            // If the struct still has generic parameters and we're in a generic context,
+            // we should not create a new struct type - just return the original
+            // This prevents creating duplicate generic struct instances
+            if (structType.GenericParameters.Count > 0)
+            {
+                // Check if any of the substitutions actually change generic to concrete
+                bool hasConcreteSubstitution = false;
+                foreach (var genericParam in structType.GenericParameters)
+                {
+                    if (substitutions.ContainsKey(genericParam))
+                    {
+                        var substType = substitutions[genericParam];
+                        Console.WriteLine($"DEBUG IrBuilder.SubstituteGenericTypes: Struct {structType.StructName}<{string.Join(",", structType.GenericParameters)}> generic param '{genericParam}' -> {substType.Name} (IsGeneric={substType is IrGenericType})");
+                        // Check if it's being replaced with a concrete (non-generic) type
+                        if (!(substType is IrGenericType))
+                        {
+                            hasConcreteSubstitution = true;
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine($"DEBUG IrBuilder.SubstituteGenericTypes: Struct {structType.StructName}<{string.Join(",", structType.GenericParameters)}> generic param '{genericParam}' NOT in substitutions");
+                    }
+                }
+
+                // If no generic parameters are being replaced with concrete types,
+                // return the original struct unchanged
+                if (!hasConcreteSubstitution)
+                {
+                    Console.WriteLine($"DEBUG IrBuilder.SubstituteGenericTypes: Returning original struct {structType.StructName}<{string.Join(",", structType.GenericParameters)}> unchanged");
+                    return structType;
+                }
+                else
+                {
+                    Console.WriteLine($"DEBUG IrBuilder.SubstituteGenericTypes: Creating monomorphized struct for {structType.StructName}");
+                }
+            }
+
             // Check if any field types contain generics that need substitution
             bool needsSubstitution = false;
             var substitutedFields = new List<IrStructField>();
@@ -7058,7 +7300,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 var substitutedFieldType = SubstituteGenericTypes(field.Type, substitutions);
                 substitutedFields.Add(new IrStructField(field.Name, substitutedFieldType));
 
-                if (substitutedFieldType != field.Type)
+                if (!TypesAreEqual(substitutedFieldType, field.Type))
                 {
                     needsSubstitution = true;
                 }
@@ -7067,12 +7309,52 @@ public class IrBuilder : NovusBaseVisitor<object?>
             if (needsSubstitution)
             {
                 // Create a new struct type with substituted field types
-                var substitutedStruct = new IrStructType(structType.StructName, substitutedFields);
+                // Preserve generic parameters from original
+                // Clear cache key if struct still has generic parameters (not fully monomorphized)
+                string? cacheKey = structType.GenericParameters.Count > 0 ? null : structType.CacheKey;
+
+                var substitutedStruct = new IrStructType(
+                    structType.StructName,
+                    substitutedFields,
+                    structType.GenericParameters,
+                    cacheKey,
+                    structType.Attributes,
+                    structType.WhereClause
+                );
                 return substitutedStruct;
             }
         }
         else if (type is IrEnumType enumType)
         {
+            // If the enum still has generic parameters and we're in a generic context,
+            // we should not create a new enum type - just return the original
+            // This prevents creating duplicate generic enum instances
+            if (enumType.GenericParameters.Count > 0)
+            {
+                // Check if any of the substitutions actually change generic to concrete
+                bool hasConcreteSubstitution = false;
+                foreach (var genericParam in enumType.GenericParameters)
+                {
+                    if (substitutions.ContainsKey(genericParam))
+                    {
+                        var substType = substitutions[genericParam];
+                        // Check if it's being replaced with a concrete (non-generic) type
+                        if (!(substType is IrGenericType))
+                        {
+                            hasConcreteSubstitution = true;
+                            break;
+                        }
+                    }
+                }
+
+                // If no generic parameters are being replaced with concrete types,
+                // return the original enum unchanged
+                if (!hasConcreteSubstitution)
+                {
+                    return enumType;
+                }
+            }
+
             // Check if any variant types contain generics that need substitution
             bool needsSubstitution = false;
             var substitutedVariants = new List<IrEnumVariant>();
@@ -7085,7 +7367,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     var substitutedDataType = SubstituteGenericTypes(dataType, substitutions);
                     substitutedData.Add(substitutedDataType);
 
-                    if (substitutedDataType != dataType)
+                    if (!TypesAreEqual(substitutedDataType, dataType))
                     {
                         needsSubstitution = true;
                     }
@@ -7097,8 +7379,16 @@ public class IrBuilder : NovusBaseVisitor<object?>
             if (needsSubstitution)
             {
                 // Create a new enum type with substituted variant types
-                // Preserve the generic parameters from the original enum
-                var substitutedEnum = new IrEnumType(enumType.EnumName, substitutedVariants, enumType.GenericParameters);
+                // Preserve generic parameters from original
+                // Clear cache key if enum still has generic parameters (not fully monomorphized)
+                string? cacheKey = enumType.GenericParameters.Count > 0 ? null : enumType.CacheKey;
+
+                var substitutedEnum = new IrEnumType(
+                    enumType.EnumName,
+                    substitutedVariants,
+                    enumType.GenericParameters,
+                    cacheKey
+                );
                 return substitutedEnum;
             }
         }
