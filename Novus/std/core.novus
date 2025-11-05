@@ -28,29 +28,29 @@ impl<T> Option<T> {
         return Option::None
     }
 
-    // NOTE: Helper methods commented out until compiler fully supports matching on generic enums in impl blocks
-    // TODO: Re-enable when compiler supports this pattern
-    //
-    // pub fn is_some(self) -> bool {
-    //     match self {
-    //         Some(_) => return true,
-    //         None => return false
-    //     }
-    // }
-    //
-    // pub fn is_none(self) -> bool {
-    //     match self {
-    //         Some(_) => return false,
-    //         None => return true
-    //     }
-    // }
-    //
-    // pub fn unwrap_or(self, default: T) -> T {
-    //     match self {
-    //         Some(val) => return val,
-    //         None => return default
-    //     }
-    // }
+    pub fn is_some(self) -> bool {
+        match self {
+            Some(_) => return true,
+            None => return false
+        }
+    }
+
+    pub fn is_none(self) -> bool {
+        match self {
+            Some(_) => return false,
+            None => return true
+        }
+    }
+
+    pub fn unwrap_or(self, default: T) -> T {
+        match self {
+            Some(val) => return val,
+            None => return default
+        }
+    }
+
+    // NOTE: Map method temporarily commented out - requires method-level generic parameters
+    // TODO: Re-enable when compiler supports method-level generics on generic types
     //
     // pub fn map<U>(self, f: fn(T) -> U) -> Option<U> {
     //     match self {
@@ -68,29 +68,29 @@ pub enum Result<T, E> {
 }
 
 impl<T, E> Result<T, E> {
-    // NOTE: Helper methods commented out until compiler fully supports matching on generic enums in impl blocks
-    // TODO: Re-enable when compiler supports this pattern
-    //
-    // pub fn is_ok(self) -> bool {
-    //     match self {
-    //         Ok(_) => return true,
-    //         Err(_) => return false
-    //     }
-    // }
-    //
-    // pub fn is_err(self) -> bool {
-    //     match self {
-    //         Ok(_) => return false,
-    //         Err(_) => return true
-    //     }
-    // }
-    //
-    // pub fn unwrap_or(self, default: T) -> T {
-    //     match self {
-    //         Ok(val) => return val,
-    //         Err(_) => return default
-    //     }
-    // }
+    pub fn is_ok(self) -> bool {
+        match self {
+            Ok(_) => return true,
+            Err(_) => return false
+        }
+    }
+
+    pub fn is_err(self) -> bool {
+        match self {
+            Ok(_) => return false,
+            Err(_) => return true
+        }
+    }
+
+    pub fn unwrap_or(self, default: T) -> T {
+        match self {
+            Ok(val) => return val,
+            Err(_) => return default
+        }
+    }
+
+    // NOTE: Map methods temporarily commented out - require method-level generic parameters
+    // TODO: Re-enable when compiler supports method-level generics on generic types
     //
     // pub fn map<U>(self, f: fn(T) -> U) -> Result<U, E> {
     //     match self {

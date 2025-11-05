@@ -3297,6 +3297,26 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         bool isEnumMatch = matchValueType is IrEnumType;
         bool isIntegerMatch = matchValueType is IrIntType;
 
+        // For pattern analysis, we need the enum type to look up variants
+        // If matchValueType is a generic type parameter that refers to an enum,
+        // we need to get the actual enum type for validation
+        IrEnumType? enumTypeForValidation = null;
+        if (isEnumMatch)
+        {
+            enumTypeForValidation = (IrEnumType)matchValueType;
+        }
+        else if (!isIntegerMatch && matchValueType is IrGenericType genericType)
+        {
+            // Check if this generic type name refers to an enum
+            // This handles cases like match on 'self' in impl<T> Option<T>
+            // where 'self' has type IrGenericType("Option")
+            if (_symbols.HasEnum(genericType.ParameterName))
+            {
+                isEnumMatch = true;
+                enumTypeForValidation = _symbols.LookupEnum(genericType.ParameterName)!;
+            }
+        }
+
         if (!isEnumMatch && !isIntegerMatch)
         {
             var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
@@ -3328,7 +3348,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             // Analyze pattern and bind variables
             if (isEnumMatch)
             {
-                AnalyzePatternAndBind(pattern, (IrEnumType)matchValueType, coveredVariants, ref hasWildcard);
+                AnalyzePatternAndBind(pattern, enumTypeForValidation!, coveredVariants, ref hasWildcard);
             }
             else // isIntegerMatch
             {
@@ -3362,8 +3382,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         {
             if (isEnumMatch)
             {
-                var enumType = (IrEnumType)matchValueType;
-                var uncoveredVariants = enumType.Variants
+                var uncoveredVariants = enumTypeForValidation!.Variants
                     .Select(v => v.Name)
                     .Where(v => !coveredVariants.Contains(v))
                     .ToList();

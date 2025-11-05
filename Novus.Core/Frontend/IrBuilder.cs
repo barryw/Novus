@@ -1344,19 +1344,59 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Keep generic params registered for later use during function instantiation
         // They will be restored at the end
 
-        // Infer generic types from arguments
-        var typeSubstitutions = InferGenericFunctionTypes(genericParams, templateParams, arguments);
-        if (typeSubstitutions == null)
+        // Check if the enum is already monomorphized (has no generic parameters and has a cache key)
+        // If so, we can extract the type substitutions from its structure
+        Dictionary<string, IrType>? typeSubstitutions = null;
+        IrEnumType? monomorphizedEnum = null;
+
+        if (enumType.GenericParameters.Count == 0 && enumType.CacheKey != null)
         {
-            return null; // Type inference failed
+            // Enum is already monomorphized - extract type substitutions by comparing with base enum
+            // The base enum template should have generic parameters, so look it up
+            var baseEnum = _symbols.LookupEnum(baseTypeName);
+            if (baseEnum != null && baseEnum.GenericParameters.Count > 0)
+            {
+                // Extract concrete types from the monomorphized enum by matching variant structures
+                typeSubstitutions = new Dictionary<string, IrType>();
+                for (int paramIdx = 0; paramIdx < baseEnum.GenericParameters.Count; paramIdx++)
+                {
+                    var paramName = baseEnum.GenericParameters[paramIdx];
+                    // Find a variant that uses this parameter and extract the concrete type
+                    for (int varIdx = 0; varIdx < baseEnum.Variants.Count && varIdx < enumType.Variants.Count; varIdx++)
+                    {
+                        var baseVariant = baseEnum.Variants[varIdx];
+                        var concreteVariant = enumType.Variants[varIdx];
+                        for (int dataIdx = 0; dataIdx < baseVariant.AssociatedData.Count && dataIdx < concreteVariant.AssociatedData.Count; dataIdx++)
+                        {
+                            if (baseVariant.AssociatedData[dataIdx] is IrGenericType gt && gt.ParameterName == paramName)
+                            {
+                                typeSubstitutions[paramName] = concreteVariant.AssociatedData[dataIdx];
+                                break;
+                            }
+                        }
+                        if (typeSubstitutions.ContainsKey(paramName))
+                            break;
+                    }
+                }
+                monomorphizedEnum = enumType; // Use the already-monomorphized enum
+            }
         }
 
-
-        // Build monomorphized enum with inferred types
-        var monomorphizedEnum = MonomorphizeEnum(enumType, typeSubstitutions);
-        if (monomorphizedEnum == null)
+        // If not already monomorphized, infer types from arguments
+        if (typeSubstitutions == null)
         {
-            return null;
+            typeSubstitutions = InferGenericFunctionTypes(genericParams, templateParams, arguments);
+            if (typeSubstitutions == null)
+            {
+                return null; // Type inference failed
+            }
+
+            // Build monomorphized enum with inferred types
+            monomorphizedEnum = MonomorphizeEnum(enumType, typeSubstitutions);
+            if (monomorphizedEnum == null)
+            {
+                return null;
+            }
         }
 
         // Build instantiation key
@@ -1398,6 +1438,14 @@ public class IrBuilder : NovusBaseVisitor<object?>
         if (funcDecl.parameterList() != null)
         {
             var paramList = funcDecl.parameterList();
+
+            // Handle self parameter if present
+            if (paramList.selfParameter() != null)
+            {
+                ParseSelfParameter(paramList.selfParameter(), function, monomorphizedEnum);
+            }
+
+            // Add regular parameters
             foreach (var paramCtx in paramList.parameter())
             {
                 var paramName = paramCtx.IDENTIFIER().GetText();
@@ -1436,10 +1484,24 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var savedBlock = _currentBlock;
         _currentBlock = entryBlock;
 
+        // Save and add parameters to local variables scope
+        var savedLocalVars = new Dictionary<string, IrLocalVariable>(_localVariables);
+        foreach (var param in function.Parameters)
+        {
+            _localVariables[param.Name] = new IrLocalVariable(param.Name, param.Type, false);
+        }
+
         // Visit the function body
         if (funcDecl.block() != null)
         {
             Visit(funcDecl.block());
+        }
+
+        // Restore local variables
+        _localVariables.Clear();
+        foreach (var kvp in savedLocalVars)
+        {
+            _localVariables[kvp.Key] = kvp.Value;
         }
 
         // Restore state
@@ -4641,10 +4703,11 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Look up the method
         var method = _module.Functions.FirstOrDefault(f => f.Name == mangledMethodName);
 
-        // If method not found, try to instantiate it for monomorphized structs
+        // If method not found, try to instantiate it for monomorphized structs or enums
         if (method == null)
         {
             IrStructType? monomorphizedStruct = null;
+            IrEnumType? monomorphizedEnum = null;
 
             // Check if receiver is a monomorphized struct
             if (receiverType is IrStructType receiverStruct && receiverStruct.CacheKey != null)
@@ -4656,10 +4719,74 @@ public class IrBuilder : NovusBaseVisitor<object?>
             {
                 monomorphizedStruct = pointeeStruct;
             }
+            // Check if receiver is a monomorphized enum
+            else if (receiverType is IrEnumType receiverEnum && receiverEnum.CacheKey != null)
+            {
+                monomorphizedEnum = receiverEnum;
+            }
+            // Check if receiver is a pointer to a monomorphized enum (&Option<i32>, &mut Option<i32>)
+            else if (receiverType is IrPointerType ptrType2 && ptrType2.PointeeType is IrEnumType pointeeEnum && pointeeEnum.CacheKey != null)
+            {
+                monomorphizedEnum = pointeeEnum;
+            }
+            // Check if receiver is a generic enum template (not yet monomorphized)
+            // This can happen when a variable has a declared type that includes type arguments,
+            // but the receiver's type is still the generic template (e.g., Option<T> instead of Option<i32>)
+            else if (receiverType is IrEnumType receiverEnumTemplate &&
+                     receiverEnumTemplate.GenericParameters.Count > 0 &&
+                     receiverEnumTemplate.CacheKey == null)
+            {
+                // Try to find the monomorphized version by looking up the variable's declared type
+                // This happens when: let opt1: Option<i32> = ... then opt1.is_some()
+                // The receiver variable should have the monomorphized type in _localVariables or function parameters
+                if (receiver is IrVariable irVar)
+                {
+                    // Check local variables first
+                    if (_localVariables.TryGetValue(irVar.Name, out var localVar))
+                    {
+                        // The local variable's type should be the monomorphized version
+                        if (localVar.Type is IrEnumType localEnumType && localEnumType.CacheKey != null)
+                        {
+                            monomorphizedEnum = localEnumType;
+                            // Update the receiver to use the correct monomorphized type
+                            receiver = new IrVariable(irVar.Name, localEnumType);
+                        }
+                    }
+                    // Check function parameters
+                    else if (_currentFunction != null)
+                    {
+                        var param = _currentFunction.Parameters.FirstOrDefault(p => p.Name == irVar.Name);
+                        if (param != null && param.Type is IrEnumType paramEnumType && paramEnumType.CacheKey != null)
+                        {
+                            monomorphizedEnum = paramEnumType;
+                            // Update the receiver to use the correct monomorphized type
+                            receiver = new IrVariable(irVar.Name, paramEnumType);
+                        }
+                    }
+                }
+            }
 
             if (monomorphizedStruct != null)
             {
                 method = InstantiateGenericMethod(monomorphizedStruct, methodName);
+            }
+            else if (monomorphizedEnum != null)
+            {
+                // Parse arguments to pass to instantiation (needed for type inference)
+                var methodArgs = new List<IrValue>();
+                if (callCtx.argumentList() != null)
+                {
+                    foreach (var argCtx in callCtx.argumentList().expression())
+                    {
+                        var argValue = (IrValue?)Visit(argCtx);
+                        if (argValue != null)
+                        {
+                            methodArgs.Add(argValue);
+                        }
+                    }
+                }
+
+                method = InstantiateGenericEnumMethod(monomorphizedEnum, methodName, methodArgs);
             }
         }
 
