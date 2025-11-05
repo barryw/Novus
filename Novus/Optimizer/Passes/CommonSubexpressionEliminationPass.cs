@@ -6,6 +6,9 @@ namespace Novus.Optimizer.Passes;
 /// Common subexpression elimination pass
 /// Eliminates redundant computations of the same expression
 /// Example: let x = a + b; let y = a + b; => let x = a + b; let y = x;
+///
+/// REFACTORED: Now uses IrRewriter for IR traversal and modification instead of manual switch statements.
+/// The visitor pattern allows automatic propagation through all instruction types.
 /// </summary>
 public class CommonSubexpressionEliminationPass : BasicBlockPassBase
 {
@@ -13,106 +16,115 @@ public class CommonSubexpressionEliminationPass : BasicBlockPassBase
 
     public override bool RunOnBasicBlock(IrBasicBlock block)
     {
-        bool changed = false;
+        var rewriter = new CommonSubexpressionEliminationRewriter();
+        rewriter.RewriteBasicBlock(block);
+        return rewriter.Changed;
+    }
+
+    /// <summary>
+    /// IrRewriter implementation that eliminates common subexpressions
+    /// </summary>
+    private class CommonSubexpressionEliminationRewriter : IrRewriter
+    {
+        public bool Changed { get; private set; }
+
         // Map from expression signature to the variable that holds the result
-        var expressions = new Dictionary<string, string>();
+        private readonly Dictionary<string, string> _expressions = new();
 
-        for (int i = 0; i < block.Instructions.Count; i++)
+        // Track replacements from old variable names to new variable references
+        private readonly Dictionary<string, IrValue> _replacements = new();
+
+        public override IrInstruction? RewriteBinaryOp(IrBinaryOp binaryOp)
         {
-            if (block.Instructions[i] is IrBinaryOp binOp)
-            {
-                var signature = GetExpressionSignature(binOp);
-                if (signature != null && expressions.ContainsKey(signature))
-                {
-                    // This expression has already been computed
-                    // Replace all uses of this result with the previous result
-                    var previousResult = expressions[signature];
-                    ReplaceUses(block, binOp.ResultName, new IrVariable(previousResult, binOp.Type));
+            // First rewrite operands (applies any pending replacements)
+            binaryOp.Left = RewriteValue(binaryOp.Left);
+            binaryOp.Right = RewriteValue(binaryOp.Right);
 
-                    // Remove this instruction
-                    block.Instructions.RemoveAt(i);
-                    i--;
-                    changed = true;
-                }
-                else if (signature != null)
-                {
-                    // Track this expression
-                    expressions[signature] = binOp.ResultName;
-                }
+            // Compute the signature of this expression
+            var signature = GetExpressionSignature(binaryOp);
+            if (signature != null && _expressions.TryGetValue(signature, out var previousResult))
+            {
+                // This expression has already been computed
+                // Replace all uses of this result with the previous result
+                _replacements[binaryOp.ResultName] = new IrVariable(previousResult, binaryOp.Type);
+                Changed = true;
+
+                // Remove this instruction
+                return null;
             }
+            else if (signature != null)
+            {
+                // Track this expression
+                _expressions[signature] = binaryOp.ResultName;
+            }
+
+            return binaryOp;
         }
 
-        return changed;
-    }
-
-    private string? GetExpressionSignature(IrBinaryOp binOp)
-    {
-        // Only eliminate if both operands are either constants or variables (not other temp results)
-        var leftSig = GetValueSignature(binOp.Left);
-        var rightSig = GetValueSignature(binOp.Right);
-
-        if (leftSig == null || rightSig == null)
-            return null;
-
-        // For commutative operations, normalize the order
-        if (IsCommutative(binOp.Operation))
+        public override IrValue RewriteVariable(IrVariable variable)
         {
-            if (string.CompareOrdinal(leftSig, rightSig) > 0)
+            // Apply any tracked replacements
+            if (_replacements.TryGetValue(variable.Name, out var replacement))
             {
-                (leftSig, rightSig) = (rightSig, leftSig);
+                return replacement;
             }
+            return variable;
         }
 
-        return $"{binOp.Operation}({leftSig}, {rightSig})";
-    }
-
-    private string? GetValueSignature(IrValue value)
-    {
-        return value switch
+        /// <summary>
+        /// Generate a signature for a binary operation that can be used for CSE
+        /// Returns null if the operation is not suitable for CSE
+        /// </summary>
+        private string? GetExpressionSignature(IrBinaryOp binOp)
         {
-            IrConstant c => $"const:{c.Value}",
-            IrVariable v => $"var:{v.Name}",
-            _ => null
-        };
-    }
+            // Only eliminate if both operands are either constants or variables (not other temp results)
+            var leftSig = GetValueSignature(binOp.Left);
+            var rightSig = GetValueSignature(binOp.Right);
 
-    private bool IsCommutative(IrBinaryOp.OpKind op)
-    {
-        return op switch
-        {
-            IrBinaryOp.OpKind.Add => true,
-            IrBinaryOp.OpKind.Mul => true,
-            IrBinaryOp.OpKind.And => true,
-            IrBinaryOp.OpKind.Or => true,
-            IrBinaryOp.OpKind.Xor => true,
-            IrBinaryOp.OpKind.Eq => true,
-            IrBinaryOp.OpKind.Ne => true,
-            _ => false
-        };
-    }
+            if (leftSig == null || rightSig == null)
+                return null;
 
-    private void ReplaceUses(IrBasicBlock block, string oldName, IrValue newValue)
-    {
-        foreach (var instruction in block.Instructions)
-        {
-            if (instruction is IrBinaryOp binOp)
+            // For commutative operations, normalize the order
+            if (IsCommutative(binOp.Operation))
             {
-                if (binOp.Left is IrVariable leftVar && leftVar.Name == oldName)
+                if (string.CompareOrdinal(leftSig, rightSig) > 0)
                 {
-                    binOp.Left = newValue;
-                }
-                if (binOp.Right is IrVariable rightVar && rightVar.Name == oldName)
-                {
-                    binOp.Right = newValue;
+                    (leftSig, rightSig) = (rightSig, leftSig);
                 }
             }
-            else if (instruction is IrReturn ret)
+
+            return $"{binOp.Operation}({leftSig}, {rightSig})";
+        }
+
+        /// <summary>
+        /// Generate a signature for a value
+        /// </summary>
+        private string? GetValueSignature(IrValue value)
+        {
+            return value switch
             {
-                if (ret.Value is IrVariable retVar && retVar.Name == oldName)
-                {
-                    ret.Value = newValue;
-                }
-            }
+                IrConstant c => $"const:{c.Value}",
+                IrVariable v => $"var:{v.Name}",
+                _ => null
+            };
+        }
+
+        /// <summary>
+        /// Check if a binary operation is commutative
+        /// </summary>
+        private bool IsCommutative(IrBinaryOp.OpKind op)
+        {
+            return op switch
+            {
+                IrBinaryOp.OpKind.Add => true,
+                IrBinaryOp.OpKind.Mul => true,
+                IrBinaryOp.OpKind.And => true,
+                IrBinaryOp.OpKind.Or => true,
+                IrBinaryOp.OpKind.Xor => true,
+                IrBinaryOp.OpKind.Eq => true,
+                IrBinaryOp.OpKind.Ne => true,
+                _ => false
+            };
         }
     }
 }

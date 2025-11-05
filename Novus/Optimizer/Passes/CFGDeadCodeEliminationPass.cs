@@ -6,6 +6,9 @@ namespace Novus.Optimizer.Passes;
 /// CFG-based dead code elimination pass
 /// Uses liveness analysis across basic blocks to identify and remove dead instructions
 /// More powerful than basic DCE because it can eliminate dead code across block boundaries
+///
+/// REFACTORED: Now uses IrVisitor for collecting uses and defs instead of manual switch statements.
+/// The visitor pattern automatically handles all instruction and value types.
 /// </summary>
 public class CFGDeadCodeEliminationPass : FunctionPassBase
 {
@@ -64,9 +67,9 @@ public class CFGDeadCodeEliminationPass : FunctionPassBase
                 }
 
                 // Add variables used by this instruction to the live set
-                var uses = new HashSet<string>();
-                CollectUses(instruction, uses);
-                liveVars.UnionWith(uses);
+                var collector = new UseCollectorVisitor();
+                collector.VisitInstruction(instruction, null);
+                liveVars.UnionWith(collector.UsedVariables);
             }
         }
 
@@ -180,16 +183,13 @@ public class CFGDeadCodeEliminationPass : FunctionPassBase
     }
 
     /// <summary>
-    /// Get all variables used in a basic block
+    /// Get all variables used in a basic block using visitor pattern
     /// </summary>
     private HashSet<string> GetUses(IrBasicBlock block)
     {
-        var uses = new HashSet<string>();
-        foreach (var instruction in block.Instructions)
-        {
-            CollectUses(instruction, uses);
-        }
-        return uses;
+        var collector = new UseCollectorVisitor();
+        collector.VisitBasicBlock(block, null);
+        return collector.UsedVariables;
     }
 
     /// <summary>
@@ -243,74 +243,22 @@ public class CFGDeadCodeEliminationPass : FunctionPassBase
     }
 
     /// <summary>
-    /// Collect all variable uses from an instruction
+    /// Visitor that collects all used variable names
+    /// REFACTORED: Uses IrVisitor instead of manual switch statements
     /// </summary>
-    private void CollectUses(IrInstruction instruction, HashSet<string> usedVars)
+    private class UseCollectorVisitor : IrVisitor<object?, object?>
     {
-        switch (instruction)
+        public HashSet<string> UsedVariables { get; } = new();
+
+        public override object? VisitVariable(IrVariable variable, object? context)
         {
-            case IrBinaryOp binOp:
-                CollectUsesFromValue(binOp.Left, usedVars);
-                CollectUsesFromValue(binOp.Right, usedVars);
-                break;
-
-            case IrReturn ret:
-                if (ret.Value != null)
-                    CollectUsesFromValue(ret.Value, usedVars);
-                break;
-
-            case IrStore store:
-                CollectUsesFromValue(store.Value, usedVars);
-                break;
-
-            case IrDereferenceStore derefStore:
-                CollectUsesFromValue(derefStore.Value, usedVars);
-                CollectUsesFromValue(derefStore.Pointer, usedVars);
-                break;
-
-            case IrCall call:
-                foreach (var arg in call.Arguments)
-                    CollectUsesFromValue(arg, usedVars);
-                break;
-
-            case IrConditionalBranch condBranch:
-                CollectUsesFromValue(condBranch.Condition, usedVars);
-                break;
-
-            case IrIndexStore indexStore:
-                CollectUsesFromValue(indexStore.Index, usedVars);
-                CollectUsesFromValue(indexStore.Value, usedVars);
-                break;
-
-            case IrLocalDecl localDecl:
-                CollectUsesFromValue(localDecl.InitialValue, usedVars);
-                break;
-
-            case IrIndexAccess indexAccess:
-                if (indexAccess.Array is IrVariable arrayVar)
-                    usedVars.Add(arrayVar.Name);
-                CollectUsesFromValue(indexAccess.Index, usedVars);
-                break;
+            UsedVariables.Add(variable.Name);
+            return null;
         }
-    }
 
-    /// <summary>
-    /// Collect variable uses from a value
-    /// </summary>
-    private void CollectUsesFromValue(IrValue value, HashSet<string> usedVars)
-    {
-        if (value is IrVariable var)
-        {
-            usedVars.Add(var.Name);
-        }
-        else if (value is IrDereferenceValue deref)
-        {
-            CollectUsesFromValue(deref.PointerValue, usedVars);
-        }
-        else if (value is IrBorrowValue borrow)
-        {
-            CollectUsesFromValue(borrow.BorrowedValue, usedVars);
-        }
+        // Note: The base visitor automatically traverses all value types recursively,
+        // so we only need to override VisitVariable to collect variable names.
+        // IrDereferenceValue, IrBorrowValue, etc. are automatically handled.
     }
 }
 

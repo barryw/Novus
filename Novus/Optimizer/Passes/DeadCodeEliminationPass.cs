@@ -6,6 +6,9 @@ namespace Novus.Optimizer.Passes;
 /// Dead code elimination pass
 /// Removes instructions whose results are never used
 /// Example: let x = 5; return 10; // x is never used, can be removed
+///
+/// REFACTORED: Now uses IrVisitor for collecting uses instead of manual switch statements.
+/// The visitor pattern automatically handles all instruction and value types.
 /// </summary>
 public class DeadCodeEliminationPass : FunctionPassBase
 {
@@ -17,14 +20,10 @@ public class DeadCodeEliminationPass : FunctionPassBase
 
         foreach (var block in function.BasicBlocks)
         {
-            // Build a set of all used variables in this block
-            var usedVars = new HashSet<string>();
-
-            // First pass: collect all uses
-            foreach (var instruction in block.Instructions)
-            {
-                CollectUses(instruction, usedVars);
-            }
+            // Build a set of all used variables in this block using the visitor
+            var collector = new UseCollectorVisitor();
+            collector.VisitBasicBlock(block, null);
+            var usedVars = collector.UsedVariables;
 
             // Second pass: remove unused instructions
             for (int i = 0; i < block.Instructions.Count; i++)
@@ -45,70 +44,22 @@ public class DeadCodeEliminationPass : FunctionPassBase
         return changed;
     }
 
-    private void CollectUses(IrInstruction instruction, HashSet<string> usedVars)
+    /// <summary>
+    /// Visitor that collects all used variable names
+    /// </summary>
+    private class UseCollectorVisitor : IrVisitor<object?, object?>
     {
-        switch (instruction)
+        public HashSet<string> UsedVariables { get; } = new();
+
+        public override object? VisitVariable(IrVariable variable, object? context)
         {
-            case IrBinaryOp binOp:
-                CollectUsesFromValue(binOp.Left, usedVars);
-                CollectUsesFromValue(binOp.Right, usedVars);
-                break;
-
-            case IrReturn ret:
-                if (ret.Value != null)
-                    CollectUsesFromValue(ret.Value, usedVars);
-                break;
-
-            case IrStore store:
-                CollectUsesFromValue(store.Value, usedVars);
-                break;
-
-            case IrDereferenceStore derefStore:
-                CollectUsesFromValue(derefStore.Value, usedVars);
-                CollectUsesFromValue(derefStore.Pointer, usedVars);
-                break;
-
-            case IrCall call:
-                foreach (var arg in call.Arguments)
-                    CollectUsesFromValue(arg, usedVars);
-                break;
-
-            case IrConditionalBranch condBranch:
-                CollectUsesFromValue(condBranch.Condition, usedVars);
-                break;
-
-            case IrIndexStore indexStore:
-                CollectUsesFromValue(indexStore.Index, usedVars);
-                CollectUsesFromValue(indexStore.Value, usedVars);
-                break;
-
-            case IrLocalDecl localDecl:
-                CollectUsesFromValue(localDecl.InitialValue, usedVars);
-                break;
-
-            case IrIndexAccess indexAccess:
-                if (indexAccess.Array is IrVariable arrayVar)
-                    usedVars.Add(arrayVar.Name);
-                CollectUsesFromValue(indexAccess.Index, usedVars);
-                break;
+            UsedVariables.Add(variable.Name);
+            return null;
         }
-    }
 
-    private void CollectUsesFromValue(IrValue value, HashSet<string> usedVars)
-    {
-        if (value is IrVariable var)
-        {
-            usedVars.Add(var.Name);
-        }
-        else if (value is IrDereferenceValue deref)
-        {
-            CollectUsesFromValue(deref.PointerValue, usedVars);
-        }
-        else if (value is IrBorrowValue borrow)
-        {
-            CollectUsesFromValue(borrow.BorrowedValue, usedVars);
-        }
-        // Note: BinaryOp can appear as a value, but we handle it as an instruction
-        // IrConstant values don't reference variables
+        // Note: The base visitor automatically traverses all instructions and values,
+        // so we only need to override the specific value types we care about.
+        // IrDereferenceValue, IrBorrowValue, etc. are automatically handled because
+        // the base class calls VisitValue recursively on their inner values.
     }
 }
