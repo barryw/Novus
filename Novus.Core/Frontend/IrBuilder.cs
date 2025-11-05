@@ -26,26 +26,23 @@ public class IrBuilder : NovusBaseVisitor<object?>
     private int _staticVarCounter = 0;  // Counter for auto-generated static variables
     private readonly Stack<string> _loopExitLabels = new(); // Track loop exit labels for break
     private readonly Dictionary<string, IrLocalVariable> _localVariables = new(); // Track local variables in current function
-    private readonly Dictionary<string, IrStructType> _structs = new(); // Track struct types
-    private readonly Dictionary<string, IrEnumType> _enums = new(); // Track enum types
-    private readonly Dictionary<string, IrTrait> _traits = new(); // Track trait types
-    private readonly Dictionary<string, IrGenericType> _genericParams = new(); // Track generic type parameters
-    private readonly Dictionary<string, (IrType Type, object Value)> _constants = new(); // Track constant values
-    private readonly Dictionary<string, IrEnumType> _monomorphizedEnums = new(); // Cache for monomorphized generic enums
-    private readonly Dictionary<string, IrStructType> _monomorphizedStructs = new(); // Cache for monomorphized generic structs
 
+    // Unified symbol table for types, functions, and constants
+    private readonly SymbolTable _symbols = new();
+
+    // TODO: Migrate these to SymbolTable when we standardize on GenericTemplate format
     // Store generic method templates for later instantiation
     // Key: "TypeName::methodName", Value: (genericParams, context, constants)
     // The constants dictionary captures the constants visible when the template was created
     private readonly Dictionary<string, (List<string> GenericParams, NovusParser.FunctionDeclarationContext Context, Dictionary<string, (IrType Type, object Value)> Constants)> _genericMethodTemplates = new();
 
-    // Track which monomorphized methods have been generated
-    // Key: "TypeName<ConcreteType>::methodName" (e.g., "Vec<i32>::push")
-    private readonly HashSet<string> _instantiatedMethods = new();
-
     // Store generic function templates for later instantiation (standalone functions, not methods)
     // Key: function name (e.g., "identity"), Value: (genericParams, context, constants)
     private readonly Dictionary<string, (List<string> GenericParams, NovusParser.FunctionDeclarationContext Context, Dictionary<string, (IrType Type, object Value)> Constants)> _genericFunctionTemplates = new();
+
+    // Track which monomorphized methods have been generated
+    // Key: "TypeName<ConcreteType>::methodName" (e.g., "Vec<i32>::push")
+    private readonly HashSet<string> _instantiatedMethods = new();
 
     // Track which generic functions have been instantiated with which types
     // Key: "functionName<ConcreteType1,ConcreteType2>" (e.g., "identity<i32>")
@@ -101,6 +98,46 @@ public class IrBuilder : NovusBaseVisitor<object?>
     }
 
     /// <summary>
+    /// Helper to get constants in tuple format for generic templates
+    /// </summary>
+    private Dictionary<string, (IrType Type, object Value)> GetConstantsAsTuples()
+    {
+        var result = new Dictionary<string, (IrType Type, object Value)>();
+        foreach (var kvp in _symbols.GetLocalConstants())
+        {
+            result[kvp.Key] = (kvp.Value.Type, kvp.Value.Value);
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Helper to restore constants from tuple format
+    /// </summary>
+    private void RestoreConstantsFromTuples(Dictionary<string, (IrType Type, object Value)> constants)
+    {
+        // For now, we need to clear and re-add all constants
+        // TODO: Use child scopes instead when SymbolTable supports better scoping
+        // Note: We can't clear from SymbolTable directly, so we track which ones we added
+        foreach (var kvp in constants)
+        {
+            _symbols.RegisterConstant(kvp.Key, kvp.Value.Type, kvp.Value.Value);
+        }
+    }
+
+    /// <summary>
+    /// Helper to get constant values (without types) for expression evaluator
+    /// </summary>
+    private Dictionary<string, object> GetConstantValues()
+    {
+        var result = new Dictionary<string, object>();
+        foreach (var kvp in _symbols.GetLocalConstants())
+        {
+            result[kvp.Key] = kvp.Value.Value;
+        }
+        return result;
+    }
+
+    /// <summary>
     /// Check if the current block has a terminator instruction (return, branch)
     /// Used to avoid generating dead code after returns
     /// </summary>
@@ -151,15 +188,25 @@ public class IrBuilder : NovusBaseVisitor<object?>
             var enumName = enumContext.IDENTIFIER().GetText();
 
             // Skip if this enum has already been imported (transitive dependencies)
-            if (_enums.ContainsKey(enumName))
+            if (_symbols.HasEnum(enumName))
             {
                 continue;
             }
 
             // Register a stub enum type with no variants yet
             // This makes the type name resolvable during variant parsing
-            var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), null);
-            _enums[enumName] = stubEnum;
+            // Parse generic parameters for stub so type checking works correctly
+            List<string>? genericParams = null;
+            if (enumContext.genericParams() != null)
+            {
+                genericParams = new List<string>();
+                foreach (var paramId in enumContext.genericParams().IDENTIFIER())
+                {
+                    genericParams.Add(paramId.GetText());
+                }
+            }
+            var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), genericParams);
+            _symbols.RegisterEnum(enumName, stubEnum);
         }
 
         // Pass 2b: Fill in enum variants for all enums
@@ -206,7 +253,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             // If generic, store as template for later instantiation
             if (genericParams.Count > 0)
             {
-                var templateConstants = new Dictionary<string, (IrType Type, object Value)>(_constants);
+                var templateConstants = GetConstantsAsTuples();
                 _genericFunctionTemplates[name] = (genericParams, funcContext, templateConstants);
                 continue; // Don't add to _module.Functions yet
             }
@@ -270,18 +317,21 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 {
                     var paramName = paramId.GetText();
                     genericParams.Add(paramName);
-                    _genericParams[paramName] = new IrGenericType(paramName);
+                    _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
                 }
             }
 
             // Set the current Self type for this impl block
             // Look up the implementing type to resolve Self (could be struct or enum)
             IrType? implementingType = null;
-            if (_structs.TryGetValue(typeName, out var structType))
+            var structType = _symbols.LookupStruct(typeName);
+            var enumType = _symbols.LookupEnum(typeName);
+
+            if (structType != null)
             {
                 implementingType = structType;
             }
-            else if (_enums.TryGetValue(typeName, out var enumType))
+            else if (enumType != null)
             {
                 implementingType = enumType;
             }
@@ -326,7 +376,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 {
                     var templateKey = $"{typeName}::{methodName}";
                     // Capture current constants dictionary (make a copy so imports don't affect templates)
-                    var templateConstants = new Dictionary<string, (IrType Type, object Value)>(_constants);
+                    var templateConstants = GetConstantsAsTuples();
                     _genericMethodTemplates[templateKey] = (genericParams, funcDecl, templateConstants);
                     // Don't create function yet - it will be instantiated when called with concrete types
                     continue;
@@ -370,11 +420,14 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                         // Determine self type - look up the implementing type (struct or enum)
                         IrType? implType = null;
-                        if (_structs.TryGetValue(typeName, out var foundStruct))
+                        var foundStruct = _symbols.LookupStruct(typeName);
+                        var foundEnum = _symbols.LookupEnum(typeName);
+
+                        if (foundStruct != null)
                         {
                             implType = foundStruct;
                         }
-                        else if (_enums.TryGetValue(typeName, out var foundEnum))
+                        else if (foundEnum != null)
                         {
                             implType = foundEnum;
                         }
@@ -437,10 +490,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
 
             // Clear generic parameters and Self type after processing impl block
-            foreach (var paramName in genericParams)
-            {
-                _genericParams.Remove(paramName);
-            }
+            _symbols.ClearGenericParameters();
             _currentSelfType = null;
         }
 
@@ -507,11 +557,14 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             // Set the current Self type for this impl block (could be struct or enum)
             IrType? implementingType = null;
-            if (_structs.TryGetValue(typeName, out var structType))
+            var structType = _symbols.LookupStruct(typeName);
+            var enumType = _symbols.LookupEnum(typeName);
+
+            if (structType != null)
             {
                 implementingType = structType;
             }
-            else if (_enums.TryGetValue(typeName, out var enumType))
+            else if (enumType != null)
             {
                 implementingType = enumType;
             }
@@ -777,7 +830,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     var constName = constDecl.IDENTIFIER().GetText();
                     if (selectiveImports.Contains(constName))
                     {
-                        if (!_constants.ContainsKey(constName))
+                        if (!_symbols.HasConstant(constName))
                         {
                             RegisterConstant(constDecl);
                         }
@@ -817,10 +870,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     var structName = structDecl.IDENTIFIER().GetText();
                     if (expandedStructImports.Contains(structName))
                     {
-                        if (!_structs.ContainsKey(structName))
+                        if (!_symbols.HasStruct(structName))
                         {
                             var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), new List<string>(), null, null);
-                            _structs[structName] = placeholderStruct;
+                            _symbols.RegisterStruct(structName, placeholderStruct);
                         }
                     }
                 }
@@ -831,7 +884,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     var structName = structDecl.IDENTIFIER().GetText();
                     if (expandedStructImports.Contains(structName))
                     {
-                        if (_structs.TryGetValue(structName, out var existingStruct) && existingStruct.Fields.Count == 0)
+                        var existingStruct = _symbols.LookupStruct(structName);
+                        if (existingStruct != null && existingStruct.Fields.Count == 0)
                         {
                             RegisterStruct(structDecl);
                         }
@@ -845,10 +899,20 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     var enumName = enumDecl.IDENTIFIER().GetText();
                     if (selectiveImports.Contains(enumName))
                     {
-                        if (!_enums.ContainsKey(enumName))
+                        if (!_symbols.HasEnum(enumName))
                         {
-                            var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), null);
-                            _enums[enumName] = stubEnum;
+                            // Parse generic parameters for stub so type checking works correctly
+                            List<string>? genericParams = null;
+                            if (enumDecl.genericParams() != null)
+                            {
+                                genericParams = new List<string>();
+                                foreach (var paramId in enumDecl.genericParams().IDENTIFIER())
+                                {
+                                    genericParams.Add(paramId.GetText());
+                                }
+                            }
+                            var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), genericParams);
+                            _symbols.RegisterEnum(enumName, stubEnum);
                         }
                     }
                 }
@@ -859,7 +923,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     var enumName = enumDecl.IDENTIFIER().GetText();
                     if (selectiveImports.Contains(enumName))
                     {
-                        if (_enums.TryGetValue(enumName, out var existingEnum) && existingEnum.Variants.Count == 0)
+                        var existingEnum = _symbols.LookupEnum(enumName);
+                        if (existingEnum != null && existingEnum.Variants.Count == 0)
                         {
                             RegisterEnum(enumDecl);
                         }
@@ -872,7 +937,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     var traitName = traitDecl.IDENTIFIER().GetText();
                     if (selectiveImports.Contains(traitName))
                     {
-                        if (!_traits.ContainsKey(traitName))
+                        if (!_symbols.HasTrait(traitName))
                         {
                             RegisterTrait(traitDecl);
                         }
@@ -952,15 +1017,25 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
 
             // Skip if this enum has already been imported (transitive dependencies)
-            if (_enums.ContainsKey(enumName))
+            if (_symbols.HasEnum(enumName))
             {
                 continue;
             }
 
             // Register a stub enum type with no variants yet
             // This makes the type name resolvable during variant parsing
-            var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), null);
-            _enums[enumName] = stubEnum;
+            // Parse generic parameters for stub so type checking works correctly
+            List<string>? genericParams = null;
+            if (enumDecl.genericParams() != null)
+            {
+                genericParams = new List<string>();
+                foreach (var paramId in enumDecl.genericParams().IDENTIFIER())
+                {
+                    genericParams.Add(paramId.GetText());
+                }
+            }
+            var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), genericParams);
+            _symbols.RegisterEnum(enumName, stubEnum);
         }
 
         // Pass 2: Fill in enum variants for imported enums only
@@ -976,7 +1051,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             // Skip if this enum has already been fully registered (not just a stub)
             // This happens when the same module is imported multiple times (e.g., std::core auto-import + explicit import)
-            if (_enums.TryGetValue(enumName, out var existingEnum) && existingEnum.Variants.Count > 0)
+            var existingEnum = _symbols.LookupEnum(enumName);
+            if (existingEnum != null && existingEnum.Variants.Count > 0)
             {
                 continue;
             }
@@ -998,7 +1074,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
 
             // Skip if this constant has already been imported (transitive dependencies)
-            if (_constants.ContainsKey(constName))
+            if (_symbols.HasConstant(constName))
             {
                 continue;
             }
@@ -1052,7 +1128,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
 
             // Skip if this struct has already been imported (transitive dependencies)
-            if (_structs.ContainsKey(structName))
+            if (_symbols.HasStruct(structName))
             {
                 continue;
             }
@@ -1060,7 +1136,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             // Register a placeholder struct with no fields yet
             // This makes the type name resolvable during field parsing
             var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), new List<string>(), null, null);
-            _structs[structName] = placeholderStruct;
+            _symbols.RegisterStruct(structName, placeholderStruct);
         }
 
         // Pass 3: Fill in struct fields for all structs in expanded list
@@ -1076,7 +1152,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
 
             // Check if this is just a placeholder (empty fields list)
-            if (_structs.TryGetValue(structName, out var existingStruct) && existingStruct.Fields.Count == 0)
+            var existingStruct = _symbols.LookupStruct(structName);
+                        if (existingStruct != null && existingStruct.Fields.Count == 0)
             {
                 // Now register the full struct with fields (replacing the placeholder)
                 RegisterStruct(structDecl);
@@ -1095,7 +1172,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
 
             // Skip if this trait has already been imported (transitive dependencies)
-            if (_traits.ContainsKey(traitName))
+            if (_symbols.HasTrait(traitName))
             {
                 continue;
             }
@@ -1172,7 +1249,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 {
                     var paramName = paramId.GetText();
                     genericParams.Add(paramName);
-                    _genericParams[paramName] = new IrGenericType(paramName);
+                    _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
                 }
             }
 
@@ -1190,11 +1267,14 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             // Set the current Self type for this impl block (could be struct or enum)
             IrType? implementingType = null;
-            if (_structs.TryGetValue(typeName, out var structType))
+            var structType = _symbols.LookupStruct(typeName);
+            var enumType = _symbols.LookupEnum(typeName);
+
+            if (structType != null)
             {
                 implementingType = structType;
             }
-            else if (_enums.TryGetValue(typeName, out var enumType))
+            else if (enumType != null)
             {
                 implementingType = enumType;
             }
@@ -1203,10 +1283,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             if (implementingType == null)
             {
                 // Clear generic params before skipping
-                foreach (var paramName in genericParams)
-                {
-                    _genericParams.Remove(paramName);
-                }
+                _symbols.ClearGenericParameters();
                 continue;
             }
 
@@ -1249,7 +1326,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 {
                     var templateKey = $"{typeName}::{methodName}";
                     // Capture current constants dictionary (make a copy so imports don't affect templates)
-                    var templateConstants = new Dictionary<string, (IrType Type, object Value)>(_constants);
+                    var templateConstants = GetConstantsAsTuples();
                     _genericMethodTemplates[templateKey] = (genericParams, funcDecl, templateConstants);
                     // Don't create function yet - it will be instantiated when called with concrete types
                     continue;
@@ -1295,11 +1372,14 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                         // Determine self type - look up the implementing type (struct or enum)
                         IrType? implType = null;
-                        if (_structs.TryGetValue(typeName, out var foundStruct))
+                        var foundStruct = _symbols.LookupStruct(typeName);
+                        var foundEnum = _symbols.LookupEnum(typeName);
+
+                        if (foundStruct != null)
                         {
                             implType = foundStruct;
                         }
-                        else if (_enums.TryGetValue(typeName, out var foundEnum))
+                        else if (foundEnum != null)
                         {
                             implType = foundEnum;
                         }
@@ -1361,10 +1441,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
 
             // Clear generic params and Self type from scope after impl registration
-            foreach (var paramName in genericParams)
-            {
-                _genericParams.Remove(paramName);
-            }
+            _symbols.ClearGenericParameters();
             _currentSelfType = null;
         }
 
@@ -1462,23 +1539,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         // Save current constants and MERGE template constants with current module constants
         // Current module constants take priority (they may include transitive imports)
-        var savedConstants = new Dictionary<string, (IrType Type, object Value)>(_constants);
+        var savedConstants = GetConstantsAsTuples();
 
-        // Start with template constants
-        _constants.Clear();
-        foreach (var kvp in templateConstants)
-        {
-            _constants[kvp.Key] = kvp.Value;
-        }
-
-        // Overlay current module constants (allows transitive imports to work)
-        foreach (var kvp in savedConstants)
-        {
-            _constants[kvp.Key] = kvp.Value;
-            if (!templateConstants.ContainsKey(kvp.Key))
-            {
-            }
-        }
+        // Start with template constants, then overlay current module constants
+        // TODO: This is inefficient - should use child scopes instead
+        RestoreConstantsFromTuples(templateConstants);
+        RestoreConstantsFromTuples(savedConstants);
 
         // Build instantiation key (e.g., "Vec<i32>::push")
         var instantiationKey = $"{monomorphizedStruct.CacheKey}::{methodName}";
@@ -1493,7 +1559,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         // Build type substitution map from monomorphized struct
         var typeSubstitutions = new Dictionary<string, IrType>();
-        var baseStruct = _structs[baseTypeName];
+        var baseStruct = _symbols.LookupStruct(baseTypeName) ?? throw new Exception($"Struct '{baseTypeName}' not found");
 
         // Scan all fields to find which ones use generic types
         // This handles cases where generics aren't in the first N fields
@@ -1519,11 +1585,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var savedGenericParams = new Dictionary<string, IrGenericType>();
         foreach (var paramName in genericParams)
         {
-            if (_genericParams.ContainsKey(paramName))
+            if (_symbols.HasGenericParameter(paramName))
             {
-                savedGenericParams[paramName] = _genericParams[paramName];
+                var genericParam = _symbols.LookupGenericParameter(paramName);
+                if (genericParam != null) savedGenericParams[paramName] = genericParam;
             }
-            _genericParams[paramName] = new IrGenericType(paramName);
+            _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
         }
 
         // Set active type substitutions for the duration of this instantiation
@@ -1630,16 +1697,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         _currentSelfType = savedSelfType;
 
         // Restore constants
-        _constants.Clear();
-        foreach (var kvp in savedConstants)
-        {
-            _constants[kvp.Key] = kvp.Value;
-        }
+        // TODO: Implement proper scope save/restore in SymbolTable
+        RestoreConstantsFromTuples(savedConstants);
 
         // Clear generic params
         foreach (var paramName in typeSubstitutions.Keys)
         {
-            _genericParams.Remove(paramName);
+            _symbols.ClearGenericParameters();
         }
 
         // Mark as instantiated
@@ -1666,11 +1730,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var savedGenericParams = new Dictionary<string, IrGenericType>();
         foreach (var paramName in genericParams)
         {
-            if (_genericParams.ContainsKey(paramName))
+            if (_symbols.HasGenericParameter(paramName))
             {
-                savedGenericParams[paramName] = _genericParams[paramName];
+                var genericParam = _symbols.LookupGenericParameter(paramName);
+                if (genericParam != null) savedGenericParams[paramName] = genericParam;
             }
-            _genericParams[paramName] = new IrGenericType(paramName);
+            _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
         }
 
         // Infer type substitutions from arguments
@@ -1731,16 +1796,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         // Save current state
-        var savedConstants = new Dictionary<string, (IrType Type, object Value)>(_constants);
-        _constants.Clear();
-        foreach (var kvp in templateConstants)
-        {
-            _constants[kvp.Key] = kvp.Value;
-        }
-        foreach (var kvp in savedConstants)
-        {
-            _constants[kvp.Key] = kvp.Value;
-        }
+        var savedConstants = GetConstantsAsTuples();
+        RestoreConstantsFromTuples(templateConstants);
+        RestoreConstantsFromTuples(savedConstants);
 
         // Generic params already registered from earlier - just set up type substitutions
         var savedTypeSubstitutions = _currentTypeSubstitutions;
@@ -1813,18 +1871,14 @@ public class IrBuilder : NovusBaseVisitor<object?>
         _currentFunction = savedFunction;
         _currentTypeSubstitutions = savedTypeSubstitutions;
         _currentSelfType = savedSelfType;
-        _constants.Clear();
-        foreach (var kvp in savedConstants)
-        {
-            _constants[kvp.Key] = kvp.Value;
-        }
+        RestoreConstantsFromTuples(savedConstants);
         foreach (var paramName in typeSubstitutions.Keys)
         {
-            _genericParams.Remove(paramName);
+            _symbols.ClearGenericParameters();
         }
         foreach (var kvp in savedGenericParams)
         {
-            _genericParams[kvp.Key] = kvp.Value;
+            _symbols.RegisterGenericParameter(kvp.Key, kvp.Value);
         }
 
         _instantiatedMethods.Add(instantiationKey);
@@ -1843,9 +1897,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
 
         // Check cache
-        if (_monomorphizedEnums.ContainsKey(cacheKey))
+        if (_symbols.LookupMonomorphizedEnum(cacheKey) != null)
         {
-            return _monomorphizedEnums[cacheKey];
+            return _symbols.LookupMonomorphizedEnum(cacheKey)!;
         }
 
         // Create monomorphized variants
@@ -1861,7 +1915,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         var monomorphizedEnum = new IrEnumType(enumType.EnumName, monomorphizedVariants, null, cacheKey);
-        _monomorphizedEnums[cacheKey] = monomorphizedEnum;
+        _symbols.RegisterMonomorphizedEnum(cacheKey, monomorphizedEnum);
 
         return monomorphizedEnum;
     }
@@ -1959,30 +2013,22 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         // Save current constants and MERGE template constants with current module constants
-        var savedConstants = new Dictionary<string, (IrType Type, object Value)>(_constants);
+        var savedConstants = GetConstantsAsTuples();
 
-        // Start with template constants
-        _constants.Clear();
-        foreach (var kvp in templateConstants)
-        {
-            _constants[kvp.Key] = kvp.Value;
-        }
-
-        // Overlay current module constants (allows transitive imports to work)
-        foreach (var kvp in savedConstants)
-        {
-            _constants[kvp.Key] = kvp.Value;
-        }
+        // Start with template constants, then overlay current module constants
+        RestoreConstantsFromTuples(templateConstants);
+        RestoreConstantsFromTuples(savedConstants);
 
         // Set up concrete types for substitution during parsing
         var savedGenericParams = new Dictionary<string, IrGenericType>();
         foreach (var paramName in genericParams)
         {
-            if (_genericParams.ContainsKey(paramName))
+            if (_symbols.HasGenericParameter(paramName))
             {
-                savedGenericParams[paramName] = _genericParams[paramName];
+                var genericParam = _symbols.LookupGenericParameter(paramName);
+                if (genericParam != null) savedGenericParams[paramName] = genericParam;
             }
-            _genericParams[paramName] = new IrGenericType(paramName);
+            _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
         }
 
         // Set active type substitutions for the duration of this instantiation
@@ -2072,17 +2118,14 @@ public class IrBuilder : NovusBaseVisitor<object?>
         _currentTypeSubstitutions = savedSubstitutions;
 
         // Restore constants
-        _constants.Clear();
-        foreach (var kvp in savedConstants)
-        {
-            _constants[kvp.Key] = kvp.Value;
-        }
+        // TODO: Implement proper scope save/restore in SymbolTable
+        RestoreConstantsFromTuples(savedConstants);
 
         // Restore generic params
-        _genericParams.Clear();
+        _symbols.ClearGenericParameters();
         foreach (var kvp in savedGenericParams)
         {
-            _genericParams[kvp.Key] = kvp.Value;
+            _symbols.RegisterGenericParameter(kvp.Key, kvp.Value);
         }
 
         // Mark as instantiated
@@ -2102,10 +2145,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var valueExpr = context.expression();
 
         // Convert constants dict to use object values for evaluator
-        var constantValues = _constants.ToDictionary(
-            kvp => kvp.Key,
-            kvp => kvp.Value.Value
-        );
+        var constantValues = GetConstantValues();
 
         var evaluator = new SemanticAnalysis.ConstantExpressionEvaluator(constantValues);
         int? value = evaluator.Visit(valueExpr);
@@ -2126,7 +2166,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 type = IrIntType.I32;
             }
 
-            _constants[name] = (type, value);
+            _symbols.RegisterConstant(name, type, value);
             // Also store in the IR module for code generator access
             _module.Constants[name] = (visibility, type, value);
         }
@@ -2171,10 +2211,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         if (context.KW_AT() != null && context.expression() != null)
         {
             // Evaluate the address expression (must be a compile-time constant)
-            var constantValues = _constants.ToDictionary(
-                kvp => kvp.Key,
-                kvp => kvp.Value.Value
-            );
+            var constantValues = GetConstantValues();
 
             var evaluator = new SemanticAnalysis.ConstantExpressionEvaluator(constantValues);
             int? addrValue = evaluator.Visit(context.expression());
@@ -2200,7 +2237,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             {
                 var paramName = paramId.GetText();
                 genericParams.Add(paramName);
-                _genericParams[paramName] = new IrGenericType(paramName);
+                _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
             }
         }
 
@@ -2236,11 +2273,11 @@ public class IrBuilder : NovusBaseVisitor<object?>
             _ = enumType.SizeInBytes;
         }
 
-        _enums[name] = enumType;
+        _symbols.RegisterEnum(name, enumType);
         _module.AddEnum(enumType);
 
         // Clear generic parameters after enum registration
-        _genericParams.Clear();
+        _symbols.ClearGenericParameters();
     }
 
     private void RegisterStruct(NovusParser.StructDeclarationContext context)
@@ -2260,13 +2297,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 genericParams.Add(paramName);
 
                 // Add to generic param scope for field parsing
-                _genericParams[paramName] = new IrGenericType(paramName);
+                _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
             }
         }
 
         // Register placeholder struct FIRST to allow self-referential types
         var placeholderStruct = new IrStructType(name, new List<IrStructField>(), genericParams, null, attributes);
-        _structs[name] = placeholderStruct;
+        _symbols.RegisterStruct(name, placeholderStruct);
 
         // Now parse struct fields (can now reference the struct being defined)
         var fields = new List<IrStructField>();
@@ -2281,10 +2318,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var whereClause = ParseWhereClause(context.whereClause());
 
         // Clear generic params from scope after struct registration
-        foreach (var paramName in genericParams)
-        {
-            _genericParams.Remove(paramName);
-        }
+        _symbols.ClearGenericParameters();
 
         // Replace placeholder with complete struct type
         var structType = new IrStructType(name, fields, genericParams, null, attributes, whereClause);
@@ -2298,7 +2332,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         // Add all structs to the module (both generic and non-generic)
         _module.Structs.Add(structType);
-        _structs[name] = structType;
+        _symbols.RegisterStruct(name, structType);
     }
 
     private void RegisterTrait(NovusParser.TraitDeclarationContext context)
@@ -2316,7 +2350,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             {
                 var paramName = paramId.GetText();
                 genericParams.Add(paramName);
-                _genericParams[paramName] = new IrGenericType(paramName);
+                _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
             }
         }
 
@@ -2337,7 +2371,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     {
                         var paramName = paramId.GetText();
                         methodGenericParams.Add(paramName);
-                        _genericParams[paramName] = new IrGenericType(paramName);
+                        _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
                     }
                 }
 
@@ -2399,10 +2433,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 methods.Add(new IrTraitMethod(methodName, parameters, returnType, methodGenericParams.Count > 0 ? methodGenericParams : null));
 
                 // Clear method-level generic params
-                foreach (var param in methodGenericParams)
-                {
-                    _genericParams.Remove(param);
-                }
+                // Note: For traits, we don't need to clear individual params, just the whole set
+                // TODO: Revisit if we need more granular control
             }
         }
 
@@ -2416,11 +2448,11 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         var trait = new IrTrait(name, methods, genericParams.Count > 0 ? genericParams : null, visibility, attributes);
-        _traits[name] = trait;
+        _symbols.RegisterTrait(name, trait);
         _module.AddTrait(trait);
 
         // Clear generic parameters after trait registration
-        _genericParams.Clear();
+        _symbols.ClearGenericParameters();
     }
 
     /// <summary>
@@ -3887,11 +3919,11 @@ public class IrBuilder : NovusBaseVisitor<object?>
             _currentTypeSubstitutions = null;
 
             // Set up generic params temporarily
-            var savedGenericParams = new Dictionary<string, IrGenericType>(_genericParams);
-            _genericParams.Clear();
+            // TODO: Use child scope instead of save/restore pattern
+            _symbols.ClearGenericParameters();
             foreach (var paramName in template.GenericParams)
             {
-                _genericParams[paramName] = new IrGenericType(paramName);
+                _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
             }
 
             // Parse template parameters
@@ -3918,11 +3950,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
 
             // Restore generic params
-            _genericParams.Clear();
-            foreach (var kvp in savedGenericParams)
-            {
-                _genericParams[kvp.Key] = kvp.Value;
-            }
+            _symbols.ClearGenericParameters();
+            // TODO: Restore saved params when we implement save/restore properly
 
             // Restore type substitutions
             _currentTypeSubstitutions = savedTypeSubstitutions;
@@ -3970,7 +3999,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 }
 
                 // Build monomorphized struct from explicit type args (same logic as ParseNamedType)
-                var baseStruct = _structs[genericAssocFunc.TypeName];
+                var baseStruct = _symbols.LookupStruct(genericAssocFunc.TypeName) ?? throw new Exception($"Struct '{genericAssocFunc.TypeName}' not found");
                 var typeArgs = genericAssocFunc.ExplicitTypeArgs;
 
                 // Create cache key
@@ -3978,9 +4007,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 var cacheKey = $"{baseStruct.StructName}<{string.Join(",", typeArgKeys)}>";
 
                 // Check cache first
-                if (_monomorphizedStructs.ContainsKey(cacheKey))
+                if (_symbols.LookupMonomorphizedStruct(cacheKey) != null)
                 {
-                    monomorphizedStruct = _monomorphizedStructs[cacheKey];
+                    monomorphizedStruct = _symbols.LookupMonomorphizedStruct(cacheKey)!;
                 }
                 else
                 {
@@ -4017,7 +4046,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     }
 
                     // Cache it for future use
-                    _monomorphizedStructs[cacheKey] = monomorphizedStruct;
+                    _symbols.RegisterMonomorphizedStruct(cacheKey, monomorphizedStruct);
                 }
             }
             // 2. Try to infer from expected type
@@ -4198,9 +4227,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     var cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
 
                     // Check cache first
-                    if (_monomorphizedEnums.ContainsKey(cacheKey))
+                    if (_symbols.LookupMonomorphizedEnum(cacheKey) != null)
                     {
-                        finalEnumType = _monomorphizedEnums[cacheKey];
+                        finalEnumType = _symbols.LookupMonomorphizedEnum(cacheKey)!;
                     }
                     else
                     {
@@ -4232,7 +4261,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                         if (isFullyMonomorphized)
                         {
-                            _monomorphizedEnums[cacheKey] = finalEnumType;
+                            _symbols.RegisterMonomorphizedEnum(cacheKey, finalEnumType);
                         }
                     }
                 }
@@ -4322,9 +4351,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 var methodName = parts[1];
 
                 // Check if it's an enum type
-                if (_enums.ContainsKey(typeName))
+                if (_symbols.HasEnum(typeName))
                 {
-                    var enumType = _enums[typeName];
+                    var enumType = _symbols.LookupEnum(typeName)!;
                     if (enumType.GenericParameters.Count > 0)
                     {
                         // Try to instantiate the generic method for this enum
@@ -4544,7 +4573,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var resolvedTypeArgs = partialType.GetResolvedTypeArguments();
 
         // Find the generic struct template
-        var genericStruct = _structs.Values.FirstOrDefault(s =>
+        var genericStruct = _symbols.GetLocalStructs().Values.FirstOrDefault(s =>
             s.StructName == partialType.GenericTypeName && s.GenericParameters.Count > 0);
 
         if (genericStruct == null)
@@ -4557,9 +4586,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         // Cache the monomorphized struct
         var cacheKey = monomorphizedStruct.CacheKey ?? monomorphizedStruct.Name;
-        if (!_monomorphizedStructs.ContainsKey(cacheKey))
+        if (_symbols.LookupMonomorphizedStruct(cacheKey) == null)
         {
-            _monomorphizedStructs[cacheKey] = monomorphizedStruct;
+            _symbols.RegisterMonomorphizedStruct(cacheKey, monomorphizedStruct);
         }
 
         // Update the partial type to mark it as fully resolved
@@ -5863,9 +5892,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 var memberName = parts[1];
 
                 // Try enum variant first
-                if (_enums.ContainsKey(typeName))
+                if (_symbols.HasEnum(typeName))
                 {
-                    var enumType = _enums[typeName];
+                    var enumType = _symbols.LookupEnum(typeName)!;
                     var variant = enumType.GetVariant(memberName);
 
                     if (variant != null)
@@ -5895,9 +5924,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 var mangledName = name; // Already has :: format
 
                 // Check if this is a generic type - look in generic method templates
-                if (_structs.ContainsKey(typeName))
+                if (_symbols.HasStruct(typeName))
                 {
-                    var structType = _structs[typeName];
+                    var structType = _symbols.LookupStruct(typeName)!;
 
                     // If the struct is generic, check generic method templates
                     if (structType.GenericParameters.Count > 0)
@@ -5927,10 +5956,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         // Check if it's a constant - inline the value
-        if (_constants.ContainsKey(name))
+        var constantSymbol = _symbols.LookupConstant(name);
+        if (constantSymbol != null)
         {
-            var (type, value) = _constants[name];
-            return new IrConstant((int)value, type);
+            return new IrConstant((int)constantSymbol.Value, constantSymbol.Type);
         }
         else
         {
@@ -5969,17 +5998,17 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         // Check if it's a known system global variable (CPU, FPU, Chipset)
         // These are declared in system.novus as extern vars
-        if (name == "CPU" && _enums.ContainsKey("SystemCPU"))
+        if (name == "CPU" && _symbols.HasEnum("SystemCPU"))
         {
-            return new IrVariable(name, _enums["SystemCPU"]);
+            return new IrVariable(name, _symbols.LookupEnum("SystemCPU")!);
         }
-        if (name == "FPU" && _enums.ContainsKey("SystemFPU"))
+        if (name == "FPU" && _symbols.HasEnum("SystemFPU"))
         {
-            return new IrVariable(name, _enums["SystemFPU"]);
+            return new IrVariable(name, _symbols.LookupEnum("SystemFPU")!);
         }
-        if (name == "Chipset" && _enums.ContainsKey("SystemChipset"))
+        if (name == "Chipset" && _symbols.HasEnum("SystemChipset"))
         {
-            return new IrVariable(name, _enums["SystemChipset"]);
+            return new IrVariable(name, _symbols.LookupEnum("SystemChipset")!);
         }
 
         // Check if it's a function name (for both calls and function pointers)
@@ -6019,13 +6048,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
     {
         var structName = context.typeName().GetText();
 
-        if (!_structs.ContainsKey(structName))
+        if (!_symbols.HasStruct(structName))
         {
             throw new Exception($"Unknown struct type '{structName}'");
         }
 
         // Get the base struct type
-        var baseStructType = _structs[structName];
+        var baseStructType = _symbols.LookupStruct(structName) ?? throw new Exception($"Struct '{structName}' not found");
 
         // Use expected type for bidirectional type checking if it's a monomorphized version of this struct
         IrStructType structType;
@@ -6080,9 +6109,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 var cacheKey = $"{baseStructType.StructName}<{string.Join(",", typeArgKeys)}>";
 
                 // Check cache first
-                if (_monomorphizedStructs.ContainsKey(cacheKey))
+                if (_symbols.LookupMonomorphizedStruct(cacheKey) != null)
                 {
-                    structType = _monomorphizedStructs[cacheKey];
+                    structType = _symbols.LookupMonomorphizedStruct(cacheKey)!;
                 }
                 else
                 {
@@ -6112,7 +6141,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     }
 
                     // Cache it for future use
-                    _monomorphizedStructs[cacheKey] = structType;
+                    _symbols.RegisterMonomorphizedStruct(cacheKey, structType);
                 }
             }
         }
@@ -6136,12 +6165,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         var structName = context.typeName().GetText();
 
-        if (!_structs.ContainsKey(structName))
+        if (!_symbols.HasStruct(structName))
         {
             throw new Exception($"Unknown struct type '{structName}'");
         }
 
-        var baseStructType = _structs[structName];
+        var baseStructType = _symbols.LookupStruct(structName) ?? throw new Exception($"Struct '{structName}' not found");
 
         // Get the array literal expression
         var arrayExpr = (IrValue?)Visit(context.expression());
@@ -6187,9 +6216,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
             var cacheKey = $"{baseStructType.StructName}<{string.Join(",", typeArgKeys)}>";
 
             // Check cache first
-            if (_monomorphizedStructs.ContainsKey(cacheKey))
+            if (_symbols.LookupMonomorphizedStruct(cacheKey) != null)
             {
-                vecType = _monomorphizedStructs[cacheKey];
+                vecType = _symbols.LookupMonomorphizedStruct(cacheKey)!;
             }
             else
             {
@@ -6213,7 +6242,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 _ = vecType.SizeInBytes; // Force size calculation
 
                 // Cache it
-                _monomorphizedStructs[cacheKey] = vecType;
+                _symbols.RegisterMonomorphizedStruct(cacheKey, vecType);
             }
         }
         else
@@ -6384,9 +6413,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         // Try enum variant first
-        if (_enums.ContainsKey(typeName))
+        if (_symbols.HasEnum(typeName))
         {
-            var enumType = _enums[typeName];
+            var enumType = _symbols.LookupEnum(typeName)!;
             var variant = enumType.GetVariant(memberName);
 
             if (variant == null)
@@ -6418,9 +6447,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var mangledName = $"{typeName}::{memberName}";
 
         // Check if this is a generic type - look in generic method templates
-        if (_structs.ContainsKey(typeName))
+        if (_symbols.HasStruct(typeName))
         {
-            var structType = _structs[typeName];
+            var structType = _symbols.LookupStruct(typeName)!;
 
             // If the struct is generic, check generic method templates
             if (structType.GenericParameters.Count > 0)
@@ -6874,20 +6903,21 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var typeName = context.typeName().GetText();
 
         // Check if it's a generic type parameter (T, E, etc.)
-        if (_genericParams.ContainsKey(typeName))
+        var genericParam = _symbols.LookupGenericParameter(typeName);
+        if (genericParam != null)
         {
             // If we're inside a generic method instantiation and have a concrete type, use it
             if (_currentTypeSubstitutions != null && _currentTypeSubstitutions.ContainsKey(typeName))
             {
                 return _currentTypeSubstitutions[typeName];
             }
-            return _genericParams[typeName];
+            return genericParam;
         }
 
         // Check if it's a struct type
-        if (_structs.ContainsKey(typeName))
+        if (_symbols.HasStruct(typeName))
         {
-            var structType = _structs[typeName];
+            var structType = _symbols.LookupStruct(typeName)!;
 
             // Handle generic instantiation (e.g., Vec<i32>)
             if (context.typeList() != null)
@@ -6903,9 +6933,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 var cacheKey = $"{structType.StructName}<{string.Join(",", typeArgKeys)}>";
 
                 // Check cache first
-                if (_monomorphizedStructs.ContainsKey(cacheKey))
+                if (_symbols.LookupMonomorphizedStruct(cacheKey) != null)
                 {
-                    return _monomorphizedStructs[cacheKey];
+                    return _symbols.LookupMonomorphizedStruct(cacheKey)!;
                 }
 
                 // Create monomorphized struct with concrete types
@@ -6942,7 +6972,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 }
 
                 // Cache it for future use
-                _monomorphizedStructs[cacheKey] = monomorphizedStruct;
+                _symbols.RegisterMonomorphizedStruct(cacheKey, monomorphizedStruct);
 
                 return monomorphizedStruct;
             }
@@ -6951,9 +6981,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         // Check if it's an enum type
-        if (_enums.ContainsKey(typeName))
+        if (_symbols.HasEnum(typeName))
         {
-            var enumType = _enums[typeName];
+            var enumType = _symbols.LookupEnum(typeName)!;
 
             // Handle generic instantiation (e.g., Option<i32>)
             if (context.typeList() != null)
@@ -6969,9 +6999,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 var cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
 
                 // Check cache first
-                if (_monomorphizedEnums.ContainsKey(cacheKey))
+                if (_symbols.LookupMonomorphizedEnum(cacheKey) != null)
                 {
-                    return _monomorphizedEnums[cacheKey];
+                    return _symbols.LookupMonomorphizedEnum(cacheKey)!;
                 }
 
                 // Create monomorphized enum with concrete types
@@ -7005,7 +7035,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 var monomorphizedEnum = new IrEnumType(enumType.EnumName, monomorphizedVariants, null, cacheKey);
 
                 // Cache it for future use
-                _monomorphizedEnums[cacheKey] = monomorphizedEnum;
+                _symbols.RegisterMonomorphizedEnum(cacheKey, monomorphizedEnum);
 
                 return monomorphizedEnum;
             }
@@ -7134,7 +7164,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
             if (needsSubstitution)
             {
                 // Create a new enum type with substituted variant types
-                var substitutedEnum = new IrEnumType(enumType.EnumName, substitutedVariants);
+                // Preserve the generic parameters from the original enum
+                var substitutedEnum = new IrEnumType(enumType.EnumName, substitutedVariants, enumType.GenericParameters);
                 return substitutedEnum;
             }
         }
@@ -7208,7 +7239,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Evaluate the size expression as a compile-time constant
         var sizeExpr = context.expression();
         var evaluator = new ConstantExpressionEvaluator(
-            _constants.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.Value),
+            GetConstantValues(),
             errorMsg => {
                 // Error handling - will be caught by semantic analyzer
             }

@@ -355,15 +355,7 @@ public class ImportResolver
         // Check for top-level functions
         foreach (var funcDecl in context.functionDeclaration())
         {
-            bool isPub = false;
-            bool isExtern = false;
-            for (int i = 0; i < Math.Min(3, funcDecl.ChildCount); i++)
-            {
-                if (funcDecl.GetChild(i)?.GetText() == "pub")
-                    isPub = true;
-                if (funcDecl.GetChild(i)?.GetText() == "extern")
-                    isExtern = true;
-            }
+            var (isPub, isExtern) = AstModifierHelper.GetFunctionVisibility(funcDecl);
 
             // Module has implementation if it has pub functions that aren't extern
             if (isPub && !isExtern)
@@ -378,15 +370,9 @@ public class ImportResolver
             foreach (var implItem in implDecl.implItem())
             {
                 var funcDecl = implItem.functionDeclaration();
-                if (funcDecl != null)
+                if (funcDecl != null && AstModifierHelper.IsPublic(funcDecl))
                 {
-                    for (int i = 0; i < Math.Min(3, funcDecl.ChildCount); i++)
-                    {
-                        if (funcDecl.GetChild(i)?.GetText() == "pub")
-                        {
-                            return true;
-                        }
-                    }
+                    return true;
                 }
             }
         }
@@ -436,15 +422,7 @@ public class ImportResolver
             // Import all pub/extern functions
             foreach (var funcDecl in context.functionDeclaration())
             {
-                bool isPub = false;
-                bool isExtern = false;
-                for (int i = 0; i < Math.Min(3, funcDecl.ChildCount); i++)
-                {
-                    if (funcDecl.GetChild(i)?.GetText() == "pub")
-                        isPub = true;
-                    if (funcDecl.GetChild(i)?.GetText() == "extern")
-                        isExtern = true;
-                }
+                var (isPub, isExtern) = AstModifierHelper.GetFunctionVisibility(funcDecl);
 
                 if (isPub || isExtern)
                 {
@@ -516,15 +494,7 @@ public class ImportResolver
             if (namesToImport.Contains(funcName))
             {
                 // Check if function is pub or extern
-                bool isPub = false;
-                bool isExtern = false;
-                for (int i = 0; i < Math.Min(3, funcDecl.ChildCount); i++)
-                {
-                    if (funcDecl.GetChild(i)?.GetText() == "pub")
-                        isPub = true;
-                    if (funcDecl.GetChild(i)?.GetText() == "extern")
-                        isExtern = true;
-                }
+                var (isPub, isExtern) = AstModifierHelper.GetFunctionVisibility(funcDecl);
 
                 if (!isPub && !isExtern)
                 {
@@ -572,15 +542,7 @@ public class ImportResolver
             var funcName = funcDecl.IDENTIFIER().GetText();
 
             // Check if it's an extern function
-            bool isExtern = false;
-            for (int i = 0; i < Math.Min(3, funcDecl.ChildCount); i++)
-            {
-                if (funcDecl.GetChild(i)?.GetText() == "extern")
-                {
-                    isExtern = true;
-                    break;
-                }
-            }
+            var (_, isExtern) = AstModifierHelper.GetFunctionVisibility(funcDecl);
 
             // Only import extern functions (FFI bindings)
             if (isExtern && !_registry.HasSymbol(funcName, SymbolKind.Function))
@@ -616,13 +578,6 @@ public class ImportResolver
     /// </summary>
     private bool IsPub(IParseTree context)
     {
-        for (int i = 0; i < Math.Min(3, context.ChildCount); i++)
-        {
-            if (context.GetChild(i)?.GetText() == "pub")
-            {
-                return true;
-            }
-        }
-        return false;
+        return AstModifierHelper.HasModifier(context, "pub", 3);
     }
 }

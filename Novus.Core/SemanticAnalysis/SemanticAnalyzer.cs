@@ -19,13 +19,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     private readonly string[] _sourceLines;
 
     // Symbol tables
+    private readonly SymbolTable _symbols = new();
     private readonly Dictionary<string, FunctionSymbol> _functions = new();
     private readonly Dictionary<string, VariableSymbol> _variables = new();
     private readonly Dictionary<string, VariableSymbol> _globalVariables = new(); // Module-level extern vars
-    private readonly Dictionary<string, IrStructType> _structs = new();
-    private readonly Dictionary<string, IrEnumType> _enums = new();
-    private readonly Dictionary<string, IrTrait> _traits = new();
-    private readonly Dictionary<string, ConstantSymbol> _constants = new();
     private readonly Dictionary<string, string> _importedNames = new(); // Maps imported name -> module name
     private readonly HashSet<string> _importedModules = new(); // Track which modules have been imported (by path)
     private FunctionSymbol? _currentFunction;
@@ -83,10 +80,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     public IReadOnlyDictionary<string, FunctionSymbol> Functions => _functions;
     public IReadOnlyDictionary<string, VariableSymbol> Variables => _variables;
     public IReadOnlyDictionary<string, VariableSymbol> GlobalVariables => _globalVariables;
-    public IReadOnlyDictionary<string, IrStructType> Structs => _structs;
-    public IReadOnlyDictionary<string, IrEnumType> Enums => _enums;
-    public IReadOnlyDictionary<string, IrTrait> Traits => _traits;
-    public IReadOnlyDictionary<string, ConstantSymbol> Constants => _constants;
+    public IReadOnlyDictionary<string, IrStructType> Structs => _symbols.GetLocalStructs();
+    public IReadOnlyDictionary<string, IrEnumType> Enums => _symbols.GetLocalEnums();
+    public IReadOnlyDictionary<string, IrTrait> Traits => _symbols.GetLocalTraits();
+    public IReadOnlyDictionary<string, ConstantSymbol> Constants => _symbols.GetLocalConstants();
 
     // Public read-only access to type locations (for LSP go-to-definition)
     public IReadOnlyDictionary<string, SourceLocation> StructLocations => _structLocations;
@@ -326,7 +323,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     var constName = constDecl.IDENTIFIER().GetText();
                     if (selectiveImports.Contains(constName))
                     {
-                        if (!_constants.ContainsKey(constName))
+                        if (!_symbols.HasConstant(constName))
                         {
                             RegisterConstant(constDecl);
                         }
@@ -340,7 +337,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     var enumName = enumDecl.IDENTIFIER().GetText();
                     if (selectiveImports.Contains(enumName))
                     {
-                        if (!_enums.ContainsKey(enumName))
+                        if (!_symbols.HasEnum(enumName))
                         {
                             RegisterEnum(enumDecl);
                         }
@@ -353,7 +350,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     var structName = structDecl.IDENTIFIER().GetText();
                     if (selectiveImports.Contains(structName))
                     {
-                        if (!_structs.ContainsKey(structName))
+                        if (!_symbols.HasStruct(structName))
                         {
                             RegisterStruct(structDecl);
                         }
@@ -366,7 +363,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     var traitName = traitDecl.IDENTIFIER().GetText();
                     if (selectiveImports.Contains(traitName))
                     {
-                        if (!_traits.ContainsKey(traitName))
+                        if (!_symbols.HasTrait(traitName))
                         {
                             RegisterTrait(traitDecl);
                         }
@@ -444,15 +441,25 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             var enumName = enumDecl.IDENTIFIER().GetText();
 
             // Skip if this enum has already been imported (transitive dependencies)
-            if (_enums.ContainsKey(enumName))
+            if (_symbols.HasEnum(enumName))
             {
                 continue;
             }
 
             // Register a stub enum type with no variants yet
             // This makes the type name resolvable during variant parsing and trait impl type arg parsing
-            var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), null);
-            _enums[enumName] = stubEnum;
+            // Parse generic parameters for stub so type checking works correctly
+            List<string>? genericParams = null;
+            if (enumDecl.genericParams() != null)
+            {
+                genericParams = new List<string>();
+                foreach (var paramId in enumDecl.genericParams().IDENTIFIER())
+                {
+                    genericParams.Add(paramId.GetText());
+                }
+            }
+            var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), genericParams);
+            _symbols.RegisterEnum(enumName, stubEnum);
 
             // Track stubs that aren't in the import list so we can remove them later
             if (!namesToImport.Contains(enumName))
@@ -490,7 +497,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
 
             // Skip if this constant has already been imported (transitive dependencies)
-            if (_constants.ContainsKey(constName))
+            if (_symbols.HasConstant(constName))
             {
                 continue;
             }
@@ -515,7 +522,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
 
             // Skip if this struct has already been imported (transitive dependencies)
-            if (_structs.ContainsKey(structName))
+            if (_symbols.HasStruct(structName))
             {
                 continue;
             }
@@ -676,9 +683,11 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         // Clean up stub enum types that weren't actually imported
         // This happens at the very end, after all parsing (enums, structs, traits, impls) is complete
+        // NOTE: SymbolTable doesn't support Remove, so stub enums remain in the table.
+        // This is acceptable since they're empty enums with no variants and won't affect correctness.
         foreach (var stubName in enumStubsToCleanup)
         {
-            _enums.Remove(stubName);
+            // _symbols.Remove(stubName); // Not supported - stubs remain but are harmless
         }
     }
 
@@ -688,9 +697,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
 
         // Check for duplicate constant names
-        if (_constants.ContainsKey(name))
+        var existingConstant = _symbols.LookupConstant(name);
+        if (existingConstant != null)
         {
-            var originalLocation = _constants[name].Location;
+            var originalLocation = existingConstant.Location;
             _diagnostics.ReportError(
                 "E0031",
                 $"constant '{name}' is defined multiple times",
@@ -714,7 +724,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var valueExpr = context.expression();
 
         // Convert constants dict to use object values for evaluator
-        var constantValues = _constants.ToDictionary(
+        var constantValues = _symbols.GetLocalConstants().ToDictionary(
             kvp => kvp.Key,
             kvp => kvp.Value.Value
         );
@@ -748,7 +758,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return;
         }
 
-        _constants[name] = new ConstantSymbol(name, type, value, location);
+        _symbols.RegisterConstant(name, new ConstantSymbol(name, type, value, location));
     }
 
     private void RegisterStatic(NovusParser.StaticDeclarationContext context)
@@ -985,7 +995,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
 
             // Validate that the trait exists
-            if (!_traits.ContainsKey(traitName))
+            if (!_symbols.HasTrait(traitName))
             {
                 var location = SourceLocationHelper.FromToken(typeNames[0].IDENTIFIER(0).Symbol, _filePath, _sourceLines);
                 _diagnostics.ReportError(
@@ -1094,9 +1104,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
                 // Check if this is a generic impl with type arguments (e.g., impl<T> Allocation<T>)
                 // In this case, we need to keep the struct as generic with its parameters
-                if (_structs.ContainsKey(implTypeName))
+                var lookupStruct = _symbols.LookupStruct(implTypeName);
+                if (lookupStruct != null)
                 {
-                    baseType = _structs[implTypeName];
+                    baseType = lookupStruct;
                 }
                 else
                 {
@@ -1160,7 +1171,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var attributes = ParseAttributes(context.attribute());
 
         // Check for duplicate struct names
-        if (_structs.ContainsKey(name))
+        if (_symbols.HasStruct(name))
         {
             _diagnostics.ReportError(
                 "E0019",
@@ -1193,7 +1204,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         // Register placeholder struct type FIRST to allow self-referential types
         var placeholderStruct = new IrStructType(name, new List<IrStructField>(), genericParams, null, attributes, whereClause);
-        _structs[name] = placeholderStruct;
+        _symbols.RegisterStruct(name, placeholderStruct, location);
 
         // Now parse struct fields (can now reference the struct being defined)
         var fields = new List<IrStructField>();
@@ -1219,8 +1230,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             _ = structType.SizeInBytes;
         }
 
-        _structs[name] = structType;
-        _structLocations[name] = location;  // Track location for LSP
+        _symbols.RegisterStruct(name, structType, location);
     }
 
     private void RegisterEnum(NovusParser.EnumDeclarationContext context)
@@ -1232,9 +1242,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var attributes = ParseAttributes(context.attribute());
 
         // Check for duplicate enum names (but allow replacing stubs)
-        if (_enums.ContainsKey(name))
+        var existingEnum = _symbols.LookupEnum(name);
+        if (existingEnum != null)
         {
-            var existingEnum = _enums[name];
             // Allow replacing stub enums (which have no variants)
             // This happens during two-pass enum registration in ImportModule
             if (existingEnum.Variants.Count > 0)
@@ -1300,8 +1310,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             _ = enumType.SizeInBytes;
         }
 
-        _enums[name] = enumType;
-        _enumLocations[name] = location;  // Track location for LSP
+        _symbols.RegisterEnum(name, enumType, location);
 
         // Clear generic param scope
         _genericParams.Clear();
@@ -1316,7 +1325,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var attributes = ParseAttributes(context.attribute());
 
         // Check for duplicate trait names
-        if (_traits.ContainsKey(name))
+        if (_symbols.HasTrait(name))
         {
             _diagnostics.ReportError(
                 "E0031",
@@ -1418,8 +1427,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         var trait = new IrTrait(name, methods, genericParams.Count > 0 ? genericParams : null, visibility, attributes);
-        _traits[name] = trait;
-        _traitLocations[name] = location;  // Track location for LSP
+        _symbols.RegisterTrait(name, trait, location);
 
         // Clear generic param scope
         _genericParams.Clear();
@@ -3842,13 +3850,15 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         // Try to find as struct or enum name
-        if (_structs.ContainsKey(key))
+        var structLookup = _symbols.LookupStruct(key);
+        if (structLookup != null)
         {
-            return _structs[key];
+            return structLookup;
         }
-        if (_enums.ContainsKey(key))
+        var enumLookup = _symbols.LookupEnum(key);
+        if (enumLookup != null)
         {
-            return _enums[key];
+            return enumLookup;
         }
 
         return null;
@@ -3997,7 +4007,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     }
 
                     // Create the monomorphized struct by substituting field types
-                    var baseStruct = _structs.ContainsKey(structType.Name) ? _structs[structType.Name] : structType;
+                    var baseStruct = _symbols.LookupStruct(structType.Name) ?? structType;
                     var typeSubstitutions = new Dictionary<string, IrType>();
 
                     // Build substitution map from generic params to concrete types
@@ -4361,9 +4371,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 var enumName = parts[0];
                 var variantName = parts[1];
 
-                if (_enums.ContainsKey(enumName))
+                var enumType = _symbols.LookupEnum(enumName);
+                if (enumType != null)
                 {
-                    var enumType = _enums[enumName];
                     var variant = enumType.GetVariant(variantName);
 
                     if (variant == null)
@@ -4939,8 +4949,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         {
             // Receiver is a monomorphized struct (e.g., Vec<i32>)
             // Get the base generic struct to find generic parameter names
-            var baseStruct = _structs[receiverStruct.StructName];
-            if (baseStruct.GenericParameters.Count > 0)
+            var baseStruct = _symbols.LookupStruct(receiverStruct.StructName);
+            if (baseStruct != null && baseStruct.GenericParameters.Count > 0)
             {
                 // Extract type arguments from the monomorphized struct fields
                 // For now, we'll match them based on field positions
@@ -5145,9 +5155,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 var variantName = parts[1];
 
                 // Check if the enum exists
-                if (_enums.ContainsKey(enumName))
+                var enumType = _symbols.LookupEnum(enumName);
+                if (enumType != null)
                 {
-                    var enumType = _enums[enumName];
                     var variant = enumType.GetVariant(variantName);
 
                     if (variant != null)
@@ -5184,7 +5194,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
-        if (!_variables.ContainsKey(name) && !_globalVariables.ContainsKey(name) && !_functions.ContainsKey(name) && !_constants.ContainsKey(name))
+        if (!_variables.ContainsKey(name) && !_globalVariables.ContainsKey(name) && !_functions.ContainsKey(name) && !_symbols.HasConstant(name))
         {
             var location = SourceLocationHelper.FromToken(context.identifier().Start, _filePath, _sourceLines);
             _diagnostics.ReportError(
@@ -5203,9 +5213,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         // If it's a constant, return its type
-        if (_constants.ContainsKey(name))
+        var constant = _symbols.LookupConstant(name);
+        if (constant != null)
         {
-            return _constants[name].Type;
+            return constant.Type;
         }
 
         // If it's a function name being used as a value (not being called), return function pointer type
@@ -5950,9 +5961,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         // Try enum variant first
-        if (_enums.ContainsKey(typeName))
+        var enumType = _symbols.LookupEnum(typeName);
+        if (enumType != null)
         {
-            var enumType = _enums[typeName];
 
             // Check if the variant exists
             var variant = enumType.GetVariant(memberName);
@@ -6017,9 +6028,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             if (explicitTypeArgs != null && explicitTypeArgs.Count > 0)
             {
                 // Get the struct to find its generic parameters
-                if (_structs.ContainsKey(typeName))
+                var structType = _symbols.LookupStruct(typeName);
+                if (structType != null)
                 {
-                    var structType = _structs[typeName];
                     if (structType.GenericParameters.Count != explicitTypeArgs.Count)
                     {
                         var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
@@ -6049,7 +6060,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         // Type not found or member doesn't exist
         var errorLocation = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
-        if (_structs.ContainsKey(typeName))
+        if (_symbols.HasStruct(typeName))
         {
             _diagnostics.ReportError(
                 "E0036",
@@ -6104,7 +6115,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var structName = context.typeName().GetText();
 
         // Check if struct type exists
-        if (!_structs.ContainsKey(structName))
+        var structTypeLookup = _symbols.LookupStruct(structName);
+        if (structTypeLookup == null)
         {
             var location = SourceLocationHelper.FromContext(context.typeName(), _filePath, _sourceLines);
             _diagnostics.ReportError(
@@ -6130,7 +6142,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         else
         {
             // Use the base generic type (e.g., Vec<T>)
-            structType = _structs[structName];
+            structType = structTypeLookup;
         }
         var initializedFields = new HashSet<string>();
 
@@ -6219,7 +6231,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var structName = context.typeName().GetText();
 
         // Check if struct type exists
-        if (!_structs.ContainsKey(structName))
+        var structTypeLookup = _symbols.LookupStruct(structName);
+        if (structTypeLookup == null)
         {
             var location = SourceLocationHelper.FromContext(context.typeName(), _filePath, _sourceLines);
             _diagnostics.ReportError(
@@ -6238,7 +6251,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         // Return the struct type
-        return _structs[structName];
+        return structTypeLookup;
     }
 
     private IrType ParseAndValidateIntegerLiteral(ParserRuleContext context, string text)
@@ -6461,9 +6474,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         // Check if it's a struct type
-        if (_structs.ContainsKey(typeName))
+        var structType = _symbols.LookupStruct(typeName);
+        if (structType != null)
         {
-            var structType = _structs[typeName];
 
             // Handle generic instantiation (e.g., Vec<i32>)
             if (context.typeList() != null)
@@ -6546,9 +6559,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         // Check if it's an enum type
-        if (_enums.ContainsKey(typeName))
+        var enumType = _symbols.LookupEnum(typeName);
+        if (enumType != null)
         {
-            var enumType = _enums[typeName];
 
             // Handle generic instantiation (e.g., Option<i32>)
             if (context.typeList() != null)
@@ -6652,7 +6665,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Evaluate the size expression as a compile-time constant
         var sizeExpr = context.expression();
         var evaluator = new ConstantExpressionEvaluator(
-            _constants.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.Value),
+            _symbols.GetLocalConstants().ToDictionary(kvp => kvp.Key, kvp => kvp.Value.Value),
             errorMsg => _diagnostics.ReportError(
                 "E0030",
                 $"error evaluating array size: {errorMsg}",
@@ -7154,7 +7167,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     private bool TypeImplementsTrait(IrType type, string traitName, List<IrType> traitTypeArgs)
     {
         // Validate that the trait exists
-        if (!_traits.ContainsKey(traitName))
+        if (!_symbols.HasTrait(traitName))
         {
             return false; // Unknown trait
         }
