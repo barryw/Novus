@@ -44,7 +44,9 @@
       "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Debug/net9.0/Novus compile:*)",
       "Bash(dotnet clean:*)",
       "Bash(rm:*)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "Bash(git stash:*)",
+      "Bash(timeout 120 dotnet test:*)"
     ],
     "deny": [],
     "ask": []

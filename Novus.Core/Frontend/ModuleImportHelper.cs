@@ -68,14 +68,7 @@ public static class ModuleImportHelper
     /// </summary>
     public static bool IsPub(IParseTree context)
     {
-        for (int i = 0; i < Math.Min(3, context.ChildCount); i++)
-        {
-            if (context.GetChild(i)?.GetText() == "pub")
-            {
-                return true;
-            }
-        }
-        return false;
+        return AstModifierHelper.HasModifier(context, "pub", 3);
     }
 
     /// <summary>
@@ -83,14 +76,7 @@ public static class ModuleImportHelper
     /// </summary>
     public static bool IsExtern(NovusParser.FunctionDeclarationContext context)
     {
-        for (int i = 0; i < Math.Min(3, context.ChildCount); i++)
-        {
-            if (context.GetChild(i)?.GetText() == "extern")
-            {
-                return true;
-            }
-        }
-        return false;
+        return AstModifierHelper.IsExtern(context);
     }
 
     /// <summary>
@@ -98,17 +84,7 @@ public static class ModuleImportHelper
     /// </summary>
     public static (bool IsPub, bool IsExtern) GetFunctionVisibility(NovusParser.FunctionDeclarationContext context)
     {
-        bool isPub = false;
-        bool isExtern = false;
-
-        for (int i = 0; i < Math.Min(3, context.ChildCount); i++)
-        {
-            var text = context.GetChild(i)?.GetText();
-            if (text == "pub") isPub = true;
-            if (text == "extern") isExtern = true;
-        }
-
-        return (isPub, isExtern);
+        return AstModifierHelper.GetFunctionVisibility(context);
     }
 
     /// <summary>

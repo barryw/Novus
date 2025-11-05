@@ -215,15 +215,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             var returnType = funcContext.type() != null ? ParseType(funcContext.type()) : IrVoidType.Instance;
 
             // Check for extern, pub, and internal keywords
-            var isExtern = false;
-            var visibility = Visibility.Private;
-            for (int i = 0; i < Math.Min(4, funcContext.ChildCount); i++)
-            {
-                var childText = funcContext.GetChild(i)?.GetText();
-                if (childText == "extern") isExtern = true;
-                if (childText == "pub") visibility = Visibility.Public;
-                if (childText == "internal") visibility = Visibility.Internal;
-            }
+            var (visibility, isExtern, _) = AstModifierHelper.ParseModifiers(funcContext, 4);
 
             var function = new IrFunction(name, returnType, visibility, isExtern);
 
@@ -344,15 +336,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
 
                 // Check for extern, pub, and internal keywords
-                var isExtern = false;
-                var visibility = Visibility.Private;
-                for (int i = 0; i < Math.Min(4, funcDecl.ChildCount); i++)
-                {
-                    var childText = funcDecl.GetChild(i)?.GetText();
-                    if (childText == "extern") isExtern = true;
-                    if (childText == "pub") visibility = Visibility.Public;
-                    if (childText == "internal") visibility = Visibility.Internal;
-                }
+                var (visibility, isExtern, _) = AstModifierHelper.ParseModifiers(funcDecl, 4);
 
                 // Methods are registered with mangled names
                 // Trait impls: Type_Trait_TypeArg1_TypeArg2_method (e.g., Counter_Iterator_i32_next)
@@ -766,15 +750,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                             // Parse and add the function
                             var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
 
-                            var isExtern = false;
-                            var visibility = Visibility.Private;
-                            for (int i = 0; i < Math.Min(4, funcDecl.ChildCount); i++)
-                            {
-                                var childText = funcDecl.GetChild(i)?.GetText();
-                                if (childText == "extern") isExtern = true;
-                                if (childText == "pub") visibility = Visibility.Public;
-                                if (childText == "internal") visibility = Visibility.Internal;
-                            }
+                            var (visibility, isExtern, _) = AstModifierHelper.ParseModifiers(funcDecl, 4);
 
                             var function = new IrFunction(funcName, returnType, visibility, isExtern);
 
@@ -1265,15 +1241,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 var methodName = funcDecl.IDENTIFIER().GetText();
 
                 // Check if method is pub
-                var isPub = false;
-                for (int i = 0; i < Math.Min(3, funcDecl.ChildCount); i++)
-                {
-                    if (funcDecl.GetChild(i)?.GetText() == "pub")
-                    {
-                        isPub = true;
-                        break;
-                    }
-                }
+                var isPub = AstModifierHelper.HasModifier(funcDecl, "pub", 3);
 
                 // For generic impl blocks, store ALL methods as templates (pub and private)
                 // because instantiating one method may need to call private helper methods
@@ -1411,15 +1379,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 var funcName = funcDecl.IDENTIFIER().GetText();
 
                 // Check if it's an extern function
-                bool isExtern = false;
-                for (int i = 0; i < Math.Min(3, funcDecl.ChildCount); i++)
-                {
-                    if (funcDecl.GetChild(i)?.GetText() == "extern")
-                    {
-                        isExtern = true;
-                        break;
-                    }
-                }
+                bool isExtern = AstModifierHelper.HasModifier(funcDecl, "extern", 3);
 
                 // Only import extern functions (FFI bindings)
                 if (!isExtern) continue;
@@ -2136,13 +2096,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var name = context.IDENTIFIER().GetText();
 
         // Check for pub/internal keywords
-        var visibility = Visibility.Private;
-        for (int i = 0; i < Math.Min(3, context.ChildCount); i++)
-        {
-            var childText = context.GetChild(i)?.GetText();
-            if (childText == "pub") visibility = Visibility.Public;
-            if (childText == "internal") visibility = Visibility.Internal;
-        }
+        var (visibility, _, _) = AstModifierHelper.ParseModifiers(context, 3);
 
         // Evaluate the constant expression using the evaluator
         var valueExpr = context.expression();
@@ -2184,15 +2138,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var type = ParseType(context.type());
 
         // Check for pub/internal/mut keywords
-        var visibility = Visibility.Private;
-        var isMutable = false;
-        for (int i = 0; i < Math.Min(5, context.ChildCount); i++)
-        {
-            var childText = context.GetChild(i)?.GetText();
-            if (childText == "pub") visibility = Visibility.Public;
-            if (childText == "internal") visibility = Visibility.Internal;
-            if (childText == "mut") isMutable = true;
-        }
+        var (visibility, _, isMutable) = AstModifierHelper.ParseModifiers(context, 5);
 
         // Evaluate the initial value expression
         var valueExpr = context.expression();
@@ -2549,22 +2495,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var name = context.IDENTIFIER().GetText();
         var returnType = context.type() != null ? ParseType(context.type()) : IrVoidType.Instance;
 
-        // Check if function is extern by looking for 'extern' keyword in children
-        var isExtern = false;
-        for (int i = 0; i < Math.Min(3, context.ChildCount); i++)
-        {
-            var childText = context.GetChild(i)?.GetText();
-            if (childText == "extern") isExtern = true;
-        }
-
-        // Parse visibility
-        var visibility = Visibility.Private;
-        for (int i = 0; i < Math.Min(4, context.ChildCount); i++)
-        {
-            var childText = context.GetChild(i)?.GetText();
-            if (childText == "pub") visibility = Visibility.Public;
-            if (childText == "internal") visibility = Visibility.Internal;
-        }
+        // Parse visibility, extern flag, and other modifiers
+        var (visibility, isExtern, _) = AstModifierHelper.ParseModifiers(context, 3);
 
         var function = new IrFunction(name, returnType, visibility, isExtern);
         _module.AddFunction(function);
