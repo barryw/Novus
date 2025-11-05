@@ -40,7 +40,11 @@
       "Bash(do ./Novus/bin/Debug/net9.0/Novus compile:*)",
       "Bash(/tmp/simple_test.novus)",
       "Bash(echo:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Debug/net9.0/Novus compile:*)",
+      "Bash(dotnet clean:*)",
+      "Bash(rm:*)",
+      "Bash(git mv:*)"
     ],
     "deny": [],
     "ask": []

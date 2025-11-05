@@ -31,6 +31,7 @@ TestResults/
 # Compiled object files and C sources (build artifacts)
 *.o
 *.c
+!runtime/**/*.c
 *.out
 a.out
 novus_types.h
@@ -40,5 +41,7 @@ build/
 target/
 usercache/
 
-# Test files
-test_*.novus
+# Test files in root only (keep test files in Novus.Tests/)
+/test.novus
+/test_*.novus
+*.trx
