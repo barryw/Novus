@@ -1,0 +1,114 @@
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+                    KICKSTART V1.2.1 RELEASE DOCUMENTATION
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+VERSION:
+
+        Kickstart version number is bumped to 34.4 .
+
+                        34.4
+                        -----
+
+
+        subsystem      start   end     bytes   revision
+        name            (hex)   (hex)   (dec)  number
+        -------------  ------  ------  ------  ------
+        autovects      000000  D       14      
+        exec           FC0000  FC3507  13576   2
+        audio          FC3508  FC4573  4204    1
+        cia            FC4574  FC47F7  644     1
+        disk           FC47F8  FC4B5F  872     1
+        expansion      FC4B60  FC53E3  2180    1
+        graphics       FC53E4  FD3D63  59776   1
+        intuition      FD3D64  FE090F  52140   3
+        layers         FE0910  FE3DA3  13460   1
+        mathffp        FE3DA4  FE42CB  1320    1
+        misc           FE42CC  FE43DB  272     1
+        potgo          FE43DC  FE4523  328     1
+        ramlib         FE4524  FE4B43  1568    1
+        rawinput       FE4B44  FE83DF  14492   1
+        strap          FE83E0  FE8D7B  2460    3
+        timer          FE8D7C  FE956F  2036    1
+        trackdisk      FE9570  FEB073  6916    1
+        romboot        FEB074  FEB473  1024    1
+        wb             FEB474  FF3DE3  35184   1
+        dos            FF3F38  FFFFE7  49328   2
+        -------------  ------  ------  ------  ------
+        total                          261794
+
+        Maximum contiguous space available (HEX) 154
+        Maximum contiguous space available (DEC) 340
+
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+RESIDENT MODULES:
+
+    Address Pri Type Ver Name
+    $fc00b6  120   9  34 exec 34.2 (28 Oct 1987)
+    $fc4b64  110   9  34 expansion 34.1 (18 Aug 1987)
+    $fe43dc  100   8  34 potgo 34.1 (18 Aug 1987)
+    $fe4b44  100   8  34 keymap ri 34.1 (18 Aug 1987)
+    $fc4574   80   8  34 cia 34.1 (18 Aug 1987)
+    $fc47fc   70   8  34 disk 34.1 (18 Aug 1987)
+    $fe42d0   70   8  34 misc 34.1 (18 Aug 1987)
+    $fe4528   70   9  34 ramlib 34.1 (18 Aug 1987)
+    $fc53e4   65   9  34 graphics 34.1 (18 Aug 1987)
+    $fe4b8e   60   3  34 keyboard ri 34.1 (18 Aug 1987)
+    $fe4bda   60   3  34 gameport ri 34.1 (18 Aug 1987)
+    $fe8d80   50   3  34 timer 34.1 (18 Aug 1987)
+    $fc3508   40   3  34 audio 34.1 (18 Aug 1987)
+    $fe4c26   40   3  34 input ri 34.1 (18 Aug 1987)
+    $fe09a4   31   9  34 layers 34.1 (18 Aug 1987)
+    $fe4c6c   20   3  34 console ri 34.1 (18 Aug 1987) 
+    $fe9578   20   3  34 trackdisk 34.1 (18 Aug 1987)
+    $fd3d8c   10   9  34 intuition 34.3 (16 Nov 1987)
+    $fc3276    5   0  34 alert.hook
+    $fe3da4    0   9  34 mathffp 34.1 (18 Aug 1987)
+    $feb490    0   1  34 wb 34.1 (18 Aug 1987)
+    $ff3f82    0   9  34 dos 34.2 (13 Oct 1987)
+    $feb074  -40   9  34 romboot 34.1 (18 Aug 1987)
+    $fe83e0  -60   0  34 strap 34.3 (16 Nov 1987)
+
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+FEATURES:
+
+        V1.2.1 is an incremental kickstart release.  It is designed to 
+    maintain V1.2 compatiblity throughout, while adding two important
+    features to the operating system.  These features are 1) autoboot
+    from ROM-based expansion devices and 2) a larger preferences structure
+    for future expansion.
+
+        Automatic boot from any ROM-equipped expansion board is accomplished
+    at cold-start time, before the DOS exists.  This facility makes it 
+    possible, for example to automatically boot (with the right hardware)
+    from a hard disk without any disk being in the drive whatsoever. In
+    addition, it will become possible to automatically boot from any device
+    which supports the ROM protocol (e.g. boot from nfs: over ethernet, etc).
+
+        Autoboot is implemented with the addition of the "romboot.library"
+    to the rom resident list, as well as with conservative changes to
+    the expansion.libray, the dos.library, and the strap.library.  These
+    changes have been carefully considered to be compatible in all regards
+    with V1.2 (release 33.180) so that developers should not have to recompile
+    their code for software compatibility. 
+
+        Romboot.library functions are private at this time and are not needed
+    by those developing autoboot expansion devices or drivers for such devices.
+
+        Extended preferences is a simple byte field extension to the
+    Preferences structure to allow future software extensions to be easily
+    added to the current system.  This was necessary because the original
+    Preferences structure was a fixed format with no additional bytes 
+    available.  Again, software developers should not have to recompile
+    their code for software compatibility with V1.2 (release 33.180).
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------

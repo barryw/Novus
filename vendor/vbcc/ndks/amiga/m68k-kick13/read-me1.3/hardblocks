@@ -1,0 +1,385 @@
+
+Preliminary Hardblocks and FileSysRes Docs for Future
+    Commodore and Third Party Hard Disk Devices
+         (not supported by 2090 or 2090A)
+=====================================================
+        Copyright 1988 Commodore-Amiga, Inc.
+
+hardblocks.h
+
+This file describes blocks of data that exist on a hard disk
+to describe that disk.  They are not generically accessable to
+the user as they do not appear on any DOS drive.  The blocks
+are tagged with a unique identifier, checksummed, and linked
+together.
+
+The four block types currently defined are RigidDiskBlock,
+BadBlockBlock, PartitionBlock, FileSysHeaderBlock, and
+LoadSegBlock.
+
+The root of these blocks is the RigidDiskBlock.
+The RigidDiskBlock must exist on the disk within the first
+RDB_LOCATION_LIMIT blocks.  This inhibits the use of the zero
+cylinder in an AmigaDOS partition: although it is strictly
+possible to store the RigidDiskBlock data in the reserved
+area of a partition, this practice is discouraged since the
+reserved blocks of a partition are overwritten by "Format",
+"Install", "DiskCopy", etc.  The recommended disk layout,
+then, is to use the first cylinder(s) to store all the drive
+data specified by these blocks: i.e. partition descriptions,
+file system load images, drive bad block maps, spare blocks,
+etc.  This allocation range is described in the RigidDiskBlock.
+
+The RigidDiskBlock points to bad block, partition, file system
+and drive initialization description blocks.  The bad block
+format is simply lists of pairs describing bad blocks and their
+replacements.
+
+The drive initialization description blocks are LoadSegBlock
+blocks that are loaded at boot time to perform drive-specific
+initialization when called with parameters both "C" style on
+the stack, and in assembler registers as follows:
+    d0 = DriveInit(lun,rdb,ior)(d0/a0/a1)
+where lun is the SCSI logical unit number (needed to construct
+SCSI commands), rdb is an image of the RigidDiskBlock and
+cannot be altered, and ior is a standard IO request block that
+can be used to access the drive with synchronous DoIO() calls.
+The result of DriveInit is either -1, 0, or 1.  -1 reports an
+error occurred and drive initialization cannot continue, zero
+reports success.  In both cases, the code is unloaded.  1
+reports success, and causes the code to be kept loaded.
+Furthermore, this resident code is to be called whenever a 
+reset is detectected on the SCSI bus.
+
+
+The FileSysHeaderBlock entries contain code for alternate
+file handlers to be used by partitions that specify them.
+There are several strategies that can be used to determine
+which of them to load.  The most robust would scan all drives
+for those that are both required by partitions and have the
+highest fhb_Version, and load those.  Whatever method is used,
+the loaded file handlers are added to the exec resource
+FileSystem.resource, where they are used as needed to mount
+disk partitions.
+
+The PartitionBlock entries contains most of the data necessary
+to add each device to the system.  They replace the Mount &
+DEVS:MountList mechanism for adding these devices.  The only
+items required by the expansion.library MakeDosNode function
+which are not in this partition block are the exec device
+name and unit, which is expected to be known by the reader of
+the block.  The file system to be used is specified in the
+pb_Environment.  If it is not the default file system (i.e.
+'DOS\0'), the node created by MakeDosNode is modified as
+specified in a FileSystem.resource's FileSysEntry before adding
+it to the dos list.
+
+Though only 512 byte blocks are currently supported by the
+file system, this proposal tries to be forward-looking by
+making the block size explicit, and by using only the first
+256 bytes for all blocks but the LoadSeg data.
+
+
+    RigidDiskBlock
+   rdb_ID         == 'RDSK'
+   rdb_SummedLongs      == 64
+   rdb_ChkSum      block checksum (longword sum to zero)
+   rdb_HostID      SCSI Target ID of host
+            This is the initiator ID of the creator of this
+            RigidDiskBlock.  It is intended that
+            modification of the RigidDiskBlock, or of any
+            of the blocks pointed to by it, by another
+            initiator (other than the one specified here)
+            be allowed only after a suitable warning.  The
+            user is then expected to perform an audio
+            lock out ("Hey, is anyone else setting up SCSI
+            stuff on this bus?").  The rdb_HostID may
+            become something other than the initiator ID
+            when connected to a real network: that is an
+            area for future standardization.
+   rdb_BlockBytes      size of disk blocks
+            This must be 512 for a disk with any
+            AmigaDOS partitions on it.
+   rdb_Flags      longword of flags
+       RDBF._LAST          no disks exist to be configured after this
+                one on this controller.
+       RDBF._LASTLUN       no LUNs exist to be configured greater
+                than this one at this SCSI Target ID
+       RDBF._LASTTID       no Target IDs exist to be configured
+                greater than this one on this SCSI bus
+       RDBF._DISKID       rdb_Disk... identification variables below
+                contain valid data.
+       RDBF._CTRLRID       rdb_Controller... identification variables
+                below contain valid data.
+
+      These fields point to other blocks on the disk which are not
+      a part of any filesystem.
+
+   rdb_BadBlockList   optional bad block list
+            A singly linked list of blocks of type
+            PartitionBlock
+   rdb_PartitionList   optional first partition block
+            A singly linked list of blocks of type
+            PartitionBlock
+   rdb_FileSysHeaderList   optional file system header block
+            A singly linked list of blocks of type
+            FileSysHeaderBlock
+   rdb_DriveInit      optional drive-specific init code
+            A songly linked list of blocks of type
+            LoadSegBlock containing initialization code.
+            Called as DriveInit(lun,rdb,ior)(d0/a0/a1).
+   rdb_Reserved1      set to $ffffffffs
+            These are reserved for future block lists.
+            Since NULL for block lists is $ffffffff, these
+            reserved entries must be set to $ffffffff.
+
+      These fields describe the physical layout of the drive.
+
+   rdb_Cylinders      number of drive cylinders
+   rdb_Sectors      sectors per track
+   rdb_Heads      number of drive heads
+   rdb_Interleave      interleave
+            This drive interleave is independent from, and
+            unknown to, the DOS's understanding of
+            interleave as set in the partition's
+            environment vector.
+   rdb_Park      landing zone cylinder
+   rdb_Reserved2      set to zeros
+
+      These fields are intended for ST506 disks.  They are generally
+      unused for SCSI devices and set to zero.
+
+   rdb_WritePreComp   starting cylinder: write precompensation
+   rdb_ReducedWrite   starting cylinder: reduced write current
+   rdb_StepRate      drive step rate
+   rdb_Reserved3      set to zeros
+
+      These fields are used while partitions are set up to constrain
+      the partitionable area and help describe the relationship
+      between the drive's logical and physical layout. 
+
+   rdb_RDBlocksLo      low block of the range allocated for
+            blocks described here.  Replacement blocks
+            for bad blocks may also live in this range.
+   rdb_RDBlocksHi      high block of this range (inclusive)
+   rdb_LoCylinder      low cylinder of partitionable disk area
+            Blocks described by this include file will
+            generally be found in cylinders below this one.
+   rdb_HiCylinder      high cylinder of partitionable data area
+            Usually rdb_Cylinders-1.
+   rdb_CylBlocks      number of blocks available per cylinder
+            This may be rdb_Sectors*rdb_Heads, but a SCSI
+            disk that reserves one block per cylinder for
+            bad block mapping uses rdb_Sectors*rdb_Heads-1.
+   rdb_AutoParkSeconds   The number of seconds to wait before parking
+            drive heads automatically.  If zero, this
+            feature is not desired.
+   rdb_Reserved4      set to zeros
+
+      These fields are of the form available from a SCSI Identify
+      command.  Their purpose is to help the user identify the
+      disk during setup.  Entries exist for both controller and
+      disk for non-embedded SCSI disks.
+
+   rdb_DiskVendor      The vendor name of the disk
+   rdb_DiskProduct      The product name of the disk
+   rdb_DiskRevision   The revision code of the disk
+   rdb_ControllerVendor   The vendor name of the disk controller
+   rdb_ControllerProduct   The product name of the disk controller
+   rdb_ControllerRevision   The revision code of the disk controller
+   rdb_Reserved5
+
+    BadBlockBlock
+      The end of data occurs when bbb_Next is null ($ffffffff), and
+      the summed data is exhausted.
+
+   bbb_ID         == 'BADB'
+   bbb_SummedLongs      size of this checksummed structure
+            Note that this is not 64 like most of the other
+            structures.  This is the number of valid longs
+            in this image, and can be from 6 to
+            rdb_BlockBytes/4.  The latter is the best size
+            for all intermediate blocks.
+   bbb_ChkSum      block checksum (longword sum to zero)
+   bbb_HostID      SCSI Target ID of host
+            This describes the initiator ID for the creator
+            of these blocks.  (see the rdb_HostID
+            discussion)
+   bbb_Next      block number of the next BadBlockBlock
+   bbb_Reserved
+   bbb_BlockPairs      pairs of block remapping information
+            The data starts here and continues as long as
+            indicated by bbb_SummedLongs-6: e.g. if
+            bbb_SummedLongs is 128 (512 bytes), 61 pairs
+            are described here.
+
+    PartitionBlock
+       Note that while reading these blocks you may encounter partitions
+       that are not to be mounted because the pb_HostID does not match,
+       or because the pb_DriveName is in use and no fallback strategy
+       exists, or because PBF._NOMOUNT is set.  They may be mounted but
+       not made bootable because PBF._BOOTABLE is not set.
+
+   pb_ID         == 'PART'
+   pb_SummedLongs      == 64
+   pb_ChkSum      block checksum (longword sum to zero)
+   pb_HostID      SCSI Target ID of host
+            This describes the initiator ID for the owner
+            of this partition.  (see the rdb_HostID
+            discussion)
+   pb_Next         block number of the next PartitionBlock
+   pb_Flags      see below for defines
+       PBF._BOOTABLE       this partition is intended to be bootable
+                (e.g. expected directories and files exist)
+   pb_Reserved1
+
+   pb_DevFlags      preferred flags for OpenDevice
+   pb_DriveName      preferred DOS device name: BSTR form
+            This name is not to be used if it is already
+            in use.
+
+      pb_Reserved2 will always be at least 4 longwords so that
+      the ram image of this record may be converted to the parameter
+      packet to the expansion.library function MakeDosNode
+
+   pb_Reserved2      filler to 32 longwords
+
+      The specification of the location of the partition is one of
+      the components of the environment, below.  If possible,
+      describe the partition in a manner that tells the DOS about
+      the physical layout of the partition: specifically, where the
+      cylinder boundaries are.  This allows the DOS's smart block
+      allocation strategy to work.
+
+   pb_Environment      environment vector for this partition
+       de_TableSize       size of Environment vector
+       de_SizeBlock       == 128
+       de_SecOrg          == 0
+       de_Surfaces          number of heads
+                (see layout discussion above)
+       de_SectorPerBlock       == 1
+       de_BlocksPerTrack       blocks per track
+                (see layout discussion above)
+       de_Reserved          DOS reserved blocks at start of partition.
+                Must be >= 1.  2 is recommended.
+       de_PreAlloc          DOS reserved blocks at end of partition
+                Valid only for filesystem type DOS^A (the
+                fast file system).  Zero otherwise.
+       de_Interleave       DOS interleave
+                Valid only for filesystem type DOS^@ (the
+                old file system).  Zero otherwise.
+       de_LowCyl          starting cylinder
+       de_HighCyl          max cylinder
+       de_NumBuffers       initial # DOS of buffers. 
+       de_BufMemType       type of mem to allocate for buffers
+                The second argument to AllocMem().
+       de_MaxTransfer       max number of bytes to transfer at a time
+       de_Mask          address mask to block out certain memory
+                $00ffffff for DMA devices.
+       de_BootPri          Boot priority for autoboot
+                Suggested value: zero.  Keep less than
+                five, so it won't override a boot floppy.
+       de_DosType          ASCII string showing filesystem type;
+                DOS^@ ($444F5300) is old filesystem,
+                DOS^A ($444F5301) is fast file system.
+   pb_EReserved      reserved for future environment vector
+
+    FileSysHeaderBlock
+   fhb_ID         == 'FSHD'
+   fhb_SummedLongs      == 64
+   fhb_ChkSum      block checksum (longword sum to zero)
+   fhb_HostID      SCSI Target ID of host
+            This describes the initiator ID for the creator
+            of this block.  (see the rdb_HostID
+            discussion)
+   fhb_Next      block number of next FileSysHeaderBlock
+   fhb_Flags      see below for defines
+   fhb_Reserved1
+
+      The following information is used to construct a FileSysEntry
+      node in the FileSystem.resource.
+
+   fhb_DosType      file system description
+            This is matched with a partition environment's
+            de_DosType entry.
+   fhb_Version      release version of this load image
+            Usually MSW is version, LSW is revision.
+   fhb_PatchFlags      patch flags
+            These are bits set for those of the following
+            that need to be substituted into a standard
+            device node for this file system, lsb first:
+            e.g. 0x180 to substitute SegList & GlobalVec
+   fhb_Type      device node type: zero
+   fhb_Task      standard dos "task" field: zero
+   fhb_Lock      not used for devices: zero
+   fhb_Handler      filename to loadseg: zero placeholder
+   fhb_StackSize      stacksize to use when starting task
+   fhb_Priority      task priority when starting task
+   fhb_Startup      startup msg: zero placeholder
+   fhb_SegListBlocks   first of linked list of LoadSegBlocks:
+            Note that if the fhb_PatchFlags bit for this
+            entry is set (bit 7), the blocks pointed to by
+            this entry must be LoadSeg'd and the resulting
+            BPTR put in the FileSysEntry node.
+   fhb_GlobalVec      BCPL global vector when starting task
+            Zero or -1.
+   fhb_Reserved2      (those reserved by PatchFlags)
+
+   fhb_Reserved3
+
+
+    LoadSegBlock
+      The end of data occurs when lsb_Next is null ($ffffffff), and
+      the summed data is exhausted.
+
+   lsb_ID         == 'LSEG'
+   lsb_SummedLongs      size of this checksummed structure
+            Note that this is not 64 like most of the other
+            structures.  This is the number of valid longs
+            in this image, like bbb_SummedLongs.
+   lsb_ChkSum      block checksum (longword sum to zero)
+   lsb_HostID      SCSI Target ID of host
+            This describes the initiator ID for the creator
+            of these blocks.  (see the rdb_HostID
+            discussion)
+   lsb_Next      block number of the next LoadSegBlock
+   lsb_LoadData      data for "loadseg"
+            The data starts here and continues as long as
+            indicated by lsb_SummedLongs-5: e.g. if
+            lsb_SummedLongs is 128 (512 bytes), 123 longs
+            of data are valid here.
+
+filesysres.[hi]
+
+       The FileSysResource is created by the first code that needs to
+       use it.  It is added to the resource list for others to use.
+       (Checking and creation should be performed while Forbid()).
+
+    FileSysResource
+   fsr_Node      on resource list
+   fsr_Creator      name of creator of this resource
+   fsr_FileSysEntries   list of FileSysEntry structs
+
+    FileSysEntry
+   fse_Node      on fsr_FileSysEntries list
+            ln_Name is of creator of this entry
+   fse_DosType      DosType of this FileSys
+   fse_Version      release version of this FileSys
+            Usually MSW is version, LSW is revision.
+   fse_PatchFlags      bits set for those of the following that
+            need to be substituted into a standard
+            device node for this file system: e.g.
+            $180 for substitute SegList & GlobalVec
+   fse_Type      device node type: zero
+   fse_Task      standard dos "task" field
+   fse_Lock      not used for devices: zero
+   fse_Handler      filename to loadseg (if SegList is null)
+   fse_StackSize      stacksize to use when starting task
+   fse_Priority      task priority when starting task
+   fse_Startup      startup msg: FileSysStartupMsg for disks
+   fse_SegList      segment of code to run to start new task
+   fse_GlobalVec      BCPL global vector when starting task
+
+   no more entries need exist than those implied by fse_PatchFlags, so
+   entries do not have a fixed size.
+

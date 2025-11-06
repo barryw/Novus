@@ -106,7 +106,7 @@ public static class StdlibBuildCommand
 
         // Get paths
         vbccPath ??= Environment.GetEnvironmentVariable("VBCC")
-            ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "amiga-cc", "vbcc");
+            ?? Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "vendor", "vbcc");
         ndkPath ??= Environment.GetEnvironmentVariable("NDK")
             ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "amiga-cc", "NDK3.9");
 

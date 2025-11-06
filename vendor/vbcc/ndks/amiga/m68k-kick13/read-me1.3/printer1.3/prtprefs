@@ -1,0 +1,223 @@
+
+V1.3 Preferences
+
+by Eric Cotton and David Berezowski
+
+
+The Preferences program for the V1.3 Workbench has a number of additions to
+support new features of this release, including extended printer support.
+
+
+General
+
+There is now a Preferences drawer.  Within the drawer are icons for
+Preferences, Pointer, Printer, and Serial.  The Preferences icon is for the
+Preferences program itself.  Double-clicking runs Preferences much as before.
+Pointer, Printer, and Serial are project icons; the DEFAULT TOOL of each is
+Preferences.  The TOOL TYPES specify the preference screen with which
+Preferences is to begin.  The format is "PREFS=" immediately followed by
+"pointer", "printer", or "serial".  For instance the
+TOOL TYPES of the Serial icon is "PREFS=serial".  Double-clicking on the icon
+opens Preferences with the serial preference screen.
+
+Preferences now accepts command line arguments.  The format is as follows:
+
+	Preferences [POINTER | PRINTER | SERIAL]
+
+The argument specifies the screen to display.
+
+
+Selecting Save automatically updates the battery backed-up clock, if present,
+with the new date and time.
+
+The CLI On/Off option has been eliminated.  Henceforth, the icon for the
+Command Line Interface (CLI) will always appear in the System drawer (unless
+deleted by the user).
+
+
+Change Printer
+
+The Graphic Select gadget has been replaced by two new gadgets: Graphic 1
+and Graphic 2.
+
+The new Graphic 1 gadget is equivalent to the V1.2 Graphic Select gadget and
+is used to request the first of two printer graphic Preferences screens.
+
+
+Graphic 1
+
+The Graphic 1 screen is selected by clicking on the corresponding gadget in
+the Change Printer screen.
+
+There is a new Print Shade selection: Gray Scale2.  This shade is for printing
+pictures designed using the A2024 Monitor (which supports a maximum of seven
+shades of gray).
+
+
+Graphic 2
+
+Selected by clicking the Graphic 2 gadget in the Change Printer screen, this
+new Preferences screen supports extended printer graphics features.  The
+various gadgets are as follows:
+
+  Smoothing [ON/OFF] - attempts to smooth diagonal lines.
+    This option is best suited for use with programs that do graphic dumps
+    of text (like ProWrite, PageSetter, CityDesk, Publisher 1000, NotePad,
+    etc.).  This technique incurs an approximate 2:1 speed penalty on
+    printing.  Note:  Floyd-Steinberg dithering cannot be used in conjunction
+    with Smoothing.  If F-S is enabled when turning on Smoothing the dithering
+    mode will change to Ordered.  Default is OFF.
+
+  Left Offset - horizontally offsets the printed picture.
+    This option effectively sets up a left margin.  The offset can be entered
+    in increments of tenths of an inch.  The Center option (below) disables
+    Left Offset.  Default is 0.0 inches.
+
+  Center [ON/OFF] - horizontally centers the printed picture.
+    This option overrides the Left Offset value.  Default is OFF.
+
+  Density [1 through 7] - selects graphics print density.
+    The lower the density the faster the print time (on those printers with
+    multiple densities).  Refer to specifications of the V1.3 Printer Drivers
+    for a description of densities supported by each individual printer.
+    Default is 1.
+
+  Color Correct R/G/B - tries to better match screen colors to printer colors.
+    This option selectively tries to match all shades of either red (R),
+    green (G), or blue (B) from the screen to the printer.  Without color 
+    correction, the printer device can print all the 4096 colors of the
+    AMIGA on a printer.  However, as color correction is applied the total
+    number of printed colors is reduced to a low of 3172 (308 per RGB).  To
+    see the effect of this option, printout a picture with solid red, green,
+    and blue shades twice; first with this option on, and then with it off.
+    Now compare the two pictures with the screen display.  The shades of the
+    color corrected picture should more closely represent those displayed on
+    your monitor.  Default is no color correction (R, G, and B not selected).
+
+  Dithering [Ordered/Halftone/F-S] - sets dithering mode.
+    Note: when a Shade of 'Black and White' is selected (from the Graphic 1
+    screen), changing the dither method has no effect on the printout as
+    B&W shading does no dithering.  Default is ORDERED.
+
+    Ordered - Color intensities on the printer are formed using an ordered
+      dither method.  Ordered dithering produces shades on the printer using
+      an ordered pattern of dots.
+
+    Halftone - Color intensities on the printer are formed using a halftone
+      dither method.  This technique is similar to the one used in newspapers
+      and comic books.  It works best on high density printers (greater than
+      150 dots per inch).
+
+    F-S - Color intensities on the printer are formed using the Floyd-Steinberg
+      error distribution method.  This option incurs an approximate 2:1 speed
+      penalty on printing.  Note: Selecting this option automatically turns
+      off Smoothing as they can not be used in conjunction with each other.
+      It works best on high density printers (greater than 150 dots per inch).
+
+  Scaling [Fraction/Integer] - selects scaling method.  Default is FRACTION.
+
+    Fraction - Normal scaling is performed.
+
+    Integer - Every dot on the screen is guaranteed to appear as an even
+      number of dots on the printer in both the x and y dimensions.  For
+      example, if the source picture is 320 x 200, the printed picture width
+      will be either 320, 640, 960, etc. dots wide and 200, 400, 600, etc.
+      dots high.  This option should be selected when trying to print a
+      picture that contains thin vertical and horizontal lines (like a grid).
+      The actual size of the printed picture will be the requested size scaled
+      up or down to the nearest multiple of the width and height of the
+      picture.  Integer scaling completely overrides the aspecting feature of
+      the printer device.  Thus it is possible to get a slightly distorted
+      (non-aspect ratio correct) picture.  This option is also useful for
+      printing out bit-image text (as in Notepad) since the fonts will not be
+      distorted due to fractional scaling.
+
+  Width Limit - limit the width of the printed picture.  Default is 0.
+      The width can be limited in tenths / inch, pixels or a multiplication
+      factor.  See Limits below.
+
+  Height Limit - limits the height of the printed picture.  Default is 0.
+      The height can be limited in tenths / inch, pixels or a multiplication
+      factor.  See Limits below.
+
+  <- Limits - determines how the Width and Height limits are interpreted.
+    Default is IGNORE.
+
+    Ignore - The limits are to be ignored.  The printed picture's size is
+      bounded by:
+
+        width  = (right margin - left margin + 1) / characters per inch.
+        height = lines per page / lines per inch.
+
+      This option is the default and is included to remain compatible with
+      pre V1.3 software.
+
+    Bounded - The printed picture's size is bounded by Width Limit and Height
+      Limit.  For example, if the printed picture should be no bigger than
+      4.0 x 5.0 inches (but it could be smaller), set MaxWidth to 40, MaxHeight
+      to 50, and select Bounded.  This option is provided so that the text
+      settings (margins, lines per page, etc.) need not be changed every time
+      a graphic print is made.
+
+    Absolute - Width Limit and Height Limit are interpreted as absolute
+      values.  The printed picture's size is no longer bounded.  Rather, it is
+      the absolute size specified.  For example, if the printed picture should
+      be exactly 4.0 x 5.0 inches, set MaxWidth to 40, Width Limit to 50, and
+      select Absolute.  This completely overrides the aspecting feature of the
+      printer device.  Thus it is possible to get a very distorted (non-aspect
+      ratio correct) picture.  Setting one (but not both) of the dimensions to
+      zero aspect ratio corrects only that dimension.  Hence if Width Limit is
+      set to 40 and Height Limit to 0, then the printed picture will be 4.0
+      inches wide and as tall as necessary in order to be aspect ratio correct.
+      If both of the dimensions are zero then the printed picture will be the
+      printer's maximum dots wide and as tall as necessary in order to be
+      aspect ratio correct.
+
+    Pixels - Width Limit and Height Limit are interpreted as absolute values
+      in printer pixels rather than tenths of an inch.  Otherwise, the same
+      rules for the Absolute selection (Width Limit = 0 and Height Limit = 0)
+      apply.
+
+    Multiply - Width Limit and Height Limit are used to multiply the source
+      picture's width and height.  For instance, if you specified a WidthLimit
+      of 2 and a Height Limit of 4, the printed picture would be two times the
+      source picture's width pixels wide and 4 times the source picture's
+      height pixels high.  Thus if the source picture were 320 x 200, the
+      printed picture would be 640 (320 x 2) pixels wide and 800 (200 x 4)
+      pixels high.  The same rules for Absolute scaling (Width Limit = 0 and
+      Height Limit = 0) apply.  In addition, the benefits inherent to Integer
+      scaling are valid here.
+
+
+
+Tips for Generating Better/Faster Graphic Dumps
+-----------------------------------------------
+
+Faster
+------
+
+1. If you are dumping a 1 bitplane image select the B&W mode in preferences.
+   This is much faster than a grey-scale or color dump.
+
+2. Horizontal dumps are much faster than vertical dumps as they use the
+   blitter to read the pixel data.
+
+3. Smoothing doubles the print time.  Use it for final copy only.
+
+4. F-S dithering doubles the print time.  Ordered and halftone dithering
+   incur no extra overhead.
+
+5. The lower the density the faster the printout.
+
+
+Better
+------
+
+1. Friction fed paper tends to be much more accurate than tractor fed
+   paper in terms of vertical dot placement (ie. less horizontal strips or
+   white lines).
+
+2. Densities which use more than one pass tend to produce 'muddy' grey-scale
+   or color printouts.  It is recommended that you not chose these densities
+   when doing a grey-scale or color dump.
+

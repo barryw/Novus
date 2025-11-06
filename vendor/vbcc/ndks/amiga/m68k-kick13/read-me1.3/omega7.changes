@@ -1,0 +1,203 @@
+
+Omega 3 to Omega 4 changes
+==========================
+
+1) icon.library
+	crashed when passed a null array
+2) disk.info
+	icon position removed
+3) delete, copy
+	relative paths
+4) status
+	correct stack reported
+5) CopyPrefs
+	shell script added at marketing request
+6) Notepad
+	font crash problem fixed
+7) FFS
+	change made to remove need for SetFFS command
+8) SetFFS command removed
+
+9) IconX
+	was not correctly CDing to script directory
+10)Newcon
+	would not accept 0 or 1 character window names
+11)Shell
+	would not accept use of aliases in scripts
+12)Startup-Sequence
+	version changed
+13)version.library
+	version changed
+14)StartupII
+	aux: mount added
+15)Aux-handler
+	 replaced with quick BCPL aux:
+16)MountList
+	changed for AUX:
+17)SetPatch
+	optional r option to patch exec with 1 meg of chip ram for recoverable
+	ramdisk use
+18)Skip
+	can now skip backwards with ALL option
+
+		andy
+
+EXTRAS 1.3 changes for Omega 4
+
+FED
+Palette
+
+
+
+Omega 4 to Omega 5 changes
+==========================
+
+1)  SKIP
+    the ALL keyword was changed to BACK.
+
+2) Startup-Sequence, StartupII
+   these were modified...major changes...
+   LoadWB was moved into Startup-Sequence
+   fewer things were made resident
+
+3) version.library	
+   number updated
+
+4) Newcon:
+   work was done on the 'picking size and name out of open string' portion.
+
+5) CopyPrefs
+   A script to copy system-configuration from the current devs: to df0:Devs was
+   added
+
+6) LIST
+   use to break with patterns > 31 chars; now fixed.
+   the S option of list was renamed to SUB to avoid conflict with the S
+   directory.
+
+7) COPY
+   copy clone broke; now fixed
+
+8) Iconx
+   now can accept user input from commands, if the script starts
+   with .key or .<SPACE>
+
+9) Which
+   res option added to only search the resident list
+
+10) SetPatch
+   r option added to handle recoverable ram disk with > 1 meg chip ram, 
+   SetPatch also detaches itself now.
+
+11) FF 
+   no longer open the diskfont library unless it needs it.
+
+12) Format
+   use to leave the CLI WindowPtr at -1 if the disk was write protected
+
+13) LoadWB
+   no longer says release 1.2  (just says release)
+
+14) ChangeTaskPri
+   error message corrected to say Process rather than Task
+
+15) RUN
+   says process rather than Task
+
+16) NewCLI
+    says process rather than Task
+
+17) NewShell
+    says process rather than Task
+
+18) Resident
+    table format a little nicer; also says 0 for usecount if not in use
+    (rather than 1)
+
+19) The following printer drivers did an incorrect thing for
+    ESC[0m  (they canceled super/sub mode)
+    Xerox_4020, Quadram_QuadJet, HP_PaintJet, Okidata_293I, ImagewriterII,
+    EpsonXOld
+
+20) All printer drivers were moved onto the Extras disk
+   (except Generic)
+
+21) PrintFiles, ClockPtr, and MergeMem were moved onto the Workbench
+    disk
+
+22) A Workbench callable printer install script was added to the
+    Utilities drawer.  (InstallPrinter)
+
+23) MEmacs now parses the file name into a buffer name better, and correctly
+    updates the mode line when you have windows open on multiple screens
+
+24) Palette was recompiled with the current startup module
+
+25) IconMerge was recompiled with the correct startup module
+
+
+Omega 5 to Omega 6 changes
+==========================
+
+1) Copyright filenotes were re-added to the Adobe fonts
+2) Startup-Sequence 
+   version #, delay option used for LoadWB
+3) version.library
+   version # updated
+4) MEmacs
+   crash problem on window resize resolved
+   works with other size fonts
+   ^X^D extra character delete bug fixed
+   Menu size problem in Topaz 9 solved
+   Set backup option was reversed, now corrected
+   on a command line, the first character of an argument was eaten; fixed
+5) LoadWB
+   delay option added to avoid trashing disks
+6) Search
+   no longer leaves locks lying about when you control-C to break out
+7) Assign 
+   DISMOUNT keyword changed to REMOVE
+
+8) printer.device
+   dither problem solved
+
+
+Omega 6 to Omega 7 changes
+==========================
+
+1. EndCLI
+   message changed to CLI process ending
+2. Eval command
+   added
+3. IF
+   test for missing first argument removed; now works like
+   the documentation suggests.
+4. AUX-Handler
+   raw mode fixed
+5. More
+   now works with AUX:
+6. Diskcopy
+   appearance thing on redirection
+7. Diskdoctor
+   corrects incorrect boot block
+8. Format
+   doesn't leave lock on write protected disk
+   inhibit option now inhibits
+9. MountList
+   aux only needed 1000 stack
+10. Emacs
+    works in Hedley mode (doesn't open 320 screen)
+   (Jerry, please verify)
+11. FFS
+   returns no error on end of file (compatible with old fs)
+12. Startup-Sequence
+   version number updated
+13. version.library
+   version number updated
+14. List
+   negative dated files listed
+15. dates on disk
+   date of disk set to 28-jul-88 12:00
+
+
+

@@ -1,0 +1,76 @@
+
+audio
+=====
+audio.device now resets audio channels audio channels whenever they are
+allocated instead of only when they are freed or stolen.
+
+
+console.device
+==============
+The new console device re-establishes a keymap conversion buffer size of 127
+in a manner that won't blow up. This means that keys can be mapped to longer 
+strings.  It also fixes the sporatic errors reported from the console write 
+command.  The autodoc "rawinput.doc" is also updated.
+
+
+disk resource
+=============
+The disk resource was the cause of the extra
+reset after kickstarting.  This was a bug introduced early in the 1.2
+process, but was so benign that it was ignored.  It's now fixed.
+         
+
+narrator
+========
+new narrator.doc released
+
+
+parallel.device
+===============
+A new parallel device exists.  It not only has improved autodocs, but the Query
+function no longer tends to get "one"ey with each use (ORing w/o masking first).
+
+
+rawinput
+========
+Two bugs fixed, both doing with IO QUICK requests.  The first is that
+AddHandler, RemHandler, and AddEvent did not clear the quick bit
+when they did not complete the event immediately.
+
+The other bug is a race condition, where requests that are processed in
+the input task might get processed before "beginio" path is done with them
+(because the input task runs at a higher priority, and does not forbid
+around its critical path).  Fixed with a bandaid -- handler routines
+ALWAYS clear the quick bit.
+
+
+serial
+======
+MARK/SPACE now supported by serial device.
+
+The serial device has been fixed so that it does not touch bits in
+the CIA's registers that are not related to the serial port.
+
+A new improved serial device now waits 12 seconds, rather than 90 
+microseconds, before giving up on CTS/RTS handshaking.
+
+
+trackdisk
+=========
+The documentation for trackdisk driver is now on the disk
+New trackdisk.doc
+
+        actual step rate now down to 3.6msec. The specs for fine tuning this
+        are in this directory. look at trackdisk.h
+        See tdu_StepDelay,tdu_SettleDelay.
+        These parameters are extremely hardware dependant!  This     
+        means that values that may work for a 68000 may not work for a
+        68010 as well as a 68020 or a faster clock, etc. If you decide
+        the ^[ ^] keys do not generate correct ascii codes.
+
+that you must play with this the be aware of the consequences.
+
+timing problem with 68020 and new external disk drives fixed.
+
+
+

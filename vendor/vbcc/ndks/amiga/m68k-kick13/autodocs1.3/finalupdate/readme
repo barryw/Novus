@@ -1,0 +1,14 @@
+
+   This "FinalUpdate" directory contains the few files needed to update
+your 1.3 Omega 7 kit to Final.
+
+   Small.lib is a small linker lib useful for assembler programmers.  It
+contains only the LVO's from Amiga.lib.
+
+   The Includes subdirectory contains the four include files which changed
+between Omega 7 and release.  MODE_READWRITE 1004 was added to both the
+libraries/dos.h and dos.i files.  And the comments in devices/prtgfx.h
+and prtgfx.i file were changed to mark private printer.device fields as
+PRIVATE - DO NOT USE.
+
+

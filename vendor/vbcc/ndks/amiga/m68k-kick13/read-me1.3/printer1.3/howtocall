@@ -1,0 +1,590 @@
+
+           Programmer Notes on Calling the V1.3 Printer Device
+           ---------------------------------------------------
+
+			by David Berezowski
+
+The printer device has been exetensively revised under V1.3 of the Amiga 
+system software.  The following programmer's notes are presented to help
+you take full advantage of those changes in your application software.
+These notes assume that you are already familiar with how the printer
+device works - for more information, see the ROM Kernel manual.
+
+
+Arguments to DumpRPort
+----------------------
+
+io_Command      PRD_DUMPRPORT.
+io_RastPort     pointer to a RastPort - could be in fastmem.
+io_ColorMap     pointer to a ColorMap - could be your own custom one.
+io_Modes        the 'modes' flag from a ViewPort structure (you can fake
+                it but the upper word is reserved and should be zero).
+io_SrcX	        x offset into the RastPort to start printing from.
+io_SrcY	        y offset into the RastPort to start printing from.
+io_SrcWidth     width of the RastPort to print from io_SrcX.
+io_SrcHeight    height of the RastPort to print from io_SrcY.
+io_DestCols     width of the printout in printer pixels.
+io_DestRows     height of the printout in printer pixels.
+io_Special      flag bits - these are explained below.
+
+
+
+The Old Special Flags
+---------------------
+
+SPECIAL_MILROWS and SPECIAL_MILCOLS - the associated parameter is specified
+in thousandths of an inch on the printer;  ie. if DestCols = 8000, and
+DestRows = 10500 then the printout would be 8.000 x 10.500 inches.
+
+SPECIAL_FULLROWS and SPECIAL_FULLCOLS - the specific dimension is set to the
+maximum possible as determined by the printer limits or the configuration
+limits, whichever is less.
+
+SPECIAL_FRACROWS and SPECIAL_FRACCOLS - the associated parameter is taken 
+to be a longword binary fraction of the maximum for that dimension; ie. if
+SPECIAL_FRACCOLS is set and DestCols = 0x8000 then the width of the dumped
+picture would be 1/2 (0x8000 / 0xffff) the width of the paper.
+
+SPECIAL_CENTER - the image will be automatically centered.
+
+SPECIAL_ASPECT - one of the dimensions may be reduced or expanded to 
+preserve the aspect-ratio of the print.
+
+SPECIAL_DENSITY (1-4) - see SPECIAL_DENSITY (1-7) under the new flags.
+
+SPECIAL_TRUSTME - the printer specific driver is instructed to not issue a
+reset command before and after the dump.  If this flag is NOT checked by the
+printer specific driver then setting this flag has no effect.  Since we now
+recommend that printer driver writers no longer issue a reset command (ever)
+it is probably a good idea to always set this flag when calling for a dump.
+
+
+The New Special Flags
+---------------------
+
+SPECIAL_DENSITY1 to SPECIAL_DENSITY7 - Allows for a maximum of 7 print
+densities.  DENSITY1 is the lowest density and the default.  Any printer's
+actual density for each setting can be determined programatically using the
+SPECIAL_NOPRINT flag described below.  THESE FLAGS ARE NOW OBSOLETE AS THEY
+ARE OVERRIDDEN BY THE DENSITY SETTING IN PREFERENCES.  IF YOU WANT TO CHANGE
+THE DENSITY, REFER TO THE SECTION ON CHANGING THE PRINTER DEVICE'S COPY OF
+PREFERNCES.
+
+SPECIAL_NOFORMFEED - Allows for the mixing of text and graphics or multiple
+graphic dumps on page oriented printers (usually laser jet printers).  When
+this flag is set the page will not be ejected after a graphic dump.  If you
+perform another graphic dump without this flag set OR close the printer device
+after printing text after a graphic dump, the page will be ejected.  This
+flag MUST be set if you are doing strip printing (covered later on in this
+article).
+
+SPECIAL_NOPRINT - Performs internal calculations, doesn't print and exits.
+This gives the calling program a chance to see what the printer specific
+values are for any given density.  This is useful for determine the dot 
+density and the maximum dots the printer has for any given density.  
+
+This option also computes the final print size, and sets 'io_DestCols' and
+'io_DestRows' in the calling program's 'IODRPReq' structure.  This allows 
+the calling program to see what the final print size would be in printer 
+pixels.  Note that it modifies the 'io_DestCols' and 'io_DestRows' fields of
+your 'IODRPReq' structure.
+
+
+
+Data Structures
+---------------
+
+The printer data structures can be read once you have opened the printer
+device. Below is a code fragment to show how to do this.
+
+	#include <exec/types.h>
+	#include <devices/printer.h>
+	#include <devices/prtbase.h>
+
+	struct IODRPReq PReq;
+	struct PrinterData *PD;
+	struct PrinterExtendedData *PED;
+
+	/* open the printer device  if it opened... */
+	if (OpenDevice("printer.device", 0, &PReq, 0) == NULL) {
+
+		/* get pointer to printer data */
+		PD = (struct PrinterData *)PReq.io_Device;
+
+		/* get pointer to printer extended data */
+		PED = &PD->pd_SegmentData->ps_PED;
+
+		/* let's see what's there */
+		printf("PrinterName = '%s', Version=%u, Revision=%u",
+			PED->ped_PrinterName, PD->pd_SegmentData->ps_Version,
+			PD->pd_SegmentData->ps_Revision,);
+
+		printf("PrinterClass=%u, ColorClass=%u",
+			PED->ped_PrinterClass, PED->ped_ColorClass);
+
+		printf("MaxColumns=%u, NumCharSets=%u, NumRows=%u",
+			PED->ped_MaxColumns, PED->ped_NumCharSets,
+			PED->ped_NumRows);
+
+		printf("MaxXDots=%lu, MaxYDots=%lu, XDotsInch=%u,YDotsInch=%u",
+			PED->ped_MaxXDots, PED->ped_MaxYDots,
+			PED->ped_XDotsInch, PED->ped_YDotsInch);
+
+		CloseDevice(&PReq); /* close the printer device */
+	}
+
+If you want the user to be able to access printer preferences without actually
+having to run Preferences (like DPAINT II's printer requester does), then use
+the code fragment above to examine the current settings.  This can be done by
+refering to 'PD->pd_Preferences'.  Note that the printer device must already
+be opened at this point.  
+
+Next, put up a requester and allow the user to change whatever parameters
+they choose.  Remember, you are responsible for range checking these
+selections.  Listed below are the printer preferences items and their valid
+ranges.
+
+
+Text Preferences
+----------------
+PrintPitch          - PICA, ELITE, FINE.
+PrintQuality        - DRAFT, LETTER.
+PrintSpacing        - SIX_LPI, EIGHT_LPI.
+PrintLeftMargin     - 1 to PrintRightMargin.
+PrintRightMargin    - PrintLeftMargin to 999.
+PaperLength         - 1 to 999.
+
+Graphic Preferences
+-------------------
+PrintImage      - IMAGE_POSITIVE, IMAGE_NEGATIVE.
+PrintAspect     - ASPECT_HORIZ, ASPECT_VERT.
+PrintShade      - SHADE_BW, SHADE_GREYSCALE, SHADE_COLOR.
+PrintThreshold  - 1 to 15.
+PrintFlags      - CORRECT_RED, CORRECT_GREEN, CORRECT_BLUE, CENTER_IMAGE,
+                  IGNORE_DIMENSIONS, BOUNDED_DIMENSIONS, ABSOLUTE_DIMENSIONS,
+                  PIXEL_DIMENSIONS, MULTIPLY_DIMENSIONS, INTEGER_SCALING,
+                  ORDERED_DITHERING, HALFTONE_DITHERING, FLOYD_DITHERING,
+                  ANTI_ALIAS, GREY_SCALE2.
+PrintMaxWidth   - 0 to 65535.
+PrintMaxHeight  - 0 to 65535.
+PrintDensity    - 1 to 7.
+PrintXOffset    - 0 to 255.
+
+
+Asynchronous IO
+---------------
+
+We recommend that you use asynchronous IO for printing in your programs and
+give the user a way of aborting all requests.  Here are the notes on the 
+recommended way to do this.
+
+To send requests for IO:
+
+	struct IORequest *ioreq;
+	struct MsgPort *port;
+	UBYTE signal;
+
+	port = ioreq->io_Message.mn_ReplyPort;
+	signal = port->mp_SigBit;
+
+	SendIO(ioreq); /* send request */
+	Wait(signal); /* wait for completion (go to sleep) */
+	while ((Msg = GetMsg(port)) != NULL) { /* get ALL messages */
+	}
+
+
+To abort a previous request for IO use:
+
+	struct IORequest *ioreq;
+
+	AbortIO(ioreq); /* abort request */
+	WaitIO(ioreq); /* wait for reply */
+	/* at this point you can re-use 'ioreq'. */
+
+
+In the code fragments above 'ioreq' could be any one of:
+
+    a) struct IOStdReq    /* a standard i/o request */
+    b) struct IODRPReq    /* a dumprport i/i request */
+    c) struct IOPrtCmdReq /* a printer command i/o request */
+
+
+Strip Printing
+--------------
+
+Strip printing is a technique which allows you to print a picture that
+normally requires lots of memory when you only have a little to spare.
+This trick works by creating a temporary rastport as wide as your source
+rastport but not as high.  You then render a horizontal strip of your source
+rastport into the temporary rastport and dump it, moving down your rastport
+for each dump. 
+
+The height of the strip must be an integer multiple of the printer's NumRows
+if you are doing a non-aspect-ratio-corrected picture.  You can find NumRows 
+by checking PED->ped_NumRows with the code fragment shown above. 
+
+If you are doing an aspect-ratio-corrected picture then you'll have to use 
+the SPECIAL_NOPRINT flag to find a DestRows that is an integer multiple of 
+NumRows.  You do this by varying your source height and asking for a 
+SPECIAL_NOPRINT dump until DestRows comes back with a number that is an 
+integer multiple of NumRows. 
+
+Another consideration to keep in mind is that DestRows should also be
+evenly divisible by 4 since the printer device uses a 4x4 dither matrix.
+You only need to worry about this if you are doing a grey-scale or color
+dump as b&w dumps do not do any dithering.  Fortunately most printers have
+a NumRows that is evenly divisible by 4.
+
+If you are going to do strip printing and you want SMOOTHING to work across
+strip boundaries, you must add a raster line above and below the actual area
+that you are printing.  The line above should be the last line from the
+previous strip.  The line below should be the first line from the next strip.
+Don't forget to omit the line above on the first strip, and the line below
+on the last strip.
+
+So if your source data is 200 lines high and you are printing in strips of
+50 lines (ie. 4 separate dumps), your strip rastport will need to be 52 
+lines high.  Below is one scenario for doing the dump:
+
+        1st strip - copy source line 0 thru 50 (51 lines) to strip rastport
+                    lines 0 thru 50 (51 lines).
+
+                  - io_SrcY = 0, io_Height = 50.
+
+                  - here the printer device can see that there is no line
+                    above the first line to dump (since SrcY = 0) and that
+                    there is a line below the last line to dump (since we
+                    have a 52 line rastport and are only dumping 51 lines).
+
+
+        2nd strip - copy source line 49 thru 100 (52 lines) to strip rastport
+                    lines 0 thru 51 (52 lines).
+
+                  - io_SrcY = 1, io_Height = 50.
+
+                  - here the printer device can see that there is a line
+                    above the first line to dump (since SrcY = 1) and that
+                    there is a line below the last line to dump (since we have
+                    a 52 line rastport and are only dumping 50 lines).
+
+        3rd strip - copy source line 99 thru 150 (52 lines) to strip rastport
+                    lines 0 thru 51 (52 lines).
+
+                  - io_SrcY = 1, io_Height = 50.
+
+                  - here the printer device can see that there is a line
+                    above the first line to dump (since SrcY = 1) and that
+                    there is a line below the last line to dump (since we
+                    have a 52 line rastport and are only dumping 50 lines).
+        
+        4th strip - copy source line 149 thru 199 (51 lines) to strip rastport
+                    lines 1 thru 51 (51 lines).
+
+                  - io_SrcY = 2, io_Height = 50.
+
+                  - here the printer device can see that there is a line
+                    above the first line to dump (since SrcY = 2) and that
+                    there is no line below the last line to dump (since we
+                    have a 52 line rastport and are dumping only 50 lines).
+             
+
+Error Codes
+-----------
+
+If an error comes back to you please try and relay this back to the user
+instead of simply not printing.  Current errors and descriptions are:
+
+	PDERR_NOERR		/* clean exit, no errors */
+	PDERR_CANCEL		/* user canceled print */
+	PDERR_NOTGRAPHICS	/* printer cannot output graphics */
+	PDERR_INVERTHAM		/* OBSOLETE */
+	PDERR_BADDIMENSION	/* print dimensions illegal */
+	PDERR_DIMENSIONOVFLOW	/* OBSOLETE */
+	PDERR_INTERNALMEMORY	/* no memory for internal variables */
+	PDERR_BUFFERMEMORY	/* no memory for print buffer */
+
+
+12 Bit Planes
+-------------
+
+The V1.3 printer device can dump up to 12 bit planes of data from either 
+chip or fast memory; use this to your advantage.  Assume we are using a 
+package called YAD (Yet Another Digitizer) that captures data as 24-bit RGB
+files and displays them on the Amiga in HAM mode.  When YAD goes to print 
+it simply does a screen dump of the HAM image.  
+
+Well we all know that the HAM image is only an approximation of the real 
+colors.  Wouldn't it be nice if YAD had an option whereby it would build 
+a 12-bit plane image in fastmem and dump that to the printer.  This would
+produce much better looking output as each pixel could be any 1 of 4096
+colors - with none of the HAM limitations!
+
+
+Large Bit Maps
+--------------
+
+Another new feature you can exploit is the ability of the V1.3 printer 
+device to dump very large bitmaps from either chip or fast memory.
+Suppose we have an application called YART (Yet Another Ray Tracer) that 
+ray traces images to the screen in 320x400 resolution.  When YART goes to
+print it simply does a screen dump of the low res 320x400 screen.  We 
+could expand the printed image to a size of 1280x1600 but then each single
+screen pixel is expanded to a (rather chunky) 4x4 block of printer pixels.
+
+Wouldn't it be nice if YART had an option that would allow us to create a
+1280x1600 image in fastmem or on disk and then dump that.  This would 
+produce a very impressive picture as 1 source pixel would correspond to 1 
+printer pixel (ie. no jaggies)!
+
+
+Aspect Ratio
+------------
+
+When dumping a non-displayed rastport you have two choices for aspect-ratio
+correction.  You can either do it yourself or let the printer device do it
+for you.
+
+        Doing it Yourself
+
+        a) You must look at the printer's XDotsInch and YDotsInch and
+           account for the fact that the printer may not have square
+           pixels.  You can then ask for a non-aspect-ratio-corrected
+           dump; probably a 1:1 dump.
+
+        Letting the Printer Device Do It
+
+        a) You could build your rastport such that the dimensions are an
+           integer multiple of one the Amiga's normal display resolutions
+           and then set the io_Modes argument to an appropriate value.
+	   
+           For example, if your rasport dimensions were 1280 x 800 (an even
+           multiple of 640 x 400) you would want to set io_Modes to
+           'LACE | HIRES'.  Now the normal aspect-ratio correction code
+           of the printer device will work correctly (if you turn it on).
+
+        b) You could build an arbitrary sized rastport and set
+           GfxBase->NormalDPMX and GfxBaseNormalDPYM to the dimensions
+           of your rastport.  You would then ask for a aspect-ratio-corrected
+           dump and the printer device will figure it all out.  If you use
+           this option you must restore GfxBase->NormalDPMX and
+           GfxBaseNormalDPYM to their previous values after the dump. 
+
+           I know that math scholars among you are probably saying,
+           'Hey, if I have a square rastport, can't I just set DPMX and DPMY
+           both to 1?'.  Mathematically this is correct BUT for mysterious
+           reasons DPMX and DPMY must always be >= 182.  So if you have a
+           a square rastport you can set DPMX and DPMY to 182.
+
+
+12 Bit Planes and Large Bit Maps
+--------------------------------
+
+Obviously the above two techniques require that the system have quite
+a bit of memory floating around; but they do have their uses.  Large bit maps
+can be utilized by paint, desktop publishing, CAD and ray tracing programs
+to produce printed output to the resolution of the output device.  Remember
+that the printer's resolution can be determined programatically by looking at
+the PED structure discussed earlier.  Twelve bit plane rastports can be used
+to produce printed output which exceeds the Amiga's HAM display limitation. 
+Combining these two techniques can give amazingly good printed output.
+
+
+Miscellaneous Items
+-------------------
+
+There are two final items to consider when writing applications that use
+the new V1.3 printer device.  The first is, whenever the printer device 
+is opened it grabs a copy of Preferences.  For this reason, we  recommend
+that when you want to print you open the printer device, print, and close
+the printer device.  If you leave the printer device open you'll never 
+know about user changes to Preferences.
+
+And finally, if your application is working in one bit plane (black&white)
+it is recommended that you perform a b&w (vs a grey-scale or color) dump 
+as they are the fastest.  Don't forget to set the threshold value.
+
+                Changes to the Printer Device for V1.3
+                --------------------------------------
+                        by David Berezowski
+
+
+
+One area of the Amiga system software that has been extensively revised
+under the V1.3 Workbench is the printer drivers.  The purpose of this 
+article is to summarize those changes. 
+
+
+User Enhancements
+-----------------
+
+
+1. Speed - the V1.3 printer device is anywhere from 5 to 30 times faster
+           than the V1.2 printer device.  The speed increase depends on a
+           number of factors such as type of printer (ink-jet, dot matrix, 
+           or thermal transfer), shade of picture (bw, grey-scale or color),
+           aspect of picture (horizontal or vertical), amount of white-space
+           and color in the picture, and the type of printer driver (V1.3 
+           printer drivers are much faster than their V1.2 counterparts).
+           In general the speed of printouts is now printer or IO bound and
+           not CPU bound.
+
+2. Center  - the printer device now automatically centers the picture if 
+             the flag 'SPECIAL_CENTER' is turned on in io_Special or if 
+             the user has turned on the Center gadget in Preferences. 
+
+3. Density - graphics print density is now user selectable.
+
+           - all printer drivers support multiple densities if the
+             printer has them.
+
+4. Dithering - there are now three user selectable dithering modes.
+
+5. Scaling   - the scaling method is now user selectable.
+
+6. Smoothing - this provides smoothing of diagonal lines.
+
+7. Left Offset - the left offset may now be exactly defined by the user.
+
+8. Color Correction - this provides a closer matching of screen colors 
+                      to printer colors.
+
+9. Height and Width - printout height and width may now be exactly defined
+                      by the user.
+
+10. HAM pictures - these can now be printed from any valid starting x
+                   position as as opposed to the previous limitation of
+                   starting from an x position of 0.  Inverted HAM pictures
+                   are now supported as well.
+
+11. Preferences -  there are a new set of Preferences selections for the
+                   printer device.  Refer to the article on V1.3 Preferences
+                   for a detailed explanation.
+
+
+
+Programmer Enhancements
+-----------------------
+
+1. Multi-pass    - printers which require multiple passes of the color info
+                   (such as the CalComp_ColorMaster) are now supported via a
+                   new ColorType of 'PCC_MULTI_PASS' and a new 'case 6' in
+                   the render.c file.
+
+2. Page Ejection - a new flag called 'SPECIAL_NOFORMFEED' has been added to
+                   accommodate page oriented printers like the H-P LaserJet
+                   and the CalComp_ColorMaster .  This flag allows the mixing
+                   of text and graphics modes on the same page.
+
+3. Density - a new flag called 'SPECIAL_NOPRINT' has been added to allow the
+             calling program to see the effect of changing the density 
+             without actually doing a dump.
+
+4. PrintSize - a new flag called 'SPECIAL_NOPRINT' has been added to allow
+               the calling program to see the final width and height (in
+               printer pixels) of the printed picture without actually
+               doing a dump.
+
+5. Overflow - the error 'PDERR_DIMENSIONOVFLOW' is now obsolete.  In the 
+              past if a dump was requested that was larger than the 
+              printer's capabilities, this error would be returned.  Now the
+              driver gives you a dump as large as possible while keeping it
+              within the printer's capabilities.
+
+6. Query status - a new command 'PRD_QUERY' has been added which returns the
+                  IO status of the printer.  See the autodoc description at
+                  the end of this article.
+
+
+
+Bug Fixes
+---------
+
+1. There is no longer a memory loss when aborting - via AbortIO - an
+   asynchronous printer request.  In particular, aborts from DPaint II 
+   no longer lose any memory.
+
+2. The rounding error in the MILROW/MILCOL calculations is corrected.
+
+3. The printer device can now support very large source/destination sizes 
+   and large dot densities.  This means that a 2048 x 2048 rastport could be
+   dumped to a 8.0 x 10.0 inch picture with 600 x 600 dpi. (ie. 2048 x 2048
+   source picture to a 4800 x 6000 destination size).
+
+4. The calculation for the intensity of black on grey scale printouts was
+   slightly in error.  It had 1/256 too much green and 1/256 too little
+   blue in it.
+
+5. The V1.2 release was limited to working with a maximum of 8 bitplanes.
+   This release is now able to go up to 12 bitplanes which allows one
+   to have a rastport with all of the 4096 colors in it.  We have
+   successfully created and printed a 12 bitplane rastport here at CBM.
+
+6. The alpha command 'word center' has been fixed.  This has never worked.
+
+7. An IO bug which has been present since the V1.0 release has finally been
+   fixed.  This bug occurred when an AbortIO/WaitIO was followed immediately
+   by a DoIO or SendIO using the same IO request that was aborted.  The
+   abort would never succeed and the DoIO or SendIO command would probably
+   not get executed.  This is the final known bug with respect to aborting
+   or canceling requests.
+
+8. The aJFY3 (letter space justify) and aJFY1 (word fill / auto center)
+   commands have never been sent to the printer.  They now are when
+   all justification (left, right, or full) is off.
+
+9. All printer drivers no longer issue a linefeed when told to initialize
+   the printer.  This has been a bug since the original V1.0 software.
+
+10. A 'case 5' render call is now made when the printer device is opened.
+   This allows the printer driver to initialize the fields MaxXDots, MaxYDots,
+   XDotsInch, YDotsInch, MaxColumns, etc. based on the density setting.
+
+
+
+******* printer.device/Query ****************************************
+*
+*   NAME
+*   Query - query printer port/line status
+*
+*   FUNCTION
+*   This command returns the status of the printer port's lines and registers.
+*   Since the printer port uses either the serial or parallel port for IO,
+*   the actual status returned is either the serial or parallel port's status.
+*
+*   IO REQUEST
+*   io_Message  mn_ReplyPort set if quick IO is not possible
+*   io_Device   preset by the call to OpenDevice
+*   io_Command  PRD_QUERY
+*   io_Data     ptr to 2 UBYTES where result will be stored.
+*
+*   RESULTS
+*     io_Data          BIT  ACTIVE  FUNCTION (SERIAL DEVICE)
+*
+*             LSB       0    low    reserved
+*                       1    low    reserved
+*                       2    low    reserved
+*                       3    low    Data Set Ready
+*                       4    low    Clear To Send
+*                       5    low    Carrier Detect
+*                       6    low    Ready To Send
+*                       7    low    Data Terminal Ready
+*             MSB       8    high   read buffer overflow
+*                       9    high   break sent (most recent output)
+*                      10    high   break received (as latest input)
+*                      11    high   transmit x-OFFed
+*                      12    high   receive x-OFFed
+*                   13-15           reserved
+*
+*
+*     io_Data          BIT  ACTIVE  FUNCTION (PARALLEL DEVICE)
+*
+*                       0     low    printer selected
+*                       1     low    paper out
+*                       2     hi     printer in busy toggle (offline)
+*                       3      -     read=0, write=1
+*                     4-7            reserved
+*
+*     io_Actual       1-parallel, 2-serial
+*
+**********************************************************************
+

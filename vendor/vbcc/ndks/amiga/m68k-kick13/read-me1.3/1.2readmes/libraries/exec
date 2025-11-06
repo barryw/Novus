@@ -1,0 +1,74 @@
+
+EXEC
+====
+
+        expansion architecture now in kickstart!
+        Big side affect is that many system data structures should   
+        now appear in fast memory if it is available. This is true of
+        SysBase and GfxBase. So beware!
+        Bug fix, exec now correctly sets AFB_68881 in AttnFlags
+        No more multitasking problems with 68020/68881 combinations 
+(RSN)
+
+Moderate changes to exec.  Two feature areas: we now have support
+for finding code modules in ram at system bring up time (this lets
+us ignore or add to modules in ROM) This new exec has a fully working 
+"romtags in ram" facility.  This
+will allow one to override individual modules in kickstart.  In
+addition, new modules may be added to the system.
+
+In addition several bugs were fixed.  AllocAbs() was rewritten from
+scratch to make it work.  The exec library structure was not properly
+kept-- LIB_POSSIZE and LIB_NEGSIZE were incorrect.  In addition exec
+used to write over the top of legal memory on system boot.
+
+included seperate file, the latest exec.doc
+Exec has new functions to deal with SignalSemaphore's.
+
+There is one open design issue on this stuff.  Because this "romtags
+in ram" is ram-based, there is a possibility of trashing the list
+due to an errant program.  Currently the "directory" information
+for the ramtags is checksummed, but not the actual code and data.
+This makes it possible to link in normal C code.  However, it
+means that a program can be trashed and your system will infinitely
+loop, until the machine is powered off.
+
+New functions:  AddMemList()   adds memory to the system
+                InitSemaphore(), ObtainSemaphore()  for signal
+                           
+semaphores
+               CopyMem()   fast, safe memory mover
+               SumKickData()
+
+For more information, see the autodocs.
+
+Finally, of interest only for those of us who write exec code, exec
+will ignore the old execbase if the version or revision of exec
+has changed.
+
+exec/alerts.h exec/alerts.i
+there is a new revision of
+alerts.h and alerts.i... removed "unused" alerts from
+graphics.library section of alerts.h and .i
+added "new" alerts to the same section 
+
+has support for the 68881 in a multitasking environment.  Also has some
+of its autodocs changed to the "new" format.  
+
+Bug fix to AttemptSemaphore.
+Finally has the docs for the semaphores (they were in the wrong format 
+before, so didn't get included).
+
+Fix to FindTask().  You can now use FindTask to find yourself.
+
+There was a bug in exec when using 68881 & 68020, specifically in
+saving/restoring a "mid-instruction stack frame".  It's fixed.
+
+exec now has has a different alert text if it is a recoverable alert.
+
+Two changes:  freeing zero bytes of memory will no longer cause an alert
+(this fixes 1.1 serial.device); and processor traps now alert as
+"software failure" rather than "recoverable alert" (this is a bug
+introduced in beta-6).
+
+

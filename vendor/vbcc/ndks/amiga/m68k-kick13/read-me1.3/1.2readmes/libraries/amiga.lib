@@ -1,0 +1,19 @@
+
+Amiga.lib
+=========
+
+bug fixed in fpa (motorola ffp to ascii). It used to tromp
+all over memory. There is a new one (native amiga only) on this disk.
+
+RemTOF():
+   RemTOF used to do nothing... now it calls RemIntServer(INTB_VERTB,i).
+   Use AddTOF(), RemTOF() for VBLANK user interrupt server management.
+
+fgetc() in amiga.lib now uses Read instead of ReadChar.
+Please let me know if this breaks any programs.
+
+Bug fix in CreatePort: did not notice if AllocSignal() failed.
+
+amiga.lib, rom.lib brings graphics/intuition entry points up to date.
+
+

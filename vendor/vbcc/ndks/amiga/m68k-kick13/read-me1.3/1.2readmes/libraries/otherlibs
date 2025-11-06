@@ -1,0 +1,63 @@
+
+info.library
+============
+fixed bug wherein info would not respond to info-request of a disk
+on which no Disk.info is present.
+Also can now create a Disk.info if user selects
+SAVE.version.library,use this to get the current workbench version
+number.
+
+new info.library to fix the add-tooltypes bug
+
+
+
+layers.library
+==============
+Fix of SizeLayer/MoveLayer with superbitmap window.
+It used to trash the bits if the scroll position was other than 0,0.
+
+BeginUpdate now assumes it has enough memory unless proven otherwise.
+
+
+
+math libraries
+==============
+mathffp now supports Ceil, Floor
+
+IEEEDPFix() in mathieeedoubbas.library now returns 0 instead of the 
+error value 107 when there is an overflow.
+
+The ieee double precision math library should now be re-entrant .
+
+
+mathtrans
+=========
+ArcSin/ArcCos routines re-written.
+They are about 2000% faster and give better results for Sin ~= 1.
+
+
+
+ramlib
+======
+New ramlib breaks recursion path when out of memory:
+it used to be that we might try and UnLoadSeg() when
+out of memory.  If you had a small stack (under 1500
+bytes left) you would get blown out of the water.
+
+The new ramlib now uses its own copy of unloadseg, which
+only requres 200 bytes.
+
+There is still some potential bugs in the disk handler
+with insufficient stack space.
+
+
+strap
+=====
+finally recoded to NOT open Intuition.
+
+
+translator
+==========
+new translator.doc released
+
+

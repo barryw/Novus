@@ -25,16 +25,16 @@ public class CompilerOptions
     [Option("emit-ir", Required = false, HelpText = "Emit IR (intermediate representation) to stdout")]
     public bool EmitIr { get; set; }
 
-    [Option("vbcc-path", Required = false, HelpText = "Path to VBCC installation (default: $VBCC or ~/amiga-cc/vbcc)")]
+    [Option("vbcc-path", Required = false, HelpText = "Path to VBCC installation (default: vendored VBCC or $VBCC)")]
     public string VbccPath { get; set; } = Environment.GetEnvironmentVariable("VBCC")
-        ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "amiga-cc", "vbcc");
+        ?? Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "vendor", "vbcc");
 
     [Option("ndk-path", Required = false, HelpText = "Path to NDK installation (default: $NDK or ~/amiga-cc/NDK3.9)")]
     public string NdkPath { get; set; } = Environment.GetEnvironmentVariable("NDK")
         ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "amiga-cc", "NDK3.9");
 
-    [Option('O', "optimize", Required = false, Default = 2, HelpText = "Optimization level (0-3, default: 2)")]
-    public int OptimizationLevel { get; set; } = 2;
+    [Option('O', "optimize", Required = false, Default = 0, HelpText = "Optimization level (0-3, default: 0 - VBCC -O1/-O2 breaks stack struct field access)")]
+    public int OptimizationLevel { get; set; } = 0;
 
     [Option('v', "verbose", Required = false, HelpText = "Verbose output")]
     public bool Verbose { get; set; }

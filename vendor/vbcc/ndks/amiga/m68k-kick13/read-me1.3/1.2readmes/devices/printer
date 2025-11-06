@@ -1,0 +1,52 @@
+
+Printer
+=======
+
+new printer device
+bug fix, now handles character >=160
+
+printer.device:
+no more memory loss when canceling a print.
+supports PAL screen sizes.
+Only does an aRIN (which produces a linefeed) if printer preference variables
+are changed.
+
+The printer.device now only reloads the printer dependent
+portion when necessary. (finally!)
+The printer device code to only reinitialize the printer when
+preferences have been changed now works.
+All printers now have a defined extended character set for
+characters > 159. (ie, the Amiga foreign characters)
+The Okimate-20 now supports colored text.  (But don't use it
+unless you have a LOT of ribbons available.)
+
+printer.device: DISABLE/ENABLE now surround the printer status checking code.
+
+New imagewriter driver is now available. 
+This one has improved foreign constructed characters.
+
+Some of the printers had their extended character sets turned
+off in the last release.  This has been corrected.
+
+There is a new driver for the ibm compatible okidata292.
+
+The printer device no longer crashes in the following case:
+- it tries to put up a requester to tell the user to turn on the printer.  
+- it checks the WindowPtr field in the calling  process's Process structure 
+- the WindowPtr field is a -1 (indicating that all error messages
+are to be returned to the calling program)
+The new printer device returns a PD_CANCEL (== 1) instead of crashing
+and burning.
+
+By the way, tasks calling the printer.device work as before, always putting
+up the error requester in the workbench screen.
+
+Problem: Okimate prints English pound sign instead of #.
+This also happens using the PAR: device, and V1.1.  This
+seems to be something in the printer's ROMs, rather than
+something we can effect.
+
+Printer device can now properly dump HAM screens that modify
+off border color in the first pixel of a scan line.
+
+

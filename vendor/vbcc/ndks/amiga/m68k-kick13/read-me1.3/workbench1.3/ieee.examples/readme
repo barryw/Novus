@@ -1,0 +1,19 @@
+
+                           Ieee.Examples
+                           =============
+
+The files on this disk are copyrighted and proprietary.  In addition, all
+files related to 1.3 or future products are preliminary and subject to
+change.  All files and programs are supplied as-is and are not warranted
+as to completeness, accuracy, or suitability for any particular purpose.
+
+
+This drawer contains:
+
+Ffuz.c - Copyright (c) 1988 Microbotics, Inc. and David Milligan
+         Used with the permission of Microbotics
+
+Div0 - Sources to divide by zero routine showing how to capture a trap
+       in 68000 and 68020/881 based systems (they're different)
+
+

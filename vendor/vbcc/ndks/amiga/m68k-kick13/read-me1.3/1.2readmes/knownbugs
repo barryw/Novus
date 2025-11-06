@@ -1,0 +1,32 @@
+
+KNOWN 1.2 BUGS
+==============
+
+    1. ScrollRaster() left or right in a SuperBitmap window can consume
+       memory if there is no TmpRas attached to the window's RastPort.
+       Workaround: allocate/initialize/attach a TmpRas
+
+    2. Memory can be corrupted if a Drawer in the Ram Disk window is
+       discarded via the WorkBench menu selection "Discard".
+       (Note - this is caused by ExNext() on already deleted files)
+       Workaround: Delete from CLI or open the drawer and discard
+                   contents of the drawer before discarding drawer.
+
+    3. A SPECIAL_FULLCOLS|SPECIAL_FULLROWS dumprport request with
+       0 specified for DestCols and DestRows will improperly result
+       in an aspected dump.  
+       Workaround: Specify a non-zero value for DestCols and DestRows
+
+    4. Delay(0) or WaitForChar(file,n) where n is a very low number
+       or especially 0 or 1, can cause a timer device problem
+       leading to trashed disks.
+
+       Developers Note:
+          WaitForChar() can't be used on a interactive stream.
+
+    5. In a pre-drawn requester, it is reported that string gadgets
+       can not be used because their text is not rendered.
+
+    6. It is reported that MODE_READWRITE does not work in ram:.
+
+

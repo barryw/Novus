@@ -1,0 +1,37 @@
+
+Amiga.lib
+=========
+
+This is the 1.3 Amiga.lib.  It should include new stubs/LVO's for all
+of the new 1.3 mathieee and diskfont functions.
+
+Mathieeedoubbas_lib.lib, mathieeedoubtrans_lib.lib, and diskfont_lib.lib
+have also been provided individually for any developers who might need
+them in that form.
+
+Debug.lib and Ddebug.lib
+========================
+
+Debug.lib is a low level 9600 baud serial debugging library, containing
+serial input and output functions as described in Appendix B of the
+Addison-Wesley Rom Kernel Manual Exec.  Debug.lib is useful for debugging
+when you are unable to use stdio output. (iei, within tasks, interrupts,
+drivers, etc.)
+  
+Ddebug.lib is a parallel version of debug.lib.
+It is useful for debugging serial applications, or for debugging to
+a parallel printer when a serial terminal is not available.
+The functions have the same names as those in debug.lib except the
+initial 'k' is instead 'd' (example dprintf() instead of kprintf()).
+Only the debug.lib output functions have been implemented in ddebug.lib.
+
+
+Small.lib
+=========
+
+Small.lib is an abbreviated Amiga.lib for assembler programmers who
+only require the LVO's.
+
+
+
+

@@ -1,0 +1,167 @@
+
+                           1.3 Preferences
+                           ===============
+                           by  Eric Cotton
+
+
+The new Preferences program has a number of additions to support new features
+of the V1.3 release, including extended printer support.  Changes from V1.2
+Preferences are as follows:
+
+
+  Main Screen
+
+    o	Selecting Save or Use automatically updates the battery backed up
+	clock with the new date and time.
+
+    o	The CLI On/Off option has been eliminated.  Henceforth, the icon for
+	the Command Line Interface (CLI) will always appear in the System
+	drawer (unless deleted by the user).
+
+
+  Printer Screen 1
+
+    o	The Graphic Select gadget has been replaced by two new gadgets:
+	Graphic 1 and Graphic 2.
+
+    o	The new Graphic 1 gadget is equivalent the the V1.2 Graphic Select
+	gadget and is used to request the first of two printer graphic
+	Preferences screens.
+
+
+  Printer Screen 2 (Graphic 1)
+
+    o	The Printer Screen 2 is selected by clicking on the Graphic 1 gadget
+	in Printer Screen 1.
+
+    o	There is a new Print Shade selection: Gray Scale2.  This shade is for
+	printing pictures designed using the *Hedley Monitor* (when only
+	seven shades of gray are available).
+
+
+  Printer Screen 3 (Graphic 2)
+
+    This is a totally new Preferences screen to allow for extended printer
+    graphics support.  The various gadgets are as follows:
+
+    o	Antialiasing ON/OFF - Antialiasing (when ON) attempts to smooth
+	diagonal lines.  This option is best suited for use with programs that
+	do graphic dumps of text (like ProWrite, PageSetter, CityDesk,
+	Publisher 1000, NotePad, etc.).  Note that this option automatically
+	turns off Floyd-Steinberg dithering (and selects Ordered dithering)
+	as they can not be used in conjunction with each other.
+
+    o	Left Offset - The printed picture is offset horizontally in increments
+	of tenths of an inch.  The 'Center Image' option (below) disables this
+	option.
+
+    o	Center ON/OFF - This turns on/off horizontal centering of the picture
+	on the paper.  This option overrides the Left Offset value.
+
+    o	Density 1 through 7 - This is used to override any density an
+	application program has selected and thus ensure a certain density.
+	The lower the density the faster the print time (on those printers
+	with multiple densities).
+
+    o	Color Correction R/G/B - This option selectively tries to match all
+	shades of either red (R), green (G), or blue (B) from the screen
+	to the printer.  Initially the printer device can print all the 4096
+	colors of the AMIGA on a printer.  However, as color correction is
+	applied the total number of printed colors is reduced to a low of 3172.
+	To see the effect of this option, print out a picture with solid red,
+	green, and blue shades twice;  first with this option on, and then with
+	it off.  Now compare the two pictures with the screen display.  The
+	results should be obvious.
+
+    o	Dithering Ordered/Halftone/F-S
+
+	Ordered - Color intensities on the printer are formed using an
+	  'ordered' dither method.  This is the default.
+
+	Halftone - Color intensities on the printer are formed using a
+	  'halftone' dither method.  This technique is similar to the one
+	  used in newspapers and comic books and works best on high density
+	  printers (greater than 150 dots/inch).
+
+	F/S - Color intensities on the printer are formed using the
+	  'Floyd-Steinberg' error distribution method.  Note that selecting
+	  this option automatically turns off Antialiasing as they can not
+	  be used in conjunction with each other.
+
+    o	Scaling Fraction/Integer
+
+	Fraction - Performs normal scaling.  This is the default.
+
+	Integer  - every dot on the screen is guaranteed to appear as an even
+	  number of dots on the printer both in the x and y dimension.  Ie. if
+	  the source picture is 320 x 200, the printed picture width will be
+	  either 320, 640, 960, etc. dots wide and 200, 400, 600, etc. dots
+	  high.  SELECT THIS OPTION WHEN TRYING TO PRINT A PICTURE THAT
+	  CONTAINS THIN VERTICAL AND HORIZONTAL LINES (LIKE A GRID).  The
+	  actual size of the printed picture will be the size asked for scaled
+	  up/down to the nearest multiple of the width and height of the
+	  picture.  Integer scaling will completely override the aspecting
+	  feature of the printer device.  Ie. it is possible to get a
+	  slightly distorted (non-aspect ratio correct) picture.  This option
+	  is also usefull if you are printing out bit-image text (like in
+	  notepad) as the fonts will not be distorted due to fractional scaling.
+
+    o Width Limit - This selection limits the width of the printed picture in
+	tenths / inch.
+
+    o Height Limit - This limits the height of the printed picture in
+	tenths / inch.
+
+    o <- Limits  - This gadget determines how the above Width and Height
+	limits are to be interpreted as follows:
+
+	Ignore - The limits are to be IGNORED.  The printed picture's size is
+	  bounded by:
+
+	  width =  (right margin - left margin + 1) / characters per inch.
+	  height = lines per page / lines per inch.
+
+	  This option is included to remain compatible with pre V1.3 software
+	  and is the default.
+
+	Bounded - The printed picture's size is bounded by Width Limit and
+	  Height Limit.  Ie. if you want the printed picture to be no bigger
+	  than 4 x 5 (but it could be smaller), set MaxWidth to 40, MaxHeight
+	  to 50, and select Bounded.  This option is here so that the text
+	  settings (margins, lines per page, etc.) need not be changed
+	  everytime a graphic print is made.
+
+	ABSOLUTE - Width Limit and Height Limit are taken to be absolute values.
+	  The printed picture's size is no longer bounded.  Rather, it will
+	  be the absolute size specified.  For example, if you want the
+	  printed picture to be exactly 4.0 x 5.0 inches,  set MaxWidth to 40,
+	  Width Limit to 50, and select Absolute.  This will completely
+	  override the aspecting feature of the printer device.  Thus it is
+	  possible to get a very distorted (non-aspect ratio correct) picture.
+	  Setting one (but not both) of the dimensions to zero aspect ratio
+	  corrects that dimension.  Ie. if Width Limit is set to 40 and Height
+	  Limit to 0, then the printed picture will be 4.0 inches wide and as
+	  tall as it needs to be in order to be aspect ratio correct.  If both
+	  of the dimensions are zero then the printed picture will be the
+	  printer's maximum dots wide and as tall as it needs to be in order to
+	  be aspect ratio correct.
+
+	Pixels - Width Limit and Height Limit are taken to be absolute values in
+	  printer pixels and not tenths of an inch.  Otherwise, the same rules
+	  for the Absolute selection (Width Limit = 0 and Height Limit = 0)
+	  apply here.
+
+	Multiply - Width Limit and Height Limit are used to multiply the
+	  source picture's width and height.  Ie., if you specified a Width
+	  Limit	of 2 and a Height Limit of 4, the printed picture would be
+	  two times the	source picture's width pixels wide and 4x the source
+	  picture's height pixels high.  Thus if the source picture were
+	  320 x 200, the printed picture would be 640 (320 x 2) pixels wide
+	  and 800 (200 x 4) pixels high.  The same rules for the Absolute
+	  scaling (Width Limit = 0 and Height Limit = 0) apply.  Also, the
+	  benefits that apply to Integer scaling are valid here.
+
+
+
+
+

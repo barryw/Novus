@@ -1,0 +1,358 @@
+
+
+
+              FUNCTIONAL SPECIFICATION AND PROGRAMMERS' REFERENCE
+                        PRELIMINARY: CONTENTS MAY CHANGE
+                     Copyright 1988, Commodore-Amiga, Inc.
+                                January 7, 1988
+
+
+          1.  OVERVIEW
+
+          The A2024 Monitor is a grayscale display device.  It con-
+          tains a frame buffer which can accumulate and display video
+          data from an Amiga RGB port in several ways.
+
+          In its "normal" operation mode, it will "deinterlace" an
+          interlaced Amiga display.  Thus a four-hundred line inter-
+          laced display will be presented non-interlaced, and without
+          the corresponding flicker.  It can present up to 8 discern-
+          able gray scales in normal mode.
+
+          In its "extended" modes, the A2024 assembles several frames
+          of data from the Amiga into a display larger than the Amiga
+          is normally capable of generating.  Displays of 1008x800
+          pixels of two or four gray levels are supported.  PAL sys-
+          tems may support slightly taller displays.
+
+          The remainder of this document presents more information on
+          the characteristics of the device and its use.  This prelim-
+          inary version will be a little heavier on the "what" rather
+          than the "how." A revision with more procedural detail will
+          accompany the first beta release of the software provided
+          with prototype hardware.
+
+
+          2.  A2024 EXTENDED MODES
+
+          The two extended modes we support are "15 Hertz" and "10
+          Hertz" modes.
+
+          In normal operation, the Amiga sends out 60 frames (fields)
+          of video data, typically 200 lines high, every second.
+
+          In "15 Hertz" mode, four different frames are sent alterna-
+          tively, and the A2024 assembles them into a large image.
+          This results in a complete update of the A2024 frame buffer
+          fifteen times a second.  To accomplish this output, the
+          Amiga video hardware runs in its "hi-res" mode, presenting
+          data equivalent to a four bitplane display.  This requires
+          using considerable display DMA bandwidth and causes serious
+          performance penalties, particularly to memory operations in
+
+
+
+                                January 7, 1988
+
+
+
+
+
+                                     - 2 -
+
+
+          Chip RAM.
+
+          In "10 Hertz" mode, the display is presented in six pieces,
+          with a complete update ten times a second.  This is
+          equivalent, from a video bandwidth point of view, to a four
+          bitplane "low-res" display.  This rate supports uncontested
+          access to Chip RAM by the processor.
+
+          The communication of operating mode from the Amiga to the
+          A2024 is done in the vertical overscan, just before top of
+          each (Amiga) frame, by short bursts of color.
+
+
+          3.  PROGRAMMERS' MODEL
+
+          The graphics programmer need not be concerned with the
+          patchwork way that displays are being generated, because the
+          system preserves the basic programmers' model.
+
+          A Screen (or ViewPort) for display in an A2024 extended mode
+          uses a contiguous 1008x800 raster.  Normal rendering and
+          blitter operations apply.  There is nothing new about a
+          large RastPort.
+
+          We support both Custom Screens and the Workbench Screens in
+          A2024 extended modes.
+
+          Mapping from RGB color scheme to grayscales is provided, and
+          may be accessed via the standard SetRGB4() graphics func-
+          tion.  For extended modes, the mapping function follows.
+          The values R, G, and B may be from 0 to 15, and the output
+          is a number from 0 (black) to 3 (white).
+
+          The function is:
+              Gray Level = (77 * R + 150 * G + 29 * B + 128)/1024
+
+          Several features of the Amiga graphics and animation
+          hardware do not operate normally, however.
+
+          -    User Copper Lists will be merged in and executed for
+               each (of four or six) panels as they are sent out of
+               the Amiga.  Normal copper operations, such as loading
+               the color table or modifying the display control regis-
+               ters could cause visual problems.  We cannot envision a
+               desirable, supportable purpose of User Copper Lists so
+               their use is not presently supported, yet it is not
+               prevented.
+
+
+
+
+                                January 7, 1988
+
+
+
+
+
+                                     - 3 -
+
+
+          -    Simple Sprite 0 is available and used in its standard
+               way.  Other sprites, and attached sprites, are not sup-
+               ported.  Since Intuition uses SimpleSprite 0 for its
+               pointer, the functions SetPointer()/ClearPointer()
+               operate normally.  The color mapping for the sprite is
+               the same as earlier described.
+
+          -    Beam synchonization via WaitTOF(), and QBSBlit() will
+               trigger relative to one of the four (15 Hz) or six (10
+               Hz) panels.  Thus the functions operate, but are not
+               suitably synchronized.
+
+               WaitBOVP() will return at the completion of the current
+               display portion, and so is not suitable for use for
+               synchronization in an A2024 extended ViewPort.
+
+          -    ScrollVPort() is not supported.  Although there is
+               potential for double buffering of single bitplane
+               displays within the A2024 frame buffer, no double
+               buffering is supported in extended mode.
+
+          -    The View/ViewPort positioning in extended mode is res-
+               tricted.  A2024 extended mode screens may not be
+               dragged, but only moved front to back.  Normal mode
+               screens may be dragged up and down, but extended
+               screens will not be made visible unless they are the
+               frontmost screen.
+
+          -    Dual-Playfield support has not been investigated yet.
+
+          -    System Alerts, although functional, will not slide an
+               extended screen down when they are presented, but will
+               always appear in a black display by themselves.
+
+          -    The standard aspect ratio handling (using GfxBase-
+               >NormalDPMX and NormalDPMY) cannot describe both normal
+               and extended mode ViewPorts.  A new function (or exam-
+               ple) will provide substitute values on a ViewPort-by-
+               ViewPort basis.
+
+          4.  JUMPSTART AND MEMORY USAGE
+
+          To provide interim support for the A2024 extended mode, new
+          versions of three system libraries are provided (Exec,
+          Graphics, and Intuition).  These libraries are loaded into
+          RAM and specially marked to be used after a reboot.  The
+          system is reset and these libraries are subsequently used.
+          This is called the "Jumpstart" operation.
+
+
+
+                                January 7, 1988
+
+
+
+
+
+                                     - 4 -
+
+
+          Of these libraries, Exec must be loaded into Chip memory
+          (approx.  16 KBytes), and the others (approx. 125 KBytes)
+          are loaded into fast memory, if available.
+
+          Large rasters take considerable memory.  Each 1008x800 bit-
+          plane is 100,800 bytes of Chip memory.  In contrast, a
+          640x200 bitplane is 16,000 bytes large.
+
+          "Smart Refresh" windows are saved off-screen when obscured.
+          Since these windows (including the CLI windows) will prob-
+          ably be used in larger sizes, in the worst case they can,
+          each, use another 100,800 bytes for each bitplane, when at
+          their largest size and completely obscured by other windows.
+
+          System Copper Lists are considerably more complicated and
+          larger than normal, but this is an insignificant memory con-
+          sideration compared to the dominating factors listed above.
+
+          It is hard to precisely estimate the total difference in
+          memory usage when the A2024 is in use in its extended modes,
+          considering, for example, that smart refresh windows will
+          probably be larger.  We can see that on a system with a
+          two-bitplane Workbench (four gray levels) running after
+          Jumpstart there will be about 315,000 bytes less user
+          memory--about 185,000 bytes of that from chip memory--before
+          any smart refresh windows are opened (and obscured).
+
+          5.  WORKBENCH ON THE A2024
+
+          Via a revised Preferences program, the user will be able to
+          specify that the Workbench screen is to be opened in one of
+          the extended modes.
+
+          It will not be necessary to reset the machine to facilitate
+          the requested mode change in the Workbench screen.
+
+          Programs which open windows on the workbench screen should
+          continue to operate normally.  Providing, of course, that
+          they do not make use of the unsupported features listed
+          above, which would not have been proper on the Workbench
+          screen to begin with.
+
+          Two areas that programmers must recognize for their work-
+          bench programs to operate correctly:
+
+          1)   The Workbench Screen may be much larger than normal,
+               and it might have only one bitplane.  Using GetScreen-
+               Data() to determine the dimensions and depth of the WB
+
+
+
+                                January 7, 1988
+
+
+
+
+
+                                     - 5 -
+
+
+               screen is still the preferred method for handling this.
+
+          2)   As part of the new support, we will be allowing the
+               system font to be chosen from fixed width fonts which
+               may be larger than 8 or 9 points (pixels).  There is a
+               section on fonts below.
+
+          6.  EXTENDED MODE CUSTOM SCREENS
+
+          Memory permitting, Custom Screens may be opened in an A2024
+          extended mode.  An example accompanies this document.  There
+          are two issues: the general method of extending the NewS-
+          creen data for OpenScreen() and the information specific to
+          the A2024 modes.  We will attempt to remain binary compati-
+          ble with the example, although both issues are under review.
+
+          The function OpenScreen() will fail if an extended mode is
+          requested but the system doesn't believe an A2024 monitor is
+          attached.  A way of detecting the system's belief before
+          attempting OpenScreen will be provided.
+
+          7.  FONTS
+
+          To date, only two fonts may be used as the system default
+          font, Topaz 8 and Topaz 9.  The Workbench screen always uses
+          the current system default font.  To run on the Workbench
+          screen, or in a Custom Screen which was opened with the
+          default font, it is not safe to assume that the font used
+          will always be 8 or 9 lines high.
+
+          As a rule, IntuiText structures should never use the default
+          font (Font = NULL), unless run-time calculation is made for
+          suitable position and dimension of them and of objects which
+          contain them (such as gadgets).  General text layout,
+          Boolean Gadget with text labels, Requesters, String Gadgets,
+          and Menus should all be calculated with respect to the font
+          dimensions of the font that will actually be used.
+
+          The FontHeight field in Preferences should not be used to
+          determine the default font height, since it is only a
+          request.  The system may someday allow requests for
+          FontHeight that cannot be satisfied. In this case the
+          closest available size will be used, but the Preferences
+          FontHeight will continue to reflect the user's preference,
+          albeit unrealized.
+
+          The correct way to determine the characteristics of the font
+          depends on the situation.  The most typical are:
+
+
+
+                                January 7, 1988
+
+
+
+
+
+                                     - 6 -
+
+
+          -    If you are going to render through a RastPort that
+               already exists, consult the font information in that
+               RastPort.
+
+          -    If you are going to open a window on the Workbench
+               screen, use GetScreenData() to examine the Workbench
+               screen RastPort to get font information.
+
+          -    If you are going to open a custom screen with the
+               default font, you can consult GfxBase->DefaultFont to
+               see what font will be used when the screen is opened.
+
+          -    For tricky uses, it is sometimes necessary to realize
+               that ALL gadget text rendering is done through the
+               Screen->BarLayer->rp RastPort, with the exception of
+               editing string gadgets, done through (a copy of) the
+               Screen RastPort.
+
+          Some special support will be provided to minimize problems
+          in the most frequently mishandled areas.
+
+          String Gadgets
+               Until string gadgets are enhanced to support a font
+               specification, they are tricky to handle.  Intuition
+               will check to be sure that the gadget dimensions are
+               large enough to contain the font to be used.  If not, a
+               smaller Topaz font will be used.
+
+          AutoRequests
+               AutoRequests require that the programmer specify the
+               exact dimensions and layout, although they are often
+               rendered in the default font.  Intuition will examine
+               the Font specification in any text contained in an
+               AutoRequest.  If it is the default value (NULL), the
+               positioning and dimensions of the text within the
+               requester--as well as the dimensions of the requester
+               itself-- will be taken as advice, and Intuition will
+               substitute more suitable values where appropriate.
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                January 7, 1988
+
+
+

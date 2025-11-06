@@ -1,0 +1,13 @@
+
+***** Note - this fd is for assembler interface
+***** ##base name is user defined
+***** Amiga.lib C interface requires ptr to ciabase passed as added 1st arg
+## bias 6
+AddICRVector(bit,interrupt)(d0,a1)
+RemICRVector(bit)(d0)
+AbleICR(mask)(d0)
+SetICR(mask)(d0)
+##end
+
+
+

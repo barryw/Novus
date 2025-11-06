@@ -1,0 +1,64 @@
+                                BUG REPORT
+
+   Date:
+   Name:
+  Phone:
+Company:
+
+
+Bug Location:  [ ] Hardware ________     
+               [ ] Documentation ___ 
+               [ ] Software ________    
+               [ ] Other ___________
+
+Configuration:  CPU (model) ___________
+
+                Drives:  Unit#      Drive type/size
+                         _____      _______________
+                         _____      _______________
+                         _____      _______________
+                         _____      _______________
+
+                Memory External _________
+                Memory Internal _________
+                Other Equipment _________
+
+Revs:  Kickstart ____________________
+       WorkBench ____________________
+       Application __________________
+       Manual(s)_____________________
+
+Brief Bug Description:
+
+
+
+
+Bug Generation Procedure: 
+(If possible, please attach full example to reproduce)
+
+
+
+
+
+
+
+
+
+
+
+
+
+Related Bugs:
+
+
+
+___________________________________________________________________________
+
+                      Status of Report # _____
+
+[ ]  Duplicate of bug #:              date:               initials: 
+[ ]  User misunderstanding:           date:               initials:
+[ ]  Bug NOT reproducible:            date:               initials:
+[ ]  Bug fixed:                       date:               initials:
+[ ]  Report transferred to:           date:               initials:
+

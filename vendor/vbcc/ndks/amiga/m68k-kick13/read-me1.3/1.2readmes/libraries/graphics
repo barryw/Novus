@@ -1,0 +1,294 @@
+********
+Graphics
+********
+
+Changes
+=======
+Fixed ScrollLayer: it now recomputes the cliprects used to draw into the 
+   superbitmap when ScrollLayer is called.
+
+XorRectRegion now works. 
+
+NotRegion removed from graphics. It never did anything useful anyway
+except blow up if you called it with correct parameters. You can
+emulate different forms of what you think NotRegion was supposed to
+do with XorRectRegion.
+
+Changes to support different standard screen sizes:
+   Programmers should get the normal display dimensions of a screen
+   from GfxBase->NormalDisplayRows and GfxBase->NormalDisplayColumns. 
+   For NTSC the height is currently set to 200 at power up and to 256
+   for PAL at power up. It is intended that user preferences can make
+   additional changes to these variables.
+   Support for overscan displays is still being worked on.
+
+New values in GfxBase for the maximum ViewPort row/column:
+   Programmers should get these maximum values from 
+   GfxBase->MaxDisplayRows and GfxBase->MaxDisplayColumns. 
+
+NTSC software on PAL machine: 
+    Screens of 200 lines on a PAL display of 256 will appear at the position
+    requested.
+    Screens are no longer bound to the bottom of the Display, but may be moved
+    about freely. However there is no data displayed below the topmost screen.
+    (This was also true in the previous release).
+
+   Usage of the NTSC/PAL bits in GfxBase are encouraged however.
+   Those bits will be set correctly based on 262/312 lines per frame. 
+
+AreaEnd(): now returns 0 if no error occured.
+
+Slightly retouched fonts: better looking now. Added Topaz11 for use with
+   interlaced WB.
+
+Graphics added some new functions: 
+   DrawEllipse, DrawCircle, AreaEllipse, AreaCircle
+
+   Circle is just a macro that uses Ellipse.
+   AreaCircle is just a macro that uses AreaEllipse.
+
+   Ellipse takes a center and 2 radii.
+   Circle takes a center and a radius.
+
+   fixed ellipses of height > 255 now displayed correctly.
+   downcode of _draw_ellipse to assembly...  faster, smaller (much smaller!)
+
+Copper List: fix to genlock bad data-fetch on short-frame fields...
+      also fixes DPaint hires bad data-fetch on short-frame fields
+      (screen dragging dpaint no longer displays garbage at the top
+      of frame).
+
+Copper list generation addition:
+   If interlaced view, and interrupts go away for some reason,
+   the copperlists will ping pong back and forth themselves.
+
+MrgCop now about 20% faster. Hope that helps. Depends on instruction
+   mix and number of actual copper lists involved.
+
+Better handling of SimpleRefreshLayer when moving layers.
+
+CreateUpfront(BehindLayer) fixed:
+ It now creates the layer on top of all other backdrop layers as it should.
+
+XorRectRegion really installed for good now.
+
+WritePixel(): now waits for the blitter to complete between each of the blits.
+   Consequently it is a little slower now.
+
+Gel code: streamlining, downcoding, overhead reduction.
+   Gel code, faster, tighter. Expect about a 15% improvement in speed.
+        
+ScrollRaster(): now correctly uses WriteMask when clearing out vacated area.
+
+More New graphics functions:
+   AndRegionRegion,XorRegionRegion,ClearRectRegion. See the graphics.doc
+
+Sprites:  movement now restricted to not go above hardware limitations.
+        This means that the absolute starting position of a Sprite   
+        must not occur before line 20.
+
+gfxbase.h change see the include file
+   name change from DPI->DPM
+   The meaning to ascribe to this value is DotsPerMeterX/Y.
+   Use these values to calculate display aspect ratio. 
+   These numbers will be different between NTSC and PAL.
+
+      scrollraster of simple_refresh layers scrolls appropriate
+          existing damage region.
+
+graphics.doc updated on the server to reflect change to BltTemplate 
+documentation.  clarification note added on input arguments to BltTemplate.
+
+
+New graphics function: AttemptLockLayerRom().
+ Try to obtain a layer lock, but do not block if attempt was unsuccesful.
+ Return a boolean value to indicate sucess or failure in obtaining the lock.
+
+fixed Text(): clips properly in superbitmap layers
+
+   Text() no longer trashes register d7.
+   Improved speed of Text()  9%-50% faster for (1char-64char) strings.
+
+Overscan Color: fixed to match top viewport as long as it has a colormap.
+   Color routines also let the bottom color wrap around if the topmost 
+   viewport has no colormap ( like Electronic Art's Dpaint program).
+
+DoCollision(): fixed for better "bob to bob" collision detections.
+
+Draw(): patterned linedraw in superbitmap layer works now, as long as layer
+   is not being scrolled.  Didn't correctly draw the pattern under V1.1
+
+RectFill() with areaoutline now handles outline better in complement mode.
+
+   Update of graphics.doc to reflect that RectFill() still has a bug
+   in COMPLEMENT mode... complements all bit-planes rather than only
+   those planes in which the foreground pen is non-zero).
+
+   THIS WILL NOT be fixed for compatibility reasons with respect to
+   some V1.1  software.
+
+MoveSprite(): fixed an obscure bug in movesprite(vp,s,x,y)...
+         if vp != NULL sprite now follows vp->DyOffset properly.
+
+
+IMPORTANT IMPORTANT IMPORTANT IMPORTANT IMPORTANT IMPORTANT IMPORTANT
+
+   MoveSprite() has been changed to make it compatible with the 1.1
+   version (previous BETA releases of MoveSprite positioned sprite
+   correctly instead of off by 1 in x).
+   When using the V1.2 RELEASE version of the software, sprites ONCE AGAIN 
+   appear one pixel to the left of the position you specify.  
+
+   If you've written code that works with previous 1.2 BETA versions of 
+   MoveSprite(), YOUR CODE MUST BE CHANGED for the sprites to appear in 
+   the same position.
+
+IMPORTANT IMPORTANT IMPORTANT IMPORTANT IMPORTANT IMPORTANT IMPORTANT
+
+Floodfill once again works properly (previous optimisations had neglected
+   some cusp cases).
+   Faster flood fill, should be up to twice as fast.
+
+New routineSetRGB4CM(cm,i,r,g,b)
+  similar to SetRGB4() except this routine takes a ColorMap
+  as a parameter instead of ViewPort.
+  Note: to you guys that assume you can just play around with the
+  ColorTable ptr in ColorMap, What happens if we go to a 5bit
+  per color colormap. Have you just programmed yourself into a corner?
+
+FreeSprite(): Fixed bug which failed to turn the sprite off when freed.
+
+Fix to BltPattern() with areafill and mask
+no longer leaves garbage bits on left of blit.
+User may still need to adjust mask for some blits.
+
+gfxbase.h:
+    struct SimpleSprite(s) ** SimpleSprites;
+    removed the "s" in the declaration above...
+
+Patterned lines through layers maintain proper linpatcnt when
+drawing into hidden cliprects.
+
+Ellipse optimization saves four bytes and is faster.
+
+Graphics no longer reads from "write-only" registers at power-up.
+
+*****************************
+New graphics/layers functions
+******************************
+
+graphics/AttemptLockLayerRom
+============================
+   New for V1.2:
+      Attempt to obtain a lock on a layer. 
+      Do not block if lock cannot be obtained.
+      Return result of attempt to caller.
+      See graphics.doc for more details.
+
+graphics/DrawCircle
+===================
+   New for V1.2:
+      Macro definition - calls DrawEllipse with a centerpoint 
+      and radii to create a circular outine in a rastport using
+      the current pen color, at the specified position.
+      Clip result if layered rastport.
+      See graphics/gfxmacros.h for macro definition.
+
+graphics/DrawEllipse
+====================
+   New for V1.2:
+      Draw an elliptical outline into a rastport using
+      the current pen color, at the specified position.
+      Clip if layered rastport.
+      See graphics.doc for more details.
+
+graphics/AreaCircle
+===================
+   New for V1.2:
+      Macro definition - calls AreaEllipse with a centerpoint and
+      radii to create a filled circle in a rastport using
+      current pattern, drawmode, and pen colors.
+      User must have initialized valid TmpRas & AreaInfo structures.
+      This routine may be integrated with calls to other AreaFill
+      routines (e.g. AreaMove, AreaDraw, AreaEnd).
+      See graphics/gfxmacros.h for macro definition.
+
+graphics/AreaEllipse
+====================
+   New for V1.2:
+      AreaFill an ellipse in the specified rastport using current
+      pattern, drawmode, and pen colors.
+      User must have initialized valid TmpRas & AreaInfo structures.
+      This routine may be integrated with calls to other AreaFill
+      routines (e.g. AreaMove, AreaDraw, AreaEnd).
+      See graphics.doc for more details.
+
+graphics/ClearRectRegion
+========================
+   New for V1.2:
+      Region Manipulation - Clip away any portion of the region
+      that exists inside of the rectangle. 
+      Leave the result in region.
+      Return code for success/failure to calling program.
+      See graphics.doc for more details.
+
+graphics/OrRegionRegion
+=======================
+   New for V1.2:
+      Region Manipulation - 
+                   Perform the logical inclusive OR of two regions.
+      Return code for success/failure to calling program.
+      Leave the result in the second region.
+      See graphics.doc for more details.
+
+graphics/XorRegionRegion
+========================
+   New for V1.2:
+      Region Manipulation - 
+                   Perform the logical exclusive OR of two regions.
+      Leave the result in the second region.
+      Return code for success/failure to calling program.
+      See graphics.doc for more details.
+
+graphics/AndRegionRegion
+========================
+   New for V1.2:
+      Region Manipulation - Perform the logical AND of two regions.
+      Leave the result in the second region.
+      Return code for success/failure to calling program.
+      See graphics.doc for more details.
+
+graphics/SetRGB4CM
+==================
+   New for V1.2:
+      Set one color register for a ColorMap structure.
+      This function can be used to set up a ColorMap before before
+      linking it into a viewport.
+      See graphics.doc for more details.
+
+graphics/BltBitMapRastPort
+==========================
+   New for V1.2:
+      Blit from source bitmap to destination rastport
+      using specified minterm.
+      Clip result if layered rastport.
+      See graphics.doc for more details.
+
+graphics/BltMaskBitMapRastPort
+==============================
+   New for V1.2:
+      Blit from source bitmap to destination rastport
+      with masking of source image.
+      Clip result if layered rastport.
+      See graphics.doc for more details.
+
+layers/InstallClipRegion
+========================
+   New for V1.2:
+      Installs a transparent Clip region in the layer.
+      Subsequent graphics calls will be clipped to this region.
+      Return a pointer to the previous Clip region.
+      See layers.doc for more details.
+
+
+

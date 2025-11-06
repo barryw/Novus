@@ -1,0 +1,176 @@
+    Summary of Changes to the Printer Device for V1.3
+    -------------------------------------------------
+
+Bugs Fixes
+----------
+
+1. There is no longer a memory loss when aborting (via AbortIO) an
+   asynchronous printer request.  ie. Aborts from DPaint II no longer
+   lose any memory.
+
+2. There was a rounding error in the MILROW/MILCOL calculations.
+
+3. The printer device can now support very large source/destination sizes and
+   large dot densities.  This means that a 2048 x 2048 rastport could be
+   dumped to a 8.0 x 10.5 inch picture with 600 x 600 dpi. (ie. 2048 x 2048
+   source picture to a 4800 x 6300 destination size).
+
+4. The calculation for the intensity of black on grey scale printouts was
+   slightly in error.  It had 1/256 too much green and 1/256 too little
+   blue in it.  The visible change on paper is almost unnoticable.
+
+5. The V1.2 release was limited to working with a maximum of 8 bitplanes.
+   This release is now able to go up to 12 bitplanes which allows one
+   to have a rastport with all of the 4096 colors in it.  We have
+   successfully created and printed a 12 bitplane rastport here at CBM.
+   Note: This release can actually go up to 16 bitplanes (65536 colors)
+   BUT since the Amiga currently supports only 4096 colors the additional
+   4 bit planes are irrelevant.
+
+6. The alpha command 'word center' has been fixed.  This has never worked.
+
+7. A bug which has been present since the V1.0 release has finally been
+   fixed!  This bug occurred when an AbortIO/WaitIO was followed
+   immediately by a DoIO or SendIO using the same io request that was
+   aborted.  The bug manefested itself in that the abort would never
+   succeed and the DoIO or SendIO command would probably not get
+   executed.  With the fix of this bug there are no know bugs with respect
+   to aborting/canceling requests.
+
+8. The aJFY3 (letter space justify) and aJFY1 (word fill / auto center)
+   commands have never been sent to the printer; they now are when
+   all justification (left, right, or full) is off.
+
+9. All printer drivers no longer issue a linefeed when told to initialize
+   the printer.  This has been a bug since the original V1.0 software!
+
+10. A 'case 5' render call is now made when the printer device is opended.
+   This allows the printer driver to intialize the MaxXDots, MaxYDots,
+   XDotsInch, YDotsInch, MaxColumns, etc. fields based on the density setting.
+
+
+Enhancements
+------------
+
+1. Centering - the printer device now automatically centers the picture if
+   the flag 'SPECIAL_CENTER' is turned on in io_Special or if Center is
+   turned on in Preferences.  Previous to this version it was the
+   responsibility of the individual printer drivers to center the picture.
+
+2. Dithering - Ordered Dithering (default), Half-Toning and Floyd-Stienberg
+   ditehring are supported.  Half-Toning is similar to the technique used in 
+   newspapers and comic books.  Floyd-Stienberg dithering is useful for
+   color prints of facial tones.
+
+3. Color Correction - all shades of either Red, Green, or Blue can be
+   'corrected' by selecting the appropriate (either r, g, or b) color
+   correction in preferences.  This correction attempts to better
+   match the screen colors to the printer colors and works best for
+   blue, green and red in that order (ie. blue fixing looks best).  Note
+   that with color correction on the number of possible colors that can
+   be printed is reduced from 4096 to 3172 (if all three corrections are
+   enabled).  In other words there is a trade-off between color correction
+   and total number of colors printable.
+
+4. Speed - the new printer device (currently) is anywhere from 3 to 20 times
+   faster than the 1.2 printer device.  The speed increase depends on a
+   number of factors such as type of printer (ink-jet, dot matrix, or thermal
+   transfer), shade of picture (bw, grey-scale or color), aspect of picture
+   (horizontal or vertical), amount of white-space/colors in picture, type of
+   printer driver (there is a new faster standard for writing printer drivers
+   that will be released at a later date), etc.  In general though the speed
+   of the printouts are now printer bound and no longer cpu bound.
+
+5. HAM pictures - can now be printed from any valid starting x position as
+   opposed to the previous limitation of starting from an x position of 0.
+   Inverted HAM pictures are now supported as well.
+
+6. Printers which require multiple passes of the color info (like the
+   CalComp ColorMaster) are now supported via a new ColorType of
+   'PCC_MULTI_PASS' and a new 'case 6' in the render.c file.  Refer to the
+   'How to Write a Gfx Printer Driver' section for more info.
+
+7. Page Ejection - a new flag called 'SPECIAL_NOFORMFEED' has been added
+   to accommodate page oriented printers like the 'HP_LaserJet' and the
+   'CalComp ColorMaster'.  This flag allows the mixing of text and graphics
+   or graphics and graphics on the same page.  Refer to the
+   'Notes on calling the V1.3 printer device' section for more info.
+
+8. Density - a new flag called 'SPECIAL_NOPRINT' has been added to allow
+   the calling program to see the effect of changing the density without
+   actually doing a dump.  Refer to the
+   'Notes on calling the V1.3 printer device' section for more info.
+
+9. PrintSize - a new flag called 'SPECIAL_NOPRINT' has been added to allow
+  the calling program to see the final width and height (in printer pixels)
+   of the printed picture without actually doing a dump.  Refer to the
+   'Notes on calling the V1.3 printer device' section for more info.
+
+10. The error 'PDERR_DIMENSIONOVFLOW' is now obsolete.  In the past if one
+   asked for a dump that was larger than the printer's capabilities this
+   error would be returned.  Now the driver gives you a dump as large as
+   possible while keeping within the printer's capabilities.
+
+11. There are a new set of Preferences selections for the printer device.
+   Refer to the documentation on 'PrtPrefs' for a detailed explanation.
+
+12. A new command 'PRD_QUERY' has been added.  The autodoc follows:
+******* printer.device/Query ****************************************
+*
+*   NAME
+*   Query - query printer port/line status
+*
+*   FUNCTION
+*   This command returns the status of the printer port's lines and registers.
+*   Since the printer port uses either the serial or parallel port for i/o,
+*   the actual status returned is either the serial or parallel port's status.
+*
+*   IO REQUEST
+*   io_Message  mn_ReplyPort set if quick I/O is not possible
+*   io_Device   preset by the call to OpenDevice
+*   io_Command  PRD_QUERY
+*   io_Data     ptr to 2 UBYTES where result will be stored.
+*
+*   RESULTS
+*     io_Data          BIT  ACTIVE  FUNCTION (SERIAL DEVICE)
+*
+*             LSB       0    low    reserved
+*                       1    low    reserved
+*                       2    low    reserved
+*                       3    low    Data Set Ready
+*                       4    low    Clear To Send
+*                       5    low    Carrier Detect
+*                       6    low    Ready To Send
+*                       7    low    Data Terminal Ready
+*             MSB       8    high   read buffer overflow
+*                       9    high   break sent (most recent output)
+*                      10    high   break received (as latest input)
+*                      11    high   transmit x-OFFed
+*                      12    high   receive x-OFFed
+*                   13-15           reserved
+*
+*
+*     io_Data          BIT  ACTIVE  FUNCTION (PARALLEL DEVICE)
+*
+*                       0     low    printer selected
+*                       1     low    paper out
+*                       2     hi     printer in busy toggle (offline)
+*                       3      -     read=0, write=1
+*                     4-7            reserved
+*
+*     io_Actual       1-parallel, 2-serial
+*
+**********************************************************************
+
+13. Anti-aliasing (diagonal line smoothing) has been added.
+
+14. A new limits option called MULTIPLY has been added.
+
+15. Rastports which reside in non-chip ram print out a lot faster now.
+
+
+Misc.
+-----
+
+1. A new error code called 'PDERR_TOOKCONTROL' has been added.  Refer to the
+   document on 'How to Write a V1.3 Printer Driver' for more info.

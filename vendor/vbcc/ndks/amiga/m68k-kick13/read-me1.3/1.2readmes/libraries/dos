@@ -1,0 +1,307 @@
+
+DOS
+===
+
+  Much improved dos, and some new commands.
+
+  Look for 'addbuffers dfx: nn'
+  which will add nn buffers to the list of sector caches for drive x.
+  Smarter caching and new disk layout. For optimal performance; relay
+  out your disk by using copy all. 
+
+  New mode for opening files - MODE_READWRITE which opens an old file
+  with an exclusive lock. (The actual value is 1004). Provided the
+  name MODE_READONLY as a synonym for MODE_OLDFILE. Look for new      
+  dos.h. Requestors asking for a disk to be inserted are now only     
+  displayed once the light on the disk has been turned off; thus not 
+  encouraging users to damage their disks so much.
+
+  CON: and RAW: parameter values are now not checked by dos; they
+  will be checked by intuition eventually but as of now they are
+  not checked at all.
+
+  Improved handling of sector allocation bitmap; should be fast for
+  hard disks.
+
+  RAM:                   handles parent(); allows null file name;
+                         seek in empty file not now an error;
+                         faster transfer rate; better out of memory
+                         handling
+
+The ramdisk released is about 30% faster than the 1.1 ram disk.
+
+Ramdisk now has an icon. It will appear whenever the ram disk
+is built. It is built whenever you touch ram disk with a dir,
+or copy something into it. You can't get rid of the icon though,
+although you can get rid of all the contents of the ramdisk.
+Seek works fine on large files now.
+
+AmigaDos SetDate command handles strings correctly now.
+
+Developers Note: WaitForChar() can't be used on non-interactive stream.
+
+
+Ram Handler
+===========
+
+The RAM handlers record of space used is now correct, so INFO
+gives the right results.
+
+The ripcord has  been removed, so RAM now only takes about 10k
+when first loaded. Instead it checks the free memory pool and
+will claim disk full if there is no single block greater than
+30k free.
+
+
+Nil
+===
+Copy * to NIL:  no longer quits early.
+
+
+Paths
+=====
+   Technical Note: The path list is held as a BPTR in the CommandDir
+     member of the CLI structure.  Although currently documented
+     as the lock on the command directory, this is either 0 or
+     a BPTR to a list of path elements, each consisting of:
+        BPTR NextPath     (BPTR to next list entry)
+        BPTR PathLock     (a lock on the directory)
+
+
+
+Ram Handler
+===========
+The RAM handlers record of space used is now correct, so INFO
+gives the right results.
+
+The ripcord has  been removed, so RAM now only takes about 10k
+when first loaded. Instead it checks the free memory pool and
+will claim disk full if there is no single block greater than
+30k free.
+
+The SetFileDate packet (and therefore the SETDATE command) now
+work properly on ram: files.
+
+
+Ramdisk
+=======
+Seek works fine on large files now.
+
+
+Requesters
+==========
+The unit number fields in DOS requestors have been expanded to
+two digits.
+
+The text of the requestor put up by the filing system when a
+disk is removed while the red light is on has been made more insistent.
+It now says:
+       
+      You MUST replace volume
+      xxxxxxxx
+      in unit dd !!!
+
+Now the only way to remove this requestor (and read/write error
+requestors too) is to click one of the gadgets. It used to go
+away if the disk in another drive was changed.
+
+
+Archive Bit
+===========
+Bit 4 of the protection field is now cleared whenever a file which
+has been written to is closed, or a directory updated. This will
+allow an archiving program to scan a disk and detect those file which
+have been altered since it last ran. It can use the protect function
+to set the archive bit to mark the file as archived.
+
+The PROTECT command has been modified to alter only the lower 4 bits
+of the protection field and preserve the rest. It used to set them 
+all to 1.
+
+
+dos.h, dos.i
+============
+added FIBB_ARCHIVE and FIBF_ARCHIVE
+
+
+New Dos Packets
+===============
+   Note - These new packets are not defined in the dosextens headers.
+          Define them in your code.
+
+1) SetFileDate (=34L)
+   Sets the date of a file or directory to specified date.
+   The packet is sent to the MsgPort returned by DeviceProc(filename).
+   The args for the packet are
+    arg[0] = NULL
+    arg[1] = lock on ParentDir of file
+    arg[2] = BPTR to BSTR of filename 
+    arg[3] = APTR to a DateStamp structure
+   A new CLI command SetDate <file> <date> [<time>] is also provided.
+
+   Note that SetFileDate packet and SetDate command did not work
+   properly on both ram and disk files until Release version of 1.2.
+
+2) SetRawMode (=994L)
+   Switches CON: into raw mode and back again. The single argument
+   is DOS TRUE (-1L) for raw mode (as if RAW: had been requested)
+   and DOS FALSE (0L) to turn it back to CON: style.  The packet is 
+   sent to a (struct MsgPort *)process->pr_ConsoleTask.
+
+   Note that in addition to this an escape sequence may be sent
+   by the user if required to turn on or off the automatic translation
+   of LF to CR/LF. Normally RAW: does not enable this and CON: does.
+   Sending the packet SetRawMode does not affect the translation.
+   The code is CSI 20h to enable translation and CSI 20l to disable.
+
+3) Flush (=27L)
+   Cause pending blocks to be written out and motor turned off.
+   This is expensive, so should not be done after every write.
+   It is used by the system before putting up a requestor saying
+   "Change Disk" and the packet is only returned when the job
+   is done.  This action would be useful in a database when it 
+   wished to commit.
+
+4) MoreCache (=18L)
+   The single argument indicates the number of extra cache buffers
+   to be obtained for use.  Used by ADDBUFFERS command.
+
+5) A DiskInfo packet (ACTION_DISK_INFO = 25L) sent to the console handler 
+   ((struct MsgPort *)process->pr_ConsoleTask)) now returns not only the
+   window pointer in the id_VolumeNode field, but also a pointer to the 
+   console IO block used by the console handler in the id_InUse field.
+   (These fields are part of the InfoData structure that is filled
+   in by sending the ACTION_DISK_INFO packet).  Remember that you must
+   AllocMem your InfoData structure to assure longword alignment 
+   since a BPTR to the structure is arg[0] of the packet.
+   A pointer to the ConUnit structure (see devices/conunit.h, .i)
+   can be found via the console IO block pointer:
+      conUnit = (struct ConUnit *)
+                   ((struct IOStdReq *)infoData->id_InUse)->io_Unit;
+
+   There is a lot of useful information in the ConUnit structure
+   such as text cursor position and limits.  If you are using the
+   exec console.device directly, you should be able to get the
+   ConUnit pointer from yourIoRequest->io_Unit.
+
+   
+
+Additional Upgrades to Dos
+==========================
+1) Uses exec CopyMem & CopyMemQuick for all copies in DISK & RAM
+
+2) Ram now writes files in blocks of 512 bytes rather than 1 block
+   per write as before.
+
+3) Printa & stripa now handle debug hunks. 
+
+4) There was formerly a race condition when a disk was pulled while the 
+   dos was starting the write of a large file.  If the disk was pulled
+   in the 1/4-1/2 second interval before the disk light came on, 
+   dos used to put up a requester that said I/O error.  If you replaced
+   the disk, it crashed.  If you now pull the disk before the light comes
+   on, dos puts up a requester that asks you to reinsert the disk, and it
+   no longer crashes when you do.
+
+5) Seek() now much faster for larger files.
+
+6) Both directory and data blocks cached, disk layout improved so that
+   directory access is much faster.  Also small files (one block) are
+   optimized to be placed on the same track as the file header.  This
+   means that access to the first 488 bytes of a file is quicker.
+
+7) The search for a free block has been improved so that directory
+   access is much faster for large disks.  Note, however, that
+   AmigaDOS really does want to know how many tracks, surfaces, and
+   sectors on a disk.  If you lie to it in a MOUNT file saying that
+   it has one track, one surface, and 32000 sectors then this will
+   work, but bitmap and disk access will be slow.
+
+8) More than 26 bitmaps are now supported, so that disks >54Mbytes are OK.
+
+9) The specification of the DevInfo structure has been expanded.  The
+   entry GlobVec used when the DevInfo entry refers to a device is
+   documented as being a global vector pointer or zero.  Now this value
+   may be -1, which means that the handler process does not need a
+   global vector pointer and should be called as a C process.
+   In a mountlist, GlobVec = 1 may be used to specify a global vector
+   of -1 for a non-BCPL handler.
+
+10) Cache buffers may be allocated from chip or fast memory; the
+    default is fast memory but the trackdisk device requires chip
+    memory.  This value is placed as an extension to the file system
+    startup environment data.  In a mountlist, set BufMemType equal
+    to the numeric value of the flags for the AllocMem of buffers.
+    
+11) The Execute() function now returns the result2 field from the last
+    command called in the Execute string.  Thus calling IoErr() after
+    Execute will provide a zero if the command worked and the error code
+    otherwise.  Note this is the error code and not the return code.
+
+12) ^\ does not now generate a newline before the EOF character.
+
+
+Dos Bugs Fixed
+==============
+1) Attempting to write a negative number of bytes now fails rather than
+   behaving strangely.
+2) DIR, LIST and other directory searches do not now loop if CANCEL is
+   chosen when the disk is unreadable.
+3) Console handler does not now hang if characters are typed rapidly
+   at it while new windows are being opened.
+4) The timestamp on a disk is updated when the protection, filenote, name 
+   or date of a file or directory is altered.
+5) Fixed bug which caused the system failing to notice that a new disk
+   had been inserted in a new drive.
+6) Fixed bug which caused Info() to hang if given a zero lock and no
+   disk in the drive.
+7) Version 2.32 of the linker now handles overlays correctly.
+8) ED now does insert file properly. 
+9) ED clears ^D flag (+ others) berfore exiting. 
+10) ED understands disk full
+11) ED doesn't screw display when resizing windows
+12) TYPE Alignment of bytes in last line of a typehex now OK.
+13) DIR Pattern matches files & directories
+14) LIST No longer always matches files with ! in name
+15) STATUS shows proper command name & priorities
+16) Ram-handler understands protection & filenotes
+17) Ram-handler - seek bugs fixed
+18) Ram-handler - Should now not crash system on disk full
+
+DiskCopy won't change the volume name under CLI.
+If it doesn't finish the copy if marks the destination disk bad instead
+of confusing DOS.
+
+Fix to problem with bitmap not being marked as valid
+when small files are rewritten.  Happened when
+preferences was saved, causing disk to need to be
+revalidated on reboot.
+
+new sys:system/cli program correctly sets the default stack size to 4000.
+
+the run command no longer changes your priority.
+
+Fixed bug in access().  The bug was that writes to existing
+files did not get flushed out to disk.  Now the right stuff happens.
+
+new loadwb and system/cli
+All in the interest of inheriting a path that is set up
+in one's startup sequence.  Therefore the path commands
+will be added back to the default startup sequence file.
+
+
+Bug in CreateProc() which failed when out of memory is fixed.  Also
+the name passed to CreateProc() is now copied so the name remains
+valid even if the creator is no longer in memory.
+
+Bug in Exit which caused it to not work from standalone processes fixed.
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,27 @@
+
+                         Of Special Interest
+                         ===================
+
+1. Current printer include files (required for writing 1.3 printer
+   drivers).
+
+2. New include files devices/scsidisk.h and .i, devices/hardblocks.h and .i.
+
+3. Lib/ddebug.lib - a parallel counterpart to debug.lib output functions.
+   Useful for debugging serial applications, or debugging low level
+   code to a parallel printer.  Has the same output functions as debug.lib,
+   but the names start with 'd' instead of 'k'.  See debug.lib docs
+   in the AW RKM Exec manual.
+
+4. Offs1.3/Structure.offs list by Kodiak.  A list of Amiga structure
+   sizes and structure member offsets.  Handy for debugging.
+
+5. Startups/startup1.3/ - a new startup module, startup.asm, which can
+   be conditionally assembled into a number of different startup.obj's
+   including an Astartup replacement, reentrant startups, window startup,
+   reentrant window startup (like More's), and no-arg startups.
+   Six different pre-assembled varieties are included, along with
+   two tutorials - UsingAmigaStartups and WritingReentrantC.
+
+
+   

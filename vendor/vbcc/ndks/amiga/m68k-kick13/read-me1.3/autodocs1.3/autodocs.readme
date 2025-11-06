@@ -1,0 +1,45 @@
+
+                             Autodocs1.3
+                             ===========
+         Copyright (c) 1985,1986,1987,1988  Commodore-Amiga, Inc.
+                         All Rights Reserved
+
+The files on this disk are copyrighted and proprietary.  In addition, all
+files related to 1.3 or future products are preliminary and subject to
+change.  All files and programs are supplied as-is and are not warranted
+as to completeness, accuracy, or suitability for any particular purpose.
+
+
+NOTE: This disk contains only autodocs which are new or changed since 1.2.
+      They are in the Autodocs1.3 drawer rather than in the drawers
+      specified below.
+
+
+ The following autodocs have changed since 1.2:
+
+
+   * diskfont.doc
+
+       Two new functions for updating the fonts directory
+
+
+   * printer.doc
+
+       New features, code fragments, new Query function
+
+
+   * mathieeedoubbas.doc and mathieeedoubtrans.doc
+
+       Mathieeedoubbas.doc replaces the 1.2 cmathieeedoubbas.doc and
+    amathieeedoubbas.doc.   Mathieeedoubtrans.doc is new.
+
+
+   * printer.doc
+
+       Changed to reflect new options, and I think there's a new QUERY
+
+
+   * parallel.doc and serial.doc
+
+       Updated and corrected
+

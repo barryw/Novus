@@ -1,0 +1,56 @@
+     FinalUpdate (dir)
+          Includes (dir)
+            dos.h                            dos.i
+            prtgfx.h                         prtgfx.i
+       README                           small.lib
+     LibrariesL-Z (dir)
+       .info                            layers.doc
+       layers.doc.info                  mathffp.doc
+       mathffp.doc.info                 mathieeedoubbas.doc
+       mathieeedoubbas.doc.info         mathieeedoubtrans.doc
+       mathieeedoubtrans.doc.info       mathtrans.doc
+       mathtrans.doc.info               translator.doc
+       translator.doc.info              
+     DevicesL-Z (dir)
+       .info                            narrator.doc
+       narrator.doc.info                parallel.doc
+       parallel.doc.info                printer.doc
+       printer.doc.info                 serial.doc
+       serial.doc.info                  timer.doc
+       timer.doc.info                   trackdisk.doc
+       trackdisk.doc.info               
+     Resources (dir)
+       .info                            cia.doc
+       cia.doc.info                     disk.doc
+       disk.doc.info                    misc.doc
+       misc.doc.info                    potgo.doc
+       potgo.doc.info                   
+     LinkerLibs (dir)
+       .info                            amiga.lib.doc
+       amiga.lib.doc.info               debug.doc
+       debug.doc.info                   
+     LibrariesA-K (dir)
+       .info                            diskfont.doc
+       diskfont.doc.info                dos.doc
+       dos.doc.info                     exec.doc
+       exec.doc.info                    expansion.doc
+       expansion.doc.info               graphics.doc
+       graphics.doc.info                icon.doc
+       icon.doc.info                    intuition.doc
+       intuition.doc.info               
+     DevicesA-K (dir)
+       .info                            audio.doc
+       audio.doc.info                   clipboard.doc
+       clipboard.doc.info               console.doc
+       console.doc.info                 gameport.doc
+       gameport.doc.info                input.doc
+       input.doc.info                   keyboard.doc
+       keyboard.doc.info                
+  .info                            Contents
+  Contents.info                    COPYRIGHT
+  COPYRIGHT.info                   DevicesA-K.info
+  DevicesL-Z.info                  DISCLAIMER
+  DISCLAIMER.info                  Disk.info
+  LibrariesA-K.info                LibrariesL-Z.info
+  LinkerLibs.info                  More
+  Resources.info                   

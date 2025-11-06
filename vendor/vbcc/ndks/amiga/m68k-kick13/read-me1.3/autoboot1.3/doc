@@ -1,0 +1,1024 @@
+
+
+TABLE OF CONTENTS
+
+"I._Synopsis"
+"II._Changes_Since_V1.2_Release_(33.180)"
+"III._How_AutoBoot_Works"
+"III._The_Details_of_Autoboot"
+"IV._Demo_Boot_ROM_Code"
+"V._SMALL_MODEL_Demo_Code:_Executing_out_of_ROM"
+"VI._Include_Files"
+"VII._Credits"
+
+
+"I._Synopsis"                                                     "I._Synopsis"
+
+       Kickstart V1.2.1 (33.181) is an incremental kickstart release which
+   extends the functionality of the V1.2 release to include support for
+   automatically booting the system from any expansion board which includes
+   appropriately initialized ROM.  
+
+       Modifications have been designed to retain the full functionality of
+   the V1.2 release while extending the capability of the system.  Thus,
+   in the absence of autoboot hardware the V1.2.1 system should exhibit the
+   same behavior as the V1.2 release.
+
+
+"II._Changes_Since_V1.2_Release_(33.180)"
+
+   Seven kickstart modules have changed since the release of KS_33.180:
+
+       1)  expansion34.1   --  functional change (internal only)
+       2)  graphics34.1    --  size change (no functional changes)
+       3)  strap34.1       --  functional change (internal only)
+       4)  romboot34.1     --  new module added to support autoboot
+       5)  wb34.1          --  size change (no functional changes)
+       6)  dos34.1         --  functional change (internal only)
+       7)  intuition34.1   --  functional change (extended preferences only)
+
+   Six include files have changed since the release of KS_33.180:
+
+       7)  exec/nodes.h                -- new define added
+       8)  exec/node.i                 -- new define added
+       9)  libraries/expansionbase.h   -- newly public
+       10) libraries/expansionbase.i   -- newly public
+       11  libraries/romboot_base.h    -- newly created
+       12) libraries/romboot_base.i    -- newly created
+       13) intuition/intuition.h       -- split off preferences.h and screens.h
+       14) intuition/intuition.i       -- split off preferences.i and screens.i
+       15) intuition/screen.h          -- newly created
+       16) intuition/screen.i          -- newly created
+       15) intuition/preferences.h     -- newly created
+       16) intuition/preferences.i     -- newly created
+
+   Two library files have changed since the release of KS_33.180
+       19) amiga.lib   -- addition of romboot.library
+       20) rom.lib     -- addition of romboot.library
+
+
+"III._How_AutoBoot_Works"                             "III._How_AutoBoot_Works"
+
+   Overview:
+       
+       At system reboot time (and after exec is initialized) the expansion
+   initialization procedure is called.  As each expansion board in the system
+   is configured, the expansion initialization routine checks to see whether
+   this board has a valid ROM area associated with it.  If such a ROM exists,
+   its image is then copied into RAM memory.  This ROM "image" contains
+   rom/diagnostic routines, a driver associated with this expansion board,
+   and a bootstrap routine to actually boot the appropriate operating system.
+
+       Once the ROM image exists in RAM, the config routine calls it's
+   rom/diagnostic vector to perform any patching and/or relocation of the ROM
+   image to reflect its new location in RAM. 
+
+       At this point the other resident modules, excepting strap, are
+   initialized.
+
+       After other resident modules are initialized, and before the strap,
+   the new romboot module is called upon to create the romboot.library.
+   During its initialization phase the romboot.library searches through
+   the ROM "images" for valid romtags.  When a romtag is found, its rt_Init()
+   function is called, to startup the driver associated with this board.
+   If the driver is able to startup successfully, it enqueues a node on
+   the expansion.library's eb_MountList (see libraries/expansionbase.h).
+
+       Lastly, the strap resident module is initialized.  It first checks to
+   see if a valid boot disk exists in internal drive DF0: -- if such a disk
+   exists, it will override the autoboot and boot from DF0:.  If there is no
+   valid boot disk in DF0:, the strap will attempt to autoboot by making the
+   romboot.library call RomBoot().  For each appropriate node on the
+   eb_Mountlist, this routine will locate and execute the bootstrap routine
+   located in an associated ROM "image".    If this bootstrap routine is
+   successful, the system will come up using this expansion board device
+   as the default boot device.  If the autoboot fails, or if there are no
+   appropriate nodes on the eb_MountList, strap will ask for the user to insert
+   a valid Workbench disk, and will loop until its request is satisfied.
+
+
+"III._The_Details_of_Autoboot"                   "III._The_Details_of_Autoboot"
+
+   AT EXPANSION CONFIGURATION TIME:
+
+       As part of its initialization, the expansion.library autoconfigs
+   all the appropriate hardware boards in the system.
+
+       When your autoconfig hardware board is configured by the expansion
+   initialization routine, its ExpansionRom structure is copied into the
+   ExpansionRom subfield of a ConfigDev structure.  This ConfigDev structure
+   will be linked to the expansion.library as part of the eb_BoardList.
+   AFTER the board is configured, the er_Type field of its ExpansionRom
+   structure is checked (see configregs.h): the DIAGVALID bit set
+   declares that there is a valid DiagArea on this autoconfig board.
+
+       Knowing that there is a valid DiagArea, expansion next tests the
+   er_InitDiagVec vector in its copy of the ExpansionRom structure.
+   This offset is added to the base address of the configured board;
+   the resulting address points to the base of this board's DiagArea.
+
+       Next, expansion tests the first byte (da_Config) of the DiagArea
+   structure to determine if the CONFIGTIME bit is set.  If this bit
+   is set, it checks the da_BootPoint offset vector to make sure that a valid
+   bootstrap routine exists. If so, expansion copies da_Size bytes into
+   RAM memory, beginning at DiagArea and continuing until the entire DiagArea
+   is copied into memory (eg: beginning with the DiagArea structure itself,
+   and typically including a rom/diagnostic routine, a device driver, and
+   the bootstrap routine).  This copy will be made either nibblewise, bytewise,
+   or wordwise, according to the BUSWIDTH subfield of da_Config.
+
+   [ N.B. THE da_BootPoint OFFSET MUST BE NON-NULL, ELSE NO COPY WILL OCCUR. ]
+
+
+       Now, the ROM "image" exists in RAM memory, expansion stores its
+   ULONG address of that "image" in the UBYTES er_Reserved0c,0d,0e,and 0f;
+   the address is stored with the most significant byte in er_Reserved0c,
+   the next to most significant byte in er_Reserved0d, the next to least 
+   significant byte in er_Reserved0e, and the least significant byte
+   in er_Reserved0f.
+
+       Expansion finally checks the da_DiagPoint offset vector, and if valid
+   executes the rom/diagnostic routine contained as part of the ROM "image".
+   This diagnostic routine is responsible for "patching" the ROM image so
+   that required absolute addresses are relocated to reflect the actual
+   location of the code, as well as performing any diagnostic functions 
+   essential to the operation of its associated autoconfig board.  The 
+   rom/diagnostic routine should return a non-zero value to indicate success;
+   otherwise the ROM "image" will be unloaded from memory, and its address
+   will be replaced with NULL bytes in locations er_Reserved0c,0d,0e,and 0f.
+       
+       Now that the ROM "image" has been loaded into RAM, validated, and
+   linked to board's ConfigDev structure, the expansion module is free to
+   configure another board on the eb_BoardList.
+
+   NEXT, OTHER RESIDENT MODULES ARE INITIALIZED:
+
+       Currently, all Resident modules (excepting strap) have a priority of
+   zero or above. .  The new romboot Resident module has a priority level of
+   -40. The strap module has priority -60  This means that Romboot will be
+   initialized after all other modules but before the (boot)strap module.
+
+   NOW, THE ROMBOOT.LIBRARY IS INITIALIZED:
+
+       As part of the initialization procedure for the romboot.library,
+   a search is made of the expansion eb_BoardList (which contains a
+   ConfigDev structure for each of the autoconfig hardware boards). 
+   If the cd_Flags specify CONFIGME and the er_Type specifies 
+   DIAGVALID, the romboot device will do three things: 
+
+       First, it will bind the address of the current ConfigDev to the
+   eb_CurrentBinding structure (see expansion.library/SetCurrentBinding);
+
+       Second, it will check the DiagArea's da_Config flag to make sure that
+   the CONFIGTIME bit is set; 
+
+       Third, it will search the ROM "image" associated with this hardware
+   board for a valid Resident structure (exec/resident.h) ; and, if one is
+   located, will call InitResident() on it, passing a NULL segment list
+   pointer as part of the call.
+
+   NOW, THIS BOARD'S DEVICE DRIVER IS INITIALIZED:
+
+       The Resident structure associated with this board's device driver
+   (having been previous "patched" by the rom/diagnostic routine) should follow
+   standard system conventions in initializing the device driver provided
+   in the bootroms.  This driver should obtain the address of its associated
+   ConfigDev structure via the expansion eb_CurrentBinding structure
+   (see expansion.library/GetCurrentBinding).
+
+       Once the driver is initialized, it is responsible for some further
+   steps.  One, it must clear the CONFIGME bit in the cd_Flags of its ConfigDev
+   structure , so that the system knows not to configure this device again
+   if binddrivers is run after bootstrap.  Two, for this device is to be
+   bootable, the driver must create a BootNode structure, and link this
+   BootNode onto the expansion eb_MountList.
+
+   The BootNode structure (see libraries/romboot_base.h) contains a Node of
+   the "new" type NT_BOOTNODE (see exec/nodes.h). The driver MUST initialize
+   the bn_DeviceNode field to point to the ConfigDev structure which it has
+   obtained via the GetCurrentBinding() call.  The bn_Flags subfield
+   is currently unused and should be initialized to NULL.
+
+       When the DOS is initialized later, it will attempt to boot from
+   the first BootNode on the eb_MountList.  The eb_MountList is a priority
+   sorted List, with nodes of the highest priority a the head of the List.
+   For this reason, the device driver must Enqueue() a BootNode onto the List
+   using the exec.library/Enqueue.
+
+       In the case of an autoboot of AmigaDOS, the BootNode must be linked
+   to a DeviceNode of the AmigaDOS type (see libraries/filehandler.h), which
+   the driver can create via the expansion.library/MakeDosNode call.
+   When the DOS "wakes up",it will attempt to boot from this DeviceNode. 
+
+   N.B.:   DOS, IN THIS CONTEXT, MAY BE CONSIDERED AS A "DEVICE OPERATING
+           SYSTEM".  ALTHOUGH IT WILL TYPICALLY BE AMIGADOS,  THERE IS
+           NOTHING CONCEPTUALLY PREVENTING A SYSTEM BOOT FROM ANOTHER
+           OPERATING SYSTEM (UNIX, MS-DOS, <boot via nfs:>, ETC.).
+
+   WHEN THE ROMBOOT.LIBRARY IS FINISHED INITIALIZING ALL ROM "IMAGES" ...
+   EXECUTION PASSES TO THE STRAP RESIDENT MODULE:
+
+       This is where all your hard work pays off...
+
+       If there is NO boot disk in the internal floppy drive, strap
+   will call the function romboot.library/RomBoot.  This routine performs 
+   the autoboot. It will examine the eb_MountList; find the highest priority
+   BootNode structure at the head of the List; validate the BootNode; 
+   determine which ConfigDev on the eb_BootList is associated with this
+   BootNode; find its DiagArea; and call its da_BootPoint function in the
+   ROM "image" to bootstrap the appropriate DOS. This call, if successful,
+   should not return.
+   
+       Otherwise, if a boot disk IS in the internal floppy drive, the strap
+   will Enqueue() a BootNode on the eb_MountList for DF0: at the "suggested"
+   priority (see autodoc for expansion.library/AddDosNode).  Strap will then
+   open AmigaDOS, overriding the autoboot. AmigaDOS will boot from the highest 
+   priority node on the eb_MountList which should, in this case, be DF0:.
+   Thus, games and other "bootable" floppy disks will still be able to
+   obtain the system for their own use.  
+
+       In the event that there is NO boot disk in the internal floppy drive
+   AND there are no ROM bootable devices on the autoconfiguration chain, the
+   system does the normal thing, asking the user to insert a WorkBench disk,
+   and waiting until its request is satisfied before proceeding.
+
+
+"IV._Demo_Boot_ROM_Code"                               "IV._Demo_Boot_ROM_Code"
+
+ ******************************************************************************
+ *
+ * Source Control
+ * --------------
+ * $Header: bootrom.asm,v 34.19 87/06/12 10:51:22 bart Exp $
+ *
+ * $Locker: bart $
+ *
+ ******************************************************************************
+
+   INCLUDE "bootrom.i"
+  
+ Boot_Rom: 
+  
+   dc.b    (DAC_WORDWIDE+DAC_CONFIGTIME)
+   dc.b    (NULL)
+   dc.w    Boot_EndCode+(*-Boot_Rom)
+   dc.w    (Rom_Diagnostics-Boot_Rom)
+   dc.w    (AutoBoot_Vector-Boot_Rom)
+   dc.w    (Boot_Name-Boot_Rom)
+   dc.w    (NULL)
+   dc.w    (NULL)
+  
+  
+ Rom_Diagnostics:          ;   config time entry point
+ 
+ ; upon entry
+ ; d0 == 0
+ ; a0 == pointer to boardbase
+ ; a2 == pointer to copy of diagarea
+ ; a3 == pointer to configdev structure for this board
+ ;
+ ; N.B.: rom/diagnostic MAY ONLY ACCESS exec.library FUNCTIONS !!!
+ ;                      === ==== ====== ============
+ 
+   ; must resolve references in romtag if loaded as raw memory image
+ 
+   LEA     deviceName(PC),A0
+   LEA     rt_Name(PC),A1
+   MOVE.L  A0,(A1)
+ 
+   LEA     ResidentTag(PC),A0
+   LEA     rt_MatchTag(PC),A1
+   MOVE.L  A0,(A1)
+ 
+   LEA     deviceIDString(PC),A0
+   LEA     rt_IDString(PC),A1
+   MOVE.L  A0,(A1)
+ 
+   LEA     deviceInit(PC),A0
+   LEA     rt_Init(PC),A1
+   MOVE.L  A0,(A1)
+ 
+   LEA     Boot_EndCode(PC),A0
+   LEA     rt_EndCode(PC),A1
+   MOVE.L  A0,(A1)
+ 
+   ;------ now let AutoBoot bring us up by the bootstraps
+ 
+   MOVEQ.L #1,D0                   ; indicate "success"
+   RTS
+ 
+   DC.W    RTC_MATCHWORD           ; UWORD RT_MATCHWORD
+ rt_MatchTag:
+   DC.L    ResidentTag             ; APTR  RT_MATCHTAG
+ rt_EndCode:
+   DC.L    Boot_EndCode            ; APTR  RT_ENDSKIP
+   DC.B    RTW_COLDSTART           ; UBYTE RT_FLAGS
+   DC.B    VERSION                 ; UBYTE RT_VERSION
+   DC.B    NT_DEVICE               ; UBYTE RT_TYPE
+   DC.B    20                      ; BYTE  RT_PRI
+ rt_Name:
+   DC.L    deviceName              ; APTR  RT_NAME
+ rt_IDString:
+   DC.L    deviceIDString          ; APTR  RT_IDSTRING
+ rt_Init:
+   DC.L    deviceInit              ; APTR  RT_INIT
+                                   ; LABEL RT_SIZE
+ 
+ AutoBoot_Vector:                  ; boot time entry point
+ 
+   LEA AutoBoot_DosName(PC),A1
+ 
+   JSR     _LVOFindResident(A6)    ; locate the DOS
+ 
+   TST.L   D0
+   BEQ.S   AutoBoot_Return         
+ 
+   ;------ and open the DOS
+ 
+   MOVE.L  D0,A0
+   MOVE.L  RT_INIT(A0),A0          ; set bootstrap vector
+ 
+   JSR     (A0)                    ; rock 'n roll !!!
+ 
+ AutoBoot_Return:
+ 
+   RTS
+ 
+ * Remember that Init is run with SysLib in A6, unlike most of
+ * the rest of the driver, which has the Device structure in A6
+ 
+   XREF    _LVOAllocMem
+   XREF    _LVOMakeLibrary
+   XREF    _LVOAddDevice
+   XREF    _LVOOpenLibrary
+   XREF    _LVOGetCurrentBinding
+   XREF    _LVOCloseLibrary
+   XREF    _LVOFreeMem
+   XREF    _LVOMakeDosNode
+ 
+ deviceInit:
+ 
+   MOVEM.L D2/A2-A4,-(SP)
+ 
+ *     ;------ get temp memory
+ 
+   MOVE.L  #INIT_SIZE,D0
+   MOVE.L  #MEMF_CLEAR!MEMF_PUBLIC,D1
+   CALLLIB _LVOAllocMem
+   TST.L   D0
+   BNE.S   Alloc_Success
+ 
+   ALERT   (AN_AMHDDiskDev!AG_NoMemory),,A0
+ 
+ Alloc_Success:    
+ 
+   MOVE.L  D0,A3
+ 
+ *     ;----- call the library initialization routine
+ 
+   LEA devFuncInit(PC),A0
+   LEA devStructInit(PC),A1
+   SUB.L   A2,A2
+   MOVE.L  #DV_SIZE,D0
+   CALLLIB _LVOMakeLibrary
+ 
+   TST.L   D0
+   BNE.S   Init_Success
+ 
+ Init_Alert:
+ 
+   ALERT   (AN_TrackDiskDev!AG_MakeLib),,A0
+ 
+ Init_Success:
+ 
+ *     ;------ Add your device to the system
+ 
+   MOVE.L  D0,A1
+   CALLLIB _LVOAddDevice
+ 
+ *     ;------  we will need to access the expansion.library to get bindings
+ 
+   LEA.L   ExLibName(PC),A1                ; Get expansion lib. name
+   CLR D0
+   CALLLIB _LVOOpenLibrary                 ; Open the expansion library
+   TST.L   D0
+   BNE.S   Exp_OpSuccess
+ 
+ Exp_OpFail:
+ 
+   ALERT   (AN_AMHDDiskDev!AG_OpenLib),,A0
+ 
+ Exp_OpSuccess:    
+ 
+   MOVE.L  D0,A4
+ 
+   LEA INIT_CBIND(A3),A0                   ; Get the Current Bindings
+   MOVE.L  #CurrentBinding_SIZEOF,D0       ; Size of Current Binding struct
+   LINKLIB _LVOGetCurrentBinding,A4
+   MOVE.L  INIT_CBIND+cb_ConfigDev(A3),D0  ; Get  address of ConfigDev
+ 
+ Config_Test:  
+ 
+   TST.L   D0                              ; If controller not found
+   BEQ Init_End                            ; Exit and unload driver
+ 
+   MOVE.L  D0,INIT_CADDR(A3)               ; pass ConfigDev to Init_Unit
+ 
+   BRA Init_Unit                           ; initialize your unit
+ 
+ Init_End:
+ 
+   MOVE.L  A4,A1                           ; Now close expansion library
+   CALLLIB _LVOCloseLibrary
+ 
+   MOVE.L  A3,A1
+   MOVE.L  #INIT_SIZE,D0
+   CALLLIB _LVOFreeMem
+   MOVEQ.L #1,D0                           ; Indicate success
+   MOVEM.L (SP)+,D2/A2-A4
+   RTS
+
+ *    Init_Unit:
+ *    --------
+ *  this particular routine expects ExpansionBase in A4
+ 
+ Init_Unit:
+ 
+   MOVEM.L D2-D7/A2-A7,-(SP)
+ 
+ *     ; initialize your unit here
+ 
+   NOP
+ 
+ *     ; if everything went OK, put a BootNode on the eb_MountList
+ 
+   CLEAR   D1
+   MOVEQ.L #BootNode_SIZEOF,d0
+   LINKSYS AllocMem
+   TST.L   D0
+   BEQ.S   BootNode_Done
+   MOVE.L  D0,A1                           ; Get BootNode address
+ 
+   MOVE.L  A1,-(SP)                        ; save pointer to BootNode
+   LEA HDB_DOSNPTR+INIT_SECT(A2),A0
+   LINKLIB _LVOMakeDosNode,A4              ; Build AmigaDOS structures
+   MOVE.L  (SP)+,A1                        ; restore pointer to BootNode
+ 
+   TST.L   D0
+   BEQ.S   Free_BootNode
+ 
+   MOVE.W  #0,bn_Flags(A1)
+   MOVE.B  #0,LN_PRI(A1)           ; priority 0 for run-of-the-mill device
+   MOVE.B  #NT_BOOTNODE,LN_TYPE(A1)    ; type NT_BOOTNODE indicates
+   MOVE.L  D0,bn_DeviceNode(A1)        ; that this DeviceNode is associated
+   MOVE.L  INIT_CADDR(A3),LN_NAME(A1)  ; with CD address in ln_Name field
+ 
+ *     ; AddDosNode does not currently allow us to pass the CD in the
+ *     ; ln_Name field of the BootNode structure added to the eb_MountList.
+ *     ; So, we will just Enqueue() it to the MountList directly...
+ 
+   LEA.L   eb_MountList(A4),A0     
+   LINKSYS Enqueue                 ; add BootNode to MountList
+ 
+   BRA.S   BootNode_Done
+ 
+ Free_BootNode:
+ 
+   MOVEQ.L #BootNode_SIZEOF,D0
+   LINKSYS FreeMem
+ 
+ BootNode_Done:
+ 
+   MOVEM.L (SP)+,D2-D7/A2-A7
+ 
+   RTS
+ 
+ LocalStrings:
+ 
+   CNOP    0,4 ; Make sure string is long word aligned
+ 
+ AutoBoot_DosName: DOSNAME
+ 
+   CNOP    0,4 ; Make sure string is long word aligned
+ 
+ Boot_Name: BOOT_NAME
+ 
+   CNOP    0,4 ; Make sure string is long word aligned
+ 
+ deviceName: DEVICE_NAME
+ 
+   CNOP    0,4 ; Make sure string is long word aligned
+ 
+ deviceIDString: VSTRING
+ 
+ Boot_EndCode:
+ 
+   DC.L    0
+ 
+   END
+
+
+"V._SMALL_MODEL_Demo_Code:_Executing_out_of_ROM"
+ 
+   INCLUDE "bootrom.i"
+   INCLUDE "bootrom_rev.i"
+   INCLUDE "hddisk.i"
+   INCLUDE "libraries/expansion.i"
+ 
+   XREF    Init
+   XREF    _LVOFindResident
+ 
+ Small_Rom:
+ 
+   dc.b    (DAC_WORDWIDE+DAC_CONFIGTIME)
+   dc.b    (NULL)
+   dc.w    (EndCode-Small_Rom)
+   dc.w    (Rom_Diagnostics-Small_Rom)
+   dc.w    (AutoBoot_Vector-Small_Rom)
+   dc.w    (Boot_Name-Small_Rom)
+   dc.w    (NULL)
+   dc.w    (NULL)
+ 
+ AutoBoot_Vector:
+ 
+   MOVE.L  D0,-(SP)        ; save d0
+ 
+   LEA AutoBoot_Dosname(PC),A1
+ 
+   JSR     _LVOFindResident(A6)    ; initialize the device driver
+ 
+   TST.L   D0
+   BEQ.S   AutoBoot_NoDos
+ 
+   ;------ and let the strap call the dos
+ 
+   MOVE.L  D0,A0
+   MOVE.L  RT_INIT(A0),A0  ; set bootstrap vector
+ 
+   JSR     (A0)            ;   rock 'n roll !!!
+ 
+ AutoBoot_Return:
+ 
+   MOVE.L  (SP)+,D0        ; restore d0
+   RTS
+ 
+ AutoBoot_NoDos:
+   MOVE.L  D0,A0           ; clear bootstrap vector
+   BRA.S   AutoBoot_Return
+ 
+   CNOP    0,4 ; Make sure string is long word aligned
+ 
+ AutoBoot_Dosname:
+   DOSNAME
+ 
+   CNOP    0,4 ; Make sure string is long word aligned
+ 
+ Boot_Name:
+ 
+   BOOT_NAME
+ 
+ initDDescrip:                 ;STRUCTURE RT,0
+   DC.W    RTC_MATCHWORD       ; UWORD RT_MATCHWORD
+ rt_MatchTag:
+   DC.L    initDDescrip        ; APTR  RT_MATCHTAG
+ rt_EndCode:
+   DC.L    EndCode             ; APTR  RT_ENDSKIP
+   DC.B    RTW_COLDSTART       ; UBYTE RT_FLAGS
+   DC.B    VERSION             ; UBYTE RT_VERSION
+   DC.B    NT_DEVICE           ; UBYTE RT_TYPE
+   DC.B    20                  ; BYTE  RT_PRI
+ rt_Name:
+   DC.L    hdName              ; APTR  RT_NAME
+ rt_IDString:
+   DC.L    hdIDString          ; APTR  RT_IDSTRING
+ rt_Init:
+   DC.L    Init                ; APTR  RT_INIT == long offset from ROM base
+                               ; LABEL RT_SIZE
+ 
+   CNOP    0,4 ; Make sure string is long word aligned
+ ExLibName EXPANSIONNAME   ; Expansion Library Name
+ 
+   CNOP    0,4 ; Make sure string is long word aligned
+ IntuitLibName 
+       DC.B    'intuition.library',0
+       DS.W    0
+ 
+   CNOP    0,4 ; Make sure string is long word aligned
+ hdName:
+       HD_NAME
+ 
+ *     ;------ our name identification string
+   CNOP    0,4 ; Make sure string is long word aligned
+ hdIDString:   VSTRING
+ 
+ VERNUM:       EQU VERSION
+ 
+ REVNUM        EQU REVISION
+ 
+ Rom_Diagnostics:          ;   config time entry point
+ 
+ ; upon entry
+ ; d0 == 0
+ ; a0 == pointer to boardbase
+ ; a2 == pointer to copy of diagarea 
+ ; a3 == pointer to configdev structure for this board
+ 
+   MOVEM.L A1,-(SP)
+ 
+   ; must resolve references in romtag if loaded as raw memory image
+ 
+   LEA     rt_Init(PC),A1      ; in order to execute out of ROM
+   MOVE.L  (A1),D0             ; get long offset from ROM origin
+   ADD.L   A0,D0               ; add the boardbase to the offset
+   MOVE.L  D0,(A1)             ; and replace offset with absolute
+ 
+   LEA     hdName(PC),A0
+   LEA     rt_Name(PC),A1
+   MOVE.L  A0,(A1)
+ 
+   LEA     initDDescrip(PC),A0
+   LEA     rt_MatchTag(PC),A1
+   MOVE.L  A0,(A1)
+ 
+   LEA     hdIDString(PC),A0
+   LEA     rt_IDString(PC),A1
+   MOVE.L  A0,(A1)
+ 
+   LEA     EndCode(PC),A0
+   LEA     rt_EndCode(PC),A1
+   MOVE.L  A0,(A1)
+ 
+   ;------ now let AutoBoot bring us up by the bootstraps
+ 
+   MOVEM.L (SP)+,A1
+ 
+   MOVEQ.L #1,D0               ; indicate "success"
+   RTS
+ 
+ EndCode:
+ 
+   DC.L    0
+ 
+   END
+ 
+
+"VI._Include_Files"                                         "VI._Include_Files"
+ 
+ /*********************************************************************
+ *
+ *   Commodore Amiga -- ROM Operating System Include Files
+ *
+ **********************************************************************
+ *
+ *  Copyright (C) 1987,  Commodore-Amiga, Inc., All rights reserved.
+ *
+ *  exec/nodes.h
+ *
+ *********************************************************************/
+ 
+ #ifndef   EXEC_NODES_H
+ #define   EXEC_NODES_H
+ 
+ 
+ /* normal node */
+ struct Node { 
+     struct  Node *ln_Succ;
+     struct  Node *ln_Pred;
+     UBYTE   ln_Type;
+     BYTE    ln_Pri; 
+     char    *ln_Name; 
+ };
+ 
+ /* stripped node -- no type checking is possible */
+ struct MinNode {
+     struct MinNode *mln_Succ;
+     struct MinNode *mln_Pred;
+ };
+ 
+ 
+ /*----- Node Types --------*/
+ #define NT_UNKNOWN    0 
+ #define NT_TASK       1 
+ #define NT_INTERRUPT  2 
+ #define NT_DEVICE 3 
+ #define NT_MSGPORT    4 
+ #define NT_MESSAGE    5 
+ #define NT_FREEMSG    6 
+ #define NT_REPLYMSG   7 
+ #define NT_RESOURCE   8
+ #define NT_LIBRARY    9
+ #define NT_MEMORY 10
+ #define NT_SOFTINT    11
+ #define NT_FONT       12
+ #define NT_PROCESS    13
+ #define NT_SEMAPHORE  14
+ #define NT_SIGNALSEM  15  /* signal semaphores */
+ #define NT_BOOTNODE   16
+ 
+ #endif
+     IFND EXEC_NODES_I
+ EXEC_NODES_I SET 1
+ 
+ **********************************************************************
+ *
+ *  Copyright (C) 1987,  Commodore-Amiga, Inc., All rights reserved.
+ *
+ *  exec/nodes.i
+ *
+ **********************************************************************
+ 
+ *----------------------------------------------------------------
+ *
+ *   List Node Structure
+ *
+ *----------------------------------------------------------------
+ 
+  STRUCTURE  LN,0
+     APTR    LN_SUCC
+     APTR    LN_PRED
+     UBYTE   LN_TYPE
+     BYTE    LN_PRI
+     APTR    LN_NAME
+     LABEL   LN_SIZE
+ 
+ ; min node -- only has minimum necessary, no type checking possible
+  STRUCTURE  MLN,0
+     APTR    MLN_SUCC
+     APTR    MLN_PRED
+     LABEL   MLN_SIZE
+ 
+ *------ Node Types:
+ 
+ NT_UNKNOWN      EQU     0
+ NT_TASK         EQU     1
+ NT_INTERRUPT    EQU     2
+ NT_DEVICE       EQU     3
+ NT_MSGPORT      EQU     4
+ NT_MESSAGE      EQU     5
+ NT_FREEMSG      EQU     6
+ NT_REPLYMSG     EQU     7
+ NT_RESOURCE     EQU     8
+ NT_LIBRARY      EQU     9
+ NT_MEMORY       EQU     10
+ NT_SOFTINT    EQU 11
+ NT_FONT   EQU 12
+ NT_PROCESS    EQU 13
+ NT_SEMAPHORE  EQU 14
+ NT_SIGNALSEM  EQU 15  ; signal semaphores
+ NT_BOOTNODE   EQU 16
+ 
+     ENDC !EXEC_NODES_I
+ 
+ /*************************************************************************
+ *
+ *  Copyright (C) 1987,  Commodore-Amiga, Inc., All rights reserved.
+ *
+ *  libraries/expansionbase.h
+ *
+ **************************************************************************/
+ 
+ #ifndef LIBRARIES_EXPANSIONBASE_H
+ #define LIBRARIES_EXPANSIONBASE_H   1
+ 
+ #ifndef EXEC_TYPES_H
+ #include "exec/types.h"
+ #endif  !EXEC_TYPES_H
+ 
+ #ifndef EXEC_LIBRARIES_H
+ #include "exec/libraries.h"
+ #endif    !EXEC_LIBRARIES_H
+ 
+ #ifndef EXEC_INTERRUPTS_H
+ #include "exec/interrupts.h"
+ #endif    !EXEC_INTERRUPTS_H
+ 
+ #ifndef EXEC_SEMAPHORES_H
+ #include "exec/semaphores.h"
+ #endif    !EXEC_SEMAPHORES_H
+ 
+ #ifndef LIBRARIES_CONFIGVARS_H
+ #include "libraries/configvars.h"
+ #endif    !LIBRARIES_CONFIGVARS_H
+ 
+ #define TOTALSLOTS 256
+ 
+ struct ExpansionInt
+ {
+   UWORD   IntMask;
+   UWORD   ArrayMax;
+   UWORD   ArraySize;
+ };
+ 
+ 
+ struct    ExpansionBase
+ {
+   struct Library  LibNode;
+   UBYTE   Flags;
+   UBYTE   pad;
+   APTR    ExecBase;
+   APTR    SegList;
+   struct  CurrentBinding  CurrentBinding;
+   struct  List    BoardList;
+   struct  List    MountList;
+   UBYTE   AllocTable[TOTALSLOTS];
+   struct  SignalSemaphore BindSemaphore;
+   struct  Interrupt   Int2List;
+   struct  Interrupt   Int6List;
+   struct  Interrupt   Int7List;
+ };
+ 
+ 
+ 
+ #endif !LIBRARIES_EXPANSIONBASE_H
+ 
+ ***************************************************************************
+ *
+ *  Copyright (C) 1987,  Commodore-Amiga, Inc., All rights reserved.
+ *
+ *  libaries/expansionbase.i
+ *
+ ***************************************************************************
+ 
+   IFND    EXPANIONBASE_I
+ EXPANIONBASE_I    SET 1
+ 
+ 
+   IFND    EXEC_TYPES_I
+   INCLUDE "exec/types.i"
+   ENDC    EXEC_TYPES_I
+ 
+   IFND    EXEC_LIBRARIES_I
+   INCLUDE "exec/libraries.i"
+   ENDC    EXEC_LIBRARIES_I
+ 
+   IFND    EXEC_INTERRUPTS_I
+   INCLUDE "exec/interrupts.i"
+   ENDC    EXEC_INTERRUPTS_I
+ 
+   IFND    EXEC_SEMAPHORES_I
+   INCLUDE "exec/semaphores.i"
+   ENDC    EXEC_SEMAPHORES_I
+ 
+   IFND    LIBRARIES_CONFIGVARS_I
+   INCLUDE "configvars.i"
+   ENDC    LIBRARIES_CONFIGVARS_I
+ 
+ 
+ TOTALSLOTS    EQU 256
+ 
+  STRUCTURE    ExpansionInt,0
+     UWORD     ei_IntMask  ; mask for this list
+     UWORD     ei_ArrayMax ; current max valid index
+     UWORD     ei_ArraySize    ; allocated size
+     LABEL     ei_Array    ; actual data is after this
+     LABEL     ExpansionInt_SIZEOF
+ 
+  STRUCTURE    ExpansionBase,LIB_SIZE
+     UBYTE     eb_Flags
+     UBYTE     eb_pad
+     ULONG     eb_ExecBase
+     ULONG     eb_SegList
+     STRUCT        eb_CurrentBinding,CurrentBinding_SIZEOF
+     STRUCT        eb_BoardList,LH_SIZE
+     STRUCT        eb_MountList,LH_SIZE
+     STRUCT        eb_AllocTable,TOTALSLOTS
+     STRUCT        eb_BindSemaphore,SS_SIZE
+     STRUCT        eb_Int2List,IS_SIZE
+     STRUCT        eb_Int6List,IS_SIZE
+     STRUCT        eb_Int7List,IS_SIZE
+     LABEL     ExpansionBase_SIZEOF
+ 
+ 
+ ; error codes
+ EE_LASTBOARD  EQU 40  ; could not shut him up
+ EE_NOEXPANSION    EQU 41  ; not enough expansion mem; board shut up
+ EE_NOBOARD    EQU 42  ; no board at that address
+ EE_NOMEMORY   EQU 42  ; not enough normal memory
+ 
+ ; flags
+   BITDEF  EB,CLOGGED,0    ; someone could not be shutup
+   BITDEF  EB,SHORTMEM,1   ; ran out of expansion mem
+ 
+ 
+   ENDC    !EXPANIONBASE_I
+ 
+ /*****************************************************************************
+ *
+ *  Copyright (C) 1987,  Commodore-Amiga, Inc., All rights reserved.
+ *
+ *  libraries/romboot_base.h
+ *
+ *****************************************************************************/
+ 
+ #ifndef LIBRARIES_ROMBOOTBASE_H
+ #define LIBRARIES_ROMBOOTBASE_H
+ 
+ #ifndef EXEC_TYPES_H
+ #include <exec/types.h>
+ #endif
+ #ifndef EXEC_NODES_H
+ #include <exec/nodes.h>
+ #endif
+ #ifndef EXEC_LISTS_H
+ #include <exec/lists.h>
+ #endif
+ #ifndef EXEC_LIBRARIES_H
+ #include <exec/libraries.h>
+ #endif
+ #ifndef EXEC_EXECBASE_H
+ #include <exec/execbase.h>
+ #endif
+ #ifndef EXEC_EXECNAME_H
+ #include <exec/execname.h>
+ #endif
+ 
+ struct RomBootBase
+ {
+     struct Library  LibNode;
+   struct Execbase *ExecBase;
+   struct List     BootList;
+   ULONG           Reserved[4];    /* for future expansion */
+ };
+ 
+ struct BootNode
+ {
+   struct Node bn_Node;
+   UWORD   bn_Flags;
+   CPTR    bn_DeviceNode;
+ };
+ 
+ #define   ROMBOOT_NAME "romboot.library"
+ 
+ #endif
+ 
+ ******************************************************************************
+ *
+ *  Copyright (C) 1987,  Commodore-Amiga, Inc., All rights reserved.
+ *
+ *  libraries/romboot_base.i
+ *
+ ******************************************************************************
+ 
+     IFND    LIBRARIES_ROMBOOTBASE_I
+ LIBRARIES_ROMBOOTBASE_I  SET 1
+ 
+     IFND    EXEC_TYPES_I
+     include 'exec/types.i'
+     ENDC
+     IFND    EXEC_NODES_I
+     include 'exec/nodes.i'
+     ENDC
+     IFND    EXEC_LISTS_I
+     include 'exec/lists.i'
+     ENDC
+     IFND    EXEC_LIBRARIES_I
+     include 'exec/libraries.i'
+     ENDC
+     IFND    EXEC_EXECBASE_I
+     include 'exec/execbase.i'
+     ENDC
+     IFND    EXEC_EXECNAME_I
+     include 'exec/execname.i'
+     ENDC
+ 
+  STRUCTURE  RomBootBase,LIB_SIZE
+   APTR    rbb_ExecBase
+   STRUCT  rbb_BootList,LH_SIZE
+   STRUCT  rbb_Reserved,16         ; for future expansion
+     LABEL   rbb_SIZEOF
+ 
+  STRUCTURE BootNode,LN_SIZE
+   UWORD   bn_Flags
+   CPTR    bn_DeviceNode
+   LABEL   BootNode_SIZEOF
+ 
+ ROMBOOT_NAME:  MACRO
+   DC.B    'romboot.library',0
+   DS.W    0
+   ENDM
+ 
+   ENDC
+ 
+
+"VII._Credits"                                                   "VII._Credits"
+
+   Special thanks to: 
+
+       jeff porter and jeff boyer  (hardware support)
+       andy finkel                 (wc coordination)
+       neil katin                  (autoconfig wizardry)
+       tim king                    (dos magic)
+       and dale luck.              (compiler support)
+
+   AutoBoot guru:
+
+     //----------------------------------------------------- ----------\\
+    //|  Bart Whitebook, Manager of Amiga ROM Software      | {|V|)))  |\\
+      |  Comodore-Amiga, Inc.                               | ()^()-)))|
+      |  16795 Lark Avenue, Suite #106, Los Gatos, CA 95030 |  /_   ?))|
+      |  UUCP: pyramid!oliveb!amiga!bart                    | { _ } )\ |
+      |  BIX:  amigabart                                    | \   //   | 
+    \\|_____________________________________________________|__\//____ |//
+     \\                                                                //
+
+

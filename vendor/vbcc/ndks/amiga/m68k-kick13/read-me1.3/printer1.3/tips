@@ -1,0 +1,32 @@
+
+	Tips for Generating Better/Faster Graphic Dumps
+	-----------------------------------------------
+
+	Faster
+	------
+
+1. If you are dumping a 1 bitplane image select the B&W mode in preferences.
+   This is much faster than a grey-scale or color dump.
+
+2. Horizontal dumps are much faster than vertical dumps as they use the
+   blitter to read the pixel data.
+
+3. Smoothing doubles the print time.  Use it for final copy only.
+
+4. F-S dithering doubles the print time.  Ordered and halftone dithering
+   incur no extra overhead.
+
+5. The lower the density the faster the printout.
+
+
+	Better
+	------
+
+1. Friction fed paper tends to be much more accurate than tractor fed
+   paper in terms of vertical dot placement (ie. less horizontal strips or
+   white lines).
+
+2. Densities which use more than one pass tend to produce 'muddy' grey-scale
+   or color printouts.  It is recommended that you not chose these densities
+   when doing a grey-scale or color dump.
+

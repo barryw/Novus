@@ -1,0 +1,30 @@
+
+1.3 Startup Code
+================
+
+This directory currently contains
+
+startup1.2 (dir):
+   The old 1.2 Astartup and TWstartup codes, and a startup.doc which
+   explains what kinds of programs can be linked with these Amiga
+   startups, how to link with them, etc.
+
+startup1.3 (dir):
+   The latest version of [R]startup.asm, the new reentrant Amiga startup
+   code, and two tutorials, UsingAmigaStartups and WritingReentrantC.
+   This version of [R]startup has not been heavily tested yet, but it 
+   does not have the subtle bug that the devcon version had in its abort
+   logic (described below).  If you are not sure if you can use these 
+   startups, read the UsingAmigaStartups.  If you want to write
+   reentrant code, also read WritingReentrantC.
+
+   oldrstart (dir):
+      The earlier (devcon) version of [r]startup.asm.  A bug was found
+      in the abort logic of this version.  If a program was started from
+      Workbench, and there was enough memory for the program to be
+      loaded and createproc'd, but there was not a small piece of memory 
+      left for the startup's allocation of the argument buffers and
+      startup variables, the abort logic did not get or reply the
+      Workbench message.  This would cause the program to not be unloaded
+      by Workbench under this abort condition.
+

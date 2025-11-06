@@ -45,3 +45,8 @@ usercache/
 /test.novus
 /test_*.novus
 *.trx
+
+# Vendored VBCC binaries (source is tracked)
+vendor/vbcc/bin/
+vendor/vbcc/**/*.o
+vendor/vbcc/**/*.a

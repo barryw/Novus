@@ -1,0 +1,258 @@
+
+                             Overview1.3o6
+                             =============
+         Copyright (c) 1985,1986,1987,1988  Commodore-Amiga, Inc.
+                         All Rights Reserved
+
+The files on this disk are copyrighted and proprietary.  In addition, all
+files related to 1.3 or future products are preliminary and subject to
+change.  All files and programs are supplied as-is and are not warranted
+as to completeness, accuracy, or suitability for any particular purpose.
+
+             (Gaak! I'm starting to sound like a lawyer!)
+
+
+       YOU MUST READ THIS ENTIRE FILE OR I WILL REPOSSESS YOUR DISKS
+       =============================================================
+
+
+1. WHAT YOU CAN'T DO WITH THESE DISKS AND DOCUMENTS
+
+   You may not distribute these disks or anything on these disks
+   You may not post or print or publish anything on these disks
+   You may not post or print or publish any enclosed documents
+   You may not discuss these disks or documents in any public forum
+   You may not discuss them at all except with other Gamma testers
+   You may not use these disks as frisbees outdoors
+
+
+2. WHAT YOU'RE SUPPOSED TO DO WITH THESE DISKS AND DOCUMENTS
+
+   Make copies of the Bug Report form.  Then...
+
+   Read everything.
+         Read the Documents and Readmes.
+         All Readme disk docs are clickable from WB.
+         Report any documentation discrepancies or omissions.
+
+   Test evrything you can.
+         Test the new commands and handlers.  Test the FFS.  Test the
+         new ieee libraries (especially if you have a peripheral or
+         coprocessor '881).  Try the new Prefs, printer.device and
+         drivers.  Try the Includes.  Try everything that's new.
+         And if you have an A1000, boot it with the 1.2.1. Kickstart.
+
+   Test your commercial software and hardware with the Kickstart 1.2.1.
+         and Workbench 1.3o6.
+
+   Promptly report all bugs, omissions, problems, incompatibilities,
+         etc. using a copy of the enclosed bug report.  An electronic
+         version of the bug report form can be found on the Readme1.3g4
+         disk.
+
+         Mail paper bug reports to:
+
+            Andy Finkel - 1.3o6
+            CBM Engineering
+            1200 Wilson Drive
+            West Chester, PA  19380
+
+         Mail electronic bug reports to:
+            BIX:     afinkel
+            GENIE:   afinkel
+            UUCP:    {allegra,uunet,rutgers}!cbmvax!bugs
+ 
+
+3. WHAT'S PROBABLY INCLUDED
+
+   Documents (Paper Things)
+
+      Cover Letter - Your responsibilities as a Gamma Tester
+
+      Bug Report   - One of your responsibilities
+
+      Command Docs - Cover additions and enhancements to Workbench
+                     commands, handlers, etc.
+      
+   Disks (Hard square things)
+
+      Kickstart 1.2.1.   - Current 1.3 KS by a different name
+      Workbench 1.3 o6   - Gamma 4 pre-release of 1.3 Workbench
+      Extras 1.3 o6      - Gamma 4 Extras (some WB things have moved here)
+      Readme1.3o6        - Preliminary readmes and examples, new autodocs
+      Include1.3o6       - Commented Asm and C include files
+      Include.Strip1.3o6 - Stripped includes, fd's, offsets, startups,
+                             and a few utilities
+   
+
+4. WHAT'S WHERE
+
+   1.2.1 Kickstart - Equivalent to current 1.3 Kickstart except the
+                     hand says "1.2.1." and everything else is
+                     probably at a slightly different address than
+                     in the version that says "1.3".  So don't even
+                     think about patching this.
+
+                     1.3 (and 1.2.1) Kickstart is 1.2 Kickstart with
+                     additional code for autobooting off specially
+                     designed devices.  Generally such devices would
+                     be autoboot expansion devices with ROM driver on
+                     board.  If you don't have one of those yet
+                     (and you probably don't unless your company is
+                     making one), you can still Have Fun With Autoboot
+                     by playing with the Rebootable Ramdrive.
+
+                     Read about Autoboot in the Autoboot1.3 drawer.
+
+
+   1.3o6 Workbench - Some New things on Workbench:
+
+                       C/
+
+                         Lots of enhancements for your CLI enjoyment.
+                         In conjunction with assorted magic from some
+                         other directories, the C directory is proud
+                         to announce AmigaShell! Resident! Scripts
+                         without Execute!  (Andy was a Very Busy Bee)
+                         And FastFonts ("FF") by Charlie Heath!
+
+                       S/
+
+                         New Cli-startup file for every resident cli.
+
+                       DEVS/
+
+                         New printer.device and drivers
+                          More drivers are on the Extras disk.  Faster
+                          and full of neat new features.  Massive docs
+                          in the ReadMe:Printer1.3 drawer.  And lots
+                          of example 1.3 printer driver sources!
+
+                         Ramdrive.device
+                          Recoverable Ram Drive that you can REBOOT
+                          off with 1.3 (1.2.1) Kickstart!  Under 1.2
+                          it's still recoverable but not rebootable
+                          (of course), and under 1.2 you must remount
+                          it after rebooting.  You can only have one
+                          of these.  There's a mountlist entry for it,
+                          currently called CARD: (CommodoreAmigaRamDrive).
+                          It used to be called rd0: but since you can
+                          only have one we thought that was a bad choice.
+                          If you can think of a better unused name, let
+                          us know.  Mount CARD:, Format it, then if
+                          you're using 1.3 (1.2.1.) KS, pull your df0:
+                          disk and CTRL/AMIGA/AMIGA.  Nice, eh ?
+                          (nicer, of course, if you copy some of your
+                          Workbench in there so you don't Reboot into
+                          default city).
+
+                       New Preferences
+                         Select new printer features and even override
+                          the type of dump an application has selected.
+                          Read about it in ReadMe:Workbench1.3 drawer.
+
+                       L/
+                          Lots of new handlers and the new FastFileSystem.
+                          Read about FFS in ReadMe/Workbench1.3.
+                          Read about new handlers in the Command docs.
+
+                       LIBS/
+
+                         Double precision ieee libraries that can use
+                           68881 (coprocessor or peripheral) if one
+                           is available.  Read about IEEE in the ReadMe
+                           Workbench1.3 drawer.  Autodocs are in the
+                           Autodocs1.3 drawer. New linker .lib's and fd's
+                           are on the Include.strip disk.
+
+                         New diskfont.library with two new functions
+                           for updating fonts directory after changes
+                           have been made.  Autodoc is in the Autodocs1.3
+                           drawer.
+                           
+                       SYSTEM/ and UTILITIES/
+
+                         Various enhancements including a new More that
+                           can be run and works with our pipe, and a
+                           new Graphicdump with built-in size options.
+
+
+   1.3g4 Extras -    AmigaBasic is unchanged.  PCUtils are unchanged.
+                     Some utilities are unchanged.  But you'll notice
+                     that many of the printer drivers and keymaps have
+                     been moved here to make room for new utilities
+                     and handlers on Workbench.  This is where the new
+                     Adobe fonts will probably be on final Extras1.3.
+
+                     
+   ReadMe1.3g4 -     All docs which are currently available for new
+                     1.3 features (except for command docs which are
+                     supplied on paper).  Docs for ieee, FFS, Prefs,
+                     Autoboot, Printer.  Some IEEE examples and lots
+                     of examples printer drivers.  Autodocs which have
+                     changed for 1.3.  Electronic bug report form.
+
+
+   Include1.3g4 -    Commented C and assembler Include files
+
+   Include.strip1.3g4 - Stripped Includes, fd files, offset lists,
+                     startups.  Amiga.lib, debug.lib, new parallel
+                     ddebug.lib, and new linker lib's for diskfont
+                     and ieee.  Alink, atom, and stripa.
+
+
+5.  ADVANCE NOTICE OF NEW 1.3 WORKBENCH LICENSE
+
+    When final Workbench1.3 is released, a new 1.3 Workbench
+    license will be required for distribution of any Workbench1.3
+    programs or files with your commercial products.  You will
+    not be able to distribute Workbench1.3 programs or files
+    under non-1.3 license.  Just so you can plan ahead, the
+    new license requires the following copyright both on your
+    disk label and in your documentation, and the listed trademark
+    notices if you use any of the trademarked words.  In addition,
+    the 1.3 Workbench license will include an Adobe Fonts license.
+    If you distribute any of the special Adobe Fonts on your disk,
+    you will also have need Adobe copyrights on your disk and docs.
+    I don't have a copy of the Adobe license yet, but here are the
+    Commodore-Amiga copyrights and trademarks that will be required.
+
+                      Copyrights and Trademarks
+
+          1.  The following Copyright notices are required on the label
+     affixed to the medium containing the Program and in the documentation
+     accompanying the Product:
+
+
+   Amiga Workbench TM   Version 1.3
+   Copyright 1985,1986,1987,1988 Commodore-Amiga, Inc.  All Rights Reserved
+
+
+          2.  Trademarks  
+
+     
+
+     Amiga        -  Must be followed by a standard Registered Trademark
+                     notation ( an "R" in a circle ) and there
+                     must be a footnote appearing in the copy stating
+                     "Amiga is a registered trademark of Commodore-Amiga,
+                     Inc."
+
+     AmigaDOS     -  Must be followed by a "TM" notation and there
+                     should be a footnote appearing in the copy stating
+                     "AmigaDOS is a trademark of Commodore-Amiga, Inc."
+
+     Kickstart    -  Must be followed by a "TM" notation and there
+                     should be a footnote appearing in the copy stating
+                     "Kickstart is a trademark of Commodore-Amiga, Inc."
+     
+     Intuition    -  Must be followed by a "TM" notation and there
+                     should be a footnote appearing in the copy stating
+                     "Intuition is a trademark of Commodore-Amiga, Inc."
+
+     Workbench    -  Must be followed by a "TM" notation and there
+                     should be a footnote appearing in the copy stating
+                     "Workbench is a trademark of Commodore-Amiga, Inc."
+
+
+

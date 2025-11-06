@@ -1,0 +1,182 @@
+
+                         1.3 FAST FILING SYSTEM
+                         ======================
+                             by Steve Beats
+
+The Fast Filing System is a new file system provided for use with any hard
+disk that you can connect to your Amiga.  The only restriction is that the
+hard disk driver must provide the standard set of disk device commands and
+present the media in track and sector format. Since Commodore's controller
+(the A2090) auto-mounts the default filesystem on the first partition of a
+hard disk, it is not possible to use the Fast Filing System here. However,
+using a new version of the Mount command, it's possible to make additional
+partitions that utilize the Fast Filing System instead.
+
+Fast Filing System (called FFS from now on) was based on the original file
+system provided by AmigaDOS. This resulted in a high level of compatibility
+that allowed application programs and the standard DOS commands to function
+under FFS without any changes required. That is where the similarities end!
+FFS was completely re-written in assembler and many of the algorithms were
+completely revised to provide much faster response for internal processing.
+FFS now spends MUCH more time waiting for I/O or DOS packets instead of
+spending all it's time figuring out what to do.  For a task that runs at a
+high priority on a multi-tasking machine this has obvious benefits.
+
+Although there have been many minor re-arrangements of the disk format, the
+only major incompatibilty with the old filesystem concerns the data blocks.
+Under the old system, data blocks consisted of 24 bytes of header information
+followed by 488 bytes of user data.  This means the old system has no option
+but to read data from the drive one block at a time.  Since most hard drives
+use DMA to transfer data from the disk to memory, this is really inefficient
+and does not use the hardware to its full potential.  FFS addresses this
+problem by storing nothing but data in the data blocks.  Wherever possible,
+data blocks are allocated consecutively which means large reads and writes
+can be performed in one operation.  Even though the old filesystem uses this
+allocation technique, most gains are lost because it must make separate I/O
+requests for each block.  In addition to this, the old filesystem uses cache
+buffers for both data and header blocks, while FFS only caches headers and
+partial data block transfers.  Large reads and writes that are multiples of
+512 and positioned at an even address are transferred directly to or from
+the user buffer.  This is possible because there is no extraneous information
+to be stripped from the data.  It is worth noting that a pleasant side
+effect of the new data format is a 4.9% increase in the amount of data that
+can be stored on a given disk.  This amounts to about 50K per Megabyte extra.
+
+The speed increases are a little difficult to quantify because FFS can read
+unfragged files as fast as the disk can transfer the data and write files at
+about 75% of the maximum disk transfer rate.  This compares very favourably
+with the old file system which loses percentage transfer speed as the speed
+of the disk increases.  Using a Conner 100Mb SCSI drive and the Commodore
+A2090 controller FFS was 12 times faster then the old filing system on both
+read and write operations utilizing a 100KB buffer.  ExNext (the DOS function
+to scan a directory) is anything from 5 to 20 times faster, depending on how
+many cache buffers have been allocated and how many of the file headers are
+in those cache buffers.  The disk validator is now resident with FFS and does
+not need to be loaded off the disk as in the old filesystem.  Validation of
+a regular sized harddisk (about 20 Meg) will complete about 40 times faster
+and allow accesses to that disk with a performance hit of only 40% (as
+opposed to around 90% under the old filesystem).
+
+To summarize;  FFS is much faster than the old filesystem in all areas. As
+the disk transfer speed increases, FFS keeps up and fully utilizes the data
+bandwidth of a given controller.  Compatibility with most existing software
+has been maintained with the exception of DiskDoctor type programs that have
+knowledge of the old data block format.  
+
+
+
+                              MOUNTING FFS
+                              ============
+
+The 2090 driver software automounts the first hard disk partition as a
+normal filesystem device.  The fast file system (FFS) may be used on any
+additional partitions since these are mounted via the MOUNT command and
+a different filesystem may be specified in the mountlist entries for
+these partitions.  However, these partitions must be (re)formatted
+in FFS format for use with FFS.
+
+
+1. First, back up or save off the contents of your hard drive.
+
+2. Copy the new l:FastFileSystem, c:Mount, and c:Format to your boot disk
+
+
+3a. IF YOUR HARD DRIVE IS ALREADY SUITABLY PARTITIONED
+
+You will probably want your initial automounted normal filesystem
+partition to be relatively small.  If your drive is currently partitioned
+and the first partition size is acceptable to you as your normal
+filesystem partition, you will probably be able to avoid re-prepping
+and re-formatting your entire drive.  If this is the case, just
+edit the devs/mountlist entries for your additional Amiga partition(s)
+to add these lines to each partition's entry:
+
+   GlobVec     = 1
+   FileSystem  = L:FastFileSystem
+
+(NOTES - Do not change the LowCyl or HiCyl for any partition!  If you
+ change them, you must re-prep and reformat the whole drive - see 3b.
+ If you change the names of your partitions, remember to also change 
+ the names being mounted in your startup-sequence to match.)
+
+Then reboot.  When your startup script mounts these partitions you
+will get Not A DOS Disk requesters.  Cancel them.  Then Format the
+FFS partitions with the new Format command:
+
+   Example (for a partition named fs1):
+
+      Format drive fs1: name "FAST1" FFS
+
+
+3b. IF YOUR DRIVE IS NOT CURRENTLY SUITABLY PARTITIONED
+
+If your hard drive is not currently partitioned, you will have to
+re-prep your drive and reformat all partitions.  Edit your mountlist
+and set up entries for one or more FFS partitions.  Your lowcyl and
+highcyl will be dependent on how many cylinders you plan to specify
+for the initial automount normal filesystem partition during Prep.
+
+Some people prefer a small initial partition (cylinders 2 through 3);
+others like a first partition of at least 880K to hold Workbench.
+The following equations will help you determine how many cylinders
+will hold Workbench:
+
+BytesPerCyl = BlocksPerTrack * Surfaces * 512
+BytesPerFloppy = 880 * 1024 = 901120
+CylsToHoldFloppy = BytesPerFloppy / BytesPerCyl (round up the result)
+
+For our example 20 meg ST506 drive, this works out to 26 cylinders.
+
+Use prep as described in your 2090 manual and set up your partitions.
+Our example drive would be prepped for cylinders 0-1 reserved (RES0:),
+cylinders 2-28 as first partition (automounted normal filesystem DH0:),
+and the remaining cylinders 29-611 for your fast file system partition.
+
+Reboot the machine once prep is complete and then proceed through
+through the following steps which assume that you are using an ST506
+20 Megabyte drive with the first partition occupying cyclinders 2 to 28.
+Note: if you are using a different kind of drive you will have to adjust
+the drive parameters.
+
+
+   1. Edit your devs/mountlist and add an entry to describe your
+      FFS partition.  The GlobVec and FileSystem lines are required
+      for any FFS entry.
+
+      Sample mountlist entry:
+
+
+FS1:   Device  = hddisk.device
+   Unit        = 1
+   Flags       = 0
+   Surfaces    = 4
+   BlocksPerTrack = 17
+   Reserved    = 2
+   Interleave  = 0
+   LowCyl      = 29
+   HighCyl     = 611
+   Buffers     = 20
+   Stacksize   = 1000
+   GlobVec     = 1
+   FileSystem  = L:FastFileSystem
+#
+
+
+   2. Format your first partition (dh0:) for the normal file system:
+
+         FORMAT DRIVE DH0: NAME AmigaHD
+
+   3. Mount your FFS partition:
+
+         MOUNT FS1:
+
+   4. Format your FFS partition for the fast file system:
+
+         FORMAT DRIVE FS1: NAME "FAST1" FFS
+
+   5. Edit your startup-sequence and add a line to  MOUNT FS1:
+      sometime after BINDDRIVERS. 
+
+
+
+

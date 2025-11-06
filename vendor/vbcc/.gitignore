@@ -1,0 +1,9 @@
+vlink/vlink
+vlink/objects/
+vbcc/machines/m68k/*.o
+vbcc/machines/m68k/dt.*
+vbcc/bin/
+vasm/obj/
+vasm/vobjdump
+vasm/vasmm68k_mot
+bin

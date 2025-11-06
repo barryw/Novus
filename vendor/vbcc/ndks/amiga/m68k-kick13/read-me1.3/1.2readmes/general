@@ -1,0 +1,48 @@
+
+1 August 1986
+Updated 11 September 1986, 27 January 1987
+
+
+These documents describe changes made to the Amiga system
+software between Releases 1.1 and 1.2.
+
+General Information
+===================
+
+1.2 Release Version Number
+==========================
+
+This release of kickstart will have library version number 33. Use 
+this version number in OpenLibrary if you are using new 1.2 functions
+or features.  Abort gracefully if the OpenLibrary fails.
+
+
+
+PAL Support
+===========
+
+- This release can be used with either PAL or NTSC; if your Amiga has
+the proper custom chip for PAL, you get 256 horizonal lines on the
+display (512 if you've chosen Workbench Interlace in Preferences) and
+the 50 Hz refresh rate required by the PAL standard.
+
+- THIS RELEASE ALSO DETECTS THE FREQUENCY OF THE AC LINE CURRENT
+(EITHER 50 or 60 Hz) AND AUTOMTICALLY USES THE RIGHT FREQUENCY WHEN
+UPDATING THE AMIGA'S INTERNAL CLOCK. 
+
+
+
+Peripherals
+===========
+
+- Long-persistence monitors are now available that work well for
+interlaced displays (third party).
+
+- You can now use 5-1/4" disk drives with your Amiga 5-1/4" disks can
+be used as limited-capacity Amiga disks To install a new disk drive,
+see the description of the CLI mount command in "New Information for
+the 1.2 AmigaDOS User's Manual" that follows.  Mount the drive as
+df1: / Unit 1 if you have no external 3 1/2, as df2: / Unit 2 if you do.
+
+
+

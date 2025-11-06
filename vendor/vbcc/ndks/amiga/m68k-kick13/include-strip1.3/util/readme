@@ -1,0 +1,14 @@
+
+Alink is the Amiga object linker.  See Bantam AmigaDOS manual for usage.
+
+Atom is the Amiga object file modifier which allows you to mark object
+   modules for CHIP memory loading.  See Bantam AmigaDOS manual for usage.
+
+Stripa strips debugging symbols from a load file.
+   Usage:   stripa FROM <source> TO <destination>
+
+Stripc strips comments from include files.
+   Usage:   stripc <source> <destination>
+
+
+

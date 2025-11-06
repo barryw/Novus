@@ -1,0 +1,1341 @@
+
+ INTUITION VERSION 33 (v1.2 AMIGA SYSTEM SOFTWARE RELEASE)
+             Jim Mackraz, Commodore-Amiga, Inc.
+
+1. INTUITION
+   =========
+
+This document describes changes and key observations for the
+revision to Intuition which is part of the v1.2 Kickstart or
+ROM software.
+
+This exposition is directed at the software developer who is
+already  familiar  with  the Intuition library, who has read
+the Intuition Reference Manual carefully in the  areas  dis-
+cussed.   Particular familiarity is assumed of the usage and
+methods of the Intuition Direct Communication  Message  Port
+(IDCMP).
+
+The "autodocs" are a reference resource  for  Intuition  and
+the  entire  system.  Autodocs are function description sec-
+tions, which are automatically  extracted  from  the  source
+itself.   An entry in the Intuition autodocs (intuition.doc)
+might be written as "the BeginRefresh() autodocs."  A refer-
+ence  to  a function description in the Layers library might
+be layers.library/BeginUpdate() or layers/BeginUpdate().
+
+The autodocs appear in volume 2 of the  Rom  Kernel  manual,
+but the most up-to-date versions are released on a disk with
+the developers' distribution of the system software.
+
+Many technical aspects of Intuition relate  closely  to  the
+Layers  library, which supports clipping and saving of offs-
+creen areas of windows.  It is very useful to understand the
+basics  of  this  library, but it should be rarely, if ever,
+used by an application program directly.
+
+A word on the multi-tasking nature  of  Intuition  might  be
+helpful.  As far as your program is concerned, Intuition has
+"two parts" in that Intuition library code may be run on two
+schedules:  your program (assuming your program has a single
+task accessing Intuition) and the Input Device.  The  latter
+is  a  task that runs on the user-interaction schedule as an
+input handler (the entry point is called  Intuition()).   It
+appears  to  your  code  almost  as if it were running as an
+interrupt, since it runs  at  high  priority  and  thus  can
+preempt your task.
+
+The synchronization of the input schedule and your  program,
+and  the  arbitration of data structures shared by your pro-
+gram and the Intuition input handler are the two most  deli-
+cate topics which are discussed below.
+
+
+2.  SCREENS
+    =======
+
+Height and Position
+     In support of PAL displays (which  support  more  lines
+     than  their  US  counterparts), a method is provided to
+     open screens to their full height on any display.  This
+     is  done by specifying the value STDSCREENHEIGHT in the
+     NewScreen.Height field (this  constant  is  defined  in
+     intuition.h).
+
+     If you intend to provide your own CUSTOMBITMAP for  the
+     screen,  you  need  to  know how big the screen will be
+     before opening it.  This is done by examining the  pub-
+     lic  field  GfxBase->NormalDisplayRows.  Note that that
+     field  specifies  the  non-interlaced  count   (on   US
+     machines it is 200).
+
+     A new feature: screens of less than full height are not
+     constrained to the bottom portion of the display.  When
+     opened, screens will appear  (safely)  at  the  display
+     position  specified in NewScreen.TopEdge.  The user can
+     drag short screens up to the top of the  display.   The
+     display  area  at  the  bottom of the display below the
+     bottom of a short screen is  solid  in  the  background
+     color of the front screen.
+
+     At the bottom of the display, beyond NormalDisplayRows,
+     the  image of the frontmost screen is continued and may
+     be visible.  The mouse is constrained, however, so that
+     it  remains in the "working region" of the display View
+     structure, which extends only from the top of the  view
+     to NormalDisplayRows.
+
+Workbench Screen Inquiry
+     Programs opening windows on the  Workbench  Screen  may
+     inquire  to find out its size, the size of its Menu bar
+     area, and so on, by using the function GetScreenData().
+     This function will open the Workbench screen if it hap-
+     pens to be closed.  Thus is best suited  to  use  by  a
+     program about to open a window on the Workbench screen.
+
+     Workbench  Screen  Inquiry  also  applies   to   custom
+     screens, but the need for that will be rare.
+
+New Flags for NewScreen
+     Some new features are provided and invoked  by  setting
+     new  flags  in the NewScreen.Flags field.  These values
+     are defined in intuition.h.
+
+     SCREENBEHIND --  indicates  that  when  the  screen  is
+     opened,  it  should be behind all other screens.  Among
+     other uses, this method allows  a  program  to  prepare
+     imagery  in  the  screen, change its colors, and so on,
+     bringing it to the front when it becomes presentable.
+
+     SCREENQUIET -- addresses the  problem  of  doing  fancy
+     viewport  operations  in  your custom screen.  A screen
+     opened with this flag will not have  a  title  bar  nor
+     visible  gadget  rendering,  but the dragging and depth
+     arrangement  facilities  provided  by  Intuition  still
+     function.   In  order  to  completely prevent Intuition
+     from rendering into your screen, you  must  also  catch
+     the  menu  button  in  each window in the screen, using
+     MENUVERIFY or RMBTRAP.
+
+A Warning on Dual Playfields
+     Setting the DUALPF flag in the NewScreen.Flags field is
+     not  the  best  method  of  obtaining  a dual playfield
+     viewport for your screen.  It is better to open a stan-
+     dard screen, passing to Intuition (or letting Intuition
+     create) only one of your playfield bitmaps  (the  front
+     one).   Then  you  allocate and set up a second BitMap,
+     its bit-planes, and a RasInfo structure.  Install these
+     into  new  screen's viewport, change the viewport modes
+     to include DUALPF, MakeScreen(), and  RethinkDisplay().
+     An  example  appears at the end of this document.  This
+     method keeps Intuition rendering (gadgets, menus,  win-
+     dows) in a single playfield.
+
+
+3.  WINDOWS
+    =======
+
+ActivateWindow()
+     This function allows a  program  to  activate  windows,
+     hopefully  in  a  way that doesn't confuse or frustrate
+     the user.  An example of a system  program  using  this
+     function  on  a  (long,  narrow)  window along with the
+     related function ActivateGadget() (see  below)  is  the
+     Workbench Rename operation.
+
+     See the autodocs for this function, as its use  is  not
+     entirely straightforward.
+
+Window Borders
+     Window borders are no longer excessively updated when a
+     window  is  made active, the window's title is changed,
+     or the window is brought to the front.  Window  borders
+     are  refreshed,  when  necessary,  through the window's
+     layer's DamageList, which further minimized the  visual
+     activity    (essentially    under   the   auspices   of
+     Begin/EndRefresh()).
+
+     A lot of  attention  has  gone  into  establishing  the
+     correct  damage  region for a smart refresh window.  It
+     is now possible for  application  programs  to  refresh
+     their  smart  windows  in  between  BeginRefresh()  and
+     EndRefresh() and get good results.  The  refreshing  of
+     gadgets  can be more complicated, and is covered below,
+     in Section 3, Gadgets.
+
+     The drag gadget in the top border is rendered in a more
+     solid  pattern  which  appears more stable in an inter-
+     laced display.
+
+Dimensions
+     The position/dimensions  of  windows  when  opened  now
+     undergo error checking.  The maximum dimensions (speci-
+     fied as NewWindow.MaxWidth/MaxHeight) are now  unsigned
+     quantities,  and  may  be  legally  set to a maximum by
+     using the value 0xFFFF, better expressed as (~0).
+
+Refreshing
+     Be sure to use Begin/EndRefresh() as  directed  in  the
+     manual,    or    set    the   NOCAREREFRESH   flag   in
+     NewWindow.Flags.  When using  Begin/EndRefresh(),  res-
+     trict your operations to simple rendering.  Avoid calls
+     that may lock the  LayerInfo,  or  get  complicated  in
+     Intuition,  since  BeginRefresh()  leaves  the window's
+     Layer(s) locked.  All rendering functions of  Intuition
+     or  Graphics are OK.  RefreshGadgets() is OK, but prob-
+     ably unnecessary.  AutoRequest() is to be avoided,  and
+     therefore all disk related DOS calls.
+
+     A new function, RefreshWindowFrame(),  is  provided  in
+     the  event  that  your program has been trashing window
+     borders and wants to clean up.
+
+RMBTRAP
+     The RMBTRAP bit in Window.Flags may be modified on  the
+     fly  by your program.  To be entirely proper, it should
+     be set or cleared as an atomic operation, which can  be
+     done  in  assembler,  using  a hot compiler, or by sur-
+     rounding it with Forbid/Permit().
+
+
+
+4.  GADGETS
+    =======
+
+4.1  General
+
+Gadget List Functions
+     The functions to add, remove, and  refresh  gadgets  in
+     windows  or  requesters:  (AddGadget(), RemoveGadget(),
+     and RefreshGadgets()) have  analogies  which  apply  to
+     lists of gadgets linked by the Gadget.NextGadget field.
+     Each   function   (AddGList(),    RemoveGList(),    and
+     RefreshGList())  takes a parameter determining how many
+     gadgets in a list are to be operated on.  In each case,
+     operation  terminates  if  a  NextGadget field contains
+     NULL; a parameter value of -1  means  that  the  entire
+     list (until NULL) is processed.
+
+     The function NewModifyProp() has  the  same  parameter,
+     with  regard  to the old ModifyProp(). The new function
+     takes a gadget count parameter to allow  finer  control
+     of  the refreshing of gadgets.  See Section 3.2, Gadget
+     Rendering for the behavior of each of these.
+
+     Also refer to the  autodocs  for  more  information  on
+     these gadget functions.
+
+ActivateGadget()
+     A String (or Integer) Gadget may be  "activated"  under
+     program  control.  If successful, this function has the
+     same effect as the user clicking the SELECT button when
+     the  mouse  pointer is within the bounds of the gadget.
+     Subsequent keystrokes accomplish entry and  editing  on
+     the  gadget's  string.   This function will fail if the
+     window  or  requester  containing  the  gadget  is  not
+     active.  It will also fail if the user is in the middle
+     of some other interaction, such as menu or proportional
+     gadget  operation.   See  the  ActivateGadget() autodoc
+     section.
+
+Custom Screen Gadgets
+     These gadgets have never been supported, and are not in
+     1.2.   The  commercial  version  of the manual reflects
+     this observation.
+
+Gadget Flags
+     The TOPBORDER flag bit in Gadget.Activation can be  set
+     to   indicate  to  Intuition  that  a  gadget  must  be
+     refreshed after  Intuition  has  rendered  in  the  top
+     border area of a window.
+
+     The REQGADGET flag (for Requester Gadgets) must reflect
+     the  truth.  As an assistance, Intuition sets or clears
+     this flag  appropriately  when  gadgets  are  added  or
+     windows/requesters are opened.
+
+     The SELECTED flag is now set even  for  system  gadgets
+     when they are in use.  We don't advise you rely heavily
+     on such state flags of data  structures  that  are  not
+     assigned to your program.
+
+
+4.2  Gadget Refreshing by Intuition
+
+Gadgets are refreshed by Intuition whenever a  layer  opera-
+tion  has  damaged  the  layer of the window or requester to
+which  they  are  attached.   In  the  processing   of   the
+REFRESHWINDOW  message,  the  typical  program  needn't call
+RefreshGadgets() at all.
+
+Intuition's refresh of the gadgets of  a  damaged  layer  is
+done  "Through  the  Layer's Damage List."   This means that
+rendering is clipped to the layer's Damage Region--the  part
+of  the window's layer which needs refreshing because it has
+been exposed by a layer operation.
+
+To be  precise,  Intuition  calls  layers/BeginUpdate()  and
+EndUpdate()  (Intuition  user  (i.e.,  your) equivalents are
+Begin/EndRefresh()) so that rendering is restricted  to  the
+Region   Layer.DamageList   (see  Windows,  above,  and  the
+Begin/EndRefresh() function descriptions  in  the  Intuition
+manual, and layers/BeginUpdate in the autodocs).
+
+Gadgets which are positioned (GRELBOTTOM GRELRIGHT) or sized
+(GRELWIDTH,  GRELHEIGHT) relative to the dimensions of their
+window pose a problem when the window is  sized,  since  the
+visuals  for  these  gadgets must change, and are not neces-
+sarily in the damage region.
+
+Therefore, Intuition must add the original  and  new  visual
+regions  for  such  relative  gadgets  to  the Damage Region
+before it goes about refreshing gadget rendering.
+
+Relative gadgets  that  have  Border,  Image,  or  Intuitext
+imagery  extending  beyond  their  respective  select  boxes
+should  be  refreshed   by   the   program   itself   (using
+RefreshGlist())  when receiving a Newsize event for the win-
+dow.  This gadget refreshing  should  not  be  done  between
+BeginRefreshing () and EndRefresh(), in order to present the
+visuals beyond the extent of the damage region.
+
+
+4.3  Gadget Refreshing by Programs
+
+If you add  gadgets  to  your  window  or  requester  (using
+AddGlist(),  or  AddGadgets())  you  must  subsequently call
+RefreshGList() or RefreshGadgets() to get the image of  your
+gadget drawn.
+
+Several calls actually cause the refresh of  more  than  one
+gadget.  The behavior under v1.1 of these functions has been
+unchanged in  v1.2  This  was  not  true  for  several  beta
+releases.   In  each case, an alternative function or method
+is available for new programs to better control the refresh-
+ing  of  gadgets  so  that  only  modified  gadgets  need be
+redrawn.
+
+The  functions  which   refresh   gadgets   in   v1.1   are:
+RefreshGadgets(), OnGadget(), OffGadget(), and ModifyProp().
+Their behavior and alternatives are described below:
+
+RefreshGadgets()
+     In v1.1, this function is documented as refreshing  all
+     gadgets  from  the  one  whose  address  is passed as a
+     parameter  to  the  end  of   the   list   (linked   by
+     Gadget.NextGadget).   If applied to a requester gadget,
+     though, ALL gadgets  in  the  requester  were  redrawn.
+     This  is  the case in (the final releases of) v1.2, for
+     compatibility.
+
+     The alternative is to use RefreshGList(), which takes a
+     parameter  to determine exactly which gadgets are to be
+     refreshed.
+
+ModifyProp()
+     This function simply modifies some values in  the  Pro-
+     pInfo  structure  of  a  propotional  gadget  and calls
+     RefreshGadgets(), the excessive behavior  of  which  is
+     described above.
+
+     The alternative is to call NewModifyProp().   This  new
+     function   takes   a   parameter   in   the  manner  of
+     RefreshGList()  to  control   the   gadget   refreshing
+     activity.
+
+OnGadget() and OffGadget
+     These  functions  simply  clear  or  set  (resp.)   the
+     GADGDISABLED   flag   of  the  gadget,  and  then  call
+     RefreshGadgets().  There are no  alternative  functions
+     for  these, since they each can be implemented by manu-
+     ally  modifying  the  GADGDISABLED  flag  and   calling
+     RefreshGList(), as described below.
+
+Some programs use RefreshGadgets() (better,  RefreshGList())
+to  update the display after they have made state changes to
+the gadgets.  The types of  changes  include:  the  SELECTED
+flag  for Boolean Gadgets to implement home-rolled MUTUALEX-
+CLUDE for Boolean Gadgets, the GadgetText of some gadget  to
+change its label, the GADGDISABLED flag, and the contents of
+StringInfo.Buffer of a String  Gadget.  (See  Section  3.6.1
+Mutual  Exclusion for an example.) On this subject, we offer
+the following:
+
+     Be sure to RemoveGadget() any gadget before alter-
+     ing  it.  Understand that Boolean Gadgets rendered
+     with Borders (instead of  Images)  or  highlighted
+     with surrounding boxes (GADGHBOX) are handled very
+     simply by Intuition, and that complicated  transi-
+     tions  done by your program (and in some cases the
+     user's own actions) can get the rendering  out  of
+     phase.
+
+
+4.4  String Gadgets
+
+The most important change in string gadgets is  the  Activa-
+teGadget() function described under GADGETS.
+
+When the user selects a string gadget with  the  mouse,  the
+gadget's cursor moves to the position of the mouse.
+
+Several bugs have been fixed.  It is  now  possible  to  use
+RELWIDTH  string  gadgets.  Integer (LONGINT) string gadgets
+now have the LongInt value updated whenever the textual con-
+tents  of  the  gadget changes, and again, for good measure,
+when the gadget is de-activated.
+
+
+4.5  Proportional Gadgets
+
+There is a new function NewModifyProp() which is the same as
+ModifyProp() with additional control over gadget refreshing.
+See the sections above for details.
+
+Highlighting by alternate knob  image  (GADGHIMAGE)  is  now
+supported,  but you should make the alternate image the same
+size as the normal knob image.
+
+Proportional gadgets are often used for  scrolling  graphics
+or  textual information.  To do this in your program (assum-
+ing vertical scrolling), it  is  necessary  to  convert  the
+relationships  between  the  visible fraction of the display
+and the VertBody value, and the top line of the display  and
+the VertPot value.
+
+Consider as an example scrolling a 25 line  view  of  a  100
+line    display.     In   the   following,   the   variables
+"visible_lines" and "total_lines" would take the  values  25
+and 100, respectively.
+
+The first  relationship  is  simple:  make  the  Body  value
+represent "one-fourth." This can be expressed as
+
+     VertBody = (ULONG)(visible_lines*0xFFFF)/total_lines;
+
+If  you  are  hard-up  for  cycles  and   can   avoid   zero
+visible_lines, this seems to work nicely:
+
+     VertBody = ((ULONG)(visible_lines<<16) -1)/total_lines;
+
+Now, note that when you are displaying the last "page," line
+75 is the top line in view (start line numbers from zero).
+
+Therefore, when the VertPot value is a maximum (0xFFFF)  you
+need  to  convert  this  to 75, and so on.  This can be done
+like so:
+
+     top_line = 
+    ((ULONG)(total_lines-visible_lines)*VertPot+(1<<15))>>16;
+
+The inverse of this operation is needed if you wish to  ini-
+tialize the pot for some particular value of top_lines.
+
+     VertPot = MIN(0xFFFF,
+         ((top_line_input<<16))/(total_lines-visible_lines));
+
+The MIN macro is used because "unity" is actually 0xFFFF.
+
+
+
+4.6  Boolean Gadgets
+
+Some minor bug fixing: Gadget Text may be used with  gadgets
+highlighted   by   Alternate   Image  display  (GADGHIMAGE).
+Selecting gadgets while other Intuition display activity  is
+going on no longer confuses the system.
+
+
+4.6.1  Mutual Exclusion
+
+Intuition managed Mutual Exclusion  of  Boolean  Gadgets  is
+still  not  provided;  rather, a flexible method of doing it
+yourself is recommended:
+
+     Remove a Boolean gadget from the window or reques-
+     ter  it  is  attached to (RemoveGadget()).  Set or
+     clear the SELECTED flag to reflect  the  state  of
+     the  gadget  you  desire  to  display to the user.
+     Replace the gadget (AddGadget()) and  refresh  its
+     imagery (RefreshGList()).
+
+More than one gadget can be  processed  using  RemoveGList()
+and  AddGList(),  with  a  single  call to RefreshGList when
+done.
+
+It is strongly recommended that you play  these  games  only
+with Boolean gadgets rendered with images and highlighted by
+complement mode rendering.   Further,  the  Activation  Type
+should   be  GADGIMMEDIATE  (and  not  RELVERIFY,  nor  TOG-
+GLESELECT) with your state changes executed  upon  receiving
+the GADGETDOWN message.
+
+
+4.6.2  Masked Gadgets
+
+A new feature allows non-rectangular Boolean  gadgets,  with
+some restrictions.  An auxilliary bit plane called a Mask is
+associated with a gadget.  When the user selects within  the
+select  box  of the gadget, a further test is made to see if
+the selection point is contained in the mask.   Only  if  so
+does the interaction count as a gadget "hit".
+
+If the gadget has highlight type  GADGHCOMP  the  complement
+rendering is restricted to the mask, which allows, for exam-
+ple, an oval gadget which highlights nicely, only within the
+oval.
+
+However, there are some shortcomings.  The gadget  image  is
+not  rendered through the mask.  For example, in the case of
+an oval mask the image is still a rectangle, and when it  is
+displayed, it will clobber the corner areas even though they
+are outside of the oval.  This means they can't  be  crowded
+together without care.
+
+Likewise, the ghosting of a disabled gadget does not respect
+the  mask,  so ghosting of the corners around an oval may be
+visible, depending on the colors involved.
+
+An example appears at the end of this note.
+
+
+5.  MENUS
+    =====
+
+5.1  Flags
+
+MENUTOGGLE
+     This flag can be set by your program, and  now  behaves
+     as  the  Intuition manual describes.  The author apolo-
+     gizes for not finding the bug in time to get this  into
+     1.1.   Set  this flag for a CHECKIT menu (sub-)item and
+     the item can be selected to turn the checkmark off,  as
+     well as on.
+
+MENUSTATE
+     This flag is set in Window.Flags when the menus of that
+     window are in use. Beware: in typical event-driven pro-
+     gramming, such a state variable  is  not  on  the  same
+     time-table  as  your input message handling, and should
+     not be used to draw profound conclusions in  your  pro-
+     gram.   It  is  better to synchronize yourself with the
+     menu handling using MENUVERIFY.
+
+5.2  Shortcuts and MENUVERIFY
+
+The idea behind MENUVERIFY (and to  some  degree  SIZEVERIFY
+and   REQVERIFY)   is   to  synchronize  your  program  with
+Intuition's menu handling sessions.  The  motivating  reason
+was  to  allow  your  program  to  arbitrate  access to your
+screen's bitmap, so that Intuition doesn't put menus in  the
+way  of your drawing.  This circumstance is obviated to some
+extent by the fact that Intuition will lock all layers on  a
+screen before any menus are displayed, and if your rendering
+is solely through windows you will be  automatically  locked
+out until menus are done.
+
+Some programs use MENUVERIFY to permit them to intercept the
+right  mouse  button,  thereby  to use it for their own pur-
+poses.  Other programs use  MENUVERIFY  to  briefly  suspend
+menu  operations  while  they  restore Wild Phenomena before
+menu operations proceed.  These phenomena may  be  illegible
+colors  of  the  screen  or  double  buffering  and  related
+ViewPort operations.
+
+In any case, it is vital to know when menu  operations  ter-
+minate.   This  is  typically  detected  by watching for the
+MENUPICK IDCMP message.  If you intercepted (MENUCANCEL) the
+menu  operations, you will instead receive MOUSEBUTTONS mes-
+sage with code equal to MENUUP.  Menu  shortcut  keystrokes,
+for compatibility, also respect MENUVERIFY.  They are always
+paired with a MENUPICK message (unlike v1.1)  so  that  your
+program knows the menu operation is over.
+
+Use of MENUVERIFY was recommended only with a healthy set of
+caveats,  and with a publically available program you needed
+named KillVerify(), simply because there  was  no  deadlock-
+safe   way   to  turn  MENUVERIFY  off.  Now  you  may  call
+ModifyIDCMP() with confidence to  turn  MENUVERIFY  and  the
+other VERIFY IDCMP options off.  It is important that you do
+so if you ever do anything that directly or  indirectly  has
+you  waiting  for  Intuition (since Intuition may be waiting
+for you).
+
+Intuition now handles its internal functions  automatically,
+so  you can safely open and close windows, change your menus
+(Clear/SetMenuStrip), and play with your gadgets.  You  can-
+not,  however,  wait  for  a  gadget  or mouse event without
+checking also for any MENUVERIFY  event  messages  that  may
+require your response.
+
+The most common problem area is  Sytem  Requesters  (AutoRe-
+quest()).  Before AutoRequest() returns control to your pro-
+gram, Intuition must be free to run and  accept  a  response
+from  the user.  If the user presses the menu button, Intui-
+tion will  wait  for  you  to  MENUVERIFY  and  there  is  a
+deadlock.
+
+     THERFORE: USE THE FUNCTION ModifyIDCMP()  TO  TURN
+     OFF  ALL  VERIFY  MESSAGES BEFORE YOU CALL AutoRe-
+     quest() OR THE DOS (!!!) SINCE MANY  ERROR  CONDI-
+     TIONS IN THE DOS REQUIRE USER INPUT IN THE FORM OF
+     AUTOREQUESTS.
+
+
+5.3  Miscellaneous
+
+Highlighting
+     Item  and  SubItem  highlighting  by  Alternative  Text
+     display now works.  The item must be a text item (ITEM-
+     TEXT) and the highlighting flag is  set  to  HIGHIMAGE.
+     MenuItem.SelectRender  must,  of  course,  point  to an
+     IntuiText structure.
+
+Menu shortcut keys 'M' and 'N' now work.
+
+Try not to leave space between the select boxes of your menu
+items  and  (especially)  your  subitems.   When the pointer
+moves off of one subitem into the gap  between  it  and  the
+next  subitem,  the  entire  submenu  is erased and redrawn,
+which doesn't look real sharp.
+
+
+
+6.  REQUESTERS
+    ==========
+
+Pointer Relative Requesters
+     By setting  the  POINTREL  Flag  in  a  Requester,  and
+     installing  the  requester  as  a Double Menu Requester
+     (Set/ClearDMRequest()), you get a requester that  comes
+     up  under the mouse pointer when the user double clicks
+     the right mouse button.
+
+     The values of the fields  Requester.RelLeft/Top  deter-
+     mine  the  point on the requester the the mouse will be
+     over (experiment).  The requester position will be res-
+     tricted  in  an  attempt  to  make  it entirely visible
+     (i.e., contained in its window).
+
+Noisy Requesters
+     You may set the NOISYREQ flag if you do  not  want  the
+     presence  of  a  Requester to inhibit your normal input
+     flow.  Gadgets and menus will remain activated, but you
+     will  be able to hear the keyboard and the mouse.  This
+     technique is  used  in  the  new  keyboard  feature  of
+     AutoRequest() (see below).
+
+FlagsThe REQACTIVE flag  bit  (in  Requester.Flags)  is  now
+     always  set  and  cleared as your requesters are posted
+     and removed.  The  active  requester  has  always  been
+     indicated by the value of Window.FirstRequest.
+
+System Requests (AutoRequest())
+     By using the new NOISYREQ Requester Flag, AutoRequest()
+     now  allows  the  user to satisfy a system request from
+     the keyboard.  The key strokes left-Amiga-V  and  left-
+     Amiga-B correspond to the left and right system request
+     gadgets, respectively.
+
+     When a System Request is posted (using AutoRequest() or
+     BuildSysRequest())  it  will move the screen it appears
+     in to the front (if it is not  already  the  foremost).
+     This  change was made after too many users were reboot-
+     ing their  machines  when  programs  that  used  custom
+     screens  appeared  to "lock-up" - due to the notice DOS
+     put up on the workbench screen.  Now these  users  need
+     to  learn  to  re-arrange  the  screens after they have
+     satisfied a Request which has  pre-empted  their  work,
+     since the screens are not re-arranged to their original
+     state.
+
+User Rendering
+     A Requester appears in a Layer.  You may render to this
+     layer  through  its  RastPort,  which  can  be found as
+     Requester.ReqLayer.rp.  The Requester layer  is  smart,
+     so  that your rendering is preserved, but it the window
+     is sized it may damage your work, so that you will need
+     to refresh your rendering.
+
+IDCMP Changes
+     The REQSET and REQCLEAR messages are now sent for  each
+     Requester  that is put up or removed (resp.) instead of
+     only for the first and last (resp.).  This change  pro-
+     vides more information for those programs trying to use
+     more than one requester, especially if  they  are  also
+     trying to be tricky with ActivateGadget().
+
+
+7.  ALERTS
+    ======
+
+If a recoverable Alert cannot be displayed (because of  low-
+memory),  DisplayAlert()  will  return FALSE, as if the user
+had selected CANCEL.  Formerly, the Alert would be converted
+into a dead-end alert (Guru Meditation) claiming that Intui-
+tion was in a panic, and that just didn't seem  fair.   Note
+that  a  System  Request  (AutoRequest()  or  BuildSystemRe-
+quest()) will convert into  a  recoverable  alert,  so  this
+change  means  that numerous errors in low memory conditions
+which appeared to crash the machine won't  be  doing  so  in
+1.2.
+
+The part of the recoverable alert message which says  "RIGHT
+BUTTON CANCEL" is displayed in 1.2, fix of a bug in 1.1.
+
+
+8. LOCKING and RE-ENTRANCY
+   =======================
+
+General Locking
+     The multi-tasking access of Intuition  data  structures
+     is  now  arbitrated by the use of Exec SignalSemaphores
+     (see the autodocs).  This should  eliminate  incidences
+     of clashing use of windows, Intuition linked lists, the
+     dreaded busyWaitForbid(),  Screen  RastPort  confusion,
+     and  the  like.   In  the  alpha and beta stages, these
+     problems were all replaced with  system  deadlocks,  at
+     one time or another, and finally were all eliminated in
+     the final versions.
+
+     The  application  programmer's  exposure  to  Intuition
+     locking  is  minimized.   A  pair of entry points named
+     LockIBase() and  UnlockIBase()  are  provided  to  gain
+     access to locks which assure the integrity of the state
+     of IntuitionBase (the  intuition.library  static  data)
+     and  of  the  linked lists of Screens and Windows.  The
+     autodoc sections for these functions explains in  great
+     detail  the  intended  use  and  cautions pertaining to
+     these functions.  In particular, be VERY  careful  that
+     you  pass the parameters described, or you may be open-
+     ing vulnerabilities in the system that will not  appear
+     as   problems  until  your  program  is  running  in  a
+     heavily-laden multi-tasking environment.
+
+     The author-programmer makes  this  request:  don't  get
+     tricky with these locks.
+
+Intuition's Use of Your RastPort
+
+     Intuition has many rendering chores:
+     screen and window titles and borders,  gadgets,  menus,
+     and  so  on.  In v1.2, Intuition will use a copy of the
+     RastPort of the screen in which  the  rendering  is  to
+     take  place.   This copy will determine the bitmaps the
+     rendering will end up in, and often the font and  simi-
+     lar modal information.
+
+     One thing Intuition sets each time is the mask value of
+     the  RastPort.  It is set to all ones (0xFFFF).  If you
+     wish to restrict Intuition's rendering to all bitplanes
+     of  your  screen,  you  may change the Depth and Planes
+     values  in  Screen.RastPort.BitMap.   This  will   only
+     effect rendering into the screen itself, which consists
+     of the Screen title and  gadgets,  and  menus.   Window
+     gadgets  are not fooled, since they use the mask in the
+     window's layer's rastport,  which  you  should  not  be
+     changing.
+
+
+
+9. IDCMP and INPUT EVENTS
+   ======================
+
+Keyboard Messages
+     VANILLAKEY IDCMP Class (which does not  appear  in  the
+     original  version  of the manual) has not been enhanced
+     from 1.1, for compatibility.  It provides a translation
+     from  RAWKEY  input event using the system default key-
+     map, but only sends an IDCMP message if the translation
+     results  in  a single byte (which is passed in the Code
+     field of the VANILLAKEY IDCMP message).
+
+     Most programs will  prefer  to  use  the  RAWKEY  IDCMP
+     class, and perform their own RawKeyConvert().  See also
+     DeadKeyConvert(), below.
+
+Dead Keys
+     The  IntuiMessages  are  converted  from   InputEvents.
+     InputEvents  now  (in v1.2) contain information for the
+     processing of so-called Dead Keys, which  refers  to  a
+     technique   of   generating  a  diacritical  using  two
+     separate keystrokes.  (See release notes  on  keymaps.)
+     This  information is passed in RAWKEY IDCMP messages in
+     a location  pointed  to  by  the  IntuiMessage.IAddress
+     field.   The  following  example  shows how to use this
+     information and the ConsoleDevice  function  RawKeyCon-
+     vert()   to  convert  RAWKEY  messages  into  character
+     values.
+
+    /* must have the ConsoleDevice opened to use RawKeyConvert() */
+    struct Device *ConsoleDevice;       /* external declaration */
+    struct IOStdReq ioreq;
+        ...
+    OpenDevice("console.device", -1, &ioreq, 0);
+    ConsoleDevice = ioreq.io_Device;
+        ...
+
+    /* DeadKeyConvert()
+     * returns:
+     *  -2 if msg is not class RAWKEY
+     *  same as RawKeyConvert otherwise:
+     *  buffer length if <= kbsize
+     *  -1 else
+     */
+    DeadKeyConvert(msg, kbuffer, kbsize, kmap)
+    struct IntuiMessage *msg;
+    UBYTE *kbuffer;
+    int kbsize;
+    struct KeyMap *kmap;
+    {
+        static struct InputEvent ievent = {NULL, IECLASS_RAWKEY, 0, 0, 0};
+
+        if (msg->Class != RAWKEY) return (-2);
+
+        /* pack input event */
+        ievent.ie_Code = msg->Code;
+        ievent.ie_Qualifier = msg->Qualifier;
+
+        /* get previous codes from location pointed to by IAddress
+         *  this pointer is valid until IntuiMessage is replied.
+         */
+         ievent.ie_position.ie_addr = *((APTR *)msg->IAddress);
+
+        return ( RawKeyConvert(&ievent, kbuffer, kbsize, kmap) );
+    }
+
+
+Verify Messages
+     See the discussion in Section 4, Menus on the  MENUVER-
+     IFY IDCMP Flag.  All of that information applies to the
+     two other verify messages: REQVERIFY and SIZEVERIFY.  A
+     special  note:  a  bug  somewhere in the input handling
+     stream through Intuition may confuse window  sizing  by
+     the user if your program takes too much time responding
+     to the SIZEVERIFY message.  Please be quick.
+
+MOUSEMOVE
+     Your program will not be sent MOUSEMOVE messages  while
+     Intuition  has the layers of your screen locked (during
+     menu  operations  and  window  sizing/dragging).   This
+     avoids  problems  of  messages  accumulating while your
+     program is blocked trying to render to  a  layer  which
+     Intuition has locked.
+
+Bug Fixes
+     DELTAMOVE messages work.  Be advised that if  you  have
+     the  DELTAMOVE  IDCMP  flag set, your MOUSEBUTTONS mes-
+     sages will also have relative values,  instead  of  the
+     absolute window position of the mouse.
+
+     NEWPREFS messages are sent if the NEWPREFS  IDCMP  flag
+     is set.  Sending it used to be determined by some other
+     flag values, by coincidence.
+
+     Duplicate mouse messages for users of  RMBTRAP  are  no
+     longer sent.
+
+     The INTUITICKS messages are paced: until you  reply  to
+     one,  no  subsequent one will be sent to you.  This was
+     not true in v1.1, but is fixed in 1.2.   This  has  the
+     effect  of making the messages appear to arrive half as
+     often, so programs using INTUITICKS to drive animations
+     appear to run slower.
+
+     A NEWSIZE message will be sent when sizing  are  opera-
+     tions completed, even if the size of the window did not
+     actually change.  This is the way of 1.1, but was miss-
+     ing from some of the development releases of v1.2.
+
+
+10.  MISCELLANEOUS
+     =============
+
+Pointer Position Error
+     There was  a  bug  in  v1.1  graphics/MoveSprite()  and
+     resultingly in intuition/SetPointer().  For compatibil-
+     ity, we are forced to leave it in.   The  error  is  in
+     Sprite  positioning.   To  compensate  for it, you must
+     tell Intuition that the "hot spot" of a pointer  sprite
+     is  one  pixel  to  the  left  of the position actually
+     intended.  The Preferences  pointer  editor  adds  this
+     fudge  factor; only changes to the pointer done by your
+     program must compensate for this error.
+
+Input Event Food Chain
+     The Intuition input  handler  now  no  longer  discards
+     linked  lists of input events longer than 10 in length,
+     and can handle linked lists of input events  in  string
+     gadgets.   This is only important to programs which add
+     input events to the Input Device  stream  either  using
+     their  own  handler or by using the IND_WRITEEVENT com-
+     mand of the Input Device (see the documentation on  the
+     Input Device).
+
+Absolute Mouse Position
+     Intuition now handles pointer  position  input  events.
+     The input event class IECLASS_POINTERPOS can be used to
+     specify a position for the mouse  pointer  RELATIVE  TO
+     THE  INTUITION  VIEW  ORIGIN.  The coordinates are pro-
+     vided in the pseudo-fields ie_X  and  ie_Y  (these  are
+     really  part  of  a union).  Internally, Intuition will
+     convert this event  into  the  proper  RAWMOUSE  event,
+     replacing ie_X/Y with a suitable relative mouse motion.
+
+     Note   that   the    presence    of    the    qualifier
+     IEQUALIFIER_RELATIVEMOUSE     indicates     that     an
+     IECLASS_POINTERPOS input  event  specifies  a  relative
+     mouse move, having the same effect as IECLASS_RAWMOUSE.
+
+Public IntuitionBase
+     The include file intuition/intuitionbase.h  contains  a
+     definition  of the entire Intuition library data struc-
+     ture.  It also contains  very  important  warnings  and
+     specification  of  what  part  of  this  READ-ONLY data
+     structure may be used in a supported way, and  explains
+     the role of the functions LockIBase() and UnlockIBase()
+     in accessing the data it contains.
+
+InstallClipRegion Support
+     This new function in layers.library allows specifying a
+     region  within  a window to which rendering is clipped.
+     Intuition needs to modify and restore this  information
+     to  perform its gadget rendering and border refreshing,
+     and does so in such a way as to be transparent to  your
+     program, in simple circumstances.
+
+ReportMouse()
+     This function had a problem in  v1.1  that  caused  its
+     parameters  to  be  be handled in the order opposite of
+     that described in the  Intuition  manual.  For  a  full
+     explanation  of the current state of this function, and
+     an interesting lesson in software maintenance, see  the
+     autodoc section for this function.
+
+PrintIText()
+     This function now safely handles the case of the actual
+     text  pointer-- IntuiText.IText--being NULL.  This rou-
+     tine is used internally for all Intuition rendering  of
+     IntuiText structures in menus and gadgets.
+
+MemoryMenu operations (to name one thing) handle  low-memory
+     conditions better than in v1.1.  Specifically, menu and
+     submenu pages will not be  rendered  when  insufficient
+     memory exists for the internal auxilliary bitmaps.
+
+DisplayBeep()
+     This function was not re-entrant  in  v1.1,  and  could
+     leave the screen in a "highlighted" state.  No more.
+
+Mouse X and Y
+     These fields in Screens and Windows  are  now  properly
+     initialized when a screen or window is opened.
+
+FontsIntuition now closes the  fonts  it  opens.   The  font
+     opened  when  a  window is opened is stashed in the new
+     Window field Window.IFont.  Intuition will  close  this
+     font  when the window is closed, and won't try to close
+     any font you have set in your window's  rastport.   You
+     must close such fonts yourself.
+
+
+11.  DUAL-PLAYFIELD SCREEN EXAMPLE
+     =============================
+
+/**************************************************************************
+ * Example program for Dual-Playfield Screens
+ *
+ * copyright Commodore-Amiga, Inc., Sept. 1986.  use at will
+ * author: jim mackraz (amiga!jimm)
+ *
+ * (Note - Attached code is Jim's updated example  c.s.)
+ ***************************************************************************/
+
+/** wbdualpf.c :ts=8 **/
+/* Turn the workbench into dual playfield.
+ *
+ * You can use the same trick for your own screens,
+ * which is the recommended method for creating dual-playfield
+ * screens.
+ *
+ * -Start with a new, single-playfield screen
+ *  (don't set DUALPF in NewScreen.ViewModes)
+ * -Allocate a second playfield, set up a rastport for
+ *  rendering into it, and install it into your open screen
+ *  as shown here.  Intuition will never know about or use your
+ *  second playfield for its rendering (menus, gadgets, etc.).
+ * -Be sure to remove evidence of your deed before CloseScreen().
+ */
+
+#include <exec/types.h>
+#include <exec/memory.h>
+#include <intuition/intuition.h>
+
+#include <functions.h>
+
+#ifdef ORIGINALCODE
+#define printf  kprintf
+#endif
+
+struct  Remember    *rememberkey = NULL;
+struct  Window      *getNewWind();
+
+struct  IntuitionBase   *IntuitionBase;
+struct  GfxBase         *GfxBase;
+
+ULONG   flg = ACTIVATE | WINDOWCLOSE | NOCAREREFRESH | WINDOWDRAG
+	    | WINDOWDEPTH | SIMPLE_REFRESH;
+
+ULONG   iflg = CLOSEWINDOW | INTUITICKS ;
+
+#define FANCYVERSION 1
+#if FANCYVERSION
+#define VISUALTICKS	30	/* intuiticks per frame	*/
+#define CYCLETICKS	3	/* intuiticks per pen color	*/
+#endif
+
+main()
+{
+    struct  IntuiMessage    *msg;
+    struct Window   *window = NULL;
+    WORD    exitval = 0;
+
+    /* hold data from *msg  */
+    ULONG   class;
+
+    /* specific for this test	*/
+    struct Screen *wbscreen;
+    struct RasInfo *rinfo2 = NULL;	/* second playfield rasinfo ... */
+    struct BitMap  *bmap2 = NULL;	/* ... and bitmap		*/
+    struct RastPort *rport2 = NULL;	/* for rendering into bmap2	*/
+    int	   it_is_done = 0;		/* success flag			*/
+    int	   counter = 0;			/* for timing the visuals	*/
+
+    if (!(IntuitionBase = (struct IntuitionBase *)
+	OpenLibrary("intuition.library", 0L)))
+    {
+	printf("NO INTUITION LIBRARY\n");
+	exitval = 1;
+	goto EXITING;
+    }
+
+    if (!(GfxBase = (struct GfxBase *)
+	OpenLibrary("graphics.library", 0L)))
+    {
+	printf("NO GRAPHICS LIBRARY\n");
+	exitval = 2;
+	goto EXITING;
+    }
+
+    /* get a window on the workbench	*/
+    window = getNewWind(320, 20, 300, 50, flg, iflg);
+    if (window == NULL)
+    {
+	printf("test: can't get window.\n");
+	exitval = 1;
+	goto EXITING;
+    }
+
+
+    /* ------ Add a second playfield for Workbench ------------ */
+
+    wbscreen = window->WScreen;		/* find it	*/
+
+    /* allocate second playfield's rasinfo, bitmap, and bitplane	*/
+
+    if (!(rinfo2 = (struct RasInfo *)
+	AllocMem((LONG) sizeof(struct RasInfo), (LONG) MEMF_PUBLIC|MEMF_CLEAR)))
+    {
+	printf("alloc rasinfo failed\n");
+	goto EXITING;
+    }
+
+    if (!(bmap2 = (struct BitMap *)
+	AllocMem((LONG) sizeof(struct BitMap), (LONG) MEMF_PUBLIC|MEMF_CLEAR)))
+    {
+	printf("alloc bitmap failed\n");
+	goto EXITING;
+    }
+
+    InitBitMap(bmap2, 1L, (LONG) wbscreen->Width, (LONG) wbscreen->Height);
+
+    /* we'll use 1 plane. */
+    if (!(bmap2->Planes[0] =
+	(UBYTE *) AllocRaster((LONG) wbscreen->Width, (LONG) wbscreen->Height)))
+    {
+	printf("alloc raster failed\n");
+	goto EXITING;
+    }
+
+    /* get a rastport, and set it up for rendering into bmap2	*/
+    if (!(rport2 = (struct RastPort *)
+	AllocMem((LONG) sizeof (struct RastPort), (LONG) MEMF_PUBLIC)))
+    {
+	printf("alloc rastport failed\n");
+	goto EXITING;
+    }
+    InitRastPort(rport2);
+    rport2->BitMap = bmap2;
+
+    SetRast(rport2, 0L);
+
+    /* manhandle viewport: install second playfield and change modes	*/
+    Forbid();
+
+    rinfo2->BitMap = bmap2;	/* install my bitmap in my rasinfo	*/
+
+    wbscreen->ViewPort.RasInfo->Next = rinfo2;
+		/* install rinfo for viewport's second playfield	*/
+
+    wbscreen->ViewPort.Modes |= DUALPF;
+				/* convert viewport			*/
+    it_is_done = 1;
+
+    Permit();
+
+    /* set my foreground color */
+    SetRGB4(&wbscreen->ViewPort, 9L, 0L, (LONG) 0xF, 0L);
+    /* color 9 is color 1 for second playfield of hi-res viewport */
+
+    /* put viewport changed into effect	*/
+    MakeScreen(wbscreen);
+    RethinkDisplay();
+
+    drawSomething(rport2);
+
+    FOREVER
+    {
+	if ((msg = (struct IntuiMessage *)GetMsg(window->UserPort)) == NULL)
+	{
+	    Wait((ULONG) 1<<window->UserPort->mp_SigBit);
+	    continue;
+	}
+
+	class   = msg->Class;
+	ReplyMsg(msg);
+
+	switch (class)
+	{
+	case INTUITICKS:
+#if FANCYVERSION
+	    setPrimary(&wbscreen->ViewPort);	/* cycles colors */
+	    if (counter++ > VISUALTICKS)
+	    {
+		counter = 0;
+		SetRast(rport2, 0L);
+		drawSomething(rport2);
+	    }
+#endif
+	    break;
+
+	case CLOSEWINDOW:
+	    goto EXITING;
+	default:
+	    printf("unknown event: class %lx\n", class);
+	}
+    }
+
+EXITING:
+    /* clean up dual-playfield trick	*/
+    if (it_is_done)
+    {
+	Forbid();
+	wbscreen->ViewPort.RasInfo->Next = NULL;
+	wbscreen->ViewPort.Modes &= ~DUALPF;
+	Permit();
+	MakeScreen(wbscreen);
+	RethinkDisplay();
+    }
+
+    if (rport2) FreeMem(rport2, (LONG) sizeof (struct RastPort));
+    if (bmap2) 
+    {
+	if (bmap2->Planes[0])
+	{
+	    FreeRaster(bmap2->Planes[0],
+	    	(LONG) wbscreen->Width, (LONG) wbscreen->Height);
+	}
+	FreeMem(bmap2, (LONG) sizeof (struct BitMap));
+    }
+    if (rinfo2) FreeMem(rinfo2, (LONG) sizeof (struct RasInfo));
+
+    if (window) CloseWindow(window);
+    if (GfxBase) CloseLibrary(GfxBase);
+    if (IntuitionBase) CloseLibrary(IntuitionBase);
+
+    exit (exitval);
+}
+
+#if FANCYVERSION
+/* cycle pen 1's color */
+setPrimary(vp)
+struct ViewPort *vp;
+{
+    static int current = 0;
+
+    /* pen 1 is color 9 for second playfield in hires */
+    /* feel free too do this elegantly */
+
+    if (!(current++ % CYCLETICKS)) return;
+
+    switch ((current/CYCLETICKS)%3)
+    {
+    case 0:
+	SetRGB4(vp, 9L, 0xFL, 0L, 0L);
+	break;
+    case 1:
+	SetRGB4(vp, 9L, 0L, 0xFL, 0L);
+	break;
+    case 2:
+	SetRGB4(vp, 9L, 0L, 0L, 0xFL);
+	break;
+    }
+}
+
+struct pt_st {
+    ULONG x;
+    ULONG y;
+    };
+
+typedef struct pt_st Pt;
+
+drawSomething(rp)
+struct RastPort *rp;
+{
+    int width, height;
+    LONG   RangeRand();
+    int i;
+
+    Pt start, vertex, end;	/* random reference lines */
+    Pt p0, p1;		/* endpoints to be drawn	*/
+
+    width = rp->BitMap->BytesPerRow * 8;
+    height = rp->BitMap->Rows;
+
+    /* set up two random reference lines */
+    start.x = RangeRand((LONG) width);
+    vertex.x   = RangeRand((LONG) width);
+    end.x   = RangeRand((LONG) width);
+
+    start.y = RangeRand((LONG) height);
+    vertex.y = RangeRand((LONG) height);
+    end.y   = RangeRand((LONG) height);
+
+    SetAPen(rp, 1L);
+
+    /* draw lines connecting intermediate points */
+    for (i = 0; i <= 0x100; i += 0x10)
+    {
+	/* point between start and vertex */
+	p0.x = (start.x * (0xFF - i) + vertex.x  * i) >> 8;
+	p0.y = (start.y * (0xFF - i)  + vertex.y * i) >> 8;
+
+	/* point between vertex and end	*/
+	p1.x = (vertex.x * (0xFF - i) + end.x * i) >> 8;
+	p1.y = (vertex.y * (0xFF - i) + end.y * i) >> 8;
+
+	Move(rp, p0.x, p0.y);
+	Draw(rp, p1.x, p1.y);
+    }
+
+}
+
+#else
+
+drawSomething(rp)
+struct RastPort *rp;
+{
+    int width, height;
+    int r, c;
+
+    width = rp->BitMap->BytesPerRow * 8;
+    height = rp->BitMap->Rows;
+
+    SetAPen(rp, 1L);
+
+    for (r = 0; r < height; r += 40)
+	for (c = 0; c < width; c += 40)
+	{
+	    Move(rp, 0L, (LONG) r);
+	    Draw(rp, (LONG) c, 0L);
+	}
+}
+
+#endif
+
+struct  Window * getNewWind(left, top, width, height, flg, iflg)
+SHORT   left, top, width, height;
+ULONG   flg, iflg;
+{
+    struct  Window  *OpenWindow();
+    struct  NewWindow   nw;
+
+    nw.LeftEdge =   (SHORT) left;
+    nw.TopEdge  =   (SHORT) top;
+    nw.Width    =   (SHORT) width;
+    nw.Height   =   (SHORT) height;
+    nw.DetailPen    =   (UBYTE) -1;
+    nw.BlockPen =   (UBYTE) -1;
+    nw.IDCMPFlags   =   (ULONG) iflg;
+
+    nw.Flags    =   (ULONG) flg;
+
+    nw.FirstGadget  =   (struct Gadget *)   NULL;
+    nw.CheckMark    =   (struct Image *)    NULL;
+    nw.Title    =   (UBYTE *)   " Dual Playfield Mole ";
+    nw.Screen   =   (struct Screen *)   NULL;
+    nw.BitMap   =   (struct BitMap *)   NULL;
+    nw.MinWidth =   (SHORT) 50;
+    nw.MinHeight=   (SHORT) 30;
+    /* work around bug  */
+    nw.MaxWidth =   (SHORT) nw.Width;
+    nw.MaxHeight    =   (SHORT) nw.Height;
+    nw.Type     =   (USHORT) WBENCHSCREEN;
+
+    return ((struct Window *) OpenWindow(&nw));
+}
+
+
+
+
+12.  MASKED BOOLEAN GADGET EXAMPLE
+
+/**************************************************************************
+ * Example code fragment for Masked Boolean Gadget
+ *
+ * copyright Commodore-Amiga, Inc., May 1986.  use at will
+ * author: jim mackraz (amiga!jimm)
+ ***************************************************************************/
+
+/* come up with a mask of your choice */
+extern UWORD testgmask[];       /* single Image plane, used here as both
+                                   as mask and image */
+
+/* you probably want a fancier (multi-color) image */
+struct Image testgimage = {
+    0, 0, 32, 32, 1,
+    testgmask,  /* using same bit-plane for image as for mask */
+    0x01, 0x00, NULL
+    };
+
+struct BoolInfo testboolinfo = {
+    BOOLMASK,   /* this extension is for masked boolean values */
+    testgmask,  /* a single bit plane */
+    0           /* reserved */
+    };
+
+struct Gadget testgadget = {
+    NULL, 50, 50, 32, 32,
+    GADGHCOMP | GADGIMAGE | SELECTED,
+    GADGIMMEDIATE | RELVERIFY | TOGGLESELECT | BOOLEXTEND,      /* NEW */
+    BOOLGADGET,
+    &testgimage,
+    NULL,
+    NULL,       /* text */
+    0,          /* mutual exclude */
+    &testboolinfo,                                              /* NEW */
+    123,
+    NULL
+    };
+
+

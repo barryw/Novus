@@ -1,0 +1,122 @@
+
+                              ReadMe1.3
+                              =========
+    Ffuz.c -- Copyright (c) 1988 Microbotics, Inc. and David Milligan
+                  Used with permission of Microbotics
+
+  Rest of disk -- Copyright (c) 1985,1986,1987,1988 Commodore-Amiga,Inc.
+                         All Rights Reserved
+
+The files on this disk are copyrighted and proprietary.  In addition, all
+files related to 1.3 or future products are preliminary and subject to
+change.  All files and programs are supplied as-is and are not warranted
+as to completeness, accuracy, or suitability for any particular purpose.
+
+This disk currently contains:
+
+     1.2ReadMes (dir)
+          libraries (dir)
+            .info                            amiga.lib
+            Amiga.lib.info                   dos
+            Dos.info                         exec
+            Exec.info                        graphics
+            Graphics.info                    Intuition
+            Intuition.info                   otherlibs
+            OtherLibs.info                   
+          devices (dir)
+            .info                            OtherDevs
+            OtherDevs.info                   printer
+            Printer.info                     
+       .info                            Devices.info
+       General                          General.info
+       KnownBugs                        KnownBugs.info
+       Libraries.info                   
+     Trashcan (dir)
+     Workbench1.3 (dir)
+          Ieee.Examples (dir)
+               Div0 (dir)
+                 div0.c                           setjmp.asm
+                 trapasm.asm                      trapc.c
+            .info                            Ffuz.c
+            ReadMe                           ReadMe.info
+       .info                            FFS
+       FFS.info                         IEEE
+       Ieee.Examples.info               IEEE.info
+       Prefs1.3                         Prefs1.3.info
+     A2024Docs (dir)
+       .info                            A2024
+       A2024.info                       OpenA2024.c
+       OpenA2024.c.info                 
+     AutoBoot1.3 (dir)
+       .info                            Doc
+       Doc.info                         Readme
+       Readme.info                      
+     Printer1.3 (dir)
+          Driver.Examples (dir)
+               src (dir)
+                    epsonQ (dir)
+                      data.c                           density.c
+                      dospecial.c                      printertag.asm
+                      render.c                         transfer.c
+                    epsonX (dir)
+                      data.c                           density.c
+                      dospecial.c                      printertag.asm
+                      render.c                         transfer.c
+                    xerox_4020 (dir)
+                      data.c                           dospecial.c
+                      printertag.asm                   render.c
+                      transfer.c                       
+                    okimate20 (dir)
+                      data.c                           dospecial.c
+                      printertag.asm                   render.c
+                      transfer.c                       
+                    colormaster (dir)
+                      data.c                           dospecial.c
+                      init.asm                         printertag.asm
+                      prtready.c                       render.c
+                      transfer.c                       
+                    colormaster2 (dir)
+                      data.c                           dospecial.c
+                      init.asm                         printertag.asm
+                      prtready.c                       render.c
+                      transfer.c                       
+                    hp (dir)
+                      data.c                           density.c
+                      dospecial.c                      init.asm
+                      printertag.asm                   render.c
+                      transfer.c                       
+                 init.asm                         macros.i
+            .info                            PrinterTest
+            PrinterTest.info                 ReadMe
+            ReadMe.info                      
+          include (dir)
+            macros.i                         printer.h
+            printer.i                        prtbase.h
+            prtbase.i                        prtgfx.h
+            prtgfx.i                         
+       .info                            Driver.Examples.info
+       DriverNotes                      DriverNotes.info
+       HowToCall                        HowToCall.info
+       HowToWrite                       HowToWrite.info
+       PrtPrefs                         PrtPrefs.info
+       Summary                          Summary.info
+       Tips                             Tips.info
+     Autodocs1.3 (dir)
+       .info                            Autodocs.Readme
+       Autodocs.ReadMe.info             diskfont.doc
+       diskfont.doc.info                mathieeedoubbas.doc
+       mathieeedoubbas.doc.info         mathieeedoubtrans.doc
+       mathieeedoubtrans.doc.info       parallel.doc
+       parallel.doc.info                printer.doc
+       printer.doc.info                 serial.doc
+       serial.doc.info                  
+  .info                            1.2ReadMes.info
+  A2024Docs.info                   AutoBoot1.3.info
+  Autodocs1.3.info                 BugReportForm
+  BugReportForm.info               Contents
+  Contents.info                    Disk.info
+  HardBlocks                       HardBlocks.info
+  More                             Omega7.Changes
+  Omega7.Changes.info              Printer1.3.info
+  Trashcan.info                    Workbench1.3.info
+  YouMustReadme                    YouMustReadMe.info
