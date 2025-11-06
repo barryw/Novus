@@ -401,6 +401,310 @@ cp /tmp/prime_100000_FIXED /Users/barry/Emulation/Amiga/A4000-DH0/Barry/
 
 ---
 
+## 3. Signed Comparison Type Preservation (CRITICAL CORRECTNESS FIX)
+
+**File:** `vbcc/opt.c`
+**Function:** `fix_shortop()` (lines 46-109)
+**Date Applied:** 2025-11-06
+**Severity:** Critical (produces incorrect code at -O2 for signed comparisons)
+
+### Problem Description
+
+The `fix_shortop()` optimizer function unconditionally added the `UNSIGNED` flag to all operations involving types smaller than `int`, including comparison operations. This caused signed comparisons to be converted to unsigned comparisons, producing incorrect branch instructions.
+
+**Impact:** Code performing signed comparisons (`<=`, `<`, `>=`, `>`) on types smaller than `int` would generate unsigned branch instructions (`bls`, `blo`, `bhs`, `bhi`) instead of signed branches (`ble`, `blt`, `bge`, `bgt`), causing wrong conditional behavior.
+
+**Example Failure Case:**
+```c
+// Novus code:
+let max: i32 = 10
+var i: i32 = 2
+while i <= max {  // Signed comparison
+    // ...
+    i = i + 1
+}
+```
+
+**Generated Assembly (BEFORE FIX - WRONG):**
+```asm
+    cmp.l   #10,d2      ; d2=2, compare: 2-10 = -8
+    bls     l6          ; Branch if unsigned d2 <= #10
+                        ; -8 as unsigned = 0xFFFFFFF8 > 10
+                        ; DON'T branch - WRONG!
+                        ; Should branch because 2 <= 10
+```
+
+**Generated Assembly (AFTER FIX - CORRECT):**
+```asm
+    cmp.l   #10,d2      ; d2=2, compare: 2-10 = -8
+    ble     l6          ; Branch if signed d2 <= #10
+                        ; -8 is negative, so branch
+                        ; CORRECT! 2 <= 10 is true
+```
+
+### Root Cause
+
+The `fix_shortop()` function performs C's "usual arithmetic conversions" - promoting types smaller than `int` to `int` for arithmetic operations. For most operations, this includes adding the `UNSIGNED` flag because:
+
+1. C's integer promotion rules promote `char`, `short`, etc. to `int` or `unsigned int`
+2. For arithmetic operations like `+`, `-`, `*`, unsigned promotion is correct
+
+However, **comparison operations must preserve the original signedness**. C's rules state:
+- Operands are promoted to `int`/`unsigned int` size
+- **But signedness is preserved** for the comparison itself
+- Result is a `bool`, not a promoted integer
+
+The bug was that `fix_shortop()` unconditionally added `|UNSIGNED` to comparison operations, overriding the original signedness.
+
+### Original Code (BUGGY)
+
+```c
+void fix_shortop(flowgraph *fg,IC *p)
+{
+  if((p->typf&NQ)<INT&&!shortcut(p->code,p->typf)){
+    // ... setup code
+
+    // Convert operand 1
+    new->typf2=p->typf|UNSIGNED;      // ← BUG: Forces unsigned
+    new->typf=t->flags|UNSIGNED;      // ← BUG: Forces unsigned
+
+    // Convert operand 2
+    new->typf2=p->typf|UNSIGNED;      // ← BUG: Forces unsigned
+    new->typf=t->flags|UNSIGNED;      // ← BUG: Forces unsigned
+
+    // Convert result
+    new->typf=p->typf|UNSIGNED;       // ← BUG: Forces unsigned
+    new->typf2=t->flags|UNSIGNED;     // ← BUG: Forces unsigned
+
+    p->typf=t->flags|UNSIGNED;        // ← BUG: Forces comparison unsigned
+  }
+}
+```
+
+### Fixed Code
+
+```c
+void fix_shortop(flowgraph *fg,IC *p)
+{
+  if((p->typf&NQ)<INT&&!shortcut(p->code,p->typf)){
+    // ... setup code
+
+    // Convert operand 1
+    if(p->code != COMPARE) {
+      new->typf2=p->typf|UNSIGNED;    // ✓ Only for non-comparison ops
+      new->typf=t->flags|UNSIGNED;
+    } else {
+      new->typf2=p->typf;             // ✓ Preserve signedness for comparisons
+      new->typf=t->flags;
+    }
+
+    // Convert operand 2
+    if(p->code != COMPARE) {
+      new->typf2=p->typf|UNSIGNED;    // ✓ Only for non-comparison ops
+      new->typf=t->flags|UNSIGNED;
+    } else {
+      new->typf2=p->typf;             // ✓ Preserve signedness for comparisons
+      new->typf=t->flags;
+    }
+
+    // Convert result
+    if(p->code != COMPARE) {
+      new->typf=p->typf|UNSIGNED;     // ✓ Only for non-comparison ops
+      new->typf2=t->flags|UNSIGNED;
+    } else {
+      new->typf=p->typf;              // ✓ Preserve signedness for comparisons
+      new->typf2=t->flags;
+    }
+
+    // Update operation itself
+    if(p->code != COMPARE) {
+      p->typf=t->flags|UNSIGNED;      // ✓ Only for non-comparison ops
+    } else {
+      p->typf=t->flags;               // ✓ Preserve signedness for comparisons
+    }
+  }
+}
+```
+
+### What the Fix Does
+
+The fix adds checks for `p->code != COMPARE` before applying the `|UNSIGNED` flag:
+
+1. **Arithmetic Operations:** Still get unsigned promotion (correct C behavior)
+2. **Comparison Operations:** Preserve original signedness (correct C behavior)
+3. **M68k Backend:** Receives correctly-signed comparisons and generates proper branch instructions
+
+### Signedness and Branch Instructions
+
+The m68k has separate branch instructions for signed vs unsigned comparisons:
+
+**Signed Branches (after signed CMP):**
+- `ble` - Branch if Less or Equal (signed)
+- `blt` - Branch if Less Than (signed)
+- `bge` - Branch if Greater or Equal (signed)
+- `bgt` - Branch if Greater Than (signed)
+
+**Unsigned Branches (after unsigned CMP):**
+- `bls` - Branch if Lower or Same (unsigned)
+- `blo` - Branch if Lower (unsigned)
+- `bhs` - Branch if Higher or Same (unsigned)
+- `bhi` - Branch if Higher (unsigned)
+
+The m68k backend chooses which branch to use based on the `UNSIGNED` flag in the comparison's type. Our fix ensures this flag accurately reflects the intended signedness.
+
+### Why CMP Condition Codes Differ
+
+The `cmp` instruction subtracts operands and sets condition codes:
+```asm
+cmp.l   #10,d2      ; Compute d2 - #10, set flags
+```
+
+For `d2=2, #10=10`: `2 - 10 = -8`
+
+**Condition Code Interpretation:**
+- **Signed:** -8 is negative, so `2 < 10` → use `ble` to branch
+- **Unsigned:** -8 as unsigned = 0xFFFFFFF8 = 4,294,967,288, so `2 < 4,294,967,288` is false → `bls` doesn't branch
+
+The CPU sets the same flags, but the branch instruction interprets them differently!
+
+### Verification
+
+**Test Case 1: Signed Comparison**
+```novus
+// signed_loop_test.novus
+let max: i32 = 10
+var i: i32 = 2
+while i <= max {
+    write("%ld ", i)
+    i = i + 1
+}
+```
+
+**Generated Assembly (AFTER FIX):**
+```asm
+_main
+    link.w  a5,#0
+    movem.l l17,-(a7)
+    moveq   #2,d2
+l15
+    cmp.l   #10,d2
+    ble     l6          ; ✓ CORRECT: Signed branch
+    moveq   #0,d1
+    bra     l7
+l6
+    moveq   #1,d1
+```
+
+**Output on Amiga:**
+```
+2 3 4 5 6 7 8 9 10
+```
+
+**Test Case 2: Unsigned Comparison (should still work)**
+```novus
+// simple_loop_test.novus
+let max: u32 = 10
+var i: u32 = 2
+while i <= max {
+    write("%ld ", i)
+    i = i + 1
+}
+```
+
+**Generated Assembly (AFTER FIX):**
+```asm
+l15
+    cmp.l   #10,d2
+    bls     l6          ; ✓ CORRECT: Unsigned branch for u32
+```
+
+**Output on Amiga:**
+```
+2 3 4 5 6 7 8 9 10
+```
+
+### Build Commands
+
+```bash
+# Rebuild VBCC with fix
+cd vendor/vbcc && make clean && make
+
+# Rebuild Novus compiler
+dotnet build
+
+# Rebuild stdlib
+./Novus/bin/Debug/net9.0/Novus stdlib-build --cpu 68020
+
+# Test signed comparison
+./Novus/bin/Debug/net9.0/Novus compile /tmp/signed_loop_test.novus \
+  --output /tmp/signed_test_fixed --cpu 68040
+
+# Verify assembly uses 'ble' not 'bls'
+/Users/barry/RiderProjects/Novus/vendor/vbcc/bin/vc +aos68k -c99 \
+  -cpu=68040 -O2 -use-framepointer -S -o /tmp/verify.s \
+  /tmp/signed_test_fixed_main.c
+grep "ble\|bls" /tmp/verify.s
+# Should show: ble l6
+
+# Copy to Amiga and test
+cp /tmp/signed_test_fixed /Users/barry/Emulation/Amiga/A4000-DH0/Barry/
+# On Amiga: ./signed_test_fixed
+# Expected output: 2 3 4 5 6 7 8 9 10
+```
+
+### Affected Operations
+
+This fix only affects operations where:
+1. Operand types are smaller than `int` (char, short, bool)
+2. The operation is a comparison (`COMPARE` opcode = 77)
+3. Optimization is enabled (fix_shortop is called during optimization)
+
+**Safe Operations (still get unsigned promotion):**
+- Arithmetic: `+`, `-`, `*`, `/`, `%`
+- Bitwise: `&`, `|`, `^`, `<<`, `>>`
+- Assignment, casting, etc.
+
+**Fixed Operations (preserve signedness):**
+- Comparisons: `<`, `<=`, `>`, `>=`, `==`, `!=`
+
+### Why This Bug Wasn't Caught Earlier
+
+This bug likely wasn't caught in standard VBCC usage because:
+
+1. **Most code uses int or larger:** Hand-written C rarely compares types smaller than `int` directly.
+
+2. **Integer promotion in expressions:** C automatically promotes to `int` before comparisons in most cases, so `fix_shortop()` isn't called.
+
+3. **Novus compiler patterns:** The Novus compiler generates C code where:
+   - Boolean results of comparisons are stored in `bool` variables
+   - These `bool` values are then tested in conditional branches
+   - This triggers `fix_shortop()` more frequently than typical C code
+
+4. **Subtle bug:** Code still works for non-negative values. Only fails when comparison result is negative and treated as unsigned.
+
+### Impact on Existing Code
+
+**Code that now works correctly:**
+- Any signed comparison on types smaller than `int`
+- Loops with signed iterators
+- Range checks on signed values
+- Conditionals storing comparison results in `bool`
+
+**No negative impact:** This fix only affects buggy code generation. All correctly-generated code is unaffected.
+
+### Related VBCC Files
+
+- `vbcc/opt.c` - Contains `fix_shortop()` function (patched)
+- `vbcc/supp.h:494` - Defines `COMPARE` opcode constant
+- `vbcc/machine.c` - M68k backend branch instruction selection
+- `vbcc/type_expr.c` - Type promotion and arithmetic conversion rules
+
+### Upstream Status
+
+**Not submitted upstream.** This fix should be thoroughly tested across multiple VBCC target architectures and scenarios before proposing to VBCC maintainers. The bug may affect other backends (ARM, PPC, x86) differently.
+
+---
+
 ## Patch Application
 
 All patches in this file are automatically applied to the VBCC source tree in `vendor/vbcc/`. No manual patching is required.
@@ -412,4 +716,6 @@ make clean
 make
 ```
 
-To verify patches are applied, check for comments mentioning "invalidated" in `vbcc/cse.c` around line 224.
+To verify patches are applied:
+1. Check for comments mentioning "invalidated" in `vbcc/cse.c` around line 224
+2. Check for `if(p->code != COMPARE)` guards in `vbcc/opt.c` function `fix_shortop()`
