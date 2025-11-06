@@ -299,3 +299,4 @@ void __novus_div_check(int32_t divisor, const char* file, int32_t line)
         CloseLibrary(IntuitionBase);
     }
 }
+
