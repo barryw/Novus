@@ -32,6 +32,7 @@ TestResults/
 *.o
 *.c
 !runtime/**/*.c
+!vendor/vbcc/**/*.c
 *.out
 a.out
 novus_types.h
