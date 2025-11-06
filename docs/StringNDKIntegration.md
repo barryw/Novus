@@ -8,9 +8,10 @@ This document outlines the design for seamless integration between Novus strings
 
 1. Allow passing `Str`, `String`, and string literals directly to NDK functions expecting `*u8` (CSTR)
 2. Allow passing `BStr` to NDK functions expecting `BPTR` (BSTR)
-3. Maintain type safety and prevent common errors
-4. Zero runtime overhead for conversions
-5. Clear compile-time errors when incompatible string types are used
+3. **Automatically convert NDK string return values to Novus string types**
+4. Maintain type safety and prevent common errors
+5. Zero runtime overhead for conversions (where possible)
+6. Clear compile-time errors when incompatible string types are used
 
 ## Current State
 
@@ -264,6 +265,395 @@ let lock = Lock(dir, ACCESS_READ)
 // Better: use to_cstr() for safety
 let dir_cstr = dir.to_cstr()?
 let lock = Lock(dir_cstr, ACCESS_READ)
+```
+
+## Bidirectional Conversion: NDK Returns → Novus Strings
+
+### The Challenge
+
+Many NDK functions return string pointers that need to be converted to Novus string types for safe manipulation:
+
+```novus
+// Current: Returns raw pointer
+extern fn GetVar(name: *u8, buffer: *u8, size: u32, flags: u32) -> i32
+
+// User must manually wrap:
+let mut buffer: [u8; 256]
+let len = GetVar("PATH", &buffer[0], 256, 0)
+let path = Str::from_raw(&buffer[0], (u32)len)  // ❌ Manual, error-prone
+```
+
+**Problems with current approach:**
+1. Manual length tracking required
+2. Easy to create dangling pointers
+3. Lifetime management unclear
+4. No safety checks
+
+### Solution: Automatic Return Value Wrapping
+
+#### Approach 1: Wrapper Functions in stdlib
+
+Create safe wrapper functions that return `Str` or `Option<Str>`:
+
+```novus
+// In std::ffi::dos module
+pub fn get_var(name: Str) -> Option<Str> {
+    let mut buffer: [u8; 256]
+    let len = unsafe {
+        GetVar(name.as_ptr(), &buffer[0], 256, 0)
+    }
+
+    if len <= 0 {
+        return Option::None
+    }
+
+    // Safe: buffer is on stack, caller must copy if needed
+    return Option::Some(Str::from_raw(&buffer[0], (u32)len))
+}
+
+// Usage:
+let path = get_var("PATH")?
+println!("Path: {}", path)
+```
+
+#### Approach 2: Smart Return Types
+
+For functions that return pointers to system-managed memory:
+
+```novus
+// FilePart returns pointer into existing string (no allocation)
+extern fn FilePart(path: *u8) -> *u8
+
+// Wrapper returns Str that borrows from original
+pub fn file_part(path: Str) -> Option<Str> {
+    let result_ptr = unsafe { FilePart(path.as_ptr()) }
+
+    if (u32)result_ptr == 0 {
+        return Option::None
+    }
+
+    // Calculate length from result_ptr to end of path
+    let offset = (u32)result_ptr - (u32)path.as_ptr()
+    let remaining_len = path.len() - offset
+
+    return Option::Some(Str::from_raw(result_ptr, remaining_len))
+}
+
+// Usage:
+let path = Str::from_cstr("SYS:Utilities/More")?
+let filename = file_part(path)?  // "More"
+```
+
+#### Approach 3: Owned String Returns
+
+For functions that allocate memory the caller must free:
+
+```novus
+// AllocVec returns memory caller must free
+extern fn AllocVec(size: u32, flags: u32) -> *u8
+extern fn FreeVec(ptr: *u8)
+
+// Wrapper returns owned String with automatic cleanup
+pub fn read_file_to_string(path: Str) -> Result<String, DosError> {
+    let file = Open(path, MODE_OLDFILE)?
+    defer Close(file)
+
+    // Get file size
+    Seek(file, 0, OFFSET_END)
+    let size = Seek(file, 0, OFFSET_BEGINNING)
+    Seek(file, 0, OFFSET_BEGINNING)
+
+    // Allocate buffer
+    let buffer = AllocVec(size + 1, MEMF_PUBLIC)?
+    defer FreeVec(buffer)  // Auto-free on any error path
+
+    // Read file
+    let bytes_read = Read(file, buffer, size)
+    if bytes_read != size {
+        return Result::Err(DosError::ReadError)
+    }
+
+    // Null terminate
+    buffer[size] = 0
+
+    // Transfer ownership to String
+    return Result::Ok(String::from_raw_parts(buffer, (u32)size, (u32)size + 1))
+}
+```
+
+### Common NDK String Return Patterns
+
+#### Pattern 1: Fill Buffer Functions
+
+**Functions**: `GetVar`, `NameFromLock`, `DeviceProc`
+
+**Strategy**: Stack buffer + Str wrapper
+
+```novus
+pub fn name_from_lock(lock: i32) -> Option<Str> {
+    let mut buffer: [u8; 256]
+    let success = unsafe {
+        NameFromLock(lock, &buffer[0], 256)
+    }
+
+    if !success {
+        return Option::None
+    }
+
+    // Find null terminator
+    let len = strlen(&buffer[0])
+    return Option::Some(Str::from_raw(&buffer[0], len))
+}
+```
+
+#### Pattern 2: Pointer Into Existing String
+
+**Functions**: `FilePart`, `PathPart`, `strchr`
+
+**Strategy**: Return borrowed Str (slice)
+
+```novus
+pub fn path_part(full_path: Str) -> Option<Str> {
+    let path_ptr = unsafe { PathPart(full_path.as_ptr()) }
+
+    if (u32)path_ptr == 0 {
+        return Option::None
+    }
+
+    // PathPart returns pointer to start of path component
+    let offset = (u32)path_ptr - (u32)full_path.as_ptr()
+    return Option::Some(full_path.slice_from(offset))
+}
+```
+
+#### Pattern 3: System-Owned Strings
+
+**Functions**: `FindTask(NULL)->tc_Node.ln_Name`, process names, device names
+
+**Strategy**: Copy to owned String for safety
+
+```novus
+pub fn current_task_name() -> String {
+    let task_ptr = unsafe { FindTask(0) }
+    let name_ptr = unsafe {
+        let node_ptr = task_ptr as *u8  // tc_Node is first field
+        let ln_name_offset = 10  // Offset to ln_Name in Node struct
+        *((node_ptr + ln_name_offset) as **u8)
+    }
+
+    // System owns this memory - MUST copy
+    let name_str = Str::from_cstr(name_ptr)?
+    return String::from_str(name_str)?
+}
+```
+
+#### Pattern 4: BCPL Strings (BSTR/BPTR)
+
+**Functions**: `DupLock`, BCPL command line parsing
+
+**Strategy**: Wrap in BStr or convert to Str
+
+```novus
+// Convert BPTR to Str (read-only view)
+pub fn bstr_to_str(bptr: BPTR) -> Option<Str> {
+    if bptr == 0 {
+        return Option::None
+    }
+
+    let addr: u32 = ((u32)bptr) << 2  // BPTR to address
+    let ptr: *u8 = (addr as *u8)
+    let len: u32 = (u32)ptr[0]  // Length byte
+
+    if len == 0 {
+        return Option::Some(Str::from_raw(ptr + 1, 0))
+    }
+
+    return Option::Some(Str::from_raw(ptr + 1, len))
+}
+```
+
+### Implementation Strategy
+
+#### Phase 1: Manual Wrapper Functions (Current)
+
+Write safe wrapper functions in `std::ffi::*` modules:
+
+```novus
+// std::ffi::dos
+pub fn get_var(name: Str) -> Option<String>
+pub fn name_from_lock(lock: i32) -> Option<String>
+pub fn file_part(path: Str) -> Option<Str>
+
+// std::ffi::intuition
+pub fn get_screen_title(screen: *Screen) -> Option<Str>
+pub fn get_window_title(window: *Window) -> Option<Str>
+```
+
+**Pros:**
+- ✅ Works immediately
+- ✅ Full control over safety
+- ✅ Can document ownership and lifetime
+
+**Cons:**
+- ❌ Must write wrapper for every function
+- ❌ Verbose for simple cases
+
+#### Phase 2: Attribute-Based Generation (Future)
+
+Add attributes to extern declarations for automatic wrapper generation:
+
+```novus
+#[string_return(buffer_size = 256)]
+extern fn GetVar(name: *u8, buffer: *u8, size: u32, flags: u32) -> i32
+
+// Compiler auto-generates:
+pub fn get_var(name: Str) -> Option<String> {
+    let mut buffer: [u8; 256]
+    let len = unsafe { GetVar(name.as_ptr(), &buffer[0], 256, 0) }
+    if len <= 0 { return Option::None }
+    return Option::Some(String::from_raw(&buffer[0], (u32)len))
+}
+```
+
+**Attributes:**
+- `#[string_return(buffer_size = N)]` - Fill buffer pattern
+- `#[string_return(borrowed)]` - Pointer into existing string
+- `#[string_return(owned)]` - Caller must free
+- `#[string_return(system_owned)]` - System owns, must copy
+- `#[bstr_return]` - BCPL string return
+
+### Usage Examples
+
+#### Example 1: Environment Variables
+
+```novus
+from std::ffi::dos import get_var
+
+pub fn main() -> i32 {
+    // Seamless: no manual buffer management
+    let path = get_var("PATH")
+        .unwrap_or(String::from_str("SYS:"))
+
+    println!("PATH: {}", path)
+
+    // Can split, manipulate, etc.
+    let dirs = path.split(':')
+    for dir in dirs {
+        println!("  - {}", dir)
+    }
+
+    return 0
+}
+```
+
+#### Example 2: File Name Parsing
+
+```novus
+from std::ffi::dos import file_part, path_part
+
+pub fn process_file(full_path: Str) {
+    // Get just the filename
+    let filename = file_part(full_path)?
+    println!("File: {}", filename)
+
+    // Get just the path
+    let path = path_part(full_path)?
+    println!("Path: {}", path)
+
+    // Both are slices of original - zero copy
+}
+```
+
+#### Example 3: Lock Information
+
+```novus
+from std::ffi::dos import name_from_lock, Lock, UnLock
+
+pub fn print_directory_name(path: Str) -> Result<(), DosError> {
+    let lock = Lock(path, ACCESS_READ)?
+    defer UnLock(lock)
+
+    // Get full path from lock
+    let full_path = name_from_lock(lock)?
+    println!("Full path: {}", full_path)
+
+    return Result::Ok(())
+}
+```
+
+### Safety Considerations
+
+#### Lifetime Safety
+
+```novus
+// ❌ UNSAFE: Str borrows from stack buffer
+pub fn unsafe_example() -> Str {
+    let mut buffer: [u8; 256]
+    GetVar("PATH", &buffer[0], 256, 0)
+    return Str::from_raw(&buffer[0], 256)  // ❌ Dangling pointer!
+}
+
+// ✅ SAFE: Return owned String
+pub fn safe_example() -> Option<String> {
+    let mut buffer: [u8; 256]
+    let len = GetVar("PATH", &buffer[0], 256, 0)
+    if len <= 0 { return Option::None }
+
+    // Copy to owned String before returning
+    return Option::Some(String::from_raw(&buffer[0], (u32)len))
+}
+```
+
+#### Null Safety
+
+```novus
+// Always check for null before wrapping
+pub fn wrap_ndk_string(ptr: *u8) -> Option<Str> {
+    if (u32)ptr == 0 {
+        return Option::None  // ✅ Safe
+    }
+
+    let len = strlen(ptr)
+    return Option::Some(Str::from_raw(ptr, len))
+}
+```
+
+#### Ownership Clarity
+
+Use type system to document ownership:
+
+```novus
+// Borrowed - caller owns memory
+pub fn file_part(path: Str) -> Option<Str>
+
+// Owned - callee allocates, caller must free
+pub fn read_file(path: Str) -> Result<String, Error>
+
+// System owned - copy before returning
+pub fn current_task_name() -> String
+```
+
+### Standard Library Additions
+
+Add comprehensive wrappers to `std::ffi::dos`:
+
+```novus
+// Environment variables
+pub fn get_var(name: Str) -> Option<String>
+pub fn set_var(name: Str, value: Str) -> bool
+
+// Path manipulation
+pub fn file_part(path: Str) -> Option<Str>
+pub fn path_part(path: Str) -> Option<Str>
+pub fn add_part(path: &mut String, file: Str) -> bool
+
+// Lock operations
+pub fn name_from_lock(lock: i32) -> Option<String>
+pub fn parent_dir(lock: i32) -> i32
+
+// Device operations
+pub fn device_name(device: *DeviceNode) -> Option<Str>
+pub fn volume_name(info: *InfoData) -> Option<Str>
 ```
 
 ## Advanced Features
