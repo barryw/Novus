@@ -44,8 +44,8 @@ pub fn main() -> i32 {
     while i <= 100 {
         let data = sieve.as_ptr()
         let val = data[i]
-        let check = (u32)val
-        if check != 0 {
+        let is_set = (u32)val
+        if is_set != 0 {
             write("%ld ", i)
             count = count + 1
             if count % 10 == 0 {

@@ -46,6 +46,17 @@ public class CCodeGenerator
         if (function.IsExtern)
             return false;
 
+        // Best detection: Check if function parameters or return type have a CacheKey
+        // (indicating a monomorphized generic type)
+        foreach (var param in function.Parameters)
+        {
+            if (HasMonomorphizedType(param.Type))
+                return true;
+        }
+
+        if (HasMonomorphizedType(function.ReturnType))
+            return true;
+
         // Check for naming patterns that indicate monomorphization:
         // 1. Enum methods: "Type::method_typeArgs" (e.g., "Option::FromPointer_u8")
         // 2. Struct methods: "Type_method" (e.g., "Vec_push")
@@ -103,11 +114,27 @@ public class CCodeGenerator
 
         foreach (var enumType in _module.Enums)
         {
-            var baseName = enumType.EnumName;
-            if (name.StartsWith($"{baseName}_"))
+            var enumName = enumType.EnumName;
+            if (name.StartsWith($"{enumName}_"))
                 return true;
         }
 
+        return false;
+    }
+
+    /// <summary>
+    /// Check if a type is or contains a monomorphized generic type (has a CacheKey).
+    /// </summary>
+    private bool HasMonomorphizedType(IrType type)
+    {
+        if (type is IrStructType structType && structType.CacheKey != null)
+            return true;
+        if (type is IrEnumType enumType && enumType.CacheKey != null)
+            return true;
+        if (type is IrPointerType ptrType)
+            return HasMonomorphizedType(ptrType.PointeeType);
+        if (type is IrReferenceType refType)
+            return HasMonomorphizedType(refType.PointeeType);
         return false;
     }
 
@@ -321,7 +348,7 @@ public class CCodeGenerator
             var returnType = GetCType(function.ReturnType);
             var isVoidReturn = returnType == "void";
             var paramList = string.Join(", ", function.Parameters.Select(p => $"{GetCType(p.Type)} {p.Name}"));
-            var mangledName = MangleName(function.Name);
+            var mangledName = MangleName(function);
 
             stubSb.AppendLine($"{returnType} {mangledName}({paramList}) {{");
             stubSb.AppendLine($"    __novus_panic(\"Function {function.Name} contains un-monomorphized generic types\", __FILE__, __LINE__, 0);");
@@ -382,26 +409,15 @@ public class CCodeGenerator
             sb.AppendLine();
         }
 
-        // Separate called functions into two categories:
-        // 1. Monomorphized functions (will be inlined)
-        // 2. Regular functions (need extern declarations)
+        // All called functions need extern declarations now that monomorphized functions
+        // have unique names and are compiled into separate object files
         var calledFunctionsWithSigs = GetCalledFunctionsWithSignatures(function);
-        var monomorphizedFunctions = new List<IrFunction>();
         var externalFunctions = new List<(string FuncName, IrType ReturnType, List<IrValue> Arguments)>();
 
         foreach (var (funcName, (returnType, arguments)) in calledFunctionsWithSigs.OrderBy(kv => kv.Key))
         {
-            var funcObj = _module.Functions.FirstOrDefault(f => f.Name == funcName);
-            if (funcObj != null && IsMonomorphizedFunction(funcObj))
-            {
-                // This is a monomorphized function - we'll inline it
-                monomorphizedFunctions.Add(funcObj);
-            }
-            else
-            {
-                // Regular function - needs extern declaration
-                externalFunctions.Add((funcName, returnType, arguments));
-            }
+            // All called functions need extern declarations
+            externalFunctions.Add((funcName, returnType, arguments));
         }
 
         // Emit extern declarations for regular functions
@@ -416,7 +432,7 @@ public class CCodeGenerator
                     var isStructOrEnumReturn = funcObj.ReturnType is IrStructType or IrEnumType;
                     var returnTypeStr = isStructOrEnumReturn ? "void" : GetCType(funcObj.ReturnType);
                     var parameters = GetParameterList(funcObj, isStructOrEnumReturn);
-                    sb.AppendLine($"extern {returnTypeStr} {MangleName(funcName)}({parameters});");
+                    sb.AppendLine($"extern {returnTypeStr} {MangleName(funcObj)}({parameters});");
                 }
                 else
                 {
@@ -428,19 +444,6 @@ public class CCodeGenerator
                 }
             }
             sb.AppendLine();
-        }
-
-        // Inline monomorphized functions
-        if (monomorphizedFunctions.Count > 0)
-        {
-            sb.AppendLine("// Monomorphized generic functions (inlined)");
-            foreach (var monoFunc in monomorphizedFunctions)
-            {
-                var monoFuncOutput = new StringBuilder();
-                EmitFunctionToBuilder(monoFuncOutput, monoFunc);
-                sb.Append(monoFuncOutput.ToString());
-                sb.AppendLine();
-            }
         }
 
         // Function implementation
@@ -466,7 +469,7 @@ public class CCodeGenerator
         var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType;
         var returnType = isStructOrEnumReturn ? "void" : GetCType(function.ReturnType);
         var parameters = GetParameterList(function, isStructOrEnumReturn);
-        var funcName = MangleName(function.Name);
+        var funcName = MangleName(function);
 
         // Special case: main must return 'int' for VBCC compatibility
         if (funcName == "main" && returnType == "int32_t")
@@ -474,17 +477,10 @@ public class CCodeGenerator
             returnType = "int";
         }
 
-        // Add 'static' for monomorphized generic functions
-        // Note: We use 'static' only (not 'static inline') because VBCC C99 mode
-        // doesn't allow 'inline' in function definitions (error 301).
-        // The 'static' linkage prevents duplicate symbol errors.
-        var functionModifiers = "";
-        if (IsMonomorphizedFunction(function))
-        {
-            functionModifiers = "static ";
-        }
-
-        targetBuilder.AppendLine($"{functionModifiers}{returnType} {funcName}({parameters}) {{");
+        // No need for 'static' modifier - monomorphized functions now have unique
+        // type-parameterized names (e.g., Vec_bool_push, Vec_u8_push) to prevent
+        // duplicate symbol errors during linking.
+        targetBuilder.AppendLine($"{returnType} {funcName}({parameters}) {{");
 
         // Emit all basic blocks
         foreach (var block in function.BasicBlocks)
@@ -1830,7 +1826,7 @@ public class CCodeGenerator
             {
                 var returnType = GetCType(function.ReturnType);
                 var parameters = GetParameterList(function);
-                _output.AppendLine($"extern {returnType} {MangleName(function.Name)}({parameters});");
+                _output.AppendLine($"extern {returnType} {MangleName(function)}({parameters});");
             }
             _output.AppendLine();
         }
@@ -1950,7 +1946,7 @@ public class CCodeGenerator
                 returnType = "int";
             }
 
-            _output.AppendLine($"{returnType} {MangleName(function.Name)}({parameters});");
+            _output.AppendLine($"{returnType} {MangleName(function)}({parameters});");
         }
 
         // Runtime assert handler (implemented in novus_runtime.c)
@@ -2102,7 +2098,7 @@ public class CCodeGenerator
         var parameters = GetParameterList(function, isStructOrEnumReturn);
 
         // Don't mangle exported functions - use original name for C linkage
-        var funcName = function.IsExported ? function.Name : MangleName(function.Name);
+        var funcName = function.IsExported ? function.Name : MangleName(function);
 
         // Special case: main must return 'int' for VBCC compatibility
         if (funcName == "main" && returnType == "int32_t")
@@ -2110,18 +2106,10 @@ public class CCodeGenerator
             returnType = "int";
         }
 
-        // Add 'static' for monomorphized generic functions
-        // Note: We use 'static' only (not 'static inline') because VBCC C99 mode
-        // doesn't allow 'inline' in function definitions (error 301).
-        // The 'static' linkage prevents duplicate symbol errors.
-        // Exception: exported functions must NOT be static - they need external linkage
-        var functionModifiers = "";
-        if (IsMonomorphizedFunction(function) && !function.IsExported)
-        {
-            functionModifiers = "static ";
-        }
-
-        _output.AppendLine($"{functionModifiers}{returnType} {funcName}({parameters}) {{");
+        // No need for 'static' modifier - monomorphized functions now have unique
+        // type-parameterized names (e.g., Vec_bool_push, Vec_u8_push) to prevent
+        // duplicate symbol errors during linking.
+        _output.AppendLine($"{returnType} {funcName}({parameters}) {{");
 
         // Emit function body
         foreach (var block in function.BasicBlocks)
@@ -2439,7 +2427,9 @@ public class CCodeGenerator
         var isStructOrEnumReturn = call.ReturnType is IrStructType or IrEnumType;
 
         // Don't mangle exported function names in calls
-        var callFuncName = (function != null && function.IsExported) ? function.Name : MangleName(call.FunctionName);
+        // If we found the function, use its mangled name; otherwise fall back to string mangling
+        var callFuncName = (function != null && function.IsExported) ? function.Name :
+                          (function != null ? MangleName(function) : MangleName(call.FunctionName));
 
         if (isStructOrEnumReturn && call.ResultName != null)
         {
@@ -3162,6 +3152,171 @@ public class CCodeGenerator
         // For now, keep names simple
         // TODO: Handle generic instantiations, modules, etc.
         return name.Replace("::", "_");
+    }
+
+    /// <summary>
+    /// Mangle a function name, including type parameters for generic functions.
+    /// For generic functions like Vec::new() instantiated with Vec<bool>, this generates
+    /// "Vec_bool_new" to avoid duplicate symbol errors during linking.
+    /// </summary>
+    private string MangleName(IrFunction function)
+    {
+        // Start with basic name mangling
+        var baseName = MangleName(function.Name);
+
+        // If not a monomorphized function, use base name as-is
+        if (!IsMonomorphizedFunction(function))
+            return baseName;
+
+        // For monomorphized generic functions, we need to extract the type arguments
+        // and include them in the mangled name to avoid duplicate symbols.
+        //
+        // Strategy: Look at the function's parameters or return type to find
+        // the concrete generic type being used.
+        //
+        // For example:
+        //   Vec::new() with Vec<bool> has return type Vec_bool
+        //   Vec::push(self: &mut Vec<bool>, value: bool) has first param type Vec_bool*
+
+        // Try to extract type suffix from parameter types
+        foreach (var param in function.Parameters)
+        {
+            // Check if parameter is a generic struct type
+            if (param.Type is IrStructType structType && structType.CacheKey != null)
+            {
+                // Extract the concrete type from the CacheKey
+                // e.g., "Vec<bool>" -> "bool"
+                var typeArgs = ExtractTypeArguments(structType.CacheKey);
+                if (typeArgs.Count > 0)
+                {
+                    var typeSuffix = string.Join("_", typeArgs);
+                    // Insert type args between struct name and method name
+                    // "Vec_new" + "bool" -> "Vec_bool_new"
+                    return InsertTypeArguments(baseName, structType.StructName, typeSuffix);
+                }
+            }
+            // Check if parameter is a pointer to a generic struct
+            else if (param.Type is IrPointerType ptrType && ptrType.PointeeType is IrStructType innerStruct && innerStruct.CacheKey != null)
+            {
+                var typeArgs = ExtractTypeArguments(innerStruct.CacheKey);
+                if (typeArgs.Count > 0)
+                {
+                    var typeSuffix = string.Join("_", typeArgs);
+                    return InsertTypeArguments(baseName, innerStruct.StructName, typeSuffix);
+                }
+            }
+        }
+
+        // Try to extract type suffix from return type
+        if (function.ReturnType is IrStructType returnStruct && returnStruct.CacheKey != null)
+        {
+            var typeArgs = ExtractTypeArguments(returnStruct.CacheKey);
+            if (typeArgs.Count > 0)
+            {
+                var typeSuffix = string.Join("_", typeArgs);
+                return InsertTypeArguments(baseName, returnStruct.StructName, typeSuffix);
+            }
+        }
+
+        // Fallback: use base name (shouldn't happen for properly monomorphized functions)
+        return baseName;
+    }
+
+    /// <summary>
+    /// Extract type arguments from a cache key like "Vec<bool>" -> ["bool"]
+    /// or "HashMap<String, i32>" -> ["String", "i32"]
+    /// </summary>
+    private List<string> ExtractTypeArguments(string cacheKey)
+    {
+        var result = new List<string>();
+
+        var startIdx = cacheKey.IndexOf('<');
+        if (startIdx < 0)
+            return result;
+
+        var endIdx = cacheKey.LastIndexOf('>');
+        if (endIdx < 0)
+            return result;
+
+        var typeArgsStr = cacheKey.Substring(startIdx + 1, endIdx - startIdx - 1);
+
+        // Split by comma, handling nested generics
+        var parts = SplitTypeArguments(typeArgsStr);
+
+        foreach (var part in parts)
+        {
+            var trimmed = part.Trim();
+            // Sanitize type name for C identifier
+            var sanitized = trimmed.Replace("::", "_")
+                                   .Replace("<", "_")
+                                   .Replace(">", "")
+                                   .Replace(",", "")
+                                   .Replace("*", "ptr_")
+                                   .Replace(" ", "");
+            result.Add(sanitized);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Split type arguments by comma, respecting nested generics.
+    /// "String, i32" -> ["String", "i32"]
+    /// "Vec<i32>, bool" -> ["Vec<i32>", "bool"]
+    /// </summary>
+    private List<string> SplitTypeArguments(string typeArgs)
+    {
+        var result = new List<string>();
+        var current = new StringBuilder();
+        var depth = 0;
+
+        foreach (var ch in typeArgs)
+        {
+            if (ch == '<')
+            {
+                depth++;
+                current.Append(ch);
+            }
+            else if (ch == '>')
+            {
+                depth--;
+                current.Append(ch);
+            }
+            else if (ch == ',' && depth == 0)
+            {
+                result.Add(current.ToString());
+                current.Clear();
+            }
+            else
+            {
+                current.Append(ch);
+            }
+        }
+
+        if (current.Length > 0)
+            result.Add(current.ToString());
+
+        return result;
+    }
+
+    /// <summary>
+    /// Insert type arguments between the struct name and method name.
+    /// baseName: "Vec_new", structName: "Vec", typeSuffix: "bool" -> "Vec_bool_new"
+    /// baseName: "Vec_push", structName: "Vec", typeSuffix: "bool" -> "Vec_bool_push"
+    /// </summary>
+    private string InsertTypeArguments(string baseName, string structName, string typeSuffix)
+    {
+        // Handle both :: and _ separators
+        var separator = baseName.Contains("::") ? "::" : "_";
+
+        if (baseName.StartsWith(structName + separator))
+        {
+            // Replace "Vec_method" with "Vec_bool_method"
+            return structName + "_" + typeSuffix + "_" + baseName.Substring((structName + separator).Length);
+        }
+
+        // Fallback: append to end
+        return baseName + "_" + typeSuffix;
     }
 
     private string MangleName(IrEnumType enumType)

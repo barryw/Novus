@@ -2659,8 +2659,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return targetType;
 
         // Check if cast is valid
-        // Allow: numeric -> numeric, pointer -> integer, integer -> pointer, pointer -> pointer, &T -> *T
+        // Allow: numeric -> numeric, bool -> numeric, numeric -> bool, pointer -> integer, integer -> pointer, pointer -> pointer, &T -> *T
         bool isValidCast = (IsNumericType(targetType) && IsNumericType(exprType)) ||
+                           (IsNumericType(targetType) && exprType is IrBoolType) ||  // bool -> numeric
+                           (targetType is IrBoolType && IsNumericType(exprType)) ||  // numeric -> bool
                            (IsNumericType(targetType) && exprType is IrPointerType) ||
                            (targetType is IrPointerType && IsNumericType(exprType)) ||
                            (targetType is IrPointerType && exprType is IrPointerType) ||
@@ -5107,10 +5109,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 var paramType = method.Parameters[paramStartIndex + i].Type;
 
                 // Substitute generic types in parameter type
-                if (paramType is IrGenericType genericParam && typeSubstitutions.ContainsKey(genericParam.ParameterName))
-                {
-                    paramType = typeSubstitutions[genericParam.ParameterName];
-                }
+                // Use SubstituteGenericTypes to handle all cases including nested generics like *T, Vec<T>, etc.
+                paramType = SubstituteGenericTypes(paramType, typeSubstitutions);
 
                 // Skip type checking if parameter type is still a generic parameter (will be inferred later)
                 // This allows Vec::new() followed by vec.push(42i32) to work with type inference
@@ -5138,11 +5138,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         // Apply type substitutions to the return type
-        var returnType = method.ReturnType;
-        if (returnType is IrGenericType genericReturnType && typeSubstitutions.ContainsKey(genericReturnType.ParameterName))
-        {
-            returnType = typeSubstitutions[genericReturnType.ParameterName];
-        }
+        // Use SubstituteGenericTypes to handle all cases including nested generics like *T, Vec<T>, etc.
+        var returnType = SubstituteGenericTypes(method.ReturnType, typeSubstitutions);
 
         return returnType;
     }
