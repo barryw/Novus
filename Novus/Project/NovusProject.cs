@@ -27,7 +27,7 @@ public class BuildSection
     public string TargetCpu { get; set; } = "68020";  // 68000, 68020, 68040, 68060, auto
     public string Fpu { get; set; } = "auto";          // soft, 68881, 68040, auto
     public string Output { get; set; } = "build";      // Output directory
-    public int OptimizationLevel { get; set; } = 0;    // 0-3 (default: 0, VBCC bug with -O1/-O2)
+    public int OptimizationLevel { get; set; } = 2;    // 0-3 (default: 2 - frame pointers fix VBCC optimizer)
     public bool EmitAsm { get; set; } = false;         // Emit assembly files
 }
 

@@ -33,8 +33,8 @@ public class CompilerOptions
     public string NdkPath { get; set; } = Environment.GetEnvironmentVariable("NDK")
         ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "amiga-cc", "NDK3.9");
 
-    [Option('O', "optimize", Required = false, Default = 0, HelpText = "Optimization level (0-3, default: 0 - VBCC -O1/-O2 breaks stack struct field access)")]
-    public int OptimizationLevel { get; set; } = 0;
+    [Option('O', "optimize", Required = false, Default = 2, HelpText = "Optimization level (0-3, default: 2)")]
+    public int OptimizationLevel { get; set; } = 2;
 
     [Option('v', "verbose", Required = false, HelpText = "Verbose output")]
     public bool Verbose { get; set; }
