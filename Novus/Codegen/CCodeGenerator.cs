@@ -195,6 +195,10 @@ public class CCodeGenerator
             {
                 codegen.EmitStructTypeToBuilder(sb, structType);
             }
+
+            // Note: Vec_*_as_ptr functions are generated as regular functions in stdlib,
+            // not as macros, due to VBCC optimizer bugs at -O1/-O2.
+            // Use -O0 for now until VBCC is fixed.
         }
 
         // Enum types
@@ -256,6 +260,13 @@ public class CCodeGenerator
         {
             Console.WriteLine($"WARNING: Skipping function file '{function.Name}' (uses BStr type not in shared header)");
             return $"// SKIPPED: Function '{function.Name}' uses BStr which is not exported\n";
+        }
+
+        // Skip Vec_*_as_ptr functions - they're now inline in the header (VBCC optimizer workaround)
+        if (function.Name.StartsWith("Vec_") && function.Name.EndsWith("_as_ptr"))
+        {
+            Console.WriteLine($"INFO: Skipping function file '{function.Name}' (now inline in header)");
+            return $"// SKIPPED: Function '{function.Name}' is inline in novus_types.h\n";
         }
 
         // Check if function has unresolved types - skip it entirely
@@ -426,6 +437,12 @@ public class CCodeGenerator
             sb.AppendLine("// External function declarations");
             foreach (var (funcName, returnType, arguments) in externalFunctions)
             {
+                // Skip Vec_*_as_ptr - they're inline in the header (VBCC optimizer workaround)
+                if (funcName.StartsWith("Vec_") && funcName.EndsWith("_as_ptr"))
+                {
+                    continue;
+                }
+
                 var funcObj = _module.Functions.FirstOrDefault(f => f.Name == funcName);
                 if (funcObj != null)
                 {

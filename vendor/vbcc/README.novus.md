@@ -4,7 +4,7 @@ This is the complete VBCC toolchain (compiler, assembler, linker) vendored for t
 
 ## Source
 
-Forked from: https://github.com/bebbo/amiga-gcc (VBCC components)  
+Forked from: https://github.com/bebbo/amiga-gcc (VBCC components)
 Original upstream: http://www.compilers.de/vbcc.html
 
 This version includes:
@@ -12,12 +12,23 @@ This version includes:
 - **vasm**: The m68k assembler (vasmm68k_mot)
 - **vlink**: The linker for Amiga HUNK format
 
+**Note**: The Amiga NDK (Native Development Kit) is NOT included due to copyright restrictions. You must obtain it separately (see below).
+
 ## Why Vendored?
 
 1. **Bug fixes**: We maintain fixes for VBCC optimizer bugs
 2. **Stability**: Known-good version that works with Novus
 3. **Simplicity**: Single source tree, easy to build and modify
-4. **Control**: No external dependencies for Novus developers
+4. **Control**: No external dependencies for core toolchain
+
+## Required: Amiga NDK
+
+The NDK contains headers and libraries for AmigaOS development. It is copyrighted and cannot be redistributed with Novus.
+
+**Where to get it:**
+- NDK 3.9: Download from Haage&Partner or other authorized distributors
+- Install to: `~/amiga-cc/NDK3.9` (or set `$NDK` environment variable)
+- Alternative: Set `--ndk-path` flag when building Novus programs
 
 ## Building
 
