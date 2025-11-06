@@ -167,6 +167,7 @@ public class VbccToolchain
             "-c99",             // Enable C99 standard
             $"-cpu={cpu}",      // CPU target
             $"-O{optimization}", // Optimization level
+            "-use-framepointer", // CRITICAL: Force frame pointer (A6) for all functions to fix stack offset bugs
             "-c",               // Compile only, don't link
             "-o", objFile,      // Output object file
             cFile               // Input C file
@@ -194,6 +195,7 @@ public class VbccToolchain
             "-c99",             // Enable C99 standard
             $"-cpu={cpu}",      // CPU target
             $"-O{optimization}", // Optimization level
+            "-use-framepointer", // CRITICAL: Force frame pointer (A6) for all functions to fix stack offset bugs
             "-nostdlib",        // Don't use standard library startup
             "-o", outputPath    // Output file
         };
