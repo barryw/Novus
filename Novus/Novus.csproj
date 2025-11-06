@@ -42,4 +42,25 @@
         </None>
     </ItemGroup>
 
+    <!-- Build vendored VBCC toolchain before building Novus compiler -->
+    <Target Name="BuildVbcc" BeforeTargets="BeforeBuild">
+        <PropertyGroup>
+            <VbccDir>$(MSBuildProjectDirectory)/../vendor/vbcc</VbccDir>
+            <VbccBinDir>$(VbccDir)/bin</VbccBinDir>
+            <VbccMarker>$(VbccBinDir)/.build_complete</VbccMarker>
+        </PropertyGroup>
+
+        <!-- Only build if binaries don't exist or sources changed -->
+        <Exec Condition="!Exists('$(VbccMarker)')"
+              Command="make -C &quot;$(VbccDir)&quot; &amp;&amp; touch &quot;$(VbccMarker)&quot;"
+              ConsoleToMSBuild="true"
+              IgnoreStandardErrorWarningFormat="true">
+            <Output TaskParameter="ConsoleOutput" PropertyName="VbccBuildOutput" />
+        </Exec>
+
+        <Message Condition="Exists('$(VbccMarker)')"
+                 Text="VBCC toolchain already built ($(VbccBinDir))"
+                 Importance="low" />
+    </Target>
+
 </Project>

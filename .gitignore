@@ -50,3 +50,4 @@ usercache/
 vendor/vbcc/bin/
 vendor/vbcc/**/*.o
 vendor/vbcc/**/*.a
+vendor/vbcc/bin/.build_complete
