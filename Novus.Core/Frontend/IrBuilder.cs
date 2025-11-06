@@ -4495,18 +4495,30 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     argValue.Type is IrStructType structType &&
                     structType.StructName == "Str")
                 {
-                    // Extract the 'ptr' field from the Str struct
-                    var ptrField = structType.GetField("ptr");
-                    if (ptrField == null)
+                    // If argValue is a struct literal, extract the ptr field directly (no instruction needed)
+                    if (argValue is IrStructLiteral strLiteral)
                     {
-                        throw new Exception("Str struct must have a 'ptr' field");
+                        if (!strLiteral.FieldValues.TryGetValue("ptr", out var ptrValue))
+                        {
+                            throw new Exception("Str struct literal must have a 'ptr' field");
+                        }
+                        arguments[i] = ptrValue;  // Use the ptr value directly
                     }
+                    else
+                    {
+                        // For Str variables (not literals), we need the member access
+                        var ptrField = structType.GetField("ptr");
+                        if (ptrField == null)
+                        {
+                            throw new Exception("Str struct must have a 'ptr' field");
+                        }
 
-                    var ptrTempName = $"%t{_tempCounter++}";
-                    var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
-                    var ptrFieldAccess = new IrMemberAccess(ptrTempName, argValue, "ptr", u8PtrType, ptrField.Offset);
-                    _currentBlock!.AddInstruction(ptrFieldAccess);
-                    arguments[i] = new IrVariable(ptrTempName, u8PtrType);
+                        var ptrTempName = $"%t{_tempCounter++}";
+                        var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
+                        var ptrFieldAccess = new IrMemberAccess(ptrTempName, argValue, "ptr", u8PtrType, ptrField.Offset);
+                        _currentBlock!.AddInstruction(ptrFieldAccess);
+                        arguments[i] = new IrVariable(ptrTempName, u8PtrType);
+                    }
                 }
             }
 
@@ -4717,18 +4729,31 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     argValue.Type is IrStructType structType &&
                     structType.StructName == "Str")
                 {
-                    // Extract the 'ptr' field from the Str struct
-                    var ptrField = structType.GetField("ptr");
-                    if (ptrField == null)
+                    Console.WriteLine($"DEBUG: Str->*u8 coercion needed. argValue type: {argValue.GetType().Name}");
+                    // If argValue is a struct literal, extract the ptr field directly (no instruction needed)
+                    if (argValue is IrStructLiteral strLiteral)
                     {
-                        throw new Exception("Str struct must have a 'ptr' field");
+                        if (!strLiteral.FieldValues.TryGetValue("ptr", out var ptrValue))
+                        {
+                            throw new Exception("Str struct literal must have a 'ptr' field");
+                        }
+                        arguments[i] = ptrValue;  // Use the ptr value directly
                     }
+                    else
+                    {
+                        // For Str variables (not literals), we need the member access
+                        var ptrField = structType.GetField("ptr");
+                        if (ptrField == null)
+                        {
+                            throw new Exception("Str struct must have a 'ptr' field");
+                        }
 
-                    var ptrTempName = $"%t{_tempCounter++}";
-                    var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
-                    var ptrFieldAccess = new IrMemberAccess(ptrTempName, argValue, "ptr", u8PtrType, ptrField.Offset);
-                    _currentBlock!.AddInstruction(ptrFieldAccess);
-                    arguments[i] = new IrVariable(ptrTempName, u8PtrType);
+                        var ptrTempName = $"%t{_tempCounter++}";
+                        var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
+                        var ptrFieldAccess = new IrMemberAccess(ptrTempName, argValue, "ptr", u8PtrType, ptrField.Offset);
+                        _currentBlock!.AddInstruction(ptrFieldAccess);
+                        arguments[i] = new IrVariable(ptrTempName, u8PtrType);
+                    }
                 }
             }
 
@@ -4843,18 +4868,30 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 argValue.Type is IrStructType structType &&
                 structType.StructName == "Str")
             {
-                // Extract the 'ptr' field from the Str struct
-                var ptrField = structType.GetField("ptr");
-                if (ptrField == null)
+                // If argValue is a struct literal, extract the ptr field directly (no instruction needed)
+                if (argValue is IrStructLiteral strLiteral)
                 {
-                    throw new Exception("Str struct must have a 'ptr' field");
+                    if (!strLiteral.FieldValues.TryGetValue("ptr", out var ptrValue))
+                    {
+                        throw new Exception("Str struct literal must have a 'ptr' field");
+                    }
+                    arguments[i] = ptrValue;  // Use the ptr value directly
                 }
+                else
+                {
+                    // For Str variables (not literals), we need the member access
+                    var ptrField = structType.GetField("ptr");
+                    if (ptrField == null)
+                    {
+                        throw new Exception("Str struct must have a 'ptr' field");
+                    }
 
-                var ptrTempName = $"%t{_tempCounter++}";
-                var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
-                var ptrFieldAccess = new IrMemberAccess(ptrTempName, argValue, "ptr", u8PtrType, ptrField.Offset);
-                _currentBlock!.AddInstruction(ptrFieldAccess);
-                arguments[i] = new IrVariable(ptrTempName, u8PtrType);
+                    var ptrTempName = $"%t{_tempCounter++}";
+                    var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
+                    var ptrFieldAccess = new IrMemberAccess(ptrTempName, argValue, "ptr", u8PtrType, ptrField.Offset);
+                    _currentBlock!.AddInstruction(ptrFieldAccess);
+                    arguments[i] = new IrVariable(ptrTempName, u8PtrType);
+                }
             }
         }
 
