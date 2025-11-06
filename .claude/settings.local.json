@@ -7,7 +7,12 @@
       "Bash(/Users/barry/Downloads/vbcc/bin/vc:*)",
       "Bash(VBCC=/Users/barry/Downloads/vbcc /Users/barry/Downloads/vbcc/bin/vc:*)",
       "Bash(/Users/barry/Downloads/vbcc/bin/vbccm68k:*)",
-      "Bash(/tmp/utility/tagitem.h)"
+      "Bash(/tmp/utility/tagitem.h)",
+      "Bash(vendor/vbcc/bin/vc:*)",
+      "Bash(./bin/vbcc:*)",
+      "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Debug/net9.0/Novus stdlib-build:*)",
+      "Bash(/Users/barry/RiderProjects/Novus/vendor/vbcc/bin/vc:*)",
+      "Bash(git check-ignore:*)"
     ],
     "deny": [],
     "ask": []
