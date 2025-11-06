@@ -693,8 +693,8 @@ public static class BuildCommand
             OptimizationLevel = optimizationLevel,
             BuildMode = buildMode,
             EmitAsmOnly = buildOptions.EmitAsmOnly || project.Build.EmitAsm,
-            VbccPath = buildOptions.VbccPath ?? "/Users/barry/amiga-cc/vbcc",
-            NdkPath = buildOptions.NdkPath ?? "/Users/barry/amiga-cc/NDK3.9",
+            VbccPath = buildOptions.VbccPath ?? Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "vendor", "vbcc"),
+            NdkPath = buildOptions.NdkPath ?? Environment.GetEnvironmentVariable("NDK") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "amiga-cc", "NDK3.9"),
             Verbose = buildOptions.Verbose,
             ProjectType = projectType,
             ProjectVersion = project.Package.Version,  // Pass version for @library generation

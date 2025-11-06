@@ -793,7 +793,7 @@ class Program
             var runtimeFiles = new[] { "novus_io" };
             foreach (var runtimeFile in runtimeFiles)
             {
-                var runtimeSource = Path.Combine(compilerDir, "runtime", $"{runtimeFile}.s");
+                var runtimeSource = Path.Combine(compilerDir, "..", "..", "..", "runtime", $"{runtimeFile}.s");
                 if (File.Exists(runtimeSource))
                 {
                     var runtimeObj = Path.Combine(outputDir, $"{runtimeFile}.o");

@@ -18,7 +18,7 @@ all:
 clean:
 	@(cd vasm; make clean)
 	@(cd vlink; make clean)
-	# TODO(asigner): Add make clean for vbcc
+	@(cd vbcc; rm -rf machines/*/opt.o machines/*/av.o machines/*/rd.o machines/*/regs.o machines/*/flow.o machines/*/cse.o machines/*/cp.o machines/*/loop.o machines/*/alias.o machines/*/range.o machines/*/main.o machines/*/vars.o machines/*/declaration.o machines/*/parse_expr.o machines/*/type_expr.o machines/*/ic.o machines/*/machine.o machines/*/statements.o machines/*/supp.o machines/*/dt.o machines/*/assert.o machines/*/cpp.o machines/*/hash.o machines/*/lexer.o machines/*/macro.o machines/*/mem.o machines/*/eval.o bin/vc bin/vbccm68k bin/vprof)
 	@rm -rf bin
 
 install:
