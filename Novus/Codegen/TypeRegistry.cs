@@ -24,8 +24,7 @@ public class TypeRegistry
             // Only register non-generic (concrete) structs
             if (structType.GenericParameters.Count == 0)
             {
-                if (!_structTypes.Any(s => GetStructName(s) == GetStructName(structType)))
-                    _structTypes.Add(structType);
+                AddOrUpdateStructType(structType);
             }
         }
 
@@ -50,8 +49,7 @@ public class TypeRegistry
             }
             else if (externVar.Type is IrStructType structExtVar && structExtVar.GenericParameters.Count == 0)
             {
-                if (!_structTypes.Any(s => GetStructName(s) == GetStructName(structExtVar)))
-                    _structTypes.Add(structExtVar);
+                AddOrUpdateStructType(structExtVar);
             }
         }
 
@@ -65,8 +63,7 @@ public class TypeRegistry
             }
             else if (staticVar.Type is IrStructType structStaticVar && structStaticVar.GenericParameters.Count == 0)
             {
-                if (!_structTypes.Any(s => GetStructName(s) == GetStructName(structStaticVar)))
-                    _structTypes.Add(structStaticVar);
+                AddOrUpdateStructType(structStaticVar);
             }
         }
 
@@ -116,8 +113,7 @@ public class TypeRegistry
                         else if (localDecl.Type is IrStructType structDeclType &&
                                  structDeclType.GenericParameters.Count == 0)
                         {
-                            if (!_structTypes.Any(s => GetStructName(s) == GetStructName(structDeclType)))
-                                _structTypes.Add(structDeclType);
+                            AddOrUpdateStructType(structDeclType);
                         }
                     }
 
@@ -134,8 +130,7 @@ public class TypeRegistry
             // Check return type for struct
             if (function.ReturnType is IrStructType structRet && structRet.GenericParameters.Count == 0)
             {
-                if (!_structTypes.Any(s => GetStructName(s) == GetStructName(structRet)))
-                    _structTypes.Add(structRet);
+                AddOrUpdateStructType(structRet);
             }
 
             // Check parameters for struct
@@ -150,8 +145,7 @@ public class TypeRegistry
 
                 if (paramType is IrStructType structParam && structParam.GenericParameters.Count == 0)
                 {
-                    if (!_structTypes.Any(s => GetStructName(s) == GetStructName(structParam)))
-                        _structTypes.Add(structParam);
+                    AddOrUpdateStructType(structParam);
                 }
             }
         }
@@ -203,8 +197,7 @@ public class TypeRegistry
                             // Also collect structs! (BStr in Result<BStr, E>)
                             if (dataType is IrStructType structType && structType.GenericParameters.Count == 0)
                             {
-                                if (!_structTypes.Any(s => GetStructName(s) == GetStructName(structType)))
-                                    _structTypes.Add(structType);
+                                AddOrUpdateStructType(structType);
                             }
                         }
                     }
@@ -365,6 +358,26 @@ public class TypeRegistry
             IrMutReferenceType mutRefType => IsGenericType(mutRefType.PointeeType),
             _ => false
         };
+    }
+
+    /// <summary>
+    /// Add or update a struct type in the registry.
+    /// If a struct with the same name already exists, keeps the version with more fields.
+    /// This handles cases where struct types are encountered multiple times with varying completeness.
+    /// </summary>
+    private void AddOrUpdateStructType(IrStructType structType)
+    {
+        var existingStruct = _structTypes.FirstOrDefault(s => GetStructName(s) == GetStructName(structType));
+        if (existingStruct == null)
+        {
+            _structTypes.Add(structType);
+        }
+        else if (structType.Fields.Count > existingStruct.Fields.Count)
+        {
+            // Replace with the version that has more fields (the fully-defined version)
+            _structTypes.Remove(existingStruct);
+            _structTypes.Add(structType);
+        }
     }
 
     public IEnumerable<IrEnumType> EnumTypes => _enumTypes;

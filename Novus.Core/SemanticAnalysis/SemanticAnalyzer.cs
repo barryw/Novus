@@ -3530,6 +3530,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Track moves across all match arms
         var allArmMoves = new List<Dictionary<int, MoveInfo>>();
 
+        // Collect arm types to determine the match expression's result type
+        var armTypes = new List<IrType?>();
+
         // Analyze each match arm
         foreach (var armCtx in context.matchArm())
         {
@@ -3552,18 +3555,26 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             EnterBranch(ControlFlowKind.MatchArm);
 
             // Analyze the arm body (expression, block, or return statement) with bound variables in scope
+            IrType? armType = null;
             if (armCtx.expression() != null)
             {
-                Visit(armCtx.expression());
+                armType = Visit(armCtx.expression());
             }
             else if (armCtx.block() != null)
             {
                 AnalyzeBlock(armCtx.block());
+                // Blocks in match arms don't currently support trailing expressions for type inference
+                // The actual type will be determined by the IrBuilder which handles block values
+                armType = _expectedType;
             }
             else if (armCtx.returnStatement() != null)
             {
                 Visit(armCtx.returnStatement());
+                // Return statements don't contribute to match type
+                armType = null;
             }
+
+            armTypes.Add(armType);
 
             // Collect moves from this arm
             allArmMoves.Add(ExitBranch());
@@ -3622,6 +3633,17 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
+        // Determine the result type of the match expression
+        // Filter out nulls (return statements) and find the first non-null type
+        var nonNullArmTypes = armTypes.Where(t => t != null).ToList();
+        if (nonNullArmTypes.Count > 0)
+        {
+            // All arms should have the same type - use the first one
+            // (Type checking between arms will be done in IrBuilder)
+            return nonNullArmTypes[0];
+        }
+
+        // If all arms are return statements or have no value, match has no type
         return null;
     }
 
