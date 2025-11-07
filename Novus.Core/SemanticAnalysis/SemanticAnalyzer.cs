@@ -52,6 +52,47 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public IReadOnlyList<UnsafeBlockInfo> UnsafeBlocks => _unsafeBlocks;
 
+    // Move tracking for memory safety - uses unique variable ID to handle shadowing correctly
+    private readonly Dictionary<int, MoveInfo> _movedVariables = new();
+    private int _nextVariableId = 1;  // Counter for generating unique variable IDs
+
+    private class MoveInfo
+    {
+        public string VariableName { get; init; } = "";
+        public int VariableId { get; init; }
+        public SourceLocation MoveLocation { get; init; } = null!;
+        public string Reason { get; init; } = "";
+
+        /// <summary>
+        /// Tracks which fields of a struct have been moved.
+        /// - null means the entire value was moved
+        /// - empty set means the variable exists but no fields moved yet
+        /// - non-empty set lists the specific fields that have been moved
+        /// </summary>
+        public HashSet<string>? MovedFields { get; set; }
+    }
+
+    // Drop tracking for automatic resource cleanup (RAII)
+    private readonly Stack<ScopeDropInfo> _dropScopes = new();
+    private readonly Dictionary<int, DropInfo> _dropInfo = new();  // VariableId -> DropInfo
+
+    // Control flow sensitivity for move tracking
+    private readonly Stack<ControlFlowContext> _controlFlowStack = new();
+
+    private class ControlFlowContext
+    {
+        public ControlFlowKind Kind { get; init; }
+        public Dictionary<int, MoveInfo> MovesInBranch { get; init; } = new();
+    }
+
+    private enum ControlFlowKind
+    {
+        If,
+        MatchArm,
+        While,
+        Block
+    }
+
     // Generic type parameters in scope (for generic enum/struct definitions)
     private readonly Dictionary<string, IrGenericType> _genericParams = new();
 
@@ -591,7 +632,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     var paramName = paramCtx.IDENTIFIER().GetText();
                     var paramType = ParseType(paramCtx.type());
                     var paramLocation = SourceLocationHelper.FromToken(paramCtx.IDENTIFIER().Symbol, modulePath, new string[] { });
-                    parameters.Add(new ParameterSymbol(paramName, paramType, paramLocation));
+                    var isConsuming = paramCtx.KW_CONSUMING() != null;
+                    parameters.Add(new ParameterSymbol(paramName, paramType, paramLocation, IsConsuming: isConsuming));
                 }
 
                 // Add variadic parameter if present
@@ -642,7 +684,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
             var varType = ParseType(globalVarDecl.type());
             var varLocation = SourceLocationHelper.FromToken(globalVarDecl.IDENTIFIER().Symbol, modulePath, new string[] { });
-            _globalVariables[varName] = new VariableSymbol(varName, varType, IsMutable: false, varLocation);
+            _globalVariables[varName] = new VariableSymbol(varName, varType, IsMutable: false, varLocation, Id: _nextVariableId++);
             _importedNames[varName] = moduleNamespace;
         }
 
@@ -802,7 +844,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return;
         }
 
-        _globalVariables[name] = new VariableSymbol(name, type, IsMutable: isMutable, location);
+        _globalVariables[name] = new VariableSymbol(name, type, IsMutable: isMutable, location, Id: _nextVariableId++);
     }
 
     private void RegisterGlobalVariable(NovusParser.GlobalVariableDeclarationContext context)
@@ -832,7 +874,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return;
         }
 
-        _globalVariables[name] = new VariableSymbol(name, type, IsMutable: false, location);
+        _globalVariables[name] = new VariableSymbol(name, type, IsMutable: false, location, Id: _nextVariableId++);
     }
 
     private void RegisterFunction(NovusParser.FunctionDeclarationContext context)
@@ -931,7 +973,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 var paramName = paramCtx.IDENTIFIER().GetText();
                 var paramType = ParseType(paramCtx.type());
                 var paramLocation = SourceLocationHelper.FromToken(paramCtx.IDENTIFIER().Symbol, _filePath, _sourceLines);
-                parameters.Add(new ParameterSymbol(paramName, paramType, paramLocation));
+                var isConsuming = paramCtx.KW_CONSUMING() != null;
+                parameters.Add(new ParameterSymbol(paramName, paramType, paramLocation, IsConsuming: isConsuming));
             }
 
             // Add variadic parameter if present
@@ -1121,6 +1164,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
                 // Now wrap in pointer if needed based on parameter form
                 IrType selfType;
+                bool isConsumingSelf = false;
                 if (selfParam.GetText().StartsWith("&mut"))
                 {
                     // &mut self
@@ -1133,11 +1177,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 }
                 else
                 {
-                    // self (by value)
+                    // self (by value) - check if it's consuming
                     selfType = baseType;
+                    isConsumingSelf = selfParam.KW_CONSUMING() != null;
                 }
 
-                parameters.Add(new ParameterSymbol("self", selfType, selfLocation));
+                parameters.Add(new ParameterSymbol("self", selfType, selfLocation, IsConsuming: isConsumingSelf));
             }
 
             // Parse regular parameters
@@ -1147,7 +1192,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 var paramName = paramCtx.IDENTIFIER().GetText();
                 var paramType = ParseType(paramCtx.type());
                 var paramLocation = SourceLocationHelper.FromToken(paramCtx.IDENTIFIER().Symbol, _filePath, _sourceLines);
-                parameters.Add(new ParameterSymbol(paramName, paramType, paramLocation));
+                var isConsuming = paramCtx.KW_CONSUMING() != null;
+                parameters.Add(new ParameterSymbol(paramName, paramType, paramLocation, IsConsuming: isConsuming));
             }
 
             // Add variadic parameter if present
@@ -1526,11 +1572,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         _currentFunction = _functions[mangledName];
         _variables.Clear();
+        _movedVariables.Clear(); // Reset move tracking for new method
 
         // Add parameters to symbol table (including self if present)
         foreach (var param in _currentFunction.Parameters)
         {
-            _variables[param.Name] = new VariableSymbol(param.Name, param.Type, false, param.Location);
+            _variables[param.Name] = new VariableSymbol(param.Name, param.Type, false, param.Location, Id: _nextVariableId++);
         }
 
         // Analyze function body with unreachable code detection
@@ -1547,6 +1594,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var name = context.IDENTIFIER().GetText();
         _currentFunction = _functions[name];
         _variables.Clear();
+        _movedVariables.Clear(); // Reset move tracking for new function
+        _dropScopes.Clear(); // Reset drop tracking for new function
+        _dropInfo.Clear();
 
         // Skip body analysis for extern functions
         if (_currentFunction.IsExtern)
@@ -1570,7 +1620,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Add parameters to symbol table (parameters are immutable)
         foreach (var param in _currentFunction.Parameters)
         {
-            _variables[param.Name] = new VariableSymbol(param.Name, param.Type, false, param.Location);
+            _variables[param.Name] = new VariableSymbol(param.Name, param.Type, false, param.Location, Id: _nextVariableId++);
         }
 
         // First, analyze the function body with full semantic analysis (visits all expressions)
@@ -1610,6 +1660,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     /// </summary>
     private void AnalyzeBlock(NovusParser.BlockContext block)
     {
+        // Push a new drop scope for this block
+        var scopeLocation = SourceLocationHelper.FromContext(block, _filePath, _sourceLines);
+        _dropScopes.Push(new ScopeDropInfo());
+
         var statements = block.statement();
         bool foundTerminal = false;
 
@@ -1644,6 +1698,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             {
                 foundTerminal = true;
             }
+        }
+
+        // Pop drop scope and emit drop calls for variables in this scope
+        if (_dropScopes.Count > 0)
+        {
+            var scopeInfo = _dropScopes.Pop();
+            EmitDropCallsForScope(scopeInfo);
         }
     }
 
@@ -1971,6 +2032,24 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             // Restore previous expected type
             _expectedType = savedExpectedType;
 
+            // Track return moves (return x marks x as moved if non-Copy type)
+            var returnedVarName = ExtractVariableName(exprContext);
+            if (returnedVarName != null && _variables.TryGetValue(returnedVarName, out var returnedVar))
+            {
+                // Only track moves for non-Copy types
+                if (!IsCopyType(returnedVar.Type))
+                {
+                    var moveLocation = SourceLocationHelper.FromContext(exprContext, _filePath, _sourceLines);
+                    RecordMove(returnedVar.Id, new MoveInfo
+                    {
+                        VariableName = returnedVarName,
+                        VariableId = returnedVar.Id,
+                        MoveLocation = moveLocation,
+                        Reason = "value moved by return statement"
+                    });
+                }
+            }
+
             // Check return type compatibility
             if (exprType != null && !TypesCompatible(_currentFunction.ReturnType, exprType))
             {
@@ -2006,6 +2085,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     }
                 );
             }
+        }
+
+        // Before return, drop all variables in all scopes (in reverse scope order)
+        // This handles early returns where variables need to be cleaned up
+        foreach (var scopeInfo in _dropScopes.Reverse())
+        {
+            EmitDropCallsForScope(scopeInfo);
         }
 
         return null;
@@ -2084,10 +2170,76 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             varType = exprType;
         }
 
+        // Check for assignment moves (let y = x marks x as moved if non-Copy type)
+        var sourceVarName = ExtractVariableName(context.expression());
+        var sourceFieldName = ExtractFieldName(context.expression());
+
+        if (sourceVarName != null && _variables.TryGetValue(sourceVarName, out var sourceVar))
+        {
+            // Check if this is a field access (e.g., let x = obj.field)
+            if (sourceFieldName != null)
+            {
+                // Get the field type to check if it's Copy
+                IrType? fieldType = null;
+                if (sourceVar.Type is IrStructType structType)
+                {
+                    var field = structType.GetField(sourceFieldName);
+                    fieldType = field?.Type;
+                }
+
+                // Only track field move if the field type is non-Copy
+                if (fieldType != null && !IsCopyType(fieldType))
+                {
+                    // Moving a specific field via assignment
+                    var moveLocation = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
+                    RecordFieldMove(sourceVar.Id, sourceVarName, sourceFieldName, moveLocation,
+                        $"field '{sourceFieldName}' moved by assignment to '{name}'");
+                }
+                // If field is Copy, no move tracking needed
+            }
+            else if (!IsCopyType(sourceVar.Type))
+            {
+                // Moving the entire value via assignment (simple identifier, not field access)
+                var moveLocation = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
+                RecordMove(sourceVar.Id, new MoveInfo
+                {
+                    VariableName = sourceVarName,
+                    VariableId = sourceVar.Id,
+                    MoveLocation = moveLocation,
+                    Reason = $"value moved by assignment to '{name}'"
+                });
+            }
+        }
+
         // Add variable to symbol table (skip for throwaway bindings)
         if (!isThrowaway)
         {
-            _variables[name] = new VariableSymbol(name, varType, isMutable, location);
+            var variableSymbol = new VariableSymbol(name, varType, isMutable, location, Id: _nextVariableId++);
+            _variables[name] = variableSymbol;
+
+            // Track variable for automatic drop if it is not a Copy type
+            // Note: We can't check TypeImplementsDrop here since we don't have the IrModule yet.
+            // The actual drop call insertion will be done in IrBuilder after we know which types implement Drop.
+            if (!IsCopyType(varType))
+            {
+                var dropInfo = new DropInfo
+                {
+                    VariableId = variableSymbol.Id,
+                    VariableName = name,
+                    VariableType = varType,
+                    DeclLocation = location,
+                    WasMoved = false,
+                    MovedFields = null
+                };
+
+                _dropInfo[variableSymbol.Id] = dropInfo;
+
+                // Add to current scope's drop list (if we have a scope)
+                if (_dropScopes.Count > 0)
+                {
+                    _dropScopes.Peek().VariablesToDrop.Add(dropInfo);
+                }
+            }
         }
 
         return null;
@@ -2778,8 +2930,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             _pendingIfLetVariable = null;
         }
 
-        // Analyze then block with unreachable code detection
+        // Track moves in then branch
+        EnterBranch(ControlFlowKind.If);
         AnalyzeBlock(context.block(0));
+        var thenMoves = ExitBranch();
 
         // Remove if let/var binding before else block (not in scope there)
         var keysToRemove = _variables.Keys.Where(k => !variablesBeforeIf.Contains(k)).ToList();
@@ -2788,15 +2942,23 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             _variables.Remove(key);
         }
 
-        // Analyze else block if present
+        // Track moves in else branch (if present)
+        Dictionary<int, MoveInfo>? elseMoves = null;
         if (context.ifStatement() != null)
         {
+            EnterBranch(ControlFlowKind.If);
             Visit(context.ifStatement());
+            elseMoves = ExitBranch();
         }
         else if (context.block().Length > 1)
         {
+            EnterBranch(ControlFlowKind.If);
             AnalyzeBlock(context.block(1));
+            elseMoves = ExitBranch();
         }
+
+        // Merge: variable moved if moved in ANY branch
+        MergeBranchMoves(thenMoves, elseMoves);
 
         return null;
     }
@@ -2914,10 +3076,24 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             );
         }
 
-        // Enter loop context and analyze block with unreachable code detection
+        // Enter loop context and track moves in loop body
         _loopDepth++;
+        EnterBranch(ControlFlowKind.While);
         AnalyzeBlock(context.block());
+        var loopMoves = ExitBranch();
         _loopDepth--;
+
+        // Conservative: any move in loop body makes variable moved
+        foreach (var (varId, moveInfo) in loopMoves)
+        {
+            _movedVariables[varId] = new MoveInfo
+            {
+                VariableId = varId,
+                VariableName = moveInfo.VariableName,
+                MoveLocation = moveInfo.MoveLocation,
+                Reason = $"value moved in loop body: {moveInfo.Reason}"
+            };
+        }
 
         return null;
     }
@@ -3017,6 +3193,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     "break can only be used inside while, for, or forever loops"
                 }
             );
+        }
+
+        // Before break, drop variables in current scope
+        // Note: This drops the innermost scope only. Loop scopes are handled separately.
+        if (_dropScopes.Count > 0)
+        {
+            EmitDropCallsForScope(_dropScopes.Peek());
         }
 
         return null;
@@ -3344,6 +3527,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var coveredIntegerValues = new HashSet<long>();
         bool hasWildcard = false;
 
+        // Track moves across all match arms
+        var allArmMoves = new List<Dictionary<int, MoveInfo>>();
+
         // Analyze each match arm
         foreach (var armCtx in context.matchArm())
         {
@@ -3362,6 +3548,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 AnalyzeIntegerPatternAndBind(pattern, (IrIntType)matchValueType, coveredIntegerValues, ref hasWildcard);
             }
 
+            // Track moves in this arm
+            EnterBranch(ControlFlowKind.MatchArm);
+
             // Analyze the arm body (expression, block, or return statement) with bound variables in scope
             if (armCtx.expression() != null)
             {
@@ -3376,6 +3565,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 Visit(armCtx.returnStatement());
             }
 
+            // Collect moves from this arm
+            allArmMoves.Add(ExitBranch());
+
             // Remove pattern bindings (they're only valid in this arm)
             var keysToRemove = _variables.Keys.Where(k => !variablesBeforePattern.Contains(k)).ToList();
             foreach (var key in keysToRemove)
@@ -3383,6 +3575,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 _variables.Remove(key);
             }
         }
+
+        // Merge all arms - moved if moved in ANY arm
+        MergeBranchMoves(allArmMoves);
 
         // Check exhaustiveness
         if (!hasWildcard)
@@ -4096,7 +4291,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         // Substitute types in parameters
         var monomorphizedParams = genericFunc.Parameters.Select(p =>
-            new ParameterSymbol(p.Name, SubstituteGenericTypes(p.Type, substitutions), p.Location, p.IsVariadic)
+            new ParameterSymbol(p.Name, SubstituteGenericTypes(p.Type, substitutions), p.Location, p.IsVariadic, p.IsConsuming)
         ).ToList();
 
         // Substitute return type
@@ -4837,7 +5032,52 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     continue; // Extra args for variadic function - no type checking needed
                 }
 
-                var paramType = function.Parameters[i].Type;
+                var param = function.Parameters[i];
+                var paramType = param.Type;
+
+                // Check if this parameter is consuming and mark the argument as moved
+                if (param.IsConsuming)
+                {
+                    var argVarName = ExtractVariableName(arguments[i]);
+                    var argFieldName = ExtractFieldName(arguments[i]);
+
+                    if (argVarName != null && _variables.TryGetValue(argVarName, out var argVar))
+                    {
+                        var moveLocation = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
+
+                        // Check if this is a field move (e.g., consume(obj.field))
+                        if (argFieldName != null)
+                        {
+                            // Get the field type to check if it's Copy
+                            IrType? fieldType = null;
+                            if (argVar.Type is IrStructType structType)
+                            {
+                                var field = structType.GetField(argFieldName);
+                                fieldType = field?.Type;
+                            }
+
+                            // Only track field move if the field type is non-Copy
+                            if (fieldType != null && !IsCopyType(fieldType))
+                            {
+                                // Moving a specific field of a struct
+                                RecordFieldMove(argVar.Id, argVarName, argFieldName, moveLocation,
+                                    $"field '{argFieldName}' moved into consuming parameter '{param.Name}' of function '{functionName}'");
+                            }
+                            // If field is Copy, no move tracking needed
+                        }
+                        else if (!IsCopyType(argVar.Type))
+                        {
+                            // Moving the entire value
+                            RecordMove(argVar.Id, new MoveInfo
+                            {
+                                VariableName = argVarName,
+                                VariableId = argVar.Id,
+                                MoveLocation = moveLocation,
+                                Reason = $"value moved into consuming parameter '{param.Name}' of function '{functionName}'"
+                            });
+                        }
+                    }
+                }
 
                 if (argType != null && !TypesCompatible(paramType, argType))
                 {
@@ -4855,7 +5095,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     {
                         var helpTexts = new List<string>
                         {
-                            $"argument {i + 1} ('{function.Parameters[i].Name}'): function pointer signature mismatch"
+                            $"argument {i + 1} ('{param.Name}'): function pointer signature mismatch"
                         };
 
                         // Check what's wrong: parameter count, parameter types, or return type
@@ -4900,7 +5140,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                             location,
                             helpTexts: new List<string>
                             {
-                                $"argument {i + 1} ('{function.Parameters[i].Name}'): expected '{TypeToString(paramType)}', found '{TypeToString(argType)}'",
+                                $"argument {i + 1} ('{param.Name}'): expected '{TypeToString(paramType)}', found '{TypeToString(argType)}'",
                                 $"consider using a cast: ({TypeToString(paramType)}){arguments[i].GetText()}"
                             }
                         );
@@ -5097,6 +5337,24 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return method.ReturnType;
         }
 
+        // Check if self parameter is consuming and mark receiver as moved
+        if (hasSelfParam && method.Parameters[0].IsConsuming)
+        {
+            // Extract variable name from receiver expression
+            var receiverVarName = ExtractVariableName(receiverExpr);
+            if (receiverVarName != null && _variables.TryGetValue(receiverVarName, out var receiverVar))
+            {
+                var moveLocation = SourceLocationHelper.FromContext(memberAccessCtx, _filePath, _sourceLines);
+                RecordMove(receiverVar.Id, new MoveInfo
+                {
+                    VariableName = receiverVarName,
+                    VariableId = receiverVar.Id,
+                    MoveLocation = moveLocation,
+                    Reason = $"value moved into consuming method '{methodName}'"
+                });
+            }
+        }
+
         // Validate argument types (skip self parameter)
         if (callCtx.argumentList() != null)
         {
@@ -5107,6 +5365,51 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             {
                 var argType = Visit(arguments[i]);
                 var paramType = method.Parameters[paramStartIndex + i].Type;
+                var param = method.Parameters[paramStartIndex + i];
+
+                // Check if this parameter is consuming and mark the argument as moved
+                if (param.IsConsuming)
+                {
+                    var argVarName = ExtractVariableName(arguments[i]);
+                    var argFieldName = ExtractFieldName(arguments[i]);
+
+                    if (argVarName != null && _variables.TryGetValue(argVarName, out var argVar))
+                    {
+                        var moveLocation = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
+
+                        // Check if this is a field move (e.g., obj.method(obj.field))
+                        if (argFieldName != null)
+                        {
+                            // Get the field type to check if it's Copy
+                            IrType? fieldType = null;
+                            if (argVar.Type is IrStructType argStructType)
+                            {
+                                var field = argStructType.GetField(argFieldName);
+                                fieldType = field?.Type;
+                            }
+
+                            // Only track field move if the field type is non-Copy
+                            if (fieldType != null && !IsCopyType(fieldType))
+                            {
+                                // Moving a specific field of a struct
+                                RecordFieldMove(argVar.Id, argVarName, argFieldName, moveLocation,
+                                    $"field '{argFieldName}' moved into consuming parameter '{param.Name}'");
+                            }
+                            // If field is Copy, no move tracking needed
+                        }
+                        else if (!IsCopyType(argVar.Type))
+                        {
+                            // Moving the entire value
+                            RecordMove(argVar.Id, new MoveInfo
+                            {
+                                VariableName = argVarName,
+                                VariableId = argVar.Id,
+                                MoveLocation = moveLocation,
+                                Reason = $"value moved into consuming parameter '{param.Name}'"
+                            });
+                        }
+                    }
+                }
 
                 // Substitute generic types in parameter type
                 // Use SubstituteGenericTypes to handle all cases including nested generics like *T, Vec<T>, etc.
@@ -5171,6 +5474,170 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         return strType;
+    }
+
+    public override IrType? VisitInterpolatedStringLiteral([NotNull] NovusParser.InterpolatedStringLiteralContext context)
+    {
+        // F-strings (interpolated strings) return String struct instances from std::strings
+        // String { data: *u8, len: u32, cap: u32 }
+        // They also require Formatter from std::fmt and Display trait implementations
+
+        // Check for String type (result of f-string)
+        var stringType = _symbols.LookupStruct("String");
+        if (stringType == null)
+        {
+            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0999",
+                "interpolated strings (f-strings) require String type from std::strings module",
+                location,
+                helpTexts: new List<string>
+                {
+                    "ensure std::strings is imported",
+                    "add 'from std::strings import String' to your imports"
+                }
+            );
+            return null;
+        }
+
+        // Check for Formatter type (used internally)
+        var formatterType = _symbols.LookupStruct("Formatter");
+        if (formatterType == null)
+        {
+            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0999",
+                "interpolated strings (f-strings) require Formatter type from std::fmt module",
+                location,
+                helpTexts: new List<string>
+                {
+                    "ensure std::fmt is imported",
+                    "add 'from std::fmt import Formatter' to your imports"
+                }
+            );
+            return null;
+        }
+
+        // Parse the f-string content and validate expressions
+        var fstring = context.F_STRING_LITERAL().GetText();
+        var content = fstring.Substring(2, fstring.Length - 3); // Strip f" and "
+
+        // Parse interpolation segments and validate each expression
+        var segments = ParseInterpolatedStringSegments(content);
+        foreach (var segment in segments)
+        {
+            if (!segment.IsStringSegment)
+            {
+                // Parse and visit the expression to validate it
+                try
+                {
+                    var inputStream = new Antlr4.Runtime.AntlrInputStream(segment.Expression);
+                    var lexer = new NovusLexer(inputStream);
+                    var tokens = new Antlr4.Runtime.CommonTokenStream(lexer);
+                    var parser = new NovusParser(tokens);
+                    var exprContext = parser.expression();
+
+                    // Visit the expression to validate it exists and has the right type
+                    var exprType = Visit(exprContext);
+                    if (exprType == null)
+                    {
+                        var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                        _diagnostics.ReportError(
+                            "E0999",
+                            $"invalid expression in f-string: {segment.Expression}",
+                            location
+                        );
+                        return null;
+                    }
+
+                    // Note: We should verify the type implements Display trait here,
+                    // but that check is complex and will be done in the IR builder
+                }
+                catch (Exception ex)
+                {
+                    var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                    _diagnostics.ReportError(
+                        "E0999",
+                        $"failed to parse expression in f-string: {segment.Expression} - {ex.Message}",
+                        location
+                    );
+                    return null;
+                }
+            }
+        }
+
+        return stringType;
+    }
+
+    private List<InterpolationSegment> ParseInterpolatedStringSegments(string content)
+    {
+        var segments = new List<InterpolationSegment>();
+        var i = 0;
+        var currentString = new System.Text.StringBuilder();
+
+        while (i < content.Length)
+        {
+            if (i < content.Length - 1 && content[i] == '{' && content[i + 1] == '{')
+            {
+                // Escaped brace {{ -> single {
+                currentString.Append('{');
+                i += 2;
+            }
+            else if (i < content.Length - 1 && content[i] == '}' && content[i + 1] == '}')
+            {
+                // Escaped brace }} -> single }
+                currentString.Append('}');
+                i += 2;
+            }
+            else if (content[i] == '{')
+            {
+                // Start of interpolation
+                if (currentString.Length > 0)
+                {
+                    segments.Add(new InterpolationSegment { IsStringSegment = true, StringContent = currentString.ToString() });
+                    currentString.Clear();
+                }
+
+                // Find matching }
+                var braceDepth = 1;
+                var expressionStart = i + 1;
+                i++;
+                while (i < content.Length && braceDepth > 0)
+                {
+                    if (content[i] == '{') braceDepth++;
+                    else if (content[i] == '}') braceDepth--;
+                    if (braceDepth > 0) i++;
+                }
+
+                if (braceDepth != 0)
+                {
+                    throw new Exception("Mismatched braces in f-string");
+                }
+
+                var expression = content.Substring(expressionStart, i - expressionStart);
+                segments.Add(new InterpolationSegment { IsStringSegment = false, Expression = expression });
+                i++; // Skip closing }
+            }
+            else
+            {
+                currentString.Append(content[i]);
+                i++;
+            }
+        }
+
+        if (currentString.Length > 0)
+        {
+            segments.Add(new InterpolationSegment { IsStringSegment = true, StringContent = currentString.ToString() });
+        }
+
+        return segments;
+    }
+
+    private class InterpolationSegment
+    {
+        public bool IsStringSegment { get; set; }
+        public string StringContent { get; set; } = "";
+        public string Expression { get; set; } = "";
     }
 
     public override IrType? VisitSizeofExpr([NotNull] NovusParser.SizeofExprContext context)
@@ -5268,6 +5735,56 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     public override IrType? VisitIdentifierExpr([NotNull] NovusParser.IdentifierExprContext context)
     {
         var name = context.identifier().GetText();
+
+        // Check for use-after-move before any other processing
+        // Only check simple identifiers (not qualified names like Result::Ok)
+        if (!name.Contains("::") && _variables.TryGetValue(name, out var variable) && _movedVariables.ContainsKey(variable.Id))
+        {
+            var moveInfo = _movedVariables[variable.Id];
+
+            // Only report error if the entire value was moved (not partial move)
+            if (moveInfo.MovedFields == null)
+            {
+                var useLocation = SourceLocationHelper.FromToken(context.identifier().Start, _filePath, _sourceLines);
+
+                // Determine context-specific help text
+                var helpTexts = new List<string> { moveInfo.Reason };
+
+                if (moveInfo.Reason.Contains("conditional branch"))
+                {
+                    helpTexts.Add("value may have been moved in a conditional branch");
+                    helpTexts.Add("help: if you need to use the value after the conditional, clone it before moving");
+                }
+                else if (moveInfo.Reason.Contains("loop body"))
+                {
+                    helpTexts.Add("value was moved inside a loop");
+                    helpTexts.Add("help: consider restructuring to avoid moving in loops, or clone the value");
+                }
+                else
+                {
+                    helpTexts.Add("help: if you need to use the value after moving, consider cloning it first");
+                }
+
+                _diagnostics.ReportError(
+                    "E0382",
+                    $"use of moved value: `{name}`",
+                    useLocation,
+                    helpTexts: helpTexts,
+                    relatedLocations: new List<(SourceLocation, string)>
+                    {
+                        (moveInfo.MoveLocation, "value moved here")
+                    }
+                );
+                // Return the type anyway so we can continue analysis
+                if (_variables.ContainsKey(name))
+                    return _variables[name].Type;
+                if (_globalVariables.ContainsKey(name))
+                    return _globalVariables[name].Type;
+                return null;
+            }
+            // If only some fields were moved, allow access to the variable itself
+            // Field-specific checks will happen in VisitMemberAccessExpr
+        }
 
         // Check if this is a qualified name (e.g., Result::Ok, Option::Some)
         if (name.Contains("::"))
@@ -5433,6 +5950,47 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 }
             );
             return null;
+        }
+
+        // Check if this specific field has been moved (partial move tracking)
+        var baseVarName = ExtractVariableName(context.expression());
+        if (baseVarName != null && _variables.TryGetValue(baseVarName, out var baseVar))
+        {
+            if (_movedVariables.TryGetValue(baseVar.Id, out var moveInfo))
+            {
+                // Check if the entire struct was moved
+                if (moveInfo.MovedFields == null)
+                {
+                    // Entire struct moved - this will be caught by VisitIdentifierExpr
+                    // Don't report duplicate error here
+                }
+                else if (moveInfo.MovedFields.Contains(memberName))
+                {
+                    // This specific field was moved
+                    var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+                    var otherFields = structType.Fields
+                        .Where(f => !moveInfo.MovedFields.Contains(f.Name))
+                        .Select(f => f.Name)
+                        .ToList();
+
+                    var helpTexts = new List<string>
+                    {
+                        $"field '{memberName}' was previously moved {moveInfo.Reason}"
+                    };
+
+                    if (otherFields.Any())
+                    {
+                        helpTexts.Add($"other fields of `{baseVarName}` are still valid: {string.Join(", ", otherFields)}");
+                    }
+
+                    _diagnostics.ReportError(
+                        "E0382",
+                        $"use of moved field: `{baseVarName}.{memberName}`",
+                        location,
+                        helpTexts: helpTexts
+                    );
+                }
+            }
         }
 
         return field.Type;
@@ -6996,12 +7554,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     /// </summary>
     private bool CanCoerceStrToU8Ptr(IrType expectedType, IrType actualType)
     {
-        // Check if expected is *u8 and actual is Str
+        // Check if expected is *u8 and actual is Str or String
         if (expectedType is IrPointerType ptrType &&
             ptrType.PointeeType is IrIntType intType &&
             intType == IrIntType.U8 &&
             actualType is IrStructType structType &&
-            structType.StructName == "Str")
+            (structType.StructName == "Str" || structType.StructName == "String"))
         {
             return true;
         }
@@ -7022,6 +7580,219 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     private bool IsBoolOrNumericType(IrType type)
     {
         return type is IrBoolType || IsNumericType(type);
+    }
+
+    // Control flow tracking methods for move analysis
+    private void EnterBranch(ControlFlowKind kind)
+    {
+        _controlFlowStack.Push(new ControlFlowContext
+        {
+            Kind = kind,
+            MovesInBranch = new Dictionary<int, MoveInfo>()
+        });
+    }
+
+    private Dictionary<int, MoveInfo> ExitBranch()
+    {
+        if (_controlFlowStack.Count == 0)
+        {
+            return new Dictionary<int, MoveInfo>();
+        }
+        return _controlFlowStack.Pop().MovesInBranch;
+    }
+
+    private void RecordMove(int variableId, MoveInfo moveInfo)
+    {
+        if (_controlFlowStack.Count > 0)
+        {
+            // Inside a branch - track in branch context
+            var context = _controlFlowStack.Peek();
+            context.MovesInBranch[variableId] = moveInfo;
+        }
+        else
+        {
+            // Top level - directly mark as moved
+            _movedVariables[variableId] = moveInfo;
+        }
+
+        // Also mark in drop info so we don't call drop on moved values
+        if (_dropInfo.TryGetValue(variableId, out var dropInfo))
+        {
+            dropInfo.WasMoved = true;
+        }
+    }
+
+    /// <summary>
+    /// Records that a specific field of a struct has been moved.
+    /// Supports partial moves where only some fields are moved.
+    /// </summary>
+    private void RecordFieldMove(int variableId, string variableName, string fieldName,
+                                 SourceLocation moveLocation, string reason)
+    {
+        var targetDict = _controlFlowStack.Count > 0
+            ? _controlFlowStack.Peek().MovesInBranch
+            : _movedVariables;
+
+        if (targetDict.TryGetValue(variableId, out var existing))
+        {
+            // Variable already has move tracking
+            if (existing.MovedFields == null)
+            {
+                // Whole struct already moved - this is a use-after-move error
+                // Will be caught by CheckVariableNotMoved
+                return;
+            }
+
+            // Add this field to the set of moved fields
+            existing.MovedFields.Add(fieldName);
+        }
+        else
+        {
+            // First field move for this variable
+            targetDict[variableId] = new MoveInfo
+            {
+                VariableName = variableName,
+                VariableId = variableId,
+                MoveLocation = moveLocation,
+                Reason = reason,
+                MovedFields = new HashSet<string> { fieldName }
+            };
+        }
+
+        // Also track in drop info for partial moves
+        if (_dropInfo.TryGetValue(variableId, out var dropInfo))
+        {
+            // Initialize MovedFields set if null
+            dropInfo.MovedFields ??= new HashSet<string>();
+            dropInfo.MovedFields.Add(fieldName);
+        }
+    }
+
+    private void MergeBranchMoves(params Dictionary<int, MoveInfo>?[] branchMoves)
+    {
+        foreach (var moves in branchMoves)
+        {
+            if (moves == null) continue;
+
+            foreach (var (varId, moveInfo) in moves)
+            {
+                if (!_movedVariables.ContainsKey(varId))
+                {
+                    _movedVariables[varId] = new MoveInfo
+                    {
+                        VariableId = varId,
+                        VariableName = moveInfo.VariableName,
+                        MoveLocation = moveInfo.MoveLocation,
+                        Reason = $"value moved in conditional branch: {moveInfo.Reason}",
+                        MovedFields = moveInfo.MovedFields != null ? new HashSet<string>(moveInfo.MovedFields) : null
+                    };
+                }
+            }
+        }
+    }
+
+    private void MergeBranchMoves(List<Dictionary<int, MoveInfo>> branchMoves)
+    {
+        foreach (var moves in branchMoves)
+        {
+            foreach (var (varId, moveInfo) in moves)
+            {
+                if (!_movedVariables.ContainsKey(varId))
+                {
+                    _movedVariables[varId] = new MoveInfo
+                    {
+                        VariableId = varId,
+                        VariableName = moveInfo.VariableName,
+                        MoveLocation = moveInfo.MoveLocation,
+                        Reason = $"value moved in conditional branch: {moveInfo.Reason}",
+                        MovedFields = moveInfo.MovedFields != null ? new HashSet<string>(moveInfo.MovedFields) : null
+                    };
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Emit drop calls for all variables in the given scope that need dropping.
+    /// Variables are dropped in reverse order of declaration (LIFO).
+    /// </summary>
+    private void EmitDropCallsForScope(ScopeDropInfo scopeInfo)
+    {
+        // Drop in reverse order of declaration (LIFO)
+        foreach (var dropInfo in scopeInfo.VariablesToDrop.AsEnumerable().Reverse())
+        {
+            if (!dropInfo.WasMoved)
+            {
+                // Variable was not moved - emit full drop call
+                EmitDropCall(dropInfo);
+            }
+            else if (dropInfo.MovedFields != null && dropInfo.MovedFields.Count > 0)
+            {
+                // Partial move - drop non-moved fields
+                EmitPartialDrop(dropInfo);
+            }
+            // If WasMoved is true and MovedFields is null, the entire value was moved - no drop needed
+        }
+    }
+
+    /// <summary>
+    /// Emit a drop call for a variable that implements the Drop trait.
+    /// NOTE: This is a placeholder - actual drop call insertion happens in IrBuilder.
+    /// </summary>
+    private void EmitDropCall(DropInfo dropInfo)
+    {
+        // TODO: This will be implemented in IrBuilder phase
+        // For now we just track the drop info - the actual IR emission
+        // will happen when we have access to the IrModule and can check TypeImplementsDrop
+    }
+
+    /// <summary>
+    /// Emit drop calls for non-moved fields in a partially moved struct.
+    /// NOTE: This is a placeholder - actual drop call insertion happens in IrBuilder.
+    /// </summary>
+    private void EmitPartialDrop(DropInfo dropInfo)
+    {
+        // TODO: This will be implemented in IrBuilder phase
+        // For now we just track the drop info - the actual IR emission
+        // will happen when we have access to the IrModule and can check field types
+    }
+
+    /// <summary>
+    /// Determines if a type implements Copy semantics (can be copied instead of moved).
+    /// Primitive types like i32, u32, bool, etc. are always Copy.
+    /// Pointer types are Copy (copying a pointer doesn't move the pointed-to data).
+    /// Structs can implement Copy trait (future work).
+    /// </summary>
+    private bool IsCopyType(IrType type)
+    {
+        // Primitives are always Copy
+        if (type is IrIntType or IrBoolType)
+            return true;
+
+        // Pointers are Copy (copying the pointer value, not the pointed-to data)
+        if (type is IrPointerType)
+            return true;
+
+        // Function pointers are Copy
+        if (type is IrFunctionPointerType)
+            return true;
+
+        // TODO: Check if struct implements Copy trait
+        // For now, all structs are non-Copy (require explicit cloning)
+        if (type is IrStructType)
+            return false;
+
+        // Arrays are non-Copy
+        if (type is IrArrayType)
+            return false;
+
+        // Enums can be Copy if all their variants are Copy (future work)
+        // For now, enums are non-Copy
+        // if (type is IrEnumType)
+        //     return false;
+
+        // Default to non-Copy for safety
+        return false;
     }
 
     private bool IsMixedSignedness(IrType left, IrType right)
@@ -7622,6 +8393,57 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         value = isNegative ? -parsedValue : parsedValue;
         return true;
     }
+
+    /// <summary>
+    /// Extracts a variable name from an expression if it's a simple identifier reference
+    /// Returns null for complex expressions like field access, array indexing, etc.
+    /// </summary>
+    private string? ExtractVariableName(ParserRuleContext expr)
+    {
+        if (expr is NovusParser.IdentifierExprContext identExpr)
+        {
+            // Simple identifier like "x" or "formatter"
+            var identifierCtx = identExpr.identifier();
+            if (identifierCtx.IDENTIFIER().Length == 1)
+            {
+                return identifierCtx.IDENTIFIER(0).GetText();
+            }
+        }
+        else if (expr is NovusParser.PrimaryExprContext primaryCtx)
+        {
+            // Unwrap primary expressions
+            return ExtractVariableName(primaryCtx.GetChild(0) as ParserRuleContext);
+        }
+        else if (expr is NovusParser.MemberAccessExprContext memberCtx)
+        {
+            // For member access like "obj.field", extract the base object name
+            return ExtractVariableName(memberCtx.expression());
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Extracts field name from member access expression like "obj.field"
+    /// Returns null if not a member access or if it's a method call
+    /// </summary>
+    private string? ExtractFieldName(ParserRuleContext expr)
+    {
+        if (expr is NovusParser.MemberAccessExprContext memberCtx)
+        {
+            // Check if this is a field access (not a method call)
+            // Member access has the form: expression '.' IDENTIFIER
+            var fieldName = memberCtx.IDENTIFIER()?.GetText();
+            return fieldName;
+        }
+        else if (expr is NovusParser.PrimaryExprContext primaryCtx)
+        {
+            // Unwrap primary expressions
+            return ExtractFieldName(primaryCtx.GetChild(0) as ParserRuleContext);
+        }
+
+        return null;
+    }
 }
 
 // Symbol table classes
@@ -7635,14 +8457,33 @@ public record FunctionSymbol(
     AttributeCollection? Attributes = null,  // Function attributes (@inline, @test, etc.)
     bool IsVariadic = false  // true if function accepts variable number of arguments (...)
 );
-public record ParameterSymbol(string Name, IrType Type, SourceLocation Location, bool IsVariadic = false);
+public record ParameterSymbol(string Name, IrType Type, SourceLocation Location, bool IsVariadic = false, bool IsConsuming = false);
 public record VariableSymbol(
     string Name,
     IrType Type,
     bool IsMutable,
     SourceLocation Location,
-    AttributeCollection? Attributes = null  // Variable attributes
+    AttributeCollection? Attributes = null,  // Variable attributes
+    int Id = 0  // Unique ID to distinguish shadowed variables
 );
+
+// Drop tracking - tracks which variables need automatic drop calls when they go out of scope
+internal class DropInfo
+{
+    public required int VariableId { get; init; }
+    public required string VariableName { get; init; }
+    public required IrType VariableType { get; init; }
+    public required SourceLocation DeclLocation { get; init; }
+    public bool WasMoved { get; set; }  // Don't drop if moved
+    public HashSet<string>? MovedFields { get; set; }  // For partial moves
+}
+
+// Tracks variables that need dropping per scope
+internal class ScopeDropInfo
+{
+    public List<DropInfo> VariablesToDrop { get; } = new();
+}
+
 public record ConstantSymbol(
     string Name,
     IrType Type,

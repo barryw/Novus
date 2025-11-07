@@ -389,40 +389,41 @@ impl String {
 
     /// Create a string with pre-allocated capacity
     pub fn with_capacity(capacity: u32) -> Option<String> {
-        let vec_opt = Vec::<u8>::with_capacity(capacity)
-        match vec_opt {
-            Some(vec) => {
-                return Option::Some(String { vec: vec })
-            },
-            None => {
-                return Option::None
-            }
+        // Use Vec::new for zero capacity to avoid allocation
+        if capacity == 0 {
+            return Option::Some(String::new())
         }
+
+        // Create a new String and reserve capacity on its internal Vec
+        var result = String::new()
+        let success = result.vec.reserve(capacity)
+        if !success {
+            return Option::None
+        }
+
+        return Option::Some(result)
     }
 
     /// Create a String from a Str slice (allocates and copies)
     pub fn new_from_str(s: Str) -> Result<String, StringError> {
-        let vec_opt = Vec::<u8>::with_capacity(s.len())
-        match vec_opt {
-            Some(vec) => {
-                var string = String { vec: vec }
+        // Create empty string and reserve capacity
+        var string = String::new()
+        let reserve_success = string.vec.reserve(s.len())
+        if !reserve_success {
+            return Result::Err(StringError::AllocationFailed)
+        }
 
-                // Copy bytes from Str into Vec
-                var i: u32 = 0
-                while i < s.len() {
-                    let success: bool = string.vec.push(s.as_ptr()[i])
-                    if !success {
-                        return Result::Err(StringError::AllocationFailed)
-                    }
-                    i = i + 1
-                }
-
-                return Result::Ok(string)
-            },
-            None => {
+        // Copy bytes from Str into Vec
+        var i: u32 = 0
+        while i < s.len() {
+            let success: bool = string.vec.push(s.as_ptr()[i])
+            if !success {
                 return Result::Err(StringError::AllocationFailed)
             }
+            i = i + 1
         }
+
+        return Result::Ok(string)
     }
 
     /// Get the length of the string in bytes

@@ -205,3 +205,63 @@ pub trait Iterable<T> {
 pub trait From<T> {
     fn convert(value: T) -> Self
 }
+
+// ============================================================================
+// Drop Trait - Automatic Resource Cleanup (RAII)
+// ============================================================================
+
+// Drop - enables automatic cleanup when values go out of scope
+//
+// This trait provides automatic resource management (RAII - Resource Acquisition
+// Is Initialization). When a value implementing Drop goes out of scope, the
+// compiler automatically calls its drop() method to clean up resources.
+//
+// This is similar to Rust's Drop trait or C++'s destructors, ensuring that
+// resources like memory, file handles, or hardware access are properly released
+// without requiring manual cleanup in every code path.
+//
+// Requirements:
+// - drop(&mut self): Clean up the resource
+//
+// The drop() method is called automatically by the compiler:
+// - At the end of a block scope
+// - Before reassignment
+// - Before early returns
+// - When a variable is shadowed
+//
+// Drop is NOT called if:
+// - The value was moved to another location
+// - A field was partially moved (only non-moved fields are dropped)
+//
+// Example implementation:
+// ```novus
+// impl Drop for MemoryBlock {
+//     fn drop(&mut self) {
+//         if self.size > 0 {
+//             unsafe { FreeMem(self.ptr, self.size) }
+//             self.ptr = (*u8)0
+//             self.size = 0
+//         }
+//     }
+// }
+//
+// // Usage - no manual cleanup needed!
+// fn example() -> Result<(), ExecError> {
+//     let mem = MemoryBlock::alloc(1024, MEMF_FAST)?
+//     // ... use mem ...
+//     return Ok(())  // mem.drop() called automatically before return
+// }  // mem.drop() also called automatically here if we didn't return early
+// ```
+//
+// Drop order:
+// - Variables are dropped in reverse order of creation
+// - Struct fields are dropped in declaration order
+// - defer blocks run before automatic drop
+//
+// Safety notes:
+// - drop() must not panic or fail
+// - Use unsafe for operations that cannot fail
+// - Avoid cyclic references (future: use weak references)
+pub trait Drop {
+    fn drop(&mut self)
+}

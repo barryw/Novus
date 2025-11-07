@@ -1,0 +1,33 @@
+// Minimal Formatter Test
+// Tests just creating and finishing a formatter
+
+from std::fmt import Formatter
+
+extern fn write(format: *u8, ...args) -> i32
+
+fn main() -> i32 {
+    write("Formatter Minimal Test\n")
+    write("======================\n\n")
+
+    // Test 1: Create and finish empty formatter
+    write("Test 1: Empty formatter...\n")
+    let f1 = Formatter::new()
+
+    let formatter = match f1 {
+        Option::Some(f) => {
+            write("  Created formatter\n")
+            f
+        }
+        Option::None => {
+            write("ERROR: Formatter::new() returned None\n")
+            return 1
+        }
+    }
+
+    write("  About to call finish...\n")
+    let result = formatter.finish()
+    write("  Called finish successfully\n")
+
+    write("\n[SUCCESS] Formatter minimal test works!\n")
+    return 0
+}

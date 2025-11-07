@@ -1,0 +1,41 @@
+// Simple F-String Test
+// Tests basic string interpolation without integers
+
+from std::strings import Str, String
+from std::fmt import Formatter
+
+extern fn write(format: *u8, ...args) -> i32
+
+fn main() -> i32 {
+    write("F-String Simple Test\n")
+    write("====================\n\n")
+
+    // Test 1: Simple string variable interpolation
+    let name = "Alice"
+    let greeting = f"Hello, {name}!"
+
+    write("Test 1: ")
+    write(greeting)
+    write("\n")
+
+    // Test 2: Multiple string variables
+    let first = "Bob"
+    let last = "Smith"
+    let full_name = f"{first} {last}"
+
+    write("Test 2: ")
+    write(full_name)
+    write("\n")
+
+    // Test 3: String with text before and after
+    let item = "coffee"
+    let message = f"I would like a {item}, please."
+
+    write("Test 3: ")
+    write(message)
+    write("\n")
+
+    write("\n[SUCCESS] F-string string interpolation works!\n")
+
+    return 0
+}

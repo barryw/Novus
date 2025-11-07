@@ -23,6 +23,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
     // Track defer blocks registered in the current scope (for scope-specific cleanup)
     // Each element in the stack represents a scope; the list contains defers registered in that scope
     private Stack<List<IrBasicBlock>> _scopeDeferStack = new();
+
+    // Drop tracking for automatic resource cleanup (RAII)
+    // Each scope tracks which local variables need drop calls when the scope exits
+    private readonly Stack<List<string>> _scopeDropStack = new(); // Stack of variable names per scope
+    private readonly Dictionary<string, bool> _movedVariables = new(); // Track which variables have been moved
+
     private int _staticVarCounter = 0;  // Counter for auto-generated static variables
     private readonly Stack<string> _loopExitLabels = new(); // Track loop exit labels for break
     private readonly Dictionary<string, IrLocalVariable> _localVariables = new(); // Track local variables in current function
@@ -4479,7 +4485,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     throw new Exception($"Function '{funcRef.Function.Name}' expects {funcRef.Function.Parameters.Count} arguments, got {arguments.Count}");
             }
 
-            // Apply automatic Str → *u8 coercion only when parameter type is *u8
+            // Apply automatic Str/String → *u8 coercion only when parameter type is *u8
             for (int i = 0; i < arguments.Count; i++)
             {
                 // Skip variadic parameters (they don't have a declared type)
@@ -4489,35 +4495,58 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 var paramType = funcRef.Function.Parameters[i].Type;
                 var argValue = arguments[i];
 
-                // Only coerce if parameter is *u8 and argument is Str
+                // Only coerce if parameter is *u8 and argument is Str or String
                 if (paramType is IrPointerType ptrType &&
                     ptrType.PointeeType.Equals(IrIntType.U8) &&
                     argValue.Type is IrStructType structType &&
-                    structType.StructName == "Str")
+                    (structType.StructName == "Str" || structType.StructName == "String"))
                 {
-                    // If argValue is a struct literal, extract the ptr field directly (no instruction needed)
-                    if (argValue is IrStructLiteral strLiteral)
+                    if (structType.StructName == "Str")
                     {
-                        if (!strLiteral.FieldValues.TryGetValue("ptr", out var ptrValue))
+                        // If argValue is a struct literal, extract the ptr field directly (no instruction needed)
+                        if (argValue is IrStructLiteral strLiteral)
                         {
-                            throw new Exception("Str struct literal must have a 'ptr' field");
+                            if (!strLiteral.FieldValues.TryGetValue("ptr", out var ptrValue))
+                            {
+                                throw new Exception("Str struct literal must have a 'ptr' field");
+                            }
+                            arguments[i] = ptrValue;  // Use the ptr value directly
                         }
-                        arguments[i] = ptrValue;  // Use the ptr value directly
-                    }
-                    else
-                    {
-                        // For Str variables (not literals), we need the member access
-                        var ptrField = structType.GetField("ptr");
-                        if (ptrField == null)
+                        else
                         {
-                            throw new Exception("Str struct must have a 'ptr' field");
+                            // For Str variables (not literals), we need the member access
+                            var ptrField = structType.GetField("ptr");
+                            if (ptrField == null)
+                            {
+                                throw new Exception("Str struct must have a 'ptr' field");
+                            }
+
+                            var ptrTempName = $"%t{_tempCounter++}";
+                            var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
+                            var ptrFieldAccess = new IrMemberAccess(ptrTempName, argValue, "ptr", u8PtrType, ptrField.Offset);
+                            _currentBlock!.AddInstruction(ptrFieldAccess);
+                            arguments[i] = new IrVariable(ptrTempName, u8PtrType);
+                        }
+                    }
+                    else if (structType.StructName == "String")
+                    {
+                        // For String, call the as_ptr() method
+                        var asPtrMethodName = "String::as_ptr";
+                        var asPtrMethod = _module.Functions.FirstOrDefault(f => f.Name == asPtrMethodName);
+
+                        if (asPtrMethod == null)
+                        {
+                            throw new Exception("String type must have as_ptr() method for automatic coercion to *u8");
                         }
 
-                        var ptrTempName = $"%t{_tempCounter++}";
+                        // Call String::as_ptr()
+                        var receiverArg = new IrBorrowValue(argValue, asPtrMethod.Parameters[0].Type, false);
+                        var resultTempName = $"%t{_tempCounter++}";
                         var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
-                        var ptrFieldAccess = new IrMemberAccess(ptrTempName, argValue, "ptr", u8PtrType, ptrField.Offset);
-                        _currentBlock!.AddInstruction(ptrFieldAccess);
-                        arguments[i] = new IrVariable(ptrTempName, u8PtrType);
+                        var methodCall = new IrCall(asPtrMethodName, u8PtrType, resultTempName);
+                        methodCall.Arguments.Add(receiverArg);
+                        _currentBlock!.AddInstruction(methodCall);
+                        arguments[i] = new IrVariable(resultTempName, u8PtrType);
                     }
                 }
             }
@@ -4717,42 +4746,65 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 throw new Exception($"Function pointer expects {fpType.ParameterTypes.Count} arguments, got {arguments.Count}");
             }
 
-            // Apply automatic Str → *u8 coercion only when parameter type is *u8
+            // Apply automatic Str/String → *u8 coercion only when parameter type is *u8
             for (int i = 0; i < arguments.Count; i++)
             {
                 var paramType = fpType.ParameterTypes[i];
                 var argValue = arguments[i];
 
-                // Only coerce if parameter is *u8 and argument is Str
+                // Only coerce if parameter is *u8 and argument is Str or String
                 if (paramType is IrPointerType ptrType &&
                     ptrType.PointeeType.Equals(IrIntType.U8) &&
                     argValue.Type is IrStructType structType &&
-                    structType.StructName == "Str")
+                    (structType.StructName == "Str" || structType.StructName == "String"))
                 {
-                    Console.WriteLine($"DEBUG: Str->*u8 coercion needed. argValue type: {argValue.GetType().Name}");
-                    // If argValue is a struct literal, extract the ptr field directly (no instruction needed)
-                    if (argValue is IrStructLiteral strLiteral)
+                    if (structType.StructName == "Str")
                     {
-                        if (!strLiteral.FieldValues.TryGetValue("ptr", out var ptrValue))
+                        Console.WriteLine($"DEBUG: Str->*u8 coercion needed. argValue type: {argValue.GetType().Name}");
+                        // If argValue is a struct literal, extract the ptr field directly (no instruction needed)
+                        if (argValue is IrStructLiteral strLiteral)
                         {
-                            throw new Exception("Str struct literal must have a 'ptr' field");
+                            if (!strLiteral.FieldValues.TryGetValue("ptr", out var ptrValue))
+                            {
+                                throw new Exception("Str struct literal must have a 'ptr' field");
+                            }
+                            arguments[i] = ptrValue;  // Use the ptr value directly
                         }
-                        arguments[i] = ptrValue;  // Use the ptr value directly
-                    }
-                    else
-                    {
-                        // For Str variables (not literals), we need the member access
-                        var ptrField = structType.GetField("ptr");
-                        if (ptrField == null)
+                        else
                         {
-                            throw new Exception("Str struct must have a 'ptr' field");
+                            // For Str variables (not literals), we need the member access
+                            var ptrField = structType.GetField("ptr");
+                            if (ptrField == null)
+                            {
+                                throw new Exception("Str struct must have a 'ptr' field");
+                            }
+
+                            var ptrTempName = $"%t{_tempCounter++}";
+                            var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
+                            var ptrFieldAccess = new IrMemberAccess(ptrTempName, argValue, "ptr", u8PtrType, ptrField.Offset);
+                            _currentBlock!.AddInstruction(ptrFieldAccess);
+                            arguments[i] = new IrVariable(ptrTempName, u8PtrType);
+                        }
+                    }
+                    else if (structType.StructName == "String")
+                    {
+                        // For String, call the as_ptr() method
+                        var asPtrMethodName = "String::as_ptr";
+                        var asPtrMethod = _module.Functions.FirstOrDefault(f => f.Name == asPtrMethodName);
+
+                        if (asPtrMethod == null)
+                        {
+                            throw new Exception("String type must have as_ptr() method for automatic coercion to *u8");
                         }
 
-                        var ptrTempName = $"%t{_tempCounter++}";
+                        // Call String::as_ptr()
+                        var receiverArg = new IrBorrowValue(argValue, asPtrMethod.Parameters[0].Type, false);
+                        var resultTempName = $"%t{_tempCounter++}";
                         var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
-                        var ptrFieldAccess = new IrMemberAccess(ptrTempName, argValue, "ptr", u8PtrType, ptrField.Offset);
-                        _currentBlock!.AddInstruction(ptrFieldAccess);
-                        arguments[i] = new IrVariable(ptrTempName, u8PtrType);
+                        var methodCall = new IrCall(asPtrMethodName, u8PtrType, resultTempName);
+                        methodCall.Arguments.Add(receiverArg);
+                        _currentBlock!.AddInstruction(methodCall);
+                        arguments[i] = new IrVariable(resultTempName, u8PtrType);
                     }
                 }
             }
@@ -4852,7 +4904,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 throw new Exception($"Function {functionName} expects {function.Parameters.Count} arguments, got {arguments.Count}");
         }
 
-        // Apply automatic Str → *u8 coercion only when parameter type is *u8
+        // Apply automatic Str/String → *u8 coercion only when parameter type is *u8
         for (int i = 0; i < arguments.Count; i++)
         {
             // Skip variadic parameters (they don't have a declared type)
@@ -4862,35 +4914,58 @@ public class IrBuilder : NovusBaseVisitor<object?>
             var paramType = function.Parameters[i].Type;
             var argValue = arguments[i];
 
-            // Only coerce if parameter is *u8 and argument is Str
+            // Only coerce if parameter is *u8 and argument is Str or String
             if (paramType is IrPointerType ptrType &&
                 ptrType.PointeeType.Equals(IrIntType.U8) &&
                 argValue.Type is IrStructType structType &&
-                structType.StructName == "Str")
+                (structType.StructName == "Str" || structType.StructName == "String"))
             {
-                // If argValue is a struct literal, extract the ptr field directly (no instruction needed)
-                if (argValue is IrStructLiteral strLiteral)
+                if (structType.StructName == "Str")
                 {
-                    if (!strLiteral.FieldValues.TryGetValue("ptr", out var ptrValue))
+                    // If argValue is a struct literal, extract the ptr field directly (no instruction needed)
+                    if (argValue is IrStructLiteral strLiteral)
                     {
-                        throw new Exception("Str struct literal must have a 'ptr' field");
+                        if (!strLiteral.FieldValues.TryGetValue("ptr", out var ptrValue))
+                        {
+                            throw new Exception("Str struct literal must have a 'ptr' field");
+                        }
+                        arguments[i] = ptrValue;  // Use the ptr value directly
                     }
-                    arguments[i] = ptrValue;  // Use the ptr value directly
-                }
-                else
-                {
-                    // For Str variables (not literals), we need the member access
-                    var ptrField = structType.GetField("ptr");
-                    if (ptrField == null)
+                    else
                     {
-                        throw new Exception("Str struct must have a 'ptr' field");
+                        // For Str variables (not literals), we need the member access
+                        var ptrField = structType.GetField("ptr");
+                        if (ptrField == null)
+                        {
+                            throw new Exception("Str struct must have a 'ptr' field");
+                        }
+
+                        var ptrTempName = $"%t{_tempCounter++}";
+                        var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
+                        var ptrFieldAccess = new IrMemberAccess(ptrTempName, argValue, "ptr", u8PtrType, ptrField.Offset);
+                        _currentBlock!.AddInstruction(ptrFieldAccess);
+                        arguments[i] = new IrVariable(ptrTempName, u8PtrType);
+                    }
+                }
+                else if (structType.StructName == "String")
+                {
+                    // For String, call the as_ptr() method
+                    var asPtrMethodName = "String::as_ptr";
+                    var asPtrMethod = _module.Functions.FirstOrDefault(f => f.Name == asPtrMethodName);
+
+                    if (asPtrMethod == null)
+                    {
+                        throw new Exception("String type must have as_ptr() method for automatic coercion to *u8");
                     }
 
-                    var ptrTempName = $"%t{_tempCounter++}";
+                    // Call String::as_ptr()
+                    var receiverArg = new IrBorrowValue(argValue, asPtrMethod.Parameters[0].Type, false);
+                    var resultTempName = $"%t{_tempCounter++}";
                     var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
-                    var ptrFieldAccess = new IrMemberAccess(ptrTempName, argValue, "ptr", u8PtrType, ptrField.Offset);
-                    _currentBlock!.AddInstruction(ptrFieldAccess);
-                    arguments[i] = new IrVariable(ptrTempName, u8PtrType);
+                    var methodCall = new IrCall(asPtrMethodName, u8PtrType, resultTempName);
+                    methodCall.Arguments.Add(receiverArg);
+                    _currentBlock!.AddInstruction(methodCall);
+                    arguments[i] = new IrVariable(resultTempName, u8PtrType);
                 }
             }
         }
@@ -5306,9 +5381,44 @@ public class IrBuilder : NovusBaseVisitor<object?>
             if ((firstParamType is IrPointerType || firstParamType is IrReferenceType || firstParamType is IrMutReferenceType)
                 && receiver.Type is not IrPointerType && receiver.Type is not IrReferenceType && receiver.Type is not IrMutReferenceType)
             {
+                // IMPORTANT FIX: If the receiver was loaded from a field access (e.g., self.buffer),
+                // we need to borrow the FIELD directly, not the loaded copy.
+                // Check if the last instruction is a member access that produced this receiver variable.
+                IrValue valueToBoflow = receiver;
+
+                if (receiver is IrVariable receiverVar && _currentBlock != null)
+                {
+                    // Look for the member access instruction that produced this variable
+                    // Search backwards through the block's instructions
+                    IrMemberAccess? foundMemberAccess = null;
+                    for (int i = _currentBlock.Instructions.Count - 1; i >= 0; i--)
+                    {
+                        var inst = _currentBlock.Instructions[i];
+                        if (inst is IrMemberAccess memberAccess &&
+                            memberAccess.ResultName == receiverVar.Name)
+                        {
+                            foundMemberAccess = memberAccess;
+                            _currentBlock.Instructions.RemoveAt(i);
+                            break;
+                        }
+                        // Stop searching if we hit an instruction that might use this variable
+                        // (this avoids removing a member access that was already used)
+                        if (inst is IrCall || inst is IrStore)
+                        {
+                            break;
+                        }
+                    }
+
+                    if (foundMemberAccess != null)
+                    {
+                        // Found it! Create a field reference instead of using the loaded value
+                        valueToBoflow = new IrFieldReference(foundMemberAccess.Struct, foundMemberAccess.FieldName, receiver.Type);
+                    }
+                }
+
                 // Wrap receiver in IrBorrowValue to take its address
                 bool isMutable = firstParamType is IrMutReferenceType || firstParamType is IrPointerType;
-                receiverArg = new IrBorrowValue(receiver, firstParamType, isMutable);
+                receiverArg = new IrBorrowValue(valueToBoflow, firstParamType, isMutable);
             }
         }
 
@@ -6497,6 +6607,448 @@ public class IrBuilder : NovusBaseVisitor<object?>
         return new IrStructLiteral(strType, fieldValues);
     }
 
+    public override object? VisitInterpolatedStringLiteral([NotNull] NovusParser.InterpolatedStringLiteralContext context)
+    {
+        // Get the f-string text and parse it into segments
+        var fstring = context.F_STRING_LITERAL().GetText();
+
+        // Strip 'f"' prefix and '"' suffix
+        var content = fstring.Substring(2, fstring.Length - 3);
+
+        // Parse the f-string into string and expression segments
+        var segments = ParseInterpolatedString(content);
+
+        // Look up the Formatter type and Display trait
+        var formatterType = _symbols.LookupStruct("Formatter");
+        if (formatterType == null)
+        {
+            throw new Exception("Interpolated strings require Formatter type from std::fmt module");
+        }
+
+        // Create a temporary variable for the Formatter
+        var formatterVarName = $"_formatter{_tempCounter++}";
+
+        // Call Formatter::new() to create the formatter
+        // This returns Option<Formatter>, so we need to unwrap it
+        var formatterNewMethodName = "Formatter::new";
+        var formatterNewMethod = _module.Functions.FirstOrDefault(f => f.Name == formatterNewMethodName);
+        if (formatterNewMethod == null)
+        {
+            throw new Exception("Formatter::new() method not found. Ensure std::fmt is imported.");
+        }
+
+        // Call Formatter::new()
+        var formatterNewResultName = $"%t{_tempCounter++}";
+        var formatterNewCall = new IrCall(formatterNewMethodName, formatterNewMethod.ReturnType, formatterNewResultName);
+        _currentBlock!.AddInstruction(formatterNewCall);
+        var formatterNewResult = new IrVariable(formatterNewResultName, formatterNewMethod.ReturnType);
+
+        // Unwrap the Option<Formatter> - this should return Formatter or panic
+        // For simplicity, we'll use unwrap() which panics on None
+        var optionType = formatterNewMethod.ReturnType as IrEnumType;
+        if (optionType == null || optionType.EnumName != "Option")
+        {
+            throw new Exception("Formatter::new() must return Option<Formatter>");
+        }
+
+        // Extract the Formatter from Option::Some
+        // We'll use pattern matching: match on the tag and extract the value
+        var someVariant = optionType.GetVariant("Some");
+        if (someVariant == null || someVariant.AssociatedData.Count != 1)
+        {
+            throw new Exception("Option::Some variant not found or malformed");
+        }
+
+        var formatterTypeFromOption = someVariant.AssociatedData[0];
+
+        // Extract tag and check if it's Some
+        var tagResultName = $"%t{_tempCounter++}";
+        var extractTag = new IrExtractTag(tagResultName, formatterNewResult);
+        _currentBlock!.AddInstruction(extractTag);
+
+        var noneVariant = optionType.GetVariant("None");
+        if (noneVariant == null)
+        {
+            throw new Exception("Option::None variant not found");
+        }
+
+        // Compare tag with None variant tag and panic if None
+        var tagVar = new IrVariable(tagResultName, IrIntType.I32);
+        var noneTagConst = new IrConstant(noneVariant.Tag, IrIntType.I32);
+        var isNoneResultName = $"%t{_tempCounter++}";
+        var isNoneCheck = new IrBinaryOp(isNoneResultName, IrBinaryOp.OpKind.Eq, tagVar, noneTagConst, IrBoolType.Instance);
+        _currentBlock!.AddInstruction(isNoneCheck);
+
+        var isNoneVar = new IrVariable(isNoneResultName, IrBoolType.Instance);
+        var panicLabel = $"_panic{_labelCounter++}";
+        var continueLabel = $"_continue{_labelCounter++}";
+
+        _currentBlock!.AddInstruction(new IrConditionalBranch(isNoneVar, panicLabel, continueLabel));
+
+        // Panic block
+        _currentBlock!.AddInstruction(new IrLabel(panicLabel));
+        var panicMessage = "Formatter::new() returned None (out of memory)";
+        var panicMessageLabel = $"_str{_stringCounter++}";
+        var panicMessageLiteral = new IrStringLiteral(panicMessage, panicMessageLabel);
+        StringLiterals.Add(panicMessageLiteral);
+
+        // Create source location for the panic
+        var panicLocation = new SourceLocation(
+            _inputFilePath ?? "unknown",
+            context.Start.Line,
+            context.Start.Column,
+            context.GetText().Length,
+            context.Start.InputStream.ToString() ?? ""
+        );
+        _currentBlock!.AddInstruction(new IrPanic(panicMessage, panicLocation));
+
+        // Continue block - extract the formatter
+        _currentBlock!.AddInstruction(new IrLabel(continueLabel));
+        var unwrapResultName = $"%t{_tempCounter++}";
+        var unwrapInstr = new IrExtractVariantData(unwrapResultName, formatterNewResult, "Some", 0, formatterTypeFromOption);
+        _currentBlock!.AddInstruction(unwrapInstr);
+
+        // Store formatter in a local variable (mutable)
+        var formatterVar = new IrLocalVariable(formatterVarName, formatterTypeFromOption, true);
+        _currentFunction!.LocalVariables.Add(formatterVar);
+        _localVariables[formatterVarName] = formatterVar;
+        var unwrappedFormatter = new IrVariable(unwrapResultName, formatterTypeFromOption);
+        _currentBlock!.AddInstruction(new IrLocalDecl(formatterVarName, formatterTypeFromOption, true, unwrappedFormatter));
+
+        // Process each segment
+        foreach (var segment in segments)
+        {
+            if (segment.IsStringSegment)
+            {
+                // Call f.write_str("segment")
+                EmitWriteStrLiteral(formatterVarName, formatterTypeFromOption, segment.StringContent);
+            }
+            else
+            {
+                // Parse the expression and call expr.fmt(&mut f)
+                EmitFormatExpression(formatterVarName, formatterTypeFromOption, segment.Expression);
+            }
+        }
+
+        // Call f.finish() to get the final String
+        var formatterVarRef = new IrVariable(formatterVarName, formatterTypeFromOption);
+        var finishMethodName = _module.FindTraitMethod("Formatter", "finish");
+        if (finishMethodName == null)
+        {
+            finishMethodName = "Formatter::finish";
+        }
+
+        var finishMethod = _module.Functions.FirstOrDefault(f => f.Name == finishMethodName);
+        if (finishMethod == null)
+        {
+            throw new Exception("Formatter::finish() method not found");
+        }
+
+        // Call finish() - takes self by value
+        var finishResultName = $"%t{_tempCounter++}";
+        var finishCall = new IrCall(finishMethodName, finishMethod.ReturnType, finishResultName);
+        finishCall.Arguments.Add(formatterVarRef);
+        _currentBlock!.AddInstruction(finishCall);
+
+        // Return the String result
+        return new IrVariable(finishResultName, finishMethod.ReturnType);
+    }
+
+    private void EmitWriteStrLiteral(string formatterVarName, IrType formatterType, string stringContent)
+    {
+        // Create a string literal for the segment
+        var label = $"_str{_stringCounter++}";
+        var stringLiteral = new IrStringLiteral(stringContent, label);
+        StringLiterals.Add(stringLiteral);
+
+        // Create Str struct
+        var strType = _symbols.LookupStruct("Str");
+        if (strType == null)
+        {
+            throw new Exception("Str type not found");
+        }
+
+        var strFieldValues = new Dictionary<string, IrValue>
+        {
+            ["ptr"] = stringLiteral,
+            ["len"] = new IrConstant(stringContent.Length, IrIntType.U32)
+        };
+        var strValue = new IrStructLiteral(strType, strFieldValues);
+
+        // Call the other EmitWriteStr method with the Str value
+        EmitWriteStr(formatterVarName, formatterType, strValue);
+    }
+
+    private void EmitFormatExpression(string formatterVarName, IrType formatterType, string expressionText)
+    {
+        // Parse the expression text into an AST node
+        var inputStream = new AntlrInputStream(expressionText);
+        var lexer = new NovusLexer(inputStream);
+        var tokens = new CommonTokenStream(lexer);
+        var parser = new NovusParser(tokens);
+
+        // Parse as an expression
+        var exprContext = parser.expression();
+
+        // Visit the expression to generate IR
+        var exprValue = Visit(exprContext) as IrValue;
+        if (exprValue == null)
+        {
+            throw new Exception($"Failed to evaluate expression in f-string: {expressionText}");
+        }
+
+        // Get the type of the expression
+        var exprType = exprValue.Type;
+
+        // Handle different types appropriately
+        if (exprType is IrStructType st && st.StructName == "Str")
+        {
+            // For Str types, just write the string directly
+            EmitWriteStr(formatterVarName, formatterType, exprValue);
+        }
+        else if (exprType is IrIntType intType)
+        {
+            // For integer types, convert to string using built-in functions
+            EmitFormatInteger(formatterVarName, formatterType, exprValue, intType);
+        }
+        else if (exprType is IrBoolType)
+        {
+            // For bool, write "true" or "false"
+            EmitFormatBool(formatterVarName, formatterType, exprValue);
+        }
+        else
+        {
+            // For other types, try to find Display::fmt() implementation
+            var typeName = exprType is IrStructType structType ? structType.StructName : exprType.Name;
+            var fmtMethodName = _module.FindTraitMethod(typeName, "fmt");
+            if (fmtMethodName == null)
+            {
+                throw new Exception($"Type '{typeName}' does not implement Display trait. All types in f-strings must implement Display.");
+            }
+
+            var fmtMethod = _module.Functions.FirstOrDefault(f => f.Name == fmtMethodName);
+            if (fmtMethod == null)
+            {
+                throw new Exception($"Display::fmt() method not found for type '{typeName}'");
+            }
+
+            // Call expr.fmt(&mut formatter)
+            // First parameter is &self (the expression value)
+            var exprBorrow = new IrBorrowValue(exprValue, fmtMethod.Parameters[0].Type, false);
+
+            // Second parameter is &mut Formatter
+            var formatterVarRef = new IrVariable(formatterVarName, formatterType);
+            var formatterBorrow = new IrBorrowValue(formatterVarRef, fmtMethod.Parameters[1].Type, true);
+
+            var fmtResultName = $"%t{_tempCounter++}";
+            var fmtCall = new IrCall(fmtMethodName, fmtMethod.ReturnType, fmtResultName);
+            fmtCall.Arguments.Add(exprBorrow);
+            fmtCall.Arguments.Add(formatterBorrow);
+            _currentBlock!.AddInstruction(fmtCall);
+        }
+    }
+
+    private void EmitWriteStr(string formatterVarName, IrType formatterType, IrValue strValue)
+    {
+        // Find write_str method
+        var writeStrMethodName = _module.FindTraitMethod("Formatter", "write_str");
+        if (writeStrMethodName == null)
+        {
+            writeStrMethodName = "Formatter::write_str";
+        }
+
+        var writeStrMethod = _module.Functions.FirstOrDefault(f => f.Name == writeStrMethodName);
+        if (writeStrMethod == null)
+        {
+            throw new Exception("Formatter::write_str() method not found");
+        }
+
+        // Call f.write_str(str_value)
+        var formatterVarRef = new IrVariable(formatterVarName, formatterType);
+        var formatterBorrow = new IrBorrowValue(formatterVarRef, writeStrMethod.Parameters[0].Type, true);
+        var writeStrResultName = $"%t{_tempCounter++}";
+        var writeStrCall = new IrCall(writeStrMethodName, writeStrMethod.ReturnType, writeStrResultName);
+        writeStrCall.Arguments.Add(formatterBorrow);
+        writeStrCall.Arguments.Add(strValue);
+        _currentBlock!.AddInstruction(writeStrCall);
+    }
+
+    private void EmitFormatInteger(string formatterVarName, IrType formatterType, IrValue intValue, IrIntType intType)
+    {
+        // For now, just convert the integer directly using an extern function
+        // The actual implementation will need to handle buffer allocation
+        // but for the MVP, we'll just call a hypothetical helper function
+
+        // TODO: Implement proper integer-to-string conversion
+        // For now, throw an error with a helpful message
+        throw new Exception($"Integer formatting in f-strings is not yet fully implemented. " +
+                          $"The infrastructure is in place but needs extern function '{intType.Name}_to_string' " +
+                          $"to be implemented in the runtime library.");
+    }
+
+    private void EmitFormatBool(string formatterVarName, IrType formatterType, IrValue boolValue)
+    {
+        // Create string literals for "true" and "false"
+        var trueLabel = $"_str{_stringCounter++}";
+        var trueLiteral = new IrStringLiteral("true", trueLabel);
+        StringLiterals.Add(trueLiteral);
+
+        var falseLabel = $"_str{_stringCounter++}";
+        var falseLiteral = new IrStringLiteral("false", falseLabel);
+        StringLiterals.Add(falseLiteral);
+
+        // Create Str structs
+        var strType = _symbols.LookupStruct("Str");
+        if (strType == null)
+        {
+            throw new Exception("Str type not found");
+        }
+
+        var trueStr = new IrStructLiteral(strType, new Dictionary<string, IrValue>
+        {
+            ["ptr"] = trueLiteral,
+            ["len"] = new IrConstant(4, IrIntType.U32)
+        });
+
+        var falseStr = new IrStructLiteral(strType, new Dictionary<string, IrValue>
+        {
+            ["ptr"] = falseLiteral,
+            ["len"] = new IrConstant(5, IrIntType.U32)
+        });
+
+        // Use conditional to select the right string
+        var trueLabel2 = $"_true{_labelCounter++}";
+        var falseLabel2 = $"_false{_labelCounter++}";
+        var endLabel = $"_end{_labelCounter++}";
+
+        _currentBlock!.AddInstruction(new IrConditionalBranch(boolValue, trueLabel2, falseLabel2));
+
+        // True branch
+        _currentBlock!.AddInstruction(new IrLabel(trueLabel2));
+        EmitWriteStr(formatterVarName, formatterType, trueStr);
+        _currentBlock!.AddInstruction(new IrBranch(endLabel));
+
+        // False branch
+        _currentBlock!.AddInstruction(new IrLabel(falseLabel2));
+        EmitWriteStr(formatterVarName, formatterType, falseStr);
+        _currentBlock!.AddInstruction(new IrBranch(endLabel));
+
+        // End
+        _currentBlock!.AddInstruction(new IrLabel(endLabel));
+    }
+
+    private List<InterpolationSegment> ParseInterpolatedString(string content)
+    {
+        var segments = new List<InterpolationSegment>();
+        var i = 0;
+        var currentString = new System.Text.StringBuilder();
+
+        while (i < content.Length)
+        {
+            if (content[i] == '\\' && i + 1 < content.Length)
+            {
+                // Handle escape sequences
+                var nextChar = content[i + 1];
+                if (nextChar == '{' || nextChar == '}')
+                {
+                    // Escaped brace: \{ -> {, \} -> }
+                    currentString.Append(nextChar);
+                    i += 2;
+                }
+                else if (nextChar == 'x' && i + 3 < content.Length)
+                {
+                    // Hex escape: \xNN
+                    var hexDigits = content.Substring(i + 2, 2);
+                    var byteValue = Convert.ToByte(hexDigits, 16);
+                    currentString.Append((char)byteValue);
+                    i += 4;
+                }
+                else
+                {
+                    // Standard escape sequences
+                    var escapeChar = nextChar switch
+                    {
+                        'n' => '\n',
+                        't' => '\t',
+                        'r' => '\r',
+                        'b' => '\b',
+                        'f' => '\f',
+                        '"' => '"',
+                        '\'' => '\'',
+                        '\\' => '\\',
+                        '0' => '\0',
+                        _ => throw new Exception($"Unknown escape sequence: \\{nextChar}")
+                    };
+                    currentString.Append(escapeChar);
+                    i += 2;
+                }
+            }
+            else if (content[i] == '{')
+            {
+                // Start of interpolation
+                // Save any accumulated string content
+                if (currentString.Length > 0)
+                {
+                    segments.Add(new InterpolationSegment { IsStringSegment = true, StringContent = currentString.ToString() });
+                    currentString.Clear();
+                }
+
+                // Find the matching closing brace
+                var braceDepth = 1;
+                var exprStart = i + 1;
+                i++;
+
+                while (i < content.Length && braceDepth > 0)
+                {
+                    if (content[i] == '{')
+                    {
+                        braceDepth++;
+                    }
+                    else if (content[i] == '}')
+                    {
+                        braceDepth--;
+                    }
+
+                    if (braceDepth > 0)
+                    {
+                        i++;
+                    }
+                }
+
+                if (braceDepth != 0)
+                {
+                    throw new Exception("Unmatched braces in f-string interpolation");
+                }
+
+                // Extract the expression
+                var expression = content.Substring(exprStart, i - exprStart);
+                segments.Add(new InterpolationSegment { IsStringSegment = false, Expression = expression });
+                i++; // Skip the closing brace
+            }
+            else
+            {
+                // Regular character
+                currentString.Append(content[i]);
+                i++;
+            }
+        }
+
+        // Add any remaining string content
+        if (currentString.Length > 0)
+        {
+            segments.Add(new InterpolationSegment { IsStringSegment = true, StringContent = currentString.ToString() });
+        }
+
+        return segments;
+    }
+
+    private class InterpolationSegment
+    {
+        public bool IsStringSegment { get; set; }
+        public string StringContent { get; set; } = "";
+        public string Expression { get; set; } = "";
+    }
+
     public override object? VisitSizeofExpr([NotNull] NovusParser.SizeofExprContext context)
     {
         // @sizeof(Type) - compile-time intrinsic that returns size in bytes as u32
@@ -6556,24 +7108,29 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                     if (variant != null)
                     {
+                        // Use expected type if it's a more specific (concrete) version of this enum
+                        var concreteEnumType = enumType;
+                        if (_expectedType is IrEnumType expectedEnum &&
+                            expectedEnum.EnumName == enumType.EnumName &&
+                            expectedEnum.CacheKey != null)
+                        {
+                            // Use the concrete type from context (e.g., Option<MemoryBlock> instead of Option<T>)
+                            Console.WriteLine($"DEBUG ResolveStaticMemberAccess: Using concrete type {expectedEnum.CacheKey} instead of generic {enumType.EnumName}");
+                            concreteEnumType = expectedEnum;
+                        }
+                        else
+                        {
+                            Console.WriteLine($"DEBUG ResolveStaticMemberAccess: NOT using concrete type. _expectedType={_expectedType?.GetType().Name}, EnumName match={(_expectedType is IrEnumType ee ? ee.EnumName == enumType.EnumName : false)}, CacheKey={(_expectedType is IrEnumType ee2 ? ee2.CacheKey : "N/A")}");
+                        }
+
                         // For unit variants (no associated data), create the enum value directly
                         if (variant.AssociatedData.Count == 0)
                         {
-                            // Use expected type if it's a more specific (concrete) version of this enum
-                            var concreteEnumType = enumType;
-                            if (_expectedType is IrEnumType expectedEnum &&
-                                expectedEnum.EnumName == enumType.EnumName &&
-                                expectedEnum.CacheKey != null)
-                            {
-                                // Use the concrete type from context (e.g., Option<MemoryBlock> instead of Option<T>)
-                                concreteEnumType = expectedEnum;
-                            }
-
                             return new IrEnumValue(concreteEnumType, memberName, variant.Tag, new List<IrValue>());
                         }
 
                         // For variants with data, return a constructor for use in call expressions
-                        return new IrEnumConstructor(enumType, memberName, variant.Tag);
+                        return new IrEnumConstructor(concreteEnumType, memberName, variant.Tag);
                     }
                 }
 
@@ -7060,24 +7617,24 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 throw new Exception($"Enum '{typeName}' has no variant '{memberName}'");
             }
 
+            // Use expected type if it's a more specific (concrete) version of this enum
+            var concreteEnumType = enumType;
+            if (_expectedType is IrEnumType expectedEnum &&
+                expectedEnum.EnumName == enumType.EnumName &&
+                expectedEnum.CacheKey != null)
+            {
+                // Use the concrete type from context (e.g., Option<MemoryBlock> instead of Option<T>)
+                concreteEnumType = expectedEnum;
+            }
+
             // For unit variants (no associated data), create the enum value directly
             if (variant.AssociatedData.Count == 0)
             {
-                // Use expected type if it's a more specific (concrete) version of this enum
-                var concreteEnumType = enumType;
-                if (_expectedType is IrEnumType expectedEnum &&
-                    expectedEnum.EnumName == enumType.EnumName &&
-                    expectedEnum.CacheKey != null)
-                {
-                    // Use the concrete type from context (e.g., Option<MemoryBlock> instead of Option<T>)
-                    concreteEnumType = expectedEnum;
-                }
-
                 return new IrEnumValue(concreteEnumType, memberName, variant.Tag, new List<IrValue>());
             }
 
             // Return enum constructor for variants with data
-            return new IrEnumConstructor(enumType, memberName, variant.Tag);
+            return new IrEnumConstructor(concreteEnumType, memberName, variant.Tag);
         }
 
         // Try associated function (struct method without self parameter)
@@ -7381,6 +7938,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
             IrValue? armResult = null;
             if (armCtx.expression() != null)
             {
+                // Set expected type so enum constructors get the correct monomorphized type
+                // We set this once before visiting all arms and keep it set
+                if (matchResultType != null)
+                {
+                    _expectedType = matchResultType;
+                }
+
                 armResult = (IrValue?)Visit(armCtx.expression());
 
                 // Infer match result type from first arm if we didn't have an expected type
@@ -7393,10 +7957,20 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     var matchResultVar = new IrLocalVariable(matchResultVarName, matchResultType, true);
                     _currentFunction!.LocalVariables.Add(matchResultVar);
                     _localVariables[matchResultVarName] = matchResultVar;
+
+                    // Now that we know the type, set it as expected type for subsequent arms
+                    _expectedType = matchResultType;
                 }
             }
             else if (armCtx.block() != null)
             {
+                // Set expected type so enum constructors get the correct monomorphized type
+                // We set this once before visiting all arms and keep it set
+                if (matchResultType != null)
+                {
+                    _expectedType = matchResultType;
+                }
+
                 armResult = (IrValue?)Visit(armCtx.block());
 
                 // Infer match result type from first arm if we didn't have an expected type
@@ -7409,6 +7983,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     var matchResultVar = new IrLocalVariable(matchResultVarName, matchResultType, true);
                     _currentFunction!.LocalVariables.Add(matchResultVar);
                     _localVariables[matchResultVarName] = matchResultVar;
+
+                    // Now that we know the type, set it as expected type for subsequent arms
+                    _expectedType = matchResultType;
                 }
             }
             else if (armCtx.returnStatement() != null)
@@ -8155,6 +8732,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
     /// </summary>
     private bool EnsureDropMethodInstantiated(IrType type)
     {
+        // Check if this type implements the Drop trait
+        if (!_module.TypeImplementsDrop(type))
+        {
+            return false;
+        }
+
         // Get the type name for method lookup
         string typeName;
         IrStructType? structType = null;

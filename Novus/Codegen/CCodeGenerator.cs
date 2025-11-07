@@ -32,6 +32,14 @@ public class CCodeGenerator
     // Track current function being emitted (for defer cleanup)
     private IrFunction? _currentEmittingFunction = null;
 
+    // Track which function parameters were converted to pointers in the C signature
+    // (due to TypeContainsHeapData) so we don't add & when passing them to other functions
+    private HashSet<string> _pointerConvertedParameters = new();
+
+    // Track member access instructions for move semantic analysis
+    // Maps result variable name -> (source struct, field name, accessor, field type)
+    private Dictionary<string, (string structValue, string fieldName, string accessor, IrStructType fieldType)> _memberAccessInfo = new();
+
     /// <summary>
     /// Determines if a function is a monomorphized generic function.
     /// Monomorphized functions should be emitted as 'static inline' to avoid duplicate symbols.
@@ -434,8 +442,9 @@ public class CCodeGenerator
                 if (funcObj != null)
                 {
                     var isStructOrEnumReturn = funcObj.ReturnType is IrStructType or IrEnumType;
-                    var returnTypeStr = isStructOrEnumReturn ? "void" : GetCType(funcObj.ReturnType);
-                    var parameters = GetParameterList(funcObj, isStructOrEnumReturn);
+                    var shouldUseOutParam = isStructOrEnumReturn;
+                    var returnTypeStr = shouldUseOutParam ? "void" : GetCType(funcObj.ReturnType);
+                    var parameters = GetParameterList(funcObj, shouldUseOutParam);
                     sb.AppendLine($"extern {returnTypeStr} {MangleName(funcObj)}({parameters});");
                 }
                 else
@@ -468,11 +477,23 @@ public class CCodeGenerator
         // Set current function for defer cleanup
         _currentEmittingFunction = function;
         _declaredVariables.Clear();
+        _memberAccessInfo.Clear();
+
+        // Track which parameters were converted to pointers in the C signature
+        _pointerConvertedParameters.Clear();
+        foreach (var param in function.Parameters)
+        {
+            if (param.Type is IrStructType structType && TypeContainsHeapData(structType))
+            {
+                _pointerConvertedParameters.Add(param.Name);
+            }
+        }
 
         // VBCC FIX: For struct/enum returns on 68k, use output parameter pattern
         var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType;
-        var returnType = isStructOrEnumReturn ? "void" : GetCType(function.ReturnType);
-        var parameters = GetParameterList(function, isStructOrEnumReturn);
+        var shouldUseOutParam = isStructOrEnumReturn;
+        var returnType = shouldUseOutParam ? "void" : GetCType(function.ReturnType);
+        var parameters = GetParameterList(function, shouldUseOutParam);
         var funcName = MangleName(function);
 
         // Special case: main must return 'int' for VBCC compatibility
@@ -889,14 +910,25 @@ public class CCodeGenerator
         {
             IrEnumType enumType => enumType.GenericParameters.Count > 0 ||
                                    (enumType.CacheKey != null && enumType.CacheKey.Contains("<T")),
-            IrStructType structType => structType.GenericParameters.Count > 0 ||
-                                        (structType.CacheKey != null && structType.CacheKey.Contains("<T")),
+            IrStructType structType => IsGenericStruct(structType),
             IrArrayType arrayType => IsGenericType(arrayType.ElementType),
             IrPointerType pointerType => IsGenericType(pointerType.PointeeType),
             IrReferenceType refType => IsGenericType(refType.PointeeType),
             IrMutReferenceType mutRefType => IsGenericType(mutRefType.PointeeType),
             _ => false
         };
+    }
+
+    private bool IsGenericStruct(IrStructType structType)
+    {
+        // A struct is generic if it has generic parameters
+        if (structType.GenericParameters.Count > 0)
+            return true;
+
+        // WORKAROUND: CacheKey is sometimes stale (e.g., "Vec<T>" even for monomorphized Vec<u8>)
+        // Only trust CacheKey if GenericParameters.Count > 0
+        // If GenericParameters.Count == 0, the type has been monomorphized regardless of CacheKey
+        return false;
     }
 
     /// <summary>
@@ -963,6 +995,12 @@ public class CCodeGenerator
         var visited = new HashSet<IrStructType>();
         var visiting = new HashSet<IrStructType>();
 
+        // Helper to get struct name (same logic as TypeRegistry)
+        string GetStructName(IrStructType st) => st.CacheKey ?? st.Name;
+
+        // Build a name-to-type map for efficient lookup
+        var structByName = structTypes.ToDictionary(s => GetStructName(s), s => s);
+
         // DFS visit function
         void Visit(IrStructType structType)
         {
@@ -979,9 +1017,14 @@ public class CCodeGenerator
             foreach (var field in structType.Fields)
             {
                 // Find struct types in the field type
-                if (field.Type is IrStructType dependentStruct && structTypes.Contains(dependentStruct))
+                if (field.Type is IrStructType dependentStruct)
                 {
-                    Visit(dependentStruct);
+                    var dependentName = GetStructName(dependentStruct);
+                    // Look up the struct by name instead of reference equality
+                    if (structByName.TryGetValue(dependentName, out var actualStruct))
+                    {
+                        Visit(actualStruct);
+                    }
                 }
             }
 
@@ -1941,8 +1984,9 @@ public class CCodeGenerator
         {
             // VBCC FIX: Match function definition signature (use void + __out for struct/enum returns)
             var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType;
-            var returnType = isStructOrEnumReturn ? "void" : GetCType(function.ReturnType);
-            var parameters = GetParameterList(function, isStructOrEnumReturn);
+            var shouldUseOutParam = isStructOrEnumReturn;
+            var returnType = shouldUseOutParam ? "void" : GetCType(function.ReturnType);
+            var parameters = GetParameterList(function, shouldUseOutParam);
 
             // Special case: main returns int, not int32_t
             if (function.Name == "main" && returnType == "int32_t")
@@ -2093,13 +2137,25 @@ public class CCodeGenerator
         // Clear declared variables for this function
         _declaredVariables.Clear();
 
+        // Track which parameters were converted to pointers in the C signature
+        _pointerConvertedParameters.Clear();
+        foreach (var param in function.Parameters)
+        {
+            if (param.Type is IrStructType structType && TypeContainsHeapData(structType))
+            {
+                _pointerConvertedParameters.Add(param.Name);
+            }
+        }
+
         // Set current function for defer cleanup
         _currentEmittingFunction = function;
+        _memberAccessInfo.Clear();
 
         // VBCC FIX: For struct/enum returns on 68k, use output parameter pattern
         var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType;
-        var returnType = isStructOrEnumReturn ? "void" : GetCType(function.ReturnType);
-        var parameters = GetParameterList(function, isStructOrEnumReturn);
+        var shouldUseOutParam = isStructOrEnumReturn;
+        var returnType = shouldUseOutParam ? "void" : GetCType(function.ReturnType);
+        var parameters = GetParameterList(function, shouldUseOutParam);
 
         // Don't mangle exported functions - use original name for C linkage
         var funcName = function.IsExported ? function.Name : MangleName(function);
@@ -2411,12 +2467,30 @@ public class CCodeGenerator
             var arg = call.Arguments[i];
             var argValue = EmitValue(arg);
 
-            // If this is an extern FFI function and the parameter expects i32 but we have a pointer, cast it
-            if (function != null && function.IsExtern && i < function.Parameters.Count)
+            // BUG FIX: If the parameter type is a struct containing heap data,
+            // the function signature expects a pointer, so pass by address
+            if (function != null && i < function.Parameters.Count)
             {
                 var paramType = function.Parameters[i].Type;
-                // If parameter is i32 and argument is a pointer, add cast
-                if (paramType is IrIntType intType && intType.BitWidth == 32 && arg is IrVariable variable)
+
+                // If parameter is a struct with heap data (passed by pointer in signature),
+                // but the argument is not already a pointer, pass by address
+                if (paramType is IrStructType structType &&
+                    TypeContainsHeapData(structType) &&
+                    arg.Type is IrStructType)  // arg is struct value, not pointer
+                {
+                    // Check if the argument is a variable that was itself a pointer-converted parameter
+                    // If so, it's already a pointer in C and doesn't need &
+                    bool isPointerConvertedParam = arg is IrVariable variable &&
+                                                   _pointerConvertedParameters.Contains(variable.Name);
+
+                    if (!isPointerConvertedParam)
+                    {
+                        argValue = $"&{argValue}";
+                    }
+                }
+                // If this is an extern FFI function and the parameter expects i32 but we have a pointer, cast it
+                else if (function.IsExtern && paramType is IrIntType intType && intType.BitWidth == 32 && arg is IrVariable variable)
                 {
                     // Check if the variable is a pointer type
                     // For now, we'll add the cast unconditionally for pointers
@@ -2429,13 +2503,14 @@ public class CCodeGenerator
 
         // VBCC FIX: For struct/enum returns on 68k, use output parameter pattern to avoid vbcc bugs
         var isStructOrEnumReturn = call.ReturnType is IrStructType or IrEnumType;
+        var shouldUseOutParam = isStructOrEnumReturn;
 
         // Don't mangle exported function names in calls
         // If we found the function, use its mangled name; otherwise fall back to string mangling
         var callFuncName = (function != null && function.IsExported) ? function.Name :
                           (function != null ? MangleName(function) : MangleName(call.FunctionName));
 
-        if (isStructOrEnumReturn && call.ResultName != null)
+        if (shouldUseOutParam && call.ResultName != null)
         {
             // Use output parameter pattern: void func(Result* out, args...)
             var cType = GetCType(call.ReturnType);
@@ -2539,11 +2614,33 @@ public class CCodeGenerator
             // VBCC FIX: For struct/enum returns, write to output parameter instead of returning directly
             var isStructOrEnumReturn = _currentEmittingFunction != null &&
                                       (_currentEmittingFunction.ReturnType is IrStructType or IrEnumType);
+            var shouldUseOutParam = isStructOrEnumReturn;
 
-            if (isStructOrEnumReturn)
+            if (shouldUseOutParam)
             {
                 var value = EmitValue(returnInst.Value);
                 _output.AppendLine($"    *__out = {value};");
+
+                // CRITICAL FIX: If returning a field from a by-value parameter containing heap data,
+                // null out the source field to prevent double-free when the parameter's destructor runs.
+                // Example: fn finish(self) -> String { self.buffer }
+                // After copying self.buffer to output, we must null self.buffer.vec.ptr
+                // Check if the return value came from a member access we tracked
+
+                // CRITICAL BUG FIX: Sanitize the variable name before lookup
+                // The _memberAccessInfo dictionary uses sanitized names (_t14), but returnVar.Name
+                // contains the IR name (%t14), so we must sanitize before lookup.
+                if (returnInst.Value is IrVariable returnVar)
+                {
+                    var sanitizedName = SanitizeVariableName(returnVar.Name);
+                    if (_memberAccessInfo.TryGetValue(sanitizedName, out var accessInfo))
+                    {
+                        var (structValue, fieldName, accessor, fieldStructType) = accessInfo;
+                        // This is a move operation - null out the source field to prevent double-free
+                        NullOutPointerFields(structValue, fieldName, fieldStructType, accessor);
+                    }
+                }
+
                 _output.AppendLine("    return;");
             }
             else
@@ -2751,9 +2848,162 @@ public class CCodeGenerator
         }
         else
         {
-            var structValue = EmitValue(memberAccess.Struct);
-            _output.AppendLine($"    {fieldType} {resultName} = {structValue}.{memberAccess.FieldName};");
+            // Determine the correct accessor (. or ->) and whether this is a move operation
+            var accessor = GetStructAccessor(memberAccess.Struct);
+
+            // If the struct is a dereference and we're using ->, emit just the pointer value
+            // instead of (*ptr)->field, emit ptr->field
+            string structValue;
+            if (memberAccess.Struct is IrDereferenceValue derefValue && accessor == "->")
+            {
+                structValue = EmitValue(derefValue.PointerValue);
+            }
+            else
+            {
+                structValue = EmitValue(memberAccess.Struct);
+            }
+
+            var isMovingField = false;  // Only true when actually consuming/moving the field
+            IrStructType? sourceStructType = null;
+
+            // Check if this is a move operation (for future move semantics)
+            // Currently disabled to fix the &mut self bug - we treat all field accesses as non-moves
+            if (memberAccess.Struct is IrVariable variable &&
+                _currentEmittingFunction != null)
+            {
+                var param = _currentEmittingFunction.Parameters.FirstOrDefault(p => p.Name == variable.Name);
+                if (param != null)
+                {
+                    // References and mut references are NEVER moves - they're borrows for access only
+                    if (param.Type is IrReferenceType or IrMutReferenceType)
+                    {
+                        isMovingField = false;
+                    }
+                    // Struct parameters containing heap data are passed by pointer
+                    else if (param.Type is IrStructType structType && TypeContainsHeapData(structType))
+                    {
+                        sourceStructType = structType;
+
+                        // For by-value parameters, accessing a field IS a move
+                        // TODO: We need better analysis to distinguish between:
+                        // - Field access for further use (e.g., passing &field to a function) - NOT a move
+                        // - Field extraction for return/assignment (e.g., return self.field) - IS a move
+                        // For now, we treat all field accesses from by-value params as non-moves
+                        // to fix the immediate bug with &mut self methods
+                        isMovingField = false;
+                    }
+                }
+            }
+
+            _output.AppendLine($"    {fieldType} {resultName} = {structValue}{accessor}{memberAccess.FieldName};");
+
+            // Track this member access for potential move semantics
+            // If this result is later returned, we'll need to null out the source
+            if (memberAccess.Struct is IrVariable trackVar &&
+                _currentEmittingFunction != null &&
+                memberAccess.FieldType is IrStructType trackFieldType &&
+                TypeContainsHeapData(memberAccess.FieldType))
+            {
+                var trackParam = _currentEmittingFunction.Parameters.FirstOrDefault(p => p.Name == trackVar.Name);
+
+                if (trackParam != null &&
+                    trackParam.Type is IrStructType &&
+                    TypeContainsHeapData(trackParam.Type) &&
+                    trackParam.Type is not IrReferenceType and not IrMutReferenceType)
+                {
+                    // Track this for potential move detection in return statement
+                    _memberAccessInfo[resultName] = (structValue, memberAccess.FieldName, accessor, trackFieldType);
+                }
+            }
+
+            // Only null out pointer fields if this is actually a move operation
+            // (not just accessing a field through a reference)
+            if (isMovingField && sourceStructType != null &&
+                memberAccess.FieldType is IrStructType moveFieldType &&
+                TypeContainsHeapData(memberAccess.FieldType))
+            {
+                // Recursively null out all pointer fields in the moved struct
+                NullOutPointerFields(structValue, memberAccess.FieldName, moveFieldType, accessor);
+            }
         }
+    }
+
+    /// <summary>
+    /// Null out pointer fields in a struct to prevent double-free after a move.
+    /// This is called when we extract a heap-containing field from a by-value parameter.
+    /// Respects SafetyLevel: skips in Unsafe mode, adds debug comments in Full/Paranoid.
+    /// </summary>
+    private void NullOutPointerFields(string structValue, string fieldName, IrStructType structType, string accessor)
+    {
+        // Skip null-outs in unsafe mode (no safety checks)
+        if (_safetyLevel == SafetyLevel.Unsafe)
+            return;
+
+        // Add debug comment for Full and Paranoid modes
+        if (_safetyLevel >= SafetyLevel.Full)
+        {
+            _output.AppendLine($"    // DEBUG: Nulling out moved field {fieldName} to prevent double-free");
+        }
+
+        foreach (var field in structType.Fields)
+        {
+            if (field.Type is IrPointerType)
+            {
+                // Null out the pointer field
+                _output.AppendLine($"    {structValue}{accessor}{fieldName}.{field.Name} = 0;");
+            }
+            else if (field.Type is IrStructType nestedStruct && TypeContainsHeapData(nestedStruct))
+            {
+                // Recursively null out nested struct's pointer fields
+                NullOutPointerFields(structValue, $"{fieldName}.{field.Name}", nestedStruct, accessor);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Determine the correct accessor (. or ->) for struct member access.
+    /// Returns "->" if the struct is accessed through a pointer, "." otherwise.
+    ///
+    /// BUG FIX: The IR builder represents &self and &mut self parameters as IrPointerType
+    /// and then dereferences them when accessing fields. This method detects that pattern
+    /// and uses -> accessor to avoid emitting (*ptr).field, instead emitting ptr->field.
+    /// </summary>
+    private string GetStructAccessor(IrValue structValue)
+    {
+        // Special case: if the struct value is a dereference (*ptr), then the original
+        // value is a pointer, so we should use -> accessor directly without dereferencing
+        // This handles cases like `self.field` where `self` is a pointer parameter
+        if (structValue is IrDereferenceValue)
+        {
+            // The dereference will be handled by using -> instead of (*...).
+            return "->";
+        }
+
+        // Check if the struct is accessed through a pointer
+        // This includes:
+        // 1. Reference types (&T, &mut T) - pointers in C
+        // 2. Pointer types (used by IR builder for &self/&mut self parameters)
+        // 3. Struct parameters containing heap data - passed by pointer
+        if (structValue is IrVariable variable && _currentEmittingFunction != null)
+        {
+            var param = _currentEmittingFunction.Parameters.FirstOrDefault(p => p.Name == variable.Name);
+            if (param != null)
+            {
+                // Check if this parameter is emitted as a pointer in the C signature
+                // by checking the same conditions that GetCParameter uses
+                if (param.Type is IrReferenceType or IrMutReferenceType or IrPointerType)
+                {
+                    return "->";
+                }
+                else if (param.Type is IrStructType structType && TypeContainsHeapData(structType))
+                {
+                    return "->";
+                }
+            }
+        }
+
+        // Default to . accessor for value types
+        return ".";
     }
 
     private void EmitIndexAccess(IrIndexAccess indexAccess)
@@ -2825,10 +3075,24 @@ public class CCodeGenerator
 
     private void EmitMemberStore(IrMemberStore memberStore)
     {
-        var structValue = EmitValue(memberStore.Struct);
         var storeValue = EmitValue(memberStore.Value);
 
-        _output.AppendLine($"    {structValue}.{memberStore.FieldName} = {storeValue};");
+        // Determine the correct accessor (. or ->)
+        var accessor = GetStructAccessor(memberStore.Struct);
+
+        // If the struct is a dereference and we're using ->, emit just the pointer value
+        // instead of (*ptr)->field, emit ptr->field
+        string structValue;
+        if (memberStore.Struct is IrDereferenceValue derefValue && accessor == "->")
+        {
+            structValue = EmitValue(derefValue.PointerValue);
+        }
+        else
+        {
+            structValue = EmitValue(memberStore.Struct);
+        }
+
+        _output.AppendLine($"    {structValue}{accessor}{memberStore.FieldName} = {storeValue};");
     }
 
     private void EmitDereferenceStore(IrDereferenceStore derefStore)
@@ -2837,6 +3101,21 @@ public class CCodeGenerator
         var storeValue = EmitValue(derefStore.Value);
 
         _output.AppendLine($"    (*{pointerValue}) = {storeValue};");
+    }
+
+    private string EmitBorrowValue(IrBorrowValue borrowValue)
+    {
+        // Check if we're borrowing a pointer-converted parameter
+        // If so, the parameter is already a pointer in C, so don't add &
+        if (borrowValue.BorrowedValue is IrVariable variable &&
+            _pointerConvertedParameters.Contains(variable.Name))
+        {
+            // Parameter is already a pointer in C (e.g., Str* s), so just use it directly
+            return EmitValue(variable);
+        }
+
+        // Normal case: add & to create a pointer
+        return $"&{EmitValue(borrowValue.BorrowedValue)}";
     }
 
     private string EmitValue(IrValue value)
@@ -2852,13 +3131,14 @@ public class CCodeGenerator
             IrStringLiteral stringLit => $"(uint8_t*){stringLit.Label}",  // Just a pointer to null-terminated string data
             IrEnumValue enumValue => EmitEnumValue(enumValue),
             IrEnumConstructor enumCtor => EmitEnumConstructor(enumCtor),
-            IrBorrowValue borrowValue => $"&{EmitValue(borrowValue.BorrowedValue)}",
+            IrBorrowValue borrowValue => EmitBorrowValue(borrowValue),
             IrDereferenceValue derefValue => $"(*{EmitValue(derefValue.PointerValue)})",
             IrCastValue castValue => EmitCastValue(castValue),
             IrStructLiteral structLit => EmitStructLiteral(structLit),
             IrArrayLiteral arrayLit => EmitArrayLiteral(arrayLit),
             IrFunctionAddress funcAddr => funcAddr.FunctionName,  // Function name IS its address in C
             IrFunctionRef funcRef => funcRef.Function.Name,  // Function reference - emit function name
+            IrFieldReference fieldRef => EmitFieldReference(fieldRef),  // Field reference for borrowing
             IrGenericAssociatedFunction genericFunc => throw new InvalidOperationException($"Generic associated function '{genericFunc.TypeName}::{genericFunc.MethodName}' must be monomorphized to a concrete function before code generation"),
             _ => throw new NotSupportedException($"Unsupported value type: {value.GetType().Name}")
         };
@@ -3027,6 +3307,29 @@ public class CCodeGenerator
         return $"({targetType}){innerValue}";
     }
 
+    private string EmitFieldReference(IrFieldReference fieldRef)
+    {
+        // Emit a field reference as a field access expression (lvalue)
+        // This is used when we need to take the address of a field without loading it first
+        // Example: self.buffer -> self->buffer (when self is a pointer)
+
+        var accessor = GetStructAccessor(fieldRef.Struct);
+
+        // Emit the struct value and field access
+        string structValue;
+        if (fieldRef.Struct is IrDereferenceValue derefValue && accessor == "->")
+        {
+            // Optimization: (*ptr)->field becomes ptr->field
+            structValue = EmitValue(derefValue.PointerValue);
+        }
+        else
+        {
+            structValue = EmitValue(fieldRef.Struct);
+        }
+
+        return $"{structValue}{accessor}{fieldRef.FieldName}";
+    }
+
     private int _tempCounter = 0;
 
     private string SanitizeVariableName(string name)
@@ -3111,6 +3414,39 @@ public class CCodeGenerator
         return $"{returnType} (*)({paramTypes})";
     }
 
+    /// <summary>
+    /// Check if a type contains heap-allocated data (pointers to heap memory).
+    /// This is important for detecting types that should not be passed by value.
+    /// </summary>
+    private bool TypeContainsHeapData(IrType type)
+    {
+        switch (type)
+        {
+            case IrStructType structType:
+                // Check if any field is a pointer or contains pointers
+                return structType.Fields.Any(f =>
+                    f.Type is IrPointerType || TypeContainsHeapData(f.Type));
+
+            case IrPointerType:
+                // Pointers themselves ARE heap data
+                return true;
+
+            case IrReferenceType:
+            case IrMutReferenceType:
+                // References are not considered heap data for this purpose
+                // (they're already pointers and don't need special handling)
+                return false;
+
+            case IrArrayType arrayType:
+                // Arrays might contain heap data in their elements
+                return TypeContainsHeapData(arrayType.ElementType);
+
+            default:
+                // Primitives, enums without data, etc. don't contain heap data
+                return false;
+        }
+    }
+
     private string GetParameterList(IrFunction function, bool hasOutputParameter = false)
     {
         var parameters = new List<string>();
@@ -3134,6 +3470,9 @@ public class CCodeGenerator
     /// Function pointer syntax in C requires the parameter name inside parentheses:
     ///   int32_t (*callback)(int32_t, int32_t)  // correct
     ///   int32_t (*)(int32_t, int32_t) callback // incorrect
+    ///
+    /// BUG FIX: For structs containing heap data (pointers), pass by pointer instead
+    /// of by value to avoid shallow copy issues and double-free bugs.
     /// </summary>
     private string GetCParameter(IrType type, string name)
     {
@@ -3145,6 +3484,16 @@ public class CCodeGenerator
                 ? string.Join(", ", fpType.ParameterTypes.Select(GetCType))
                 : "void";
             return $"{returnType} (*{name})({paramTypes})";
+        }
+
+        // BUG FIX: If this is a struct type (not already a pointer/reference) that contains
+        // heap-allocated data, pass it by pointer to avoid shallow copy issues
+        if (type is IrStructType structType &&
+            TypeContainsHeapData(structType))
+        {
+            // Pass by pointer to enable move semantics
+            var cType = GetCType(type);
+            return $"{cType}* {name}";
         }
 
         // For all other types, use normal syntax

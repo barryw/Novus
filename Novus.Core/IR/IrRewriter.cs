@@ -124,6 +124,7 @@ public abstract class IrRewriter
             IrArrayLiteral arrayLiteral => RewriteArrayLiteral(arrayLiteral),
             IrDereferenceValue derefValue => RewriteDereferenceValue(derefValue),
             IrBorrowValue borrowValue => RewriteBorrowValue(borrowValue),
+            IrFieldReference fieldRef => RewriteFieldReference(fieldRef),
             IrCastValue castValue => RewriteCastValue(castValue),
             IrFunctionAddress funcAddr => RewriteFunctionAddress(funcAddr),
             IrEnumValue enumValue => RewriteEnumValue(enumValue),
@@ -490,6 +491,15 @@ public abstract class IrRewriter
     {
         borrowValue.BorrowedValue = RewriteValue(borrowValue.BorrowedValue);
         return borrowValue;
+    }
+
+    /// <summary>
+    /// Rewrite a field reference
+    /// </summary>
+    public virtual IrValue RewriteFieldReference(IrFieldReference fieldRef)
+    {
+        fieldRef.Struct = RewriteValue(fieldRef.Struct);
+        return fieldRef;
     }
 
     /// <summary>

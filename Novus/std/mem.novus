@@ -157,6 +157,13 @@ impl MemoryBlock {
     }
 }
 
+// Automatic cleanup for MemoryBlock (RAII)
+impl Drop for MemoryBlock {
+    fn drop(&mut self) {
+        self.free()
+    }
+}
+
 /// Allocation<T> - Type-safe bulk memory allocation
 ///
 /// Safer alternative to MemoryBlock with compile-time type checking.

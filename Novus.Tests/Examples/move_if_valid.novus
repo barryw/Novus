@@ -1,0 +1,14 @@
+from std::strings import String
+
+fn consume(consuming s: String) {}
+
+fn test_if_valid() {
+    let x = String::new()
+
+    if true {
+        let len = x.len()  // OK - just reading
+    }
+
+    // OK - x was never moved
+    consume(x)
+}

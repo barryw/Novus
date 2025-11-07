@@ -372,3 +372,19 @@ impl<T> Iterable<T> for Vec<T> {
         return Option::Some(value)
     }
 }
+
+// Automatic cleanup for Vec<T> (RAII)
+// Frees the underlying memory when the Vec goes out of scope
+impl<T> Drop for Vec<T> {
+    fn drop(&mut self) {
+        if self.capacity > 0 {
+            let element_size: u32 = @sizeof(T)
+            let bytes: u32 = self.capacity * element_size
+            let mem: *u8 = (*u8)(self.ptr)
+            unsafe { FreeMem(mem, bytes) }
+            self.ptr = 0
+            self.len = 0
+            self.capacity = 0
+        }
+    }
+}

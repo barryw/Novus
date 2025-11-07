@@ -1,0 +1,15 @@
+from std::strings import String
+
+fn consume(consuming s: String) {}
+
+fn test_if_move() {
+    let x = String::new()
+
+    if true {
+        consume(x)  // x moved in this branch
+    }
+
+    // ERROR: use of moved value
+    // E0382: value may have been moved in a conditional branch
+    let len = x.len()
+}

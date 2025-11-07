@@ -74,7 +74,7 @@ parameterList
     ;
 
 parameter
-    : IDENTIFIER ':' type
+    : KW_CONSUMING? IDENTIFIER ':' type
     ;
 
 variadicParameter
@@ -83,7 +83,7 @@ variadicParameter
 
 selfParameter
     : '&' KW_MUT? KW_SELF
-    | KW_SELF
+    | KW_CONSUMING? KW_SELF
     ;
 
 structDeclaration
@@ -332,6 +332,8 @@ primaryExpression
     | KW_FALSE                                     # BoolLiteral
     | KW_SELF                                      # SelfExpr
     | '@' KW_SIZEOF '(' type ')'                   # SizeofExpr
+    | F_STRING_LITERAL                             # InterpolatedStringLiteral
+    | CHAR_LITERAL                                 # CharLiteral
     | STRING_LITERAL                               # StringLiteral
     | '-'? FLOAT_LITERAL                           # FloatLiteral
     | '-'? INTEGER_LITERAL                         # IntegerLiteral
@@ -387,10 +389,11 @@ KW_IN       : 'in';
 KW_FOREVER  : 'forever';
 KW_BREAK    : 'break';
 KW_MATCH    : 'match';
-KW_DEFER    : 'defer';
-KW_UNSAFE   : 'unsafe';
-KW_USING    : 'using';
-KW_SIZEOF   : 'sizeof';
+KW_DEFER     : 'defer';
+KW_UNSAFE    : 'unsafe';
+KW_USING     : 'using';
+KW_SIZEOF    : 'sizeof';
+KW_CONSUMING : 'consuming';
 KW_TRUE     : 'true';
 KW_FALSE    : 'false';
 
@@ -424,6 +427,27 @@ BINARY_LITERAL
 
 HEX_LITERAL
     : '$' [0-9A-Fa-f]+ ('_' [0-9A-Fa-f]+)* ('u8' | 'u16' | 'u32' | 'u64' | 'i8' | 'i16' | 'i32' | 'i64')?
+    ;
+
+F_STRING_LITERAL
+    : 'f"' ( F_ESC | F_INTERP | ~["\\{] )* '"'
+    ;
+
+fragment F_ESC
+    : '\\' ('b' | 't' | 'n' | 'f' | 'r' | '0' | '"' | '\'' | '\\' | '{' | '}')
+    | '\\x' HEX_DIGIT HEX_DIGIT
+    ;
+
+fragment F_INTERP
+    : '{' F_INTERP_CONTENT '}'
+    ;
+
+fragment F_INTERP_CONTENT
+    : ( ~[{}] | '{' F_INTERP_CONTENT '}' )*
+    ;
+
+CHAR_LITERAL
+    : '\'' ( ESC | ~['\\] ) '\''
     ;
 
 STRING_LITERAL

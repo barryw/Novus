@@ -212,4 +212,90 @@ pub fn main() -> i32 {
         var module = BuildIr(source);
         Assert.NotNull(module);
     }
+
+    [Fact]
+    public void BuildIr_StrToU8PtrCoercion_Compiles()
+    {
+        var source = @"
+from std::strings import Str
+fn takes_pointer(ptr: *u8) -> i32 {
+    return 42
+}
+pub fn main() -> i32 {
+    return takes_pointer(""Hello"")
+}";
+        var module = BuildIr(source);
+        Assert.NotNull(module);
+    }
+
+    [Fact]
+    public void BuildIr_StringToU8PtrCoercion_Compiles()
+    {
+        var source = @"
+from std::collections import Vec
+
+// Minimal String type definition for testing
+pub struct String {
+    vec: Vec<u8>
+}
+
+impl String {
+    pub fn as_ptr(&self) -> *u8 {
+        return self.vec.as_ptr()
+    }
+}
+
+fn takes_pointer(ptr: *u8) -> i32 {
+    return 42
+}
+
+fn make_string() -> String {
+    let v = Vec::<u8>::new()
+    return String { vec: v }
+}
+
+pub fn main() -> i32 {
+    let s = make_string()
+    return takes_pointer(s)
+}";
+        var module = BuildIr(source);
+        Assert.NotNull(module);
+    }
+
+    [Fact]
+    public void BuildIr_StringAndStrToU8PtrCoercion_Compiles()
+    {
+        var source = @"
+from std::strings import Str
+from std::collections import Vec
+
+// Minimal String type definition for testing
+pub struct String {
+    vec: Vec<u8>
+}
+
+impl String {
+    pub fn as_ptr(&self) -> *u8 {
+        return self.vec.as_ptr()
+    }
+}
+
+fn takes_pointer(ptr: *u8) -> i32 {
+    return 1
+}
+
+fn make_string() -> String {
+    let v = Vec::<u8>::new()
+    return String { vec: v }
+}
+
+pub fn main() -> i32 {
+    let result1 = takes_pointer(""Str literal"")
+    let s = make_string()
+    let result2 = takes_pointer(s)
+    return result1 + result2
+}";
+        var module = BuildIr(source);
+        Assert.NotNull(module);
+    }
 }

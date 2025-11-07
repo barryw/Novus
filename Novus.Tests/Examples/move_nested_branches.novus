@@ -1,0 +1,17 @@
+from std::strings import String
+
+fn consume(consuming s: String) {}
+
+fn test_nested_branches(condition1: bool, condition2: bool) {
+    let x = String::new()
+
+    if condition1 {
+        if condition2 {
+            consume(x)  // x moved in nested branch
+        }
+    }
+
+    // ERROR: use of moved value
+    // E0382: value may have been moved in a conditional branch
+    let len = x.len()
+}

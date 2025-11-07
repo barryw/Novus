@@ -17,10 +17,33 @@ public class TypeRegistry
     /// </summary>
     public void RegisterModule(IrModule module)
     {
+        // Register all concrete structs from the module
+        // This ensures struct definitions are included even if not directly used in function signatures
+        foreach (var structType in module.Structs)
+        {
+            // Only register non-generic (concrete) structs
+            if (structType.GenericParameters.Count == 0)
+            {
+                if (!_structTypes.Any(s => GetStructName(s) == GetStructName(structType)))
+                    _structTypes.Add(structType);
+            }
+        }
+
+        // Register all concrete enums from the module
+        foreach (var enumType in module.Enums)
+        {
+            // Only register non-generic (concrete) enums
+            if (IsConcreteEnum(enumType))
+            {
+                if (!_enumTypes.Any(e => GetEnumName(e) == GetEnumName(enumType)))
+                    _enumTypes.Add(enumType);
+            }
+        }
+
         // Scan external variables for enum and struct types
         foreach (var externVar in module.ExternalVariables)
         {
-            if (externVar.Type is IrEnumType enumExtVar && enumExtVar.GenericParameters.Count == 0)
+            if (externVar.Type is IrEnumType enumExtVar && IsConcreteEnum(enumExtVar))
             {
                 if (!_enumTypes.Any(e => GetEnumName(e) == GetEnumName(enumExtVar)))
                     _enumTypes.Add(enumExtVar);
@@ -35,7 +58,7 @@ public class TypeRegistry
         // Scan static variables for enum and struct types
         foreach (var staticVar in module.StaticVariables)
         {
-            if (staticVar.Type is IrEnumType enumStaticVar && enumStaticVar.GenericParameters.Count == 0)
+            if (staticVar.Type is IrEnumType enumStaticVar && IsConcreteEnum(enumStaticVar))
             {
                 if (!_enumTypes.Any(e => GetEnumName(e) == GetEnumName(enumStaticVar)))
                     _enumTypes.Add(enumStaticVar);
@@ -52,7 +75,7 @@ public class TypeRegistry
         foreach (var function in module.Functions)
         {
             // Check return type
-            if (function.ReturnType is IrEnumType enumRet && enumRet.GenericParameters.Count == 0)
+            if (function.ReturnType is IrEnumType enumRet && IsConcreteEnum(enumRet))
             {
                 if (!_enumTypes.Any(e => GetEnumName(e) == GetEnumName(enumRet)))
                     _enumTypes.Add(enumRet);
@@ -61,7 +84,7 @@ public class TypeRegistry
             // Check parameters
             foreach (var param in function.Parameters)
             {
-                if (param.Type is IrEnumType enumParam && enumParam.GenericParameters.Count == 0)
+                if (param.Type is IrEnumType enumParam && IsConcreteEnum(enumParam))
                 {
                     if (!_enumTypes.Any(e => GetEnumName(e) == GetEnumName(enumParam)))
                         _enumTypes.Add(enumParam);
@@ -71,7 +94,7 @@ public class TypeRegistry
             // Check local variables
             foreach (var local in function.LocalVariables)
             {
-                if (local.Type is IrEnumType enumLocal && enumLocal.GenericParameters.Count == 0)
+                if (local.Type is IrEnumType enumLocal && IsConcreteEnum(enumLocal))
                 {
                     if (!_enumTypes.Any(e => GetEnumName(e) == GetEnumName(enumLocal)))
                         _enumTypes.Add(enumLocal);
@@ -85,8 +108,7 @@ public class TypeRegistry
                 {
                     if (instruction is IrLocalDecl localDecl)
                     {
-                        if (localDecl.Type is IrEnumType enumDeclType &&
-                            enumDeclType.GenericParameters.Count == 0)
+                        if (localDecl.Type is IrEnumType enumDeclType && IsConcreteEnum(enumDeclType))
                         {
                             if (!_enumTypes.Any(e => GetEnumName(e) == GetEnumName(enumDeclType)))
                                 _enumTypes.Add(enumDeclType);
@@ -101,7 +123,7 @@ public class TypeRegistry
 
                     if (instruction is IrMatch match &&
                         match.MatchValue.Type is IrEnumType matchEnumType &&
-                        matchEnumType.GenericParameters.Count == 0)
+                        IsConcreteEnum(matchEnumType))
                     {
                         if (!_enumTypes.Any(e => GetEnumName(e) == GetEnumName(matchEnumType)))
                             _enumTypes.Add(matchEnumType);
@@ -202,7 +224,7 @@ public class TypeRegistry
     {
         switch (type)
         {
-            case IrEnumType enumType when enumType.GenericParameters.Count == 0:
+            case IrEnumType enumType when IsConcreteEnum(enumType):
                 if (!_enumTypes.Any(e => GetEnumName(e) == GetEnumName(enumType)))
                     _enumTypes.Add(enumType);
                 break;
@@ -280,6 +302,69 @@ public class TypeRegistry
             return enumType.Name; // Use base name for comparison
         }
         return enumType.EnumName ?? enumType.Name;
+    }
+
+    /// <summary>
+    /// Check if an enum type is fully concrete (no generic parameters in it or its associated data).
+    /// This is crucial for monomorphized types like Option<Formatter> which still have GenericParameters.Count > 0
+    /// but are actually fully concrete because all type parameters have been replaced.
+    /// </summary>
+    private bool IsConcreteEnum(IrEnumType enumType)
+    {
+        // If the enum has generic parameters AND no CacheKey, it's definitely generic
+        // But if it has a CacheKey (like "Option<Formatter>"), it's a monomorphized instance
+        if (enumType.GenericParameters.Count > 0)
+        {
+            // Monomorphized enums have a CacheKey that shows the concrete type instantiation
+            if (string.IsNullOrEmpty(enumType.CacheKey))
+            {
+                // No CacheKey means it's the original generic definition
+                return false;
+            }
+
+            // Has a CacheKey - check if it contains any remaining generic type parameters (like <T>)
+            if (enumType.CacheKey.Contains("<T"))
+            {
+                return false;
+            }
+        }
+
+        // Check if any variant contains a generic type in its associated data
+        foreach (var variant in enumType.Variants)
+        {
+            if (variant.HasAssociatedData && variant.AssociatedData != null)
+            {
+                foreach (var dataType in variant.AssociatedData)
+                {
+                    if (IsGenericType(dataType))
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Check if a type is generic or contains generic types.
+    /// WORKAROUND: GenericParameters.Count isn't reliable for structs/enums created by IR builder,
+    /// so we also check CacheKey for generic type parameters like <T>.
+    /// </summary>
+    private bool IsGenericType(IrType type)
+    {
+        return type switch
+        {
+            IrEnumType enumType => !IsConcreteEnum(enumType),
+            IrStructType structType => structType.GenericParameters.Count > 0 ||
+                                        (structType.CacheKey != null && structType.CacheKey.Contains("<T")),
+            IrArrayType arrayType => IsGenericType(arrayType.ElementType),
+            IrPointerType pointerType => IsGenericType(pointerType.PointeeType),
+            IrReferenceType refType => IsGenericType(refType.PointeeType),
+            IrMutReferenceType mutRefType => IsGenericType(mutRefType.PointeeType),
+            _ => false
+        };
     }
 
     public IEnumerable<IrEnumType> EnumTypes => _enumTypes;

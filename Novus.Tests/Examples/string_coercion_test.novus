@@ -1,0 +1,71 @@
+// String Coercion Test
+// Demonstrates automatic string coercion for seamless NDK integration
+
+from std::ffi::dos import Open, Close
+from std::ffi::amiga_consts import MODE_OLDFILE
+from std::strings import Str
+
+extern fn write(format: *u8, ...args) -> i32
+
+fn main() -> i32 {
+    // Test 1: String literal -> *u8 (automatic coercion)
+    // Open() expects *u8, we pass a string literal
+    // Demonstrates: defer for automatic resource cleanup
+    write("Test 1: String literal coercion\n")
+
+    let file_handle: i32 = Open("S:Startup-Sequence", MODE_OLDFILE)
+    if file_handle != 0 {
+        defer { Close(file_handle) }
+        write("  [OK] Successfully opened S:Startup-Sequence\n")
+    } else {
+        write("  [FAIL] Failed to open file\n")
+    }
+
+    // Test 2: Str variable -> *u8 (automatic coercion)
+    // Demonstrates: Str type coerces seamlessly to *u8
+    write("\nTest 2: Str variable coercion\n")
+
+    let path: Str = "DEVS:system-configuration"
+    let file_handle2: i32 = Open(path, MODE_OLDFILE)
+    if file_handle2 != 0 {
+        defer { Close(file_handle2) }
+        write("  [OK] Successfully opened DEVS:system-configuration\n")
+    } else {
+        write("  [SKIP] File doesn't exist (that's OK)\n")
+    }
+
+    // Test 3: Using Str in multiple places
+    // Demonstrates: Str values can be used multiple times
+    write("\nTest 3: Using Str values multiple times\n")
+
+    let filename: Str = "S:User-Startup"
+    let handle_a: i32 = Open(filename, MODE_OLDFILE)
+    if handle_a == 0 {
+        write("  [INFO] S:User-Startup doesn't exist (expected)\n")
+    } else {
+        defer { Close(handle_a) }
+        write("  [OK] S:User-Startup exists!\n")
+    }
+
+    // Test 4: Multiple string arguments
+    // Demonstrates: String literals work directly in function calls
+    write("\nTest 4: Multiple string arguments\n")
+
+    let name1: Str = "RAM:"
+    let name2: Str = "file.txt"
+
+    // Try to open a file in RAM: (will probably fail but tests coercion)
+    let handle3: i32 = Open("RAM:test.txt", MODE_OLDFILE)
+    if handle3 == 0 {
+        write("  [INFO] RAM:test.txt doesn't exist (expected)\n")
+    } else {
+        defer { Close(handle3) }
+        write("  [OK] RAM:test.txt exists!\n")
+    }
+
+    write("\n[SUCCESS] All string coercion tests completed!\n")
+    write("          Str -> *u8 works seamlessly with NDK functions.\n")
+    write("          defer blocks ensure proper resource cleanup.\n")
+
+    return 0
+}

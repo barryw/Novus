@@ -75,6 +75,12 @@ public class IrModule
     public void AddTraitImpl(IrTraitImpl traitImpl)
     {
         TraitImpls.Add(traitImpl);
+
+        // If this is a Drop implementation, mark the type as implementing Drop
+        if (traitImpl.TraitName == "Drop" && traitImpl.ImplementingType is IrStructType structType)
+        {
+            structType.ImplementsDrop = true;
+        }
     }
 
     public IrTraitImpl? GetTraitImpl(string traitName, string typeName)
@@ -110,6 +116,29 @@ public class IrModule
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Check if a type implements the Drop trait
+    /// </summary>
+    public bool TypeImplementsDrop(string typeName)
+    {
+        return TraitImpls.Any(ti => ti.TraitName == "Drop" && ti.TypeName == typeName);
+    }
+
+    /// <summary>
+    /// Check if a type implements the Drop trait (accepts IrType)
+    /// </summary>
+    public bool TypeImplementsDrop(IrType type)
+    {
+        if (type is IrStructType structType)
+        {
+            // Use CacheKey for monomorphized types, otherwise use StructName
+            var typeName = structType.CacheKey ?? structType.StructName;
+            return TypeImplementsDrop(typeName);
+        }
+        // Only struct types can implement Drop (primitives, pointers, etc. don't need cleanup)
+        return false;
     }
 }
 
@@ -754,6 +783,7 @@ public class IrStructType : IrType
     public string? CacheKey { get; set; }  // Cache key for monomorphized types (e.g., "Vec<i32>")
     public Novus.SemanticAnalysis.AttributeCollection? Attributes { get; set; }  // Struct attributes (@library, @packed, etc.)
     public IrWhereClause? WhereClause { get; set; }  // Generic type constraints (e.g., where T: Sortable)
+    public bool ImplementsDrop { get; set; }  // True if this type implements the Drop trait
     private int? _cachedSize;
 
     public IrStructType(string structName, List<IrStructField> fields, List<string>? genericParams = null, string? cacheKey = null, Novus.SemanticAnalysis.AttributeCollection? attributes = null, IrWhereClause? whereClause = null)
@@ -962,6 +992,23 @@ public class IrCastValue : IrValue
     {
         Value = value;
         SourceType = sourceType;
+    }
+}
+
+/// <summary>
+/// Field reference value - represents an lvalue reference to a struct field
+/// Used when we need to pass &struct.field to a function without loading the field value first
+/// This avoids creating a copy of the field when we just need its address
+/// </summary>
+public class IrFieldReference : IrValue
+{
+    public IrValue Struct { get; set; }
+    public string FieldName { get; set; }
+
+    public IrFieldReference(IrValue structValue, string fieldName, IrType fieldType) : base(fieldType)
+    {
+        Struct = structValue;
+        FieldName = fieldName;
     }
 }
 

@@ -1,0 +1,27 @@
+// Example: String to *u8 Automatic Coercion
+//
+// Description:
+//   Tests automatic coercion of String and Str to *u8 pointer.
+//
+// Expected Output:
+//   Exit code: 0
+
+from std::string import String
+
+// Function that accepts a raw *u8 pointer
+fn takes_pointer(ptr: *u8) -> u32 {
+    // For testing purposes, just return a success value
+    return 42
+}
+
+pub fn main() -> i32 {
+    // Test 1: Str literal → *u8 coercion
+    let result1 = takes_pointer("Hello Str")
+
+    // Test 2: String → *u8 coercion (calls as_ptr internally)
+    let my_string = String::from_str("Hello String")
+    let result2 = takes_pointer(my_string)
+
+    // Both should return 42
+    return (i32)(result1 + result2)  // 42 + 42 = 84
+}

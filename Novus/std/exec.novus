@@ -6,12 +6,13 @@
 //
 // NOTE: For memory management, prefer using std::mem::MemoryBlock instead of AllocMem/FreeMem directly
 
-from std::core import Option, Result
+from std::core import Option, Result, Drop
 from std::error import DosError, ExecError, IntuitionError, GraphicsError, NovusError
 from std::ffi::amiga_structs import *
 from std::ffi::exec import AllocMem, FreeMem, AllocVec, FreeVec, CopyMem
 from std::ffi::exec import FindTask, SetTaskPri, AllocSignal, FreeSignal, Wait, Signal
 from std::ffi::exec import Forbid, Permit, Disable, Enable
+from std::ffi::exec import CreateMsgPort, DeleteMsgPort, GetMsg, PutMsg, ReplyMsg
 from std::ffi::amiga_consts import MEMF_ANY, MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, MEMF_LOCAL, MEMF_24BITDMA, MEMF_KICK, MEMF_CLEAR, MEMF_LARGEST, MEMF_REVERSE
 
 // ============================================================================
@@ -251,5 +252,258 @@ pub fn disable() {
 pub fn enable() {
     unsafe {
         Enable()
+    }
+}
+
+// ============================================================================
+// RAII Resource Wrappers (Automatic Cleanup)
+// ============================================================================
+
+/// Signal - RAII wrapper for Exec signal bits
+///
+/// Automatically frees the signal when it goes out of scope.
+/// This prevents signal exhaustion (only 16 user signals available per task).
+///
+/// Example:
+/// ```novus
+/// fn wait_for_event() -> Result<(), ExecError> {
+///     let signal = Signal::alloc()?;
+///     let mask = signal.mask();
+///
+///     // Wait for event
+///     wait_for_signals(mask);
+///
+///     // Signal automatically freed here!
+/// }
+/// ```
+pub struct Signal {
+    sigbit: i8,  // Signal bit number (-1 = invalid)
+}
+
+impl Signal {
+    /// Allocate a signal bit
+    ///
+    /// Returns Err if no signals are available (limit of 16 user signals).
+    pub fn alloc() -> Result<Signal, ExecError> {
+        let sigbit = unsafe { AllocSignal(-1) }
+        if sigbit == -1 {
+            return Result::Err(ExecError::NoSignals)
+        }
+        return Result::Ok(Signal { sigbit: sigbit })
+    }
+
+    /// Get the signal bit number (0-31)
+    pub fn bit(&self) -> i8 {
+        return self.sigbit
+    }
+
+    /// Create Signal from raw signal bit (takes ownership)
+    ///
+    /// The signal will be automatically freed when the Signal is dropped.
+    /// Only use this if you own the signal and it should be freed.
+    ///
+    /// DO NOT use for system signals like SIGBREAKF_CTRL_C.
+    pub fn from_raw(sigbit: i8) -> Signal {
+        return Signal { sigbit: sigbit }
+    }
+
+    /// Extract raw signal bit and prevent automatic free
+    ///
+    /// This transfers ownership to the caller. The caller is responsible
+    /// for freeing the signal manually.
+    ///
+    /// Use this when passing ownership to another task or storing
+    /// the signal beyond the current scope.
+    pub fn into_raw(self) -> i8 {
+        let sigbit = self.sigbit;
+        unsafe { core::mem::forget(self) }  // Prevent drop
+        return sigbit
+    }
+
+    /// Get the signal mask (1 << bit)
+    ///
+    /// This is the value to pass to Wait() or Signal().
+    pub fn mask(&self) -> u32 {
+        if self.sigbit < 0 {
+            return 0
+        }
+        return 1u32 << (u32)self.sigbit
+    }
+
+    /// Wait for this signal
+    ///
+    /// Blocks until the signal arrives.
+    pub fn wait(&self) -> u32 {
+        return unsafe { Wait(1 << (i32)self.sigbit) }
+    }
+
+    /// Send this signal to a task
+    pub fn send_to(&self, task: *Task) {
+        unsafe { Signal(task, self.mask()) }
+    }
+}
+
+// Automatic cleanup for Signal (RAII)
+impl Drop for Signal {
+    fn drop(&mut self) {
+        if self.sigbit >= 0 {
+            unsafe { FreeSignal(self.sigbit) }
+            self.sigbit = -1
+        }
+    }
+}
+
+/// MsgPort - RAII wrapper for Exec message ports
+///
+/// Automatically drains and replies to pending messages, then deletes the port
+/// when it goes out of scope. This prevents:
+/// - Message port leaks
+/// - Unreplied messages (which cause system hangs)
+/// - "Port freed with messages still queued" crashes
+///
+/// Example:
+/// ```novus
+/// fn create_reply_port() -> Result<MsgPort, ExecError> {
+///     let port = MsgPort::create()?;
+///
+///     // Use port for communication...
+///
+///     // Port automatically cleaned up here:
+///     // 1. All pending messages are drained and replied
+///     // 2. Port is deleted
+/// }
+/// ```
+pub struct MsgPort {
+    port: *MsgPort,  // Pointer to MsgPort struct (null = invalid)
+}
+
+impl MsgPort {
+    /// Create a new message port
+    ///
+    /// Returns Err if port creation fails (out of memory).
+    pub fn create() -> Result<MsgPort, ExecError> {
+        let port = unsafe { CreateMsgPort() }
+        if port.is_null() {
+            return Result::Err(ExecError::NoMem)
+        }
+        return Result::Ok(MsgPort { port: port })
+    }
+
+    /// Get the raw MsgPort pointer for FFI calls
+    pub fn handle(&self) -> *MsgPort {
+        return self.port
+    }
+
+    /// Create MsgPort from raw pointer (takes ownership)
+    ///
+    /// The port will be automatically deleted when the MsgPort is dropped.
+    /// All pending messages will be drained and replied.
+    ///
+    /// Only use this if you own the port and it should be deleted.
+    /// DO NOT use for system-owned ports like Window.UserPort.
+    pub fn from_raw(port: *MsgPort) -> MsgPort {
+        return MsgPort { port: port }
+    }
+
+    /// Extract raw pointer and prevent automatic deletion
+    ///
+    /// This transfers ownership to the caller. The caller is responsible
+    /// for draining messages and deleting the port manually.
+    ///
+    /// Use this when passing ownership to another task or storing
+    /// the port beyond the current scope.
+    pub fn into_raw(self) -> *MsgPort {
+        let port = self.port;
+        unsafe { core::mem::forget(self) }  // Prevent drop
+        return port
+    }
+
+    /// Get a message from the port (non-blocking)
+    ///
+    /// Returns None if no messages are waiting.
+    pub fn get_msg(&self) -> Option<*Message> {
+        let msg = unsafe { GetMsg(self.port) }
+        if msg.is_null() {
+            return Option::None
+        }
+        return Option::Some(msg)
+    }
+
+    /// Put a message to this port
+    ///
+    /// The message will be queued until GetMsg() retrieves it.
+    pub fn put_msg(&self, msg: *Message) {
+        unsafe { PutMsg(self.port, msg) }
+    }
+
+    /// Reply to a message
+    ///
+    /// Should be called for every message received via get_msg().
+    pub fn reply_msg(&self, msg: *Message) {
+        unsafe { ReplyMsg(msg) }
+    }
+
+    /// Drain and reply to all pending messages
+    ///
+    /// This is called automatically by Drop, but can be called manually
+    /// if you need to drain messages before the port is destroyed.
+    pub fn drain_messages(&self) {
+        loop {
+            let msg = unsafe { GetMsg(self.port) }
+            if msg.is_null() {
+                break
+            }
+            unsafe { ReplyMsg(msg) }
+        }
+    }
+
+    /// Drain messages with custom reply logic
+    ///
+    /// This allows you to process messages and set custom fields
+    /// (like mn_Error) before replying. Useful for device drivers
+    /// and custom protocols.
+    ///
+    /// The provided function is called for each message BEFORE ReplyMsg().
+    /// The function should NOT call ReplyMsg() - that's done automatically.
+    ///
+    /// Example:
+    /// ```novus
+    /// port.drain_with(|msg| {
+    ///     // Set error code
+    ///     unsafe { (*msg).mn_Error = IOERR_OPENFAIL }
+    /// })
+    /// ```
+    pub fn drain_with<F>(&self, process_fn: F)
+    where F: Fn(*Message) {
+        loop {
+            let msg = unsafe { GetMsg(self.port) }
+            if msg.is_null() {
+                break
+            }
+            process_fn(msg)  // Custom processing
+            unsafe { ReplyMsg(msg) }
+        }
+    }
+}
+
+// Automatic cleanup for MsgPort (RAII)
+impl Drop for MsgPort {
+    fn drop(&mut self) {
+        if !self.port.is_null() {
+            // CRITICAL: Drain and reply to all pending messages
+            // before deleting the port. Unreplied messages cause
+            // system hangs and crashes.
+            loop {
+                let msg = unsafe { GetMsg(self.port) }
+                if msg.is_null() {
+                    break
+                }
+                unsafe { ReplyMsg(msg) }
+            }
+
+            // Now safe to delete the port
+            unsafe { DeleteMsgPort(self.port) }
+            self.port = (*MsgPort)0
+        }
     }
 }

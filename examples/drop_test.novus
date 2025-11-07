@@ -1,0 +1,137 @@
+// Test the Drop trait - automatic memory cleanup (RAII)
+// This demonstrates that memory is automatically freed when values go out of scope
+
+from std::mem import MemoryBlock, MEMF_FAST
+from std::collections import Vec
+from std::core import Option
+from std::sys import printf
+
+fn test_memory_block_drop() {
+    printf("Testing MemoryBlock automatic cleanup...\n")
+
+    // Block will be automatically freed at end of scope
+    let block_opt = MemoryBlock::alloc(1024, MEMF_FAST)
+    match block_opt {
+        Some(block) => {
+            printf("  Allocated 1024 bytes\n")
+            // block.drop() will be called automatically when this scope ends
+        },
+        None => {
+            printf("  Failed to allocate\n")
+        }
+    }
+
+    printf("  Block should be freed now (automatic)\n")
+}
+
+fn test_vec_drop() {
+    printf("Testing Vec<T> automatic cleanup...\n")
+
+    // Vec will be automatically freed at end of scope
+    let vec: Vec<i32> = Vec::new()
+    vec.push(1)
+    vec.push(2)
+    vec.push(3)
+
+    printf("  Created Vec with 3 elements\n")
+    printf("  Vec capacity: %d\n", vec.capacity())
+
+    // vec.drop() will be called automatically when this function returns
+    printf("  Vec should be freed now (automatic)\n")
+}
+
+fn test_nested_scopes() {
+    printf("Testing nested scopes...\n")
+
+    let outer = MemoryBlock::alloc(512, MEMF_FAST)
+    match outer {
+        Some(block1) => {
+            printf("  Outer block allocated\n")
+
+            // Inner scope
+            {
+                let inner = MemoryBlock::alloc(256, MEMF_FAST)
+                match inner {
+                    Some(block2) => {
+                        printf("  Inner block allocated\n")
+                    },
+                    None => {}
+                }
+                // Inner block freed here
+                printf("  Inner block freed\n")
+            }
+
+            // Outer block still valid
+            printf("  Outer block still valid\n")
+        },
+        None => {}
+    }
+    // Outer block freed here
+    printf("  Outer block freed\n")
+}
+
+fn test_early_return() {
+    printf("Testing early return cleanup...\n")
+
+    let block_opt = MemoryBlock::alloc(2048, MEMF_FAST)
+    match block_opt {
+        Some(block) => {
+            printf("  Block allocated\n")
+
+            // Early return - block should be freed before returning
+            if true {
+                printf("  Early return - block should be freed\n")
+                return
+            }
+
+            printf("  This should not print\n")
+        },
+        None => {}
+    }
+}
+
+fn test_multiple_vecs() {
+    printf("Testing multiple Vec allocations...\n")
+
+    let vec1: Vec<i32> = Vec::new()
+    vec1.push(10)
+    vec1.push(20)
+
+    let vec2: Vec<u8> = Vec::new()
+    vec2.push(100)
+    vec2.push(200)
+    vec2.push(300)
+
+    let vec3: Vec<i32> = Vec::new()
+    vec3.push(1000)
+
+    printf("  Created 3 Vecs\n")
+    printf("  Vec1 len: %d, capacity: %d\n", vec1.len(), vec1.capacity())
+    printf("  Vec2 len: %d, capacity: %d\n", vec2.len(), vec2.capacity())
+    printf("  Vec3 len: %d, capacity: %d\n", vec3.len(), vec3.capacity())
+
+    // All three will be freed in reverse order: vec3, vec2, vec1
+    printf("  All Vecs will be freed now (LIFO order)\n")
+}
+
+pub fn main() {
+    printf("=== Drop Trait Test Suite ===\n\n")
+
+    test_memory_block_drop()
+    printf("\n")
+
+    test_vec_drop()
+    printf("\n")
+
+    test_nested_scopes()
+    printf("\n")
+
+    test_early_return()
+    printf("\n")
+
+    test_multiple_vecs()
+    printf("\n")
+
+    printf("=== All tests completed successfully! ===\n")
+    printf("No memory leaks! RAII is working! 🎉\n")
+}

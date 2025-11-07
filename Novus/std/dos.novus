@@ -4,13 +4,13 @@
 // High-level wrappers for dos.library functions
 // For low-level FFI access, use std::ffi::dos
 
-from std::core import Option, Result
+from std::core import Option, Result, Drop
 from std::ffi::amiga_structs import *
 from std::error import DosError, ExecError, IntuitionError, GraphicsError, NovusError
 from std::tags import make_tags
 from std::ffi::dos import SystemTagList, CreateNewProc, AllocDosObject, FreeDosObject
 from std::ffi::dos import NewLoadSeg, UnLoadSeg
-from std::ffi::dos import Open, Close, Read, Write, Seek
+from std::ffi::dos import Open, Close, Read, Write, Seek, Lock, UnLock
 
 // ============================================================================
 // Command Execution
@@ -147,7 +147,7 @@ pub fn LoadSeg(file: *u8, tags_ptr: *TagItem, count: u32) -> Result<i32, NovusEr
 }
 
 // ============================================================================
-// File I/O
+// File I/O (Legacy Functions)
 // ============================================================================
 // Note: These wrappers use the low-level FFI functions. For proper error handling,
 // check IoErr() after operations. Future enhancement: wrap with proper Result types.
@@ -277,3 +277,176 @@ pub fn seek_file(fh: i32, position: i32, offset: i32) -> i32 {
 //
 // Future enhancement: Add a Printf macro or special compiler support for
 // format string handling.
+//
+
+// ============================================================================
+// RAII Resource Wrappers (Automatic Cleanup)
+// ============================================================================
+
+/// FileHandle - RAII wrapper for DOS file handles
+///
+/// Automatically closes the file when the handle goes out of scope.
+/// This prevents file handle leaks, which are a common source of bugs
+/// (DOS limits each process to ~20 file handles).
+///
+/// Example:
+/// ```novus
+/// fn read_config() -> Result<String, DosError> {
+///     let file = FileHandle::open("S:Startup-Sequence", MODE_OLDFILE)?;
+///     // Use file...
+///     // Automatically closed here!
+/// }
+/// ```
+pub struct FileHandle {
+    fh: i32,  // BPTR file handle (0 = invalid)
+}
+
+impl FileHandle {
+    /// Open a file and return a RAII handle
+    ///
+    /// Mode should be one of:
+    /// - MODE_OLDFILE (1005): Open existing file read/write
+    /// - MODE_NEWFILE (1006): Create new file (truncate if exists)
+    /// - MODE_READWRITE (1004): Open with shared lock
+    ///
+    /// Returns Err on failure (use IoErr() for details).
+    pub fn open(path: *u8, mode: i32) -> Result<FileHandle, DosError> {
+        let fh = unsafe { Open(path, mode) }
+        if fh == 0 {
+            return Result::Err(DosError::NotFound)
+        }
+        return Result::Ok(FileHandle { fh: fh })
+    }
+
+    /// Get the raw BPTR handle for FFI calls
+    pub fn handle(&self) -> i32 {
+        return self.fh
+    }
+
+    /// Create FileHandle from raw BPTR (takes ownership)
+    ///
+    /// The handle will be automatically closed when the FileHandle is dropped.
+    /// Only use this if you own the handle and it should be closed.
+    ///
+    /// DO NOT use for system-owned handles like Input(), Output(), Error().
+    pub fn from_raw(fh: i32) -> FileHandle {
+        return FileHandle { fh: fh }
+    }
+
+    /// Extract raw BPTR and prevent automatic close
+    ///
+    /// This transfers ownership to the caller. The caller is responsible
+    /// for closing the file handle manually.
+    ///
+    /// Use this when passing ownership to another system or storing
+    /// the handle beyond the current scope.
+    pub fn into_raw(self) -> i32 {
+        let fh = self.fh;
+        unsafe { core::mem::forget(self) }  // Prevent drop
+        return fh
+    }
+
+    /// Read bytes from file into buffer
+    ///
+    /// Returns number of bytes actually read.
+    /// Returns 0 on EOF or error (check IoErr()).
+    pub fn read(&self, buffer: *u8, length: u32) -> i32 {
+        return unsafe { Read(self.fh, buffer, (i32)length) }
+    }
+
+    /// Write bytes from buffer to file
+    ///
+    /// Returns number of bytes written.
+    /// Returns -1 on error (check IoErr()).
+    pub fn write(&self, buffer: *u8, length: u32) -> i32 {
+        return unsafe { Write(self.fh, buffer, (i32)length) }
+    }
+
+    /// Seek to a position in the file
+    ///
+    /// Returns old position, or -1 on error.
+    pub fn seek(&self, position: i32, offset: i32) -> i32 {
+        return unsafe { Seek(self.fh, position, offset) }
+    }
+}
+
+// Automatic cleanup for FileHandle (RAII)
+impl Drop for FileHandle {
+    fn drop(&mut self) {
+        if self.fh != 0 {
+            unsafe { Close(self.fh) }
+            self.fh = 0
+        }
+    }
+}
+
+/// DirLock - RAII wrapper for DOS directory locks
+///
+/// Automatically unlocks the directory when the lock goes out of scope.
+/// This prevents lock leaks, which cause "Volume is in use" errors and
+/// prevent floppy disk ejection.
+///
+/// Example:
+/// ```novus
+/// fn list_directory() -> Result<(), DosError> {
+///     let lock = DirLock::lock("SYS:", ACCESS_READ)?;
+///     // Examine directory...
+///     // Automatically unlocked here!
+/// }
+/// ```
+pub struct DirLock {
+    lock: i32,  // BPTR lock (0 = invalid)
+}
+
+impl DirLock {
+    /// Lock a directory and return a RAII handle
+    ///
+    /// Type should be:
+    /// - ACCESS_READ (-2): Shared read lock
+    /// - ACCESS_WRITE (-1): Exclusive write lock
+    ///
+    /// Returns Err on failure (use IoErr() for details).
+    pub fn lock(path: *u8, lock_type: i32) -> Result<DirLock, DosError> {
+        let lock = unsafe { Lock(path, lock_type) }
+        if lock == 0 {
+            return Result::Err(DosError::NotFound)
+        }
+        return Result::Ok(DirLock { lock: lock })
+    }
+
+    /// Get the raw BPTR lock for FFI calls
+    pub fn handle(&self) -> i32 {
+        return self.lock
+    }
+
+    /// Create DirLock from raw BPTR (takes ownership)
+    ///
+    /// The lock will be automatically unlocked when the DirLock is dropped.
+    /// Only use this if you own the lock and it should be unlocked.
+    pub fn from_raw(lock: i32) -> DirLock {
+        return DirLock { lock: lock }
+    }
+
+    /// Extract raw BPTR and prevent automatic unlock
+    ///
+    /// This transfers ownership to the caller. The caller is responsible
+    /// for unlocking the directory lock manually.
+    ///
+    /// Use this when passing ownership to another system or storing
+    /// the lock beyond the current scope.
+    pub fn into_raw(self) -> i32 {
+        let lock = self.lock;
+        unsafe { core::mem::forget(self) }  // Prevent drop
+        return lock
+    }
+}
+
+// Automatic cleanup for DirLock (RAII)
+impl Drop for DirLock {
+    fn drop(&mut self) {
+        if self.lock != 0 {
+            unsafe { UnLock(self.lock) }
+            self.lock = 0
+        }
+    }
+}

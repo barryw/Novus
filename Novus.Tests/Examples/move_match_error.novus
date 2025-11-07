@@ -1,0 +1,25 @@
+from std::strings import String
+
+fn consume(consuming s: String) {}
+
+enum Option<T> {
+    Some(T),
+    None
+}
+
+fn test_match_move(opt: Option<i32>) {
+    let x = String::new()
+
+    match opt {
+        Option::Some(v) => {
+            consume(x)  // x moved in this arm
+        },
+        Option::None => {
+            // x not moved here
+        }
+    }
+
+    // ERROR: use of moved value
+    // E0382: value may have been moved in a conditional branch
+    let len = x.len()
+}

@@ -122,6 +122,7 @@ public abstract class IrVisitor<TResult, TContext>
             IrArrayLiteral arrayLiteral => VisitArrayLiteral(arrayLiteral, context),
             IrDereferenceValue derefValue => VisitDereferenceValue(derefValue, context),
             IrBorrowValue borrowValue => VisitBorrowValue(borrowValue, context),
+            IrFieldReference fieldRef => VisitFieldReference(fieldRef, context),
             IrCastValue castValue => VisitCastValue(castValue, context),
             IrFunctionAddress funcAddr => VisitFunctionAddress(funcAddr, context),
             IrEnumValue enumValue => VisitEnumValue(enumValue, context),
@@ -493,6 +494,15 @@ public abstract class IrVisitor<TResult, TContext>
     public virtual TResult VisitBorrowValue(IrBorrowValue borrowValue, TContext context)
     {
         VisitValue(borrowValue.BorrowedValue, context);
+        return default!;
+    }
+
+    /// <summary>
+    /// Visit a field reference
+    /// </summary>
+    public virtual TResult VisitFieldReference(IrFieldReference fieldRef, TContext context)
+    {
+        VisitValue(fieldRef.Struct, context);
         return default!;
     }
 

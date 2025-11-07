@@ -1,0 +1,52 @@
+// F-String Interpolation Test
+// Demonstrates the new f"..." string interpolation feature
+
+from std::strings import Str, String
+from std::fmt import Formatter, Display
+
+extern fn write(format: *u8, ...args) -> i32
+
+fn main() -> i32 {
+    // Test 1: Simple variable interpolation
+    write("Test 1: Simple variable interpolation\n")
+
+    let name = "Alice"
+    let age: i32 = 42
+    let message = f"Hello, {name}! You are {age} years old."
+    write("  ")
+    write(message.as_ptr())
+    write("\n")
+
+    // Test 2: Multiple variables of different types
+    write("\nTest 2: Multiple types\n")
+
+    let x: u32 = 100
+    let y: i32 = -50
+    let flag: bool = true
+    let result = f"x={x}, y={y}, flag={flag}"
+    write("  ")
+    write(result.as_ptr())
+    write("\n")
+
+    // Test 3: String concatenation with f-strings
+    write("\nTest 3: Expressions in interpolation\n")
+
+    let a: i32 = 10
+    let b: i32 = 20
+    let sum = f"The sum of {a} and {b} is {a + b}"
+    write("  ")
+    write(sum.as_ptr())
+    write("\n")
+
+    // Test 4: Literal braces (escaping)
+    write("\nTest 4: Literal braces\n")
+
+    let escaped = f"Use {{braces}} for literal braces"
+    write("  ")
+    write(escaped.as_ptr())
+    write("\n")
+
+    write("\n[SUCCESS] All f-string tests completed!\n")
+
+    return 0
+}

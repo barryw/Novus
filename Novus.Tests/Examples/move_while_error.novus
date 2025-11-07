@@ -1,0 +1,16 @@
+from std::strings import String
+
+fn consume(consuming s: String) {}
+
+fn test_while_move() {
+    let x = String::new()
+
+    while true {
+        consume(x)  // x moved in loop body
+        break
+    }
+
+    // ERROR: use of moved value
+    // E0382: value was moved inside a loop
+    let len = x.len()
+}
