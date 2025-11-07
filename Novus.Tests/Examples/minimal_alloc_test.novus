@@ -1,34 +1,40 @@
 // Minimal allocation test - find where it hangs
 
+from std::strings import Str
+from std::ffi::exec import AllocMem, FreeMem
+
 extern fn write(format: *u8, ...args) -> i32
-extern fn AllocMem(byteSize: u32, requirements: u32) -> *u8
-extern fn FreeMem(memoryBlock: *u8, byteSize: u32)
 
 fn main() -> i32 {
-    write("1. Starting\n")
+    write("1. Starting\n".ptr)
 
     // Test AllocMem directly
-    let ptr = AllocMem(256, 65537)  // MEMF_PUBLIC | MEMF_CLEAR
+    var ptr: *u8 = (*u8)0
+    unsafe {
+        ptr = AllocMem(256, 65537)  // MEMF_PUBLIC | MEMF_CLEAR
+    }
 
-    write("2. After AllocMem\n")
+    write("2. After AllocMem\n".ptr)
 
-    if ptr == (*u8)0 {
-        write("3. AllocMem returned NULL\n")
+    if let p = ptr {
+        write("4. AllocMem succeeded\n".ptr)
+
+        // Try to write to it
+        unsafe {
+            *p = 72  // 'H'
+        }
+
+        write("5. Wrote to memory\n".ptr)
+
+        unsafe {
+            FreeMem(p, 256)
+        }
+
+        write("6. FreeMem done\n".ptr)
+    } else {
+        write("3. AllocMem returned NULL\n".ptr)
         return 1
     }
-
-    write("4. AllocMem succeeded\n")
-
-    // Try to write to it
-    unsafe {
-        *ptr = 72  // 'H'
-    }
-
-    write("5. Wrote to memory\n")
-
-    FreeMem(ptr, 256)
-
-    write("6. FreeMem done\n")
 
     return 0
 }

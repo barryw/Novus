@@ -28,6 +28,11 @@ pub struct BitMap {
     Planes: [*u8; 8],
 }
 
+// Opaque struct for View (hardware display list)
+pub struct View {
+    _opaque: u8,
+}
+
 // ============================================================================
 // Exec Library Structs
 // ============================================================================

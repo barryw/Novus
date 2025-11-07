@@ -31,7 +31,7 @@ impl GreetingLibrary {
 
 ## Building
 
-From the solution root:
+From the workspace root:
 ```bash
 novusc build
 ```

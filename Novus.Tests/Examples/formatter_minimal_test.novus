@@ -5,6 +5,14 @@ from std::fmt import Formatter
 
 extern fn write(format: *u8, ...args) -> i32
 
+fn test_formatter(f: Formatter) -> i32 {
+    write("  Created formatter\n")
+    write("  About to call finish...\n")
+    let result = f.finish()
+    write("  Called finish successfully\n")
+    return 0
+}
+
 fn main() -> i32 {
     write("Formatter Minimal Test\n")
     write("======================\n\n")
@@ -13,20 +21,17 @@ fn main() -> i32 {
     write("Test 1: Empty formatter...\n")
     let f1 = Formatter::new()
 
-    let formatter = match f1 {
-        Option::Some(f) => {
-            write("  Created formatter\n")
-            f
-        }
+    let result = match f1 {
+        Option::Some(f) => test_formatter(f),
         Option::None => {
             write("ERROR: Formatter::new() returned None\n")
-            return 1
-        }
+            1
+        },
     }
 
-    write("  About to call finish...\n")
-    let result = formatter.finish()
-    write("  Called finish successfully\n")
+    if result != 0 {
+        return result
+    }
 
     write("\n[SUCCESS] Formatter minimal test works!\n")
     return 0

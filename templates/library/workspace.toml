@@ -1,0 +1,7 @@
+[workspace]
+name = "{{PROJECT_NAME}}"
+description = "AmigaOS shared library"
+version = "1.0.0"
+
+# Member projects (directory names)
+members = ["library", "example"]

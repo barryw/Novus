@@ -133,9 +133,25 @@ public class IrModule
     {
         if (type is IrStructType structType)
         {
-            // Use CacheKey for monomorphized types, otherwise use StructName
+            // For monomorphized types (e.g., Vec<bool>), check both:
+            // 1. Exact match using CacheKey (e.g., "Vec<bool>")
+            // 2. Generic base type match (e.g., "Vec" with generic impl)
+
+            // First try exact match
             var typeName = structType.CacheKey ?? structType.StructName;
-            return TypeImplementsDrop(typeName);
+            if (TypeImplementsDrop(typeName))
+            {
+                return true;
+            }
+
+            // If that fails and this is a monomorphized type, check if the base generic type has a Drop impl
+            if (structType.CacheKey != null)
+            {
+                // Check base struct name (e.g., "Vec" for "Vec<bool>")
+                return TypeImplementsDrop(structType.StructName);
+            }
+
+            return false;
         }
         // Only struct types can implement Drop (primitives, pointers, etc. don't need cleanup)
         return false;

@@ -249,9 +249,9 @@ novusc build
 
 ## 🚀 Next Steps (Future Enhancements)
 
-### Phase 2: Workspace/Solution Support
+### Phase 2: Workspace/Workspace Support
 
-**User's Vision:** `novusc new` creates a solution with multiple packages
+**User's Vision:** `novusc new` creates a workspace with multiple packages
 
 ```bash
 novusc new my-project          # Creates workspace

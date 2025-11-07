@@ -8,9 +8,9 @@ public class NewCommandOptions
     [Value(0, Required = true, MetaName = "name", HelpText = "Project name or '.' for current directory")]
     public string ProjectName { get; set; } = "";
 
-    [Option('t', "type", Required = false, Default = "cli",
+    [Option('t', "type", Required = false, Default = null,
         HelpText = "Project type: cli, workbench, dual, library, device")]
-    public string ProjectType { get; set; } = "cli";
+    public string? ProjectType { get; set; } = null;
 
     [Option('a', "author", Required = false, HelpText = "Author name")]
     public string? Author { get; set; }

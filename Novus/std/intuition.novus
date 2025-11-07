@@ -4,7 +4,7 @@
 // High-level wrappers for intuition.library functions
 // For low-level FFI access, use std::ffi::intuition
 
-from std::core import Option, Result
+from std::core import Option, Result, Drop
 from std::error import DosError, ExecError, IntuitionError, GraphicsError, NovusError
 from std::tags import make_tags
 from std::ffi::amiga_structs import TagItem, Window, Screen, NewWindow, NewScreen

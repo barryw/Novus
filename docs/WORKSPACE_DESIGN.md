@@ -1,4 +1,4 @@
-# Novus Workspace/Solution Design
+# Novus Workspace Design
 
 ## The Problem
 
@@ -7,7 +7,7 @@ Currently, `novus.toml` represents a single package. But what if you want:
 - A library + example programs
 - Multiple related packages that should build together
 
-## Proposed Solution: Two-Level Structure
+## Proposed Design: Two-Level Structure
 
 ### Level 1: **Workspace** (`Novus.toml` - capital N)
 - Contains multiple packages
@@ -163,10 +163,9 @@ novusc build
 
 | Term | Meaning | File | Example |
 |------|---------|------|---------|
-| **Workspace** | Container for multiple packages | `Novus.toml` | "my-amiga-suite" |
-| **Package** | Single buildable target | `novus.toml` | "cli-tool.exe" |
+| **Workspace** | Container for multiple packages | `workspace.toml` | "my-amiga-suite" |
+| **Package** | Single buildable target | `project.toml` | "cli-tool.exe" |
 | **Target** | What gets built | defined in package | cli, workbench, library |
-| **Solution** | (Alternate term for workspace) | | .NET terminology |
 
 ---
 

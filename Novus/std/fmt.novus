@@ -1,7 +1,7 @@
 // std::fmt - Formatting and Display/Debug traits
 // Provides zero-allocation formatting infrastructure for string interpolation
 
-from std::core import Option
+from std::core import Option, Drop
 from std::strings import String, Str
 from std::error import StringError
 

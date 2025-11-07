@@ -1,4 +1,4 @@
-# Novus Workspace/Solution System - COMPLETE! 🎉
+# Novus Workspace/Workspace System - COMPLETE! 🎉
 
 **Date:** 2025-10-31
 **Status:** ✅ WORKING - Ready to use!
@@ -7,9 +7,9 @@
 
 ## 🎯 What We Built
 
-A **two-level project system** inspired by .NET solutions and Cargo workspaces:
+A **two-level project system** inspired by .NET workspaces and Cargo workspaces:
 
-1. **Workspace/Solution** (`Novus.toml` - capital N) - Container for multiple projects
+1. **Workspace** (`Novus.toml` - capital N) - Container for multiple projects
 2. **Projects** (`novus.toml` - lowercase n) - Individual buildable targets
 
 ---
@@ -19,14 +19,14 @@ A **two-level project system** inspired by .NET solutions and Cargo workspaces:
 ### Step 1: Create a Solution
 
 ```bash
-novusc new my-solution --author "Barry"
+novusc new my-workspace --author "Barry"
 ```
 
 **Output:**
 ```
-Creating new solution: my-solution
+Creating new solution: my-workspace
 
-  ✓ Created solution directory: my-solution/
+  ✓ Created workspace directory: my-workspace/
   ✓ Created Novus.toml (solution file)
   ✓ Created .gitignore
   ✓ Created README.md
@@ -34,7 +34,7 @@ Creating new solution: my-solution
 Your solution is ready!
 
 Next steps:
-  cd my-solution
+  cd my-workspace
   novusc new my-app --type cli       # Add a CLI project
   novusc new my-gui --type workbench # Add a Workbench project
 
@@ -43,7 +43,7 @@ Happy coding! 🚀
 
 **Creates:**
 ```
-my-solution/
+my-workspace/
 ├── Novus.toml          # Workspace/solution file (capital N!)
 ├── .gitignore
 └── README.md
@@ -54,7 +54,7 @@ my-solution/
 ### Step 2: Add Projects to the Solution
 
 ```bash
-cd my-solution
+cd my-workspace
 
 # Add a CLI application
 novusc new cli-tool --type cli --author "Barry"
@@ -81,7 +81,7 @@ Project added to solution!
 
 **Final Structure:**
 ```
-my-solution/
+my-workspace/
 ├── Novus.toml              # ← Workspace file
 ├── .gitignore
 ├── README.md
@@ -109,7 +109,7 @@ my-solution/
 
 ```toml
 [workspace]
-name = "my-solution"
+name = "my-workspace"
 version = "0.1.0"
 authors = ["Barry"]
 members = ["cli-tool", "gui-app", "mylib"]  # Auto-updated!
@@ -154,13 +154,13 @@ The `novusc new` command automatically detects context:
 
 ### Outside a Solution:
 ```bash
-novusc new my-solution
-# → Creates a NEW SOLUTION
+novusc new my-workspace
+# → Creates a NEW WORKSPACE
 ```
 
 ### Inside a Solution:
 ```bash
-cd my-solution
+cd my-workspace
 novusc new my-app --type cli
 # → Adds PROJECT to existing solution
 # → Auto-updates Novus.toml members
@@ -169,10 +169,10 @@ novusc new my-app --type cli
 **Detection Logic:**
 ```csharp
 if (File.Exists("Novus.toml")) {
-    // We're inside a solution → create project
+    // We're inside a workspace → create project
     CreateProjectInWorkspace();
 } else {
-    // We're NOT in a solution → create solution
+    // We're NOT in a workspace → create solution
     CreateNewWorkspace();
 }
 ```
@@ -248,7 +248,7 @@ novusc new driver-core --type library
 ## 🔄 Building (Future)
 
 ```bash
-# Build all projects in solution
+# Build all projects in workspace
 novusc build
 
 # Build specific project
@@ -284,8 +284,8 @@ novusc build --cpu 68040
 
 ## ✅ What Works Now
 
-- ✅ Create new solutions with `novusc new`
-- ✅ Add projects to solutions with `novusc new` (inside solution)
+- ✅ Create new workspaces with `novusc new`
+- ✅ Add projects to workspaces with `novusc new` (inside solution)
 - ✅ Auto-update `Novus.toml` members array
 - ✅ All 5 project types (CLI, Workbench, Dual, Library, Device)
 - ✅ Smart context detection
@@ -297,7 +297,7 @@ novusc build --cpu 68040
 
 ### Phase 1: Build System
 - Update `novusc build` to read `Novus.toml`
-- Build all projects in solution
+- Build all projects in workspace
 - Build specific project by name
 - Dependency ordering
 
@@ -342,9 +342,9 @@ cd my-app
 
 ### After:
 ```bash
-# Solution with multiple projects
-novusc new my-solution
-cd my-solution
+# Workspace with multiple projects
+novusc new my-workspace
+cd my-workspace
 novusc new cli-tool --type cli
 novusc new gui-app --type workbench
 # Done! Professional structure ready!
@@ -368,7 +368,7 @@ novusc new gui-app --type workbench
 
 ## 🚀 Ready for Production!
 
-The workspace/solution system is:
+The workspace/workspace system is:
 - ✅ **Implemented**
 - ✅ **Tested** (manually verified)
 - ✅ **Documented**
@@ -390,9 +390,9 @@ The workspace/solution system is:
 
 ## Summary
 
-We successfully implemented a **two-level workspace/solution system** where:
-- `novusc new my-solution` creates a workspace
-- `cd my-solution && novusc new my-app` adds projects to it
+We successfully implemented a **two-level workspace/workspace system** where:
+- `novusc new my-workspace` creates a workspace
+- `cd my-workspace && novusc new my-app` adds projects to it
 - `Novus.toml` tracks all projects in the `members` array
 - Professional, intuitive workflow inspired by .NET and Cargo
 

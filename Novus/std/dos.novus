@@ -182,9 +182,8 @@ pub fn LoadSeg(file: *u8, tags_ptr: *TagItem, count: u32) -> Result<i32, NovusEr
 /// ```
 pub fn open_file(path: *u8, mode: i32) -> Option<i32> {
     var fh: i32 = 0
-    unsafe {
-        fh = Open(path, mode)
-    }
+    fh = Open(path, mode)
+    
     if fh == 0 {
         return Option::None
     }
@@ -196,9 +195,8 @@ pub fn open_file(path: *u8, mode: i32) -> Option<i32> {
 /// Should be called for every successfully opened file.
 /// Best used with defer for automatic cleanup.
 pub fn close_file(fh: i32) {
-    unsafe {
-        Close(fh)
-    }
+    Close(fh)
+    
 }
 
 /// Read bytes from file into buffer
@@ -213,9 +211,8 @@ pub fn close_file(fh: i32) {
 /// ```
 pub fn read_file(fh: i32, buffer: *u8, length: u32) -> i32 {
     var result: i32 = 0
-    unsafe {
-        result = Read(fh, buffer, (i32)length)
-    }
+    result = Read(fh, buffer, (i32)length)
+    
     return result
 }
 
@@ -231,9 +228,8 @@ pub fn read_file(fh: i32, buffer: *u8, length: u32) -> i32 {
 /// ```
 pub fn write_file(fh: i32, buffer: *u8, length: u32) -> i32 {
     var result: i32 = 0
-    unsafe {
-        result = Write(fh, buffer, (i32)length)
-    }
+    result = Write(fh, buffer, (i32)length)
+    
     return result
 }
 
@@ -257,9 +253,8 @@ pub fn write_file(fh: i32, buffer: *u8, length: u32) -> i32 {
 /// ```
 pub fn seek_file(fh: i32, position: i32, offset: i32) -> i32 {
     var result: i32 = 0
-    unsafe {
-        result = Seek(fh, position, offset)
-    }
+    result = Seek(fh, position, offset)
+    
     return result
 }
 
@@ -311,7 +306,7 @@ impl FileHandle {
     ///
     /// Returns Err on failure (use IoErr() for details).
     pub fn open(path: *u8, mode: i32) -> Result<FileHandle, DosError> {
-        let fh = unsafe { Open(path, mode) }
+        let fh = Open(path, mode)
         if fh == 0 {
             return Result::Err(DosError::NotFound)
         }
@@ -340,10 +335,8 @@ impl FileHandle {
     ///
     /// Use this when passing ownership to another system or storing
     /// the handle beyond the current scope.
-    pub fn into_raw(self) -> i32 {
-        let fh = self.fh;
-        unsafe { core::mem::forget(self) }  // Prevent drop
-        return fh
+    pub fn into_raw(consuming self) -> i32 {
+        return self.fh
     }
 
     /// Read bytes from file into buffer
@@ -351,7 +344,7 @@ impl FileHandle {
     /// Returns number of bytes actually read.
     /// Returns 0 on EOF or error (check IoErr()).
     pub fn read(&self, buffer: *u8, length: u32) -> i32 {
-        return unsafe { Read(self.fh, buffer, (i32)length) }
+        return Read(self.fh, buffer, (i32)length)
     }
 
     /// Write bytes from buffer to file
@@ -359,14 +352,14 @@ impl FileHandle {
     /// Returns number of bytes written.
     /// Returns -1 on error (check IoErr()).
     pub fn write(&self, buffer: *u8, length: u32) -> i32 {
-        return unsafe { Write(self.fh, buffer, (i32)length) }
+        return Write(self.fh, buffer, (i32)length)
     }
 
     /// Seek to a position in the file
     ///
     /// Returns old position, or -1 on error.
     pub fn seek(&self, position: i32, offset: i32) -> i32 {
-        return unsafe { Seek(self.fh, position, offset) }
+        return Seek(self.fh, position, offset)
     }
 }
 
@@ -374,7 +367,7 @@ impl FileHandle {
 impl Drop for FileHandle {
     fn drop(&mut self) {
         if self.fh != 0 {
-            unsafe { Close(self.fh) }
+            Close(self.fh)
             self.fh = 0
         }
     }
@@ -407,7 +400,7 @@ impl DirLock {
     ///
     /// Returns Err on failure (use IoErr() for details).
     pub fn lock(path: *u8, lock_type: i32) -> Result<DirLock, DosError> {
-        let lock = unsafe { Lock(path, lock_type) }
+        let lock = Lock(path, lock_type)
         if lock == 0 {
             return Result::Err(DosError::NotFound)
         }
@@ -434,10 +427,8 @@ impl DirLock {
     ///
     /// Use this when passing ownership to another system or storing
     /// the lock beyond the current scope.
-    pub fn into_raw(self) -> i32 {
-        let lock = self.lock;
-        unsafe { core::mem::forget(self) }  // Prevent drop
-        return lock
+    pub fn into_raw(consuming self) -> i32 {
+        return self.lock
     }
 }
 
@@ -445,7 +436,7 @@ impl DirLock {
 impl Drop for DirLock {
     fn drop(&mut self) {
         if self.lock != 0 {
-            unsafe { UnLock(self.lock) }
+            UnLock(self.lock)
             self.lock = 0
         }
     }

@@ -8,14 +8,14 @@
 
 ## 🎯 What We Built
 
-A **smart, context-aware build system** that automatically detects whether you're in a solution or project directory and builds accordingly.
+A **smart, context-aware build system** that automatically detects whether you're in a workspace or project directory and builds accordingly.
 
 ### Key Features
 
-1. **Solution-level builds** - Build all projects in a solution with one command
-2. **Project-specific builds** - Build a single project from the solution
+1. **Workspace-level builds** - Build all projects in a workspace with one command
+2. **Project-specific builds** - Build a single project from the workspace
 3. **Context-aware** - Automatically detects where you are (solution vs. project)
-4. **Clear naming** - `solution.toml` for solutions, `project.toml` for projects
+4. **Clear naming** - `workspace.toml` for workspaces, `project.toml` for projects
 5. **Workspace inheritance** - Projects inherit build settings from solution
 
 ---
@@ -23,8 +23,8 @@ A **smart, context-aware build system** that automatically detects whether you'r
 ## 📁 File Structure
 
 ```
-my-solution/                # Solution directory
-├── solution.toml           # Solution configuration (capital S!)
+my-workspace/                # Workspace directory
+├── workspace.toml           # Workspace configuration (capital S!)
 ├── README.md
 ├── .gitignore
 ├── app1/                   # Project 1
@@ -46,19 +46,19 @@ my-solution/                # Solution directory
 
 ## 🚀 Usage Examples
 
-### Creating a Solution
+### Creating a Workspace
 
 ```bash
-novusc new my-solution --author "Barry"
-cd my-solution
+novusc new my-workspace --author "Barry"
+cd my-workspace
 ```
 
 **Output:**
 ```
-Creating new solution: my-solution
+Creating new solution: my-workspace
 
-  ✓ Created solution directory: my-solution/
-  ✓ Created solution.toml (solution file)
+  ✓ Created workspace directory: my-workspace/
+  ✓ Created workspace.toml (solution file)
   ✓ Created .gitignore
   ✓ Created README.md
 
@@ -88,7 +88,7 @@ Adding new cli project to solution: cli-app
   ✓ Created project.toml
   ✓ Created src/main.novus
   ✓ Created .gitignore
-  ✓ Updated solution.toml (added 'cli-app' to members)
+  ✓ Updated workspace.toml (added 'cli-app' to members)
 
 Project added to solution!
 ```
@@ -97,24 +97,24 @@ Project added to solution!
 
 ## 🔨 Build Commands
 
-### 1. Build Entire Solution
+### 1. Build Entire Workspace
 
 ```bash
-cd my-solution
+cd my-workspace
 novusc build
 ```
 
 **Behavior:**
-- Detects `solution.toml` in current directory
+- Detects `workspace.toml` in current directory
 - Builds ALL projects listed in `members` array
 - Shows progress for each project
 - Displays final summary (succeeded/failed counts)
 
 **Output:**
 ```
-Loading workspace: /path/to/my-solution/solution.toml
+Loading workspace: /path/to/my-workspace/workspace.toml
 
-Workspace: my-solution v0.1.0
+Workspace: my-workspace v0.1.0
 Projects: cli-app, gui-app, mylib
 
 [1/3] Building cli-app...
@@ -148,21 +148,21 @@ Workspace build complete: 3 succeeded, 0 failed
 ### 2. Build Specific Project in Solution
 
 ```bash
-cd my-solution
+cd my-workspace
 novusc build --project cli-app
 ```
 
 **Behavior:**
-- Detects `solution.toml` in current directory
+- Detects `workspace.toml` in current directory
 - Sees `--project cli-app` option
 - Builds ONLY the `cli-app` project
 - Validates that `cli-app` exists in `members` array
 
 **Output:**
 ```
-Loading workspace: /path/to/my-solution/solution.toml
+Loading workspace: /path/to/my-workspace/workspace.toml
 
-Workspace: my-solution v0.1.0
+Workspace: my-workspace v0.1.0
 Projects: cli-app, gui-app, mylib
 
   Package: cli-app v0.1.0 (cli)
@@ -176,19 +176,19 @@ Novus Compiler - Proof of Concept
 ### 3. Build from Project Directory
 
 ```bash
-cd my-solution/cli-app
+cd my-workspace/cli-app
 novusc build
 ```
 
 **Behavior:**
 - Detects `project.toml` in current directory
-- No `solution.toml` found in current directory
+- No `workspace.toml` found in current directory
 - Builds standalone project
-- Works whether the project is part of a solution or standalone
+- Works whether the project is part of a workspace or standalone
 
 **Output:**
 ```
-Building project: /path/to/my-solution/cli-app/project.toml
+Building project: /path/to/my-workspace/cli-app/project.toml
 
 Package: cli-app v0.1.0
 Type: cli
@@ -203,11 +203,11 @@ Novus Compiler - Proof of Concept
 
 ## 📋 Configuration Files
 
-### solution.toml
+### workspace.toml
 
 ```toml
 [workspace]
-name = "my-solution"
+name = "my-workspace"
 version = "0.1.0"
 authors = ["Barry"]
 members = ["cli-app", "gui-app", "mylib"]  # Auto-updated!
@@ -258,11 +258,11 @@ The build system uses intelligent context detection:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ Is there a solution.toml in current directory?         │
+│ Is there a workspace.toml in current directory?         │
 ├─────────────────────────────────────────────────────────┤
 │ YES → Are we using --project option?                   │
 │       ├─ YES → Build that specific project             │
-│       └─ NO  → Build all projects in solution          │
+│       └─ NO  → Build all projects in workspace          │
 │                                                         │
 │ NO  → Is there a project.toml in current directory?    │
 │       ├─ YES → Build this project                      │
@@ -291,12 +291,12 @@ Projects inherit build settings from the workspace but can override them:
 **Priority (highest to lowest):**
 1. Command-line options (`--cpu`, `--fpu`, `-O`)
 2. Project-level `[build]` section in `project.toml`
-3. Workspace-level `[workspace.build]` section in `solution.toml`
+3. Workspace-level `[workspace.build]` section in `workspace.toml`
 4. Compiler defaults
 
 **Example:**
 ```toml
-# solution.toml
+# workspace.toml
 [workspace.build]
 target_cpu = "68020"    # Default for all projects
 
@@ -364,9 +364,9 @@ novusc build
    - Workspace settings inheritance
 
 2. **`Novus/Commands/NewCommand.cs`** (UPDATED)
-   - Changed `Novus.toml` → `solution.toml`
+   - Changed `Novus.toml` → `workspace.toml`
    - Changed `novus.toml` → `project.toml`
-   - Auto-updates `members` array in `solution.toml`
+   - Auto-updates `members` array in `workspace.toml`
 
 3. **`Novus/Program.cs`** (UPDATED)
    - Made `RunCompiler()` public
@@ -384,7 +384,7 @@ novusc build
 1. ✅ Create new solution
 2. ✅ Add CLI project to solution
 3. ✅ Add Workbench project to solution
-4. ✅ Verify `solution.toml` members array updated
+4. ✅ Verify `workspace.toml` members array updated
 5. ✅ Build entire solution (`novusc build`)
 6. ✅ Build specific project (`novusc build --project app1`)
 7. ✅ Build from project directory (`cd app1 && novusc build`)
@@ -403,14 +403,14 @@ All existing tests pass - no regressions introduced!
 
 ## 🎯 Design Decisions
 
-### Why `solution.toml` instead of `Novus.toml`?
+### Why `workspace.toml` instead of `Novus.toml`?
 
 **Problem:** macOS filesystem is case-insensitive by default.
 - `Novus.toml` and `novus.toml` are the SAME FILE on macOS
-- This caused conflicts when projects were inside solutions
+- This caused conflicts when projects were inside workspaces
 
 **Solution:** Use clearly distinct names:
-- `solution.toml` - Workspace/solution configuration
+- `workspace.toml` - Workspace/solution configuration
 - `project.toml` - Individual project configuration
 
 **Benefits:**
@@ -422,7 +422,7 @@ All existing tests pass - no regressions introduced!
 
 ### Why inherit workspace build settings?
 
-**Use Case:** You want all projects in a solution to target the same CPU/FPU by default:
+**Use Case:** You want all projects in a workspace to target the same CPU/FPU by default:
 ```toml
 [workspace.build]
 target_cpu = "68040"
@@ -441,15 +441,15 @@ fpu = "none"
 
 ---
 
-## 📝 Example Solution Structure
+## 📝 Example Workspace Structure
 
 Here's a complete example from the test:
 
 ```
-/tmp/my-solution/
-├── solution.toml
+/tmp/my-workspace/
+├── workspace.toml
 │   [workspace]
-│   name = "my-solution"
+│   name = "my-workspace"
 │   version = "0.1.0"
 │   authors = ["Barry"]
 │   members = ["app1", "app2"]
@@ -487,14 +487,14 @@ Here's a complete example from the test:
 ```toml
 # app1/project.toml
 [dependencies]
-mylib = { path = "../mylib" }  # Reference other project in solution
+mylib = { path = "../mylib" }  # Reference other project in workspace
 ```
 
 Automatically build dependencies first!
 
 ---
 
-### Phase 2: Solution-level Commands
+### Phase 2: Workspace-level Commands
 
 ```bash
 novusc clean              # Clean all projects
@@ -527,7 +527,7 @@ Then: `novusc build --profile release`
 | **Lines of Code Added** | ~350 lines |
 | **New Files** | 1 (BuildCommand.cs) |
 | **Modified Files** | 3 (NewCommand.cs, Program.cs, BuildOptions.cs) |
-| **Features** | Solution builds + project builds + smart detection |
+| **Features** | Workspace builds + project builds + smart detection |
 | **Test Status** | 959/959 passing (100%) |
 | **Regressions** | 0 |
 
@@ -565,8 +565,8 @@ novusc compile myapp.novus -o myapp
 ### After:
 ```bash
 # Professional solution structure
-novusc new my-solution
-cd my-solution
+novusc new my-workspace
+cd my-workspace
 novusc new app1 --type cli
 novusc new app2 --type workbench
 novusc new mylib --type library
@@ -593,10 +593,10 @@ novusc build
 ## Summary
 
 We successfully implemented a **smart, context-aware build system** where:
-- `novusc build` in a solution directory builds all projects
+- `novusc build` in a workspace directory builds all projects
 - `novusc build --project <name>` builds a specific project
 - `novusc build` in a project directory builds that project
-- `solution.toml` and `project.toml` provide clear, case-safe naming
+- `workspace.toml` and `project.toml` provide clear, case-safe naming
 - Projects inherit workspace build settings but can override them
 - All 959 tests still passing!
 

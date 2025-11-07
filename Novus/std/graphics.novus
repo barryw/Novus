@@ -52,14 +52,14 @@ impl BitMap {
     ///
     /// Returns Err if allocation fails (out of memory).
     pub fn alloc(width: u32, height: u32, depth: u32, flags: u32, friend: *BitMap) -> Result<BitMap, GraphicsError> {
-        let bitmap = unsafe { AllocBitMap(width, height, depth, flags, friend) }
-        if bitmap.is_null() {
-            return Result::Err(GraphicsError::NoMem)
+        let bitmap = AllocBitMap(width, height, depth, flags, friend)
+        if let bm = bitmap {
+            return Result::Ok(BitMap {
+                bitmap: bm,
+                owns_blitter: false,
+            })
         }
-        return Result::Ok(BitMap {
-            bitmap: bitmap,
-            owns_blitter: false,
-        })
+        return Result::Err(GraphicsError::NoMem)
     }
 
     /// Get the raw BitMap pointer for FFI calls
@@ -88,10 +88,8 @@ impl BitMap {
     ///
     /// Use this when passing ownership to another system or storing
     /// the bitmap beyond the current scope.
-    pub fn into_raw(self) -> *BitMap {
-        let bitmap = self.bitmap;
-        unsafe { core::mem::forget(self) }  // Prevent drop
-        return bitmap
+    pub fn into_raw(consuming self) -> *BitMap {
+        return self.bitmap
     }
 
     /// Mark that a blitter operation is pending for this bitmap
@@ -108,7 +106,7 @@ impl BitMap {
     /// This is called automatically by Drop if blitter operations are pending.
     pub fn wait_blit(&mut self) {
         if self.owns_blitter {
-            unsafe { WaitBlit() }
+            WaitBlit()
             self.owns_blitter = false
         }
     }
@@ -117,16 +115,16 @@ impl BitMap {
 // Automatic cleanup for BitMap (RAII)
 impl Drop for BitMap {
     fn drop(&mut self) {
-        if !self.bitmap.is_null() {
+        if let bm = self.bitmap {
             // CRITICAL: Wait for blitter before freeing bitmap
             // If blitter is still using this memory, freeing it
             // causes memory corruption and crashes
             if self.owns_blitter {
-                unsafe { WaitBlit() }
+                WaitBlit()
             }
 
             // Now safe to free the bitmap
-            unsafe { FreeBitMap(self.bitmap) }
+            FreeBitMap(bm)
             self.bitmap = (*BitMap)0
         }
     }
@@ -188,10 +186,8 @@ impl CopperList {
     ///
     /// Use this when passing ownership to another system or storing
     /// the copper list beyond the current scope.
-    pub fn into_memory(self) -> MemoryBlock {
-        let memory = self.memory;
-        unsafe { core::mem::forget(self) }  // Prevent drop
-        return memory
+    pub fn into_memory(consuming self) -> MemoryBlock {
+        return self.memory
     }
 
     /// Mark this copper list as active
@@ -213,10 +209,8 @@ impl CopperList {
     /// This is called automatically by Drop if the list is active.
     pub fn restore_system(&mut self) {
         if self.active {
-            unsafe {
-                LoadView((*View)0)  // null = system copper
-                WaitTOF()  // CRITICAL: Wait for vertical blank
-            }
+            LoadView((*View)0)  // null = system copper
+            WaitTOF()  // CRITICAL: Wait for vertical blank
             self.active = false
         }
     }
@@ -230,10 +224,8 @@ impl Drop for CopperList {
         // 2. Wait for vertical blank (WaitTOF)
         // Otherwise the copper will read freed memory!
         if self.active {
-            unsafe {
-                LoadView((*View)0)  // null = restore system copper
-                WaitTOF()  // Wait for copper to switch
-            }
+            LoadView((*View)0)  // null = restore system copper
+            WaitTOF()  // Wait for copper to switch
         }
         // memory.drop() called automatically (RAII composition!)
     }

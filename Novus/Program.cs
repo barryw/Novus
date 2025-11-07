@@ -672,6 +672,16 @@ class Program
                     var callStubFile = Path.Combine(outputDir, $"{baseName}_calls.s");
                     await File.WriteAllTextAsync(callStubFile, callStubAsm);
                     Console.WriteLine($"  → {Path.GetFileName(callStubFile)} (client call stubs)");
+
+                    // Generate default lifecycle functions (LibInit, LibOpen, LibClose, LibExpunge, etc)
+                    var lifecycleCCode = libraryGen.GenerateDefaultLifecycleFunctions();
+                    if (!string.IsNullOrEmpty(lifecycleCCode))
+                    {
+                        var lifecycleCFile = Path.Combine(outputDir, $"{baseName}_lifecycle.c");
+                        await File.WriteAllTextAsync(lifecycleCFile, lifecycleCCode);
+                        cFiles.Add(lifecycleCFile);
+                        Console.WriteLine($"  → {Path.GetFileName(lifecycleCFile)} (lifecycle functions)");
+                    }
                 }
             }
 

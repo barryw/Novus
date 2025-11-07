@@ -13,19 +13,19 @@ public static class NewCommand
     {
         try
         {
-            // Check if we're inside a solution (solution.toml exists in current directory)
+            // Check if we're inside a workspace (workspace.toml exists in current directory)
             var currentDir = Directory.GetCurrentDirectory();
-            var workspaceFile = Path.Combine(currentDir, "solution.toml");
+            var workspaceFile = Path.Combine(currentDir, "workspace.toml");
             bool insideWorkspace = File.Exists(workspaceFile);
 
             if (insideWorkspace)
             {
-                // We're inside a solution - create a new project within it
+                // We're inside a workspace - create a new project within it
                 return CreateProjectInWorkspace(currentDir, options);
             }
             else
             {
-                // We're not in a solution - create a new solution
+                // We're not in a workspace - create a new workspace
                 return CreateNewWorkspace(options);
             }
         }
@@ -59,17 +59,29 @@ public static class NewCommand
             return 1;
         }
 
-        Console.WriteLine($"Creating new solution: {workspaceName}");
+        Console.WriteLine($"Creating new workspace: {workspaceName}");
         Console.WriteLine();
 
+        // If a template type is specified, copy from templates directory
+        if (!string.IsNullOrEmpty(options.ProjectType))
+        {
+            return CreateWorkspaceFromTemplate(workspaceName, workspaceDir, options);
+        }
+
+        // Otherwise, create empty workspace
+        return CreateEmptyWorkspace(workspaceName, workspaceDir, options);
+    }
+
+    private static int CreateEmptyWorkspace(string workspaceName, string workspaceDir, NewCommandOptions options)
+    {
         // Create workspace structure
         Directory.CreateDirectory(workspaceDir);
-        Console.WriteLine($"  ✓ Created solution directory: {workspaceName}/");
+        Console.WriteLine($"  ✓ Created workspace directory: {workspaceName}/");
 
-        // Create solution.toml (workspace file)
+        // Create workspace.toml (workspace file)
         var workspaceToml = GenerateWorkspaceToml(workspaceName, options);
-        File.WriteAllText(Path.Combine(workspaceDir, "solution.toml"), workspaceToml);
-        Console.WriteLine("  ✓ Created solution.toml (solution file)");
+        File.WriteAllText(Path.Combine(workspaceDir, "workspace.toml"), workspaceToml);
+        Console.WriteLine("  ✓ Created workspace.toml (workspace file)");
 
         // Create .gitignore
         var gitignorePath = Path.Combine(workspaceDir, ".gitignore");
@@ -82,7 +94,7 @@ public static class NewCommand
         Console.WriteLine("  ✓ Created README.md");
 
         Console.WriteLine();
-        Console.WriteLine("Your solution is ready!");
+        Console.WriteLine("Empty workspace is ready!");
         Console.WriteLine();
         Console.WriteLine("Next steps:");
         if (options.ProjectName != ".")
@@ -90,6 +102,7 @@ public static class NewCommand
             Console.WriteLine($"  cd {workspaceName}");
         }
         Console.WriteLine("  novusc new my-app --type cli       # Add a CLI project");
+        Console.WriteLine("  novusc new my-lib --type library   # Add a library project");
         Console.WriteLine("  novusc new my-gui --type workbench # Add a Workbench project");
         Console.WriteLine();
         Console.WriteLine("Happy coding! 🚀");
@@ -97,16 +110,121 @@ public static class NewCommand
         return 0;
     }
 
+    private static int CreateWorkspaceFromTemplate(string workspaceName, string workspaceDir, NewCommandOptions options)
+    {
+        // Find template directory
+        var templateDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "templates", options.ProjectType);
+
+        if (!Directory.Exists(templateDir))
+        {
+            Console.WriteLine($"Error: Template '{options.ProjectType}' not found");
+            Console.WriteLine($"Available templates:");
+            var templatesRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "templates");
+            if (Directory.Exists(templatesRoot))
+            {
+                foreach (var dir in Directory.GetDirectories(templatesRoot))
+                {
+                    Console.WriteLine($"  - {Path.GetFileName(dir)}");
+                }
+            }
+            return 1;
+        }
+
+        // Copy entire template directory
+        CopyDirectory(templateDir, workspaceDir, true);
+        Console.WriteLine($"  ✓ Created workspace from '{options.ProjectType}' template");
+
+        // Replace placeholder names in files
+        ReplaceTemplatePlaceholders(workspaceDir, workspaceName);
+
+        Console.WriteLine();
+        Console.WriteLine($"Workspace '{workspaceName}' created from template!");
+        Console.WriteLine();
+        Console.WriteLine("Next steps:");
+        if (options.ProjectName != ".")
+        {
+            Console.WriteLine($"  cd {workspaceName}");
+        }
+        Console.WriteLine("  novusc build              # Build all projects");
+        Console.WriteLine("  novusc new my-gui --type workbench # Add more projects");
+        Console.WriteLine();
+        Console.WriteLine("Happy coding! 🚀");
+
+        return 0;
+    }
+
+    private static void CopyDirectory(string sourceDir, string destDir, bool recursive)
+    {
+        var dir = new DirectoryInfo(sourceDir);
+
+        if (!dir.Exists)
+        {
+            throw new DirectoryNotFoundException($"Source directory not found: {dir.FullName}");
+        }
+
+        // Create destination directory
+        Directory.CreateDirectory(destDir);
+
+        // Copy files
+        foreach (FileInfo file in dir.GetFiles())
+        {
+            string targetFilePath = Path.Combine(destDir, file.Name);
+            file.CopyTo(targetFilePath);
+        }
+
+        // Copy subdirectories
+        if (recursive)
+        {
+            foreach (DirectoryInfo subDir in dir.GetDirectories())
+            {
+                string newDestinationDir = Path.Combine(destDir, subDir.Name);
+                CopyDirectory(subDir.FullName, newDestinationDir, true);
+            }
+        }
+    }
+
+    private static void ReplaceTemplatePlaceholders(string directory, string projectName)
+    {
+        // Replace {{PROJECT_NAME}} placeholder in all text files
+        foreach (var file in Directory.GetFiles(directory, "*", SearchOption.AllDirectories))
+        {
+            // Skip binary files
+            var ext = Path.GetExtension(file).ToLower();
+            if (ext == ".exe" || ext == ".dll" || ext == ".o" || ext == ".a")
+                continue;
+
+            try
+            {
+                var content = File.ReadAllText(file);
+                if (content.Contains("{{PROJECT_NAME}}"))
+                {
+                    content = content.Replace("{{PROJECT_NAME}}", projectName);
+                    File.WriteAllText(file, content);
+                }
+            }
+            catch
+            {
+                // Skip files that can't be read as text
+            }
+        }
+    }
+
     private static int CreateProjectInWorkspace(string workspaceDir, NewCommandOptions options)
     {
+        // Default to "cli" when adding projects to a workspace
+        string projectType = options.ProjectType ?? "cli";
+
         // Validate project type
         var validTypes = new[] { "cli", "workbench", "dual", "library", "device" };
-        if (!validTypes.Contains(options.ProjectType.ToLower()))
+        if (!validTypes.Contains(projectType.ToLower()))
         {
-            Console.WriteLine($"Error: Invalid project type '{options.ProjectType}'");
+            Console.WriteLine($"Error: Invalid project type '{projectType}'");
             Console.WriteLine($"Valid types: {string.Join(", ", validTypes)}");
             return 1;
         }
+
+        // Update options with normalized type for use below
+        options.ProjectType = projectType;
 
         var projectName = options.ProjectName;
         var projectDir = Path.Combine(workspaceDir, projectName);
@@ -114,20 +232,20 @@ public static class NewCommand
         // Check if project directory already exists
         if (Directory.Exists(projectDir))
         {
-            Console.WriteLine($"Error: Project '{projectName}' already exists in this solution");
+            Console.WriteLine($"Error: Project '{projectName}' already exists in this workspace");
             return 1;
         }
 
-        Console.WriteLine($"Adding new {options.ProjectType} project to solution: {projectName}");
+        Console.WriteLine($"Adding new {options.ProjectType} project to workspace: {projectName}");
         Console.WriteLine();
 
         CreateProjectStructure(projectDir, projectName, options);
 
-        // Update solution.toml to add this project to members
+        // Update workspace.toml to add this project to members
         UpdateWorkspaceMembers(workspaceDir, projectName);
 
         Console.WriteLine();
-        Console.WriteLine("Project added to solution!");
+        Console.WriteLine("Project added to workspace!");
         Console.WriteLine();
         Console.WriteLine("Next steps:");
         Console.WriteLine($"  cd {projectName}");
@@ -462,7 +580,7 @@ pub fn dev_abort_io(io_request: *i32) -> i32 {{
 
     private static void UpdateWorkspaceMembers(string workspaceDir, string projectName)
     {
-        var workspaceFile = Path.Combine(workspaceDir, "solution.toml");
+        var workspaceFile = Path.Combine(workspaceDir, "workspace.toml");
         var content = File.ReadAllText(workspaceFile);
 
         // Simple regex to update members array
@@ -490,7 +608,7 @@ pub fn dev_abort_io(io_request: *i32) -> i32 {{
         }
 
         File.WriteAllText(workspaceFile, content);
-        Console.WriteLine($"  ✓ Updated solution.toml (added '{projectName}' to members)");
+        Console.WriteLine($"  ✓ Updated workspace.toml (added '{projectName}' to members)");
     }
 
     private static string GenerateWorkspaceReadme(string workspaceName, NewCommandOptions options)
@@ -505,9 +623,9 @@ pub fn dev_abort_io(io_request: *i32) -> i32 {{
             sb.AppendLine();
         }
 
-        sb.AppendLine("## Novus Solution");
+        sb.AppendLine("## Novus Workspace");
         sb.AppendLine();
-        sb.AppendLine("This is a Novus solution containing multiple projects.");
+        sb.AppendLine("This is a Novus workspace containing multiple projects.");
         sb.AppendLine();
         sb.AppendLine("### Adding Projects");
         sb.AppendLine();

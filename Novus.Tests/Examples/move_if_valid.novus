@@ -12,3 +12,8 @@ fn test_if_valid() {
     // OK - x was never moved
     consume(x)
 }
+
+pub fn main() -> i32 {
+    test_if_valid()
+    return 0
+}

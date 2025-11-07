@@ -50,7 +50,7 @@ public static class BuildCommand
         // First, check if we're in a workspace by looking at the ACTUAL current directory
         // (not the --project option, which might be a project name, not a path)
         var actualCurrentDir = Directory.GetCurrentDirectory();
-        var workspaceFile = Path.Combine(actualCurrentDir, "solution.toml");
+        var workspaceFile = Path.Combine(actualCurrentDir, "workspace.toml");
         bool inWorkspace = File.Exists(workspaceFile);
 
         // Now determine the target directory
@@ -72,8 +72,8 @@ public static class BuildCommand
 
         currentDir = Path.GetFullPath(currentDir);
 
-        // Check for solution.toml (workspace file) and project.toml (project file)
-        var targetWorkspaceFile = Path.Combine(currentDir, "solution.toml");
+        // Check for workspace.toml (workspace file) and project.toml (project file)
+        var targetWorkspaceFile = Path.Combine(currentDir, "workspace.toml");
         var projectFile = Path.Combine(currentDir, "project.toml");
 
         bool hasWorkspace = File.Exists(targetWorkspaceFile);
@@ -83,7 +83,7 @@ public static class BuildCommand
         if (hasWorkspace && hasProject)
         {
             // Both exist - this is weird, but treat as workspace
-            Console.WriteLine("Warning: Both solution.toml and project.toml found. Treating as workspace.");
+            Console.WriteLine("Warning: Both workspace.toml and project.toml found. Treating as workspace.");
             return await BuildWorkspace(currentDir, buildOptions);
         }
         else if (hasWorkspace)
@@ -98,7 +98,7 @@ public static class BuildCommand
         }
         else
         {
-            Console.WriteLine($"Error: No solution.toml or project.toml found in {currentDir}");
+            Console.WriteLine($"Error: No workspace.toml or project.toml found in {currentDir}");
             Console.WriteLine("Run 'novusc new <name>' to create a new project or workspace");
             return 1;
         }
@@ -109,7 +109,7 @@ public static class BuildCommand
     /// </summary>
     private static async Task<int> BuildWorkspace(string workspaceDir, BuildOptions buildOptions)
     {
-        var workspaceFile = Path.Combine(workspaceDir, "solution.toml");
+        var workspaceFile = Path.Combine(workspaceDir, "workspace.toml");
 
         Console.WriteLine($"Loading workspace: {workspaceFile}\n");
 
@@ -538,7 +538,7 @@ public static class BuildCommand
         if (workspace != null)
         {
             // Workspace build - use centralized target directory
-            var workspaceRoot = Path.GetDirectoryName(Path.Combine(workspaceDir!, "solution.toml"))!;
+            var workspaceRoot = Path.GetDirectoryName(Path.Combine(workspaceDir!, "workspace.toml"))!;
             var targetRoot = Path.Combine(workspaceRoot, "target");
 
             // For now, simple structure: target/<config>/<type>/

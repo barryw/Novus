@@ -38,9 +38,8 @@ from std::ffi::amiga_consts import MEMF_ANY, MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, 
 /// ```
 pub fn get_current_task() -> Option<*Task> {
     var task: *Task = (*Task)0
-    unsafe {
-        task = FindTask((*u8)0)  // null = current task
-    }
+    task = FindTask((*u8)0)  // null = current task
+    
     if let t = task {
         return Option::Some(t)
     }
@@ -66,9 +65,8 @@ pub fn get_current_task() -> Option<*Task> {
 /// ```
 pub fn find_task(name: *u8) -> Option<*Task> {
     var task: *Task = (*Task)0
-    unsafe {
-        task = FindTask(name)
-    }
+    task = FindTask(name)
+    
     if let t = task {
         return Option::Some(t)
     }
@@ -90,9 +88,8 @@ pub fn find_task(name: *u8) -> Option<*Task> {
 /// ```
 pub fn set_task_priority(task: *Task, priority: i32) -> i8 {
     var result: i8 = 0
-    unsafe {
-        result = SetTaskPri(task, priority)
-    }
+    result = SetTaskPri(task, priority)
+    
     return result
 }
 
@@ -124,9 +121,8 @@ pub fn set_task_priority(task: *Task, priority: i32) -> i8 {
 /// ```
 pub fn allocate_signal(signal_num: i32) -> Option<i32> {
     var result: i32 = 0
-    unsafe {
-        result = AllocSignal(signal_num)
-    }
+    result = AllocSignal(signal_num)
+    
     if result == -1 {
         return Option::None
     }
@@ -138,9 +134,8 @@ pub fn allocate_signal(signal_num: i32) -> Option<i32> {
 /// Should be called for every successfully allocated signal.
 /// Best used with defer for automatic cleanup.
 pub fn free_signal(signal_num: i32) {
-    unsafe {
-        FreeSignal(signal_num)
-    }
+    FreeSignal(signal_num)
+    
 }
 
 /// Wait for one or more signals
@@ -160,9 +155,8 @@ pub fn free_signal(signal_num: i32) {
 /// ```
 pub fn wait_for_signals(signal_mask: u32) -> u32 {
     var result: i32 = 0
-    unsafe {
-        result = Wait((i32)signal_mask)
-    }
+    result = Wait((i32)signal_mask)
+    
     return (u32)result
 }
 
@@ -180,9 +174,8 @@ pub fn wait_for_signals(signal_mask: u32) -> u32 {
 /// }
 /// ```
 pub fn send_signal(task: *Task, signal_mask: u32) {
-    unsafe {
-        Signal(task, signal_mask)
-    }
+    Signal(task, signal_mask)
+    
 }
 
 // ============================================================================
@@ -208,18 +201,16 @@ pub fn send_signal(task: *Task, signal_mask: u32) {
 /// // Critical section - no task switches
 /// ```
 pub fn forbid() {
-    unsafe {
-        Forbid()
-    }
+    Forbid()
+    
 }
 
 /// Re-enable task rescheduling
 ///
 /// Must be paired with every Forbid() call.
 pub fn permit() {
-    unsafe {
-        Permit()
-    }
+    Permit()
+    
 }
 
 /// Disable all interrupts
@@ -285,9 +276,9 @@ impl Signal {
     ///
     /// Returns Err if no signals are available (limit of 16 user signals).
     pub fn alloc() -> Result<Signal, ExecError> {
-        let sigbit = unsafe { AllocSignal(-1) }
+        let sigbit = AllocSignal(-1)
         if sigbit == -1 {
-            return Result::Err(ExecError::NoSignals)
+            return Result::Err(ExecError::BadSignal)
         }
         return Result::Ok(Signal { sigbit: sigbit })
     }
@@ -314,10 +305,8 @@ impl Signal {
     ///
     /// Use this when passing ownership to another task or storing
     /// the signal beyond the current scope.
-    pub fn into_raw(self) -> i8 {
-        let sigbit = self.sigbit;
-        unsafe { core::mem::forget(self) }  // Prevent drop
-        return sigbit
+    pub fn into_raw(consuming self) -> i8 {
+        return self.sigbit
     }
 
     /// Get the signal mask (1 << bit)
@@ -327,19 +316,27 @@ impl Signal {
         if self.sigbit < 0 {
             return 0
         }
-        return 1u32 << (u32)self.sigbit
+        // Use pow2 lookup table instead of shift to work around parser bug with << after if
+        let shifts: [u32; 32] = [
+            1u32, 2u32, 4u32, 8u32, 16u32, 32u32, 64u32, 128u32,
+            256u32, 512u32, 1024u32, 2048u32, 4096u32, 8192u32, 16384u32, 32768u32,
+            65536u32, 131072u32, 262144u32, 524288u32, 1048576u32, 2097152u32, 4194304u32, 8388608u32,
+            16777216u32, 33554432u32, 67108864u32, 134217728u32, 268435456u32, 536870912u32, 1073741824u32, 2147483648u32
+        ]
+        return shifts[(u32)self.sigbit]
     }
 
     /// Wait for this signal
     ///
     /// Blocks until the signal arrives.
     pub fn wait(&self) -> u32 {
-        return unsafe { Wait(1 << (i32)self.sigbit) }
+        // Call mask() which handles the bit shift
+        return Wait(self.mask())
     }
 
     /// Send this signal to a task
     pub fn send_to(&self, task: *Task) {
-        unsafe { Signal(task, self.mask()) }
+        Signal(task, self.mask()) 
     }
 }
 
@@ -347,7 +344,7 @@ impl Signal {
 impl Drop for Signal {
     fn drop(&mut self) {
         if self.sigbit >= 0 {
-            unsafe { FreeSignal(self.sigbit) }
+            FreeSignal(self.sigbit) 
             self.sigbit = -1
         }
     }
@@ -363,8 +360,8 @@ impl Drop for Signal {
 ///
 /// Example:
 /// ```novus
-/// fn create_reply_port() -> Result<MsgPort, ExecError> {
-///     let port = MsgPort::create()?;
+/// fn create_reply_port() -> Result<MsgPortHandle, ExecError> {
+///     let port = MsgPortHandle::create()?;
 ///
 ///     // Use port for communication...
 ///
@@ -373,20 +370,20 @@ impl Drop for Signal {
 ///     // 2. Port is deleted
 /// }
 /// ```
-pub struct MsgPort {
-    port: *MsgPort,  // Pointer to MsgPort struct (null = invalid)
+pub struct MsgPortHandle {
+    port: *MsgPort,  // Pointer to FFI MsgPort struct (null = invalid)
 }
 
-impl MsgPort {
+impl MsgPortHandle {
     /// Create a new message port
     ///
     /// Returns Err if port creation fails (out of memory).
-    pub fn create() -> Result<MsgPort, ExecError> {
-        let port = unsafe { CreateMsgPort() }
-        if port.is_null() {
-            return Result::Err(ExecError::NoMem)
+    pub fn create() -> Result<MsgPortHandle, ExecError> {
+        let port = CreateMsgPort()
+        if let p = port {
+            return Result::Ok(MsgPortHandle { port: p })
         }
-        return Result::Ok(MsgPort { port: port })
+        return Result::Err(ExecError::NoMem)
     }
 
     /// Get the raw MsgPort pointer for FFI calls
@@ -401,8 +398,8 @@ impl MsgPort {
     ///
     /// Only use this if you own the port and it should be deleted.
     /// DO NOT use for system-owned ports like Window.UserPort.
-    pub fn from_raw(port: *MsgPort) -> MsgPort {
-        return MsgPort { port: port }
+    pub fn from_raw(port: *MsgPort) -> MsgPortHandle {
+        return MsgPortHandle { port: port }
     }
 
     /// Extract raw pointer and prevent automatic deletion
@@ -412,35 +409,33 @@ impl MsgPort {
     ///
     /// Use this when passing ownership to another task or storing
     /// the port beyond the current scope.
-    pub fn into_raw(self) -> *MsgPort {
-        let port = self.port;
-        unsafe { core::mem::forget(self) }  // Prevent drop
-        return port
+    pub fn into_raw(consuming self) -> *MsgPort {
+        return self.port
     }
 
     /// Get a message from the port (non-blocking)
     ///
     /// Returns None if no messages are waiting.
     pub fn get_msg(&self) -> Option<*Message> {
-        let msg = unsafe { GetMsg(self.port) }
-        if msg.is_null() {
-            return Option::None
+        let msg = GetMsg(self.port) 
+        if let m = msg {
+            return Option::Some(m)
         }
-        return Option::Some(msg)
+        return Option::None
     }
 
     /// Put a message to this port
     ///
     /// The message will be queued until GetMsg() retrieves it.
     pub fn put_msg(&self, msg: *Message) {
-        unsafe { PutMsg(self.port, msg) }
+        PutMsg(self.port, msg) 
     }
 
     /// Reply to a message
     ///
     /// Should be called for every message received via get_msg().
     pub fn reply_msg(&self, msg: *Message) {
-        unsafe { ReplyMsg(msg) }
+        ReplyMsg(msg) 
     }
 
     /// Drain and reply to all pending messages
@@ -448,61 +443,37 @@ impl MsgPort {
     /// This is called automatically by Drop, but can be called manually
     /// if you need to drain messages before the port is destroyed.
     pub fn drain_messages(&self) {
-        loop {
-            let msg = unsafe { GetMsg(self.port) }
-            if msg.is_null() {
+        forever {
+            let msg = GetMsg(self.port)
+            if let m = msg {
+                ReplyMsg(m)
+            } else {
                 break
             }
-            unsafe { ReplyMsg(msg) }
         }
     }
 
-    /// Drain messages with custom reply logic
-    ///
-    /// This allows you to process messages and set custom fields
-    /// (like mn_Error) before replying. Useful for device drivers
-    /// and custom protocols.
-    ///
-    /// The provided function is called for each message BEFORE ReplyMsg().
-    /// The function should NOT call ReplyMsg() - that's done automatically.
-    ///
-    /// Example:
-    /// ```novus
-    /// port.drain_with(|msg| {
-    ///     // Set error code
-    ///     unsafe { (*msg).mn_Error = IOERR_OPENFAIL }
-    /// })
-    /// ```
-    pub fn drain_with<F>(&self, process_fn: F)
-    where F: Fn(*Message) {
-        loop {
-            let msg = unsafe { GetMsg(self.port) }
-            if msg.is_null() {
-                break
-            }
-            process_fn(msg)  // Custom processing
-            unsafe { ReplyMsg(msg) }
-        }
-    }
+    // TODO: drain_with() method removed - requires generic trait bounds support (where F: Fn(...))
 }
 
 // Automatic cleanup for MsgPort (RAII)
-impl Drop for MsgPort {
+impl Drop for MsgPortHandle {
     fn drop(&mut self) {
-        if !self.port.is_null() {
+        if let p = self.port {
             // CRITICAL: Drain and reply to all pending messages
             // before deleting the port. Unreplied messages cause
             // system hangs and crashes.
-            loop {
-                let msg = unsafe { GetMsg(self.port) }
-                if msg.is_null() {
+            forever {
+                let msg = GetMsg(p)
+                if let m = msg {
+                    ReplyMsg(m)
+                } else {
                     break
                 }
-                unsafe { ReplyMsg(msg) }
             }
 
             // Now safe to delete the port
-            unsafe { DeleteMsgPort(self.port) }
+            DeleteMsgPort(p)
             self.port = (*MsgPort)0
         }
     }

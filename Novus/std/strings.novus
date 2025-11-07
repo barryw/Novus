@@ -2,7 +2,7 @@
 // Namespace: std::strings
 // Powerful, ergonomic, Amiga-optimized string types
 
-from std::core import Option, Result
+from std::core import Option, Result, Drop
 from std::collections import Vec
 from std::mem import MemoryBlock
 from std::ffi::exec import MEMF_PUBLIC, MEMF_CLEAR, FreeMem
@@ -740,7 +740,7 @@ impl BStr {
 
     /// Get the actual memory address
     pub fn as_ptr(&self) -> *u8 {
-        let addr: u32 = self.bptr * 4
+        let addr: u32 = self.bptr * 4u32
         return (*u8)addr
     }
 
@@ -762,7 +762,7 @@ impl BStr {
     pub fn drop(&self) {
         let ptr: *u8 = self.as_ptr()
         let len: u32 = self.len()
-        let total_bytes: u32 = 1 + len
+        let total_bytes: u32 = 1u32 + len
 
         unsafe {
             FreeMem(ptr, total_bytes)

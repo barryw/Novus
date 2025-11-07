@@ -1214,8 +1214,10 @@ public class CCodeGenerator
         EmitFunctions(reachableFunctions);
 
         // Generate library boilerplate if @library attribute is present
+        Console.WriteLine($"DEBUG CCodeGenerator: libraryGen.IsLibrary = {libraryGen.IsLibrary}");
         if (libraryGen.IsLibrary)
         {
+            Console.WriteLine("DEBUG: Generating library boilerplate...");
             _output.AppendLine();
             _output.AppendLine(libraryGen.GenerateLibraryBaseStruct());
             _output.AppendLine(libraryGen.GenerateROMTag());

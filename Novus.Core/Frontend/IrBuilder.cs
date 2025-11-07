@@ -401,16 +401,59 @@ public class IrBuilder : NovusBaseVisitor<object?>
             {
                 traitName = typeNames[0].IDENTIFIER(0).GetText();
 
-                // Parse trait type arguments if present (e.g., Iterator<i32>)
-                // Generic params are now in scope, so 'T' in 'Iterable<T>' can be resolved
-                var traitGenericArgs = implContext.genericTypeArgs().Length > 0 ? implContext.genericTypeArgs(0) : null;
-                if (traitGenericArgs != null)
+                // Parse trait type arguments if present (e.g., From<DosError>)
+                // BUT: For generic impl blocks like "impl<T> Drop for Vec<T>", the <T> after Vec
+                // is NOT a trait type argument - it's a type argument for the implementing type.
+                //
+                // Rules:
+                // - impl From<DosError> for NovusError - 0 generic params, 1 generic arg set => trait arg
+                // - impl<T> Drop for Vec<T> - 1 generic param, 1 generic arg set => type arg
+                // - impl<T> From<T> for Vec - 1 generic param, 1 generic arg set => trait arg
+                //
+                // Heuristic: If there are NO generic parameters on the impl block, then generic args
+                // are for the trait. If there ARE generic parameters, we need to check the count:
+                //   - 1 set of args: Could be either trait or type args. Need better detection.
+                //   - 2 sets of args: First is trait, second is type.
+                //
+                // Better heuristic: Count the typeNames. For "impl Trait for Type":
+                //   - 2 typeNames: first is trait, second is type
+                //   - AST genericTypeArgs appear in order: trait args, then type args
+                //   - If there's 1 genericTypeArgs and the impl has no generic params: it's for the trait
+                //   - If there's 1 genericTypeArgs and the impl HAS generic params: ambiguous, but
+                //     most likely for the implementing type (e.g., Vec<T>)
+
+                var allGenericArgs = implContext.genericTypeArgs();
+
+                if (genericParams.Count == 0)
                 {
-                    var typeList = traitGenericArgs.typeList();
-                    foreach (var typeCtx in typeList.type())
+                    // No generic parameters on impl block, so any generic args are trait type args
+                    // e.g., "impl From<DosError> for NovusError"
+                    if (allGenericArgs.Length > 0)
                     {
-                        traitTypeArgs.Add(ParseType(typeCtx));
+                        var traitGenericArgs = allGenericArgs[0];
+                        var typeList = traitGenericArgs.typeList();
+                        foreach (var typeCtx in typeList.type())
+                        {
+                            traitTypeArgs.Add(ParseType(typeCtx));
+                        }
                     }
+                }
+                else
+                {
+                    // Has generic parameters on impl block
+                    // e.g., "impl<T> Drop for Vec<T>" or "impl<T> From<T> for Foo"
+                    if (allGenericArgs.Length == 2)
+                    {
+                        // Two sets: first is trait args, second is type args
+                        var traitGenericArgs = allGenericArgs[0];
+                        var typeList = traitGenericArgs.typeList();
+                        foreach (var typeCtx in typeList.type())
+                        {
+                            traitTypeArgs.Add(ParseType(typeCtx));
+                        }
+                    }
+                    // If there's only 1 set of generic args, assume it's for the implementing type
+                    // This handles "impl<T> Drop for Vec<T>"
                 }
             }
 
@@ -457,7 +500,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
 
             // Register trait implementation if this is a trait impl
-            if (isTraitImpl && traitName != null && genericParams.Count == 0)
+            // Note: We register even generic trait impls (e.g., impl<T> Drop for Vec<T>)
+            // so that TypeImplementsDrop can detect them for monomorphized types
+            if (isTraitImpl && traitName != null)
             {
                 // _currentSelfType already contains the implementing type (set earlier)
                 if (_currentSelfType == null)
@@ -473,7 +518,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 }
 
                 // Create IrTraitImpl and add to module
-                var traitImpl = new IrTraitImpl(fullTraitName, traitTypeArgs, typeName, _currentSelfType);
+                // For generic impls, this is a template that will be instantiated later
+                var traitImpl = new IrTraitImpl(fullTraitName, traitTypeArgs, typeName, _currentSelfType, genericParams);
                 _module.TraitImpls.Add(traitImpl);
             }
 
@@ -990,15 +1036,37 @@ public class IrBuilder : NovusBaseVisitor<object?>
             {
                 traitName = typeNames[0].IDENTIFIER(0).GetText();
 
-                // Parse trait type arguments if present (e.g., Iterator<i32>)
-                var traitGenericArgs = implDecl.genericTypeArgs().Length > 0 ? implDecl.genericTypeArgs(0) : null;
-                if (traitGenericArgs != null)
+                // Parse trait type arguments if present (e.g., From<DosError>)
+                // Same logic as main module processing - see comments there
+                var allGenericArgs = implDecl.genericTypeArgs();
+
+                if (genericParams.Count == 0)
                 {
-                    var typeList = traitGenericArgs.typeList();
-                    foreach (var typeCtx in typeList.type())
+                    // No generic parameters on impl block, so any generic args are trait type args
+                    if (allGenericArgs.Length > 0)
                     {
-                        traitTypeArgs.Add(ParseType(typeCtx));
+                        var traitGenericArgs = allGenericArgs[0];
+                        var typeList = traitGenericArgs.typeList();
+                        foreach (var typeCtx in typeList.type())
+                        {
+                            traitTypeArgs.Add(ParseType(typeCtx));
+                        }
                     }
+                }
+                else
+                {
+                    // Has generic parameters on impl block
+                    if (allGenericArgs.Length == 2)
+                    {
+                        // Two sets: first is trait args, second is type args
+                        var traitGenericArgs = allGenericArgs[0];
+                        var typeList = traitGenericArgs.typeList();
+                        foreach (var typeCtx in typeList.type())
+                        {
+                            traitTypeArgs.Add(ParseType(typeCtx));
+                        }
+                    }
+                    // If there's only 1 set of generic args, assume it's for the implementing type
                 }
             }
 
@@ -1049,8 +1117,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 _module.AddFunction(function);
             }
 
-            // Register trait implementation if this is a trait impl (and not generic)
-            if (isTraitImpl && traitName != null && genericParams.Count == 0)
+            // Register trait implementation if this is a trait impl
+            // Note: We register even generic trait impls (e.g., impl<T> Drop for Vec<T>)
+            // so that TypeImplementsDrop can detect them for monomorphized types
+            if (isTraitImpl && traitName != null)
             {
                 if (implementingType == null)
                 {
@@ -1065,7 +1135,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 }
 
                 // Create IrTraitImpl and add to module
-                var traitImpl = new IrTraitImpl(fullTraitName, traitTypeArgs, typeName, implementingType);
+                // For generic impls, this is a template that will be instantiated later
+                var traitImpl = new IrTraitImpl(fullTraitName, traitTypeArgs, typeName, implementingType, genericParams);
                 _module.TraitImpls.Add(traitImpl);
             }
 
@@ -8793,8 +8864,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     return true;
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                // Log the error for debugging
+                Console.WriteLine($"WARNING: Failed to instantiate drop() method for {type.Name}: {ex.Message}");
                 return false;
             }
         }

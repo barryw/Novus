@@ -2,7 +2,7 @@
 // Namespace: std::mem
 // Unified memory management API with automatic size tracking
 
-from std::core import Option, Result, From
+from std::core import Option, Result, From, Drop
 from std::error import ExecError
 from std::ffi::exec import AllocMem, FreeMem, CopyMem
 from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, MEMF_CLEAR, MEMF_ANY

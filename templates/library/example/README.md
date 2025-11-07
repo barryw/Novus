@@ -14,7 +14,7 @@ See `project.toml` for build configuration:
 
 ## Building
 
-From the solution root:
+From the workspace root:
 ```bash
 novusc build
 ```
@@ -46,7 +46,7 @@ This project depends on the `greeting.library` project. The dependency is declar
 library = { path = "../library" }
 ```
 
-When building the solution, the compiler automatically:
+When building the workspace, the compiler automatically:
 1. Builds the library project first
 2. Links the library's auto-open stub (`greeting_lib.o`) into this example
 3. Ensures the library is installed to LIBS: before running

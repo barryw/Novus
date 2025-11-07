@@ -1,12 +1,12 @@
-# Novus Library Template - greeting
+# Novus Library Template - {{PROJECT_NAME}}
 
-This is a complete solution template for creating AmigaOS shared libraries (.library files) in Novus.
+This is a complete workspace template for creating AmigaOS shared libraries (.library files) in Novus.
 
-## Solution Structure
+## Workspace Structure
 
 ```
 greeting/
-├── solution.toml          # Solution configuration
+├── workspace.toml         # Workspace configuration
 ├── README.md              # This file
 ├── library/               # Library project
 │   ├── project.toml       # Library build configuration
@@ -95,9 +95,9 @@ All artifacts are built to `target/debug/` (or `target/release/` with `--release
 |------|---------|
 | `greeting-example` | Executable that uses the library |
 
-## Solution Configuration
+## Workspace Configuration
 
-Edit `solution.toml` to configure the solution:
+Edit `workspace.toml` to configure the workspace:
 
 ```toml
 [workspace]
@@ -236,10 +236,10 @@ See `examples/README.md` for build instructions.
 
 ## Template Design
 
-This template follows the ".NET solution" pattern:
+This template follows the Rust/Cargo workspace pattern:
 
 ```
-Solution (solution.toml)
+Workspace (workspace.toml)
   ├── Project 1 (project.toml)
   │   └── Source files
   └── Project 2 (project.toml)

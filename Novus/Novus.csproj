@@ -42,6 +42,14 @@
         </None>
     </ItemGroup>
 
+    <ItemGroup>
+        <!-- Copy project templates to output directory -->
+        <None Include="../templates/**/*.*">
+            <Link>templates/%(RecursiveDir)%(Filename)%(Extension)</Link>
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+    </ItemGroup>
+
     <!-- Build vendored VBCC toolchain before building Novus compiler -->
     <Target Name="BuildVbcc" BeforeTargets="BeforeBuild">
         <PropertyGroup>

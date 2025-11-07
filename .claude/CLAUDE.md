@@ -8,6 +8,10 @@
 
 - **Testing Amiga executables**: Copy to `/Users/barry/Emulation/Amiga/A4000-DH0/Barry` (shared drive for A4000 with 68040)
 
+- **Test examples location**: ALL test examples go in `Novus.Tests/Examples/` directory. NEVER create an `examples/` directory in the repo root!
+
+- **Keep repo clean**: Do NOT create test workspaces, test libraries, or temp files in the repo root. Use `/tmp` or `/private/tmp` for testing. The repo root should only contain: source code projects, templates, vendor, docs, and build output in project-specific directories.
+
 - **Documentation**: You have extensive docs in the `docs/` folder. Read them when needed.
 
 - **Language Design**: Follow `LanguageDesignDoc.md` for language design decisions
