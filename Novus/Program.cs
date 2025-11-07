@@ -541,9 +541,25 @@ class Program
             // Generate shared types header
             var sharedTypesHeader = CCodeGenerator.GenerateSharedTypesHeader(typeRegistry);
 
-            // Determine output directory
-            var outputDir = Path.GetDirectoryName(Path.GetFullPath(options.OutputFile)) ?? ".";
+            // Determine output directory - NEVER write to repo root
+            // Use a dedicated build directory for intermediate files
+            var fullOutputPath = Path.GetFullPath(options.OutputFile);
+            var outputFileDir = Path.GetDirectoryName(fullOutputPath);
             var baseName = Path.GetFileNameWithoutExtension(options.OutputFile);
+
+            // If output file has no directory component, create a build directory
+            string outputDir;
+            if (string.IsNullOrEmpty(outputFileDir) || outputFileDir == Directory.GetCurrentDirectory())
+            {
+                // Output is in current directory - use /tmp/novus-build-{pid} for intermediate files
+                outputDir = Path.Combine(Path.GetTempPath(), $"novus-build-{Environment.ProcessId}");
+                Directory.CreateDirectory(outputDir);
+            }
+            else
+            {
+                // Output has a specific directory - use that
+                outputDir = outputFileDir;
+            }
 
             // Write shared types header
             var typesHeaderPath = Path.Combine(outputDir, "novus_types.h");
