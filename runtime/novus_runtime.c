@@ -300,3 +300,129 @@ void __novus_div_check(int32_t divisor, const char* file, int32_t line)
     }
 }
 
+// ============================================================================
+// Hardware Detection
+// ============================================================================
+
+// AttnFlags bits from exec/execbase.h
+#define AFF_68010     (1<<0)   // 68010 or better
+#define AFF_68020     (1<<1)   // 68020 or better
+#define AFF_68030     (1<<2)   // 68030 or better
+#define AFF_68040     (1<<3)   // 68040 or better
+#define AFF_68060     (1<<7)   // 68060 or better
+#define AFF_68881     (1<<4)   // 68881 or 68882 FPU
+#define AFF_68882     (1<<5)   // 68882 FPU (or better)
+#define AFF_FPU40     (1<<6)   // 68040/68060 internal FPU
+
+// SystemCPU enum values (must match std::system::SystemCPU)
+typedef enum {
+    SystemCPU_M68000 = 0,
+    SystemCPU_M68010 = 1,
+    SystemCPU_M68020 = 2,
+    SystemCPU_M68030 = 3,
+    SystemCPU_M68040 = 4,
+    SystemCPU_M68060 = 5
+} SystemCPU;
+
+// SystemFPU enum values (must match std::system::SystemFPU)
+typedef enum {
+    SystemFPU_None = 0,
+    SystemFPU_M68881 = 1,
+    SystemFPU_M68882 = 2,
+    SystemFPU_M68040 = 3,
+    SystemFPU_M68060 = 4
+} SystemFPU;
+
+// SystemChipset enum values (must match std::system::SystemChipset)
+typedef enum {
+    SystemChipset_OCS = 0,
+    SystemChipset_ECS = 1,
+    SystemChipset_AGA = 2
+} SystemChipset;
+
+// External reference to SysBase (provided by vbcc startup code)
+extern struct Library *SysBase;
+
+/**
+ * Detect CPU type at runtime
+ * Reads ExecBase->AttnFlags to determine which CPU features are available
+ */
+SystemCPU __detect_cpu(void)
+{
+    uint16_t attn_flags = ((struct ExecBase *)SysBase)->AttnFlags;
+
+    if (attn_flags & AFF_68060) return SystemCPU_M68060;
+    if (attn_flags & AFF_68040) return SystemCPU_M68040;
+    if (attn_flags & AFF_68030) return SystemCPU_M68030;
+    if (attn_flags & AFF_68020) return SystemCPU_M68020;
+    if (attn_flags & AFF_68010) return SystemCPU_M68010;
+    return SystemCPU_M68000;
+}
+
+/**
+ * Detect FPU type at runtime
+ * Reads ExecBase->AttnFlags to determine which FPU is present
+ */
+SystemFPU __detect_fpu(void)
+{
+    uint16_t attn_flags = ((struct ExecBase *)SysBase)->AttnFlags;
+
+    // Check 68060 first (most specific)
+    if ((attn_flags & AFF_68060) && (attn_flags & AFF_FPU40)) {
+        return SystemFPU_M68060;
+    }
+
+    // Check 68040 internal FPU
+    if ((attn_flags & AFF_68040) && (attn_flags & AFF_FPU40)) {
+        return SystemFPU_M68040;
+    }
+
+    // Check for 68882 (more specific than 68881)
+    if (attn_flags & AFF_68882) {
+        return SystemFPU_M68882;
+    }
+
+    // Check for 68881
+    if (attn_flags & AFF_68881) {
+        return SystemFPU_M68881;
+    }
+
+    return SystemFPU_None;
+}
+
+/**
+ * Detect chipset type at runtime
+ * Checks graphics.library ChipRevBits0 to determine OCS/ECS/AGA
+ */
+SystemChipset __detect_chipset(void)
+{
+    struct Library *GfxBase;
+    uint32_t chip_rev;
+
+    // Open graphics.library to check chipset
+    GfxBase = OpenLibrary("graphics.library", 36L);
+    if (GfxBase == NULL) {
+        // Very old system (pre-2.0) - must be OCS
+        return SystemChipset_OCS;
+    }
+
+    // Read ChipRevBits0 from GfxBase
+    // Offset 236 bytes from base for ChipRevBits0 (uint32)
+    chip_rev = *(uint32_t *)((uint8_t *)GfxBase + 236);
+
+    CloseLibrary(GfxBase);
+
+    // AGA check: GFXF_AA_ALICE (bit 2) and GFXF_AA_LISA (bit 1)
+    if ((chip_rev & 0x00000006) == 0x00000006) {
+        return SystemChipset_AGA;
+    }
+
+    // ECS check: has ECS Denise (bit 13) or ECS Agnus (bit 12)
+    if (chip_rev & 0x00003000) {
+        return SystemChipset_ECS;
+    }
+
+    // Default to OCS
+    return SystemChipset_OCS;
+}
+
