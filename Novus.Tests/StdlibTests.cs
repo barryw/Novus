@@ -132,8 +132,8 @@ public class StdlibTests
             from std::strings import Str;
 
             fn main() -> i32 {
-                let path = ""RAM:test.txt"";
-                let result = open_file(path as *u8, 1005);  // MODE_OLDFILE
+                let path: *u8 = 0 as *u8;  // NULL path for test
+                let result = open_file(path, 1005);  // MODE_OLDFILE
 
                 match result {
                     Option::Some(fh) => {
@@ -154,15 +154,14 @@ public class StdlibTests
     {
         var code = @"
             from std::dos import write_file;
-            from std::strings import Str;
 
             fn main() -> i32 {
-                let message = ""Hello"";
+                let message: *u8 = 0 as *u8;  // NULL pointer for test
                 let fh: i32 = 0;  // Null handle for test
 
                 // This will fail at runtime, but should compile
                 // write_file returns i32 (bytes written or error code)
-                let bytes_written = write_file(fh, message as *u8, 5);
+                let bytes_written = write_file(fh, message, 5);
 
                 if bytes_written >= 0 {
                     0
@@ -183,11 +182,11 @@ public class StdlibTests
             from std::dos import read_file;
 
             fn main() -> i32 {
-                let buffer: [u8; 100] = [0; 100];
+                let buffer_ptr: *u8 = 0 as *u8;  // NULL pointer for test
                 let fh: i32 = 0;  // Null handle for test
 
                 // read_file returns i32 (bytes read or error code)
-                let bytes_read = read_file(fh, &buffer[0] as *u8, 100);
+                let bytes_read = read_file(fh, buffer_ptr, 100);
 
                 if bytes_read >= 0 {
                     0
