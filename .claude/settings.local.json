@@ -17,7 +17,8 @@
       "Bash(find:*)",
       "Bash(rm:*)",
       "Bash(dotnet build:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(dotnet test:*)"
     ],
     "deny": [],
     "ask": []
