@@ -53,37 +53,50 @@ pub fn get_chipset() -> SystemChipset {
 }
 
 // Display trait implementations for hardware enums
+// TODO: These are temporarily disabled until match expressions support enum dereferencing
+// For now, use conditional logic instead of match
 impl Display for SystemCPU {
     fn fmt(&self, f: &mut Formatter) -> bool {
-        match *self {
-            SystemCPU::M68000 => f.write_str("68000"),
-            SystemCPU::M68010 => f.write_str("68010"),
-            SystemCPU::M68020 => f.write_str("68020"),
-            SystemCPU::M68030 => f.write_str("68030"),
-            SystemCPU::M68040 => f.write_str("68040"),
-            SystemCPU::M68060 => f.write_str("68060")
+        if *self == SystemCPU::M68000 {
+            return f.write_str("68000")
+        } else if *self == SystemCPU::M68010 {
+            return f.write_str("68010")
+        } else if *self == SystemCPU::M68020 {
+            return f.write_str("68020")
+        } else if *self == SystemCPU::M68030 {
+            return f.write_str("68030")
+        } else if *self == SystemCPU::M68040 {
+            return f.write_str("68040")
+        } else {
+            return f.write_str("68060")
         }
     }
 }
 
 impl Display for SystemFPU {
     fn fmt(&self, f: &mut Formatter) -> bool {
-        match *self {
-            SystemFPU::None => f.write_str("None"),
-            SystemFPU::M68881 => f.write_str("68881"),
-            SystemFPU::M68882 => f.write_str("68882"),
-            SystemFPU::M68040 => f.write_str("68040 FPU"),
-            SystemFPU::M68060 => f.write_str("68060 FPU")
+        if *self == SystemFPU::None {
+            return f.write_str("None")
+        } else if *self == SystemFPU::M68881 {
+            return f.write_str("68881")
+        } else if *self == SystemFPU::M68882 {
+            return f.write_str("68882")
+        } else if *self == SystemFPU::M68040 {
+            return f.write_str("68040 FPU")
+        } else {
+            return f.write_str("68060 FPU")
         }
     }
 }
 
 impl Display for SystemChipset {
     fn fmt(&self, f: &mut Formatter) -> bool {
-        match *self {
-            SystemChipset::OCS => f.write_str("OCS"),
-            SystemChipset::ECS => f.write_str("ECS"),
-            SystemChipset::AGA => f.write_str("AGA")
+        if *self == SystemChipset::OCS {
+            return f.write_str("OCS")
+        } else if *self == SystemChipset::ECS {
+            return f.write_str("ECS")
+        } else {
+            return f.write_str("AGA")
         }
     }
 }
