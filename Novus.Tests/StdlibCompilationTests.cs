@@ -7,10 +7,38 @@ using Xunit;
 namespace Novus.Tests;
 
 /// <summary>
-/// End-to-end tests for Novus standard library functions.
-/// Each test compiles a Novus program that uses a stdlib function and verifies correct IR generation.
+/// COMPILATION SMOKE TESTS for Novus standard library.
+///
+/// IMPORTANT: These are NOT runtime validation tests!
+///
+/// What these tests validate:
+/// - ✅ Stdlib functions can be imported
+/// - ✅ Type checker accepts correct argument types
+/// - ✅ IR generation doesn't crash
+/// - ✅ Function signatures are accessible
+///
+/// What these tests DO NOT validate:
+/// - ❌ Functions actually work at runtime
+/// - ❌ Calling conventions are correct
+/// - ❌ AmigaOS FFI bindings work
+/// - ❌ Error handling behaves correctly
+/// - ❌ Return values are correct
+///
+/// COMPILER BLOCKERS preventing real tests:
+/// 1. String literals require std::strings module (not fully implemented)
+/// 2. Array indexing operations (&buffer[0]) broken in type checker
+///
+/// TEMPORARY WORKAROUND:
+/// Tests use NULL pointers instead of real data. This lets us validate
+/// compilation but provides ZERO runtime confidence.
+///
+/// TODO: Fix compiler blockers, then replace with real runtime tests that:
+/// - Use actual strings, buffers, file paths
+/// - Validate return values and error codes
+/// - Could run on real Amiga hardware
+/// - Prove the stdlib actually works, not just compiles
 /// </summary>
-public class StdlibTests
+public class StdlibCompilationTests
 {
     private static string GetProjectRoot()
     {
