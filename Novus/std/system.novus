@@ -2,6 +2,8 @@
 // Namespace: std::system
 // Provides enums and variables for runtime hardware detection on Amiga
 
+from std::fmt import Display, Formatter
+
 // CPU types detected via ExecBase->AttnFlags
 pub enum SystemCPU {
     M68000,    // 68000 (7.14 MHz on A500/A1000/A2000)
@@ -36,8 +38,6 @@ extern var FPU: SystemFPU
 extern var Chipset: SystemChipset
 
 // Display trait implementations for hardware enums
-from std::fmt import Display, Formatter
-
 impl Display for SystemCPU {
     fn fmt(&self, f: &mut Formatter) -> bool {
         match *self {
