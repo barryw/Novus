@@ -34,3 +34,41 @@ pub enum SystemChipset {
 extern var CPU: SystemCPU
 extern var FPU: SystemFPU
 extern var Chipset: SystemChipset
+
+// Display trait implementations for hardware enums
+from std::fmt import Display, Formatter
+
+impl Display for SystemCPU {
+    fn fmt(&self, f: &mut Formatter) -> bool {
+        match *self {
+            SystemCPU::M68000 => f.write_str("68000"),
+            SystemCPU::M68010 => f.write_str("68010"),
+            SystemCPU::M68020 => f.write_str("68020"),
+            SystemCPU::M68030 => f.write_str("68030"),
+            SystemCPU::M68040 => f.write_str("68040"),
+            SystemCPU::M68060 => f.write_str("68060")
+        }
+    }
+}
+
+impl Display for SystemFPU {
+    fn fmt(&self, f: &mut Formatter) -> bool {
+        match *self {
+            SystemFPU::None => f.write_str("None"),
+            SystemFPU::M68881 => f.write_str("68881"),
+            SystemFPU::M68882 => f.write_str("68882"),
+            SystemFPU::M68040 => f.write_str("68040 FPU"),
+            SystemFPU::M68060 => f.write_str("68060 FPU")
+        }
+    }
+}
+
+impl Display for SystemChipset {
+    fn fmt(&self, f: &mut Formatter) -> bool {
+        match *self {
+            SystemChipset::OCS => f.write_str("OCS"),
+            SystemChipset::ECS => f.write_str("ECS"),
+            SystemChipset::AGA => f.write_str("AGA")
+        }
+    }
+}

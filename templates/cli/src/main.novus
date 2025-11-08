@@ -7,11 +7,6 @@
 from std::dos import write, output
 from std::system import CPU, FPU, Chipset
 
-// External C functions for accessing argc/argv
-// The Novus runtime provides these automatically
-extern var __argc: i32
-extern var __argv: **u8
-
 // Helper to convert C string to Novus string
 extern fn strlen(s: *u8) -> u32
 
@@ -20,12 +15,15 @@ fn c_str_to_novus(c_str: *u8) -> Str {
     return Str::from_raw(c_str, len)
 }
 
-fn main() -> i32 {
+// AmigaOS main function receives argc and argv as parameters
+// When launched from Workbench, argc will be 0 and argv contains WBStartup pointer
+// When launched from Shell, argc >= 1 and argv is a char** array
+fn main(argc: i32, argv: **u8) -> i32 {
     // Detect launch environment
-    // When launched from Workbench, __argc will be 0
-    // When launched from Shell, __argc will be >= 1
+    // When launched from Workbench, argc will be 0
+    // When launched from Shell, argc will be >= 1
 
-    if __argc == 0 {
+    if argc == 0 {
         // Launched from Workbench
         // In this case, arguments come from the WBStartup message
         // which is automatically handled by the Novus runtime
@@ -35,27 +33,26 @@ fn main() -> i32 {
 
         // Show hardware detection info instead
         write(output(), "\nDetected hardware:\n")
-        // TODO: Implement Display trait for SystemCPU/SystemFPU/SystemChipset
-        // write(output(), f"CPU: {CPU}\n")
-        // write(output(), f"FPU: {FPU}\n")
-        // write(output(), f"Chipset: {Chipset}\n")
+        write(output(), f"CPU: {CPU}\n")
+        write(output(), f"FPU: {FPU}\n")
+        write(output(), f"Chipset: {Chipset}\n")
     } else {
         // Launched from Shell/CLI
         write(output(), "Launched from Shell\n")
-        write(output(), f"Arguments: {__argc}\n")
+        write(output(), f"Arguments: {argc}\n")
 
         // Print all arguments
         var i: i32 = 0
-        while i < __argc {
-            let arg_ptr = *(__argv + i as u32)
+        while i < argc {
+            let arg_ptr = *(argv + i as u32)
             let arg = c_str_to_novus(arg_ptr)
             write(output(), f"  argv[{i}] = {arg}\n")
             i = i + 1
         }
 
         // Example: Parse arguments
-        if __argc > 1 {
-            let command = c_str_to_novus(*(__argv + 1))
+        if argc > 1 {
+            let command = c_str_to_novus(*(argv + 1))
 
             if command == "help" {
                 show_help()

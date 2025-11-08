@@ -57,30 +57,22 @@ fn main() -> i32 {
 
     println("\n--- Runtime Hardware Detection ---")
 
-    // Detect actual CPU at runtime
+    // Detect actual CPU at runtime (using Display trait)
+    println(f"CPU: {CPU}")
+
+    // Detect actual FPU at runtime (using Display trait)
+    println(f"FPU: {FPU}")
+
+    // Detect actual chipset at runtime (using Display trait)
+    println(f"Chipset: {Chipset}")
+
+    // Can also use match for conditional logic:
     match CPU {
-        SystemCPU::M68000 => println("Running on 68000"),
-        SystemCPU::M68010 => println("Running on 68010"),
-        SystemCPU::M68020 => println("Running on 68020"),
-        SystemCPU::M68030 => println("Running on 68030"),
-        SystemCPU::M68040 => println("Running on 68040"),
-        SystemCPU::M68060 => println("Running on 68060")
-    }
-
-    // Detect actual FPU at runtime
-    match FPU {
-        SystemFPU::None => println("No FPU detected"),
-        SystemFPU::M68881 => println("68881 FPU detected"),
-        SystemFPU::M68882 => println("68882 FPU detected"),
-        SystemFPU::M68040 => println("68040 internal FPU detected"),
-        SystemFPU::M68060 => println("68060 internal FPU detected")
-    }
-
-    // Detect actual chipset at runtime
-    match Chipset {
-        SystemChipset::OCS => println("OCS chipset detected"),
-        SystemChipset::ECS => println("ECS chipset detected"),
-        SystemChipset::AGA => println("AGA chipset detected")
+        SystemCPU::M68000 => println("  (Base 68000 - no 32-bit multiply)"),
+        SystemCPU::M68020 => println("  (Has 32-bit multiply and bitfields)"),
+        SystemCPU::M68040 => println("  (Integrated FPU, cache-aware)"),
+        SystemCPU::M68060 => println("  (Fastest, avoid MULU.L)"),
+        _ => println("  (Other CPU variant)")
     }
 
     // ====================================================================================

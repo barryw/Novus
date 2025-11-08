@@ -44,13 +44,19 @@ Double-click the program icon. Arguments are passed through tool types if config
 
 The template demonstrates proper argument parsing that works in both launch modes:
 
+### Main Function Signature
+```novus
+fn main(argc: i32, argv: **u8) -> i32
+```
+
 ### Shell Launch
-- `__argc` contains the number of arguments (minimum 1)
-- `__argv[0]` contains the program name
-- `__argv[1...]` contain the command-line arguments
+- `argc` contains the number of arguments (minimum 1)
+- `argv[0]` contains the program name
+- `argv[1...]` contain the command-line arguments
 
 ### Workbench Launch
-- `__argc` will be 0
+- `argc` will be 0
+- `argv` contains a pointer to the WBStartup message
 - Arguments come from the WBStartup message (handled by runtime)
 - Tool types in the `.info` file can provide arguments
 
