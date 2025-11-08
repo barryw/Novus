@@ -20,6 +20,19 @@ public class IrBuilderTests
         return builder.BuildModule(tree);
     }
 
+    private (IrBuilder, IrModule?) BuildIrWithDiagnostics(string source)
+    {
+        var inputStream = new AntlrInputStream(source);
+        var lexer = new NovusLexer(inputStream);
+        var tokenStream = new AngleBracketTokenStream(lexer);
+        var parser = new NovusParser(tokenStream);
+        var tree = parser.compilationUnit();
+
+        var builder = new IrBuilder(skipAutoImports: true);
+        var module = builder.BuildModule(tree);
+        return (builder, module);
+    }
+
     [Fact]
     public void BuildIr_SimpleReturn_CreatesFunction()
     {
@@ -899,19 +912,23 @@ pub fn main() -> u32 {
 pub fn add(a: u32, b: u32) -> u32 {
     return a + b
 }";
-        var exception = Assert.Throws<Exception>(() => BuildIr(source));
-        Assert.Contains("expects 2 arguments, got 1", exception.Message);
+        var (irBuilder, _) = BuildIrWithDiagnostics(source);
+        Assert.True(irBuilder.Diagnostics.HasErrors);
+        var errorMessage = irBuilder.Diagnostics.FormatDiagnostics();
+        Assert.Contains("expects 2 arguments, got 1", errorMessage);
     }
 
     [Fact]
-    public void BuildIr_FunctionCallUnknownFunction_ThrowsException()
+    public void BuildIr_FunctionCallUnknownFunction_ReportsError()
     {
         var source = @"
 pub fn main() -> u32 {
     return unknown()
 }";
-        var exception = Assert.Throws<Exception>(() => BuildIr(source));
-        Assert.Contains("Unknown function: unknown", exception.Message);
+        var (irBuilder, _) = BuildIrWithDiagnostics(source);
+        Assert.True(irBuilder.Diagnostics.HasErrors);
+        var errorMessage = irBuilder.Diagnostics.FormatDiagnostics();
+        Assert.Contains("Unknown function: unknown", errorMessage);
     }
 
     [Fact]

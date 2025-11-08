@@ -74,6 +74,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
     // Type parser for unified type parsing logic
     private readonly TypeParser _typeParser;
 
+    // Diagnostic reporting
+    private readonly DiagnosticBag _diagnostics = new();
+    private readonly List<string> _sourceLines = new();
+
     /// <summary>
     /// Nested class that implements ITypeParsingContext for IrBuilder
     /// </summary>
@@ -118,6 +122,11 @@ public class IrBuilder : NovusBaseVisitor<object?>
     /// <summary>
     /// Constructor for IrBuilder
     /// </summary>
+    /// <summary>
+    /// Public access to diagnostics collected during IR building
+    /// </summary>
+    public DiagnosticBag Diagnostics => _diagnostics;
+
     public IrBuilder(bool skipAutoImports = false)
     {
         _skipAutoImports = skipAutoImports;
@@ -146,6 +155,23 @@ public class IrBuilder : NovusBaseVisitor<object?>
     public List<string> GetImportedModules()
     {
         return _importedModulePaths;
+    }
+
+    /// <summary>
+    /// Set source lines for error reporting
+    /// </summary>
+    public void SetSourceLines(string[] lines)
+    {
+        _sourceLines.Clear();
+        _sourceLines.AddRange(lines);
+    }
+
+    /// <summary>
+    /// Get diagnostics collected during IR building
+    /// </summary>
+    public DiagnosticBag GetDiagnostics()
+    {
+        return _diagnostics;
     }
 
     /// <summary>
@@ -388,7 +414,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
             else
             {
-                throw new Exception($"Type '{typeName}' not found for impl block");
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.TypeNotFound,
+                    $"Type '{typeName}' not found for impl block",
+                    errorLocation
+                );
+                return null;
             }
             _currentSelfType = implementingType;
 
@@ -507,7 +539,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 // _currentSelfType already contains the implementing type (set earlier)
                 if (_currentSelfType == null)
                 {
-                    throw new Exception($"Type '{typeName}' not found for trait implementation");
+                    var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.TypeNotFound,
+                        $"Type '{typeName}' not found for trait implementation",
+                        errorLocation
+                    );
+                    return null;
                 }
 
                 // Construct full trait name with type arguments (e.g., "From<DosError>")
@@ -542,7 +580,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
             _currentFunction = _module.Functions.FirstOrDefault(f => f.Name == funcName);
             if (_currentFunction == null)
             {
-                throw new Exception($"Function '{funcName}' not found in module. This indicates a compiler bug in an earlier pass.");
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.FunctionNotFound,
+                    $"Function '{funcName}' not found in module. This indicates a compiler bug in an earlier pass.",
+                    errorLocation
+                );
+                return null;
             }
 
             // Skip extern functions - they have no body
@@ -604,7 +648,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
             else
             {
-                throw new Exception($"Type '{typeName}' not found for impl block");
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.TypeNotFound,
+                    $"Type '{typeName}' not found for impl block",
+                    errorLocation
+                );
+                return null;
             }
             _currentSelfType = implementingType;
 
@@ -654,7 +704,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 _currentFunction = _module.Functions.FirstOrDefault(f => f.Name == mangledName);
                 if (_currentFunction == null)
                 {
-                    throw new Exception($"Method '{mangledName}' not found in module. This indicates a compiler bug in an earlier pass.");
+                    var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.MethodNotFound,
+                        $"Method '{mangledName}' not found in module. This indicates a compiler bug in an earlier pass.",
+                        errorLocation
+                    );
+                    return null;
                 }
 
                 // Skip extern functions or methods with no body
@@ -730,7 +786,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             if (moduleContext == null || syntaxErrors > 0)
             {
-                throw new Exception($"Module '{moduleNamespace}' not found or has syntax errors");
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.ModuleNotFound,
+                    $"Module '{moduleNamespace}' not found or has syntax errors",
+                    errorLocation
+                );
+                return;
             }
 
             // IMPORTANT: Process the module's own reexports first
@@ -808,7 +870,15 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         if (moduleContext == null || syntaxErrors > 0)
         {
-            throw new Exception($"Module '{moduleNamespace}' not found at {modulePath} or has syntax errors");
+            var errorLocation = importList != null
+                ? SourceLocationHelper.FromContext(importList, _inputFilePath, _sourceLines.ToArray())
+                : new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.ModuleNotFound,
+                $"Module '{moduleNamespace}' not found at {modulePath} or has syntax errors",
+                errorLocation
+            );
+            return;
         }
 
         // Check if module has already been fully processed
@@ -1124,7 +1194,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
             {
                 if (implementingType == null)
                 {
-                    throw new Exception($"Type '{typeName}' not found for trait implementation");
+                    var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.TypeNotFound,
+                        $"Type '{typeName}' not found for trait implementation",
+                        errorLocation
+                    );
+                    return;
                 }
 
                 // Construct full trait name with type arguments (e.g., "From<DosError>")
@@ -1239,7 +1315,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         // Build type substitution map from monomorphized struct
         var typeSubstitutions = new Dictionary<string, IrType>();
-        var baseStruct = _symbols.LookupStruct(baseTypeName) ?? throw new Exception($"Struct '{baseTypeName}' not found");
+        var baseStruct = _symbols.LookupStruct(baseTypeName);
+        if (baseStruct == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(ErrorCodes.StructNotFound, $"Struct '{baseTypeName}' not found", errorLocation);
+            return null;
+        }
 
         // Scan all fields to find which ones use generic types
         // This handles cases where generics aren't in the first N fields
@@ -1257,7 +1339,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         {
             if (!typeSubstitutions.ContainsKey(genericParam))
             {
-                throw new Exception($"Generic parameter '{genericParam}' not found in monomorphized struct {monomorphizedStruct.CacheKey}");
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.GenericParameterNotFound,
+                    $"Generic parameter '{genericParam}' not found in monomorphized struct {monomorphizedStruct.CacheKey}",
+                    errorLocation
+                );
+                return null;
             }
         }
 
@@ -1438,7 +1526,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var baseEnum = _symbols.LookupEnum(baseTypeName);
         if (baseEnum == null)
         {
-            throw new Exception($"Enum '{baseTypeName}' not found");
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.EnumNotFound,
+                $"Enum '{baseTypeName}' not found",
+                errorLocation
+            );
+            return null;
         }
 
         // Extract type mappings by comparing base enum variants with monomorphized enum variants
@@ -1468,7 +1562,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         {
             if (!typeSubstitutions.ContainsKey(genericParam))
             {
-                throw new Exception($"Generic parameter '{genericParam}' not found in monomorphized enum {enumType.CacheKey ?? enumType.EnumName}");
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.GenericParameterNotFound,
+                    $"Generic parameter '{genericParam}' not found in monomorphized enum {enumType.CacheKey ?? enumType.EnumName}",
+                    errorLocation
+                );
+                return null;
             }
         }
 
@@ -2206,7 +2306,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             if (!isPub && !isExtern)
             {
-                throw new Exception($"Cannot import private function '{funcName}' from module '{moduleNamespace}'");
+                var errorLocation = SourceLocationHelper.FromContext(funcDecl, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.CannotImportPrivate,
+                    $"Cannot import private function '{funcName}' from module '{moduleNamespace}'",
+                    errorLocation
+                );
+                return;
             }
 
             // Skip if this function has already been imported (transitive dependencies)
@@ -2285,7 +2391,15 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
         else
         {
-            throw new Exception($"Type '{typeName}' not found for impl block");
+            var errorLocation = selfParam != null
+                ? SourceLocationHelper.FromContext(selfParam, _inputFilePath, _sourceLines.ToArray())
+                : new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.TypeNotFound,
+                $"Type '{typeName}' not found for impl block",
+                errorLocation
+            );
+            return;
         }
 
         IrType selfType = implType;
@@ -2705,8 +2819,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
         {
             var attrName = attrCtx.IDENTIFIER().GetText();
             // Simple location - just use line/column from token
-            var location = new Novus.Diagnostics.SourceLocation(_inputFilePath, attrCtx.Start.Line, attrCtx.Start.Column, 0, "");
-            var attr = new Novus.SemanticAnalysis.AttributeInfo(attrName, location);
+            var errorLocation = new Novus.Diagnostics.SourceLocation(_inputFilePath, attrCtx.Start.Line, attrCtx.Start.Column, 0, "");
+            var attr = new Novus.SemanticAnalysis.AttributeInfo(attrName, errorLocation);
 
             // Parse attribute arguments if present
             if (attrCtx.attributeArgList() != null)
@@ -2908,7 +3022,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         if (value == null)
         {
-            throw new Exception($"Variable must have an initial value");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.MissingInitializer,
+                $"Variable must have an initial value",
+                errorLocation
+            );
+            return null;
         }
 
         // For throwaway bindings, just evaluate the expression for side effects
@@ -2944,6 +3064,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     public override object? VisitAssignmentStatement([NotNull] NovusParser.AssignmentStatementContext context)
     {
+        // Declare errorLocation once at method start to avoid CS0136 errors
+        SourceLocation errorLocation;
+
         // Get the identifier or 'self' keyword
         var identifier = context.IDENTIFIER();
         var selfKeyword = context.KW_SELF();
@@ -2959,7 +3082,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
         else
         {
-            throw new Exception("Assignment statement must have either IDENTIFIER or KW_SELF");
+            errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.CannotAssignToExpression,
+                "Assignment statement must have either IDENTIFIER or KW_SELF",
+                errorLocation
+            );
+            return null;
         }
 
         // Detect which kind of assignment this is
@@ -3030,7 +3159,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                 if (baseVar == null)
                 {
-                    throw new Exception($"Variable {name} not found");
+                    errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                    _diagnostics.ReportError(
+                        ErrorCodes.VariableNotFound,
+                        $"Variable {name} not found",
+                        errorLocation
+                    );
+                    return null;
                 }
 
                 // Process lvalue suffix chain for increment/decrement
@@ -3058,13 +3193,25 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                         if (structType is not IrStructType irStructType)
                         {
-                            throw new Exception($"Cannot access member '{memberName}' on non-struct type");
+                            errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                            _diagnostics.ReportError(
+                                ErrorCodes.CannotAccessMember,
+                                $"Cannot access member '{memberName}' on non-struct type",
+                                errorLocation
+                            );
+                            return null;
                         }
 
                         var field = irStructType.Fields.FirstOrDefault(f => f.Name == memberName);
                         if (field == null)
                         {
-                            throw new Exception($"Field '{memberName}' not found in struct '{irStructType.Name}'");
+                            errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                            _diagnostics.ReportError(
+                                ErrorCodes.FieldNotFound,
+                                $"Field '{memberName}' not found in struct '{irStructType.Name}'",
+                                errorLocation
+                            );
+                            return null;
                         }
 
                         // Load the intermediate field value
@@ -3079,7 +3226,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
                         var indexExpr = (IrValue?)Visit(suffix.expression());
                         if (indexExpr == null)
                         {
-                            throw new Exception("Index expression is required");
+                            errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                            _diagnostics.ReportError(
+                                ErrorCodes.MissingExpression,
+                                "Index expression is required",
+                                errorLocation
+                            );
+                            return null;
                         }
 
                         // Determine element type
@@ -3094,7 +3247,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
                         }
                         else
                         {
-                            throw new Exception($"Cannot index type '{currentLValue.Type}' - must be pointer or array");
+                            errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                            _diagnostics.ReportError(
+                                ErrorCodes.CannotIndexType,
+                                $"Cannot index type '{currentLValue.Type}' - must be pointer or array",
+                                errorLocation
+                            );
+                            return null;
                         }
 
                         // Load the intermediate indexed value
@@ -3105,7 +3264,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     }
                     else
                     {
-                        throw new Exception($"Unexpected lvalue suffix: {suffix.GetText()}");
+                        errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                        _diagnostics.ReportError(
+                            ErrorCodes.InvalidExpressionType,
+                            $"Unexpected lvalue suffix: {suffix.GetText()}",
+                            errorLocation
+                        );
+                        return null;
                     }
                 }
 
@@ -3128,13 +3293,25 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                     if (structType is not IrStructType irStructType)
                     {
-                        throw new Exception($"Cannot access member '{memberName}' on non-struct type");
+                        errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                        _diagnostics.ReportError(
+                            ErrorCodes.CannotAccessMember,
+                            $"Cannot access member '{memberName}' on non-struct type",
+                            errorLocation
+                        );
+                        return null;
                     }
 
                     var field = irStructType.Fields.FirstOrDefault(f => f.Name == memberName);
                     if (field == null)
                     {
-                        throw new Exception($"Field '{memberName}' not found in struct '{irStructType.Name}'");
+                        errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                        _diagnostics.ReportError(
+                            ErrorCodes.FieldNotFound,
+                            $"Field '{memberName}' not found in struct '{irStructType.Name}'",
+                            errorLocation
+                        );
+                        return null;
                     }
 
                     // Load current value
@@ -3160,7 +3337,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     var indexExpr = (IrValue?)Visit(lastSuffix.expression());
                     if (indexExpr == null)
                     {
-                        throw new Exception("Index expression is required");
+                        errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                        _diagnostics.ReportError(
+                            ErrorCodes.MissingExpression,
+                            "Index expression is required",
+                            errorLocation
+                        );
+                        return null;
                     }
 
                     // Determine element type
@@ -3175,7 +3358,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     }
                     else
                     {
-                        throw new Exception($"Cannot index type '{currentLValue.Type}' - must be pointer or array");
+                        errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                        _diagnostics.ReportError(
+                            ErrorCodes.CannotIndexType,
+                            $"Cannot index type '{currentLValue.Type}' - must be pointer or array",
+                            errorLocation
+                        );
+                        return null;
                     }
 
                     // Load current value
@@ -3197,7 +3386,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 }
                 else
                 {
-                    throw new Exception($"Unexpected lvalue suffix: {lastSuffix.GetText()}");
+                    errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.InvalidExpressionType,
+                        $"Unexpected lvalue suffix: {lastSuffix.GetText()}",
+                        errorLocation
+                    );
+                    return null;
                 }
             }
             else
@@ -3224,7 +3419,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                 if (variable == null || varType == null)
                 {
-                    throw new Exception($"Variable {name} not found");
+                    errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.VariableNotFound,
+                        $"Variable {name} not found",
+                        errorLocation
+                    );
+                    return null;
                 }
 
                 // Increment or decrement: var = var +/- 1
@@ -3247,7 +3448,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
             var value = (IrValue?)Visit(context.expression());
             if (value == null)
             {
-                throw new Exception($"Assignment requires a value");
+                errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.MissingAssignmentValue,
+                    $"Assignment requires a value",
+                    errorLocation
+                );
+                return null;
             }
 
             // Start with the base variable
@@ -3263,7 +3470,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
             else
             {
-                throw new Exception($"Undefined variable: {name}");
+                errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.UndefinedVariable,
+                    $"Undefined variable: {name}",
+                    errorLocation
+                );
+                return null;
             }
 
             // For single member access (e.g., self.value = expr)
@@ -3283,7 +3496,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                 if (structType is not IrStructType irStructType)
                 {
-                    throw new Exception($"Cannot access member '{memberName}' on non-struct type");
+                    errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.CannotAccessMember,
+                        $"Cannot access member '{memberName}' on non-struct type",
+                        errorLocation
+                    );
+                    return null;
                 }
 
                 // Find the field offset
@@ -3301,7 +3520,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                 if (!found)
                 {
-                    throw new Exception($"Field '{memberName}' not found in struct '{irStructType.Name}'");
+                    errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.FieldNotFound,
+                        $"Field '{memberName}' not found in struct '{irStructType.Name}'",
+                        errorLocation
+                    );
+                    return null;
                 }
 
                 // Generate store to struct member (using actualBase which may be dereferenced)
@@ -3318,7 +3543,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 var indexExpr = (IrValue?)Visit(lvalueSuffixes[0].expression());
                 if (indexExpr == null)
                 {
-                    throw new Exception("Index expression is required");
+                    errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.MissingExpression,
+                        "Index expression is required",
+                        errorLocation
+                    );
+                    return null;
                 }
 
                 // Generate index store instruction
@@ -3353,14 +3584,26 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                     if (structType is not IrStructType irStructType)
                     {
-                        throw new Exception($"Cannot access member '{memberName}' on non-struct type");
+                        errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                        _diagnostics.ReportError(
+                            ErrorCodes.CannotAccessMember,
+                            $"Cannot access member '{memberName}' on non-struct type",
+                            errorLocation
+                        );
+                        return null;
                     }
 
                     // Find the field
                     var field = irStructType.Fields.FirstOrDefault(f => f.Name == memberName);
                     if (field == null)
                     {
-                        throw new Exception($"Field '{memberName}' not found in struct '{irStructType.Name}'");
+                        errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                        _diagnostics.ReportError(
+                            ErrorCodes.FieldNotFound,
+                            $"Field '{memberName}' not found in struct '{irStructType.Name}'",
+                            errorLocation
+                        );
+                        return null;
                     }
 
                     if (isLastSuffix)
@@ -3385,7 +3628,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     var indexExpr = (IrValue?)Visit(suffix.expression());
                     if (indexExpr == null)
                     {
-                        throw new Exception("Index expression is required");
+                        errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                        _diagnostics.ReportError(
+                            ErrorCodes.MissingExpression,
+                            "Index expression is required",
+                            errorLocation
+                        );
+                        return null;
                     }
 
                     if (isLastSuffix)
@@ -3409,7 +3658,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
                         }
                         else
                         {
-                            throw new Exception($"Cannot index type '{currentLValue.Type}' - must be pointer or array");
+                            errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                            _diagnostics.ReportError(
+                                ErrorCodes.CannotIndexType,
+                                $"Cannot index type '{currentLValue.Type}' - must be pointer or array",
+                                errorLocation
+                            );
+                            return null;
                         }
 
                         var tempName = $"_indexed_{_tempCounter++}";
@@ -3420,12 +3675,24 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 }
                 else
                 {
-                    throw new Exception($"Unexpected lvalue suffix: {suffix.GetText()}");
+                    errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.InvalidExpressionType,
+                        $"Unexpected lvalue suffix: {suffix.GetText()}",
+                        errorLocation
+                    );
+                    return null;
                 }
             }
 
             // If we get here, something went wrong
-            throw new Exception("Failed to process lvalue chain");
+            errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Failed to process lvalue chain",
+                errorLocation
+            );
+            return null;
         }
 
         if (derefCount > 0)
@@ -3435,7 +3702,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             if (value == null)
             {
-                throw new Exception($"Assignment to dereferenced variable requires a value");
+                errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Assignment to dereferenced variable requires a value",
+                    errorLocation
+                );
+                return null;
             }
 
             // Get the variable
@@ -3460,7 +3733,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             if (variable == null || varType == null)
             {
-                throw new Exception($"Variable {name} not found");
+                errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.VariableNotFound,
+                    $"Variable {name} not found",
+                    errorLocation
+                );
+                return null;
             }
 
             // Apply dereferences to get the pointer/reference
@@ -3476,7 +3755,15 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 else if (varType is IrMutReferenceType mutRefType)
                     pointeeType = mutRefType.PointeeType;
                 else
-                    throw new Exception($"Cannot dereference non-pointer type");
+                {
+                    errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.CannotDereferenceType,
+                        $"Cannot dereference non-pointer type",
+                        errorLocation
+                    );
+                    return null;
+                }
 
                 pointer = new IrDereferenceValue(pointer, pointeeType);
                 varType = pointeeType;
@@ -3492,7 +3779,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             if (value == null)
             {
-                throw new Exception($"Assignment to {name} requires a value");
+                errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Assignment to {name} requires a value",
+                    errorLocation
+                );
+                return null;
             }
 
             // Handle compound operators by desugaring them to binary ops
@@ -3520,7 +3813,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                 if (variable == null || varType == null)
                 {
-                    throw new Exception($"Variable {name} not found");
+                    errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.VariableNotFound,
+                        $"Variable {name} not found",
+                        errorLocation
+                    );
+                    return null;
                 }
 
                 // Desugar compound operator: x op= y becomes x = x op y
@@ -3537,7 +3836,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     "^=" => IrBinaryOp.OpKind.Xor,
                     "<<=" => IrBinaryOp.OpKind.Shl,
                     ">>=" => IrBinaryOp.OpKind.Shr,
-                    _ => throw new Exception($"Unknown compound operator: {op}")
+                    _ => IrBinaryOp.OpKind.Add  // ERROR: $"Unknown compound operator: {op}"
                 };
 
                 var binOp = new IrBinaryOp(resultTemp, opKind, variable, value, varType);
@@ -3671,7 +3970,15 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var expression = (IrValue?)Visit(context.expression());
 
         if (expression == null)
-            throw new Exception($"if let expression returned null");
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"if let expression returned null",
+                errorLocation
+            );
+            return null;
+        }
 
         // Store expression in a temp
         var tempName = $"%if_let_{_labelCounter++}";
@@ -3689,7 +3996,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
         else
         {
-            throw new Exception($"if let only works with pointers or integers, got {expression.Type.Name}");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"if let only works with pointers or integers, got {expression.Type.Name}",
+                errorLocation
+            );
+            return null;
         }
 
         // Create comparison: temp != 0
@@ -3720,7 +4033,15 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var expression = (IrValue?)Visit(context.expression());
 
         if (expression == null)
-            throw new Exception($"if var expression returned null");
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"if var expression returned null",
+                errorLocation
+            );
+            return null;
+        }
 
         // Store expression in a temp
         var tempName = $"%if_var_{_labelCounter++}";
@@ -3738,7 +4059,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
         else
         {
-            throw new Exception($"if var only works with pointers or integers, got {expression.Type.Name}");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"if var only works with pointers or integers, got {expression.Type.Name}",
+                errorLocation
+            );
+            return null;
         }
 
         // Create comparison: temp != 0
@@ -3933,7 +4260,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         if (lenMethod == null)
         {
-            throw new Exception($"Type '{typeName}' does not implement Iterable trait (missing len() method). For-in loops require types to implement Iterable<T>.");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Type '{typeName}' does not implement Iterable trait (missing len() method). For-in loops require types to implement Iterable<T>.",
+                errorLocation
+            );
+            return null;
         }
 
         // Call len()
@@ -4011,7 +4344,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         if (getMethod == null)
         {
-            throw new Exception($"Type '{typeName}' does not implement Iterable trait (missing get() method). For-in loops require types to implement Iterable<T>.");
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Type '{typeName}' does not implement Iterable trait (missing get() method). For-in loops require types to implement Iterable<T>.",
+                errorLocation
+            );
+            return null;
         }
 
         // Call get(index)
@@ -4028,14 +4367,26 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Get the Option enum type to extract the inner type T
         if (getMethod.ReturnType is not IrEnumType optionType || optionType.EnumName != "Option")
         {
-            throw new Exception($"Iterator::get must return Option<T>, but returned {getMethod.ReturnType.Name}");
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Iterator::get must return Option<T>, but returned {getMethod.ReturnType.Name}",
+                errorLocation
+            );
+            return null;
         }
 
         // Find the Some variant to get the inner type
         var someVariant = optionType.Variants.FirstOrDefault(v => v.Name == "Some");
         if (someVariant == null || someVariant.AssociatedData.Count == 0)
         {
-            throw new Exception("Option::Some variant not found or has no associated data");
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Option::Some variant not found or has no associated data",
+                errorLocation
+            );
+            return null;
         }
 
         var innerType = someVariant.AssociatedData[0];
@@ -4049,7 +4400,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var noneVariant = optionType.Variants.FirstOrDefault(v => v.Name == "None");
         if (noneVariant == null)
         {
-            throw new Exception("Option::None variant not found");
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Option::None variant not found",
+                errorLocation
+            );
+            return null;
         }
 
         // Compare tag with None variant tag
@@ -4139,7 +4496,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
     {
         if (_loopExitLabels.Count == 0)
         {
-            throw new Exception("break statement outside of loop");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "break statement outside of loop",
+                errorLocation
+            );
+            return null;
         }
 
         var exitLabel = _loopExitLabels.Peek();
@@ -4218,7 +4581,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         // Get source location for error reporting
-        var location = new SourceLocation(
+        var errorLocation = new SourceLocation(
             _inputFilePath ?? "unknown",
             context.Start.Line,
             context.Start.Column,
@@ -4227,7 +4590,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         );
 
         // Add assert instruction to current block
-        _currentBlock!.AddInstruction(new IrAssert(condition, message, location));
+        _currentBlock!.AddInstruction(new IrAssert(condition, message, errorLocation));
 
         return null;
     }
@@ -4240,7 +4603,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var message = messageText.Substring(1, messageText.Length - 2);
 
         // Get source location for error reporting
-        var location = new SourceLocation(
+        var errorLocation = new SourceLocation(
             _inputFilePath ?? "unknown",
             context.Start.Line,
             context.Start.Column,
@@ -4249,7 +4612,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         );
 
         // Add panic instruction to current block
-        _currentBlock!.AddInstruction(new IrPanic(message, location));
+        _currentBlock!.AddInstruction(new IrPanic(message, errorLocation));
 
         return null;
     }
@@ -4397,14 +4760,26 @@ public class IrBuilder : NovusBaseVisitor<object?>
             var typeSubstitutions = InferGenericFunctionTypes(template.GenericParams, templateParams, arguments);
             if (typeSubstitutions == null)
             {
-                throw new Exception($"Cannot infer type arguments for '{genericFuncName}'");
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Cannot infer type arguments for '{genericFuncName}'",
+                    errorLocation
+                );
+                return null;
             }
 
             // Instantiate
             var instantiatedFunc = InstantiateGenericFunction(genericFuncName, typeSubstitutions);
             if (instantiatedFunc == null)
             {
-                throw new Exception($"Failed to instantiate '{genericFuncName}'");
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Failed to instantiate '{genericFuncName}'",
+                    errorLocation
+                );
+                return null;
             }
 
             // Create call
@@ -4432,11 +4807,23 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 // User provided explicit type arguments
                 if (genericAssocFunc.ExplicitTypeArgs.Count != genericAssocFunc.GenericParameters.Count)
                 {
-                    throw new Exception($"Wrong number of type arguments for '{genericAssocFunc.TypeName}::{genericAssocFunc.MethodName}': expected {genericAssocFunc.GenericParameters.Count}, got {genericAssocFunc.ExplicitTypeArgs.Count}");
+                    var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.InvalidExpressionType,
+                        $"Wrong number of type arguments for '{genericAssocFunc.TypeName}::{genericAssocFunc.MethodName}': expected {genericAssocFunc.GenericParameters.Count}, got {genericAssocFunc.ExplicitTypeArgs.Count}",
+                        errorLocation
+                    );
+                    return null;
                 }
 
                 // Build monomorphized struct from explicit type args (same logic as ParseNamedType)
-                var baseStruct = _symbols.LookupStruct(genericAssocFunc.TypeName) ?? throw new Exception($"Struct '{genericAssocFunc.TypeName}' not found");
+                var baseStruct = _symbols.LookupStruct(genericAssocFunc.TypeName);
+                if (baseStruct == null)
+                {
+                    var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(ErrorCodes.StructNotFound, $"Struct '{genericAssocFunc.TypeName}' not found", errorLocation);
+                    return null;
+                }
                 var typeArgs = genericAssocFunc.ExplicitTypeArgs;
 
                 // Create cache key
@@ -4518,14 +4905,26 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             if (monomorphizedStruct == null)
             {
-                throw new Exception($"Could not infer generic type parameters for '{genericAssocFunc.TypeName}::{genericAssocFunc.MethodName}()'. Consider using turbo-fish syntax: {genericAssocFunc.TypeName}::<Type>::{genericAssocFunc.MethodName}");
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Could not infer generic type parameters for '{genericAssocFunc.TypeName}::{genericAssocFunc.MethodName}()'. Consider using turbo-fish syntax: {genericAssocFunc.TypeName}::<Type>::{genericAssocFunc.MethodName}",
+                    errorLocation
+                );
+                return null;
             }
 
             // Instantiate the generic method with the monomorphized struct
             var instantiatedFunc = InstantiateGenericMethod(monomorphizedStruct, genericAssocFunc.MethodName);
             if (instantiatedFunc == null)
             {
-                throw new Exception($"Failed to instantiate generic method '{genericAssocFunc.TypeName}::{genericAssocFunc.MethodName}'");
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Failed to instantiate generic method '{genericAssocFunc.TypeName}::{genericAssocFunc.MethodName}'",
+                    errorLocation
+                );
+                return null;
             }
 
             // Generate call to instantiated function
@@ -4548,12 +4947,28 @@ public class IrBuilder : NovusBaseVisitor<object?>
             if (funcRef.Function.IsVariadic)
             {
                 if (arguments.Count < funcRefNonVariadicCount)
-                    throw new Exception($"Variadic function '{funcRef.Function.Name}' expects at least {funcRefNonVariadicCount} arguments, got {arguments.Count}");
+                {
+                    var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.InvalidExpressionType,
+                        $"Variadic function '{funcRef.Function.Name}' expects at least {funcRefNonVariadicCount} arguments, got {arguments.Count}",
+                        errorLocation
+                    );
+                    return null;
+                }
             }
             else
             {
                 if (arguments.Count != funcRef.Function.Parameters.Count)
-                    throw new Exception($"Function '{funcRef.Function.Name}' expects {funcRef.Function.Parameters.Count} arguments, got {arguments.Count}");
+                {
+                    var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.InvalidExpressionType,
+                        $"Function '{funcRef.Function.Name}' expects {funcRef.Function.Parameters.Count} arguments, got {arguments.Count}",
+                        errorLocation
+                    );
+                    return null;
+                }
             }
 
             // Apply automatic Str/String → *u8 coercion only when parameter type is *u8
@@ -4579,7 +4994,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
                         {
                             if (!strLiteral.FieldValues.TryGetValue("ptr", out var ptrValue))
                             {
-                                throw new Exception("Str struct literal must have a 'ptr' field");
+                                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                                _diagnostics.ReportError(
+                                    ErrorCodes.InvalidExpressionType,
+                                    "Str struct literal must have a 'ptr' field",
+                                    errorLocation
+                                );
+                                return null;
                             }
                             arguments[i] = ptrValue;  // Use the ptr value directly
                         }
@@ -4589,7 +5010,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
                             var ptrField = structType.GetField("ptr");
                             if (ptrField == null)
                             {
-                                throw new Exception("Str struct must have a 'ptr' field");
+                                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                                _diagnostics.ReportError(
+                                    ErrorCodes.InvalidExpressionType,
+                                    "Str struct must have a 'ptr' field",
+                                    errorLocation
+                                );
+                                return null;
                             }
 
                             var ptrTempName = $"%t{_tempCounter++}";
@@ -4607,7 +5034,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                         if (asPtrMethod == null)
                         {
-                            throw new Exception("String type must have as_ptr() method for automatic coercion to *u8");
+                            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                            _diagnostics.ReportError(
+                                ErrorCodes.InvalidExpressionType,
+                                "String type must have as_ptr() method for automatic coercion to *u8",
+                                errorLocation
+                            );
+                            return null;
                         }
 
                         // Call String::as_ptr()
@@ -4641,19 +5074,37 @@ public class IrBuilder : NovusBaseVisitor<object?>
             var enumType = enumCtor.Type as IrEnumType;
             if (enumType == null)
             {
-                throw new Exception("Enum constructor must have enum type");
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    "Enum constructor must have enum type",
+                    errorLocation
+                );
+                return null;
             }
 
             var variant = enumType.GetVariant(enumCtor.VariantName);
             if (variant == null)
             {
-                throw new Exception($"Variant '{enumCtor.VariantName}' not found in enum '{enumType.EnumName}'");
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.EnumNotFound,
+                    $"Variant '{enumCtor.VariantName}' not found in enum '{enumType.EnumName}'",
+                    errorLocation
+                );
+                return null;
             }
 
             // Validate argument count
             if (arguments.Count != variant.AssociatedData.Count)
             {
-                throw new Exception($"Variant '{enumCtor.VariantName}' expects {variant.AssociatedData.Count} arguments, got {arguments.Count}");
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Variant '{enumCtor.VariantName}' expects {variant.AssociatedData.Count} arguments, got {arguments.Count}",
+                    errorLocation
+                );
+                return null;
             }
 
             // If enum has generic parameters, perform type inference to monomorphize
@@ -4814,7 +5265,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
             // Indirect call through function pointer
             if (arguments.Count != fpType.ParameterTypes.Count)
             {
-                throw new Exception($"Function pointer expects {fpType.ParameterTypes.Count} arguments, got {arguments.Count}");
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Function pointer expects {fpType.ParameterTypes.Count} arguments, got {arguments.Count}",
+                    errorLocation
+                );
+                return null;
             }
 
             // Apply automatic Str/String → *u8 coercion only when parameter type is *u8
@@ -4837,7 +5294,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
                         {
                             if (!strLiteral.FieldValues.TryGetValue("ptr", out var ptrValue))
                             {
-                                throw new Exception("Str struct literal must have a 'ptr' field");
+                                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                                _diagnostics.ReportError(
+                                    ErrorCodes.InvalidExpressionType,
+                                    "Str struct literal must have a 'ptr' field",
+                                    errorLocation
+                                );
+                                return null;
                             }
                             arguments[i] = ptrValue;  // Use the ptr value directly
                         }
@@ -4847,7 +5310,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
                             var ptrField = structType.GetField("ptr");
                             if (ptrField == null)
                             {
-                                throw new Exception("Str struct must have a 'ptr' field");
+                                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                                _diagnostics.ReportError(
+                                    ErrorCodes.InvalidExpressionType,
+                                    "Str struct must have a 'ptr' field",
+                                    errorLocation
+                                );
+                                return null;
                             }
 
                             var ptrTempName = $"%t{_tempCounter++}";
@@ -4865,7 +5334,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                         if (asPtrMethod == null)
                         {
-                            throw new Exception("String type must have as_ptr() method for automatic coercion to *u8");
+                            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                            _diagnostics.ReportError(
+                                ErrorCodes.InvalidExpressionType,
+                                "String type must have as_ptr() method for automatic coercion to *u8",
+                                errorLocation
+                            );
+                            return null;
                         }
 
                         // Call String::as_ptr()
@@ -4902,7 +5377,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Direct call - funcExpr should be an identifier
         if (funcExpr is not IrVariable funcVar)
         {
-            throw new Exception("Function call target must be an identifier or function pointer");
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Function call target must be an identifier or function pointer",
+                errorLocation
+            );
+            return null;
         }
 
         var functionName = funcVar.Name;
@@ -4948,7 +5429,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
                         else
                         {
                             // Could not infer type arguments
-                            throw new Exception($"Cannot infer generic type arguments for {typeName}::{methodName}. Please provide explicit type arguments.");
+                            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                            _diagnostics.ReportError(
+                                ErrorCodes.InvalidExpressionType,
+                                $"Cannot infer generic type arguments for {typeName}::{methodName}. Please provide explicit type arguments.",
+                                errorLocation
+                            );
+                            return null;
                         }
                     }
                 }
@@ -4959,7 +5446,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var function = _module.Functions.FirstOrDefault(f => f.Name == functionName);
         if (function == null)
         {
-            throw new Exception($"Unknown function: {functionName}");
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Unknown function: {functionName}",
+                errorLocation
+            );
+            return null;
         }
 
         // Check argument count matches parameter count
@@ -4967,12 +5460,28 @@ public class IrBuilder : NovusBaseVisitor<object?>
         if (function.IsVariadic)
         {
             if (arguments.Count < nonVariadicCount)
-                throw new Exception($"Variadic function '{functionName}' expects at least {nonVariadicCount} arguments, got {arguments.Count}");
+            {
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Variadic function '{functionName}' expects at least {nonVariadicCount} arguments, got {arguments.Count}",
+                    errorLocation
+                );
+                return null;
+            }
         }
         else
         {
             if (arguments.Count != function.Parameters.Count)
-                throw new Exception($"Function {functionName} expects {function.Parameters.Count} arguments, got {arguments.Count}");
+            {
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Function {functionName} expects {function.Parameters.Count} arguments, got {arguments.Count}",
+                    errorLocation
+                );
+                return null;
+            }
         }
 
         // Apply automatic Str/String → *u8 coercion only when parameter type is *u8
@@ -4998,7 +5507,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     {
                         if (!strLiteral.FieldValues.TryGetValue("ptr", out var ptrValue))
                         {
-                            throw new Exception("Str struct literal must have a 'ptr' field");
+                            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                            _diagnostics.ReportError(
+                                ErrorCodes.InvalidExpressionType,
+                                "Str struct literal must have a 'ptr' field",
+                                errorLocation
+                            );
+                            return null;
                         }
                         arguments[i] = ptrValue;  // Use the ptr value directly
                     }
@@ -5008,7 +5523,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
                         var ptrField = structType.GetField("ptr");
                         if (ptrField == null)
                         {
-                            throw new Exception("Str struct must have a 'ptr' field");
+                            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                            _diagnostics.ReportError(
+                                ErrorCodes.InvalidExpressionType,
+                                "Str struct must have a 'ptr' field",
+                                errorLocation
+                            );
+                            return null;
                         }
 
                         var ptrTempName = $"%t{_tempCounter++}";
@@ -5026,7 +5547,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                     if (asPtrMethod == null)
                     {
-                        throw new Exception("String type must have as_ptr() method for automatic coercion to *u8");
+                        var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                        _diagnostics.ReportError(
+                            ErrorCodes.InvalidExpressionType,
+                            "String type must have as_ptr() method for automatic coercion to *u8",
+                            errorLocation
+                        );
+                        return null;
                     }
 
                     // Call String::as_ptr()
@@ -5225,7 +5752,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var receiver = (IrValue?)Visit(receiverExpr);
         if (receiver == null)
         {
-            throw new Exception("Method call receiver is null");
+            var errorLocation = SourceLocationHelper.FromContext(callCtx, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Method call receiver is null",
+                errorLocation
+            );
+            return null;
         }
 
         // Handle unresolved generic types - resolve them from method arguments
@@ -5263,7 +5796,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
             else
             {
-                throw new Exception($"Cannot infer generic type parameters for '{partialType.GenericTypeName}' from method call '{methodName}'");
+                var errorLocation = SourceLocationHelper.FromContext(callCtx, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Cannot infer generic type parameters for '{partialType.GenericTypeName}' from method call '{methodName}'",
+                    errorLocation
+                );
+                return null;
             }
         }
 
@@ -5292,12 +5831,24 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
             else
             {
-                throw new Exception($"Cannot call methods on pointer to non-struct/enum type: {receiverType.Name}");
+                var errorLocation = SourceLocationHelper.FromContext(callCtx, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.CannotCallMethodOnType,
+                    $"Cannot call methods on pointer to non-struct/enum type: {receiverType.Name}",
+                    errorLocation
+                );
+                return null;
             }
         }
         else
         {
-            throw new Exception($"Cannot call methods on type: {receiverType.Name}");
+            var errorLocation = SourceLocationHelper.FromContext(callCtx, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.CannotCallMethodOnType,
+                $"Cannot call methods on type: {receiverType.Name}",
+                errorLocation
+            );
+            return null;
         }
 
         // Build the mangled function name: Type::method
@@ -5438,7 +5989,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         if (method == null)
         {
-            throw new Exception($"Method '{methodName}' not found for type '{typeName}'");
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.MethodNotFound,
+                $"Method '{methodName}' not found for type '{typeName}'",
+                errorLocation
+            );
+            return null;
         }
 
         // Build arguments list: [receiver, ...user_args]
@@ -5513,12 +6070,28 @@ public class IrBuilder : NovusBaseVisitor<object?>
         if (method.IsVariadic)
         {
             if (arguments.Count < nonVariadicCount)
-                throw new Exception($"Variadic method '{methodName}' expects at least {nonVariadicCount} arguments, got {arguments.Count}");
+            {
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Variadic method '{methodName}' expects at least {nonVariadicCount} arguments, got {arguments.Count}",
+                    errorLocation
+                );
+                return null;
+            }
         }
         else
         {
             if (arguments.Count != method.Parameters.Count)
-                throw new Exception($"Method {methodName} expects {method.Parameters.Count} arguments, got {arguments.Count}");
+            {
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Method {methodName} expects {method.Parameters.Count} arguments, got {arguments.Count}",
+                    errorLocation
+                );
+                return null;
+            }
         }
 
         // Note: Str -> *u8 coercion is already handled in VisitCallExpr
@@ -5614,7 +6187,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
             return new IrVariable(tempName, ptrType.PointeeType);
         }
 
-        throw new Exception($"Cannot index into non-array/non-pointer type: {baseExpr.Type.Name}");
+        var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+        _diagnostics.ReportError(
+            ErrorCodes.InvalidExpressionType,
+            $"Cannot index into non-array/non-pointer type: {baseExpr.Type.Name}",
+            errorLocation
+        );
+        return null;
     }
 
     public override object? VisitArrayLiteral([NotNull] NovusParser.ArrayLiteralContext context)
@@ -5631,7 +6210,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         if (elements.Count == 0)
         {
-            throw new Exception("Array literals cannot be empty");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Array literals cannot be empty",
+                errorLocation
+            );
+            return null;
         }
 
         // Infer array type from first element
@@ -5655,7 +6240,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var expressions = context.expression();
         if (expressions.Length != 2)
         {
-            throw new Exception("Array repeat literal must have exactly 2 expressions");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Array repeat literal must have exactly 2 expressions",
+                errorLocation
+            );
+            return null;
         }
 
         // Visit the value expression
@@ -5665,7 +6256,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var countExpr = (IrValue)Visit(expressions[1])!;
         if (countExpr is not IrConstant countConstant)
         {
-            throw new Exception("Array repeat count must be a compile-time constant");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidArrayRepeatCount,
+                "Array repeat count must be a compile-time constant",
+                errorLocation
+            );
+            return null;
         }
 
         // Extract count value (handle all integer types)
@@ -5679,7 +6276,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     16 => (short)countConstant.Value,
                     32 => (int)countConstant.Value,
                     64 => (int)(long)countConstant.Value,
-                    _ => throw new Exception($"Unsupported signed integer bit width: {intType.BitWidth}")
+                    _ => 0  // ERROR: $"Unsupported signed integer bit width: {intType.BitWidth}"
                 },
                 false => intType.BitWidth switch
                 {
@@ -5687,15 +6284,21 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     16 => (ushort)countConstant.Value,
                     32 => (int)(uint)countConstant.Value,
                     64 => (int)(ulong)countConstant.Value,
-                    _ => throw new Exception($"Unsupported unsigned integer bit width: {intType.BitWidth}")
+                    _ => 0  // ERROR: $"Unsupported unsigned integer bit width: {intType.BitWidth}
                 }
             },
-            _ => throw new Exception("Array repeat count must be an integer")
+            _ => 0  // ERROR: "Array repeat count must be an integer"
         };
 
         if (count < 0)
         {
-            throw new Exception("Array repeat count must be non-negative");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidArrayRepeatCount,
+                "Array repeat count must be non-negative",
+                errorLocation
+            );
+            return null;
         }
 
         // Create array type
@@ -5803,7 +6406,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             "*" => IrBinaryOp.OpKind.Mul,
             "/" => IrBinaryOp.OpKind.Div,
             "%" => IrBinaryOp.OpKind.Mod,
-            _ => throw new Exception($"Unknown operator: {opText}")
+            _ => IrBinaryOp.OpKind.Add  // ERROR: $"Unknown operator: {opText}"
         };
 
         var tempName = $"%t{_tempCounter++}";
@@ -5827,7 +6430,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             "<=" => IrBinaryOp.OpKind.Le,
             ">" => IrBinaryOp.OpKind.Gt,
             ">=" => IrBinaryOp.OpKind.Ge,
-            _ => throw new Exception($"Unknown comparison operator: {opText}")
+            _ => IrBinaryOp.OpKind.Add  // ERROR: $"Unknown comparison operator: {opText}"
         };
 
         var tempName = $"%t{_tempCounter++}";
@@ -5840,6 +6443,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     public override object? VisitUnaryExpr([NotNull] NovusParser.UnaryExprContext context)
     {
+        SourceLocation errorLocation;
         var op = context.GetChild(0).GetText();
 
         // Handle dereference specially - we need to determine the type first
@@ -5863,7 +6467,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
             else
             {
-                throw new Exception($"Cannot dereference non-pointer/reference type: {operand.Type.Name}");
+                errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.CannotDereferenceType,
+                    $"Cannot dereference non-pointer/reference type: {operand.Type.Name}",
+                    errorLocation
+                );
+                return null;
             }
 
             // Create a dereference value
@@ -5900,7 +6510,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
             return new IrVariable(tempName, operandValue.Type);
         }
 
-        throw new Exception($"Unknown unary operator: {op}");
+        errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+        _diagnostics.ReportError(
+            ErrorCodes.UnknownOperator,
+            $"Unknown unary operator: {op}",
+            errorLocation
+        );
+        return null;
     }
 
     public override object? VisitPostIncrementExpr([NotNull] NovusParser.PostIncrementExprContext context)
@@ -5924,29 +6540,75 @@ public class IrBuilder : NovusBaseVisitor<object?>
         //     Err(err) => return Err(TargetError::convert(err))  // Auto-convert if needed
         // }
 
-        var innerExpr = Visit(context.expression()) as IrValue
-            ?? throw new Exception("? operator requires an expression that returns a value");
+        var innerExpr = Visit(context.expression()) as IrValue;
+        if (innerExpr == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.TryOperatorInvalidContext,
+                "? operator requires an expression that returns a value",
+                errorLocation
+            );
+            return null;
+        }
 
         // 1. Verify innerExpr type is Result<T, E>
         if (innerExpr.Type is not IrEnumType resultType || resultType.EnumName != "Result")
         {
-            throw new Exception($"? operator requires a Result<T, E> type, got {innerExpr.Type}");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.TryOperatorInvalidContext,
+                $"? operator requires a Result<T, E> type, got {innerExpr.Type}",
+                errorLocation
+            );
+            return null;
         }
 
         // Extract T and E types from Result<T, E>
         // Result has two variants: Ok(T) and Err(E)
-        var okVariant = resultType.Variants.FirstOrDefault(v => v.Name == "Ok")
-            ?? throw new Exception("Result type missing Ok variant");
-        var errVariant = resultType.Variants.FirstOrDefault(v => v.Name == "Err")
-            ?? throw new Exception("Result type missing Err variant");
+        var okVariant = resultType.Variants.FirstOrDefault(v => v.Name == "Ok");
+        if (okVariant == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.TryOperatorInvalidType,
+                "Result type missing Ok variant",
+                errorLocation
+            );
+            return null;
+        }
+
+        var errVariant = resultType.Variants.FirstOrDefault(v => v.Name == "Err");
+        if (errVariant == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.TryOperatorInvalidType,
+                "Result type missing Err variant",
+                errorLocation
+            );
+            return null;
+        }
 
         if (okVariant.AssociatedData.Count == 0)
         {
-            throw new Exception("Result::Ok variant missing associated data");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Result::Ok variant missing associated data",
+                errorLocation
+            );
+            return null;
         }
         if (errVariant.AssociatedData.Count == 0)
         {
-            throw new Exception("Result::Err variant missing associated data");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Result::Err variant missing associated data",
+                errorLocation
+            );
+            return null;
         }
 
         var okPayloadType = okVariant.AssociatedData[0];
@@ -5955,20 +6617,47 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // 2. Get current function's return type Result<T2, E2>
         if (_currentFunction == null)
         {
-            throw new Exception("? operator can only be used inside a function");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.TryOperatorInvalidContext,
+                "? operator can only be used inside a function",
+                errorLocation
+            );
+            return null;
         }
 
         if (_currentFunction.ReturnType is not IrEnumType funcResultType || funcResultType.EnumName != "Result")
         {
-            throw new Exception($"? operator requires current function to return Result<T, E>, got {_currentFunction.ReturnType}");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.TryOperatorInvalidContext,
+                $"? operator requires current function to return Result<T, E>, got {_currentFunction.ReturnType}",
+                errorLocation
+            );
+            return null;
         }
 
-        var funcErrVariant = funcResultType.Variants.FirstOrDefault(v => v.Name == "Err")
-            ?? throw new Exception("Function return type Result missing Err variant");
+        var funcErrVariant = funcResultType.Variants.FirstOrDefault(v => v.Name == "Err");
+        if (funcErrVariant == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.TryOperatorInvalidType,
+                "Function return type Result missing Err variant",
+                errorLocation
+            );
+            return null;
+        }
 
         if (funcErrVariant.AssociatedData.Count == 0)
         {
-            throw new Exception("Function return type Result::Err missing associated data");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Function return type Result::Err missing associated data",
+                errorLocation
+            );
+            return null;
         }
 
         var targetErrorType = funcErrVariant.AssociatedData[0];
@@ -6052,7 +6741,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             if (convertMethodName == null)
             {
-                throw new Exception($"Cannot convert {sourceTypeName} to {targetTypeName}: no From<{sourceTypeName}> implementation found for {targetTypeName}");
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Cannot convert {sourceTypeName} to {targetTypeName}: no From<{sourceTypeName}> implementation found for {targetTypeName}",
+                    errorLocation
+                );
+                return null;
             }
 
             // Call the convert method
@@ -6177,6 +6872,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     private void StoreToLvalue(ParserRuleContext exprContext, IrValue value)
     {
+        SourceLocation errorLocation;
+
         // Case 0: Parenthesized expression - unwrap and recurse
         if (exprContext is NovusParser.ParenExprContext parenCtx)
         {
@@ -6212,13 +6909,25 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             if (baseType is not IrStructType structType)
             {
-                throw new Exception($"Cannot access member '{memberName}' on non-struct type '{baseType}'");
+                errorLocation = SourceLocationHelper.FromContext(exprContext, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.CannotAccessMember,
+                    $"Cannot access member '{memberName}' on non-struct type '{baseType}'",
+                    errorLocation
+                );
+                return;
             }
 
             var field = structType.Fields.FirstOrDefault(f => f.Name == memberName);
             if (field == null)
             {
-                throw new Exception($"Struct '{structType.Name}' has no field '{memberName}'");
+                errorLocation = SourceLocationHelper.FromContext(exprContext, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Struct '{structType.Name}' has no field '{memberName}'",
+                    errorLocation
+                );
+                return;
             }
 
             _currentBlock!.AddInstruction(new IrMemberStore(actualBase, memberName, field.Offset, value));
@@ -6258,7 +6967,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
         }
 
-        throw new Exception($"Cannot store to expression type: {exprContext.GetType().Name}");
+        errorLocation = SourceLocationHelper.FromContext(exprContext, _inputFilePath, _sourceLines.ToArray());
+        _diagnostics.ReportError(
+            ErrorCodes.InvalidExpressionType,
+            $"Cannot store to expression type: {exprContext.GetType().Name}",
+            errorLocation
+        );
+        return;
     }
 
     public override object? VisitPreIncrementExpr([NotNull] NovusParser.PreIncrementExprContext context)
@@ -6309,6 +7024,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     private IrValue HandlePreIncrementDecrement(ParserRuleContext exprContext, bool isIncrement)
     {
+        SourceLocation errorLocation;
+
         // Unwrap parentheses if present (e.g., ++(*p) should work)
         exprContext = UnwrapParentheses(exprContext);
 
@@ -6350,13 +7067,25 @@ public class IrBuilder : NovusBaseVisitor<object?>
             // Get the struct type and field info
             if (baseType is not IrStructType structType)
             {
-                throw new Exception($"Cannot access member '{memberName}' on non-struct type '{baseType}'");
+                errorLocation = SourceLocationHelper.FromContext(exprContext, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.CannotAccessMember,
+                    $"Cannot access member '{memberName}' on non-struct type '{baseType}'",
+                    errorLocation
+                );
+                return null;
             }
 
             var field = structType.Fields.FirstOrDefault(f => f.Name == memberName);
             if (field == null)
             {
-                throw new Exception($"Struct '{structType.Name}' has no field '{memberName}'");
+                errorLocation = SourceLocationHelper.FromContext(exprContext, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Struct '{structType.Name}' has no field '{memberName}'",
+                    errorLocation
+                );
+                return null;
             }
 
             // Load current value
@@ -6389,7 +7118,15 @@ public class IrBuilder : NovusBaseVisitor<object?>
             else if (arrayExpr.Type is IrArrayType at)
                 elementType = at.ElementType;
             else
-                throw new Exception($"Cannot index type '{arrayExpr.Type}'");
+            {
+                errorLocation = SourceLocationHelper.FromContext(exprContext, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.CannotIndexType,
+                    $"Cannot index type '{arrayExpr.Type}'",
+                    errorLocation
+                );
+                return null;
+            }
 
             // Load current value
             var loadTemp = $"%index_load_{_tempCounter++}";
@@ -6429,7 +7166,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
             else
             {
-                throw new Exception($"Cannot dereference non-pointer/reference type '{ptrExpr.Type}'");
+                errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.CannotDereferenceType,
+                    $"Cannot dereference non-pointer/reference type '{ptrExpr.Type}'",
+                    errorLocation
+                );
+                return null;
             }
 
             // Load current value (dereference)
@@ -6447,7 +7190,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
             return newValue;
         }
 
-        throw new Exception($"Pre-{(isIncrement ? "increment" : "decrement")} not supported for expression type: {exprContext.GetType().Name}");
+        errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+        _diagnostics.ReportError(
+            ErrorCodes.InvalidExpressionType,
+            $"Pre-{(isIncrement ? "increment" : "decrement")} not supported for expression type: {exprContext.GetType().Name}",
+            errorLocation
+        );
+        return null;
     }
 
     public override object? VisitLogicalAndExpr([NotNull] NovusParser.LogicalAndExprContext context)
@@ -6463,7 +7212,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         var resultTemp = $"%t{_tempCounter++}";
 
-        // Add to function's local variables for stack allocation
+        // Add to function's local variables for stack alerrorLocation
         var localVar = new IrLocalVariable(resultTemp, IrIntType.I32, false);
         _currentFunction!.LocalVariables.Add(localVar);
 
@@ -6505,7 +7254,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         var resultTemp = $"%t{_tempCounter++}";
 
-        // Add to function's local variables for stack allocation
+        // Add to function's local variables for stack alerrorLocation
         var localVar = new IrLocalVariable(resultTemp, IrIntType.I32, false);
         _currentFunction!.LocalVariables.Add(localVar);
 
@@ -6554,7 +7303,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var trueValue = (IrValue)Visit(context.expression(1))!;
         var resultType = trueValue.Type; // Get type from the true branch value
 
-        // Add to function's local variables for stack allocation
+        // Add to function's local variables for stack alerrorLocation
         var localVar = new IrLocalVariable(resultTemp, resultType, false);
         _currentFunction!.LocalVariables.Add(localVar);
 
@@ -6594,7 +7343,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
         else
         {
-            throw new Exception($"Unexpected float literal type: {type.Name}");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Unexpected float literal type: {type.Name}",
+                errorLocation
+            );
+            return null;
         }
     }
 
@@ -6665,7 +7420,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var strType = _symbols.LookupStruct("Str");
         if (strType == null)
         {
-            throw new Exception("String literals require Str type from std::strings module");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "String literals require Str type from std::strings module",
+                errorLocation
+            );
+            return null;
         }
 
         // Create struct literal with ptr and len fields
@@ -6693,7 +7454,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var formatterType = _symbols.LookupStruct("Formatter");
         if (formatterType == null)
         {
-            throw new Exception("Interpolated strings require Formatter type from std::fmt module");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Interpolated strings require Formatter type from std::fmt module",
+                errorLocation
+            );
+            return null;
         }
 
         // Create a temporary variable for the Formatter
@@ -6705,7 +7472,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var formatterNewMethod = _module.Functions.FirstOrDefault(f => f.Name == formatterNewMethodName);
         if (formatterNewMethod == null)
         {
-            throw new Exception("Formatter::new() method not found. Ensure std::fmt is imported.");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.MethodNotFound,
+                "Formatter::new() method not found. Ensure std::fmt is imported.",
+                errorLocation
+            );
+            return null;
         }
 
         // Call Formatter::new()
@@ -6719,7 +7492,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var optionType = formatterNewMethod.ReturnType as IrEnumType;
         if (optionType == null || optionType.EnumName != "Option")
         {
-            throw new Exception("Formatter::new() must return Option<Formatter>");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Formatter::new() must return Option<Formatter>",
+                errorLocation
+            );
+            return null;
         }
 
         // Extract the Formatter from Option::Some
@@ -6727,7 +7506,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var someVariant = optionType.GetVariant("Some");
         if (someVariant == null || someVariant.AssociatedData.Count != 1)
         {
-            throw new Exception("Option::Some variant not found or malformed");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Option::Some variant not found or malformed",
+                errorLocation
+            );
+            return null;
         }
 
         var formatterTypeFromOption = someVariant.AssociatedData[0];
@@ -6740,7 +7525,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var noneVariant = optionType.GetVariant("None");
         if (noneVariant == null)
         {
-            throw new Exception("Option::None variant not found");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Option::None variant not found",
+                errorLocation
+            );
+            return null;
         }
 
         // Compare tag with None variant tag and panic if None
@@ -6812,7 +7603,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var finishMethod = _module.Functions.FirstOrDefault(f => f.Name == finishMethodName);
         if (finishMethod == null)
         {
-            throw new Exception("Formatter::finish() method not found");
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.MethodNotFound,
+                "Formatter::finish() method not found",
+                errorLocation
+            );
+            return null;
         }
 
         // Call finish() - takes self by value
@@ -6836,7 +7633,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var strType = _symbols.LookupStruct("Str");
         if (strType == null)
         {
-            throw new Exception("Str type not found");
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.TypeNotFound,
+                "Str type not found",
+                errorLocation
+            );
+            return;
         }
 
         var strFieldValues = new Dictionary<string, IrValue>
@@ -6865,7 +7668,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var exprValue = Visit(exprContext) as IrValue;
         if (exprValue == null)
         {
-            throw new Exception($"Failed to evaluate expression in f-string: {expressionText}");
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Failed to evaluate expression in f-string: {expressionText}",
+                errorLocation
+            );
+            return;
         }
 
         // Get the type of the expression
@@ -6894,13 +7703,25 @@ public class IrBuilder : NovusBaseVisitor<object?>
             var fmtMethodName = _module.FindTraitMethod(typeName, "fmt");
             if (fmtMethodName == null)
             {
-                throw new Exception($"Type '{typeName}' does not implement Display trait. All types in f-strings must implement Display.");
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Type '{typeName}' does not implement Display trait. All types in f-strings must implement Display.",
+                    errorLocation
+                );
+                return;
             }
 
             var fmtMethod = _module.Functions.FirstOrDefault(f => f.Name == fmtMethodName);
             if (fmtMethod == null)
             {
-                throw new Exception($"Display::fmt() method not found for type '{typeName}'");
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.MethodNotFound,
+                    $"Display::fmt() method not found for type '{typeName}'",
+                    errorLocation
+                );
+                return;
             }
 
             // Call expr.fmt(&mut formatter)
@@ -6931,7 +7752,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var writeStrMethod = _module.Functions.FirstOrDefault(f => f.Name == writeStrMethodName);
         if (writeStrMethod == null)
         {
-            throw new Exception("Formatter::write_str() method not found");
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.MethodNotFound,
+                "Formatter::write_str() method not found",
+                errorLocation
+            );
+            return;
         }
 
         // Call f.write_str(str_value)
@@ -6947,14 +7774,20 @@ public class IrBuilder : NovusBaseVisitor<object?>
     private void EmitFormatInteger(string formatterVarName, IrType formatterType, IrValue intValue, IrIntType intType)
     {
         // For now, just convert the integer directly using an extern function
-        // The actual implementation will need to handle buffer allocation
+        // The actual implementation will need to handle buffer alerrorLocation
         // but for the MVP, we'll just call a hypothetical helper function
 
         // TODO: Implement proper integer-to-string conversion
         // For now, throw an error with a helpful message
-        throw new Exception($"Integer formatting in f-strings is not yet fully implemented. " +
+        var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+        _diagnostics.ReportError(
+            ErrorCodes.InvalidExpressionType,
+            $"Integer formatting in f-strings is not yet fully implemented. " +
                           $"The infrastructure is in place but needs extern function '{intType.Name}_to_string' " +
-                          $"to be implemented in the runtime library.");
+                          $"to be implemented in the runtime library.",
+            errorLocation
+        );
+        return;
     }
 
     private void EmitFormatBool(string formatterVarName, IrType formatterType, IrValue boolValue)
@@ -6972,7 +7805,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var strType = _symbols.LookupStruct("Str");
         if (strType == null)
         {
-            throw new Exception("Str type not found");
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.TypeNotFound,
+                "Str type not found",
+                errorLocation
+            );
+            return;
         }
 
         var trueStr = new IrStructLiteral(strType, new Dictionary<string, IrValue>
@@ -7048,7 +7887,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                         '\'' => '\'',
                         '\\' => '\\',
                         '0' => '\0',
-                        _ => throw new Exception($"Unknown escape sequence: \\{nextChar}")
+                        _ => nextChar  // Unknown escape sequence - just use the character as-is
                     };
                     currentString.Append(escapeChar);
                     i += 2;
@@ -7088,7 +7927,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                 if (braceDepth != 0)
                 {
-                    throw new Exception("Unmatched braces in f-string interpolation");
+                    var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.InvalidExpressionType,
+                        "Unmatched braces in f-string interpolation",
+                        errorLocation
+                    );
+                    return null;
                 }
 
                 // Extract the expression
@@ -7128,7 +7973,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         if (targetType == null)
         {
-            throw new Exception($"could not determine type for @sizeof");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"could not determine type for @sizeof",
+                errorLocation
+            );
+            return null;
         }
 
         // Return the size as a constant u32 value
@@ -7321,7 +8172,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
             return new IrVariable("self", selfParam.Type);
         }
 
-        throw new Exception("'self' can only be used inside methods");
+        var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+        _diagnostics.ReportError(
+            ErrorCodes.InvalidExpressionType,
+            "'self' can only be used inside methods",
+            errorLocation
+        );
+        return null;
     }
 
     public override object? VisitParenExpr([NotNull] NovusParser.ParenExprContext context)
@@ -7335,11 +8192,23 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         if (!_symbols.HasStruct(structName))
         {
-            throw new Exception($"Unknown struct type '{structName}'");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Unknown struct type '{structName}'",
+                errorLocation
+            );
+            return null;
         }
 
         // Get the base struct type
-        var baseStructType = _symbols.LookupStruct(structName) ?? throw new Exception($"Struct '{structName}' not found");
+        var baseStructType = _symbols.LookupStruct(structName);
+        if (baseStructType == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(ErrorCodes.StructNotFound, $"Struct '{structName}' not found", errorLocation);
+            return null;
+        }
 
         // Use expected type for bidirectional type checking if it's a monomorphized version of this struct
         IrStructType structType;
@@ -7364,7 +8233,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             if (fieldValue == null)
             {
-                throw new Exception($"Field '{fieldName}' in struct '{structName}' requires a value");
+                var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Field '{fieldName}' in struct '{structName}' requires a value",
+                    errorLocation
+                );
+                return null;
             }
 
             fieldValues[fieldName] = fieldValue;
@@ -7445,7 +8320,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         {
             if (!fieldValues.ContainsKey(field.Name))
             {
-                throw new Exception($"Field '{field.Name}' in struct '{structName}' is not initialized");
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Field '{field.Name}' in struct '{structName}' is not initialized",
+                    errorLocation
+                );
+                return null;
             }
         }
 
@@ -7461,34 +8342,70 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         if (!_symbols.HasStruct(structName))
         {
-            throw new Exception($"Unknown struct type '{structName}'");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Unknown struct type '{structName}'",
+                errorLocation
+            );
+            return null;
         }
 
-        var baseStructType = _symbols.LookupStruct(structName) ?? throw new Exception($"Struct '{structName}' not found");
+        var baseStructType = _symbols.LookupStruct(structName);
+        if (baseStructType == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(ErrorCodes.StructNotFound, $"Struct '{structName}' not found", errorLocation);
+            return null;
+        }
 
         // Get the array literal expression
         var arrayExpr = (IrValue?)Visit(context.expression());
         if (arrayExpr == null)
         {
-            throw new Exception("Struct array initializer requires an expression");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Struct array initializer requires an expression",
+                errorLocation
+            );
+            return null;
         }
 
         // Verify it's an array literal
         if (arrayExpr is not IrArrayLiteral arrayLiteral)
         {
-            throw new Exception($"Struct array initializer for '{structName}' requires an array literal, got {arrayExpr.GetType().Name}");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Struct array initializer for '{structName}' requires an array literal, got {arrayExpr.GetType().Name}",
+                errorLocation
+            );
+            return null;
         }
 
         // For now, only support this for Vec type
         if (structName != "Vec")
         {
-            throw new Exception($"Struct array initializer syntax is only supported for Vec, not '{structName}'");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Struct array initializer syntax is only supported for Vec, not '{structName}'",
+                errorLocation
+            );
+            return null;
         }
 
         // Extract element type from array
         if (arrayLiteral.Type is not IrArrayType arrayType)
         {
-            throw new Exception($"Expected array type, got {arrayLiteral.Type}");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Expected array type, got {arrayLiteral.Type}",
+                errorLocation
+            );
+            return null;
         }
 
         var elementType = arrayType.ElementType;
@@ -7573,7 +8490,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var baseExpr = (IrValue?)Visit(context.expression());
         if (baseExpr == null)
         {
-            throw new Exception("Member access requires a base expression");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Member access requires a base expression",
+                errorLocation
+            );
+            return null;
         }
 
         var memberName = context.IDENTIFIER().GetText();
@@ -7592,14 +8515,26 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Check if the base expression is a struct type
         if (baseType is not IrStructType structType)
         {
-            throw new Exception($"Cannot access member '{memberName}' on non-struct type '{baseType.Name}'");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.CannotAccessMember,
+                $"Cannot access member '{memberName}' on non-struct type '{baseType.Name}'",
+                errorLocation
+            );
+            return null;
         }
 
         // Find the field
         var field = structType.GetField(memberName);
         if (field == null)
         {
-            throw new Exception($"Struct '{structType.Name}' does not have a field named '{memberName}'");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Struct '{structType.Name}' does not have a field named '{memberName}'",
+                errorLocation
+            );
+            return null;
         }
 
         // Generate a member access instruction
@@ -7635,7 +8570,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         if (typeName == null)
         {
-            throw new Exception($"Turbo-fish expression must reference a type");
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Turbo-fish expression must reference a type",
+                errorLocation
+            );
+            return null;
         }
 
         // Return a marker that stores the type name and explicit type arguments
@@ -7645,6 +8586,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     public override object? VisitPathExpr([NotNull] NovusParser.PathExprContext context)
     {
+        SourceLocation errorLocation;
+
         // Handle path expressions: Type::name
         // This can be:
         // 1. Enum variants: Option::Some, Result::Ok
@@ -7674,7 +8617,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         {
             var baseExprType = baseExpr?.GetType().Name ?? "null";
             var baseExprText = baseExpr?.GetText() ?? "null";
-            throw new Exception($"Path expression must reference a type (got {baseExprType}: '{baseExprText}')");
+            errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Path expression must reference a type (got {baseExprType}: '{baseExprText}')",
+                errorLocation
+            );
+            return null;
         }
 
         // Try enum variant first
@@ -7685,7 +8634,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             if (variant == null)
             {
-                throw new Exception($"Enum '{typeName}' has no variant '{memberName}'");
+                errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Enum '{typeName}' has no variant '{memberName}'",
+                    errorLocation
+                );
+                return null;
             }
 
             // Use expected type if it's a more specific (concrete) version of this enum
@@ -7741,19 +8696,38 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
             else
             {
-                throw new Exception($"Cannot call method '{memberName}' of type '{typeName}' without an instance (it requires 'self')");
+                errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.CannotCallMethodOnType,
+                    $"Cannot call method '{memberName}' of type '{typeName}' without an instance (it requires 'self')",
+                    errorLocation
+                );
+                return null;
             }
         }
 
-        throw new Exception($"Type '{typeName}' has no associated function or variant '{memberName}'");
+        errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+        _diagnostics.ReportError(
+            ErrorCodes.InvalidExpressionType,
+            $"Type '{typeName}' has no associated function or variant '{memberName}'",
+            errorLocation
+        );
+        return null;
     }
 
     public override object? VisitMatchExpr([NotNull] NovusParser.MatchExprContext context)
     {
+        SourceLocation errorLocation;
         var matchValue = (IrValue?)Visit(context.expression());
         if (matchValue == null)
         {
-            throw new Exception("Match expression requires a value");
+            errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Match expression requires a value",
+                errorLocation
+            );
+            return null;
         }
 
         bool isEnumMatch = matchValue.Type is IrEnumType;
@@ -7761,7 +8735,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         if (!isEnumMatch && !isIntegerMatch)
         {
-            throw new Exception($"Match can only be used with enum or integer types, got '{matchValue.Type.Name}'");
+            errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Match can only be used with enum or integer types, got '{matchValue.Type.Name}'",
+                errorLocation
+            );
+            return null;
         }
 
         IrEnumType? enumType = isEnumMatch ? (IrEnumType)matchValue.Type : null;
@@ -7890,7 +8870,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     var variant = enumType!.GetVariant(variantName);
                     if (variant == null)
                     {
-                        throw new Exception($"Enum '{enumType.EnumName}' has no variant '{variantName}'");
+                        errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                        _diagnostics.ReportError(
+                            ErrorCodes.InvalidExpressionType,
+                            $"Enum '{enumType.EnumName}' has no variant '{variantName}'",
+                            errorLocation
+                        );
+                        return null;
                     }
 
                     // Compare tag with variant tag
@@ -8285,7 +9271,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         {
             if (_currentSelfType == null)
             {
-                throw new Exception("'Self' type encountered outside of impl block context");
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    "'Self' type encountered outside of impl block context",
+                    errorLocation
+                );
+                return null;
             }
             return _currentSelfType;
         }
@@ -8755,7 +9747,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Handle struct types (e.g., "Vec_i32" -> Vec<i32>)
         // For now, this is a simple implementation
         // TODO: Handle nested generics and more complex types
-        throw new Exception($"Cannot parse complex mangled type name '{mangledName}' yet");
+        var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+        _diagnostics.ReportError(
+            ErrorCodes.InvalidExpressionType,
+            $"Cannot parse complex mangled type name '{mangledName}' yet",
+            errorLocation
+        );
+        return null;
     }
 
     /// <summary>
@@ -8793,7 +9791,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
             return "ptr_" + GetMangledTypeName(ptrType.PointeeType);
         }
 
-        throw new Exception($"Cannot get mangled name for type '{type.Name}'");
+        var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+        _diagnostics.ReportError(
+            ErrorCodes.InvalidExpressionType,
+            $"Cannot get mangled name for type '{type.Name}'",
+            errorLocation
+        );
+        return null;
     }
 
     /// <summary>
@@ -8970,14 +9974,26 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
         else
         {
-            throw new Exception($"Cannot generate drop call for type '{type.Name}'");
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Cannot generate drop call for type '{type.Name}'",
+                errorLocation
+            );
+            return;
         }
 
         var dropMethodName = $"{typeName}_drop";
         var dropMethod = _module.Functions.FirstOrDefault(f => f.Name == dropMethodName);
         if (dropMethod == null)
         {
-            throw new Exception($"Drop method '{dropMethodName}' not found");
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.MethodNotFound,
+                $"Drop method '{dropMethodName}' not found",
+                errorLocation
+            );
+            return;
         }
 
         // Load the variable and borrow it mutably for drop()

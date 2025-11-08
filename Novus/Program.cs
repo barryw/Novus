@@ -208,6 +208,13 @@ class Program
             irBuilder.SetInputFilePath(inputFile);
             var module = irBuilder.BuildModule(compilationUnit);
 
+            // Check for IR building errors
+            if (irBuilder.Diagnostics.HasErrors)
+            {
+                Console.WriteLine(irBuilder.Diagnostics.FormatDiagnostics());
+                return null;
+            }
+
             var moduleName = Path.GetFileNameWithoutExtension(inputFile);
             var hasMain = module.Functions.Any(f => f.Name == "main" && !f.IsExtern);
 
