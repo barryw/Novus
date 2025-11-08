@@ -1,0 +1,25 @@
+// Test that primitive Display implementations compile
+
+from std::fmt import Display
+
+fn test_i32_display() {
+    let x: i32 = 42
+    // This should work now that we have impl Display for i32
+    let s = f"{x}"
+}
+
+fn test_bool_display() {
+    let b: bool = true
+    let s = f"{b}"
+}
+
+fn test_u64_display() {
+    let n: u64 = 12345
+    let s = f"{n}"
+}
+
+fn main() {
+    test_i32_display()
+    test_bool_display()
+    test_u64_display()
+}

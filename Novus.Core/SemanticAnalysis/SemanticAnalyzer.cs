@@ -1015,26 +1015,24 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
-        // Get the type being implemented (e.g., Vec, Vec<T>, Point)
-        // typeName() returns an array: [Type] for "impl Type" or [Trait, Type] for "impl Trait for Type"
-        var typeNames = context.typeName();
-        var implTypeName = typeNames[typeNames.Length - 1].IDENTIFIER(0).GetText();
-
-        // Check if this is a trait implementation (has KW_FOR)
+        // Determine if this is a trait impl or inherent impl
         bool isTraitImpl = context.KW_FOR() != null;
         string? traitName = null;
         List<IrType> traitTypeArgs = new();
 
+        // Extract implementing type name
+        string implTypeName;
+
         if (isTraitImpl)
         {
-            // This is "impl Trait for Type"
-            traitName = typeNames[0].IDENTIFIER(0).GetText();
+            // Format: impl [<GenericParams>] TraitName<TraitArgs> for TargetType
+            // traitTypeName is the trait being implemented
+            traitName = context.traitTypeName.IDENTIFIER(0).GetText();
 
             // Parse trait type arguments if present (e.g., Iterator<i32>)
-            var traitGenericArgs = context.genericTypeArgs().Length > 0 ? context.genericTypeArgs(0) : null;
-            if (traitGenericArgs != null)
+            if (context.traitTypeArgs != null)
             {
-                var typeList = traitGenericArgs.typeList();
+                var typeList = context.traitTypeArgs.typeList();
                 foreach (var typeCtx in typeList.type())
                 {
                     traitTypeArgs.Add(ParseType(typeCtx));
@@ -1044,7 +1042,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             // Validate that the trait exists
             if (!_symbols.HasTrait(traitName))
             {
-                var location = SourceLocationHelper.FromToken(typeNames[0].IDENTIFIER(0).Symbol, _filePath, _sourceLines);
+                var location = SourceLocationHelper.FromToken(context.traitTypeName.IDENTIFIER(0).Symbol, _filePath, _sourceLines);
                 _diagnostics.ReportError(
                     "E0032",
                     $"trait '{traitName}' not found",
@@ -1057,6 +1055,38 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 return;
             }
 
+            // implTargetType is the type receiving the implementation
+            var targetTypeCtx = context.implTargetType();
+
+            if (targetTypeCtx is NovusParser.PrimitiveImplTargetContext primitiveCtx)
+            {
+                // impl Trait for i32, bool, etc.
+                implTypeName = primitiveCtx.primitiveTypeName().GetText().ToLowerInvariant();
+            }
+            else if (targetTypeCtx is NovusParser.NamedImplTargetContext namedCtx)
+            {
+                // impl Trait for MyType
+                implTypeName = namedCtx.typeName().IDENTIFIER(0).GetText();
+            }
+            else
+            {
+                _diagnostics.ReportError(
+                    "E0001",
+                    $"Unknown impl target type",
+                    SourceLocationHelper.FromToken(context.KW_IMPL().Symbol, _filePath, _sourceLines)
+                );
+                return;
+            }
+        }
+        else
+        {
+            // Format: impl [<GenericParams>] TargetType
+            // targetTypeName is the type receiving inherent methods
+            implTypeName = context.targetTypeName.IDENTIFIER(0).GetText();
+        }
+
+        if (isTraitImpl)
+        {
             // Store trait implementation for constraint checking
             // Create a unique key for this trait impl
             // Format: "TypeName::TraitName<Arg1,Arg2,...>"
@@ -1497,30 +1527,58 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
-        // Get the type being implemented
-        // typeName() returns an array: [Type] for "impl Type" or [Trait, Type] for "impl Trait for Type"
-        var typeNames = context.typeName();
-        var implTypeName = typeNames[typeNames.Length - 1].IDENTIFIER(0).GetText();
-
-        // Check if this is a trait implementation
+        // Determine if this is a trait impl or inherent impl
         bool isTraitImpl = context.KW_FOR() != null;
         string? traitName = null;
         List<IrType> traitTypeArgs = new();
 
+        // Extract implementing type name
+        string implTypeName;
+
         if (isTraitImpl)
         {
-            traitName = typeNames[0].IDENTIFIER(0).GetText();
+            // Format: impl [<GenericParams>] TraitName<TraitArgs> for TargetType
+            // traitTypeName is the trait being implemented
+            traitName = context.traitTypeName.IDENTIFIER(0).GetText();
 
             // Parse trait type arguments if present (e.g., Iterator<i32>)
-            var traitGenericArgs = context.genericTypeArgs().Length > 0 ? context.genericTypeArgs(0) : null;
-            if (traitGenericArgs != null)
+            if (context.traitTypeArgs != null)
             {
-                var typeList = traitGenericArgs.typeList();
+                var typeList = context.traitTypeArgs.typeList();
                 foreach (var typeCtx in typeList.type())
                 {
                     traitTypeArgs.Add(ParseType(typeCtx));
                 }
             }
+
+            // implTargetType is the type receiving the implementation
+            var targetTypeCtx = context.implTargetType();
+
+            if (targetTypeCtx is NovusParser.PrimitiveImplTargetContext primitiveCtx)
+            {
+                // impl Trait for i32, bool, etc.
+                implTypeName = primitiveCtx.primitiveTypeName().GetText().ToLowerInvariant();
+            }
+            else if (targetTypeCtx is NovusParser.NamedImplTargetContext namedCtx)
+            {
+                // impl Trait for MyType
+                implTypeName = namedCtx.typeName().IDENTIFIER(0).GetText();
+            }
+            else
+            {
+                _diagnostics.ReportError(
+                    "E0001",
+                    $"Unknown impl target type",
+                    SourceLocationHelper.FromToken(context.KW_IMPL().Symbol, _filePath, _sourceLines)
+                );
+                return;
+            }
+        }
+        else
+        {
+            // Format: impl [<GenericParams>] TargetType
+            // targetTypeName is the type receiving inherent methods
+            implTypeName = context.targetTypeName.IDENTIFIER(0).GetText();
         }
 
         // Analyze each method

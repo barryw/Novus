@@ -115,8 +115,25 @@ functionSignature
     ;
 
 implDeclaration
-    : attribute* KW_IMPL genericParams? typeName genericTypeArgs? KW_FOR typeName genericTypeArgs? whereClause? '{' NEWLINE* implItem* '}' NEWLINE*
-    | attribute* KW_IMPL genericParams? typeName genericTypeArgs? whereClause? '{' NEWLINE* implItem* '}' NEWLINE*
+    : attribute* KW_IMPL genericParams? traitTypeName=typeName traitTypeArgs=genericTypeArgs? KW_FOR implTargetType whereClause? '{' NEWLINE* implItem* '}' NEWLINE*
+    | attribute* KW_IMPL genericParams? targetTypeName=typeName targetTypeArgs=genericTypeArgs? whereClause? '{' NEWLINE* implItem* '}' NEWLINE*
+    ;
+
+implTargetType
+    : typeName implTypeArgs=genericTypeArgs?  # NamedImplTarget
+    | primitiveTypeName                       # PrimitiveImplTarget
+    ;
+
+primitiveTypeName
+    : KW_U8
+    | KW_U16
+    | KW_U32
+    | KW_U64
+    | KW_I8
+    | KW_I16
+    | KW_I32
+    | KW_I64
+    | KW_BOOL
     ;
 
 implItem
