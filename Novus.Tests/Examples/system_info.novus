@@ -1,15 +1,26 @@
-// system_info.novus - Simple program to display detected hardware
-// This demonstrates runtime hardware detection using the std::system module
+// system_info.novus - Runtime hardware detection test
+// This demonstrates that CPU, FPU, and Chipset are detected at runtime
+//
+// Test by running on different Amiga configs and checking exit code:
+// - Returns 0 if running on 68040
+// - Returns 1 if running on 68060
+// - Returns 2 if running on 68020
+// - Returns 3 otherwise
 
-from std::dos import write, output
-from std::system import CPU, FPU, Chipset
+from std::system import get_cpu, get_fpu, get_chipset, SystemCPU
 
 fn main() -> i32 {
-    // Print detected hardware using Display trait
-    write(output(), "Detected Hardware:\n")
-    write(output(), f"  CPU:     {CPU}\n")
-    write(output(), f"  FPU:     {FPU}\n")
-    write(output(), f"  Chipset: {Chipset}\n")
+    // Return different values based on detected CPU
+    // This proves runtime detection works!
+    let cpu = get_cpu()
 
-    return 0
+    if cpu == SystemCPU::M68040 {
+        return 0
+    } else if cpu == SystemCPU::M68060 {
+        return 1
+    } else if cpu == SystemCPU::M68020 {
+        return 2
+    } else {
+        return 3
+    }
 }

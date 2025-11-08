@@ -30,12 +30,27 @@ pub enum SystemChipset {
     AGA,       // Advanced Graphics Architecture (A1200/A4000/CD32)
 }
 
+// Runtime hardware detection functions
+// These call into the Novus runtime which detects hardware at startup
+extern fn __detect_cpu() -> SystemCPU
+extern fn __detect_fpu() -> SystemFPU
+extern fn __detect_chipset() -> SystemChipset
+
 // Global variables set during startup by the runtime
 // These are initialized before main() is called
 // Values are set by the runtime's __detect_cpu routine
-extern var CPU: SystemCPU
-extern var FPU: SystemFPU
-extern var Chipset: SystemChipset
+// TODO: Currently using functions instead of vars until extern var support is complete
+pub fn get_cpu() -> SystemCPU {
+    return __detect_cpu()
+}
+
+pub fn get_fpu() -> SystemFPU {
+    return __detect_fpu()
+}
+
+pub fn get_chipset() -> SystemChipset {
+    return __detect_chipset()
+}
 
 // Display trait implementations for hardware enums
 impl Display for SystemCPU {

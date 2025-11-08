@@ -18,7 +18,9 @@
       "Bash(rm:*)",
       "Bash(dotnet build:*)",
       "Bash(git add:*)",
-      "Bash(dotnet test:*)"
+      "Bash(dotnet test:*)",
+      "Bash(dotnet run:*)",
+      "Bash(git restore:*)"
     ],
     "deny": [],
     "ask": []
