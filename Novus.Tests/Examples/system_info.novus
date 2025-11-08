@@ -1,0 +1,14 @@
+// system_info.novus - Simple program to display detected hardware
+// This demonstrates runtime hardware detection using the std::system module
+
+from std::system import CPU, FPU, Chipset
+
+fn main() -> i32 {
+    // Print detected hardware using Display trait
+    println(f"Detected Hardware:")
+    println(f"  CPU:     {CPU}")
+    println(f"  FPU:     {FPU}")
+    println(f"  Chipset: {Chipset}")
+
+    return 0
+}
