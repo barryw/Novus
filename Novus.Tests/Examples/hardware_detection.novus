@@ -1,0 +1,110 @@
+// hardware_detection.novus - Demonstrates both compile-time and runtime hardware detection
+
+from std::system import CPU, FPU, Chipset, SystemCPU, SystemFPU, SystemChipset
+
+fn main() -> i32 {
+    // ====================================================================================
+    // COMPILE-TIME DETECTION (Preprocessor)
+    // ====================================================================================
+    // These directives are evaluated at compile time based on --cpu, --fpu, --chipset flags
+    // The code in false branches is completely removed from the compiled binary
+
+    // CPU-specific code paths
+    #if M68000
+        // Code for 68000 - no 32-bit mul/div, no bitfields
+        println("Compiled for 68000 (software 32-bit math)")
+    #elif M68020
+        // Code for 68020 - has 32-bit mul/div, bitfields, PC-relative addressing
+        println("Compiled for 68020 (hardware 32-bit math)")
+    #elif M68030
+        // Code for 68030 - same as 68020 plus MMU
+        println("Compiled for 68030 (with MMU)")
+    #elif M68040
+        // Code for 68040 - FPU integrated, cache aware
+        println("Compiled for 68040 (integrated FPU)")
+    #elif M68060
+        // Code for 68060 - fastest, avoid some instructions
+        println("Compiled for 68060 (avoid MULU.L)")
+    #endif
+
+    // FPU-specific code paths
+    #if FPU_NONE
+        println("Compiled WITHOUT FPU support (software floating point)")
+    #elif FPU_68881
+        println("Compiled for 68881 FPU")
+    #elif FPU_68882
+        println("Compiled for 68882 FPU")
+    #elif FPU_68040
+        println("Compiled for 68040 internal FPU")
+    #elif FPU_68060
+        println("Compiled for 68060 internal FPU")
+    #endif
+
+    // Chipset-specific code paths
+    #if OCS
+        println("Compiled for OCS (32 colors, no SuperHires)")
+    #elif ECS
+        println("Compiled for ECS (supports SuperHires)")
+    #elif AGA
+        println("Compiled for AGA (256 colors, HAM8)")
+    #endif
+
+    // ====================================================================================
+    // RUNTIME DETECTION (System Variables)
+    // ====================================================================================
+    // These variables are set at program startup by detecting actual hardware
+    // Useful for programs that adapt to the running system
+
+    println("\n--- Runtime Hardware Detection ---")
+
+    // Detect actual CPU at runtime
+    match CPU {
+        SystemCPU::M68000 => println("Running on 68000"),
+        SystemCPU::M68010 => println("Running on 68010"),
+        SystemCPU::M68020 => println("Running on 68020"),
+        SystemCPU::M68030 => println("Running on 68030"),
+        SystemCPU::M68040 => println("Running on 68040"),
+        SystemCPU::M68060 => println("Running on 68060")
+    }
+
+    // Detect actual FPU at runtime
+    match FPU {
+        SystemFPU::None => println("No FPU detected"),
+        SystemFPU::M68881 => println("68881 FPU detected"),
+        SystemFPU::M68882 => println("68882 FPU detected"),
+        SystemFPU::M68040 => println("68040 internal FPU detected"),
+        SystemFPU::M68060 => println("68060 internal FPU detected")
+    }
+
+    // Detect actual chipset at runtime
+    match Chipset {
+        SystemChipset::OCS => println("OCS chipset detected"),
+        SystemChipset::ECS => println("ECS chipset detected"),
+        SystemChipset::AGA => println("AGA chipset detected")
+    }
+
+    // ====================================================================================
+    // PRACTICAL EXAMPLE: Adaptive Algorithm Selection
+    // ====================================================================================
+
+    // Compile-time: choose algorithm based on target CPU
+    #if M68040
+        // Use cache-friendly algorithm for 68040
+        println("\nUsing cache-optimized algorithm (68040)")
+    #elif M68020
+        // Use general 32-bit algorithm for 68020/030
+        println("\nUsing 32-bit optimized algorithm (68020)")
+    #else
+        // Use 16-bit algorithm for 68000
+        println("\nUsing 16-bit algorithm (68000)")
+    #endif
+
+    // Runtime: warn if running on slower CPU than compiled for
+    #if M68040
+        if CPU != SystemCPU::M68040 && CPU != SystemCPU::M68060 {
+            println("WARNING: This program was optimized for 68040+")
+        }
+    #endif
+
+    return 0
+}

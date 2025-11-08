@@ -16,6 +16,9 @@ public class BuildOptions
     [Option("fpu", Required = false, HelpText = "Override FPU mode from project.toml")]
     public string? Fpu { get; set; }
 
+    [Option("chipset", Required = false, HelpText = "Override target chipset from project.toml (OCS, ECS, AGA)")]
+    public string? Chipset { get; set; }
+
     [Option('O', "optimize", Required = false, HelpText = "Override optimization level from project.toml")]
     public int? OptimizationLevel { get; set; }
 

@@ -19,6 +19,9 @@ public class CompilerOptions
     [Option("fpu", Required = false, Default = "auto", HelpText = "FPU mode: auto (fat binary with runtime detection), soft (software only), 68881 (68881/68882), 68040 (built-in FPU)")]
     public string Fpu { get; set; } = "auto";
 
+    [Option("chipset", Required = false, Default = "auto", HelpText = "Target chipset: auto (runtime detection), OCS, ECS, AGA")]
+    public string Chipset { get; set; } = "auto";
+
     [Option("emit-asm", Required = false, HelpText = "Emit assembly only, don't assemble/link")]
     public bool EmitAsmOnly { get; set; }
 

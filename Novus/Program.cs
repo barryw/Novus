@@ -141,7 +141,27 @@ class Program
             var preprocessorConstants = new Dictionary<string, bool>
             {
                 ["DEBUG"] = options.BuildMode == BuildMode.Debug,
-                ["RELEASE"] = options.BuildMode == BuildMode.Release
+                ["RELEASE"] = options.BuildMode == BuildMode.Release,
+
+                // CPU target constants
+                ["M68000"] = options.Cpu == "68000",
+                ["M68010"] = options.Cpu == "68010",
+                ["M68020"] = options.Cpu == "68020" || options.Cpu == "auto", // auto defaults to 68020
+                ["M68030"] = options.Cpu == "68030",
+                ["M68040"] = options.Cpu == "68040",
+                ["M68060"] = options.Cpu == "68060",
+
+                // FPU target constants
+                ["FPU_NONE"] = options.Fpu == "none",
+                ["FPU_68881"] = options.Fpu == "68881",
+                ["FPU_68882"] = options.Fpu == "68882",
+                ["FPU_68040"] = options.Fpu == "68040" || (options.Cpu == "68040" && options.Fpu != "none"),
+                ["FPU_68060"] = options.Fpu == "68060" || (options.Cpu == "68060" && options.Fpu != "none"),
+
+                // Chipset target constants
+                ["OCS"] = options.Chipset == "OCS",
+                ["ECS"] = options.Chipset == "ECS",
+                ["AGA"] = options.Chipset == "AGA"
             };
             var preprocessor = new Preprocessing.Preprocessor(preprocessorConstants, diagnostics, inputFile);
             source = preprocessor.Process(source);
@@ -275,7 +295,27 @@ class Program
             var preprocessorConstants = new Dictionary<string, bool>
             {
                 ["DEBUG"] = options.BuildMode == BuildMode.Debug,
-                ["RELEASE"] = options.BuildMode == BuildMode.Release
+                ["RELEASE"] = options.BuildMode == BuildMode.Release,
+
+                // CPU target constants
+                ["M68000"] = options.Cpu == "68000",
+                ["M68010"] = options.Cpu == "68010",
+                ["M68020"] = options.Cpu == "68020" || options.Cpu == "auto", // auto defaults to 68020
+                ["M68030"] = options.Cpu == "68030",
+                ["M68040"] = options.Cpu == "68040",
+                ["M68060"] = options.Cpu == "68060",
+
+                // FPU target constants
+                ["FPU_NONE"] = options.Fpu == "none",
+                ["FPU_68881"] = options.Fpu == "68881",
+                ["FPU_68882"] = options.Fpu == "68882",
+                ["FPU_68040"] = options.Fpu == "68040" || (options.Cpu == "68040" && options.Fpu != "none"),
+                ["FPU_68060"] = options.Fpu == "68060" || (options.Cpu == "68060" && options.Fpu != "none"),
+
+                // Chipset target constants
+                ["OCS"] = options.Chipset == "OCS",
+                ["ECS"] = options.Chipset == "ECS",
+                ["AGA"] = options.Chipset == "AGA"
             };
             var preprocessor = new Preprocessing.Preprocessor(preprocessorConstants, diagnostics, inputFile);
             source = preprocessor.Process(source);
