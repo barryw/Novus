@@ -10,7 +10,7 @@ from std::error import DosError, ExecError, IntuitionError, GraphicsError, Novus
 from std::tags import make_tags
 from std::ffi::dos import SystemTagList, CreateNewProc, AllocDosObject, FreeDosObject
 from std::ffi::dos import NewLoadSeg, UnLoadSeg
-from std::ffi::dos import Open, Close, Read, Write, Seek, Lock, UnLock
+from std::ffi::dos import Open, Close, Read, Write, Seek, Lock, UnLock, Output
 
 // ============================================================================
 // Command Execution

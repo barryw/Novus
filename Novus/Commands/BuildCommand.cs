@@ -697,7 +697,8 @@ public static class BuildCommand
             NdkPath = buildOptions.NdkPath ?? Environment.GetEnvironmentVariable("NDK") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "amiga-cc", "NDK3.9"),
             Verbose = buildOptions.Verbose,
             ProjectType = projectType,
-            ProjectVersion = project.Package.Version,  // Pass version for @library generation
+            PackageName = project.Package.Name,  // Inject as PKG_NAME compile-time constant
+            PackageVersion = project.Package.Version,  // Inject as PKG_VERSION compile-time constant and for @library generation
             AdditionalLibraries = additionalLibraries,
             AdditionalCFiles = additionalCFiles,
             AdditionalAsmFiles = additionalAsmFiles,

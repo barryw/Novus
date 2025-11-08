@@ -4,7 +4,9 @@
 #include <exec/types.h>
 #include <exec/libraries.h>
 #include <exec/alerts.h>
+#include <exec/memory.h>
 #include <intuition/intuition.h>
+#include <graphics/gfxbase.h>
 #include <proto/exec.h>
 #include <proto/intuition.h>
 #include <stdint.h>
@@ -69,6 +71,40 @@ static void int_to_str(char* buf, int32_t num) {
 }
 
 /**
+ * Common error display function - shows error requester with formatted message
+ * Centralizes the pattern used by all error handlers
+ *
+ * @param alert_code Alert code to use if IntuitionBase is not available
+ */
+static void display_error_requester(uint32_t alert_code)
+{
+    struct Library *IntuitionBase;
+    struct EasyStruct es;
+
+    // Try to open intuition.library
+    IntuitionBase = OpenLibrary("intuition.library", 33L);
+    if (IntuitionBase == NULL) {
+        // Can't show requester - use Alert() as fallback
+        Alert(AT_DeadEnd | AN_NovusLib | AG_NovusError | alert_code);
+        // Alert never returns for AT_DeadEnd
+        return;  // Should never reach here
+    }
+
+    // Set up EasyRequest structure
+    es.es_StructSize   = sizeof(struct EasyStruct);
+    es.es_Flags        = 0;
+    es.es_Title        = "Novus Runtime Error";
+    es.es_TextFormat   = error_buffer;
+    es.es_GadgetFormat = "OK";
+
+    // Display the requester
+    EasyRequest(NULL, &es, NULL);
+
+    // Close the library
+    CloseLibrary(IntuitionBase);
+}
+
+/**
  * Assert failure handler - displays error using EasyRequest
  *
  * @param file Source file where assertion failed
@@ -78,27 +114,15 @@ static void int_to_str(char* buf, int32_t num) {
  */
 void __novus_assert_failed(const char* file, int32_t line, int32_t col, const char* message)
 {
-    struct Library *IntuitionBase;
-    struct EasyStruct es;
     char line_str[12];
     char col_str[12];
     char* ptr = error_buffer;
-
-    // Open intuition.library ourselves (don't rely on global)
-    IntuitionBase = OpenLibrary("intuition.library", 33L);
-    if (IntuitionBase == NULL) {
-        // Can't show requester - use Alert() as fallback
-        // This displays a system-level Guru Meditation-style alert
-        Alert(AT_DeadEnd | AN_NovusLib | AG_NovusError | AO_Assert);
-        // Alert never returns for AT_DeadEnd
-        return;  // Should never reach here
-    }
 
     // Convert numbers to strings
     int_to_str(line_str, line);
     int_to_str(col_str, col);
 
-    // Build the error message manually (strcpy_helper returns pointer to end)
+    // Build the error message
     ptr = strcpy_helper(ptr, "Assertion failed!\n\nFile: ");
     ptr = strcpy_helper(ptr, file);
     ptr = strcpy_helper(ptr, "\nLine: ");
@@ -111,19 +135,7 @@ void __novus_assert_failed(const char* file, int32_t line, int32_t col, const ch
         ptr = strcpy_helper(ptr, message);
     }
 
-    // Set up EasyRequest structure
-    es.es_StructSize   = sizeof(struct EasyStruct);
-    es.es_Flags        = 0;
-    es.es_Title        = "Novus Runtime Error";
-    es.es_TextFormat   = error_buffer;
-    es.es_GadgetFormat = "OK";
-
-    // Display the requester
-    // NULL window means it appears on default public screen
-    EasyRequest(NULL, &es, NULL);
-
-    // Close the library
-    CloseLibrary(IntuitionBase);
+    display_error_requester(AO_Assert);
 }
 
 /**
@@ -137,27 +149,15 @@ void __novus_assert_failed(const char* file, int32_t line, int32_t col, const ch
  */
 void __novus_panic(const char* message, const char* file, int32_t line, int32_t col)
 {
-    struct Library *IntuitionBase;
-    struct EasyStruct es;
     char line_str[12];
     char col_str[12];
     char* ptr = error_buffer;
-
-    // Open intuition.library ourselves (don't rely on global)
-    IntuitionBase = OpenLibrary("intuition.library", 33L);
-    if (IntuitionBase == NULL) {
-        // Can't show requester - use Alert() as fallback
-        // This displays a system-level Guru Meditation-style alert
-        Alert(AT_DeadEnd | AN_NovusLib | AG_NovusError | AO_Panic);
-        // Alert never returns for AT_DeadEnd
-        return;  // Should never reach here
-    }
 
     // Convert numbers to strings
     int_to_str(line_str, line);
     int_to_str(col_str, col);
 
-    // Build the error message manually (strcpy_helper returns pointer to end)
+    // Build the error message
     ptr = strcpy_helper(ptr, "PANIC: ");
     ptr = strcpy_helper(ptr, message);
     ptr = strcpy_helper(ptr, "\n\nFile: ");
@@ -167,21 +167,7 @@ void __novus_panic(const char* message, const char* file, int32_t line, int32_t 
     ptr = strcpy_helper(ptr, ", Column: ");
     ptr = strcpy_helper(ptr, col_str);
 
-    // Set up EasyRequest structure
-    es.es_StructSize   = sizeof(struct EasyStruct);
-    es.es_Flags        = 0;
-    es.es_Title        = "Novus Runtime Error";
-    es.es_TextFormat   = error_buffer;
-    es.es_GadgetFormat = "OK";
-
-    // Display the requester
-    // NULL window means it appears on default public screen
-    EasyRequest(NULL, &es, NULL);
-
-    // Close the library
-    CloseLibrary(IntuitionBase);
-
-    // Return (codegen will handle function exit and defer cleanup)
+    display_error_requester(AO_Panic);
     // Note: The C code generator emits a return statement after __novus_panic()
 }
 
@@ -200,22 +186,10 @@ void __novus_bounds_check_failed(int32_t index, int32_t length, const char* file
 {
     // This function is only called when (uint32_t)index >= (uint32_t)length
     // The comparison has already been done in the generated code
-    struct Library *IntuitionBase;
-    struct EasyStruct es;
     char index_str[12];
     char length_str[12];
     char line_str[12];
     char* ptr = error_buffer;
-
-    // Open intuition.library
-    IntuitionBase = OpenLibrary("intuition.library", 33L);
-    if (IntuitionBase == NULL) {
-        // Can't show requester - use Alert() as fallback
-        // This displays a system-level Guru Meditation-style alert
-        Alert(AT_DeadEnd | AN_NovusLib | AG_NovusError | AO_BoundsCheck);
-        // Alert never returns for AT_DeadEnd
-        return;  // Should never reach here
-    }
 
     // Convert numbers to strings
     int_to_str(index_str, index);
@@ -233,19 +207,7 @@ void __novus_bounds_check_failed(int32_t index, int32_t length, const char* file
     ptr = strcpy_helper(ptr, "\nLine: ");
     ptr = strcpy_helper(ptr, line_str);
 
-    // Set up EasyRequest structure
-    es.es_StructSize   = sizeof(struct EasyStruct);
-    es.es_Flags        = 0;
-    es.es_Title        = "Novus Runtime Error";
-    es.es_TextFormat   = error_buffer;
-    es.es_GadgetFormat = "OK";
-
-    // Display the requester
-    EasyRequest(NULL, &es, NULL);
-
-    // Close the library
-    CloseLibrary(IntuitionBase);
-
+    display_error_requester(AO_BoundsCheck);
     // Note: Caller (generated code) will execute defer cleanup and return after this
 }
 
@@ -260,20 +222,8 @@ void __novus_bounds_check_failed(int32_t index, int32_t length, const char* file
 void __novus_div_check(int32_t divisor, const char* file, int32_t line)
 {
     if (divisor == 0) {
-        struct Library *IntuitionBase;
-        struct EasyStruct es;
         char line_str[12];
         char* ptr = error_buffer;
-
-        // Open intuition.library
-        IntuitionBase = OpenLibrary("intuition.library", 33L);
-        if (IntuitionBase == NULL) {
-            // Can't show requester - use Alert() as fallback
-            // This displays a system-level Guru Meditation-style alert
-            Alert(AT_DeadEnd | AN_NovusLib | AG_NovusError | AO_DivByZero);
-            // Alert never returns for AT_DeadEnd
-            return;  // Should never reach here
-        }
 
         // Convert line number to string
         int_to_str(line_str, line);
@@ -285,18 +235,7 @@ void __novus_div_check(int32_t divisor, const char* file, int32_t line)
         ptr = strcpy_helper(ptr, "\nLine: ");
         ptr = strcpy_helper(ptr, line_str);
 
-        // Set up EasyRequest structure
-        es.es_StructSize   = sizeof(struct EasyStruct);
-        es.es_Flags        = 0;
-        es.es_Title        = "Novus Runtime Error";
-        es.es_TextFormat   = error_buffer;
-        es.es_GadgetFormat = "OK";
-
-        // Display the requester
-        EasyRequest(NULL, &es, NULL);
-
-        // Close the library
-        CloseLibrary(IntuitionBase);
+        display_error_requester(AO_DivByZero);
     }
 }
 
@@ -304,15 +243,31 @@ void __novus_div_check(int32_t divisor, const char* file, int32_t line)
 // Hardware Detection
 // ============================================================================
 
-// AttnFlags bits from exec/execbase.h
+// AttnFlags bits from exec/execbase.h - only define if not already defined
+#ifndef AFF_68010
 #define AFF_68010     (1<<0)   // 68010 or better
+#endif
+#ifndef AFF_68020
 #define AFF_68020     (1<<1)   // 68020 or better
+#endif
+#ifndef AFF_68030
 #define AFF_68030     (1<<2)   // 68030 or better
+#endif
+#ifndef AFF_68040
 #define AFF_68040     (1<<3)   // 68040 or better
+#endif
+#ifndef AFF_68060
 #define AFF_68060     (1<<7)   // 68060 or better
+#endif
+#ifndef AFF_68881
 #define AFF_68881     (1<<4)   // 68881 or 68882 FPU
+#endif
+#ifndef AFF_68882
 #define AFF_68882     (1<<5)   // 68882 FPU (or better)
+#endif
+#ifndef AFF_FPU40
 #define AFF_FPU40     (1<<6)   // 68040/68060 internal FPU
+#endif
 
 // SystemCPU enum values (must match std::system::SystemCPU)
 typedef enum {
@@ -339,9 +294,6 @@ typedef enum {
     SystemChipset_ECS = 1,
     SystemChipset_AGA = 2
 } SystemChipset;
-
-// External reference to SysBase (provided by vbcc startup code)
-extern struct Library *SysBase;
 
 /**
  * Detect CPU type at runtime
@@ -393,36 +345,107 @@ SystemFPU __detect_fpu(void)
 /**
  * Detect chipset type at runtime
  * Checks graphics.library ChipRevBits0 to determine OCS/ECS/AGA
+ *
+ * IMPORTANT: ChipRevBits0 detection requires V39 SetPatch to be accurate.
+ * On systems with library version < 39, this will default to OCS.
+ *
+ * NOTE: RTG (UAEGFX/Picasso96/CyberGraphX) does NOT affect this detection.
+ * This always returns the native Amiga chipset (OCS/ECS/AGA), regardless
+ * of what graphics system is currently active for display.
  */
 SystemChipset __detect_chipset(void)
 {
-    struct Library *GfxBase;
-    uint32_t chip_rev;
+    struct GfxBase *GfxBase;
+    uint8_t chip_rev;
+    SystemChipset result;
 
-    // Open graphics.library to check chipset
-    GfxBase = OpenLibrary("graphics.library", 36L);
+    // Open graphics.library V36+ to check chipset
+    GfxBase = (struct GfxBase *)OpenLibrary("graphics.library", 36L);
     if (GfxBase == NULL) {
         // Very old system (pre-2.0) - must be OCS
         return SystemChipset_OCS;
     }
 
-    // Read ChipRevBits0 from GfxBase
-    // Offset 236 bytes from base for ChipRevBits0 (uint32)
-    chip_rev = *(uint32_t *)((uint8_t *)GfxBase + 236);
-
-    CloseLibrary(GfxBase);
-
-    // AGA check: GFXF_AA_ALICE (bit 2) and GFXF_AA_LISA (bit 1)
-    if ((chip_rev & 0x00000006) == 0x00000006) {
-        return SystemChipset_AGA;
+    // ChipRevBits0 is only reliable on V39+ (requires SetPatch)
+    if (GfxBase->LibNode.lib_Version < 39) {
+        CloseLibrary((struct Library *)GfxBase);
+        return SystemChipset_OCS;
     }
 
-    // ECS check: has ECS Denise (bit 13) or ECS Agnus (bit 12)
-    if (chip_rev & 0x00003000) {
-        return SystemChipset_ECS;
-    }
+    // Read ChipRevBits0 directly from GfxBase structure
+    // ChipRevBits0 is a UBYTE (single byte) at offset 476 in struct GfxBase
+    chip_rev = GfxBase->ChipRevBits0;
 
+    CloseLibrary((struct Library *)GfxBase);
+
+    // Bit definitions from graphics/gfxbase.h:
+    // GFXB_BIG_BLITS  0  (bit 0) = 0x01
+    // GFXB_HR_AGNUS   0  (bit 0) = 0x01 - ECS Agnus
+    // GFXB_HR_DENISE  1  (bit 1) = 0x02 - ECS Denise
+    // GFXB_AA_ALICE   2  (bit 2) = 0x04 - AGA Alice (replaces Denise)
+    // GFXB_AA_LISA    3  (bit 3) = 0x08 - AGA Lisa (replaces Agnus)
+    // GFXB_AA_MLISA   4  (bit 4) = 0x10 - AGA MLISA (internal use only)
+
+    // AGA check: Both ALICE (bit 2) and LISA (bit 3) must be set
+    // GFXF_AA_ALICE = 0x04, GFXF_AA_LISA = 0x08
+    if ((chip_rev & 0x0C) == 0x0C) {
+        result = SystemChipset_AGA;
+    }
+    // ECS check: HR_DENISE (bit 1) or HR_AGNUS (bit 0)
+    // GFXF_HR_DENISE = 0x02, GFXF_HR_AGNUS = 0x01
+    else if (chip_rev & 0x03) {
+        result = SystemChipset_ECS;
+    }
     // Default to OCS
-    return SystemChipset_OCS;
+    else {
+        result = SystemChipset_OCS;
+    }
+
+    return result;
+}
+
+/**
+ * Get total chip RAM installed in the system
+ *
+ * IMPORTANT: AvailMem(MEMF_TOTAL) does NOT work as you might expect!
+ * According to the AmigaOS autodocs, AvailMem() ALWAYS returns free memory,
+ * even with MEMF_TOTAL flag. The MEMF_TOTAL flag is poorly documented and
+ * does not mean "total installed RAM".
+ *
+ * The correct way to get total chip RAM is via ExecBase->MaxLocMem,
+ * which is documented as "top of chip memory". Since chip RAM starts at
+ * address 0, MaxLocMem gives us the total chip RAM size.
+ */
+uint32_t __get_chip_ram_total(void)
+{
+    struct ExecBase *execBase = (struct ExecBase *)SysBase;
+
+    // MaxLocMem is the top of chip memory (chip RAM starts at address 0)
+    return execBase->MaxLocMem;
+}
+
+/**
+ * Get free chip RAM
+ *
+ * Uses Exec AvailMem() with MEMF_CHIP to query the free chip memory.
+ * This sums the free bytes across all chip memory MemHeaders.
+ */
+uint32_t __get_chip_ram_free(void)
+{
+    return AvailMem(MEMF_CHIP);
+}
+
+/**
+ * Get largest free chip RAM block
+ *
+ * Uses Exec AvailMem() with MEMF_CHIP | MEMF_LARGEST to find the largest
+ * contiguous block of free chip memory. This is useful for determining if
+ * a large allocation will succeed.
+ *
+ * Note: This is a slow operation as it scans all free blocks.
+ */
+uint32_t __get_chip_ram_largest(void)
+{
+    return AvailMem(MEMF_CHIP | MEMF_LARGEST);
 }
 

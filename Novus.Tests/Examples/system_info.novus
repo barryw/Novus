@@ -7,12 +7,12 @@
 // - Returns 2 if running on 68020
 // - Returns 3 otherwise
 
-from std::system import get_cpu, get_fpu, get_chipset, SystemCPU
+from std::system import CPU, FPU, CHIPSET, SystemCPU
 
 fn main() -> i32 {
     // Return different values based on detected CPU
     // This proves runtime detection works!
-    let cpu = get_cpu()
+    let cpu = CPU()
 
     if cpu == SystemCPU::M68040 {
         return 0

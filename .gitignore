@@ -32,6 +32,7 @@ TestResults/
 *.o
 *.c
 !runtime/**/*.c
+!Novus/runtime/**/*.c
 !vendor/vbcc/**/*.c
 *.out
 a.out

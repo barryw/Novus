@@ -29,7 +29,9 @@ impl Display for i8 {
 
 impl Debug for i8 {
     fn fmt(&self, f: &mut Formatter) -> bool {
-        return Display::fmt(self, f)
+        var buffer: [u8; 16] = [0; 16]
+        let len = i8_to_string(*self, &buffer[0], 16)
+        return f.write_str(Str::from_raw(&buffer[0], len))
     }
 }
 
@@ -44,7 +46,9 @@ impl Display for i16 {
 
 impl Debug for i16 {
     fn fmt(&self, f: &mut Formatter) -> bool {
-        return Display::fmt(self, f)
+        var buffer: [u8; 16] = [0; 16]
+        let len = i16_to_string(*self, &buffer[0], 16)
+        return f.write_str(Str::from_raw(&buffer[0], len))
     }
 }
 
@@ -59,7 +63,9 @@ impl Display for i32 {
 
 impl Debug for i32 {
     fn fmt(&self, f: &mut Formatter) -> bool {
-        return Display::fmt(self, f)
+        var buffer: [u8; 16] = [0; 16]
+        let len = i32_to_string(*self, &buffer[0], 16)
+        return f.write_str(Str::from_raw(&buffer[0], len))
     }
 }
 
@@ -74,7 +80,9 @@ impl Display for i64 {
 
 impl Debug for i64 {
     fn fmt(&self, f: &mut Formatter) -> bool {
-        return Display::fmt(self, f)
+        var buffer: [u8; 32] = [0; 32]
+        let len = i64_to_string(*self, &buffer[0], 32)
+        return f.write_str(Str::from_raw(&buffer[0], len))
     }
 }
 
@@ -89,7 +97,9 @@ impl Display for u8 {
 
 impl Debug for u8 {
     fn fmt(&self, f: &mut Formatter) -> bool {
-        return Display::fmt(self, f)
+        var buffer: [u8; 16] = [0; 16]
+        let len = u8_to_string(*self, &buffer[0], 16)
+        return f.write_str(Str::from_raw(&buffer[0], len))
     }
 }
 
@@ -104,7 +114,9 @@ impl Display for u16 {
 
 impl Debug for u16 {
     fn fmt(&self, f: &mut Formatter) -> bool {
-        return Display::fmt(self, f)
+        var buffer: [u8; 16] = [0; 16]
+        let len = u16_to_string(*self, &buffer[0], 16)
+        return f.write_str(Str::from_raw(&buffer[0], len))
     }
 }
 
@@ -119,7 +131,9 @@ impl Display for u32 {
 
 impl Debug for u32 {
     fn fmt(&self, f: &mut Formatter) -> bool {
-        return Display::fmt(self, f)
+        var buffer: [u8; 16] = [0; 16]
+        let len = u32_to_string(*self, &buffer[0], 16)
+        return f.write_str(Str::from_raw(&buffer[0], len))
     }
 }
 
@@ -134,14 +148,17 @@ impl Display for u64 {
 
 impl Debug for u64 {
     fn fmt(&self, f: &mut Formatter) -> bool {
-        return Display::fmt(self, f)
+        var buffer: [u8; 32] = [0; 32]
+        let len = u64_to_string(*self, &buffer[0], 32)
+        return f.write_str(Str::from_raw(&buffer[0], len))
     }
 }
 
 // bool implementations
 impl Display for bool {
     fn fmt(&self, f: &mut Formatter) -> bool {
-        if *self {
+        let value = *self
+        if value {
             return f.write_str("true")
         } else {
             return f.write_str("false")
@@ -151,20 +168,29 @@ impl Display for bool {
 
 impl Debug for bool {
     fn fmt(&self, f: &mut Formatter) -> bool {
-        return Display::fmt(self, f)
+        let value = *self
+        if value {
+            return f.write_str("true")
+        } else {
+            return f.write_str("false")
+        }
     }
 }
 
 // Str implementations - string slices just write themselves directly
 impl Display for Str {
     fn fmt(&self, f: &mut Formatter) -> bool {
-        return f.write_str(*self)
+        // Work around: create a copy of the Str by accessing fields
+        let str_copy = Str::from_raw(self.ptr, self.len)
+        return f.write_str(str_copy)
     }
 }
 
 impl Debug for Str {
     fn fmt(&self, f: &mut Formatter) -> bool {
         // For debug, we could add quotes, but for now just use Display
-        return Display::fmt(self, f)
+        // Work around: create a copy of the Str by accessing fields
+        let str_copy = Str::from_raw(self.ptr, self.len)
+        return f.write_str(str_copy)
     }
 }

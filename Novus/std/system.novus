@@ -3,6 +3,7 @@
 // Provides enums and variables for runtime hardware detection on Amiga
 
 from std::fmt import Display, Formatter
+from std::strings import Str
 
 // CPU types detected via ExecBase->AttnFlags
 pub enum SystemCPU {
@@ -30,73 +31,75 @@ pub enum SystemChipset {
     AGA,       // Advanced Graphics Architecture (A1200/A4000/CD32)
 }
 
+// Memory information structure
+pub struct MemoryInfo {
+    total: u32,    // Total bytes
+    free: u32,     // Free bytes
+    largest: u32,  // Largest free block
+}
+
 // Runtime hardware detection functions
 // These call into the Novus runtime which detects hardware at startup
 extern fn __detect_cpu() -> SystemCPU
 extern fn __detect_fpu() -> SystemFPU
 extern fn __detect_chipset() -> SystemChipset
+extern fn __get_chip_ram_total() -> u32
+extern fn __get_chip_ram_free() -> u32
+extern fn __get_chip_ram_largest() -> u32
 
-// Global variables set during startup by the runtime
-// These are initialized before main() is called
-// Values are set by the runtime's __detect_cpu routine
-// TODO: Currently using functions instead of vars until extern var support is complete
-pub fn get_cpu() -> SystemCPU {
+// Global accessors for hardware detection
+// These call the runtime's extern detection functions
+pub fn CPU() -> SystemCPU {
     return __detect_cpu()
 }
 
-pub fn get_fpu() -> SystemFPU {
+pub fn FPU() -> SystemFPU {
     return __detect_fpu()
 }
 
-pub fn get_chipset() -> SystemChipset {
+pub fn CHIPSET() -> SystemChipset {
     return __detect_chipset()
 }
 
+pub fn CHIP_RAM() -> MemoryInfo {
+    let total = __get_chip_ram_total()
+    let free = __get_chip_ram_free()
+    let largest = __get_chip_ram_largest()
+    return MemoryInfo { total: total, free: free, largest: largest }
+}
+
 // Display trait implementations for hardware enums
-// TODO: These are temporarily disabled until match expressions support enum dereferencing
-// For now, use conditional logic instead of match
 impl Display for SystemCPU {
     fn fmt(&self, f: &mut Formatter) -> bool {
-        if *self == SystemCPU::M68000 {
-            return f.write_str("68000")
-        } else if *self == SystemCPU::M68010 {
-            return f.write_str("68010")
-        } else if *self == SystemCPU::M68020 {
-            return f.write_str("68020")
-        } else if *self == SystemCPU::M68030 {
-            return f.write_str("68030")
-        } else if *self == SystemCPU::M68040 {
-            return f.write_str("68040")
-        } else {
-            return f.write_str("68060")
+        return match *self {
+            SystemCPU::M68000 => f.write_str("68000"),
+            SystemCPU::M68010 => f.write_str("68010"),
+            SystemCPU::M68020 => f.write_str("68020"),
+            SystemCPU::M68030 => f.write_str("68030"),
+            SystemCPU::M68040 => f.write_str("68040"),
+            SystemCPU::M68060 => f.write_str("68060"),
         }
     }
 }
 
 impl Display for SystemFPU {
     fn fmt(&self, f: &mut Formatter) -> bool {
-        if *self == SystemFPU::None {
-            return f.write_str("None")
-        } else if *self == SystemFPU::M68881 {
-            return f.write_str("68881")
-        } else if *self == SystemFPU::M68882 {
-            return f.write_str("68882")
-        } else if *self == SystemFPU::M68040 {
-            return f.write_str("68040 FPU")
-        } else {
-            return f.write_str("68060 FPU")
+        return match *self {
+            SystemFPU::None => f.write_str("None"),
+            SystemFPU::M68881 => f.write_str("68881"),
+            SystemFPU::M68882 => f.write_str("68882"),
+            SystemFPU::M68040 => f.write_str("68040 FPU"),
+            SystemFPU::M68060 => f.write_str("68060 FPU"),
         }
     }
 }
 
 impl Display for SystemChipset {
     fn fmt(&self, f: &mut Formatter) -> bool {
-        if *self == SystemChipset::OCS {
-            return f.write_str("OCS")
-        } else if *self == SystemChipset::ECS {
-            return f.write_str("ECS")
-        } else {
-            return f.write_str("AGA")
+        return match *self {
+            SystemChipset::OCS => f.write_str("OCS"),
+            SystemChipset::ECS => f.write_str("ECS"),
+            SystemChipset::AGA => f.write_str("AGA"),
         }
     }
 }

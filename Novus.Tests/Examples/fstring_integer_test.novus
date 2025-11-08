@@ -1,0 +1,39 @@
+// F-String Integer Formatting Test
+// Tests integer interpolation in f-strings
+
+from std::strings import Str, String
+from std::fmt import Formatter, Display
+
+extern fn write(format: *u8, ...args) -> i32
+
+fn main() -> i32 {
+    write("F-String Integer Test\n")
+    write("=====================\n\n")
+
+    // Test 1: Simple integer interpolation
+    let x: i32 = 42
+    let msg1 = f"The answer is {x}"
+    write("Test 1: ")
+    write(msg1.as_ptr())
+    write("\n")
+
+    // Test 2: Multiple integers
+    let a: i32 = 10
+    let b: i32 = 20
+    let msg2 = f"{a} + {b} = 30"
+    write("Test 2: ")
+    write(msg2.as_ptr())
+    write("\n")
+
+    // Test 3: Mixed string and integer
+    let count: i32 = 5
+    let item = "apples"
+    let msg3 = f"I have {count} {item}"
+    write("Test 3: ")
+    write(msg3.as_ptr())
+    write("\n")
+
+    write("\n[SUCCESS] Integer f-string formatting works!\n")
+
+    return 0
+}

@@ -1188,22 +1188,26 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 }
                 else
                 {
-                    // Fallback to generic type if struct not found
-                    baseType = new IrGenericType(implTypeName);
+                    // Check for primitive types (bool, i8, u8, etc.)
+                    var primitiveType = GetPrimitiveType(implTypeName);
+                    if (primitiveType != null)
+                    {
+                        baseType = primitiveType;
+                    }
+                    else
+                    {
+                        // Fallback to generic type if neither struct nor primitive found
+                        baseType = new IrGenericType(implTypeName);
+                    }
                 }
 
                 // Now wrap in pointer if needed based on parameter form
                 IrType selfType;
                 bool isConsumingSelf = false;
-                if (selfParam.GetText().StartsWith("&mut"))
+                if (selfParam.GetText().StartsWith("&mut") || selfParam.GetText().StartsWith("&"))
                 {
-                    // &mut self
-                    selfType = new IrPointerType(baseType);
-                }
-                else if (selfParam.GetText().StartsWith("&"))
-                {
-                    // &self (immutable reference - treat as pointer for now)
-                    selfType = new IrPointerType(baseType);
+                    // &self or &mut self - use pointer type (& in Novus produces *T, not &T)
+                    selfType = _typeInterner.GetPointerType(baseType);
                 }
                 else
                 {
@@ -3536,28 +3540,44 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return null;
         }
 
+        // Auto-dereference pointer and reference types for matching
+        var actualMatchType = matchValueType;
+        if (matchValueType is IrPointerType ptrType)
+        {
+            actualMatchType = ptrType.PointeeType;
+        }
+        else if (matchValueType is IrReferenceType refType)
+        {
+            actualMatchType = refType.PointeeType;
+        }
+        else if (matchValueType is IrMutReferenceType mutRefType)
+        {
+            actualMatchType = mutRefType.PointeeType;
+        }
+
         // Ensure we're matching on an enum type or integer type
-        bool isEnumMatch = matchValueType is IrEnumType;
-        bool isIntegerMatch = matchValueType is IrIntType;
+        bool isEnumMatch = actualMatchType is IrEnumType;
+        bool isIntegerMatch = actualMatchType is IrIntType;
 
         // For pattern analysis, we need the enum type to look up variants
-        // If matchValueType is a generic type parameter that refers to an enum,
+        // If actualMatchType is a generic type parameter that refers to an enum,
         // we need to get the actual enum type for validation
         IrEnumType? enumTypeForValidation = null;
         if (isEnumMatch)
         {
-            enumTypeForValidation = (IrEnumType)matchValueType;
+            enumTypeForValidation = (IrEnumType)actualMatchType;
             Console.WriteLine($"DEBUG SemanticAnalyzer: Match on enum '{enumTypeForValidation.EnumName}' with CacheKey='{enumTypeForValidation.CacheKey}'");
             foreach (var v in enumTypeForValidation.Variants)
             {
                 Console.WriteLine($"  Variant '{v.Name}': AssociatedData=[{string.Join(", ", v.AssociatedData.Select(d => $"{d.Name} (CacheKey={(d is IrStructType st ? st.CacheKey : "N/A")})"))}]");
             }
         }
-        else if (!isIntegerMatch && matchValueType is IrGenericType genericType)
+        else if (!isIntegerMatch && actualMatchType is IrGenericType genericType)
         {
             // Check if this generic type name refers to an enum
             // This handles cases like match on 'self' in impl<T> Option<T>
             // where 'self' has type IrGenericType("Option")
+            // Also handles cases where dereferencing a pointer/reference yields IrGenericType
             if (_symbols.HasEnum(genericType.ParameterName))
             {
                 isEnumMatch = true;
@@ -3570,7 +3590,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
             _diagnostics.ReportError(
                 "E0035",
-                $"match expression can only be used with enum or integer types, got '{matchValueType.Name}'",
+                $"match expression can only be used with enum or integer types, got '{actualMatchType.Name}'",
                 location,
                 helpTexts: new List<string>
                 {
@@ -5285,6 +5305,58 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 return null;
             }
         }
+        else if (receiverType is IrReferenceType refType)
+        {
+            // Auto-dereference immutable references
+            if (refType.PointeeType is IrStructType refStruct)
+            {
+                typeName = refStruct.StructName;
+            }
+            else if (refType.PointeeType is IrEnumType refEnum)
+            {
+                typeName = refEnum.EnumName;
+            }
+            else
+            {
+                var location = SourceLocationHelper.FromContext(memberAccessCtx, _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0052",
+                    $"cannot call method on type '{receiverType.Name}'",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "methods can only be called on struct or enum types"
+                    }
+                );
+                return null;
+            }
+        }
+        else if (receiverType is IrMutReferenceType mutRefType)
+        {
+            // Auto-dereference mutable references
+            if (mutRefType.PointeeType is IrStructType mutRefStruct)
+            {
+                typeName = mutRefStruct.StructName;
+            }
+            else if (mutRefType.PointeeType is IrEnumType mutRefEnum)
+            {
+                typeName = mutRefEnum.EnumName;
+            }
+            else
+            {
+                var location = SourceLocationHelper.FromContext(memberAccessCtx, _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0052",
+                    $"cannot call method on type '{receiverType.Name}'",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "methods can only be called on struct or enum types"
+                    }
+                );
+                return null;
+            }
+        }
         else
         {
             var location = SourceLocationHelper.FromContext(memberAccessCtx, _filePath, _sourceLines);
@@ -5787,12 +5859,17 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         if (_variables.ContainsKey("self"))
         {
             var selfType = _variables["self"].Type;
+            System.Console.WriteLine($"DEBUG VisitSelfExpr: selfType = {selfType}, GetType = {selfType.GetType().Name}");
+            if (selfType is IrPointerType ptrType)
+            {
+                System.Console.WriteLine($"DEBUG VisitSelfExpr: PointeeType = {ptrType.PointeeType}, GetType = {ptrType.PointeeType.GetType().Name}");
+            }
             if (selfType is IrStructType structType)
             {
             }
-            else if (selfType is IrPointerType ptrType)
+            else if (selfType is IrPointerType ptrType2)
             {
-                if (ptrType.PointeeType is IrStructType innerStruct)
+                if (ptrType2.PointeeType is IrStructType innerStruct)
                 {
                 }
             }
@@ -6161,17 +6238,16 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
-        // For variables, struct fields, etc., create a reference type
+        // For variables, struct fields, etc., create a pointer type
+        // In Novus, & produces pointer types, not reference types (references are for internal borrow tracking)
         var valueType = Visit(exprContext);
         if (valueType == null)
         {
             return null;
         }
 
-        // Return the appropriate reference type
-        return isMutable
-            ? (IrType)_typeInterner.GetMutReferenceType(valueType)
-            : _typeInterner.GetReferenceType(valueType);
+        // Return a pointer type (& in Novus produces *T, not &T)
+        return _typeInterner.GetPointerType(valueType);
     }
 
     public override IrType? VisitComparisonExpr([NotNull] NovusParser.ComparisonExprContext context)
@@ -6342,47 +6418,46 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return trueType;
     }
 
+    public override IrType? VisitDereferenceExpr([NotNull] NovusParser.DereferenceExprContext context)
+    {
+        var operandType = Visit(context.expression());
+        if (operandType == null)
+            return IrIntType.I32;
+
+        // Check if it's a pointer or reference type
+        if (operandType is IrPointerType ptrType)
+        {
+            return ptrType.PointeeType;
+        }
+        else if (operandType is IrReferenceType refType)
+        {
+            return refType.PointeeType;
+        }
+        else if (operandType is IrMutReferenceType mutRefType)
+        {
+            return mutRefType.PointeeType;
+        }
+        else
+        {
+            var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0025",
+                $"cannot dereference non-pointer/reference type '{TypeToString(operandType)}'",
+                location,
+                helpTexts: new List<string>
+                {
+                    "only pointers (*T) and references (&T, &mut T) can be dereferenced"
+                }
+            );
+            return IrIntType.I32; // Fallback
+        }
+    }
+
     public override IrType? VisitUnaryExpr([NotNull] NovusParser.UnaryExprContext context)
     {
         var op = context.GetChild(0).GetText();
 
-        // Handle dereference specially
-        if (op == "*")
-        {
-            var derefOperandType = Visit(context.expression());
-            if (derefOperandType == null)
-                return IrIntType.I32;
-
-            // Check if it's a pointer or reference type
-            if (derefOperandType is IrPointerType ptrType)
-            {
-                return ptrType.PointeeType;
-            }
-            else if (derefOperandType is IrReferenceType refType)
-            {
-                return refType.PointeeType;
-            }
-            else if (derefOperandType is IrMutReferenceType mutRefType)
-            {
-                return mutRefType.PointeeType;
-            }
-            else
-            {
-                var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
-                _diagnostics.ReportError(
-                    "E0025",
-                    $"cannot dereference non-pointer/reference type '{TypeToString(derefOperandType)}'",
-                    location,
-                    helpTexts: new List<string>
-                    {
-                        "only pointers (*T) and references (&T, &mut T) can be dereferenced"
-                    }
-                );
-                return IrIntType.I32; // Fallback
-            }
-        }
-
-        // For other operators, visit operand first
+        // Visit operand first
         var operandType = Visit(context.expression());
         if (operandType == null)
             return IrIntType.I32;
@@ -7660,6 +7735,23 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     private bool IsBoolOrNumericType(IrType type)
     {
         return type is IrBoolType || IsNumericType(type);
+    }
+
+    private IrType? GetPrimitiveType(string typeName)
+    {
+        return typeName switch
+        {
+            "bool" => IrBoolType.Instance,
+            "i8" => IrIntType.I8,
+            "i16" => IrIntType.I16,
+            "i32" => IrIntType.I32,
+            "i64" => IrIntType.I64,
+            "u8" => IrIntType.U8,
+            "u16" => IrIntType.U16,
+            "u32" => IrIntType.U32,
+            "u64" => IrIntType.U64,
+            _ => null
+        };
     }
 
     // Control flow tracking methods for move analysis

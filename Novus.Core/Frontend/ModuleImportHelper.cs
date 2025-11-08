@@ -108,10 +108,13 @@ public static class ModuleImportHelper
         // Check for impl declarations with public methods
         foreach (var implDecl in context.implDeclaration())
         {
+            // Trait implementations have implicitly public methods
+            bool isTraitImpl = implDecl.KW_FOR() != null;
+
             foreach (var implItem in implDecl.implItem())
             {
                 var funcDecl = implItem.functionDeclaration();
-                if (funcDecl != null && IsPub(funcDecl))
+                if (funcDecl != null && (isTraitImpl || IsPub(funcDecl)))
                 {
                     return true;
                 }

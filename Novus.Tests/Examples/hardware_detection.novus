@@ -1,6 +1,8 @@
 // hardware_detection.novus - Demonstrates both compile-time and runtime hardware detection
 
-from std::system import CPU, FPU, Chipset, SystemCPU, SystemFPU, SystemChipset
+from std::system import CPU, FPU, CHIPSET, SystemCPU, SystemFPU, SystemChipset
+from std::io import write
+from std::fmt import Formatter
 
 fn main() -> i32 {
     // ====================================================================================
@@ -12,41 +14,41 @@ fn main() -> i32 {
     // CPU-specific code paths
     #if M68000
         // Code for 68000 - no 32-bit mul/div, no bitfields
-        println("Compiled for 68000 (software 32-bit math)")
+        write("Compiled for 68000 (software 32-bit math)\n")
     #elif M68020
         // Code for 68020 - has 32-bit mul/div, bitfields, PC-relative addressing
-        println("Compiled for 68020 (hardware 32-bit math)")
+        write("Compiled for 68020 (hardware 32-bit math)\n")
     #elif M68030
         // Code for 68030 - same as 68020 plus MMU
-        println("Compiled for 68030 (with MMU)")
+        write("Compiled for 68030 (with MMU)\n")
     #elif M68040
         // Code for 68040 - FPU integrated, cache aware
-        println("Compiled for 68040 (integrated FPU)")
+        write("Compiled for 68040 (integrated FPU)\n")
     #elif M68060
         // Code for 68060 - fastest, avoid some instructions
-        println("Compiled for 68060 (avoid MULU.L)")
+        write("Compiled for 68060 (avoid MULU.L)\n")
     #endif
 
     // FPU-specific code paths
     #if FPU_NONE
-        println("Compiled WITHOUT FPU support (software floating point)")
+        write("Compiled WITHOUT FPU support (software floating point)\n")
     #elif FPU_68881
-        println("Compiled for 68881 FPU")
+        write("Compiled for 68881 FPU\n")
     #elif FPU_68882
-        println("Compiled for 68882 FPU")
+        write("Compiled for 68882 FPU\n")
     #elif FPU_68040
-        println("Compiled for 68040 internal FPU")
+        write("Compiled for 68040 internal FPU\n")
     #elif FPU_68060
-        println("Compiled for 68060 internal FPU")
+        write("Compiled for 68060 internal FPU\n")
     #endif
 
     // Chipset-specific code paths
     #if OCS
-        println("Compiled for OCS (32 colors, no SuperHires)")
+        write("Compiled for OCS (32 colors, no SuperHires)\n")
     #elif ECS
-        println("Compiled for ECS (supports SuperHires)")
+        write("Compiled for ECS (supports SuperHires)\n")
     #elif AGA
-        println("Compiled for AGA (256 colors, HAM8)")
+        write("Compiled for AGA (256 colors, HAM8)\n")
     #endif
 
     // ====================================================================================
@@ -55,24 +57,24 @@ fn main() -> i32 {
     // These variables are set at program startup by detecting actual hardware
     // Useful for programs that adapt to the running system
 
-    println("\n--- Runtime Hardware Detection ---")
+    write("\n--- Runtime Hardware Detection ---\n")
 
     // Detect actual CPU at runtime (using Display trait)
-    println(f"CPU: {CPU}")
+    write(f"CPU: {CPU()}\n")
 
     // Detect actual FPU at runtime (using Display trait)
-    println(f"FPU: {FPU}")
+    write(f"FPU: {FPU()}\n")
 
     // Detect actual chipset at runtime (using Display trait)
-    println(f"Chipset: {Chipset}")
+    write(f"Chipset: {CHIPSET()}\n")
 
     // Can also use match for conditional logic:
-    match CPU {
-        SystemCPU::M68000 => println("  (Base 68000 - no 32-bit multiply)"),
-        SystemCPU::M68020 => println("  (Has 32-bit multiply and bitfields)"),
-        SystemCPU::M68040 => println("  (Integrated FPU, cache-aware)"),
-        SystemCPU::M68060 => println("  (Fastest, avoid MULU.L)"),
-        _ => println("  (Other CPU variant)")
+    match CPU() {
+        SystemCPU::M68000 => write("  (Base 68000 - no 32-bit multiply)\n"),
+        SystemCPU::M68020 => write("  (Has 32-bit multiply and bitfields)\n"),
+        SystemCPU::M68040 => write("  (Integrated FPU, cache-aware)\n"),
+        SystemCPU::M68060 => write("  (Fastest, avoid MULU.L)\n"),
+        _ => write("  (Other CPU variant)\n")
     }
 
     // ====================================================================================
@@ -82,19 +84,19 @@ fn main() -> i32 {
     // Compile-time: choose algorithm based on target CPU
     #if M68040
         // Use cache-friendly algorithm for 68040
-        println("\nUsing cache-optimized algorithm (68040)")
+        write("\nUsing cache-optimized algorithm (68040)\n")
     #elif M68020
         // Use general 32-bit algorithm for 68020/030
-        println("\nUsing 32-bit optimized algorithm (68020)")
+        write("\nUsing 32-bit optimized algorithm (68020)\n")
     #else
         // Use 16-bit algorithm for 68000
-        println("\nUsing 16-bit algorithm (68000)")
+        write("\nUsing 16-bit algorithm (68000)\n")
     #endif
 
     // Runtime: warn if running on slower CPU than compiled for
     #if M68040
-        if CPU != SystemCPU::M68040 && CPU != SystemCPU::M68060 {
-            println("WARNING: This program was optimized for 68040+")
+        if CPU() != SystemCPU::M68040 && CPU() != SystemCPU::M68060 {
+            write("WARNING: This program was optimized for 68040+\n")
         }
     #endif
 

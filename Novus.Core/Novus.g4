@@ -241,7 +241,8 @@ matchArm
     ;
 
 pattern
-    : variantName '(' patternList? ')'         # VariantPattern
+    : '&' pattern                               # ReferencePattern
+    | variantName '(' patternList? ')'         # VariantPattern
     | IDENTIFIER '::' IDENTIFIER ('::' IDENTIFIER)*  # SimpleVariantPattern
     | IDENTIFIER                                # IdentifierPattern
     | INTEGER_LITERAL                           # LiteralPattern

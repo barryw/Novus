@@ -109,7 +109,13 @@ public class CompilerOptions
     public List<string> AdditionalAsmFiles { get; set; } = new();
 
     /// <summary>
-    /// Project version in semver format (e.g., "1.0.0"). Used for @library version generation.
+    /// Project name from project.toml. Injected as PKG_NAME compile-time constant.
     /// </summary>
-    public string? ProjectVersion { get; set; }
+    public string? PackageName { get; set; }
+
+    /// <summary>
+    /// Project version in semver format (e.g., "1.0.0"). Injected as PKG_VERSION compile-time constant.
+    /// Also used for @library version generation.
+    /// </summary>
+    public string? PackageVersion { get; set; }
 }

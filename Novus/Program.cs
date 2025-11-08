@@ -134,6 +134,17 @@ class Program
 
             var source = await File.ReadAllTextAsync(inputFile);
 
+            // Inject package metadata constants ({PKG_NAME}, {PKG_VERSION})
+            // Replace placeholder tokens in string literals with actual values
+            if (!string.IsNullOrEmpty(options.PackageName))
+            {
+                source = source.Replace("{PKG_NAME}", options.PackageName);
+            }
+            if (!string.IsNullOrEmpty(options.PackageVersion))
+            {
+                source = source.Replace("{PKG_VERSION}", options.PackageVersion);
+            }
+
             // Create diagnostic bag for error collection
             var diagnostics = new DiagnosticBag();
 
@@ -288,6 +299,17 @@ class Program
 
             var source = await File.ReadAllTextAsync(inputFile);
 
+            // Inject package metadata constants ({PKG_NAME}, {PKG_VERSION})
+            // Replace placeholder tokens in string literals with actual values
+            if (!string.IsNullOrEmpty(options.PackageName))
+            {
+                source = source.Replace("{PKG_NAME}", options.PackageName);
+            }
+            if (!string.IsNullOrEmpty(options.PackageVersion))
+            {
+                source = source.Replace("{PKG_VERSION}", options.PackageVersion);
+            }
+
             // Create diagnostic bag for error collection
             var diagnostics = new DiagnosticBag();
 
@@ -419,7 +441,7 @@ class Program
             }
 
             var safetyLevel = options.GetSafetyLevel();
-            var codegen = new CCodeGenerator(module, irBuilder.StringLiterals, options.Cpu, options.Fpu, options.BuildMode, safetyLevel, explicitEntryPoints, false, options.ProjectVersion);
+            var codegen = new CCodeGenerator(module, irBuilder.StringLiterals, options.Cpu, options.Fpu, options.BuildMode, safetyLevel, explicitEntryPoints, false, options.PackageVersion);
             var cCode = codegen.Generate();
 
             return (cCode, irBuilder.GetImportedModules());
@@ -643,7 +665,7 @@ class Program
                     safetyLevel: safetyLevel,
                     explicitEntryPoints: null,
                     useSharedTypesHeader: true,
-                    projectVersion: options.ProjectVersion);
+                    projectVersion: options.PackageVersion);
 
                 // Generate one C file per function
                 // Filter out functions with unresolved types to avoid symbol conflicts
@@ -771,7 +793,7 @@ class Program
                     safetyLevel: safetyLevel,
                     explicitEntryPoints: null,
                     useSharedTypesHeader: true,
-                    projectVersion: options.ProjectVersion);
+                    projectVersion: options.PackageVersion);
 
                 // Generate one C file per function
                 // Filter out functions with unresolved types to avoid symbol conflicts
@@ -811,7 +833,7 @@ class Program
             }
 
             // Add Novus runtime library (novus_runtime.c - contains assert handler with EasyRequest)
-            var runtimeCFile = Path.Combine(compilerDir, "..", "..", "..", "..", "runtime", "novus_runtime.c");
+            var runtimeCFile = Path.Combine(compilerDir, "runtime", "novus_runtime.c");
             if (File.Exists(runtimeCFile))
             {
                 cFiles.Add(runtimeCFile);
@@ -942,11 +964,8 @@ class Program
             requiredLibraries.Add("exec");
             Console.WriteLine("  ✓ Always including 'exec' library");
 
-            // Include DOS library (needed by novus_io.s runtime for VPrintf)
-            requiredLibraries.Add("dos");
-            Console.WriteLine("  ✓ Including 'dos' library (needed by runtime)");
-
             // Scan generated C files for DOS and Intuition library function calls
+            // Note: DOS is NOT unconditionally included - only if actually used
             foreach (var cFile in cFiles)
             {
                 var cCode = await File.ReadAllTextAsync(cFile);

@@ -6,9 +6,11 @@ This template creates a standalone command-line application for AmigaOS that wor
 
 ```
 myapp/
-├── project.toml          # Project configuration
-├── src/
-│   └── main.novus        # Main program entry point
+├── workspace.toml        # Workspace configuration
+├── cli/                  # CLI project
+│   ├── project.toml      # Project configuration
+│   └── src/
+│       └── main.novus    # Main program entry point
 └── README.md             # This file
 ```
 
@@ -92,10 +94,11 @@ Return proper exit codes from main():
 
 ## Customization
 
-1. **Change the program name**: Edit `name` in `project.toml`
-2. **Add dependencies**: Add to `[dependencies]` section
-3. **Hardware targets**: Adjust `target_cpu`, `fpu`, `chipset` in `[build]`
-4. **Add more commands**: Extend the argument parsing in `main()`
+1. **Change the program name**: Edit `name` in `cli/project.toml`
+2. **Add dependencies**: Add to `[dependencies]` section in `cli/project.toml`
+3. **Hardware targets**: Adjust `target_cpu`, `fpu`, `chipset` in `workspace.toml` (applies to all projects) or in `cli/project.toml` (project-specific)
+4. **Add more commands**: Extend the argument parsing in `cli/src/main.novus`
+5. **Add more projects**: Create new project directories and add them to `members` in `workspace.toml`
 
 ## Example: Adding ReadArgs() Support
 

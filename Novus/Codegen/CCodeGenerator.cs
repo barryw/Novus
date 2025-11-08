@@ -441,8 +441,10 @@ public class CCodeGenerator
                 var funcObj = _module.Functions.FirstOrDefault(f => f.Name == funcName);
                 if (funcObj != null)
                 {
+                    // VBCC FIX: Use output parameter for struct/enum returns EXCEPT for extern functions
+                    // Extern functions use their actual C signatures (e.g., runtime functions return enums directly)
                     var isStructOrEnumReturn = funcObj.ReturnType is IrStructType or IrEnumType;
-                    var shouldUseOutParam = isStructOrEnumReturn;
+                    var shouldUseOutParam = isStructOrEnumReturn && !funcObj.IsExtern;
                     var returnTypeStr = shouldUseOutParam ? "void" : GetCType(funcObj.ReturnType);
                     var parameters = GetParameterList(funcObj, shouldUseOutParam);
                     sb.AppendLine($"extern {returnTypeStr} {MangleName(funcObj)}({parameters});");
@@ -1873,6 +1875,8 @@ public class CCodeGenerator
             _output.AppendLine("// External function declarations (FFI)");
             foreach (var function in externFunctions)
             {
+                // Extern functions use their actual C signatures - no VBCC output parameter workaround
+                // The runtime implements these functions with direct return values
                 var returnType = GetCType(function.ReturnType);
                 var parameters = GetParameterList(function);
                 _output.AppendLine($"extern {returnType} {MangleName(function)}({parameters});");
@@ -2504,8 +2508,9 @@ public class CCodeGenerator
         }
 
         // VBCC FIX: For struct/enum returns on 68k, use output parameter pattern to avoid vbcc bugs
+        // BUT: Extern functions use their actual C signatures and return values directly
         var isStructOrEnumReturn = call.ReturnType is IrStructType or IrEnumType;
-        var shouldUseOutParam = isStructOrEnumReturn;
+        var shouldUseOutParam = isStructOrEnumReturn && (function == null || !function.IsExtern);
 
         // Don't mangle exported function names in calls
         // If we found the function, use its mangled name; otherwise fall back to string mangling

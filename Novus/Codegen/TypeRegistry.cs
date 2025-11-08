@@ -34,8 +34,7 @@ public class TypeRegistry
             // Only register non-generic (concrete) enums
             if (IsConcreteEnum(enumType))
             {
-                if (!_enumTypes.Any(e => GetEnumName(e) == GetEnumName(enumType)))
-                    _enumTypes.Add(enumType);
+                AddOrUpdateEnumType(enumType);
             }
         }
 
@@ -44,8 +43,7 @@ public class TypeRegistry
         {
             if (externVar.Type is IrEnumType enumExtVar && IsConcreteEnum(enumExtVar))
             {
-                if (!_enumTypes.Any(e => GetEnumName(e) == GetEnumName(enumExtVar)))
-                    _enumTypes.Add(enumExtVar);
+                AddOrUpdateEnumType(enumExtVar);
             }
             else if (externVar.Type is IrStructType structExtVar && structExtVar.GenericParameters.Count == 0)
             {
@@ -58,8 +56,7 @@ public class TypeRegistry
         {
             if (staticVar.Type is IrEnumType enumStaticVar && IsConcreteEnum(enumStaticVar))
             {
-                if (!_enumTypes.Any(e => GetEnumName(e) == GetEnumName(enumStaticVar)))
-                    _enumTypes.Add(enumStaticVar);
+                AddOrUpdateEnumType(enumStaticVar);
             }
             else if (staticVar.Type is IrStructType structStaticVar && structStaticVar.GenericParameters.Count == 0)
             {
@@ -74,8 +71,7 @@ public class TypeRegistry
             // Check return type
             if (function.ReturnType is IrEnumType enumRet && IsConcreteEnum(enumRet))
             {
-                if (!_enumTypes.Any(e => GetEnumName(e) == GetEnumName(enumRet)))
-                    _enumTypes.Add(enumRet);
+                AddOrUpdateEnumType(enumRet);
             }
 
             // Check parameters
@@ -83,8 +79,7 @@ public class TypeRegistry
             {
                 if (param.Type is IrEnumType enumParam && IsConcreteEnum(enumParam))
                 {
-                    if (!_enumTypes.Any(e => GetEnumName(e) == GetEnumName(enumParam)))
-                        _enumTypes.Add(enumParam);
+                    AddOrUpdateEnumType(enumParam);
                 }
             }
 
@@ -93,8 +88,7 @@ public class TypeRegistry
             {
                 if (local.Type is IrEnumType enumLocal && IsConcreteEnum(enumLocal))
                 {
-                    if (!_enumTypes.Any(e => GetEnumName(e) == GetEnumName(enumLocal)))
-                        _enumTypes.Add(enumLocal);
+                    AddOrUpdateEnumType(enumLocal);
                 }
             }
 
@@ -107,8 +101,7 @@ public class TypeRegistry
                     {
                         if (localDecl.Type is IrEnumType enumDeclType && IsConcreteEnum(enumDeclType))
                         {
-                            if (!_enumTypes.Any(e => GetEnumName(e) == GetEnumName(enumDeclType)))
-                                _enumTypes.Add(enumDeclType);
+                            AddOrUpdateEnumType(enumDeclType);
                         }
                         else if (localDecl.Type is IrStructType structDeclType &&
                                  structDeclType.GenericParameters.Count == 0)
@@ -121,8 +114,7 @@ public class TypeRegistry
                         match.MatchValue.Type is IrEnumType matchEnumType &&
                         IsConcreteEnum(matchEnumType))
                     {
-                        if (!_enumTypes.Any(e => GetEnumName(e) == GetEnumName(matchEnumType)))
-                            _enumTypes.Add(matchEnumType);
+                        AddOrUpdateEnumType(matchEnumType);
                     }
                 }
             }
@@ -218,8 +210,7 @@ public class TypeRegistry
         switch (type)
         {
             case IrEnumType enumType when IsConcreteEnum(enumType):
-                if (!_enumTypes.Any(e => GetEnumName(e) == GetEnumName(enumType)))
-                    _enumTypes.Add(enumType);
+                AddOrUpdateEnumType(enumType);
                 break;
 
             case IrArrayType arrayType:
@@ -358,6 +349,26 @@ public class TypeRegistry
             IrMutReferenceType mutRefType => IsGenericType(mutRefType.PointeeType),
             _ => false
         };
+    }
+
+    /// <summary>
+    /// Add or update an enum type in the registry.
+    /// If an enum with the same name already exists, keeps the version with more variants.
+    /// This handles cases where enum types are encountered multiple times with varying completeness.
+    /// </summary>
+    private void AddOrUpdateEnumType(IrEnumType enumType)
+    {
+        var existingEnum = _enumTypes.FirstOrDefault(e => GetEnumName(e) == GetEnumName(enumType));
+        if (existingEnum == null)
+        {
+            _enumTypes.Add(enumType);
+        }
+        else if (enumType.Variants.Count > existingEnum.Variants.Count)
+        {
+            // Replace with the version that has more variants (the fully-defined version)
+            _enumTypes.Remove(existingEnum);
+            _enumTypes.Add(enumType);
+        }
     }
 
     /// <summary>

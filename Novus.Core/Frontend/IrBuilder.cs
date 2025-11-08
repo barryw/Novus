@@ -1211,7 +1211,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             // Skip if the type this impl is for is not in the import list
             // This prevents importing methods for types we don't have access to
-            if (!namesToImport.Contains(typeName))
+            // However, ALWAYS allow impl blocks for primitive types (i8, i16, i32, u8, etc.)
+            // because primitives are universally available and their trait impls should be imported
+            bool isPrimitiveType = typeName is "i8" or "i16" or "i32" or "i64" or
+                                                "u8" or "u16" or "u32" or "u64" or
+                                                "bool" or "f32" or "f64";
+
+            if (!isPrimitiveType && !namesToImport.Contains(typeName))
             {
                 _symbols.ClearGenericParameters();
                 continue;
@@ -1236,6 +1242,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                 // Check if method is pub
                 var isPub = AstModifierHelper.HasModifier(funcDecl, "pub", 3);
+
+                // For trait implementations, methods are implicitly public since they implement
+                // a public trait method, even if not explicitly marked `pub`
+                if (isTraitImpl)
+                {
+                    isPub = true;
+                }
 
                 // For generic impl blocks, store ALL methods as templates (pub and private)
                 // because instantiating one method may need to call private helper methods
@@ -2463,7 +2476,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var isMutable = selfParam.KW_MUT() != null;
         var isBorrowed = selfParam.GetChild(0).GetText() == "&";
 
-        // Determine self type - look up the implementing type (struct or enum)
+        // Determine self type - look up the implementing type (struct, enum, or primitive)
         IrType? implType = null;
         var foundStruct = _symbols.LookupStruct(typeName);
         var foundEnum = _symbols.LookupEnum(typeName);
@@ -2478,20 +2491,27 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
         else
         {
-            var errorLocation = selfParam != null
-                ? SourceLocationHelper.FromContext(selfParam, _inputFilePath, _sourceLines.ToArray())
-                : new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
-            _diagnostics.ReportError(
-                ErrorCodes.TypeNotFound,
-                $"Type '{typeName}' not found for impl block",
-                errorLocation
-            );
-            return;
+            // Try primitive types
+            implType = MapPrimitiveTypeName(typeName);
+
+            if (implType == null)
+            {
+                var errorLocation = selfParam != null
+                    ? SourceLocationHelper.FromContext(selfParam, _inputFilePath, _sourceLines.ToArray())
+                    : new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.TypeNotFound,
+                    $"Type '{typeName}' not found for impl block",
+                    errorLocation
+                );
+                return;
+            }
         }
 
         IrType selfType = implType;
         if (isBorrowed)
         {
+            // Use pointer types for borrowed self parameters (& in Novus produces *T, not &T)
             selfType = _typeInterner.GetPointerType(selfType);
         }
 
@@ -2506,11 +2526,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
     {
         if (selfParam == null) return;
 
+        var isMutable = selfParam.KW_MUT() != null;
         var isBorrowed = selfParam.GetChild(0).GetText() == "&";
 
         IrType selfType = implementingType;
         if (isBorrowed)
         {
+            // Use pointer types for borrowed self parameters (& in Novus produces *T, not &T)
             selfType = _typeInterner.GetPointerType(selfType);
         }
 
@@ -3269,13 +3291,23 @@ public class IrBuilder : NovusBaseVisitor<object?>
                         // Field access
                         var memberName = suffix.IDENTIFIER().GetText();
 
-                        // Auto-dereference pointers to structs
+                        // Auto-dereference pointers and references to structs
                         IrValue actualBase = currentLValue;
                         var structType = currentLValue.Type;
                         if (structType is IrPointerType ptrType && ptrType.PointeeType is IrStructType)
                         {
                             actualBase = new IrDereferenceValue(currentLValue, ptrType.PointeeType);
                             structType = ptrType.PointeeType;
+                        }
+                        else if (structType is IrReferenceType refType && refType.PointeeType is IrStructType)
+                        {
+                            actualBase = new IrDereferenceValue(currentLValue, refType.PointeeType);
+                            structType = refType.PointeeType;
+                        }
+                        else if (structType is IrMutReferenceType mutRefType && mutRefType.PointeeType is IrStructType)
+                        {
+                            actualBase = new IrDereferenceValue(currentLValue, mutRefType.PointeeType);
+                            structType = mutRefType.PointeeType;
                         }
 
                         if (structType is not IrStructType irStructType)
@@ -3369,13 +3401,23 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     // Final field access: load, increment, store
                     var memberName = lastSuffix.IDENTIFIER().GetText();
 
-                    // Auto-dereference pointers to structs
+                    // Auto-dereference pointers and references to structs
                     IrValue actualBase = currentLValue;
                     var structType = currentLValue.Type;
                     if (structType is IrPointerType ptrType && ptrType.PointeeType is IrStructType)
                     {
                         actualBase = new IrDereferenceValue(currentLValue, ptrType.PointeeType);
                         structType = ptrType.PointeeType;
+                    }
+                    else if (structType is IrReferenceType refType && refType.PointeeType is IrStructType)
+                    {
+                        actualBase = new IrDereferenceValue(currentLValue, refType.PointeeType);
+                        structType = refType.PointeeType;
+                    }
+                    else if (structType is IrMutReferenceType mutRefType && mutRefType.PointeeType is IrStructType)
+                    {
+                        actualBase = new IrDereferenceValue(currentLValue, mutRefType.PointeeType);
+                        structType = mutRefType.PointeeType;
                     }
 
                     if (structType is not IrStructType irStructType)
@@ -3571,7 +3613,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             {
                 var memberName = lvalueSuffixes[0].IDENTIFIER().GetText();
 
-                // Auto-dereference pointers to structs (like in VisitMemberAccessExpr)
+                // Auto-dereference pointers and references to structs (like in VisitMemberAccessExpr)
                 IrValue actualBase = baseVar;
                 var structType = baseVar.Type;
                 if (structType is IrPointerType ptrType && ptrType.PointeeType is IrStructType)
@@ -3579,6 +3621,18 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     // Wrap in IrDereferenceValue for auto-dereference
                     actualBase = new IrDereferenceValue(baseVar, ptrType.PointeeType);
                     structType = ptrType.PointeeType;
+                }
+                else if (structType is IrReferenceType refType && refType.PointeeType is IrStructType)
+                {
+                    // Wrap in IrDereferenceValue for auto-dereference
+                    actualBase = new IrDereferenceValue(baseVar, refType.PointeeType);
+                    structType = refType.PointeeType;
+                }
+                else if (structType is IrMutReferenceType mutRefType && mutRefType.PointeeType is IrStructType)
+                {
+                    // Wrap in IrDereferenceValue for auto-dereference
+                    actualBase = new IrDereferenceValue(baseVar, mutRefType.PointeeType);
+                    structType = mutRefType.PointeeType;
                 }
 
                 if (structType is not IrStructType irStructType)
@@ -3660,13 +3714,23 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     // Field access
                     var memberName = suffix.IDENTIFIER().GetText();
 
-                    // Auto-dereference pointers to structs
+                    // Auto-dereference pointers and references to structs
                     IrValue actualBase = currentLValue;
                     var structType = currentLValue.Type;
                     if (structType is IrPointerType ptrType && ptrType.PointeeType is IrStructType)
                     {
                         actualBase = new IrDereferenceValue(currentLValue, ptrType.PointeeType);
                         structType = ptrType.PointeeType;
+                    }
+                    else if (structType is IrReferenceType refType && refType.PointeeType is IrStructType)
+                    {
+                        actualBase = new IrDereferenceValue(currentLValue, refType.PointeeType);
+                        structType = refType.PointeeType;
+                    }
+                    else if (structType is IrMutReferenceType mutRefType && mutRefType.PointeeType is IrStructType)
+                    {
+                        actualBase = new IrDereferenceValue(currentLValue, mutRefType.PointeeType);
+                        structType = mutRefType.PointeeType;
                     }
 
                     if (structType is not IrStructType irStructType)
@@ -5918,13 +5982,42 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
             else
             {
-                var errorLocation = SourceLocationHelper.FromContext(callCtx, _inputFilePath, _sourceLines.ToArray());
-                _diagnostics.ReportError(
-                    ErrorCodes.CannotCallMethodOnType,
-                    $"Cannot call methods on pointer to non-struct/enum type: {receiverType.Name}",
-                    errorLocation
-                );
-                return null;
+                // Allow methods on primitive types (u64, bool, etc.)
+                typeName = ptrType.PointeeType.Name;
+            }
+        }
+        else if (receiverType is IrReferenceType refType)
+        {
+            // Auto-dereference immutable references
+            if (refType.PointeeType is IrStructType refStruct)
+            {
+                typeName = refStruct.StructName;
+            }
+            else if (refType.PointeeType is IrEnumType refEnum)
+            {
+                typeName = refEnum.EnumName;
+            }
+            else
+            {
+                // Allow methods on primitive types (u64, bool, etc.)
+                typeName = refType.PointeeType.Name;
+            }
+        }
+        else if (receiverType is IrMutReferenceType mutRefType)
+        {
+            // Auto-dereference mutable references
+            if (mutRefType.PointeeType is IrStructType mutRefStruct)
+            {
+                typeName = mutRefStruct.StructName;
+            }
+            else if (mutRefType.PointeeType is IrEnumType mutRefEnum)
+            {
+                typeName = mutRefEnum.EnumName;
+            }
+            else
+            {
+                // Allow methods on primitive types (u64, bool, etc.)
+                typeName = mutRefType.PointeeType.Name;
             }
         }
         else
@@ -5962,6 +6055,16 @@ public class IrBuilder : NovusBaseVisitor<object?>
             {
                 monomorphizedStruct = pointeeStruct;
             }
+            // Check if receiver is a reference to a monomorphized struct (&Vec<i32>)
+            else if (receiverType is IrReferenceType refType && refType.PointeeType is IrStructType refPointeeStruct && refPointeeStruct.CacheKey != null)
+            {
+                monomorphizedStruct = refPointeeStruct;
+            }
+            // Check if receiver is a mutable reference to a monomorphized struct (&mut Vec<i32>)
+            else if (receiverType is IrMutReferenceType mutRefType && mutRefType.PointeeType is IrStructType mutRefPointeeStruct && mutRefPointeeStruct.CacheKey != null)
+            {
+                monomorphizedStruct = mutRefPointeeStruct;
+            }
             // Check if receiver is a monomorphized enum
             else if (receiverType is IrEnumType receiverEnum && receiverEnum.CacheKey != null)
             {
@@ -5971,6 +6074,16 @@ public class IrBuilder : NovusBaseVisitor<object?>
             else if (receiverType is IrPointerType ptrType2 && ptrType2.PointeeType is IrEnumType pointeeEnum && pointeeEnum.CacheKey != null)
             {
                 monomorphizedEnum = pointeeEnum;
+            }
+            // Check if receiver is a reference to a monomorphized enum (&Option<i32>)
+            else if (receiverType is IrReferenceType refType2 && refType2.PointeeType is IrEnumType refPointeeEnum && refPointeeEnum.CacheKey != null)
+            {
+                monomorphizedEnum = refPointeeEnum;
+            }
+            // Check if receiver is a mutable reference to a monomorphized enum (&mut Option<i32>)
+            else if (receiverType is IrMutReferenceType mutRefType2 && mutRefType2.PointeeType is IrEnumType mutRefPointeeEnum && mutRefPointeeEnum.CacheKey != null)
+            {
+                monomorphizedEnum = mutRefPointeeEnum;
             }
             // Check if receiver is a generic enum template (not yet monomorphized)
             // This can happen when a variable has a declared type that includes type arguments,
@@ -6230,21 +6343,20 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
         }
 
-        // For variables, struct members, array elements, etc., create a reference
+        // For variables, struct members, array elements, etc., create a pointer
+        // In Novus, & produces pointer types, not reference types
         // Visit the expression to get its value
         var value = (IrValue)Visit(exprContext)!;
 
-        // Create the appropriate reference type
-        var refType = isMutable
-            ? (IrType)_typeInterner.GetMutReferenceType(value.Type)
-            : _typeInterner.GetReferenceType(value.Type);
+        // Create a pointer type (& in Novus produces *T, not &T)
+        var ptrType = _typeInterner.GetPointerType(value.Type);
 
-        // For code generation, references are just pointers (addresses)
-        // We return the value itself - the semantic analyzer will track that it's a reference
+        // For code generation, pointers are addresses
+        // We return the value itself - the semantic analyzer will track borrowing
         // At codegen time, we'll take the address of the value
 
-        // Create a "borrow" value that wraps the original value with reference type
-        return new IrBorrowValue(value, refType, isMutable);
+        // Create a "borrow" value that wraps the original value with pointer type
+        return new IrBorrowValue(value, ptrType, isMutable);
     }
 
     public override object? VisitIndexExpr([NotNull] NovusParser.IndexExprContext context)
@@ -6983,7 +7095,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             var baseExpr = (IrValue)Visit(memberCtx.expression())!;
             var memberName = memberCtx.IDENTIFIER().GetText();
 
-            // Auto-dereference pointers to structs (like in VisitMemberAccessExpr)
+            // Auto-dereference pointers and references to structs (like in VisitMemberAccessExpr)
             IrValue actualBase = baseExpr;
             IrType baseType = baseExpr.Type;
 
@@ -6992,6 +7104,18 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 // Auto-dereference the pointer - wrap in IrDereferenceValue
                 actualBase = new IrDereferenceValue(actualBase, ptrType.PointeeType);
                 baseType = ptrType.PointeeType;
+            }
+            else if (baseType is IrReferenceType refType && refType.PointeeType is IrStructType)
+            {
+                // Auto-dereference the reference - wrap in IrDereferenceValue
+                actualBase = new IrDereferenceValue(actualBase, refType.PointeeType);
+                baseType = refType.PointeeType;
+            }
+            else if (baseType is IrMutReferenceType mutRefType && mutRefType.PointeeType is IrStructType)
+            {
+                // Auto-dereference the mutable reference - wrap in IrDereferenceValue
+                actualBase = new IrDereferenceValue(actualBase, mutRefType.PointeeType);
+                baseType = mutRefType.PointeeType;
             }
 
             if (baseType is not IrStructType structType)
@@ -7140,7 +7264,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             var baseExpr = (IrValue)Visit(memberCtx.expression())!;
             var memberName = memberCtx.IDENTIFIER().GetText();
 
-            // Auto-dereference pointers to structs (like in VisitMemberAccessExpr)
+            // Auto-dereference pointers and references to structs (like in VisitMemberAccessExpr)
             IrValue actualBase = baseExpr;
             IrType baseType = baseExpr.Type;
 
@@ -7149,6 +7273,18 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 // Auto-dereference the pointer - wrap in IrDereferenceValue
                 actualBase = new IrDereferenceValue(actualBase, ptrType.PointeeType);
                 baseType = ptrType.PointeeType;
+            }
+            else if (baseType is IrReferenceType refType && refType.PointeeType is IrStructType)
+            {
+                // Auto-dereference the reference - wrap in IrDereferenceValue
+                actualBase = new IrDereferenceValue(actualBase, refType.PointeeType);
+                baseType = refType.PointeeType;
+            }
+            else if (baseType is IrMutReferenceType mutRefType && mutRefType.PointeeType is IrStructType)
+            {
+                // Auto-dereference the mutable reference - wrap in IrDereferenceValue
+                actualBase = new IrDereferenceValue(actualBase, mutRefType.PointeeType);
+                baseType = mutRefType.PointeeType;
             }
 
             // Get the struct type and field info
@@ -7528,6 +7664,14 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     public override object? VisitInterpolatedStringLiteral([NotNull] NovusParser.InterpolatedStringLiteralContext context)
     {
+        // Auto-import std::fmt_primitives for Display implementations on primitive types
+        // This allows integers, bools, etc. to be used in f-strings without explicit imports
+        bool isStdLibraryModule = _inputFilePath != null && _inputFilePath.Contains(System.IO.Path.DirectorySeparatorChar + "std" + System.IO.Path.DirectorySeparatorChar);
+        if (!isStdLibraryModule && !_processedModules.Contains("std::fmt_primitives"))
+        {
+            ImportModule("std::fmt_primitives", importAll: true);
+        }
+
         // Get the f-string text and parse it into segments
         var fstring = context.F_STRING_LITERAL().GetText();
 
@@ -7860,21 +8004,47 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     private void EmitFormatInteger(string formatterVarName, IrType formatterType, IrValue intValue, IrIntType intType)
     {
-        // For now, just convert the integer directly using an extern function
-        // The actual implementation will need to handle buffer alerrorLocation
-        // but for the MVP, we'll just call a hypothetical helper function
+        // Call the Display::fmt() implementation for this integer type
+        // Similar to how we handle other types in the else branch above
 
-        // TODO: Implement proper integer-to-string conversion
-        // For now, throw an error with a helpful message
-        var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
-        _diagnostics.ReportError(
-            ErrorCodes.InvalidExpressionType,
-            $"Integer formatting in f-strings is not yet fully implemented. " +
-                          $"The infrastructure is in place but needs extern function '{intType.Name}_to_string' " +
-                          $"to be implemented in the runtime library.",
-            errorLocation
-        );
-        return;
+        var typeName = intType.Name;
+        var fmtMethodName = _module.FindTraitMethod(typeName, "fmt");
+        if (fmtMethodName == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Type '{typeName}' does not implement Display trait. All types in f-strings must implement Display.",
+                errorLocation
+            );
+            return;
+        }
+
+        var fmtMethod = _module.Functions.FirstOrDefault(f => f.Name == fmtMethodName);
+        if (fmtMethod == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.MethodNotFound,
+                $"Display::fmt() method not found for type '{typeName}'",
+                errorLocation
+            );
+            return;
+        }
+
+        // Call intValue.fmt(&mut formatter)
+        // First parameter is &self (the integer value)
+        var intBorrow = new IrBorrowValue(intValue, fmtMethod.Parameters[0].Type, false);
+
+        // Second parameter is &mut Formatter
+        var formatterVarRef = new IrVariable(formatterVarName, formatterType);
+        var formatterBorrow = new IrBorrowValue(formatterVarRef, fmtMethod.Parameters[1].Type, true);
+
+        var fmtResultName = $"%t{_tempCounter++}";
+        var fmtCall = new IrCall(fmtMethodName, fmtMethod.ReturnType, fmtResultName);
+        fmtCall.Arguments.Add(intBorrow);
+        fmtCall.Arguments.Add(formatterBorrow);
+        _currentBlock!.AddInstruction(fmtCall);
     }
 
     private void EmitFormatBool(string formatterVarName, IrType formatterType, IrValue boolValue)
@@ -8588,7 +8758,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         var memberName = context.IDENTIFIER().GetText();
 
-        // Auto-dereference pointers to structs
+        // Auto-dereference pointers and references to structs
         IrValue actualBase = baseExpr;
         IrType baseType = baseExpr.Type;
 
@@ -8597,6 +8767,18 @@ public class IrBuilder : NovusBaseVisitor<object?>
             // Auto-dereference the pointer - wrap in IrDereferenceValue
             actualBase = new IrDereferenceValue(actualBase, ptrType.PointeeType);
             baseType = ptrType.PointeeType;
+        }
+        else if (baseType is IrReferenceType refType && refType.PointeeType is IrStructType)
+        {
+            // Auto-dereference the reference - wrap in IrDereferenceValue
+            actualBase = new IrDereferenceValue(actualBase, refType.PointeeType);
+            baseType = refType.PointeeType;
+        }
+        else if (baseType is IrMutReferenceType mutRefType && mutRefType.PointeeType is IrStructType)
+        {
+            // Auto-dereference the mutable reference - wrap in IrDereferenceValue
+            actualBase = new IrDereferenceValue(actualBase, mutRefType.PointeeType);
+            baseType = mutRefType.PointeeType;
         }
 
         // Check if the base expression is a struct type
@@ -8817,8 +8999,40 @@ public class IrBuilder : NovusBaseVisitor<object?>
             return null;
         }
 
-        bool isEnumMatch = matchValue.Type is IrEnumType;
-        bool isIntegerMatch = matchValue.Type is IrIntType;
+        // Auto-dereference pointer and reference types for matching
+        var actualMatchType = matchValue.Type;
+        if (matchValue.Type is IrPointerType ptrType)
+        {
+            actualMatchType = ptrType.PointeeType;
+        }
+        else if (matchValue.Type is IrReferenceType refType)
+        {
+            actualMatchType = refType.PointeeType;
+        }
+        else if (matchValue.Type is IrMutReferenceType mutRefType)
+        {
+            actualMatchType = mutRefType.PointeeType;
+        }
+
+        bool isEnumMatch = actualMatchType is IrEnumType;
+        bool isIntegerMatch = actualMatchType is IrIntType;
+
+        // Handle case where actualMatchType is IrGenericType that refers to an enum
+        // This happens when matching on enum types that haven't been fully monomorphized yet
+        // or when dereferencing a pointer/reference to an enum yields IrGenericType
+        IrEnumType? enumTypeForValidation = null;
+        if (isEnumMatch)
+        {
+            enumTypeForValidation = (IrEnumType)actualMatchType;
+        }
+        else if (!isIntegerMatch && actualMatchType is IrGenericType genericType)
+        {
+            if (_symbols.HasEnum(genericType.ParameterName))
+            {
+                isEnumMatch = true;
+                enumTypeForValidation = _symbols.LookupEnum(genericType.ParameterName)!;
+            }
+        }
 
         if (!isEnumMatch && !isIntegerMatch)
         {
@@ -8831,7 +9045,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             return null;
         }
 
-        IrEnumType? enumType = isEnumMatch ? (IrEnumType)matchValue.Type : null;
+        IrEnumType? enumType = enumTypeForValidation;
         if (enumType != null)
         {
             Console.WriteLine($"DEBUG IrBuilder: Match on enum '{enumType.EnumName}' with CacheKey='{enumType.CacheKey}'");
@@ -8864,8 +9078,16 @@ public class IrBuilder : NovusBaseVisitor<object?>
         IrVariable? tagVar = null;
         if (isEnumMatch)
         {
+            // If matchValue is a pointer/reference to an enum, we need to dereference it first
+            IrValue enumValueForExtract = matchValue;
+            if (matchValue.Type is IrPointerType || matchValue.Type is IrReferenceType || matchValue.Type is IrMutReferenceType)
+            {
+                // Create a dereference value - use the resolved enum type
+                enumValueForExtract = new IrDereferenceValue(matchValue, enumTypeForValidation!);
+            }
+
             var tagName = $"%t{_tempCounter++}";
-            _currentBlock!.AddInstruction(new IrExtractTag(tagName, matchValue));
+            _currentBlock!.AddInstruction(new IrExtractTag(tagName, enumValueForExtract));
             tagVar = new IrVariable(tagName, IrIntType.I32);
         }
 
@@ -9169,17 +9391,15 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
         }
 
-        // End label
+        // Always emit the match_end label (needed for fall-through checks even if all arms terminate)
         _currentBlock!.AddInstruction(new IrLabel(matchEndLabel));
 
-        // If no arms can reach match_end (all terminated), emit panic for invalid enum tags
-        // This is unreachable in correct programs but provides safety against corrupted memory
+        // If all arms terminated, add a return after the label to avoid falling off the end
+        // This handles the case where an invalid enum tag is encountered
         if (!anyArmReachesEnd)
         {
-            // Call panic with an error message
-            // For now, mark the block as terminated with a return
-            // If function returns a value, emit a dummy return to avoid C warnings
-            // TODO: Once panic() is implemented, use that instead
+            // All arms terminated - this code is unreachable in correct programs
+            // But we still emit a return to satisfy C compiler
             if (_currentFunction?.ReturnType is not null and not IrVoidType)
             {
                 // Non-void function: return zero as unreachable fallback

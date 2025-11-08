@@ -1,0 +1,103 @@
+// Example CLI program demonstrating proper argument handling
+// Works correctly when launched from both Shell (CLI) and Workbench
+//
+// Launch from Shell:   myapp arg1 arg2 arg3
+// Launch from Workbench: Double-click icon (argc will be 0)
+
+from std::io import write
+from std::ffi::dos import Output
+from std::system import CPU, FPU, CHIPSET, CHIP_RAM, SystemCPU, SystemFPU, SystemChipset, MemoryInfo
+from std::fmt import Formatter, Display
+
+// Helper to convert C string to Novus string
+extern fn strlen(s: *u8) -> u32
+
+fn c_str_to_novus(c_str: *u8) -> Str {
+    let len = strlen(c_str)
+    return Str::from_raw(c_str, len)
+}
+
+// Helper to format a SystemCPU as a string
+fn format_cpu(cpu: SystemCPU) -> *u8 {
+    return match cpu {
+        SystemCPU::M68000 => Str::from_raw("68000", 5).ptr,
+        SystemCPU::M68010 => Str::from_raw("68010", 5).ptr,
+        SystemCPU::M68020 => Str::from_raw("68020", 5).ptr,
+        SystemCPU::M68030 => Str::from_raw("68030", 5).ptr,
+        SystemCPU::M68040 => Str::from_raw("68040", 5).ptr,
+        SystemCPU::M68060 => Str::from_raw("68060", 5).ptr,
+    }
+}
+
+// Helper to format a SystemFPU as a string
+fn format_fpu(fpu: SystemFPU) -> *u8 {
+    return match fpu {
+        SystemFPU::None => Str::from_raw("None", 4).ptr,
+        SystemFPU::M68881 => Str::from_raw("68881", 5).ptr,
+        SystemFPU::M68882 => Str::from_raw("68882", 5).ptr,
+        SystemFPU::M68040 => Str::from_raw("68040 FPU", 9).ptr,
+        SystemFPU::M68060 => Str::from_raw("68060 FPU", 9).ptr,
+    }
+}
+
+// Helper to format a SystemChipset as a string
+fn format_chipset(chipset: SystemChipset) -> *u8 {
+    return match chipset {
+        SystemChipset::OCS => Str::from_raw("OCS", 3).ptr,
+        SystemChipset::ECS => Str::from_raw("ECS", 3).ptr,
+        SystemChipset::AGA => Str::from_raw("AGA", 3).ptr,
+    }
+}
+
+// AmigaOS main function receives argc and argv as parameters
+// When launched from Workbench, argc will be 0 and argv contains WBStartup pointer
+// When launched from Shell, argc >= 1 and argv is a char** array
+fn main(argc: i32, argv: **u8) -> i32 {
+    // Detect launch environment
+    // When launched from Workbench, argc will be 0
+    // When launched from Shell, argc will be >= 1
+
+    // Get system info
+    let mem = CHIP_RAM()
+    let used = mem.total - mem.free
+
+    if argc == 0 {
+        // Launched from Workbench
+        // In this case, arguments come from the WBStartup message
+        // which is automatically handled by the Novus runtime
+
+        write("Launched from Workbench\n")
+        write("No command-line arguments available\n")
+
+        // Show hardware detection info instead
+        write("\nDetected hardware:\n")
+        write("CPU: %s\n", format_cpu(CPU()))
+        write("FPU: %s\n", format_fpu(FPU()))
+        write("Chipset: %s\n", format_chipset(CHIPSET()))
+
+        write("\nChip RAM:\n")
+        write("  Total: %ld bytes\n", mem.total)
+        write("  Used: %ld bytes\n", used)
+        write("  Free: %ld bytes\n", mem.free)
+        write("  Largest block: %ld bytes\n", mem.largest)
+    } else {
+        // Launched from Shell/CLI
+        write("Launched from Shell\n")
+
+        // TODO: Proper AmigaOS DOS command line parsing not yet implemented
+        // For now, just show hardware info
+        write("\nDetected hardware:\n")
+        write("CPU: %s\n", format_cpu(CPU()))
+        write("FPU: %s\n", format_fpu(FPU()))
+        write("Chipset: %s\n", format_chipset(CHIPSET()))
+
+        write("\nChip RAM:\n")
+        write("  Total: %ld bytes\n", mem.total)
+        write("  Used: %ld bytes\n", used)
+        write("  Free: %ld bytes\n", mem.free)
+        write("  Largest block: %ld bytes\n", mem.largest)
+    }
+
+    return 0
+}
+
