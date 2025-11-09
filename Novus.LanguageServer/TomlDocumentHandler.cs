@@ -133,8 +133,19 @@ public class TomlDocumentHandler : TextDocumentSyncHandlerBase
             var tomlTable = Toml.ToModel(text);
             Console.Error.WriteLine($"[LSP] TOML parsed successfully: {uri}");
 
-            // TODO: Add schema validation for project.toml files
-            // Could validate required keys, type constraints, etc.
+            // Validate schema for project.toml and workspace.toml files
+            var filePath = UriToFilePath(uri);
+            var fileName = System.IO.Path.GetFileName(filePath).ToLowerInvariant();
+            if (fileName == "project.toml" || fileName == "novus.toml")
+            {
+                var schemaDiagnostics = TomlSchemaValidator.ValidateProjectToml(tomlTable, text, filePath);
+                diagnostics.AddRange(schemaDiagnostics);
+            }
+            else if (fileName == "workspace.toml")
+            {
+                var schemaDiagnostics = TomlSchemaValidator.ValidateWorkspaceToml(tomlTable, text, filePath);
+                diagnostics.AddRange(schemaDiagnostics);
+            }
         }
         catch (Exception ex)
         {
