@@ -45,7 +45,8 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(curl:*)",
       "Bash(timeout 120 dotnet test:*)",
-      "Bash(dotnet:*)"
+      "Bash(dotnet:*)",
+      "Bash(pkill:*)"
     ],
     "deny": [],
     "ask": []
