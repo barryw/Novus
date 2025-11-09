@@ -149,11 +149,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public bool Analyze(NovusParser.CompilationUnitContext context)
     {
-        // Pass 0a: Implicitly import all of core module (unless compiling a std library module)
-        // Don't auto-import std::core when compiling std library modules to prevent circular dependencies
-        bool isStdLibraryModule = _filePath.Contains(System.IO.Path.DirectorySeparatorChar + "std" + System.IO.Path.DirectorySeparatorChar);
+        // Pass 0a: Implicitly import all of core module (unless compiling core.novus itself)
+        // Don't auto-import std::core when compiling core.novus to prevent circular dependencies
+        // But DO import it for other std library modules since they need Option, Result, etc.
+        bool isCore = _filePath.EndsWith("core.novus") || _filePath.EndsWith("core" + System.IO.Path.DirectorySeparatorChar);
 
-        if (!isStdLibraryModule)
+        if (!isCore)
         {
             ImportModule("std::core", importAll: true);
         }
@@ -164,55 +165,55 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             ProcessImport(importDecl);
         }
 
-        // First pass: collect all constant declarations
-        foreach (var constDecl in context.constDeclaration())
-        {
-            RegisterConstant(constDecl);
-        }
-
-        // Pass 1.5: collect all static variable declarations
-        foreach (var staticDecl in context.staticDeclaration())
-        {
-            RegisterStatic(staticDecl);
-        }
-
-        // Second pass: collect all enum declarations
+        // First pass: collect all enum declarations (before constants that might reference them)
         foreach (var enumDecl in context.enumDeclaration())
         {
             RegisterEnum(enumDecl);
         }
 
-        // Third pass: collect all struct declarations
+        // Second pass: collect all struct declarations (before constants that might reference them)
         foreach (var structDecl in context.structDeclaration())
         {
             RegisterStruct(structDecl);
         }
 
-        // 3.5 pass: collect all trait declarations
+        // Third pass: collect all trait declarations
         foreach (var traitDecl in context.traitDeclaration())
         {
             RegisterTrait(traitDecl);
         }
 
-        // Fourth pass: collect all extern variable declarations
+        // Fourth pass: collect all constant declarations (after types are registered)
+        foreach (var constDecl in context.constDeclaration())
+        {
+            RegisterConstant(constDecl);
+        }
+
+        // Fifth pass: collect all static variable declarations
+        foreach (var staticDecl in context.staticDeclaration())
+        {
+            RegisterStatic(staticDecl);
+        }
+
+        // Sixth pass: collect all extern variable declarations
         foreach (var globalVarDecl in context.globalVariableDeclaration())
         {
             RegisterGlobalVariable(globalVarDecl);
         }
 
-        // Fifth pass: collect all impl block methods
+        // Seventh pass: collect all impl block methods
         foreach (var implDecl in context.implDeclaration())
         {
             RegisterImpl(implDecl);
         }
 
-        // Sixth pass: collect all function declarations
+        // Eighth pass: collect all function declarations
         foreach (var funcDecl in context.functionDeclaration())
         {
             RegisterFunction(funcDecl);
         }
 
-        // Seventh pass: analyze function bodies (including methods from impl blocks)
+        // Ninth pass: analyze function bodies (including methods from impl blocks)
         foreach (var funcDecl in context.functionDeclaration())
         {
             Visit(funcDecl);
@@ -5588,6 +5589,33 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             {
                 typeName = refEnum.EnumName;
             }
+            else if (refType.PointeeType is IrArrayType arrayType)
+            {
+                // Handle slice methods (arrays with length -1 are slices)
+                if (arrayType.Length == -1)
+                {
+                    // Built-in slice methods
+                    if (methodName == "len")
+                    {
+                        // .len() returns u32
+                        return new IrIntType(32, false);
+                    }
+                    // Add more slice methods here as needed
+                }
+                var location = SourceLocationHelper.FromContext(memberAccessCtx, _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0052",
+                    $"cannot call method on type '{receiverType.Name}'",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        arrayType.Length == -1
+                            ? "slices support methods: len()"
+                            : "arrays do not have methods, use slice references instead"
+                    }
+                );
+                return null;
+            }
             else
             {
                 var location = SourceLocationHelper.FromContext(memberAccessCtx, _filePath, _sourceLines);
@@ -6459,6 +6487,16 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             // array[index] returns the element type
             return arrayType.ElementType;
         }
+        else if (baseType is IrReferenceType indexRefType && indexRefType.PointeeType is IrArrayType refArrayType)
+        {
+            // &array[index] or &[T][index] (slice indexing) returns the element type
+            return refArrayType.ElementType;
+        }
+        else if (baseType is IrMutReferenceType indexMutRefType && indexMutRefType.PointeeType is IrArrayType mutRefArrayType)
+        {
+            // &mut array[index] or &mut [T][index] (slice indexing) returns the element type
+            return mutRefArrayType.ElementType;
+        }
         else
         {
             var location = SourceLocationHelper.FromContext(context.expression(0), _filePath, _sourceLines);
@@ -6468,7 +6506,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 location,
                 helpTexts: new List<string>
                 {
-                    "indexing is only valid on pointers and arrays"
+                    "indexing is only valid on pointers, arrays, and slices"
                 }
             );
             return null;
