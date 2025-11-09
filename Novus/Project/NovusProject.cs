@@ -29,6 +29,7 @@ public class BuildSection
     public string Output { get; set; } = "build";      // Output directory
     public int OptimizationLevel { get; set; } = 2;    // 0-3 (default: 2 - frame pointers fix VBCC optimizer)
     public bool EmitAsm { get; set; } = false;         // Emit assembly files
+    public string[] AsmFiles { get; set; } = Array.Empty<string>();  // External assembly files to link
 }
 
 public class PathsSection

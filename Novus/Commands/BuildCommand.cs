@@ -640,15 +640,49 @@ public static class BuildCommand
             Console.WriteLine($"  Additional C files: {string.Join(", ", additionalCFiles.Select(Path.GetFileName))}");
         }
 
-        // Find any additional assembly files in the project directory
+        // Collect additional assembly files from two sources:
+        // 1. Explicitly listed in project.toml [build] section (AsmFiles array)
+        // 2. Auto-discovered .s files in project directory (legacy behavior)
         var additionalAsmFiles = new List<string>();
+
+        // First, process explicitly listed assembly files from project.toml
+        if (project.Build.AsmFiles.Length > 0)
+        {
+            Console.WriteLine($"Processing {project.Build.AsmFiles.Length} assembly file(s) from project.toml...");
+            foreach (var asmFileRelPath in project.Build.AsmFiles)
+            {
+                // Resolve path relative to project directory
+                var asmFilePath = Path.Combine(projectDir, asmFileRelPath);
+                var normalizedPath = Path.GetFullPath(asmFilePath);
+
+                if (!File.Exists(normalizedPath))
+                {
+                    Console.WriteLine($"Error: Assembly file not found: {asmFileRelPath}");
+                    Console.WriteLine($"  Looked for: {normalizedPath}");
+                    return 1;
+                }
+
+                additionalAsmFiles.Add(normalizedPath);
+                Console.WriteLine($"  → {asmFileRelPath}");
+            }
+        }
+
+        // Then, auto-discover .s files in project directory (for backward compatibility)
         var asmFiles = Directory.GetFiles(projectDir, "*.s", SearchOption.AllDirectories);
+        var normalizedExistingAsm = additionalAsmFiles.Select(f => Path.GetFullPath(f)).ToHashSet();
+
         foreach (var asmFile in asmFiles)
         {
             // Skip files in build output directories
             if (!asmFile.Contains("/target/") && !asmFile.Contains("\\target\\"))
             {
-                additionalAsmFiles.Add(asmFile);
+                var normalizedPath = Path.GetFullPath(asmFile);
+                // Only add if not already in the list from project.toml
+                if (!normalizedExistingAsm.Contains(normalizedPath))
+                {
+                    additionalAsmFiles.Add(normalizedPath);
+                    normalizedExistingAsm.Add(normalizedPath);
+                }
             }
         }
 
@@ -657,14 +691,14 @@ public static class BuildCommand
         {
             var depAsmFiles = buildContext.GetDependencyAsmFiles(project);
             // Add only if not already in the list (avoid duplicates by comparing normalized paths)
-            var normalizedExisting = additionalAsmFiles.Select(f => Path.GetFullPath(f)).ToHashSet();
+            // Reuse the normalized set from above
             foreach (var depAsmFile in depAsmFiles)
             {
                 var normalizedPath = Path.GetFullPath(depAsmFile);
-                if (!normalizedExisting.Contains(normalizedPath))
+                if (!normalizedExistingAsm.Contains(normalizedPath))
                 {
                     additionalAsmFiles.Add(depAsmFile);
-                    normalizedExisting.Add(normalizedPath);
+                    normalizedExistingAsm.Add(normalizedPath);
                 }
             }
         }

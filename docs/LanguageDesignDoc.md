@@ -1642,6 +1642,371 @@ bne.s   *-4              ; wait loop
 
 ---
 
+## 28. Assembly Integration (External Assembly Files)
+
+> **Purpose:** Enable developers to write performance-critical or hardware-specific code in 68k assembly while maintaining seamless interop with Novus code. For v1.0, we support **external assembly files only** (not inline assembly), following the proven C/VBCC pattern familiar to Amiga developers.
+
+### 28.1 Design Decision: External Assembly Only (v1.0)
+
+After analyzing real-world Amiga development patterns, we've chosen to support **external `.s` assembly files** rather than inline assembly for v1.0:
+
+**Rationale:**
+* **80% of real Amiga assembly is in separate files** — large optimized routines, copper/blitter code, hardware initialization
+* **Small assembly snippets are rare** in authentic Amiga development; most cases should use OS library calls
+* **Familiar to C/VBCC developers** — same pattern as existing Amiga toolchain
+* **Keeps compiler simple** for self-hosting goals
+* **Zero parser/codegen complexity** for inline assembly context management
+* **Inline assembly can be added later** if proven necessary (v1.5+)
+
+**When to use assembly:**
+* Performance-critical inner loops (after profiling shows need)
+* Direct hardware manipulation not exposed via std/ffi
+* Legacy assembly code integration
+* Specialized algorithms (fixed-point math kernels, decompression, crypto)
+
+**When NOT to use assembly:**
+* Simple hardware access → use `std/ffi` abstractions
+* Copper/Blitter operations → use hardware DSLs (§23)
+* Memory/task/signal management → use `std/exec` wrappers
+
+### 28.2 Calling Convention (Novus ↔ Assembly ABI)
+
+Novus follows the standard **Amiga ABI** for interop with assembly (same as C/VBCC):
+
+#### 28.2.1 Function Calls
+
+**Arguments (left-to-right):**
+* First 4 args: `d0`, `d1`, `a0`, `a1` (value parameters)
+* Additional args: pushed onto stack (word-aligned)
+* 64-bit values: split across register pairs (e.g., `d0:d1`)
+
+**Return Values:**
+* Integer/pointer: `d0` (32-bit or smaller)
+* 64-bit: `d0` (high) and `d1` (low)
+* Structs: returned via pointer passed in `a0` (caller allocates)
+
+**Register Preservation:**
+* **Callee-saved (must preserve):** `d2-d7`, `a2-a6`
+* **Caller-saved (volatile):** `d0-d1`, `a0-a1`
+* **Frame pointer:** `a6` (if used)
+* **Stack pointer:** `a7` (sp) must be maintained
+
+**Example:**
+```asm
+; extern fn fast_multiply(a: i32, b: i32) -> i32
+_fast_multiply:
+    ; a in d0, b in d1, return in d0
+    muls.l  d1,d0           ; d0 = d0 * d1 (68020+)
+    rts
+```
+
+### 28.3 Declaring External Assembly Functions
+
+Use `extern fn` to declare assembly functions callable from Novus:
+
+```novus
+// Declare an assembly function (implemented in math.s)
+extern fn fast_multiply(a: i32, b: i32) -> i32
+
+fn calculate() -> i32 {
+    let result = fast_multiply(100, 42)  // Calls assembly routine
+    return result
+}
+```
+
+**Rules:**
+* `extern fn` declarations have no body
+* Function name must match assembly symbol (with leading `_`)
+* Parameters and return types must match ABI layout
+* Compiler trusts the declaration — **no runtime checks**
+
+### 28.4 Calling Novus from Assembly
+
+Assembly code can call Novus functions using the same ABI:
+
+**Novus side:**
+```novus
+// This function can be called from assembly
+pub fn novus_helper(x: i32, y: i32) -> i32 {
+    return x + y * 2
+}
+```
+
+**Assembly side:**
+```asm
+; Call Novus function from assembly
+    move.l  #100,d0         ; first arg (x)
+    move.l  #42,d1          ; second arg (y)
+    jsr     _novus_helper   ; call Novus function
+    ; result in d0
+```
+
+**Symbol visibility:**
+* `pub fn` → exported symbol (`.xdef _function_name`)
+* Private functions → internal linkage only
+* Use `pub` when assembly needs to call Novus code
+
+### 28.5 Build System Integration
+
+Specify assembly files in `novus.toml`:
+
+```toml
+[package]
+name = "my_game"
+version = "1.0.0"
+
+[build]
+asm_files = [
+    "src/fast_blit.s",
+    "src/copper_routines.s",
+    "src/audio_mixing.s"
+]
+
+# Optional: per-file CPU profile
+[[build.asm]]
+file = "src/fast_blit.s"
+cpu = "68020"              # requires 020+ instructions
+
+[[build.asm]]
+file = "src/copper_routines.s"
+cpu = "68000"              # compatible with all CPUs
+```
+
+**Build process:**
+1. Compile Novus sources → `.o` files
+2. Assemble `.s` files via `vasm` → `.o` files
+3. Link all `.o` files via `vlink` → executable
+
+**Compiler flags forwarded to vasm:**
+* `--cpu 68020` → `-m68020`
+* `--opt-level release` → optimization flags
+* Debug symbols maintained for `novusc inspect`
+
+### 28.6 Example: Fast Fixed-Point Math
+
+**Assembly implementation (math.s):**
+```asm
+; Fast 16.16 fixed-point multiply
+; extern fn fixed_mul(a: i32, b: i32) -> i32
+;
+; a in d0, b in d1, return in d0
+        .section .text
+        .xdef   _fixed_mul
+
+_fixed_mul:
+        muls.l  d1,d0           ; d0 = a * b (32×32 → 32, 68020+)
+        asr.l   #16,d0          ; shift right 16 bits
+        rts
+
+; Fast 16.16 divide
+; extern fn fixed_div(a: i32, b: i32) -> i32
+        .xdef   _fixed_div
+
+_fixed_div:
+        asl.l   #16,d0          ; shift a left 16 bits
+        divs.l  d1,d0           ; d0 = d0 / d1 (68020+)
+        rts
+```
+
+**Novus usage (game.novus):**
+```novus
+// Declare assembly routines
+extern fn fixed_mul(a: i32, b: i32) -> i32
+extern fn fixed_div(a: i32, b: i32) -> i32
+
+fn update_position(pos: i32, velocity: i32, dt: i32) -> i32 {
+    // Use fast assembly fixed-point math
+    let delta = fixed_mul(velocity, dt)
+    return pos + delta
+}
+
+fn calculate_ratio(numerator: i32, denominator: i32) -> i32 {
+    return fixed_div(numerator, denominator)
+}
+```
+
+### 28.7 Example: Calling Novus from Assembly
+
+**Novus helper (graphics.novus):**
+```novus
+pub fn plot_pixel(bitmap: *u8, x: u16, y: u16, color: u8) {
+    let offset = (y as u32) * 320 + (x as u32)
+    unsafe {
+        bitmap[offset] = color
+    }
+}
+```
+
+**Assembly routine (draw.s):**
+```asm
+; Fast horizontal line using Novus helper
+; void draw_hline(u8 *bitmap, u16 y, u16 x1, u16 x2, u8 color)
+        .section .text
+        .xdef   _draw_hline
+        .xref   _plot_pixel
+
+_draw_hline:
+        movem.l d2-d4/a2,-(sp)  ; save registers
+        move.l  4+16(sp),a2     ; bitmap ptr
+        move.w  8+16(sp),d2     ; y
+        move.w  10+16(sp),d3    ; x1
+        move.w  12+16(sp),d4    ; x2
+        move.b  14+16(sp),d1    ; color (extend to word)
+
+.loop:
+        cmp.w   d4,d3           ; x1 > x2?
+        bgt.s   .done
+
+        ; Call plot_pixel(bitmap, x1, y, color)
+        move.l  a2,a0           ; arg0: bitmap
+        move.w  d3,d0           ; arg1: x
+        move.w  d2,d1           ; arg2: y
+        ; color already in low byte
+        jsr     _plot_pixel
+
+        addq.w  #1,d3           ; x1++
+        bra.s   .loop
+
+.done:
+        movem.l (sp)+,d2-d4/a2
+        rts
+```
+
+### 28.8 Safety and Best Practices
+
+**Memory Safety:**
+* Assembly bypasses Novus safety checks — **caller must ensure validity**
+* Pass slice lengths separately; assembly cannot know Novus slice bounds
+* Use `unsafe` blocks when calling assembly that manipulates memory
+
+**Example:**
+```novus
+extern fn memset_fast(ptr: *u8, value: u8, count: u32)
+
+fn clear_buffer(buf: []mut u8) {
+    unsafe {
+        // Explicitly pass pointer and length
+        memset_fast(buf.as_ptr(), 0, buf.len() as u32)
+    }
+}
+```
+
+**Register Preservation:**
+* Assembly **must** preserve `d2-d7`, `a2-a6` if used
+* Failure to preserve causes subtle bugs in caller
+* Use `movem.l` to save/restore efficiently
+
+**Stack Alignment:**
+* Keep stack word-aligned (even addresses)
+* Use `link`/`unlk` for local variables
+* Don't corrupt caller's stack frame
+
+**CPU Profile Awareness:**
+* Mark assembly files with minimum CPU requirement
+* Use `@cpu(min=68020)` attribute or `cpu = "68020"` in novus.toml
+* Compiler refuses to link incompatible profiles
+
+### 28.9 Struct Passing and Layout
+
+**By-value structs** (small, ≤8 bytes):
+* Passed in registers if possible
+* Larger → passed by pointer
+
+**By-pointer:**
+```novus
+struct Point { x: i16, y: i16 }
+
+extern fn transform_point(p: *Point)
+
+fn move_point(p: Point) {
+    transform_point(&p)  // Pass pointer to stack copy
+}
+```
+
+**Assembly side:**
+```asm
+_transform_point:
+        move.l  a0,a1           ; point ptr in a0
+        move.w  (a1),d0         ; load x
+        add.w   #10,d0          ; x += 10
+        move.w  d0,(a1)         ; store x
+        rts
+```
+
+**Packed structs:**
+* Use `@packed` to match assembly expectations
+* Default: natural alignment (word-aligned)
+
+### 28.10 Debugging Assembly Integration
+
+**Symbol visibility:**
+```bash
+novusc inspect my_game --symbols
+```
+Shows all Novus and assembly symbols with addresses.
+
+**Disassembly:**
+```bash
+m68k-amigaos-objdump -d my_game
+```
+View final linked assembly with Novus/assembly interleaved.
+
+**Link map:**
+```bash
+novusc build --emit-map
+```
+Generates `.map` file showing symbol addresses and sections.
+
+### 28.11 Future: Inline Assembly (v1.5+)
+
+If usage patterns demonstrate need, we may add inline assembly:
+
+```novus
+// FUTURE (not in v1.0)
+fn copper_wait(line: u16) {
+    unsafe asm {
+        "move.w {line},d0",
+        "or.w #$8001,d0",
+        "move.l d0,$dff088",
+        line = in(reg) line,
+    }
+}
+```
+
+This requires:
+* Parser extensions for `asm {}` blocks
+* Register constraint system
+* Value capture from Novus scope
+* Volatile/clobber semantics
+
+**Defer until proven necessary** — external assembly covers 95% of real needs.
+
+### 28.12 Templates and Examples
+
+The Novus SDK provides:
+* `templates/assembly/math.s` — fixed-point math routines
+* `templates/assembly/copper.s` — copper list manipulation
+* `templates/assembly/blitter.s` — blitter job setup
+* `examples/asm_interop/` — complete Novus+assembly projects
+
+### 28.13 Summary
+
+**v1.0 Assembly Integration:**
+* ✅ External `.s` files linked via build system
+* ✅ Bidirectional interop (Novus ↔ Assembly)
+* ✅ Standard Amiga ABI (same as C/VBCC)
+* ✅ CPU profile awareness
+* ✅ Symbol inspection and debugging
+* ❌ Inline assembly (deferred to v1.5+)
+
+**Philosophy:**
+* Make assembly integration **easy but explicit**
+* Leverage familiar Amiga development patterns
+* Keep 95% of code in safe, readable Novus
+* Use assembly only when justified by profiling or hardware requirements
+
+---
+
 ## 29. Floating‑Point & Numeric Modes
 
 > **Purpose:** Provide portable and fast floating‑point across 68000→68080 by defaulting to **soft‑float** semantics and optionally using hardware FPUs when available. Maintain deterministic behavior across profiles unless the developer opts into fast approximations.
