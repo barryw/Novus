@@ -49,8 +49,7 @@ class Program
                 .WithInput(Console.OpenStandardInput())
                 .WithOutput(Console.OpenStandardOutput())
                 .ConfigureLogging(x => x
-                    .AddLanguageProtocolLogging()
-                    .SetMinimumLevel(LogLevel.Debug))
+                    .SetMinimumLevel(LogLevel.Error))
                 .WithServices(services =>
                 {
                     // Register our services here
