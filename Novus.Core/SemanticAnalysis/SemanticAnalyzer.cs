@@ -766,9 +766,39 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Parse the type
         var type = ParseType(context.type());
 
-        // Evaluate the constant expression using the evaluator
+        // Evaluate the constant expression
         var valueExpr = context.expression();
 
+        // Check if this is a struct literal constant
+        // Struct literals come as: PrimaryExpr -> StructLiteral
+        if (valueExpr is NovusParser.PrimaryExprContext primaryExpr &&
+            primaryExpr.primaryExpression() is NovusParser.StructLiteralContext structLiteralExpr)
+        {
+            // For struct literals, we don't evaluate to a single integer value.
+            // Instead, we validate that all field values are constant expressions
+            // and store a placeholder value (0) to mark it as a valid constant.
+            // The actual struct literal will be handled during IR generation.
+
+            if (!IsConstantStructLiteral(structLiteralExpr))
+            {
+                _diagnostics.ReportError(
+                    "E0032",
+                    $"struct literal in constant must have all constant field values",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "all field values must be compile-time constants (integer literals, other constants, or nested struct literals)"
+                    }
+                );
+                return;
+            }
+
+            // Store placeholder value (0) - the struct literal itself will be handled in IR generation
+            _symbols.RegisterConstant(name, new ConstantSymbol(name, type, 0, location));
+            return;
+        }
+
+        // For non-struct constants, evaluate using the integer constant evaluator
         // Convert constants dict to use object values for evaluator
         var constantValues = _symbols.GetLocalConstants().ToDictionary(
             kvp => kvp.Key,
@@ -798,13 +828,101 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 location,
                 helpTexts: new List<string>
                 {
-                    "supported: integer/hex/binary literals, constant references, bitwise ops (|, &, ^, <<, >>, ~), arithmetic"
+                    "supported: integer/hex/binary literals, constant references, bitwise ops (|, &, ^, <<, >>, ~), arithmetic, struct literals"
                 }
             );
             return;
         }
 
         _symbols.RegisterConstant(name, new ConstantSymbol(name, type, value, location));
+    }
+
+    /// <summary>
+    /// Checks if a struct literal expression contains only constant values
+    /// </summary>
+    private bool IsConstantStructLiteral(NovusParser.StructLiteralContext context)
+    {
+        // Check each field initializer
+        foreach (var fieldInit in context.structFieldInit())
+        {
+            var fieldValue = fieldInit.expression();
+            if (!IsConstantExpression(fieldValue))
+                return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Checks if an expression is a compile-time constant
+    /// </summary>
+    private bool IsConstantExpression(NovusParser.ExpressionContext context)
+    {
+        switch (context)
+        {
+            // Unary, binary, and arithmetic expressions are constant if operands are constant
+            case NovusParser.UnaryExprContext unaryExpr:
+                return IsConstantExpression(unaryExpr.expression());
+
+            case NovusParser.BitwiseOrExprContext orExpr:
+                return IsConstantExpression(orExpr.expression(0)) && IsConstantExpression(orExpr.expression(1));
+
+            case NovusParser.BitwiseAndExprContext andExpr:
+                return IsConstantExpression(andExpr.expression(0)) && IsConstantExpression(andExpr.expression(1));
+
+            case NovusParser.BitwiseXorExprContext xorExpr:
+                return IsConstantExpression(xorExpr.expression(0)) && IsConstantExpression(xorExpr.expression(1));
+
+            case NovusParser.ShiftExprContext shiftExpr:
+                return IsConstantExpression(shiftExpr.expression(0)) && IsConstantExpression(shiftExpr.expression(1));
+
+            case NovusParser.AdditiveExprContext addExpr:
+                return IsConstantExpression(addExpr.expression(0)) && IsConstantExpression(addExpr.expression(1));
+
+            case NovusParser.MultiplicativeExprContext multExpr:
+                return IsConstantExpression(multExpr.expression(0)) && IsConstantExpression(multExpr.expression(1));
+
+            case NovusParser.PrimaryExprContext primaryExpr:
+                return IsConstantPrimaryExpression(primaryExpr.primaryExpression());
+
+            // All other expressions are not constant
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Checks if a primary expression is a compile-time constant
+    /// </summary>
+    private bool IsConstantPrimaryExpression(NovusParser.PrimaryExpressionContext context)
+    {
+        switch (context)
+        {
+            // Literals are always constant
+            case NovusParser.IntegerLiteralContext:
+            case NovusParser.HexLiteralContext:
+            case NovusParser.BinaryLiteralContext:
+            case NovusParser.StringLiteralContext:
+            case NovusParser.CharLiteralContext:
+            case NovusParser.BoolLiteralContext:
+                return true;
+
+            // Struct literals are constant if all fields are constant
+            case NovusParser.StructLiteralContext structLit:
+                return IsConstantStructLiteral(structLit);
+
+            // Identifier references are constant if they refer to a constant
+            case NovusParser.IdentifierExprContext identExpr:
+                var name = identExpr.identifier().GetText();
+                return _symbols.HasConstant(name);
+
+            // Parenthesized expressions delegate to the inner expression
+            case NovusParser.ParenExprContext parenExpr:
+                return IsConstantExpression(parenExpr.expression());
+
+            // All other primary expressions are not constant
+            default:
+                return false;
+        }
     }
 
     private void RegisterStatic(NovusParser.StaticDeclarationContext context)
@@ -2138,11 +2256,20 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public override IrType? VisitVariableDeclaration([NotNull] NovusParser.VariableDeclarationContext context)
     {
-        // Check if this is a throwaway binding (_)
+        var isMutable = context.GetChild(0)?.GetText() == "var" || context.GetChild(1)?.GetText() == "mut";
+
+        // Check if this is tuple destructuring
+        var tuplePattern = context.tuplePattern();
+        if (tuplePattern != null)
+        {
+            // Handle tuple destructuring: let (a, b, c) = expr
+            return HandleTupleDestructuring(tuplePattern, context.expression(), context.type(), isMutable, context);
+        }
+
+        // Regular single-variable declaration
         var identifierNode = context.IDENTIFIER();
         var name = identifierNode?.GetText() ?? "_";
         var isThrowaway = name == "_";
-        var isMutable = context.GetChild(0)?.GetText() == "var" || context.GetChild(1)?.GetText() == "mut";
 
         // For location, use identifier if present, otherwise use the first token (let/var)
         var location = identifierNode != null
@@ -2267,6 +2394,124 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     VariableName = name,
                     VariableType = varType,
                     DeclLocation = location,
+                    WasMoved = false,
+                    MovedFields = null
+                };
+
+                _dropInfo[variableSymbol.Id] = dropInfo;
+
+                // Add to current scope's drop list (if we have a scope)
+                if (_dropScopes.Count > 0)
+                {
+                    _dropScopes.Peek().VariablesToDrop.Add(dropInfo);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private IrType? HandleTupleDestructuring(
+        NovusParser.TuplePatternContext tuplePattern,
+        NovusParser.ExpressionContext expression,
+        NovusParser.TypeContext? typeAnnotation,
+        bool isMutable,
+        ParserRuleContext context)
+    {
+        // First, analyze the expression to get its type
+        var exprType = Visit(expression);
+        if (exprType == null)
+            return null;
+
+        // Expression must be a tuple type
+        if (exprType is not IrTupleType tupleType)
+        {
+            var location = SourceLocationHelper.FromContext(expression, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0017",
+                $"cannot destructure non-tuple type '{TypeToString(exprType)}'",
+                location,
+                helpTexts: new List<string>
+                {
+                    "tuple destructuring requires a tuple value on the right-hand side",
+                    $"consider using a regular variable binding instead"
+                }
+            );
+            return null;
+        }
+
+        // Extract the identifiers from the tuple pattern
+        var identifiers = new List<string>();
+        foreach (var child in tuplePattern.children)
+        {
+            if (child is ITerminalNode terminal && terminal.Symbol.Type == NovusParser.IDENTIFIER)
+            {
+                identifiers.Add(terminal.GetText());
+            }
+            else if (child.GetText() == "_")
+            {
+                identifiers.Add("_");
+            }
+        }
+
+        // Validate that the number of bindings matches the tuple arity
+        if (identifiers.Count != tupleType.ElementTypes.Count)
+        {
+            var location = SourceLocationHelper.FromContext(tuplePattern, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0017",
+                $"tuple destructuring pattern has {identifiers.Count} bindings but tuple has {tupleType.ElementTypes.Count} elements",
+                location,
+                helpTexts: new List<string>
+                {
+                    $"expected {tupleType.ElementTypes.Count} bindings to match tuple type '{TypeToString(tupleType)}'"
+                }
+            );
+            return null;
+        }
+
+        // Register each binding
+        for (int i = 0; i < identifiers.Count; i++)
+        {
+            var bindingName = identifiers[i];
+            var bindingType = tupleType.ElementTypes[i];
+
+            // Skip throwaway bindings (_)
+            if (bindingName == "_")
+                continue;
+
+            // Get location for this binding
+            var bindingLocation = SourceLocationHelper.FromContext(tuplePattern, _filePath, _sourceLines);
+
+            // Check for duplicate variable names
+            if (_variables.ContainsKey(bindingName))
+            {
+                var originalLocation = _variables[bindingName].Location;
+                _diagnostics.ReportError(
+                    "E0016",
+                    $"variable '{bindingName}' is already defined in this scope",
+                    bindingLocation,
+                    relatedLocations: new List<(SourceLocation, string)>
+                    {
+                        (originalLocation, $"previous definition of '{bindingName}' here")
+                    }
+                );
+                continue;
+            }
+
+            // Add variable to symbol table
+            var variableSymbol = new VariableSymbol(bindingName, bindingType, isMutable, bindingLocation, Id: _nextVariableId++);
+            _variables[bindingName] = variableSymbol;
+
+            // Track variable for automatic drop if it is not a Copy type
+            if (!IsCopyType(bindingType))
+            {
+                var dropInfo = new DropInfo
+                {
+                    VariableId = variableSymbol.Id,
+                    VariableName = bindingName,
+                    VariableType = bindingType,
+                    DeclLocation = bindingLocation,
                     WasMoved = false,
                     MovedFields = null
                 };

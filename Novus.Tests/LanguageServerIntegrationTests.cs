@@ -9,8 +9,9 @@ namespace Novus.Tests;
 
 /// <summary>
 /// Integration tests that verify language server and compiler see the same code.
-/// These tests ensure stdlib files parse without errors using the same code path
-/// that the language server uses - critical for editor/compiler consistency.
+/// These tests ensure stdlib files have ZERO ERRORS when analyzed using the same
+/// code path as the language server - both parsing AND semantic analysis.
+/// This is CRITICAL for editor/compiler consistency.
 /// </summary>
 public class LanguageServerIntegrationTests
 {
@@ -42,10 +43,11 @@ public class LanguageServerIntegrationTests
     }
 
     /// <summary>
-    /// Parse a stdlib file the same way the language server does.
+    /// Analyze a stdlib file EXACTLY like the language server does.
+    /// This includes BOTH parsing AND semantic analysis.
     /// This MUST produce the exact same diagnostics as the language server.
     /// </summary>
-    private static (bool HasParseErrors, List<Diagnostic> Diagnostics) ParseLikeLanguageServer(string relativePath)
+    private static (bool HasErrors, List<Diagnostic> AllDiagnostics) AnalyzeLikeLanguageServer(string relativePath)
     {
         var stdPath = GetStdLibPath();
         var fullPath = Path.Combine(stdPath, relativePath);
@@ -54,60 +56,75 @@ public class LanguageServerIntegrationTests
         {
             var source = File.ReadAllText(fullPath);
 
-            // This is exactly how the language server parses files
-            var diagnostics = new DiagnosticBag();
+            // Step 1: Parse (exactly like language server)
+            var parseDiagnostics = new DiagnosticBag();
             var inputStream = new AntlrInputStream(source);
             var lexer = new NovusLexer(inputStream);
             var tokenStream = new AngleBracketTokenStream(lexer);
             var parser = new NovusParser(tokenStream);
 
             // Capture parse errors
-            var errorListener = new NovusErrorListener(diagnostics, fullPath, source);
+            var errorListener = new NovusErrorListener(parseDiagnostics, fullPath, source);
             parser.RemoveErrorListeners();
             parser.AddErrorListener(errorListener);
 
             var tree = parser.compilationUnit();
 
-            // Check for syntax errors
-            bool hasParseErrors = parser.NumberOfSyntaxErrors > 0 || diagnostics.HasErrors;
+            // Step 2: Semantic Analysis (exactly like language server - DocumentManager.cs:121)
+            var analyzer = new SemanticAnalyzer(fullPath, source, stdPath);
+            analyzer.Analyze(tree);
 
-            return (hasParseErrors, diagnostics.Diagnostics.ToList());
+            // Merge all diagnostics (parse + semantic)
+            var allDiagnostics = new List<Diagnostic>();
+            allDiagnostics.AddRange(parseDiagnostics.Diagnostics);
+            allDiagnostics.AddRange(analyzer.Diagnostics.Diagnostics);
+
+            // Check for ANY errors (parse OR semantic)
+            bool hasErrors = allDiagnostics.Any(d => d.IsError);
+
+            return (hasErrors, allDiagnostics);
         }
         catch (Exception ex)
         {
             // If we get an exception, just rethrow it - the test framework will catch it
-            throw new InvalidOperationException($"Failed to parse {relativePath}: {ex.Message}", ex);
+            throw new InvalidOperationException($"Failed to analyze {relativePath}: {ex.Message}", ex);
         }
     }
 
     /// <summary>
-    /// CRITICAL TEST: Ensure stdlib files have zero parse errors.
-    /// If this fails, the language server will show errors in the editor
-    /// even though the compiler accepts the code. This is unacceptable.
+    /// CRITICAL TEST: Ensure stdlib files have ZERO errors (parse + semantic).
+    /// If this fails, the language server will show errors in the editor.
+    /// This is UNACCEPTABLE - users must see clean stdlib code.
     /// </summary>
     [Theory]
     [MemberData(nameof(GetStdLibraryFiles))]
-    public void StdLibFile_ShouldHaveNoParseErrors_InLanguageServer(string relativePath)
+    public void StdLibFile_ShouldHaveNoErrors_InLanguageServer(string relativePath)
     {
-        var (hasParseErrors, diagnostics) = ParseLikeLanguageServer(relativePath);
+        var (hasErrors, diagnostics) = AnalyzeLikeLanguageServer(relativePath);
 
-        if (hasParseErrors)
+        if (hasErrors)
         {
             var errors = string.Join("\n", diagnostics
                 .Where(d => d.IsError)
                 .Select(d => $"  {d.Location.Line}:{d.Location.Column} - {d.Message}"));
 
+            var parseErrors = diagnostics.Count(d => d.IsError && d.Message.Contains("syntax") || d.Message.Contains("expected"));
+            var semanticErrors = diagnostics.Count(d => d.IsError) - parseErrors;
+
             Assert.Fail(
-                $"Standard library file {relativePath} has PARSE ERRORS that will show in VSCode:\n" +
+                $"Standard library file {relativePath} has ERRORS that will show in VSCode!\n" +
                 $"This is a CRITICAL failure - users will see errors in the editor!\n\n" +
+                $"Total errors: {diagnostics.Count(d => d.IsError)}\n" +
+                $"Parse errors: {parseErrors}\n" +
+                $"Semantic errors: {semanticErrors}\n\n" +
                 $"{errors}\n\n" +
-                $"Fix: Either update the parser grammar to support this syntax,\n" +
-                $"or rewrite the stdlib code to use supported syntax."
+                $"Fix: Update the semantic analyzer or parser to properly handle this code."
             );
         }
 
-        // If we get here, the file parses cleanly
-        Assert.True(true, $"{relativePath} parses without errors (language server will show no errors)");
+        // If we get here, the file has ZERO errors
+        var warningCount = diagnostics.Count(d => !d.IsError);
+        Assert.True(true, $"{relativePath} analyzed successfully - 0 errors, {warningCount} warnings");
     }
 
     public static IEnumerable<object[]> GetStdLibraryFiles()
