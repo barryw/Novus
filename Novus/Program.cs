@@ -458,7 +458,7 @@ class Program
 
     public static async Task<int> RunCompiler(CompilerOptions options)
     {
-        Console.WriteLine("Novus Compiler - Proof of Concept");
+        Console.WriteLine("Novus Compiler");
         Console.WriteLine($"Target: {options.Cpu.ToUpper()}");
         Console.WriteLine($"FPU Mode: {options.Fpu}");
         Console.WriteLine("==================================\n");
@@ -678,7 +678,9 @@ class Program
                     var functionCCode = mainCodegen.GenerateFunctionFile(function);
                     // Always write the C file (even if it's a stub that panics)
                     // This ensures linking succeeds even if the function isn't called
-                    var functionCFile = Path.Combine(outputDir, $"{baseName}_{function.Name}.c");
+                    // Sanitize function name for use in C filenames (replace :: with _ to match MangleName)
+                    var sanitizedFunctionName = function.Name.Replace("::", "_");
+                    var functionCFile = Path.Combine(outputDir, $"{baseName}_{sanitizedFunctionName}.c");
                     await File.WriteAllTextAsync(functionCFile, functionCCode);
                     cFiles.Add(functionCFile);
                 }
@@ -814,7 +816,9 @@ class Program
                     var functionCCode = moduleCodegen.GenerateFunctionFile(function);
                     // Always write the C file (even if it's a stub that panics)
                     // This ensures linking succeeds even if the function isn't called
-                    var functionCFile = Path.Combine(outputDir, $"{moduleName}_{function.Name}.c");
+                    // Sanitize function name for use in C filenames (replace :: with _ to match MangleName)
+                    var sanitizedFunctionName = function.Name.Replace("::", "_");
+                    var functionCFile = Path.Combine(outputDir, $"{moduleName}_{sanitizedFunctionName}.c");
                     await File.WriteAllTextAsync(functionCFile, functionCCode);
                     cFiles.Add(functionCFile);
                 }
@@ -1192,31 +1196,31 @@ class Program
                     objectFiles.Add(objFile);
                     stdlibOFilesToCache.Add((cFile, objFile));  // Mark for caching
                 }
+            }
 
-                // After successful compilation, cache all stdlib .o files
-                if (stdlibOFilesToCache.Count > 0)
+            // Cache any newly compiled stdlib .o files (from either path above)
+            if (stdlibOFilesToCache.Count > 0)
+            {
+                Console.WriteLine($"\n  ✓ Caching {stdlibOFilesToCache.Count} stdlib object files for future builds...");
+                Directory.CreateDirectory(stdlibPrecompiledDir);
+
+                foreach (var (source, obj) in stdlibOFilesToCache)
                 {
-                    Console.WriteLine($"\n  ✓ Caching {stdlibOFilesToCache.Count} stdlib object files for future builds...");
-                    Directory.CreateDirectory(stdlibPrecompiledDir);
-
-                    foreach (var (source, obj) in stdlibOFilesToCache)
-                    {
-                        var cachedPath = Path.Combine(stdlibPrecompiledDir, Path.GetFileName(obj));
-                        File.Copy(obj, cachedPath, overwrite: true);
-                    }
-
-                    // Write manifest with source file hashes for cache invalidation
-                    var stdlibSourcePaths = allModulesIR
-                        .Where(kvp => kvp.Key.Contains("/std/"))
-                        .Select(kvp => kvp.Key)
-                        .ToList();
-
-                    await Commands.StdlibBuildCommand.WriteManifest(
-                        stdlibPrecompiledDir,
-                        assemblyCpu,
-                        options.BuildMode,
-                        stdlibSourcePaths);
+                    var cachedPath = Path.Combine(stdlibPrecompiledDir, Path.GetFileName(obj));
+                    File.Copy(obj, cachedPath, overwrite: true);
                 }
+
+                // Write manifest with source file hashes for cache invalidation
+                var stdlibSourcePaths = allModulesIR
+                    .Where(kvp => kvp.Key.Contains("/std/"))
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+
+                await Commands.StdlibBuildCommand.WriteManifest(
+                    stdlibPrecompiledDir,
+                    assemblyCpu,
+                    options.BuildMode,
+                    stdlibSourcePaths);
             }
 
             // Step 2: Compile user C files with caching and parallelization

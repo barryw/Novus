@@ -2479,9 +2479,17 @@ public class CCodeGenerator
             {
                 var paramType = function.Parameters[i].Type;
 
+                // BUG FIX: If argument is a pointer to a primitive type, but parameter expects a value, dereference
+                // This happens when calling helper functions from Display::fmt methods where self is int8_t*
+                if (arg.Type is IrPointerType ptrType &&
+                    (ptrType.PointeeType is IrIntType or IrBoolType or IrFloatType) &&
+                    !(paramType is IrPointerType))
+                {
+                    argValue = $"*{argValue}";
+                }
                 // If parameter is a struct with heap data (passed by pointer in signature),
                 // but the argument is not already a pointer, pass by address
-                if (paramType is IrStructType structType &&
+                else if (paramType is IrStructType structType &&
                     TypeContainsHeapData(structType) &&
                     arg.Type is IrStructType)  // arg is struct value, not pointer
                 {
