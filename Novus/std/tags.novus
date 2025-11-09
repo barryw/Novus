@@ -41,7 +41,7 @@ pub fn make_tags(tags_ptr: *TagItem, count: u32) -> Vec<TagItem> {
     while i < count {
         let tag = tags_ptr[i]
         result.push(tag)
-        i = i + 1
+        i++
     }
 
     // Always append TAG_DONE

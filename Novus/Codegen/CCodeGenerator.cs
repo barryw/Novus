@@ -40,6 +40,10 @@ public class CCodeGenerator
     // Maps result variable name -> (source struct, field name, accessor, field type)
     private Dictionary<string, (string structValue, string fieldName, string accessor, IrStructType fieldType)> _memberAccessInfo = new();
 
+    // Track index access instructions so we can reconstruct lvalue expressions when taking address
+    // Maps result variable name -> (array expression, index expression)
+    private Dictionary<string, (string arrayExpr, string indexExpr)> _indexAccessInfo = new();
+
     /// <summary>
     /// Determines if a function is a monomorphized generic function.
     /// Monomorphized functions should be emitted as 'static inline' to avoid duplicate symbols.
@@ -480,6 +484,7 @@ public class CCodeGenerator
         _currentEmittingFunction = function;
         _declaredVariables.Clear();
         _memberAccessInfo.Clear();
+        _indexAccessInfo.Clear();
 
         // Track which parameters were converted to pointers in the C signature
         _pointerConvertedParameters.Clear();
@@ -2142,6 +2147,7 @@ public class CCodeGenerator
     {
         // Clear declared variables for this function
         _declaredVariables.Clear();
+        _indexAccessInfo.Clear();
 
         // Track which parameters were converted to pointers in the C signature
         _pointerConvertedParameters.Clear();
@@ -3028,6 +3034,9 @@ public class CCodeGenerator
         var resultName = SanitizeVariableName(indexAccess.ResultName);
         var elementType = GetCType(indexAccess.ElementType);
 
+        // Store the array and index expressions for later use when taking address
+        _indexAccessInfo[resultName] = (arrayValue, indexValue);
+
         // Add runtime bounds check if enabled and array type information is available
         if (_safetyLevel.EnableBoundsChecking() && indexAccess.Array.Type is IrArrayType arrayType)
         {
@@ -3127,6 +3136,15 @@ public class CCodeGenerator
         {
             // Parameter is already a pointer in C (e.g., Str* s), so just use it directly
             return EmitValue(variable);
+        }
+
+        // Check if we're borrowing a variable that came from an index access
+        // If so, reconstruct the lvalue expression (&array[index]) instead of taking address of temporary
+        if (borrowValue.BorrowedValue is IrVariable indexVar &&
+            _indexAccessInfo.TryGetValue(indexVar.Name, out var indexInfo))
+        {
+            var (arrayExpr, indexExpr) = indexInfo;
+            return $"&{arrayExpr}[{indexExpr}]";
         }
 
         // Normal case: add & to create a pointer
@@ -3314,6 +3332,21 @@ public class CCodeGenerator
     {
         // Get the target type in C syntax
         var targetType = GetCType(castValue.Type);
+
+        // Special case: casting &indexVar where indexVar came from an index access
+        // We want (cast)&array[index] not (cast)&tempVar
+        if (castValue.Value is IrBorrowValue borrowValue &&
+            borrowValue.BorrowedValue is IrVariable indexVar)
+        {
+            // Sanitize the variable name to match how it was stored in the dictionary
+            var sanitizedName = SanitizeVariableName(indexVar.Name);
+
+            if (_indexAccessInfo.TryGetValue(sanitizedName, out var indexInfo))
+            {
+                var (arrayExpr, indexExpr) = indexInfo;
+                return $"({targetType})&{arrayExpr}[{indexExpr}]";
+            }
+        }
 
         // Recursively emit the inner value (handles nested casts)
         var innerValue = EmitValue(castValue.Value);

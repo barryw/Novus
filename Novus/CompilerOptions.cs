@@ -118,4 +118,9 @@ public class CompilerOptions
     /// Also used for @library version generation.
     /// </summary>
     public string? PackageVersion { get; set; }
+
+    /// <summary>
+    /// Force rebuild of stdlib from source (ignores cached stdlib object files)
+    /// </summary>
+    public bool RebuildStdlib { get; set; }
 }

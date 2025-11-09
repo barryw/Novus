@@ -18,8 +18,9 @@ fn test_u64_display() {
     let s = f"{n}"
 }
 
-fn main() {
+fn main() -> i32 {
     test_i32_display()
     test_bool_display()
     test_u64_display()
+    return 0
 }

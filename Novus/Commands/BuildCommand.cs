@@ -704,7 +704,8 @@ public static class BuildCommand
             AdditionalAsmFiles = additionalAsmFiles,
             // Forward safety level flags from BuildOptions (critical fix - was missing!)
             SafetyLevelOption = buildOptions.SafetyLevel,
-            UnsafeMode = buildOptions.UnsafeMode
+            UnsafeMode = buildOptions.UnsafeMode,
+            RebuildStdlib = buildOptions.RebuildStdlib
         };
 
         if (workspace == null)

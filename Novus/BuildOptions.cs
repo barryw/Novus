@@ -45,4 +45,7 @@ public class BuildOptions
 
     [Option("unsafe", Required = false, HelpText = "Disable all safety checks (equivalent to --safety-level 0)")]
     public bool UnsafeMode { get; set; }
+
+    [Option("rebuild-stdlib", Required = false, HelpText = "Force rebuild of stdlib from source (ignores cached stdlib object files)")]
+    public bool RebuildStdlib { get; set; }
 }

@@ -1068,7 +1068,9 @@ class Program
             var stdlibPrecompiledDir = Path.Combine(compilerDir, "stdlib", assemblyCpu, buildModeStr);
 
             // Check if stdlib cache exists and is up-to-date (hash-based invalidation)
-            var usePrecompiledStdlib = Directory.Exists(stdlibPrecompiledDir)
+            // Force rebuild if --rebuild-stdlib flag is set
+            var usePrecompiledStdlib = !options.RebuildStdlib
+                && Directory.Exists(stdlibPrecompiledDir)
                 && !Commands.StdlibBuildCommand.NeedsRebuild(compilerDir, assemblyCpu, options.BuildMode);
 
             // Build mapping of C files to their source Novus files for caching
