@@ -32,7 +32,12 @@ public class TextDocumentHandler : TextDocumentSyncHandlerBase
     {
         return new TextDocumentSyncRegistrationOptions
         {
-            // Accept all .novus files
+            DocumentSelector = new TextDocumentSelector(
+                new TextDocumentFilter
+                {
+                    Pattern = "**/*.novus"
+                }
+            ),
             Change = TextDocumentSyncKind.Full, // Send full document on every change
             Save = new SaveOptions { IncludeText = true }
         };
