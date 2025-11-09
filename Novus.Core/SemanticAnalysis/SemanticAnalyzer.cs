@@ -1995,54 +1995,56 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 // For now, we'll do a conservative check based on pattern structure
                 // The full exhaustiveness check happens in VisitMatchExpr
 
-            // Try to infer if this looks like an exhaustive match based on patterns
-            // This is conservative - we might miss some cases, but won't false positive
+                // Try to infer if this looks like an exhaustive match based on patterns
+                // This is conservative - we might miss some cases, but won't false positive
 
-            // Track which variant names are covered
-            var coveredVariants = new HashSet<string>();
-            bool hasWildcard = false;
+                // Track which variant names are covered
+                var coveredVariants = new HashSet<string>();
+                bool hasWildcard = false;
 
-            // Check if all arms that have blocks end with a return
-            bool allArmsReturn = true;
-            foreach (var arm in arms)
-            {
-                var pattern = arm.pattern();
-
-                // Track coverage (recursively handle pipe patterns)
-                CollectCoveredVariants(pattern, coveredVariants, ref hasWildcard);
-
-                // Match arm can have a block, return statement, or just an expression
-                if (arm.block() != null)
+                // Check if all arms that have blocks end with a return
+                bool allArmsReturn = true;
+                foreach (var arm in arms)
                 {
-                    // Block form: check if the last statement is a return
-                    var block = arm.block();
-                    var stmts = block.statement();
-                    if (stmts.Length == 0 || stmts[stmts.Length - 1].returnStatement() == null)
+                    var pattern = arm.pattern();
+
+                    // Track coverage (recursively handle pipe patterns)
+                    CollectCoveredVariants(pattern, coveredVariants, ref hasWildcard);
+
+                    // Match arm can have a block, return statement, or just an expression
+                    if (arm.block() != null)
                     {
+                        // Block form: check if the block returns on all paths
+                        if (!AnalyzeBlockReturns(arm.block()))
+                        {
+                            allArmsReturn = false;
+                        }
+                    }
+                    else if (arm.returnStatement() != null)
+                    {
+                        // Return statement form (e.g., Some(x) => return x) - this returns from the function
+                        // Continue checking other arms
+                    }
+                    else
+                    {
+                        // Expression form (e.g., Some(x) => x) - these don't have explicit returns
+                        // They evaluate to a value but don't return from the function
                         allArmsReturn = false;
-                        break;
                     }
                 }
-                else if (arm.returnStatement() != null)
-                {
-                    // Return statement form (e.g., Some(x) => return x) - this returns from the function
-                    // Continue checking other arms
-                }
-                else
-                {
-                    // Expression form (e.g., Some(x) => x) - these don't have explicit returns
-                    // They evaluate to a value but don't return from the function
-                    allArmsReturn = false;
-                    break;
-                }
-            }
 
-            // Conservative exhaustiveness check for known patterns
-            // Full exhaustiveness is checked in VisitMatchStatement
-            bool looksExhaustive = hasWildcard ||
-                                   (coveredVariants.Contains("Some") && coveredVariants.Contains("None")) ||
-                                   (coveredVariants.Contains("Ok") && coveredVariants.Contains("Err")) ||
-                                   (coveredVariants.Count >= 3);  // Heuristic: 3+ variants likely means exhaustive enum match
+                if (!allArmsReturn)
+                {
+                    // Not all arms return - can't guarantee function returns
+                    return false;
+                }
+
+                // Conservative exhaustiveness check for known patterns
+                // Full exhaustiveness is checked in VisitMatchExpr
+                bool looksExhaustive = hasWildcard ||
+                                       (coveredVariants.Contains("Some") && coveredVariants.Contains("None")) ||
+                                       (coveredVariants.Contains("Ok") && coveredVariants.Contains("Err")) ||
+                                       (coveredVariants.Count >= 3);  // Heuristic: 3+ variants likely means exhaustive enum match
 
                 // Only guarantees return if it looks exhaustive AND all arms return
                 return looksExhaustive && allArmsReturn;
@@ -4929,7 +4931,77 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             else
             {
                 // Handle associated function calls (e.g., Vec::new())
-                // resultType is the function's return type
+                // resultType is the function's return type from the path expression
+
+                // Check if this is a generic function that needs type inference
+                var pathParts = pathCtx.GetText().Split("::");
+                if (pathParts.Length == 2)
+                {
+                    var associatedFuncName = $"{pathParts[0]}::{pathParts[1]}";
+                    if (_functions.ContainsKey(associatedFuncName))
+                    {
+                        var funcSymbol = _functions[associatedFuncName];
+
+                        // If the function has generic parameters and we have an expected type, try to infer
+                        if (funcSymbol.GenericParameters != null && funcSymbol.GenericParameters.Count > 0 && _expectedType != null)
+                        {
+                            // Collect argument types
+                            var argTypes = new List<IrType>();
+                            if (context.argumentList() != null)
+                            {
+                                foreach (var arg in context.argumentList().expression())
+                                {
+                                    var argType = Visit(arg);
+                                    if (argType == null)
+                                    {
+                                        // Type error in argument - abort
+                                        return resultType;
+                                    }
+                                    argTypes.Add(argType);
+                                }
+                            }
+
+                            // Try to infer generic types from arguments first
+                            var paramTypes = funcSymbol.Parameters.Select(p => p.Type).ToList();
+                            var substitutions = InferGenericTypes(funcSymbol.GenericParameters, paramTypes, argTypes);
+
+                            // If argument-based inference failed, try inference from expected type
+                            if (substitutions == null)
+                            {
+                                substitutions = new Dictionary<string, IrType>();
+                                if (InferGenericTypeFromPair(funcSymbol.ReturnType, _expectedType, substitutions))
+                                {
+                                    // Check if all generic parameters were inferred
+                                    var allInferred = true;
+                                    foreach (var param in funcSymbol.GenericParameters)
+                                    {
+                                        if (!substitutions.ContainsKey(param))
+                                        {
+                                            allInferred = false;
+                                            break;
+                                        }
+                                    }
+
+                                    if (allInferred)
+                                    {
+                                        // Successfully inferred all type parameters from expected type
+                                        return _expectedType;
+                                    }
+                                }
+                                substitutions = null; // Inference failed
+                            }
+
+                            if (substitutions != null)
+                            {
+                                // Successfully inferred - return the substituted return type
+                                return SubstituteGenericTypes(funcSymbol.ReturnType, substitutions);
+                            }
+
+                            // Could not infer - error will be reported below
+                        }
+                    }
+                }
+
                 // If the return type is generic and we have an expected type, use the expected type
                 if (_expectedType != null && TypesCompatible(resultType, _expectedType))
                 {

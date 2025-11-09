@@ -46,7 +46,8 @@
       "Bash(curl:*)",
       "Bash(timeout 120 dotnet test:*)",
       "Bash(dotnet:*)",
-      "Bash(pkill:*)"
+      "Bash(pkill:*)",
+      "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Debug/net8.0/novusc build:*)"
     ],
     "deny": [],
     "ask": []
