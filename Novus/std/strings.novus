@@ -70,13 +70,7 @@ impl Str {
     pub fn from_cstr(ptr: *u8) -> Option<Str> {
         // Check for null pointer by casting to u32
         let ptr_addr: u32 = (u32)ptr
-        if ptr_addr == 0 {
-            return Option::None
-        }
-
-        // Calculate length by scanning for null terminator
-        let len: u32 = strlen(ptr)
-        return Option::Some(Str { ptr: ptr, len: len })
+        return ptr_addr == 0 ? Option::None : Option::Some(Str { ptr: ptr, len: strlen(ptr) })
     }
 
     /// Get the length of the string in bytes
@@ -97,10 +91,7 @@ impl Str {
     /// Get the byte at the given index
     /// Returns None if index is out of bounds
     pub fn get(&self, index: u32) -> Option<u8> {
-        if index >= self.len {
-            return Option::None
-        }
-        return Option::Some(self.ptr[index])
+        return index >= self.len ? Option::None : Option::Some(self.ptr[index])
     }
 
     /// Create a substring slice
@@ -162,7 +153,7 @@ impl Str {
             if self.ptr[i] != other.ptr[i] {
                 return false
             }
-            i = i + 1
+            i++
         }
 
         return true
@@ -183,7 +174,7 @@ impl Str {
             if a != b {
                 return (i32)a - (i32)b
             }
-            i = i + 1
+            i++
         }
 
         // All common bytes equal, compare lengths
@@ -201,7 +192,7 @@ impl Str {
             if self.ptr[i] != prefix.ptr[i] {
                 return false
             }
-            i = i + 1
+            i++
         }
 
         return true
@@ -219,7 +210,7 @@ impl Str {
             if self.ptr[offset + i] != suffix.ptr[i] {
                 return false
             }
-            i = i + 1
+            i++
         }
 
         return true
@@ -252,13 +243,13 @@ impl Str {
                     matches = false
                     j = needle.len  // Break inner loop
                 }
-                j = j + 1
+                j++
             }
 
             if matches {
                 return Option::Some(i)
             }
-            i = i + 1
+            i++
         }
 
         return Option::None
@@ -271,7 +262,7 @@ impl Str {
             if self.ptr[i] == byte {
                 return Option::Some(i)
             }
-            i = i + 1
+            i++
         }
         return Option::None
     }
@@ -291,7 +282,7 @@ impl Str {
             if i == 0 {
                 return Option::None
             }
-            i = i - 1
+            i--
         }
         return Option::None
     }
@@ -313,7 +304,7 @@ impl Str {
                 let new_ptr: *u8 = self.ptr + start
                 return Str { ptr: new_ptr, len: new_len }
             }
-            start = start + 1
+            start++
         }
 
         // All whitespace
@@ -334,7 +325,7 @@ impl Str {
                 // Not whitespace - we found the end
                 return Str { ptr: self.ptr, len: end }
             }
-            end = end - 1
+            end--
             if end == 0 {
                 // All whitespace
                 return Str { ptr: self.ptr, len: 0 }
@@ -397,11 +388,7 @@ impl String {
         // Create a new String and reserve capacity on its internal Vec
         var result = String::new()
         let success = result.vec.reserve(capacity)
-        if !success {
-            return Option::None
-        }
-
-        return Option::Some(result)
+        return success ? Option::Some(result) : Option::None
     }
 
     /// Create a String from a Str slice (allocates and copies)
@@ -420,7 +407,7 @@ impl String {
             if !success {
                 return Result::Err(StringError::AllocationFailed)
             }
-            i = i + 1
+            i++
         }
 
         return Result::Ok(string)
@@ -460,7 +447,7 @@ impl String {
             if !success {
                 return false
             }
-            i = i + 1
+            i++
         }
 
         return true
@@ -479,11 +466,7 @@ impl String {
 
     /// Reserve additional capacity
     pub fn reserve(&mut self, additional: u32) -> bool {
-        let success: bool = self.vec.reserve(additional)
-        if !success {
-            return false
-        }
-        return true
+        return self.vec.reserve(additional)
     }
 
     /// Get mutable pointer to underlying buffer
@@ -540,10 +523,10 @@ impl NameString {
         var i: u32 = 0
         while i < s.len() {
             self.buf[self.len + i] = s.as_ptr()[i]
-            i = i + 1
+            i++
         }
 
-        self.len = self.len + s.len()
+        self.len += s.len()
         return true
     }
 
@@ -553,7 +536,7 @@ impl NameString {
         }
 
         self.buf[self.len] = byte
-        self.len = self.len + 1
+        self.len++
         return true
     }
 
@@ -601,10 +584,10 @@ impl GadgetString {
         var i: u32 = 0
         while i < s.len() {
             self.buf[self.len + i] = s.as_ptr()[i]
-            i = i + 1
+            i++
         }
 
-        self.len = self.len + s.len()
+        self.len += s.len()
         return true
     }
 
@@ -614,7 +597,7 @@ impl GadgetString {
         }
 
         self.buf[self.len] = byte
-        self.len = self.len + 1
+        self.len++
         return true
     }
 
@@ -662,10 +645,10 @@ impl PathString {
         var i: u32 = 0
         while i < s.len() {
             self.buf[self.len + i] = s.as_ptr()[i]
-            i = i + 1
+            i++
         }
 
-        self.len = self.len + s.len()
+        self.len += s.len()
         return true
     }
 
@@ -675,7 +658,7 @@ impl PathString {
         }
 
         self.buf[self.len] = byte
-        self.len = self.len + 1
+        self.len++
         return true
     }
 
@@ -718,7 +701,7 @@ impl BStr {
                 var i: u32 = 0
                 while i < s.len() {
                     ptr[1 + i] = s.as_ptr()[i]
-                    i = i + 1
+                    i++
                 }
 
                 // Convert address to BPTR

@@ -7,6 +7,7 @@
 // NOTE: For memory management, prefer using std::mem::MemoryBlock instead of AllocMem/FreeMem directly
 
 from std::core import Option, Result, Drop
+from std::strings import Str
 from std::error import DosError, ExecError, IntuitionError, GraphicsError, NovusError
 from std::ffi::amiga_structs import *
 from std::ffi::exec import AllocMem, FreeMem, AllocVec, FreeVec, CopyMem
@@ -37,11 +38,8 @@ from std::ffi::amiga_consts import MEMF_ANY, MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, 
 /// }
 /// ```
 pub fn get_current_task() -> Option<*Task> {
-    var task: *Task = (*Task)0
-    task = FindTask((*u8)0)  // null = current task
-    
-    if let t = task {
-        return Option::Some(t)
+    if let task = FindTask((*u8)0) {
+        return Option::Some(task)
     }
     return Option::None
 }
@@ -63,12 +61,9 @@ pub fn get_current_task() -> Option<*Task> {
 ///     }
 /// }
 /// ```
-pub fn find_task(name: *u8) -> Option<*Task> {
-    var task: *Task = (*Task)0
-    task = FindTask(name)
-    
-    if let t = task {
-        return Option::Some(t)
+pub fn find_task(name: Str) -> Option<*Task> {
+    if let task = FindTask(name.as_cstr()) {
+        return Option::Some(task)
     }
     return Option::None
 }
@@ -87,10 +82,7 @@ pub fn find_task(name: *u8) -> Option<*Task> {
 /// }
 /// ```
 pub fn set_task_priority(task: *Task, priority: i32) -> i8 {
-    var result: i8 = 0
-    result = SetTaskPri(task, priority)
-    
-    return result
+    return SetTaskPri(task, priority)
 }
 
 // ============================================================================
@@ -120,13 +112,8 @@ pub fn set_task_priority(task: *Task, priority: i32) -> i8 {
 /// }
 /// ```
 pub fn allocate_signal(signal_num: i32) -> Option<i32> {
-    var result: i32 = 0
-    result = AllocSignal(signal_num)
-    
-    if result == -1 {
-        return Option::None
-    }
-    return Option::Some(result)
+    var result = AllocSignal(signal_num)
+    return result == -1 ? Option::None : Option::Some(result)
 }
 
 /// Free a previously allocated signal
@@ -135,7 +122,6 @@ pub fn allocate_signal(signal_num: i32) -> Option<i32> {
 /// Best used with defer for automatic cleanup.
 pub fn free_signal(signal_num: i32) {
     FreeSignal(signal_num)
-    
 }
 
 /// Wait for one or more signals
@@ -154,10 +140,7 @@ pub fn free_signal(signal_num: i32) {
 /// }
 /// ```
 pub fn wait_for_signals(signal_mask: u32) -> u32 {
-    var result: i32 = 0
-    result = Wait((i32)signal_mask)
-    
-    return (u32)result
+    return Wait((i32)signal_mask)
 }
 
 /// Send a signal to a task
@@ -175,7 +158,6 @@ pub fn wait_for_signals(signal_mask: u32) -> u32 {
 /// ```
 pub fn send_signal(task: *Task, signal_mask: u32) {
     Signal(task, signal_mask)
-    
 }
 
 // ============================================================================
@@ -202,7 +184,7 @@ pub fn send_signal(task: *Task, signal_mask: u32) {
 /// ```
 pub fn forbid() {
     Forbid()
-    
+
 }
 
 /// Re-enable task rescheduling
@@ -210,7 +192,6 @@ pub fn forbid() {
 /// Must be paired with every Forbid() call.
 pub fn permit() {
     Permit()
-    
 }
 
 /// Disable all interrupts
@@ -277,10 +258,7 @@ impl Signal {
     /// Returns Err if no signals are available (limit of 16 user signals).
     pub fn alloc() -> Result<Signal, ExecError> {
         let sigbit = AllocSignal(-1)
-        if sigbit == -1 {
-            return Result::Err(ExecError::BadSignal)
-        }
-        return Result::Ok(Signal { sigbit: sigbit })
+        return sigbit == -1 ? Result::Err(ExecError::BadSignal) : Result::Ok(Signal { sigbit: sigbit })
     }
 
     /// Get the signal bit number (0-31)
@@ -336,7 +314,7 @@ impl Signal {
 
     /// Send this signal to a task
     pub fn send_to(&self, task: *Task) {
-        Signal(task, self.mask()) 
+        Signal(task, self.mask())
     }
 }
 
@@ -344,7 +322,7 @@ impl Signal {
 impl Drop for Signal {
     fn drop(&mut self) {
         if self.sigbit >= 0 {
-            FreeSignal(self.sigbit) 
+            FreeSignal(self.sigbit)
             self.sigbit = -1
         }
     }
@@ -379,9 +357,8 @@ impl MsgPortHandle {
     ///
     /// Returns Err if port creation fails (out of memory).
     pub fn create() -> Result<MsgPortHandle, ExecError> {
-        let port = CreateMsgPort()
-        if let p = port {
-            return Result::Ok(MsgPortHandle { port: p })
+        if let port = CreateMsgPort() {
+            return Result::Ok(MsgPortHandle { port: port })
         }
         return Result::Err(ExecError::NoMem)
     }
@@ -417,7 +394,7 @@ impl MsgPortHandle {
     ///
     /// Returns None if no messages are waiting.
     pub fn get_msg(&self) -> Option<*Message> {
-        let msg = GetMsg(self.port) 
+        let msg = GetMsg(self.port)
         if let m = msg {
             return Option::Some(m)
         }
@@ -428,14 +405,14 @@ impl MsgPortHandle {
     ///
     /// The message will be queued until GetMsg() retrieves it.
     pub fn put_msg(&self, msg: *Message) {
-        PutMsg(self.port, msg) 
+        PutMsg(self.port, msg)
     }
 
     /// Reply to a message
     ///
     /// Should be called for every message received via get_msg().
     pub fn reply_msg(&self, msg: *Message) {
-        ReplyMsg(msg) 
+        ReplyMsg(msg)
     }
 
     /// Drain and reply to all pending messages
@@ -444,9 +421,8 @@ impl MsgPortHandle {
     /// if you need to drain messages before the port is destroyed.
     pub fn drain_messages(&self) {
         forever {
-            let msg = GetMsg(self.port)
-            if let m = msg {
-                ReplyMsg(m)
+            if let msg = GetMsg(self.port) {
+                ReplyMsg(msg)
             } else {
                 break
             }
@@ -464,9 +440,8 @@ impl Drop for MsgPortHandle {
             // before deleting the port. Unreplied messages cause
             // system hangs and crashes.
             forever {
-                let msg = GetMsg(p)
-                if let m = msg {
-                    ReplyMsg(m)
+                if let msg = GetMsg(p) {
+                    ReplyMsg(msg)
                 } else {
                     break
                 }
