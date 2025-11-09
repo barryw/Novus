@@ -56,12 +56,14 @@ class Program
                     // Register our services here
                     var docManager = new DocumentManager(stdLibPath);
                     var stdlibIndexer = new StdlibIndexer(stdLibPath);
+                    var projectManager = new ProjectManager();
 
                     // Index stdlib at startup for auto-import feature
                     stdlibIndexer.IndexStdlib();
 
                     services.AddSingleton(docManager);
                     services.AddSingleton(stdlibIndexer);
+                    services.AddSingleton(projectManager);
                     services.AddSingleton(stdLibPath);  // Make stdLibPath available for injection
                 })
                 .WithHandler<TextDocumentHandler>()
@@ -72,10 +74,19 @@ class Program
                 .WithHandler<CodeActionHandler>()
                 .WithHandler<ReferencesHandler>()
                 .WithHandler<RenameHandler>()
+                // TOML support handlers
+                .WithHandler<TomlDocumentHandler>()
+                .WithHandler<TomlHoverHandler>()
+                .WithHandler<TomlCompletionHandler>()
                 .OnInitialize((server, request, cancellationToken) =>
                 {
                     Console.Error.WriteLine("[LSP] Server initialized!");
                     Console.Error.WriteLine($"[LSP] Root URI: {request.RootUri}");
+
+                    // Set workspace root in ProjectManager
+                    var projectManager = server.Services.GetService(typeof(ProjectManager)) as ProjectManager;
+                    projectManager?.SetWorkspaceRoot(request.RootUri?.ToString());
+
                     return Task.CompletedTask;
                 })
         );
