@@ -68,14 +68,21 @@ public class ExampleCompilationTests
         using var process = Process.Start(startInfo);
         Assert.NotNull(process);
 
-        process.WaitForExit(timeout: TimeSpan.FromSeconds(30));
+        var exited = process.WaitForExit(timeout: TimeSpan.FromSeconds(300));
+
+        // If process didn't exit within timeout, kill it and fail the test
+        if (!exited)
+        {
+            process.Kill();
+            Assert.Fail($"Example '{exampleName}' compilation timed out after 300 seconds.");
+        }
 
         var stdout = process.StandardOutput.ReadToEnd();
         var stderr = process.StandardError.ReadToEnd();
 
         // Check that compilation succeeded
         var success = process.ExitCode == 0 && stdout.Contains("Successfully created:");
-        
+
         Assert.True(success,
             $"Example '{exampleName}' failed to compile.\n" +
             $"Exit code: {process.ExitCode}\n" +

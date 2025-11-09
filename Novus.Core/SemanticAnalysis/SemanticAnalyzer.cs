@@ -5858,22 +5858,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Look up 'self' in the variable table
         if (_variables.ContainsKey("self"))
         {
-            var selfType = _variables["self"].Type;
-            System.Console.WriteLine($"DEBUG VisitSelfExpr: selfType = {selfType}, GetType = {selfType.GetType().Name}");
-            if (selfType is IrPointerType ptrType)
-            {
-                System.Console.WriteLine($"DEBUG VisitSelfExpr: PointeeType = {ptrType.PointeeType}, GetType = {ptrType.PointeeType.GetType().Name}");
-            }
-            if (selfType is IrStructType structType)
-            {
-            }
-            else if (selfType is IrPointerType ptrType2)
-            {
-                if (ptrType2.PointeeType is IrStructType innerStruct)
-                {
-                }
-            }
-            return selfType;
+            return _variables["self"].Type;
         }
 
         var location = SourceLocationHelper.FromToken(context.KW_SELF().Symbol, _filePath, _sourceLines);
@@ -6238,16 +6223,22 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
-        // For variables, struct fields, etc., create a pointer type
-        // In Novus, & produces pointer types, not reference types (references are for internal borrow tracking)
+        // For variables, struct fields, etc., create a reference type
         var valueType = Visit(exprContext);
         if (valueType == null)
         {
             return null;
         }
 
-        // Return a pointer type (& in Novus produces *T, not &T)
-        return _typeInterner.GetPointerType(valueType);
+        // Return a reference type: &T for immutable, &mut T for mutable
+        if (isMutable)
+        {
+            return _typeInterner.GetMutReferenceType(valueType);
+        }
+        else
+        {
+            return _typeInterner.GetReferenceType(valueType);
+        }
     }
 
     public override IrType? VisitComparisonExpr([NotNull] NovusParser.ComparisonExprContext context)

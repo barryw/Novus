@@ -1,0 +1,7 @@
+from std::strings import Str
+
+pub fn main() -> i32 {
+    let value = true
+    let s = value ? "true" : "false"
+    return 0
+}
