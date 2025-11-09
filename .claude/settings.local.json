@@ -36,7 +36,8 @@
       "Bash(1)",
       "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Debug/net9.0/novusc:*)",
       "Bash(jobs)",
-      "WebFetch(domain:sun.hasenbraten.de)"
+      "WebFetch(domain:sun.hasenbraten.de)",
+      "Bash(/Users/barry/RiderProjects/Novus/Novus.LanguageServer/bin/Debug/net9.0/Novus.LanguageServer:*)"
     ],
     "deny": [],
     "ask": []

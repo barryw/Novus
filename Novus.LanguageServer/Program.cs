@@ -8,8 +8,6 @@ class Program
 {
     static async Task Main(string[] args)
     {
-        Console.Error.WriteLine("[LSP] Novus Language Server starting...");
-
         // Find standard library path
         // The LSP server is in Novus.LanguageServer/bin/Debug/net9.0/
         // The std library is in Novus/std/
@@ -38,18 +36,16 @@ class Program
         if (stdLibPath == null)
         {
             stdLibPath = Path.Combine(compilerDir, "std"); // Fallback
-            Console.Error.WriteLine($"[LSP] WARNING: std library not found, using fallback: {stdLibPath}");
         }
-
-        Console.Error.WriteLine($"[LSP] Compiler directory: {compilerDir}");
-        Console.Error.WriteLine($"[LSP] Standard library path: {stdLibPath}");
 
         var server = await OmniSharp.Extensions.LanguageServer.Server.LanguageServer.From(options =>
             options
                 .WithInput(Console.OpenStandardInput())
                 .WithOutput(Console.OpenStandardOutput())
                 .ConfigureLogging(x => x
-                    .SetMinimumLevel(LogLevel.Error))
+                    .AddFilter("OmniSharp", LogLevel.None)
+                    .AddFilter("Microsoft", LogLevel.None)
+                    .SetMinimumLevel(LogLevel.None))
                 .WithServices(services =>
                 {
                     // Register our services here
@@ -79,9 +75,6 @@ class Program
                 .WithHandler<TomlCompletionHandler>()
                 .OnInitialize((server, request, cancellationToken) =>
                 {
-                    Console.Error.WriteLine("[LSP] Server initialized!");
-                    Console.Error.WriteLine($"[LSP] Root URI: {request.RootUri}");
-
                     // Set workspace root in ProjectManager
                     var projectManager = server.Services.GetService(typeof(ProjectManager)) as ProjectManager;
                     projectManager?.SetWorkspaceRoot(request.RootUri?.ToString());
@@ -90,7 +83,6 @@ class Program
                 })
         );
 
-        Console.Error.WriteLine("[LSP] Server created, waiting for exit...");
         await server.WaitForExit;
     }
 }
