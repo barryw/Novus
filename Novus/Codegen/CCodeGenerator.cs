@@ -213,6 +213,20 @@ public class CCodeGenerator
             // Use -O0 for now until VBCC is fixed.
         }
 
+        // Tuple types
+        if (typeRegistry.TupleTypes.Any())
+        {
+            sb.AppendLine("// ============================================================================");
+            sb.AppendLine("// Tuple Types");
+            sb.AppendLine("// ============================================================================");
+            sb.AppendLine();
+
+            foreach (var tupleType in typeRegistry.TupleTypes.OrderBy(t => t.Name))
+            {
+                codegen.EmitTupleTypeToBuilder(sb, tupleType);
+            }
+        }
+
         // Enum types
         if (typeRegistry.EnumTypes.Any())
         {
@@ -734,6 +748,21 @@ public class CCodeGenerator
     /// <summary>
     /// Helper to emit struct type to a specific StringBuilder (for shared header generation)
     /// </summary>
+    private void EmitTupleTypeToBuilder(StringBuilder sb, IrTupleType tupleType)
+    {
+        var tupleName = GetTupleTypeName(tupleType);
+
+        // Generate C struct definition for tuple
+        sb.AppendLine($"typedef struct {{");
+        for (int i = 0; i < tupleType.ElementTypes.Count; i++)
+        {
+            var elementType = GetCType(tupleType.ElementTypes[i]);
+            sb.AppendLine($"    {elementType} __{i};");
+        }
+        sb.AppendLine($"}} {tupleName};");
+        sb.AppendLine();
+    }
+
     private void EmitStructTypeToBuilder(StringBuilder sb, IrStructType structType)
     {
         var structName = MangleName(structType);
@@ -3168,6 +3197,8 @@ public class CCodeGenerator
             IrDereferenceValue derefValue => $"(*{EmitValue(derefValue.PointerValue)})",
             IrCastValue castValue => EmitCastValue(castValue),
             IrStructLiteral structLit => EmitStructLiteral(structLit),
+            IrTupleLiteral tupleLit => EmitTupleLiteral(tupleLit),
+            IrTupleElementAccess tupleAccess => EmitTupleElementAccess(tupleAccess),
             IrArrayLiteral arrayLit => EmitArrayLiteral(arrayLit),
             IrFunctionAddress funcAddr => funcAddr.FunctionName,  // Function name IS its address in C
             IrFunctionRef funcRef => funcRef.Function.Name,  // Function reference - emit function name
@@ -3218,6 +3249,30 @@ public class CCodeGenerator
             .ToList();
 
         return $"({typeName}){{ {string.Join(", ", fields)} }}";
+    }
+
+    private string EmitTupleLiteral(IrTupleLiteral tupleLit)
+    {
+        var tupleType = tupleLit.Type as IrTupleType;
+        if (tupleType == null)
+            throw new InvalidOperationException("TupleLiteral must have IrTupleType");
+
+        // Unit type () - no value needed
+        if (tupleType.ElementTypes.Count == 0)
+            return "/* unit */";
+
+        var typeName = GetCType(tupleType);
+        var elements = tupleLit.Elements
+            .Select((elem, idx) => $".__{idx} = {EmitValue(elem)}")
+            .ToList();
+
+        return $"({typeName}){{ {string.Join(", ", elements)} }}";
+    }
+
+    private string EmitTupleElementAccess(IrTupleElementAccess tupleAccess)
+    {
+        var tupleValue = EmitValue(tupleAccess.Tuple);
+        return $"({tupleValue}).__{tupleAccess.ElementIndex}";
     }
 
     private string EmitArrayLiteral(IrArrayLiteral arrayLit)
@@ -3446,6 +3501,7 @@ public class CCodeGenerator
             IrReferenceType refType => $"{GetCType(refType.PointeeType)}*",  // References as pointers
             IrMutReferenceType mutRefType => $"{GetCType(mutRefType.PointeeType)}*",  // Mut references as pointers
             IrFunctionPointerType fpType => GetFunctionPointerType(fpType),
+            IrTupleType tupleType => GetTupleTypeName(tupleType),
             IrUnresolvedGenericType unresolvedGeneric => throw new InvalidOperationException($"Unresolved generic type '{unresolvedGeneric.Name}' must be monomorphized before code generation"),
             IrPartiallyResolvedGenericType partiallyResolved => throw new InvalidOperationException($"Partially resolved generic type must be fully monomorphized before code generation"),
             _ => throw new NotSupportedException($"Unsupported type: {type.GetType().Name}")
@@ -3460,6 +3516,32 @@ public class CCodeGenerator
             ? string.Join(", ", fpType.ParameterTypes.Select(GetCType))
             : "void";
         return $"{returnType} (*)({paramTypes})";
+    }
+
+    private string GetTupleTypeName(IrTupleType tupleType)
+    {
+        // Unit type () has no size and is never stored, so return void
+        if (tupleType.ElementTypes.Count == 0)
+            return "void";
+
+        // Generate a mangled name for the tuple based on element types
+        // Example: (u8, u8, u8) -> Tuple_u8_u8_u8
+        var elementNames = tupleType.ElementTypes.Select(t => MangleTypeForTupleName(t));
+        return $"Tuple_{string.Join("_", elementNames)}";
+    }
+
+    private string MangleTypeForTupleName(IrType type)
+    {
+        return type switch
+        {
+            IrTupleType tupleType when tupleType.ElementTypes.Count == 0 => "unit",
+            IrIntType intType => intType.IsSigned ? $"i{intType.BitWidth}" : $"u{intType.BitWidth}",
+            IrBoolType => "bool",
+            IrPointerType ptrType => $"ptr_{MangleTypeForTupleName(ptrType.PointeeType)}",
+            IrStructType structType => structType.CacheKey ?? structType.StructName,
+            IrEnumType enumType => enumType.CacheKey ?? enumType.EnumName,
+            _ => type.Name.Replace("<", "_").Replace(">", "_").Replace(",", "_").Replace(" ", "").Replace("(", "").Replace(")", "")
+        };
     }
 
     /// <summary>

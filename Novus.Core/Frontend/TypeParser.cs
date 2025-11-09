@@ -27,6 +27,7 @@ public interface ITypeParsingContext
     IrType GetPointerType(IrType pointeeType);
     IrType GetArrayType(IrType elementType, long length);
     IrType GetFunctionPointerType(List<IrType> paramTypes, IrType returnType);
+    IrType GetTupleType(List<IrType> elementTypes);
 
     // Current state (for generic instantiation)
     IrType? CurrentSelfType { get; }
@@ -63,6 +64,8 @@ public class TypeParser
             NovusParser.PointerTypeContext ptrCtx => ParsePointerType(ptrCtx),
             NovusParser.ArrayTypeWithSizeContext arrayWithSizeCtx => ParseArrayTypeWithSize(arrayWithSizeCtx),
             NovusParser.ArrayTypeInferredContext arrayInferredCtx => ParseArrayTypeInferred(arrayInferredCtx),
+            NovusParser.UnitTypeContext _ => IrTupleType.Unit,
+            NovusParser.TupleTypeContext tupleCtx => ParseTupleType(tupleCtx),
             NovusParser.FunctionPointerTypeContext fpCtx => ParseFunctionPointerType(fpCtx),
             NovusParser.SelfTypeContext selfCtx => ResolveSelfType(),
             NovusParser.PrimitiveTypeContext primCtx => ParsePrimitiveType(primCtx),
@@ -397,6 +400,28 @@ public class TypeParser
         var elementType = ParseType(context.type());
         // Use size -1 as a sentinel value to indicate "size to be inferred"
         return _context.GetArrayType(elementType, -1);
+    }
+
+    /// <summary>
+    /// Parse tuple type: (u8, u8, u8) or () for unit type
+    /// </summary>
+    private IrType ParseTupleType(NovusParser.TupleTypeContext context)
+    {
+        var typeContexts = context.type();
+
+        // Unit type () has no elements
+        if (typeContexts == null || typeContexts.Length == 0)
+        {
+            return IrTupleType.Unit;
+        }
+
+        var elementTypes = new List<IrType>();
+        foreach (var typeCtx in typeContexts)
+        {
+            elementTypes.Add(ParseType(typeCtx));
+        }
+
+        return _context.GetTupleType(elementTypes);
     }
 
     /// <summary>

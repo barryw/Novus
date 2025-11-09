@@ -37,7 +37,15 @@
       "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Debug/net9.0/novusc:*)",
       "Bash(jobs)",
       "WebFetch(domain:sun.hasenbraten.de)",
-      "Bash(/Users/barry/RiderProjects/Novus/Novus.LanguageServer/bin/Debug/net9.0/Novus.LanguageServer:*)"
+      "Bash(/Users/barry/RiderProjects/Novus/Novus.LanguageServer/bin/Debug/net9.0/Novus.LanguageServer:*)",
+      "Bash(npm run compile:*)",
+      "Bash(npx tsc:*)",
+      "Bash(./node_modules/.bin/tsc:*)",
+      "Bash(code:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(curl:*)",
+      "Bash(timeout 120 dotnet test:*)",
+      "Bash(dotnet:*)"
     ],
     "deny": [],
     "ask": []

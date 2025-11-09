@@ -1,0 +1,18 @@
+// Test basic tuple functionality
+
+fn get_rgb() -> (i32, i32, i32) {
+    return (255, 128, 64)
+}
+
+fn main() -> i32 {
+    // Test tuple literals
+    let color1 = (192, 96, 32)
+
+    // Test tuple returns
+    let color2 = get_rgb()
+
+    // Test tuple destructuring
+    let (r, g, b) = get_rgb()
+
+    return 0
+}

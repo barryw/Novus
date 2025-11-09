@@ -1,0 +1,33 @@
+enum Color {
+    Red,
+    Green,
+    Blue,
+    Cyan,
+    Magenta,
+    Yellow
+}
+
+fn is_primary(c: Color) -> bool {
+    match c {
+        Color::Red | Color::Green | Color::Blue => {
+            return true
+        },
+        Color::Cyan | Color::Magenta | Color::Yellow => {
+            return false
+        }
+    }
+}
+
+fn main() -> i32 {
+    let r = is_primary(Color::Red)
+    let g = is_primary(Color::Green)
+    let b = is_primary(Color::Blue)
+    let c = is_primary(Color::Cyan)
+    let m = is_primary(Color::Magenta)
+    let y = is_primary(Color::Yellow)
+
+    if r && g && b && !c && !m && !y {
+        return 0
+    }
+    return 1
+}

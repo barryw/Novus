@@ -18,6 +18,7 @@ public class TypeInterner
     private readonly Dictionary<IrType, IrReferenceType> _referenceTypes = new();
     private readonly Dictionary<IrType, IrMutReferenceType> _mutReferenceTypes = new();
     private readonly Dictionary<FunctionSignature, IrFunctionPointerType> _functionPointerTypes = new();
+    private readonly Dictionary<TupleSignature, IrTupleType> _tupleTypes = new();
     private readonly Dictionary<string, IrStructType> _structTypes = new();
     private readonly Dictionary<string, IrEnumType> _enumTypes = new();
     private readonly Dictionary<string, IrGenericType> _genericTypes = new();
@@ -90,6 +91,24 @@ public class TypeInterner
     }
 
     /// <summary>
+    /// Get or create a tuple type with the given element types
+    /// </summary>
+    public IrTupleType GetTupleType(List<IrType> elementTypes)
+    {
+        // Handle unit type specially
+        if (elementTypes.Count == 0)
+            return IrTupleType.Unit;
+
+        var signature = new TupleSignature(elementTypes);
+        if (_tupleTypes.TryGetValue(signature, out var cached))
+            return cached;
+
+        var newType = new IrTupleType(elementTypes);
+        _tupleTypes[signature] = newType;
+        return newType;
+    }
+
+    /// <summary>
     /// Register a struct type (structs are nominal types, identified by name)
     /// </summary>
     public IrStructType RegisterStructType(IrStructType structType)
@@ -158,6 +177,7 @@ public class TypeInterner
         _referenceTypes.Clear();
         _mutReferenceTypes.Clear();
         _functionPointerTypes.Clear();
+        _tupleTypes.Clear();
         _structTypes.Clear();
         _enumTypes.Clear();
         _genericTypes.Clear();
@@ -206,6 +226,48 @@ public class TypeInterner
             foreach (var param in ParameterTypes)
             {
                 hash.Add(param);
+            }
+            return hash.ToHashCode();
+        }
+    }
+
+    /// <summary>
+    /// Helper struct for tuple type equality
+    /// </summary>
+    private struct TupleSignature : IEquatable<TupleSignature>
+    {
+        public List<IrType> ElementTypes { get; }
+
+        public TupleSignature(List<IrType> elementTypes)
+        {
+            ElementTypes = elementTypes;
+        }
+
+        public bool Equals(TupleSignature other)
+        {
+            if (ElementTypes.Count != other.ElementTypes.Count)
+                return false;
+
+            for (int i = 0; i < ElementTypes.Count; i++)
+            {
+                if (!ReferenceEquals(ElementTypes[i], other.ElementTypes[i]))
+                    return false;
+            }
+
+            return true;
+        }
+
+        public override bool Equals(object? obj)
+        {
+            return obj is TupleSignature other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            var hash = new HashCode();
+            foreach (var elem in ElementTypes)
+            {
+                hash.Add(elem);
             }
             return hash.ToHashCode();
         }

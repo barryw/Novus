@@ -1,0 +1,426 @@
+// Novus Standard Library - Palette & Color Management
+// Namespace: std::graphics::palette
+//
+// Chipset-aware color/palette operations with automatic scaling
+// Handles OCS/ECS (4-bit) and AGA (8-bit) color differences transparently
+
+from std::core import Result
+from std::error import GraphicsError
+from std::system import CHIPSET, SystemChipset
+from std::ffi::amiga_structs import ViewPort, ColorMap
+from std::ffi::graphics import LoadRGB4, SetRGB4, GetRGB4, LoadRGB32, SetRGB32, GetRGB32
+from std::mem import MemoryBlock
+
+// ============================================================================
+// Color Structure (8-bit RGB)
+// ============================================================================
+
+/// Color - 8-bit RGB color value
+///
+/// Represents a color with 8-bit per channel precision (0-255).
+/// Automatically scaled down to 4-bit (0-15) on OCS/ECS chipsets.
+///
+/// Example:
+/// ```novus
+/// let white = rgb(255, 255, 255)
+/// let red = rgb(255, 0, 0)
+/// let custom = Color { r: 128, g: 64, b: 192 }
+/// ```
+pub struct Color {
+    r: u8,  // Red (0-255)
+    g: u8,  // Green (0-255)
+    b: u8,  // Blue (0-255)
+}
+
+// ============================================================================
+// Color Constructors
+// ============================================================================
+
+/// Create a Color from 8-bit RGB values (0-255)
+///
+/// This is the primary way to create colors. Values are stored as-is
+/// and automatically scaled when set on the hardware based on chipset.
+///
+/// Example:
+/// ```novus
+/// let color = rgb(255, 128, 64)
+/// ```
+pub fn rgb(r: u8, g: u8, b: u8) -> Color {
+    return Color { r: r, g: g, b: b }
+}
+
+/// Create a Color from 4-bit RGB values (0-15)
+///
+/// Useful when working with OCS/ECS palette data or classic Amiga colors.
+/// Values are scaled up to 8-bit by multiplying by 17 (0xF -> 0xFF).
+///
+/// Example:
+/// ```novus
+/// let ocs_color = from_rgb4(15, 8, 4)  // Full red, half green, quarter blue
+/// ```
+pub fn from_rgb4(r4: u8, g4: u8, b4: u8) -> Color {
+    // Scale 4-bit (0-15) to 8-bit (0-255)
+    // Formula: value * 17 (0xF * 17 = 255)
+    // This gives exact mapping: 0->0, 15->255
+    return Color {
+        r: r4 * 17,
+        g: g4 * 17,
+        b: b4 * 17,
+    }
+}
+
+// ============================================================================
+// Color Methods
+// ============================================================================
+
+impl Color {
+    /// Extract 4-bit RGB values (0-15) for OCS/ECS
+    ///
+    /// Scales down 8-bit values to 4-bit by dividing by 17.
+    /// Used internally when setting colors on OCS/ECS chipsets.
+    ///
+    /// Returns: (r4, g4, b4) where each component is 0-15
+    pub fn to_rgb4(&self) -> (u8, u8, u8) {
+        // Scale 8-bit (0-255) to 4-bit (0-15)
+        // Formula: value / 17
+        let r4: u8 = self.r / 17
+        let g4: u8 = self.g / 17
+        let b4: u8 = self.b / 17
+        return (r4, g4, b4)
+    }
+
+    /// Get 8-bit red component
+    pub fn red(&self) -> u8 {
+        return self.r
+    }
+
+    /// Get 8-bit green component
+    pub fn green(&self) -> u8 {
+        return self.g
+    }
+
+    /// Get 8-bit blue component
+    pub fn blue(&self) -> u8 {
+        return self.b
+    }
+}
+
+// ============================================================================
+// Palette Constants
+// ============================================================================
+
+// Maximum palette entries by chipset
+const MAX_COLORS_OCS: u8 = 32    // OCS/ECS: 32 colors (5 bitplanes max)
+const MAX_COLORS_AGA: u16 = 256  // AGA: 256 colors (8 bitplanes)
+
+// ============================================================================
+// Safe Palette Operations
+// ============================================================================
+
+/// Set a single color in a ViewPort's palette
+///
+/// Automatically detects chipset and uses appropriate precision:
+/// - OCS/ECS: Uses SetRGB4() with 4-bit values (0-15)
+/// - AGA: Uses SetRGB32() with 8-bit values scaled to 32-bit
+///
+/// Parameters:
+/// - vp: ViewPort pointer (must not be null)
+/// - index: Color index (0-31 for OCS/ECS, 0-255 for AGA)
+/// - color: Color to set
+///
+/// Returns:
+/// - Ok() if successful
+/// - Err(InvalidRastPort) if vp is null
+/// - Err(BadDisplayMode) if index out of range for chipset
+///
+/// Example:
+/// ```novus
+/// let vp: *ViewPort = screen.viewport()
+/// let red = rgb(255, 0, 0)
+/// set_color(vp, 1, red)?
+/// ```
+pub fn set_color(vp: *ViewPort, index: u8, color: Color) -> Result<(), GraphicsError> {
+    // Validate ViewPort pointer
+    if (u32)vp == 0 {
+        return Result::Err(GraphicsError::InvalidRastPort)
+    }
+
+    // Detect chipset and validate index
+    let chipset = CHIPSET()
+    match chipset {
+        SystemChipset::OCS | SystemChipset::ECS => {
+            // OCS/ECS: 32 colors max, 4-bit precision
+            if index >= MAX_COLORS_OCS {
+                return Result::Err(GraphicsError::BadDisplayMode)
+            }
+
+            // Extract 4-bit components
+            let (r4, g4, b4) = color.to_rgb4()
+
+            // Call SetRGB4() - takes i16 index, u8 RGB values
+            unsafe {
+                SetRGB4(vp, (i16)index, r4, g4, b4)
+            }
+        },
+        SystemChipset::AGA => {
+            // AGA: 256 colors max, 8-bit precision
+            // Note: index is u8 so automatically limited to 0-255
+
+            // Scale 8-bit (0-255) to 32-bit (0x00000000-0xFFFFFFFF)
+            // Formula: value * 0x01010101 gives exact mapping
+            let r32: u32 = (u32)color.r * $01010101
+            let g32: u32 = (u32)color.g * $01010101
+            let b32: u32 = (u32)color.b * $01010101
+
+            // Call SetRGB32() - takes u32 index and RGB values
+            unsafe {
+                SetRGB32(vp, (u32)index, r32, g32, b32)
+            }
+        }
+    }
+
+    return Result::Ok(())
+}
+
+/// Load a palette into a ViewPort
+///
+/// Sets multiple colors at once from a slice. Automatically detects chipset
+/// and uses appropriate precision.
+///
+/// Parameters:
+/// - vp: ViewPort pointer (must not be null)
+/// - colors: Slice of colors to load starting at index 0
+///
+/// Returns:
+/// - Ok() if successful
+/// - Err(InvalidRastPort) if vp is null
+/// - Err(BadDisplayMode) if colors slice is too large for chipset
+///
+/// Example:
+/// ```novus
+/// let palette: [Color; 4] = [
+///     rgb(0, 0, 0),      // Color 0: Black
+///     rgb(255, 0, 0),    // Color 1: Red
+///     rgb(0, 255, 0),    // Color 2: Green
+///     rgb(0, 0, 255),    // Color 3: Blue
+/// ]
+/// load_palette(vp, &palette)?
+/// ```
+pub fn load_palette(vp: *ViewPort, colors: &[Color]) -> Result<(), GraphicsError> {
+    // Validate ViewPort pointer
+    if (u32)vp == 0 {
+        return Result::Err(GraphicsError::InvalidRastPort)
+    }
+
+    // Get colors slice info
+    let color_count: u32 = colors.len()
+    if color_count == 0 {
+        return Result::Ok(())  // Empty palette is valid (no-op)
+    }
+
+    // Detect chipset and validate count
+    let chipset = CHIPSET()
+    match chipset {
+        SystemChipset::OCS | SystemChipset::ECS => {
+            // OCS/ECS: 32 colors max, 4-bit precision
+            if color_count > (u32)MAX_COLORS_OCS {
+                return Result::Err(GraphicsError::BadDisplayMode)
+            }
+
+            // Build 4-bit RGB table for LoadRGB4()
+            // Format: 3 nibbles per color (0xRGB) packed into 16-bit words
+            // We need (count * 2) bytes + 2 bytes for terminator
+            let table_size: u32 = (color_count * 2) + 2
+            let table_opt = MemoryBlock::alloc(table_size, $00000001)  // MEMF_PUBLIC
+            match table_opt {
+                None => return Result::Err(GraphicsError::BitMapAllocFailed),
+                Some(mut table) => {
+                    defer {
+                        table.free()
+                    }
+
+                    // Pack colors into table
+                    let table_ptr: *u16 = (*u16)table.ptr()
+                    var i: u32 = 0
+                    while i < color_count {
+                        let color: Color = colors[i]
+                        let (r4, g4, b4) = color.to_rgb4()
+
+                        // Pack into 16-bit word: 0x0RGB (upper 4 bits unused)
+                        let packed: u16 = ((u16)r4 << 8) | ((u16)g4 << 4) | (u16)b4
+                        table_ptr[i] = packed
+
+                        i = i + 1
+                    }
+
+                    // LoadRGB4 expects table terminated by -1
+                    table_ptr[color_count] = 0
+
+                    // Load the palette
+                    unsafe {
+                        LoadRGB4(vp, (*u8)table_ptr, (i16)color_count)
+                    }
+                }
+            }
+        },
+        SystemChipset::AGA => {
+            // AGA: 256 colors max, 8-bit precision
+            if color_count > (u32)MAX_COLORS_AGA {
+                return Result::Err(GraphicsError::BadDisplayMode)
+            }
+
+            // Build 32-bit RGB table for LoadRGB32()
+            // Format: (count << 16) | 0, r, g, b, r, g, b, ..., 0, 0, 0
+            // Need: 1 long (header) + (count * 3) longs + 1 long (terminator)
+            let table_longs: u32 = 1 + (color_count * 3) + 1
+            let table_bytes: u32 = table_longs * 4
+
+            let table_opt = MemoryBlock::alloc(table_bytes, $00000001)  // MEMF_PUBLIC
+            match table_opt {
+                None => return Result::Err(GraphicsError::BitMapAllocFailed),
+                Some(mut table) => {
+                    defer {
+                        table.free()
+                    }
+
+                    let table_ptr: *u32 = (*u32)table.ptr()
+
+                    // Header: (count << 16) | first_color
+                    table_ptr[0] = (color_count << 16) | 0
+
+                    // Pack colors
+                    var i: u32 = 0
+                    while i < color_count {
+                        let color: Color = colors[i]
+
+                        // Scale 8-bit to 32-bit
+                        let r32: u32 = (u32)color.r * $01010101
+                        let g32: u32 = (u32)color.g * $01010101
+                        let b32: u32 = (u32)color.b * $01010101
+
+                        let base: u32 = 1 + (i * 3)
+                        table_ptr[base + 0] = r32
+                        table_ptr[base + 1] = g32
+                        table_ptr[base + 2] = b32
+
+                        i = i + 1
+                    }
+
+                    // Terminator: 0, 0, 0
+                    table_ptr[table_longs - 1] = 0
+
+                    // Load the palette
+                    unsafe {
+                        LoadRGB32(vp, (*u8)table_ptr)
+                    }
+                }
+            }
+        }
+    }
+
+    return Result::Ok(())
+}
+
+/// Get a color from a ColorMap
+///
+/// Reads a color from the palette. Automatically detects chipset and
+/// returns 8-bit RGB values (scaled up from 4-bit on OCS/ECS).
+///
+/// Parameters:
+/// - cm: ColorMap pointer (must not be null)
+/// - index: Color index to read
+///
+/// Returns:
+/// - Ok(Color) if successful
+/// - Err(InvalidRastPort) if cm is null
+/// - Err(BadDisplayMode) if index out of range
+///
+/// Example:
+/// ```novus
+/// let cm: *ColorMap = viewport.colormap()
+/// let color = get_color(cm, 1)?
+/// print("Color 1: R={}, G={}, B={}", color.r, color.g, color.b)
+/// ```
+pub fn get_color(cm: *ColorMap, index: u8) -> Result<Color, GraphicsError> {
+    // Validate ColorMap pointer
+    if (u32)cm == 0 {
+        return Result::Err(GraphicsError::InvalidRastPort)
+    }
+
+    // Detect chipset
+    let chipset = CHIPSET()
+    match chipset {
+        SystemChipset::OCS | SystemChipset::ECS => {
+            // OCS/ECS: 32 colors max
+            if index >= MAX_COLORS_OCS {
+                return Result::Err(GraphicsError::BadDisplayMode)
+            }
+
+            // Get 4-bit color value
+            var rgb4: u32 = 0
+            unsafe {
+                rgb4 = GetRGB4(cm, (i32)index)
+            }
+
+            // Extract 4-bit components from packed format (0x0RGB)
+            let r4: u8 = (u8)((rgb4 >> 8) & $F)
+            let g4: u8 = (u8)((rgb4 >> 4) & $F)
+            let b4: u8 = (u8)(rgb4 & $F)
+
+            // Convert to 8-bit
+            return Result::Ok(from_rgb4(r4, g4, b4))
+        },
+        SystemChipset::AGA => {
+            // AGA: 256 colors max (index is u8, so automatically limited)
+
+            // Allocate buffer for GetRGB32() - needs 3 u32s (12 bytes)
+            let table_opt = MemoryBlock::alloc(12, $00000001)  // MEMF_PUBLIC
+            match table_opt {
+                None => return Result::Err(GraphicsError::BitMapAllocFailed),
+                Some(mut table) => {
+                    defer {
+                        table.free()
+                    }
+
+                    // Get 32-bit RGB values
+                    unsafe {
+                        GetRGB32(cm, (u32)index, 1, table.ptr())
+                    }
+
+                    let table_ptr: *u32 = (*u32)table.ptr()
+                    let r32: u32 = table_ptr[0]
+                    let g32: u32 = table_ptr[1]
+                    let b32: u32 = table_ptr[2]
+
+                    // Scale 32-bit (0x00000000-0xFFFFFFFF) to 8-bit (0-255)
+                    // Take upper 8 bits
+                    let r8: u8 = (u8)(r32 >> 24)
+                    let g8: u8 = (u8)(g32 >> 24)
+                    let b8: u8 = (u8)(b32 >> 24)
+
+                    return Result::Ok(Color { r: r8, g: g8, b: b8 })
+                }
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Common Color Constants
+// ============================================================================
+
+/// Standard Amiga Workbench 1.x/2.x colors
+pub const BLACK: Color = Color { r: 0, g: 0, b: 0 }
+pub const WHITE: Color = Color { r: 255, g: 255, b: 255 }
+pub const RED: Color = Color { r: 255, g: 0, b: 0 }
+pub const GREEN: Color = Color { r: 0, g: 255, b: 0 }
+pub const BLUE: Color = Color { r: 0, g: 0, b: 255 }
+pub const YELLOW: Color = Color { r: 255, g: 255, b: 0 }
+pub const MAGENTA: Color = Color { r: 255, g: 0, b: 255 }
+pub const CYAN: Color = Color { r: 0, g: 255, b: 255 }
+
+// Classic Workbench colors (approximations in 8-bit)
+pub const WB_BLUE: Color = Color { r: 170, g: 170, b: 170 }      // WB background blue
+pub const WB_ORANGE: Color = Color { r: 255, g: 136, b: 0 }      // WB orange
+pub const WB_LTGREY: Color = Color { r: 187, g: 187, b: 187 }    // Light grey
+pub const WB_DKGREY: Color = Color { r: 85, g: 85, b: 85 }       // Dark grey

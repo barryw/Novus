@@ -1889,31 +1889,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             {
                 var pattern = arm.pattern();
 
-                // Track coverage
-                if (pattern is NovusParser.WildcardPatternContext)
-                {
-                    hasWildcard = true;
-                }
-                else if (pattern is NovusParser.VariantPatternContext variantPattern)
-                {
-                    var variantNameCtx = variantPattern.variantName();
-                    var identifiers = variantNameCtx.IDENTIFIER();
-                    var variantName = identifiers[identifiers.Length - 1].GetText();
-                    coveredVariants.Add(variantName);
-                }
-                else if (pattern is NovusParser.SimpleVariantPatternContext simpleVariant)
-                {
-                    // Pattern like Option::None or Result::Ok
-                    var identifiers = simpleVariant.IDENTIFIER();
-                    var variantName = identifiers[identifiers.Length - 1].GetText();
-                    coveredVariants.Add(variantName);
-                }
-                else if (pattern is NovusParser.IdentifierPatternContext identPattern)
-                {
-                    // Bare identifier like "None" or "Ok" - could be a variant
-                    var variantName = identPattern.IDENTIFIER().GetText();
-                    coveredVariants.Add(variantName);
-                }
+                // Track coverage (recursively handle pipe patterns)
+                CollectCoveredVariants(pattern, coveredVariants, ref hasWildcard);
 
                 // Match arm can have a block, return statement, or just an expression
                 if (arm.block() != null)
@@ -3723,6 +3700,42 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return null;
     }
 
+    // Helper method to collect covered variants from a pattern (handles pipe patterns recursively)
+    private void CollectCoveredVariants(NovusParser.PatternContext pattern,
+        HashSet<string> coveredVariants, ref bool hasWildcard)
+    {
+        if (pattern is NovusParser.WildcardPatternContext)
+        {
+            hasWildcard = true;
+        }
+        else if (pattern is NovusParser.PipePatternContext pipePattern)
+        {
+            // Recursively collect from both sides
+            CollectCoveredVariants(pipePattern.pattern(0), coveredVariants, ref hasWildcard);
+            CollectCoveredVariants(pipePattern.pattern(1), coveredVariants, ref hasWildcard);
+        }
+        else if (pattern is NovusParser.VariantPatternContext variantPattern)
+        {
+            var variantNameCtx = variantPattern.variantName();
+            var identifiers = variantNameCtx.IDENTIFIER();
+            var variantName = identifiers[identifiers.Length - 1].GetText();
+            coveredVariants.Add(variantName);
+        }
+        else if (pattern is NovusParser.SimpleVariantPatternContext simpleVariant)
+        {
+            // Pattern like Option::None or Result::Ok
+            var identifiers = simpleVariant.IDENTIFIER();
+            var variantName = identifiers[identifiers.Length - 1].GetText();
+            coveredVariants.Add(variantName);
+        }
+        else if (pattern is NovusParser.IdentifierPatternContext identPattern)
+        {
+            // Bare identifier like "None" or "Ok" - could be a variant
+            var variantName = identPattern.IDENTIFIER().GetText();
+            coveredVariants.Add(variantName);
+        }
+    }
+
     private void AnalyzePatternAndBind(NovusParser.PatternContext pattern, IrEnumType enumType,
         HashSet<string> coveredVariants, ref bool hasWildcard)
     {
@@ -3731,6 +3744,14 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             case NovusParser.WildcardPatternContext:
                 hasWildcard = true;
                 break;
+
+            case NovusParser.PipePatternContext pipePattern:
+            {
+                // Recursively analyze both sides of the pipe
+                AnalyzePatternAndBind(pipePattern.pattern(0), enumType, coveredVariants, ref hasWildcard);
+                AnalyzePatternAndBind(pipePattern.pattern(1), enumType, coveredVariants, ref hasWildcard);
+                break;
+            }
 
             case NovusParser.VariantPatternContext variantPattern:
             {
@@ -3877,6 +3898,14 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             case NovusParser.WildcardPatternContext:
                 hasWildcard = true;
                 break;
+
+            case NovusParser.PipePatternContext pipePattern:
+            {
+                // Recursively analyze both sides of the pipe
+                AnalyzeIntegerPatternAndBind(pipePattern.pattern(0), intType, coveredValues, ref hasWildcard);
+                AnalyzeIntegerPatternAndBind(pipePattern.pattern(1), intType, coveredValues, ref hasWildcard);
+                break;
+            }
 
             case NovusParser.LiteralPatternContext literalPattern:
             {
@@ -8407,6 +8436,11 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         public IrType GetFunctionPointerType(List<IrType> paramTypes, IrType returnType)
         {
             return _analyzer._typeInterner.GetFunctionPointerType(paramTypes, returnType);
+        }
+
+        public IrType GetTupleType(List<IrType> elementTypes)
+        {
+            return _analyzer._typeInterner.GetTupleType(elementTypes);
         }
 
         // Current state (SemanticAnalyzer doesn't track these)

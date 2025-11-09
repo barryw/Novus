@@ -33,6 +33,21 @@ pub struct View {
     _opaque: u8,
 }
 
+// Opaque struct for ViewPort (per-screen display parameters)
+pub struct ViewPort {
+    _opaque: u8,
+}
+
+// Opaque struct for ColorMap (palette data)
+pub struct ColorMap {
+    _opaque: u8,
+}
+
+// Opaque struct for UCopList (user copper list)
+pub struct UCopList {
+    _opaque: u8,
+}
+
 // ============================================================================
 // Exec Library Structs
 // ============================================================================

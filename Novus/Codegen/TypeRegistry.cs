@@ -10,6 +10,7 @@ public class TypeRegistry
 {
     private readonly HashSet<IrEnumType> _enumTypes = new();
     private readonly HashSet<IrStructType> _structTypes = new();
+    private readonly HashSet<IrTupleType> _tupleTypes = new();
     private bool _needsString = false;
 
     /// <summary>
@@ -73,6 +74,10 @@ public class TypeRegistry
             {
                 AddOrUpdateEnumType(enumRet);
             }
+            else if (function.ReturnType is IrTupleType tupleRet)
+            {
+                AddTupleType(tupleRet);
+            }
 
             // Check parameters
             foreach (var param in function.Parameters)
@@ -80,6 +85,10 @@ public class TypeRegistry
                 if (param.Type is IrEnumType enumParam && IsConcreteEnum(enumParam))
                 {
                     AddOrUpdateEnumType(enumParam);
+                }
+                else if (param.Type is IrTupleType tupleParam)
+                {
+                    AddTupleType(tupleParam);
                 }
             }
 
@@ -89,6 +98,10 @@ public class TypeRegistry
                 if (local.Type is IrEnumType enumLocal && IsConcreteEnum(enumLocal))
                 {
                     AddOrUpdateEnumType(enumLocal);
+                }
+                else if (local.Type is IrTupleType tupleLocal)
+                {
+                    AddTupleType(tupleLocal);
                 }
             }
 
@@ -213,6 +226,15 @@ public class TypeRegistry
                 AddOrUpdateEnumType(enumType);
                 break;
 
+            case IrTupleType tupleType:
+                AddTupleType(tupleType);
+                // Recursively check element types
+                foreach (var elementType in tupleType.ElementTypes)
+                {
+                    CollectEnumTypesFromType(elementType);
+                }
+                break;
+
             case IrArrayType arrayType:
                 // Recursively check the element type
                 CollectEnumTypesFromType(arrayType.ElementType);
@@ -243,6 +265,15 @@ public class TypeRegistry
 
             // For other types (primitive, function pointers, etc.) we don't need to recurse
         }
+    }
+
+    private void AddTupleType(IrTupleType tupleType)
+    {
+        // Skip unit type () - it doesn't need a struct definition
+        if (tupleType.ElementTypes.Count == 0)
+            return;
+
+        _tupleTypes.Add(tupleType);
     }
 
     private string GetStructName(IrStructType structType)
@@ -393,5 +424,6 @@ public class TypeRegistry
 
     public IEnumerable<IrEnumType> EnumTypes => _enumTypes;
     public IEnumerable<IrStructType> StructTypes => _structTypes;
+    public IEnumerable<IrTupleType> TupleTypes => _tupleTypes;
     public bool NeedsString => _needsString;
 }

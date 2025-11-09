@@ -588,6 +588,21 @@ public class IrStructLiteral : IrValue
 }
 
 /// <summary>
+/// Tuple literal value - ordered sequence of values
+/// Example: (255, 128, 64) for RGB tuple
+/// Unit value () is represented as a tuple with zero elements
+/// </summary>
+public class IrTupleLiteral : IrValue
+{
+    public List<IrValue> Elements { get; set; }
+
+    public IrTupleLiteral(IrTupleType type, List<IrValue> elements) : base(type)
+    {
+        Elements = elements;
+    }
+}
+
+/// <summary>
 /// Represents types in the IR
 /// </summary>
 public abstract class IrType
@@ -782,6 +797,80 @@ public class IrFixedType : IrType
     // Predefined common types
     public static readonly IrFixedType Fixed16 = new(16);  // 8.8 fixed point
     public static readonly IrFixedType Fixed32 = new(32);  // 16.16 fixed point
+}
+
+/// <summary>
+/// Tuple type - ordered sequence of types
+/// Example: (u8, u8, u8) for RGB colors
+/// Unit type () is represented as a tuple with zero elements
+/// </summary>
+public class IrTupleType : IrType
+{
+    public List<IrType> ElementTypes { get; }
+    private int? _cachedSize;
+
+    public IrTupleType(List<IrType> elementTypes)
+    {
+        ElementTypes = elementTypes ?? new List<IrType>();
+    }
+
+    public override int SizeInBytes
+    {
+        get
+        {
+            if (_cachedSize.HasValue)
+                return _cachedSize.Value;
+
+            // Unit type () has size 0
+            if (ElementTypes.Count == 0)
+            {
+                _cachedSize = 0;
+                return 0;
+            }
+
+            // Calculate total size with alignment
+            int size = 0;
+            foreach (var elementType in ElementTypes)
+            {
+                // Align element to its natural alignment
+                int elementSize = elementType.SizeInBytes;
+                int alignment = elementSize switch
+                {
+                    1 => 1,  // byte-aligned
+                    2 => 2,  // word-aligned
+                    _ => 2   // word-aligned for everything else (68k prefers word alignment)
+                };
+
+                // Pad to alignment
+                if (size % alignment != 0)
+                    size += alignment - (size % alignment);
+
+                size += elementSize;
+            }
+
+            // Pad final tuple size to word boundary (68k likes word-aligned data)
+            if (size % 2 != 0)
+                size++;
+
+            _cachedSize = size;
+            return size;
+        }
+    }
+
+    public override string Name
+    {
+        get
+        {
+            if (ElementTypes.Count == 0)
+                return "()";
+            return $"({string.Join(", ", ElementTypes.Select(t => t.Name))})";
+        }
+    }
+
+    /// <summary>
+    /// Static instance for unit type ()
+    /// </summary>
+    public static readonly IrTupleType Unit = new(new List<IrType>());
 }
 
 /// <summary>
@@ -1025,6 +1114,22 @@ public class IrFieldReference : IrValue
     {
         Struct = structValue;
         FieldName = fieldName;
+    }
+}
+
+/// <summary>
+/// Tuple element access - represents accessing an element by index from a tuple
+/// Example: accessing element 0 from tuple (u8, u8, u8)
+/// </summary>
+public class IrTupleElementAccess : IrValue
+{
+    public IrValue Tuple { get; set; }
+    public int ElementIndex { get; set; }
+
+    public IrTupleElementAccess(IrValue tupleValue, int elementIndex, IrType elementType) : base(elementType)
+    {
+        Tuple = tupleValue;
+        ElementIndex = elementIndex;
     }
 }
 

@@ -107,6 +107,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         public IrType GetPointerType(IrType pointeeType) => _builder._typeInterner.GetPointerType(pointeeType);
         public IrType GetArrayType(IrType elementType, long length) => _builder._typeInterner.GetArrayType(elementType, (int)length);
         public IrType GetFunctionPointerType(List<IrType> paramTypes, IrType returnType) => _builder._typeInterner.GetFunctionPointerType(paramTypes, returnType);
+        public IrType GetTupleType(List<IrType> elementTypes) => _builder._typeInterner.GetTupleType(elementTypes);
 
         // Current state
         public IrType? CurrentSelfType => _builder._currentSelfType;
@@ -3107,11 +3108,19 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     public override object? VisitVariableDeclaration([NotNull] NovusParser.VariableDeclarationContext context)
     {
+        var isMutable = context.GetChild(0)?.GetText() == "var";
+
+        // Check if this is a tuple destructuring pattern
+        var tuplePatternNode = context.tuplePattern();
+        if (tuplePatternNode != null)
+        {
+            return HandleTupleDestructuring(tuplePatternNode, context.expression(), context.type(), isMutable, context);
+        }
+
         // Check if this is a throwaway binding (_)
         var identifierNode = context.IDENTIFIER();
         var name = identifierNode?.GetText() ?? "_";
         var isThrowaway = name == "_";
-        var isMutable = context.GetChild(0)?.GetText() == "var";
 
         // Parse type annotation if present (before evaluating the expression)
         IrType? annotatedType = null;
@@ -3166,6 +3175,125 @@ public class IrBuilder : NovusBaseVisitor<object?>
         if (EnsureDropMethodInstantiated(type))
         {
             InjectAutomaticDrop(name, type);
+        }
+
+        return null;
+    }
+
+    private object? HandleTupleDestructuring(NovusParser.TuplePatternContext tuplePattern,
+        NovusParser.ExpressionContext exprContext, NovusParser.TypeContext? typeContext,
+        bool isMutable, ParserRuleContext fullContext)
+    {
+        // Parse type annotation if present
+        IrType? annotatedType = null;
+        if (typeContext != null)
+        {
+            annotatedType = ParseType(typeContext);
+            if (annotatedType is not IrTupleType)
+            {
+                var errorLocation = SourceLocationHelper.FromContext(fullContext, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.TypeMismatch,
+                    $"Type annotation for tuple destructuring must be a tuple type",
+                    errorLocation
+                );
+                return null;
+            }
+        }
+
+        // Set expected type for bidirectional type checking
+        var savedExpectedType = _expectedType;
+        _expectedType = annotatedType;
+
+        var value = (IrValue?)Visit(exprContext);
+
+        // Restore previous expected type
+        _expectedType = savedExpectedType;
+
+        if (value == null)
+        {
+            var errorLocation = SourceLocationHelper.FromContext(fullContext, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.MissingInitializer,
+                $"Tuple destructuring must have an initial value",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Verify the value is a tuple type
+        if (value.Type is not IrTupleType tupleType)
+        {
+            var errorLocation = SourceLocationHelper.FromContext(fullContext, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Cannot destructure non-tuple type '{value.Type.Name}'",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Get pattern identifiers (IDENTIFIER or '_')
+        var patternElements = new List<string>();
+        for (int i = 0; i < tuplePattern.ChildCount; i++)
+        {
+            var child = tuplePattern.GetChild(i);
+            if (child is ITerminalNode terminal && terminal.Symbol.Type == NovusLexer.IDENTIFIER)
+            {
+                patternElements.Add(terminal.GetText());
+            }
+            else if (child.GetText() == "_")
+            {
+                patternElements.Add("_");
+            }
+        }
+
+        // Verify element count matches
+        if (patternElements.Count != tupleType.ElementTypes.Count)
+        {
+            var errorLocation = SourceLocationHelper.FromContext(fullContext, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Tuple destructuring pattern has {patternElements.Count} elements but value has {tupleType.ElementTypes.Count} elements",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Create a temporary variable to hold the tuple value
+        var tempName = $"__tuple_tmp_{_tempCounter++}";
+        var tempVar = new IrLocalVariable(tempName, tupleType, false);
+        _currentFunction!.LocalVariables.Add(tempVar);
+        _localVariables[tempName] = tempVar;
+        _currentBlock!.AddInstruction(new IrLocalDecl(tempName, tupleType, false, value));
+
+        // Extract each element and create local variables
+        for (int i = 0; i < patternElements.Count; i++)
+        {
+            var elementName = patternElements[i];
+
+            // Skip throwaway bindings
+            if (elementName == "_")
+                continue;
+
+            var elementType = tupleType.ElementTypes[i];
+
+            // Create local variable for this element
+            var elementVar = new IrLocalVariable(elementName, elementType, isMutable);
+            _currentFunction.LocalVariables.Add(elementVar);
+            _localVariables[elementName] = elementVar;
+
+            // Generate IR to extract this element from the tuple
+            // Create a reference to the temporary tuple variable
+            var tempVarRef = new IrVariable(tempName, tupleType);
+            var extractedValue = new IrTupleElementAccess(tempVarRef, i, elementType);
+            _currentBlock.AddInstruction(new IrLocalDecl(elementName, elementType, isMutable, extractedValue));
+
+            // Automatic defer for types with drop() method
+            if (EnsureDropMethodInstantiated(elementType))
+            {
+                InjectAutomaticDrop(elementName, elementType);
+            }
         }
 
         return null;
@@ -8440,6 +8568,40 @@ public class IrBuilder : NovusBaseVisitor<object?>
         return Visit(context.expression());
     }
 
+    public override object? VisitUnitLiteral([NotNull] NovusParser.UnitLiteralContext context)
+    {
+        // Unit type () - creates a zero-element tuple
+        return new IrTupleLiteral(IrTupleType.Unit, new List<IrValue>());
+    }
+
+    public override object? VisitTupleLiteral([NotNull] NovusParser.TupleLiteralContext context)
+    {
+        var expressions = context.expression();
+        var elements = new List<IrValue>();
+
+        foreach (var exprCtx in expressions)
+        {
+            var value = Visit(exprCtx) as IrValue;
+            if (value == null)
+            {
+                var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Invalid expression in tuple literal",
+                    errorLocation
+                );
+                return null;
+            }
+            elements.Add(value);
+        }
+
+        // Get element types and create tuple type
+        var elementTypes = elements.Select(e => e.Type).ToList();
+        var tupleType = _typeInterner.GetTupleType(elementTypes);
+
+        return new IrTupleLiteral(tupleType, elements);
+    }
+
     public override object? VisitStructLiteral([NotNull] NovusParser.StructLiteralContext context)
     {
         var structName = context.typeName().GetText();
@@ -8979,6 +9141,60 @@ public class IrBuilder : NovusBaseVisitor<object?>
         return null;
     }
 
+    // Helper struct to represent an expanded match arm (after flattening pipe patterns)
+    private class ExpandedMatchArm
+    {
+        public NovusParser.PatternContext Pattern { get; }
+        public NovusParser.MatchArmContext OriginalArm { get; }
+
+        public ExpandedMatchArm(NovusParser.PatternContext pattern, NovusParser.MatchArmContext originalArm)
+        {
+            Pattern = pattern;
+            OriginalArm = originalArm;
+        }
+    }
+
+    // Recursively flatten pipe patterns into a list of simple patterns
+    private List<NovusParser.PatternContext> FlattenPipePattern(NovusParser.PatternContext pattern)
+    {
+        if (pattern is NovusParser.PipePatternContext pipePattern)
+        {
+            // Recursively flatten both sides of the pipe
+            var leftPatterns = FlattenPipePattern(pipePattern.pattern(0));
+            var rightPatterns = FlattenPipePattern(pipePattern.pattern(1));
+
+            // Combine the results
+            var result = new List<NovusParser.PatternContext>();
+            result.AddRange(leftPatterns);
+            result.AddRange(rightPatterns);
+            return result;
+        }
+        else
+        {
+            // Base case: not a pipe pattern, return as single-element list
+            return new List<NovusParser.PatternContext> { pattern };
+        }
+    }
+
+    // Expand match arms that contain pipe patterns into multiple arms
+    private List<ExpandedMatchArm> ExpandMatchArms(NovusParser.MatchArmContext[] arms)
+    {
+        var expandedArms = new List<ExpandedMatchArm>();
+
+        foreach (var arm in arms)
+        {
+            var patterns = FlattenPipePattern(arm.pattern());
+
+            // Create an expanded arm for each pattern
+            foreach (var pattern in patterns)
+            {
+                expandedArms.Add(new ExpandedMatchArm(pattern, arm));
+            }
+        }
+
+        return expandedArms;
+    }
+
     public override object? VisitMatchExpr([NotNull] NovusParser.MatchExprContext context)
     {
         SourceLocation errorLocation;
@@ -9048,12 +9264,15 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
         }
 
+        // Expand match arms - flatten pipe patterns into separate arms
+        var expandedArms = ExpandMatchArms(context.matchArm());
+
         // Generate labels for match arms and end
         var matchEndLabel = $"match_end_{_labelCounter}";
         var armLabels = new List<string>();
         var checkLabels = new List<string>();
 
-        for (int i = 0; i < context.matchArm().Length; i++)
+        for (int i = 0; i < expandedArms.Count; i++)
         {
             armLabels.Add($"match_arm_{_labelCounter}_{i}");
             checkLabels.Add($"match_check_{_labelCounter}_{i}");
@@ -9063,7 +9282,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         // Determine if arms produce values and their type
         IrType? matchResultType = null;
-        bool armsProduceValues = context.matchArm().Any(arm => arm.expression() != null);
+        bool armsProduceValues = expandedArms.Any(arm => arm.OriginalArm.expression() != null);
         string? matchResultVarName = null;
 
         // Extract tag from enum value (before declaring match result, so it appears first)
@@ -9125,10 +9344,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
         bool anyArmReachesEnd = false;
 
         // Generate comparisons and branches for each arm
-        for (int i = 0; i < context.matchArm().Length; i++)
+        for (int i = 0; i < expandedArms.Count; i++)
         {
-            var armCtx = context.matchArm()[i];
-            var pattern = armCtx.pattern();
+            var expandedArm = expandedArms[i];
+            var pattern = expandedArm.Pattern;
 
             // Add label for this check (skip first one - execution falls through to it)
             if (i > 0)
@@ -9243,10 +9462,11 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         // Generate code for each arm
-        for (int i = 0; i < context.matchArm().Length; i++)
+        for (int i = 0; i < expandedArms.Count; i++)
         {
-            var armCtx = context.matchArm()[i];
-            var pattern = armCtx.pattern();
+            var expandedArm = expandedArms[i];
+            var armCtx = expandedArm.OriginalArm;
+            var pattern = expandedArm.Pattern;
 
             _currentBlock!.AddInstruction(new IrLabel(armLabels[i]));
 

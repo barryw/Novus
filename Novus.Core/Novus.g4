@@ -166,7 +166,8 @@ type
     | '*' type                                                # PointerType
     | '[' type ';' expression ']'                            # ArrayTypeWithSize      // [u8; 100] - fixed-size uninitialized array
     | '[' type ']'                                           # ArrayTypeInferred      // [i32] - size inferred from initializer
-    | '(' type (',' type)+ ')'                               # TupleType       // TODO: Not yet implemented in IrBuilder/codegen
+    | '(' ')'                                                # UnitType               // Unit type ()
+    | '(' type (',' type)+ ')'                               # TupleType              // Tuple with 2+ elements
     | KW_FN '(' typeList? ')' ('->' type)?                   # FunctionPointerType
     | KW_SELF_TYPE                                           # SelfType              // Self - refers to implementing type in trait context
     | KW_U8                                                   # PrimitiveType
@@ -241,7 +242,8 @@ matchArm
     ;
 
 pattern
-    : '&' pattern                               # ReferencePattern
+    : pattern '|' pattern                       # PipePattern
+    | '&' pattern                               # ReferencePattern
     | variantName '(' patternList? ')'         # VariantPattern
     | IDENTIFIER '::' IDENTIFIER ('::' IDENTIFIER)*  # SimpleVariantPattern
     | IDENTIFIER                                # IdentifierPattern
@@ -267,7 +269,11 @@ returnStatement
     ;
 
 variableDeclaration
-    : (KW_LET | KW_VAR) KW_MUT? (IDENTIFIER | '_') (':' type)? '=' expression
+    : (KW_LET | KW_VAR) KW_MUT? (IDENTIFIER | '_' | tuplePattern) (':' type)? '=' expression
+    ;
+
+tuplePattern
+    : '(' (IDENTIFIER | '_') (',' (IDENTIFIER | '_'))+ ')'
     ;
 
 assignmentStatement
@@ -361,6 +367,8 @@ primaryExpression
     | typeName '{' NEWLINE* expression NEWLINE* '}'                                           # StructArrayInit
     | identifier                                   # IdentifierExpr
     | KW_MATCH expression '{' NEWLINE* matchArm (',' NEWLINE* matchArm)* ','? NEWLINE* '}'  # MatchExpr
+    | '(' ')'                                      # UnitLiteral
+    | '(' expression (',' expression)+ ')'         # TupleLiteral
     | '(' expression ')'                           # ParenExpr
     | '[' NEWLINE* expression NEWLINE* ';' NEWLINE* expression NEWLINE* ']'  # ArrayRepeatLiteral
     | '[' NEWLINE* (expression (',' NEWLINE* expression)*)? NEWLINE* ']'     # ArrayLiteral
