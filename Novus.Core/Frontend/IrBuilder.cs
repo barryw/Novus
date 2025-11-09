@@ -9045,7 +9045,6 @@ public class IrBuilder : NovusBaseVisitor<object?>
         {
             foreach (var v in enumType.Variants)
             {
-                Console.WriteLine($"  Variant '{v.Name}': AssociatedData=[{string.Join(", ", v.AssociatedData.Select(d => $"{d.Name} (CacheKey={(d is IrStructType st ? st.CacheKey : "N/A")})"))}]");
             }
         }
 
@@ -10193,7 +10192,6 @@ public class IrBuilder : NovusBaseVisitor<object?>
             catch (Exception ex)
             {
                 // Log the error for debugging
-                Console.WriteLine($"WARNING: Failed to instantiate drop() method for {type.Name}: {ex.Message}");
                 return false;
             }
         }

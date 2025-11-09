@@ -88,7 +88,6 @@ public class ValidatorManager
         {
             if (_verbose)
             {
-                Console.WriteLine($"  Running {validator.Name}...");
             }
 
             bool passed = validator.Validate(context, diagnostics);
@@ -96,7 +95,6 @@ public class ValidatorManager
 
             if (_verbose)
             {
-                Console.WriteLine($"    -> {(passed ? "Passed" : "Failed")}");
             }
 
             // Continue running all validators even if one fails

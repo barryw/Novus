@@ -3568,7 +3568,6 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             enumTypeForValidation = (IrEnumType)actualMatchType;
             foreach (var v in enumTypeForValidation.Variants)
             {
-                Console.WriteLine($"  Variant '{v.Name}': AssociatedData=[{string.Join(", ", v.AssociatedData.Select(d => $"{d.Name} (CacheKey={(d is IrStructType st ? st.CacheKey : "N/A")})"))}]");
             }
         }
         else if (!isIntegerMatch && actualMatchType is IrGenericType genericType)
@@ -7641,9 +7640,6 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             // Debug: Check if one has CacheKey and the other doesn't
             if (expectedStruct.CacheKey != null || actualStruct.CacheKey != null)
             {
-                Console.WriteLine($"  Expected fields: {string.Join(", ", expectedStruct.Fields.Select(f => $"{f.Name}:{f.Type.Name}"))}");
-                Console.WriteLine($"  Actual fields: {string.Join(", ", actualStruct.Fields.Select(f => $"{f.Name}:{f.Type.Name}"))}");
-                Console.WriteLine($"  ReferenceEquals: {ReferenceEquals(expectedStruct, actualStruct)}");
 
                 // Special case: if both are generic (same number of generic parameters),
                 // and one has a cache key while the other doesn't, consider them compatible.
@@ -7652,7 +7648,6 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 if (expectedStruct.GenericParameters.Count > 0 &&
                     expectedStruct.GenericParameters.Count == actualStruct.GenericParameters.Count)
                 {
-                    Console.WriteLine($"  Both are generic with same param count - treating as compatible");
                     return true;
                 }
             }

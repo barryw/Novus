@@ -612,12 +612,10 @@ public class TypeParser
                         if (!(substType is IrGenericType))
                         {
                             hasConcreteSubstitution = true;
-                            Console.WriteLine($"DEBUG TypeParser.SubstituteGenericTypes: Struct {structType.StructName} generic param '{genericParam}' substituted with concrete type {substType.Name}");
                             break;
                         }
                         else
                         {
-                            Console.WriteLine($"DEBUG TypeParser.SubstituteGenericTypes: Struct {structType.StructName} generic param '{genericParam}' substituted with generic type {substType.Name}");
                         }
                     }
                 }
@@ -626,7 +624,6 @@ public class TypeParser
                 // return the original struct unchanged
                 if (!hasConcreteSubstitution)
                 {
-                    Console.WriteLine($"DEBUG TypeParser.SubstituteGenericTypes: Returning original struct {structType.StructName}<{string.Join(",", structType.GenericParameters)}> unchanged (no concrete substitution)");
                     return structType;
                 }
             }
