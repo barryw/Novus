@@ -3566,7 +3566,6 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         if (isEnumMatch)
         {
             enumTypeForValidation = (IrEnumType)actualMatchType;
-            Console.WriteLine($"DEBUG SemanticAnalyzer: Match on enum '{enumTypeForValidation.EnumName}' with CacheKey='{enumTypeForValidation.CacheKey}'");
             foreach (var v in enumTypeForValidation.Variants)
             {
                 Console.WriteLine($"  Variant '{v.Name}': AssociatedData=[{string.Join(", ", v.AssociatedData.Select(d => $"{d.Name} (CacheKey={(d is IrStructType st ? st.CacheKey : "N/A")})"))}]");
@@ -6487,7 +6486,6 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public override IrType? VisitPostIncrementExpr([NotNull] NovusParser.PostIncrementExprContext context)
     {
-        System.Console.WriteLine($"DEBUG: VisitPostIncrementExpr ENTERED, expr text = '{context.expression().GetText()}'");
         var operandType = Visit(context.expression());
         if (operandType == null)
             return IrIntType.I32;
@@ -6590,7 +6588,6 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public override IrType? VisitPreIncrementExpr([NotNull] NovusParser.PreIncrementExprContext context)
     {
-        System.Console.WriteLine("DEBUG: VisitPreIncrementExpr ENTERED");
         var operandType = Visit(context.expression());
         if (operandType == null)
             return IrIntType.I32;
@@ -6609,11 +6606,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Verify it's an lvalue
         bool isLvalue = false;
         var expr = context.expression();
-        System.Console.WriteLine($"DEBUG PreInc: Expression type = {expr.GetType().Name}, Text = '{expr.GetText()}'");
         if (expr is NovusParser.PrimaryExprContext primaryCtx)
         {
             var primaryExpr = primaryCtx.primaryExpression();
-            System.Console.WriteLine($"DEBUG PreInc: PrimaryExpression type = {primaryExpr?.GetType().Name}");
             if (primaryExpr is NovusParser.IdentifierExprContext)
             {
                 isLvalue = true;
@@ -7640,14 +7635,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             // monomorphized type (e.g., Vec<u8>) won't be reference-equal, but should be considered compatible
             if (expectedStruct.CacheKey != null && actualStruct.CacheKey != null)
             {
-                Console.WriteLine($"DEBUG: Comparing struct CacheKeys: expected='{expectedStruct.CacheKey}' actual='{actualStruct.CacheKey}'");
                 return expectedStruct.CacheKey == actualStruct.CacheKey;
             }
 
             // Debug: Check if one has CacheKey and the other doesn't
             if (expectedStruct.CacheKey != null || actualStruct.CacheKey != null)
             {
-                Console.WriteLine($"DEBUG: CacheKey mismatch - expected CacheKey='{expectedStruct.CacheKey}' (GenericParams={expectedStruct.GenericParameters.Count}), actual CacheKey='{actualStruct.CacheKey}' (GenericParams={actualStruct.GenericParameters.Count})");
                 Console.WriteLine($"  Expected fields: {string.Join(", ", expectedStruct.Fields.Select(f => $"{f.Name}:{f.Type.Name}"))}");
                 Console.WriteLine($"  Actual fields: {string.Join(", ", actualStruct.Fields.Select(f => $"{f.Name}:{f.Type.Name}"))}");
                 Console.WriteLine($"  ReferenceEquals: {ReferenceEquals(expectedStruct, actualStruct)}");

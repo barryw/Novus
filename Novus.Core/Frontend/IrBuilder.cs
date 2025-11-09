@@ -5439,7 +5439,6 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 {
                     if (structType.StructName == "Str")
                     {
-                        Console.WriteLine($"DEBUG: Str->*u8 coercion needed. argValue type: {argValue.GetType().Name}");
                         // If argValue is a struct literal, extract the ptr field directly (no instruction needed)
                         if (argValue is IrStructLiteral strLiteral)
                         {
@@ -8294,12 +8293,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
                             expectedEnum.CacheKey != null)
                         {
                             // Use the concrete type from context (e.g., Option<MemoryBlock> instead of Option<T>)
-                            Console.WriteLine($"DEBUG ResolveStaticMemberAccess: Using concrete type {expectedEnum.CacheKey} instead of generic {enumType.EnumName}");
                             concreteEnumType = expectedEnum;
                         }
                         else
                         {
-                            Console.WriteLine($"DEBUG ResolveStaticMemberAccess: NOT using concrete type. _expectedType={_expectedType?.GetType().Name}, EnumName match={(_expectedType is IrEnumType ee ? ee.EnumName == enumType.EnumName : false)}, CacheKey={(_expectedType is IrEnumType ee2 ? ee2.CacheKey : "N/A")}");
                         }
 
                         // For unit variants (no associated data), create the enum value directly
@@ -8522,9 +8519,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             {
                 // Check if all type arguments are concrete (not generic)
                 var typeArgs = baseStructType.GenericParameters.Select(p => typeSubstitutions[p]).ToList();
-                Console.WriteLine($"DEBUG IrBuilder.VisitStructLiteral: {baseStructType.StructName} typeSubstitutions={string.Join(", ", typeSubstitutions.Select(kv => $"{kv.Key}->{kv.Value.Name}"))}");
                 bool allConcrete = typeArgs.All(t => !(t is IrGenericType));
-                Console.WriteLine($"DEBUG IrBuilder.VisitStructLiteral: {baseStructType.StructName} allConcrete={allConcrete}");
 
                 if (allConcrete)
                 {
@@ -9048,7 +9043,6 @@ public class IrBuilder : NovusBaseVisitor<object?>
         IrEnumType? enumType = enumTypeForValidation;
         if (enumType != null)
         {
-            Console.WriteLine($"DEBUG IrBuilder: Match on enum '{enumType.EnumName}' with CacheKey='{enumType.CacheKey}'");
             foreach (var v in enumType.Variants)
             {
                 Console.WriteLine($"  Variant '{v.Name}': AssociatedData=[{string.Join(", ", v.AssociatedData.Select(d => $"{d.Name} (CacheKey={(d is IrStructType st ? st.CacheKey : "N/A")})"))}]");
@@ -9663,7 +9657,6 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     if (substitutions.ContainsKey(genericParam))
                     {
                         var substType = substitutions[genericParam];
-                        Console.WriteLine($"DEBUG IrBuilder.SubstituteGenericTypes: Struct {structType.StructName}<{string.Join(",", structType.GenericParameters)}> generic param '{genericParam}' -> {substType.Name} (IsGeneric={substType is IrGenericType})");
                         // Check if it's being replaced with a concrete (non-generic) type
                         if (!(substType is IrGenericType))
                         {
@@ -9673,7 +9666,6 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     }
                     else
                     {
-                        Console.WriteLine($"DEBUG IrBuilder.SubstituteGenericTypes: Struct {structType.StructName}<{string.Join(",", structType.GenericParameters)}> generic param '{genericParam}' NOT in substitutions");
                     }
                 }
 
@@ -9681,12 +9673,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 // return the original struct unchanged
                 if (!hasConcreteSubstitution)
                 {
-                    Console.WriteLine($"DEBUG IrBuilder.SubstituteGenericTypes: Returning original struct {structType.StructName}<{string.Join(",", structType.GenericParameters)}> unchanged");
                     return structType;
                 }
                 else
                 {
-                    Console.WriteLine($"DEBUG IrBuilder.SubstituteGenericTypes: Creating monomorphized struct for {structType.StructName}");
                 }
             }
 
