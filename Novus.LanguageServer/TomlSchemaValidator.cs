@@ -125,7 +125,7 @@ public class TomlSchemaValidator
                     diagnostics.Add(CreateDiagnostic(
                         line, column,
                         $"Unknown key '{key}' in [workspace] section. Valid keys are: {string.Join(", ", knownKeys)}",
-                        DiagnosticSeverity.Error,
+                        DiagnosticSeverity.Warning,
                         length
                     ));
                 }
@@ -229,7 +229,7 @@ public class TomlSchemaValidator
                 diagnostics.Add(CreateDiagnostic(
                     line, column,
                     $"Unknown key '{key}' in [package] section. Valid keys are: {string.Join(", ", knownKeys)}",
-                    DiagnosticSeverity.Error,
+                    DiagnosticSeverity.Warning,
                     length
                 ));
             }
@@ -389,7 +389,7 @@ public class TomlSchemaValidator
                 diagnostics.Add(CreateDiagnostic(
                     line, column,
                     $"Unknown key '{key}' in [build] section. Valid keys are: {string.Join(", ", knownKeys)}",
-                    DiagnosticSeverity.Error,
+                    DiagnosticSeverity.Warning,
                     length
                 ));
             }

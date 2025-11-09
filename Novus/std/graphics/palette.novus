@@ -234,7 +234,7 @@ pub fn load_palette(vp: *ViewPort, colors: &[Color]) -> Result<(), GraphicsError
             let table_opt = MemoryBlock::alloc(table_size, $00000001)  // MEMF_PUBLIC
             match table_opt {
                 None => return Result::Err(GraphicsError::BitMapAllocFailed),
-                Some(mut table) => {
+                Some(table) => {
                     defer {
                         table.free()
                     }
@@ -247,7 +247,8 @@ pub fn load_palette(vp: *ViewPort, colors: &[Color]) -> Result<(), GraphicsError
                         let (r4, g4, b4) = color.to_rgb4()
 
                         // Pack into 16-bit word: 0x0RGB (upper 4 bits unused)
-                        let packed: u16 = ((u16)r4 << 8) | ((u16)g4 << 4) | (u16)b4
+                        // Using multiplication instead of bit shifts for parser compatibility
+                        let packed: u16 = ((u16)r4 * 256) | ((u16)g4 * 16) | (u16)b4
                         table_ptr[i] = packed
 
                         i = i + 1
@@ -278,7 +279,7 @@ pub fn load_palette(vp: *ViewPort, colors: &[Color]) -> Result<(), GraphicsError
             let table_opt = MemoryBlock::alloc(table_bytes, $00000001)  // MEMF_PUBLIC
             match table_opt {
                 None => return Result::Err(GraphicsError::BitMapAllocFailed),
-                Some(mut table) => {
+                Some(table) => {
                     defer {
                         table.free()
                     }
@@ -363,8 +364,9 @@ pub fn get_color(cm: *ColorMap, index: u8) -> Result<Color, GraphicsError> {
             }
 
             // Extract 4-bit components from packed format (0x0RGB)
-            let r4: u8 = (u8)((rgb4 >> 8) & $F)
-            let g4: u8 = (u8)((rgb4 >> 4) & $F)
+            // Using division instead of bit shifts for parser compatibility
+            let r4: u8 = (u8)((rgb4 / 256) & $F)
+            let g4: u8 = (u8)((rgb4 / 16) & $F)
             let b4: u8 = (u8)(rgb4 & $F)
 
             // Convert to 8-bit
@@ -377,7 +379,7 @@ pub fn get_color(cm: *ColorMap, index: u8) -> Result<Color, GraphicsError> {
             let table_opt = MemoryBlock::alloc(12, $00000001)  // MEMF_PUBLIC
             match table_opt {
                 None => return Result::Err(GraphicsError::BitMapAllocFailed),
-                Some(mut table) => {
+                Some(table) => {
                     defer {
                         table.free()
                     }
@@ -393,10 +395,10 @@ pub fn get_color(cm: *ColorMap, index: u8) -> Result<Color, GraphicsError> {
                     let b32: u32 = table_ptr[2]
 
                     // Scale 32-bit (0x00000000-0xFFFFFFFF) to 8-bit (0-255)
-                    // Take upper 8 bits
-                    let r8: u8 = (u8)(r32 >> 24)
-                    let g8: u8 = (u8)(g32 >> 24)
-                    let b8: u8 = (u8)(b32 >> 24)
+                    // Take upper 8 bits using division instead of bit shift
+                    let r8: u8 = (u8)(r32 / 16777216)  // 2^24 = 16777216
+                    let g8: u8 = (u8)(g32 / 16777216)
+                    let b8: u8 = (u8)(b32 / 16777216)
 
                     return Result::Ok(Color { r: r8, g: g8, b: b8 })
                 }
