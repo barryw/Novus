@@ -1,0 +1,43 @@
+// Test pointer-to-bool automatic coercion
+
+pub fn main() -> i32 {
+    // Test 1: null pointer should be false
+    let null_ptr: *i32 = (*i32)0
+
+    if null_ptr {
+        return 1  // Error: null pointer should be falsy
+    }
+
+    // Test 2: non-null pointer should be true
+    let non_null_ptr: *i32 = (*i32)4096
+
+    if non_null_ptr {
+        // Success: non-null pointer is truthy
+    } else {
+        return 2  // Error: non-null pointer should be truthy
+    }
+
+    // Test 3: Test with actual variable reference
+    let x: i32 = 42
+    let ptr_to_x: *i32 = (*i32)&x
+
+    if ptr_to_x {
+        // Success: pointer to variable is truthy
+    } else {
+        return 3  // Error
+    }
+
+    // Test 4: Inverted logic with null
+    if !null_ptr {
+        // Success: !null is true
+    } else {
+        return 4  // Error
+    }
+
+    // Test 5: Inverted logic with non-null
+    if !non_null_ptr {
+        return 5  // Error: !non_null should be false
+    }
+
+    return 0  // All tests passed!
+}

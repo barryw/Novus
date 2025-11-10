@@ -4231,8 +4231,19 @@ public class IrBuilder : NovusBaseVisitor<object?>
         var condition = (IrValue?)Visit(context.expression());
         var (thenLabel, falseTarget) = _ifLabels!.Value;
 
+        // Automatic pointer-to-bool coercion: if ptr { ... }
+        // Convert pointer to bool by comparing with null (ptr != 0)
+        if (condition!.Type is IrPointerType or IrReferenceType or IrMutReferenceType)
+        {
+            var resultTemp = $"%t{_tempCounter++}";
+            var zeroValue = new IrConstant(0, IrIntType.U32);
+            var comparison = new IrBinaryOp(resultTemp, IrBinaryOp.OpKind.Ne, condition, zeroValue, IrBoolType.Instance);
+            _currentBlock!.AddInstruction(comparison);
+            condition = new IrVariable(resultTemp, IrBoolType.Instance);
+        }
+
         // Branch based on condition
-        _currentBlock!.AddInstruction(new IrConditionalBranch(condition!, thenLabel, falseTarget));
+        _currentBlock!.AddInstruction(new IrConditionalBranch(condition, thenLabel, falseTarget));
         return null;
     }
 
@@ -4385,7 +4396,19 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Condition label
         _currentBlock!.AddInstruction(new IrLabel(condLabel));
         var condition = (IrValue?)Visit(context.expression());
-        _currentBlock!.AddInstruction(new IrConditionalBranch(condition!, bodyLabel, endLabel));
+
+        // Automatic pointer-to-bool coercion: while ptr { ... }
+        // Convert pointer to bool by comparing with null (ptr != 0)
+        if (condition!.Type is IrPointerType or IrReferenceType or IrMutReferenceType)
+        {
+            var ptrToBoolTemp = $"%t{_tempCounter++}";
+            var zeroValue = new IrConstant(0, IrIntType.U32);
+            var comparison = new IrBinaryOp(ptrToBoolTemp, IrBinaryOp.OpKind.Ne, condition, zeroValue, IrBoolType.Instance);
+            _currentBlock!.AddInstruction(comparison);
+            condition = new IrVariable(ptrToBoolTemp, IrBoolType.Instance);
+        }
+
+        _currentBlock!.AddInstruction(new IrConditionalBranch(condition, bodyLabel, endLabel));
 
         // Body label
         _currentBlock!.AddInstruction(new IrLabel(bodyLabel));
@@ -6815,10 +6838,23 @@ public class IrBuilder : NovusBaseVisitor<object?>
         if (op == "!")
         {
             // Logical NOT: false becomes true, true becomes false
+            // For pointers, first convert to bool (ptr != 0), then negate
+            IrValue boolOperand = operandValue;
+
+            if (operandValue.Type is IrPointerType or IrReferenceType or IrMutReferenceType)
+            {
+                // Convert pointer to bool: ptr != 0
+                var ptrToBoolTemp = $"%t{_tempCounter++}";
+                var zeroValue = new IrConstant(0, IrIntType.U32);
+                var comparison = new IrBinaryOp(ptrToBoolTemp, IrBinaryOp.OpKind.Ne, operandValue, zeroValue, IrBoolType.Instance);
+                _currentBlock!.AddInstruction(comparison);
+                boolOperand = new IrVariable(ptrToBoolTemp, IrBoolType.Instance);
+            }
+
             // Implemented as: result = (operand XOR 1)
             // This flips the boolean bit: 0 XOR 1 = 1, 1 XOR 1 = 0
             var tempName = $"%t{_tempCounter++}";
-            var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Xor, operandValue, new IrConstant(1, new IrIntType(32, false)), IrBoolType.Instance);
+            var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Xor, boolOperand, new IrConstant(1, new IrIntType(32, false)), IrBoolType.Instance);
             _currentBlock!.AddInstruction(binOp);
             return new IrVariable(tempName, IrBoolType.Instance);
         }
@@ -7648,10 +7684,21 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         var resultTemp = $"%t{_tempCounter++}";
 
+        // Automatic pointer-to-bool coercion: ptr ? ... : ...
+        // Convert pointer to bool by comparing with null (ptr != 0)
+        if (condition.Type is IrPointerType or IrReferenceType or IrMutReferenceType)
+        {
+            var ptrToBoolTemp = $"%t{_tempCounter++}";
+            var zeroValue = new IrConstant(0, IrIntType.U32);
+            var comparison = new IrBinaryOp(ptrToBoolTemp, IrBinaryOp.OpKind.Ne, condition, zeroValue, IrBoolType.Instance);
+            _currentBlock!.AddInstruction(comparison);
+            condition = new IrVariable(ptrToBoolTemp, IrBoolType.Instance);
+        }
+
         // Branch based on condition
         _currentBlock!.AddInstruction(new IrConditionalBranch(condition, trueLabel, falseLabel));
 
-        // True branch
+        // True branch - preserve expected type if already set from context
         _currentBlock!.AddInstruction(new IrLabel(trueLabel));
         var trueValue = (IrValue)Visit(context.expression(1))!;
         var resultType = trueValue.Type; // Get type from the true branch value
@@ -7663,9 +7710,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
         _currentBlock!.AddInstruction(new IrLocalDecl(resultTemp, resultType, false, trueValue));
         _currentBlock!.AddInstruction(new IrBranch(endLabel));
 
-        // False branch
+        // False branch - set expected type for bidirectional type checking
+        // Use the type from the true branch to help resolve generic types in the false branch
         _currentBlock!.AddInstruction(new IrLabel(falseLabel));
+        var savedExpectedType = _expectedType;
+        _expectedType = resultType; // Use the type from the true branch
         var falseValue = (IrValue)Visit(context.expression(2))!;
+        _expectedType = savedExpectedType; // Restore previous expected type
         _currentBlock!.AddInstruction(new IrLocalDecl(resultTemp, resultType, false, falseValue));
 
         // End

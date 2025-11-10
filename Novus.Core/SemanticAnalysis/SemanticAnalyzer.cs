@@ -3318,16 +3318,16 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
 
         // Check that condition is a valid boolean expression
-        // Accept bool or any numeric type (0 = false, non-zero = true)
-        if (conditionType != null && !IsBoolOrNumericType(conditionType))
+        // Accept bool, any numeric type (0 = false, non-zero = true), or pointer type (null = false, non-null = true)
+        if (conditionType != null && !IsBoolOrNumericOrPointerType(conditionType))
         {
             _diagnostics.ReportError(
                 "E0010",
-                "if condition must be a boolean or numeric type",
+                "if condition must be a boolean, numeric, or pointer type",
                 location,
                 helpTexts: new List<string>
                 {
-                    $"found type '{TypeToString(conditionType)}', expected a boolean or numeric type",
+                    $"found type '{TypeToString(conditionType)}', expected a boolean, numeric, or pointer type",
                     "use a comparison expression like 'x == 0' or 'x > 10'"
                 }
             );
@@ -3409,15 +3409,15 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
 
         // Check that condition is a valid boolean expression
-        if (conditionType != null && !IsBoolOrNumericType(conditionType))
+        if (conditionType != null && !IsBoolOrNumericOrPointerType(conditionType))
         {
             _diagnostics.ReportError(
                 "E0010",
-                "while condition must be a boolean or numeric type",
+                "while condition must be a boolean, numeric, or pointer type",
                 location,
                 helpTexts: new List<string>
                 {
-                    $"found type '{TypeToString(conditionType)}', expected a boolean or numeric type"
+                    $"found type '{TypeToString(conditionType)}', expected a boolean, numeric, or pointer type"
                 }
             );
         }
@@ -6899,13 +6899,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         if (op == "!")
         {
-            // Logical NOT: requires boolean or numeric type
-            if (!IsBoolOrNumericType(operandType))
+            // Logical NOT: requires boolean, numeric, or pointer type
+            if (!IsBoolOrNumericOrPointerType(operandType))
             {
                 var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
                 _diagnostics.ReportError(
                     "E0024",
-                    $"logical operator '!' requires boolean or numeric type, found '{TypeToString(operandType)}'",
+                    $"logical operator '!' requires boolean, numeric, or pointer type, found '{TypeToString(operandType)}'",
                     location
                 );
             }
@@ -8163,6 +8163,11 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     private bool IsBoolOrNumericType(IrType type)
     {
         return type is IrBoolType || IsNumericType(type);
+    }
+
+    private bool IsBoolOrNumericOrPointerType(IrType type)
+    {
+        return type is IrBoolType || IsNumericType(type) || type is IrPointerType || type is IrReferenceType || type is IrMutReferenceType;
     }
 
     private IrType? GetPrimitiveType(string typeName)
