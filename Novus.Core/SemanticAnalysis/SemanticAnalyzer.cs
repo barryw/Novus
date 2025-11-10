@@ -118,6 +118,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     // Type parser for shared parsing logic
     private readonly TypeParser _typeParser;
 
+    // Track when parsing extern function signatures (skip type validation for FFI)
+    private bool _parsingExternFunction = false;
+
     public DiagnosticBag Diagnostics => _diagnostics;
 
     // Public read-only access to symbol tables for language server features (go to definition, hover, etc.)
@@ -383,8 +386,11 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     var enumName = enumDecl.IDENTIFIER().GetText();
                     if (selectiveImports.Contains(enumName))
                     {
-                        if (!_symbols.HasEnum(enumName))
+                        // Check if enum exists and has variants (fully registered)
+                        var existingEnum = _symbols.LookupEnum(enumName);
+                        if (existingEnum == null || existingEnum.Variants.Count == 0)
                         {
+                            // Enum doesn't exist or is a stub - register the full definition
                             RegisterEnum(enumDecl);
                         }
                         _importedNames[enumName] = moduleNamespace;
@@ -486,11 +492,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         {
             var enumName = enumDecl.IDENTIFIER().GetText();
 
-            // Skip if this enum has already been imported (transitive dependencies)
-            if (_symbols.HasEnum(enumName))
-            {
-                continue;
-            }
+            // ALWAYS register stub - even if enum already exists
+            // We'll replace it in Pass 2 with the full definition for imported enums
+            // This fixes cases where an enum was previously imported with variants,
+            // and we're re-importing the same module
 
             // Register a stub enum type with no variants yet
             // This makes the type name resolvable during variant parsing and trait impl type arg parsing
@@ -1005,15 +1010,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var attributes = ParseAttributes(context.attribute());
 
         // Check if function is extern by looking for 'extern' keyword
-        var isExtern = false;
-        for (int i = 0; i < Math.Min(3, context.ChildCount); i++)
-        {
-            if (context.GetChild(i)?.GetText() == "extern")
-            {
-                isExtern = true;
-                break;
-            }
-        }
+        var isExtern = context.KW_EXTERN() != null;
 
         // Check for duplicate function names
         if (_functions.ContainsKey(name))
@@ -1079,6 +1076,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
+        // Set flag to skip type validation for extern functions (FFI types may not be imported)
+        if (isExtern)
+        {
+            _parsingExternFunction = true;
+        }
+
         var returnType = context.type() != null ? ParseType(context.type()) : IrVoidType.Instance;
         var parameters = new List<ParameterSymbol>();
 
@@ -1107,6 +1110,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 parameters.Add(new ParameterSymbol(variadicName, variadicType, variadicLocation, IsVariadic: true));
                 hasVariadic = true;
             }
+        }
+
+        // Clear flag after parsing all types
+        if (isExtern)
+        {
+            _parsingExternFunction = false;
         }
 
         _functions[name] = new FunctionSymbol(name, returnType, parameters, location, isExtern, genericParams.Count > 0 ? genericParams : null, attributes, hasVariadic);
@@ -7143,7 +7152,6 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var enumType = _symbols.LookupEnum(typeName);
         if (enumType != null)
         {
-
             // Check if the variant exists
             var variant = enumType.GetVariant(memberName);
             if (variant == null)
@@ -7835,18 +7843,22 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return enumType;
         }
 
-        // Unknown type - report error and return i32 as fallback
-        var location = SourceLocationHelper.FromToken(context.typeName().Start, _filePath, _sourceLines);
-        _diagnostics.ReportError(
-            "E0020",
-            $"unknown type '{typeName}'",
-            location,
-            helpTexts: new List<string>
-            {
-                "this type has not been defined",
-                "consider defining a struct, enum with this name or using a primitive type"
-            }
-        );
+        // Unknown type - for extern functions, treat as opaque FFI type (no error)
+        // For regular functions, report error
+        if (!_parsingExternFunction)
+        {
+            var location = SourceLocationHelper.FromToken(context.typeName().Start, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0020",
+                $"unknown type '{typeName}'",
+                location,
+                helpTexts: new List<string>
+                {
+                    "this type has not been defined",
+                    "consider defining a struct, enum with this name or using a primitive type"
+                }
+            );
+        }
         return IrIntType.I32;
     }
 
@@ -8809,6 +8821,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return _analyzer._symbols.GetLocalConstants()
                 .ToDictionary(kvp => kvp.Key, kvp => (kvp.Value.Type, kvp.Value.Value));
         }
+
+        // Extern function parsing state
+        public bool IsParsingExternFunction => _analyzer._parsingExternFunction;
 
         // Error reporting
         public Action<string>? ErrorReporter => (msg) =>

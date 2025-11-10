@@ -1265,7 +1265,6 @@ pub const GVF_DONT_NULL_TERM: u32 = $800
 pub const GVF_GLOBAL_ONLY: u32 = $100
 pub const GVF_LOCAL_ONLY: u32 = $200
 pub const GVF_SAVE_VAR: u32 = $1000
-pub const GLOBALSZ: u32 = 200
 pub const HALFTONE_DITHERING: u32 = $0200
 pub const HALF_LINE: u32 = 2
 pub const HAM: u32 = $0800

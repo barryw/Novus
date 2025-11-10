@@ -116,6 +116,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Constant values
         public Dictionary<string, (IrType Type, object Value)> GetConstantValues() => _builder.GetConstantsAsTuples();
 
+        // Extern function parsing state (IrBuilder doesn't parse extern functions)
+        public bool IsParsingExternFunction => false;
+
         // Error reporting (null = throw exceptions)
         public Action<string>? ErrorReporter => null;
     }

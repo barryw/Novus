@@ -14,7 +14,7 @@ from std::mem import MemoryBlock
 // RAII Resource Wrappers (Automatic Cleanup)
 // ============================================================================
 
-/// BitMap - RAII wrapper for graphics.library bitmaps
+/// BitMapHandle - RAII wrapper for graphics.library bitmaps
 ///
 /// Automatically waits for the blitter to finish and frees the bitmap
 /// when it goes out of scope. This prevents:
@@ -26,8 +26,8 @@ from std::mem import MemoryBlock
 ///
 /// Example:
 /// ```novus
-/// fn create_offscreen_buffer(width: u32, height: u32, depth: u32) -> Result<BitMap, GraphicsError> {
-///     let bitmap = BitMap::alloc(width, height, depth, BMF_CLEAR, 0)?;
+/// fn create_offscreen_buffer(width: u32, height: u32, depth: u32) -> Result<BitMapHandle, GraphicsError> {
+///     let bitmap = BitMapHandle::alloc(width, height, depth, BMF_CLEAR, 0)?;
 ///
 ///     // Use bitmap for blitting...
 ///
@@ -36,12 +36,12 @@ from std::mem import MemoryBlock
 ///     // 2. FreeBitMap() frees the memory
 /// }
 /// ```
-pub struct BitMap {
+pub struct BitMapHandle {
     bitmap: *BitMap,  // Pointer to BitMap struct (null = invalid)
     owns_blitter: bool,  // Track if blitter operations pending
 }
 
-impl BitMap {
+impl BitMapHandle {
     /// Allocate a bitmap
     ///
     /// width: Width in pixels
@@ -51,15 +51,15 @@ impl BitMap {
     /// friend_bitmap: Friend bitmap for optimal allocation (or null)
     ///
     /// Returns Err if allocation fails (out of memory).
-    pub fn alloc(width: u32, height: u32, depth: u32, flags: u32, friend: *BitMap) -> Result<BitMap, GraphicsError> {
+    pub fn alloc(width: u32, height: u32, depth: u32, flags: u32, friend: *BitMap) -> Result<BitMapHandle, GraphicsError> {
         let bitmap = AllocBitMap(width, height, depth, flags, friend)
         if let bm = bitmap {
-            return Result::Ok(BitMap {
+            return Result::Ok(BitMapHandle {
                 bitmap: bm,
                 owns_blitter: false,
             })
         }
-        return Result::Err(GraphicsError::NoMem)
+        return Result::Err(GraphicsError::BitMapAllocFailed)
     }
 
     /// Get the raw BitMap pointer for FFI calls
@@ -67,15 +67,15 @@ impl BitMap {
         return self.bitmap
     }
 
-    /// Create BitMap from raw pointer (takes ownership)
+    /// Create BitMapHandle from raw pointer (takes ownership)
     ///
-    /// The bitmap will be automatically freed when the BitMap is dropped.
+    /// The bitmap will be automatically freed when the BitMapHandle is dropped.
     /// WaitBlit() will be called if blitter operations are marked pending.
     ///
     /// Only use this if you own the bitmap and it should be freed.
     /// DO NOT use for system-owned bitmaps like Screen.BitMap.
-    pub fn from_raw(bitmap: *BitMap) -> BitMap {
-        return BitMap {
+    pub fn from_raw(bitmap: *BitMap) -> BitMapHandle {
+        return BitMapHandle {
             bitmap: bitmap,
             owns_blitter: false,
         }
@@ -112,8 +112,8 @@ impl BitMap {
     }
 }
 
-// Automatic cleanup for BitMap (RAII)
-impl Drop for BitMap {
+// Automatic cleanup for BitMapHandle (RAII)
+impl Drop for BitMapHandle {
     fn drop(&mut self) {
         if let bm = self.bitmap {
             // CRITICAL: Wait for blitter before freeing bitmap

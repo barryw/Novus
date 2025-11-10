@@ -36,6 +36,9 @@ public interface ITypeParsingContext
     // Constant values (for array size evaluation)
     Dictionary<string, (IrType Type, object Value)> GetConstantValues();
 
+    // Extern function parsing state
+    bool IsParsingExternFunction { get; }
+
     // Error reporting hook (optional - null means throw exceptions)
     Action<string>? ErrorReporter { get; }
 }
@@ -160,6 +163,12 @@ public class TypeParser
             }
 
             return enumType;
+        }
+
+        // Unknown type - if we're parsing an extern function, skip validation and return placeholder
+        if (_context.IsParsingExternFunction)
+        {
+            return IrIntType.I32; // Placeholder type for extern function parameters/return
         }
 
         // Unknown type

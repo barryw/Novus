@@ -7,7 +7,7 @@
 from std::core import Option, Result, Drop
 from std::strings import Str
 from std::ffi::amiga_structs import *
-from std::error import DosError, ExecError, IntuitionError, GraphicsError, NovusError
+from std::error import DosError
 from std::tags import make_tags
 from std::ffi::dos import SystemTagList, CreateNewProc, AllocDosObject, FreeDosObject
 from std::ffi::dos import NewLoadSeg, UnLoadSeg
@@ -30,7 +30,7 @@ from std::ffi::dos import Open, Close, Read, Write, Seek, Lock, UnLock, Output
 ///     (SYS_Asynch, DOSTRUE),
 /// ])?
 /// ```
-pub fn System(command: Str, tags_ptr: *TagItem, count: u32) -> Result<i32, NovusError> {
+pub fn System(command: Str, tags_ptr: *TagItem, count: u32) -> Result<i32, DosError> {
     var tag_list = make_tags(tags_ptr, count)
     defer {
         tag_list.drop()  // Automatic cleanup at scope exit
@@ -39,7 +39,7 @@ pub fn System(command: Str, tags_ptr: *TagItem, count: u32) -> Result<i32, Novus
     let result = SystemTagList(command.as_cstr(), (*TagItem)tag_list.as_ptr())
 
     // SystemTagList returns -1 on error
-    return result == -1 ? Result::Err(DosError::NotImplemented) : Result::Ok(result)
+    return result == -1 ? Result::Err(DosError::Unknown) : Result::Ok(result)
 }
 
 // ============================================================================
@@ -61,7 +61,7 @@ pub fn System(command: Str, tags_ptr: *TagItem, count: u32) -> Result<i32, Novus
 ///     (NP_StackSize, 4096),
 /// ])?
 /// ```
-pub fn CreateProcess(tags_ptr: *TagItem, count: u32) -> Result<*Process, NovusError> {
+pub fn CreateProcess(tags_ptr: *TagItem, count: u32) -> Result<*Process, DosError> {
     var tag_list = make_tags(tags_ptr, count)
     defer {
         tag_list.drop()  // Automatic cleanup at scope exit
@@ -74,7 +74,7 @@ pub fn CreateProcess(tags_ptr: *TagItem, count: u32) -> Result<*Process, NovusEr
         return Result::Ok(proc)
     }
 
-    return Result::Err(DosError::NoFreeStore)
+    return Result::Err(DosError::Unknown)
 }
 
 // ============================================================================
@@ -98,7 +98,7 @@ pub fn CreateProcess(tags_ptr: *TagItem, count: u32) -> Result<*Process, NovusEr
 ///     FreeDosObject(DOS_STDPKT, obj)
 /// }
 /// ```
-pub fn AllocDos(obj_type: u32, tags_ptr: *TagItem, count: u32) -> Result<*u8, NovusError> {
+pub fn AllocDos(obj_type: u32, tags_ptr: *TagItem, count: u32) -> Result<*u8, DosError> {
     var tag_list = make_tags(tags_ptr, count)
     defer {
         tag_list.drop()  // Automatic cleanup at scope exit
@@ -111,7 +111,7 @@ pub fn AllocDos(obj_type: u32, tags_ptr: *TagItem, count: u32) -> Result<*u8, No
         return Result::Ok(o)
     }
 
-    return Result::Err(DosError::NoFreeStore)
+    return Result::Err(DosError::Unknown)
 }
 
 /// Load a program segment with tag-based parameters
@@ -127,7 +127,7 @@ pub fn AllocDos(obj_type: u32, tags_ptr: *TagItem, count: u32) -> Result<*u8, No
 ///     UnLoadSeg(seglist)
 /// }
 /// ```
-pub fn LoadSeg(file: Str, tags_ptr: *TagItem, count: u32) -> Result<i32, NovusError> {
+pub fn LoadSeg(file: Str, tags_ptr: *TagItem, count: u32) -> Result<i32, DosError> {
     var tag_list = make_tags(tags_ptr, count)
     defer {
         tag_list.drop()  // Automatic cleanup at scope exit
@@ -136,7 +136,7 @@ pub fn LoadSeg(file: Str, tags_ptr: *TagItem, count: u32) -> Result<i32, NovusEr
     let seglist = NewLoadSeg(file.as_cstr(), (*TagItem)tag_list.as_ptr())
 
     // NewLoadSeg returns 0 on failure
-    return seglist == 0 ? Result::Err(DosError::NotFound) : Result::Ok(seglist)
+    return seglist == 0 ? Result::Err(DosError::Unknown) : Result::Ok(seglist)
 }
 
 // ============================================================================
@@ -266,7 +266,7 @@ pub fn seek_file(fh: i32, position: i32, offset: i32) -> i32 {
 // RAII Resource Wrappers (Automatic Cleanup)
 // ============================================================================
 
-/// FileHandle - RAII wrapper for DOS file handles
+/// FileHandleWrapper - RAII wrapper for DOS file handles
 ///
 /// Automatically closes the file when the handle goes out of scope.
 /// This prevents file handle leaks, which are a common source of bugs
@@ -275,16 +275,16 @@ pub fn seek_file(fh: i32, position: i32, offset: i32) -> i32 {
 /// Example:
 /// ```novus
 /// fn read_config() -> Result<String, DosError> {
-///     let file = FileHandle::open("S:Startup-Sequence", MODE_OLDFILE)?;
+///     let file = FileHandleWrapper::open("S:Startup-Sequence", MODE_OLDFILE)?;
 ///     // Use file...
 ///     // Automatically closed here!
 /// }
 /// ```
-pub struct FileHandle {
+pub struct FileHandleWrapper {
     fh: i32,  // BPTR file handle (0 = invalid)
 }
 
-impl FileHandle {
+impl FileHandleWrapper {
     /// Open a file and return a RAII handle
     ///
     /// Mode should be one of:
@@ -293,9 +293,9 @@ impl FileHandle {
     /// - MODE_READWRITE (1004): Open with shared lock
     ///
     /// Returns Err on failure (use IoErr() for details).
-    pub fn open(path: Str, mode: i32) -> Result<FileHandle, DosError> {
+    pub fn open(path: Str, mode: i32) -> Result<FileHandleWrapper, DosError> {
         let fh = Open(path.as_cstr(), mode)
-        return fh == 0 ? Result::Err(DosError::NotFound) : Result::Ok(FileHandle { fh: fh })
+        return fh == 0 ? Result::Err(DosError::Unknown) : Result::Ok(FileHandleWrapper { fh: fh })
     }
 
     /// Get the raw BPTR handle for FFI calls
@@ -303,14 +303,14 @@ impl FileHandle {
         return self.fh
     }
 
-    /// Create FileHandle from raw BPTR (takes ownership)
+    /// Create FileHandleWrapper from raw BPTR (takes ownership)
     ///
-    /// The handle will be automatically closed when the FileHandle is dropped.
+    /// The handle will be automatically closed when the FileHandleWrapper is dropped.
     /// Only use this if you own the handle and it should be closed.
     ///
     /// DO NOT use for system-owned handles like Input(), Output(), Error().
-    pub fn from_raw(fh: i32) -> FileHandle {
-        return FileHandle { fh: fh }
+    pub fn from_raw(fh: i32) -> FileHandleWrapper {
+        return FileHandleWrapper { fh: fh }
     }
 
     /// Extract raw BPTR and prevent automatic close
@@ -348,8 +348,8 @@ impl FileHandle {
     }
 }
 
-// Automatic cleanup for FileHandle (RAII)
-impl Drop for FileHandle {
+// Automatic cleanup for FileHandleWrapper (RAII)
+impl Drop for FileHandleWrapper {
     fn drop(&mut self) {
         if self.fh != 0 {
             Close(self.fh)
@@ -386,7 +386,7 @@ impl DirLock {
     /// Returns Err on failure (use IoErr() for details).
     pub fn lock(path: Str, lock_type: i32) -> Result<DirLock, DosError> {
         let lock = Lock(path.as_cstr(), lock_type)
-        return lock == 0 ? Result::Err(DosError::NotFound) : Result::Ok(DirLock { lock: lock })
+        return lock == 0 ? Result::Err(DosError::Unknown) : Result::Ok(DirLock { lock: lock })
     }
 
     /// Get the raw BPTR lock for FFI calls
