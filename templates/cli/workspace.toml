@@ -1,4 +1,7 @@
 [workspace]
+name = "{{PROJECT_NAME}}"
+description = "Novus CLI application"
+version = "0.1.0"
 members = ["cli"]
 
 [workspace.build]

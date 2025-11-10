@@ -116,7 +116,7 @@ public class TomlSchemaValidator
             }
 
             // Check for unknown keys in workspace section
-            var knownKeys = new HashSet<string> { "members", "build" };
+            var knownKeys = new HashSet<string> { "name", "description", "version", "authors", "members", "build" };
             foreach (var key in workspaceTable.Keys)
             {
                 if (!knownKeys.Contains(key))
