@@ -139,4 +139,81 @@ public class LanguageServerIntegrationTests
             return Array.Empty<object[]>();
         }
     }
+
+    /// <summary>
+    /// Analyze all stdlib files and report warnings by category.
+    /// This test ALWAYS PASSES but outputs a comprehensive warning analysis.
+    /// Use this to identify which warnings are worth addressing.
+    /// </summary>
+    [Fact]
+    public void AnalyzeAllStdLibWarnings()
+    {
+        var allFiles = GetAllStdFiles().ToList();
+        var warningsByCode = new Dictionary<string, List<(string file, int line, string message)>>();
+        var totalWarnings = 0;
+        var filesWithWarnings = 0;
+
+        foreach (var relativePath in allFiles)
+        {
+            var (hasErrors, diagnostics) = AnalyzeLikeLanguageServer(relativePath);
+
+            var warnings = diagnostics.Where(d => !d.IsError).ToList();
+            if (warnings.Any())
+            {
+                filesWithWarnings++;
+                foreach (var warning in warnings)
+                {
+                    var code = warning.Code;
+                    if (!warningsByCode.ContainsKey(code))
+                    {
+                        warningsByCode[code] = new List<(string, int, string)>();
+                    }
+                    warningsByCode[code].Add((relativePath, warning.Location.Line, warning.Message));
+                    totalWarnings++;
+                }
+            }
+        }
+
+        // Build comprehensive warning report
+        var report = new System.Text.StringBuilder();
+        report.AppendLine($"\n{'='.ToString().PadRight(80, '=')}");
+        report.AppendLine($"STDLIB WARNING ANALYSIS");
+        report.AppendLine($"{'='.ToString().PadRight(80, '=')}");
+        report.AppendLine($"Total files analyzed: {allFiles.Count}");
+        report.AppendLine($"Files with warnings: {filesWithWarnings}");
+        report.AppendLine($"Total warnings: {totalWarnings}");
+        report.AppendLine($"Unique warning codes: {warningsByCode.Count}");
+        report.AppendLine($"{'='.ToString().PadRight(80, '=')}");
+
+        foreach (var kvp in warningsByCode.OrderByDescending(x => x.Value.Count))
+        {
+            report.AppendLine($"\n[{kvp.Key}] - {kvp.Value.Count} occurrences");
+            report.AppendLine(new string('-', 80));
+
+            // Show first occurrence with full message
+            var first = kvp.Value.First();
+            report.AppendLine($"  Example: {first.file}:{first.line}");
+            report.AppendLine($"  Message: {first.message}");
+
+            // Group by file
+            var byFile = kvp.Value.GroupBy(x => x.file);
+            report.AppendLine($"\n  Files affected ({byFile.Count()}):");
+            foreach (var fileGroup in byFile.OrderBy(g => g.Key).Take(10))
+            {
+                report.AppendLine($"    - {fileGroup.Key} ({fileGroup.Count()} times)");
+            }
+            if (byFile.Count() > 10)
+            {
+                report.AppendLine($"    ... and {byFile.Count() - 10} more files");
+            }
+        }
+
+        report.AppendLine($"\n{'='.ToString().PadRight(80, '=')}");
+
+        // Output the report (this will show in test output)
+        Console.WriteLine(report.ToString());
+
+        // This test always passes - it's just for analysis
+        Assert.True(true, $"Warning analysis complete. See output for details.");
+    }
 }

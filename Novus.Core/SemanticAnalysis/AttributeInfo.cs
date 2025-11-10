@@ -202,6 +202,9 @@ public static class KnownAttributes
     // C interop attributes
     public const string Export = "export";
 
+    // Diagnostic attributes
+    public const string Suppress = "suppress";
+
     /// <summary>
     /// All known attribute names for validation
     /// </summary>
@@ -214,7 +217,8 @@ public static class KnownAttributes
         Unsafe, ThreadSafe, SingleThreaded,
         Cold, Hot, Const,
         Target, Cfg,
-        Export
+        Export,
+        Suppress
     };
 
     /// <summary>

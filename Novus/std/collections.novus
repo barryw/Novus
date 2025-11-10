@@ -74,14 +74,14 @@ impl<T> Vec<T> {
         // Only grow if we need more capacity
         if needed_capacity > self.capacity {
             // Calculate new capacity (double current or use needed, whichever is larger)
-            var new_capacity: u32 = self.capacity * 2
+            var new_capacity: u32 = self.capacity * 2u32
             if new_capacity < needed_capacity {
                 new_capacity = needed_capacity
             }
 
             // Minimum capacity of 4 elements
-            if new_capacity < 4 {
-                new_capacity = 4
+            if new_capacity < 4u32 {
+                new_capacity = 4u32
             }
 
             let element_size: u32 = @sizeof(T)
@@ -96,10 +96,10 @@ impl<T> Vec<T> {
                     let new_ptr: *T = (*T)new_block.ptr()
 
                     // Copy existing elements to new allocation
-                    var i: u32 = 0
+                    var i: u32 = 0u32
                     while i < self.len {
                         new_ptr[i] = self.ptr[i]
-                        i = i + 1
+                        i = i + 1u32
                     }
 
                     // Free old memory if it exists
@@ -139,17 +139,17 @@ impl<T> Vec<T> {
 
         // Add the element
         self.ptr[self.len] = value
-        self.len = self.len + 1
+        self.len = self.len + 1u32
         return true
     }
 
     // Remove and return the last element (returns Option<T>)
     pub fn pop(&mut self) -> Option<T> {
-        if self.len == 0 {
+        if self.len == 0u32 {
             return Option::None
         }
 
-        self.len = self.len - 1
+        self.len = self.len - 1u32
         let value: T = self.ptr[self.len]
         return Option::Some(value)
     }
@@ -207,13 +207,13 @@ impl<T> Vec<T> {
         // Shift elements right to make room
         var i: u32 = self.len
         while i > index {
-            self.ptr[i] = self.ptr[i - 1]
+            self.ptr[i] = self.ptr[i - 1u32]
             i--
         }
 
         // Insert the element
         self.ptr[index] = value
-        self.len = self.len + 1
+        self.len = self.len + 1u32
         return true
     }
 
@@ -239,12 +239,12 @@ impl<T> Vec<T> {
 
         // Shift elements left
         var i: u32 = index
-        while i < self.len - 1 {
-            self.ptr[i] = self.ptr[i + 1]
+        while i < self.len - 1u32 {
+            self.ptr[i] = self.ptr[i + 1u32]
             i++
         }
 
-        self.len = self.len - 1
+        self.len = self.len - 1u32
         return Option::Some(value)
     }
 
@@ -311,7 +311,7 @@ impl<T> Vec<T> {
                 let new_ptr: *T = (*T)new_block.ptr()
 
                 // Copy existing elements to new allocation
-                var i: u32 = 0
+                var i: u32 = 0u32
                 while i < self.len {
                     new_ptr[i] = self.ptr[i]
                     i++

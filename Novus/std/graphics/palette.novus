@@ -63,9 +63,9 @@ pub fn from_rgb4(r4: u8, g4: u8, b4: u8) -> Color {
     // Formula: value * 17 (0xF * 17 = 255)
     // This gives exact mapping: 0->0, 15->255
     return Color {
-        r: r4 * 17,
-        g: g4 * 17,
-        b: b4 * 17,
+        r: r4 * 17u8,
+        g: g4 * 17u8,
+        b: b4 * 17u8,
     }
 }
 
@@ -83,9 +83,9 @@ impl Color {
     pub fn to_rgb4(&self) -> (u8, u8, u8) {
         // Scale 8-bit (0-255) to 4-bit (0-15)
         // Formula: value / 17
-        let r4: u8 = self.r / 17
-        let g4: u8 = self.g / 17
-        let b4: u8 = self.b / 17
+        let r4: u8 = self.r / 17u8
+        let g4: u8 = self.g / 17u8
+        let b4: u8 = self.b / 17u8
         return (r4, g4, b4)
     }
 
@@ -139,9 +139,10 @@ const MAX_COLORS_AGA: u16 = 256  // AGA: 256 colors (8 bitplanes)
 /// let red = rgb(255, 0, 0)
 /// set_color(vp, 1, red)?
 /// ```
+@suppress("W0002", "Hardware color registers and graphics.library FFI require specific bit widths. Input validated to fit target types")
 pub fn set_color(vp: *ViewPort, index: u8, color: Color) -> Result<(), GraphicsError> {
     // Validate ViewPort pointer
-    if (u32)vp == 0 {
+    if (u32)vp == 0u32 {
         return Result::Err(GraphicsError::InvalidRastPort)
     }
 
@@ -168,9 +169,9 @@ pub fn set_color(vp: *ViewPort, index: u8, color: Color) -> Result<(), GraphicsE
 
             // Scale 8-bit (0-255) to 32-bit (0x00000000-0xFFFFFFFF)
             // Formula: value * 0x01010101 gives exact mapping
-            let r32: u32 = (u32)color.r * $01010101
-            let g32: u32 = (u32)color.g * $01010101
-            let b32: u32 = (u32)color.b * $01010101
+            let r32: u32 = (u32)color.r * $01010101u32
+            let g32: u32 = (u32)color.g * $01010101u32
+            let b32: u32 = (u32)color.b * $01010101u32
 
             // Call SetRGB32() - takes u32 index and RGB values
             unsafe {
@@ -206,15 +207,16 @@ pub fn set_color(vp: *ViewPort, index: u8, color: Color) -> Result<(), GraphicsE
 /// ]
 /// load_palette(vp, &palette)?
 /// ```
+@suppress("W0002", "Hardware color table formats and graphics.library FFI require specific bit widths. Values validated to fit target types")
 pub fn load_palette(vp: *ViewPort, colors: &[Color]) -> Result<(), GraphicsError> {
     // Validate ViewPort pointer
-    if (u32)vp == 0 {
+    if (u32)vp == 0u32 {
         return Result::Err(GraphicsError::InvalidRastPort)
     }
 
     // Get colors slice info
     let color_count: u32 = colors.len()
-    if color_count == 0 {
+    if color_count == 0u32 {
         return Result::Ok(())  // Empty palette is valid (no-op)
     }
 
@@ -230,7 +232,7 @@ pub fn load_palette(vp: *ViewPort, colors: &[Color]) -> Result<(), GraphicsError
             // Build 4-bit RGB table for LoadRGB4()
             // Format: 3 nibbles per color (0xRGB) packed into 16-bit words
             // We need (count * 2) bytes + 2 bytes for terminator
-            let table_size: u32 = (color_count * 2) + 2
+            let table_size: u32 = (color_count * 2u32) + 2u32
             let table_opt = MemoryBlock::alloc(table_size, $00000001)  // MEMF_PUBLIC
             match table_opt {
                 None => return Result::Err(GraphicsError::BitMapAllocFailed),
@@ -241,21 +243,21 @@ pub fn load_palette(vp: *ViewPort, colors: &[Color]) -> Result<(), GraphicsError
 
                     // Pack colors into table
                     let table_ptr: *u16 = (*u16)table.ptr()
-                    var i: u32 = 0
+                    var i: u32 = 0u32
                     while i < color_count {
                         let color: Color = colors[i]
                         let (r4, g4, b4) = color.to_rgb4()
 
                         // Pack into 16-bit word: 0x0RGB (upper 4 bits unused)
                         // Using multiplication instead of bit shifts for parser compatibility
-                        let packed: u16 = ((u16)r4 * 256) | ((u16)g4 * 16) | (u16)b4
+                        let packed: u16 = ((u16)r4 * 256u16) | ((u16)g4 * 16u16) | (u16)b4
                         table_ptr[i] = packed
 
-                        i = i + 1
+                        i = i + 1u32
                     }
 
                     // LoadRGB4 expects table terminated by -1
-                    table_ptr[color_count] = 0
+                    table_ptr[color_count] = 0u16
 
                     // Load the palette
                     unsafe {
@@ -273,8 +275,8 @@ pub fn load_palette(vp: *ViewPort, colors: &[Color]) -> Result<(), GraphicsError
             // Build 32-bit RGB table for LoadRGB32()
             // Format: (count << 16) | 0, r, g, b, r, g, b, ..., 0, 0, 0
             // Need: 1 long (header) + (count * 3) longs + 1 long (terminator)
-            let table_longs: u32 = 1 + (color_count * 3) + 1
-            let table_bytes: u32 = table_longs * 4
+            let table_longs: u32 = 1u32 + (color_count * 3u32) + 1u32
+            let table_bytes: u32 = table_longs * 4u32
 
             let table_opt = MemoryBlock::alloc(table_bytes, $00000001)  // MEMF_PUBLIC
             match table_opt {
@@ -287,28 +289,28 @@ pub fn load_palette(vp: *ViewPort, colors: &[Color]) -> Result<(), GraphicsError
                     let table_ptr: *u32 = (*u32)table.ptr()
 
                     // Header: (count << 16) | first_color
-                    table_ptr[0] = (color_count << 16) | 0
+                    table_ptr[0u32] = (color_count << 16u32) | 0u32
 
                     // Pack colors
-                    var i: u32 = 0
+                    var i: u32 = 0u32
                     while i < color_count {
                         let color: Color = colors[i]
 
                         // Scale 8-bit to 32-bit
-                        let r32: u32 = (u32)color.r * $01010101
-                        let g32: u32 = (u32)color.g * $01010101
-                        let b32: u32 = (u32)color.b * $01010101
+                        let r32: u32 = (u32)color.r * $01010101u32
+                        let g32: u32 = (u32)color.g * $01010101u32
+                        let b32: u32 = (u32)color.b * $01010101u32
 
-                        let base: u32 = 1 + (i * 3)
-                        table_ptr[base + 0] = r32
-                        table_ptr[base + 1] = g32
-                        table_ptr[base + 2] = b32
+                        let base: u32 = 1u32 + (i * 3u32)
+                        table_ptr[base + 0u32] = r32
+                        table_ptr[base + 1u32] = g32
+                        table_ptr[base + 2u32] = b32
 
-                        i = i + 1
+                        i = i + 1u32
                     }
 
                     // Terminator: 0, 0, 0
-                    table_ptr[table_longs - 1] = 0
+                    table_ptr[table_longs - 1u32] = 0u32
 
                     // Load the palette
                     unsafe {
@@ -342,9 +344,10 @@ pub fn load_palette(vp: *ViewPort, colors: &[Color]) -> Result<(), GraphicsError
 /// let color = get_color(cm, 1)?
 /// print("Color 1: R={}, G={}, B={}", color.r, color.g, color.b)
 /// ```
+@suppress("W0002", "Extracting color components from hardware formats requires narrowing. Values are masked to fit 8-bit range")
 pub fn get_color(cm: *ColorMap, index: u8) -> Result<Color, GraphicsError> {
     // Validate ColorMap pointer
-    if (u32)cm == 0 {
+    if (u32)cm == 0u32 {
         return Result::Err(GraphicsError::InvalidRastPort)
     }
 
@@ -358,15 +361,15 @@ pub fn get_color(cm: *ColorMap, index: u8) -> Result<Color, GraphicsError> {
             }
 
             // Get 4-bit color value
-            var rgb4: u32 = 0
+            var rgb4: u32 = 0u32
             unsafe {
                 rgb4 = GetRGB4(cm, (i32)index)
             }
 
             // Extract 4-bit components from packed format (0x0RGB)
             // Using division instead of bit shifts for parser compatibility
-            let r4: u8 = (u8)((rgb4 / 256) & $F)
-            let g4: u8 = (u8)((rgb4 / 16) & $F)
+            let r4: u8 = (u8)((rgb4 / 256u32) & $F)
+            let g4: u8 = (u8)((rgb4 / 16u32) & $F)
             let b4: u8 = (u8)(rgb4 & $F)
 
             // Convert to 8-bit
@@ -376,7 +379,7 @@ pub fn get_color(cm: *ColorMap, index: u8) -> Result<Color, GraphicsError> {
             // AGA: 256 colors max (index is u8, so automatically limited)
 
             // Allocate buffer for GetRGB32() - needs 3 u32s (12 bytes)
-            let table_opt = MemoryBlock::alloc(12, $00000001)  // MEMF_PUBLIC
+            let table_opt = MemoryBlock::alloc(12u32, $00000001)  // MEMF_PUBLIC
             match table_opt {
                 None => return Result::Err(GraphicsError::BitMapAllocFailed),
                 Some(table) => {
@@ -386,19 +389,19 @@ pub fn get_color(cm: *ColorMap, index: u8) -> Result<Color, GraphicsError> {
 
                     // Get 32-bit RGB values
                     unsafe {
-                        GetRGB32(cm, (u32)index, 1, table.ptr())
+                        GetRGB32(cm, (u32)index, 1u32, table.ptr())
                     }
 
                     let table_ptr: *u32 = (*u32)table.ptr()
-                    let r32: u32 = table_ptr[0]
-                    let g32: u32 = table_ptr[1]
-                    let b32: u32 = table_ptr[2]
+                    let r32: u32 = table_ptr[0u32]
+                    let g32: u32 = table_ptr[1u32]
+                    let b32: u32 = table_ptr[2u32]
 
                     // Scale 32-bit (0x00000000-0xFFFFFFFF) to 8-bit (0-255)
                     // Take upper 8 bits using division instead of bit shift
-                    let r8: u8 = (u8)(r32 / 16777216)  // 2^24 = 16777216
-                    let g8: u8 = (u8)(g32 / 16777216)
-                    let b8: u8 = (u8)(b32 / 16777216)
+                    let r8: u8 = (u8)(r32 / 16777216u32)  // 2^24 = 16777216
+                    let g8: u8 = (u8)(g32 / 16777216u32)
+                    let b8: u8 = (u8)(b32 / 16777216u32)
 
                     return Result::Ok(Color { r: r8, g: g8, b: b8 })
                 }

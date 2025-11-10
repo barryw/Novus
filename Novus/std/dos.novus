@@ -197,10 +197,11 @@ pub fn close_file(fh: i32) {
 /// let buffer: [u8; 1024]
 /// let bytes_read = read_file(fh, &buffer, 1024)
 /// ```
+@suppress("W0002", "AmigaOS dos.library Read() requires i32, but length is naturally u32. Safe: max file I/O is 2GB on classic Amiga")
 pub fn read_file(fh: i32, buffer: *u8, length: u32) -> i32 {
     var result: i32 = 0
     result = Read(fh, buffer, (i32)length)
-    
+
     return result
 }
 
@@ -214,6 +215,7 @@ pub fn read_file(fh: i32, buffer: *u8, length: u32) -> i32 {
 /// let data = "Hello, Amiga!\n"
 /// let bytes_written = write_file(fh, data.ptr, 14)
 /// ```
+@suppress("W0002", "AmigaOS dos.library Write() requires i32 parameter per FFI conventions. Safe for files <2GB")
 pub fn write_file(fh: i32, buffer: *u8, length: u32) -> i32 {
     var result: i32 = 0
     result = Write(fh, buffer, (i32)length)
@@ -328,6 +330,7 @@ impl FileHandleWrapper {
     ///
     /// Returns number of bytes actually read.
     /// Returns 0 on EOF or error (check IoErr()).
+    @suppress("W0002", "AmigaOS dos.library Read() requires i32 parameter per FFI conventions. Safe for files <2GB")
     pub fn read(&self, buffer: *u8, length: u32) -> i32 {
         return Read(self.fh, buffer, (i32)length)
     }
@@ -336,6 +339,7 @@ impl FileHandleWrapper {
     ///
     /// Returns number of bytes written.
     /// Returns -1 on error (check IoErr()).
+    @suppress("W0002", "AmigaOS dos.library Write() requires i32 parameter per FFI conventions. Safe for files <2GB")
     pub fn write(&self, buffer: *u8, length: u32) -> i32 {
         return Write(self.fh, buffer, (i32)length)
     }

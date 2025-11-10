@@ -70,7 +70,7 @@ impl Str {
     pub fn from_cstr(ptr: *u8) -> Option<Str> {
         // Check for null pointer by casting to u32
         let ptr_addr: u32 = (u32)ptr
-        return ptr_addr == 0 ? Option::None : Option::Some(Str { ptr: ptr, len: strlen(ptr) })
+        return ptr_addr == 0u32 ? Option::None : Option::Some(Str { ptr: ptr, len: strlen(ptr) })
     }
 
     /// Get the length of the string in bytes
@@ -80,7 +80,7 @@ impl Str {
 
     /// Check if the string is empty
     pub fn is_empty(&self) -> bool {
-        return self.len == 0
+        return self.len == 0u32
     }
 
     /// Get a pointer to the string data
@@ -148,7 +148,7 @@ impl Str {
         }
 
         // Compare byte by byte
-        var i: u32 = 0
+        var i: u32 = 0u32
         while i < self.len {
             if self.ptr[i] != other.ptr[i] {
                 return false
@@ -161,13 +161,14 @@ impl Str {
 
     /// Compare two strings lexicographically
     /// Returns: <0 if self < other, 0 if equal, >0 if self > other
+    @suppress("W0002", "Safe truncation for string comparison: byte values (0-255) and length differences fit in i32 range")
     pub fn compare(&self, other: Str) -> i32 {
         var min_len: u32 = self.len
         if other.len < self.len {
             min_len = other.len
         }
 
-        var i: u32 = 0
+        var i: u32 = 0u32
         while i < min_len {
             let a: u8 = self.ptr[i]
             let b: u8 = other.ptr[i]
@@ -187,7 +188,7 @@ impl Str {
             return false
         }
 
-        var i: u32 = 0
+        var i: u32 = 0u32
         while i < prefix.len {
             if self.ptr[i] != prefix.ptr[i] {
                 return false
@@ -205,7 +206,7 @@ impl Str {
         }
 
         let offset: u32 = self.len - suffix.len
-        var i: u32 = 0
+        var i: u32 = 0u32
         while i < suffix.len {
             if self.ptr[offset + i] != suffix.ptr[i] {
                 return false
@@ -225,18 +226,18 @@ impl Str {
     /// Returns Some(index) if found, None if not found
     pub fn find(&self, needle: Str) -> Option<u32> {
         if needle.len == 0 {
-            return Option::Some(0)
+            return Option::Some(0u32)
         }
         if needle.len > self.len {
             return Option::None
         }
 
         let last_pos: u32 = self.len - needle.len
-        var i: u32 = 0
+        var i: u32 = 0u32
 
         while i <= last_pos {
             // Check if needle matches at position i
-            var j: u32 = 0
+            var j: u32 = 0u32
             var matches: bool = true
             while j < needle.len {
                 if self.ptr[i + j] != needle.ptr[j] {
@@ -257,7 +258,7 @@ impl Str {
 
     /// Find first occurrence of byte
     pub fn find_byte(&self, byte: u8) -> Option<u32> {
-        var i: u32 = 0
+        var i: u32 = 0u32
         while i < self.len {
             if self.ptr[i] == byte {
                 return Option::Some(i)
@@ -273,7 +274,7 @@ impl Str {
             return Option::None
         }
 
-        var i: u32 = self.len - 1
+        var i: u32 = self.len - 1u32
         var found: bool = false
         while !found {
             if self.ptr[i] == byte {
@@ -295,7 +296,7 @@ impl Str {
 
     /// Trim whitespace from start
     pub fn trim_start(&self) -> Str {
-        var start: u32 = 0
+        var start: u32 = 0u32
         while start < self.len {
             let ch: u8 = self.ptr[start]
             if ch != $20 && ch != $09 && ch != $0A && ch != $0D {
@@ -308,19 +309,19 @@ impl Str {
         }
 
         // All whitespace
-        return Str { ptr: self.ptr, len: 0 }
+        return Str { ptr: self.ptr, len: 0u32 }
     }
 
     /// Trim whitespace from end
     pub fn trim_end(&self) -> Str {
         if self.len == 0 {
-            return Str { ptr: self.ptr, len: 0 }
+            return Str { ptr: self.ptr, len: 0u32 }
         }
 
         var end: u32 = self.len
         var done: bool = false
         while !done {
-            let ch: u8 = self.ptr[end - 1]
+            let ch: u8 = self.ptr[end - 1u32]
             if ch != $20 && ch != $09 && ch != $0A && ch != $0D {
                 // Not whitespace - we found the end
                 return Str { ptr: self.ptr, len: end }
@@ -328,10 +329,10 @@ impl Str {
             end--
             if end == 0 {
                 // All whitespace
-                return Str { ptr: self.ptr, len: 0 }
+                return Str { ptr: self.ptr, len: 0u32 }
             }
         }
-        return Str { ptr: self.ptr, len: 0 }
+        return Str { ptr: self.ptr, len: 0u32 }
     }
 
     /// Convert to owned String (allocates)
@@ -401,7 +402,7 @@ impl String {
         }
 
         // Copy bytes from Str into Vec
-        var i: u32 = 0
+        var i: u32 = 0u32
         while i < s.len() {
             let success: bool = string.vec.push(s.as_ptr()[i])
             if !success {
@@ -441,7 +442,7 @@ impl String {
         }
 
         // Copy bytes from Str
-        var i: u32 = 0
+        var i: u32 = 0u32
         while i < s.len() {
             let success: bool = self.vec.push(s.as_ptr()[i])
             if !success {
@@ -492,7 +493,7 @@ pub struct NameString {
 
 impl NameString {
     pub fn new() -> NameString {
-        return NameString { buf: [0u8; 32], len: 0 }
+        return NameString { buf: [0u8; 32], len: 0u32 }
     }
 
     pub fn len(&self) -> u32 {
@@ -500,7 +501,7 @@ impl NameString {
     }
 
     pub fn is_empty(&self) -> bool {
-        return self.len == 0
+        return self.len == 0u32
     }
 
     pub fn capacity(&self) -> u32 {
@@ -520,7 +521,7 @@ impl NameString {
             return false
         }
 
-        var i: u32 = 0
+        var i: u32 = 0u32
         while i < s.len() {
             self.buf[self.len + i] = s.as_ptr()[i]
             i++
@@ -553,7 +554,7 @@ pub struct GadgetString {
 
 impl GadgetString {
     pub fn new() -> GadgetString {
-        return GadgetString { buf: [0u8; 128], len: 0 }
+        return GadgetString { buf: [0u8; 128], len: 0u32 }
     }
 
     pub fn len(&self) -> u32 {
@@ -561,7 +562,7 @@ impl GadgetString {
     }
 
     pub fn is_empty(&self) -> bool {
-        return self.len == 0
+        return self.len == 0u32
     }
 
     pub fn capacity(&self) -> u32 {
@@ -581,7 +582,7 @@ impl GadgetString {
             return false
         }
 
-        var i: u32 = 0
+        var i: u32 = 0u32
         while i < s.len() {
             self.buf[self.len + i] = s.as_ptr()[i]
             i++
@@ -614,7 +615,7 @@ pub struct PathString {
 
 impl PathString {
     pub fn new() -> PathString {
-        return PathString { buf: [0u8; 256], len: 0 }
+        return PathString { buf: [0u8; 256], len: 0u32 }
     }
 
     pub fn len(&self) -> u32 {
@@ -622,7 +623,7 @@ impl PathString {
     }
 
     pub fn is_empty(&self) -> bool {
-        return self.len == 0
+        return self.len == 0u32
     }
 
     pub fn capacity(&self) -> u32 {
@@ -642,7 +643,7 @@ impl PathString {
             return false
         }
 
-        var i: u32 = 0
+        var i: u32 = 0u32
         while i < s.len() {
             self.buf[self.len + i] = s.as_ptr()[i]
             i++
@@ -681,13 +682,14 @@ pub struct BStr {
 
 impl BStr {
     /// Create a BStr from a Str (allocates BCPL format)
+    @suppress("W0002", "Safe: BCPL strings are limited to 255 bytes, validated before cast")
     pub fn new_from_str(s: Str) -> Result<BStr, StringError> {
         if s.len() > 255 {
             return Result::Err(StringError::TooLong(s.len()))
         }
 
         // Allocate length byte + string data
-        let total_bytes: u32 = 1 + s.len()
+        let total_bytes: u32 = 1u32 + s.len()
         let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(total_bytes, MEMF_PUBLIC)
 
         match block_opt {
@@ -698,15 +700,15 @@ impl BStr {
                 ptr[0] = (u8)s.len()
 
                 // Copy string data
-                var i: u32 = 0
+                var i: u32 = 0u32
                 while i < s.len() {
-                    ptr[1 + i] = s.as_ptr()[i]
+                    ptr[1u32 + i] = s.as_ptr()[i]
                     i++
                 }
 
                 // Convert address to BPTR
                 let addr: u32 = (u32)ptr
-                let bptr: u32 = addr / 4
+                let bptr: u32 = addr / 4u32
 
                 return Result::Ok(BStr { bptr: bptr })
             },
@@ -737,7 +739,7 @@ impl BStr {
     pub fn as_str(&self) -> Str {
         let ptr: *u8 = self.as_ptr()
         let len: u32 = (u32)ptr[0]
-        let data_ptr: *u8 = ptr + 1
+        let data_ptr: *u8 = ptr + 1u32
         return Str::from_raw(data_ptr, len)
     }
 

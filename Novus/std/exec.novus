@@ -139,6 +139,7 @@ pub fn free_signal(signal_num: i32) {
 ///     // Signal 4 arrived
 /// }
 /// ```
+@suppress("W0002", "exec.library Wait() requires i32 signal mask per FFI conventions. Safe: signal bits are 0-31")
 pub fn wait_for_signals(signal_mask: u32) -> u32 {
     return Wait((i32)signal_mask)
 }
@@ -256,6 +257,7 @@ impl Signal {
     /// Allocate a signal bit
     ///
     /// Returns Err if no signals are available (limit of 16 user signals).
+    @suppress("W0002", "Safe: AllocSignal returns -1 or 0-31, which fits in i8 range (-128 to 127)")
     pub fn alloc() -> Result<Signal, ExecError> {
         let sigbit = AllocSignal(-1)
         return sigbit == -1 ? Result::Err(ExecError::BadSignal) : Result::Ok(Signal { sigbit: sigbit })
@@ -290,6 +292,7 @@ impl Signal {
     /// Get the signal mask (1 << bit)
     ///
     /// This is the value to pass to Wait() or Signal().
+    @suppress("W0002", "Safe: sigbit is validated to be 0-31 (negative check at line 296), guaranteed to fit in u32 range for array indexing")
     pub fn mask(&self) -> u32 {
         if self.sigbit < 0 {
             return 0

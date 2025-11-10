@@ -41,6 +41,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     private int _unsafeDepth = 0; // Track unsafe block nesting
     private readonly List<UnsafeBlockInfo> _unsafeBlocks = new(); // Collect unsafe blocks for warnings
 
+    // Warning suppression tracking
+    private readonly HashSet<string> _currentFunctionSuppressedWarnings = new(); // Track suppressed warnings for current function
+
     public class UnsafeBlockInfo
     {
         public string FilePath { get; set; } = "";
@@ -1255,6 +1258,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var methodName = context.IDENTIFIER().GetText();
         var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
 
+        // Parse attributes (including @suppress for warnings)
+        var attributes = ParseAttributes(context.attribute());
+
         // Generate mangled name for the method
         // For trait impls: TypeName_TraitName_TypeArg1_TypeArg2_methodName (e.g., Counter_Iterator_i32_next)
         // For inherent impls: TypeName::methodName
@@ -1371,7 +1377,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
-        _functions[mangledName] = new FunctionSymbol(mangledName, returnType, parameters, location, false, genericParams.Count > 0 ? genericParams : null, IsVariadic: hasVariadic);
+        _functions[mangledName] = new FunctionSymbol(mangledName, returnType, parameters, location, false, genericParams.Count > 0 ? genericParams : null, attributes, hasVariadic);
     }
 
     private void RegisterStruct(NovusParser.StructDeclarationContext context)
@@ -1764,6 +1770,22 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         _variables.Clear();
         _movedVariables.Clear(); // Reset move tracking for new method
 
+        // Parse @suppress attributes to track which warnings to suppress
+        _currentFunctionSuppressedWarnings.Clear();
+        if (_currentFunction.Attributes != null)
+        {
+            var suppressAttrs = _currentFunction.Attributes.GetAll(KnownAttributes.Suppress);
+            foreach (var suppressAttr in suppressAttrs)
+            {
+                // First positional arg is the warning code, second is the reason (optional)
+                var warningCode = suppressAttr.GetPositionalArg<string>(0);
+                if (warningCode != null)
+                {
+                    _currentFunctionSuppressedWarnings.Add(warningCode);
+                }
+            }
+        }
+
         // Add parameters to symbol table (including self if present)
         foreach (var param in _currentFunction.Parameters)
         {
@@ -1777,6 +1799,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         _currentFunction = null;
+        _currentFunctionSuppressedWarnings.Clear();
     }
 
     public override IrType? VisitFunctionDeclaration([NotNull] NovusParser.FunctionDeclarationContext context)
@@ -1788,10 +1811,27 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         _dropScopes.Clear(); // Reset drop tracking for new function
         _dropInfo.Clear();
 
+        // Parse @suppress attributes to track which warnings to suppress
+        _currentFunctionSuppressedWarnings.Clear();
+        if (_currentFunction.Attributes != null)
+        {
+            var suppressAttrs = _currentFunction.Attributes.GetAll(KnownAttributes.Suppress);
+            foreach (var suppressAttr in suppressAttrs)
+            {
+                // First positional arg is the warning code, second is the reason (optional)
+                var warningCode = suppressAttr.GetPositionalArg<string>(0);
+                if (warningCode != null)
+                {
+                    _currentFunctionSuppressedWarnings.Add(warningCode);
+                }
+            }
+        }
+
         // Skip body analysis for extern functions
         if (_currentFunction.IsExtern)
         {
             _currentFunction = null;
+            _currentFunctionSuppressedWarnings.Clear();
             return null;
         }
 
@@ -1842,6 +1882,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         _currentFunction = null;
+        _currentFunctionSuppressedWarnings.Clear();
         return null;
     }
 
@@ -2937,17 +2978,20 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Warn if mixing signed and unsigned types
         if (IsMixedSignedness(leftType, rightType))
         {
-            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
-            _diagnostics.ReportWarning(
-                "W0001",
-                $"mixing signed and unsigned types in arithmetic operation",
-                location,
-                helpTexts: new List<string>
-                {
-                    "this may produce unexpected results",
-                    $"consider casting to a common type"
-                }
-            );
+            if (!_currentFunctionSuppressedWarnings.Contains("W0001"))
+            {
+                var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                _diagnostics.ReportWarning(
+                    "W0001",
+                    $"mixing signed and unsigned types in arithmetic operation",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "this may produce unexpected results",
+                        $"consider casting to a common type"
+                    }
+                );
+            }
         }
 
         return leftType; // Use left operand's type as result type
@@ -3087,12 +3131,15 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         if (IsMixedSignedness(leftType, rightType))
         {
-            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
-            _diagnostics.ReportWarning(
-                "W0001",
-                $"mixing signed and unsigned types in arithmetic operation",
-                location
-            );
+            if (!_currentFunctionSuppressedWarnings.Contains("W0001"))
+            {
+                var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                _diagnostics.ReportWarning(
+                    "W0001",
+                    $"mixing signed and unsigned types in arithmetic operation",
+                    location
+                );
+            }
         }
 
         return leftType;
@@ -3135,16 +3182,19 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Warn about potentially lossy casts
         if (IsLossyCast(exprType, targetType))
         {
-            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
-            _diagnostics.ReportWarning(
-                "W0002",
-                $"casting from '{TypeToString(exprType)}' to '{TypeToString(targetType)}' may lose precision",
-                location,
-                helpTexts: new List<string>
-                {
-                    "this cast may truncate the value"
-                }
-            );
+            if (!_currentFunctionSuppressedWarnings.Contains("W0002"))
+            {
+                var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                _diagnostics.ReportWarning(
+                    "W0002",
+                    $"casting from '{TypeToString(exprType)}' to '{TypeToString(targetType)}' may lose precision",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "this cast may truncate the value"
+                    }
+                );
+            }
         }
 
         return targetType;
@@ -4175,16 +4225,19 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                         // Check if value is already covered
                         if (coveredValues.Contains(value))
                         {
-                            var location = SourceLocationHelper.FromToken(literalPattern.Start, _filePath, _sourceLines);
-                            _diagnostics.ReportWarning(
-                                "W0001",
-                                $"duplicate match pattern for value {value}",
-                                location,
-                                helpTexts: new List<string>
-                                {
-                                    "this pattern will never be reached because an earlier pattern matches the same value"
-                                }
-                            );
+                            if (!_currentFunctionSuppressedWarnings.Contains("W0001"))
+                            {
+                                var location = SourceLocationHelper.FromToken(literalPattern.Start, _filePath, _sourceLines);
+                                _diagnostics.ReportWarning(
+                                    "W0001",
+                                    $"duplicate match pattern for value {value}",
+                                    location,
+                                    helpTexts: new List<string>
+                                    {
+                                        "this pattern will never be reached because an earlier pattern matches the same value"
+                                    }
+                                );
+                            }
                         }
 
                         // Validate that value fits in the integer type
