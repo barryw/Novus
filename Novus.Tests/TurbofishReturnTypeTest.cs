@@ -57,8 +57,8 @@ pub fn main() {
         Assert.False(diagnostics.HasErrors,
             $"Parse errors: {string.Join("\n", diagnostics.Diagnostics.Where(d => d.IsError).Select(d => d.Message))}");
 
-        // Use a path that looks like a std library file to avoid auto-import
-        var semanticAnalyzer = new SemanticAnalyzer("/fake/std/test.novus", source, ".");
+        // Use a path that looks like core.novus to avoid auto-import
+        var semanticAnalyzer = new SemanticAnalyzer("/fake/std/core.novus", source, ".");
         semanticAnalyzer.Analyze(tree);
 
         if (semanticAnalyzer.Diagnostics.HasErrors)
