@@ -45,7 +45,7 @@ pub fn main() -> i32 {
     ]
 
     // Step 2: Open window (pass 0 for NewWindow = use tags only)
-    let window: *Window = OpenWindowTagList(0, tags)
+    let window: *Window = OpenWindowTagList(null, tags)
 
     // Check if window opened successfully
     if !window {

@@ -44,6 +44,12 @@ public class CCodeGenerator
     // Maps result variable name -> (array expression, index expression)
     private Dictionary<string, (string arrayExpr, string indexExpr)> _indexAccessInfo = new();
 
+    // Counter for defer block emissions to ensure unique labels across multiple defer cleanup sites
+    private int _deferEmissionCounter = 0;
+
+    // Suffix to append to labels during defer block emission (empty for normal code)
+    private string _labelSuffix = "";
+
     /// <summary>
     /// Determines if a function is a monomorphized generic function.
     /// Monomorphized functions should be emitted as 'static inline' to avoid duplicate symbols.
@@ -1478,6 +1484,7 @@ public class CCodeGenerator
         // 1. If there's a main function, it's the primary entry point
         // 2. If explicit entry points are provided, use only those
         // 3. For library modules without explicit entry points, include public functions
+        // 4. ALWAYS include exported functions as entry points (external C code can call them)
         var entryPoints = new List<IrFunction>();
         var mainFunc = _module.Functions.FirstOrDefault(f => f.Name == "main" && !f.IsExtern);
         if (mainFunc != null)
@@ -1496,6 +1503,10 @@ public class CCodeGenerator
             // This is conservative but safe - the linker can eliminate truly unused functions
             entryPoints.AddRange(_module.Functions.Where(f => f.IsPublic && !f.IsExtern && f.BasicBlocks.Count > 0));
         }
+
+        // CRITICAL: Always include exported functions as entry points
+        // Exported functions can be called from external C code, so they must not be eliminated
+        entryPoints.AddRange(_module.Functions.Where(f => f.IsExported && !f.IsExtern && f.BasicBlocks.Count > 0 && !entryPoints.Contains(f)));
 
         // Start BFS from entry points
         foreach (var entry in entryPoints)
@@ -2269,8 +2280,9 @@ public class CCodeGenerator
 
     private void EmitFunction(IrFunction function)
     {
-        // Clear declared variables for this function
+        // Reset state for each function
         _declaredVariables.Clear();
+        _deferEmissionCounter = 0;  // Reset defer emission counter for unique labels
         _indexAccessInfo.Clear();
 
         // Track which parameters were converted to pointers in the C signature
@@ -2455,46 +2467,60 @@ public class CCodeGenerator
 
         var indent = new string(' ', indentLevel * 4);
 
-        // Execute deferred blocks in LIFO order (reverse order)
-        for (int i = function.DeferredBlocks.Count - 1; i >= 0; i--)
+        // Generate unique suffix for this defer emission to avoid label conflicts
+        // when the same defer block is emitted at multiple exit points
+        var emissionId = _deferEmissionCounter++;
+        var previousSuffix = _labelSuffix;
+        _labelSuffix = $"_d{emissionId}";
+
+        try
         {
-            var deferBlock = function.DeferredBlocks[i];
-
-            // Use 1-based index for the flag name (defer_1, defer_2, etc.)
-            var deferIndex = i + 1;
-
-            // Wrap defer block in if check - only execute if defer was reached
-            _output.AppendLine($"{indent}// Defer cleanup block {function.DeferredBlocks.Count - i}");
-            _output.AppendLine($"{indent}if (_defer_{deferIndex}_active) {{");
-
-            // Emit all instructions in the deferred block
-            foreach (var instruction in deferBlock.Instructions)
+            // Execute deferred blocks in LIFO order (reverse order)
+            for (int i = function.DeferredBlocks.Count - 1; i >= 0; i--)
             {
-                // Save current output position
-                var beforeLength = _output.Length;
+                var deferBlock = function.DeferredBlocks[i];
 
-                // Emit instruction (will write to _output with default indentation)
-                EmitInstruction(instruction);
+                // Use 1-based index for the flag name (defer_1, defer_2, etc.)
+                var deferIndex = i + 1;
 
-                // Get what was emitted and fix indentation
-                var emitted = _output.ToString().Substring(beforeLength);
-                _output.Length = beforeLength;  // Remove what we just added
+                // Wrap defer block in if check - only execute if defer was reached
+                _output.AppendLine($"{indent}// Defer cleanup block {function.DeferredBlocks.Count - i}");
+                _output.AppendLine($"{indent}if (_defer_{deferIndex}_active) {{");
 
-                // Re-emit with correct indentation (one more level for being inside the if)
-                var lines = emitted.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-                foreach (var line in lines)
+                // Emit all instructions in the deferred block
+                foreach (var instruction in deferBlock.Instructions)
                 {
-                    // Strip existing indentation and apply our indentation + extra indent for if block
-                    var trimmed = line.TrimStart();
-                    if (!string.IsNullOrWhiteSpace(trimmed))
+                    // Save current output position
+                    var beforeLength = _output.Length;
+
+                    // Emit instruction (will write to _output with default indentation)
+                    EmitInstruction(instruction);
+
+                    // Get what was emitted and fix indentation
+                    var emitted = _output.ToString().Substring(beforeLength);
+                    _output.Length = beforeLength;  // Remove what we just added
+
+                    // Re-emit with correct indentation (one more level for being inside the if)
+                    var lines = emitted.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                    foreach (var line in lines)
                     {
-                        _output.AppendLine($"{indent}    {trimmed}");
+                        // Strip existing indentation and apply our indentation + extra indent for if block
+                        var trimmed = line.TrimStart();
+                        if (!string.IsNullOrWhiteSpace(trimmed))
+                        {
+                            _output.AppendLine($"{indent}    {trimmed}");
+                        }
                     }
                 }
-            }
 
-            // Close the if block
-            _output.AppendLine($"{indent}}}");
+                // Close the if block
+                _output.AppendLine($"{indent}}}");
+            }
+        }
+        finally
+        {
+            // Restore previous label suffix
+            _labelSuffix = previousSuffix;
         }
     }
 
@@ -2730,6 +2756,9 @@ public class CCodeGenerator
 
     private void EmitLabel(IrLabel label)
     {
+        // Append suffix to label name to make it unique across defer block emissions
+        var labelName = label.Name + _labelSuffix;
+
         // Close previous match arm scope if needed
         if (_inMatchArmScope && (label.Name.StartsWith("match_arm_") || label.Name.StartsWith("match_end_") || label.Name.StartsWith("match_check_")))
         {
@@ -2739,7 +2768,7 @@ public class CCodeGenerator
 
         // Emit label (unindented for C style)
         // Add empty statement to ensure valid C (labels must be followed by a statement)
-        _output.AppendLine($"{label.Name}:;");
+        _output.AppendLine($"{labelName}:;");
 
         // Open new scope for match arms
         if (label.Name.StartsWith("match_arm_"))
@@ -2751,16 +2780,21 @@ public class CCodeGenerator
 
     private void EmitBranch(IrBranch branch)
     {
-        _output.AppendLine($"    goto {branch.Target};");
+        // Append suffix to target label to match defer block emission
+        var targetLabel = branch.Target + _labelSuffix;
+        _output.AppendLine($"    goto {targetLabel};");
     }
 
     private void EmitConditionalBranch(IrConditionalBranch condBranch)
     {
         var condition = EmitValue(condBranch.Condition);
-        _output.AppendLine($"    if ({condition}) goto {condBranch.TrueTarget};");
+        // Append suffix to target labels to match defer block emission
+        var trueTarget = condBranch.TrueTarget + _labelSuffix;
+        _output.AppendLine($"    if ({condition}) goto {trueTarget};");
         if (!string.IsNullOrEmpty(condBranch.FalseTarget))
         {
-            _output.AppendLine($"    goto {condBranch.FalseTarget};");
+            var falseTarget = condBranch.FalseTarget + _labelSuffix;
+            _output.AppendLine($"    goto {falseTarget};");
         }
     }
 

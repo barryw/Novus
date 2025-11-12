@@ -1,4 +1,5 @@
-﻿using Antlr4.Runtime;
+﻿using System.Text.Json.Serialization;
+using Antlr4.Runtime;
 using CommandLine;
 using Novus.Codegen;
 using Novus.Compilation;
@@ -11,6 +12,25 @@ using Novus.Toolchain;
 using Novus.Tools;
 
 namespace Novus;
+
+/// <summary>
+/// Metadata stored alongside cached object files for integrity validation
+/// </summary>
+public class CacheMetadata
+{
+    public long FileSize { get; set; }
+    public string FileHash { get; set; } = string.Empty;
+    public DateTime CachedAt { get; set; }
+}
+
+/// <summary>
+/// JSON source generator context for CacheMetadata (AOT-compatible)
+/// </summary>
+[JsonSourceGenerationOptions(WriteIndented = true)]
+[JsonSerializable(typeof(CacheMetadata))]
+internal partial class CacheMetadataJsonContext : JsonSerializerContext
+{
+}
 
 class Program
 {
@@ -630,10 +650,6 @@ class Program
                 outputDir = outputFileDir;
             }
 
-            // Write shared types header
-            var typesHeaderPath = Path.Combine(outputDir, "novus_types.h");
-            await File.WriteAllTextAsync(typesHeaderPath, sharedTypesHeader);
-
             // Helper function to compute file hash
             string ComputeFileHash(string filePath)
             {
@@ -643,8 +659,22 @@ class Program
                 return Convert.ToHexString(hashBytes).ToLowerInvariant();
             }
 
-            // Compute hash of types header for cache invalidation
-            var typesHeaderHash = ComputeFileHash(typesHeaderPath);
+            // Helper function to compute string hash (avoids file I/O race conditions)
+            string ComputeStringHash(string content)
+            {
+                using var sha256 = System.Security.Cryptography.SHA256.Create();
+                var bytes = System.Text.Encoding.UTF8.GetBytes(content);
+                var hashBytes = sha256.ComputeHash(bytes);
+                return Convert.ToHexString(hashBytes).ToLowerInvariant();
+            }
+
+            // CRITICAL: Compute hash of types header BEFORE writing to avoid race conditions
+            // If we write then read, an external process could modify the file between operations
+            var typesHeaderHash = ComputeStringHash(sharedTypesHeader);
+
+            // Write shared types header
+            var typesHeaderPath = Path.Combine(outputDir, "novus_types.h");
+            await File.WriteAllTextAsync(typesHeaderPath, sharedTypesHeader);
 
             // Generate C files - collect all file paths
             var cFiles = new List<string>();
@@ -1071,7 +1101,7 @@ class Program
             // Force rebuild if --rebuild-stdlib flag is set
             bool needsRebuild = options.RebuildStdlib
                 || !Directory.Exists(stdlibPrecompiledDir)
-                || Commands.StdlibBuildCommand.NeedsRebuild(compilerDir, assemblyCpu, options.BuildMode);
+                || Commands.StdlibBuildCommand.NeedsRebuild(compilerDir, assemblyCpu, options.BuildMode, CODEGEN_VERSION);
 
             // CRITICAL FIX: If stdlib cache is stale, delete ALL cached .o files
             // This prevents using stale object files with old constant values
@@ -1256,7 +1286,8 @@ class Program
                     stdlibPrecompiledDir,
                     assemblyCpu,
                     options.BuildMode,
-                    stdlibSourcePaths);
+                    stdlibSourcePaths,
+                    CODEGEN_VERSION);
             }
 
             // Step 2: Compile user C files with caching and parallelization
@@ -1265,6 +1296,9 @@ class Program
             // Create user code cache directory: {outputDir}/usercache/{cpu}/{buildMode}/
             var userCacheDir = Path.Combine(outputDir, "usercache", assemblyCpu, buildModeStr);
             Directory.CreateDirectory(userCacheDir);
+
+            // Validate cache version and clean if stale
+            ValidateAndCleanCache(userCacheDir, CODEGEN_VERSION);
 
             // Track which files need compilation
             var filesToCompile = new List<(string cFile, string objFile, bool cached)>();
@@ -1284,13 +1318,48 @@ class Program
                     // We use C file hash (not source hash) to detect compiler codegen changes
                     var cacheKey = $"v{CODEGEN_VERSION}_{cFileHash}_{typesHeaderHash.Substring(0, 8)}_{assemblyCpu}_O{options.OptimizationLevel}_{cFileName}.o";
                     var cachedObjFile = Path.Combine(userCacheDir, cacheKey);
+                    var cachedMetaFile = cachedObjFile + ".meta";
 
-                    if (File.Exists(cachedObjFile))
+                    // Validate cached object file exists and is not corrupted
+                    if (File.Exists(cachedObjFile) && File.Exists(cachedMetaFile))
                     {
-                        // Use cached .o file
-                        File.Copy(cachedObjFile, objFile, overwrite: true);
-                        objectFiles.Add(objFile);
-                        cached = true;
+                        try
+                        {
+                            // Read metadata
+                            var metaJson = File.ReadAllText(cachedMetaFile);
+                            var meta = System.Text.Json.JsonSerializer.Deserialize(metaJson, CacheMetadataJsonContext.Default.CacheMetadata);
+
+                            // Verify object file integrity
+                            if (meta != null)
+                            {
+                                var objInfo = new FileInfo(cachedObjFile);
+                                var objHash = ComputeFileHash(cachedObjFile);
+
+                                if (meta.FileSize == objInfo.Length && meta.FileHash == objHash)
+                                {
+                                    // Cache is valid - use it
+                                    File.Copy(cachedObjFile, objFile, overwrite: true);
+                                    objectFiles.Add(objFile);
+                                    cached = true;
+                                }
+                                else
+                                {
+                                    // Cache corrupted - delete both files
+                                    File.Delete(cachedObjFile);
+                                    File.Delete(cachedMetaFile);
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            // Metadata read/parse failed - delete cache
+                            try
+                            {
+                                if (File.Exists(cachedObjFile)) File.Delete(cachedObjFile);
+                                if (File.Exists(cachedMetaFile)) File.Delete(cachedMetaFile);
+                            }
+                            catch { /* Best effort cleanup */ }
+                        }
                     }
                 }
 
@@ -1365,7 +1434,25 @@ class Program
                     // Cache the .o file if applicable
                     if (!string.IsNullOrEmpty(result.cacheInfo.Item1))
                     {
-                        File.Copy(result.cacheInfo.Item1, result.cacheInfo.Item2, overwrite: true);
+                        var objFile = result.cacheInfo.Item1;
+                        var cachedObjFile = result.cacheInfo.Item2;
+                        var cachedMetaFile = cachedObjFile + ".meta";
+
+                        // Copy object file to cache
+                        File.Copy(objFile, cachedObjFile, overwrite: true);
+
+                        // Write metadata for integrity validation
+                        var objInfo = new FileInfo(objFile);
+                        var objHash = ComputeFileHash(objFile);
+                        var metadata = new CacheMetadata
+                        {
+                            FileSize = objInfo.Length,
+                            FileHash = objHash,
+                            CachedAt = DateTime.UtcNow
+                        };
+
+                        var metaJson = System.Text.Json.JsonSerializer.Serialize(metadata, CacheMetadataJsonContext.Default.CacheMetadata);
+                        File.WriteAllText(cachedMetaFile, metaJson);
                     }
 
                     // Thread-safe: Add to objectFiles list sequentially after all compilations complete
@@ -1424,6 +1511,58 @@ class Program
             Console.WriteLine($"\nError: {ex.Message}");
             Console.WriteLine(ex.StackTrace);
             return 1;
+        }
+    }
+
+    /// <summary>
+    /// Validate cache version and clean stale cache if version mismatch
+    /// </summary>
+    private static void ValidateAndCleanCache(string cacheDir, int expectedVersion)
+    {
+        var versionFile = Path.Combine(cacheDir, ".cache_version");
+
+        try
+        {
+            // Check if version file exists
+            if (File.Exists(versionFile))
+            {
+                var versionText = File.ReadAllText(versionFile).Trim();
+                if (int.TryParse(versionText, out var cachedVersion))
+                {
+                    if (cachedVersion == expectedVersion)
+                    {
+                        return; // Cache is valid
+                    }
+                }
+            }
+
+            // Version mismatch or missing - clean cache
+            Console.WriteLine($"  Cache version mismatch - cleaning stale cache...");
+
+            // Delete all files EXCEPT the version file
+            foreach (var file in Directory.GetFiles(cacheDir))
+            {
+                // Skip the version file itself
+                if (file == versionFile)
+                    continue;
+
+                try
+                {
+                    File.Delete(file);
+                }
+                catch
+                {
+                    // Best effort cleanup
+                }
+            }
+
+            // Write new version file
+            File.WriteAllText(versionFile, expectedVersion.ToString());
+        }
+        catch
+        {
+            // If we can't validate/clean, continue anyway
+            // Better to have stale cache than crash
         }
     }
 }

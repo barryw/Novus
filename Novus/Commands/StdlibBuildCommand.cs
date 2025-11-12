@@ -283,9 +283,9 @@ public static class StdlibBuildCommand
 
     /// <summary>
     /// Check if stdlib needs rebuilding for a specific target
-    /// Also checks nested directories (e.g., ffi/) for changes
+    /// Also checks nested directories (e.g., ffi/) for changes and compiler version
     /// </summary>
-    public static bool NeedsRebuild(string compilerDir, string cpu, BuildMode buildMode)
+    public static bool NeedsRebuild(string compilerDir, string cpu, BuildMode buildMode, int codegenVersion)
     {
         var buildModeStr = buildMode == BuildMode.Release ? "release" : "debug";
         var stdlibDir = Path.Combine(compilerDir, "stdlib", cpu, buildModeStr);
@@ -303,6 +303,13 @@ public static class StdlibBuildCommand
             var manifestJson = File.ReadAllText(manifestPath);
             var manifest = JsonSerializer.Deserialize(manifestJson, StdlibManifestJsonContext.Default.StdlibManifest);
             if (manifest == null)
+            {
+                return true;
+            }
+
+            // CRITICAL: Check compiler codegen version
+            // If codegen changed, stdlib must be rebuilt even if source files unchanged
+            if (manifest.CodegenVersion != codegenVersion)
             {
                 return true;
             }
@@ -371,7 +378,8 @@ public static class StdlibBuildCommand
         string stdlibPrecompiledDir,
         string cpu,
         BuildMode buildMode,
-        List<string> stdlibSourcePaths)
+        List<string> stdlibSourcePaths,
+        int codegenVersion)
     {
         var buildModeStr = buildMode == BuildMode.Release ? "release" : "debug";
 
@@ -381,6 +389,7 @@ public static class StdlibBuildCommand
             Cpu = cpu,
             BuildMode = buildModeStr,
             Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            CodegenVersion = codegenVersion,
             Modules = new Dictionary<string, StdlibModuleInfo>()
         };
 
@@ -468,6 +477,7 @@ public class StdlibManifest
     public string Cpu { get; set; } = "";
     public string BuildMode { get; set; } = "";
     public long Timestamp { get; set; }
+    public int CodegenVersion { get; set; }  // Compiler codegen version - invalidates cache on breaking changes
     public Dictionary<string, StdlibModuleInfo> Modules { get; set; } = new();
 }
 
