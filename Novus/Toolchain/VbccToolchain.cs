@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace Novus.Toolchain;
@@ -11,6 +12,10 @@ public class VbccToolchain
     private readonly string _vbccPath;
     private readonly string _ndkPath;
 
+    // Infrastructure version - increment when making breaking changes to stubs/runtime
+    // This is separate from CODEGEN_VERSION (which is for C code generation)
+    private const int INFRASTRUCTURE_VERSION = 1;
+
     public VbccToolchain(string vbccPath, string ndkPath)
     {
         _vbccPath = vbccPath;
@@ -21,6 +26,88 @@ public class VbccToolchain
 
         if (!Directory.Exists(_ndkPath))
             throw new DirectoryNotFoundException($"NDK path not found: {_ndkPath}");
+    }
+
+    /// <summary>
+    /// Check if infrastructure files (stubs, runtime) have changed and invalidate cache if needed
+    /// </summary>
+    private async Task<bool> NeedsInfrastructureRebuild(string outputPath, string compilerDir)
+    {
+        var cacheFile = Path.Combine(outputPath, ".novus_infrastructure_hash");
+
+        // Compute hash of all infrastructure files
+        var infrastructureHash = ComputeInfrastructureHash(compilerDir);
+        var currentHash = $"v{INFRASTRUCTURE_VERSION}_{infrastructureHash}";
+
+        // Check if cache file exists and matches
+        if (File.Exists(cacheFile))
+        {
+            var cachedHash = await File.ReadAllTextAsync(cacheFile);
+            if (cachedHash.Trim() == currentHash)
+            {
+                return false; // No rebuild needed
+            }
+        }
+
+        // Write new hash
+        await File.WriteAllTextAsync(cacheFile, currentHash);
+        return true; // Rebuild needed
+    }
+
+    /// <summary>
+    /// Compute combined hash of all infrastructure files (stubs, runtime)
+    /// </summary>
+    private string ComputeInfrastructureHash(string compilerDir)
+    {
+        using var sha256 = SHA256.Create();
+        using var stream = new MemoryStream();
+
+        // Hash all .s files in stubs directory
+        var stubsDir = Path.Combine(compilerDir, "stubs");
+        if (Directory.Exists(stubsDir))
+        {
+            var stubFiles = Directory.GetFiles(stubsDir, "*.s").OrderBy(f => f).ToArray();
+            foreach (var file in stubFiles)
+            {
+                var fileBytes = File.ReadAllBytes(file);
+                stream.Write(fileBytes, 0, fileBytes.Length);
+            }
+        }
+
+        // Hash all files in runtime directory
+        var runtimeDir = Path.Combine(compilerDir, "runtime");
+        if (Directory.Exists(runtimeDir))
+        {
+            var runtimeFiles = Directory.GetFiles(runtimeDir).OrderBy(f => f).ToArray();
+            foreach (var file in runtimeFiles)
+            {
+                var fileBytes = File.ReadAllBytes(file);
+                stream.Write(fileBytes, 0, fileBytes.Length);
+            }
+        }
+
+        stream.Position = 0;
+        var hashBytes = sha256.ComputeHash(stream);
+        return Convert.ToHexString(hashBytes).ToLowerInvariant().Substring(0, 16);
+    }
+
+    /// <summary>
+    /// Assemble an infrastructure file (with caching and dependency tracking)
+    /// </summary>
+    private async Task<bool> AssembleInfrastructureFile(
+        string sourceFile,
+        string outputFile,
+        string cpu,
+        bool forcebuild)
+    {
+        // If not forcing rebuild and output exists, skip assembly
+        if (!forcebuild && File.Exists(outputFile))
+        {
+            return true; // Use cached version
+        }
+
+        // Assemble the file
+        return await Assemble(sourceFile, outputFile, cpu, false);
     }
 
     /// <summary>
@@ -64,6 +151,8 @@ public class VbccToolchain
 
         // Add linker flags (library-specific behavior)
         args.Add("-x");  // Discard local symbols
+        args.Add("-sc");  // Merge all code sections into one HUNK_CODE
+        args.Add("-sd");  // Merge all data and bss sections
 
         if (isLibrary)
         {
@@ -76,10 +165,16 @@ public class VbccToolchain
         }
         else
         {
-            // For executables: standard static linking with dead code elimination
+            // For executables: standard static linking
             args.Add("-Bstatic");  // Static linking
             args.Add("-Cvbcc");  // VBCC calling convention (also enables constructor/destructor support)
-            args.Add("-gc-all");  // Dead code elimination - remove all unreferenced sections
+            // TEMPORARILY DISABLED: -gc-all has a bug where it calculates wrong symbol offsets
+            // when string constants are embedded in CODE section. This causes _main to point
+            // to the wrong address (end of previous function instead of start of main).
+            // TODO: Either fix vlink or move string constants to DATA section
+            //args.Add("-gc-all");  // Dead code elimination - now safe with -sc/-sd
+            //args.Add("-e");  // Specify entry point for -gc-all to trace from
+            //args.Add("_start");  // Entry point defined in novus_startup.s
         }
 
         // Add startup code first (must come before user object files)
@@ -138,12 +233,15 @@ public class VbccToolchain
             args.Add("-lvc");
         }
 
-        // Add standard Amiga libraries path (but don't link -lamiga)
-        // We provide our own library base storage via exec_base.o and dos_base.o
+        // Add standard Amiga libraries path and link with -lamiga -lauto
+        // -lamiga: Provides Amiga system library stubs
+        // -lauto: Provides automatic library base opening/closing
         var libPath = Path.Combine(_ndkPath, "lib");
         if (Directory.Exists(libPath))
         {
             args.Add($"-L{libPath}");
+            args.Add("-lamiga");
+            args.Add("-lauto");
         }
 
         // Don't print here - caller shows final success message
@@ -237,6 +335,15 @@ public class VbccToolchain
         // For fat binaries (cpu="auto"), use 68020 for assembly since it contains CPU-specific code
         // The code generator ensures base code is 68000-compatible, with 68020+ code only in CPU-specific sections
         var assemblyCpu = cpu == "auto" ? "68020" : cpu;
+        var compilerDir = AppContext.BaseDirectory;
+
+        // Check if infrastructure files have changed - if so, force rebuild of all infrastructure
+        var forceInfrastructureRebuild = await NeedsInfrastructureRebuild(outputPath, compilerDir);
+
+        if (forceInfrastructureRebuild)
+        {
+            Console.WriteLine("  → Infrastructure files changed - rebuilding all infrastructure");
+        }
 
         // Assemble (with FPU support if fat binary or FPU mode)
         if (!await Assemble(asmFile, objFile, assemblyCpu, enableFpu))
@@ -248,12 +355,11 @@ public class VbccToolchain
         var objFiles = new List<string>();
 
         // CRITICAL: Assemble novus_startup.o FIRST so _start is at CODE+0
-        var compilerDir = AppContext.BaseDirectory;
         var startupSource = Path.Combine(compilerDir, "stubs", "novus_startup.s");
         if (File.Exists(startupSource))
         {
             var startupObj = Path.Combine(outputPath, "novus_startup.o");
-            if (!await Assemble(startupSource, startupObj, assemblyCpu, false))
+            if (!await AssembleInfrastructureFile(startupSource, startupObj, assemblyCpu, forceInfrastructureRebuild))
             {
                 Console.WriteLine("novus_startup assembly failed");
                 return false;
@@ -269,7 +375,7 @@ public class VbccToolchain
         if (File.Exists(execBaseSource))
         {
             var execBaseObj = Path.Combine(outputPath, "exec_base.o");
-            if (!await Assemble(execBaseSource, execBaseObj, assemblyCpu, false))
+            if (!await AssembleInfrastructureFile(execBaseSource, execBaseObj, assemblyCpu, forceInfrastructureRebuild))
             {
                 Console.WriteLine("exec_base assembly failed");
                 return false;
@@ -291,7 +397,7 @@ public class VbccToolchain
             {
                 var stubsObj = Path.Combine(outputPath, $"{library}_stubs.o");
 
-                if (!await Assemble(stubsSource, stubsObj, assemblyCpu, false))
+                if (!await AssembleInfrastructureFile(stubsSource, stubsObj, assemblyCpu, forceInfrastructureRebuild))
                 {
                     Console.WriteLine($"{library} stubs assembly failed");
                     return false;
@@ -337,12 +443,20 @@ public class VbccToolchain
         var objFiles = new List<string>();
         var compilerDir = AppContext.BaseDirectory;
 
+        // Check if infrastructure files have changed - if so, force rebuild of all infrastructure
+        var forceInfrastructureRebuild = await NeedsInfrastructureRebuild(outputPath, compilerDir);
+
+        if (forceInfrastructureRebuild)
+        {
+            Console.WriteLine("  → Infrastructure files changed - rebuilding all infrastructure");
+        }
+
         // CRITICAL: Assemble novus_startup.o FIRST so _start is at CODE+0
         var startupSource = Path.Combine(compilerDir, "stubs", "novus_startup.s");
         if (File.Exists(startupSource))
         {
             var startupObj = Path.Combine(outputPath, "novus_startup.o");
-            if (!await Assemble(startupSource, startupObj, assemblyCpu, false))
+            if (!await AssembleInfrastructureFile(startupSource, startupObj, assemblyCpu, forceInfrastructureRebuild))
             {
                 Console.WriteLine("novus_startup assembly failed");
                 return false;
@@ -368,7 +482,7 @@ public class VbccToolchain
         if (File.Exists(execBaseSource))
         {
             var execBaseObj = Path.Combine(outputPath, "exec_base.o");
-            if (!await Assemble(execBaseSource, execBaseObj, assemblyCpu, false))
+            if (!await AssembleInfrastructureFile(execBaseSource, execBaseObj, assemblyCpu, forceInfrastructureRebuild))
             {
                 Console.WriteLine("exec_base assembly failed");
                 return false;
@@ -452,7 +566,7 @@ public class VbccToolchain
             {
                 var stubsObj = Path.Combine(outputPath, $"{library}_stubs.o");
 
-                if (!await Assemble(stubsSource, stubsObj, assemblyCpu, false))
+                if (!await AssembleInfrastructureFile(stubsSource, stubsObj, assemblyCpu, forceInfrastructureRebuild))
                 {
                     Console.WriteLine($"{library} stubs assembly failed");
                     return false;

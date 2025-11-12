@@ -1,0 +1,33 @@
+// Test Str → u32 coercion in struct literals
+// Both string literals and string variables should work
+
+from std::ffi::amiga_structs import TagItem
+from std::strings import Str
+
+// Test 3 helper: String expression (function return value)
+fn get_string() -> Str {
+    return "Dynamic string"
+}
+
+pub fn main() -> i32 {
+    // Test 1: String literal (the simple case we already tested)
+    let tag1 = TagItem {
+        ti_Tag: 1,
+        ti_Data: "Hello, literal!"
+    }
+
+    // Test 2: String variable (the user's question)
+    let title: Str = "Window from variable"
+    let tag2 = TagItem {
+        ti_Tag: 2,
+        ti_Data: title  // This should also work now!
+    }
+
+    // Test 3: String expression (function return value)
+    let tag3 = TagItem {
+        ti_Tag: 3,
+        ti_Data: get_string()  // Should work too!
+    }
+
+    return 0
+}

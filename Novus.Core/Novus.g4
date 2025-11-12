@@ -253,6 +253,7 @@ pattern
     | STRING_LITERAL                            # LiteralPattern
     | KW_TRUE                                   # BoolLiteralPattern
     | KW_FALSE                                  # BoolLiteralPattern
+    | KW_NULL                                   # NullLiteralPattern
     | '_'                                       # WildcardPattern
     ;
 
@@ -354,6 +355,7 @@ argumentList
 primaryExpression
     : KW_TRUE                                      # BoolLiteral
     | KW_FALSE                                     # BoolLiteral
+    | KW_NULL                                      # NullLiteral
     | KW_SELF                                      # SelfExpr
     | '@' KW_SIZEOF '(' type ')'                   # SizeofExpr
     | F_STRING_LITERAL                             # InterpolatedStringLiteral
@@ -422,6 +424,7 @@ KW_SIZEOF    : 'sizeof';
 KW_CONSUMING : 'consuming';
 KW_TRUE     : 'true';
 KW_FALSE    : 'false';
+KW_NULL     : 'null';
 
 // Primitive type keywords
 KW_U8       : 'u8';

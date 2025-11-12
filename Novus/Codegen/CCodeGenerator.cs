@@ -185,6 +185,39 @@ public class CCodeGenerator
         sb.AppendLine("#include <stdint.h>");
         sb.AppendLine("#include <stdbool.h>");
         sb.AppendLine();
+        sb.AppendLine("// AmigaOS NDK headers for external types");
+        sb.AppendLine("#include <exec/types.h>");
+        sb.AppendLine("#include <exec/nodes.h>");
+        sb.AppendLine("#include <exec/lists.h>");
+        sb.AppendLine("#include <exec/ports.h>");
+        sb.AppendLine("#include <exec/libraries.h>");
+        sb.AppendLine("#include <exec/tasks.h>");
+        sb.AppendLine("#include <exec/devices.h>");
+        sb.AppendLine("#include <exec/semaphores.h>");
+        sb.AppendLine("#include <intuition/intuition.h>");
+        sb.AppendLine("#include <graphics/gfx.h>");
+        sb.AppendLine("#include <graphics/text.h>");
+        sb.AppendLine("#include <utility/tagitem.h>");
+        sb.AppendLine();
+        sb.AppendLine("// AmigaOS proto headers for proper library calling conventions");
+        sb.AppendLine("#include <proto/exec.h>");
+        sb.AppendLine("#include <proto/dos.h>");
+        sb.AppendLine("#include <proto/intuition.h>");
+        sb.AppendLine("#include <proto/graphics.h>");
+        sb.AppendLine();
+        sb.AppendLine("// Typedefs for NDK structs (headers only define 'struct Foo', not 'Foo')");
+        sb.AppendLine("typedef struct NewWindow NewWindow;");
+        sb.AppendLine("typedef struct Window Window;");
+        sb.AppendLine("typedef struct IntuiMessage IntuiMessage;");
+        sb.AppendLine("typedef struct MsgPort MsgPort;");
+        sb.AppendLine("typedef struct Message Message;");
+        sb.AppendLine("typedef struct TagItem TagItem;");
+        sb.AppendLine("typedef struct BitMap BitMap;");
+        sb.AppendLine("typedef struct TextFont TextFont;");
+        sb.AppendLine("typedef struct Task Task;");
+        sb.AppendLine("typedef struct Node Node;");
+        sb.AppendLine("typedef struct List List;");
+        sb.AppendLine();
 
         var codegen = new CCodeGenerator(new IrModule(), new List<IrStringLiteral>(), "68020", "auto");
 
@@ -203,7 +236,36 @@ public class CCodeGenerator
                 .ToHashSet();
             var sortedStructs = codegen.TopologicalSortStructTypes(concreteStructs);
 
-            foreach (var structType in sortedStructs)
+            // AmigaOS NDK structs: defined in std/ffi/amiga_structs.novus
+            // These are provided by NDK headers, so we skip generating definitions
+            // NOTE: This list is extracted from amiga_structs.novus - keep in sync!
+            var ndkStructs = new HashSet<string> {
+                "Rectangle", "BitMap", "View", "ViewPort", "ColorMap", "UCopList",
+                "Node", "MinNode", "Library", "List", "MinList", "TagItem", "Hook",
+                "Task", "StackSwapStruct", "SignalSemaphore", "MsgPort", "Message",
+                "Device", "Unit", "ExtendedNode", "Custom", "SpriteDef", "DBufInfo",
+                "TextAttr", "TTextAttr", "TextFont", "TextFontExtension",
+                "ColorFontColors", "ColorTextFont", "TextExtent", "Layer", "RastPort",
+                "IBox", "DrawInfo", "Gadget", "Requester", "NewScreen", "Screen",
+                "Window", "IntuiMessage", "NewWindow", "GadgetInfo"
+            };
+
+            var userStructs = sortedStructs
+                .Where(s => !ndkStructs.Contains(s.StructName))
+                .ToList();
+
+            // PASS 1: Forward declarations for all user-defined structs
+            // This is required for self-referential structs (e.g., Gadget* NextGadget in Gadget)
+            sb.AppendLine("// Forward declarations");
+            foreach (var structType in userStructs)
+            {
+                var structName = codegen.MangleName(structType);
+                sb.AppendLine($"typedef struct {structName} {structName};");
+            }
+            sb.AppendLine();
+
+            // PASS 2: Full struct definitions
+            foreach (var structType in userStructs)
             {
                 codegen.EmitStructTypeToBuilder(sb, structType);
             }
@@ -316,10 +378,8 @@ public class CCodeGenerator
             sb.AppendLine();
         }
 
-        // Include AmigaOS headers (same as monolithic generator)
-        sb.AppendLine("#include <utility/tagitem.h>");
-        sb.AppendLine("typedef struct TagItem TagItem;");
-        sb.AppendLine();
+        // Note: AmigaOS headers are included via novus_types.h
+        // which includes <utility/tagitem.h> and typedefs TagItem
 
         // Check for generic types (both enums and structs) in the function
         var enumTypes = CollectEnumTypesForFunction(function);
@@ -459,6 +519,12 @@ public class CCodeGenerator
                 var funcObj = _module.Functions.FirstOrDefault(f => f.Name == funcName);
                 if (funcObj != null)
                 {
+                    // Skip extern FFI functions - they're provided by proto headers (AmigaOS libraries)
+                    if (funcObj.IsExtern)
+                    {
+                        continue;
+                    }
+
                     // VBCC FIX: Use output parameter for struct/enum returns EXCEPT for extern functions
                     // Extern functions use their actual C signatures (e.g., runtime functions return enums directly)
                     var isStructOrEnumReturn = funcObj.ReturnType is IrStructType or IrEnumType;
@@ -527,6 +593,12 @@ public class CCodeGenerator
         // type-parameterized names (e.g., Vec_bool_push, Vec_u8_push) to prevent
         // duplicate symbol errors during linking.
         targetBuilder.AppendLine($"{returnType} {funcName}({parameters}) {{");
+
+        // Emit defer activation flags (for proper control flow tracking)
+        for (int i = 0; i < function.DeferredBlocks.Count; i++)
+        {
+            targetBuilder.AppendLine($"    bool _defer_{i + 1}_active = false;");
+        }
 
         // Emit all basic blocks
         foreach (var block in function.BasicBlocks)
@@ -768,7 +840,8 @@ public class CCodeGenerator
         var structName = MangleName(structType);
 
         sb.AppendLine($"// Struct: {structType.Name}");
-        sb.AppendLine($"typedef struct {{");
+        // Use named struct instead of anonymous to allow self-references
+        sb.AppendLine($"struct {structName} {{");
 
         foreach (var field in structType.Fields)
         {
@@ -786,7 +859,7 @@ public class CCodeGenerator
             }
         }
 
-        sb.AppendLine($"}} {structName};");
+        sb.AppendLine($"}};");
         sb.AppendLine();
     }
 
@@ -1206,6 +1279,31 @@ public class CCodeGenerator
             }
         }
 
+        // Also scan deferred blocks for function calls
+        foreach (var deferredBlock in function.DeferredBlocks)
+        {
+            foreach (var instruction in deferredBlock.Instructions)
+            {
+                if (instruction is IrCall call)
+                {
+                    if (!called.ContainsKey(call.FunctionName))
+                    {
+                        called[call.FunctionName] = (call.ReturnType, call.Arguments);
+                    }
+                }
+                else if (instruction is IrIndirectCall indirectCall)
+                {
+                    if (indirectCall.FunctionPointer is IrFunctionAddress funcAddr)
+                    {
+                        if (!called.ContainsKey(funcAddr.FunctionName))
+                        {
+                            called[funcAddr.FunctionName] = (indirectCall.ReturnType, indirectCall.Arguments);
+                        }
+                    }
+                }
+            }
+        }
+
         return called;
     }
 
@@ -1605,11 +1703,8 @@ public class CCodeGenerator
             _output.AppendLine();
         }
 
-        // Include AmigaOS headers for external structs
-        // TagItem is defined in utility/tagitem.h
-        _output.AppendLine("#include <utility/tagitem.h>");
-        _output.AppendLine("typedef struct TagItem TagItem;");
-        _output.AppendLine();
+        // Note: AmigaOS headers are included earlier in the monolithic output
+        // utility/tagitem.h is included and TagItem is typedef'd there
 
         // Don't emit proto headers - we'll use assembly stubs with i32 signatures
         // This avoids fighting VBCC's type system (BPTR, CONST_STRPTR, etc.)
@@ -2331,8 +2426,16 @@ public class CCodeGenerator
                 break;
 
             case IrDefer defer:
-                // IrDefer is just a marker - defer blocks are emitted at function exit points
-                // We don't emit anything here
+                // IrDefer marker - set the flag to indicate this defer block is now active
+                // Find which defer block this corresponds to
+                for (int i = 0; i < _currentEmittingFunction.DeferredBlocks.Count; i++)
+                {
+                    if (_currentEmittingFunction.DeferredBlocks[i] == defer.DeferredBlock)
+                    {
+                        _output.AppendLine($"    _defer_{i + 1}_active = true;");
+                        break;
+                    }
+                }
                 break;
 
             default:
@@ -2357,8 +2460,12 @@ public class CCodeGenerator
         {
             var deferBlock = function.DeferredBlocks[i];
 
-            // Emit a comment for debugging
+            // Use 1-based index for the flag name (defer_1, defer_2, etc.)
+            var deferIndex = i + 1;
+
+            // Wrap defer block in if check - only execute if defer was reached
             _output.AppendLine($"{indent}// Defer cleanup block {function.DeferredBlocks.Count - i}");
+            _output.AppendLine($"{indent}if (_defer_{deferIndex}_active) {{");
 
             // Emit all instructions in the deferred block
             foreach (var instruction in deferBlock.Instructions)
@@ -2373,18 +2480,21 @@ public class CCodeGenerator
                 var emitted = _output.ToString().Substring(beforeLength);
                 _output.Length = beforeLength;  // Remove what we just added
 
-                // Re-emit with correct indentation
+                // Re-emit with correct indentation (one more level for being inside the if)
                 var lines = emitted.Split('\n', StringSplitOptions.RemoveEmptyEntries);
                 foreach (var line in lines)
                 {
-                    // Strip existing indentation and apply our indentation
+                    // Strip existing indentation and apply our indentation + extra indent for if block
                     var trimmed = line.TrimStart();
                     if (!string.IsNullOrWhiteSpace(trimmed))
                     {
-                        _output.AppendLine($"{indent}{trimmed}");
+                        _output.AppendLine($"{indent}    {trimmed}");
                     }
                 }
             }
+
+            // Close the if block
+            _output.AppendLine($"{indent}}}");
         }
     }
 
@@ -2412,10 +2522,13 @@ public class CCodeGenerator
         {
             // First declaration - emit with type
             // Special handling for array types with array literal initialization
-            if (localDecl.Type is IrArrayType arrayType && localDecl.InitialValue is IrArrayLiteral)
+            if (localDecl.Type is IrArrayType arrayType && localDecl.InitialValue is IrArrayLiteral arrayLiteral)
             {
                 var elementType = GetCType(arrayType.ElementType);
                 var size = arrayType.Length;
+
+                // Use standard C array initializer syntax: Type name[size] = { elem1, elem2, ... };
+                // This works correctly with VBCC for all types including structs
                 _output.AppendLine($"    {elementType} {varName}[{size}] = {initValue};");
             }
             else
@@ -3184,7 +3297,7 @@ public class CCodeGenerator
     {
         return value switch
         {
-            IrConstant constant => constant.Value.ToString(),
+            IrConstant constant => EmitIntegerConstant(constant),
             IrBoolConstant boolConst => boolConst.Value ? "true" : "false",
             IrFloatConstant floatConst => EmitFloatConstant(floatConst),
             IrFixedConstant fixedConst => EmitFixedConstant(fixedConst),
@@ -3326,6 +3439,56 @@ public class CCodeGenerator
 
         sb.Append(" }");
         return sb.ToString();
+    }
+
+    private string EmitIntegerConstant(IrConstant constant)
+    {
+        // Emit integer constants with proper type suffix to avoid sign-extension issues
+        // VBCC has a bug where negative i32 literals get sign-extended to 64-bit in assembly
+        // Using explicit casts for proper 32-bit immediate operands
+
+        var constantValue = constant.Value;
+
+        // SPECIAL CASE: The literal 0 is used as NULL pointer in C
+        // Emit it without a cast so C can implicitly convert it to any pointer type
+        // This fixes crashes when passing 0 to functions expecting pointers (e.g., OpenWindowTagList)
+        if (constantValue == 0)
+        {
+            return "0";
+        }
+
+        // Check the type to determine how to emit the constant
+        var intType = constant.Type as IrIntType;
+        if (intType != null)
+        {
+            // For 32-bit types, use explicit cast to prevent VBCC from treating
+            // large/negative values as 64-bit immediates
+            if (intType.BitWidth == 32)
+            {
+                if (intType.IsSigned)
+                {
+                    // Signed i32: cast to ensure 32-bit
+                    var i32Value = unchecked((int)constantValue);
+                    return $"(int32_t){i32Value}";
+                }
+                else
+                {
+                    // Unsigned u32: cast and mask to 32 bits
+                    var u32Value = unchecked((uint)constantValue);
+                    return $"(uint32_t){u32Value}U";
+                }
+            }
+
+            // For other integer sizes, add U suffix for unsigned types
+            if (!intType.IsSigned)
+            {
+                var unsignedValue = unchecked((ulong)constantValue);
+                return $"{unsignedValue}U";
+            }
+        }
+
+        // For signed types or unknown types, emit as-is
+        return constantValue.ToString();
     }
 
     private string EmitFloatConstant(IrFloatConstant floatConst)

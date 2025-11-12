@@ -1,0 +1,18 @@
+[workspace]
+name = "{{PROJECT_NAME}}"
+description = "Novus GUI application"
+version = "0.1.0"
+members = ["traditional", "modern"]
+
+[workspace.build]
+# Default build settings for all workspace members
+# These can be overridden in individual project.toml files
+
+# Target CPU: auto, 68000, 68020, 68030, 68040, 68060
+target_cpu = "68020"
+
+# FPU mode: auto, none, 68881, 68882, 68040, 68060
+fpu = "auto"
+
+# Optimization level: 0 (none), 1 (basic), 2 (full), 3 (aggressive)
+optimization_level = 2

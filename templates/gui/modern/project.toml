@@ -1,0 +1,7 @@
+[package]
+name = "modern"
+type = "executable"
+entry = "src/main.novus"
+
+[build]
+output_name = "modern"

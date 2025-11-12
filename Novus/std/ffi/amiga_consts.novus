@@ -2757,6 +2757,15 @@ pub const WFLG_WBENCHWINDOW: u32 = $02000000
 pub const WFLG_WINDOWACTIVE: u32 = $00002000
 pub const WFLG_WINDOWREFRESH: u32 = $01000000
 pub const WFLG_WINDOWTICKED: u32 = $04000000
+
+// Window Attribute Tags for OpenWindowTagList
+pub const WA_Left: u32 = $80000064
+pub const WA_Top: u32 = $80000065
+pub const WA_Width: u32 = $80000066
+pub const WA_Height: u32 = $80000067
+pub const WA_Title: u32 = $8000006E
+pub const WA_Flags: u32 = $8000006B
+pub const WA_IDCMP: u32 = $8000006A
 pub const WFLG_ZOOMED: u32 = $10000000
 pub const WGUD_FUNC: u32 = 1
 pub const WGUD_HOOK: u32 = 0

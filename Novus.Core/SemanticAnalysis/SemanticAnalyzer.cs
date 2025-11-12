@@ -1781,7 +1781,25 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 var warningCode = suppressAttr.GetPositionalArg<string>(0);
                 if (warningCode != null)
                 {
-                    _currentFunctionSuppressedWarnings.Add(warningCode);
+                    // Validate that only warnings (W-codes) can be suppressed, not errors (E-codes)
+                    if (warningCode.StartsWith("E", StringComparison.Ordinal))
+                    {
+                        _diagnostics.ReportError(
+                            "E0099",
+                            $"@suppress cannot suppress error code '{warningCode}' - only warning codes (starting with 'W') can be suppressed",
+                            suppressAttr.Location,
+                            helpTexts: new List<string>
+                            {
+                                "errors indicate serious problems that must be fixed",
+                                "only warnings can be suppressed with @suppress",
+                                $"if you believe this error is incorrect, fix the underlying issue instead of suppressing it"
+                            }
+                        );
+                    }
+                    else
+                    {
+                        _currentFunctionSuppressedWarnings.Add(warningCode);
+                    }
                 }
             }
         }
@@ -1822,7 +1840,25 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 var warningCode = suppressAttr.GetPositionalArg<string>(0);
                 if (warningCode != null)
                 {
-                    _currentFunctionSuppressedWarnings.Add(warningCode);
+                    // Validate that only warnings (W-codes) can be suppressed, not errors (E-codes)
+                    if (warningCode.StartsWith("E", StringComparison.Ordinal))
+                    {
+                        _diagnostics.ReportError(
+                            "E0099",
+                            $"@suppress cannot suppress error code '{warningCode}' - only warning codes (starting with 'W') can be suppressed",
+                            suppressAttr.Location,
+                            helpTexts: new List<string>
+                            {
+                                "errors indicate serious problems that must be fixed",
+                                "only warnings can be suppressed with @suppress",
+                                $"if you believe this error is incorrect, fix the underlying issue instead of suppressing it"
+                            }
+                        );
+                    }
+                    else
+                    {
+                        _currentFunctionSuppressedWarnings.Add(warningCode);
+                    }
                 }
             }
         }
@@ -8124,6 +8160,26 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Allow integer (especially 0) to be used as null pointer
         // This enables: let ptr: *T = 0
         if (expected is IrPointerType && actual is IrIntType)
+        {
+            return true;
+        }
+
+        // Allow array-to-pointer decay: [T; N] → *T
+        // This allows passing arrays directly to functions expecting pointers
+        // Example: OpenWindowTagList(0, tags) where tags is [TagItem; 8]
+        if (expected is IrPointerType expectedPtrForArrayDecay && actual is IrArrayType actualArrayForDecay)
+        {
+            // Check if element types match
+            if (expectedPtrForArrayDecay.PointeeType.Name == actualArrayForDecay.ElementType.Name)
+            {
+                return true;
+            }
+        }
+
+        // Allow Str to be implicitly converted to u32 (extracts .ptr field and casts to u32)
+        // This is used for TagItem.ti_Data and similar AmigaOS APIs that store pointers as u32
+        if (expected is IrIntType expectedIntForPtr && expectedIntForPtr == IrIntType.U32 &&
+            actual is IrStructType actualStructForPtr && actualStructForPtr.StructName == "Str")
         {
             return true;
         }

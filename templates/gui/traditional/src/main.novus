@@ -1,0 +1,18 @@
+// Traditional GUI Template
+// A simple Amiga GUI application using direct Intuition API calls
+//
+// This template demonstrates the traditional Intuition.library approach
+// to creating Amiga GUIs with direct API calls and manual event handling
+//
+// TODO: Full GUI implementation requires FFI type generation fix
+// See compiler issue with extern function pointer types
+
+pub fn main() -> i32 {
+    // Placeholder for traditional Intuition-based GUI
+    // Will include:
+    // - OpenWindow() / CloseWindow() calls
+    // - Manual IDCMP event loop
+    // - Direct manipulation of Intuition structures
+
+    return 0
+}

@@ -1069,30 +1069,62 @@ class Program
 
             // Check if stdlib cache exists and is up-to-date (hash-based invalidation)
             // Force rebuild if --rebuild-stdlib flag is set
-            var usePrecompiledStdlib = !options.RebuildStdlib
-                && Directory.Exists(stdlibPrecompiledDir)
-                && !Commands.StdlibBuildCommand.NeedsRebuild(compilerDir, assemblyCpu, options.BuildMode);
+            bool needsRebuild = options.RebuildStdlib
+                || !Directory.Exists(stdlibPrecompiledDir)
+                || Commands.StdlibBuildCommand.NeedsRebuild(compilerDir, assemblyCpu, options.BuildMode);
 
-            // Build mapping of C files to their source Novus files for caching
-            // Format: cFile -> (sourcePath, sourceHash)
+            // CRITICAL FIX: If stdlib cache is stale, delete ALL cached .o files
+            // This prevents using stale object files with old constant values
+            if (needsRebuild && Directory.Exists(stdlibPrecompiledDir))
+            {
+                Console.WriteLine($"\n⚠ Stdlib cache invalidated - source files have changed");
+                Console.WriteLine($"  Clearing cached stdlib objects for {assemblyCpu}/{buildModeStr}...");
+                try
+                {
+                    // Delete all .o files in the cache directory
+                    var cachedOFiles = Directory.GetFiles(stdlibPrecompiledDir, "*.o", SearchOption.TopDirectoryOnly);
+                    foreach (var oFile in cachedOFiles)
+                    {
+                        File.Delete(oFile);
+                    }
+                    // Delete the manifest to force rebuild
+                    var manifestPath = Path.Combine(stdlibPrecompiledDir, "manifest.json");
+                    if (File.Exists(manifestPath))
+                    {
+                        File.Delete(manifestPath);
+                    }
+                    Console.WriteLine($"  ✓ Deleted {cachedOFiles.Length} stale object file(s)");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"  Warning: Failed to clear cache: {ex.Message}");
+                }
+            }
+
+            var usePrecompiledStdlib = !needsRebuild;
+
+            // Build mapping of C files to their generated content hashes for caching
+            // Format: cFile -> (sourcePath, cFileHash)
+            // IMPORTANT: We hash the generated C file content, NOT the source Novus file,
+            // because compiler changes can alter C codegen without changing the source
             var cFileToSource = new Dictionary<string, (string path, string hash)>();
 
             // Map main module functions to source file
             var mainSourcePath = options.InputFile;
-            var mainSourceHash = ComputeFileHash(mainSourcePath);
             foreach (var cFile in cFiles)
             {
                 var cFileName = Path.GetFileNameWithoutExtension(cFile);
                 if (cFileName.StartsWith(baseName + "_"))
                 {
-                    cFileToSource[cFile] = (mainSourcePath, mainSourceHash);
+                    // Hash the generated C file content (not the source)
+                    var cFileHash = ComputeFileHash(cFile);
+                    cFileToSource[cFile] = (mainSourcePath, cFileHash);
                 }
             }
 
             // Map imported module functions to their source files
             foreach (var (modulePath, moduleIR) in allModulesIR)
             {
-                var moduleHash = ComputeFileHash(modulePath);
                 var moduleName = moduleIR.ModuleName;
 
                 foreach (var cFile in cFiles)
@@ -1100,7 +1132,9 @@ class Program
                     var cFileName = Path.GetFileNameWithoutExtension(cFile);
                     if (cFileName.StartsWith(moduleName + "_"))
                     {
-                        cFileToSource[cFile] = (modulePath, moduleHash);
+                        // Hash the generated C file content (not the source)
+                        var cFileHash = ComputeFileHash(cFile);
+                        cFileToSource[cFile] = (modulePath, cFileHash);
                     }
                 }
             }
@@ -1245,9 +1279,10 @@ class Program
                 var cached = false;
                 if (!cFileName.EndsWith("_statics") && cFileToSource.TryGetValue(cFile, out var sourceInfo))
                 {
-                    var (sourcePath, sourceHash) = sourceInfo;
-                    // Cache key must match the format used when caching: codegen version + source + header + CPU + optlevel
-                    var cacheKey = $"v{CODEGEN_VERSION}_{sourceHash}_{typesHeaderHash.Substring(0, 8)}_{assemblyCpu}_O{options.OptimizationLevel}_{cFileName}.o";
+                    var (sourcePath, cFileHash) = sourceInfo;
+                    // Cache key must match the format used when caching: codegen version + C file hash + header + CPU + optlevel
+                    // We use C file hash (not source hash) to detect compiler codegen changes
+                    var cacheKey = $"v{CODEGEN_VERSION}_{cFileHash}_{typesHeaderHash.Substring(0, 8)}_{assemblyCpu}_O{options.OptimizationLevel}_{cFileName}.o";
                     var cachedObjFile = Path.Combine(userCacheDir, cacheKey);
 
                     if (File.Exists(cachedObjFile))
@@ -1296,10 +1331,11 @@ class Program
                         var cFileNameNoExt = Path.GetFileNameWithoutExtension(cFile);
                         if (!cFileNameNoExt.EndsWith("_statics") && cFileToSource.TryGetValue(cFile, out var sourceInfo))
                         {
-                            var (sourcePath, sourceHash) = sourceInfo;
-                            // Cache key includes: codegen version + source hash + types header hash + CPU + optimization level
+                            var (sourcePath, cFileHash) = sourceInfo;
+                            // Cache key includes: codegen version + C file hash + types header hash + CPU + optimization level
+                            // We use C file hash (not source hash) to detect compiler codegen changes
                             // This ensures cache invalidation when any of these change
-                            var cacheKey = $"v{CODEGEN_VERSION}_{sourceHash}_{typesHeaderHash.Substring(0, 8)}_{assemblyCpu}_O{options.OptimizationLevel}_{cFileNameNoExt}.o";
+                            var cacheKey = $"v{CODEGEN_VERSION}_{cFileHash}_{typesHeaderHash.Substring(0, 8)}_{assemblyCpu}_O{options.OptimizationLevel}_{cFileNameNoExt}.o";
                             var cachedObjFile = Path.Combine(userCacheDir, cacheKey);
                             cacheInfo = (objFile, cachedObjFile);
                         }

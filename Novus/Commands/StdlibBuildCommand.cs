@@ -283,6 +283,7 @@ public static class StdlibBuildCommand
 
     /// <summary>
     /// Check if stdlib needs rebuilding for a specific target
+    /// Also checks nested directories (e.g., ffi/) for changes
     /// </summary>
     public static bool NeedsRebuild(string compilerDir, string cpu, BuildMode buildMode)
     {
@@ -315,6 +316,7 @@ public static class StdlibBuildCommand
                 stdlibSourceDir = Path.GetFullPath(stdlibSourceDir);
             }
 
+            // Check all .novus files in manifest
             foreach (var (moduleName, moduleInfo) in manifest.Modules)
             {
                 var sourceFile = Path.Combine(stdlibSourceDir, moduleInfo.SourceFile);
@@ -330,6 +332,29 @@ public static class StdlibBuildCommand
                 }
             }
 
+            // CRITICAL FIX: Also check ALL .novus files in subdirectories (ffi/, etc.)
+            // These files may be imported but not tracked in the manifest
+            var allStdlibFiles = Directory.GetFiles(stdlibSourceDir, "*.novus", SearchOption.AllDirectories);
+            foreach (var sourceFile in allStdlibFiles)
+            {
+                // Get relative path for matching against manifest
+                var relativePath = Path.GetRelativePath(stdlibSourceDir, sourceFile);
+                var fileName = Path.GetFileName(sourceFile);
+                var moduleBaseName = Path.GetFileNameWithoutExtension(fileName);
+
+                // Check if this file is tracked in manifest
+                bool isTracked = manifest.Modules.Values.Any(m =>
+                    m.SourceFile == fileName ||
+                    m.SourceFile == relativePath ||
+                    m.SourceFile.Replace("\\", "/") == relativePath.Replace("\\", "/"));
+
+                if (!isTracked)
+                {
+                    // File exists but not tracked in manifest - manifest is stale
+                    return true;
+                }
+            }
+
             return false;  // All files match
         }
         catch
@@ -340,6 +365,7 @@ public static class StdlibBuildCommand
 
     /// <summary>
     /// Write manifest with hashes of stdlib source files for cache invalidation
+    /// Includes ALL .novus files in the stdlib directory (including subdirectories like ffi/)
     /// </summary>
     public static async Task WriteManifest(
         string stdlibPrecompiledDir,
@@ -358,21 +384,72 @@ public static class StdlibBuildCommand
             Modules = new Dictionary<string, StdlibModuleInfo>()
         };
 
-        // Track stdlib source files
+        // Find the stdlib root directory to compute relative paths
+        string? stdlibRootDir = null;
+        if (stdlibSourcePaths.Count > 0)
+        {
+            var firstPath = stdlibSourcePaths[0];
+            stdlibRootDir = firstPath.Contains("/std/")
+                ? firstPath.Substring(0, firstPath.IndexOf("/std/") + 5)
+                : Path.GetDirectoryName(firstPath);
+        }
+
+        // Track ALL stdlib source files (including those in subdirectories)
+        // This ensures changes to files like ffi/amiga_consts.novus invalidate the cache
         foreach (var modulePath in stdlibSourcePaths)
         {
-            var sourceFileName = Path.GetFileName(modulePath);
-            var moduleBaseName = Path.GetFileNameWithoutExtension(sourceFileName);
+            // Compute relative path from stdlib root for tracking
+            string relativePath;
+            if (stdlibRootDir != null && modulePath.StartsWith(stdlibRootDir))
+            {
+                relativePath = Path.GetRelativePath(stdlibRootDir, modulePath);
+            }
+            else
+            {
+                relativePath = Path.GetFileName(modulePath);
+            }
+
+            var moduleBaseName = Path.GetFileNameWithoutExtension(modulePath);
 
             // Compute hash of source file
             var hash = ComputeFileHash(modulePath);
 
-            manifest.Modules[moduleBaseName] = new StdlibModuleInfo
+            // Use a unique key that includes path to handle files with same name in different dirs
+            var uniqueKey = relativePath.Replace("\\", "/").Replace("/", "_").Replace(".novus", "");
+
+            manifest.Modules[uniqueKey] = new StdlibModuleInfo
             {
-                SourceFile = sourceFileName,
+                SourceFile = relativePath.Replace("\\", "/"),  // Normalize path separators
                 OutputFile = $"{moduleBaseName}_*.o",  // Wildcard for function-level files
                 Hash = hash
             };
+        }
+
+        // CRITICAL FIX: Also scan for ANY additional .novus files in the stdlib directory
+        // that weren't explicitly compiled but might be imported
+        if (stdlibRootDir != null && Directory.Exists(stdlibRootDir))
+        {
+            var allStdlibFiles = Directory.GetFiles(stdlibRootDir, "*.novus", SearchOption.AllDirectories);
+            foreach (var sourceFile in allStdlibFiles)
+            {
+                var relativePath = Path.GetRelativePath(stdlibRootDir, sourceFile);
+                var normalizedPath = relativePath.Replace("\\", "/");
+                var uniqueKey = normalizedPath.Replace("/", "_").Replace(".novus", "");
+
+                // Only add if not already tracked
+                if (!manifest.Modules.ContainsKey(uniqueKey))
+                {
+                    var hash = ComputeFileHash(sourceFile);
+                    var moduleBaseName = Path.GetFileNameWithoutExtension(sourceFile);
+
+                    manifest.Modules[uniqueKey] = new StdlibModuleInfo
+                    {
+                        SourceFile = normalizedPath,
+                        OutputFile = $"{moduleBaseName}_*.o",
+                        Hash = hash
+                    };
+                }
+            }
         }
 
         // Write manifest

@@ -5276,7 +5276,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 }
             }
 
-            // Apply automatic Str/String → *u8 coercion only when parameter type is *u8
+            // Apply automatic coercions for function arguments
             for (int i = 0; i < arguments.Count; i++)
             {
                 // Skip variadic parameters (they don't have a declared type)
@@ -5286,7 +5286,20 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 var paramType = funcRef.Function.Parameters[i].Type;
                 var argValue = arguments[i];
 
-                // Only coerce if parameter is *u8 and argument is Str or String
+                // Coercion 1: Array → Pointer decay (e.g., [T; N] → *T)
+                // This allows passing arrays directly to functions expecting pointers
+                // Arrays decay to pointers to their first element
+                if (paramType is IrPointerType expectedPtrType &&
+                    argValue.Type is IrArrayType arrayType &&
+                    expectedPtrType.PointeeType.Name == arrayType.ElementType.Name)
+                {
+                    // Array-to-pointer decay: just use the array value directly
+                    // The backend will handle getting the address of the first element
+                    arguments[i] = argValue;
+                    continue;  // Move to next argument
+                }
+
+                // Coercion 2: Str/String → *u8 for string parameters
                 if (paramType is IrPointerType ptrType &&
                     ptrType.PointeeType.Equals(IrIntType.U8) &&
                     argValue.Type is IrStructType structType &&
@@ -7806,6 +7819,14 @@ public class IrBuilder : NovusBaseVisitor<object?>
         return new IrBoolConstant(value);
     }
 
+    public override object? VisitNullLiteral([NotNull] NovusParser.NullLiteralContext context)
+    {
+        // null keyword is syntactic sugar for integer literal 0
+        // It will be emitted as bare "0" in C, allowing implicit conversion to any pointer type
+        var (value, type) = ParseIntegerLiteral("0");
+        return new IrConstant(value, type);
+    }
+
     public override object? VisitStringLiteral([NotNull] NovusParser.StringLiteralContext context)
     {
         var text = context.STRING_LITERAL().GetText();
@@ -8710,6 +8731,56 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     errorLocation
                 );
                 return null;
+            }
+
+            // Apply automatic Str → u32 coercion for fields that expect u32
+            // This allows passing string literals/variables to TagItem.ti_Data and similar fields
+            var field = structType.GetField(fieldName);
+            if (field != null &&
+                field.Type is IrIntType intType && intType == IrIntType.U32 &&
+                fieldValue.Type is IrStructType strStructType && strStructType.StructName == "Str")
+            {
+                // Extract the .ptr field from the Str struct
+                IrValue ptrValue;
+                if (fieldValue is IrStructLiteral strLiteral)
+                {
+                    // For string literals, extract the ptr field directly
+                    if (!strLiteral.FieldValues.TryGetValue("ptr", out ptrValue!))
+                    {
+                        var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                        _diagnostics.ReportError(
+                            ErrorCodes.InvalidExpressionType,
+                            "Str struct literal must have a 'ptr' field for coercion to u32",
+                            errorLocation
+                        );
+                        return null;
+                    }
+                }
+                else
+                {
+                    // For Str variables, create a member access instruction to get .ptr
+                    var ptrField = strStructType.GetField("ptr");
+                    if (ptrField == null)
+                    {
+                        var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                        _diagnostics.ReportError(
+                            ErrorCodes.InvalidExpressionType,
+                            "Str struct must have a 'ptr' field for coercion to u32",
+                            errorLocation
+                        );
+                        return null;
+                    }
+
+                    var ptrTempName = $"%t{_tempCounter++}";
+                    var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
+                    var ptrFieldAccess = new IrMemberAccess(ptrTempName, fieldValue, "ptr", u8PtrType, ptrField.Offset);
+                    _currentBlock!.AddInstruction(ptrFieldAccess);
+                    ptrValue = new IrVariable(ptrTempName, u8PtrType);
+                }
+
+                // Cast the pointer (*u8) to u32
+                var u8PtrTypeForCast = _typeInterner.GetPointerType(IrIntType.U8);
+                fieldValue = new IrCastValue(ptrValue, u8PtrTypeForCast, IrIntType.U32);
             }
 
             fieldValues[fieldName] = fieldValue;

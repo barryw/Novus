@@ -585,6 +585,20 @@ pub struct Window {
     MoreFlags: u32,
 }
 
+pub struct IntuiMessage {
+    ExecMessage: Message,
+    Class: u32,
+    Code: u16,
+    Qualifier: u16,
+    IAddress: *u8,
+    MouseX: i16,
+    MouseY: i16,
+    Seconds: u32,
+    Micros: u32,
+    IDCMPWindow: *Window,
+    SpecialLink: *IntuiMessage,
+}
+
 pub struct NewWindow {
     LeftEdge: i16,
     TopEdge: i16,
