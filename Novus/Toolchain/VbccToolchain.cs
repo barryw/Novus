@@ -168,13 +168,12 @@ public class VbccToolchain
             // For executables: standard static linking
             args.Add("-Bstatic");  // Static linking
             args.Add("-Cvbcc");  // VBCC calling convention (also enables constructor/destructor support)
-            // TEMPORARILY DISABLED: -gc-all has a bug where it calculates wrong symbol offsets
-            // when string constants are embedded in CODE section. This causes _main to point
-            // to the wrong address (end of previous function instead of start of main).
-            // TODO: Either fix vlink or move string constants to DATA section
-            //args.Add("-gc-all");  // Dead code elimination - now safe with -sc/-sd
-            //args.Add("-e");  // Specify entry point for -gc-all to trace from
-            //args.Add("_start");  // Entry point defined in novus_startup.s
+
+            // Dead code elimination - now safe with per-function compilation
+            // Each function is in its own section, so gc-all can properly eliminate unused code
+            args.Add("-gc-all");  // Dead code elimination
+            args.Add("-e");       // Specify entry point for -gc-all to trace from
+            args.Add("_start");   // Entry point defined in novus_startup.s
         }
 
         // Add startup code first (must come before user object files)
