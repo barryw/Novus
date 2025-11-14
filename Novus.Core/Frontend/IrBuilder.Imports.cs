@@ -1,0 +1,1606 @@
+using Novus.Diagnostics;
+using Novus.IR;
+using Novus.Parser;
+using Novus.SemanticAnalysis;
+
+namespace Novus.Frontend;
+
+/// <summary>
+/// IrBuilder partial class containing import and module processing methods.
+/// This file contains methods for importing symbols from other modules.
+/// </summary>
+public partial class IrBuilder
+{
+    private void ProcessImport(NovusParser.ImportDeclarationContext context)
+    {
+        // Get the module path (e.g., "std::dos" or "std::ffi::exec")
+        var modulePath = context.modulePath().GetText();
+
+        // Get the list of names to import
+        var importList = context.importList();
+        bool importAll = importList.GetText() == "*";
+
+        ImportModule(modulePath, importAll, importList);
+    }
+
+    private void ImportModuleSpecificSymbols(string moduleNamespace, List<string> symbolNames)
+    {
+        // Build a pseudo import list that contains the specific symbols
+        // We can't create a real ImportListContext without the parser, so we'll
+        // pass the symbol names another way
+        // For now, recursively call ImportModule for each symbol individually
+        foreach (var symbolName in symbolNames)
+        {
+            // Parse the module to get the symbols
+            string modulePath = ModuleImportHelper.ResolveModulePath(moduleNamespace, _stdLibPath);
+            var (moduleContext, syntaxErrors) = ModuleImportHelper.ParseModuleFile(modulePath);
+
+            if (moduleContext == null || syntaxErrors > 0)
+            {
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.ModuleNotFound,
+                    $"Module '{moduleNamespace}' not found or has syntax errors",
+                    errorLocation
+                );
+                return;
+            }
+
+            // IMPORTANT: Process the module's own reexports first
+            // This ensures that types used by the symbol we're importing are available
+            foreach (var reexportDecl in moduleContext.reexportDeclaration())
+            {
+                var reexportPath = reexportDecl.modulePath().GetText();
+                var reexportText = reexportDecl.GetText();
+                if (reexportText.EndsWith("::*"))
+                {
+                    ImportModule(reexportPath, importAll: true, importList: null);
+                }
+                else
+                {
+                    var reexportList = reexportDecl.reexportList();
+                    if (reexportList != null)
+                    {
+                        var reexportSymbols = new List<string>();
+                        foreach (var id in reexportList.IDENTIFIER())
+                        {
+                            reexportSymbols.Add(id.GetText());
+                        }
+                        ImportModuleSpecificSymbols(reexportPath, reexportSymbols);
+                    }
+                }
+            }
+
+            // Find and register the specific symbol
+            // Check enums
+            foreach (var enumDecl in moduleContext.enumDeclaration())
+            {
+                if (enumDecl.IDENTIFIER().GetText() == symbolName)
+                {
+                    RegisterEnum(enumDecl);
+                    return; // Found it
+                }
+            }
+            // Check structs
+            foreach (var structDecl in moduleContext.structDeclaration())
+            {
+                if (structDecl.IDENTIFIER().GetText() == symbolName)
+                {
+                    RegisterStruct(structDecl);
+                    return; // Found it
+                }
+            }
+            // Check traits
+            foreach (var traitDecl in moduleContext.traitDeclaration())
+            {
+                if (traitDecl.IDENTIFIER().GetText() == symbolName)
+                {
+                    RegisterTrait(traitDecl);
+                    return; // Found it
+                }
+            }
+            // Check constants
+            foreach (var constDecl in moduleContext.constDeclaration())
+            {
+                if (constDecl.IDENTIFIER().GetText() == symbolName)
+                {
+                    RegisterConstant(constDecl);
+                    return; // Found it
+                }
+            }
+        }
+    }
+
+    private void ImportModule(string moduleNamespace, bool importAll, NovusParser.ImportListContext? importList = null)
+    {
+        // Convert namespace path to file path
+        string modulePath = ModuleImportHelper.ResolveModulePath(moduleNamespace, _stdLibPath);
+
+        // Load and parse the module first to check if it needs compilation
+        var (moduleContext, syntaxErrors) = ModuleImportHelper.ParseModuleFile(modulePath);
+
+        if (moduleContext == null || syntaxErrors > 0)
+        {
+            var errorLocation = importList != null
+                ? SourceLocationHelper.FromContext(importList, _inputFilePath, _sourceLines.ToArray())
+                : new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.ModuleNotFound,
+                $"Module '{moduleNamespace}' not found at {modulePath} or has syntax errors",
+                errorLocation
+            );
+            return;
+        }
+
+        // Check if module has already been fully processed
+        bool alreadyProcessed = _processedModules.Contains(moduleNamespace);
+
+
+        if (alreadyProcessed)
+        {
+            // Even if module is already processed, we still need to handle selective imports
+            // This allows: from std::ffi::dos import SystemTagList
+            //         AND: from std::ffi::dos import IoErr
+            // Both imports from the same module
+            if (!importAll && importList != null)
+            {
+                // Build the list of names to import for this specific import statement
+                var selectiveImports = ModuleImportHelper.BuildImportNameSet(moduleContext, importAll, importList);
+
+                // CRITICAL: Register ALL type stubs FIRST before parsing any signatures
+                // Function signatures, struct fields, and impl blocks all need types to be registered
+
+                // Step 1: Register ALL enum stubs (not just selective imports)
+                RegisterAllEnumStubsForImport(moduleContext);
+
+                // Step 2: Register ALL struct placeholders (not just selective imports)
+                RegisterAllStructPlaceholdersForImport(moduleContext);
+
+                // Step 3: Fill in enum variants for selective imports only
+                FillEnumVariantsForImport(moduleContext, selectiveImports);
+
+                // Register functions from the already-parsed module
+                // At this point, all type stubs are registered so function signatures can reference any type
+                foreach (var funcDecl in moduleContext.functionDeclaration())
+                {
+                    var funcName = funcDecl.IDENTIFIER().GetText();
+                    if (selectiveImports.Contains(funcName))
+                    {
+                        // Check if not already imported
+                        if (!_module.Functions.Any(f => f.Name == funcName))
+                        {
+                            // Parse and add the function
+                            var returnType = ParseReturnType(funcDecl.type());
+
+                            var (visibility, isExtern, _) = AstModifierHelper.ParseModifiers(funcDecl, 4);
+
+                            var function = new IrFunction(funcName, returnType, visibility, isExtern);
+
+                            // Parse parameters
+                            ParseFunctionParameters(funcDecl, function);
+
+                            _module.AddFunction(function);
+                        }
+                    }
+                }
+
+                // Register constants
+                RegisterConstantsForImport(moduleContext, selectiveImports);
+
+                // Register structs (with dependency expansion)
+                // First, expand selective imports to include struct dependencies
+                var expandedStructImports = ExpandStructDependencies(moduleContext, selectiveImports);
+
+                // Register placeholder structs
+                RegisterStructPlaceholdersForImport(moduleContext, expandedStructImports);
+
+                // Fill in struct fields
+                // At this point, enum stubs are registered so struct fields can reference enums
+                FillStructFieldsForImport(moduleContext, expandedStructImports);
+
+                // Register traits
+                RegisterTraitsForImport(moduleContext, selectiveImports);
+            }
+
+            return; // Don't reprocess the entire module
+        }
+
+        // Mark this module as being processed
+        _processedModules.Add(moduleNamespace);
+
+        // Check if this module has any pub (non-extern) functions that need compilation
+        // FFI modules (only extern functions) don't need to be compiled separately
+        bool hasImplementation = ModuleImportHelper.CheckHasImplementation(moduleContext);
+
+        // Track this module for compilation only if it has real implementations
+        // (avoid duplicates)
+        if (hasImplementation && !_importedModulePaths.Contains(modulePath))
+        {
+            _importedModulePaths.Add(modulePath);
+        }
+
+        // Note: We need to process the module's imports to make constants available for generic templates
+        // This is safe because _processedModules prevents circular dependencies
+        foreach (var importDecl in moduleContext.importDeclaration())
+        {
+            ProcessImport(importDecl);
+        }
+
+        // CRITICAL: Process pub use reexports, before parsing any function signatures
+        // Function signatures may reference reexported types, so those types must be in scope
+        foreach (var reexportDecl in moduleContext.reexportDeclaration())
+        {
+            var reexportPath = reexportDecl.modulePath().GetText();
+            var text = reexportDecl.GetText();
+            bool reexportAll = text.EndsWith("::*");
+
+            if (reexportAll)
+            {
+                // pub use std::error::* - import all symbols
+                ImportModule(reexportPath, importAll: true, importList: null);
+            }
+            else
+            {
+                // pub use std::error::DosError - import specific symbols
+                var reexportList = reexportDecl.reexportList();
+                if (reexportList != null)
+                {
+                    var symbolNames = new List<string>();
+                    foreach (var id in reexportList.IDENTIFIER())
+                    {
+                        symbolNames.Add(id.GetText());
+                    }
+                    // Create a fake import list context with these names
+                    // We need to import these symbols so they're available when parsing function signatures
+                    ImportModuleSpecificSymbols(reexportPath, symbolNames);
+                }
+            }
+        }
+
+        // Build the list of names to import
+        var namesToImport = ModuleImportHelper.BuildImportNameSet(moduleContext, importAll, importList);
+
+
+        // CRITICAL PHASE 1: Register ALL type stubs BEFORE parsing any signatures
+        // This is essential because impl block method signatures may reference ANY type from the module,
+        // even types not being explicitly imported. For example:
+        //   - User imports Str (struct) from std::strings
+        //   - Str has methods that return Result<Str, StringError>
+        //   - StringError enum must be resolvable during impl block processing
+        //   - Similarly, String struct may be referenced even if not imported
+
+        // Step 1a: Register ALL enum stubs from the module (not just imported ones)
+        RegisterAllEnumStubsForImport(moduleContext);
+
+        // Step 1b: Register ALL struct placeholders from the module (not just imported ones)
+        RegisterAllStructPlaceholdersForImport(moduleContext);
+
+        // CRITICAL PHASE 2: Fill in type details for explicitly imported types only
+
+        // Step 2a: Fill in enum variants for imported enums only
+        FillEnumVariantsForImport(moduleContext, namesToImport);
+
+        // Step 2b: Register imported constants
+        RegisterConstantsForImport(moduleContext, namesToImport);
+
+        // Step 2c: Expand struct import list to include dependencies and fill in fields
+        // When importing NewScreen, we also need to import TextAttr and BitMap that it references
+        var expandedStructNames = ExpandStructDependencies(moduleContext, namesToImport);
+
+        // Fill in struct fields for expanded struct list
+        // At this point, all type names (enums + structs) are resolvable for field type parsing
+        FillStructFieldsForImport(moduleContext, expandedStructNames);
+
+        // Register imported traits in the module
+        RegisterTraitsForImport(moduleContext, namesToImport);
+
+        // Register imported functions in the module
+        RegisterFunctionsForImport(moduleContext, namesToImport, moduleNamespace);
+
+        // Register imported impl block methods in the module
+        foreach (var implDecl in moduleContext.implDeclaration())
+        {
+            // Handle generic parameters if present (e.g., impl<T> Vec<T>)
+            var genericParams = new List<string>();
+            if (implDecl.genericParams() != null)
+            {
+                foreach (var paramId in implDecl.genericParams().IDENTIFIER())
+                {
+                    var paramName = paramId.GetText();
+                    genericParams.Add(paramName);
+                    _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
+                }
+            }
+
+            // Determine if this is a trait impl or inherent impl
+            bool isTraitImpl = implDecl.KW_FOR() != null;
+            string? traitName = null;
+            List<IrType> traitTypeArgs = new();
+
+            // Extract implementing type name
+            string typeName;
+            IrType? implementingType = null;
+
+            if (isTraitImpl)
+            {
+                // Format: impl [<GenericParams>] TraitName<TraitArgs> for TargetType
+                // traitTypeName is the trait being implemented
+                traitName = implDecl.traitTypeName.IDENTIFIER(0).GetText();
+
+                // Parse trait type arguments if present (e.g., From<DosError>)
+                if (implDecl.traitTypeArgs != null)
+                {
+                    var typeList = implDecl.traitTypeArgs.typeList();
+                    foreach (var typeCtx in typeList.type())
+                    {
+                        traitTypeArgs.Add(ParseType(typeCtx));
+                    }
+                }
+
+                // implTargetType is the type receiving the implementation
+                var targetTypeCtx = implDecl.implTargetType();
+
+                if (targetTypeCtx is NovusParser.PrimitiveImplTargetContext primitiveCtx)
+                {
+                    // impl Trait for i32, bool, etc.
+                    var primitiveTypeNameCtx = primitiveCtx.primitiveTypeName();
+                    typeName = primitiveTypeNameCtx.GetText().ToLowerInvariant();
+                    implementingType = MapPrimitiveTypeName(typeName);
+                }
+                else if (targetTypeCtx is NovusParser.NamedImplTargetContext namedCtx)
+                {
+                    // impl Trait for MyType
+                    typeName = namedCtx.typeName().IDENTIFIER(0).GetText();
+
+                    // Look up the implementing type (could be struct or enum)
+                    var structType = _symbols.LookupStruct(typeName);
+                    var enumType = _symbols.LookupEnum(typeName);
+
+                    if (structType != null)
+                    {
+                        implementingType = structType;
+                    }
+                    else if (enumType != null)
+                    {
+                        implementingType = enumType;
+                    }
+                    // Will check for null below
+                }
+                else
+                {
+                    throw new CompilerBugException(
+                        $"Unknown impl target type context: {targetTypeCtx?.GetType().Name}",
+                        "ImportModule Pass 7 - impl block processing",
+                        _inputFilePath,
+                        null
+                    );
+                }
+            }
+            else
+            {
+                // Format: impl [<GenericParams>] TargetType
+                // targetTypeName is the type receiving inherent methods
+                typeName = implDecl.targetTypeName.IDENTIFIER(0).GetText();
+
+                // Look up the implementing type (could be struct or enum)
+                var structType = _symbols.LookupStruct(typeName);
+                var enumType = _symbols.LookupEnum(typeName);
+
+                if (structType != null)
+                {
+                    implementingType = structType;
+                }
+                else if (enumType != null)
+                {
+                    implementingType = enumType;
+                }
+                // Will check for null below
+            }
+
+            // Skip if the type this impl is for is not in the import list
+            // This prevents importing methods for types we don't have access to
+            // However, ALWAYS allow impl blocks for primitive types (i8, i16, i32, u8, etc.)
+            // because primitives are universally available and their trait impls should be imported
+            bool isPrimitiveType = typeName is "i8" or "i16" or "i32" or "i64" or
+                                                "u8" or "u16" or "u32" or "u64" or
+                                                "bool" or "f32" or "f64";
+
+            if (!isPrimitiveType && !namesToImport.Contains(typeName))
+            {
+                _symbols.ClearGenericParameters();
+                continue;
+            }
+
+            // Skip if implementing type not found (type not imported or not registered yet)
+            if (implementingType == null)
+            {
+                // Clear generic params before skipping
+                _symbols.ClearGenericParameters();
+                continue;
+            }
+
+            _currentSelfType = implementingType;
+
+            foreach (var implItem in implDecl.implItem())
+            {
+                var funcDecl = implItem.functionDeclaration();
+                if (funcDecl == null) continue;
+
+                var methodName = funcDecl.IDENTIFIER().GetText();
+
+                // Check if method is pub
+                var isPub = AstModifierHelper.HasModifier(funcDecl, "pub", 3);
+
+                // For trait implementations, methods are implicitly public since they implement
+                // a public trait method, even if not explicitly marked `pub`
+                if (isTraitImpl)
+                {
+                    isPub = true;
+                }
+
+                // For generic impl blocks, store ALL methods as templates (pub and private)
+                // because instantiating one method may need to call private helper methods
+                if (genericParams.Count > 0)
+                {
+                    StoreGenericMethodTemplate(typeName, methodName, genericParams, funcDecl);
+                    // Don't create function yet - it will be instantiated when called with concrete types
+                    continue;
+                }
+
+                // Only import pub methods for non-generic impl blocks
+                if (!isPub)
+                {
+                    continue;
+                }
+
+                // For non-generic impl blocks, create the function normally
+                var returnType = ParseReturnType(funcDecl.type());
+
+                // Methods are registered with mangled names
+                var mangledName = GenerateMethodMangledName(typeName, methodName, isTraitImpl, traitName, traitTypeArgs);
+                var function = new IrFunction(mangledName, returnType, Visibility.Private, false);
+
+                // Parse parameters (including self)
+                if (funcDecl.parameterList() != null)
+                {
+                    var paramList = funcDecl.parameterList();
+
+                    // Handle self parameter if present
+                    ParseSelfParameter(paramList.selfParameter(), function, typeName);
+
+                    // Add regular and variadic parameters
+                    ParseFunctionParameters(funcDecl, function);
+                }
+
+                _module.AddFunction(function);
+            }
+
+            // Register trait implementation if this is a trait impl
+            // Note: We register even generic trait impls (e.g., impl<T> Drop for Vec<T>)
+            // so that TypeImplementsDrop can detect them for monomorphized types
+            if (isTraitImpl && traitName != null)
+            {
+                if (implementingType == null)
+                {
+                    var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.TypeNotFound,
+                        $"Type '{typeName}' not found for trait implementation",
+                        errorLocation
+                    );
+                    return;
+                }
+
+                // Construct full trait name with type arguments (e.g., "From<DosError>")
+                var fullTraitName = traitName;
+                if (traitTypeArgs.Count > 0)
+                {
+                    fullTraitName = $"{traitName}<{string.Join(", ", traitTypeArgs.Select(t => t.Name))}>";
+                }
+
+                // Create IrTraitImpl and add to module
+                // For generic impls, this is a template that will be instantiated later
+                var traitImpl = new IrTraitImpl(fullTraitName, traitTypeArgs, typeName, implementingType, genericParams);
+                _module.TraitImpls.Add(traitImpl);
+            }
+
+            // Clear generic params and Self type from scope after impl registration
+            _symbols.ClearGenericParameters();
+            _currentSelfType = null;
+        }
+
+        // If we're importing any impl blocks (generic or not), also import all transitive dependencies
+        // that the impl methods might need (e.g., AllocMem from std::exec for Vec methods)
+        bool hasImplBlocks = moduleContext.implDeclaration().Length > 0;
+        if (hasImplBlocks)
+        {
+            // First, import any extern functions directly declared in this module
+            foreach (var funcDecl in moduleContext.functionDeclaration())
+            {
+                var funcName = funcDecl.IDENTIFIER().GetText();
+
+                // Check if it's an extern function
+                bool isExtern = AstModifierHelper.HasModifier(funcDecl, "extern", 3);
+
+                // Only import extern functions (FFI bindings)
+                if (!isExtern) continue;
+
+                // Check if we already have this function
+                if (_module.Functions.Any(f => f.Name == funcName)) continue;
+
+                // Parse and import the extern function
+                var returnType = ParseReturnType(funcDecl.type());
+                var function = new IrFunction(funcName, returnType, Visibility.Private, true);
+
+                // Parse parameters
+                ParseFunctionParameters(funcDecl, function);
+
+                _module.AddFunction(function);
+            }
+
+            // Second, recursively import symbols from FFI modules that this module imports
+            // This handles cases like std::core importing from std::ffi::exec
+            // Only import from std::ffi::* modules to avoid conflicts with wrapper functions
+            foreach (var importDecl in moduleContext.importDeclaration())
+            {
+                var importPath = importDecl.modulePath().GetText();
+
+                // Only transitively import from std::ffi::* modules (pure FFI bindings)
+                if (!importPath.Contains("::ffi::"))
+                {
+                    continue;
+                }
+
+                var importListCtx = importDecl.importList();
+
+                // Import the specific symbols that this module imports
+                // These are extern FFI functions that impl methods need
+                if (importListCtx != null)
+                {
+                    ImportModule(importPath, importAll: false, importList: importListCtx);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Instantiate a generic method for a monomorphized struct type
+    /// E.g., instantiate Vec<T>::push as Vec<i32>::push
+    /// For trait impls, pass isTraitImpl=true and traitName (e.g., "Drop")
+    /// </summary>
+    private IrFunction? InstantiateGenericMethod(IrStructType monomorphizedStruct, string methodName, bool isTraitImpl = false, string? traitName = null, List<IrType>? traitTypeArgs = null)
+    {
+        var baseTypeName = monomorphizedStruct.StructName;
+        var templateKey = $"{baseTypeName}::{methodName}";
+
+        // Check if we have a template for this method
+        if (!_genericMethodTemplates.TryGetValue(templateKey, out var template))
+        {
+            return null; // No template found
+        }
+
+        var (genericParams, funcDecl, templateConstants) = template;
+
+
+        // Save current constants and MERGE template constants with current module constants
+        // Current module constants take priority (they may include transitive imports)
+        var savedConstants = GetConstantsAsTuples();
+
+        // Start with template constants, then overlay current module constants
+        // TODO: This is inefficient - should use child scopes instead
+        RestoreConstantsFromTuples(templateConstants);
+        RestoreConstantsFromTuples(savedConstants);
+
+        // Build instantiation key (e.g., "Vec<i32>::push" or "Vec<i32>::Drop::drop" for trait impls)
+        var instantiationKey = isTraitImpl && traitName != null
+            ? $"{monomorphizedStruct.CacheKey}::{traitName}::{methodName}"
+            : $"{monomorphizedStruct.CacheKey}::{methodName}";
+
+        // For mangling, use monomorphized type name (e.g., "Vec<i32>")
+        var mangledTypeName = monomorphizedStruct.CacheKey ?? baseTypeName;
+
+        // Check if already instantiated
+        if (_instantiatedMethods.Contains(instantiationKey))
+        {
+            // Already generated, look it up using correct mangling convention
+            var mangledName = GenerateMethodMangledName(
+                mangledTypeName,
+                methodName,
+                isTraitImpl,
+                traitName,
+                traitTypeArgs ?? new List<IrType>()
+            );
+            return _module.Functions.FirstOrDefault(f => f.Name == mangledName);
+        }
+
+        // Build type substitution map from monomorphized struct
+        var typeSubstitutions = new Dictionary<string, IrType>();
+        var baseStruct = _symbols.LookupStruct(baseTypeName);
+        if (baseStruct == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(ErrorCodes.StructNotFound, $"Struct '{baseTypeName}' not found", errorLocation);
+            return null;
+        }
+
+        // Scan all fields to find which ones use generic types
+        // This handles cases where generics aren't in the first N fields
+        for (int i = 0; i < baseStruct.Fields.Count && i < monomorphizedStruct.Fields.Count; i++)
+        {
+            var baseFieldType = baseStruct.Fields[i].Type;
+            var monomorphizedFieldType = monomorphizedStruct.Fields[i].Type;
+
+            // Recursively extract generic type mappings from field types
+            ExtractGenericTypeMapping(baseFieldType, monomorphizedFieldType, typeSubstitutions);
+        }
+
+        // Verify all generic parameters were resolved
+        foreach (var genericParam in baseStruct.GenericParameters)
+        {
+            if (!typeSubstitutions.ContainsKey(genericParam))
+            {
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.GenericParameterNotFound,
+                    $"Generic parameter '{genericParam}' not found in monomorphized struct {monomorphizedStruct.CacheKey}",
+                    errorLocation
+                );
+                return null;
+            }
+        }
+
+        // Set up concrete types for substitution during parsing
+        var savedGenericParams = new Dictionary<string, IrGenericType>();
+        foreach (var paramName in genericParams)
+        {
+            if (_symbols.HasGenericParameter(paramName))
+            {
+                var genericParam = _symbols.LookupGenericParameter(paramName);
+                if (genericParam != null) savedGenericParams[paramName] = genericParam;
+            }
+            _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
+        }
+
+        // Set active type substitutions for the duration of this instantiation
+        var savedSubstitutions = _currentTypeSubstitutions;
+        _currentTypeSubstitutions = typeSubstitutions;
+
+        // Set Self type to the monomorphized struct for Self type resolution
+        var savedSelfType = _currentSelfType;
+        _currentSelfType = monomorphizedStruct;
+
+        // Create the function
+        var returnType = ParseReturnType(funcDecl.type());
+
+        // Substitute generic types in return type
+        returnType = _typeParser.SubstituteGenericTypes(returnType, typeSubstitutions);
+
+        // Generate correct mangled name for trait impls vs inherent methods (using mangledTypeName from above)
+        var mangledMethodName = GenerateMethodMangledName(
+            mangledTypeName,
+            methodName,
+            isTraitImpl,
+            traitName,
+            traitTypeArgs ?? new List<IrType>()
+        );
+        var function = new IrFunction(mangledMethodName, returnType, Visibility.Private, false);
+
+        // Parse parameters with substitutions
+        if (funcDecl.parameterList() != null)
+        {
+            var paramList = funcDecl.parameterList();
+
+            // Handle self parameter
+            ParseSelfParameter(paramList.selfParameter(), function, monomorphizedStruct);
+
+            // Add regular parameters - need to substitute generic types
+            foreach (var paramCtx in paramList.parameter())
+            {
+                var paramName = paramCtx.IDENTIFIER().GetText();
+                var paramType = ParseType(paramCtx.type());
+
+                // Substitute generic types recursively
+                paramType = _typeParser.SubstituteGenericTypes(paramType, typeSubstitutions);
+
+                function.Parameters.Add(new IrParameter(paramName, paramType));
+            }
+
+            // Add variadic parameter if present
+            ParseVariadicParameter(paramList, function);
+        }
+
+        _module.AddFunction(function);
+
+        // Build the function body - save all state to avoid corrupting caller
+        var savedFunction = _currentFunction;
+        var savedBlock = _currentBlock;
+        var savedLocalVars = new Dictionary<string, IrLocalVariable>(_localVariables);
+
+        _currentFunction = function;
+        _localVariables.Clear();
+
+        // Add parameters to local variables
+        foreach (var param in function.Parameters)
+        {
+            _localVariables[param.Name] = new IrLocalVariable(param.Name, param.Type, false);
+        }
+
+        // Create entry block
+        var entryBlock = new IrBasicBlock("entry");
+        function.BasicBlocks.Add(entryBlock);
+        _currentBlock = entryBlock;
+
+        // Visit the function body with type substitutions active
+        if (funcDecl.block() != null)
+        {
+            Visit(funcDecl.block());
+        }
+
+        // Restore all state
+        _currentFunction = savedFunction;
+        _currentBlock = savedBlock;
+        _localVariables.Clear();
+        foreach (var kvp in savedLocalVars)
+        {
+            _localVariables[kvp.Key] = kvp.Value;
+        }
+
+        // Restore type substitutions
+        _currentTypeSubstitutions = savedSubstitutions;
+
+        // Restore Self type
+        _currentSelfType = savedSelfType;
+
+        // Restore constants
+        // TODO: Implement proper scope save/restore in SymbolTable
+        RestoreConstantsFromTuples(savedConstants);
+
+        // Clear generic params
+        foreach (var paramName in typeSubstitutions.Keys)
+        {
+            _symbols.ClearGenericParameters();
+        }
+
+        // Mark as instantiated
+        _instantiatedMethods.Add(instantiationKey);
+
+        return function;
+    }
+
+    private IrFunction? InstantiateGenericEnumMethod(IrEnumType enumType, string methodName, List<IrValue> arguments)
+    {
+        var baseTypeName = enumType.EnumName;
+        var templateKey = $"{baseTypeName}::{methodName}";
+
+
+        // Check if we have a template for this method
+        if (!_genericMethodTemplates.TryGetValue(templateKey, out var template))
+        {
+            return null; // No template found
+        }
+
+        var (genericParams, funcDecl, templateConstants) = template;
+
+        // Register generic parameters temporarily so ParseType can find them
+        var savedGenericParams = new Dictionary<string, IrGenericType>();
+        foreach (var paramName in genericParams)
+        {
+            if (_symbols.HasGenericParameter(paramName))
+            {
+                var genericParam = _symbols.LookupGenericParameter(paramName);
+                if (genericParam != null) savedGenericParams[paramName] = genericParam;
+            }
+            _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
+        }
+
+        // Infer type substitutions from arguments
+        // First, parse the template to get parameter types
+        var templateParams = new List<IrParameter>();
+        if (funcDecl.parameterList() != null)
+        {
+            var paramList = funcDecl.parameterList();
+            foreach (var paramCtx in paramList.parameter())
+            {
+                var paramName = paramCtx.IDENTIFIER().GetText();
+                var savedSubstitutions = _currentTypeSubstitutions;
+                _currentTypeSubstitutions = null; // Parse without substitutions to get generic types
+                var paramType = ParseType(paramCtx.type());
+                _currentTypeSubstitutions = savedSubstitutions;
+                templateParams.Add(new IrParameter(paramName, paramType));
+            }
+
+            // Add variadic parameter if present (for template analysis)
+            ParseVariadicParameter(paramList, templateParams);
+        }
+
+        // Build type substitution map from monomorphized enum (same approach as structs)
+        var typeSubstitutions = new Dictionary<string, IrType>();
+        var baseEnum = _symbols.LookupEnum(baseTypeName);
+        if (baseEnum == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.EnumNotFound,
+                $"Enum '{baseTypeName}' not found",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Extract type mappings by comparing base enum variants with monomorphized enum variants
+        // For example: Option<T> vs Option<i32> should extract T -> i32
+        // Use ExtractGenericTypeMapping helper for cleaner, recursive type extraction
+        if (enumType.CacheKey != null) // enum is monomorphized (e.g., Option<i32>)
+        {
+            for (int varIdx = 0; varIdx < baseEnum.Variants.Count && varIdx < enumType.Variants.Count; varIdx++)
+            {
+                var baseVariant = baseEnum.Variants[varIdx];
+                var monoVariant = enumType.Variants[varIdx];
+
+                if (baseVariant.Name == monoVariant.Name &&
+                    baseVariant.AssociatedData.Count == monoVariant.AssociatedData.Count)
+                {
+                    for (int dataIdx = 0; dataIdx < baseVariant.AssociatedData.Count; dataIdx++)
+                    {
+                        ExtractGenericTypeMapping(baseVariant.AssociatedData[dataIdx], monoVariant.AssociatedData[dataIdx], typeSubstitutions);
+                    }
+                }
+
+            }
+        }
+
+        // Verify all generic parameters were resolved
+        foreach (var genericParam in baseEnum.GenericParameters)
+        {
+            if (!typeSubstitutions.ContainsKey(genericParam))
+            {
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.GenericParameterNotFound,
+                    $"Generic parameter '{genericParam}' not found in monomorphized enum {enumType.CacheKey ?? enumType.EnumName}",
+                    errorLocation
+                );
+                return null;
+            }
+        }
+
+        // Use the already-monomorphized enum (no need to monomorphize again)
+        // enumType is already monomorphized (e.g., Option<i32>) since it came from the call site
+
+        // Build instantiation key
+        var instantiationKey = $"{enumType.CacheKey}::{methodName}";
+
+        // Check if already instantiated
+        if (_instantiatedMethods.Contains(instantiationKey))
+        {
+            // Already generated, look it up
+            var cachedTypeArgKeys = genericParams.Select(p => GetTypeCacheKey(typeSubstitutions[p]));
+            var cachedMangledName = $"{baseTypeName}::{methodName}_{string.Join("_", cachedTypeArgKeys.Select(k => k.Replace("<", "_").Replace(">", "_").Replace(",", "_").Replace("*", "ptr_")))}";
+            return _module.Functions.FirstOrDefault(f => f.Name == cachedMangledName);
+        }
+
+        // Save current state
+        var savedConstants = GetConstantsAsTuples();
+        RestoreConstantsFromTuples(templateConstants);
+        RestoreConstantsFromTuples(savedConstants);
+
+        // Generic params already registered from earlier - just set up type substitutions
+        var savedTypeSubstitutions = _currentTypeSubstitutions;
+        _currentTypeSubstitutions = typeSubstitutions;
+
+        // Set Self type to the monomorphized enum for Self type resolution
+        var savedSelfType = _currentSelfType;
+        _currentSelfType = enumType;
+
+        // Create the function manually (don't use Visit)
+        var returnType = ParseReturnType(funcDecl.type());
+        returnType = _typeParser.SubstituteGenericTypes(returnType, typeSubstitutions);
+
+        // Create mangled name from type arguments
+        var typeArgKeys = genericParams.Select(p => GetTypeCacheKey(typeSubstitutions[p]));
+        var mangledName = $"{baseTypeName}::{methodName}_{string.Join("_", typeArgKeys.Select(k => k.Replace("<", "_").Replace(">", "_").Replace(",", "_").Replace("*", "ptr_")))}";
+
+        var function = new IrFunction(mangledName, returnType, Visibility.Private, false);
+
+        // Parse parameters with substitutions
+        if (funcDecl.parameterList() != null)
+        {
+            var paramList = funcDecl.parameterList();
+
+            // Handle self parameter if present
+            if (paramList.selfParameter() != null)
+            {
+                ParseSelfParameter(paramList.selfParameter(), function, enumType);
+            }
+
+            // Add regular parameters
+            foreach (var paramCtx in paramList.parameter())
+            {
+                var paramName = paramCtx.IDENTIFIER().GetText();
+                var paramType = ParseType(paramCtx.type());
+                paramType = _typeParser.SubstituteGenericTypes(paramType, typeSubstitutions);
+                function.Parameters.Add(new IrParameter(paramName, paramType));
+            }
+
+            // Add variadic parameter if present
+            ParseVariadicParameter(paramList, function);
+        }
+
+        // Check if function already exists in module (could be from import or previous instantiation)
+        var existingFunc = _module.Functions.FirstOrDefault(f => f.Name == mangledName);
+        if (existingFunc != null)
+        {
+            // Already exists, return it
+            return existingFunc;
+        }
+
+        _module.AddFunction(function);
+
+        // Build function body
+        var savedFunction = _currentFunction;
+        _currentFunction = function;
+        var entryBlock = new IrBasicBlock("entry");
+        function.BasicBlocks.Add(entryBlock);
+        var savedBlock = _currentBlock;
+        _currentBlock = entryBlock;
+
+        // Save and add parameters to local variables scope
+        var savedLocalVars = new Dictionary<string, IrLocalVariable>(_localVariables);
+        foreach (var param in function.Parameters)
+        {
+            _localVariables[param.Name] = new IrLocalVariable(param.Name, param.Type, false);
+        }
+
+        // Visit the function body
+        if (funcDecl.block() != null)
+        {
+            Visit(funcDecl.block());
+        }
+
+        // Restore local variables
+        _localVariables.Clear();
+        foreach (var kvp in savedLocalVars)
+        {
+            _localVariables[kvp.Key] = kvp.Value;
+        }
+
+        // Restore state
+        _currentBlock = savedBlock;
+        _currentFunction = savedFunction;
+        _currentTypeSubstitutions = savedTypeSubstitutions;
+        _currentSelfType = savedSelfType;
+        RestoreConstantsFromTuples(savedConstants);
+        foreach (var paramName in typeSubstitutions.Keys)
+        {
+            _symbols.ClearGenericParameters();
+        }
+        foreach (var kvp in savedGenericParams)
+        {
+            _symbols.RegisterGenericParameter(kvp.Key, kvp.Value);
+        }
+
+        _instantiatedMethods.Add(instantiationKey);
+
+        return function;
+    }
+
+    private IrEnumType? MonomorphizeEnum(IrEnumType enumType, Dictionary<string, IrType> typeSubstitutions)
+    {
+        // Build cache key
+        var typeArgKeys = enumType.GenericParameters.Select(p =>
+        {
+            var key = typeSubstitutions.ContainsKey(p) ? GetTypeCacheKey(typeSubstitutions[p]) : p;
+            return key;
+        });
+        var cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
+
+        // Check cache
+        if (_symbols.LookupMonomorphizedEnum(cacheKey) != null)
+        {
+            return _symbols.LookupMonomorphizedEnum(cacheKey)!;
+        }
+
+        // Create monomorphized variants
+        var monomorphizedVariants = new List<IrEnumVariant>();
+        foreach (var variant in enumType.Variants)
+        {
+            var monomorphizedData = new List<IrType>();
+            foreach (var dataType in variant.AssociatedData)
+            {
+                monomorphizedData.Add(SubstituteType(dataType, typeSubstitutions));
+            }
+            monomorphizedVariants.Add(new IrEnumVariant(variant.Name, variant.Tag, monomorphizedData));
+        }
+
+        var monomorphizedEnum = new IrEnumType(enumType.EnumName, monomorphizedVariants, null, cacheKey);
+        _symbols.RegisterMonomorphizedEnum(cacheKey, monomorphizedEnum);
+
+        return monomorphizedEnum;
+    }
+
+    private IrType SubstituteType(IrType type, Dictionary<string, IrType> substitutions)
+    {
+        if (type is IrGenericType gt && substitutions.ContainsKey(gt.ParameterName))
+        {
+            return substitutions[gt.ParameterName];
+        }
+
+        if (type is IrPointerType ptrType)
+        {
+            var substitutedPointee = SubstituteType(ptrType.PointeeType, substitutions);
+            if (substitutedPointee != ptrType.PointeeType)
+            {
+                return _typeInterner.GetPointerType(substitutedPointee);
+            }
+            return ptrType;
+        }
+
+        if (type is IrEnumType enumType)
+        {
+            // If the enum has generic parameters, monomorphize it
+            if (enumType.GenericParameters.Count > 0)
+            {
+                // Check if any of the enum's generic parameters need substitution
+                bool needsSubstitution = enumType.GenericParameters.Any(p => substitutions.ContainsKey(p));
+                if (needsSubstitution)
+                {
+                    return MonomorphizeEnum(enumType, substitutions);
+                }
+            }
+            // Already monomorphized or no generic parameters
+            return enumType;
+        }
+
+        // For other types, return as-is
+        return type;
+    }
+
+    /// <summary>
+    /// Infer generic type arguments for a generic function from call site arguments
+    /// </summary>
+    private Dictionary<string, IrType>? InferGenericFunctionTypes(List<string> genericParams, List<IrParameter> templateParams, List<IrValue> arguments)
+    {
+        if (arguments.Count != templateParams.Count)
+        {
+            return null; // Argument count mismatch
+        }
+
+        var typeSubstitutions = new Dictionary<string, IrType>();
+
+        // Match each argument to its parameter and extract type mappings
+        for (int i = 0; i < arguments.Count; i++)
+        {
+            var argType = arguments[i].Type;
+            var paramType = templateParams[i].Type;
+
+            // Recursively extract generic type mappings
+            ExtractGenericTypeMapping(paramType, argType, typeSubstitutions);
+        }
+
+        // Verify all generic parameters were resolved
+        foreach (var genericParam in genericParams)
+        {
+            if (!typeSubstitutions.ContainsKey(genericParam))
+            {
+                return null; // Could not infer all type parameters
+            }
+        }
+
+        return typeSubstitutions;
+    }
+
+    /// <summary>
+    /// Infer generic type arguments for an enum associated function from call site
+    /// Handles both argument-based inference and return-type-based inference
+    /// Example: Option::FromPointer(ptr: *u8) should infer T=u8
+    /// </summary>
+    private Dictionary<string, IrType>? InferGenericEnumTypeArguments(
+        IrEnumType baseEnum,
+        string methodName,
+        List<IrValue> arguments,
+        IrType? expectedReturnType)
+    {
+        // Look up the method template to get parameter types
+        var templateKey = $"{baseEnum.EnumName}::{methodName}";
+        if (!_genericMethodTemplates.TryGetValue(templateKey, out var template))
+        {
+            return null; // No template found
+        }
+
+        var (genericParams, funcDecl, _) = template;
+
+        // Register generic parameters temporarily so we can parse the template
+        var savedGenericParams = new Dictionary<string, IrGenericType>();
+        foreach (var paramName in genericParams)
+        {
+            if (_symbols.HasGenericParameter(paramName))
+            {
+                var genericParam = _symbols.LookupGenericParameter(paramName);
+                if (genericParam != null) savedGenericParams[paramName] = genericParam;
+            }
+            _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
+        }
+
+        try
+        {
+            // Parse template parameters to get their generic types
+            var templateParams = new List<IrParameter>();
+            if (funcDecl.parameterList() != null)
+            {
+                var paramList = funcDecl.parameterList();
+
+                // Skip self parameter if present (it doesn't contribute to type inference for enum T)
+                var regularParams = paramList.parameter();
+
+                foreach (var paramCtx in regularParams)
+                {
+                    var paramName = paramCtx.IDENTIFIER().GetText();
+                    var savedSubstitutions = _currentTypeSubstitutions;
+                    _currentTypeSubstitutions = null; // Parse without substitutions to get generic types
+                    var paramType = ParseType(paramCtx.type());
+                    _currentTypeSubstitutions = savedSubstitutions;
+                    templateParams.Add(new IrParameter(paramName, paramType));
+                }
+            }
+
+            var typeSubstitutions = new Dictionary<string, IrType>();
+
+            // Step 1: Infer from arguments if available
+            if (arguments.Count == templateParams.Count)
+            {
+                for (int i = 0; i < arguments.Count; i++)
+                {
+                    var argType = arguments[i].Type;
+                    var paramType = templateParams[i].Type;
+                    ExtractGenericTypeMapping(paramType, argType, typeSubstitutions);
+                }
+            }
+
+            // Step 2: Try to infer from expected return type if we still have unresolved generics
+            if (expectedReturnType != null && funcDecl.type() != null)
+            {
+                var savedSubstitutions = _currentTypeSubstitutions;
+                _currentTypeSubstitutions = null; // Parse without substitutions
+                var templateReturnType = ParseType(funcDecl.type());
+                _currentTypeSubstitutions = savedSubstitutions;
+
+                // Extract type mappings from return type
+                ExtractGenericTypeMapping(templateReturnType, expectedReturnType, typeSubstitutions);
+            }
+
+            // Verify all generic parameters from the enum were resolved
+            foreach (var genericParam in baseEnum.GenericParameters)
+            {
+                if (!typeSubstitutions.ContainsKey(genericParam))
+                {
+                    return null; // Could not infer all required type parameters
+                }
+            }
+
+            return typeSubstitutions;
+        }
+        finally
+        {
+            // Restore generic parameters
+            _symbols.ClearGenericParameters();
+            foreach (var kvp in savedGenericParams)
+            {
+                _symbols.RegisterGenericParameter(kvp.Key, kvp.Value);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Build mangled name for instantiated generic function (e.g., "identity_i32")
+    /// </summary>
+    private string BuildGenericFunctionMangledName(string functionName, Dictionary<string, IrType> typeSubstitutions)
+    {
+        var mangledName = functionName;
+        foreach (var kvp in typeSubstitutions.OrderBy(kv => kv.Key))
+        {
+            mangledName += "_" + kvp.Value.Name.Replace("*", "ptr").Replace("&", "ref").Replace("[", "arr").Replace("]", "");
+        }
+        return mangledName;
+    }
+
+    /// <summary>
+    /// Instantiate a generic function with concrete type arguments
+    /// </summary>
+    private IrFunction? InstantiateGenericFunction(string functionName, Dictionary<string, IrType> typeSubstitutions)
+    {
+        // Check if we have a template for this function
+        if (!_genericFunctionTemplates.TryGetValue(functionName, out var template))
+        {
+            return null; // No template found
+        }
+
+        var (genericParams, funcDecl, templateConstants) = template;
+
+        // Build instantiation key (e.g., "identity<i32>")
+        var instantiationKey = functionName + "<" + string.Join(",", typeSubstitutions.OrderBy(kv => kv.Key).Select(kv => kv.Value.Name)) + ">";
+
+        // Check if already instantiated
+        if (_instantiatedGenericFunctions.Contains(instantiationKey))
+        {
+            // Already generated, look it up
+            var existingMangledName = BuildGenericFunctionMangledName(functionName, typeSubstitutions);
+            return _module.Functions.FirstOrDefault(f => f.Name == existingMangledName);
+        }
+
+        // Save current constants and MERGE template constants with current module constants
+        var savedConstants = GetConstantsAsTuples();
+
+        // Start with template constants, then overlay current module constants
+        RestoreConstantsFromTuples(templateConstants);
+        RestoreConstantsFromTuples(savedConstants);
+
+        // Set up concrete types for substitution during parsing
+        var savedGenericParams = new Dictionary<string, IrGenericType>();
+        foreach (var paramName in genericParams)
+        {
+            if (_symbols.HasGenericParameter(paramName))
+            {
+                var genericParam = _symbols.LookupGenericParameter(paramName);
+                if (genericParam != null) savedGenericParams[paramName] = genericParam;
+            }
+            _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
+        }
+
+        // Set active type substitutions for the duration of this instantiation
+        var savedSubstitutions = _currentTypeSubstitutions;
+        _currentTypeSubstitutions = typeSubstitutions;
+
+        // Create the function with substituted return type
+        var returnType = ParseReturnType(funcDecl.type());
+        returnType = _typeParser.SubstituteGenericTypes(returnType, typeSubstitutions);
+
+        // Check for pub/internal keywords
+        var visibility = Visibility.Private;
+        for (int i = 0; i < Math.Min(4, funcDecl.ChildCount); i++)
+        {
+            var childText = funcDecl.GetChild(i)?.GetText();
+            if (childText == "pub") visibility = Visibility.Public;
+            if (childText == "internal") visibility = Visibility.Internal;
+        }
+
+        var mangledFunctionName = BuildGenericFunctionMangledName(functionName, typeSubstitutions);
+        var function = new IrFunction(mangledFunctionName, returnType, visibility, false);
+
+        // Parse parameters with substitutions
+        if (funcDecl.parameterList() != null)
+        {
+            var paramList = funcDecl.parameterList();
+            foreach (var paramCtx in paramList.parameter())
+            {
+                var paramName = paramCtx.IDENTIFIER().GetText();
+                var paramType = ParseType(paramCtx.type());
+
+                // Substitute generic types recursively
+                paramType = _typeParser.SubstituteGenericTypes(paramType, typeSubstitutions);
+
+                function.Parameters.Add(new IrParameter(paramName, paramType));
+            }
+
+            // Add variadic parameter if present
+            ParseVariadicParameter(paramList, function);
+        }
+
+        _module.AddFunction(function);
+
+        // Build the function body - save all state to avoid corrupting caller
+        var savedFunction = _currentFunction;
+        var savedBlock = _currentBlock;
+        var savedLocalVars = new Dictionary<string, IrLocalVariable>(_localVariables);
+
+        _currentFunction = function;
+        _localVariables.Clear();
+
+        // Add parameters to local variables
+        foreach (var param in function.Parameters)
+        {
+            _localVariables[param.Name] = new IrLocalVariable(param.Name, param.Type, false);
+        }
+
+        // Create entry block
+        var entryBlock = new IrBasicBlock("entry");
+        function.BasicBlocks.Add(entryBlock);
+        _currentBlock = entryBlock;
+
+        // Visit the function body with type substitutions active
+        if (funcDecl.block() != null)
+        {
+            Visit(funcDecl.block());
+        }
+
+        // Restore all state
+        _currentFunction = savedFunction;
+        _currentBlock = savedBlock;
+        _localVariables.Clear();
+        foreach (var kvp in savedLocalVars)
+        {
+            _localVariables[kvp.Key] = kvp.Value;
+        }
+
+        // Restore type substitutions
+        _currentTypeSubstitutions = savedSubstitutions;
+
+        // Restore constants
+        // TODO: Implement proper scope save/restore in SymbolTable
+        RestoreConstantsFromTuples(savedConstants);
+
+        // Restore generic params
+        _symbols.ClearGenericParameters();
+        foreach (var kvp in savedGenericParams)
+        {
+            _symbols.RegisterGenericParameter(kvp.Key, kvp.Value);
+        }
+
+        // Mark as instantiated
+        _instantiatedGenericFunctions.Add(instantiationKey);
+
+        return function;
+    }
+
+    /// <summary>
+    /// Register ALL enum stubs from a module (not just imported ones).
+    /// This is critical because impl block method signatures may reference ANY enum from the module,
+    /// even if that enum is not being explicitly imported.
+    /// </summary>
+    private void RegisterAllEnumStubsForImport(NovusParser.CompilationUnitContext moduleContext)
+    {
+        foreach (var enumDecl in moduleContext.enumDeclaration())
+        {
+            var enumName = enumDecl.IDENTIFIER().GetText();
+
+            // Skip if already registered
+            if (_symbols.HasEnum(enumName))
+            {
+                continue;
+            }
+
+            // Parse generic parameters for stub so type checking works correctly
+            List<string>? genericParams = null;
+            if (enumDecl.genericParams() != null)
+            {
+                genericParams = new List<string>();
+                foreach (var paramId in enumDecl.genericParams().IDENTIFIER())
+                {
+                    genericParams.Add(paramId.GetText());
+                }
+            }
+
+            // Register the stub enum in symbol table (but NOT in module.Enums yet)
+            // The stub will be filled in later only if it's in the import list
+            var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), genericParams);
+            _symbols.RegisterEnum(enumName, stubEnum);
+        }
+    }
+
+    private void RegisterEnumStubsForImport(NovusParser.CompilationUnitContext moduleContext, HashSet<string> namesToImport)
+    {
+        foreach (var enumDecl in moduleContext.enumDeclaration())
+        {
+            var enumName = enumDecl.IDENTIFIER().GetText();
+            if (namesToImport.Contains(enumName))
+            {
+                if (!_symbols.HasEnum(enumName))
+                {
+                    // Parse generic parameters for stub so type checking works correctly
+                    List<string>? genericParams = null;
+                    if (enumDecl.genericParams() != null)
+                    {
+                        genericParams = new List<string>();
+                        foreach (var paramId in enumDecl.genericParams().IDENTIFIER())
+                        {
+                            genericParams.Add(paramId.GetText());
+                        }
+                    }
+                    var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), genericParams);
+                    _symbols.RegisterEnum(enumName, stubEnum);
+                }
+            }
+        }
+    }
+
+    private void FillEnumVariantsForImport(NovusParser.CompilationUnitContext moduleContext, HashSet<string> namesToImport)
+    {
+        foreach (var enumDecl in moduleContext.enumDeclaration())
+        {
+            var enumName = enumDecl.IDENTIFIER().GetText();
+            if (namesToImport.Contains(enumName))
+            {
+                var existingEnum = _symbols.LookupEnum(enumName);
+                if (existingEnum != null && existingEnum.Variants.Count == 0)
+                {
+                    RegisterEnum(enumDecl);
+                }
+            }
+        }
+    }
+
+    private HashSet<string> ExpandStructDependencies(NovusParser.CompilationUnitContext moduleContext, HashSet<string> initialStructNames)
+    {
+        var expandedStructNames = new HashSet<string>(initialStructNames);
+        bool addedNewDependencies;
+        do
+        {
+            addedNewDependencies = false;
+            foreach (var structDecl in moduleContext.structDeclaration())
+            {
+                var structName = structDecl.IDENTIFIER().GetText();
+                if (expandedStructNames.Contains(structName))
+                {
+                    foreach (var fieldCtx in structDecl.structField())
+                    {
+                        var fieldTypeDeps = ExtractTypeNameDependencies(fieldCtx.type());
+                        foreach (var dep in fieldTypeDeps)
+                        {
+                            if (expandedStructNames.Add(dep))
+                            {
+                                addedNewDependencies = true;
+                            }
+                        }
+                    }
+                }
+            }
+        } while (addedNewDependencies);
+        return expandedStructNames;
+    }
+
+    /// <summary>
+    /// Register ALL struct placeholders from a module (not just imported ones).
+    /// Similar to RegisterAllEnumStubsForImport, this is critical because impl block method signatures
+    /// may reference ANY struct from the module, even if that struct is not being explicitly imported.
+    /// </summary>
+    private void RegisterAllStructPlaceholdersForImport(NovusParser.CompilationUnitContext moduleContext)
+    {
+        foreach (var structDecl in moduleContext.structDeclaration())
+        {
+            var structName = structDecl.IDENTIFIER().GetText();
+
+            // Skip if already registered
+            if (_symbols.HasStruct(structName))
+            {
+                continue;
+            }
+
+            // Register placeholder struct in symbol table (but NOT in module.Structs yet)
+            // The struct will be filled in later only if it's in the import list
+            var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), new List<string>(), null, null);
+            _symbols.RegisterStruct(structName, placeholderStruct);
+        }
+    }
+
+    private void RegisterStructPlaceholdersForImport(NovusParser.CompilationUnitContext moduleContext, HashSet<string> expandedStructNames)
+    {
+        foreach (var structDecl in moduleContext.structDeclaration())
+        {
+            var structName = structDecl.IDENTIFIER().GetText();
+            if (expandedStructNames.Contains(structName))
+            {
+                if (!_symbols.HasStruct(structName))
+                {
+                    var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), new List<string>(), null, null);
+                    _symbols.RegisterStruct(structName, placeholderStruct);
+                }
+            }
+        }
+    }
+
+    private void FillStructFieldsForImport(NovusParser.CompilationUnitContext moduleContext, HashSet<string> expandedStructNames)
+    {
+        foreach (var structDecl in moduleContext.structDeclaration())
+        {
+            var structName = structDecl.IDENTIFIER().GetText();
+            if (expandedStructNames.Contains(structName))
+            {
+                var existingStruct = _symbols.LookupStruct(structName);
+                if (existingStruct != null && existingStruct.Fields.Count == 0)
+                {
+                    RegisterStruct(structDecl);
+                }
+            }
+        }
+    }
+
+    private void RegisterConstantsForImport(NovusParser.CompilationUnitContext moduleContext, HashSet<string> namesToImport)
+    {
+        foreach (var constDecl in moduleContext.constDeclaration())
+        {
+            var constName = constDecl.IDENTIFIER().GetText();
+            if (namesToImport.Contains(constName))
+            {
+                if (!_symbols.HasConstant(constName))
+                {
+                    RegisterConstant(constDecl);
+                }
+            }
+        }
+    }
+
+    private void RegisterTraitsForImport(NovusParser.CompilationUnitContext moduleContext, HashSet<string> namesToImport)
+    {
+        foreach (var traitDecl in moduleContext.traitDeclaration())
+        {
+            var traitName = traitDecl.IDENTIFIER().GetText();
+            if (namesToImport.Contains(traitName))
+            {
+                if (!_symbols.HasTrait(traitName))
+                {
+                    RegisterTrait(traitDecl);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Parse function parameters (regular and variadic) and add them to the function.
+    /// </summary>
+    private void ParseFunctionParameters(NovusParser.FunctionDeclarationContext funcDecl, IrFunction function)
+    {
+        if (funcDecl.parameterList() == null) return;
+
+        var paramList = funcDecl.parameterList();
+
+        // Add regular parameters
+        foreach (var paramCtx in paramList.parameter())
+        {
+            var paramName = paramCtx.IDENTIFIER().GetText();
+            var paramType = ParseType(paramCtx.type());
+            function.Parameters.Add(new IrParameter(paramName, paramType));
+        }
+
+        // Add variadic parameter if present
+        ParseVariadicParameter(paramList, function);
+    }
+
+    /// <summary>
+    /// Register functions from a module for import.
+    /// </summary>
+    private void RegisterFunctionsForImport(NovusParser.CompilationUnitContext moduleContext, HashSet<string> namesToImport, string moduleNamespace)
+    {
+        foreach (var funcDecl in moduleContext.functionDeclaration())
+        {
+            var funcName = funcDecl.IDENTIFIER().GetText();
+
+            // Skip if not in the import list
+            if (!namesToImport.Contains(funcName))
+            {
+                continue;
+            }
+
+            // Check if function is pub or extern
+            var (isPub, isExtern) = ModuleImportHelper.GetFunctionVisibility(funcDecl);
+
+            if (!isPub && !isExtern)
+            {
+                var errorLocation = SourceLocationHelper.FromContext(funcDecl, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.CannotImportPrivate,
+                    $"Cannot import private function '{funcName}' from module '{moduleNamespace}'",
+                    errorLocation
+                );
+                return;
+            }
+
+            // Skip if this function has already been imported (transitive dependencies)
+            if (_module.Functions.Any(f => f.Name == funcName))
+            {
+                continue;
+            }
+
+            // Parse function signature
+            var returnType = ParseReturnType(funcDecl.type());
+            // Only mark as extern if it's truly an extern function (FFI)
+            // Pub functions from Novus modules are real implementations that need linking
+            // CRITICAL: Preserve visibility when importing - pub functions must stay pub!
+            var visibility = isPub ? Visibility.Public : Visibility.Private;
+            var function = new IrFunction(funcName, returnType, visibility, isExtern);
+
+            // Parse parameters
+            ParseFunctionParameters(funcDecl, function);
+
+            _module.AddFunction(function);
+        }
+    }
+}
