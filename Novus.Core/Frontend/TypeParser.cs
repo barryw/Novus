@@ -680,14 +680,31 @@ public class TypeParser
             if (needsSubstitution)
             {
                 // Create a new struct type with substituted field types
-                // Preserve generic parameters from original
-                // Clear cache key if struct still has generic parameters (not fully monomorphized)
-                string? cacheKey = structType.GenericParameters.Count > 0 ? null : structType.CacheKey;
+                // Check if ALL generic parameters have been substituted with concrete types
+                var remainingGenericParams = new List<string>();
+                foreach (var genericParam in structType.GenericParameters)
+                {
+                    if (!substitutions.ContainsKey(genericParam) || substitutions[genericParam] is IrGenericType)
+                    {
+                        // This parameter wasn't substituted or was substituted with another generic
+                        remainingGenericParams.Add(genericParam);
+                    }
+                }
+
+                // Generate cache key if fully monomorphized
+                string? cacheKey = null;
+                if (remainingGenericParams.Count == 0 && structType.GenericParameters.Count > 0)
+                {
+                    // Fully monomorphized - generate cache key
+                    var typeArgKeys = structType.GenericParameters.Select(p =>
+                        substitutions.ContainsKey(p) ? GetTypeCacheKey(substitutions[p]) : p);
+                    cacheKey = $"{structType.StructName}<{string.Join(",", typeArgKeys)}>";
+                }
 
                 var substitutedStruct = new IrStructType(
                     structType.StructName,
                     substitutedFields,
-                    structType.GenericParameters,
+                    remainingGenericParams,  // Use the remaining generic parameters, not the original list
                     cacheKey,
                     structType.Attributes,
                     structType.WhereClause
@@ -752,14 +769,59 @@ public class TypeParser
             if (needsSubstitution)
             {
                 // Create a new enum type with substituted variant types
-                // Preserve generic parameters from original
-                // Clear cache key if enum still has generic parameters (not fully monomorphized)
-                string? cacheKey = enumType.GenericParameters.Count > 0 ? null : enumType.CacheKey;
+                // Check if ALL generic parameters have been substituted with concrete types
+                var remainingGenericParams = new List<string>();
+                foreach (var genericParam in enumType.GenericParameters)
+                {
+                    if (!substitutions.ContainsKey(genericParam) || substitutions[genericParam] is IrGenericType)
+                    {
+                        // This parameter wasn't substituted or was substituted with another generic
+                        remainingGenericParams.Add(genericParam);
+                    }
+                }
+
+                // Generate cache key if fully monomorphized
+                string? cacheKey = null;
+                if (remainingGenericParams.Count == 0)
+                {
+                    // Fully monomorphized - generate cache key
+                    // BUG FIX: Even if enumType.GenericParameters.Count == 0, we may have substituted
+                    // generic types in the variant data. Extract the actual type args from variant data.
+                    if (enumType.GenericParameters.Count > 0)
+                    {
+                        // Original enum had generic parameters - use those
+                        var typeArgKeys = enumType.GenericParameters.Select(p =>
+                            substitutions.ContainsKey(p) ? GetTypeCacheKey(substitutions[p]) : p);
+                        cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
+                    }
+                    else
+                    {
+                        // Original enum had no generic parameters listed, but we substituted types in variant data
+                        // Extract the type arguments from the SUBSTITUTED variant data
+                        // This handles cases like Option<*T> where T gets substituted in the variant data to *u8
+                        var typeArgKeys = new HashSet<string>();
+                        foreach (var variant in substitutedVariants)
+                        {
+                            foreach (var dataType in variant.AssociatedData)
+                            {
+                                // Add the cache key for each concrete type in variant data
+                                if (!(dataType is IrGenericType))
+                                {
+                                    typeArgKeys.Add(GetTypeCacheKey(dataType));
+                                }
+                            }
+                        }
+                        if (typeArgKeys.Count > 0)
+                        {
+                            cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys.OrderBy(x => x))}>";
+                        }
+                    }
+                }
 
                 var substitutedEnum = new IrEnumType(
                     enumType.EnumName,
                     substitutedVariants,
-                    enumType.GenericParameters,
+                    remainingGenericParams,  // Use the remaining generic parameters, not the original list
                     cacheKey
                 );
                 return substitutedEnum;
