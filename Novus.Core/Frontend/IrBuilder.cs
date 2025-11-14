@@ -231,6 +231,59 @@ public class IrBuilder : NovusBaseVisitor<object?>
         return lastInst is IrReturn or IrBranch;
     }
 
+    /// <summary>
+    /// Handle postfix conditionals (if/unless) by wrapping statement execution in a conditional branch
+    /// For example: `return true if x == 1` becomes `if (x == 1) { return true }`
+    /// </summary>
+    private void HandlePostfixCondition(NovusParser.PostfixConditionContext? postfixContext, Action statementAction)
+    {
+        if (postfixContext == null)
+        {
+            // No postfix condition, execute statement directly
+            statementAction();
+            return;
+        }
+
+        // Generate labels for the conditional
+        var thenLabel = $"postfix_then_{_labelCounter}";
+        var endLabel = $"postfix_end_{_labelCounter}";
+        _labelCounter++;
+
+        // Evaluate the condition
+        var conditionExpr = (IrValue?)Visit(postfixContext.expression());
+        if (conditionExpr == null)
+        {
+            return; // Error already reported
+        }
+
+        // Check if this is an 'unless' condition (invert the condition)
+        bool isUnless = postfixContext.KW_UNLESS() != null;
+
+        // Generate conditional branch
+        // For 'if': branch to thenLabel if true, endLabel if false
+        // For 'unless': branch to thenLabel if false, endLabel if true (invert)
+        if (isUnless)
+        {
+            // unless condition: execute if condition is false
+            _currentBlock!.AddInstruction(new IrConditionalBranch(conditionExpr, endLabel, thenLabel));
+        }
+        else
+        {
+            // if condition: execute if condition is true
+            _currentBlock!.AddInstruction(new IrConditionalBranch(conditionExpr, thenLabel, endLabel));
+        }
+
+        // Then block: execute the statement
+        _currentBlock!.AddInstruction(new IrLabel(thenLabel));
+        statementAction();
+
+        // Only emit end label if the statement didn't terminate (return/branch)
+        if (!CurrentBlockHasTerminator())
+        {
+            _currentBlock!.AddInstruction(new IrLabel(endLabel));
+        }
+    }
+
     public IrModule BuildModule(NovusParser.CompilationUnitContext context)
     {
         // Multi-pass approach to handle forward references:
@@ -1382,8 +1435,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
     /// <summary>
     /// Instantiate a generic method for a monomorphized struct type
     /// E.g., instantiate Vec<T>::push as Vec<i32>::push
+    /// For trait impls, pass isTraitImpl=true and traitName (e.g., "Drop")
     /// </summary>
-    private IrFunction? InstantiateGenericMethod(IrStructType monomorphizedStruct, string methodName)
+    private IrFunction? InstantiateGenericMethod(IrStructType monomorphizedStruct, string methodName, bool isTraitImpl = false, string? traitName = null, List<IrType>? traitTypeArgs = null)
     {
         var baseTypeName = monomorphizedStruct.StructName;
         var templateKey = $"{baseTypeName}::{methodName}";
@@ -1406,14 +1460,25 @@ public class IrBuilder : NovusBaseVisitor<object?>
         RestoreConstantsFromTuples(templateConstants);
         RestoreConstantsFromTuples(savedConstants);
 
-        // Build instantiation key (e.g., "Vec<i32>::push")
-        var instantiationKey = $"{monomorphizedStruct.CacheKey}::{methodName}";
+        // Build instantiation key (e.g., "Vec<i32>::push" or "Vec<i32>::Drop::drop" for trait impls)
+        var instantiationKey = isTraitImpl && traitName != null
+            ? $"{monomorphizedStruct.CacheKey}::{traitName}::{methodName}"
+            : $"{monomorphizedStruct.CacheKey}::{methodName}";
+
+        // For mangling, use monomorphized type name (e.g., "Vec<i32>")
+        var mangledTypeName = monomorphizedStruct.CacheKey ?? baseTypeName;
 
         // Check if already instantiated
         if (_instantiatedMethods.Contains(instantiationKey))
         {
-            // Already generated, look it up
-            var mangledName = $"{baseTypeName}_{methodName}";
+            // Already generated, look it up using correct mangling convention
+            var mangledName = GenerateMethodMangledName(
+                mangledTypeName,
+                methodName,
+                isTraitImpl,
+                traitName,
+                traitTypeArgs ?? new List<IrType>()
+            );
             return _module.Functions.FirstOrDefault(f => f.Name == mangledName);
         }
 
@@ -1479,7 +1544,14 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Substitute generic types in return type
         returnType = SubstituteGenericTypes(returnType, typeSubstitutions);
 
-        var mangledMethodName = $"{baseTypeName}_{methodName}";
+        // Generate correct mangled name for trait impls vs inherent methods (using mangledTypeName from above)
+        var mangledMethodName = GenerateMethodMangledName(
+            mangledTypeName,
+            methodName,
+            isTraitImpl,
+            traitName,
+            traitTypeArgs ?? new List<IrType>()
+        );
         var function = new IrFunction(mangledMethodName, returnType, Visibility.Private, false);
 
         // Parse parameters with substitutions
@@ -2429,7 +2501,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
             var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
             // Only mark as extern if it's truly an extern function (FFI)
             // Pub functions from Novus modules are real implementations that need linking
-            var function = new IrFunction(funcName, returnType, Visibility.Private, isExtern);
+            // CRITICAL: Preserve visibility when importing - pub functions must stay pub!
+            var visibility = isPub ? Visibility.Public : Visibility.Private;
+            var function = new IrFunction(funcName, returnType, visibility, isExtern);
 
             // Parse parameters
             ParseFunctionParameters(funcDecl, function);
@@ -3089,23 +3163,30 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     public override object? VisitReturnStatement([NotNull] NovusParser.ReturnStatementContext context)
     {
-        // Check if there's an expression (bare return for void functions)
-        var exprContext = context.expression();
+        // Handle postfix conditional (if/unless)
+        var postfixCondition = context.postfixCondition();
 
-        IrValue? value = null;
-        if (exprContext != null)
+        HandlePostfixCondition(postfixCondition, () =>
         {
-            // Set expected type for bidirectional type checking
-            var savedExpectedType = _expectedType;
-            _expectedType = _currentFunction?.ReturnType;
+            // Check if there's an expression (bare return for void functions)
+            var exprContext = context.expression();
 
-            value = (IrValue?)Visit(exprContext);
+            IrValue? value = null;
+            if (exprContext != null)
+            {
+                // Set expected type for bidirectional type checking
+                var savedExpectedType = _expectedType;
+                _expectedType = _currentFunction?.ReturnType;
 
-            // Restore previous expected type
-            _expectedType = savedExpectedType;
-        }
+                value = (IrValue?)Visit(exprContext);
 
-        _currentBlock!.AddInstruction(new IrReturn(value));
+                // Restore previous expected type
+                _expectedType = savedExpectedType;
+            }
+
+            _currentBlock!.AddInstruction(new IrReturn(value));
+        });
+
         return null;
     }
 
@@ -3303,6 +3384,22 @@ public class IrBuilder : NovusBaseVisitor<object?>
     }
 
     public override object? VisitAssignmentStatement([NotNull] NovusParser.AssignmentStatementContext context)
+    {
+        // Handle postfix conditional (if/unless)
+        var postfixCondition = context.postfixCondition();
+
+        if (postfixCondition != null)
+        {
+            // Wrap the entire assignment in a postfix conditional
+            HandlePostfixCondition(postfixCondition, () => ProcessAssignmentStatement(context));
+            return null;
+        }
+
+        // No postfix condition - process normally
+        return ProcessAssignmentStatement(context);
+    }
+
+    private object? ProcessAssignmentStatement(NovusParser.AssignmentStatementContext context)
     {
         // Declare errorLocation once at method start to avoid CS0136 errors
         SourceLocation errorLocation;
@@ -4141,8 +4238,17 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
     public override object? VisitExpressionStatement([NotNull] NovusParser.ExpressionStatementContext context)
     {
-        // Visit the expression and return its value (for implicit returns)
-        return Visit(context.expression());
+        // Handle postfix conditional (if/unless)
+        var postfixCondition = context.postfixCondition();
+
+        object? result = null;
+        HandlePostfixCondition(postfixCondition, () =>
+        {
+            // Visit the expression and return its value (for implicit returns)
+            result = Visit(context.expression());
+        });
+
+        return result;
     }
 
     public override object? VisitIfStatement([NotNull] NovusParser.IfStatementContext context)
@@ -4810,8 +4916,15 @@ public class IrBuilder : NovusBaseVisitor<object?>
             return null;
         }
 
-        var exitLabel = _loopExitLabels.Peek();
-        _currentBlock!.AddInstruction(new IrBranch(exitLabel));
+        // Handle postfix conditional (if/unless)
+        var postfixCondition = context.postfixCondition();
+
+        HandlePostfixCondition(postfixCondition, () =>
+        {
+            var exitLabel = _loopExitLabels.Peek();
+            _currentBlock!.AddInstruction(new IrBranch(exitLabel));
+        });
+
         return null;
     }
 
@@ -5371,6 +5484,49 @@ public class IrBuilder : NovusBaseVisitor<object?>
                         arguments[i] = new IrVariable(resultTempName, u8PtrType);
                     }
                 }
+
+                // Coercion 3: &[T; N] → Slice<T>
+                // When a pointer to an array is passed to a function expecting Slice<T>
+                if (paramType is IrStructType sliceStruct &&
+                    sliceStruct.StructName == "Slice" &&
+                    argValue.Type is IrPointerType ptrToArrayType &&
+                    ptrToArrayType.PointeeType is IrArrayType ptrArrayType)
+                {
+                    // Get the 'ptr' field to extract the element type T from Slice<T>
+                    var ptrField = sliceStruct.GetField("ptr");
+                    if (ptrField?.Type is IrPointerType slicePtrType)
+                    {
+                        // Verify array element type matches Slice element type
+                        if (slicePtrType.PointeeType.Equals(ptrArrayType.ElementType))
+                        {
+                            // Create pointer to array element (pointer to array decays to pointer to first element)
+                            var arrayElemPtrType = _typeInterner.GetPointerType(ptrArrayType.ElementType);
+
+                            // Cast the pointer-to-array to a pointer-to-element
+                            // *[T; N] → *T (decay to pointer to first element)
+                            var ptrValue = new IrCastValue(argValue, argValue.Type, arrayElemPtrType);
+
+                            // Create the length constant
+                            var lenValue = new IrConstant(ptrArrayType.Length, IrIntType.U32);
+
+                            // Create Slice struct literal
+                            var sliceFields = new Dictionary<string, IrValue>
+                            {
+                                { "ptr", ptrValue },
+                                { "len", lenValue }
+                            };
+
+                            var sliceValue = new IrStructLiteral(sliceStruct, sliceFields);
+
+                            // Slice structs containing pointers are passed by reference in C ABI
+                            // (see CCodeGenerator.TypeContainsHeapData), so we need to create a borrow
+                            // of the slice struct, not just the struct value itself
+                            var sliceRefType = _typeInterner.GetReferenceType(sliceStruct);
+                            arguments[i] = new IrBorrowValue(sliceValue, sliceRefType, false);
+                            continue;
+                        }
+                    }
+                }
             }
 
             // Generate call instruction
@@ -5798,6 +5954,60 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     errorLocation
                 );
                 return null;
+            }
+        }
+
+        // Apply automatic &[T; N] → Slice<T> coercion when parameter type is Slice<T>
+        for (int i = 0; i < arguments.Count; i++)
+        {
+            // Skip variadic parameters (they don't have a declared type)
+            if (i >= function.Parameters.Count || function.Parameters[i].IsVariadic)
+                continue;
+
+            var paramType = function.Parameters[i].Type;
+            var argValue = arguments[i];
+
+            // Coerce &[T; N] → Slice<T>
+            // When a pointer to an array is passed to a function expecting Slice<T>
+            if (paramType is IrStructType sliceStruct &&
+                sliceStruct.StructName == "Slice" &&
+                argValue.Type is IrPointerType ptrToArrayType &&
+                ptrToArrayType.PointeeType is IrArrayType ptrArrayType)
+            {
+                // Get the 'ptr' field to extract the element type T from Slice<T>
+                var ptrField = sliceStruct.GetField("ptr");
+                if (ptrField?.Type is IrPointerType slicePtrType)
+                {
+                    // Verify array element type matches Slice element type
+                    if (slicePtrType.PointeeType.Equals(ptrArrayType.ElementType))
+                    {
+                        // Create pointer to array element (pointer to array decays to pointer to first element)
+                        var arrayElemPtrType = _typeInterner.GetPointerType(ptrArrayType.ElementType);
+
+                        // Cast the pointer-to-array to a pointer-to-element
+                        // *[T; N] → *T (decay to pointer to first element)
+                        var ptrValue = new IrCastValue(argValue, argValue.Type, arrayElemPtrType);
+
+                        // Create the length constant
+                        var lenValue = new IrConstant(ptrArrayType.Length, IrIntType.U32);
+
+                        // Create Slice struct literal
+                        var sliceFields = new Dictionary<string, IrValue>
+                        {
+                            { "ptr", ptrValue },
+                            { "len", lenValue }
+                        };
+
+                        var sliceValue = new IrStructLiteral(sliceStruct, sliceFields);
+
+                        // Slice structs containing pointers are passed by reference in C ABI
+                        // (see CCodeGenerator.TypeContainsHeapData), so we need to create a borrow
+                        // of the slice struct, not just the struct value itself
+                        var sliceRefType = _typeInterner.GetReferenceType(sliceStruct);
+                        arguments[i] = new IrBorrowValue(sliceValue, sliceRefType, false);
+                        continue;
+                    }
+                }
             }
         }
 
@@ -9632,6 +9842,13 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
                             var extractedValue = new IrVariable(extractName, dataType);
                             _currentBlock!.AddInstruction(new IrLocalDecl(bindingName, dataType, false, extractedValue));
+
+                            // Automatic defer for types with drop() method (RAII-style cleanup)
+                            // This ensures pattern-bound variables in match arms are properly cleaned up
+                            if (EnsureDropMethodInstantiated(dataType))
+                            {
+                                InjectAutomaticDrop(bindingName, dataType);
+                            }
                         }
                     }
                 }
@@ -9695,6 +9912,29 @@ public class IrBuilder : NovusBaseVisitor<object?>
             else if (armCtx.returnStatement() != null)
             {
                 // Handle return statement in match arm
+                // IMPORTANT: Must emit scope cleanup BEFORE the return statement
+                // Inline emit the defer block instructions, but DON'T remove them from function defer list
+                // (EmitReturn in C code gen will handle function-level defers)
+                if (_scopeDeferStack.Count > 0)
+                {
+                    var scopeDefers = _scopeDeferStack.Peek(); // Peek, don't pop yet
+
+                    // Emit defers in LIFO order (last registered, first executed)
+                    for (int deferIdx = scopeDefers.Count - 1; deferIdx >= 0; deferIdx--)
+                    {
+                        var deferBlock = scopeDefers[deferIdx];
+
+                        // Emit all instructions in the defer block inline
+                        foreach (var instruction in deferBlock.Instructions)
+                        {
+                            _currentBlock!.AddInstruction(instruction);
+                        }
+                    }
+
+                    // Now pop the scope (without removing from function defer list)
+                    _scopeDeferStack.Pop();
+                }
+
                 Visit(armCtx.returnStatement());
                 // Return statements terminate the block, so no result to store
             }
@@ -9707,6 +9947,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
             // Pop defer scope and emit cleanup BEFORE jumping to match_end
             // This ensures variables declared in this match arm are cleaned up before leaving the scope
+            // Note: Skip this if we already popped the scope (e.g., for return statements)
             if (!CurrentBlockHasTerminator())
             {
                 PopDeferScope();
@@ -9717,15 +9958,6 @@ public class IrBuilder : NovusBaseVisitor<object?>
             {
                 _currentBlock!.AddInstruction(new IrBranch(matchEndLabel));
                 anyArmReachesEnd = true;  // This arm can reach match_end
-            }
-            else
-            {
-                // Block already terminated (e.g., return statement)
-                // Still need to pop the scope to balance the stack
-                if (_scopeDeferStack.Count > 0)
-                {
-                    _scopeDeferStack.Pop();  // Discard without emitting (unreachable)
-                }
             }
         }
 
@@ -10481,17 +10713,22 @@ public class IrBuilder : NovusBaseVisitor<object?>
 
         // Get the type name for method lookup
         string typeName;
+        string baseTypeName;  // Base name for template lookup
         IrStructType? structType = null;
         IrEnumType? enumType = null;
 
         if (type is IrStructType st)
         {
             structType = st;
-            typeName = st.StructName;  // Use base name for generic types
+            baseTypeName = st.StructName;  // Base name for template lookup (e.g., "Vec")
+            // For monomorphized types, use CacheKey (e.g., "Vec<bool>")
+            // For non-generic types, use StructName
+            typeName = st.CacheKey ?? st.StructName;
         }
         else if (type is IrEnumType et)
         {
             enumType = et;
+            baseTypeName = et.EnumName;
             typeName = et.EnumName;
         }
         else
@@ -10501,7 +10738,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         // Look for Type_drop method in the module
-        var dropMethod = $"{typeName}_drop";
+        // The Drop trait implementation generates: Type_Drop_drop
+        // (trait impl convention: {Type}_{Trait}_{method})
+        // For monomorphized types like Vec<bool>, this would be Vec<bool>_Drop_drop
+        var dropMethod = $"{typeName}_Drop_drop";
 
         // Check if already instantiated
         if (_module.Functions.Any(f => f.Name == dropMethod))
@@ -10510,18 +10750,26 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         // Check if there's a generic template for the drop() method
-        var templateKey = $"{typeName}::drop";
+        // Use base type name for template lookup (e.g., "Vec" not "Vec<bool>")
+        var templateKey = $"{baseTypeName}::drop";
 
         if (_genericMethodTemplates.ContainsKey(templateKey))
         {
-            // Instantiate the generic drop() method
+            // Instantiate the generic drop() method as a trait impl
             try
             {
                 IrFunction? instantiatedFunc = null;
 
                 if (structType != null)
                 {
-                    instantiatedFunc = InstantiateGenericMethod(structType, "drop");
+                    // Pass isTraitImpl=true and traitName="Drop" for proper mangling
+                    instantiatedFunc = InstantiateGenericMethod(
+                        structType,
+                        "drop",
+                        isTraitImpl: true,
+                        traitName: "Drop",
+                        traitTypeArgs: new List<IrType>()
+                    );
                 }
                 else if (enumType != null)
                 {
@@ -10631,7 +10879,9 @@ public class IrBuilder : NovusBaseVisitor<object?>
         string typeName;
         if (type is IrStructType structType)
         {
-            typeName = structType.StructName;
+            // For monomorphized types, use CacheKey (e.g., "Vec<bool>")
+            // For non-generic types, use StructName
+            typeName = structType.CacheKey ?? structType.StructName;
         }
         else if (type is IrEnumType enumType)
         {
@@ -10648,14 +10898,19 @@ public class IrBuilder : NovusBaseVisitor<object?>
             return;
         }
 
-        var dropMethodName = $"{typeName}_drop";
+        // The Drop trait implementation generates: Type_Drop_drop
+        // (trait impl convention: {Type}_{Trait}_{method})
+        // For monomorphized types like Vec<bool>, this would be Vec<bool>_Drop_drop
+        var dropMethodName = $"{typeName}_Drop_drop";
         var dropMethod = _module.Functions.FirstOrDefault(f => f.Name == dropMethodName);
         if (dropMethod == null)
         {
+            // This should never happen if EnsureDropMethodInstantiated was called first
+            // If it does happen, it means there's a bug in the Drop detection logic
             var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
             _diagnostics.ReportError(
                 ErrorCodes.MethodNotFound,
-                $"Drop method '{dropMethodName}' not found",
+                $"Drop method '{dropMethodName}' not found (this should have been instantiated already)",
                 errorLocation
             );
             return;

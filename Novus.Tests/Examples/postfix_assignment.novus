@@ -1,0 +1,16 @@
+// Test postfix conditionals with assignments
+// Expected: returns 100
+
+pub fn main() -> i32 {
+    var score = 0
+    let passed = true
+    let failed = false
+
+    // Assignment with postfix if
+    score = 50 if passed
+
+    // Compound assignment with postfix unless
+    score += 50 unless failed
+
+    return score
+}

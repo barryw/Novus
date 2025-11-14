@@ -1,0 +1,12 @@
+// Test array-to-slice coercion
+from std::slice import Slice
+
+fn takes_slice(s: Slice<i32>) -> i32 {
+    return s.len
+}
+
+pub fn main() -> i32 {
+    let arr = [1, 2, 3, 4, 5]
+    let len = takes_slice(&arr)  // Should coerce &[i32; 5] → Slice<i32>
+    return len
+}

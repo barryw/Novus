@@ -2385,6 +2385,23 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         IrType varType;
         if (context.type() != null)
         {
+            // Reject explicit array sizes when there's an initializer - size should be inferred
+            if (context.type() is NovusParser.ArrayTypeWithSizeContext)
+            {
+                var typeLocation = SourceLocationHelper.FromContext(context.type(), _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0200",
+                    "array size in type annotation is redundant with initializer",
+                    typeLocation,
+                    helpTexts: new List<string>
+                    {
+                        "remove the size from the type annotation - the size is inferred from the initializer",
+                        "example: change 'let arr: [i32; 3] = [1, 2, 3]' to 'let arr = [1, 2, 3]'"
+                    }
+                );
+                return null;
+            }
+
             varType = ParseType(context.type());
 
             // Set expected type for bidirectional type checking
@@ -4343,6 +4360,100 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
 
             case NovusParser.IdentifierPatternContext identPattern:
+            {
+                // Check if this identifier refers to a constant
+                var identName = identPattern.IDENTIFIER().GetText();
+                var constantSymbol = _symbols.LookupConstant(identName);
+
+                if (constantSymbol != null && constantSymbol.Type is IrIntType)
+                {
+                    // Treat this as a literal value - extract the integer value
+                    long value;
+                    if (constantSymbol.Value is int intVal)
+                        value = intVal;
+                    else if (constantSymbol.Value is uint uintVal)
+                        value = uintVal;
+                    else if (constantSymbol.Value is long longVal)
+                        value = longVal;
+                    else if (constantSymbol.Value is ulong ulongVal)
+                        value = (long)ulongVal;
+                    else if (constantSymbol.Value is short shortVal)
+                        value = shortVal;
+                    else if (constantSymbol.Value is ushort ushortVal)
+                        value = ushortVal;
+                    else if (constantSymbol.Value is byte byteVal)
+                        value = byteVal;
+                    else if (constantSymbol.Value is sbyte sbyteVal)
+                        value = sbyteVal;
+                    else
+                    {
+                        var location = SourceLocationHelper.FromToken(pattern.Start, _filePath, _sourceLines);
+                        _diagnostics.ReportError(
+                            "E0041",
+                            $"constant '{identName}' has non-integer value",
+                            location
+                        );
+                        break;
+                    }
+
+                    // Check for duplicate patterns
+                    if (coveredValues.Contains(value))
+                    {
+                        var location = SourceLocationHelper.FromToken(pattern.Start, _filePath, _sourceLines);
+                        _diagnostics.ReportWarning(
+                            "W0001",
+                            $"duplicate match pattern for value {value}",
+                            location,
+                            helpTexts: new List<string>
+                            {
+                                "this pattern will never be reached because an earlier pattern matches the same value"
+                            }
+                        );
+                    }
+
+                    // Validate that value fits in the integer type
+                    bool valueInRange = intType.BitWidth switch
+                    {
+                        8 when intType.IsSigned => value >= sbyte.MinValue && value <= sbyte.MaxValue,
+                        8 when !intType.IsSigned => value >= byte.MinValue && value <= byte.MaxValue,
+                        16 when intType.IsSigned => value >= short.MinValue && value <= short.MaxValue,
+                        16 when !intType.IsSigned => value >= ushort.MinValue && value <= ushort.MaxValue,
+                        32 when intType.IsSigned => value >= int.MinValue && value <= int.MaxValue,
+                        32 when !intType.IsSigned => value >= uint.MinValue && value <= uint.MaxValue,
+                        64 => true,
+                        _ => false
+                    };
+
+                    if (!valueInRange)
+                    {
+                        var location = SourceLocationHelper.FromToken(pattern.Start, _filePath, _sourceLines);
+                        _diagnostics.ReportError(
+                            "E0040",
+                            $"constant value {value} does not fit in type '{intType.Name}'",
+                            location
+                        );
+                    }
+
+                    coveredValues.Add(value);
+                }
+                else
+                {
+                    // Not a constant or not an integer constant - report error
+                    var location = SourceLocationHelper.FromToken(pattern.Start, _filePath, _sourceLines);
+                    _diagnostics.ReportError(
+                        "E0044",
+                        "invalid pattern for integer match",
+                        location,
+                        helpTexts: new List<string>
+                        {
+                            "integer match patterns only accept integer literals, integer constants, or wildcards",
+                            $"example: match value {{ 0 => ..., 1 => ..., CONSTANT => ..., _ => ... }}"
+                        }
+                    );
+                }
+                break;
+            }
+
             case NovusParser.VariantPatternContext:
             case NovusParser.SimpleVariantPatternContext:
             {
@@ -4353,8 +4464,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     location,
                     helpTexts: new List<string>
                     {
-                        "integer match patterns only accept integer literals or wildcards",
-                        $"example: match value {{ 0 => ..., 1 => ..., _ => ... }}"
+                        "integer match patterns only accept integer literals, integer constants, or wildcards",
+                        $"example: match value {{ 0 => ..., 1 => ..., CONSTANT => ..., _ => ... }}"
                     }
                 );
                 break;
@@ -5628,6 +5739,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     if (CanCoerceStrToU8Ptr(paramType, argType))
                     {
                         // Allow this coercion - IrBuilder will handle field extraction
+                        continue;
+                    }
+
+                    // Check if we can coerce &[T; N] to Slice<T>
+                    if (CanCoerceArrayToSlice(paramType, argType))
+                    {
+                        // Allow this coercion - IrBuilder will handle Slice construction
                         continue;
                     }
 
@@ -8201,6 +8319,29 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             (structType.StructName == "Str" || structType.StructName == "String"))
         {
             return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Check if we can coerce &[T; N] → Slice<T>
+    /// </summary>
+    private bool CanCoerceArrayToSlice(IrType expectedType, IrType actualType)
+    {
+        // Check if expected is Slice<T> and actual is &[T; N]
+        if (expectedType is IrStructType sliceStruct &&
+            sliceStruct.StructName == "Slice" &&
+            actualType is IrReferenceType refType &&
+            refType.PointeeType is IrArrayType arrayType)
+        {
+            // Get the 'ptr' field to extract the element type T from Slice<T>
+            var ptrField = sliceStruct.GetField("ptr");
+            if (ptrField?.Type is IrPointerType slicePtrType)
+            {
+                // Verify array element type matches Slice element type
+                return TypesCompatible(slicePtrType.PointeeType, arrayType.ElementType);
+            }
         }
 
         return false;

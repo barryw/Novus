@@ -51,6 +51,68 @@ public class CCodeGenerator
     private string _labelSuffix = "";
 
     /// <summary>
+    /// Determines if a function is a monomorphized trait implementation.
+    /// These functions need special handling to avoid duplicate symbol errors when
+    /// multiple modules use the same monomorphization (e.g., Vec<TagItem>::drop).
+    /// </summary>
+    public bool IsMonomorphizedTraitMethod(IrFunction function)
+    {
+        // Extern functions are never trait implementations
+        if (function.IsExtern)
+            return false;
+
+        // Check if function has a 'self' parameter (trait methods always have self)
+        bool hasSelfParam = function.Parameters.Any(p => p.Name == "self");
+        if (!hasSelfParam)
+            return false;
+
+        // NOTE: Function names DON'T include the generic parameter (e.g., "Vec_drop" not "Vec_TagItem_drop")
+        // The generic parameter is only in the mangled name and in the CacheKey.
+        // So we can't rely on function name splitting alone - we must check parameters' CacheKeys.
+
+        // Check if any parameter has a struct type with a generic-looking name
+        // (contains the type parameter in the name, like Vec_TagItem)
+        foreach (var param in function.Parameters)
+        {
+            var paramType = param.Type;
+
+            // Unwrap pointer types (trait methods often use *T instead of &T)
+            if (paramType is IrPointerType pointerType)
+                paramType = pointerType.PointeeType;
+            // Unwrap reference types
+            else if (paramType is IrReferenceType refType)
+                paramType = refType.PointeeType;
+            else if (paramType is IrMutReferenceType mutRefType)
+                paramType = mutRefType.PointeeType;
+
+            if (paramType is IrStructType structType)
+            {
+                // Check if struct name looks like a monomorphization (e.g., "Vec_TagItem")
+                var structParts = structType.Name.Split('_');
+                if (structParts.Length > 1 && (structParts[0] == "Vec" || structParts[0] == "Option" || structParts[0] == "Result"))
+                {
+                    return true;
+                }
+
+                // MOST RELIABLE: Check CacheKey - if it contains generic parameters, this is monomorphized
+                // CacheKey format: "Vec<TagItem>" or "Option<String>" etc.
+                if (!string.IsNullOrEmpty(structType.CacheKey) && structType.CacheKey.Contains('<'))
+                {
+                    return true;
+                }
+
+                // Also check GenericParameters
+                if (structType.GenericParameters.Count > 0)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Determines if a function is a monomorphized generic function.
     /// Monomorphized functions should be emitted as 'static inline' to avoid duplicate symbols.
     /// </summary>
@@ -384,6 +446,21 @@ public class CCodeGenerator
             sb.AppendLine();
         }
 
+        // Forward declarations for FFI struct pointer types
+        // These types are defined in NDK headers but need to be forward-declared
+        // before they're used in enum variant definitions
+        // Use typedef so we can use "Screen*" instead of "struct Screen*"
+        var ffiTypes = CollectFFIStructTypesForFunction(function);
+        if (ffiTypes.Count > 0)
+        {
+            sb.AppendLine("// Forward declarations for FFI struct types");
+            foreach (var ffiType in ffiTypes.OrderBy(t => t))
+            {
+                sb.AppendLine($"typedef struct {ffiType} {ffiType};");
+            }
+            sb.AppendLine();
+        }
+
         // Note: AmigaOS headers are included via novus_types.h
         // which includes <utility/tagitem.h> and typedefs TagItem
 
@@ -537,15 +614,72 @@ public class CCodeGenerator
                     var shouldUseOutParam = isStructOrEnumReturn && !funcObj.IsExtern;
                     var returnTypeStr = shouldUseOutParam ? "void" : GetCType(funcObj.ReturnType);
                     var parameters = GetParameterList(funcObj, shouldUseOutParam);
-                    sb.AppendLine($"extern {returnTypeStr} {MangleName(funcObj)}({parameters});");
+
+                    // Don't mangle public cross-module function names - use the plain name
+                    // MangleName adds type suffixes for monomorphization, but public functions
+                    // have stable names across modules
+                    var exportedFuncName = funcObj.IsPublic ? MangleName(funcName) : MangleName(funcObj);
+                    sb.AppendLine($"extern {returnTypeStr} {exportedFuncName}({parameters});");
                 }
                 else
                 {
-                    // Function not in current module - extract signature from call site
-                    var returnTypeStr = GetCType(returnType);
+                    // Function not in current module - it must be a public function from another module
+                    // (private functions can't be called cross-module).
+                    // Don't add monomorphization suffixes to public cross-module calls.
+
+                    // WORKAROUND: The IR builder sometimes adds type suffixes to cross-module calls.
+                    // Strip them here. For example, "make_tags_TagItem" -> "make_tags"
+                    var cleanFuncName = funcName;
+                    if (returnType is IrStructType structType)
+                    {
+                        // Try to extract type args from struct name or CacheKey
+                        List<string> typeArgs = new List<string>();
+
+                        if (!string.IsNullOrEmpty(structType.CacheKey))
+                        {
+                            typeArgs = ExtractTypeArguments(structType.CacheKey);
+                        }
+
+                        // If we found type args, try to strip them from the function name
+                        if (typeArgs.Count > 0)
+                        {
+                            var suffix = "_" + string.Join("_", typeArgs);
+                            if (cleanFuncName.EndsWith(suffix))
+                            {
+                                cleanFuncName = cleanFuncName.Substring(0, cleanFuncName.Length - suffix.Length);
+                            }
+                        }
+                        else if (!string.IsNullOrEmpty(structType.StructName))
+                        {
+                            // Fallback: check if function name ends with "_" + PascalCase word
+                            var lastUnderscore = cleanFuncName.LastIndexOf('_');
+                            if (lastUnderscore > 0 && lastUnderscore < cleanFuncName.Length - 1)
+                            {
+                                var potentialTypeSuffix = cleanFuncName.Substring(lastUnderscore + 1);
+                                // Check if it looks like a type name (starts with uppercase)
+                                if (char.IsUpper(potentialTypeSuffix[0]))
+                                {
+                                    cleanFuncName = cleanFuncName.Substring(0, lastUnderscore);
+                                }
+                            }
+                        }
+                    }
+
+                    // Apply VBCC out-parameter workaround for struct/enum returns
+                    var isStructOrEnumReturn = returnType is IrStructType or IrEnumType;
+                    var returnTypeStr = isStructOrEnumReturn ? "void" : GetCType(returnType);
                     var paramTypes = arguments.Select(arg => GetCType(arg.Type)).ToList();
+
+                    // If using out-parameter, add output parameter as first parameter
+                    if (isStructOrEnumReturn)
+                    {
+                        paramTypes.Insert(0, GetCType(returnType) + "*");
+                    }
+
                     var paramList = paramTypes.Count > 0 ? string.Join(", ", paramTypes) : "void";
-                    sb.AppendLine($"extern {returnTypeStr} {MangleName(funcName)}({paramList});");
+                    // Use raw function name without monomorphization suffixes
+                    // (only apply basic :: and <> sanitization)
+                    sb.AppendLine($"extern {returnTypeStr} {MangleName(cleanFuncName)}({paramList});");
                 }
             }
             sb.AppendLine();
@@ -595,15 +729,50 @@ public class CCodeGenerator
             returnType = "int";
         }
 
-        // No need for 'static' modifier - monomorphized functions now have unique
-        // type-parameterized names (e.g., Vec_bool_push, Vec_u8_push) to prevent
-        // duplicate symbol errors during linking.
+        // Monomorphized trait implementations are generated in multiple modules.
+        // Don't try to use inline/static - just let them be regular functions and
+        // handle the duplicate symbols at the Program.cs level by generating them once.
         targetBuilder.AppendLine($"{returnType} {funcName}({parameters}) {{");
 
         // Emit defer activation flags (for proper control flow tracking)
         for (int i = 0; i < function.DeferredBlocks.Count; i++)
         {
             targetBuilder.AppendLine($"    bool _defer_{i + 1}_active = false;");
+        }
+
+        // Find all variables that are stored to but never declared
+        // (common for match result variables when match is lowered to basic blocks)
+        var declaredVars = new HashSet<string>();
+        var storedVars = new Dictionary<string, IrType>(); // var name -> type
+
+        foreach (var block in function.BasicBlocks)
+        {
+            foreach (var instruction in block.Instructions)
+            {
+                if (instruction is IrLocalDecl localDecl)
+                {
+                    declaredVars.Add(SanitizeVariableName(localDecl.Name));
+                }
+                else if (instruction is IrStore store)
+                {
+                    var varName = SanitizeVariableName(store.VariableName);
+                    if (!storedVars.ContainsKey(varName))
+                    {
+                        storedVars[varName] = store.Value.Type;
+                    }
+                }
+            }
+        }
+
+        // Emit declarations for variables that are stored to but never declared
+        foreach (var (varName, varType) in storedVars)
+        {
+            if (!declaredVars.Contains(varName))
+            {
+                var cType = GetCType(varType);
+                targetBuilder.AppendLine($"    {cType} {varName};");
+                _declaredVariables.Add(varName);
+            }
         }
 
         // Emit all basic blocks
@@ -918,6 +1087,109 @@ public class CCodeGenerator
         }
 
         return enumTypes;
+    }
+
+    /// <summary>
+    /// Collect all FFI struct pointer types used by a single function for forward declarations
+    /// </summary>
+    private HashSet<string> CollectFFIStructTypesForFunction(IrFunction function)
+    {
+        var ffiTypes = new HashSet<string>();
+
+        // Check return type
+        CollectFFIStructTypesFromType(function.ReturnType, ffiTypes);
+
+        // Check parameters
+        foreach (var param in function.Parameters)
+        {
+            CollectFFIStructTypesFromType(param.Type, ffiTypes);
+        }
+
+        // Check local variables
+        foreach (var local in function.LocalVariables)
+        {
+            CollectFFIStructTypesFromType(local.Type, ffiTypes);
+        }
+
+        // Scan instructions
+        foreach (var block in function.BasicBlocks)
+        {
+            foreach (var instruction in block.Instructions)
+            {
+                if (instruction is IrLocalDecl localDecl)
+                    CollectFFIStructTypesFromType(localDecl.Type, ffiTypes);
+
+                if (instruction is IrCall call)
+                {
+                    CollectFFIStructTypesFromType(call.ReturnType, ffiTypes);
+                    foreach (var arg in call.Arguments)
+                    {
+                        CollectFFIStructTypesFromType(arg.Type, ffiTypes);
+                    }
+                }
+            }
+        }
+
+        return ffiTypes;
+    }
+
+    /// <summary>
+    /// NDK struct types defined by AmigaOS headers - need forward declarations
+    /// </summary>
+    private static readonly HashSet<string> NdkStructs = new() {
+        "Rectangle", "BitMap", "View", "ViewPort", "ColorMap", "UCopList",
+        "Node", "MinNode", "Library", "List", "MinList", "TagItem", "Hook",
+        "Task", "StackSwapStruct", "SignalSemaphore", "MsgPort", "Message",
+        "Device", "Unit", "ExtendedNode", "Custom", "SpriteDef", "DBufInfo",
+        "TextAttr", "TTextAttr", "TextFont", "TextFontExtension",
+        "ColorFontColors", "ColorTextFont", "TextExtent", "Layer", "RastPort",
+        "IBox", "DrawInfo", "Gadget", "Requester", "NewScreen", "Screen",
+        "Window", "IntuiMessage", "NewWindow", "GadgetInfo"
+    };
+
+    /// <summary>
+    /// Recursively collect FFI struct pointer types from a type
+    /// </summary>
+    private void CollectFFIStructTypesFromType(IrType type, HashSet<string> ffiTypes)
+    {
+        switch (type)
+        {
+            case IrPointerType ptrType:
+                // Check if this is a pointer to an NDK struct
+                if (ptrType.PointeeType is IrStructType st && NdkStructs.Contains(st.StructName))
+                {
+                    ffiTypes.Add(st.StructName);
+                }
+                // Recursively check pointee type
+                CollectFFIStructTypesFromType(ptrType.PointeeType, ffiTypes);
+                break;
+
+            case IrArrayType arrType:
+                CollectFFIStructTypesFromType(arrType.ElementType, ffiTypes);
+                break;
+
+            case IrEnumType enumType:
+                // Check enum variant associated data for FFI struct pointers
+                foreach (var variant in enumType.Variants)
+                {
+                    if (variant.HasAssociatedData && variant.AssociatedData != null)
+                    {
+                        foreach (var dataType in variant.AssociatedData)
+                        {
+                            CollectFFIStructTypesFromType(dataType, ffiTypes);
+                        }
+                    }
+                }
+                break;
+
+            case IrStructType structType:
+                // Check struct fields for FFI struct pointers
+                foreach (var field in structType.Fields)
+                {
+                    CollectFFIStructTypesFromType(field.Type, ffiTypes);
+                }
+                break;
+        }
     }
 
     /// <summary>
@@ -2314,10 +2586,45 @@ public class CCodeGenerator
             returnType = "int";
         }
 
-        // No need for 'static' modifier - monomorphized functions now have unique
-        // type-parameterized names (e.g., Vec_bool_push, Vec_u8_push) to prevent
-        // duplicate symbol errors during linking.
+        // Monomorphized trait implementations are generated in multiple modules.
+        // Don't try to use inline/static - just let them be regular functions and
+        // handle the duplicate symbols at the Program.cs level by generating them once.
         _output.AppendLine($"{returnType} {funcName}({parameters}) {{");
+
+        // Find all variables that are stored to but never declared
+        // (common for match result variables when match is lowered to basic blocks)
+        var declaredVars = new HashSet<string>();
+        var storedVars = new Dictionary<string, IrType>(); // var name -> type
+
+        foreach (var block in function.BasicBlocks)
+        {
+            foreach (var instruction in block.Instructions)
+            {
+                if (instruction is IrLocalDecl localDecl)
+                {
+                    declaredVars.Add(SanitizeVariableName(localDecl.Name));
+                }
+                else if (instruction is IrStore store)
+                {
+                    var varName = SanitizeVariableName(store.VariableName);
+                    if (!storedVars.ContainsKey(varName))
+                    {
+                        storedVars[varName] = store.Value.Type;
+                    }
+                }
+            }
+        }
+
+        // Emit declarations for variables that are stored to but never declared
+        foreach (var (varName, varType) in storedVars)
+        {
+            if (!declaredVars.Contains(varName))
+            {
+                var cType = GetCType(varType);
+                _output.AppendLine($"    {cType} {varName};");
+                _declaredVariables.Add(varName);
+            }
+        }
 
         // Emit function body
         foreach (var block in function.BasicBlocks)
@@ -2325,12 +2632,13 @@ public class CCodeGenerator
             EmitBasicBlock(block);
         }
 
+        // DISABLED: Match arm scopes are no longer emitted
         // Close any pending match arm scope
-        if (_inMatchArmScope)
-        {
-            _output.AppendLine("    }");
-            _inMatchArmScope = false;
-        }
+        //if (_inMatchArmScope)
+        //{
+        //    _output.AppendLine("    }");
+        //    _inMatchArmScope = false;
+        //}
 
         // Build CFG to check if all paths return
         var cfg = new ControlFlowGraph(function);
@@ -2684,6 +2992,29 @@ public class CCodeGenerator
                     // For now, we'll add the cast unconditionally for pointers
                     argValue = $"(int32_t){argValue}";
                 }
+                // BUG FIX: Array-to-slice conversion
+                // If parameter is a pointer to a slice type (*Slice) but argument is a reference to an array (&[T; N]),
+                // convert it to a temporary slice struct
+                else if (paramType is IrReferenceType paramRefType &&
+                         paramRefType.PointeeType is IrStructType sliceStructType &&
+                         sliceStructType.StructName == "Slice" &&
+                         arg.Type is IrReferenceType argRefType &&
+                         argRefType.PointeeType is IrArrayType arrayType)
+                {
+                    Console.WriteLine($"[ARRAY-TO-SLICE] Triggered for call to function");
+                    Console.WriteLine($"  Parameter type: {paramType}");
+                    Console.WriteLine($"  Argument type: {arg.Type}");
+                    Console.WriteLine($"  Array element type: {arrayType.ElementType}");
+                    Console.WriteLine($"  Array length: {arrayType.Length}");
+
+                    // Create a temporary slice struct: &((Slice_T){ .ptr = array, .len = N })
+                    var elementTypeName = GetCType(arrayType.ElementType);
+                    var sliceTypeName = $"Slice_{SanitizeVariableName(elementTypeName)}";
+                    argValue = $"&(({sliceTypeName}){{ .ptr = {argValue}, .len = {arrayType.Length} }})";
+
+                    Console.WriteLine($"  Generated slice type: {sliceTypeName}");
+                    Console.WriteLine($"  Final argValue: {argValue}");
+                }
             }
 
             args.Add(argValue);
@@ -2694,10 +3025,56 @@ public class CCodeGenerator
         var isStructOrEnumReturn = call.ReturnType is IrStructType or IrEnumType;
         var shouldUseOutParam = isStructOrEnumReturn && (function == null || !function.IsExtern);
 
+        // WORKAROUND: Strip type suffixes from cross-module function calls BEFORE mangling
+        // The IR builder sometimes adds type suffixes to public cross-module calls
+        // For example, "make_tags_TagItem" should become "make_tags"
+        var cleanedCallName = call.FunctionName;
+        if (call.FunctionName.Contains("make_tags"))
+        {
+            Console.WriteLine($"DEBUG make_tags call: function={function?.Name ?? "null"}, FunctionName={call.FunctionName}, ReturnType={call.ReturnType}");
+            if (call.ReturnType is IrStructType st)
+            {
+                Console.WriteLine($"  StructType: Name={st.Name}, StructName={st.StructName}, CacheKey={st.CacheKey}");
+            }
+        }
+        if (function == null && call.ReturnType is IrStructType retStructTypeCheck)
+        {
+            // Try to extract type args from CacheKey
+            List<string> typeArgs = new List<string>();
+            if (!string.IsNullOrEmpty(retStructTypeCheck.CacheKey))
+            {
+                typeArgs = ExtractTypeArguments(retStructTypeCheck.CacheKey);
+            }
+
+            if (typeArgs.Count > 0)
+            {
+                var suffix = "_" + string.Join("_", typeArgs);
+                if (cleanedCallName.EndsWith(suffix))
+                {
+                    cleanedCallName = cleanedCallName.Substring(0, cleanedCallName.Length - suffix.Length);
+                }
+            }
+            else
+            {
+                // Fallback heuristic: strip "_PascalCase" suffix
+                var lastUnderscore = cleanedCallName.LastIndexOf('_');
+                if (lastUnderscore > 0 && lastUnderscore < cleanedCallName.Length - 1)
+                {
+                    var potentialTypeSuffix = cleanedCallName.Substring(lastUnderscore + 1);
+                    if (char.IsUpper(potentialTypeSuffix[0]))
+                    {
+                        cleanedCallName = cleanedCallName.Substring(0, lastUnderscore);
+                    }
+                }
+            }
+        }
+
         // Don't mangle exported function names in calls
         // If we found the function, use its mangled name; otherwise fall back to string mangling
-        var callFuncName = (function != null && function.IsExported) ? function.Name :
-                          (function != null ? MangleName(function) : MangleName(call.FunctionName));
+        var rawCallName = (function != null && function.IsExported) ? function.Name :
+                          (function != null ? MangleName(function) : MangleName(cleanedCallName));
+
+        var callFuncName = rawCallName;
 
         if (shouldUseOutParam && call.ResultName != null)
         {
@@ -2759,23 +3136,26 @@ public class CCodeGenerator
         // Append suffix to label name to make it unique across defer block emissions
         var labelName = label.Name + _labelSuffix;
 
+        // DISABLED: Match arm scopes cause variable scoping issues with nested matches
+        // Since we're using gotos, we don't need explicit scopes - the labels provide structure
         // Close previous match arm scope if needed
-        if (_inMatchArmScope && (label.Name.StartsWith("match_arm_") || label.Name.StartsWith("match_end_") || label.Name.StartsWith("match_check_")))
-        {
-            _output.AppendLine("    }");
-            _inMatchArmScope = false;
-        }
+        //if (_inMatchArmScope && (label.Name.StartsWith("match_arm_") || label.Name.StartsWith("match_end_") || label.Name.StartsWith("match_check_")))
+        //{
+        //    _output.AppendLine("    }");
+        //    _inMatchArmScope = false;
+        //}
 
         // Emit label (unindented for C style)
         // Add empty statement to ensure valid C (labels must be followed by a statement)
         _output.AppendLine($"{labelName}:;");
 
+        // DISABLED: Match arm scopes cause variable scoping issues with nested matches
         // Open new scope for match arms
-        if (label.Name.StartsWith("match_arm_"))
-        {
-            _output.AppendLine("    {");
-            _inMatchArmScope = true;
-        }
+        //if (label.Name.StartsWith("match_arm_"))
+        //{
+        //    _output.AppendLine("    {");
+        //    _inMatchArmScope = true;
+        //}
     }
 
     private void EmitBranch(IrBranch branch)
@@ -2938,6 +3318,17 @@ public class CCodeGenerator
             throw new InvalidOperationException("Match expression must be on an enum type");
 
         var enumName = MangleName(enumType);
+
+        // If this match is an expression (has a result), declare the result variable
+        if (match.ResultName != null && match.ResultType != null)
+        {
+            var resultVarName = SanitizeVariableName(match.ResultName);
+            var resultType = GetCType(match.ResultType);
+            _output.AppendLine($"    {resultType} {resultVarName};");
+
+            // Track that we've declared this variable
+            _declaredVariables.Add(resultVarName);
+        }
 
         // Switch on the tag
         _output.AppendLine($"    switch ({matchValue}.tag) {{");
@@ -3316,11 +3707,16 @@ public class CCodeGenerator
 
         // Check if we're borrowing a variable that came from an index access
         // If so, reconstruct the lvalue expression (&array[index]) instead of taking address of temporary
-        if (borrowValue.BorrowedValue is IrVariable indexVar &&
-            _indexAccessInfo.TryGetValue(indexVar.Name, out var indexInfo))
+        if (borrowValue.BorrowedValue is IrVariable indexVar)
         {
-            var (arrayExpr, indexExpr) = indexInfo;
-            return $"&{arrayExpr}[{indexExpr}]";
+            // Sanitize the variable name to match how it was stored in the dictionary
+            var sanitizedName = SanitizeVariableName(indexVar.Name);
+
+            if (_indexAccessInfo.TryGetValue(sanitizedName, out var indexInfo))
+            {
+                var (arrayExpr, indexExpr) = indexInfo;
+                return $"&{arrayExpr}[{indexExpr}]";
+            }
         }
 
         // Normal case: add & to create a pointer
@@ -3829,9 +4225,11 @@ public class CCodeGenerator
 
     private string MangleName(string name)
     {
-        // For now, keep names simple
-        // TODO: Handle generic instantiations, modules, etc.
-        return name.Replace("::", "_");
+        // Handle module separators and generic type parameters
+        // Generic names like "From<DosError>" become "From_DosError"
+        return name.Replace("::", "_")
+                   .Replace("<", "_")
+                   .Replace(">", "");
     }
 
     /// <summary>
@@ -3839,7 +4237,7 @@ public class CCodeGenerator
     /// For generic functions like Vec::new() instantiated with Vec<bool>, this generates
     /// "Vec_bool_new" to avoid duplicate symbol errors during linking.
     /// </summary>
-    private string MangleName(IrFunction function)
+    public string MangleFunctionName(IrFunction function)
     {
         // Start with basic name mangling
         var baseName = MangleName(function.Name);
@@ -3998,6 +4396,11 @@ public class CCodeGenerator
         // Fallback: append to end
         return baseName + "_" + typeSuffix;
     }
+
+    /// <summary>
+    /// Private wrapper for internal use - calls the public MangleFunctionName method.
+    /// </summary>
+    public string MangleName(IrFunction function) => MangleFunctionName(function);
 
     private string MangleName(IrEnumType enumType)
     {

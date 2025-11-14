@@ -1,0 +1,55 @@
+/// Generic slice type - a fat pointer (pointer + length) to an array
+///
+/// This allows passing arrays to functions without losing size information.
+/// Unlike raw pointers (*T), slices carry their length.
+///
+/// Example:
+/// ```novus
+/// fn sum(numbers: &Slice<i32>) -> i32 {
+///     var total = 0
+///     var i = 0u32
+///     while i < numbers.len {
+///         total = total + numbers.ptr[i]
+///         i = i + 1u32
+///     }
+///     return total
+/// }
+///
+/// let arr = [1, 2, 3, 4, 5]
+/// let slice = Slice::from_array(&arr)
+/// let result = sum(&slice)  // No need to pass count!
+/// ```
+pub struct Slice<T> {
+    ptr: *T,
+    len: u32,
+}
+
+impl<T> Slice<T> {
+    /// Create a slice from a pointer and length
+    pub fn new(ptr: *T, len: u32) -> Slice<T> {
+        return Slice { ptr: ptr, len: len }
+    }
+
+    /// Get the length of the slice
+    pub fn len(&self) -> u32 {
+        return self.len
+    }
+
+    /// Check if the slice is empty
+    pub fn is_empty(&self) -> bool {
+        return self.len == 0u32
+    }
+
+    /// Get element at index (unsafe - no bounds checking)
+    pub fn get_unchecked(&self, index: u32) -> T {
+        return self.ptr[index]
+    }
+
+    /// Get element at index with bounds checking
+    pub fn get(&self, index: u32) -> Option<T> {
+        if index >= self.len {
+            return Option::None
+        }
+        return Option::Some(self.ptr[index])
+    }
+}

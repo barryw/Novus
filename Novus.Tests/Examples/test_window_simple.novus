@@ -1,0 +1,21 @@
+// Test WindowHandle::simple - open window, delay 5 seconds, close
+from std::intuition import WindowHandle
+from std::ffi::dos import Delay
+
+pub fn main() -> i32 {
+    let result = WindowHandle::simple(&"Novus Window", 320, 200)
+
+    match result {
+        Result::Ok(window) => {
+            // Window opened successfully - wait 5 seconds (5 * 50 = 250 ticks)
+            Delay(250)
+
+            // Window will be closed by Drop when function returns
+            return 0
+        },
+        Result::Err(err) => {
+            // Failed to open window
+            return 1
+        }
+    }
+}

@@ -112,13 +112,21 @@ public static class StdlibBuildCommand
         // Determine compiler location - use AppContext.BaseDirectory for compatibility with single-file deployment
         var compilerDir = AppContext.BaseDirectory;
 
-        // The std directory is at the root of the project, but gets copied to the output directory
-        var stdlibSourceDir = Path.Combine(compilerDir, "std");
-        if (!Directory.Exists(stdlibSourceDir))
+        // CRITICAL: For dev builds, ALWAYS use the PROJECT source tree, not the copied files in bin/
+        // This ensures we get the latest edited sources, not stale cached copies
+        var projectStdlibDir = Path.Combine(compilerDir, "..", "..", "..", "..", "Novus", "std");
+        projectStdlibDir = Path.GetFullPath(projectStdlibDir);
+
+        string stdlibSourceDir;
+        if (Directory.Exists(projectStdlibDir))
         {
-            // Fallback: try to find it relative to the source tree (for dev builds)
-            stdlibSourceDir = Path.Combine(compilerDir, "..", "..", "..", "..", "Novus", "std");
-            stdlibSourceDir = Path.GetFullPath(stdlibSourceDir);
+            // Dev build - use project source tree
+            stdlibSourceDir = projectStdlibDir;
+        }
+        else
+        {
+            // Installed/published build - use copied files
+            stdlibSourceDir = Path.Combine(compilerDir, "std");
         }
 
         if (!Directory.Exists(stdlibSourceDir))
@@ -177,6 +185,54 @@ public static class StdlibBuildCommand
         }
 
         int compiledCount = StdlibModules.Length;
+
+        // CRITICAL FIX: Copy all stdlib source files to the compiler directory
+        // This ensures the compiler always has the latest source files for compilation
+        // Only copy if source and destination are different directories
+        var stdlibDestDir = Path.Combine(compilerDir, "std");
+        var normalizedSourceDir = Path.GetFullPath(stdlibSourceDir);
+        var normalizedDestDir = Path.GetFullPath(stdlibDestDir);
+
+        if (!normalizedSourceDir.Equals(normalizedDestDir, StringComparison.OrdinalIgnoreCase))
+        {
+            Directory.CreateDirectory(stdlibDestDir);
+
+            // Copy all .novus files from source to destination
+            foreach (var sourceFile in Directory.GetFiles(stdlibSourceDir, "*.novus", SearchOption.TopDirectoryOnly))
+            {
+                var destFile = Path.Combine(stdlibDestDir, Path.GetFileName(sourceFile));
+                File.Copy(sourceFile, destFile, overwrite: true);
+            }
+
+            // Copy subdirectories (ffi, graphics, etc.)
+            foreach (var sourceSubDir in Directory.GetDirectories(stdlibSourceDir))
+            {
+                var subDirName = Path.GetFileName(sourceSubDir);
+                var destSubDir = Path.Combine(stdlibDestDir, subDirName);
+                Directory.CreateDirectory(destSubDir);
+
+                foreach (var sourceFile in Directory.GetFiles(sourceSubDir, "*.novus", SearchOption.AllDirectories))
+                {
+                    var relativePath = Path.GetRelativePath(sourceSubDir, sourceFile);
+                    var destFile = Path.Combine(destSubDir, relativePath);
+                    var destFileDir = Path.GetDirectoryName(destFile);
+                    if (destFileDir != null)
+                    {
+                        Directory.CreateDirectory(destFileDir);
+                    }
+                    File.Copy(sourceFile, destFile, overwrite: true);
+                }
+            }
+
+            if (verbose)
+            {
+                Console.WriteLine($"  Copied source files to {stdlibDestDir}");
+            }
+        }
+        else if (verbose)
+        {
+            Console.WriteLine($"  Source and destination are the same, skipping copy");
+        }
 
         // Write manifest
         var manifestPath = Path.Combine(outputDir, "manifest.json");

@@ -265,8 +265,13 @@ patternList
     : pattern (',' pattern)*
     ;
 
+postfixCondition
+    : KW_IF expression
+    | KW_UNLESS expression
+    ;
+
 returnStatement
-    : KW_RETURN expression?
+    : KW_RETURN expression? postfixCondition?
     ;
 
 variableDeclaration
@@ -278,8 +283,8 @@ tuplePattern
     ;
 
 assignmentStatement
-    : ('*')* (IDENTIFIER | KW_SELF) (lvalueSuffix)* ('++' | '--')
-    | ('*')* (IDENTIFIER | KW_SELF) (lvalueSuffix)* ('=' | '+=' | '-=' | '*=' | '/=' | '%=' | '&=' | '|=' | '^=' | '<<=' | '>>=') expression
+    : ('*')* (IDENTIFIER | KW_SELF) (lvalueSuffix)* ('++' | '--') postfixCondition?
+    | ('*')* (IDENTIFIER | KW_SELF) (lvalueSuffix)* ('=' | '+=' | '-=' | '*=' | '/=' | '%=' | '&=' | '|=' | '^=' | '<<=' | '>>=') expression postfixCondition?
     ;
 
 lvalueSuffix
@@ -311,11 +316,11 @@ foreverStatement
     ;
 
 breakStatement
-    : KW_BREAK
+    : KW_BREAK postfixCondition?
     ;
 
 expressionStatement
-    : expression
+    : expression postfixCondition?
     ;
 
 expression
@@ -418,6 +423,7 @@ KW_FOREVER  : 'forever';
 KW_BREAK    : 'break';
 KW_MATCH    : 'match';
 KW_DEFER     : 'defer';
+KW_UNLESS    : 'unless';
 KW_UNSAFE    : 'unsafe';
 KW_USING     : 'using';
 KW_SIZEOF    : 'sizeof';

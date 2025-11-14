@@ -62,7 +62,7 @@ extern pub fn RemPort(port: *MsgPort)
 extern pub fn PutMsg(port: *MsgPort, message: *Message)
 extern pub fn GetMsg(port: *MsgPort) -> *Message
 extern pub fn ReplyMsg(message: *Message)
-extern pub fn WaitPort(port: *MsgPort) -> *Message
+extern pub fn WaitPort(port: *MsgPort) -> *Message  // Returns pointer to first message (doesn't remove it)
 extern pub fn FindPort(name: *u8) -> *MsgPort
 extern pub fn AddLibrary(library: *Library)
 extern pub fn RemLibrary(library: *Library)

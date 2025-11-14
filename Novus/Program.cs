@@ -1,4 +1,5 @@
-﻿using System.Text.Json.Serialization;
+﻿using System.Text;
+using System.Text.Json.Serialization;
 using Antlr4.Runtime;
 using CommandLine;
 using Novus.Codegen;
@@ -708,8 +709,8 @@ class Program
                     var functionCCode = mainCodegen.GenerateFunctionFile(function);
                     // Always write the C file (even if it's a stub that panics)
                     // This ensures linking succeeds even if the function isn't called
-                    // Sanitize function name for use in C filenames (replace :: with _ to match MangleName)
-                    var sanitizedFunctionName = function.Name.Replace("::", "_");
+                    // Sanitize function name for use in C filenames (replace :: with _ to match MangleName, and remove < >)
+                    var sanitizedFunctionName = function.Name.Replace("::", "_").Replace("<", "_").Replace(">", "_");
                     var functionCFile = Path.Combine(outputDir, $"{baseName}_{sanitizedFunctionName}.c");
                     await File.WriteAllTextAsync(functionCFile, functionCCode);
                     cFiles.Add(functionCFile);
@@ -802,6 +803,10 @@ class Program
                 }
             }
 
+            // Track monomorphized functions across all modules to generate each one exactly once
+            // Key: mangled function name, Value: (module name, function)
+            var generatedMonomorphizedFunctions = new Dictionary<string, (string moduleName, IrFunction function, CCodeGenerator codegen)>();
+
             // Library modules: generate one C file per function
             foreach (var (modulePath, moduleIR) in allModulesIR)
             {
@@ -843,11 +848,28 @@ class Program
 
                 foreach (var function in generableFunctions)
                 {
+                    // Check if this is a monomorphized trait method
+                    bool isMonomorphized = moduleCodegen.IsMonomorphizedTraitMethod(function);
+                    var mangledName = moduleCodegen.MangleName(function);
+
+                    if (isMonomorphized)
+                    {
+                        // If we've already generated this monomorphized function, skip it
+                        if (generatedMonomorphizedFunctions.ContainsKey(mangledName))
+                        {
+                            Console.WriteLine($"    [SKIPPED DUPLICATE] {mangledName} (already in {generatedMonomorphizedFunctions[mangledName].moduleName})");
+                            continue;
+                        }
+
+                        // Track this monomorphized function
+                        generatedMonomorphizedFunctions[mangledName] = (moduleName, function, moduleCodegen);
+                    }
+
                     var functionCCode = moduleCodegen.GenerateFunctionFile(function);
                     // Always write the C file (even if it's a stub that panics)
                     // This ensures linking succeeds even if the function isn't called
-                    // Sanitize function name for use in C filenames (replace :: with _ to match MangleName)
-                    var sanitizedFunctionName = function.Name.Replace("::", "_");
+                    // Sanitize function name for use in C filenames (replace :: with _ to match MangleName, and remove < >)
+                    var sanitizedFunctionName = function.Name.Replace("::", "_").Replace("<", "_").Replace(">", "_");
                     var functionCFile = Path.Combine(outputDir, $"{moduleName}_{sanitizedFunctionName}.c");
                     await File.WriteAllTextAsync(functionCFile, functionCCode);
                     cFiles.Add(functionCFile);

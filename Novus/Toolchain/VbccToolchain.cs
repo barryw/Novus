@@ -151,8 +151,6 @@ public class VbccToolchain
 
         // Add linker flags (library-specific behavior)
         args.Add("-x");  // Discard local symbols
-        args.Add("-sc");  // Merge all code sections into one HUNK_CODE
-        args.Add("-sd");  // Merge all data and bss sections
 
         if (isLibrary)
         {
@@ -169,8 +167,11 @@ public class VbccToolchain
             args.Add("-Bstatic");  // Static linking
             args.Add("-Cvbcc");  // VBCC calling convention (also enables constructor/destructor support)
 
-            // Dead code elimination - now safe with per-function compilation
-            // Each function is in its own section, so gc-all can properly eliminate unused code
+            // Dead code elimination with section merging to avoid duplicate symbol errors
+            // -sc merges all code sections, -sd merges all data/bss sections
+            // This allows linking duplicate monomorphized functions from stdlib
+            args.Add("-sc");      // Merge all code sections (required to link duplicate symbols)
+            args.Add("-sd");      // Merge all data/bss sections
             args.Add("-gc-all");  // Dead code elimination
             args.Add("-e");       // Specify entry point for -gc-all to trace from
             args.Add("_start");   // Entry point defined in novus_startup.s
@@ -773,6 +774,7 @@ public class VbccToolchain
 
     private static string QuoteIfNeeded(string arg)
     {
-        return arg.Contains(' ') ? $"\"{arg}\"" : arg;
+        // Quote if contains space or shell metacharacters
+        return (arg.Contains(' ') || arg.Contains('<') || arg.Contains('>')) ? $"\"{arg}\"" : arg;
     }
 }

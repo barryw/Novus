@@ -1,0 +1,25 @@
+// Test complex postfix conditional scenarios
+// Expected: returns the correct classification
+
+fn classify_number(n: i32) -> i32 {
+    // Multiple postfix returns
+    return -1 if n < 0
+    return 0 if n == 0
+    return 1 if n > 0 && n <= 10
+    return 2 if n > 10
+
+    return 99  // Should never reach here
+}
+
+pub fn main() -> i32 {
+    var total = 0
+
+    // Test various values
+    total = total + classify_number(-5)   // Should be -1
+    total = total + classify_number(0)    // Should be 0
+    total = total + classify_number(5)    // Should be 1
+    total = total + classify_number(20)   // Should be 2
+
+    // Expected: -1 + 0 + 1 + 2 = 2
+    return total
+}

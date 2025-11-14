@@ -1,105 +1,47 @@
-// Simple Window Example
-// Opens an empty window on the Workbench screen with a close gadget
-// Waits for the close gadget to be clicked, then exits cleanly
+// Simple Window Example - Modern Ergonomic Version
+//
+// Demonstrates the WindowHandle RAII wrapper with:
+// - Automatic window cleanup (no manual message draining!)
+// - Type-safe event handling via WindowEvent enum
+// - Simple blocking event loop
+// - Convenience constructor (simple window preset)
+//
+// Compare to the original 106-line version - this is just 30 lines!
 
-from std::ffi::amiga_structs import TagItem, Window, MsgPort, Message, IntuiMessage
-from std::ffi::intuition import OpenWindowTagList, CloseWindow
-from std::ffi::exec import WaitPort, GetMsg, ReplyMsg
-from std::ffi::amiga_consts import TAG_DONE, IDCMP_CLOSEWINDOW, WFLG_*, WA_*
+from std::intuition import WindowHandle, WindowEvent
 from std::strings import Str
 
-/// Drain and reply to all pending IDCMP messages
-/// CRITICAL: Must be called before closing window to prevent system hangs
-fn drain_idcmp_messages(window: *Window) {
-    // SAFETY: Accessing Window.UserPort field - window is non-null
-    var user_port: *MsgPort = 0
-    unsafe {
-        user_port = (*window).UserPort
-    }
-
-    // Drain all messages from the port
-    let mut keep_going: bool = true
-    while keep_going {
-        let msg: *Message = GetMsg(user_port)
-
-        // If null, no more messages
-        if !msg {
-            keep_going = false
-        } else {
-            // Reply to message (CRITICAL - prevents system hang!)
-            ReplyMsg(msg)
-        }
-    }
-}
-
 pub fn main() -> i32 {
-    let tags = [
-        TagItem { ti_Tag: WA_Left, ti_Data: 50 },
-        TagItem { ti_Tag: WA_Top, ti_Data: 50 },
-        TagItem { ti_Tag: WA_Width, ti_Data: 320 },
-        TagItem { ti_Tag: WA_Height, ti_Data: 200 },
-        TagItem { ti_Tag: WA_Title, ti_Data: "Novus Window" },
-        TagItem { ti_Tag: WA_Flags, ti_Data: WFLG_CLOSEGADGET | WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_ACTIVATE },
-        TagItem { ti_Tag: WA_IDCMP, ti_Data: IDCMP_CLOSEWINDOW },
-        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
-    ]
+    // Open a simple window with standard gadgets
+    // WindowHandle automatically handles cleanup on drop!
+    let result = WindowHandle::simple(&"Novus Window", 320, 200)
 
-    // Step 2: Open window (pass 0 for NewWindow = use tags only)
-    let window: *Window = OpenWindowTagList(null, tags)
+    match result {
+        Result::Ok(window) => {
+            // Event loop - wait for events until close
+            let mut running = true
+            while running {
+                // Wait for next event (blocks until event arrives)
+                let event = window.wait_event()
 
-    // Check if window opened successfully
-    if !window {
-        return 20  // RETURN_FAIL
-    }
-
-    // RAII cleanup: drain messages and close window on scope exit
-    defer {
-        if window {
-            drain_idcmp_messages(window)
-            CloseWindow(window)
-        }
-    }
-
-    // Step 3: Get UserPort from window
-    // SAFETY: Accessing Window.UserPort - window is non-null
-    var user_port: *MsgPort = 0
-    unsafe {
-        user_port = (*window).UserPort
-    }
-
-    // Step 4: Event loop - wait for close gadget
-    let mut running: bool = true
-    while running {
-        // Wait for message (blocks until message arrives)
-        WaitPort(user_port)
-
-        // Drain all messages from port (there may be multiple)
-        let mut draining: bool = true
-        while draining {
-            let msg: *Message = GetMsg(user_port)
-
-            // If null, no more messages in this batch
-            if !msg {
-                draining = false
-            } else {
-                // Extract message class BEFORE replying
-                // SAFETY: Cast Message pointer to IntuiMessage pointer
-                var msg_class: u32 = 0
-                unsafe {
-                    let imsg: *IntuiMessage = (*IntuiMessage)msg
-                    msg_class = (*imsg).Class
-                }
-
-                // Reply to message (CRITICAL!)
-                ReplyMsg(msg)
-
-                // Process the event
-                if msg_class == IDCMP_CLOSEWINDOW {
-                    running = false
+                // Handle the event with pattern matching
+                match event {
+                    WindowEvent::Close => {
+                        // User clicked close gadget - stop loop
+                        running = false
+                    },
+                    _ => {
+                        // Continue running for other events
+                    }
                 }
             }
+
+            // Window is automatically cleaned up here (Drop impl)!
+            // No need to manually drain messages or call CloseWindow.
+            return 0
+        },
+        Result::Err(_) => {
+            return 20  // RETURN_FAIL
         }
     }
-
-    return 0  // Success!
 }

@@ -1,0 +1,15 @@
+// Test postfix if/unless with break in loops
+// Expected: returns 15 (sum of 0+1+2+3+4+5)
+
+pub fn main() -> i32 {
+    var sum = 0
+    var i = 0
+
+    while i < 100 {
+        sum = sum + i
+        i = i + 1
+        break if i > 5  // Exit when i reaches 6
+    }
+
+    return sum
+}
