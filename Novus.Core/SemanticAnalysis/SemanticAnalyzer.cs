@@ -4710,212 +4710,6 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return false;
     }
 
-    /// <summary>
-    /// Recursively substitutes type parameters with concrete types throughout a type expression.
-    ///
-    /// This is the fundamental operation for generic type specialization. It handles all type constructors
-    /// in Novus and performs deep substitution into nested generic types.
-    ///
-    /// The algorithm works by pattern matching on the type structure:
-    ///
-    /// 1. **Simple Generic Parameter** (T):
-    ///    - If T is in the substitution map, replace it with the concrete type
-    ///    - Example: T + {T → i32} = i32
-    ///
-    /// 2. **Pointer Types** (*T):
-    ///    - Recursively substitute the pointee type
-    ///    - Use TypeInterner to ensure pointer type identity
-    ///    - Example: *T + {T → i32} = *i32
-    ///
-    /// 3. **Generic Enums** (Option&lt;T&gt;):
-    ///    - Substitute type parameters in ALL variant data types
-    ///    - If result is fully concrete, create/retrieve monomorphized enum from cache
-    ///    - If still contains generics, return partially-substituted enum
-    ///    - Example: Option&lt;T&gt; + {T → i32} = Option&lt;i32&gt; (cached)
-    ///    - Example: Option&lt;*T&gt; + {T → U} = Option&lt;*U&gt; (still generic)
-    ///
-    /// 4. **Generic Structs** (Vec&lt;T&gt;):
-    ///    - Parse current type arguments from cache key
-    ///    - Substitute each type argument recursively
-    ///    - If all args are concrete, create/retrieve monomorphized struct from cache
-    ///    - Example: Vec&lt;T&gt; + {T → i32} = Vec&lt;i32&gt; (cached)
-    ///    - Example: Vec&lt;Option&lt;T&gt;&gt; + {T → i32} = Vec&lt;Option&lt;i32&gt;&gt; (nested substitution)
-    ///
-    /// 5. **Concrete Types** (i32, bool, etc.):
-    ///    - Return unchanged
-    ///
-    /// **Critical invariants:**
-    /// - Monomorphized types MUST be cached to ensure type identity
-    /// - Nested generics require recursive substitution (Vec&lt;Option&lt;T&gt;&gt;)
-    /// - Partially-substituted types should preserve generic parameters
-    ///
-    /// **Examples:**
-    ///   Input: T, Subs: {T → i32} → Output: i32
-    ///   Input: *T, Subs: {T → i32} → Output: *i32
-    ///   Input: Option&lt;T&gt;, Subs: {T → i32} → Output: Option&lt;i32&gt; (cached)
-    ///   Input: Vec&lt;Option&lt;T&gt;&gt;, Subs: {T → i32} → Output: Vec&lt;Option&lt;i32&gt;&gt; (nested, cached)
-    ///   Input: i32, Subs: {T → bool} → Output: i32 (unchanged)
-    /// </summary>
-    /// <param name="type">The type to perform substitutions on</param>
-    /// <param name="substitutions">Mapping from generic type parameter names to concrete types</param>
-    /// <returns>The type with all matching generic parameters replaced</returns>
-    private IrType SubstituteGenericTypes(IrType type, Dictionary<string, IrType> substitutions)
-    {
-
-        if (type is IrGenericType gt && substitutions.ContainsKey(gt.ParameterName))
-        {
-            var result = substitutions[gt.ParameterName];
-            return result;
-        }
-
-        if (type is IrPointerType ptrType)
-        {
-            var substitutedPointee = SubstituteGenericTypes(ptrType.PointeeType, substitutions);
-            if (substitutedPointee != ptrType.PointeeType)
-            {
-                var result = _typeInterner.GetPointerType(substitutedPointee);
-                return result;
-            }
-            return ptrType;
-        }
-
-        if (type is IrEnumType enumType && enumType.GenericParameters.Count > 0)
-        {
-            // Substitute generic parameters in enum type (e.g., Option<T> -> Option<u8>, Option<*T> -> Option<*u8>)
-            //
-            // IMPORTANT: Use the current enum's variants, not the base enum's, because the current enum
-            // may already be partially monomorphized (e.g., Option<*T> has variants with *T, not T)
-            var baseEnum = enumType;
-
-            // Build type arguments by substituting the variant data types
-            // For Option<*T>, the Some variant has data [*T], and we substitute to get [*u8]
-            // Extract those to use as type arguments
-            var monomorphizedVariants = new List<IrEnumVariant>();
-            var substitutedTypeArgs = new List<IrType>();
-
-            foreach (var variant in baseEnum.Variants)
-            {
-                var monomorphizedData = variant.AssociatedData.Select(d => SubstituteGenericTypes(d, substitutions)).ToList();
-                monomorphizedVariants.Add(new IrEnumVariant(variant.Name, variant.Tag, monomorphizedData));
-
-                // Extract type arguments from the first variant with data
-                if (substitutedTypeArgs.Count == 0 && monomorphizedData.Count > 0)
-                {
-                    substitutedTypeArgs.AddRange(monomorphizedData);
-                }
-            }
-
-
-            // If all type args are concrete (no generic types, even nested), create/retrieve monomorphized enum
-            if (substitutedTypeArgs.All(t => !ContainsGenericType(t)))
-            {
-                var cacheKey = $"{baseEnum.EnumName}<{string.Join(",", substitutedTypeArgs.Select(GetTypeCacheKey))}>";
-                var cached = _symbols.LookupMonomorphizedEnum(cacheKey);
-                if (cached != null)
-                {
-                    return cached;
-                }
-
-                // Variants already created above
-                var monomorphizedEnum = new IrEnumType(baseEnum.EnumName, monomorphizedVariants, null, cacheKey);
-                _symbols.RegisterMonomorphizedEnum(cacheKey, monomorphizedEnum);
-                return monomorphizedEnum;
-            }
-            else
-            {
-                // Still has generics - return a partially-substituted enum
-                return new IrEnumType(baseEnum.EnumName, monomorphizedVariants, baseEnum.GenericParameters, null);
-            }
-        }
-
-        // Handle struct types (e.g., Vec<T> -> Vec<u8>)
-        if (type is IrStructType structType && structType.GenericParameters.Count > 0)
-        {
-            // This struct still has generic parameters that may need substitution
-            // Extract the current type arguments from the cache key
-            var cacheKey = structType.CacheKey ?? structType.Name;
-
-            // Parse type arguments from cache key (e.g., "Vec<T>" -> ["T"])
-            if (cacheKey.Contains("<") && cacheKey.Contains(">"))
-            {
-                var startIdx = cacheKey.IndexOf('<');
-                var endIdx = cacheKey.LastIndexOf('>');
-                var typeArgsStr = cacheKey.Substring(startIdx + 1, endIdx - startIdx - 1);
-                var typeArgKeys = typeArgsStr.Split(',').Select(s => s.Trim()).ToList();
-
-                // Substitute each type argument
-                var substitutedTypeArgs = new List<IrType>();
-                foreach (var typeArgKey in typeArgKeys)
-                {
-                    // Check if this is a generic parameter that needs substitution
-                    if (substitutions.ContainsKey(typeArgKey))
-                    {
-                        substitutedTypeArgs.Add(substitutions[typeArgKey]);
-                    }
-                    else
-                    {
-                        // Try to parse the type arg key as-is
-                        var parsedType = ParseTypeFromCacheKey(typeArgKey);
-                        if (parsedType != null)
-                        {
-                            substitutedTypeArgs.Add(parsedType);
-                        }
-                        else
-                        {
-                            // Couldn't parse - return the original type
-                            return type;
-                        }
-                    }
-                }
-
-                // If all type args are now concrete, create monomorphized struct
-                if (substitutedTypeArgs.All(t => !ContainsGenericType(t)))
-                {
-                    var newCacheKey = $"{structType.StructName}<{string.Join(",", substitutedTypeArgs.Select(GetTypeCacheKey))}>";
-
-                    // Check cache
-                    var cached = _symbols.LookupMonomorphizedStruct(newCacheKey);
-                    if (cached != null)
-                    {
-                        return cached;
-                    }
-
-                    // Get the base struct definition
-                    var baseStruct = _symbols.LookupStruct(structType.Name) ?? structType;
-
-                    // Build substitution map
-                    var typeSubstitutions = new Dictionary<string, IrType>();
-                    for (int i = 0; i < Math.Min(baseStruct.GenericParameters.Count, substitutedTypeArgs.Count); i++)
-                    {
-                        typeSubstitutions[baseStruct.GenericParameters[i]] = substitutedTypeArgs[i];
-                    }
-
-                    // Substitute field types recursively
-                    var monomorphizedFields = baseStruct.Fields.Select(f =>
-                        new IrStructField(f.Name, SubstituteGenericTypes(f.Type, typeSubstitutions))
-                    ).ToList();
-
-                    var monomorphizedStruct = new IrStructType(
-                        baseStruct.StructName,  // Use StructName not Name to avoid including old type args
-                        monomorphizedFields,
-                        new List<string>(), // No generic parameters - fully concrete
-                        newCacheKey
-                    );
-
-                    _symbols.RegisterMonomorphizedStruct(newCacheKey, monomorphizedStruct);
-                    return monomorphizedStruct;
-                }
-                else
-                {
-                    // Still contains generics - return partially substituted struct
-                    // This shouldn't normally happen in a well-formed program but handle it gracefully
-                    return structType;
-                }
-            }
-        }
-
-        return type;
-    }
 
     /// <summary>
     /// Monomorphizes a generic function by creating a concrete version with type parameters replaced.
@@ -4964,11 +4758,11 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         // Substitute types in parameters
         var monomorphizedParams = genericFunc.Parameters.Select(p =>
-            new ParameterSymbol(p.Name, SubstituteGenericTypes(p.Type, substitutions), p.Location, p.IsVariadic, p.IsConsuming)
+            new ParameterSymbol(p.Name, _typeParser.SubstituteGenericTypes(p.Type, substitutions), p.Location, p.IsVariadic, p.IsConsuming)
         ).ToList();
 
         // Substitute return type
-        var monomorphizedReturnType = SubstituteGenericTypes(genericFunc.ReturnType, substitutions);
+        var monomorphizedReturnType = _typeParser.SubstituteGenericTypes(genericFunc.ReturnType, substitutions);
 
         // Create mangled name: OriginalName_TypeArg1_TypeArg2
         var typeArgNames = genericFunc.GenericParameters!.Select(p =>
@@ -5293,7 +5087,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                             if (substitutions != null)
                             {
                                 // Successfully inferred - return the substituted return type
-                                return SubstituteGenericTypes(funcSymbol.ReturnType, substitutions);
+                                return _typeParser.SubstituteGenericTypes(funcSymbol.ReturnType, substitutions);
                             }
 
                             // Could not infer - error will be reported below
@@ -6244,7 +6038,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
                 // Substitute generic types in parameter type
                 // Use SubstituteGenericTypes to handle all cases including nested generics like *T, Vec<T>, etc.
-                paramType = SubstituteGenericTypes(paramType, typeSubstitutions);
+                paramType = _typeParser.SubstituteGenericTypes(paramType, typeSubstitutions);
 
                 // Skip type checking if parameter type is still a generic parameter (will be inferred later)
                 // This allows Vec::new() followed by vec.push(42i32) to work with type inference
@@ -6273,7 +6067,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         // Apply type substitutions to the return type
         // Use SubstituteGenericTypes to handle all cases including nested generics like *T, Vec<T>, etc.
-        var returnType = SubstituteGenericTypes(method.ReturnType, typeSubstitutions);
+        var returnType = _typeParser.SubstituteGenericTypes(method.ReturnType, typeSubstitutions);
 
         return returnType;
     }
@@ -7535,7 +7329,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     }
 
                     // Substitute generic parameters in the return type
-                    return SubstituteGenericTypes(funcSymbol.ReturnType, substitutions);
+                    return _typeParser.SubstituteGenericTypes(funcSymbol.ReturnType, substitutions);
                 }
             }
 
@@ -8042,7 +7836,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     var fieldType = origField.Type;
 
                     // Use SubstituteGenericTypes to handle all cases including nested generics
-                    fieldType = SubstituteGenericTypes(fieldType, typeSubstitutions);
+                    fieldType = _typeParser.SubstituteGenericTypes(fieldType, typeSubstitutions);
 
                     monomorphizedFields.Add(new IrStructField(origField.Name, fieldType));
                 }
@@ -8124,7 +7918,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     foreach (var dataType in origVariant.AssociatedData)
                     {
                         // Use SubstituteGenericTypes to handle nested generic types (e.g., Vec<T> in Option<Vec<T>>)
-                        monomorphizedData.Add(SubstituteGenericTypes(dataType, typeSubstitutions));
+                        monomorphizedData.Add(_typeParser.SubstituteGenericTypes(dataType, typeSubstitutions));
                     }
                     monomorphizedVariants.Add(new IrEnumVariant(origVariant.Name, origVariant.Tag, monomorphizedData));
                 }

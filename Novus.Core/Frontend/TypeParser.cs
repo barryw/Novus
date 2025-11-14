@@ -481,7 +481,7 @@ public class TypeParser
     /// <summary>
     /// Check if a type contains any generic type parameters
     /// </summary>
-    private bool ContainsGenericTypes(IrType type)
+    public bool ContainsGenericTypes(IrType type)
     {
         return type switch
         {
@@ -500,7 +500,7 @@ public class TypeParser
     /// Check if two types are semantically equal
     /// This is needed because reference equality doesn't work for types that are constructed separately
     /// </summary>
-    private bool TypesAreEqual(IrType a, IrType b)
+    public bool TypesAreEqual(IrType a, IrType b)
     {
         // Fast path: reference equality
         if (ReferenceEquals(a, b)) return true;
@@ -569,7 +569,7 @@ public class TypeParser
     /// <summary>
     /// Recursively substitute generic type parameters with concrete types
     /// </summary>
-    private IrType SubstituteGenericTypes(IrType type, Dictionary<string, IrType> substitutions)
+    public IrType SubstituteGenericTypes(IrType type, Dictionary<string, IrType> substitutions)
     {
         // Handle Self type - resolve to current implementing type
         if (type is IrSelfType)

@@ -1519,7 +1519,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
         var returnType = ParseReturnType(funcDecl.type());
 
         // Substitute generic types in return type
-        returnType = SubstituteGenericTypes(returnType, typeSubstitutions);
+        returnType = _typeParser.SubstituteGenericTypes(returnType, typeSubstitutions);
 
         // Generate correct mangled name for trait impls vs inherent methods (using mangledTypeName from above)
         var mangledMethodName = GenerateMethodMangledName(
@@ -1546,7 +1546,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
                 var paramType = ParseType(paramCtx.type());
 
                 // Substitute generic types recursively
-                paramType = SubstituteGenericTypes(paramType, typeSubstitutions);
+                paramType = _typeParser.SubstituteGenericTypes(paramType, typeSubstitutions);
 
                 function.Parameters.Add(new IrParameter(paramName, paramType));
             }
@@ -1740,7 +1740,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
 
         // Create the function manually (don't use Visit)
         var returnType = ParseReturnType(funcDecl.type());
-        returnType = SubstituteGenericTypes(returnType, typeSubstitutions);
+        returnType = _typeParser.SubstituteGenericTypes(returnType, typeSubstitutions);
 
         // Create mangled name from type arguments
         var typeArgKeys = genericParams.Select(p => GetTypeCacheKey(typeSubstitutions[p]));
@@ -1764,7 +1764,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
             {
                 var paramName = paramCtx.IDENTIFIER().GetText();
                 var paramType = ParseType(paramCtx.type());
-                paramType = SubstituteGenericTypes(paramType, typeSubstitutions);
+                paramType = _typeParser.SubstituteGenericTypes(paramType, typeSubstitutions);
                 function.Parameters.Add(new IrParameter(paramName, paramType));
             }
 
@@ -2098,7 +2098,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
 
         // Create the function with substituted return type
         var returnType = ParseReturnType(funcDecl.type());
-        returnType = SubstituteGenericTypes(returnType, typeSubstitutions);
+        returnType = _typeParser.SubstituteGenericTypes(returnType, typeSubstitutions);
 
         // Check for pub/internal keywords
         var visibility = Visibility.Private;
@@ -2122,7 +2122,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
                 var paramType = ParseType(paramCtx.type());
 
                 // Substitute generic types recursively
-                paramType = SubstituteGenericTypes(paramType, typeSubstitutions);
+                paramType = _typeParser.SubstituteGenericTypes(paramType, typeSubstitutions);
 
                 function.Parameters.Add(new IrParameter(paramName, paramType));
             }
@@ -5026,7 +5026,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
                     var argType = argValue.Type;
                     if (_currentTypeSubstitutions != null)
                     {
-                        argType = SubstituteGenericTypes(argType, _currentTypeSubstitutions);
+                        argType = _typeParser.SubstituteGenericTypes(argType, _currentTypeSubstitutions);
                     }
 
                     // If type was substituted, create a new IrVariable with the substituted type
@@ -5181,11 +5181,11 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
 
                     foreach (var origField in baseStruct.Fields)
                     {
-                        var fieldType = SubstituteGenericTypes(origField.Type, typeSubstitutions);
+                        var fieldType = _typeParser.SubstituteGenericTypes(origField.Type, typeSubstitutions);
                         monomorphizedFields.Add(new IrStructField(origField.Name, fieldType));
 
                         // Check if field type is still generic
-                        if (ContainsGenericTypes(fieldType))
+                        if (_typeParser.ContainsGenericTypes(fieldType))
                         {
                             fullyMonomorphized = false;
                         }
@@ -8955,11 +8955,11 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
 
                         foreach (var origField in baseStructType.Fields)
                         {
-                            var fieldType = SubstituteGenericTypes(origField.Type, typeSubstitutions);
+                            var fieldType = _typeParser.SubstituteGenericTypes(origField.Type, typeSubstitutions);
                             monomorphizedFields.Add(new IrStructField(origField.Name, fieldType));
 
                             // Check if field type is still generic
-                            if (ContainsGenericTypes(fieldType))
+                            if (_typeParser.ContainsGenericTypes(fieldType))
                             {
                                 fullyMonomorphized = false;
                             }
@@ -9111,7 +9111,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
                 var monomorphizedFields = new List<IrStructField>();
                 foreach (var origField in baseStructType.Fields)
                 {
-                    var fieldType = SubstituteGenericTypes(origField.Type, typeSubstitutions);
+                    var fieldType = _typeParser.SubstituteGenericTypes(origField.Type, typeSubstitutions);
                     monomorphizedFields.Add(new IrStructField(origField.Name, fieldType));
                 }
 
@@ -9958,94 +9958,6 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
     }
 
     /// <summary>
-    /// Check if a type contains any generic type parameters
-    /// </summary>
-    private bool ContainsGenericTypes(IrType type)
-    {
-        return type switch
-        {
-            IrGenericType => true,
-            IrPointerType ptrType => ContainsGenericTypes(ptrType.PointeeType),
-            IrReferenceType refType => ContainsGenericTypes(refType.PointeeType),
-            IrMutReferenceType mutRefType => ContainsGenericTypes(mutRefType.PointeeType),
-            IrArrayType arrayType => ContainsGenericTypes(arrayType.ElementType),
-            IrStructType structType => structType.Fields.Any(f => ContainsGenericTypes(f.Type)),
-            IrEnumType enumType => enumType.Variants.Any(v => v.AssociatedData.Any(ContainsGenericTypes)),
-            _ => false
-        };
-    }
-
-    /// <summary>
-    /// Check if two types are semantically equal
-    /// This is needed because reference equality doesn't work for types that are constructed separately
-    /// </summary>
-    private bool TypesAreEqual(IrType a, IrType b)
-    {
-        // Fast path: reference equality
-        if (ReferenceEquals(a, b)) return true;
-
-        // Different type classes
-        if (a.GetType() != b.GetType()) return false;
-
-        // Generic types: compare parameter names
-        if (a is IrGenericType gtA && b is IrGenericType gtB)
-        {
-            return gtA.ParameterName == gtB.ParameterName;
-        }
-
-        // Pointer types: compare pointee types recursively
-        if (a is IrPointerType ptrA && b is IrPointerType ptrB)
-        {
-            return TypesAreEqual(ptrA.PointeeType, ptrB.PointeeType);
-        }
-
-        // Reference types: compare pointee types recursively
-        if (a is IrReferenceType refA && b is IrReferenceType refB)
-        {
-            return TypesAreEqual(refA.PointeeType, refB.PointeeType);
-        }
-
-        // Mutable reference types: compare pointee types recursively
-        if (a is IrMutReferenceType mutRefA && b is IrMutReferenceType mutRefB)
-        {
-            return TypesAreEqual(mutRefA.PointeeType, mutRefB.PointeeType);
-        }
-
-        // Array types: compare element type and length
-        if (a is IrArrayType arrA && b is IrArrayType arrB)
-        {
-            return arrA.Length == arrB.Length && TypesAreEqual(arrA.ElementType, arrB.ElementType);
-        }
-
-        // Struct types: compare by name and cache key
-        // We use cache key when available because it uniquely identifies monomorphized versions
-        if (a is IrStructType structA && b is IrStructType structB)
-        {
-            if (structA.CacheKey != null && structB.CacheKey != null)
-            {
-                return structA.CacheKey == structB.CacheKey;
-            }
-            return structA.StructName == structB.StructName &&
-                   structA.GenericParameters.Count == structB.GenericParameters.Count;
-        }
-
-        // Enum types: compare by name and cache key
-        if (a is IrEnumType enumA && b is IrEnumType enumB)
-        {
-            if (enumA.CacheKey != null && enumB.CacheKey != null)
-            {
-                return enumA.CacheKey == enumB.CacheKey;
-            }
-            return enumA.EnumName == enumB.EnumName &&
-                   enumA.GenericParameters.Count == enumB.GenericParameters.Count;
-        }
-
-        // For primitive types, reference equality should have caught it
-        // but as a fallback, we consider them equal by default
-        return false;
-    }
-
-    /// <summary>
     /// Recursively substitute generic type parameters with concrete types
     /// </summary>
     /// <summary>
@@ -10082,243 +9994,6 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
             return enumType.Variants.Any(v => v.AssociatedData.Any(d => TypeContainsGeneric(d, genericParamName)));
         }
         return false;
-    }
-
-    private IrType SubstituteGenericTypes(IrType type, Dictionary<string, IrType> substitutions)
-    {
-        // Handle Self type - resolve to current implementing type
-        if (type is IrSelfType)
-        {
-            if (_currentSelfType == null)
-            {
-                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
-                _diagnostics.ReportError(
-                    ErrorCodes.InvalidExpressionType,
-                    "'Self' type encountered outside of impl block context",
-                    errorLocation
-                );
-                return null;
-            }
-            return _currentSelfType;
-        }
-        else if (type is IrGenericType gt && substitutions.ContainsKey(gt.ParameterName))
-        {
-            return substitutions[gt.ParameterName];
-        }
-        else if (type is IrPointerType ptrType)
-        {
-            var substitutedPointee = SubstituteGenericTypes(ptrType.PointeeType, substitutions);
-            if (substitutedPointee != ptrType.PointeeType)
-            {
-                return _typeInterner.GetPointerType(substitutedPointee);
-            }
-        }
-        else if (type is IrReferenceType refType)
-        {
-            var substitutedPointee = SubstituteGenericTypes(refType.PointeeType, substitutions);
-            if (substitutedPointee != refType.PointeeType)
-            {
-                return _typeInterner.GetReferenceType(substitutedPointee);
-            }
-        }
-        else if (type is IrMutReferenceType mutRefType)
-        {
-            var substitutedPointee = SubstituteGenericTypes(mutRefType.PointeeType, substitutions);
-            if (substitutedPointee != mutRefType.PointeeType)
-            {
-                return _typeInterner.GetMutReferenceType(substitutedPointee);
-            }
-        }
-        else if (type is IrArrayType arrayType)
-        {
-            var substitutedElement = SubstituteGenericTypes(arrayType.ElementType, substitutions);
-            if (substitutedElement != arrayType.ElementType)
-            {
-                return _typeInterner.GetArrayType(substitutedElement, arrayType.Length);
-            }
-        }
-        else if (type is IrStructType structType)
-        {
-            // If the struct still has generic parameters and we're in a generic context,
-            // we should not create a new struct type - just return the original
-            // This prevents creating duplicate generic struct instances
-            if (structType.GenericParameters.Count > 0)
-            {
-                // Check if any of the substitutions actually change generic to concrete
-                bool hasConcreteSubstitution = false;
-                foreach (var genericParam in structType.GenericParameters)
-                {
-                    if (substitutions.ContainsKey(genericParam))
-                    {
-                        var substType = substitutions[genericParam];
-                        // Check if it's being replaced with a concrete (non-generic) type
-                        if (!(substType is IrGenericType))
-                        {
-                            hasConcreteSubstitution = true;
-                            break;
-                        }
-                    }
-                    else
-                    {
-                    }
-                }
-
-                // If no generic parameters are being replaced with concrete types,
-                // return the original struct unchanged
-                if (!hasConcreteSubstitution)
-                {
-                    return structType;
-                }
-                else
-                {
-                }
-            }
-
-            // Check if any field types contain generics that need substitution
-            bool needsSubstitution = false;
-            var substitutedFields = new List<IrStructField>();
-
-            foreach (var field in structType.Fields)
-            {
-                var substitutedFieldType = SubstituteGenericTypes(field.Type, substitutions);
-                substitutedFields.Add(new IrStructField(field.Name, substitutedFieldType));
-
-                if (!TypesAreEqual(substitutedFieldType, field.Type))
-                {
-                    needsSubstitution = true;
-                }
-            }
-
-            if (needsSubstitution)
-            {
-                // Create a new struct type with substituted field types
-                // Preserve generic parameters from original
-                // Clear cache key if struct still has generic parameters (not fully monomorphized)
-                string? cacheKey = structType.GenericParameters.Count > 0 ? null : structType.CacheKey;
-
-                var substitutedStruct = new IrStructType(
-                    structType.StructName,
-                    substitutedFields,
-                    structType.GenericParameters,
-                    cacheKey,
-                    structType.Attributes,
-                    structType.WhereClause
-                );
-                return substitutedStruct;
-            }
-        }
-        else if (type is IrEnumType enumType)
-        {
-            // If the enum still has generic parameters and we're in a generic context,
-            // we should not create a new enum type - just return the original
-            // This prevents creating duplicate generic enum instances
-            if (enumType.GenericParameters.Count > 0)
-            {
-                // Check if any of the substitutions actually change generic to concrete
-                bool hasConcreteSubstitution = false;
-                foreach (var genericParam in enumType.GenericParameters)
-                {
-                    if (substitutions.ContainsKey(genericParam))
-                    {
-                        var substType = substitutions[genericParam];
-                        // Check if it's being replaced with a concrete (non-generic) type
-                        if (!(substType is IrGenericType))
-                        {
-                            hasConcreteSubstitution = true;
-                            break;
-                        }
-                    }
-                }
-
-                // If no generic parameters are being replaced with concrete types,
-                // return the original enum unchanged
-                if (!hasConcreteSubstitution)
-                {
-                    return enumType;
-                }
-            }
-
-            // Check if any variant types contain generics that need substitution
-            bool needsSubstitution = false;
-            var substitutedVariants = new List<IrEnumVariant>();
-
-            foreach (var variant in enumType.Variants)
-            {
-                var substitutedData = new List<IrType>();
-                foreach (var dataType in variant.AssociatedData)
-                {
-                    var substitutedDataType = SubstituteGenericTypes(dataType, substitutions);
-                    substitutedData.Add(substitutedDataType);
-
-                    if (!TypesAreEqual(substitutedDataType, dataType))
-                    {
-                        needsSubstitution = true;
-                    }
-                }
-
-                substitutedVariants.Add(new IrEnumVariant(variant.Name, variant.Tag, substitutedData));
-            }
-
-            if (needsSubstitution)
-            {
-                // Determine which generic parameters remain after substitution
-                var remainingGenericParams = new List<string>();
-                foreach (var genericParam in enumType.GenericParameters)
-                {
-                    // If this generic parameter was NOT substituted, keep it
-                    if (!substitutions.ContainsKey(genericParam) ||
-                        substitutions[genericParam] is IrGenericType)
-                    {
-                        remainingGenericParams.Add(genericParam);
-                    }
-                }
-
-                // Generate new cache key for the substituted enum
-                string? cacheKey = null;
-                if (remainingGenericParams.Count == 0)
-                {
-                    // Fully monomorphized - generate cache key from the actual variant types
-                    // Check if we had any actual substitutions that changed types
-                    bool hadSubstitutions = substitutions.Count > 0;
-
-                    if (hadSubstitutions)
-                    {
-                        // Build cache key from the substituted variant types
-                        // For single-type-param enums like Option<T>, use the first variant's first data type
-                        // This works for common patterns like Option<*u8> where Some variant holds the type arg
-                        var typeArgs = new List<IrType>();
-
-                        // Find the first non-empty variant to extract type args from
-                        foreach (var variant in substitutedVariants)
-                        {
-                            if (variant.AssociatedData.Count > 0)
-                            {
-                                // For now, assume single-type-param enums (like Option, Result)
-                                // Take the first data type as the type argument
-                                typeArgs.Add(variant.AssociatedData[0]);
-                                break; // Only need one
-                            }
-                        }
-
-                        if (typeArgs.Count > 0)
-                        {
-                            var typeArgKeys = typeArgs.Select(t => GetTypeCacheKey(t));
-                            cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
-                        }
-                    }
-                }
-
-                var substitutedEnum = new IrEnumType(
-                    enumType.EnumName,
-                    substitutedVariants,
-                    remainingGenericParams,
-                    cacheKey
-                );
-                return substitutedEnum;
-            }
-        }
-
-        return type;
     }
 
     private string GetTypeCacheKey(IrType type)
