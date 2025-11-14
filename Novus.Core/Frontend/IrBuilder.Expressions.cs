@@ -1,0 +1,4467 @@
+using Antlr4.Runtime;
+using Antlr4.Runtime.Misc;
+using Antlr4.Runtime.Tree;
+using Novus.Diagnostics;
+using Novus.IR;
+using Novus.Parser;
+
+namespace Novus.Frontend;
+
+/// <summary>
+/// IrBuilder partial class containing expression visitor methods.
+/// This file contains methods for processing all expression types: literals, operators,
+/// method calls, member access, array operations, casts, and more.
+/// </summary>
+public partial class IrBuilder
+{
+    public override object? VisitPrimaryExpr([NotNull] NovusParser.PrimaryExprContext context)
+    {
+        return Visit(context.primaryExpression());
+    }
+
+    public override object? VisitCallExpr([NotNull] NovusParser.CallExprContext context)
+    {
+        // Handle method calls (e.g., v.len())
+        // Method calls desugar to: Type::method(receiver, args...)
+        if (context.expression() is NovusParser.MemberAccessExprContext memberAccessCtx)
+        {
+            return HandleMethodCallIr(context, memberAccessCtx);
+        }
+
+        // Check if this is a call to a generic function template (before evaluating funcExpr)
+        // Generic functions aren't in _module.Functions yet, so we need to check the template dictionary
+        string? genericFuncName = null;
+        if (context.expression() is NovusParser.PrimaryExprContext primaryCtx &&
+            primaryCtx.primaryExpression() is NovusParser.IdentifierExprContext identExpr)
+        {
+            genericFuncName = identExpr.identifier().GetText();
+        }
+
+        var funcExpr = (IrValue?)Visit(context.expression());
+
+        // Parse arguments
+        var arguments = new List<IrValue>();
+        if (context.argumentList() != null)
+        {
+            // Check if this is an enum constructor - if so, we can use expected types for arguments
+            List<IrType>? expectedArgTypes = null;
+            if (funcExpr is IrEnumConstructor tempEnumCtor &&
+                _expectedType is IrEnumType expectedEnumType &&
+                expectedEnumType.EnumName == (tempEnumCtor.Type as IrEnumType)?.EnumName)
+            {
+                // Expected type matches the enum we're constructing
+                // Extract expected argument types from the corresponding variant
+                var expectedVariant = expectedEnumType.GetVariant(tempEnumCtor.VariantName);
+                if (expectedVariant != null)
+                {
+                    expectedArgTypes = expectedVariant.AssociatedData;
+                }
+            }
+
+            int argIdx = 0;
+            foreach (var argCtx in context.argumentList().expression())
+            {
+                // Set expected type for this argument if available
+                var savedExpectedType = _expectedType;
+                if (expectedArgTypes != null && argIdx < expectedArgTypes.Count)
+                {
+                    _expectedType = expectedArgTypes[argIdx];
+                }
+                else
+                {
+                    _expectedType = null;
+                }
+
+                var argValue = (IrValue?)Visit(argCtx);
+
+                // Restore expected type
+                _expectedType = savedExpectedType;
+
+                if (argValue != null)
+                {
+                    // IMPORTANT: Apply current type substitutions to argument type
+                    // This handles the case where a generic function calls another generic function
+                    // with generic arguments (e.g., double<T> calling identity(x) where x: T)
+                    var argType = argValue.Type;
+                    if (_currentTypeSubstitutions != null)
+                    {
+                        argType = _typeParser.SubstituteGenericTypes(argType, _currentTypeSubstitutions);
+                    }
+
+                    // If type was substituted, create a new IrVariable with the substituted type
+                    if (argType != argValue.Type && argValue is IrVariable argVar)
+                    {
+                        arguments.Add(new IrVariable(argVar.Name, argType));
+                    }
+                    else
+                    {
+                        arguments.Add(argValue);
+                    }
+                }
+                argIdx++;
+            }
+        }
+
+        // NOTE: Str → *u8 coercion is now handled later, after function lookup,
+        // so we can check the actual parameter types and only coerce when needed
+
+        // If it's a generic function template, infer types and instantiate
+        if (genericFuncName != null && _genericFunctionTemplates.ContainsKey(genericFuncName))
+        {
+            // Get template and parse parameters
+            var template = _genericFunctionTemplates[genericFuncName];
+
+            // Save and clear type substitutions so we get the generic template types
+            var savedTypeSubstitutions = _currentTypeSubstitutions;
+            _currentTypeSubstitutions = null;
+
+            // Set up generic params temporarily
+            // TODO: Use child scope instead of save/restore pattern
+            _symbols.ClearGenericParameters();
+            foreach (var paramName in template.GenericParams)
+            {
+                _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
+            }
+
+            // Parse template parameters
+            var templateParams = new List<IrParameter>();
+            if (template.Context.parameterList() != null)
+            {
+                var paramList = template.Context.parameterList();
+                foreach (var paramCtx in paramList.parameter())
+                {
+                    var paramName = paramCtx.IDENTIFIER().GetText();
+                    var paramType = ParseType(paramCtx.type());
+                    templateParams.Add(new IrParameter(paramName, paramType));
+                }
+
+                // Add variadic parameter if present (for template analysis)
+                ParseVariadicParameter(paramList, templateParams);
+            }
+
+            // Restore generic params
+            _symbols.ClearGenericParameters();
+            // TODO: Restore saved params when we implement save/restore properly
+
+            // Restore type substitutions
+            _currentTypeSubstitutions = savedTypeSubstitutions;
+
+            // Infer types
+            var typeSubstitutions = InferGenericFunctionTypes(template.GenericParams, templateParams, arguments);
+            if (typeSubstitutions == null)
+            {
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Cannot infer type arguments for '{genericFuncName}'",
+                    errorLocation
+                );
+                return null;
+            }
+
+            // Instantiate
+            var instantiatedFunc = InstantiateGenericFunction(genericFuncName, typeSubstitutions);
+            if (instantiatedFunc == null)
+            {
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Failed to instantiate '{genericFuncName}'",
+                    errorLocation
+                );
+                return null;
+            }
+
+            // Create call
+            var genericCallResult = $"%t{_tempCounter++}";
+            var genericCall = new IrCall(instantiatedFunc.Name, instantiatedFunc.ReturnType, genericCallResult);
+            foreach (var arg in arguments)
+            {
+                genericCall.Arguments.Add(arg);
+            }
+            _currentBlock!.AddInstruction(genericCall);
+            return new IrVariable(genericCallResult, instantiatedFunc.ReturnType);
+        }
+
+        // Handle generic associated function calls (e.g., Vec::new())
+        if (funcExpr is IrGenericAssociatedFunction genericAssocFunc)
+        {
+            // We need to determine the concrete type parameters
+            // Priority: 1) Explicit type args (turbo-fish), 2) Expected type, 3) Unresolved
+
+            IrStructType? monomorphizedStruct = null;
+
+            // 1. Check for explicit type arguments (turbo-fish syntax: Vec::<u32>::with_capacity)
+            if (genericAssocFunc.ExplicitTypeArgs != null && genericAssocFunc.ExplicitTypeArgs.Count > 0)
+            {
+                // User provided explicit type arguments
+                if (genericAssocFunc.ExplicitTypeArgs.Count != genericAssocFunc.GenericParameters.Count)
+                {
+                    var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.InvalidExpressionType,
+                        $"Wrong number of type arguments for '{genericAssocFunc.TypeName}::{genericAssocFunc.MethodName}': expected {genericAssocFunc.GenericParameters.Count}, got {genericAssocFunc.ExplicitTypeArgs.Count}",
+                        errorLocation
+                    );
+                    return null;
+                }
+
+                // Build monomorphized struct from explicit type args (same logic as ParseNamedType)
+                var baseStruct = _symbols.LookupStruct(genericAssocFunc.TypeName);
+                if (baseStruct == null)
+                {
+                    var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(ErrorCodes.StructNotFound, $"Struct '{genericAssocFunc.TypeName}' not found", errorLocation);
+                    return null;
+                }
+                var typeArgs = genericAssocFunc.ExplicitTypeArgs;
+
+                // Create cache key
+                var typeArgKeys = typeArgs.Select(t => GetTypeCacheKey(t));
+                var cacheKey = $"{baseStruct.StructName}<{string.Join(",", typeArgKeys)}>";
+
+                // Check cache first
+                if (_symbols.LookupMonomorphizedStruct(cacheKey) != null)
+                {
+                    monomorphizedStruct = _symbols.LookupMonomorphizedStruct(cacheKey)!;
+                }
+                else
+                {
+                    // Create monomorphized struct with concrete types
+                    var typeSubstitutions = new Dictionary<string, IrType>();
+                    for (int i = 0; i < baseStruct.GenericParameters.Count; i++)
+                    {
+                        typeSubstitutions[baseStruct.GenericParameters[i]] = typeArgs[i];
+                    }
+
+                    // Create monomorphized fields using recursive substitution
+                    var monomorphizedFields = new List<IrStructField>();
+                    bool fullyMonomorphized = true;
+
+                    foreach (var origField in baseStruct.Fields)
+                    {
+                        var fieldType = _typeParser.SubstituteGenericTypes(origField.Type, typeSubstitutions);
+                        monomorphizedFields.Add(new IrStructField(origField.Name, fieldType));
+
+                        // Check if field type is still generic
+                        if (_typeParser.ContainsGenericTypes(fieldType))
+                        {
+                            fullyMonomorphized = false;
+                        }
+                    }
+
+                    // Create new struct type with concrete types (no generic parameters)
+                    monomorphizedStruct = new IrStructType(baseStruct.StructName, monomorphizedFields, null, cacheKey);
+
+                    // Force calculation of field offsets only if fully monomorphized
+                    if (fullyMonomorphized)
+                    {
+                        _ = monomorphizedStruct.SizeInBytes;
+                    }
+
+                    // Cache it for future use
+                    _symbols.RegisterMonomorphizedStruct(cacheKey, monomorphizedStruct);
+                }
+            }
+            // 2. Try to infer from expected type
+            else if (_expectedType != null && _expectedType is IrStructType expectedStruct && expectedStruct.GenericParameters.Count == 0)
+            {
+                // Expected type is a monomorphized struct like Vec<i32>
+                monomorphizedStruct = expectedStruct;
+            }
+            // 3. No explicit type args and no expected type - create unresolved generic
+            else if (_expectedType == null)
+            {
+                // No expected type - create unresolved generic that will be inferred from usage
+                // Example: let vec = Vec::new() → vec has type Vec<UnresolvedGeneric>
+                // When vec.push(42i32) is called later, we'll resolve it to Vec<i32>
+
+                var unresolvedTypeArgs = new List<IrType>();
+                for (int i = 0; i < genericAssocFunc.GenericParameters.Count; i++)
+                {
+                    unresolvedTypeArgs.Add(new IrUnresolvedGenericType());
+                }
+
+                var partiallyResolvedType = new IrPartiallyResolvedGenericType(
+                    genericAssocFunc.TypeName,
+                    unresolvedTypeArgs
+                );
+
+                // Return a placeholder value with the partially resolved type
+                // The actual instantiation will happen when we see method calls on this value
+                var placeholderResult = $"%t{_tempCounter++}";
+                return new IrVariable(placeholderResult, partiallyResolvedType);
+            }
+
+            if (monomorphizedStruct == null)
+            {
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Could not infer generic type parameters for '{genericAssocFunc.TypeName}::{genericAssocFunc.MethodName}()'. Consider using turbo-fish syntax: {genericAssocFunc.TypeName}::<Type>::{genericAssocFunc.MethodName}",
+                    errorLocation
+                );
+                return null;
+            }
+
+            // Instantiate the generic method with the monomorphized struct
+            var instantiatedFunc = InstantiateGenericMethod(monomorphizedStruct, genericAssocFunc.MethodName);
+            if (instantiatedFunc == null)
+            {
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Failed to instantiate generic method '{genericAssocFunc.TypeName}::{genericAssocFunc.MethodName}'",
+                    errorLocation
+                );
+                return null;
+            }
+
+            // Generate call to instantiated function
+            var callResult = $"%t{_tempCounter++}";
+            var callInst = new IrCall(instantiatedFunc.Name, instantiatedFunc.ReturnType, callResult);
+            foreach (var arg in arguments)
+            {
+                callInst.Arguments.Add(arg);
+            }
+            _currentBlock!.AddInstruction(callInst);
+
+            return new IrVariable(callResult, instantiatedFunc.ReturnType);
+        }
+
+        // Handle non-generic function reference calls
+        if (funcExpr is IrFunctionRef funcRef)
+        {
+            // Validate argument count
+            var funcRefNonVariadicCount = funcRef.Function.Parameters.Count(p => !p.IsVariadic);
+            if (funcRef.Function.IsVariadic)
+            {
+                if (arguments.Count < funcRefNonVariadicCount)
+                {
+                    var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.InvalidExpressionType,
+                        $"Variadic function '{funcRef.Function.Name}' expects at least {funcRefNonVariadicCount} arguments, got {arguments.Count}",
+                        errorLocation
+                    );
+                    return null;
+                }
+            }
+            else
+            {
+                if (arguments.Count != funcRef.Function.Parameters.Count)
+                {
+                    var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.InvalidExpressionType,
+                        $"Function '{funcRef.Function.Name}' expects {funcRef.Function.Parameters.Count} arguments, got {arguments.Count}",
+                        errorLocation
+                    );
+                    return null;
+                }
+            }
+
+            // Apply automatic coercions for function arguments
+            for (int i = 0; i < arguments.Count; i++)
+            {
+                // Skip variadic parameters (they don't have a declared type)
+                if (i >= funcRef.Function.Parameters.Count || funcRef.Function.Parameters[i].IsVariadic)
+                    continue;
+
+                var paramType = funcRef.Function.Parameters[i].Type;
+                var argValue = arguments[i];
+
+                // Coercion 1: Array → Pointer decay (e.g., [T; N] → *T)
+                // This allows passing arrays directly to functions expecting pointers
+                // Arrays decay to pointers to their first element
+                if (paramType is IrPointerType expectedPtrType &&
+                    argValue.Type is IrArrayType arrayType &&
+                    expectedPtrType.PointeeType.Name == arrayType.ElementType.Name)
+                {
+                    // Array-to-pointer decay: just use the array value directly
+                    // The backend will handle getting the address of the first element
+                    arguments[i] = argValue;
+                    continue;  // Move to next argument
+                }
+
+                // Coercion 2: Str/String → *u8 for string parameters
+                if (paramType is IrPointerType ptrType &&
+                    ptrType.PointeeType.Equals(IrIntType.U8) &&
+                    argValue.Type is IrStructType structType &&
+                    (structType.StructName == "Str" || structType.StructName == "String"))
+                {
+                    if (structType.StructName == "Str")
+                    {
+                        // If argValue is a struct literal, extract the ptr field directly (no instruction needed)
+                        if (argValue is IrStructLiteral strLiteral)
+                        {
+                            if (!strLiteral.FieldValues.TryGetValue("ptr", out var ptrValue))
+                            {
+                                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                                _diagnostics.ReportError(
+                                    ErrorCodes.InvalidExpressionType,
+                                    "Str struct literal must have a 'ptr' field",
+                                    errorLocation
+                                );
+                                return null;
+                            }
+                            arguments[i] = ptrValue;  // Use the ptr value directly
+                        }
+                        else
+                        {
+                            // For Str variables (not literals), we need the member access
+                            var ptrField = structType.GetField("ptr");
+                            if (ptrField == null)
+                            {
+                                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                                _diagnostics.ReportError(
+                                    ErrorCodes.InvalidExpressionType,
+                                    "Str struct must have a 'ptr' field",
+                                    errorLocation
+                                );
+                                return null;
+                            }
+
+                            var ptrTempName = $"%t{_tempCounter++}";
+                            var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
+                            var ptrFieldAccess = new IrMemberAccess(ptrTempName, argValue, "ptr", u8PtrType, ptrField.Offset);
+                            _currentBlock!.AddInstruction(ptrFieldAccess);
+                            arguments[i] = new IrVariable(ptrTempName, u8PtrType);
+                        }
+                    }
+                    else if (structType.StructName == "String")
+                    {
+                        // For String, call the as_ptr() method
+                        var asPtrMethodName = "String::as_ptr";
+                        var asPtrMethod = _module.Functions.FirstOrDefault(f => f.Name == asPtrMethodName);
+
+                        if (asPtrMethod == null)
+                        {
+                            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                            _diagnostics.ReportError(
+                                ErrorCodes.InvalidExpressionType,
+                                "String type must have as_ptr() method for automatic coercion to *u8",
+                                errorLocation
+                            );
+                            return null;
+                        }
+
+                        // Call String::as_ptr()
+                        var receiverArg = new IrBorrowValue(argValue, asPtrMethod.Parameters[0].Type, false);
+                        var resultTempName = $"%t{_tempCounter++}";
+                        var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
+                        var methodCall = new IrCall(asPtrMethodName, u8PtrType, resultTempName);
+                        methodCall.Arguments.Add(receiverArg);
+                        _currentBlock!.AddInstruction(methodCall);
+                        arguments[i] = new IrVariable(resultTempName, u8PtrType);
+                    }
+                }
+
+                // Coercion 3: &[T; N] → Slice<T>
+                // When a pointer to an array is passed to a function expecting Slice<T>
+                if (paramType is IrStructType sliceStruct &&
+                    sliceStruct.StructName == "Slice" &&
+                    argValue.Type is IrPointerType ptrToArrayType &&
+                    ptrToArrayType.PointeeType is IrArrayType ptrArrayType)
+                {
+                    // Get the 'ptr' field to extract the element type T from Slice<T>
+                    var ptrField = sliceStruct.GetField("ptr");
+                    if (ptrField?.Type is IrPointerType slicePtrType)
+                    {
+                        // Verify array element type matches Slice element type
+                        if (slicePtrType.PointeeType.Equals(ptrArrayType.ElementType))
+                        {
+                            // Create pointer to array element (pointer to array decays to pointer to first element)
+                            var arrayElemPtrType = _typeInterner.GetPointerType(ptrArrayType.ElementType);
+
+                            // Cast the pointer-to-array to a pointer-to-element
+                            // *[T; N] → *T (decay to pointer to first element)
+                            var ptrValue = new IrCastValue(argValue, argValue.Type, arrayElemPtrType);
+
+                            // Create the length constant
+                            var lenValue = new IrConstant(ptrArrayType.Length, IrIntType.U32);
+
+                            // Create Slice struct literal
+                            var sliceFields = new Dictionary<string, IrValue>
+                            {
+                                { "ptr", ptrValue },
+                                { "len", lenValue }
+                            };
+
+                            var sliceValue = new IrStructLiteral(sliceStruct, sliceFields);
+
+                            // Slice structs containing pointers are passed by reference in C ABI
+                            // (see CCodeGenerator.TypeContainsHeapData), so we need to create a borrow
+                            // of the slice struct, not just the struct value itself
+                            var sliceRefType = _typeInterner.GetReferenceType(sliceStruct);
+                            arguments[i] = new IrBorrowValue(sliceValue, sliceRefType, false);
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            // Generate call instruction
+            var callResultName = $"%t{_tempCounter++}";
+            var callInstruction = new IrCall(funcRef.Function.Name, funcRef.Function.ReturnType, callResultName);
+            foreach (var arg in arguments)
+            {
+                callInstruction.Arguments.Add(arg);
+            }
+            _currentBlock!.AddInstruction(callInstruction);
+
+            return new IrVariable(callResultName, funcRef.Function.ReturnType);
+        }
+
+        // Check if this is an enum constructor call
+        if (funcExpr is IrEnumConstructor enumCtor)
+        {
+            // Create an enum value with the provided arguments
+            var enumType = enumCtor.Type as IrEnumType;
+            if (enumType == null)
+            {
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    "Enum constructor must have enum type",
+                    errorLocation
+                );
+                return null;
+            }
+
+            var variant = enumType.GetVariant(enumCtor.VariantName);
+            if (variant == null)
+            {
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.EnumNotFound,
+                    $"Variant '{enumCtor.VariantName}' not found in enum '{enumType.EnumName}'",
+                    errorLocation
+                );
+                return null;
+            }
+
+            // Validate argument count
+            if (arguments.Count != variant.AssociatedData.Count)
+            {
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Variant '{enumCtor.VariantName}' expects {variant.AssociatedData.Count} arguments, got {arguments.Count}",
+                    errorLocation
+                );
+                return null;
+            }
+
+            // If enum has generic parameters, perform type inference to monomorphize
+            IrEnumType finalEnumType = enumType;
+            if (enumType.GenericParameters.Count > 0)
+            {
+                var typeSubstitutions = new Dictionary<string, IrType>();
+
+                // PRIORITY 1: Use expected type for monomorphization if available
+                // This allows From<T> trait conversions to work correctly
+                if (_expectedType is IrEnumType expectedEnumType &&
+                    expectedEnumType.EnumName == enumType.EnumName &&
+                    expectedEnumType.GenericParameters.Count == 0) // Expected type is monomorphized
+                {
+                    // Extract concrete types from expected enum by matching variant structure
+                    for (int paramIdx = 0; paramIdx < enumType.GenericParameters.Count; paramIdx++)
+                    {
+                        var paramName = enumType.GenericParameters[paramIdx];
+
+                        // Find this parameter in a variant and extract the concrete type
+                        for (int varIdx = 0; varIdx < enumType.Variants.Count; varIdx++)
+                        {
+                            var origVariant = enumType.Variants[varIdx];
+                            var expectedVar = expectedEnumType.Variants[varIdx];
+
+                            for (int dataIdx = 0; dataIdx < origVariant.AssociatedData.Count; dataIdx++)
+                            {
+                                var expectedTypeFromVariant = expectedVar.AssociatedData[dataIdx];
+                                if (origVariant.AssociatedData[dataIdx] is IrGenericType gt &&
+                                    gt.ParameterName == paramName)
+                                {
+                                    typeSubstitutions[paramName] = expectedTypeFromVariant;
+                                    break;
+                                }
+                            }
+
+                            if (typeSubstitutions.ContainsKey(paramName))
+                                break;
+                        }
+                    }
+
+                    // Use the expected type directly if it matches
+                    if (typeSubstitutions.Count == enumType.GenericParameters.Count)
+                    {
+                        finalEnumType = expectedEnumType;
+                    }
+                }
+
+                // PRIORITY 2: Fall back to argument types for any missing parameters
+                // This handles cases where expected type is not available or incomplete
+                for (int i = 0; i < arguments.Count; i++)
+                {
+                    var argType = arguments[i].Type;
+                    var paramType = variant.AssociatedData[i];
+
+                    if (paramType is IrGenericType gt)
+                    {
+                        if (!typeSubstitutions.ContainsKey(gt.ParameterName))
+                        {
+                            typeSubstitutions[gt.ParameterName] = argType;
+                        }
+                    }
+                }
+
+                // PRIORITY 3: If not using expected type, create monomorphized enum from type substitutions
+                if (finalEnumType == enumType) // Haven't assigned finalEnumType yet
+                {
+                    // Create cache key using proper type keys
+                    var typeArgKeys = enumType.GenericParameters.Select(p =>
+                    {
+                        var key = typeSubstitutions.ContainsKey(p) ? GetTypeCacheKey(typeSubstitutions[p]) : p;
+                        return key;
+                    });
+                    var cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
+
+                    // Check cache first
+                    if (_symbols.LookupMonomorphizedEnum(cacheKey) != null)
+                    {
+                        finalEnumType = _symbols.LookupMonomorphizedEnum(cacheKey)!;
+                    }
+                    else
+                    {
+                        // Create monomorphized enum type
+                        var monomorphizedVariants = new List<IrEnumVariant>();
+                        foreach (var origVariant in enumType.Variants)
+                        {
+                            var monomorphizedData = new List<IrType>();
+                            foreach (var dataType in origVariant.AssociatedData)
+                            {
+                                if (dataType is IrGenericType genType && typeSubstitutions.ContainsKey(genType.ParameterName))
+                                {
+                                    monomorphizedData.Add(typeSubstitutions[genType.ParameterName]);
+                                }
+                                else
+                                {
+                                    monomorphizedData.Add(dataType);
+                                }
+                            }
+                            monomorphizedVariants.Add(new IrEnumVariant(origVariant.Name, origVariant.Tag, monomorphizedData));
+                        }
+
+                        // Create new enum type with concrete types
+                        finalEnumType = new IrEnumType(enumType.EnumName, monomorphizedVariants, null, cacheKey);
+
+                        // Only cache if fully monomorphized (no generic types in variants)
+                        bool isFullyMonomorphized = !monomorphizedVariants.Any(v =>
+                            v.AssociatedData.Any(d => d is IrGenericType));
+
+                        if (isFullyMonomorphized)
+                        {
+                            _symbols.RegisterMonomorphizedEnum(cacheKey, finalEnumType);
+                        }
+                    }
+                }
+            }
+
+            // Apply From<T> trait conversions if needed for arguments
+            var finalVariant = finalEnumType.GetVariant(enumCtor.VariantName);
+            var convertedArguments = new List<IrValue>();
+
+            for (int i = 0; i < arguments.Count; i++)
+            {
+                var arg = arguments[i];
+                var expectedType = finalVariant!.AssociatedData[i];
+
+                // Check if type conversion is needed
+                if (!TypesEqual(arg.Type, expectedType))
+                {
+                    // Try to convert via From<ArgType> trait
+                    var convertedArg = TryConvertViaFromTrait(arg, expectedType);
+                    if (convertedArg != null)
+                    {
+                        convertedArguments.Add(convertedArg);
+                    }
+                    else
+                    {
+                        // No conversion available, use original (will fail at runtime or be caught elsewhere)
+                        convertedArguments.Add(arg);
+                    }
+                }
+                else
+                {
+                    // No conversion needed
+                    convertedArguments.Add(arg);
+                }
+            }
+
+            // Create the enum value with the monomorphized type
+            return new IrEnumValue(finalEnumType, enumCtor.VariantName, finalVariant.Tag, convertedArguments);
+        }
+
+        string? resultName;
+        IrType returnType;
+
+        // Check if this is an indirect call through a function pointer
+        if (funcExpr!.Type is IrFunctionPointerType fpType)
+        {
+            // Indirect call through function pointer
+            if (arguments.Count != fpType.ParameterTypes.Count)
+            {
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Function pointer expects {fpType.ParameterTypes.Count} arguments, got {arguments.Count}",
+                    errorLocation
+                );
+                return null;
+            }
+
+            // Apply automatic Str/String → *u8 coercion only when parameter type is *u8
+            for (int i = 0; i < arguments.Count; i++)
+            {
+                var paramType = fpType.ParameterTypes[i];
+                var argValue = arguments[i];
+
+                // Only coerce if parameter is *u8 and argument is Str or String
+                if (paramType is IrPointerType ptrType &&
+                    ptrType.PointeeType.Equals(IrIntType.U8) &&
+                    argValue.Type is IrStructType structType &&
+                    (structType.StructName == "Str" || structType.StructName == "String"))
+                {
+                    if (structType.StructName == "Str")
+                    {
+                        // If argValue is a struct literal, extract the ptr field directly (no instruction needed)
+                        if (argValue is IrStructLiteral strLiteral)
+                        {
+                            if (!strLiteral.FieldValues.TryGetValue("ptr", out var ptrValue))
+                            {
+                                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                                _diagnostics.ReportError(
+                                    ErrorCodes.InvalidExpressionType,
+                                    "Str struct literal must have a 'ptr' field",
+                                    errorLocation
+                                );
+                                return null;
+                            }
+                            arguments[i] = ptrValue;  // Use the ptr value directly
+                        }
+                        else
+                        {
+                            // For Str variables (not literals), we need the member access
+                            var ptrField = structType.GetField("ptr");
+                            if (ptrField == null)
+                            {
+                                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                                _diagnostics.ReportError(
+                                    ErrorCodes.InvalidExpressionType,
+                                    "Str struct must have a 'ptr' field",
+                                    errorLocation
+                                );
+                                return null;
+                            }
+
+                            var ptrTempName = $"%t{_tempCounter++}";
+                            var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
+                            var ptrFieldAccess = new IrMemberAccess(ptrTempName, argValue, "ptr", u8PtrType, ptrField.Offset);
+                            _currentBlock!.AddInstruction(ptrFieldAccess);
+                            arguments[i] = new IrVariable(ptrTempName, u8PtrType);
+                        }
+                    }
+                    else if (structType.StructName == "String")
+                    {
+                        // For String, call the as_ptr() method
+                        var asPtrMethodName = "String::as_ptr";
+                        var asPtrMethod = _module.Functions.FirstOrDefault(f => f.Name == asPtrMethodName);
+
+                        if (asPtrMethod == null)
+                        {
+                            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                            _diagnostics.ReportError(
+                                ErrorCodes.InvalidExpressionType,
+                                "String type must have as_ptr() method for automatic coercion to *u8",
+                                errorLocation
+                            );
+                            return null;
+                        }
+
+                        // Call String::as_ptr()
+                        var receiverArg = new IrBorrowValue(argValue, asPtrMethod.Parameters[0].Type, false);
+                        var resultTempName = $"%t{_tempCounter++}";
+                        var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
+                        var methodCall = new IrCall(asPtrMethodName, u8PtrType, resultTempName);
+                        methodCall.Arguments.Add(receiverArg);
+                        _currentBlock!.AddInstruction(methodCall);
+                        arguments[i] = new IrVariable(resultTempName, u8PtrType);
+                    }
+                }
+            }
+
+            returnType = fpType.ReturnType;
+            resultName = returnType is not IrVoidType ? $"%t{_tempCounter++}" : null;
+
+            var indirectCall = new IrIndirectCall(funcExpr, returnType, resultName);
+            foreach (var arg in arguments)
+            {
+                indirectCall.Arguments.Add(arg);
+            }
+
+            _currentBlock!.AddInstruction(indirectCall);
+
+            if (resultName != null)
+            {
+                return new IrVariable(resultName, returnType);
+            }
+
+            return null;
+        }
+
+        // Direct call - funcExpr should be an identifier
+        if (funcExpr is not IrVariable funcVar)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Function call target must be an identifier or function pointer",
+                errorLocation
+            );
+            return null;
+        }
+
+        var functionName = funcVar.Name;
+
+        // Check if this is an associated function on an enum that needs instantiation (e.g., Option::FromPointer)
+        if (functionName.Contains("::"))
+        {
+            var parts = functionName.Split("::");
+            if (parts.Length == 2)
+            {
+                var typeName = parts[0];
+                var methodName = parts[1];
+
+                // Check if it's an enum type
+                if (_symbols.HasEnum(typeName))
+                {
+                    var enumType = _symbols.LookupEnum(typeName)!;
+                    if (enumType.GenericParameters.Count > 0)
+                    {
+                        // Need to infer type arguments and monomorphize the enum before instantiation
+                        var typeSubstitutions = InferGenericEnumTypeArguments(enumType, methodName, arguments, _expectedType);
+
+                        if (typeSubstitutions != null)
+                        {
+                            // Monomorphize the enum with inferred type arguments
+                            var monomorphizedEnum = MonomorphizeEnum(enumType, typeSubstitutions);
+
+                            if (monomorphizedEnum != null)
+                            {
+                                // Now instantiate the method with the monomorphized enum
+                                var instantiatedFunc = InstantiateGenericEnumMethod(monomorphizedEnum, methodName, arguments);
+                                if (instantiatedFunc != null)
+                                {
+                                    functionName = instantiatedFunc.Name;
+                                }
+                                else
+                                {
+                                    // Try just the method name (impl methods are currently stored without type prefix)
+                                    functionName = methodName;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Could not infer type arguments
+                            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                            _diagnostics.ReportError(
+                                ErrorCodes.InvalidExpressionType,
+                                $"Cannot infer generic type arguments for {typeName}::{methodName}. Please provide explicit type arguments.",
+                                errorLocation
+                            );
+                            return null;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Look up the function in the module to get its return type
+        var function = _module.Functions.FirstOrDefault(f => f.Name == functionName);
+        if (function == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Unknown function: {functionName}",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Check argument count matches parameter count
+        var nonVariadicCount = function.Parameters.Count(p => !p.IsVariadic);
+        if (function.IsVariadic)
+        {
+            if (arguments.Count < nonVariadicCount)
+            {
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Variadic function '{functionName}' expects at least {nonVariadicCount} arguments, got {arguments.Count}",
+                    errorLocation
+                );
+                return null;
+            }
+        }
+        else
+        {
+            if (arguments.Count != function.Parameters.Count)
+            {
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Function {functionName} expects {function.Parameters.Count} arguments, got {arguments.Count}",
+                    errorLocation
+                );
+                return null;
+            }
+        }
+
+        // Apply automatic &[T; N] → Slice<T> coercion when parameter type is Slice<T>
+        for (int i = 0; i < arguments.Count; i++)
+        {
+            // Skip variadic parameters (they don't have a declared type)
+            if (i >= function.Parameters.Count || function.Parameters[i].IsVariadic)
+                continue;
+
+            var paramType = function.Parameters[i].Type;
+            var argValue = arguments[i];
+
+            // Coerce &[T; N] → Slice<T>
+            // When a pointer to an array is passed to a function expecting Slice<T>
+            if (paramType is IrStructType sliceStruct &&
+                sliceStruct.StructName == "Slice" &&
+                argValue.Type is IrPointerType ptrToArrayType &&
+                ptrToArrayType.PointeeType is IrArrayType ptrArrayType)
+            {
+                // Get the 'ptr' field to extract the element type T from Slice<T>
+                var ptrField = sliceStruct.GetField("ptr");
+                if (ptrField?.Type is IrPointerType slicePtrType)
+                {
+                    // Verify array element type matches Slice element type
+                    if (slicePtrType.PointeeType.Equals(ptrArrayType.ElementType))
+                    {
+                        // Create pointer to array element (pointer to array decays to pointer to first element)
+                        var arrayElemPtrType = _typeInterner.GetPointerType(ptrArrayType.ElementType);
+
+                        // Cast the pointer-to-array to a pointer-to-element
+                        // *[T; N] → *T (decay to pointer to first element)
+                        var ptrValue = new IrCastValue(argValue, argValue.Type, arrayElemPtrType);
+
+                        // Create the length constant
+                        var lenValue = new IrConstant(ptrArrayType.Length, IrIntType.U32);
+
+                        // Create Slice struct literal
+                        var sliceFields = new Dictionary<string, IrValue>
+                        {
+                            { "ptr", ptrValue },
+                            { "len", lenValue }
+                        };
+
+                        var sliceValue = new IrStructLiteral(sliceStruct, sliceFields);
+
+                        // Slice structs containing pointers are passed by reference in C ABI
+                        // (see CCodeGenerator.TypeContainsHeapData), so we need to create a borrow
+                        // of the slice struct, not just the struct value itself
+                        var sliceRefType = _typeInterner.GetReferenceType(sliceStruct);
+                        arguments[i] = new IrBorrowValue(sliceValue, sliceRefType, false);
+                        continue;
+                    }
+                }
+            }
+        }
+
+        // Apply automatic Str/String → *u8 coercion only when parameter type is *u8
+        for (int i = 0; i < arguments.Count; i++)
+        {
+            // Skip variadic parameters (they don't have a declared type)
+            if (i >= function.Parameters.Count || function.Parameters[i].IsVariadic)
+                continue;
+
+            var paramType = function.Parameters[i].Type;
+            var argValue = arguments[i];
+
+            // Only coerce if parameter is *u8 and argument is Str or String
+            if (paramType is IrPointerType ptrType &&
+                ptrType.PointeeType.Equals(IrIntType.U8) &&
+                argValue.Type is IrStructType structType &&
+                (structType.StructName == "Str" || structType.StructName == "String"))
+            {
+                if (structType.StructName == "Str")
+                {
+                    // If argValue is a struct literal, extract the ptr field directly (no instruction needed)
+                    if (argValue is IrStructLiteral strLiteral)
+                    {
+                        if (!strLiteral.FieldValues.TryGetValue("ptr", out var ptrValue))
+                        {
+                            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                            _diagnostics.ReportError(
+                                ErrorCodes.InvalidExpressionType,
+                                "Str struct literal must have a 'ptr' field",
+                                errorLocation
+                            );
+                            return null;
+                        }
+                        arguments[i] = ptrValue;  // Use the ptr value directly
+                    }
+                    else
+                    {
+                        // For Str variables (not literals), we need the member access
+                        var ptrField = structType.GetField("ptr");
+                        if (ptrField == null)
+                        {
+                            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                            _diagnostics.ReportError(
+                                ErrorCodes.InvalidExpressionType,
+                                "Str struct must have a 'ptr' field",
+                                errorLocation
+                            );
+                            return null;
+                        }
+
+                        var ptrTempName = $"%t{_tempCounter++}";
+                        var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
+                        var ptrFieldAccess = new IrMemberAccess(ptrTempName, argValue, "ptr", u8PtrType, ptrField.Offset);
+                        _currentBlock!.AddInstruction(ptrFieldAccess);
+                        arguments[i] = new IrVariable(ptrTempName, u8PtrType);
+                    }
+                }
+                else if (structType.StructName == "String")
+                {
+                    // For String, call the as_ptr() method
+                    var asPtrMethodName = "String::as_ptr";
+                    var asPtrMethod = _module.Functions.FirstOrDefault(f => f.Name == asPtrMethodName);
+
+                    if (asPtrMethod == null)
+                    {
+                        var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                        _diagnostics.ReportError(
+                            ErrorCodes.InvalidExpressionType,
+                            "String type must have as_ptr() method for automatic coercion to *u8",
+                            errorLocation
+                        );
+                        return null;
+                    }
+
+                    // Call String::as_ptr()
+                    var receiverArg = new IrBorrowValue(argValue, asPtrMethod.Parameters[0].Type, false);
+                    var resultTempName = $"%t{_tempCounter++}";
+                    var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
+                    var methodCall = new IrCall(asPtrMethodName, u8PtrType, resultTempName);
+                    methodCall.Arguments.Add(receiverArg);
+                    _currentBlock!.AddInstruction(methodCall);
+                    arguments[i] = new IrVariable(resultTempName, u8PtrType);
+                }
+            }
+        }
+
+        // Insert implicit casts for arguments where needed
+        // (e.g., u32 -> i32 for same-bit-width conversions)
+        // Note: Str -> *u8 coercion is handled above (only when param type is *u8)
+        for (int i = 0; i < arguments.Count; i++)
+        {
+            var argType = arguments[i].Type;
+
+            // For variadic functions, arguments beyond the non-variadic params don't have a corresponding parameter
+            IrType? paramType = null;
+            if (i < function.Parameters.Count && !function.Parameters[i].IsVariadic)
+            {
+                paramType = function.Parameters[i].Type;
+            }
+
+            // If types don't exactly match but are compatible integer types of same width (non-variadic only)
+            if (paramType != null &&
+                !argType.Equals(paramType) &&
+                argType is IrIntType argInt &&
+                paramType is IrIntType paramInt &&
+                argInt.BitWidth == paramInt.BitWidth)
+            {
+                // Same-size integer cast - just reinterpret the bits
+                if (arguments[i] is IrConstant constant)
+                {
+                    // For constants, create new constant with target type
+                    arguments[i] = new IrConstant(constant.Value, paramType);
+                }
+                else if (arguments[i] is IrVariable variable)
+                {
+                    // For variables, create new variable reference with target type (zero-cost cast)
+                    arguments[i] = new IrVariable(variable.Name, paramType);
+                }
+                else
+                {
+                    // For other expressions, create a temp variable with the target type
+                    // The value is already computed, we just need to reference it with the new type
+                    var castTempName = $"%t{_tempCounter++}";
+                    var moveOp = new IrBinaryOp(castTempName, IrBinaryOp.OpKind.Add,
+                        arguments[i], new IrConstant(0, arguments[i].Type), arguments[i].Type);
+                    _currentBlock!.AddInstruction(moveOp);
+                    arguments[i] = new IrVariable(castTempName, paramType);
+                }
+            }
+        }
+
+        // Create the call instruction
+        returnType = function.ReturnType;
+        resultName = returnType is not IrVoidType ? $"%t{_tempCounter++}" : null;
+
+        var call = new IrCall(functionName, returnType, resultName);
+        foreach (var arg in arguments)
+        {
+            call.Arguments.Add(arg);
+        }
+
+        _currentBlock!.AddInstruction(call);
+
+        // Return the result variable if non-void
+        if (resultName != null)
+        {
+            return new IrVariable(resultName, returnType);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Try to resolve generic type parameters from a method call
+    /// Example: vec.push(42i32) where vec is Vec<UnresolvedGeneric> → infer T = i32
+    /// </summary>
+    private IrStructType? TryResolveGenericFromMethodCall(IrPartiallyResolvedGenericType partialType, string methodName, List<IrValue> methodArgs)
+    {
+        // Look up the method template for this generic type
+        var templateKey = $"{partialType.GenericTypeName}::{methodName}";
+
+        if (!_genericMethodTemplates.TryGetValue(templateKey, out var template))
+        {
+            // Method not found or not generic
+            return null;
+        }
+
+        var (genericParams, funcDecl, _) = template;
+
+        // Parse the method's parameter types from the template
+        // Note: 'self' parameter is handled specially in the grammar and may not be in parameterList
+        var paramContexts = funcDecl.parameterList()?.parameter()?.ToList() ?? new List<NovusParser.ParameterContext>();
+
+        if (paramContexts.Count == 0)
+        {
+            // No non-self parameters to infer from
+            return null;
+        }
+
+        // Try to infer generic type from the method arguments
+        // For Vec::push(&mut self, value: T), paramContexts contains just [value: T]
+        // methodArgs contains the user-provided arguments (not including self)
+        // So paramContexts[0] corresponds to methodArgs[0]
+
+        var unresolvedTypeToResolvedType = new Dictionary<IrUnresolvedGenericType, IrType>();
+
+        for (int i = 0; i < paramContexts.Count && i < methodArgs.Count; i++)
+        {
+            var paramCtx = paramContexts[i];
+            var paramTypeName = paramCtx.type().GetText();
+            var argType = methodArgs[i].Type;
+
+            // Check if parameter type is a generic parameter (e.g., "T")
+            if (genericParams.Contains(paramTypeName))
+            {
+                // This parameter has a generic type - use the argument's type
+                var paramIndex = genericParams.IndexOf(paramTypeName);
+
+                if (paramIndex < partialType.TypeArguments.Count &&
+                    partialType.TypeArguments[paramIndex] is IrUnresolvedGenericType unresolvedType)
+                {
+                    unresolvedTypeToResolvedType[unresolvedType] = argType;
+                }
+            }
+        }
+
+        // Resolve all unresolved type parameters
+        bool allResolved = true;
+        foreach (var typeArg in partialType.TypeArguments)
+        {
+            if (typeArg is IrUnresolvedGenericType unresolvedType)
+            {
+                if (unresolvedTypeToResolvedType.TryGetValue(unresolvedType, out var resolvedType))
+                {
+                    unresolvedType.ResolvedType = resolvedType;
+                }
+                else
+                {
+                    allResolved = false;
+                }
+            }
+        }
+
+        if (!allResolved)
+        {
+            return null; // Couldn't resolve all type parameters
+        }
+
+        // Now that all type parameters are resolved, create the monomorphized struct
+        var resolvedTypeArgs = partialType.GetResolvedTypeArguments();
+
+        // Find the generic struct template
+        var genericStruct = _symbols.GetLocalStructs().Values.FirstOrDefault(s =>
+            s.StructName == partialType.GenericTypeName && s.GenericParameters.Count > 0);
+
+        if (genericStruct == null)
+        {
+            return null;
+        }
+
+        // Create monomorphized struct
+        var monomorphizedStruct = IrStructType.Monomorphize(genericStruct, resolvedTypeArgs);
+
+        // Cache the monomorphized struct
+        var cacheKey = monomorphizedStruct.CacheKey ?? monomorphizedStruct.Name;
+        if (_symbols.LookupMonomorphizedStruct(cacheKey) == null)
+        {
+            _symbols.RegisterMonomorphizedStruct(cacheKey, monomorphizedStruct);
+        }
+
+        // Update the partial type to mark it as fully resolved
+        partialType.FullyResolvedType = monomorphizedStruct;
+
+        return monomorphizedStruct;
+    }
+
+    /// <summary>
+    /// Handle method calls (e.g., v.len())
+    /// Desugars to: Type::method(receiver, args...)
+    /// </summary>
+    private object? HandleMethodCallIr(NovusParser.CallExprContext callCtx, NovusParser.MemberAccessExprContext memberAccessCtx)
+    {
+        // Get the receiver (the thing before the dot)
+        var receiverExpr = memberAccessCtx.expression();
+        var methodName = memberAccessCtx.IDENTIFIER().GetText();
+
+        // Evaluate the receiver
+        var receiver = (IrValue?)Visit(receiverExpr);
+        if (receiver == null)
+        {
+            var errorLocation = SourceLocationHelper.FromContext(callCtx, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Method call receiver is null",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Handle unresolved generic types - resolve them from method arguments
+        if (receiver.Type is IrPartiallyResolvedGenericType partialType)
+        {
+            // Parse method arguments to infer the generic type
+            var methodArgs = new List<IrValue>();
+            if (callCtx.argumentList() != null)
+            {
+                foreach (var argCtx in callCtx.argumentList().expression())
+                {
+                    var argValue = (IrValue?)Visit(argCtx);
+                    if (argValue != null)
+                    {
+                        methodArgs.Add(argValue);
+                    }
+                }
+            }
+
+            // Try to resolve the generic type from method arguments
+            var resolvedType = TryResolveGenericFromMethodCall(partialType, methodName, methodArgs);
+            if (resolvedType != null)
+            {
+                // Update the receiver's type
+                if (receiver is IrVariable irVar)
+                {
+                    receiver = new IrVariable(irVar.Name, resolvedType);
+
+                    // Also update the local variable's type in the symbol table
+                    if (_localVariables.TryGetValue(irVar.Name, out var localVar))
+                    {
+                        localVar.Type = resolvedType;
+                    }
+                }
+            }
+            else
+            {
+                var errorLocation = SourceLocationHelper.FromContext(callCtx, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Cannot infer generic type parameters for '{partialType.GenericTypeName}' from method call '{methodName}'",
+                    errorLocation
+                );
+                return null;
+            }
+        }
+
+        // Get the type name for method lookup
+        string typeName;
+        var receiverType = receiver.Type;
+
+        if (receiverType is IrStructType structType)
+        {
+            typeName = structType.StructName;  // Use base name, not full generic name
+        }
+        else if (receiverType is IrEnumType enumType)
+        {
+            typeName = enumType.EnumName;
+        }
+        else if (receiverType is IrPointerType ptrType)
+        {
+            // Auto-dereference pointers
+            if (ptrType.PointeeType is IrStructType pointeeStruct)
+            {
+                typeName = pointeeStruct.StructName;  // Use base name, not full generic name
+            }
+            else if (ptrType.PointeeType is IrEnumType pointeeEnum)
+            {
+                typeName = pointeeEnum.EnumName;
+            }
+            else
+            {
+                // Allow methods on primitive types (u64, bool, etc.)
+                typeName = ptrType.PointeeType.Name;
+            }
+        }
+        else if (receiverType is IrReferenceType refType)
+        {
+            // Auto-dereference immutable references
+            if (refType.PointeeType is IrStructType refStruct)
+            {
+                typeName = refStruct.StructName;
+            }
+            else if (refType.PointeeType is IrEnumType refEnum)
+            {
+                typeName = refEnum.EnumName;
+            }
+            else
+            {
+                // Allow methods on primitive types (u64, bool, etc.)
+                typeName = refType.PointeeType.Name;
+            }
+        }
+        else if (receiverType is IrMutReferenceType mutRefType)
+        {
+            // Auto-dereference mutable references
+            if (mutRefType.PointeeType is IrStructType mutRefStruct)
+            {
+                typeName = mutRefStruct.StructName;
+            }
+            else if (mutRefType.PointeeType is IrEnumType mutRefEnum)
+            {
+                typeName = mutRefEnum.EnumName;
+            }
+            else
+            {
+                // Allow methods on primitive types (u64, bool, etc.)
+                typeName = mutRefType.PointeeType.Name;
+            }
+        }
+        else
+        {
+            var errorLocation = SourceLocationHelper.FromContext(callCtx, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.CannotCallMethodOnType,
+                $"Cannot call methods on type: {receiverType.Name}",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Build the mangled function name: Type::method
+        // Note: For monomorphized generic types, we'll try Type::method first,
+        // then fall back to instantiation if needed
+        var mangledMethodName = $"{typeName}::{methodName}";
+
+        // Look up the method
+        var method = _module.Functions.FirstOrDefault(f => f.Name == mangledMethodName);
+
+        // If method not found, try to instantiate it for monomorphized structs or enums
+        if (method == null)
+        {
+            IrStructType? monomorphizedStruct = null;
+            IrEnumType? monomorphizedEnum = null;
+
+            // Check if receiver is a monomorphized struct
+            if (receiverType is IrStructType receiverStruct && receiverStruct.CacheKey != null)
+            {
+                monomorphizedStruct = receiverStruct;
+            }
+            // Check if receiver is a pointer to a monomorphized struct (&Vec<i32>, &mut Vec<i32>)
+            else if (receiverType is IrPointerType ptrType && ptrType.PointeeType is IrStructType pointeeStruct && pointeeStruct.CacheKey != null)
+            {
+                monomorphizedStruct = pointeeStruct;
+            }
+            // Check if receiver is a reference to a monomorphized struct (&Vec<i32>)
+            else if (receiverType is IrReferenceType refType && refType.PointeeType is IrStructType refPointeeStruct && refPointeeStruct.CacheKey != null)
+            {
+                monomorphizedStruct = refPointeeStruct;
+            }
+            // Check if receiver is a mutable reference to a monomorphized struct (&mut Vec<i32>)
+            else if (receiverType is IrMutReferenceType mutRefType && mutRefType.PointeeType is IrStructType mutRefPointeeStruct && mutRefPointeeStruct.CacheKey != null)
+            {
+                monomorphizedStruct = mutRefPointeeStruct;
+            }
+            // Check if receiver is a monomorphized enum
+            else if (receiverType is IrEnumType receiverEnum && receiverEnum.CacheKey != null)
+            {
+                monomorphizedEnum = receiverEnum;
+            }
+            // Check if receiver is a pointer to a monomorphized enum (&Option<i32>, &mut Option<i32>)
+            else if (receiverType is IrPointerType ptrType2 && ptrType2.PointeeType is IrEnumType pointeeEnum && pointeeEnum.CacheKey != null)
+            {
+                monomorphizedEnum = pointeeEnum;
+            }
+            // Check if receiver is a reference to a monomorphized enum (&Option<i32>)
+            else if (receiverType is IrReferenceType refType2 && refType2.PointeeType is IrEnumType refPointeeEnum && refPointeeEnum.CacheKey != null)
+            {
+                monomorphizedEnum = refPointeeEnum;
+            }
+            // Check if receiver is a mutable reference to a monomorphized enum (&mut Option<i32>)
+            else if (receiverType is IrMutReferenceType mutRefType2 && mutRefType2.PointeeType is IrEnumType mutRefPointeeEnum && mutRefPointeeEnum.CacheKey != null)
+            {
+                monomorphizedEnum = mutRefPointeeEnum;
+            }
+            // Check if receiver is a generic enum template (not yet monomorphized)
+            // This can happen when a variable has a declared type that includes type arguments,
+            // but the receiver's type is still the generic template (e.g., Option<T> instead of Option<i32>)
+            else if (receiverType is IrEnumType receiverEnumTemplate &&
+                     receiverEnumTemplate.GenericParameters.Count > 0 &&
+                     receiverEnumTemplate.CacheKey == null)
+            {
+                // Try to find the monomorphized version by looking up the variable's declared type
+                // This happens when: let opt1: Option<i32> = ... then opt1.is_some()
+                // The receiver variable should have the monomorphized type in _localVariables or function parameters
+                if (receiver is IrVariable irVar)
+                {
+                    // Check local variables first
+                    if (_localVariables.TryGetValue(irVar.Name, out var localVar))
+                    {
+                        // The local variable's type should be the monomorphized version
+                        if (localVar.Type is IrEnumType localEnumType && localEnumType.CacheKey != null)
+                        {
+                            monomorphizedEnum = localEnumType;
+                            // Update the receiver to use the correct monomorphized type
+                            receiver = new IrVariable(irVar.Name, localEnumType);
+                        }
+                    }
+                    // Check function parameters
+                    else if (_currentFunction != null)
+                    {
+                        var param = _currentFunction.Parameters.FirstOrDefault(p => p.Name == irVar.Name);
+                        if (param != null && param.Type is IrEnumType paramEnumType && paramEnumType.CacheKey != null)
+                        {
+                            monomorphizedEnum = paramEnumType;
+                            // Update the receiver to use the correct monomorphized type
+                            receiver = new IrVariable(irVar.Name, paramEnumType);
+                        }
+                    }
+                }
+            }
+
+            if (monomorphizedStruct != null)
+            {
+                method = InstantiateGenericMethod(monomorphizedStruct, methodName);
+            }
+            else if (monomorphizedEnum != null)
+            {
+                // Parse arguments to pass to instantiation (needed for type inference)
+                var methodArgs = new List<IrValue>();
+                if (callCtx.argumentList() != null)
+                {
+                    foreach (var argCtx in callCtx.argumentList().expression())
+                    {
+                        var argValue = (IrValue?)Visit(argCtx);
+                        if (argValue != null)
+                        {
+                            methodArgs.Add(argValue);
+                        }
+                    }
+                }
+
+                method = InstantiateGenericEnumMethod(monomorphizedEnum, methodName, methodArgs);
+            }
+        }
+
+        // If method not found for structs, try to instantiate it for monomorphized enums
+        if (method == null)
+        {
+            IrEnumType? monomorphizedEnum = null;
+
+            // Check if receiver is a monomorphized enum (e.g., Option<i32>)
+            if (receiverType is IrEnumType receiverEnum && receiverEnum.CacheKey != null)
+            {
+                monomorphizedEnum = receiverEnum;
+            }
+            // Check if receiver is a pointer to a monomorphized enum
+            else if (receiverType is IrPointerType ptrType && ptrType.PointeeType is IrEnumType pointeeEnum && pointeeEnum.CacheKey != null)
+            {
+                monomorphizedEnum = pointeeEnum;
+            }
+
+            if (monomorphizedEnum != null)
+            {
+                // Build complete arguments list: [receiver, ...user_args]
+                // This is needed for type inference to work properly
+                var allArgs = new List<IrValue> { receiver };
+
+                // Add user-provided arguments
+                if (callCtx.argumentList() != null)
+                {
+                    foreach (var argCtx in callCtx.argumentList().expression())
+                    {
+                        var argValue = (IrValue?)Visit(argCtx);
+                        if (argValue != null)
+                        {
+                            allArgs.Add(argValue);
+                        }
+                    }
+                }
+
+                // Instantiate the generic enum method with all arguments (including receiver)
+                // The method will infer generic type parameters from the argument types
+                method = InstantiateGenericEnumMethod(monomorphizedEnum, methodName, allArgs);
+            }
+        }
+
+        if (method == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.MethodNotFound,
+                $"Method '{methodName}' not found for type '{typeName}'",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Build arguments list: [receiver, ...user_args]
+        // Check if we need to borrow the receiver (for &self or &mut self)
+        IrValue receiverArg = receiver;
+        if (method.Parameters.Count > 0)
+        {
+            var firstParamType = method.Parameters[0].Type;
+
+            // If method expects a pointer/reference but we have a value, borrow it
+            if ((firstParamType is IrPointerType || firstParamType is IrReferenceType || firstParamType is IrMutReferenceType)
+                && receiver.Type is not IrPointerType && receiver.Type is not IrReferenceType && receiver.Type is not IrMutReferenceType)
+            {
+                // IMPORTANT FIX: If the receiver was loaded from a field access (e.g., self.buffer),
+                // we need to borrow the FIELD directly, not the loaded copy.
+                // Check if the last instruction is a member access that produced this receiver variable.
+                IrValue valueToBoflow = receiver;
+
+                if (receiver is IrVariable receiverVar && _currentBlock != null)
+                {
+                    // Look for the member access instruction that produced this variable
+                    // Search backwards through the block's instructions
+                    IrMemberAccess? foundMemberAccess = null;
+                    for (int i = _currentBlock.Instructions.Count - 1; i >= 0; i--)
+                    {
+                        var inst = _currentBlock.Instructions[i];
+                        if (inst is IrMemberAccess memberAccess &&
+                            memberAccess.ResultName == receiverVar.Name)
+                        {
+                            foundMemberAccess = memberAccess;
+                            _currentBlock.Instructions.RemoveAt(i);
+                            break;
+                        }
+                        // Stop searching if we hit an instruction that might use this variable
+                        // (this avoids removing a member access that was already used)
+                        if (inst is IrCall || inst is IrStore)
+                        {
+                            break;
+                        }
+                    }
+
+                    if (foundMemberAccess != null)
+                    {
+                        // Found it! Create a field reference instead of using the loaded value
+                        valueToBoflow = new IrFieldReference(foundMemberAccess.Struct, foundMemberAccess.FieldName, receiver.Type);
+                    }
+                }
+
+                // Wrap receiver in IrBorrowValue to take its address
+                bool isMutable = firstParamType is IrMutReferenceType || firstParamType is IrPointerType;
+                receiverArg = new IrBorrowValue(valueToBoflow, firstParamType, isMutable);
+            }
+        }
+
+        var arguments = new List<IrValue> { receiverArg };
+
+        // Add user-provided arguments
+        if (callCtx.argumentList() != null)
+        {
+            foreach (var argCtx in callCtx.argumentList().expression())
+            {
+                var argValue = (IrValue?)Visit(argCtx);
+                if (argValue != null)
+                {
+                    arguments.Add(argValue);
+                }
+            }
+        }
+
+        // Validate argument count
+        var nonVariadicCount = method.Parameters.Count(p => !p.IsVariadic);
+        if (method.IsVariadic)
+        {
+            if (arguments.Count < nonVariadicCount)
+            {
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Variadic method '{methodName}' expects at least {nonVariadicCount} arguments, got {arguments.Count}",
+                    errorLocation
+                );
+                return null;
+            }
+        }
+        else
+        {
+            if (arguments.Count != method.Parameters.Count)
+            {
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Method {methodName} expects {method.Parameters.Count} arguments, got {arguments.Count}",
+                    errorLocation
+                );
+                return null;
+            }
+        }
+
+        // Note: Str -> *u8 coercion is already handled in VisitCallExpr
+
+        // Create the call instruction
+        // Use the actual function name from the method (e.g., "Vec_push" for monomorphized generics)
+        // instead of the mangled name (e.g., "Vec::push")
+        var returnType = method.ReturnType;
+        var resultName = returnType is not IrVoidType ? $"%t{_tempCounter++}" : null;
+
+        var call = new IrCall(method.Name, returnType, resultName);
+        foreach (var arg in arguments)
+        {
+            call.Arguments.Add(arg);
+        }
+
+        _currentBlock!.AddInstruction(call);
+
+        // Return the result variable if non-void
+        if (resultName != null)
+        {
+            return new IrVariable(resultName, returnType);
+        }
+
+        return null;
+    }
+
+    public override object? VisitBorrowExpr([NotNull] NovusParser.BorrowExprContext context)
+    {
+        var exprContext = context.expression();
+
+        // Check if this is a mutable borrow (&mut) or immutable borrow (&)
+        bool isMutable = context.GetChild(1)?.GetText() == "mut";
+
+        // Handle function pointers specially (backward compatibility)
+        if (exprContext.Start.Type == NovusLexer.IDENTIFIER &&
+            exprContext.ChildCount == 1)
+        {
+            var name = exprContext.GetText();
+
+            // Check if it's a function (for function pointers)
+            var function = _module.Functions.FirstOrDefault(f => f.Name == name);
+            if (function != null)
+            {
+                // Create function pointer type from function signature
+                var paramTypes = function.Parameters.Select(p => p.Type).ToList();
+                var fpType = _typeInterner.GetFunctionPointerType(paramTypes, function.ReturnType);
+                return new IrFunctionAddress(name, fpType);
+            }
+        }
+
+        // For variables, struct members, array elements, etc., create a pointer
+        // In Novus, & produces pointer types, not reference types
+        // Visit the expression to get its value
+        var value = (IrValue)Visit(exprContext)!;
+
+        // Create a pointer type (& in Novus produces *T, not &T)
+        var ptrType = _typeInterner.GetPointerType(value.Type);
+
+        // For code generation, pointers are addresses
+        // We return the value itself - the semantic analyzer will track borrowing
+        // At codegen time, we'll take the address of the value
+
+        // Create a "borrow" value that wraps the original value with pointer type
+        return new IrBorrowValue(value, ptrType, isMutable);
+    }
+
+    public override object? VisitIndexExpr([NotNull] NovusParser.IndexExprContext context)
+    {
+        var baseExpr = (IrValue)Visit(context.expression(0))!;
+        var indexExpr = (IrValue)Visit(context.expression(1))!;
+
+        // Handle array indexing
+        if (baseExpr.Type is IrArrayType arrayType)
+        {
+            // Create an index access instruction for arrays
+            var tempName = $"%t{_tempCounter++}";
+            var indexAccess = new IrIndexAccess(tempName, baseExpr, indexExpr, arrayType.ElementType);
+            _currentBlock!.AddInstruction(indexAccess);
+
+            return new IrVariable(tempName, arrayType.ElementType);
+        }
+
+        // Handle pointer indexing: ptr[index] = *(ptr + index * sizeof(T))
+        if (baseExpr.Type is IrPointerType ptrType)
+        {
+            // Create an index access instruction for pointers
+            var tempName = $"%t{_tempCounter++}";
+            var indexAccess = new IrIndexAccess(tempName, baseExpr, indexExpr, ptrType.PointeeType);
+            _currentBlock!.AddInstruction(indexAccess);
+
+            return new IrVariable(tempName, ptrType.PointeeType);
+        }
+
+        var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+        _diagnostics.ReportError(
+            ErrorCodes.InvalidExpressionType,
+            $"Cannot index into non-array/non-pointer type: {baseExpr.Type.Name}",
+            errorLocation
+        );
+        return null;
+    }
+
+    public override object? VisitArrayLiteral([NotNull] NovusParser.ArrayLiteralContext context)
+    {
+        var expressions = context.expression();
+        var elements = new List<IrValue>();
+
+        // Visit all element expressions
+        foreach (var exprCtx in expressions)
+        {
+            var value = Visit(exprCtx) as IrValue;
+            if (value == null)
+            {
+                // Error already reported by child visitor, bail out
+                return null;
+            }
+            elements.Add(value);
+        }
+
+        if (elements.Count == 0)
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Array literals cannot be empty",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Infer array type from first element
+        var elementType = elements[0].Type;
+        var arrayType = _typeInterner.GetArrayType(elementType, elements.Count);
+
+        // Create array literal value
+        var arrayLiteral = new IrArrayLiteral(arrayType);
+        foreach (var elem in elements)
+        {
+            // TODO: Check that all elements have compatible types
+            arrayLiteral.Elements.Add(elem);
+        }
+
+        return arrayLiteral;
+    }
+
+    public override object? VisitArrayRepeatLiteral([NotNull] NovusParser.ArrayRepeatLiteralContext context)
+    {
+        // Array repeat literal: [value; count]
+        var expressions = context.expression();
+        if (expressions.Length != 2)
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Array repeat literal must have exactly 2 expressions",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Visit the value expression
+        var value = (IrValue)Visit(expressions[0])!;
+
+        // Visit the count expression - must be a constant
+        var countExpr = (IrValue)Visit(expressions[1])!;
+        if (countExpr is not IrConstant countConstant)
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidArrayRepeatCount,
+                "Array repeat count must be a compile-time constant",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Extract count value (handle all integer types)
+        int count = countConstant.Type switch
+        {
+            IrIntType intType => intType.IsSigned switch
+            {
+                true => intType.BitWidth switch
+                {
+                    8 => (sbyte)countConstant.Value,
+                    16 => (short)countConstant.Value,
+                    32 => (int)countConstant.Value,
+                    64 => (int)(long)countConstant.Value,
+                    _ => 0  // ERROR: $"Unsupported signed integer bit width: {intType.BitWidth}"
+                },
+                false => intType.BitWidth switch
+                {
+                    8 => (byte)countConstant.Value,
+                    16 => (ushort)countConstant.Value,
+                    32 => (int)(uint)countConstant.Value,
+                    64 => (int)(ulong)countConstant.Value,
+                    _ => 0  // ERROR: $"Unsupported unsigned integer bit width: {intType.BitWidth}
+                }
+            },
+            _ => 0  // ERROR: "Array repeat count must be an integer"
+        };
+
+        if (count < 0)
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidArrayRepeatCount,
+                "Array repeat count must be non-negative",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Create array type
+        var arrayType = _typeInterner.GetArrayType(value.Type, count);
+
+        // Create array literal with repeated value
+        var arrayLiteral = new IrArrayLiteral(arrayType);
+        for (int i = 0; i < count; i++)
+        {
+            arrayLiteral.Elements.Add(value);
+        }
+
+        return arrayLiteral;
+    }
+
+    public override object? VisitAdditiveExpr([NotNull] NovusParser.AdditiveExprContext context)
+    {
+        var left = (IrValue)Visit(context.expression(0))!;
+        var right = (IrValue)Visit(context.expression(1))!;
+        var op = context.GetChild(1).GetText() == "+" ? IrBinaryOp.OpKind.Add : IrBinaryOp.OpKind.Sub;
+
+        var tempName = $"%t{_tempCounter++}";
+        var binOp = new IrBinaryOp(tempName, op, left, right, left.Type);
+        _currentBlock!.AddInstruction(binOp);
+
+        return new IrVariable(tempName, left.Type);
+    }
+
+    public override object? VisitShiftExpr([NotNull] NovusParser.ShiftExprContext context)
+    {
+        var left = (IrValue)Visit(context.expression(0))!;
+        var right = (IrValue)Visit(context.expression(1))!;
+
+        var op = context.GetChild(1).GetText(); // Get the operator: << or >>
+        var opKind = op == "<<" ? IrBinaryOp.OpKind.Shl : IrBinaryOp.OpKind.Shr;
+
+        var tempName = $"%t{_tempCounter++}";
+        var binOp = new IrBinaryOp(tempName, opKind, left, right, left.Type);
+        _currentBlock!.AddInstruction(binOp);
+
+        return new IrVariable(tempName, left.Type);
+    }
+
+    public override object? VisitBitwiseAndExpr([NotNull] NovusParser.BitwiseAndExprContext context)
+    {
+        var left = (IrValue)Visit(context.expression(0))!;
+        var right = (IrValue)Visit(context.expression(1))!;
+
+        var tempName = $"%t{_tempCounter++}";
+        var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.And, left, right, left.Type);
+        _currentBlock!.AddInstruction(binOp);
+
+        return new IrVariable(tempName, left.Type);
+    }
+
+    public override object? VisitBitwiseXorExpr([NotNull] NovusParser.BitwiseXorExprContext context)
+    {
+        var left = (IrValue)Visit(context.expression(0))!;
+        var right = (IrValue)Visit(context.expression(1))!;
+
+        var tempName = $"%t{_tempCounter++}";
+        var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Xor, left, right, left.Type);
+        _currentBlock!.AddInstruction(binOp);
+
+        return new IrVariable(tempName, left.Type);
+    }
+
+    public override object? VisitBitwiseOrExpr([NotNull] NovusParser.BitwiseOrExprContext context)
+    {
+        var left = (IrValue)Visit(context.expression(0))!;
+        var right = (IrValue)Visit(context.expression(1))!;
+
+        var tempName = $"%t{_tempCounter++}";
+        var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Or, left, right, left.Type);
+        _currentBlock!.AddInstruction(binOp);
+
+        return new IrVariable(tempName, left.Type);
+    }
+
+    public override object? VisitCastExpr([NotNull] NovusParser.CastExprContext context)
+    {
+        var targetType = ParseType(context.type());
+        var value = (IrValue)Visit(context.expression())!;
+
+        // If it's already a constant, just change its type
+        if (value is IrConstant constant)
+        {
+            return new IrConstant(constant.Value, targetType);
+        }
+
+        // Create an explicit cast value
+        // This preserves the cast operation for the code generator
+        // Supports nested casts: (T1)(T2)expr becomes IrCastValue(IrCastValue(expr, T2), T1)
+        return new IrCastValue(value, value.Type, targetType);
+    }
+
+    public override object? VisitMultiplicativeExpr([NotNull] NovusParser.MultiplicativeExprContext context)
+    {
+        var left = (IrValue)Visit(context.expression(0))!;
+        var right = (IrValue)Visit(context.expression(1))!;
+
+        var opText = context.GetChild(1).GetText();
+        var op = opText switch
+        {
+            "*" => IrBinaryOp.OpKind.Mul,
+            "/" => IrBinaryOp.OpKind.Div,
+            "%" => IrBinaryOp.OpKind.Mod,
+            _ => IrBinaryOp.OpKind.Add  // ERROR: $"Unknown operator: {opText}"
+        };
+
+        var tempName = $"%t{_tempCounter++}";
+        var binOp = new IrBinaryOp(tempName, op, left, right, left.Type);
+        _currentBlock!.AddInstruction(binOp);
+
+        return new IrVariable(tempName, left.Type);
+    }
+
+    public override object? VisitComparisonExpr([NotNull] NovusParser.ComparisonExprContext context)
+    {
+        var left = (IrValue)Visit(context.expression(0))!;
+        var right = (IrValue)Visit(context.expression(1))!;
+
+        var opText = context.GetChild(1).GetText();
+        var op = opText switch
+        {
+            "==" => IrBinaryOp.OpKind.Eq,
+            "!=" => IrBinaryOp.OpKind.Ne,
+            "<" => IrBinaryOp.OpKind.Lt,
+            "<=" => IrBinaryOp.OpKind.Le,
+            ">" => IrBinaryOp.OpKind.Gt,
+            ">=" => IrBinaryOp.OpKind.Ge,
+            _ => IrBinaryOp.OpKind.Add  // ERROR: $"Unknown comparison operator: {opText}"
+        };
+
+        var tempName = $"%t{_tempCounter++}";
+        // Comparison result is a boolean
+        var binOp = new IrBinaryOp(tempName, op, left, right, IrBoolType.Instance);
+        _currentBlock!.AddInstruction(binOp);
+
+        return new IrVariable(tempName, IrBoolType.Instance);
+    }
+
+    public override object? VisitUnaryExpr([NotNull] NovusParser.UnaryExprContext context)
+    {
+        SourceLocation errorLocation;
+        var op = context.GetChild(0).GetText();
+
+        // Handle dereference specially - we need to determine the type first
+        if (op == "*")
+        {
+            var operand = (IrValue)Visit(context.expression())!;
+
+            // Determine the pointee type
+            IrType pointeeType;
+            if (operand.Type is IrPointerType ptrType)
+            {
+                pointeeType = ptrType.PointeeType;
+            }
+            else if (operand.Type is IrReferenceType refType)
+            {
+                pointeeType = refType.PointeeType;
+            }
+            else if (operand.Type is IrMutReferenceType mutRefType)
+            {
+                pointeeType = mutRefType.PointeeType;
+            }
+            else
+            {
+                errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.CannotDereferenceType,
+                    $"Cannot dereference non-pointer/reference type: {operand.Type.Name}",
+                    errorLocation
+                );
+                return null;
+            }
+
+            // Create a dereference value
+            return new IrDereferenceValue(operand, pointeeType);
+        }
+
+        // For other unary ops, visit the operand first
+        var operandValue = (IrValue)Visit(context.expression())!;
+
+        if (op == "!")
+        {
+            // Logical NOT: false becomes true, true becomes false
+            // For pointers, first convert to bool (ptr != 0), then negate
+            IrValue boolOperand = operandValue;
+
+            if (operandValue.Type is IrPointerType or IrReferenceType or IrMutReferenceType)
+            {
+                // Convert pointer to bool: ptr != 0
+                var ptrToBoolTemp = $"%t{_tempCounter++}";
+                var zeroValue = new IrConstant(0, IrIntType.U32);
+                var comparison = new IrBinaryOp(ptrToBoolTemp, IrBinaryOp.OpKind.Ne, operandValue, zeroValue, IrBoolType.Instance);
+                _currentBlock!.AddInstruction(comparison);
+                boolOperand = new IrVariable(ptrToBoolTemp, IrBoolType.Instance);
+            }
+
+            // Implemented as: result = (operand XOR 1)
+            // This flips the boolean bit: 0 XOR 1 = 1, 1 XOR 1 = 0
+            var tempName = $"%t{_tempCounter++}";
+            var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Xor, boolOperand, new IrConstant(1, new IrIntType(32, false)), IrBoolType.Instance);
+            _currentBlock!.AddInstruction(binOp);
+            return new IrVariable(tempName, IrBoolType.Instance);
+        }
+        else if (op == "~")
+        {
+            // Bitwise NOT: XOR with -1 (all bits set)
+            var tempName = $"%t{_tempCounter++}";
+            var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Xor, operandValue, new IrConstant(-1, operandValue.Type), operandValue.Type);
+            _currentBlock!.AddInstruction(binOp);
+            return new IrVariable(tempName, operandValue.Type);
+        }
+        else if (op == "-")
+        {
+            // Unary minus: subtract from 0
+            var tempName = $"%t{_tempCounter++}";
+            var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Sub, new IrConstant(0, operandValue.Type), operandValue, operandValue.Type);
+            _currentBlock!.AddInstruction(binOp);
+            return new IrVariable(tempName, operandValue.Type);
+        }
+
+        errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+        _diagnostics.ReportError(
+            ErrorCodes.UnknownOperator,
+            $"Unknown unary operator: {op}",
+            errorLocation
+        );
+        return null;
+    }
+
+    public override object? VisitPostIncrementExpr([NotNull] NovusParser.PostIncrementExprContext context)
+    {
+        // Post-increment: return old value, but increment the lvalue
+        return HandlePostIncrementDecrement(context.expression(), isIncrement: true);
+    }
+
+    public override object? VisitPostDecrementExpr([NotNull] NovusParser.PostDecrementExprContext context)
+    {
+        // Post-decrement: return old value, but decrement the lvalue
+        return HandlePostIncrementDecrement(context.expression(), isIncrement: false);
+    }
+
+    public override object? VisitTryExpr([NotNull] NovusParser.TryExprContext context)
+    {
+        // The ? operator for Result propagation with automatic error conversion via From trait
+        // expr? desugars to:
+        // match expr {
+        //     Ok(val) => val,
+        //     Err(err) => return Err(TargetError::convert(err))  // Auto-convert if needed
+        // }
+
+        var innerExpr = Visit(context.expression()) as IrValue;
+        if (innerExpr == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.TryOperatorInvalidContext,
+                "? operator requires an expression that returns a value",
+                errorLocation
+            );
+            return null;
+        }
+
+        // 1. Verify innerExpr type is Result<T, E>
+        if (innerExpr.Type is not IrEnumType resultType || resultType.EnumName != "Result")
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.TryOperatorInvalidContext,
+                $"? operator requires a Result<T, E> type, got {innerExpr.Type}",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Extract T and E types from Result<T, E>
+        // Result has two variants: Ok(T) and Err(E)
+        var okVariant = resultType.Variants.FirstOrDefault(v => v.Name == "Ok");
+        if (okVariant == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.TryOperatorInvalidType,
+                "Result type missing Ok variant",
+                errorLocation
+            );
+            return null;
+        }
+
+        var errVariant = resultType.Variants.FirstOrDefault(v => v.Name == "Err");
+        if (errVariant == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.TryOperatorInvalidType,
+                "Result type missing Err variant",
+                errorLocation
+            );
+            return null;
+        }
+
+        if (okVariant.AssociatedData.Count == 0)
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Result::Ok variant missing associated data",
+                errorLocation
+            );
+            return null;
+        }
+        if (errVariant.AssociatedData.Count == 0)
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Result::Err variant missing associated data",
+                errorLocation
+            );
+            return null;
+        }
+
+        var okPayloadType = okVariant.AssociatedData[0];
+        var sourceErrorType = errVariant.AssociatedData[0];
+
+        // 2. Get current function's return type Result<T2, E2>
+        if (_currentFunction == null)
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.TryOperatorInvalidContext,
+                "? operator can only be used inside a function",
+                errorLocation
+            );
+            return null;
+        }
+
+        if (_currentFunction.ReturnType is not IrEnumType funcResultType || funcResultType.EnumName != "Result")
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.TryOperatorInvalidContext,
+                $"? operator requires current function to return Result<T, E>, got {_currentFunction.ReturnType}",
+                errorLocation
+            );
+            return null;
+        }
+
+        var funcErrVariant = funcResultType.Variants.FirstOrDefault(v => v.Name == "Err");
+        if (funcErrVariant == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.TryOperatorInvalidType,
+                "Function return type Result missing Err variant",
+                errorLocation
+            );
+            return null;
+        }
+
+        if (funcErrVariant.AssociatedData.Count == 0)
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Function return type Result::Err missing associated data",
+                errorLocation
+            );
+            return null;
+        }
+
+        var targetErrorType = funcErrVariant.AssociatedData[0];
+
+        // 3. Generate match expression to unwrap Result
+        // This is similar to VisitMatchExpr, but we generate the match structure in IR directly
+
+        // Create temporary variable to hold the result expression
+        var resultTemp = $"%try_result_{_tempCounter++}";
+        var resultLocal = new IrLocalVariable(resultTemp, innerExpr.Type, false);
+        _currentFunction.LocalVariables.Add(resultLocal);
+        _currentBlock!.AddInstruction(new IrLocalDecl(resultTemp, innerExpr.Type, false, innerExpr));
+        var resultVar = new IrVariable(resultTemp, innerExpr.Type);
+
+        // Create a variable to hold the unwrapped Ok value (declared before branching)
+        var okValueTemp = $"%try_ok_val_{_tempCounter++}";
+        var okValueLocal = new IrLocalVariable(okValueTemp, okPayloadType, true);
+        _currentFunction.LocalVariables.Add(okValueLocal);
+        _localVariables[okValueTemp] = okValueLocal;
+
+        // Initialize with a default value (will be overwritten in Ok branch)
+        IrValue defaultValue = okPayloadType is IrIntType intType
+            ? new IrConstant(0, intType)
+            : okPayloadType is IrBoolType
+                ? new IrBoolConstant(false)
+                : new IrConstant(0, okPayloadType);
+        _currentBlock.AddInstruction(new IrLocalDecl(okValueTemp, okPayloadType, true, defaultValue));
+
+        // Create blocks for Ok and Err branches
+        var okBlock = _currentFunction.CreateBasicBlock($"try_ok_{_tempCounter}");
+        var errBlock = _currentFunction.CreateBasicBlock($"try_err_{_tempCounter}");
+        var continueBlock = _currentFunction.CreateBasicBlock($"try_continue_{_tempCounter}");
+
+        // Test which variant we have
+        var tagTemp = $"%try_tag_{_tempCounter++}";
+        _currentBlock.AddInstruction(new IrExtractTag(tagTemp, resultVar));
+        var tagVar = new IrVariable(tagTemp, IrIntType.I32);
+
+        // Branch on tag: compare with Ok tag
+        var okTagValue = new IrConstant(okVariant.Tag, IrIntType.I32);
+        var isOkTemp = $"%try_isok_{_tempCounter++}";
+        _currentBlock.AddInstruction(new IrBinaryOp(
+            isOkTemp,
+            IrBinaryOp.OpKind.Eq,
+            tagVar,
+            okTagValue,
+            IrBoolType.Instance
+        ));
+        _currentBlock.AddInstruction(new IrConditionalBranch(
+            new IrVariable(isOkTemp, IrBoolType.Instance),
+            okBlock.Label,
+            errBlock.Label
+        ));
+
+        // Ok branch: extract value, store it, and continue
+        _currentBlock = okBlock;
+        okBlock.AddInstruction(new IrLabel(okBlock.Label));
+        var extractedTemp = $"%try_extracted_{_tempCounter++}";
+        okBlock.AddInstruction(new IrExtractVariantData(extractedTemp, resultVar, "Ok", 0, okPayloadType));
+        okBlock.AddInstruction(new IrStore(okValueTemp, new IrVariable(extractedTemp, okPayloadType)));
+        okBlock.AddInstruction(new IrBranch(continueBlock.Label));
+
+        // Err branch: extract error, optionally convert, and return
+        _currentBlock = errBlock;
+        errBlock.AddInstruction(new IrLabel(errBlock.Label));
+        var errValueTemp = $"%try_err_val_{_tempCounter++}";
+        errBlock.AddInstruction(new IrExtractVariantData(errValueTemp, resultVar, "Err", 0, sourceErrorType));
+        var errVar = new IrVariable(errValueTemp, sourceErrorType);
+
+        // 4. If E != E2, look for From<E> impl for E2 and call convert()
+        IrValue finalError;
+        if (!TypesEqual(sourceErrorType, targetErrorType))
+        {
+            // Need to convert error via From<E>::convert()
+            // Look for From<sourceErrorType> impl for targetErrorType
+            var sourceTypeName = GetTypeName(sourceErrorType);
+            var targetTypeName = GetTypeName(targetErrorType);
+
+            // Find the From<sourceType> trait impl for targetType
+            var convertMethodName = _module.FindTraitMethod(targetTypeName, "convert");
+
+            if (convertMethodName == null)
+            {
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Cannot convert {sourceTypeName} to {targetTypeName}: no From<{sourceTypeName}> implementation found for {targetTypeName}",
+                    errorLocation
+                );
+                return null;
+            }
+
+            // Call the convert method
+            var convertedTemp = $"%try_converted_{_tempCounter++}";
+            var convertCall = new IrCall(convertMethodName, targetErrorType, convertedTemp);
+            convertCall.Arguments.Add(errVar);
+            errBlock.AddInstruction(convertCall);
+            finalError = new IrVariable(convertedTemp, targetErrorType);
+        }
+        else
+        {
+            // No conversion needed
+            finalError = errVar;
+        }
+
+        // Construct Result::Err(finalError) and return it
+        var returnErrTemp = $"%try_return_err_{_tempCounter++}";
+        var returnErrLocal = new IrLocalVariable(returnErrTemp, funcResultType, false);
+        _currentFunction.LocalVariables.Add(returnErrLocal);
+        var funcErrTag = funcErrVariant.Tag;
+        var returnErrValue = new IrEnumValue(funcResultType, "Err", funcErrTag, new List<IrValue> { finalError });
+        errBlock.AddInstruction(new IrLocalDecl(returnErrTemp, funcResultType, false, returnErrValue));
+        errBlock.AddInstruction(new IrReturn(new IrVariable(returnErrTemp, funcResultType)));
+
+        // Continue block: the value from Ok is the result of this expression
+        _currentBlock = continueBlock;
+        continueBlock.AddInstruction(new IrLabel(continueBlock.Label));
+        return new IrVariable(okValueTemp, okPayloadType);
+    }
+
+    private bool TypesEqual(IrType a, IrType b)
+    {
+        // Simple type equality check - uses Name property for comparison
+        return a.Name == b.Name;
+    }
+
+    private string GetTypeName(IrType type)
+    {
+        return type switch
+        {
+            IrEnumType enumType => enumType.Name,
+            IrStructType structType => structType.Name,
+            IrIntType intType => intType.IsSigned ? $"i{intType.BitWidth}" : $"u{intType.BitWidth}",
+            IrBoolType => "bool",
+            IrPointerType ptrType => $"*{GetTypeName(ptrType.PointeeType)}",
+            _ => type.ToString()
+        };
+    }
+
+    /// <summary>
+    /// Attempts to convert a value to a target type using the From<SourceType> trait.
+    /// Returns the converted value if successful, or null if no conversion is available.
+    /// This enables automatic error conversion in Result::Err and similar contexts.
+    /// </summary>
+    private IrValue? TryConvertViaFromTrait(IrValue sourceValue, IrType targetType)
+    {
+        var sourceType = sourceValue.Type;
+        var sourceTypeName = GetTypeName(sourceType);
+        var targetTypeName = GetTypeName(targetType);
+
+        // Look for From<sourceType> trait implementation for targetType
+        var convertMethodName = _module.FindTraitMethod(targetTypeName, "convert");
+
+        if (convertMethodName == null)
+        {
+            // No From trait implementation found
+            return null;
+        }
+
+        // Generate IR to call the convert method
+        // Pattern from ? operator: call From<SourceType>::convert(sourceValue)
+        var convertedTemp = $"%from_converted_{_tempCounter++}";
+        var convertCall = new IrCall(convertMethodName, targetType, convertedTemp);
+        convertCall.Arguments.Add(sourceValue);
+
+        // Add the call instruction to current block
+        if (_currentBlock != null)
+        {
+            _currentBlock.AddInstruction(convertCall);
+        }
+
+        return new IrVariable(convertedTemp, targetType);
+    }
+
+    private IrValue HandlePostIncrementDecrement(ParserRuleContext exprContext, bool isIncrement)
+    {
+        // For post-inc/dec, we need to:
+        // 1. Load current value and save it
+        // 2. Increment/decrement the lvalue
+        // 3. Return the saved old value
+
+        // Unwrap parentheses if present (e.g., (*p)++ should work)
+        exprContext = UnwrapParentheses(exprContext);
+
+        // First, use the same logic as pre-inc/dec to compute and store the new value
+        // But we need to save the old value first
+
+        // Load the current value
+        var currentValue = (IrValue)Visit(exprContext)!;
+
+        // Save the old value to return later
+        var oldValueTemp = $"%post{(isIncrement ? "inc" : "dec")}_save{_tempCounter++}";
+        var oldValueLocal = new IrLocalVariable(oldValueTemp, currentValue.Type, false);
+        _currentFunction!.LocalVariables.Add(oldValueLocal);
+        _currentBlock!.AddInstruction(new IrStore(oldValueTemp, currentValue));
+
+        // Compute the new value (current +/- 1)
+        var newValueTemp = $"%t{_tempCounter++}";
+        var op = isIncrement
+            ? new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Add, currentValue, new IrConstant(1, currentValue.Type), currentValue.Type)
+            : new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Sub, currentValue, new IrConstant(1, currentValue.Type), currentValue.Type);
+        _currentBlock.AddInstruction(op);
+
+        var newValue = new IrVariable(newValueTemp, currentValue.Type);
+
+        // Now store the new value back to the lvalue (same logic as pre-inc/dec)
+        StoreToLvalue(exprContext, newValue);
+
+        // Return the old value
+        return new IrVariable(oldValueTemp, currentValue.Type);
+    }
+
+    private void StoreToLvalue(ParserRuleContext exprContext, IrValue value)
+    {
+        SourceLocation errorLocation;
+
+        // Case 0: Parenthesized expression - unwrap and recurse
+        if (exprContext is NovusParser.ParenExprContext parenCtx)
+        {
+            StoreToLvalue(parenCtx.expression(), value);
+            return;
+        }
+
+        // Case 1: Simple variable (identifier)
+        if (exprContext is NovusParser.PrimaryExprContext primaryCtx &&
+            primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext identCtx)
+        {
+            var varName = identCtx.identifier().GetText();
+            _currentBlock!.AddInstruction(new IrStore(varName, value));
+            return;
+        }
+
+        // Case 2: Member access (obj.field)
+        if (exprContext is NovusParser.MemberAccessExprContext memberCtx)
+        {
+            var baseExpr = (IrValue)Visit(memberCtx.expression())!;
+            var memberName = memberCtx.IDENTIFIER().GetText();
+
+            // Auto-dereference pointers and references to structs (like in VisitMemberAccessExpr)
+            IrValue actualBase = baseExpr;
+            IrType baseType = baseExpr.Type;
+
+            if (baseType is IrPointerType ptrType && ptrType.PointeeType is IrStructType)
+            {
+                // Auto-dereference the pointer - wrap in IrDereferenceValue
+                actualBase = new IrDereferenceValue(actualBase, ptrType.PointeeType);
+                baseType = ptrType.PointeeType;
+            }
+            else if (baseType is IrReferenceType refType && refType.PointeeType is IrStructType)
+            {
+                // Auto-dereference the reference - wrap in IrDereferenceValue
+                actualBase = new IrDereferenceValue(actualBase, refType.PointeeType);
+                baseType = refType.PointeeType;
+            }
+            else if (baseType is IrMutReferenceType mutRefType && mutRefType.PointeeType is IrStructType)
+            {
+                // Auto-dereference the mutable reference - wrap in IrDereferenceValue
+                actualBase = new IrDereferenceValue(actualBase, mutRefType.PointeeType);
+                baseType = mutRefType.PointeeType;
+            }
+
+            if (baseType is not IrStructType structType)
+            {
+                errorLocation = SourceLocationHelper.FromContext(exprContext, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.CannotAccessMember,
+                    $"Cannot access member '{memberName}' on non-struct type '{baseType}'",
+                    errorLocation
+                );
+                return;
+            }
+
+            var field = structType.Fields.FirstOrDefault(f => f.Name == memberName);
+            if (field == null)
+            {
+                errorLocation = SourceLocationHelper.FromContext(exprContext, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Struct '{structType.Name}' has no field '{memberName}'",
+                    errorLocation
+                );
+                return;
+            }
+
+            _currentBlock!.AddInstruction(new IrMemberStore(actualBase, memberName, field.Offset, value));
+            return;
+        }
+
+        // Case 3: Index access (arr[i])
+        if (exprContext is NovusParser.IndexExprContext indexCtx)
+        {
+            var arrayExpr = (IrValue)Visit(indexCtx.expression(0))!;
+            var indexExpr = (IrValue)Visit(indexCtx.expression(1))!;
+
+            _currentBlock!.AddInstruction(new IrIndexStore(arrayExpr, indexExpr, value));
+            return;
+        }
+
+        // Case 4: Dereference (*ptr)
+        if (exprContext is NovusParser.DereferenceExprContext derefCtx)
+        {
+            var ptrExpr = (IrValue)Visit(derefCtx.expression())!;
+            _currentBlock!.AddInstruction(new IrDereferenceStore(ptrExpr, value));
+            return;
+        }
+
+        // Case 5: If we have a PrimaryExpr that we haven't handled yet, it might be wrapping something
+        // This can happen with certain parse tree structures
+        if (exprContext is NovusParser.PrimaryExprContext unhandledPrimaryCtx)
+        {
+            var child = unhandledPrimaryCtx.GetChild(0);
+
+            // Try dereference
+            if (child is NovusParser.DereferenceExprContext derefChild)
+            {
+                var ptrExpr = (IrValue)Visit(derefChild.expression())!;
+                _currentBlock!.AddInstruction(new IrDereferenceStore(ptrExpr, value));
+                return;
+            }
+        }
+
+        errorLocation = SourceLocationHelper.FromContext(exprContext, _inputFilePath, _sourceLines.ToArray());
+        _diagnostics.ReportError(
+            ErrorCodes.InvalidExpressionType,
+            $"Cannot store to expression type: {exprContext.GetType().Name}",
+            errorLocation
+        );
+        return;
+    }
+
+    public override object? VisitPreIncrementExpr([NotNull] NovusParser.PreIncrementExprContext context)
+    {
+        // Pre-increment: increment the lvalue and return new value
+        return HandlePreIncrementDecrement(context.expression(), isIncrement: true);
+    }
+
+    public override object? VisitPreDecrementExpr([NotNull] NovusParser.PreDecrementExprContext context)
+    {
+        // Pre-decrement: decrement the lvalue and return new value
+        return HandlePreIncrementDecrement(context.expression(), isIncrement: false);
+    }
+
+    private ParserRuleContext UnwrapParentheses(ParserRuleContext exprContext)
+    {
+        // Recursively unwrap parenthesized expressions: (((*p))) -> *p
+        // Parse tree structure:
+        // PrimaryExprContext (expression) -> ParenExprContext (primaryExpression) -> inner expression
+
+        bool changed = true;
+        while (changed)
+        {
+            changed = false;
+
+            // If it's a ParenExpr, unwrap it
+            if (exprContext is NovusParser.ParenExprContext parenCtx)
+            {
+                exprContext = parenCtx.expression();
+                changed = true;
+            }
+            // If it's a PrimaryExpr wrapping a ParenExpr, unwrap the ParenExpr
+            else if (exprContext is NovusParser.PrimaryExprContext primaryCtx)
+            {
+                // The first child of PrimaryExpr is the primaryExpression
+                // Check if it's a ParenExpr
+                if (primaryCtx.GetChild(0) is NovusParser.ParenExprContext parenChild)
+                {
+                    // Get the expression inside the parentheses
+                    exprContext = parenChild.expression();
+                    changed = true;
+                }
+            }
+        }
+
+        return exprContext;
+    }
+
+    private IrValue HandlePreIncrementDecrement(ParserRuleContext exprContext, bool isIncrement)
+    {
+        SourceLocation errorLocation;
+
+        // Unwrap parentheses if present (e.g., ++(*p) should work)
+        exprContext = UnwrapParentheses(exprContext);
+
+        // Case 1: Simple variable (identifier)
+        if (exprContext is NovusParser.PrimaryExprContext primaryCtx &&
+            primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext identCtx)
+        {
+            var varName = identCtx.identifier().GetText();
+            var currentValue = (IrValue)Visit(exprContext)!;
+
+            var newValueTemp = $"%t{_tempCounter++}";
+            var op = isIncrement
+                ? new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Add, currentValue, new IrConstant(1, currentValue.Type), currentValue.Type)
+                : new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Sub, currentValue, new IrConstant(1, currentValue.Type), currentValue.Type);
+            _currentBlock!.AddInstruction(op);
+
+            var newValue = new IrVariable(newValueTemp, currentValue.Type);
+            _currentBlock.AddInstruction(new IrStore(varName, newValue));
+            return newValue;
+        }
+
+        // Case 2: Member access (obj.field)
+        if (exprContext is NovusParser.MemberAccessExprContext memberCtx)
+        {
+            var baseExpr = (IrValue)Visit(memberCtx.expression())!;
+            var memberName = memberCtx.IDENTIFIER().GetText();
+
+            // Auto-dereference pointers and references to structs (like in VisitMemberAccessExpr)
+            IrValue actualBase = baseExpr;
+            IrType baseType = baseExpr.Type;
+
+            if (baseType is IrPointerType ptrType && ptrType.PointeeType is IrStructType)
+            {
+                // Auto-dereference the pointer - wrap in IrDereferenceValue
+                actualBase = new IrDereferenceValue(actualBase, ptrType.PointeeType);
+                baseType = ptrType.PointeeType;
+            }
+            else if (baseType is IrReferenceType refType && refType.PointeeType is IrStructType)
+            {
+                // Auto-dereference the reference - wrap in IrDereferenceValue
+                actualBase = new IrDereferenceValue(actualBase, refType.PointeeType);
+                baseType = refType.PointeeType;
+            }
+            else if (baseType is IrMutReferenceType mutRefType && mutRefType.PointeeType is IrStructType)
+            {
+                // Auto-dereference the mutable reference - wrap in IrDereferenceValue
+                actualBase = new IrDereferenceValue(actualBase, mutRefType.PointeeType);
+                baseType = mutRefType.PointeeType;
+            }
+
+            // Get the struct type and field info
+            if (baseType is not IrStructType structType)
+            {
+                errorLocation = SourceLocationHelper.FromContext(exprContext, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.CannotAccessMember,
+                    $"Cannot access member '{memberName}' on non-struct type '{baseType}'",
+                    errorLocation
+                );
+                return null;
+            }
+
+            var field = structType.Fields.FirstOrDefault(f => f.Name == memberName);
+            if (field == null)
+            {
+                errorLocation = SourceLocationHelper.FromContext(exprContext, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Struct '{structType.Name}' has no field '{memberName}'",
+                    errorLocation
+                );
+                return null;
+            }
+
+            // Load current value
+            var loadTemp = $"%member_load_{_tempCounter++}";
+            _currentBlock!.AddInstruction(new IrMemberAccess(loadTemp, actualBase, memberName, field.Type, field.Offset));
+            var currentValue = new IrVariable(loadTemp, field.Type);
+
+            // Increment/decrement
+            var newValueTemp = $"%t{_tempCounter++}";
+            var op = isIncrement
+                ? new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Add, currentValue, new IrConstant(1, field.Type), field.Type)
+                : new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Sub, currentValue, new IrConstant(1, field.Type), field.Type);
+            _currentBlock.AddInstruction(op);
+
+            var newValue = new IrVariable(newValueTemp, field.Type);
+            _currentBlock.AddInstruction(new IrMemberStore(actualBase, memberName, field.Offset, newValue));
+            return newValue;
+        }
+
+        // Case 3: Index access (arr[i])
+        if (exprContext is NovusParser.IndexExprContext indexCtx)
+        {
+            var arrayExpr = (IrValue)Visit(indexCtx.expression(0))!;
+            var indexExpr = (IrValue)Visit(indexCtx.expression(1))!;
+
+            // Determine element type
+            IrType elementType;
+            if (arrayExpr.Type is IrPointerType pt)
+                elementType = pt.PointeeType;
+            else if (arrayExpr.Type is IrArrayType at)
+                elementType = at.ElementType;
+            else
+            {
+                errorLocation = SourceLocationHelper.FromContext(exprContext, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.CannotIndexType,
+                    $"Cannot index type '{arrayExpr.Type}'",
+                    errorLocation
+                );
+                return null;
+            }
+
+            // Load current value
+            var loadTemp = $"%index_load_{_tempCounter++}";
+            _currentBlock!.AddInstruction(new IrIndexAccess(loadTemp, arrayExpr, indexExpr, elementType));
+            var currentValue = new IrVariable(loadTemp, elementType);
+
+            // Increment/decrement
+            var newValueTemp = $"%t{_tempCounter++}";
+            var op = isIncrement
+                ? new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Add, currentValue, new IrConstant(1, elementType), elementType)
+                : new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Sub, currentValue, new IrConstant(1, elementType), elementType);
+            _currentBlock.AddInstruction(op);
+
+            var newValue = new IrVariable(newValueTemp, elementType);
+            _currentBlock.AddInstruction(new IrIndexStore(arrayExpr, indexExpr, newValue));
+            return newValue;
+        }
+
+        // Case 4: Dereference (*ptr or *ref)
+        if (exprContext is NovusParser.DereferenceExprContext derefCtx)
+        {
+            var ptrExpr = (IrValue)Visit(derefCtx.expression())!;
+
+            // Determine pointee type (handle pointers and references)
+            IrType pointeeType;
+            if (ptrExpr.Type is IrPointerType ptrType)
+            {
+                pointeeType = ptrType.PointeeType;
+            }
+            else if (ptrExpr.Type is IrReferenceType refType)
+            {
+                pointeeType = refType.PointeeType;
+            }
+            else if (ptrExpr.Type is IrMutReferenceType mutRefType)
+            {
+                pointeeType = mutRefType.PointeeType;
+            }
+            else
+            {
+                errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.CannotDereferenceType,
+                    $"Cannot dereference non-pointer/reference type '{ptrExpr.Type}'",
+                    errorLocation
+                );
+                return null;
+            }
+
+            // Load current value (dereference)
+            var currentValue = new IrDereferenceValue(ptrExpr, pointeeType);
+
+            // Increment/decrement
+            var newValueTemp = $"%t{_tempCounter++}";
+            var op = isIncrement
+                ? new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Add, currentValue, new IrConstant(1, pointeeType), pointeeType)
+                : new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Sub, currentValue, new IrConstant(1, pointeeType), pointeeType);
+            _currentBlock!.AddInstruction(op);
+
+            var newValue = new IrVariable(newValueTemp, pointeeType);
+            _currentBlock.AddInstruction(new IrDereferenceStore(ptrExpr, newValue));
+            return newValue;
+        }
+
+        errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+        _diagnostics.ReportError(
+            ErrorCodes.InvalidExpressionType,
+            $"Pre-{(isIncrement ? "increment" : "decrement")} not supported for expression type: {exprContext.GetType().Name}",
+            errorLocation
+        );
+        return null;
+    }
+
+    public override object? VisitLogicalAndExpr([NotNull] NovusParser.LogicalAndExprContext context)
+    {
+        // Short-circuit evaluation: if left is false, don't evaluate right
+        var left = (IrValue)Visit(context.expression(0))!;
+
+        var evalRightLabel = $"and_right_{_labelCounter}";
+        var setTrueLabel = $"and_true_{_labelCounter}";
+        var setFalseLabel = $"and_false_{_labelCounter}";
+        var endLabel = $"and_end_{_labelCounter}";
+        _labelCounter++;
+
+        var resultTemp = $"%t{_tempCounter++}";
+
+        // Add to function's local variables for stack alerrorLocation
+        var localVar = new IrLocalVariable(resultTemp, IrIntType.I32, false);
+        _currentFunction!.LocalVariables.Add(localVar);
+
+        // If left is false, short-circuit to false result
+        _currentBlock!.AddInstruction(new IrConditionalBranch(left, evalRightLabel, setFalseLabel));
+
+        // Evaluate right
+        _currentBlock!.AddInstruction(new IrLabel(evalRightLabel));
+        var right = (IrValue)Visit(context.expression(1))!;
+
+        // If right is true, set result to 1, otherwise 0
+        _currentBlock!.AddInstruction(new IrConditionalBranch(right, setTrueLabel, setFalseLabel));
+
+        // Both are true, set result to 1
+        _currentBlock!.AddInstruction(new IrLabel(setTrueLabel));
+        _currentBlock!.AddInstruction(new IrLocalDecl(resultTemp, IrIntType.I32, false, new IrConstant(1, IrIntType.I32)));
+        _currentBlock!.AddInstruction(new IrBranch(endLabel));
+
+        // Set result to 0 (false)
+        _currentBlock!.AddInstruction(new IrLabel(setFalseLabel));
+        _currentBlock!.AddInstruction(new IrLocalDecl(resultTemp, IrIntType.I32, false, new IrConstant(0, IrIntType.I32)));
+
+        // End
+        _currentBlock!.AddInstruction(new IrLabel(endLabel));
+
+        return new IrVariable(resultTemp, IrIntType.I32);
+    }
+
+    public override object? VisitLogicalOrExpr([NotNull] NovusParser.LogicalOrExprContext context)
+    {
+        // Short-circuit evaluation: if left is true, don't evaluate right
+        var left = (IrValue)Visit(context.expression(0))!;
+
+        var evalRightLabel = $"or_right_{_labelCounter}";
+        var setTrueLabel = $"or_true_{_labelCounter}";
+        var setFalseLabel = $"or_false_{_labelCounter}";
+        var endLabel = $"or_end_{_labelCounter}";
+        _labelCounter++;
+
+        var resultTemp = $"%t{_tempCounter++}";
+
+        // Add to function's local variables for stack alerrorLocation
+        var localVar = new IrLocalVariable(resultTemp, IrIntType.I32, false);
+        _currentFunction!.LocalVariables.Add(localVar);
+
+        // If left is true, short-circuit to true result
+        _currentBlock!.AddInstruction(new IrConditionalBranch(left, setTrueLabel, evalRightLabel));
+
+        // Evaluate right
+        _currentBlock!.AddInstruction(new IrLabel(evalRightLabel));
+        var right = (IrValue)Visit(context.expression(1))!;
+
+        // If right is true, set result to 1, otherwise 0
+        _currentBlock!.AddInstruction(new IrConditionalBranch(right, setTrueLabel, setFalseLabel));
+
+        // Set result to true
+        _currentBlock!.AddInstruction(new IrLabel(setTrueLabel));
+        _currentBlock!.AddInstruction(new IrLocalDecl(resultTemp, IrIntType.I32, false, new IrConstant(1, IrIntType.I32)));
+        _currentBlock!.AddInstruction(new IrBranch(endLabel));
+
+        // Set result to 0 (false)
+        _currentBlock!.AddInstruction(new IrLabel(setFalseLabel));
+        _currentBlock!.AddInstruction(new IrLocalDecl(resultTemp, IrIntType.I32, false, new IrConstant(0, IrIntType.I32)));
+
+        // End
+        _currentBlock!.AddInstruction(new IrLabel(endLabel));
+
+        return new IrVariable(resultTemp, IrIntType.I32);
+    }
+
+    public override object? VisitTernaryExpr([NotNull] NovusParser.TernaryExprContext context)
+    {
+        // Ternary operator: condition ? trueExpr : falseExpr
+        var condition = (IrValue)Visit(context.expression(0))!;
+
+        var trueLabel = $"ternary_true_{_labelCounter}";
+        var falseLabel = $"ternary_false_{_labelCounter}";
+        var endLabel = $"ternary_end_{_labelCounter}";
+        _labelCounter++;
+
+        var resultTemp = $"%t{_tempCounter++}";
+
+        // Automatic pointer-to-bool coercion: ptr ? ... : ...
+        // Convert pointer to bool by comparing with null (ptr != 0)
+        if (condition.Type is IrPointerType or IrReferenceType or IrMutReferenceType)
+        {
+            var ptrToBoolTemp = $"%t{_tempCounter++}";
+            var zeroValue = new IrConstant(0, IrIntType.U32);
+            var comparison = new IrBinaryOp(ptrToBoolTemp, IrBinaryOp.OpKind.Ne, condition, zeroValue, IrBoolType.Instance);
+            _currentBlock!.AddInstruction(comparison);
+            condition = new IrVariable(ptrToBoolTemp, IrBoolType.Instance);
+        }
+
+        // Branch based on condition
+        _currentBlock!.AddInstruction(new IrConditionalBranch(condition, trueLabel, falseLabel));
+
+        // True branch - preserve expected type if already set from context
+        _currentBlock!.AddInstruction(new IrLabel(trueLabel));
+        var trueValue = (IrValue)Visit(context.expression(1))!;
+        var resultType = trueValue.Type; // Get type from the true branch value
+
+        // Add to function's local variables for stack alerrorLocation
+        var localVar = new IrLocalVariable(resultTemp, resultType, false);
+        _currentFunction!.LocalVariables.Add(localVar);
+
+        _currentBlock!.AddInstruction(new IrLocalDecl(resultTemp, resultType, false, trueValue));
+        _currentBlock!.AddInstruction(new IrBranch(endLabel));
+
+        // False branch - set expected type for bidirectional type checking
+        // Use the type from the true branch to help resolve generic types in the false branch
+        _currentBlock!.AddInstruction(new IrLabel(falseLabel));
+        var savedExpectedType = _expectedType;
+        _expectedType = resultType; // Use the type from the true branch
+        var falseValue = (IrValue)Visit(context.expression(2))!;
+        _expectedType = savedExpectedType; // Restore previous expected type
+        _currentBlock!.AddInstruction(new IrLocalDecl(resultTemp, resultType, false, falseValue));
+
+        // End
+        _currentBlock!.AddInstruction(new IrLabel(endLabel));
+
+        return new IrVariable(resultTemp, resultType);
+    }
+
+    public override object? VisitFloatLiteral([NotNull] NovusParser.FloatLiteralContext context)
+    {
+        var isNegative = context.GetText().StartsWith("-");
+        var text = context.FLOAT_LITERAL().GetText();
+        var (value, type) = ParseFloatLiteral(text);
+
+        if (isNegative)
+        {
+            value = -value;
+        }
+
+        // Return appropriate constant type based on whether it's float or fixed
+        if (type is IrFloatType floatType)
+        {
+            return new IrFloatConstant(value, floatType);
+        }
+        else if (type is IrFixedType fixedType)
+        {
+            return new IrFixedConstant(value, fixedType);
+        }
+        else
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Unexpected float literal type: {type.Name}",
+                errorLocation
+            );
+            return null;
+        }
+    }
+
+    public override object? VisitIntegerLiteral([NotNull] NovusParser.IntegerLiteralContext context)
+    {
+        var isNegative = context.GetText().StartsWith("-");
+        var text = context.INTEGER_LITERAL().GetText();
+        var (value, type) = ParseIntegerLiteral(text);
+
+        if (isNegative)
+        {
+            value = -value;
+        }
+
+        return new IrConstant(value, type);
+    }
+
+    public override object? VisitBinaryLiteral([NotNull] NovusParser.BinaryLiteralContext context)
+    {
+        var isNegative = context.GetText().StartsWith("-");
+        var text = context.BINARY_LITERAL().GetText();
+        var (value, type) = ParseBinaryLiteral(text);
+
+        if (isNegative)
+        {
+            value = -value;
+        }
+
+        return new IrConstant(value, type);
+    }
+
+    public override object? VisitHexLiteral([NotNull] NovusParser.HexLiteralContext context)
+    {
+        var isNegative = context.GetText().StartsWith("-");
+        var text = context.HEX_LITERAL().GetText();
+        var (value, type) = ParseHexLiteral(text);
+
+        if (isNegative)
+        {
+            value = -value;
+        }
+
+        return new IrConstant(value, type);
+    }
+
+    public override object? VisitBoolLiteral([NotNull] NovusParser.BoolLiteralContext context)
+    {
+        var text = context.GetText();
+        var value = text == "true";
+        return new IrBoolConstant(value);
+    }
+
+    public override object? VisitNullLiteral([NotNull] NovusParser.NullLiteralContext context)
+    {
+        // null keyword is syntactic sugar for integer literal 0
+        // It will be emitted as bare "0" in C, allowing implicit conversion to any pointer type
+        var (value, type) = ParseIntegerLiteral("0");
+        return new IrConstant(value, type);
+    }
+
+    public override object? VisitStringLiteral([NotNull] NovusParser.StringLiteralContext context)
+    {
+        var text = context.STRING_LITERAL().GetText();
+        // Remove quotes
+        var stringValue = text[1..^1];
+
+        // Process escape sequences
+        stringValue = ProcessEscapeSequences(stringValue);
+
+        // Create unique label for this string (still null-terminated in data section for C FFI)
+        var label = $"_str{_stringCounter++}";
+        var stringLiteral = new IrStringLiteral(stringValue, label);
+        StringLiterals.Add(stringLiteral);
+
+        // String literals now create Str struct instances: Str { ptr: *u8, len: u32 }
+        var strType = _symbols.LookupStruct("Str");
+        if (strType == null)
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "String literals require Str type from std::strings module",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Create struct literal with ptr and len fields
+        var fieldValues = new Dictionary<string, IrValue>
+        {
+            ["ptr"] = stringLiteral,  // IrStringLiteral is still *u8 pointer to data
+            ["len"] = new IrConstant(stringValue.Length, IrIntType.U32)  // Length without null terminator
+        };
+
+        return new IrStructLiteral(strType, fieldValues);
+    }
+
+    public override object? VisitInterpolatedStringLiteral([NotNull] NovusParser.InterpolatedStringLiteralContext context)
+    {
+        // Auto-import std::fmt_primitives for Display implementations on primitive types
+        // This allows integers, bools, etc. to be used in f-strings without explicit imports
+        bool isStdLibraryModule = _inputFilePath != null && _inputFilePath.Contains(System.IO.Path.DirectorySeparatorChar + "std" + System.IO.Path.DirectorySeparatorChar);
+        if (!isStdLibraryModule && !_processedModules.Contains("std::fmt_primitives"))
+        {
+            ImportModule("std::fmt_primitives", importAll: true);
+        }
+
+        // Get the f-string text and parse it into segments
+        var fstring = context.F_STRING_LITERAL().GetText();
+
+        // Strip 'f"' prefix and '"' suffix
+        var content = fstring.Substring(2, fstring.Length - 3);
+
+        // Parse the f-string into string and expression segments
+        var segments = ParseInterpolatedString(content);
+
+        // Look up the Formatter type and Display trait
+        var formatterType = _symbols.LookupStruct("Formatter");
+        if (formatterType == null)
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Interpolated strings require Formatter type from std::fmt module",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Create a temporary variable for the Formatter
+        var formatterVarName = $"_formatter{_tempCounter++}";
+
+        // Call Formatter::new() to create the formatter
+        // This returns Option<Formatter>, so we need to unwrap it
+        var formatterNewMethodName = "Formatter::new";
+        var formatterNewMethod = _module.Functions.FirstOrDefault(f => f.Name == formatterNewMethodName);
+        if (formatterNewMethod == null)
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.MethodNotFound,
+                "Formatter::new() method not found. Ensure std::fmt is imported.",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Call Formatter::new()
+        var formatterNewResultName = $"%t{_tempCounter++}";
+        var formatterNewCall = new IrCall(formatterNewMethodName, formatterNewMethod.ReturnType, formatterNewResultName);
+        _currentBlock!.AddInstruction(formatterNewCall);
+        var formatterNewResult = new IrVariable(formatterNewResultName, formatterNewMethod.ReturnType);
+
+        // Unwrap the Option<Formatter> - this should return Formatter or panic
+        // For simplicity, we'll use unwrap() which panics on None
+        var optionType = formatterNewMethod.ReturnType as IrEnumType;
+        if (optionType == null || optionType.EnumName != "Option")
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Formatter::new() must return Option<Formatter>",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Extract the Formatter from Option::Some
+        // We'll use pattern matching: match on the tag and extract the value
+        var someVariant = optionType.GetVariant("Some");
+        if (someVariant == null || someVariant.AssociatedData.Count != 1)
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Option::Some variant not found or malformed",
+                errorLocation
+            );
+            return null;
+        }
+
+        var formatterTypeFromOption = someVariant.AssociatedData[0];
+
+        // Extract tag and check if it's Some
+        var tagResultName = $"%t{_tempCounter++}";
+        var extractTag = new IrExtractTag(tagResultName, formatterNewResult);
+        _currentBlock!.AddInstruction(extractTag);
+
+        var noneVariant = optionType.GetVariant("None");
+        if (noneVariant == null)
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Option::None variant not found",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Compare tag with None variant tag and panic if None
+        var tagVar = new IrVariable(tagResultName, IrIntType.I32);
+        var noneTagConst = new IrConstant(noneVariant.Tag, IrIntType.I32);
+        var isNoneResultName = $"%t{_tempCounter++}";
+        var isNoneCheck = new IrBinaryOp(isNoneResultName, IrBinaryOp.OpKind.Eq, tagVar, noneTagConst, IrBoolType.Instance);
+        _currentBlock!.AddInstruction(isNoneCheck);
+
+        var isNoneVar = new IrVariable(isNoneResultName, IrBoolType.Instance);
+        var panicLabel = $"_panic{_labelCounter++}";
+        var continueLabel = $"_continue{_labelCounter++}";
+
+        _currentBlock!.AddInstruction(new IrConditionalBranch(isNoneVar, panicLabel, continueLabel));
+
+        // Panic block
+        _currentBlock!.AddInstruction(new IrLabel(panicLabel));
+        var panicMessage = "Formatter::new() returned None (out of memory)";
+        var panicMessageLabel = $"_str{_stringCounter++}";
+        var panicMessageLiteral = new IrStringLiteral(panicMessage, panicMessageLabel);
+        StringLiterals.Add(panicMessageLiteral);
+
+        // Create source location for the panic
+        var panicLocation = new SourceLocation(
+            _inputFilePath ?? "unknown",
+            context.Start.Line,
+            context.Start.Column,
+            context.GetText().Length,
+            context.Start.InputStream.ToString() ?? ""
+        );
+        _currentBlock!.AddInstruction(new IrPanic(panicMessage, panicLocation));
+
+        // Continue block - extract the formatter
+        _currentBlock!.AddInstruction(new IrLabel(continueLabel));
+        var unwrapResultName = $"%t{_tempCounter++}";
+        var unwrapInstr = new IrExtractVariantData(unwrapResultName, formatterNewResult, "Some", 0, formatterTypeFromOption);
+        _currentBlock!.AddInstruction(unwrapInstr);
+
+        // Store formatter in a local variable (mutable)
+        var formatterVar = new IrLocalVariable(formatterVarName, formatterTypeFromOption, true);
+        _currentFunction!.LocalVariables.Add(formatterVar);
+        _localVariables[formatterVarName] = formatterVar;
+        var unwrappedFormatter = new IrVariable(unwrapResultName, formatterTypeFromOption);
+        _currentBlock!.AddInstruction(new IrLocalDecl(formatterVarName, formatterTypeFromOption, true, unwrappedFormatter));
+
+        // Process each segment
+        foreach (var segment in segments)
+        {
+            if (segment.IsStringSegment)
+            {
+                // Call f.write_str("segment")
+                EmitWriteStrLiteral(formatterVarName, formatterTypeFromOption, segment.StringContent);
+            }
+            else
+            {
+                // Parse the expression and call expr.fmt(&mut f)
+                EmitFormatExpression(formatterVarName, formatterTypeFromOption, segment.Expression);
+            }
+        }
+
+        // Call f.finish() to get the final String
+        var formatterVarRef = new IrVariable(formatterVarName, formatterTypeFromOption);
+        var finishMethodName = _module.FindTraitMethod("Formatter", "finish");
+        if (finishMethodName == null)
+        {
+            finishMethodName = "Formatter::finish";
+        }
+
+        var finishMethod = _module.Functions.FirstOrDefault(f => f.Name == finishMethodName);
+        if (finishMethod == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.MethodNotFound,
+                "Formatter::finish() method not found",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Call finish() - takes self by value
+        var finishResultName = $"%t{_tempCounter++}";
+        var finishCall = new IrCall(finishMethodName, finishMethod.ReturnType, finishResultName);
+        finishCall.Arguments.Add(formatterVarRef);
+        _currentBlock!.AddInstruction(finishCall);
+
+        // Return the String result
+        return new IrVariable(finishResultName, finishMethod.ReturnType);
+    }
+
+    private void EmitWriteStrLiteral(string formatterVarName, IrType formatterType, string stringContent)
+    {
+        // Create a string literal for the segment
+        var label = $"_str{_stringCounter++}";
+        var stringLiteral = new IrStringLiteral(stringContent, label);
+        StringLiterals.Add(stringLiteral);
+
+        // Create Str struct
+        var strType = _symbols.LookupStruct("Str");
+        if (strType == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.TypeNotFound,
+                "Str type not found",
+                errorLocation
+            );
+            return;
+        }
+
+        var strFieldValues = new Dictionary<string, IrValue>
+        {
+            ["ptr"] = stringLiteral,
+            ["len"] = new IrConstant(stringContent.Length, IrIntType.U32)
+        };
+        var strValue = new IrStructLiteral(strType, strFieldValues);
+
+        // Call the other EmitWriteStr method with the Str value
+        EmitWriteStr(formatterVarName, formatterType, strValue);
+    }
+
+    private void EmitFormatExpression(string formatterVarName, IrType formatterType, string expressionText)
+    {
+        // Parse the expression text into an AST node
+        var inputStream = new AntlrInputStream(expressionText);
+        var lexer = new NovusLexer(inputStream);
+        var tokens = new CommonTokenStream(lexer);
+        var parser = new NovusParser(tokens);
+
+        // Parse as an expression
+        var exprContext = parser.expression();
+
+        // Visit the expression to generate IR
+        var exprValue = Visit(exprContext) as IrValue;
+        if (exprValue == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Failed to evaluate expression in f-string: {expressionText}",
+                errorLocation
+            );
+            return;
+        }
+
+        // Get the type of the expression
+        var exprType = exprValue.Type;
+
+        // Handle different types appropriately
+        if (exprType is IrStructType st && st.StructName == "Str")
+        {
+            // For Str types, just write the string directly
+            EmitWriteStr(formatterVarName, formatterType, exprValue);
+        }
+        else if (exprType is IrIntType intType)
+        {
+            // For integer types, convert to string using built-in functions
+            EmitFormatInteger(formatterVarName, formatterType, exprValue, intType);
+        }
+        else if (exprType is IrBoolType)
+        {
+            // For bool, write "true" or "false"
+            EmitFormatBool(formatterVarName, formatterType, exprValue);
+        }
+        else
+        {
+            // For other types, try to find Display::fmt() implementation
+            var typeName = exprType is IrStructType structType ? structType.StructName : exprType.Name;
+            var fmtMethodName = _module.FindTraitMethod(typeName, "fmt");
+            if (fmtMethodName == null)
+            {
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Type '{typeName}' does not implement Display trait. All types in f-strings must implement Display.",
+                    errorLocation
+                );
+                return;
+            }
+
+            var fmtMethod = _module.Functions.FirstOrDefault(f => f.Name == fmtMethodName);
+            if (fmtMethod == null)
+            {
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.MethodNotFound,
+                    $"Display::fmt() method not found for type '{typeName}'",
+                    errorLocation
+                );
+                return;
+            }
+
+            // Call expr.fmt(&mut formatter)
+            // First parameter is &self (the expression value)
+            var exprBorrow = new IrBorrowValue(exprValue, fmtMethod.Parameters[0].Type, false);
+
+            // Second parameter is &mut Formatter
+            var formatterVarRef = new IrVariable(formatterVarName, formatterType);
+            var formatterBorrow = new IrBorrowValue(formatterVarRef, fmtMethod.Parameters[1].Type, true);
+
+            var fmtResultName = $"%t{_tempCounter++}";
+            var fmtCall = new IrCall(fmtMethodName, fmtMethod.ReturnType, fmtResultName);
+            fmtCall.Arguments.Add(exprBorrow);
+            fmtCall.Arguments.Add(formatterBorrow);
+            _currentBlock!.AddInstruction(fmtCall);
+        }
+    }
+
+    private void EmitWriteStr(string formatterVarName, IrType formatterType, IrValue strValue)
+    {
+        // Find write_str method
+        var writeStrMethodName = _module.FindTraitMethod("Formatter", "write_str");
+        if (writeStrMethodName == null)
+        {
+            writeStrMethodName = "Formatter::write_str";
+        }
+
+        var writeStrMethod = _module.Functions.FirstOrDefault(f => f.Name == writeStrMethodName);
+        if (writeStrMethod == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.MethodNotFound,
+                "Formatter::write_str() method not found",
+                errorLocation
+            );
+            return;
+        }
+
+        // Call f.write_str(str_value)
+        var formatterVarRef = new IrVariable(formatterVarName, formatterType);
+        var formatterBorrow = new IrBorrowValue(formatterVarRef, writeStrMethod.Parameters[0].Type, true);
+        var writeStrResultName = $"%t{_tempCounter++}";
+        var writeStrCall = new IrCall(writeStrMethodName, writeStrMethod.ReturnType, writeStrResultName);
+        writeStrCall.Arguments.Add(formatterBorrow);
+        writeStrCall.Arguments.Add(strValue);
+        _currentBlock!.AddInstruction(writeStrCall);
+    }
+
+    private void EmitFormatInteger(string formatterVarName, IrType formatterType, IrValue intValue, IrIntType intType)
+    {
+        // Call the Display::fmt() implementation for this integer type
+        // Similar to how we handle other types in the else branch above
+
+        var typeName = intType.Name;
+        var fmtMethodName = _module.FindTraitMethod(typeName, "fmt");
+        if (fmtMethodName == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Type '{typeName}' does not implement Display trait. All types in f-strings must implement Display.",
+                errorLocation
+            );
+            return;
+        }
+
+        var fmtMethod = _module.Functions.FirstOrDefault(f => f.Name == fmtMethodName);
+        if (fmtMethod == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.MethodNotFound,
+                $"Display::fmt() method not found for type '{typeName}'",
+                errorLocation
+            );
+            return;
+        }
+
+        // Call intValue.fmt(&mut formatter)
+        // First parameter is &self (the integer value)
+        var intBorrow = new IrBorrowValue(intValue, fmtMethod.Parameters[0].Type, false);
+
+        // Second parameter is &mut Formatter
+        var formatterVarRef = new IrVariable(formatterVarName, formatterType);
+        var formatterBorrow = new IrBorrowValue(formatterVarRef, fmtMethod.Parameters[1].Type, true);
+
+        var fmtResultName = $"%t{_tempCounter++}";
+        var fmtCall = new IrCall(fmtMethodName, fmtMethod.ReturnType, fmtResultName);
+        fmtCall.Arguments.Add(intBorrow);
+        fmtCall.Arguments.Add(formatterBorrow);
+        _currentBlock!.AddInstruction(fmtCall);
+    }
+
+    private void EmitFormatBool(string formatterVarName, IrType formatterType, IrValue boolValue)
+    {
+        // Create string literals for "true" and "false"
+        var trueLabel = $"_str{_stringCounter++}";
+        var trueLiteral = new IrStringLiteral("true", trueLabel);
+        StringLiterals.Add(trueLiteral);
+
+        var falseLabel = $"_str{_stringCounter++}";
+        var falseLiteral = new IrStringLiteral("false", falseLabel);
+        StringLiterals.Add(falseLiteral);
+
+        // Create Str structs
+        var strType = _symbols.LookupStruct("Str");
+        if (strType == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.TypeNotFound,
+                "Str type not found",
+                errorLocation
+            );
+            return;
+        }
+
+        var trueStr = new IrStructLiteral(strType, new Dictionary<string, IrValue>
+        {
+            ["ptr"] = trueLiteral,
+            ["len"] = new IrConstant(4, IrIntType.U32)
+        });
+
+        var falseStr = new IrStructLiteral(strType, new Dictionary<string, IrValue>
+        {
+            ["ptr"] = falseLiteral,
+            ["len"] = new IrConstant(5, IrIntType.U32)
+        });
+
+        // Use conditional to select the right string
+        var trueLabel2 = $"_true{_labelCounter++}";
+        var falseLabel2 = $"_false{_labelCounter++}";
+        var endLabel = $"_end{_labelCounter++}";
+
+        _currentBlock!.AddInstruction(new IrConditionalBranch(boolValue, trueLabel2, falseLabel2));
+
+        // True branch
+        _currentBlock!.AddInstruction(new IrLabel(trueLabel2));
+        EmitWriteStr(formatterVarName, formatterType, trueStr);
+        _currentBlock!.AddInstruction(new IrBranch(endLabel));
+
+        // False branch
+        _currentBlock!.AddInstruction(new IrLabel(falseLabel2));
+        EmitWriteStr(formatterVarName, formatterType, falseStr);
+        _currentBlock!.AddInstruction(new IrBranch(endLabel));
+
+        // End
+        _currentBlock!.AddInstruction(new IrLabel(endLabel));
+    }
+
+    private List<InterpolationSegment> ParseInterpolatedString(string content)
+    {
+        var segments = new List<InterpolationSegment>();
+        var i = 0;
+        var currentString = new System.Text.StringBuilder();
+
+        while (i < content.Length)
+        {
+            if (content[i] == '\\' && i + 1 < content.Length)
+            {
+                // Handle escape sequences
+                var nextChar = content[i + 1];
+                if (nextChar == '{' || nextChar == '}')
+                {
+                    // Escaped brace: \{ -> {, \} -> }
+                    currentString.Append(nextChar);
+                    i += 2;
+                }
+                else if (nextChar == 'x' && i + 3 < content.Length)
+                {
+                    // Hex escape: \xNN
+                    var hexDigits = content.Substring(i + 2, 2);
+                    var byteValue = Convert.ToByte(hexDigits, 16);
+                    currentString.Append((char)byteValue);
+                    i += 4;
+                }
+                else
+                {
+                    // Standard escape sequences
+                    var escapeChar = nextChar switch
+                    {
+                        'n' => '\n',
+                        't' => '\t',
+                        'r' => '\r',
+                        'b' => '\b',
+                        'f' => '\f',
+                        '"' => '"',
+                        '\'' => '\'',
+                        '\\' => '\\',
+                        '0' => '\0',
+                        _ => nextChar  // Unknown escape sequence - just use the character as-is
+                    };
+                    currentString.Append(escapeChar);
+                    i += 2;
+                }
+            }
+            else if (content[i] == '{')
+            {
+                // Start of interpolation
+                // Save any accumulated string content
+                if (currentString.Length > 0)
+                {
+                    segments.Add(new InterpolationSegment { IsStringSegment = true, StringContent = currentString.ToString() });
+                    currentString.Clear();
+                }
+
+                // Find the matching closing brace
+                var braceDepth = 1;
+                var exprStart = i + 1;
+                i++;
+
+                while (i < content.Length && braceDepth > 0)
+                {
+                    if (content[i] == '{')
+                    {
+                        braceDepth++;
+                    }
+                    else if (content[i] == '}')
+                    {
+                        braceDepth--;
+                    }
+
+                    if (braceDepth > 0)
+                    {
+                        i++;
+                    }
+                }
+
+                if (braceDepth != 0)
+                {
+                    var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.InvalidExpressionType,
+                        "Unmatched braces in f-string interpolation",
+                        errorLocation
+                    );
+                    return null;
+                }
+
+                // Extract the expression
+                var expression = content.Substring(exprStart, i - exprStart);
+                segments.Add(new InterpolationSegment { IsStringSegment = false, Expression = expression });
+                i++; // Skip the closing brace
+            }
+            else
+            {
+                // Regular character
+                currentString.Append(content[i]);
+                i++;
+            }
+        }
+
+        // Add any remaining string content
+        if (currentString.Length > 0)
+        {
+            segments.Add(new InterpolationSegment { IsStringSegment = true, StringContent = currentString.ToString() });
+        }
+
+        return segments;
+    }
+
+    private class InterpolationSegment
+    {
+        public bool IsStringSegment { get; set; }
+        public string StringContent { get; set; } = "";
+        public string Expression { get; set; } = "";
+    }
+
+    public override object? VisitSizeofExpr([NotNull] NovusParser.SizeofExprContext context)
+    {
+        // @sizeof(Type) - compile-time intrinsic that returns size in bytes as u32
+        var typeCtx = context.type();
+        var targetType = ParseType(typeCtx);
+
+        if (targetType == null)
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"could not determine type for @sizeof",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Return the size as a constant u32 value
+        var sizeInBytes = (int)targetType.SizeInBytes;
+        return new IrConstant(sizeInBytes, IrIntType.U32);
+    }
+
+    private string ProcessEscapeSequences(string input)
+    {
+        // First handle hex escapes (\xNN) before other replacements
+        // This prevents issues with backslashes in the hex escape pattern
+        var result = System.Text.RegularExpressions.Regex.Replace(
+            input,
+            @"\\x([0-9A-Fa-f]{2})",
+            m => ((char)Convert.ToByte(m.Groups[1].Value, 16)).ToString()
+        );
+
+        // Then handle standard escape sequences
+        return result
+            .Replace("\\n", "\n")
+            .Replace("\\t", "\t")
+            .Replace("\\r", "\r")
+            .Replace("\\b", "\b")
+            .Replace("\\f", "\f")
+            .Replace("\\\"", "\"")
+            .Replace("\\'", "'")
+            .Replace("\\\\", "\\");
+    }
+
+    public override object? VisitIdentifierExpr([NotNull] NovusParser.IdentifierExprContext context)
+    {
+        var name = context.identifier().GetText();
+
+        // Check if this is a qualified enum constructor or associated function (e.g., Result::Ok, Vec::new)
+        if (name.Contains("::"))
+        {
+            var parts = name.Split("::");
+            if (parts.Length == 2)
+            {
+                var typeName = parts[0];
+                var memberName = parts[1];
+
+                // Try enum variant first
+                if (_symbols.HasEnum(typeName))
+                {
+                    var enumType = _symbols.LookupEnum(typeName)!;
+                    var variant = enumType.GetVariant(memberName);
+
+                    if (variant != null)
+                    {
+                        // Use expected type if it's a more specific (concrete) version of this enum
+                        var concreteEnumType = enumType;
+                        if (_expectedType is IrEnumType expectedEnum &&
+                            expectedEnum.EnumName == enumType.EnumName &&
+                            expectedEnum.CacheKey != null)
+                        {
+                            // Use the concrete type from context (e.g., Option<MemoryBlock> instead of Option<T>)
+                            concreteEnumType = expectedEnum;
+                        }
+                        else
+                        {
+                        }
+
+                        // For unit variants (no associated data), create the enum value directly
+                        if (variant.AssociatedData.Count == 0)
+                        {
+                            return new IrEnumValue(concreteEnumType, memberName, variant.Tag, new List<IrValue>());
+                        }
+
+                        // For variants with data, return a constructor for use in call expressions
+                        return new IrEnumConstructor(concreteEnumType, memberName, variant.Tag);
+                    }
+                }
+
+                // Try associated function (struct method without self parameter)
+                var mangledName = name; // Already has :: format
+
+                // Check if this is a generic type - look in generic method templates
+                if (_symbols.HasStruct(typeName))
+                {
+                    var structType = _symbols.LookupStruct(typeName)!;
+
+                    // If the struct is generic, check generic method templates
+                    if (structType.GenericParameters.Count > 0)
+                    {
+                        var templateKey = mangledName;
+                        if (_genericMethodTemplates.ContainsKey(templateKey))
+                        {
+                            // Return a special marker for generic associated function
+                            // This will be instantiated later when we know the concrete types
+                            return new IrGenericAssociatedFunction(typeName, memberName, structType.GenericParameters);
+                        }
+                    }
+                }
+
+                // Try to find the function in the module
+                var function = _module.Functions.FirstOrDefault(f => f.Name == mangledName);
+                if (function != null)
+                {
+                    // Check if this is an associated function (no self parameter)
+                    if (function.Parameters.Count == 0 || function.Parameters[0].Name != "self")
+                    {
+                        // Return a function reference that can be called
+                        return new IrFunctionRef(function);
+                    }
+                }
+            }
+        }
+
+        // Check if it's a constant - inline the value
+        var constantSymbol = _symbols.LookupConstant(name);
+        if (constantSymbol != null)
+        {
+            return new IrConstant((int)constantSymbol.Value, constantSymbol.Type);
+        }
+        else
+        {
+        }
+
+        // Check if it's a static variable
+        var staticVar = _module.StaticVariables.FirstOrDefault(sv => sv.Name == name);
+        if (staticVar != null)
+        {
+            return new IrGlobalVariable(name, staticVar.Type);
+        }
+
+        // Check if it's an extern variable
+        var externVar = _module.ExternalVariables.FirstOrDefault(ev => ev.Name == name);
+        if (externVar != null)
+        {
+            return new IrGlobalVariable(name, externVar.Type);
+        }
+
+        // Check if it's a local variable
+        if (_localVariables.ContainsKey(name))
+        {
+            var localVar = _localVariables[name];
+            return new IrVariable(name, localVar.Type);
+        }
+
+        // Check if it's a parameter
+        if (_currentFunction != null)
+        {
+            var param = _currentFunction.Parameters.FirstOrDefault(p => p.Name == name);
+            if (param != null)
+            {
+                return new IrVariable(name, param.Type);
+            }
+        }
+
+        // Check if it's a known system global variable (CPU, FPU, Chipset)
+        // These are declared in system.novus as extern vars
+        if (name == "CPU" && _symbols.HasEnum("SystemCPU"))
+        {
+            return new IrVariable(name, _symbols.LookupEnum("SystemCPU")!);
+        }
+        if (name == "FPU" && _symbols.HasEnum("SystemFPU"))
+        {
+            return new IrVariable(name, _symbols.LookupEnum("SystemFPU")!);
+        }
+        if (name == "Chipset" && _symbols.HasEnum("SystemChipset"))
+        {
+            return new IrVariable(name, _symbols.LookupEnum("SystemChipset")!);
+        }
+
+        // Check if it's a function name (for both calls and function pointers)
+        var funcRef = _module.Functions.FirstOrDefault(f => f.Name == name);
+        if (funcRef != null)
+        {
+            // Return a function reference that can be called or used as a function pointer
+            return new IrFunctionRef(funcRef);
+        }
+
+        // Otherwise, assume it's a temporary variable or function name
+        return new IrVariable(name, IrIntType.I32); // Default type for temps
+    }
+
+    public override object? VisitSelfExpr([NotNull] NovusParser.SelfExprContext context)
+    {
+        // Return the 'self' variable (parameter in method)
+        if (_localVariables.ContainsKey("self"))
+        {
+            return new IrVariable("self", _localVariables["self"].Type);
+        }
+        else if (_currentFunction != null && _currentFunction.Parameters.Any(p => p.Name == "self"))
+        {
+            var selfParam = _currentFunction.Parameters.First(p => p.Name == "self");
+            return new IrVariable("self", selfParam.Type);
+        }
+
+        var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+        _diagnostics.ReportError(
+            ErrorCodes.InvalidExpressionType,
+            "'self' can only be used inside methods",
+            errorLocation
+        );
+        return null;
+    }
+
+    public override object? VisitParenExpr([NotNull] NovusParser.ParenExprContext context)
+    {
+        return Visit(context.expression());
+    }
+
+    public override object? VisitUnitLiteral([NotNull] NovusParser.UnitLiteralContext context)
+    {
+        // Unit type () - creates a zero-element tuple
+        return new IrTupleLiteral(IrTupleType.Unit, new List<IrValue>());
+    }
+
+    public override object? VisitTupleLiteral([NotNull] NovusParser.TupleLiteralContext context)
+    {
+        var expressions = context.expression();
+        var elements = new List<IrValue>();
+
+        foreach (var exprCtx in expressions)
+        {
+            var value = Visit(exprCtx) as IrValue;
+            if (value == null)
+            {
+                var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Invalid expression in tuple literal",
+                    errorLocation
+                );
+                return null;
+            }
+            elements.Add(value);
+        }
+
+        // Get element types and create tuple type
+        var elementTypes = elements.Select(e => e.Type).ToList();
+        var tupleType = _typeInterner.GetTupleType(elementTypes);
+
+        return new IrTupleLiteral(tupleType, elements);
+    }
+
+    public override object? VisitStructLiteral([NotNull] NovusParser.StructLiteralContext context)
+    {
+        var structName = context.typeName().GetText();
+
+        if (!_symbols.HasStruct(structName))
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Unknown struct type '{structName}'",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Get the base struct type
+        var baseStructType = _symbols.LookupStruct(structName);
+        if (baseStructType == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(ErrorCodes.StructNotFound, $"Struct '{structName}' not found", errorLocation);
+            return null;
+        }
+
+        // Use expected type for bidirectional type checking if it's a monomorphized version of this struct
+        IrStructType structType;
+        if (_expectedType is IrStructType expectedStruct && expectedStruct.StructName == structName)
+        {
+            // Use the expected monomorphized type (e.g., Vec<i32>)
+            structType = expectedStruct;
+        }
+        else
+        {
+            // Use the base generic type (e.g., Vec<T>)
+            structType = baseStructType;
+        }
+
+        var fieldValues = new Dictionary<string, IrValue>();
+
+        // Process field initializers
+        foreach (var fieldInit in context.structFieldInit())
+        {
+            var fieldName = fieldInit.IDENTIFIER().GetText();
+            var fieldValue = (IrValue?)Visit(fieldInit.expression());
+
+            if (fieldValue == null)
+            {
+                var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Field '{fieldName}' in struct '{structName}' requires a value",
+                    errorLocation
+                );
+                return null;
+            }
+
+            // Apply automatic Str → u32 coercion for fields that expect u32
+            // This allows passing string literals/variables to TagItem.ti_Data and similar fields
+            var field = structType.GetField(fieldName);
+            if (field != null &&
+                field.Type is IrIntType intType && intType == IrIntType.U32 &&
+                fieldValue.Type is IrStructType strStructType && strStructType.StructName == "Str")
+            {
+                // Extract the .ptr field from the Str struct
+                IrValue ptrValue;
+                if (fieldValue is IrStructLiteral strLiteral)
+                {
+                    // For string literals, extract the ptr field directly
+                    if (!strLiteral.FieldValues.TryGetValue("ptr", out ptrValue!))
+                    {
+                        var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                        _diagnostics.ReportError(
+                            ErrorCodes.InvalidExpressionType,
+                            "Str struct literal must have a 'ptr' field for coercion to u32",
+                            errorLocation
+                        );
+                        return null;
+                    }
+                }
+                else
+                {
+                    // For Str variables, create a member access instruction to get .ptr
+                    var ptrField = strStructType.GetField("ptr");
+                    if (ptrField == null)
+                    {
+                        var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                        _diagnostics.ReportError(
+                            ErrorCodes.InvalidExpressionType,
+                            "Str struct must have a 'ptr' field for coercion to u32",
+                            errorLocation
+                        );
+                        return null;
+                    }
+
+                    var ptrTempName = $"%t{_tempCounter++}";
+                    var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
+                    var ptrFieldAccess = new IrMemberAccess(ptrTempName, fieldValue, "ptr", u8PtrType, ptrField.Offset);
+                    _currentBlock!.AddInstruction(ptrFieldAccess);
+                    ptrValue = new IrVariable(ptrTempName, u8PtrType);
+                }
+
+                // Cast the pointer (*u8) to u32
+                var u8PtrTypeForCast = _typeInterner.GetPointerType(IrIntType.U8);
+                fieldValue = new IrCastValue(ptrValue, u8PtrTypeForCast, IrIntType.U32);
+            }
+
+            fieldValues[fieldName] = fieldValue;
+        }
+
+        // If the base struct is generic and we don't have an expected type, infer the concrete type from field values
+        if (baseStructType.GenericParameters.Count > 0 && _expectedType == null)
+        {
+            // Infer generic type parameters from field values
+            var typeSubstitutions = new Dictionary<string, IrType>();
+
+            foreach (var field in baseStructType.Fields)
+            {
+                if (fieldValues.TryGetValue(field.Name, out var fieldValue))
+                {
+                    // Extract generic type mappings from field type and value type
+                    ExtractGenericTypeMapping(field.Type, fieldValue.Type, typeSubstitutions);
+                }
+            }
+
+            // Check if all generic parameters were inferred
+            if (typeSubstitutions.Count == baseStructType.GenericParameters.Count)
+            {
+                // Check if all type arguments are concrete (not generic)
+                var typeArgs = baseStructType.GenericParameters.Select(p => typeSubstitutions[p]).ToList();
+                bool allConcrete = typeArgs.All(t => !(t is IrGenericType));
+
+                if (allConcrete)
+                {
+                    // All type arguments are concrete - create monomorphized struct type
+                    var typeArgKeys = typeArgs.Select(t => GetTypeCacheKey(t));
+                    var cacheKey = $"{baseStructType.StructName}<{string.Join(",", typeArgKeys)}>";
+
+                    // Check cache first
+                    if (_symbols.LookupMonomorphizedStruct(cacheKey) != null)
+                    {
+                        structType = _symbols.LookupMonomorphizedStruct(cacheKey)!;
+                    }
+                    else
+                    {
+                        // Create monomorphized fields using recursive substitution
+                        var monomorphizedFields = new List<IrStructField>();
+                        bool fullyMonomorphized = true;
+
+                        foreach (var origField in baseStructType.Fields)
+                        {
+                            var fieldType = _typeParser.SubstituteGenericTypes(origField.Type, typeSubstitutions);
+                            monomorphizedFields.Add(new IrStructField(origField.Name, fieldType));
+
+                            // Check if field type is still generic
+                            if (_typeParser.ContainsGenericTypes(fieldType))
+                            {
+                                fullyMonomorphized = false;
+                            }
+                        }
+
+                        // Create new struct type with concrete types
+                        structType = new IrStructType(baseStructType.StructName, monomorphizedFields, null, cacheKey);
+
+                        // Force calculation of field offsets only if fully monomorphized
+                        if (fullyMonomorphized)
+                        {
+                            _ = structType.SizeInBytes;
+                        }
+
+                        // Cache it for future use
+                        _symbols.RegisterMonomorphizedStruct(cacheKey, structType);
+                    }
+                }
+                // else: some type arguments are still generic, use base generic type
+            }
+        }
+
+        // Validate that all fields are initialized
+        foreach (var field in structType.Fields)
+        {
+            if (!fieldValues.ContainsKey(field.Name))
+            {
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Field '{field.Name}' in struct '{structName}' is not initialized",
+                    errorLocation
+                );
+                return null;
+            }
+        }
+
+        return new IrStructLiteral(structType, fieldValues);
+    }
+
+    public override object? VisitStructArrayInit([NotNull] NovusParser.StructArrayInitContext context)
+    {
+        // Handle Vec { {10, 20, 30} } syntax
+        // This is syntactic sugar for collections that can be initialized from an array literal
+
+        var structName = context.typeName().GetText();
+
+        if (!_symbols.HasStruct(structName))
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Unknown struct type '{structName}'",
+                errorLocation
+            );
+            return null;
+        }
+
+        var baseStructType = _symbols.LookupStruct(structName);
+        if (baseStructType == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(ErrorCodes.StructNotFound, $"Struct '{structName}' not found", errorLocation);
+            return null;
+        }
+
+        // Get the array literal expression
+        var arrayExpr = (IrValue?)Visit(context.expression());
+        if (arrayExpr == null)
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Struct array initializer requires an expression",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Verify it's an array literal
+        if (arrayExpr is not IrArrayLiteral arrayLiteral)
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Struct array initializer for '{structName}' requires an array literal, got {arrayExpr.GetType().Name}",
+                errorLocation
+            );
+            return null;
+        }
+
+        // For now, only support this for Vec type
+        if (structName != "Vec")
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Struct array initializer syntax is only supported for Vec, not '{structName}'",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Extract element type from array
+        if (arrayLiteral.Type is not IrArrayType arrayType)
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Expected array type, got {arrayLiteral.Type}",
+                errorLocation
+            );
+            return null;
+        }
+
+        var elementType = arrayType.ElementType;
+        var arrayLength = arrayType.Length;
+
+        // Create a static variable to hold the array data
+        var staticVarName = $"_vec_data_{_staticVarCounter++}";
+        var staticVar = new IrStaticVariable(staticVarName, arrayType, Visibility.Private, false, arrayLiteral);
+        _module.StaticVariables.Add(staticVar);
+
+        // Monomorphize Vec<T> to Vec<elementType> if it's generic
+        IrStructType vecType;
+        if (baseStructType.GenericParameters.Count > 0)
+        {
+            // Vec is generic (e.g., Vec<T> from std::collections)
+            // Monomorphize to Vec<elementType>
+            var typeArgs = new List<IrType> { elementType };
+            var typeArgKeys = typeArgs.Select(t => GetTypeCacheKey(t));
+            var cacheKey = $"{baseStructType.StructName}<{string.Join(",", typeArgKeys)}>";
+
+            // Check cache first
+            if (_symbols.LookupMonomorphizedStruct(cacheKey) != null)
+            {
+                vecType = _symbols.LookupMonomorphizedStruct(cacheKey)!;
+            }
+            else
+            {
+                // Create type substitution map
+                var typeSubstitutions = new Dictionary<string, IrType>();
+                for (int i = 0; i < baseStructType.GenericParameters.Count && i < typeArgs.Count; i++)
+                {
+                    typeSubstitutions[baseStructType.GenericParameters[i]] = typeArgs[i];
+                }
+
+                // Create monomorphized fields
+                var monomorphizedFields = new List<IrStructField>();
+                foreach (var origField in baseStructType.Fields)
+                {
+                    var fieldType = _typeParser.SubstituteGenericTypes(origField.Type, typeSubstitutions);
+                    monomorphizedFields.Add(new IrStructField(origField.Name, fieldType));
+                }
+
+                // Create monomorphized struct type
+                vecType = new IrStructType(baseStructType.StructName, monomorphizedFields, null, cacheKey);
+                _ = vecType.SizeInBytes; // Force size calculation
+
+                // Cache it
+                _symbols.RegisterMonomorphizedStruct(cacheKey, vecType);
+            }
+        }
+        else
+        {
+            // Vec is not generic (custom Vec with concrete types)
+            vecType = baseStructType;
+        }
+
+        // Build field values: ptr/data = &static_array, len = array_length, capacity = array_length
+        var fieldValues = new Dictionary<string, IrValue>();
+
+        // Determine pointer field name (ptr for std::collections::Vec, data for custom Vec)
+        var pointerFieldName = vecType.GetField("ptr") != null ? "ptr" : "data";
+
+        // Pointer field: cast static var to pointer
+        var staticVarRef = new IrVariable(staticVarName, arrayType);
+        var refType = new IrReferenceType(arrayType);
+        var borrowExpr = new IrBorrowValue(staticVarRef, refType, false);
+        var pointerType = new IrPointerType(elementType);
+        var dataPtr = new IrCastValue(borrowExpr, refType, pointerType);
+        fieldValues[pointerFieldName] = dataPtr;
+
+        // len and capacity fields
+        // IMPORTANT: capacity must be 0 for static-backed Vecs so Vec_drop won't try to free the static data
+        // Static const data cannot be freed on AmigaOS - it would cause a crash (error 81000005)
+        fieldValues["len"] = new IrConstant(arrayLength, IrIntType.U32);
+        fieldValues["capacity"] = new IrConstant(0, IrIntType.U32);
+
+        return new IrStructLiteral(vecType, fieldValues);
+    }
+
+    public override object? VisitMemberAccessExpr([NotNull] NovusParser.MemberAccessExprContext context)
+    {
+        var baseExpr = (IrValue?)Visit(context.expression());
+        if (baseExpr == null)
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Member access requires a base expression",
+                errorLocation
+            );
+            return null;
+        }
+
+        var memberName = context.IDENTIFIER().GetText();
+
+        // Auto-dereference pointers and references to structs
+        IrValue actualBase = baseExpr;
+        IrType baseType = baseExpr.Type;
+
+        if (baseType is IrPointerType ptrType && ptrType.PointeeType is IrStructType)
+        {
+            // Auto-dereference the pointer - wrap in IrDereferenceValue
+            actualBase = new IrDereferenceValue(actualBase, ptrType.PointeeType);
+            baseType = ptrType.PointeeType;
+        }
+        else if (baseType is IrReferenceType refType && refType.PointeeType is IrStructType)
+        {
+            // Auto-dereference the reference - wrap in IrDereferenceValue
+            actualBase = new IrDereferenceValue(actualBase, refType.PointeeType);
+            baseType = refType.PointeeType;
+        }
+        else if (baseType is IrMutReferenceType mutRefType && mutRefType.PointeeType is IrStructType)
+        {
+            // Auto-dereference the mutable reference - wrap in IrDereferenceValue
+            actualBase = new IrDereferenceValue(actualBase, mutRefType.PointeeType);
+            baseType = mutRefType.PointeeType;
+        }
+
+        // Check if the base expression is a struct type
+        if (baseType is not IrStructType structType)
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.CannotAccessMember,
+                $"Cannot access member '{memberName}' on non-struct type '{baseType.Name}'",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Find the field
+        var field = structType.GetField(memberName);
+        if (field == null)
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Struct '{structType.Name}' does not have a field named '{memberName}'",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Generate a member access instruction
+        var resultName = $"%t{_tempCounter++}";
+        var memberAccess = new IrMemberAccess(resultName, actualBase, memberName, field.Type, field.Offset);
+        _currentBlock!.AddInstruction(memberAccess);
+
+        return new IrVariable(resultName, field.Type);
+    }
+
+    public override object? VisitTurboFishExpr([NotNull] NovusParser.TurboFishExprContext context)
+    {
+        // Handle turbo-fish syntax: Type::<Args>
+        // This creates a parameterized type expression that can then be used with :: to access members
+        var baseExpr = context.expression();
+        var genericArgsCtx = context.genericTypeArgs();
+
+        // Parse the generic type arguments
+        var explicitTypeArgs = new List<IrType>();
+        foreach (var typeCtx in genericArgsCtx.typeList().type())
+        {
+            var irType = ParseType(typeCtx);
+            explicitTypeArgs.Add(irType);
+        }
+
+        // The base expression should be an identifier for the type
+        string? typeName = null;
+        if (baseExpr is NovusParser.PrimaryExprContext primaryCtx &&
+            primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext identCtx)
+        {
+            typeName = identCtx.identifier().GetText();
+        }
+
+        if (typeName == null)
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Turbo-fish expression must reference a type",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Return a marker that stores the type name and explicit type arguments
+        // This will be consumed by PathExpr when accessing members
+        return new IrTurboFishType(typeName, explicitTypeArgs);
+    }
+
+    public override object? VisitPathExpr([NotNull] NovusParser.PathExprContext context)
+    {
+        SourceLocation errorLocation;
+
+        // Handle path expressions: Type::name
+        // This can be:
+        // 1. Enum variants: Option::Some, Result::Ok
+        // 2. Associated functions (static methods): Vec::new, Vec::with_capacity
+        // 3. Members accessed on turbo-fish types: (Vec::<u32>)::with_capacity
+        var baseExpr = context.expression();
+        var memberName = context.IDENTIFIER().GetText();
+
+        // Check if base expression is a turbo-fish type
+        List<IrType>? explicitTypeArgs = null;
+        string? typeName = null;
+
+        var baseValue = Visit(baseExpr);
+        if (baseValue is IrTurboFishType turboFish)
+        {
+            typeName = turboFish.TypeName;
+            explicitTypeArgs = turboFish.TypeArguments;
+        }
+        // The base expression should be an identifier for the type
+        else if (baseExpr is NovusParser.PrimaryExprContext primaryCtx &&
+            primaryCtx.GetChild(0) is NovusParser.IdentifierExprContext identCtx)
+        {
+            typeName = identCtx.identifier().GetText();
+        }
+
+        if (typeName == null)
+        {
+            var baseExprType = baseExpr?.GetType().Name ?? "null";
+            var baseExprText = baseExpr?.GetText() ?? "null";
+            errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Path expression must reference a type (got {baseExprType}: '{baseExprText}')",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Try enum variant first
+        if (_symbols.HasEnum(typeName))
+        {
+            var enumType = _symbols.LookupEnum(typeName)!;
+            var variant = enumType.GetVariant(memberName);
+
+            if (variant == null)
+            {
+                errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Enum '{typeName}' has no variant '{memberName}'",
+                    errorLocation
+                );
+                return null;
+            }
+
+            // Use expected type if it's a more specific (concrete) version of this enum
+            var concreteEnumType = enumType;
+            if (_expectedType is IrEnumType expectedEnum &&
+                expectedEnum.EnumName == enumType.EnumName &&
+                expectedEnum.CacheKey != null)
+            {
+                // Use the concrete type from context (e.g., Option<MemoryBlock> instead of Option<T>)
+                concreteEnumType = expectedEnum;
+            }
+
+            // For unit variants (no associated data), create the enum value directly
+            if (variant.AssociatedData.Count == 0)
+            {
+                return new IrEnumValue(concreteEnumType, memberName, variant.Tag, new List<IrValue>());
+            }
+
+            // Return enum constructor for variants with data
+            return new IrEnumConstructor(concreteEnumType, memberName, variant.Tag);
+        }
+
+        // Try associated function (struct method without self parameter)
+        var mangledName = $"{typeName}::{memberName}";
+
+        // Check if this is a generic type - look in generic method templates
+        if (_symbols.HasStruct(typeName))
+        {
+            var structType = _symbols.LookupStruct(typeName)!;
+
+            // If the struct is generic, check generic method templates
+            if (structType.GenericParameters.Count > 0)
+            {
+                var templateKey = mangledName;
+                if (_genericMethodTemplates.ContainsKey(templateKey))
+                {
+                    // Return a special marker for generic associated function
+                    // This will be instantiated later when we know the concrete types
+                    return new IrGenericAssociatedFunction(typeName, memberName, structType.GenericParameters, explicitTypeArgs);
+                }
+            }
+        }
+
+        // Try to find the function in the module
+        var function = _module.Functions.FirstOrDefault(f => f.Name == mangledName);
+        if (function != null)
+        {
+            // Check if this is an associated function (no self parameter)
+            if (function.Parameters.Count == 0 || function.Parameters[0].Name != "self")
+            {
+                // Return a function reference that can be called
+                return new IrFunctionRef(function);
+            }
+            else
+            {
+                errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.CannotCallMethodOnType,
+                    $"Cannot call method '{memberName}' of type '{typeName}' without an instance (it requires 'self')",
+                    errorLocation
+                );
+                return null;
+            }
+        }
+
+        errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+        _diagnostics.ReportError(
+            ErrorCodes.InvalidExpressionType,
+            $"Type '{typeName}' has no associated function or variant '{memberName}'",
+            errorLocation
+        );
+        return null;
+    }
+
+
+    /// <summary>
+    /// Parse a type from the AST - delegates to TypeParser for unified type parsing logic
+    /// </summary>
+    /// Returns true if the type has a drop() method (either already instantiated or newly instantiated).
+    /// </summary>
+
+    /// <summary>
+    /// Recursively extracts generic type mappings by comparing base and monomorphized types.
+    /// Handles nested generics in pointers, arrays, and other type constructors.
+    /// </summary>
+}
