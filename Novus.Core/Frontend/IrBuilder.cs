@@ -277,11 +277,10 @@ public class IrBuilder : NovusBaseVisitor<object?>
         _currentBlock!.AddInstruction(new IrLabel(thenLabel));
         statementAction();
 
-        // Only emit end label if the statement didn't terminate (return/branch)
-        if (!CurrentBlockHasTerminator())
-        {
-            _currentBlock!.AddInstruction(new IrLabel(endLabel));
-        }
+        // Always emit the end label, even if the statement terminated
+        // The conditional branch references this label, so it must exist
+        // If the statement terminated (e.g., return), this label is unreachable but still valid
+        _currentBlock!.AddInstruction(new IrLabel(endLabel));
     }
 
     public IrModule BuildModule(NovusParser.CompilationUnitContext context)
@@ -6779,7 +6778,12 @@ public class IrBuilder : NovusBaseVisitor<object?>
         // Visit all element expressions
         foreach (var exprCtx in expressions)
         {
-            var value = (IrValue)Visit(exprCtx)!;
+            var value = Visit(exprCtx) as IrValue;
+            if (value == null)
+            {
+                // Error already reported by child visitor, bail out
+                return null;
+            }
             elements.Add(value);
         }
 

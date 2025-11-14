@@ -1,7 +1,7 @@
 // Test array bounds checking - this should trigger a panic!
 
 pub fn main() -> i32 {
-    let arr: [i32; 5] = [1, 2, 3, 4, 5]
+    let arr = [1, 2, 3, 4, 5]
 
     // This will trigger bounds check panic at runtime
     let x = arr[10]

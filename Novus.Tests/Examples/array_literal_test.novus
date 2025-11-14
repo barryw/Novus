@@ -10,7 +10,7 @@
 
 pub fn main() -> i32 {
     // Test 1: Simple integer array
-    let numbers: [i32; 3] = [10, 20, 30]
+    let numbers = [10, 20, 30]
 
     if numbers[0u32] != 10 {
         return 1
@@ -23,7 +23,7 @@ pub fn main() -> i32 {
     }
 
     // Test 2: Single element array
-    let single: [i32; 1] = [42]
+    let single = [42]
     if single[0u32] != 42 {
         return 4
     }

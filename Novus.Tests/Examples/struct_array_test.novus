@@ -13,30 +13,30 @@ from std::ffi::amiga_consts import TAG_DONE
 
 pub fn main() -> i32 {
     // Test: Array of struct literals
-    let tags: [TagItem; 3] = [
+    let tags = [
         TagItem { ti_Tag: 100u32, ti_Data: 200u32 },
         TagItem { ti_Tag: 300u32, ti_Data: 400u32 },
         TagItem { ti_Tag: TAG_DONE, ti_Data: 0u32 }
     ]
 
     // Verify first tag
-    if tags[0u32].ti_Tag != 100u32 {
+    if tags[0].ti_Tag != 100u32 {
         return 1
     }
-    if tags[0u32].ti_Data != 200u32 {
+    if tags[0].ti_Data != 200u32 {
         return 2
     }
 
     // Verify second tag
-    if tags[1u32].ti_Tag != 300u32 {
+    if tags[1].ti_Tag != 300u32 {
         return 3
     }
-    if tags[1u32].ti_Data != 400u32 {
+    if tags[1].ti_Data != 400u32 {
         return 4
     }
 
     // Verify TAG_DONE
-    if tags[2u32].ti_Tag != TAG_DONE {
+    if tags[2].ti_Tag != TAG_DONE {
         return 5
     }
 

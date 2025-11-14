@@ -50,6 +50,11 @@ public class CCodeGenerator
     // Suffix to append to labels during defer block emission (empty for normal code)
     private string _labelSuffix = "";
 
+    // Track which defer blocks have been activated (had their IrDefer instruction emitted)
+    // at the current point in the code flow. This is reset for each function.
+    // Maps defer block -> defer index (1-based, matching _defer_N_active variable)
+    private HashSet<int> _activatedDeferBlocks = new();
+
     /// <summary>
     /// Determines if a function is a monomorphized trait implementation.
     /// These functions need special handling to avoid duplicate symbol errors when
@@ -704,6 +709,7 @@ public class CCodeGenerator
         _currentEmittingFunction = function;
         _declaredVariables.Clear();
         _memberAccessInfo.Clear();
+        _activatedDeferBlocks.Clear();
         _indexAccessInfo.Clear();
 
         // Track which parameters were converted to pointers in the C signature
@@ -740,6 +746,20 @@ public class CCodeGenerator
             targetBuilder.AppendLine($"    bool _defer_{i + 1}_active = false;");
         }
 
+        // Find all variables referenced by defer blocks and pre-declare them at function scope
+        // This ensures defer cleanup code can reference these variables even if they're
+        // declared in inner scopes (e.g., match arms) that may not be active
+        var deferReferencedVars = new Dictionary<string, IrType>(); // var name (UNSANITIZED) -> type
+
+        foreach (var deferBlock in function.DeferredBlocks)
+        {
+            foreach (var instruction in deferBlock.Instructions)
+            {
+                // Extract variable references from defer block instructions
+                CollectVariableReferences(instruction, deferReferencedVars);
+            }
+        }
+
         // Find all variables that are stored to but never declared
         // (common for match result variables when match is lowered to basic blocks)
         var declaredVars = new HashSet<string>();
@@ -764,7 +784,23 @@ public class CCodeGenerator
             }
         }
 
+        // Emit declarations for variables referenced by defer blocks
+        // These must be declared at function scope so defer cleanup can access them
+        // even if they're originally declared in inner scopes (e.g., match arms)
+        foreach (var (varName, varType) in deferReferencedVars)
+        {
+            var sanitizedName = SanitizeVariableName(varName);
+            if (!declaredVars.Contains(sanitizedName))
+            {
+                var cType = GetCType(varType);
+                targetBuilder.AppendLine($"    {cType} {sanitizedName};  // Pre-declared for defer cleanup");
+                _declaredVariables.Add(sanitizedName);
+                declaredVars.Add(sanitizedName);  // Mark as declared to avoid double-declaration
+            }
+        }
+
         // Emit declarations for variables that are stored to but never declared
+        // (common for match result variables when match is lowered to basic blocks)
         foreach (var (varName, varType) in storedVars)
         {
             if (!declaredVars.Contains(varName))
@@ -2556,6 +2592,7 @@ public class CCodeGenerator
         _declaredVariables.Clear();
         _deferEmissionCounter = 0;  // Reset defer emission counter for unique labels
         _indexAccessInfo.Clear();
+        _activatedDeferBlocks.Clear();
 
         // Track which parameters were converted to pointers in the C signature
         _pointerConvertedParameters.Clear();
@@ -2752,7 +2789,10 @@ public class CCodeGenerator
                 {
                     if (_currentEmittingFunction.DeferredBlocks[i] == defer.DeferredBlock)
                     {
-                        _output.AppendLine($"    _defer_{i + 1}_active = true;");
+                        var deferIndex = i + 1;
+                        _output.AppendLine($"    _defer_{deferIndex}_active = true;");
+                        // Track that this defer block is now active in the code flow
+                        _activatedDeferBlocks.Add(deferIndex);
                         break;
                     }
                 }
@@ -2767,10 +2807,15 @@ public class CCodeGenerator
     /// <summary>
     /// Emit deferred cleanup blocks in LIFO order (last registered, first executed).
     /// This is called before function exit points (return statements, end of function).
+    /// Only emits cleanup for defer blocks that have been activated in the code flow so far.
     /// </summary>
     private void EmitDeferredCleanup(IrFunction function, int indentLevel = 1)
     {
         if (function.DeferredBlocks.Count == 0)
+            return;
+
+        // If no defer blocks have been activated yet, don't emit any cleanup
+        if (_activatedDeferBlocks.Count == 0)
             return;
 
         var indent = new string(' ', indentLevel * 4);
@@ -2790,6 +2835,12 @@ public class CCodeGenerator
 
                 // Use 1-based index for the flag name (defer_1, defer_2, etc.)
                 var deferIndex = i + 1;
+
+                // CRITICAL FIX: Only emit cleanup for defer blocks that have been activated
+                // in the code flow up to this point. This prevents referencing variables
+                // that haven't been declared yet (e.g., variables declared inside match arms).
+                if (!_activatedDeferBlocks.Contains(deferIndex))
+                    continue;
 
                 // Wrap defer block in if check - only execute if defer was reached
                 _output.AppendLine($"{indent}// Defer cleanup block {function.DeferredBlocks.Count - i}");
@@ -4488,5 +4539,113 @@ public class CCodeGenerator
         }, System.Text.RegularExpressions.RegexOptions.Singleline);
 
         return transformed;
+    }
+
+    /// <summary>
+    /// Collect all variable references from an IR instruction and add them to the dictionary.
+    /// This is used to find variables that are referenced in defer blocks so they can be
+    /// pre-declared at function scope.
+    /// </summary>
+    private void CollectVariableReferences(IrInstruction instruction, Dictionary<string, IrType> variables)
+    {
+        switch (instruction)
+        {
+            case IrCall call:
+                // Collect variables from call arguments
+                foreach (var arg in call.Arguments)
+                {
+                    CollectVariableReferencesFromValue(arg, variables);
+                }
+                break;
+
+            case IrStore store:
+                // Collect from the value being stored
+                CollectVariableReferencesFromValue(store.Value, variables);
+                break;
+
+            case IrLocalDecl localDecl:
+                // Collect from the initial value
+                CollectVariableReferencesFromValue(localDecl.InitialValue, variables);
+                break;
+
+            case IrBinaryOp binaryOp:
+                CollectVariableReferencesFromValue(binaryOp.Left, variables);
+                CollectVariableReferencesFromValue(binaryOp.Right, variables);
+                break;
+
+            case IrReturn ret:
+                if (ret.Value != null)
+                {
+                    CollectVariableReferencesFromValue(ret.Value, variables);
+                }
+                break;
+
+            case IrConditionalBranch condBranch:
+                CollectVariableReferencesFromValue(condBranch.Condition, variables);
+                break;
+
+            case IrMemberAccess memberAccess:
+                // Member access is an instruction that produces a result
+                // We need to collect from the struct being accessed
+                CollectVariableReferencesFromValue(memberAccess.Struct, variables);
+                break;
+
+            case IrIndexAccess indexAccess:
+                // Index access is an instruction
+                CollectVariableReferencesFromValue(indexAccess.Array, variables);
+                CollectVariableReferencesFromValue(indexAccess.Index, variables);
+                break;
+
+            // Add more cases as needed for other instruction types
+        }
+    }
+
+    /// <summary>
+    /// Collect variable references from an IR value.
+    /// </summary>
+    private void CollectVariableReferencesFromValue(IrValue value, Dictionary<string, IrType> variables)
+    {
+        switch (value)
+        {
+            case IrVariable variable:
+                // Found a variable reference - add it if not already in the dictionary
+                if (!variables.ContainsKey(variable.Name))
+                {
+                    variables[variable.Name] = variable.Type;
+                }
+                break;
+
+            case IrBorrowValue borrow:
+                // Recursively collect from the borrowed value
+                CollectVariableReferencesFromValue(borrow.BorrowedValue, variables);
+                break;
+
+            case IrDereferenceValue deref:
+                CollectVariableReferencesFromValue(deref.PointerValue, variables);
+                break;
+
+            case IrCastValue cast:
+                CollectVariableReferencesFromValue(cast.Value, variables);
+                break;
+
+            case IrTupleElementAccess tupleAccess:
+                CollectVariableReferencesFromValue(tupleAccess.Tuple, variables);
+                break;
+
+            case IrFieldReference fieldRef:
+                CollectVariableReferencesFromValue(fieldRef.Struct, variables);
+                break;
+
+            // Constants, literals, etc. don't reference variables
+            case IrConstant:
+            case IrBoolConstant:
+            case IrFloatConstant:
+            case IrFixedConstant:
+            case IrStringLiteral:
+            case IrStructLiteral:
+            case IrTupleLiteral:
+            case IrFunctionAddress:
+                break;
+        }
     }
 }

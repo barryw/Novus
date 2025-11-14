@@ -1,7 +1,7 @@
 // Test array bounds checking - valid access should work fine
 
 pub fn main() -> i32 {
-    let arr: [i32; 5] = [10, 20, 30, 40, 50]
+    let arr = [10, 20, 30, 40, 50]
 
     // Valid access
     let x = arr[2]
