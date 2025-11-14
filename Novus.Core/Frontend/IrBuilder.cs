@@ -9,9 +9,10 @@ using Novus.SemanticAnalysis;
 namespace Novus.Frontend;
 
 /// <summary>
-/// Builds IR from the parsed AST using the visitor pattern
+/// Builds IR from the parsed AST using the visitor pattern.
+/// This class is split across multiple partial class files for maintainability.
 /// </summary>
-public class IrBuilder : NovusBaseVisitor<object?>
+public partial class IrBuilder : NovusBaseVisitor<object?>
 {
     private readonly IrModule _module = new();
     private IrFunction? _currentFunction;
@@ -329,16 +330,8 @@ public class IrBuilder : NovusBaseVisitor<object?>
             // Register a stub enum type with no variants yet
             // This makes the type name resolvable during variant parsing
             // Parse generic parameters for stub so type checking works correctly
-            List<string>? genericParams = null;
-            if (enumContext.genericParams() != null)
-            {
-                genericParams = new List<string>();
-                foreach (var paramId in enumContext.genericParams().IDENTIFIER())
-                {
-                    genericParams.Add(paramId.GetText());
-                }
-            }
-            var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), genericParams);
+            var genericParams = ParseGenericParameters(enumContext.genericParams());
+            var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), genericParams.Count > 0 ? genericParams : null);
             _symbols.RegisterEnum(enumName, stubEnum);
         }
 
@@ -374,14 +367,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             var name = funcContext.IDENTIFIER().GetText();
 
             // Check if this is a generic function
-            var genericParams = new List<string>();
-            if (funcContext.genericParams() != null)
-            {
-                foreach (var paramId in funcContext.genericParams().IDENTIFIER())
-                {
-                    genericParams.Add(paramId.GetText());
-                }
-            }
+            var genericParams = ParseGenericParameters(funcContext.genericParams());
 
             // If generic, store as template for later instantiation
             if (genericParams.Count > 0)
@@ -392,7 +378,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
 
             // Non-generic function: register normally
-            var returnType = funcContext.type() != null ? ParseType(funcContext.type()) : IrVoidType.Instance;
+            var returnType = ParseReturnType(funcContext.type());
 
             // Check for extern, pub, and internal keywords
             var (visibility, isExtern, _) = AstModifierHelper.ParseModifiers(funcContext, 4);
@@ -418,15 +404,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 }
 
                 // Add variadic parameter if present
-                if (paramList.variadicParameter() != null)
-                {
-                    var variadicCtx = paramList.variadicParameter();
-                    var variadicName = variadicCtx.IDENTIFIER().GetText();
-                    // Variadic parameters have opaque type for now (we'll handle type checking later)
-                    var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
-                    function.Parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
-                    function.IsVariadic = true;
-                }
+                ParseVariadicParameter(paramList, function);
             }
 
             _module.AddFunction(function);
@@ -571,7 +549,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 }
 
                 // Non-generic impl blocks: create function signatures now
-                var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
+                var returnType = ParseReturnType(funcDecl.type());
 
                 // Check for extern, pub, and internal keywords
                 var (visibility, isExtern, _) = AstModifierHelper.ParseModifiers(funcDecl, 4);
@@ -1038,7 +1016,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                         if (!_module.Functions.Any(f => f.Name == funcName))
                         {
                             // Parse and add the function
-                            var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
+                            var returnType = ParseReturnType(funcDecl.type());
 
                             var (visibility, isExtern, _) = AstModifierHelper.ParseModifiers(funcDecl, 4);
 
@@ -1322,7 +1300,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 }
 
                 // For non-generic impl blocks, create the function normally
-                var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
+                var returnType = ParseReturnType(funcDecl.type());
 
                 // Methods are registered with mangled names
                 var mangledName = GenerateMethodMangledName(typeName, methodName, isTraitImpl, traitName, traitTypeArgs);
@@ -1397,7 +1375,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 if (_module.Functions.Any(f => f.Name == funcName)) continue;
 
                 // Parse and import the extern function
-                var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
+                var returnType = ParseReturnType(funcDecl.type());
                 var function = new IrFunction(funcName, returnType, Visibility.Private, true);
 
                 // Parse parameters
@@ -1538,7 +1516,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         _currentSelfType = monomorphizedStruct;
 
         // Create the function
-        var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
+        var returnType = ParseReturnType(funcDecl.type());
 
         // Substitute generic types in return type
         returnType = SubstituteGenericTypes(returnType, typeSubstitutions);
@@ -1574,15 +1552,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
 
             // Add variadic parameter if present
-            if (paramList.variadicParameter() != null)
-            {
-                var variadicCtx = paramList.variadicParameter();
-                var variadicName = variadicCtx.IDENTIFIER().GetText();
-                // Variadic parameters have opaque type for now (we'll handle type checking later)
-                var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
-                function.Parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
-                function.IsVariadic = true;
-            }
+            ParseVariadicParameter(paramList, function);
         }
 
         _module.AddFunction(function);
@@ -1686,14 +1656,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
 
             // Add variadic parameter if present (for template analysis)
-            if (paramList.variadicParameter() != null)
-            {
-                var variadicCtx = paramList.variadicParameter();
-                var variadicName = variadicCtx.IDENTIFIER().GetText();
-                // Variadic parameters have opaque type for now (we'll handle type checking later)
-                var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
-                templateParams.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
-            }
+            ParseVariadicParameter(paramList, templateParams);
         }
 
         // Build type substitution map from monomorphized enum (same approach as structs)
@@ -1776,7 +1739,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         _currentSelfType = enumType;
 
         // Create the function manually (don't use Visit)
-        var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
+        var returnType = ParseReturnType(funcDecl.type());
         returnType = SubstituteGenericTypes(returnType, typeSubstitutions);
 
         // Create mangled name from type arguments
@@ -1806,15 +1769,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
 
             // Add variadic parameter if present
-            if (paramList.variadicParameter() != null)
-            {
-                var variadicCtx = paramList.variadicParameter();
-                var variadicName = variadicCtx.IDENTIFIER().GetText();
-                // Variadic parameters have opaque type for now (we'll handle type checking later)
-                var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
-                function.Parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
-                function.IsVariadic = true;
-            }
+            ParseVariadicParameter(paramList, function);
         }
 
         // Check if function already exists in module (could be from import or previous instantiation)
@@ -2142,7 +2097,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         _currentTypeSubstitutions = typeSubstitutions;
 
         // Create the function with substituted return type
-        var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
+        var returnType = ParseReturnType(funcDecl.type());
         returnType = SubstituteGenericTypes(returnType, typeSubstitutions);
 
         // Check for pub/internal keywords
@@ -2173,15 +2128,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
 
             // Add variadic parameter if present
-            if (paramList.variadicParameter() != null)
-            {
-                var variadicCtx = paramList.variadicParameter();
-                var variadicName = variadicCtx.IDENTIFIER().GetText();
-                // Variadic parameters have opaque type for now (we'll handle type checking later)
-                var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
-                function.Parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
-                function.IsVariadic = true;
-            }
+            ParseVariadicParameter(paramList, function);
         }
 
         _module.AddFunction(function);
@@ -2450,15 +2397,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
         }
 
         // Add variadic parameter if present
-        if (paramList.variadicParameter() != null)
-        {
-            var variadicCtx = paramList.variadicParameter();
-            var variadicName = variadicCtx.IDENTIFIER().GetText();
-            // Variadic parameters have opaque type for now (we'll handle type checking later)
-            var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
-            function.Parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
-            function.IsVariadic = true;
-        }
+        ParseVariadicParameter(paramList, function);
     }
 
     /// <summary>
@@ -2497,7 +2436,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
 
             // Parse function signature
-            var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
+            var returnType = ParseReturnType(funcDecl.type());
             // Only mark as extern if it's truly an extern function (FFI)
             // Pub functions from Novus modules are real implementations that need linking
             // CRITICAL: Preserve visibility when importing - pub functions must stay pub!
@@ -2951,21 +2890,11 @@ public class IrBuilder : NovusBaseVisitor<object?>
                     }
 
                     // Variadic parameters
-                    if (paramList.variadicParameter() != null)
-                    {
-                        var variadicCtx = paramList.variadicParameter();
-                        var variadicName = variadicCtx.IDENTIFIER().GetText();
-                        var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
-                        parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
-                    }
+                    ParseVariadicParameter(paramList, parameters);
                 }
 
                 // Parse return type
-                IrType returnType = IrVoidType.Instance;
-                if (funcSig.type() != null)
-                {
-                    returnType = ParseType(funcSig.type());
-                }
+                var returnType = ParseReturnType(funcSig.type());
 
                 methods.Add(new IrTraitMethod(methodName, parameters, returnType, methodGenericParams.Count > 0 ? methodGenericParams : null));
 
@@ -3062,7 +2991,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
     public override object? VisitFunctionDeclaration([NotNull] NovusParser.FunctionDeclarationContext context)
     {
         var name = context.IDENTIFIER().GetText();
-        var returnType = context.type() != null ? ParseType(context.type()) : IrVoidType.Instance;
+        var returnType = ParseReturnType(context.type());
 
         // Parse visibility, extern flag, and other modifiers
         var (visibility, isExtern, _) = AstModifierHelper.ParseModifiers(context, 3);
@@ -3102,15 +3031,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
             }
 
             // Add variadic parameter if present
-            if (paramList.variadicParameter() != null)
-            {
-                var variadicCtx = paramList.variadicParameter();
-                var variadicName = variadicCtx.IDENTIFIER().GetText();
-                // Variadic parameters have opaque type for now (we'll handle type checking later)
-                var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
-                function.Parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
-                function.IsVariadic = true;
-            }
+            ParseVariadicParameter(paramList, function);
         }
 
         // Skip body processing for extern functions
@@ -5156,14 +5077,7 @@ public class IrBuilder : NovusBaseVisitor<object?>
                 }
 
                 // Add variadic parameter if present (for template analysis)
-                if (paramList.variadicParameter() != null)
-                {
-                    var variadicCtx = paramList.variadicParameter();
-                    var variadicName = variadicCtx.IDENTIFIER().GetText();
-                    // Variadic parameters have opaque type for now (we'll handle type checking later)
-                    var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
-                    templateParams.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
-                }
+                ParseVariadicParameter(paramList, templateParams);
             }
 
             // Restore generic params
@@ -10656,6 +10570,82 @@ public class IrBuilder : NovusBaseVisitor<object?>
             errorLocation
         );
         return null;
+    }
+
+    /// <summary>
+    /// Parses variadic parameter from parameter list context and adds it to the function.
+    /// This helper consolidates the repeated pattern of variadic parameter parsing that appears
+    /// throughout IrBuilder (8 occurrences).
+    ///
+    /// Variadic parameters are given an opaque pointer type (*void) since their actual types
+    /// are checked at the call site rather than in the function signature.
+    /// </summary>
+    /// <param name="paramList">The parameter list context from the parse tree</param>
+    /// <param name="function">The IrFunction to add the variadic parameter to</param>
+    private void ParseVariadicParameter(NovusParser.ParameterListContext? paramList, IrFunction function)
+    {
+        if (paramList?.variadicParameter() == null)
+            return;
+
+        var variadicCtx = paramList.variadicParameter();
+        var variadicName = variadicCtx.IDENTIFIER().GetText();
+        // Variadic parameters have opaque type for now (we'll handle type checking later)
+        var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
+        function.Parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
+        function.IsVariadic = true;
+    }
+
+    /// <summary>
+    /// Parses variadic parameter from parameter list context and adds it to a parameter list.
+    /// Overload for contexts where parameters are being collected in a list rather than added
+    /// directly to an IrFunction (e.g., trait method signatures, template parameters).
+    /// </summary>
+    /// <param name="paramList">The parameter list context from the parse tree</param>
+    /// <param name="parameters">The list to add the variadic parameter to</param>
+    private void ParseVariadicParameter(NovusParser.ParameterListContext? paramList, List<IrParameter> parameters)
+    {
+        if (paramList?.variadicParameter() == null)
+            return;
+
+        var variadicCtx = paramList.variadicParameter();
+        var variadicName = variadicCtx.IDENTIFIER().GetText();
+        // Variadic parameters have opaque type for now (we'll handle type checking later)
+        var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
+        parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
+    }
+
+    /// <summary>
+    /// Parses return type from a function declaration context.
+    /// This helper consolidates the repeated ternary pattern that appears throughout both
+    /// IrBuilder (9+ occurrences) and SemanticAnalyzer (3+ occurrences).
+    ///
+    /// If the context has a type annotation, parses it. Otherwise returns void.
+    /// </summary>
+    /// <param name="typeContext">The type context from the parse tree (may be null)</param>
+    /// <returns>The parsed return type, or IrVoidType.Instance if no type specified</returns>
+    private IrType ParseReturnType(NovusParser.TypeContext? typeContext)
+    {
+        return typeContext != null ? ParseType(typeContext) : IrVoidType.Instance;
+    }
+
+    /// <summary>
+    /// Parses generic parameter names from a generic parameter context.
+    /// This helper consolidates the repeated loop pattern that appears 10+ times in IrBuilder
+    /// for extracting generic parameter names from the parse tree.
+    /// </summary>
+    /// <param name="genericParamsContext">The generic parameters context from the parse tree (may be null)</param>
+    /// <returns>List of generic parameter names, or empty list if no generic parameters</returns>
+    private List<string> ParseGenericParameters(NovusParser.GenericParamsContext? genericParamsContext)
+    {
+        if (genericParamsContext == null)
+            return new List<string>();
+
+        var genericParams = new List<string>();
+        foreach (var paramId in genericParamsContext.IDENTIFIER())
+        {
+            genericParams.Add(paramId.GetText());
+        }
+        return genericParams;
     }
 
     /// <summary>

@@ -99,14 +99,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     // Generic type parameters in scope (for generic enum/struct definitions)
     private readonly Dictionary<string, IrGenericType> _genericParams = new();
 
-    // Cache for monomorphized generic enums (ensures same instance for same type)
-    private readonly Dictionary<string, IrEnumType> _monomorphizedEnums = new();
-
-    // Cache for monomorphized generic structs (ensures same instance for same type)
-    private readonly Dictionary<string, IrStructType> _monomorphizedStructs = new();
-
-    // Cache for monomorphized generic functions (ensures same instance for same signature)
-    private readonly Dictionary<string, FunctionSymbol> _monomorphizedFunctions = new();
+    // Note: Monomorphization caches are now managed by SymbolTable to ensure consistency
+    // and avoid duplication. Use _symbols.RegisterMonomorphized*() and _symbols.LookupMonomorphized*()
+    // instead of maintaining separate caches here.
 
     // Track trait implementations: key = "TypeName::TraitName<TypeArg1,TypeArg2,...>"
     // This allows us to check if a type implements a trait during constraint validation
@@ -628,7 +623,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
 
             // Parse function signature
-            var returnType = funcDecl.type() != null ? ParseType(funcDecl.type()) : IrVoidType.Instance;
+            var returnType = ParseReturnType(funcDecl.type());
             var parameters = new List<ParameterSymbol>();
 
             bool hasVariadic = false;
@@ -1085,7 +1080,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             _parsingExternFunction = true;
         }
 
-        var returnType = context.type() != null ? ParseType(context.type()) : IrVoidType.Instance;
+        var returnType = ParseReturnType(context.type());
         var parameters = new List<ParameterSymbol>();
 
         bool hasVariadic = false;
@@ -1297,7 +1292,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return;
         }
 
-        var returnType = context.type() != null ? ParseType(context.type()) : IrVoidType.Instance;
+        var returnType = ParseReturnType(context.type());
         var parameters = new List<ParameterSymbol>();
         bool hasVariadic = false;
 
@@ -4679,8 +4674,25 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     }
 
     /// <summary>
-    /// Check if a type contains any generic type parameters (including nested)
+    /// Recursively determines if a type contains any unresolved generic type parameters.
+    ///
+    /// This predicate is crucial for the monomorphization system to determine when a type
+    /// is "fully concrete" and ready to be code-generated vs. "still generic" and requiring
+    /// further substitution.
+    ///
+    /// The check is recursive to handle nested generic types:
+    /// - Option&lt;T&gt; contains generic (has type parameter)
+    /// - Option&lt;i32&gt; does NOT contain generic (fully concrete)
+    /// - Option&lt;*T&gt; contains generic (pointer to generic)
+    /// - Vec&lt;Option&lt;T&gt;&gt; contains generic (nested generic)
+    ///
+    /// Used to decide whether to:
+    /// 1. Cache a monomorphized type (only if fully concrete)
+    /// 2. Continue type inference (if still has generics)
+    /// 3. Emit code generation (only for concrete types)
     /// </summary>
+    /// <param name="type">The type to check</param>
+    /// <returns>true if type contains any generic parameters, false if fully concrete</returns>
     private bool ContainsGenericType(IrType type)
     {
         if (type is IrGenericType)
@@ -4699,8 +4711,54 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     }
 
     /// <summary>
-    /// Apply type substitutions to create a concrete type from a potentially generic type
+    /// Recursively substitutes type parameters with concrete types throughout a type expression.
+    ///
+    /// This is the fundamental operation for generic type specialization. It handles all type constructors
+    /// in Novus and performs deep substitution into nested generic types.
+    ///
+    /// The algorithm works by pattern matching on the type structure:
+    ///
+    /// 1. **Simple Generic Parameter** (T):
+    ///    - If T is in the substitution map, replace it with the concrete type
+    ///    - Example: T + {T → i32} = i32
+    ///
+    /// 2. **Pointer Types** (*T):
+    ///    - Recursively substitute the pointee type
+    ///    - Use TypeInterner to ensure pointer type identity
+    ///    - Example: *T + {T → i32} = *i32
+    ///
+    /// 3. **Generic Enums** (Option&lt;T&gt;):
+    ///    - Substitute type parameters in ALL variant data types
+    ///    - If result is fully concrete, create/retrieve monomorphized enum from cache
+    ///    - If still contains generics, return partially-substituted enum
+    ///    - Example: Option&lt;T&gt; + {T → i32} = Option&lt;i32&gt; (cached)
+    ///    - Example: Option&lt;*T&gt; + {T → U} = Option&lt;*U&gt; (still generic)
+    ///
+    /// 4. **Generic Structs** (Vec&lt;T&gt;):
+    ///    - Parse current type arguments from cache key
+    ///    - Substitute each type argument recursively
+    ///    - If all args are concrete, create/retrieve monomorphized struct from cache
+    ///    - Example: Vec&lt;T&gt; + {T → i32} = Vec&lt;i32&gt; (cached)
+    ///    - Example: Vec&lt;Option&lt;T&gt;&gt; + {T → i32} = Vec&lt;Option&lt;i32&gt;&gt; (nested substitution)
+    ///
+    /// 5. **Concrete Types** (i32, bool, etc.):
+    ///    - Return unchanged
+    ///
+    /// **Critical invariants:**
+    /// - Monomorphized types MUST be cached to ensure type identity
+    /// - Nested generics require recursive substitution (Vec&lt;Option&lt;T&gt;&gt;)
+    /// - Partially-substituted types should preserve generic parameters
+    ///
+    /// **Examples:**
+    ///   Input: T, Subs: {T → i32} → Output: i32
+    ///   Input: *T, Subs: {T → i32} → Output: *i32
+    ///   Input: Option&lt;T&gt;, Subs: {T → i32} → Output: Option&lt;i32&gt; (cached)
+    ///   Input: Vec&lt;Option&lt;T&gt;&gt;, Subs: {T → i32} → Output: Vec&lt;Option&lt;i32&gt;&gt; (nested, cached)
+    ///   Input: i32, Subs: {T → bool} → Output: i32 (unchanged)
     /// </summary>
+    /// <param name="type">The type to perform substitutions on</param>
+    /// <param name="substitutions">Mapping from generic type parameter names to concrete types</param>
+    /// <returns>The type with all matching generic parameters replaced</returns>
     private IrType SubstituteGenericTypes(IrType type, Dictionary<string, IrType> substitutions)
     {
 
@@ -4752,14 +4810,15 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             if (substitutedTypeArgs.All(t => !ContainsGenericType(t)))
             {
                 var cacheKey = $"{baseEnum.EnumName}<{string.Join(",", substitutedTypeArgs.Select(GetTypeCacheKey))}>";
-                if (_monomorphizedEnums.ContainsKey(cacheKey))
+                var cached = _symbols.LookupMonomorphizedEnum(cacheKey);
+                if (cached != null)
                 {
-                    return _monomorphizedEnums[cacheKey];
+                    return cached;
                 }
 
                 // Variants already created above
                 var monomorphizedEnum = new IrEnumType(baseEnum.EnumName, monomorphizedVariants, null, cacheKey);
-                _monomorphizedEnums[cacheKey] = monomorphizedEnum;
+                _symbols.RegisterMonomorphizedEnum(cacheKey, monomorphizedEnum);
                 return monomorphizedEnum;
             }
             else
@@ -4815,9 +4874,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     var newCacheKey = $"{structType.StructName}<{string.Join(",", substitutedTypeArgs.Select(GetTypeCacheKey))}>";
 
                     // Check cache
-                    if (_monomorphizedStructs.ContainsKey(newCacheKey))
+                    var cached = _symbols.LookupMonomorphizedStruct(newCacheKey);
+                    if (cached != null)
                     {
-                        return _monomorphizedStructs[newCacheKey];
+                        return cached;
                     }
 
                     // Get the base struct definition
@@ -4842,7 +4902,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                         newCacheKey
                     );
 
-                    _monomorphizedStructs[newCacheKey] = monomorphizedStruct;
+                    _symbols.RegisterMonomorphizedStruct(newCacheKey, monomorphizedStruct);
                     return monomorphizedStruct;
                 }
                 else
@@ -4858,8 +4918,36 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     }
 
     /// <summary>
-    /// Monomorphize a generic function by applying type substitutions
+    /// Monomorphizes a generic function by creating a concrete version with type parameters replaced.
+    ///
+    /// This is the core of the compiler's generic specialization system. When a generic function like
+    /// `fn identity&lt;T&gt;(x: T) -> T` is called with concrete types like `identity(42)`, this method
+    /// creates a specialized version `identity_i32` with all T replaced by i32.
+    ///
+    /// The algorithm:
+    /// 1. Generate a cache key from the function name and concrete type arguments (e.g., "identity&lt;i32&gt;")
+    /// 2. Check the SymbolTable cache - if this exact instantiation exists, reuse it
+    /// 3. Otherwise, create a new specialized function:
+    ///    a. Substitute all type parameters in parameter types (T → i32)
+    ///    b. Substitute type parameters in return type
+    ///    c. Generate a unique mangled name for code generation (e.g., "identity_i32")
+    ///    d. Create a new FunctionSymbol with no generic parameters (fully concrete)
+    /// 4. Cache the result in SymbolTable for future lookups
+    /// 5. Return the monomorphized function
+    ///
+    /// Caching is critical for:
+    /// - Preventing duplicate instantiations (calling identity(42) twice shouldn't create two versions)
+    /// - Ensuring type equality (all references to Vec&lt;i32&gt; refer to the same type)
+    /// - Compilation performance (avoid redundant work)
+    ///
+    /// Example:
+    ///   Generic: fn identity&lt;T&gt;(x: T) -> T
+    ///   Substitutions: { "T" → IrIntType.I32 }
+    ///   Result: FunctionSymbol("identity_i32", returns i32, params [(x, i32)])
     /// </summary>
+    /// <param name="genericFunc">The generic function template to specialize</param>
+    /// <param name="substitutions">Mapping from type parameter names to concrete types</param>
+    /// <returns>A fully concrete (non-generic) function symbol</returns>
     private FunctionSymbol MonomorphizeFunction(FunctionSymbol genericFunc, Dictionary<string, IrType> substitutions)
     {
         // Create cache key: FunctionName<TypeArg1,TypeArg2,...>
@@ -4868,9 +4956,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var cacheKey = $"{genericFunc.Name}<{string.Join(",", typeArgKeys)}>";
 
         // Check cache
-        if (_monomorphizedFunctions.ContainsKey(cacheKey))
+        var cached = _symbols.LookupMonomorphizedFunction(cacheKey);
+        if (cached != null)
         {
-            return _monomorphizedFunctions[cacheKey];
+            return cached;
         }
 
         // Substitute types in parameters
@@ -4899,7 +4988,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         );
 
         // Cache it
-        _monomorphizedFunctions[cacheKey] = monomorphizedFunc;
+        _symbols.RegisterMonomorphizedFunction(cacheKey, monomorphizedFunc);
 
         return monomorphizedFunc;
     }
@@ -5099,9 +5188,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     var cacheKey = $"{irEnumType.EnumName}<{string.Join(",", typeArgKeys)}>";
 
                     // Check cache first
-                    if (_monomorphizedEnums.ContainsKey(cacheKey))
+                    var cached = _symbols.LookupMonomorphizedEnum(cacheKey);
+                    if (cached != null)
                     {
-                        return _monomorphizedEnums[cacheKey];
+                        return cached;
                     }
 
 
@@ -5129,7 +5219,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     var monomorphizedEnum = new IrEnumType(irEnumType.EnumName, monomorphizedVariants, null, cacheKey);
 
                     // Cache it for future use
-                    _monomorphizedEnums[cacheKey] = monomorphizedEnum;
+                    _symbols.RegisterMonomorphizedEnum(cacheKey, monomorphizedEnum);
 
                     return monomorphizedEnum;
                 }
@@ -5463,9 +5553,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                         var cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
 
                         // Check cache first
-                        if (_monomorphizedEnums.ContainsKey(cacheKey))
+                        var cached = _symbols.LookupMonomorphizedEnum(cacheKey);
+                        if (cached != null)
                         {
-                            return _monomorphizedEnums[cacheKey];
+                            return cached;
                         }
 
                         // Create monomorphized enum type
@@ -5492,7 +5583,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                         var monomorphizedEnum = new IrEnumType(enumType.EnumName, monomorphizedVariants, null, cacheKey);
 
                         // Cache it for future use
-                        _monomorphizedEnums[cacheKey] = monomorphizedEnum;
+                        _symbols.RegisterMonomorphizedEnum(cacheKey, monomorphizedEnum);
 
                         return monomorphizedEnum;
                     }
@@ -7931,9 +8022,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 var cacheKey = $"{structType.StructName}<{string.Join(",", typeArgs.Select(t => GetTypeCacheKey(t)))}>";
 
                 // Check cache first
-                if (_monomorphizedStructs.ContainsKey(cacheKey))
+                var cached = _symbols.LookupMonomorphizedStruct(cacheKey);
+                if (cached != null)
                 {
-                    return _monomorphizedStructs[cacheKey];
+                    return cached;
                 }
 
                 // Create monomorphized struct with concrete types
@@ -7961,7 +8053,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 var monomorphizedStruct = new IrStructType(structType.StructName, monomorphizedFields, genericParams, cacheKey);
 
                 // Cache it for future use
-                _monomorphizedStructs[cacheKey] = monomorphizedStruct;
+                _symbols.RegisterMonomorphizedStruct(cacheKey, monomorphizedStruct);
 
                 return monomorphizedStruct;
             }
@@ -8010,9 +8102,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 // Use GetTypeCacheKey to handle nested types correctly
                 var cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgs.Select(t => GetTypeCacheKey(t)))}>";
                 // Check cache first
-                if (_monomorphizedEnums.ContainsKey(cacheKey))
+                var cached = _symbols.LookupMonomorphizedEnum(cacheKey);
+                if (cached != null)
                 {
-                    return _monomorphizedEnums[cacheKey];
+                    return cached;
                 }
 
 
@@ -8042,7 +8135,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 var monomorphizedEnum = new IrEnumType(enumType.EnumName, monomorphizedVariants, genericParams, cacheKey);
 
                 // Cache it for future use
-                _monomorphizedEnums[cacheKey] = monomorphizedEnum;
+                _symbols.RegisterMonomorphizedEnum(cacheKey, monomorphizedEnum);
 
                 return monomorphizedEnum;
             }
@@ -9011,27 +9104,23 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         public IrStructType? LookupMonomorphizedStruct(string cacheKey)
         {
-            return _analyzer._monomorphizedStructs.ContainsKey(cacheKey)
-                ? _analyzer._monomorphizedStructs[cacheKey]
-                : null;
+            return _analyzer._symbols.LookupMonomorphizedStruct(cacheKey);
         }
 
         public IrEnumType? LookupMonomorphizedEnum(string cacheKey)
         {
-            return _analyzer._monomorphizedEnums.ContainsKey(cacheKey)
-                ? _analyzer._monomorphizedEnums[cacheKey]
-                : null;
+            return _analyzer._symbols.LookupMonomorphizedEnum(cacheKey);
         }
 
         // Registration
         public void RegisterMonomorphizedStruct(string key, IrStructType type)
         {
-            _analyzer._monomorphizedStructs[key] = type;
+            _analyzer._symbols.RegisterMonomorphizedStruct(key, type);
         }
 
         public void RegisterMonomorphizedEnum(string key, IrEnumType type)
         {
-            _analyzer._monomorphizedEnums[key] = type;
+            _analyzer._symbols.RegisterMonomorphizedEnum(key, type);
         }
 
         // Type interning
@@ -9202,6 +9291,19 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         value = isNegative ? -parsedValue : parsedValue;
         return true;
+    }
+
+    /// <summary>
+    /// Parses return type from a function declaration context.
+    /// This helper consolidates the repeated ternary pattern that appears 3+ times in SemanticAnalyzer.
+    ///
+    /// If the context has a type annotation, parses it. Otherwise returns void.
+    /// </summary>
+    /// <param name="typeContext">The type context from the parse tree (may be null)</param>
+    /// <returns>The parsed return type, or IrVoidType.Instance if no type specified</returns>
+    private IrType ParseReturnType(NovusParser.TypeContext? typeContext)
+    {
+        return typeContext != null ? ParseType(typeContext) : IrVoidType.Instance;
     }
 
     /// <summary>
