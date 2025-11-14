@@ -1,0 +1,553 @@
+using Antlr4.Runtime;
+using Novus.Codegen;
+using Novus.Frontend;
+using Novus.IR;
+using Novus.Parser;
+using Xunit;
+
+namespace Novus.Tests;
+
+/// <summary>
+/// Tests for TypeRegistry to improve coverage from 0% to 70%+.
+/// TypeRegistry collects type definitions from modules to generate shared type headers.
+/// </summary>
+public class TypeRegistryTests
+{
+    private IrModule BuildIR(string source)
+    {
+        var inputStream = new AntlrInputStream(source);
+        var lexer = new NovusLexer(inputStream);
+        var tokenStream = new AngleBracketTokenStream(lexer);
+        var parser = new NovusParser(tokenStream);
+        var tree = parser.compilationUnit();
+
+        var builder = new IrBuilder(skipAutoImports: true);
+        return builder.BuildModule(tree);
+    }
+
+    [Fact]
+    public void TypeRegistry_EmptyModule_HasNoTypes()
+    {
+        var registry = new TypeRegistry();
+        var module = new IrModule();
+
+        registry.RegisterModule(module);
+
+        Assert.Empty(registry.EnumTypes);
+        Assert.Empty(registry.StructTypes);
+        Assert.Empty(registry.TupleTypes);
+    }
+
+    [Fact]
+    public void TypeRegistry_SimpleStruct_RegistersStruct()
+    {
+        var source = @"
+pub struct Point {
+    x: i32,
+    y: i32,
+}
+
+pub fn make_point(x: i32, y: i32) -> Point {
+    return Point { x: x, y: y }
+}";
+
+        var module = BuildIR(source);
+        var registry = new TypeRegistry();
+
+        registry.RegisterModule(module);
+
+        Assert.Single(registry.StructTypes);
+        var structType = registry.StructTypes.First();
+        Assert.Equal("Point", structType.Name);
+        Assert.Equal(2, structType.Fields.Count);
+    }
+
+    [Fact]
+    public void TypeRegistry_SimpleEnum_RegistersEnum()
+    {
+        var source = @"
+pub enum Color {
+    Red,
+    Green,
+    Blue,
+}
+
+pub fn get_red() -> Color {
+    return Color::Red
+}";
+
+        var module = BuildIR(source);
+        var registry = new TypeRegistry();
+
+        registry.RegisterModule(module);
+
+        Assert.Single(registry.EnumTypes);
+        var enumType = registry.EnumTypes.First();
+        Assert.Equal("Color", enumType.Name);
+        Assert.Equal(3, enumType.Variants.Count);
+    }
+
+    [Fact]
+    public void TypeRegistry_EnumWithAssociatedData_RegistersEnum()
+    {
+        var source = @"
+pub enum Result {
+    Ok(i32),
+    Err(i32),
+}
+
+pub fn make_ok(x: i32) -> Result {
+    return Result::Ok(x)
+}";
+
+        var module = BuildIR(source);
+        var registry = new TypeRegistry();
+
+        registry.RegisterModule(module);
+
+        Assert.Single(registry.EnumTypes);
+        var enumType = registry.EnumTypes.First();
+        Assert.Equal("Result", enumType.Name);
+        Assert.Equal(2, enumType.Variants.Count);
+    }
+
+    [Fact]
+    public void TypeRegistry_MultipleStructs_RegistersAll()
+    {
+        var source = @"
+pub struct Point {
+    x: i32,
+    y: i32,
+}
+
+pub struct Size {
+    width: i32,
+    height: i32,
+}
+
+pub fn make_point(x: i32, y: i32) -> Point {
+    return Point { x: x, y: y }
+}
+
+pub fn make_size(w: i32, h: i32) -> Size {
+    return Size { width: w, height: h }
+}";
+
+        var module = BuildIR(source);
+        var registry = new TypeRegistry();
+
+        registry.RegisterModule(module);
+
+        Assert.Equal(2, registry.StructTypes.Count());
+        var structNames = registry.StructTypes.Select(s => s.Name).ToHashSet();
+        Assert.Contains("Point", structNames);
+        Assert.Contains("Size", structNames);
+    }
+
+    [Fact]
+    public void TypeRegistry_MultipleEnums_RegistersAll()
+    {
+        var source = @"
+pub enum Color {
+    Red,
+    Green,
+}
+
+pub enum Status {
+    Active,
+    Inactive,
+}
+
+pub fn get_red() -> Color {
+    return Color::Red
+}
+
+pub fn get_active() -> Status {
+    return Status::Active
+}";
+
+        var module = BuildIR(source);
+        var registry = new TypeRegistry();
+
+        registry.RegisterModule(module);
+
+        Assert.Equal(2, registry.EnumTypes.Count());
+        var enumNames = registry.EnumTypes.Select(e => e.Name).ToHashSet();
+        Assert.Contains("Color", enumNames);
+        Assert.Contains("Status", enumNames);
+    }
+
+    [Fact]
+    public void TypeRegistry_NestedStruct_RegistersOuterStruct()
+    {
+        var source = @"
+pub struct Inner {
+    value: i32,
+}
+
+pub struct Outer {
+    inner: Inner,
+    id: i32,
+}
+
+pub fn make_outer(v: i32, i: i32) -> Outer {
+    var inn: Inner = Inner { value: v }
+    return Outer { inner: inn, id: i }
+}";
+
+        var module = BuildIR(source);
+        var registry = new TypeRegistry();
+
+        registry.RegisterModule(module);
+
+        // Both structs should be registered
+        Assert.Equal(2, registry.StructTypes.Count());
+        var structNames = registry.StructTypes.Select(s => s.Name).ToHashSet();
+        Assert.Contains("Inner", structNames);
+        Assert.Contains("Outer", structNames);
+    }
+
+    [Fact]
+    public void TypeRegistry_StructInParameter_RegistersStruct()
+    {
+        var source = @"
+pub struct Point {
+    x: i32,
+    y: i32,
+}
+
+pub fn distance(p: Point) -> i32 {
+    return p.x + p.y
+}";
+
+        var module = BuildIR(source);
+        var registry = new TypeRegistry();
+
+        registry.RegisterModule(module);
+
+        Assert.Single(registry.StructTypes);
+        Assert.Equal("Point", registry.StructTypes.First().Name);
+    }
+
+    [Fact]
+    public void TypeRegistry_EnumInParameter_RegistersEnum()
+    {
+        var source = @"
+pub enum Color {
+    Red,
+    Green,
+}
+
+pub fn process_color(c: Color) -> i32 {
+    return 0
+}";
+
+        var module = BuildIR(source);
+        var registry = new TypeRegistry();
+
+        registry.RegisterModule(module);
+
+        Assert.Single(registry.EnumTypes);
+        Assert.Equal("Color", registry.EnumTypes.First().Name);
+    }
+
+    [Fact]
+    public void TypeRegistry_StructInLocalVariable_RegistersStruct()
+    {
+        var source = @"
+pub struct Point {
+    x: i32,
+    y: i32,
+}
+
+pub fn make_local() -> i32 {
+    var p: Point = Point { x: 1, y: 2 }
+    return p.x
+}";
+
+        var module = BuildIR(source);
+        var registry = new TypeRegistry();
+
+        registry.RegisterModule(module);
+
+        Assert.Single(registry.StructTypes);
+        Assert.Equal("Point", registry.StructTypes.First().Name);
+    }
+
+    [Fact]
+    public void TypeRegistry_TupleType_RegistersTuple()
+    {
+        var source = @"
+pub fn make_tuple() -> (i32, i32) {
+    return (1, 2)
+}";
+
+        var module = BuildIR(source);
+        var registry = new TypeRegistry();
+
+        registry.RegisterModule(module);
+
+        Assert.Single(registry.TupleTypes);
+        var tupleType = registry.TupleTypes.First();
+        Assert.Equal(2, tupleType.ElementTypes.Count);
+    }
+
+    [Fact]
+    public void TypeRegistry_TupleInParameter_RegistersTuple()
+    {
+        var source = @"
+pub fn process_tuple(t: (i32, i32)) -> i32 {
+    return 0
+}";
+
+        var module = BuildIR(source);
+        var registry = new TypeRegistry();
+
+        registry.RegisterModule(module);
+
+        Assert.Single(registry.TupleTypes);
+        Assert.Equal(2, registry.TupleTypes.First().ElementTypes.Count);
+    }
+
+    [Fact]
+    public void TypeRegistry_ArrayOfStruct_RegistersStruct()
+    {
+        var source = @"
+pub struct Point {
+    x: i32,
+    y: i32,
+}
+
+pub fn make_array() -> i32 {
+    var points: [Point; 3] = [Point { x: 1, y: 2 }; 3]
+    return points[0].x
+}";
+
+        var module = BuildIR(source);
+        var registry = new TypeRegistry();
+
+        registry.RegisterModule(module);
+
+        Assert.Single(registry.StructTypes);
+        Assert.Equal("Point", registry.StructTypes.First().Name);
+    }
+
+    [Fact]
+    public void TypeRegistry_PointerToStruct_RegistersStruct()
+    {
+        var source = @"
+pub struct Point {
+    x: i32,
+    y: i32,
+}
+
+pub fn use_pointer(p: *Point) -> i32 {
+    return 0
+}";
+
+        var module = BuildIR(source);
+        var registry = new TypeRegistry();
+
+        registry.RegisterModule(module);
+
+        Assert.Single(registry.StructTypes);
+        Assert.Equal("Point", registry.StructTypes.First().Name);
+    }
+
+    [Fact]
+    public void TypeRegistry_ReferenceToStruct_RegistersStruct()
+    {
+        var source = @"
+pub struct Point {
+    x: i32,
+    y: i32,
+}
+
+pub fn use_ref(p: &Point) -> i32 {
+    return p.x
+}";
+
+        var module = BuildIR(source);
+        var registry = new TypeRegistry();
+
+        registry.RegisterModule(module);
+
+        Assert.Single(registry.StructTypes);
+        Assert.Equal("Point", registry.StructTypes.First().Name);
+    }
+
+    [Fact]
+    public void TypeRegistry_MutReferenceToStruct_RegistersStruct()
+    {
+        var source = @"
+pub struct Point {
+    x: i32,
+    y: i32,
+}
+
+pub fn use_mut_ref(p: &mut Point) -> i32 {
+    return p.x
+}";
+
+        var module = BuildIR(source);
+        var registry = new TypeRegistry();
+
+        registry.RegisterModule(module);
+
+        Assert.Single(registry.StructTypes);
+        Assert.Equal("Point", registry.StructTypes.First().Name);
+    }
+
+    [Fact]
+    public void TypeRegistry_MultipleModules_CombinesTypes()
+    {
+        var source1 = @"
+pub struct Point {
+    x: i32,
+    y: i32,
+}
+
+pub fn make_point() -> Point {
+    return Point { x: 1, y: 2 }
+}";
+
+        var source2 = @"
+pub struct Size {
+    width: i32,
+    height: i32,
+}
+
+pub fn make_size() -> Size {
+    return Size { width: 10, height: 20 }
+}";
+
+        var module1 = BuildIR(source1);
+        var module2 = BuildIR(source2);
+        var registry = new TypeRegistry();
+
+        registry.RegisterModule(module1);
+        registry.RegisterModule(module2);
+
+        Assert.Equal(2, registry.StructTypes.Count());
+        var structNames = registry.StructTypes.Select(s => s.Name).ToHashSet();
+        Assert.Contains("Point", structNames);
+        Assert.Contains("Size", structNames);
+    }
+
+    [Fact]
+    public void TypeRegistry_UnitTuple_NotRegistered()
+    {
+        var source = @"
+pub fn returns_unit() -> i32 {
+    return 42
+}";
+
+        var module = BuildIR(source);
+        var registry = new TypeRegistry();
+
+        registry.RegisterModule(module);
+
+        // Unit type () should not be registered
+        Assert.Empty(registry.TupleTypes);
+    }
+
+    [Fact]
+    public void TypeRegistry_EnumInMatch_RegistersEnum()
+    {
+        var source = @"
+pub enum Color {
+    Red,
+    Green,
+}
+
+pub fn match_color(c: Color) -> i32 {
+    match c {
+        Color::Red => return 1,
+        Color::Green => return 2,
+    }
+}";
+
+        var module = BuildIR(source);
+        var registry = new TypeRegistry();
+
+        registry.RegisterModule(module);
+
+        Assert.Single(registry.EnumTypes);
+        Assert.Equal("Color", registry.EnumTypes.First().Name);
+    }
+
+    [Fact]
+    public void TypeRegistry_ComplexNestedTypes_RegistersAll()
+    {
+        var source = @"
+pub struct Inner {
+    value: i32,
+}
+
+pub struct Outer {
+    inner: Inner,
+    id: i32,
+}
+
+pub fn make_outer(i: i32) -> Outer {
+    var inner: Inner = Inner { value: i }
+    return Outer { inner: inner, id: 1 }
+}";
+
+        var module = BuildIR(source);
+        var registry = new TypeRegistry();
+
+        registry.RegisterModule(module);
+
+        // Should register both structs
+        Assert.Equal(2, registry.StructTypes.Count());
+        var structNames = registry.StructTypes.Select(s => s.Name).ToHashSet();
+        Assert.Contains("Inner", structNames);
+        Assert.Contains("Outer", structNames);
+    }
+
+    [Fact]
+    public void TypeRegistry_StaticVariable_RegistersType()
+    {
+        var source = @"
+pub struct Point {
+    x: i32,
+    y: i32,
+}
+
+pub fn get_point() -> Point {
+    return Point { x: 0, y: 0 }
+}";
+
+        var module = BuildIR(source);
+        var registry = new TypeRegistry();
+
+        registry.RegisterModule(module);
+
+        Assert.Single(registry.StructTypes);
+        Assert.Equal("Point", registry.StructTypes.First().Name);
+    }
+
+    [Fact]
+    public void TypeRegistry_ExternalVariable_RegistersType()
+    {
+        var source = @"
+pub struct Config {
+    value: i32,
+}
+
+extern CFG: Config
+
+pub fn get_config() -> Config {
+    return CFG
+}";
+
+        var module = BuildIR(source);
+        var registry = new TypeRegistry();
+
+        registry.RegisterModule(module);
+
+        Assert.Single(registry.StructTypes);
+        Assert.Equal("Config", registry.StructTypes.First().Name);
+    }
+}

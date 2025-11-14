@@ -82,7 +82,14 @@
       "Bash(sort:*)",
       "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Release/net9.0/novus build:*)",
       "Bash(csc:*)",
-      "Bash(mono:*)"
+      "Bash(mono:*)",
+      "Bash(/tmp/pattern_matching_methods.txt)",
+      "Bash(/tmp/extract_imports.sh:*)",
+      "Bash(timeout 60:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(for f in prime_100 prime_10000 prime_100000)",
+      "Bash(do echo \"=== Testing $f.novus ===\" /Users/barry/RiderProjects/Novus/Novus/bin/Debug/net9.0/Novus \"/Users/barry/RiderProjects/Novus/Novus.Tests/Examples/$f.novus\" -o \"/tmp/test_$f\")",
+      "Bash(reportgenerator:*)"
     ],
     "deny": [],
     "ask": []
