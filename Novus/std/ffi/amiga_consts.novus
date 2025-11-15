@@ -2763,9 +2763,17 @@ pub const WA_Left: u32 = $80000064
 pub const WA_Top: u32 = $80000065
 pub const WA_Width: u32 = $80000066
 pub const WA_Height: u32 = $80000067
+pub const WA_MinWidth: u32 = $80000072
+pub const WA_MinHeight: u32 = $80000073
+pub const WA_MaxWidth: u32 = $80000074
+pub const WA_MaxHeight: u32 = $80000075
 pub const WA_Title: u32 = $8000006E
 pub const WA_Flags: u32 = $8000006B
 pub const WA_IDCMP: u32 = $8000006A
+
+// Window size limits - use WA_SIZE_UNLIMITED for no limit
+pub const WA_SIZE_UNLIMITED: u32 = (~(u32)0)  // 0xFFFFFFFF, max u32 value
+
 pub const WFLG_ZOOMED: u32 = $10000000
 pub const WGUD_FUNC: u32 = 1
 pub const WGUD_HOOK: u32 = 0

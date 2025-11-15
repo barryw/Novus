@@ -10,6 +10,7 @@
 
 from std::graphics::intuition import WindowHandle, WindowEvent
 from std::strings::core import Str
+from std::io::core import write
 
 pub fn main() -> i32 {
     // Open a simple window with standard gadgets
@@ -18,9 +19,7 @@ pub fn main() -> i32 {
 
     match result {
         Result::Ok(window) => {
-            // Event loop - wait for events until close
-            let mut running = true
-            while running {
+            forever {
                 // Wait for next event (blocks until event arrives)
                 let event = window.wait_event()
 
@@ -28,9 +27,10 @@ pub fn main() -> i32 {
                 match event {
                     WindowEvent::Close => {
                         // User clicked close gadget - stop loop
-                        running = false
+                        break
                     },
                     _ => {
+                        write("event: {event}\n")
                         // Continue running for other events
                     }
                 }

@@ -8,9 +8,10 @@ from std::core import Option, Result, Drop
 from std::error::core import DosError, ExecError, IntuitionError, GraphicsError, NovusError
 from std::error::tags import make_tags
 from std::strings::core import Str
+from std::strings::format import Display, Formatter
 from std::memory::slice import Slice
 from std::ffi::amiga_structs import TagItem, Window, Screen, NewWindow, NewScreen, IntuiMessage, Message, MsgPort
-from std::ffi::intuition import OpenWindowTagList, OpenScreenTagList, CloseWindow, CloseScreen
+from std::ffi::intuition import OpenWindowTagList, OpenScreenTagList, CloseWindow, CloseScreen, BeginRefresh, EndRefresh
 from std::ffi::amiga_consts import TAG_DONE, IDCMP_*, WA_*, WFLG_*
 from std::ffi::exec import GetMsg, ReplyMsg, WaitPort
 
@@ -58,6 +59,55 @@ pub enum WindowEvent {
 
     /// Gadget pressed down (gadget_id)
     GadgetDown(u32),
+
+    /// Unknown/unhandled IDCMP event (class code)
+    Unknown(u32),
+}
+
+impl Display for WindowEvent {
+    fn fmt(&self, f: &mut Formatter) -> bool {
+        match *self {
+            WindowEvent::Close => {
+                return f.write_str("Close")
+            },
+            WindowEvent::Resize(_, _) => {
+                return f.write_str("Resize")
+            },
+            WindowEvent::Refresh => {
+                return f.write_str("Refresh")
+            },
+            WindowEvent::MouseMove(_, _) => {
+                return f.write_str("MouseMove")
+            },
+            WindowEvent::MouseButton(_, _, _) => {
+                return f.write_str("MouseButton")
+            },
+            WindowEvent::RawKey(_, _) => {
+                return f.write_str("RawKey")
+            },
+            WindowEvent::VanillaKey(_, _) => {
+                return f.write_str("VanillaKey")
+            },
+            WindowEvent::Activated => {
+                return f.write_str("Activated")
+            },
+            WindowEvent::Deactivated => {
+                return f.write_str("Deactivated")
+            },
+            WindowEvent::MenuPick(_) => {
+                return f.write_str("MenuPick")
+            },
+            WindowEvent::GadgetUp(_) => {
+                return f.write_str("GadgetUp")
+            },
+            WindowEvent::GadgetDown(_) => {
+                return f.write_str("GadgetDown")
+            },
+            WindowEvent::Unknown(_) => {
+                return f.write_str("Unknown")
+            }
+        }
+    }
 }
 
 // ============================================================================
@@ -294,14 +344,23 @@ impl WindowHandle {
     /// ```
     @suppress("W0002", "We're casting from i16 to u32 for tag data")
     pub fn simple(title: &Str, width: i16, height: i16) -> Result<WindowHandle, IntuitionError> {
-        let flags = WFLG_CLOSEGADGET | WFLG_DRAGBAR | WFLG_DEPTHGADGET
-        let idcmp = IDCMP_CLOSEWINDOW
+        let flags = WFLG_CLOSEGADGET | WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_SIZEGADGET | WFLG_SIZEBRIGHT | WFLG_SIZEBBOTTOM
+        // TODO: IDCMP_REFRESHWINDOW causes guru crashes after resize+close
+        // Even with proper BeginRefresh/EndRefresh calls, something corrupts Intuition state.
+        // Windows resize fine WITHOUT listening for REFRESHWINDOW, so we omit it for now.
+        // May be related to how we're handling the refresh in parse_intui_message or a deeper
+        // issue with window refresh semantics. Needs investigation.
+        let idcmp = IDCMP_CLOSEWINDOW | IDCMP_DELTAMOVE | IDCMP_NEWSIZE | IDCMP_MOUSEMOVE | IDCMP_MOUSEBUTTONS | IDCMP_RAWKEY | IDCMP_VANILLAKEY
 
         let tags = [
             TagItem { ti_Tag: WA_Left, ti_Data: 50 },
             TagItem { ti_Tag: WA_Top, ti_Data: 50 },
             TagItem { ti_Tag: WA_Width, ti_Data: (u32)width },
             TagItem { ti_Tag: WA_Height, ti_Data: (u32)height },
+            TagItem { ti_Tag: WA_MinWidth, ti_Data: 100 },
+            TagItem { ti_Tag: WA_MinHeight, ti_Data: 100 },
+            TagItem { ti_Tag: WA_MaxWidth, ti_Data: WA_SIZE_UNLIMITED },
+            TagItem { ti_Tag: WA_MaxHeight, ti_Data: WA_SIZE_UNLIMITED },
             TagItem { ti_Tag: WA_Title, ti_Data: (u32)title.ptr },
             TagItem { ti_Tag: WA_Flags, ti_Data: flags },
             TagItem { ti_Tag: WA_IDCMP, ti_Data: idcmp },
@@ -324,14 +383,18 @@ impl WindowHandle {
     /// ```
     @suppress("W0002", "We're casting from i16 to u32 for tag data")
     pub fn app_window(title: &Str, width: i16, height: i16) -> Result<WindowHandle, IntuitionError> {
-        let flags = WFLG_CLOSEGADGET | WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_SIZEGADGET
-        let idcmp = IDCMP_CLOSEWINDOW | IDCMP_NEWSIZE | IDCMP_REFRESHWINDOW
+        let flags = WFLG_CLOSEGADGET | WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_SIZEGADGET | WFLG_SIZEBRIGHT | WFLG_SIZEBBOTTOM
+        let idcmp = IDCMP_CLOSEWINDOW | IDCMP_NEWSIZE
 
         let tags = [
             TagItem { ti_Tag: WA_Left, ti_Data: 50 },
             TagItem { ti_Tag: WA_Top, ti_Data: 50 },
             TagItem { ti_Tag: WA_Width, ti_Data: (u32)width },
             TagItem { ti_Tag: WA_Height, ti_Data: (u32)height },
+            TagItem { ti_Tag: WA_MinWidth, ti_Data: 100 },
+            TagItem { ti_Tag: WA_MinHeight, ti_Data: 100 },
+            TagItem { ti_Tag: WA_MaxWidth, ti_Data: WA_SIZE_UNLIMITED },
+            TagItem { ti_Tag: WA_MaxHeight, ti_Data: WA_SIZE_UNLIMITED },
             TagItem { ti_Tag: WA_Title, ti_Data: (u32)title.ptr },
             TagItem { ti_Tag: WA_Flags, ti_Data: flags },
             TagItem { ti_Tag: WA_IDCMP, ti_Data: idcmp },
@@ -449,6 +512,15 @@ fn parse_intui_message(msg: *IntuiMessage) -> WindowEvent {
             }
         },
         IDCMP_REFRESHWINDOW => {
+            // CRITICAL: Must call BeginRefresh/EndRefresh for REFRESHWINDOW events
+            // or Intuition's internal state gets corrupted and causes crashes
+            unsafe {
+                let win = (*msg).IDCMPWindow
+                BeginRefresh(win)
+                // We don't redraw anything, so we can immediately end the refresh
+                // The 'complete' parameter TRUE (1) means the refresh is complete
+                EndRefresh(win, 1)
+            }
             WindowEvent::Refresh
         },
         IDCMP_MOUSEMOVE => {
@@ -483,8 +555,8 @@ fn parse_intui_message(msg: *IntuiMessage) -> WindowEvent {
             WindowEvent::GadgetDown((u32)iaddress)
         },
         _ => {
-            // Default: treat unknown events as close for safety
-            WindowEvent::Close
+            // Unknown/unhandled IDCMP event (including DELTAMOVE)
+            WindowEvent::Unknown(class)
         }
     }
 }

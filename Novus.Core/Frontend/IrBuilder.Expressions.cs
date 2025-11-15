@@ -3146,12 +3146,35 @@ public partial class IrBuilder
 
     private object? HandleInterpolatedStringImpl(string content, ParserRuleContext context)
     {
-        // Auto-import std::strings::primitives for Display implementations on primitive types
-        // This allows integers, bools, etc. to be used in f-strings without explicit imports
+        // Auto-import required modules for f-string support
+        // F-strings need:
+        // - std::strings::primitives for Display trait implementations on primitive types
+        // - std::strings::format for Formatter type
+        // - std::strings::core for String type and String::as_ptr() method
         bool isStdLibraryModule = _inputFilePath != null && _inputFilePath.Contains(System.IO.Path.DirectorySeparatorChar + "std" + System.IO.Path.DirectorySeparatorChar);
-        if (!isStdLibraryModule && !_processedModules.Contains("std::strings::primitives"))
+
+        if (!isStdLibraryModule)
         {
-            ImportModule("std::strings::primitives", importAll: true);
+            if (!_processedModules.Contains("std::strings::primitives"))
+            {
+                ImportModule("std::strings::primitives", importAll: true);
+            }
+
+            if (!_processedModules.Contains("std::strings::format"))
+            {
+                ImportModule("std::strings::format", importAll: true);
+            }
+
+            // ALWAYS import std::strings::core with importAll=true to ensure String::as_ptr() is available
+            // Even if user code did "from std::strings::core import Str", we need the full module
+            // for f-string support (specifically String type and its methods)
+            if (_processedModules.Contains("std::strings::core"))
+            {
+                // Module was already imported, but might have been selective (e.g., "from...import Str")
+                // Remove it from processed modules so we can re-import with importAll=true
+                _processedModules.Remove("std::strings::core");
+            }
+            ImportModule("std::strings::core", importAll: true);
         }
 
         // Parse the string into string and expression segments
@@ -3406,7 +3429,12 @@ public partial class IrBuilder
         else
         {
             // For other types, try to find Display::fmt() implementation
-            var typeName = exprType is IrStructType structType ? structType.StructName : exprType.Name;
+            var typeName = exprType switch
+            {
+                IrStructType structType => structType.StructName,
+                IrEnumType enumType => enumType.EnumName,
+                _ => exprType.Name
+            };
             var fmtMethodName = _module.FindTraitMethod(typeName, "fmt");
             if (fmtMethodName == null)
             {

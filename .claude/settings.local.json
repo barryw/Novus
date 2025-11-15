@@ -91,7 +91,20 @@
       "Bash(do echo \"=== Testing $f.novus ===\" /Users/barry/RiderProjects/Novus/Novus/bin/Debug/net9.0/Novus \"/Users/barry/RiderProjects/Novus/Novus.Tests/Examples/$f.novus\" -o \"/tmp/test_$f\")",
       "Bash(reportgenerator:*)",
       "Bash(git mv:*)",
-      "Bash({} +)"
+      "Bash({} +)",
+      "Bash(/tmp/simple_window/simple_window/src/main.novus)",
+      "Bash(/Users/barry/RiderProjects/Novus/simple_window/cli/src/main.novus)",
+      "Bash(simple_window/cli/src/main.novus)",
+      "Bash(msbuild:*)",
+      "Bash(/tmp/build_output.txt)",
+      "Bash(/usr/local/share/dotnet/dotnet:*)",
+      "Bash(chmod:*)",
+      "Bash(/tmp/test_build.sh)",
+      "Bash(sh:*)",
+      "Bash(Novus new /tmp/sw3 --type cli)",
+      "WebFetch(domain:github.com)",
+      "Bash(timeout 120 ./Novus/bin/Debug/net9.0/Novus stdlib-build:*)",
+      "Bash(./bin/Debug/net9.0/Novus:*)"
     ],
     "deny": [],
     "ask": []

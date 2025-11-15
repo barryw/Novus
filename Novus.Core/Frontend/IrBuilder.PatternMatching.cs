@@ -69,6 +69,7 @@ public partial class IrBuilder
     {
         SourceLocation errorLocation;
         var matchValue = (IrValue?)Visit(context.expression());
+
         if (matchValue == null)
         {
             errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
@@ -338,6 +339,51 @@ public partial class IrBuilder
                         var nextLabel = i < checkLabels.Count - 1 ? checkLabels[i + 1] : matchEndLabel;
                         _currentBlock!.AddInstruction(new IrConditionalBranch(cmpVar, armLabels[i], nextLabel));
                     }
+                }
+                // Handle identifier patterns that refer to constants
+                else if (pattern is NovusParser.IdentifierPatternContext identPattern)
+                {
+                    var identName = identPattern.IDENTIFIER().GetText();
+                    var constantSymbol = _symbols.LookupConstant(identName);
+
+                    if (constantSymbol != null && constantSymbol.Type is IrIntType)
+                    {
+                        // Extract integer value from constant
+                        long value;
+                        if (constantSymbol.Value is int intVal)
+                            value = intVal;
+                        else if (constantSymbol.Value is uint uintVal)
+                            value = uintVal;
+                        else if (constantSymbol.Value is long longVal)
+                            value = longVal;
+                        else if (constantSymbol.Value is ulong ulongVal)
+                            value = (long)ulongVal;
+                        else if (constantSymbol.Value is short shortVal)
+                            value = shortVal;
+                        else if (constantSymbol.Value is ushort ushortVal)
+                            value = ushortVal;
+                        else if (constantSymbol.Value is byte byteVal)
+                            value = byteVal;
+                        else if (constantSymbol.Value is sbyte sbyteVal)
+                            value = sbyteVal;
+                        else
+                            value = 0; // Fallback (should never happen if semantic analysis passed)
+
+                        // Compare match value with constant value
+                        var cmpName = $"%t{_tempCounter++}";
+                        var constValue = new IrConstant(value, matchValue.Type);
+                        _currentBlock!.AddInstruction(new IrBinaryOp(cmpName, IrBinaryOp.OpKind.Eq, matchValue, constValue, IrBoolType.Instance));
+                        var cmpVar = new IrVariable(cmpName, IrBoolType.Instance);
+
+                        // Branch: if match, go to arm, otherwise continue to next check
+                        var nextLabel = i < checkLabels.Count - 1 ? checkLabels[i + 1] : matchEndLabel;
+                        _currentBlock!.AddInstruction(new IrConditionalBranch(cmpVar, armLabels[i], nextLabel));
+                    }
+                }
+                else
+                {
+                    // Unknown pattern type for integer match - this shouldn't happen if semantic analysis passed
+                    // Leave the else clause empty so we fall through to the next check or default case
                 }
             }
         }
