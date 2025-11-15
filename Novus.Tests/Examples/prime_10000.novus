@@ -2,9 +2,9 @@
 // Real stress test with substantial computation
 // Uses Sieve of Eratosthenes algorithm
 
-from std::io import write
-from std::strings import Str
-from std::collections import Vec
+from std::io::core import write
+from std::strings::core import Str
+from std::collections::core import Vec
 
 pub fn main() -> i32 {
     let max: u32 = 10000

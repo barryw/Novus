@@ -26,8 +26,8 @@ public class RuntimeLibraryTests
     public void WriteFunction_IsAvailableInStdIo()
     {
         var source = @"
-from std::io import write
-from std::strings import Str
+from std::io::core import write
+from std::strings::core import Str
 
 pub fn main() -> i32 {
     let msg: Str = ""Hello\n""
@@ -47,8 +47,8 @@ pub fn main() -> i32 {
     public void WriteFunction_WithFormatSpecifiers_Compiles()
     {
         var source = @"
-from std::io import write
-from std::strings import Str
+from std::io::core import write
+from std::strings::core import Str
 
 pub fn main() -> i32 {
     let msg: Str = ""Value: %ld\n""
@@ -67,8 +67,8 @@ pub fn main() -> i32 {
     public void WriteFunction_WithMultipleArgs_Compiles()
     {
         var source = @"
-from std::io import write
-from std::strings import Str
+from std::io::core import write
+from std::strings::core import Str
 
 pub fn main() -> i32 {
     let msg: Str = ""Values: %ld, %ld, %ld\n""
@@ -133,8 +133,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 from std::core import LibraryVersion
-from std::io import write
-from std::strings import Str
+from std::io::core import write
+from std::strings::core import Str
 
 pub fn main() -> i32 {
     let maj: u16 = 1
@@ -158,7 +158,7 @@ pub fn main() -> i32 {
     public void VariadicFunction_IsMarkedCorrectly()
     {
         var source = @"
-from std::io import write
+from std::io::core import write
 
 pub fn main() -> i32 {
     return 0

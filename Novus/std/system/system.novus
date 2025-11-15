@@ -2,8 +2,8 @@
 // Namespace: std::system
 // Provides enums and variables for runtime hardware detection on Amiga
 
-from std::fmt import Display, Formatter
-from std::strings import Str
+from std::strings::format import Display, Formatter
+from std::strings::core import Str
 
 // CPU types detected via ExecBase->AttnFlags
 pub enum SystemCPU {

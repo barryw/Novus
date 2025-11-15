@@ -1,5 +1,5 @@
 // Test array-to-slice coercion
-from std::slice import Slice
+from std::memory::slice import Slice
 
 fn takes_slice(s: Slice<i32>) -> i32 {
     return s.len

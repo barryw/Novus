@@ -5,10 +5,10 @@
 // For low-level FFI access, use std::ffi::graphics
 
 from std::core import Option, Result, Drop
-from std::error import GraphicsError
+from std::error::core import GraphicsError
 from std::ffi::amiga_structs import *
 from std::ffi::graphics import AllocBitMap, FreeBitMap, WaitBlit, LoadView, WaitTOF
-from std::mem import MemoryBlock
+from std::memory::core import MemoryBlock
 
 // ============================================================================
 // RAII Resource Wrappers (Automatic Cleanup)

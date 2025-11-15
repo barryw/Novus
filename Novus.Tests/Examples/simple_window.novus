@@ -9,7 +9,7 @@
 // Compare to the original 106-line version - this is just 30 lines!
 
 from std::graphics::intuition import WindowHandle, WindowEvent
-from std::strings import Str
+from std::strings::core import Str
 
 pub fn main() -> i32 {
     // Open a simple window with standard gadgets

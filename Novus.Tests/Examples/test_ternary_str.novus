@@ -1,4 +1,4 @@
-from std::strings import Str
+from std::strings::core import Str
 
 pub fn main() -> i32 {
     let value = true

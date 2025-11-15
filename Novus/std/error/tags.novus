@@ -6,7 +6,7 @@
 // This module provides helpers to make working with tags more ergonomic.
 
 from std::core import Option
-from std::collections import Vec
+from std::collections::core import Vec
 from std::ffi::amiga_structs import TagItem
 from std::ffi::amiga_consts import TAG_DONE
 

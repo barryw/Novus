@@ -5,11 +5,11 @@
 // Handles OCS/ECS (4-bit) and AGA (8-bit) color differences transparently
 
 from std::core import Result
-from std::error import GraphicsError
-from std::system import CHIPSET, SystemChipset
+from std::error::core import GraphicsError
+from std::system::system import CHIPSET, SystemChipset
 from std::ffi::amiga_structs import ViewPort, ColorMap
 from std::ffi::graphics import LoadRGB4, SetRGB4, GetRGB4, LoadRGB32, SetRGB32, GetRGB32
-from std::mem import MemoryBlock
+from std::memory::core import MemoryBlock
 
 // ============================================================================
 // Color Structure (8-bit RGB)

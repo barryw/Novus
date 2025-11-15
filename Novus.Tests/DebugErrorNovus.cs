@@ -15,7 +15,7 @@ public class DebugErrorNovus
     public void Debug_ErrorNovus()
     {
         var stdPath = "/Users/barry/RiderProjects/Novus/Novus/std";
-        var fullPath = Path.Combine(stdPath, "error.novus");
+        var fullPath = Path.Combine(stdPath, "error", "core.novus");
         var source = File.ReadAllText(fullPath);
 
         var inputStream = new AntlrInputStream(source);

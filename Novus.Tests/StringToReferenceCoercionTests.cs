@@ -56,7 +56,7 @@ pub fn main() -> i32 {
     {
         // This test uses the actual Str type from the import
         string source = @"
-from std::strings import Str
+from std::strings::core import Str
 
 fn test_ref(s: &Str) -> i32 {
     return 42

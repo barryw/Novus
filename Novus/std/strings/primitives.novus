@@ -1,9 +1,9 @@
 // std::fmt_primitives - Display and Debug implementations for primitive types
 // Auto-imported by compiler for string interpolation support
 
-from std::fmt import Formatter, Display, Debug
-from std::strings import Str
-from std::error import StringError
+from std::strings::format import Formatter, Display, Debug
+from std::strings::core import Str
+from std::error::core import StringError
 
 // Helper functions for integer to string conversion
 // These are built-in compiler intrinsics that will be implemented in the runtime

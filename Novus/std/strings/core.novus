@@ -3,8 +3,8 @@
 // Powerful, ergonomic, Amiga-optimized string types
 
 from std::core import Option, Result, Drop
-from std::collections import Vec
-from std::mem import MemoryBlock
+from std::collections::core import Vec
+from std::memory::core import MemoryBlock
 from std::ffi::exec import MEMF_PUBLIC, MEMF_CLEAR, FreeMem
 
 // ============================================================================

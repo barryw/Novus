@@ -47,9 +47,9 @@ public class StdlibRuntimeTests
     public void Stdlib_Dos_OpenFile_WithRealPath()
     {
         var code = @"
-            from std::dos import open_file, close_file
+            from std::system::dos import open_file, close_file
             from std::core import Option
-            from std::strings import Str
+            from std::strings::core import Str
 
             fn main() -> i32 {
                 let path = ""RAM:test.txt""
@@ -73,8 +73,8 @@ public class StdlibRuntimeTests
     public void Stdlib_Dos_WriteFile_WithRealString()
     {
         var code = @"
-            from std::dos import write_file
-            from std::strings import Str
+            from std::system::dos import write_file
+            from std::strings::core import Str
 
             fn main() -> i32 {
                 let message = ""Hello, Amiga!""
@@ -98,7 +98,7 @@ public class StdlibRuntimeTests
     public void Stdlib_Dos_ReadFile_WithRealBuffer()
     {
         var code = @"
-            from std::dos import read_file
+            from std::system::dos import read_file
 
             fn main() -> i32 {
                 let buffer: [u8; 256] = [0; 256]
@@ -126,7 +126,7 @@ public class StdlibRuntimeTests
     public void Stdlib_Exec_GetCurrentTask_ValidatesTaskPtr()
     {
         var code = @"
-            from std::exec import get_current_task
+            from std::system::exec import get_current_task
 
             fn main() -> i32 {
                 let task = get_current_task()
@@ -150,7 +150,7 @@ public class StdlibRuntimeTests
     public void Stdlib_Exec_AllocateAndFreeSignal_RealFlow()
     {
         var code = @"
-            from std::exec import allocate_signal, free_signal
+            from std::system::exec import allocate_signal, free_signal
             from std::core import Option
 
             fn main() -> i32 {
@@ -179,7 +179,7 @@ public class StdlibRuntimeTests
     public void Stdlib_Error_ConvertDosErrorToCode()
     {
         var code = @"
-            from std::error import dos_error_from_code, dos_error_to_code
+            from std::error::core import dos_error_from_code, dos_error_to_code
 
             fn main() -> i32 {
                 let err = dos_error_from_code(103)
@@ -201,7 +201,7 @@ public class StdlibRuntimeTests
     public void Stdlib_Error_NovusErrorConversion_RealFlow()
     {
         var code = @"
-            from std::error import dos_error_from_code, novus_error_from_dos, novus_error_to_code
+            from std::error::core import dos_error_from_code, novus_error_from_dos, novus_error_to_code
 
             fn main() -> i32 {
                 let dos_err = dos_error_from_code(103)
@@ -224,10 +224,10 @@ public class StdlibRuntimeTests
     public void Integration_FileOperations_OpenReadClose()
     {
         var code = @"
-            from std::dos import open_file, read_file, close_file
+            from std::system::dos import open_file, read_file, close_file
             from std::core import Option
-            from std::strings import Str
-            from std::error import dos_last_error, dos_error_to_code
+            from std::strings::core import Str
+            from std::error::core import dos_last_error, dos_error_to_code
 
             fn main() -> i32 {
                 let path = ""RAM:test.txt""
@@ -265,9 +265,9 @@ public class StdlibRuntimeTests
     public void Integration_SignalAllocationWithErrorHandling()
     {
         var code = @"
-            from std::exec import allocate_signal, free_signal
+            from std::system::exec import allocate_signal, free_signal
             from std::core import Option
-            from std::error import novus_error_from_exec, novus_error_to_code
+            from std::error::core import novus_error_from_exec, novus_error_to_code
 
             fn main() -> i32 {
                 let signal = allocate_signal(-1)
@@ -302,7 +302,7 @@ public class StdlibRuntimeTests
     public void StringLiterals_WorkWithStrImport()
     {
         var code = @"
-            from std::strings import Str
+            from std::strings::core import Str
 
             fn main() -> i32 {
                 let s1 = ""Hello""

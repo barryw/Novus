@@ -3146,12 +3146,12 @@ public partial class IrBuilder
 
     private object? HandleInterpolatedStringImpl(string content, ParserRuleContext context)
     {
-        // Auto-import std::fmt_primitives for Display implementations on primitive types
+        // Auto-import std::strings::primitives for Display implementations on primitive types
         // This allows integers, bools, etc. to be used in f-strings without explicit imports
         bool isStdLibraryModule = _inputFilePath != null && _inputFilePath.Contains(System.IO.Path.DirectorySeparatorChar + "std" + System.IO.Path.DirectorySeparatorChar);
-        if (!isStdLibraryModule && !_processedModules.Contains("std::fmt_primitives"))
+        if (!isStdLibraryModule && !_processedModules.Contains("std::strings::primitives"))
         {
-            ImportModule("std::fmt_primitives", importAll: true);
+            ImportModule("std::strings::primitives", importAll: true);
         }
 
         // Parse the string into string and expression segments

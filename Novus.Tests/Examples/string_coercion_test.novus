@@ -3,7 +3,7 @@
 
 from std::ffi::dos import Open, Close
 from std::ffi::amiga_consts import MODE_OLDFILE
-from std::strings import Str
+from std::strings::core import Str
 
 extern fn write(format: *u8, ...args) -> i32
 

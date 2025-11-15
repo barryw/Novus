@@ -1,6 +1,6 @@
 // Test that primitive Display implementations compile
 
-from std::fmt import Display, Formatter
+from std::strings::format import Display, Formatter
 
 fn test_i32_display() {
     let x: i32 = 42

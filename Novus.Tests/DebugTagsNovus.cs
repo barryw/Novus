@@ -15,7 +15,7 @@ public class DebugTagsNovus
     public void Debug_TagsNovus()
     {
         var stdPath = "/Users/barry/RiderProjects/Novus/Novus/std";
-        var fullPath = Path.Combine(stdPath, "tags.novus");
+        var fullPath = Path.Combine(stdPath, "error", "tags.novus");
         var source = File.ReadAllText(fullPath);
 
         var inputStream = new AntlrInputStream(source);

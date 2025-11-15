@@ -7,7 +7,7 @@
 // Expected Output:
 //   Exit code: 42
 
-from std::mem import MemoryBlock
+from std::memory::core import MemoryBlock
 from std::ffi::amiga_consts import MEMF_PUBLIC
 
 pub fn main() -> i32 {

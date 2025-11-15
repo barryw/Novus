@@ -2,8 +2,8 @@
 // Demonstrates the new f"..." string interpolation feature
 // Note: Integer formatting not yet implemented, testing string interpolation only
 
-from std::strings import Str, String
-from std::fmt import Formatter, Display
+from std::strings::core import Str, String
+from std::strings::format import Formatter, Display
 
 extern fn write(format: *u8, ...args) -> i32
 

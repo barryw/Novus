@@ -2,8 +2,8 @@
 // Provides zero-allocation formatting infrastructure for string interpolation
 
 from std::core import Option, Drop
-from std::strings import String, Str
-from std::error import StringError
+from std::strings::core import String, Str
+from std::error::core import StringError
 
 // Formatter - builds formatted output efficiently without intermediate allocations
 pub struct Formatter {

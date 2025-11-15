@@ -1,5 +1,5 @@
 // Test multiple Vec generic method instantiations
-from std::collections import Vec
+from std::collections::core import Vec
 
 fn main() {
     // Create a Vec<u32> with capacity

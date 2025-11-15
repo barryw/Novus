@@ -1,4 +1,4 @@
-from std::strings import String
+from std::strings::core import String
 
 fn consume(consuming s: String) {}
 
