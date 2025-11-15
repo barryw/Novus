@@ -14,7 +14,7 @@ from std::strings::core import Str
 pub fn main() -> i32 {
     // Open a simple window with standard gadgets
     // WindowHandle automatically handles cleanup on drop!
-    let result = WindowHandle::simple(&"Novus Window", 320, 200)
+    let result = WindowHandle::simple("Novus Window", 800, 600)
 
     match result {
         Result::Ok(window) => {

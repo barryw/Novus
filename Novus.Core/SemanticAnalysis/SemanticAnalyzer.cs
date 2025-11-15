@@ -5709,6 +5709,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                         continue;
                     }
 
+                    // Check if we can coerce Str to &Str
+                    if (CanCoerceStrToStrRef(paramType, argType))
+                    {
+                        // Allow this coercion - IrBuilder will handle reference creation
+                        continue;
+                    }
+
                     var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
 
                     // Check if this is a function pointer mismatch - give detailed error
@@ -6122,19 +6129,36 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     if (argType != null && !TypesCompatible(paramType, argType))
                     {
                         // Check if we can coerce Str to *u8
-                        if (!CanCoerceStrToU8Ptr(paramType, argType))
+                        if (CanCoerceStrToU8Ptr(paramType, argType))
                         {
-                            var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
-                            _diagnostics.ReportError(
-                                "E0015",
-                                $"mismatched types in method call",
-                                location,
-                                helpTexts: new List<string>
-                                {
-                                    $"argument {i + 1} ('{method.Parameters[paramStartIndex + i].Name}'): expected '{TypeToString(paramType)}', found '{TypeToString(argType)}'"
-                                }
-                            );
+                            // Allow this coercion - IrBuilder will handle field extraction
+                            continue;
                         }
+
+                        // Check if we can coerce &[T; N] to Slice<T>
+                        if (CanCoerceArrayToSlice(paramType, argType))
+                        {
+                            // Allow this coercion - IrBuilder will handle Slice construction
+                            continue;
+                        }
+
+                        // Check if we can coerce Str to &Str
+                        if (CanCoerceStrToStrRef(paramType, argType))
+                        {
+                            // Allow this coercion - IrBuilder will handle reference creation
+                            continue;
+                        }
+
+                        var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
+                        _diagnostics.ReportError(
+                            "E0015",
+                            $"mismatched types in method call",
+                            location,
+                            helpTexts: new List<string>
+                            {
+                                $"argument {i + 1} ('{method.Parameters[paramStartIndex + i].Name}'): expected '{TypeToString(paramType)}', found '{TypeToString(argType)}'"
+                            }
+                        );
                     }
                 }
             }
@@ -8409,6 +8433,25 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 // Verify array element type matches Slice element type
                 return TypesCompatible(slicePtrType.PointeeType, arrayType.ElementType);
             }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Check if we can coerce Str → &Str
+    /// This allows string literals to be passed directly to functions expecting &Str
+    /// </summary>
+    private bool CanCoerceStrToStrRef(IrType expectedType, IrType actualType)
+    {
+        // Check if expected is &Str and actual is Str
+        if (expectedType is IrReferenceType refType &&
+            refType.PointeeType is IrStructType expectedStruct &&
+            expectedStruct.StructName == "Str" &&
+            actualType is IrStructType actualStruct &&
+            actualStruct.StructName == "Str")
+        {
+            return true;
         }
 
         return false;
