@@ -1,5 +1,5 @@
 // Novus Standard Library - Intuition (High-Level)
-// Namespace: std::intuition
+// Namespace: std::graphics::intuition
 //
 // High-level wrappers for intuition.library functions
 // For low-level FFI access, use std::ffi::intuition

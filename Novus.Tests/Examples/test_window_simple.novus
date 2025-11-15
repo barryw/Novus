@@ -1,5 +1,5 @@
 // Test WindowHandle::simple - open window, delay 5 seconds, close
-from std::intuition import WindowHandle
+from std::graphics::intuition import WindowHandle
 from std::ffi::dos import Delay
 
 pub fn main() -> i32 {

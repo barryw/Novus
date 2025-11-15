@@ -8,7 +8,7 @@
 //
 // Compare to the original 106-line version - this is just 30 lines!
 
-from std::intuition import WindowHandle, WindowEvent
+from std::graphics::intuition import WindowHandle, WindowEvent
 from std::strings import Str
 
 pub fn main() -> i32 {

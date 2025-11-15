@@ -1,5 +1,5 @@
-// Novus Standard Library - Graphics (High-Level)
-// Namespace: std::graphics
+// Novus Standard Library - Graphics Core (High-Level)
+// Namespace: std::graphics::core
 //
 // High-level wrappers for graphics.library functions
 // For low-level FFI access, use std::ffi::graphics
