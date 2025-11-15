@@ -152,7 +152,18 @@ public partial class IrBuilder
 
         // Determine if arms produce values and their type
         IrType? matchResultType = null;
-        bool armsProduceValues = expandedArms.Any(arm => arm.OriginalArm.expression() != null);
+        // Arms produce values if they have expression(s) that aren't guards
+        // With guards: expression()[0] is guard, expression()[1] is value (if present)
+        // Without guards: expression()[0] is value (if present)
+        bool armsProduceValues = expandedArms.Any(arm =>
+        {
+            var exprs = arm.OriginalArm.expression();
+            if (exprs == null || exprs.Length == 0) return false;
+            // If there's a guard (KW_IF present), we need at least 2 expressions (guard + value)
+            if (arm.OriginalArm.KW_IF() != null) return exprs.Length >= 2;
+            // Otherwise, first expression is the value
+            return true;
+        });
         string? matchResultVarName = null;
 
         // Extract tag from enum value (before declaring match result, so it appears first)
@@ -390,9 +401,26 @@ public partial class IrBuilder
             }
             // Integer matches don't have associated data to extract
 
+            // Visit guard if present and generate conditional branch
+            var expressions = armCtx.expression();
+            int valueExprIndex = 0;
+            if (armCtx.KW_IF() != null && expressions != null && expressions.Length > 0)
+            {
+                // Evaluate guard condition
+                var guardValue = (IrValue?)Visit(expressions[0]);
+                if (guardValue != null)
+                {
+                    // If guard is false, jump to next case
+                    var skipLabel = $"%match_{matchId}_arm_{i}_skip";
+                    _currentBlock!.AddInstruction(new IrConditionalBranch(guardValue, null, skipLabel));
+                    // Guard passed - continue with this arm
+                }
+                valueExprIndex = 1;
+            }
+
             // Visit the arm body and capture result if it's an expression
             IrValue? armResult = null;
-            if (armCtx.expression() != null)
+            if (expressions != null && expressions.Length > valueExprIndex)
             {
                 // Set expected type so enum constructors get the correct monomorphized type
                 // We set this once before visiting all arms and keep it set
@@ -401,7 +429,7 @@ public partial class IrBuilder
                     _expectedType = matchResultType;
                 }
 
-                armResult = (IrValue?)Visit(armCtx.expression());
+                armResult = (IrValue?)Visit(expressions[valueExprIndex]);
 
                 // Infer match result type from first arm if we didn't have an expected type
                 if (i == 0 && armResult != null && matchResultType == null)

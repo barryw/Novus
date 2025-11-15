@@ -218,7 +218,7 @@ statement
 
 deferStatement
     : KW_DEFER block                 # DeferBlock
-    | KW_DEFER '=>' expression       # DeferExpression
+    | KW_DEFER expression            # DeferExpression
     ;
 
 assertStatement
@@ -238,7 +238,7 @@ usingStatement
     ;
 
 matchArm
-    : pattern '=>' (expression | block | returnStatement)
+    : pattern (KW_IF expression)? '=>' (expression | block | returnStatement)
     ;
 
 pattern
@@ -307,8 +307,8 @@ whileStatement
     ;
 
 forStatement
-    : KW_FOR '(' (variableDeclaration | assignmentStatement)? ';' expression? ';' assignmentStatement? ')' block  # ForCStyle
-    | KW_FOR IDENTIFIER KW_IN expression block                                                                      # ForInLoop
+    : KW_FOR (variableDeclaration | assignmentStatement) ';' expression ';' assignmentStatement block  # ForCStyle
+    | KW_FOR KW_MUT? IDENTIFIER KW_IN expression block                                                 # ForInLoop
     ;
 
 foreverStatement
@@ -362,7 +362,7 @@ primaryExpression
     | KW_FALSE                                     # BoolLiteral
     | KW_NULL                                      # NullLiteral
     | KW_SELF                                      # SelfExpr
-    | '@' KW_SIZEOF '(' type ')'                   # SizeofExpr
+    | '@'? KW_SIZEOF '(' type ')'                  # SizeofExpr
     | F_STRING_LITERAL                             # InterpolatedStringLiteral
     | CHAR_LITERAL                                 # CharLiteral
     | STRING_LITERAL                               # StringLiteral

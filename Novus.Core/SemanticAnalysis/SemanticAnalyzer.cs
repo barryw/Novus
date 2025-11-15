@@ -2030,6 +2030,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         if (stmt.returnStatement() != null)
             return true;
 
+        // Panic statement always diverges (never returns)
+        if (stmt.panicStatement() != null)
+            return true;
+
         // If statement returns if both branches return
         if (stmt.ifStatement() != null)
         {
@@ -2340,7 +2344,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public override IrType? VisitVariableDeclaration([NotNull] NovusParser.VariableDeclarationContext context)
     {
-        var isMutable = context.GetChild(0)?.GetText() == "var" || context.GetChild(1)?.GetText() == "mut";
+        // Check if KW_MUT is present - variable is only mutable if "mut" keyword is explicitly specified
+        var isMutable = context.KW_MUT() != null;
 
         // Check if this is tuple destructuring
         var tuplePattern = context.tuplePattern();
@@ -2380,23 +2385,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         IrType varType;
         if (context.type() != null)
         {
-            // Reject explicit array sizes when there's an initializer - size should be inferred
-            if (context.type() is NovusParser.ArrayTypeWithSizeContext)
-            {
-                var typeLocation = SourceLocationHelper.FromContext(context.type(), _filePath, _sourceLines);
-                _diagnostics.ReportError(
-                    "E0200",
-                    "array size in type annotation is redundant with initializer",
-                    typeLocation,
-                    helpTexts: new List<string>
-                    {
-                        "remove the size from the type annotation - the size is inferred from the initializer",
-                        "example: change 'let arr: [i32; 3] = [1, 2, 3]' to 'let arr = [1, 2, 3]'"
-                    }
-                );
-                return null;
-            }
-
+            // Parse the type annotation (explicit array sizes are allowed and validated against initializer)
             varType = ParseType(context.type());
 
             // Set expected type for bidirectional type checking
@@ -3494,14 +3483,19 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public override IrType? VisitForCStyle([NotNull] NovusParser.ForCStyleContext context)
     {
-        // Visit initialization if present
-        if (context.GetChild(2) is NovusParser.VariableDeclarationContext varDecl)
+        // Visit initialization - check both possible alternatives
+        var varDecl = context.variableDeclaration();
+        if (varDecl != null)
         {
             Visit(varDecl);
         }
-        else if (context.GetChild(2) is NovusParser.AssignmentStatementContext assignment)
+        else
         {
-            Visit(assignment);
+            var assignmentStmts = context.assignmentStatement();
+            if (assignmentStmts.Length > 0 && assignmentStmts[0] != null)
+            {
+                Visit(assignmentStmts[0]);
+            }
         }
 
         // Visit condition if present
@@ -3530,7 +3524,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         _loopDepth--;
 
         // Visit increment statement if present (after exiting loop context)
-        if (context.GetChild(6) is NovusParser.AssignmentStatementContext incrAssignment)
+        var assignmentStmts2 = context.assignmentStatement();
+        if (assignmentStmts2.Length > 1 && assignmentStmts2[1] != null)
         {
             // Note: This is validated in the loop context during IR building
             // We don't validate it here separately
@@ -3541,15 +3536,18 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public override IrType? VisitForInLoop([NotNull] NovusParser.ForInLoopContext context)
     {
-        // for item in collection { ... }
+        // for [mut] item in collection { ... }
         var itemName = context.IDENTIFIER().GetText();
         var collectionType = Visit(context.expression());
+
+        // Check if the binding is mutable
+        var isMutable = context.KW_MUT() != null;
 
         // TODO: Validate that collection implements Iterator trait
         // For now, just add the item variable with a placeholder type
         // The IR builder will properly type it when it unwraps the Option
         var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
-        var itemSymbol = new VariableSymbol(itemName, IrIntType.I32, false, location!);  // Placeholder type
+        var itemSymbol = new VariableSymbol(itemName, IrIntType.I32, isMutable, location!);  // Placeholder type
         _variables[itemName] = itemSymbol;
 
         // Enter loop context
@@ -3623,13 +3621,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Analyze the condition expression
         var conditionType = Visit(context.expression());
 
-        // Verify condition is boolean or numeric (C-style truthiness)
-        if (conditionType != null && !IsBoolOrNumericType(conditionType))
+        // Verify condition is boolean (asserts require explicit bool, not C-style truthiness)
+        if (conditionType != null && conditionType is not IrBoolType)
         {
             var location = SourceLocationHelper.FromToken(context.Start, _filePath, _sourceLines);
             _diagnostics.ReportError(
                 "E0308",
-                $"assert condition must be a boolean or numeric expression, found '{TypeToString(conditionType)}'",
+                $"assert condition must be a boolean expression, found '{TypeToString(conditionType)}'",
                 location
             );
         }
@@ -3887,9 +3885,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             actualMatchType = mutRefType.PointeeType;
         }
 
-        // Ensure we're matching on an enum type or integer type
+        // Ensure we're matching on an enum type, integer type, or bool type
         bool isEnumMatch = actualMatchType is IrEnumType;
-        bool isIntegerMatch = actualMatchType is IrIntType;
+        bool isIntegerMatch = actualMatchType is IrIntType || actualMatchType is IrBoolType;
 
         // For pattern analysis, we need the enum type to look up variants
         // If actualMatchType is a generic type parameter that refers to an enum,
@@ -3949,24 +3947,53 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             // Save current variable scope - store list of variables added by this pattern
             var variablesBeforePattern = new HashSet<string>(_variables.Keys);
 
+            // Check if this arm has a guard - if so, allow binding patterns
+            bool hasGuard = armCtx.KW_IF() != null;
+
             // Analyze pattern and bind variables
             if (isEnumMatch)
             {
                 AnalyzePatternAndBind(pattern, enumTypeForValidation!, coveredVariants, ref hasWildcard);
             }
-            else // isIntegerMatch
+            else if (actualMatchType is IrIntType intType)
             {
-                AnalyzeIntegerPatternAndBind(pattern, (IrIntType)matchValueType, coveredIntegerValues, ref hasWildcard);
+                AnalyzeIntegerPatternAndBind(pattern, intType, coveredIntegerValues, ref hasWildcard, allowBinding: hasGuard);
+            }
+            else if (actualMatchType is IrBoolType)
+            {
+                // For bool matches, treat it as integer match with values 0/1
+                // Bool patterns can be `true` or `false` which map to 1 and 0
+                AnalyzeIntegerPatternAndBind(pattern, IrIntType.I32, coveredIntegerValues, ref hasWildcard, allowBinding: hasGuard);
             }
 
             // Track moves in this arm
             EnterBranch(ControlFlowKind.MatchArm);
 
+            // Analyze guard expression if present (first expression in array)
+            var expressions = armCtx.expression();
+            int valueExprIndex = 0;
+            if (armCtx.KW_IF() != null && expressions != null && expressions.Length > 0)
+            {
+                // First expression is the guard - must be boolean
+                var guardType = Visit(expressions[0]);
+                if (guardType != null && guardType is not IrBoolType)
+                {
+                    var location = SourceLocationHelper.FromContext(expressions[0], _filePath, _sourceLines);
+                    _diagnostics.ReportError(
+                        "E0308",
+                        $"match guard must be a boolean expression, found '{TypeToString(guardType)}'",
+                        location
+                    );
+                }
+                valueExprIndex = 1;
+            }
+
             // Analyze the arm body (expression, block, or return statement) with bound variables in scope
             IrType? armType = null;
-            if (armCtx.expression() != null)
+            if (expressions != null && expressions.Length > valueExprIndex)
             {
-                armType = Visit(armCtx.expression());
+                // Value expression (either the only expression, or the second if there's a guard)
+                armType = Visit(expressions[valueExprIndex]);
             }
             else if (armCtx.block() != null)
             {
@@ -4023,7 +4050,32 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     );
                 }
             }
-            else // isIntegerMatch
+            else if (actualMatchType is IrBoolType)
+            {
+                // For bool matches, check if both true (1) and false (0) are covered
+                bool hasFalse = coveredIntegerValues.Contains(0);
+                bool hasTrue = coveredIntegerValues.Contains(1);
+
+                if (!hasFalse || !hasTrue)
+                {
+                    var missing = new List<string>();
+                    if (!hasTrue) missing.Add("true");
+                    if (!hasFalse) missing.Add("false");
+
+                    var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                    _diagnostics.ReportError(
+                        "E0036",
+                        "match on bool is not exhaustive",
+                        location,
+                        helpTexts: new List<string>
+                        {
+                            $"missing patterns: {string.Join(", ", missing)}",
+                            "add missing patterns or use a wildcard pattern '_'"
+                        }
+                    );
+                }
+            }
+            else // isIntegerMatch (but not bool)
             {
                 // For integer matches, exhaustiveness is practically impossible (too many values)
                 // So we require a wildcard pattern for integers
@@ -4246,7 +4298,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     }
 
     private void AnalyzeIntegerPatternAndBind(NovusParser.PatternContext pattern, IrIntType intType,
-        HashSet<long> coveredValues, ref bool hasWildcard)
+        HashSet<long> coveredValues, ref bool hasWildcard, bool allowBinding = false)
     {
         switch (pattern)
         {
@@ -4257,8 +4309,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             case NovusParser.PipePatternContext pipePattern:
             {
                 // Recursively analyze both sides of the pipe
-                AnalyzeIntegerPatternAndBind(pipePattern.pattern(0), intType, coveredValues, ref hasWildcard);
-                AnalyzeIntegerPatternAndBind(pipePattern.pattern(1), intType, coveredValues, ref hasWildcard);
+                AnalyzeIntegerPatternAndBind(pipePattern.pattern(0), intType, coveredValues, ref hasWildcard, allowBinding);
+                AnalyzeIntegerPatternAndBind(pipePattern.pattern(1), intType, coveredValues, ref hasWildcard, allowBinding);
                 break;
             }
 
@@ -4341,16 +4393,29 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
             case NovusParser.BoolLiteralPatternContext boolPattern:
             {
-                var location = SourceLocationHelper.FromToken(boolPattern.Start, _filePath, _sourceLines);
-                _diagnostics.ReportError(
-                    "E0043",
-                    "cannot use boolean literal in integer match pattern",
-                    location,
-                    helpTexts: new List<string>
+                // Allow bool literals in patterns (they map to 0/1)
+                // This is valid when matching on bool type
+                var isTrue = boolPattern.KW_TRUE() != null;
+                long value = isTrue ? 1 : 0;
+
+                if (coveredValues.Contains(value))
+                {
+                    if (!_currentFunctionSuppressedWarnings.Contains("W0001"))
                     {
-                        "integer match patterns only accept integer literals or wildcards"
+                        var location = SourceLocationHelper.FromToken(boolPattern.Start, _filePath, _sourceLines);
+                        _diagnostics.ReportWarning(
+                            "W0001",
+                            $"duplicate match pattern for value {(isTrue ? "true" : "false")}",
+                            location,
+                            helpTexts: new List<string>
+                            {
+                                "this pattern will never be reached because an earlier pattern matches the same value"
+                            }
+                        );
                     }
-                );
+                }
+
+                coveredValues.Add(value);
                 break;
             }
 
@@ -4431,6 +4496,15 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
                     coveredValues.Add(value);
                 }
+                else if (allowBinding)
+                {
+                    // This is a binding pattern (e.g., `n if n > 0`)
+                    // Bind the identifier to the matched value
+                    var location = SourceLocationHelper.FromToken(identPattern.Start, _filePath, _sourceLines);
+                    _variables[identName] = new VariableSymbol(identName, intType, false, location);
+                    // Binding patterns don't contribute to exhaustiveness checking
+                    // They match any value (like wildcards) but bind it to a name
+                }
                 else
                 {
                     // Not a constant or not an integer constant - report error
@@ -4442,7 +4516,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                         helpTexts: new List<string>
                         {
                             "integer match patterns only accept integer literals, integer constants, or wildcards",
-                            $"example: match value {{ 0 => ..., 1 => ..., CONSTANT => ..., _ => ... }}"
+                            $"example: match value {{ 0 => ..., 1 => ..., CONSTANT => ..., _ => ... }}",
+                            "use a guard with binding patterns: match value { n if n > 0 => ... }"
                         }
                     );
                 }
@@ -6079,6 +6154,32 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public override IrType? VisitStringLiteral([NotNull] NovusParser.StringLiteralContext context)
     {
+        var text = context.STRING_LITERAL().GetText();
+        var stringValue = text.Substring(1, text.Length - 2);  // Remove quotes
+
+        // Check if string contains interpolation (unescaped curly braces)
+        bool hasInterpolation = false;
+        for (int i = 0; i < stringValue.Length; i++)
+        {
+            if (stringValue[i] == '\\')
+            {
+                // Skip escaped character
+                i++;
+                continue;
+            }
+            if (stringValue[i] == '{')
+            {
+                hasInterpolation = true;
+                break;
+            }
+        }
+
+        if (hasInterpolation)
+        {
+            // Handle as interpolated string - returns String type
+            return GetInterpolatedStringType(context);
+        }
+
         // String literals create Str struct instances from std::strings
         // Str { ptr: *u8, len: u32 }
         var strType = _symbols.LookupStruct("Str");
@@ -6101,51 +6202,47 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return strType;
     }
 
-    public override IrType? VisitInterpolatedStringLiteral([NotNull] NovusParser.InterpolatedStringLiteralContext context)
+    private IrType? GetInterpolatedStringType(ParserRuleContext context)
     {
-        // F-strings (interpolated strings) return String struct instances from std::strings
-        // String { data: *u8, len: u32, cap: u32 }
-        // They also require Formatter from std::fmt and Display trait implementations
-
-        // Check for String type (result of f-string)
+        // Interpolated strings return String struct instances from std::strings
         var stringType = _symbols.LookupStruct("String");
         if (stringType == null)
         {
-            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
-            _diagnostics.ReportError(
-                "E0999",
-                "interpolated strings (f-strings) require String type from std::strings module",
-                location,
-                helpTexts: new List<string>
-                {
-                    "ensure std::strings is imported",
-                    "add 'from std::strings import String' to your imports"
-                }
-            );
-            return null;
+            // When String type is not available, fall back to *u8 (C-style string pointer)
+            // This allows interpolated strings to work in minimal contexts without full std lib
+            return new IrPointerType(IrIntType.U8);
         }
 
         // Check for Formatter type (used internally)
         var formatterType = _symbols.LookupStruct("Formatter");
         if (formatterType == null)
         {
-            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
-            _diagnostics.ReportError(
-                "E0999",
-                "interpolated strings (f-strings) require Formatter type from std::fmt module",
-                location,
-                helpTexts: new List<string>
-                {
-                    "ensure std::fmt is imported",
-                    "add 'from std::fmt import Formatter' to your imports"
-                }
-            );
+            // Formatter not available, fall back to *u8
+            return new IrPointerType(IrIntType.U8);
+        }
+
+        return stringType;
+    }
+
+    public override IrType? VisitInterpolatedStringLiteral([NotNull] NovusParser.InterpolatedStringLiteralContext context)
+    {
+        // Get type validation (String and Formatter must be available)
+        var stringType = GetInterpolatedStringType(context);
+        if (stringType == null)
+        {
             return null;
         }
 
         // Parse the f-string content and validate expressions
-        var fstring = context.F_STRING_LITERAL().GetText();
-        var content = fstring.Substring(2, fstring.Length - 3); // Strip f" and "
+        var fstring = context.GetChild(0)?.GetText();
+        if (fstring == null)
+        {
+            return stringType;
+        }
+
+        var content = fstring.StartsWith("f\"")
+            ? fstring.Substring(2, fstring.Length - 3)  // f"..." -> ...
+            : fstring.Substring(1, fstring.Length - 2);  // "..." -> ...
 
         // Parse interpolation segments and validate each expression
         var segments = ParseInterpolatedStringSegments(content);
@@ -6985,14 +7082,33 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             );
         }
 
-        // Verify it's an lvalue
+        // Verify it's an lvalue and check mutability
         bool isLvalue = false;
         if (context.expression() is NovusParser.PrimaryExprContext primaryCtx)
         {
             var primaryExpr = primaryCtx.primaryExpression();
-            if (primaryExpr is NovusParser.IdentifierExprContext)
+            if (primaryExpr is NovusParser.IdentifierExprContext identCtx)
             {
                 isLvalue = true;
+
+                // Check if the variable is mutable
+                var varName = identCtx.identifier().GetText();
+                if (_variables.TryGetValue(varName, out var variable))
+                {
+                    if (!variable.IsMutable)
+                    {
+                        var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
+                        _diagnostics.ReportError(
+                            "E0384",
+                            $"cannot increment immutable variable `{varName}`",
+                            location,
+                            helpTexts: new List<string>
+                            {
+                                "help: declare the variable as mutable with 'var mut'"
+                            }
+                        );
+                    }
+                }
             }
         }
         else if (context.expression() is NovusParser.MemberAccessExprContext ||
@@ -7036,14 +7152,33 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             );
         }
 
-        // Verify it's an lvalue
+        // Verify it's an lvalue and check mutability
         bool isLvalue = false;
         if (context.expression() is NovusParser.PrimaryExprContext primaryCtx)
         {
             var primaryExpr = primaryCtx.primaryExpression();
-            if (primaryExpr is NovusParser.IdentifierExprContext)
+            if (primaryExpr is NovusParser.IdentifierExprContext identCtx)
             {
                 isLvalue = true;
+
+                // Check if the variable is mutable
+                var varName = identCtx.identifier().GetText();
+                if (_variables.TryGetValue(varName, out var variable))
+                {
+                    if (!variable.IsMutable)
+                    {
+                        var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
+                        _diagnostics.ReportError(
+                            "E0384",
+                            $"cannot decrement immutable variable `{varName}`",
+                            location,
+                            helpTexts: new List<string>
+                            {
+                                "help: declare the variable as mutable with 'var mut'"
+                            }
+                        );
+                    }
+                }
             }
         }
         else if (context.expression() is NovusParser.MemberAccessExprContext ||
@@ -7087,15 +7222,34 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             );
         }
 
-        // Verify it's an lvalue
+        // Verify it's an lvalue and check mutability
         bool isLvalue = false;
         var expr = context.expression();
         if (expr is NovusParser.PrimaryExprContext primaryCtx)
         {
             var primaryExpr = primaryCtx.primaryExpression();
-            if (primaryExpr is NovusParser.IdentifierExprContext)
+            if (primaryExpr is NovusParser.IdentifierExprContext identCtx)
             {
                 isLvalue = true;
+
+                // Check if the variable is mutable
+                var varName = identCtx.identifier().GetText();
+                if (_variables.TryGetValue(varName, out var variable))
+                {
+                    if (!variable.IsMutable)
+                    {
+                        var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
+                        _diagnostics.ReportError(
+                            "E0384",
+                            $"cannot increment immutable variable `{varName}`",
+                            location,
+                            helpTexts: new List<string>
+                            {
+                                "help: declare the variable as mutable with 'var mut'"
+                            }
+                        );
+                    }
+                }
             }
         }
         else if (expr is NovusParser.MemberAccessExprContext ||
@@ -7139,14 +7293,33 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             );
         }
 
-        // Verify it's an lvalue
+        // Verify it's an lvalue and check mutability
         bool isLvalue = false;
         if (context.expression() is NovusParser.PrimaryExprContext primaryCtx)
         {
             var primaryExpr = primaryCtx.primaryExpression();
-            if (primaryExpr is NovusParser.IdentifierExprContext)
+            if (primaryExpr is NovusParser.IdentifierExprContext identCtx)
             {
                 isLvalue = true;
+
+                // Check if the variable is mutable
+                var varName = identCtx.identifier().GetText();
+                if (_variables.TryGetValue(varName, out var variable))
+                {
+                    if (!variable.IsMutable)
+                    {
+                        var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
+                        _diagnostics.ReportError(
+                            "E0384",
+                            $"cannot decrement immutable variable `{varName}`",
+                            location,
+                            helpTexts: new List<string>
+                            {
+                                "help: declare the variable as mutable with 'var mut'"
+                            }
+                        );
+                    }
+                }
             }
         }
         else if (context.expression() is NovusParser.MemberAccessExprContext ||
@@ -7937,6 +8110,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return enumType;
         }
 
+        // Check if it's a primitive type (bool, i8, u8, void, etc.)
+        var primitiveType = GetPrimitiveType(typeName);
+        if (primitiveType != null)
+        {
+            return primitiveType;
+        }
+
         // Unknown type - for extern functions, treat as opaque FFI type (no error)
         // For regular functions, report error
         if (!_parsingExternFunction)
@@ -8259,6 +8439,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return typeName switch
         {
             "bool" => IrBoolType.Instance,
+            "void" => IrVoidType.Instance,
             "i8" => IrIntType.I8,
             "i16" => IrIntType.I16,
             "i32" => IrIntType.I32,

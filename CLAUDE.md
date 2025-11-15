@@ -1,0 +1,1 @@
+- you will always fix failing tests whether they're related to your most recent changes or not. you will not say, "these failures are pre-existing and not related to our changes". EVER. FIX. BROKEN. TESTS!

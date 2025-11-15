@@ -3020,6 +3020,31 @@ public partial class IrBuilder
         // Remove quotes
         var stringValue = text[1..^1];
 
+        // Check if string contains interpolation (unescaped curly braces)
+        // If it does, handle it as an interpolated string
+        bool hasInterpolation = false;
+        for (int i = 0; i < stringValue.Length; i++)
+        {
+            if (stringValue[i] == '\\')
+            {
+                // Skip escaped character
+                i++;
+                continue;
+            }
+            if (stringValue[i] == '{')
+            {
+                hasInterpolation = true;
+                break;
+            }
+        }
+
+        if (hasInterpolation)
+        {
+            // Handle as interpolated string - strip quotes and process
+            var content = text.Substring(1, text.Length - 2);
+            return HandleInterpolatedStringImpl(content, context);
+        }
+
         // Process escape sequences
         stringValue = ProcessEscapeSequences(stringValue);
 
@@ -3053,6 +3078,23 @@ public partial class IrBuilder
 
     public override object? VisitInterpolatedStringLiteral([NotNull] NovusParser.InterpolatedStringLiteralContext context)
     {
+        // Get the f-string text and parse it into segments
+        var fstring = context.GetChild(0)?.GetText();
+        if (fstring == null)
+        {
+            return null;
+        }
+
+        // Strip prefix and suffix based on whether it's f"..." or just "..."
+        var content = fstring.StartsWith("f\"")
+            ? fstring.Substring(2, fstring.Length - 3)  // f"..." -> ...
+            : fstring.Substring(1, fstring.Length - 2);  // "..." -> ...
+
+        return HandleInterpolatedStringImpl(content, context);
+    }
+
+    private object? HandleInterpolatedStringImpl(string content, ParserRuleContext context)
+    {
         // Auto-import std::fmt_primitives for Display implementations on primitive types
         // This allows integers, bools, etc. to be used in f-strings without explicit imports
         bool isStdLibraryModule = _inputFilePath != null && _inputFilePath.Contains(System.IO.Path.DirectorySeparatorChar + "std" + System.IO.Path.DirectorySeparatorChar);
@@ -3061,13 +3103,7 @@ public partial class IrBuilder
             ImportModule("std::fmt_primitives", importAll: true);
         }
 
-        // Get the f-string text and parse it into segments
-        var fstring = context.F_STRING_LITERAL().GetText();
-
-        // Strip 'f"' prefix and '"' suffix
-        var content = fstring.Substring(2, fstring.Length - 3);
-
-        // Parse the f-string into string and expression segments
+        // Parse the string into string and expression segments
         var segments = ParseInterpolatedString(content);
 
         // Look up the Formatter type and Display trait

@@ -2238,7 +2238,7 @@ public class CCodeGenerator
         _output.AppendLine();
     }
 
-    private string EscapeString(string value)
+    internal string EscapeString(string value)
     {
         return value
             .Replace("\\", "\\\\")
@@ -3607,7 +3607,7 @@ public class CCodeGenerator
     /// and then dereferences them when accessing fields. This method detects that pattern
     /// and uses -> accessor to avoid emitting (*ptr).field, instead emitting ptr->field.
     /// </summary>
-    private string GetStructAccessor(IrValue structValue)
+    internal string GetStructAccessor(IrValue structValue)
     {
         // Special case: if the struct value is a dereference (*ptr), then the original
         // value is a pointer, so we should use -> accessor directly without dereferencing
@@ -3745,7 +3745,7 @@ public class CCodeGenerator
         _output.AppendLine($"    (*{pointerValue}) = {storeValue};");
     }
 
-    private string EmitBorrowValue(IrBorrowValue borrowValue)
+    internal string EmitBorrowValue(IrBorrowValue borrowValue)
     {
         // Check if we're borrowing a pointer-converted parameter
         // If so, the parameter is already a pointer in C, so don't add &
@@ -3774,7 +3774,7 @@ public class CCodeGenerator
         return $"&{EmitValue(borrowValue.BorrowedValue)}";
     }
 
-    private string EmitValue(IrValue value)
+    internal string EmitValue(IrValue value)
     {
         return value switch
         {
@@ -3802,7 +3802,7 @@ public class CCodeGenerator
         };
     }
 
-    private string EmitVariable(IrVariable variable)
+    internal string EmitVariable(IrVariable variable)
     {
         // Check if this variable is actually a constant reference
         // If so, inline the constant value instead of emitting the variable name
@@ -3831,7 +3831,7 @@ public class CCodeGenerator
         return SanitizeVariableName(variable.Name);
     }
 
-    private string EmitStructLiteral(IrStructLiteral structLit)
+    internal string EmitStructLiteral(IrStructLiteral structLit)
     {
         var structType = structLit.Type as IrStructType;
         if (structType == null)
@@ -3845,7 +3845,7 @@ public class CCodeGenerator
         return $"({typeName}){{ {string.Join(", ", fields)} }}";
     }
 
-    private string EmitTupleLiteral(IrTupleLiteral tupleLit)
+    internal string EmitTupleLiteral(IrTupleLiteral tupleLit)
     {
         var tupleType = tupleLit.Type as IrTupleType;
         if (tupleType == null)
@@ -3863,13 +3863,13 @@ public class CCodeGenerator
         return $"({typeName}){{ {string.Join(", ", elements)} }}";
     }
 
-    private string EmitTupleElementAccess(IrTupleElementAccess tupleAccess)
+    internal string EmitTupleElementAccess(IrTupleElementAccess tupleAccess)
     {
         var tupleValue = EmitValue(tupleAccess.Tuple);
         return $"({tupleValue}).__{tupleAccess.ElementIndex}";
     }
 
-    private string EmitArrayLiteral(IrArrayLiteral arrayLit)
+    internal string EmitArrayLiteral(IrArrayLiteral arrayLit)
     {
         var arrayType = arrayLit.Type as IrArrayType;
         if (arrayType == null)
@@ -3884,7 +3884,7 @@ public class CCodeGenerator
         return $"{{ {string.Join(", ", elements)} }}";
     }
 
-    private string EmitEnumValue(IrEnumValue enumValue)
+    internal string EmitEnumValue(IrEnumValue enumValue)
     {
         var enumType = enumValue.Type as IrEnumType;
         if (enumType == null)
@@ -3922,7 +3922,7 @@ public class CCodeGenerator
         return sb.ToString();
     }
 
-    private string EmitIntegerConstant(IrConstant constant)
+    internal string EmitIntegerConstant(IrConstant constant)
     {
         // Emit integer constants with proper type suffix to avoid sign-extension issues
         // VBCC has a bug where negative i32 literals get sign-extended to 64-bit in assembly
@@ -3972,7 +3972,7 @@ public class CCodeGenerator
         return constantValue.ToString();
     }
 
-    private string EmitFloatConstant(IrFloatConstant floatConst)
+    internal string EmitFloatConstant(IrFloatConstant floatConst)
     {
         // Emit float/double literals with appropriate suffix
         // f32 -> add 'f' suffix, f64 -> no suffix (default double)
@@ -3985,7 +3985,7 @@ public class CCodeGenerator
             : $"{floatConst.Value:G17}"; // G17 preserves precision for double
     }
 
-    private string EmitFixedConstant(IrFixedConstant fixedConst)
+    internal string EmitFixedConstant(IrFixedConstant fixedConst)
     {
         // Convert fixed-point constant to integer representation
         // fixed16 = 8.8 format, fixed32 = 16.16 format (fractional bits = total bits / 2)
@@ -4002,7 +4002,7 @@ public class CCodeGenerator
         return $"({GetCType(fixedType)}){intValue}";
     }
 
-    private string EmitEnumConstructor(IrEnumConstructor enumCtor)
+    internal string EmitEnumConstructor(IrEnumConstructor enumCtor)
     {
         // Enum constructor without arguments - just the variant tag
         // e.g., Option::None becomes Option_None
@@ -4027,7 +4027,7 @@ public class CCodeGenerator
         }
     }
 
-    private string EmitCastValue(IrCastValue castValue)
+    internal string EmitCastValue(IrCastValue castValue)
     {
         // Get the target type in C syntax
         var targetType = GetCType(castValue.Type);
@@ -4054,7 +4054,7 @@ public class CCodeGenerator
         return $"({targetType}){innerValue}";
     }
 
-    private string EmitFieldReference(IrFieldReference fieldRef)
+    internal string EmitFieldReference(IrFieldReference fieldRef)
     {
         // Emit a field reference as a field access expression (lvalue)
         // This is used when we need to take the address of a field without loading it first
@@ -4079,7 +4079,7 @@ public class CCodeGenerator
 
     private int _tempCounter = 0;
 
-    private string SanitizeVariableName(string name)
+    internal string SanitizeVariableName(string name)
     {
         // Convert IR temp variable names (%t0, %t1, etc.) to valid C identifiers (_t0, _t1, etc.)
         if (name.StartsWith("%"))
@@ -4089,7 +4089,7 @@ public class CCodeGenerator
         return name;
     }
 
-    private string GetBinaryOperator(IrBinaryOp.OpKind operation)
+    internal string GetBinaryOperator(IrBinaryOp.OpKind operation)
     {
         return operation switch
         {
@@ -4113,7 +4113,7 @@ public class CCodeGenerator
         };
     }
 
-    private string GetCType(IrType type)
+    internal string GetCType(IrType type)
     {
         return type switch
         {
@@ -4152,7 +4152,7 @@ public class CCodeGenerator
         };
     }
 
-    private string GetFunctionPointerType(IrFunctionPointerType fpType)
+    internal string GetFunctionPointerType(IrFunctionPointerType fpType)
     {
         // Generate C function pointer type: return_type (*)(param1_type, param2_type, ...)
         var returnType = GetCType(fpType.ReturnType);
@@ -4162,7 +4162,7 @@ public class CCodeGenerator
         return $"{returnType} (*)({paramTypes})";
     }
 
-    private string GetTupleTypeName(IrTupleType tupleType)
+    internal string GetTupleTypeName(IrTupleType tupleType)
     {
         // Unit type () has no size and is never stored, so return void
         if (tupleType.ElementTypes.Count == 0)
@@ -4174,7 +4174,7 @@ public class CCodeGenerator
         return $"Tuple_{string.Join("_", elementNames)}";
     }
 
-    private string MangleTypeForTupleName(IrType type)
+    internal string MangleTypeForTupleName(IrType type)
     {
         return type switch
         {
@@ -4221,7 +4221,7 @@ public class CCodeGenerator
         }
     }
 
-    private string GetParameterList(IrFunction function, bool hasOutputParameter = false)
+    internal string GetParameterList(IrFunction function, bool hasOutputParameter = false)
     {
         var parameters = new List<string>();
 
@@ -4248,7 +4248,7 @@ public class CCodeGenerator
     /// BUG FIX: For structs containing heap data (pointers), pass by pointer instead
     /// of by value to avoid shallow copy issues and double-free bugs.
     /// </summary>
-    private string GetCParameter(IrType type, string name)
+    internal string GetCParameter(IrType type, string name)
     {
         if (type is IrFunctionPointerType fpType)
         {
@@ -4274,7 +4274,7 @@ public class CCodeGenerator
         return $"{GetCType(type)} {name}";
     }
 
-    private string MangleName(string name)
+    internal string MangleName(string name)
     {
         // Handle module separators and generic type parameters
         // Generic names like "From<DosError>" become "From_DosError"
@@ -4433,7 +4433,7 @@ public class CCodeGenerator
     /// baseName: "Vec_new", structName: "Vec", typeSuffix: "bool" -> "Vec_bool_new"
     /// baseName: "Vec_push", structName: "Vec", typeSuffix: "bool" -> "Vec_bool_push"
     /// </summary>
-    private string InsertTypeArguments(string baseName, string structName, string typeSuffix)
+    internal string InsertTypeArguments(string baseName, string structName, string typeSuffix)
     {
         // Handle both :: and _ separators
         var separator = baseName.Contains("::") ? "::" : "_";
@@ -4453,7 +4453,7 @@ public class CCodeGenerator
     /// </summary>
     public string MangleName(IrFunction function) => MangleFunctionName(function);
 
-    private string MangleName(IrEnumType enumType)
+    internal string MangleName(IrEnumType enumType)
     {
         // Use CacheKey for monomorphized generics, otherwise use EnumName
         var name = enumType.CacheKey ?? enumType.EnumName;
@@ -4469,7 +4469,7 @@ public class CCodeGenerator
                    .Replace(" ", "");
     }
 
-    private string MangleName(IrStructType structType)
+    internal string MangleName(IrStructType structType)
     {
         // Use CacheKey for monomorphized generics, otherwise use Name
         var name = structType.CacheKey ?? structType.Name;
@@ -4508,7 +4508,7 @@ public class CCodeGenerator
     ///     ... body ...
     ///   }
     /// </summary>
-    private string TransformForLoopsForVbcc(string code)
+    internal string TransformForLoopsForVbcc(string code)
     {
         // Use regex to find and transform for-loop patterns
         // This is a simple pattern matcher that looks for the specific structure emitted by VisitForInLoop

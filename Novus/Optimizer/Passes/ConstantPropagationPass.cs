@@ -18,7 +18,44 @@ public class ConstantPropagationPass : BasicBlockPassBase
 
         foreach (var instruction in block.Instructions)
         {
-            if (instruction is IrBinaryOp binOp)
+            // Track assignments of constants to variables
+            if (instruction is IrLocalDecl localDecl)
+            {
+                if (localDecl.InitialValue is IrConstant constant)
+                {
+                    constantValues[localDecl.Name] = constant;
+                }
+                else if (localDecl.InitialValue is IrVariable sourceVar && constantValues.ContainsKey(sourceVar.Name))
+                {
+                    // x = y where y is constant => x is also constant
+                    localDecl.InitialValue = constantValues[sourceVar.Name];
+                    constantValues[localDecl.Name] = constantValues[sourceVar.Name];
+                    changed = true;
+                }
+                else
+                {
+                    // Non-constant assignment, remove from tracking
+                    constantValues.Remove(localDecl.Name);
+                }
+            }
+            else if (instruction is IrStore store)
+            {
+                // Store invalidates the variable's constant status
+                constantValues.Remove(store.VariableName);
+
+                // But if storing a constant, track it
+                if (store.Value is IrConstant constant)
+                {
+                    constantValues[store.VariableName] = constant;
+                }
+                else if (store.Value is IrVariable sourceVar && constantValues.ContainsKey(sourceVar.Name))
+                {
+                    store.Value = constantValues[sourceVar.Name];
+                    constantValues[store.VariableName] = constantValues[sourceVar.Name];
+                    changed = true;
+                }
+            }
+            else if (instruction is IrBinaryOp binOp)
             {
                 // Replace left operand if it's a known constant
                 if (binOp.Left is IrVariable leftVar && constantValues.ContainsKey(leftVar.Name))
@@ -34,11 +71,11 @@ public class ConstantPropagationPass : BasicBlockPassBase
                     changed = true;
                 }
 
-                // If the result is a constant, track it
-                if (binOp.Left is IrConstant && binOp.Right is IrConstant)
+                // Track if this binary op assigns a result
+                if (!string.IsNullOrEmpty(binOp.ResultName))
                 {
-                    // The constant folding pass will handle this
-                    // But we can track if we know the result
+                    // Invalidate the result variable (may be reassigned)
+                    constantValues.Remove(binOp.ResultName);
                 }
             }
             else if (instruction is IrReturn ret)
@@ -49,6 +86,11 @@ public class ConstantPropagationPass : BasicBlockPassBase
                     ret.Value = constantValues[retVar.Name];
                     changed = true;
                 }
+            }
+            else if (instruction is IrCall)
+            {
+                // Function calls may have side effects - clear all tracked constants
+                constantValues.Clear();
             }
         }
 
