@@ -335,15 +335,36 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
             _symbols.RegisterEnum(enumName, stubEnum);
         }
 
+        // Pass 2a.5: Register stub struct types for ALL structs in the module
+        // CRITICAL: This must happen BEFORE Pass 2b (filling enum variants) because
+        // enum variants may have structs as associated data (e.g., WindowEvent::Refresh(RefreshGuard))
+        // Without this pass, the compiler can't resolve struct types used in enum variants
+        foreach (var structContext in context.structDeclaration())
+        {
+            var structName = structContext.IDENTIFIER().GetText();
+
+            // Skip if this struct has already been imported (transitive dependencies)
+            if (_symbols.HasStruct(structName))
+            {
+                continue;
+            }
+
+            // Register a placeholder struct with empty fields
+            // Parse generic parameters for stub so type checking works correctly
+            var genericParams = ParseGenericParameters(structContext.genericParams());
+            var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), genericParams.Count > 0 ? genericParams : null);
+            _symbols.RegisterStruct(structName, placeholderStruct);
+        }
+
         // Pass 2b: Fill in enum variants for all enums
         foreach (var enumContext in context.enumDeclaration())
         {
             // Now register the full enum with variants (replacing the stub)
-            // At this point, all enum names are resolvable for variant type parsing
+            // At this point, all enum names AND struct names are resolvable for variant type parsing
             RegisterEnum(enumContext);
         }
 
-        // Pass 3: Register all struct types
+        // Pass 3: Register all struct types (fill in fields, replacing placeholders from Pass 2a.5)
         foreach (var structContext in context.structDeclaration())
         {
             RegisterStruct(structContext);

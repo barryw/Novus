@@ -318,6 +318,9 @@ public partial class IrBuilder
     {
         var name = context.IDENTIFIER().GetText();
 
+        // Check if this struct is already registered as a stub (from Pass 2a.5)
+        var existingStruct = _symbols.LookupStruct(name);
+
         // Parse attributes (for @library and other struct attributes)
         var attributes = ParseAttributesSimple(context.attribute());
 
@@ -336,8 +339,12 @@ public partial class IrBuilder
         }
 
         // Register placeholder struct FIRST to allow self-referential types
-        var placeholderStruct = new IrStructType(name, new List<IrStructField>(), genericParams, null, attributes);
-        _symbols.RegisterStruct(name, placeholderStruct);
+        // (but only if not already registered as a stub in Pass 2a.5)
+        if (existingStruct == null)
+        {
+            var placeholderStruct = new IrStructType(name, new List<IrStructField>(), genericParams, null, attributes);
+            _symbols.RegisterStruct(name, placeholderStruct);
+        }
 
         // Now parse struct fields (can now reference the struct being defined)
         var fields = new List<IrStructField>();
@@ -364,8 +371,11 @@ public partial class IrBuilder
             _ = structType.SizeInBytes;
         }
 
-        // Add all structs to the module (both generic and non-generic)
-        _module.Structs.Add(structType);
+        // Add all structs to the module (both generic and non-generic) - but only if not already added
+        if (existingStruct == null || !_module.Structs.Contains(structType))
+        {
+            _module.Structs.Add(structType);
+        }
         _symbols.RegisterStruct(name, structType);
     }
 

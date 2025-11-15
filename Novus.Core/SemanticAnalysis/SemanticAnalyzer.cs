@@ -166,16 +166,18 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             ProcessImport(importDecl);
         }
 
-        // First pass: collect all enum declarations (before constants that might reference them)
-        foreach (var enumDecl in context.enumDeclaration())
-        {
-            RegisterEnum(enumDecl);
-        }
-
-        // Second pass: collect all struct declarations (before constants that might reference them)
+        // First pass: collect all struct declarations FIRST (before enums that might use structs in variants)
+        // CRITICAL: Structs must be registered before enums because enum variants may have structs
+        // as associated data (e.g., WindowEvent::Refresh(RefreshGuard))
         foreach (var structDecl in context.structDeclaration())
         {
             RegisterStruct(structDecl);
+        }
+
+        // Second pass: collect all enum declarations (after structs, before constants)
+        foreach (var enumDecl in context.enumDeclaration())
+        {
+            RegisterEnum(enumDecl);
         }
 
         // Third pass: collect all trait declarations
@@ -517,7 +519,38 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
+        // CRITICAL: Register ALL pub structs from the module BEFORE filling enum variants
+        // This is necessary because enum variants may reference structs (e.g., WindowEvent::Refresh(RefreshGuard))
+        // We must register structs before parsing enum variant types
+        foreach (var structDecl in moduleContext.structDeclaration())
+        {
+            var structName = structDecl.IDENTIFIER().GetText();
+
+            // Skip private structs
+            if (!ModuleImportHelper.IsPub(structDecl))
+            {
+                continue;
+            }
+
+            // Skip if this struct has already been imported (transitive dependencies)
+            if (_symbols.HasStruct(structName))
+            {
+                continue;
+            }
+
+            // Register ALL pub structs from the module (not just explicitly imported ones)
+            // This ensures types are available when parsing enum variant types and impl block method signatures
+            RegisterStruct(structDecl);
+
+            // Only mark as imported if it was explicitly requested
+            if (namesToImport.Contains(structName))
+            {
+                _importedNames[structName] = moduleNamespace;
+            }
+        }
+
         // Pass 2: Fill in enum variants for imported enums only
+        // This must happen AFTER struct registration so that struct types used in enum variants are available
         foreach (var enumDecl in moduleContext.enumDeclaration())
         {
             var enumName = enumDecl.IDENTIFIER().GetText();
@@ -529,7 +562,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
 
             // Now register the full enum with variants (replacing the stub)
-            // At this point, all enum names are resolvable for variant type parsing
+            // At this point, all enum names AND struct names are resolvable for variant type parsing
             RegisterEnum(enumDecl);
             _importedNames[enumName] = moduleNamespace;
         }
@@ -554,37 +587,6 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             // Register the constant from the imported module
             RegisterConstant(constDecl);
             _importedNames[constName] = moduleNamespace;
-        }
-
-        // CRITICAL: Register ALL pub structs from the module BEFORE registering impl blocks
-        // This is necessary because impl block methods may reference other structs from the same module
-        // For example, MemoryBlock::resize returns bool, but other methods might return Allocation<T>
-        // Even if we only import MemoryBlock, we need Allocation<T> and Box<T> available for type checking
-        foreach (var structDecl in moduleContext.structDeclaration())
-        {
-            var structName = structDecl.IDENTIFIER().GetText();
-
-            // Skip private structs
-            if (!ModuleImportHelper.IsPub(structDecl))
-            {
-                continue;
-            }
-
-            // Skip if this struct has already been imported (transitive dependencies)
-            if (_symbols.HasStruct(structName))
-            {
-                continue;
-            }
-
-            // Register ALL pub structs from the module (not just explicitly imported ones)
-            // This ensures types are available when parsing impl block method signatures
-            RegisterStruct(structDecl);
-
-            // Only mark as imported if it was explicitly requested
-            if (namesToImport.Contains(structName))
-            {
-                _importedNames[structName] = moduleNamespace;
-            }
         }
 
         // Register imported functions in symbol table

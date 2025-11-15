@@ -10,6 +10,7 @@ from std::error::tags import make_tags
 from std::strings::core import Str
 from std::strings::format import Display, Formatter
 from std::memory::slice import Slice
+from std::io::core import write
 from std::ffi::amiga_structs import TagItem, Window, Screen, NewWindow, NewScreen, IntuiMessage, Message, MsgPort
 from std::ffi::intuition import OpenWindowTagList, OpenScreenTagList, CloseWindow, CloseScreen, BeginRefresh, EndRefresh
 from std::ffi::amiga_consts import TAG_DONE, IDCMP_*, WA_*, WFLG_*
@@ -18,6 +19,52 @@ from std::ffi::exec import GetMsg, ReplyMsg, WaitPort
 // ============================================================================
 // Window Event Types
 // ============================================================================
+
+/// RAII guard for window refresh operations
+///
+/// This type ensures BeginRefresh and EndRefresh are properly balanced.
+/// BeginRefresh is called when the guard is created, and EndRefresh is
+/// automatically called when the guard is dropped (goes out of scope).
+///
+/// This prevents Intuition's internal state from getting corrupted if
+/// EndRefresh is forgotten.
+///
+/// # Example
+/// ```
+/// match event {
+///     WindowEvent::Refresh(guard) => {
+///         // BeginRefresh already called
+///         draw_my_content(guard.window())
+///         // EndRefresh automatically called when guard drops
+///     }
+/// }
+/// ```
+pub struct RefreshGuard {
+    window: *Window,
+}
+
+impl RefreshGuard {
+    /// Create a new refresh guard and call BeginRefresh
+    ///
+    /// INTERNAL: This should only be called by parse_intui_message
+    fn new(win: *Window) -> RefreshGuard {
+        unsafe { BeginRefresh(win) }
+        return RefreshGuard { window: win }
+    }
+
+    /// Get the window pointer for custom rendering
+    pub fn window(&self) -> *Window {
+        return self.window
+    }
+}
+
+impl Drop for RefreshGuard {
+    /// Automatically call EndRefresh when guard goes out of scope
+    fn drop(&mut self) {
+        write("RefreshGuard dropped - calling EndRefresh\n")
+        unsafe { EndRefresh(self.window, 1) }
+    }
+}
 
 /// Typed window event enum - wraps IntuiMessage with safe field extraction
 ///
@@ -31,7 +78,10 @@ pub enum WindowEvent {
     Resize(i16, i16),
 
     /// Window needs refresh/redraw
-    Refresh,
+    ///
+    /// The RefreshGuard automatically handles BeginRefresh/EndRefresh.
+    /// Use guard.window() to access the window pointer for custom rendering.
+    Refresh(RefreshGuard),
 
     /// Mouse moved within window (x, y)
     MouseMove(i16, i16),
@@ -73,7 +123,7 @@ impl Display for WindowEvent {
             WindowEvent::Resize(_, _) => {
                 return f.write_str("Resize")
             },
-            WindowEvent::Refresh => {
+            WindowEvent::Refresh(_) => {
                 return f.write_str("Refresh")
             },
             WindowEvent::MouseMove(_, _) => {
@@ -384,7 +434,8 @@ impl WindowHandle {
     @suppress("W0002", "We're casting from i16 to u32 for tag data")
     pub fn app_window(title: &Str, width: i16, height: i16) -> Result<WindowHandle, IntuitionError> {
         let flags = WFLG_CLOSEGADGET | WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_SIZEGADGET | WFLG_SIZEBRIGHT | WFLG_SIZEBBOTTOM
-        let idcmp = IDCMP_CLOSEWINDOW | IDCMP_NEWSIZE
+        // Now includes IDCMP_REFRESHWINDOW - safe with RefreshGuard RAII pattern
+        let idcmp = IDCMP_CLOSEWINDOW | IDCMP_NEWSIZE | IDCMP_REFRESHWINDOW
 
         let tags = [
             TagItem { ti_Tag: WA_Left, ti_Data: 50 },
@@ -512,16 +563,14 @@ fn parse_intui_message(msg: *IntuiMessage) -> WindowEvent {
             }
         },
         IDCMP_REFRESHWINDOW => {
-            // CRITICAL: Must call BeginRefresh/EndRefresh for REFRESHWINDOW events
-            // or Intuition's internal state gets corrupted and causes crashes
+            // Create a RefreshGuard which automatically handles BeginRefresh/EndRefresh
+            // The user receives the guard and can call guard.window() to render custom content
+            // EndRefresh is automatically called when the guard drops (RAII pattern)
             unsafe {
                 let win = (*msg).IDCMPWindow
-                BeginRefresh(win)
-                // We don't redraw anything, so we can immediately end the refresh
-                // The 'complete' parameter TRUE (1) means the refresh is complete
-                EndRefresh(win, 1)
+                let guard = RefreshGuard::new(win)
+                WindowEvent::Refresh(guard)
             }
-            WindowEvent::Refresh
         },
         IDCMP_MOUSEMOVE => {
             WindowEvent::MouseMove(mouse_x, mouse_y)
