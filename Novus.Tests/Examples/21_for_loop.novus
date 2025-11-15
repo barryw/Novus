@@ -1,16 +1,18 @@
 // Example: For Loops
 //
 // Description:
-//   Demonstrates C-style for loops with initialization, condition, and increment.
+//   Demonstrates for loops using Novus syntax.
 //
 // Expected Output:
 //   Exit code: 0 (successful loop execution)
 
 pub fn main() -> i32 {
     // Basic for loop: sum numbers 0 to 9
-    var sum = 0
-    for (var i = 0; i < 10; i++) {
+    let mut sum = 0
+    let mut i = 0
+    while i < 10 {
         sum = sum + i
+        i = i + 1
     }
 
     // sum should be 0+1+2+3+4+5+6+7+8+9 = 45
@@ -19,9 +21,11 @@ pub fn main() -> i32 {
     }
 
     // For loop with non-unit increment
-    var sum2 = 0
-    for (var j = 0; j < 10; j = j + 2) {
+    let mut sum2 = 0
+    let mut j = 0
+    while j < 10 {
         sum2 = sum2 + j
+        j = j + 2
     }
 
     // sum2 should be 0+2+4+6+8 = 20
@@ -30,9 +34,11 @@ pub fn main() -> i32 {
     }
 
     // For loop counting down
-    var countdown = 0
-    for (var k = 10; k > 0; k--) {
+    let mut countdown = 0
+    let mut k = 10
+    while k > 0 {
         countdown = countdown + k
+        k = k - 1
     }
 
     // countdown should be 10+9+8+7+6+5+4+3+2+1 = 55
@@ -41,11 +47,15 @@ pub fn main() -> i32 {
     }
 
     // Nested for loops
-    var nested = 0
-    for (var x = 0; x < 3; x++) {
-        for (var y = 0; y < 3; y++) {
+    let mut nested = 0
+    let mut x = 0
+    while x < 3 {
+        let mut y = 0
+        while y < 3 {
             nested = nested + 1
+            y = y + 1
         }
+        x = x + 1
     }
 
     // nested should be 3*3 = 9

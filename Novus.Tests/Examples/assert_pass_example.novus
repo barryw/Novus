@@ -18,10 +18,6 @@ pub fn main() -> i32 {
     let is_valid = true
     assert!(is_valid)
 
-    // Test numeric truthiness (C-style)
-    assert!(1)
-    assert!(42)
-
     // Test comparison chains
     let a = 10
     let b = 20

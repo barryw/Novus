@@ -74,7 +74,7 @@ impl<T> Vec<T> {
         // Only grow if we need more capacity
         if needed_capacity > self.capacity {
             // Calculate new capacity (double current or use needed, whichever is larger)
-            var new_capacity: u32 = self.capacity * 2u32
+            let mut new_capacity: u32 = self.capacity * 2u32
             if new_capacity < needed_capacity {
                 new_capacity = needed_capacity
             }
@@ -96,7 +96,7 @@ impl<T> Vec<T> {
                     let new_ptr: *T = (*T)new_block.ptr()
 
                     // Copy existing elements to new allocation
-                    var i: u32 = 0u32
+                    let mut i: u32 = 0u32
                     while i < self.len {
                         new_ptr[i] = self.ptr[i]
                         i = i + 1u32
@@ -205,7 +205,7 @@ impl<T> Vec<T> {
         }
 
         // Shift elements right to make room
-        var i: u32 = self.len
+        let mut i: u32 = self.len
         while i > index {
             self.ptr[i] = self.ptr[i - 1u32]
             i--
@@ -238,7 +238,7 @@ impl<T> Vec<T> {
         let value: T = self.ptr[index]
 
         // Shift elements left
-        var i: u32 = index
+        let mut i: u32 = index
         while i < self.len - 1u32 {
             self.ptr[i] = self.ptr[i + 1u32]
             i++
@@ -311,7 +311,7 @@ impl<T> Vec<T> {
                 let new_ptr: *T = (*T)new_block.ptr()
 
                 // Copy existing elements to new allocation
-                var i: u32 = 0u32
+                let mut i: u32 = 0u32
                 while i < self.len {
                     new_ptr[i] = self.ptr[i]
                     i++

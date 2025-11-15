@@ -18,7 +18,7 @@ pub fn main() -> i32 {
     var sieve = Vec::<bool>::new()
 
     // Initialize all as potentially prime
-    var i: u32 = 0
+    let mut i: u32 = 0
     while i <= max {
         sieve.push(true)
         i = i + 1
@@ -32,14 +32,14 @@ pub fn main() -> i32 {
     sieve.set(1, false)
 
     // Run the sieve algorithm
-    var p: u32 = 2
+    let mut p: u32 = 2
     while p * p <= max {
         let ptr = sieve.as_ptr()
         let is_prime = ptr[p]
         let check = (u32)is_prime
         if check != 0 {
             // Mark all multiples of p as composite
-            var multiple: u32 = p * p
+            let mut multiple: u32 = p * p
             while multiple <= max {
                 sieve.set(multiple, false)
                 multiple = multiple + p
@@ -51,8 +51,8 @@ pub fn main() -> i32 {
     write("Sieve complete! Counting primes...\n\n")
 
     // Count and display primes
-    var prime_count: u32 = 0
-    var line_count: u32 = 0
+    let mut prime_count: u32 = 0
+    let mut line_count: u32 = 0
 
     i = 2
     while i <= max {

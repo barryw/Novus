@@ -231,8 +231,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    var x = 10
-    defer => x = 20
+    var mut x = 10
+    defer x = 20
     return x
 }";
         var module = BuildIr(source);
@@ -251,8 +251,8 @@ fn cleanup(x: *i32) {
 }
 
 pub fn main() -> i32 {
-    var value = 42
-    defer => cleanup(&value)
+    var mut value = 42
+    defer cleanup(&value)
     return value
 }";
         var module = BuildIr(source);

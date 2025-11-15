@@ -1,12 +1,12 @@
 // Test automatic string literal to reference coercion
 // This should compile without errors
 
-from intuition import WindowHandle
+from std::graphics::intuition import WindowHandle
 
 pub fn main() -> i32 {
     // Before: had to write &"Novus Window"
     // Now: can write just "Novus Window" and it auto-coerces to &Str
-    let result = WindowHandle::simple("Novus Window", 320, 200)
+    let result = WindowHandle::simple(&"Novus Window", 320, 200)
 
     return 0
 }

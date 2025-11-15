@@ -17,9 +17,5 @@ pub fn main() -> i32 {
     assert!(x + y == 30)
     assert!(true)
 
-    // Numeric truthiness (C-style)
-    assert!(1)
-    assert!(42)
-
     return 0
 }

@@ -15,7 +15,7 @@
 //     Final: 5
 
 pub fn main() -> i32 {
-    var x = 5
+    let mut x = 5
     ++x
     --x
     x++

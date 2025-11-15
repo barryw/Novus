@@ -148,7 +148,7 @@ impl Str {
         }
 
         // Compare byte by byte
-        var i: u32 = 0u32
+        let mut i: u32 = 0u32
         while i < self.len {
             if self.ptr[i] != other.ptr[i] {
                 return false
@@ -163,12 +163,12 @@ impl Str {
     /// Returns: <0 if self < other, 0 if equal, >0 if self > other
     @suppress("W0002", "Safe truncation for string comparison: byte values (0-255) and length differences fit in i32 range")
     pub fn compare(&self, other: Str) -> i32 {
-        var min_len: u32 = self.len
+        let mut min_len: u32 = self.len
         if other.len < self.len {
             min_len = other.len
         }
 
-        var i: u32 = 0u32
+        let mut i: u32 = 0u32
         while i < min_len {
             let a: u8 = self.ptr[i]
             let b: u8 = other.ptr[i]
@@ -188,7 +188,7 @@ impl Str {
             return false
         }
 
-        var i: u32 = 0u32
+        let mut i: u32 = 0u32
         while i < prefix.len {
             if self.ptr[i] != prefix.ptr[i] {
                 return false
@@ -206,7 +206,7 @@ impl Str {
         }
 
         let offset: u32 = self.len - suffix.len
-        var i: u32 = 0u32
+        let mut i: u32 = 0u32
         while i < suffix.len {
             if self.ptr[offset + i] != suffix.ptr[i] {
                 return false
@@ -233,12 +233,12 @@ impl Str {
         }
 
         let last_pos: u32 = self.len - needle.len
-        var i: u32 = 0u32
+        let mut i: u32 = 0u32
 
         while i <= last_pos {
             // Check if needle matches at position i
-            var j: u32 = 0u32
-            var matches: bool = true
+            let mut j: u32 = 0u32
+            let mut matches: bool = true
             while j < needle.len {
                 if self.ptr[i + j] != needle.ptr[j] {
                     matches = false
@@ -258,7 +258,7 @@ impl Str {
 
     /// Find first occurrence of byte
     pub fn find_byte(&self, byte: u8) -> Option<u32> {
-        var i: u32 = 0u32
+        let mut i: u32 = 0u32
         while i < self.len {
             if self.ptr[i] == byte {
                 return Option::Some(i)
@@ -274,8 +274,8 @@ impl Str {
             return Option::None
         }
 
-        var i: u32 = self.len - 1u32
-        var found: bool = false
+        let mut i: u32 = self.len - 1u32
+        let mut found: bool = false
         while !found {
             if self.ptr[i] == byte {
                 return Option::Some(i)
@@ -296,7 +296,7 @@ impl Str {
 
     /// Trim whitespace from start
     pub fn trim_start(&self) -> Str {
-        var start: u32 = 0u32
+        let mut start: u32 = 0u32
         while start < self.len {
             let ch: u8 = self.ptr[start]
             if ch != $20 && ch != $09 && ch != $0A && ch != $0D {
@@ -318,8 +318,8 @@ impl Str {
             return Str { ptr: self.ptr, len: 0u32 }
         }
 
-        var end: u32 = self.len
-        var done: bool = false
+        let mut end: u32 = self.len
+        let mut done: bool = false
         while !done {
             let ch: u8 = self.ptr[end - 1u32]
             if ch != $20 && ch != $09 && ch != $0A && ch != $0D {
@@ -402,7 +402,7 @@ impl String {
         }
 
         // Copy bytes from Str into Vec
-        var i: u32 = 0u32
+        let mut i: u32 = 0u32
         while i < s.len() {
             let success: bool = string.vec.push(s.as_ptr()[i])
             if !success {
@@ -442,7 +442,7 @@ impl String {
         }
 
         // Copy bytes from Str
-        var i: u32 = 0u32
+        let mut i: u32 = 0u32
         while i < s.len() {
             let success: bool = self.vec.push(s.as_ptr()[i])
             if !success {
@@ -521,7 +521,7 @@ impl NameString {
             return false
         }
 
-        var i: u32 = 0u32
+        let mut i: u32 = 0u32
         while i < s.len() {
             self.buf[self.len + i] = s.as_ptr()[i]
             i++
@@ -582,7 +582,7 @@ impl GadgetString {
             return false
         }
 
-        var i: u32 = 0u32
+        let mut i: u32 = 0u32
         while i < s.len() {
             self.buf[self.len + i] = s.as_ptr()[i]
             i++
@@ -643,7 +643,7 @@ impl PathString {
             return false
         }
 
-        var i: u32 = 0u32
+        let mut i: u32 = 0u32
         while i < s.len() {
             self.buf[self.len + i] = s.as_ptr()[i]
             i++
@@ -700,7 +700,7 @@ impl BStr {
                 ptr[0] = (u8)s.len()
 
                 // Copy string data
-                var i: u32 = 0u32
+                let mut i: u32 = 0u32
                 while i < s.len() {
                     ptr[1u32 + i] = s.as_ptr()[i]
                     i++

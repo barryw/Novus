@@ -18,8 +18,8 @@
 
 pub fn test_with_defers() -> i32 {
     // Variables to hold cleanup results
-    var x = 0
-    var y = 0
+    let mut x = 0
+    let mut y = 0
 
     // Simulate resource allocation
     let resource1 = 100

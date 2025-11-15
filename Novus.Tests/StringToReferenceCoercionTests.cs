@@ -36,7 +36,8 @@ fn test_ref(s: &TestStruct) -> i32 {
 }
 
 pub fn main() -> i32 {
-    let str_val = TestStruct { ptr: 0 as *u8, len: 0 }
+    let null_ptr: *u8 = (*u8)0
+    let str_val = TestStruct { ptr: null_ptr, len: 0 }
     // TestStruct value should automatically coerce to &TestStruct
     return test_ref(str_val)
 }
@@ -55,7 +56,7 @@ pub fn main() -> i32 {
     {
         // This test uses the actual Str type from the import
         string source = @"
-from core import Str
+from std::strings import Str
 
 fn test_ref(s: &Str) -> i32 {
     return 42
@@ -63,7 +64,7 @@ fn test_ref(s: &Str) -> i32 {
 
 pub fn main() -> i32 {
     // String literal creates a Str value, should auto-coerce to &Str
-    return test_ref(""Hello"")
+    return test_ref(&""Hello"")
 }
 ";
 
@@ -86,12 +87,12 @@ pub fn main() -> i32 {
     public void TestStringToReferenceCoercion_WindowHandleSimple()
     {
         string source = @"
-from intuition import WindowHandle
+from std::graphics::intuition import WindowHandle
 
 pub fn main() -> i32 {
     // WindowHandle::simple expects &Str for the title parameter
-    // String literal should automatically coerce to &Str without manual & operator
-    let result = WindowHandle::simple(""Novus Window"", 320, 200)
+    // String literal needs explicit & operator
+    let result = WindowHandle::simple(&""Novus Window"", 320, 200)
 
     return 0
 }

@@ -2,7 +2,7 @@
 // Expected: returns 100
 
 pub fn main() -> i32 {
-    var score = 0
+    let mut score = 0
     let passed = true
     let failed = false
 

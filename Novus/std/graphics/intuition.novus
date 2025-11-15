@@ -396,7 +396,7 @@ impl Drop for WindowHandle {
             // CRITICAL: Drain and reply to all pending IDCMP messages
             // before closing the window. Unreplied messages cause
             // system hangs and crashes.
-            var user_port: *MsgPort = (*MsgPort)0
+            let mut user_port: *MsgPort = (*MsgPort)0
             unsafe {
                 user_port = (*w).UserPort
             }
@@ -421,12 +421,12 @@ impl Drop for WindowHandle {
 /// This is an internal helper that extracts relevant fields from
 /// the IntuiMessage based on the IDCMP class.
 fn parse_intui_message(msg: *IntuiMessage) -> WindowEvent {
-    var class: u32 = 0
-    var code: u16 = 0
-    var qualifier: u16 = 0
-    var mouse_x: i16 = 0
-    var mouse_y: i16 = 0
-    var iaddress: u32 = 0
+    let mut class: u32 = 0
+    let mut code: u16 = 0
+    let mut qualifier: u16 = 0
+    let mut mouse_x: i16 = 0
+    let mut mouse_y: i16 = 0
+    let mut iaddress: u32 = 0
 
     unsafe {
         class = (*msg).Class

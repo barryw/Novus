@@ -1276,7 +1276,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    var x = 10
+    var mut x = 10
     x = 20
     return x
 }";
@@ -1303,7 +1303,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    var x = 10
+    var mut x = 10
     x++
     return x
 }";
@@ -1330,7 +1330,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    var x = 10
+    var mut x = 10
     x += 5
     return x
 }";
@@ -1441,7 +1441,7 @@ pub fn main() -> i32 {
         var source = @"
 pub fn main() -> i32 {
     let a = 10
-    var b = 20
+    var mut b = 20
     b += a
     return b
 }";

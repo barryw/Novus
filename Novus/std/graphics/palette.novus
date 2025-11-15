@@ -243,7 +243,7 @@ pub fn load_palette(vp: *ViewPort, colors: &[Color]) -> Result<(), GraphicsError
 
                     // Pack colors into table
                     let table_ptr: *u16 = (*u16)table.ptr()
-                    var i: u32 = 0u32
+                    var mut i: u32 = 0u32
                     while i < color_count {
                         let color: Color = colors[i]
                         let (r4, g4, b4) = color.to_rgb4()
@@ -292,7 +292,7 @@ pub fn load_palette(vp: *ViewPort, colors: &[Color]) -> Result<(), GraphicsError
                     table_ptr[0u32] = (color_count << 16u32) | 0u32
 
                     // Pack colors
-                    var i: u32 = 0u32
+                    var mut i: u32 = 0u32
                     while i < color_count {
                         let color: Color = colors[i]
 
@@ -361,7 +361,7 @@ pub fn get_color(cm: *ColorMap, index: u8) -> Result<Color, GraphicsError> {
             }
 
             // Get 4-bit color value
-            var rgb4: u32 = 0u32
+            var mut rgb4: u32 = 0u32
             unsafe {
                 rgb4 = GetRGB4(cm, (i32)index)
             }

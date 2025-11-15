@@ -199,7 +199,7 @@ pub fn close_file(fh: i32) {
 /// ```
 @suppress("W0002", "AmigaOS dos.library Read() requires i32, but length is naturally u32. Safe: max file I/O is 2GB on classic Amiga")
 pub fn read_file(fh: i32, buffer: *u8, length: u32) -> i32 {
-    var result: i32 = 0
+    var mut result: i32 = 0
     result = Read(fh, buffer, (i32)length)
 
     return result
@@ -217,9 +217,9 @@ pub fn read_file(fh: i32, buffer: *u8, length: u32) -> i32 {
 /// ```
 @suppress("W0002", "AmigaOS dos.library Write() requires i32 parameter per FFI conventions. Safe for files <2GB")
 pub fn write_file(fh: i32, buffer: *u8, length: u32) -> i32 {
-    var result: i32 = 0
+    var mut result: i32 = 0
     result = Write(fh, buffer, (i32)length)
-    
+
     return result
 }
 
@@ -242,9 +242,9 @@ pub fn write_file(fh: i32, buffer: *u8, length: u32) -> i32 {
 /// let file_size = seek_file(fh, 0, OFFSET_END)
 /// ```
 pub fn seek_file(fh: i32, position: i32, offset: i32) -> i32 {
-    var result: i32 = 0
+    var mut result: i32 = 0
     result = Seek(fh, position, offset)
-    
+
     return result
 }
 

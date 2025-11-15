@@ -30,7 +30,7 @@ extern fn write(format: *u8, ...args) -> i32
 //   write_array("Version: %ld.%ld.%ld\n", &args)
 //
 pub fn write_array(format: *u8, args: *i32) -> i32 {
-    var result: i32 = 0
+    let mut result: i32 = 0
     unsafe {
         result = VPrintf(format, args)
     }
