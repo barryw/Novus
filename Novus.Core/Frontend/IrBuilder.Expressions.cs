@@ -3124,6 +3124,14 @@ public partial class IrBuilder
             ["len"] = new IrConstant(stringValue.Length, IrIntType.U32)  // Length without null terminator
         };
 
+        // If expected type is *u8, return just the pointer (automatic coercion)
+        // This allows string literals to work in contexts like Option::Some("string") where Option<*u8> is expected
+        if (_expectedType is IrPointerType expectedPtrType &&
+            expectedPtrType.PointeeType.Equals(IrIntType.U8))
+        {
+            return stringLiteral;  // Return just the *u8 pointer, not the full Str struct
+        }
+
         return new IrStructLiteral(strType, fieldValues);
     }
 

@@ -8169,6 +8169,16 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         if (expected.Equals(actual))
             return true;
 
+        // Automatic coercion: Str/String → *u8
+        // This allows string literals in contexts like Option::Some("string") when Option<*u8> is expected
+        if (expected is IrPointerType ptrType &&
+            ptrType.PointeeType.Equals(IrIntType.U8) &&
+            actual is IrStructType structType &&
+            (structType.StructName == "Str" || structType.StructName == "String"))
+        {
+            return true;  // Allow coercion - will be handled by IR builder
+        }
+
         // For monomorphized enums, compare by cache key (handles Option<*u8> vs Option<*u8>)
         if (expected is IrEnumType expEnum && actual is IrEnumType actEnum)
         {

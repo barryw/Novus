@@ -187,6 +187,7 @@ pub enum IntuitionError {
     InvalidScreen,          // Invalid screen pointer
     NoIDCMP,               // IDCMP setup failed
     BadDisplayMode,        // Invalid display mode
+    ModifyIDCMPFailed,     // ModifyIDCMP failed (out of memory)
 }
 
 // Convert IntuitionError to error code
@@ -200,6 +201,7 @@ pub fn intuition_error_to_code(err: IntuitionError) -> i32 {
         IntuitionError::InvalidScreen => return -205,
         IntuitionError::NoIDCMP => return -206,
         IntuitionError::BadDisplayMode => return -207,
+        IntuitionError::ModifyIDCMPFailed => return -208,
     }
 }
 

@@ -12,8 +12,8 @@ from std::strings::format import Display, Formatter
 from std::memory::slice import Slice
 from std::io::core import write
 from std::ffi::amiga_structs import TagItem, Window, Screen, NewWindow, NewScreen, IntuiMessage, Message, MsgPort
-from std::ffi::intuition import OpenWindowTagList, OpenScreenTagList, CloseWindow, CloseScreen, BeginRefresh, EndRefresh
-from std::ffi::amiga_consts import TAG_DONE, IDCMP_*, WA_*, WFLG_*
+from std::ffi::intuition import OpenWindowTagList, OpenScreenTagList, CloseWindow, CloseScreen, BeginRefresh, EndRefresh, MoveWindow, SizeWindow, ChangeWindowBox, WindowLimits, ZipWindow, WindowToFront, WindowToBack, MoveWindowInFrontOf, ModifyIDCMP, SetWindowTitles, ActivateWindow, RefreshWindowFrame, SetMouseQueue, ClearMenuStrip
+from std::ffi::amiga_consts import TAG_DONE, IDCMP_*, WA_*, WFLG_*, FALSE, NULL
 from std::ffi::exec import GetMsg, ReplyMsg, WaitPort
 
 // ============================================================================
@@ -61,7 +61,6 @@ impl RefreshGuard {
 impl Drop for RefreshGuard {
     /// Automatically call EndRefresh when guard goes out of scope
     fn drop(&mut self) {
-        write("RefreshGuard dropped - calling EndRefresh\n")
         unsafe { EndRefresh(self.window, 1) }
     }
 }
@@ -501,6 +500,232 @@ impl WindowHandle {
             ReplyMsg(msg)
         }
     }
+
+    // ========================================================================
+    // Window Modification Methods
+    // ========================================================================
+
+    // Phase 1: Essential Operations
+    // ----------------------------------------------------------------------
+
+    /// Set window title and/or screen title
+    ///
+    /// Pass Some(title) to set a title, None to leave it unchanged.
+    ///
+    /// SAFETY WARNING: Intuition stores the title string pointer without
+    /// copying. The title strings MUST remain valid for the window's lifetime!
+    /// Use static string literals or strings stored in long-lived structures.
+    ///
+    /// Example:
+    /// ```novus
+    /// let new_title: Option<*u8> = Option::Some("My App - Processing...")
+    /// let no_change: Option<*u8> = Option::None
+    /// window.set_titles(new_title, no_change)
+    /// ```
+    pub fn set_titles(&self, window_title: Option<*u8>, screen_title: Option<*u8>) {
+        unsafe {
+            // Extract the actual pointers, using a special marker for "unchanged"
+            // We use address -1 (0xFFFFFFFF) to indicate unchanged per NDK docs
+            let mut wtitle: *u8 = (*u8)(-1)
+            match window_title {
+                Option::Some(s) => { wtitle = s },
+                Option::None => {}
+            }
+
+            let mut stitle: *u8 = (*u8)(-1)
+            match screen_title {
+                Option::Some(s) => { stitle = s },
+                Option::None => {}
+            }
+
+            SetWindowTitles(self.window, wtitle, stitle)
+        }
+    }
+
+    /// Bring window to front of display
+    ///
+    /// Makes the window the frontmost window on the screen.
+    ///
+    /// Example:
+    /// ```novus
+    /// window.to_front()
+    /// ```
+    pub fn to_front(&self) {
+        unsafe { WindowToFront(self.window) }
+    }
+
+    /// Send window to back of display
+    ///
+    /// Moves the window behind all other windows on the screen.
+    ///
+    /// Example:
+    /// ```novus
+    /// window.to_back()
+    /// ```
+    pub fn to_back(&self) {
+        unsafe { WindowToBack(self.window) }
+    }
+
+    /// Programmatically activate window (give input focus)
+    ///
+    /// Triggers IDCMP_ACTIVEWINDOW event.
+    ///
+    /// Example:
+    /// ```novus
+    /// window.activate()
+    /// ```
+    pub fn activate(&self) {
+        unsafe { ActivateWindow(self.window) }
+    }
+
+    /// Change which IDCMP events this window receives
+    ///
+    /// Allows dynamic subscription to different event types.
+    /// Drains and replies to pending messages before changing flags.
+    ///
+    /// Returns Err if out of memory.
+    ///
+    /// Example:
+    /// ```novus
+    /// let new_flags = IDCMP_CLOSEWINDOW | IDCMP_NEWSIZE | IDCMP_REFRESHWINDOW
+    /// window.modify_idcmp(new_flags)?
+    /// ```
+    pub fn modify_idcmp(&self, flags: u32) -> Result<(), IntuitionError> {
+        unsafe {
+            let result = ModifyIDCMP(self.window, flags)
+            // ModifyIDCMP returns TRUE on success, FALSE on failure
+            if (result != FALSE) {
+                return Result::Ok(())
+            }
+            return Result::Err(IntuitionError::ModifyIDCMPFailed)
+        }
+    }
+
+    // Phase 2: Sizing & Positioning
+    // ----------------------------------------------------------------------
+
+    /// Move window by relative offset
+    ///
+    /// Moves the window dx pixels horizontally and dy pixels vertically
+    /// from its current position. Negative values move left/up.
+    ///
+    /// Example:
+    /// ```novus
+    /// window.move_by(10, -5)  // Move 10 pixels right, 5 pixels up
+    /// ```
+    pub fn move_by(&self, dx: i16, dy: i16) {
+        unsafe { MoveWindow(self.window, dx, dy) }
+    }
+
+    /// Resize window by relative offset
+    ///
+    /// Changes window size by dx pixels horizontally and dy pixels vertically.
+    /// Negative values shrink the window. Size is constrained by WindowLimits.
+    ///
+    /// Triggers IDCMP_NEWSIZE event. Listen for this event to get actual dimensions
+    /// as the requested size may be adjusted to fit constraints.
+    ///
+    /// Example:
+    /// ```novus
+    /// window.resize_by(20, 10)  // Grow by 20x10 pixels
+    /// ```
+    pub fn resize_by(&self, dx: i16, dy: i16) {
+        unsafe { SizeWindow(self.window, dx, dy) }
+    }
+
+    /// Set absolute position and size
+    ///
+    /// Sets window position and size in one operation, which is more efficient
+    /// than separate move + resize calls. Size is constrained by WindowLimits.
+    ///
+    /// Triggers IDCMP_NEWSIZE event if size changes.
+    ///
+    /// Example:
+    /// ```novus
+    /// window.set_bounds(100, 50, 640, 480)  // Position at (100,50), size 640x480
+    /// ```
+    pub fn set_bounds(&self, left: i16, top: i16, width: i16, height: i16) {
+        unsafe { ChangeWindowBox(self.window, left, top, width, height) }
+    }
+
+    /// Set minimum and maximum size constraints
+    ///
+    /// Constrains window sizing operations. Use WA_SIZE_UNLIMITED (0xFFFFFFFF)
+    /// for unbounded constraints.
+    ///
+    /// Returns true if the window was resized to fit the new constraints.
+    /// If true, an IDCMP_NEWSIZE event will be triggered.
+    ///
+    /// Example:
+    /// ```novus
+    /// // Set minimum 320x200, maximum 1024x768
+    /// let was_resized = window.set_limits(320, 200, 1024, 768)
+    /// ```
+    pub fn set_limits(&self, min_width: i32, min_height: i32, max_width: u32, max_height: u32) -> bool {
+        unsafe {
+            return WindowLimits(self.window, min_width, min_height, max_width, max_height) != 0
+        }
+    }
+
+    // Phase 3: Advanced Operations
+    // ----------------------------------------------------------------------
+
+    /// Toggle between current size and alternate zoom size
+    ///
+    /// Zooms the window between its current size and an alternate size
+    /// (determined by the window's Zoom field). Commonly used for maximize/restore.
+    ///
+    /// Example:
+    /// ```novus
+    /// window.zoom()  // Toggle maximize/restore
+    /// ```
+    pub fn zoom(&self) {
+        unsafe { ZipWindow(self.window) }
+    }
+
+    /// Position window immediately in front of another window
+    ///
+    /// More precise than to_front() - places this window directly in front
+    /// of the specified window in the depth arrangement.
+    ///
+    /// Example:
+    /// ```novus
+    /// window1.move_in_front_of(&window2)  // window1 goes in front of window2
+    /// ```
+    pub fn move_in_front_of(&self, other: &WindowHandle) {
+        unsafe { MoveWindowInFrontOf(self.window, other.window) }
+    }
+
+    /// Refresh window borders and gadgets
+    ///
+    /// Redraws the window frame. Call this after direct rendering operations
+    /// to the window's layer to ensure borders and gadgets are properly displayed.
+    ///
+    /// Example:
+    /// ```novus
+    /// // After custom rendering to window layer
+    /// window.refresh_frame()
+    /// ```
+    pub fn refresh_frame(&self) {
+        unsafe { RefreshWindowFrame(self.window) }
+    }
+
+    /// Set mouse event queue size
+    ///
+    /// Changes the size of the mouse event queue. Larger queues help prevent
+    /// mouse event loss during heavy processing. Useful for games and drawing programs.
+    ///
+    /// Returns the old queue length.
+    ///
+    /// Example:
+    /// ```novus
+    /// let old_size = window.set_mouse_queue(20)  // Increase queue to 20 events
+    /// ```
+    pub fn set_mouse_queue(&self, queue_length: u16) -> i32 {
+        unsafe {
+            return SetMouseQueue(self.window, queue_length)
+        }
+    }
 }
 
 // Automatic cleanup for WindowHandle (RAII)
@@ -511,20 +736,25 @@ impl Drop for WindowHandle {
             // before closing the window. Unreplied messages cause
             // system hangs and crashes.
             let mut user_port: *MsgPort = (*MsgPort)0
+
             unsafe {
                 user_port = (*w).UserPort
-            }
-
-            forever {
-                let msg = GetMsg(user_port)
-                if !msg {
-                    break
+                forever {
+                    let msg = GetMsg(user_port)
+                    if !msg {
+                        break
+                    }
+                    ReplyMsg(msg)
                 }
-                ReplyMsg(msg)
+
+                // Clear menu strip if present (required by NDK before closing window)
+                // See: http://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_3._guide/node03F2.html
+                if let menu_strip = (*w).MenuStrip {
+                    ClearMenuStrip(w)
+                }
+                CloseWindow(w)
             }
 
-            // Now safe to close the window
-            CloseWindow(w)
             self.window = (*Window)0
         }
     }

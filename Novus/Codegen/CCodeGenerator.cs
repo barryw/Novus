@@ -291,6 +291,10 @@ public class CCodeGenerator
         sb.AppendLine("typedef struct Node Node;");
         sb.AppendLine("typedef struct List List;");
         sb.AppendLine();
+        sb.AppendLine("// Sentinel value for \"unchanged\" pointer parameters (used by Amiga API)");
+        sb.AppendLine("// Using static const to prevent VBCC from trying to use moveq with the value");
+        sb.AppendLine("static const void* NULL_PTR_SENTINEL = (void*)(~0);");
+        sb.AppendLine();
 
         var codegen = new CCodeGenerator(new IrModule(), new List<IrStringLiteral>(), "68020", "auto");
 
@@ -966,11 +970,27 @@ public class CCodeGenerator
                     }
 
                     sb.AppendLine($"    struct {{");
-                    for (int i = 0; i < variant.AssociatedData.Count; i++)
+
+                    // Check if this is a unit type - if so, generate struct with dummy field
+                    // Unit type () is represented as a single IrTupleType with 0 elements
+                    bool isUnitType = variant.AssociatedData.Count == 1 &&
+                                     variant.AssociatedData[0] is IrTupleType tupleType &&
+                                     tupleType.ElementTypes.Count == 0;
+
+                    if (!isUnitType)
                     {
-                        var dataType = GetCType(variant.AssociatedData[i]);
-                        sb.AppendLine($"        {dataType} _{i};");
+                        for (int i = 0; i < variant.AssociatedData.Count; i++)
+                        {
+                            var dataType = GetCType(variant.AssociatedData[i]);
+                            sb.AppendLine($"        {dataType} _{i};");
+                        }
                     }
+                    else
+                    {
+                        // VBCC doesn't support empty structs, so add a dummy field
+                        sb.AppendLine($"        char _dummy;");
+                    }
+
                     sb.AppendLine($"    }} {variant.Name};");
                 }
             }
@@ -2215,11 +2235,27 @@ public class CCodeGenerator
                 }
 
                 _output.AppendLine($"    struct {{");
-                for (int i = 0; i < variant.AssociatedData.Count; i++)
+
+                // Check if this is a unit type - if so, generate struct with dummy field
+                // Unit type () is represented as a single IrTupleType with 0 elements
+                bool isUnitType = variant.AssociatedData.Count == 1 &&
+                                 variant.AssociatedData[0] is IrTupleType tupleType &&
+                                 tupleType.ElementTypes.Count == 0;
+
+                if (!isUnitType)
                 {
-                    var dataType = GetCType(variant.AssociatedData[i]);
-                    _output.AppendLine($"        {dataType} _{i};");
+                    for (int i = 0; i < variant.AssociatedData.Count; i++)
+                    {
+                        var dataType = GetCType(variant.AssociatedData[i]);
+                        _output.AppendLine($"        {dataType} _{i};");
+                    }
                 }
+                else
+                {
+                    // VBCC doesn't support empty structs, so add a dummy field
+                    _output.AppendLine($"        char _dummy;");
+                }
+
                 _output.AppendLine($"    }} {variant.Name};");
             }
         }
@@ -3933,15 +3969,28 @@ public class CCodeGenerator
 
         if (enumValue.AssociatedValues.Count > 0)
         {
-            sb.Append($", .data = {{ .{enumValue.VariantName} = {{");
-            for (int i = 0; i < enumValue.AssociatedValues.Count; i++)
+            // Check if this is a unit type - single element that's an empty tuple
+            bool isUnitType = enumValue.AssociatedValues.Count == 1 &&
+                             enumValue.AssociatedValues[0].Type is IrTupleType tupleType &&
+                             tupleType.ElementTypes.Count == 0;
+
+            if (!isUnitType)
             {
-                var assocValue = EmitValue(enumValue.AssociatedValues[i]);
-                sb.Append($" ._{i} = {assocValue}");
-                if (i < enumValue.AssociatedValues.Count - 1)
-                    sb.Append(",");
+                sb.Append($", .data = {{ .{enumValue.VariantName} = {{");
+                for (int i = 0; i < enumValue.AssociatedValues.Count; i++)
+                {
+                    var assocValue = EmitValue(enumValue.AssociatedValues[i]);
+                    sb.Append($" ._{i} = {assocValue}");
+                    if (i < enumValue.AssociatedValues.Count - 1)
+                        sb.Append(",");
+                }
+                sb.Append(" } }");
             }
-            sb.Append(" } }");
+            else
+            {
+                // Unit type - initialize struct with dummy field set to 0
+                sb.Append($", .data = {{ .{enumValue.VariantName} = {{ ._dummy = 0 }} }}");
+            }
         }
 
         sb.Append(" }");
@@ -3962,6 +4011,21 @@ public class CCodeGenerator
         if (constantValue == 0)
         {
             return "0";
+        }
+
+        // SPECIAL CASE: Pointer-typed constants (e.g., (*u8)(-1) becomes IrConstant with pointer type)
+        // These come from cast expressions like (*u8)(-1) which get optimized to constants
+        if (constant.Type is IrPointerType ptrType)
+        {
+            var targetType = GetCType(constant.Type);
+            // For -1, use NULL_PTR_SENTINEL which is defined as (void*)-1 in header
+            // This avoids VBCC's optimizer converting the constant to a form that doesn't fit in moveq
+            if (constantValue == -1)
+            {
+                return $"({targetType})NULL_PTR_SENTINEL";
+            }
+            var innerValue = constantValue.ToString();
+            return $"({targetType}){innerValue}";
         }
 
         // Check the type to determine how to emit the constant
@@ -4075,6 +4139,13 @@ public class CCodeGenerator
 
         // Recursively emit the inner value (handles nested casts)
         var innerValue = EmitValue(castValue.Value);
+
+        // If inner value starts with a negative sign or contains operators, wrap in parentheses
+        // This ensures (uint8_t*)-1 becomes (uint8_t*)(-1) and not (uint8_t*)-1 which can confuse the parser
+        if (innerValue.StartsWith("-") || innerValue.Contains("+") || innerValue.Contains("*") || innerValue.Contains("/"))
+        {
+            innerValue = $"({innerValue})";
+        }
 
         // Emit the cast: (target_type)inner_value
         return $"({targetType}){innerValue}";
@@ -4487,11 +4558,15 @@ public class CCodeGenerator
         // Sanitize for C identifier:
         // Option<i32> -> Option_i32
         // Result<i32, *u8> -> Result_i32_ptr_u8
+        // Result<(), IntuitionError> -> Result_unit_IntuitionError
         return name.Replace("::", "_")
+                   .Replace("()", "unit")     // Handle unit type before removing parens
                    .Replace("<", "_")
                    .Replace(">", "")
                    .Replace(",", "")
                    .Replace("*", "ptr_")
+                   .Replace("(", "")          // Remove any remaining parens
+                   .Replace(")", "")
                    .Replace(" ", "");
     }
 
@@ -4504,10 +4579,13 @@ public class CCodeGenerator
         // Vec<i32> -> Vec_i32
         // HashMap<String, i32> -> HashMap_String_i32
         return name.Replace("::", "_")
+                   .Replace("()", "unit")     // Handle unit type before removing parens
                    .Replace("<", "_")
                    .Replace(">", "")
                    .Replace(",", "")
                    .Replace("*", "ptr_")
+                   .Replace("(", "")          // Remove any remaining parens
+                   .Replace(")", "")
                    .Replace(" ", "");
     }
 

@@ -1,0 +1,160 @@
+// Window Modification Test
+//
+// Demonstrates all WindowHandle modification methods:
+// - Dynamic title changes (set_titles)
+// - Window depth arrangement (to_front, to_back, activate)
+// - Moving and resizing (move_by, resize_by, set_bounds)
+// - Setting size limits (set_limits)
+// - IDCMP flag modification (modify_idcmp)
+// - Advanced features (zoom, refresh_frame, set_mouse_queue)
+//
+// This example cycles through different operations on keyboard input
+
+from std::graphics::intuition import WindowHandle, WindowEvent, IDCMP_CLOSEWINDOW, IDCMP_VANILLAKEY, IDCMP_NEWSIZE, IDCMP_REFRESHWINDOW, IDCMP_MOUSEBUTTONS
+from std::strings::core import Str
+from std::io::core import write
+
+pub fn main() -> i32 {
+    // Open initial window
+    let result = WindowHandle::simple("Window Modification Test", 640, 480)
+
+    match result {
+        Result::Ok(window) => {
+            // Activate the window immediately so it's ready for input
+            window.activate()
+
+            write("Window opened. Waiting for events...\n")
+            write("Press keys to test window modifications:\n")
+            write("  t = Change window title\n")
+            write("  f = Bring to front\n")
+            write("  b = Send to back\n")
+            write("  a = Activate window\n")
+            write("  m = Move window\n")
+            write("  r = Resize window\n")
+            write("  s = Set absolute bounds\n")
+            write("  l = Set size limits\n")
+            write("  i = Add mouse button events to IDCMP\n")
+            write("  z = Zoom (maximize/restore)\n")
+            write("  w = Refresh window frame\n")
+            write("  q = Set mouse queue size\n")
+            write("  ESC = Exit\n\n")
+
+            forever {
+                let event = window.wait_event()
+
+                match event {
+                    WindowEvent::Close => {
+                        write("Close event - exiting\n")
+                        break
+                    },
+                    WindowEvent::VanillaKey(key, _code) => {
+                        // Test different modification methods based on key
+                        if key == 27 {  // ESC
+                            write("ESC pressed - exiting\n")
+                            break
+                        }
+
+                        if key == 116 {  // 't' - change title
+                            let new_title: Option<*u8> = Option::Some("Modified Window Title")
+                            let no_screen_title: Option<*u8> = Option::None
+                            window.set_titles(new_title, no_screen_title)
+                            write("Window title changed\n")
+                        }
+
+                        if key == 102 {  // 'f' - to front
+                            window.to_front()
+                            write("Window brought to front\n")
+                        }
+
+                        if key == 98 {  // 'b' - to back
+                            window.to_back()
+                            write("Window sent to back\n")
+                        }
+
+                        if key == 97 {  // 'a' - activate
+                            window.activate()
+                            write("Window activated\n")
+                        }
+
+                        if key == 109 {  // 'm' - move
+                            window.move_by(20, 20)
+                            write("Window moved by (20, 20)\n")
+                        }
+
+                        if key == 114 {  // 'r' - resize
+                            window.resize_by(10, 10)
+                            write("Window resized by (10, 10) - will trigger NEWSIZE event\n")
+                        }
+
+                        if key == 115 {  // 's' - set bounds
+                            window.set_bounds(100, 100, 400, 300)
+                            write("Window bounds set to (100,100) size (400x300)\n")
+                        }
+
+                        if key == 108 {  // 'l' - set limits
+                            let resized = window.set_limits(200, 150, 800, 600)
+                            if resized {
+                                write("Size limits set (200x150 to 800x600) - window was resized to fit\n")
+                            } else {
+                                write("Size limits set (200x150 to 800x600) - no resize needed\n")
+                            }
+                        }
+
+                        if key == 105 {  // 'i' - modify IDCMP
+                            // Add mouse button events to IDCMP
+                            let flags = IDCMP_CLOSEWINDOW | IDCMP_VANILLAKEY | IDCMP_NEWSIZE | IDCMP_REFRESHWINDOW | IDCMP_MOUSEBUTTONS
+                            let idcmp_result = window.modify_idcmp(flags)
+                            match idcmp_result {
+                                Result::Ok(_) => {
+                                    write("IDCMP flags modified - mouse button events now enabled\n")
+                                },
+                                Result::Err(_) => {
+                                    write("Failed to modify IDCMP flags (out of memory)\n")
+                                }
+                            }
+                        }
+
+                        if key == 122 {  // 'z' - zoom
+                            window.zoom()
+                            write("Window zoom toggled (maximize/restore)\n")
+                        }
+
+                        if key == 119 {  // 'w' - refresh frame
+                            window.refresh_frame()
+                            write("Window frame refreshed\n")
+                        }
+
+                        if key == 113 {  // 'q' - set mouse queue
+                            let old_queue = window.set_mouse_queue(10)
+                            write("Mouse queue size set to 10 (old size: {old_queue})\n")
+                        }
+                    },
+                    WindowEvent::Resize(width, height) => {
+                        write("Resize event: {width}x{height}\n")
+                    },
+                    WindowEvent::Refresh(_guard) => {
+                        write("Refresh event\n")
+                        // guard automatically calls EndRefresh when it goes out of scope
+                    },
+                    WindowEvent::MouseButton(x, y, pressed) => {
+                        if (pressed) {
+                            write("Mouse button pressed at ({x}, {y})\n")
+                        } else {
+                            write("Mouse button released at ({x}, {y})\n")
+                        }
+                    },
+                    _ => {
+                        write("Other event: {event}\n")
+                    }
+                }
+            }
+
+            write("Exiting - window will be automatically cleaned up\n")
+            return 0
+        },
+        Result::Err(_) => {
+            write("Failed to open window\n")
+            return 20  // RETURN_FAIL
+        }
+    }
+}

@@ -19,6 +19,9 @@ pub fn main() -> i32 {
 
     match result {
         Result::Ok(window) => {
+            // Activate the window immediately so it's ready for input
+            window.activate()
+
             forever {
                 // Wait for next event (blocks until event arrives)
                 let event = window.wait_event()
