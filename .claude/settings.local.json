@@ -104,7 +104,11 @@
       "Bash(Novus new /tmp/sw3 --type cli)",
       "WebFetch(domain:github.com)",
       "Bash(timeout 120 ./Novus/bin/Debug/net9.0/Novus stdlib-build:*)",
-      "Bash(./bin/Debug/net9.0/Novus:*)"
+      "Bash(./bin/Debug/net9.0/Novus:*)",
+      "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Release/net9.0/novusc:*)",
+      "Bash(readlink:*)",
+      "Bash(pwd:*)",
+      "Bash(/dev/null)"
     ],
     "deny": [],
     "ask": []

@@ -806,7 +806,20 @@ public class CCodeGenerator
             if (!declaredVars.Contains(varName))
             {
                 var cType = GetCType(varType);
-                targetBuilder.AppendLine($"    {cType} {varName};");
+
+                // CRITICAL FIX FOR 68K ALIGNMENT:
+                // Enums and structs MUST be initialized (even with garbage) to force VBCC
+                // to align them properly on the stack. Without this, VBCC may place them at
+                // odd addresses, causing guru meditation 81000005 (odd-address access error).
+                // The memset with 0 ensures proper alignment and zero-initialization.
+                if (varType is IrEnumType || varType is IrStructType)
+                {
+                    targetBuilder.AppendLine($"    {cType} {varName}; memset(&{varName}, 0, sizeof({cType}));");
+                }
+                else
+                {
+                    targetBuilder.AppendLine($"    {cType} {varName};");
+                }
                 _declaredVariables.Add(varName);
             }
         }
@@ -2658,7 +2671,20 @@ public class CCodeGenerator
             if (!declaredVars.Contains(varName))
             {
                 var cType = GetCType(varType);
-                _output.AppendLine($"    {cType} {varName};");
+
+                // CRITICAL FIX FOR 68K ALIGNMENT:
+                // Enums and structs MUST be initialized (even with garbage) to force VBCC
+                // to align them properly on the stack. Without this, VBCC may place them at
+                // odd addresses, causing guru meditation 81000005 (odd-address access error).
+                // The memset with 0 ensures proper alignment and zero-initialization.
+                if (varType is IrEnumType || varType is IrStructType)
+                {
+                    _output.AppendLine($"    {cType} {varName}; memset(&{varName}, 0, sizeof({cType}));");
+                }
+                else
+                {
+                    _output.AppendLine($"    {cType} {varName};");
+                }
                 _declaredVariables.Add(varName);
             }
         }

@@ -3149,163 +3149,64 @@ public partial class IrBuilder
         // Auto-import required modules for f-string support
         // F-strings need:
         // - std::strings::primitives for Display trait implementations on primitive types
-        // - std::strings::format for Formatter type
-        // - std::strings::core for String type and String::as_ptr() method
+        // - std::strings::format for StackFormatter type (stack-allocated, zero heap allocation!)
+        // - std::strings::core for Str type
         bool isStdLibraryModule = _inputFilePath != null && _inputFilePath.Contains(System.IO.Path.DirectorySeparatorChar + "std" + System.IO.Path.DirectorySeparatorChar);
 
         if (!isStdLibraryModule)
         {
-            if (!_processedModules.Contains("std::strings::primitives"))
-            {
-                ImportModule("std::strings::primitives", importAll: true);
-            }
-
-            if (!_processedModules.Contains("std::strings::format"))
-            {
-                ImportModule("std::strings::format", importAll: true);
-            }
-
-            // ALWAYS import std::strings::core with importAll=true to ensure String::as_ptr() is available
-            // Even if user code did "from std::strings::core import Str", we need the full module
-            // for f-string support (specifically String type and its methods)
-            if (_processedModules.Contains("std::strings::core"))
-            {
-                // Module was already imported, but might have been selective (e.g., "from...import Str")
-                // Remove it from processed modules so we can re-import with importAll=true
-                _processedModules.Remove("std::strings::core");
-            }
+            // Always import these modules to ensure all necessary types and methods are available
+            // The ImportModule function handles already-processed modules correctly
+            ImportModule("std::strings::primitives", importAll: true);
+            ImportModule("std::strings::format", importAll: true);
             ImportModule("std::strings::core", importAll: true);
         }
 
         // Parse the string into string and expression segments
         var segments = ParseInterpolatedString(content);
 
-        // Look up the Formatter type and Display trait
-        var formatterType = _symbols.LookupStruct("Formatter");
+        // Look up the StackFormatter type (stack-allocated, no heap allocation!)
+        var formatterType = _symbols.LookupStruct("StackFormatter");
         if (formatterType == null)
         {
             var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
-                "Interpolated strings require Formatter type from std::fmt module",
+                "Interpolated strings require StackFormatter type from std::fmt module",
                 errorLocation
             );
             return null;
         }
 
-        // Create a temporary variable for the Formatter
+        // Create a temporary variable for the StackFormatter
         var formatterVarName = $"_formatter{_tempCounter++}";
 
-        // Call Formatter::new() to create the formatter
-        // This returns Option<Formatter>, so we need to unwrap it
-        var formatterNewMethodName = "Formatter::new";
+        // Call StackFormatter::new() to create the formatter
+        // This returns StackFormatter directly (no Option wrapping - always succeeds!)
+        var formatterNewMethodName = "StackFormatter::new";
         var formatterNewMethod = _module.Functions.FirstOrDefault(f => f.Name == formatterNewMethodName);
         if (formatterNewMethod == null)
         {
             var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
             _diagnostics.ReportError(
                 ErrorCodes.MethodNotFound,
-                "Formatter::new() method not found. Ensure std::fmt is imported.",
+                "StackFormatter::new() method not found. Ensure std::fmt is imported.",
                 errorLocation
             );
             return null;
         }
 
-        // Call Formatter::new()
+        // Call StackFormatter::new() - returns StackFormatter directly
         var formatterNewResultName = $"%t{_tempCounter++}";
         var formatterNewCall = new IrCall(formatterNewMethodName, formatterNewMethod.ReturnType, formatterNewResultName);
         _currentBlock!.AddInstruction(formatterNewCall);
         var formatterNewResult = new IrVariable(formatterNewResultName, formatterNewMethod.ReturnType);
 
-        // Unwrap the Option<Formatter> - this should return Formatter or panic
-        // For simplicity, we'll use unwrap() which panics on None
-        var optionType = formatterNewMethod.ReturnType as IrEnumType;
-        if (optionType == null || optionType.EnumName != "Option")
-        {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
-            _diagnostics.ReportError(
-                ErrorCodes.InvalidExpressionType,
-                "Formatter::new() must return Option<Formatter>",
-                errorLocation
-            );
-            return null;
-        }
-
-        // Extract the Formatter from Option::Some
-        // We'll use pattern matching: match on the tag and extract the value
-        var someVariant = optionType.GetVariant("Some");
-        if (someVariant == null || someVariant.AssociatedData.Count != 1)
-        {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
-            _diagnostics.ReportError(
-                ErrorCodes.InvalidExpressionType,
-                "Option::Some variant not found or malformed",
-                errorLocation
-            );
-            return null;
-        }
-
-        var formatterTypeFromOption = someVariant.AssociatedData[0];
-
-        // Extract tag and check if it's Some
-        var tagResultName = $"%t{_tempCounter++}";
-        var extractTag = new IrExtractTag(tagResultName, formatterNewResult);
-        _currentBlock!.AddInstruction(extractTag);
-
-        var noneVariant = optionType.GetVariant("None");
-        if (noneVariant == null)
-        {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
-            _diagnostics.ReportError(
-                ErrorCodes.InvalidExpressionType,
-                "Option::None variant not found",
-                errorLocation
-            );
-            return null;
-        }
-
-        // Compare tag with None variant tag and panic if None
-        var tagVar = new IrVariable(tagResultName, IrIntType.I32);
-        var noneTagConst = new IrConstant(noneVariant.Tag, IrIntType.I32);
-        var isNoneResultName = $"%t{_tempCounter++}";
-        var isNoneCheck = new IrBinaryOp(isNoneResultName, IrBinaryOp.OpKind.Eq, tagVar, noneTagConst, IrBoolType.Instance);
-        _currentBlock!.AddInstruction(isNoneCheck);
-
-        var isNoneVar = new IrVariable(isNoneResultName, IrBoolType.Instance);
-        var panicLabel = $"_panic{_labelCounter++}";
-        var continueLabel = $"_continue{_labelCounter++}";
-
-        _currentBlock!.AddInstruction(new IrConditionalBranch(isNoneVar, panicLabel, continueLabel));
-
-        // Panic block
-        _currentBlock!.AddInstruction(new IrLabel(panicLabel));
-        var panicMessage = "Formatter::new() returned None (out of memory)";
-        var panicMessageLabel = $"_str{_stringCounter++}";
-        var panicMessageLiteral = new IrStringLiteral(panicMessage, panicMessageLabel);
-        StringLiterals.Add(panicMessageLiteral);
-
-        // Create source location for the panic
-        var panicLocation = new SourceLocation(
-            _inputFilePath ?? "unknown",
-            context.Start.Line,
-            context.Start.Column,
-            context.GetText().Length,
-            context.Start.InputStream.ToString() ?? ""
-        );
-        _currentBlock!.AddInstruction(new IrPanic(panicMessage, panicLocation));
-
-        // Continue block - extract the formatter
-        _currentBlock!.AddInstruction(new IrLabel(continueLabel));
-        var unwrapResultName = $"%t{_tempCounter++}";
-        var unwrapInstr = new IrExtractVariantData(unwrapResultName, formatterNewResult, "Some", 0, formatterTypeFromOption);
-        _currentBlock!.AddInstruction(unwrapInstr);
-
         // Store formatter in a local variable (mutable)
-        var formatterVar = new IrLocalVariable(formatterVarName, formatterTypeFromOption, true);
+        var formatterVar = new IrLocalVariable(formatterVarName, formatterType, true);
         _currentFunction!.LocalVariables.Add(formatterVar);
         _localVariables[formatterVarName] = formatterVar;
-        var unwrappedFormatter = new IrVariable(unwrapResultName, formatterTypeFromOption);
-        _currentBlock!.AddInstruction(new IrLocalDecl(formatterVarName, formatterTypeFromOption, true, unwrappedFormatter));
+        _currentBlock!.AddInstruction(new IrLocalDecl(formatterVarName, formatterType, true, formatterNewResult));
 
         // Process each segment
         foreach (var segment in segments)
@@ -3313,43 +3214,45 @@ public partial class IrBuilder
             if (segment.IsStringSegment)
             {
                 // Call f.write_str("segment")
-                EmitWriteStrLiteral(formatterVarName, formatterTypeFromOption, segment.StringContent);
+                EmitWriteStrLiteral(formatterVarName, formatterType, segment.StringContent);
             }
             else
             {
                 // Parse the expression and call expr.fmt(&mut f)
-                EmitFormatExpression(formatterVarName, formatterTypeFromOption, segment.Expression);
+                EmitFormatExpression(formatterVarName, formatterType, segment.Expression);
             }
         }
 
-        // Call f.finish() to get the final String
-        var formatterVarRef = new IrVariable(formatterVarName, formatterTypeFromOption);
-        var finishMethodName = _module.FindTraitMethod("Formatter", "finish");
-        if (finishMethodName == null)
+        // Call f.as_str() to get a Str (pointer into the stack buffer)
+        var formatterVarRef = new IrVariable(formatterVarName, formatterType);
+        var asStrMethodName = _module.FindTraitMethod("StackFormatter", "as_str");
+        if (asStrMethodName == null)
         {
-            finishMethodName = "Formatter::finish";
+            asStrMethodName = "StackFormatter::as_str";
         }
 
-        var finishMethod = _module.Functions.FirstOrDefault(f => f.Name == finishMethodName);
-        if (finishMethod == null)
+        var asStrMethod = _module.Functions.FirstOrDefault(f => f.Name == asStrMethodName);
+        if (asStrMethod == null)
         {
             var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
             _diagnostics.ReportError(
                 ErrorCodes.MethodNotFound,
-                "Formatter::finish() method not found",
+                "StackFormatter::as_str() method not found",
                 errorLocation
             );
             return null;
         }
 
-        // Call finish() - takes self by value
-        var finishResultName = $"%t{_tempCounter++}";
-        var finishCall = new IrCall(finishMethodName, finishMethod.ReturnType, finishResultName);
-        finishCall.Arguments.Add(formatterVarRef);
-        _currentBlock!.AddInstruction(finishCall);
+        // Call as_str() - takes &self (borrow)
+        var asStrResultName = $"%t{_tempCounter++}";
+        var asStrCall = new IrCall(asStrMethodName, asStrMethod.ReturnType, asStrResultName);
+        // as_str takes &self, so we need to borrow the formatter
+        var formatterBorrow = new IrBorrowValue(formatterVarRef, asStrMethod.Parameters[0].Type, false);
+        asStrCall.Arguments.Add(formatterBorrow);
+        _currentBlock!.AddInstruction(asStrCall);
 
-        // Return the String result
-        return new IrVariable(finishResultName, finishMethod.ReturnType);
+        // Return the Str result (no heap allocation, just a pointer into the stack buffer!)
+        return new IrVariable(asStrResultName, asStrMethod.ReturnType);
     }
 
     private void EmitWriteStrLiteral(string formatterVarName, IrType formatterType, string stringContent)
@@ -3477,12 +3380,15 @@ public partial class IrBuilder
 
     private void EmitWriteStr(string formatterVarName, IrType formatterType, IrValue strValue)
     {
-        // Find write_str method
-        var writeStrMethodName = _module.FindTraitMethod("Formatter", "write_str");
-        if (writeStrMethodName == null)
+        // Determine the formatter type name (StackFormatter or Formatter)
+        string formatterTypeName = "Formatter";
+        if (formatterType is IrStructType structType)
         {
-            writeStrMethodName = "Formatter::write_str";
+            formatterTypeName = structType.StructName;
         }
+
+        // Find write_str method for the specific formatter type
+        var writeStrMethodName = $"{formatterTypeName}::write_str";
 
         var writeStrMethod = _module.Functions.FirstOrDefault(f => f.Name == writeStrMethodName);
         if (writeStrMethod == null)
@@ -3490,7 +3396,7 @@ public partial class IrBuilder
             var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
             _diagnostics.ReportError(
                 ErrorCodes.MethodNotFound,
-                "Formatter::write_str() method not found",
+                $"{writeStrMethodName}() method not found",
                 errorLocation
             );
             return;
@@ -3508,47 +3414,101 @@ public partial class IrBuilder
 
     private void EmitFormatInteger(string formatterVarName, IrType formatterType, IrValue intValue, IrIntType intType)
     {
-        // Call the Display::fmt() implementation for this integer type
-        // Similar to how we handle other types in the else branch above
+        // Bypass Display trait and directly call runtime i{N}_to_string functions
+        // This avoids pulling in ALL Display implementations and reduces code size dramatically
 
-        var typeName = intType.Name;
-        var fmtMethodName = _module.FindTraitMethod(typeName, "fmt");
-        if (fmtMethodName == null)
+        // Determine the runtime function name based on integer type
+        string runtimeFuncName = intType.Name switch
+        {
+            "i8" => "i8_to_string",
+            "i16" => "i16_to_string",
+            "i32" => "i32_to_string",
+            "i64" => "i64_to_string",
+            "u8" => "u8_to_string",
+            "u16" => "u16_to_string",
+            "u32" => "u32_to_string",
+            "u64" => "u64_to_string",
+            _ => null
+        };
+
+        if (runtimeFuncName == null)
         {
             var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
-                $"Type '{typeName}' does not implement Display trait. All types in f-strings must implement Display.",
+                $"Integer type '{intType.Name}' not supported in f-strings",
                 errorLocation
             );
             return;
         }
 
-        var fmtMethod = _module.Functions.FirstOrDefault(f => f.Name == fmtMethodName);
-        if (fmtMethod == null)
+        // Ensure the runtime function is declared as external
+        if (!_module.Functions.Any(f => f.Name == runtimeFuncName))
+        {
+            var runtimeFunc = new IrFunction(
+                runtimeFuncName,
+                IrIntType.U32,
+                Visibility.Private,
+                isExtern: true
+            );
+            runtimeFunc.Parameters.Add(new IrParameter("value", intType));
+            runtimeFunc.Parameters.Add(new IrParameter("buffer", new IrPointerType(IrIntType.U8)));
+            runtimeFunc.Parameters.Add(new IrParameter("buffer_size", IrIntType.U32));
+            _module.Functions.Add(runtimeFunc);
+        }
+
+        // Allocate a small stack buffer for the string (16 bytes is enough for any 64-bit integer)
+        const int bufferSize = 16;
+        var bufferVarName = $"_intbuf{_tempCounter++}";
+        var bufferType = new IrArrayType(IrIntType.U8, bufferSize);
+        var bufferVar = new IrLocalVariable(bufferVarName, bufferType, true);
+        _currentFunction!.LocalVariables.Add(bufferVar);
+        _localVariables[bufferVarName] = bufferVar;
+
+        // Initialize buffer to zeros
+        var zeroArray = new IrArrayLiteral(bufferType);
+        for (int i = 0; i < bufferSize; i++)
+        {
+            zeroArray.Elements.Add(new IrConstant(0, IrIntType.U8));
+        }
+        _currentBlock!.AddInstruction(new IrLocalDecl(bufferVarName, bufferType, true, zeroArray));
+
+        // Get pointer to buffer: (*u8)&buffer
+        var bufferVarRef = new IrVariable(bufferVarName, bufferType);
+        var refType = new IrReferenceType(bufferType);
+        var borrowExpr = new IrBorrowValue(bufferVarRef, refType, true); // Mutable borrow since function writes to buffer
+        var pointerType = new IrPointerType(IrIntType.U8);
+        var bufferPtr = new IrCastValue(borrowExpr, refType, pointerType);
+
+        // Call runtime function: len = i16_to_string(value, buffer_ptr, 16)
+        var lenResultName = $"%t{_tempCounter++}";
+        var toStringCall = new IrCall(runtimeFuncName, IrIntType.U32, lenResultName);
+        toStringCall.Arguments.Add(intValue);
+        toStringCall.Arguments.Add(bufferPtr);
+        toStringCall.Arguments.Add(new IrConstant(bufferSize, IrIntType.U32));
+        _currentBlock!.AddInstruction(toStringCall);
+
+        // Create Str from buffer pointer and returned length
+        var strType = _symbols.LookupStruct("Str");
+        if (strType == null)
         {
             var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
             _diagnostics.ReportError(
-                ErrorCodes.MethodNotFound,
-                $"Display::fmt() method not found for type '{typeName}'",
+                ErrorCodes.TypeNotFound,
+                "Str type not found",
                 errorLocation
             );
             return;
         }
 
-        // Call intValue.fmt(&mut formatter)
-        // First parameter is &self (the integer value)
-        var intBorrow = new IrBorrowValue(intValue, fmtMethod.Parameters[0].Type, false);
+        var strValue = new IrStructLiteral(strType, new Dictionary<string, IrValue>
+        {
+            ["ptr"] = bufferPtr,
+            ["len"] = new IrVariable(lenResultName, IrIntType.U32)
+        });
 
-        // Second parameter is &mut Formatter
-        var formatterVarRef = new IrVariable(formatterVarName, formatterType);
-        var formatterBorrow = new IrBorrowValue(formatterVarRef, fmtMethod.Parameters[1].Type, true);
-
-        var fmtResultName = $"%t{_tempCounter++}";
-        var fmtCall = new IrCall(fmtMethodName, fmtMethod.ReturnType, fmtResultName);
-        fmtCall.Arguments.Add(intBorrow);
-        fmtCall.Arguments.Add(formatterBorrow);
-        _currentBlock!.AddInstruction(fmtCall);
+        // Write the Str to the formatter
+        EmitWriteStr(formatterVarName, formatterType, strValue);
     }
 
     private void EmitFormatBool(string formatterVarName, IrType formatterType, IrValue boolValue)

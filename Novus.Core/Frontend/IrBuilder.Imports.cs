@@ -138,25 +138,156 @@ public partial class IrBuilder
 
         if (alreadyProcessed)
         {
-            // Even if module is already processed, we still need to handle selective imports
+            // Even if module is already processed, we still need to handle imports
             // This allows: from std::ffi::dos import SystemTagList
             //         AND: from std::ffi::dos import IoErr
             // Both imports from the same module
-            if (!importAll && importList != null)
+
+            // CRITICAL: ALWAYS register type stubs first (even for importAll)
+            // This is needed for auto-imports from f-strings which use importAll=true
+            RegisterAllEnumStubsForImport(moduleContext);
+            RegisterAllStructPlaceholdersForImport(moduleContext);
+
+            // For importAll (used by f-string auto-imports), we need to also register impl methods
+            // This ensures that StackFormatter::new() and other methods are available
+            if (importAll)
+            {
+                // Process all impl blocks to register their methods
+                // This is a simplified version of the impl processing in the main path below
+                foreach (var implDecl in moduleContext.implDeclaration())
+                {
+                    // Handle generic parameters if present (e.g., impl<T> Vec<T>)
+                    var genericParams = new List<string>();
+                    if (implDecl.genericParams() != null)
+                    {
+                        foreach (var paramId in implDecl.genericParams().IDENTIFIER())
+                        {
+                            var paramName = paramId.GetText();
+                            genericParams.Add(paramName);
+                            _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
+                        }
+                    }
+
+                    // Determine if this is a trait impl or inherent impl
+                    bool isTraitImpl = implDecl.KW_FOR() != null;
+                    string? traitName = null;
+                    List<IrType> traitTypeArgs = new();
+
+                    // Extract implementing type name
+                    string typeName;
+                    IrType? implementingType = null;
+
+                    if (isTraitImpl)
+                    {
+                        traitName = implDecl.traitTypeName.IDENTIFIER(0).GetText();
+
+                        // Parse trait type arguments if present
+                        if (implDecl.traitTypeArgs != null)
+                        {
+                            var typeList = implDecl.traitTypeArgs.typeList();
+                            foreach (var typeCtx in typeList.type())
+                            {
+                                traitTypeArgs.Add(ParseType(typeCtx));
+                            }
+                        }
+
+                        // Get implementing type
+                        var targetTypeCtx = implDecl.implTargetType();
+                        if (targetTypeCtx is NovusParser.PrimitiveImplTargetContext primitiveCtx)
+                        {
+                            var primitiveTypeNameCtx = primitiveCtx.primitiveTypeName();
+                            typeName = primitiveTypeNameCtx.GetText().ToLowerInvariant();
+                            implementingType = MapPrimitiveTypeName(typeName);
+                        }
+                        else if (targetTypeCtx is NovusParser.NamedImplTargetContext namedCtx)
+                        {
+                            typeName = namedCtx.typeName().IDENTIFIER(0).GetText();
+                            implementingType = _symbols.LookupStruct(typeName) ?? (IrType?)_symbols.LookupEnum(typeName);
+                        }
+                        else
+                        {
+                            _symbols.ClearGenericParameters();
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        typeName = implDecl.targetTypeName.IDENTIFIER(0).GetText();
+                        implementingType = _symbols.LookupStruct(typeName) ?? (IrType?)_symbols.LookupEnum(typeName);
+                    }
+
+                    // Skip if implementing type not found
+                    if (implementingType == null)
+                    {
+                        _symbols.ClearGenericParameters();
+                        continue;
+                    }
+
+                    _currentSelfType = implementingType;
+
+                    // Register all pub methods in this impl block
+                    foreach (var implItem in implDecl.implItem())
+                    {
+                        var funcDecl = implItem.functionDeclaration();
+                        if (funcDecl == null) continue;
+
+                        var methodName = funcDecl.IDENTIFIER().GetText();
+                        var isPub = AstModifierHelper.HasModifier(funcDecl, "pub", 3);
+
+                        // For trait impls, methods are implicitly public
+                        if (isTraitImpl)
+                        {
+                            isPub = true;
+                        }
+
+                        // For generic impl blocks, store as templates
+                        if (genericParams.Count > 0)
+                        {
+                            StoreGenericMethodTemplate(typeName, methodName, genericParams, funcDecl);
+                            continue;
+                        }
+
+                        // Only import pub methods for non-generic impl blocks
+                        if (!isPub)
+                        {
+                            continue;
+                        }
+
+                        // Generate mangled name
+                        var mangledName = GenerateMethodMangledName(typeName, methodName, isTraitImpl, traitName, traitTypeArgs);
+
+                        // Skip if already registered
+                        if (_module.Functions.Any(f => f.Name == mangledName))
+                        {
+                            continue;
+                        }
+
+                        // Create function
+                        var returnType = ParseReturnType(funcDecl.type());
+                        var function = new IrFunction(mangledName, returnType, Visibility.Private, false);
+
+                        // Parse parameters
+                        if (funcDecl.parameterList() != null)
+                        {
+                            var paramList = funcDecl.parameterList();
+                            ParseSelfParameter(paramList.selfParameter(), function, typeName);
+                            ParseFunctionParameters(funcDecl, function);
+                        }
+
+                        _module.AddFunction(function);
+                    }
+
+                    // Clear generic params and Self type
+                    _symbols.ClearGenericParameters();
+                    _currentSelfType = null;
+                }
+            }
+            else if (importList != null)
             {
                 // Build the list of names to import for this specific import statement
                 var selectiveImports = ModuleImportHelper.BuildImportNameSet(moduleContext, importAll, importList);
 
-                // CRITICAL: Register ALL type stubs FIRST before parsing any signatures
-                // Function signatures, struct fields, and impl blocks all need types to be registered
-
-                // Step 1: Register ALL enum stubs (not just selective imports)
-                RegisterAllEnumStubsForImport(moduleContext);
-
-                // Step 2: Register ALL struct placeholders (not just selective imports)
-                RegisterAllStructPlaceholdersForImport(moduleContext);
-
-                // Step 3: Fill in enum variants for selective imports only
+                // Fill in enum variants for selective imports only
                 FillEnumVariantsForImport(moduleContext, selectiveImports);
 
                 // Register functions from the already-parsed module

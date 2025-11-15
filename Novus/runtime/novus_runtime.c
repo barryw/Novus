@@ -535,3 +535,11 @@ uint32_t u64_to_string(uint64_t value, uint8_t* buffer, uint32_t buffer_size) {
     return u32_to_string((uint32_t)value, buffer, buffer_size);
 }
 
+// Memory copy helper for StackFormatter
+// Simple byte-by-byte copy (no stdlib dependency)
+void __novus_memcpy(uint8_t* dest, const uint8_t* src, uint32_t n) {
+    while (n--) {
+        *dest++ = *src++;
+    }
+}
+

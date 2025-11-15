@@ -5,7 +5,67 @@ from std::core import Option, Drop
 from std::strings::core import String, Str
 from std::error::core import StringError
 
+// Runtime helper for memory copy (implemented in novus_runtime.c)
+extern fn __novus_memcpy(dest: *u8, src: *u8, n: u32)
+
+// StackFormatter - stack-allocated formatter for string interpolation
+// Uses a fixed 256-byte buffer to avoid heap allocations entirely
+// Perfect for embedded systems like Amiga where malloc/free are expensive
+pub struct StackFormatter {
+    buf: [u8; 256],
+    len: u32,
+}
+
+impl StackFormatter {
+    // Create a new stack formatter (always succeeds - no allocation)
+    pub fn new() -> StackFormatter {
+        StackFormatter {
+            buf: [0u8; 256],
+            len: 0u32,
+        }
+    }
+
+    // Write a string slice to the formatter
+    // Returns true on success, false if buffer is full
+    pub fn write_str(&mut self, s: Str) -> bool {
+        let bytes_needed = s.len
+        if self.len + bytes_needed > 256u32 {
+            return false  // Buffer full
+        }
+
+        // Copy bytes from s into our buffer using memcpy
+        unsafe {
+            let dest: *u8 = (*u8)&self.buf[self.len]
+            __novus_memcpy(dest, s.ptr, bytes_needed)
+        }
+
+        self.len = self.len + bytes_needed
+        return true
+    }
+
+    // Write a single character to the formatter
+    // Returns true on success, false if buffer is full
+    pub fn write_char(&mut self, c: u8) -> bool {
+        if self.len >= 256u32 {
+            return false  // Buffer full
+        }
+        self.buf[self.len] = c
+        self.len = self.len + 1u32
+        return true
+    }
+
+    // Get the formatted result as a Str (pointer into our stack buffer)
+    // IMPORTANT: The returned Str is only valid while this StackFormatter is in scope!
+    pub fn as_str(&self) -> Str {
+        Str {
+            ptr: (*u8)&self.buf[0],
+            len: self.len,
+        }
+    }
+}
+
 // Formatter - builds formatted output efficiently without intermediate allocations
+// NOTE: This heap-allocates and should be avoided for f-strings. Use StackFormatter instead.
 pub struct Formatter {
     buffer: String,
 }
