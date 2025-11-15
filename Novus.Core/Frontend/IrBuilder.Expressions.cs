@@ -499,6 +499,20 @@ public partial class IrBuilder
                         }
                     }
                 }
+
+                // Coercion 4: String/Str → &String/&Str for reference parameters
+                // Automatically create a reference when a value is passed to a function expecting a reference
+                if (paramType is IrReferenceType expectedRefType &&
+                    argValue.Type is IrStructType argStructType &&
+                    (argStructType.StructName == "String" || argStructType.StructName == "Str") &&
+                    expectedRefType.PointeeType is IrStructType expectedPointeeStruct &&
+                    expectedPointeeStruct.StructName == argStructType.StructName)
+                {
+                    // Create a borrow (immutable reference) of the string value
+                    var refType = _typeInterner.GetReferenceType(argStructType);
+                    arguments[i] = new IrBorrowValue(argValue, refType, false);
+                    continue;
+                }
             }
 
             // Generate call instruction
@@ -798,6 +812,19 @@ public partial class IrBuilder
                         arguments[i] = new IrVariable(resultTempName, u8PtrType);
                     }
                 }
+
+                // Coercion: String/Str → &String/&Str for reference parameters
+                if (paramType is IrReferenceType expectedRefType &&
+                    argValue.Type is IrStructType argStructType &&
+                    (argStructType.StructName == "String" || argStructType.StructName == "Str") &&
+                    expectedRefType.PointeeType is IrStructType expectedPointeeStruct &&
+                    expectedPointeeStruct.StructName == argStructType.StructName)
+                {
+                    // Create a borrow (immutable reference) of the string value
+                    var refType = _typeInterner.GetReferenceType(argStructType);
+                    arguments[i] = new IrBorrowValue(argValue, refType, false);
+                    continue;
+                }
             }
 
             returnType = fpType.ReturnType;
@@ -1064,6 +1091,30 @@ public partial class IrBuilder
                     _currentBlock!.AddInstruction(methodCall);
                     arguments[i] = new IrVariable(resultTempName, u8PtrType);
                 }
+            }
+        }
+
+        // Apply automatic String/Str → &String/&Str coercion when parameter type is a reference
+        for (int i = 0; i < arguments.Count; i++)
+        {
+            // Skip variadic parameters (they don't have a declared type)
+            if (i >= function.Parameters.Count || function.Parameters[i].IsVariadic)
+                continue;
+
+            var paramType = function.Parameters[i].Type;
+            var argValue = arguments[i];
+
+            // Coercion: String/Str → &String/&Str for reference parameters
+            if (paramType is IrReferenceType expectedRefType &&
+                argValue.Type is IrStructType argStructType &&
+                (argStructType.StructName == "String" || argStructType.StructName == "Str") &&
+                expectedRefType.PointeeType is IrStructType expectedPointeeStruct &&
+                expectedPointeeStruct.StructName == argStructType.StructName)
+            {
+                // Create a borrow (immutable reference) of the string value
+                var refType = _typeInterner.GetReferenceType(argStructType);
+                arguments[i] = new IrBorrowValue(argValue, refType, false);
+                continue;
             }
         }
 
