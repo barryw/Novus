@@ -188,6 +188,7 @@ pub enum IntuitionError {
     NoIDCMP,               // IDCMP setup failed
     BadDisplayMode,        // Invalid display mode
     ModifyIDCMPFailed,     // ModifyIDCMP failed (out of memory)
+    LibraryOpenFailed,     // Failed to open required library (e.g., GadTools)
 }
 
 // Convert IntuitionError to error code
@@ -202,6 +203,7 @@ pub fn intuition_error_to_code(err: IntuitionError) -> i32 {
         IntuitionError::NoIDCMP => return -206,
         IntuitionError::BadDisplayMode => return -207,
         IntuitionError::ModifyIDCMPFailed => return -208,
+        IntuitionError::LibraryOpenFailed => return -209,
     }
 }
 

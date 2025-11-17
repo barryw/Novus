@@ -1771,6 +1771,12 @@ public partial class IrBuilder
             var indexAccess = new IrIndexAccess(tempName, baseExpr, indexExpr, arrayType.ElementType);
             _currentBlock!.AddInstruction(indexAccess);
 
+            // Track struct array element access for optimization
+            if (arrayType.ElementType is IrStructType)
+            {
+                _indexAccessTemps[tempName] = (baseExpr, indexExpr, arrayType.ElementType);
+            }
+
             return new IrVariable(tempName, arrayType.ElementType);
         }
 
@@ -1781,6 +1787,12 @@ public partial class IrBuilder
             var tempName = $"%t{_tempCounter++}";
             var indexAccess = new IrIndexAccess(tempName, baseExpr, indexExpr, ptrType.PointeeType);
             _currentBlock!.AddInstruction(indexAccess);
+
+            // Track struct pointer element access for optimization
+            if (ptrType.PointeeType is IrStructType)
+            {
+                _indexAccessTemps[tempName] = (baseExpr, indexExpr, ptrType.PointeeType);
+            }
 
             return new IrVariable(tempName, ptrType.PointeeType);
         }
@@ -3711,9 +3723,9 @@ public partial class IrBuilder
             return null;
         }
 
-        // Return the size as a constant u32 value
-        var sizeInBytes = (int)targetType.SizeInBytes;
-        return new IrConstant(sizeInBytes, IrIntType.U32);
+        // Return a SizeOf IR value that will be emitted as C's sizeof() operator
+        // This ensures we get the correct size including VBCC's automatic struct padding
+        return new IrSizeOf(targetType, IrIntType.U32);
     }
 
     private string ProcessEscapeSequences(string input)
@@ -4309,6 +4321,38 @@ public partial class IrBuilder
         }
 
         var memberName = context.IDENTIFIER().GetText();
+
+        // OPTIMIZATION: Detect array[index].field pattern to avoid dead intermediate struct copies
+        // This is critical for 68k to prevent creating misaligned struct temporaries
+        if (baseExpr is IrVariable indexedVar && _indexAccessTemps.TryGetValue(indexedVar.Name, out var indexInfo))
+        {
+            var (array, index, elementType) = indexInfo;
+            if (elementType is IrStructType indexedStructType)
+            {
+                var indexedField = indexedStructType.GetField(memberName);
+                if (indexedField == null)
+                {
+                    var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                    _diagnostics.ReportError(
+                        ErrorCodes.InvalidExpressionType,
+                        $"Struct '{indexedStructType.Name}' does not have a field named '{memberName}'",
+                        errorLocation
+                    );
+                    return null;
+                }
+
+                // Remove the now-unnecessary IrIndexAccess instruction from the current block
+                // This prevents the dead intermediate struct variable from being created
+                var lastInst = _currentBlock!.Instructions.LastOrDefault();
+                if (lastInst is IrIndexAccess indexAccess && indexAccess.ResultName == indexedVar.Name)
+                {
+                    _currentBlock.Instructions.Remove(indexAccess);
+                }
+
+                // Return IrIndexedFieldAccess value instead of creating IrMemberAccess instruction
+                return new IrIndexedFieldAccess(array, index, memberName, indexedField.Offset, indexedField.Type);
+            }
+        }
 
         // Auto-dereference pointers and references to structs
         IrValue actualBase = baseExpr;

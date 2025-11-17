@@ -119,6 +119,7 @@ pub fn main() -> i32 {
         // Test that string literals automatically coerce to *u8 inside Option::Some
         string source = @"
 from std::core import Option
+from std::strings::core import Str
 
 pub fn main() -> i32 {
     // String literal should auto-coerce from Str to *u8
@@ -139,7 +140,7 @@ pub fn main() -> i32 {
         Assert.NotNull(module);
         Assert.False(builder.Diagnostics.HasErrors,
             builder.Diagnostics.HasErrors ?
-            $"Compilation failed: {string.Join(", ", builder.Diagnostics.GetAllErrors())}" :
+            $"Compilation failed: {string.Join(", ", builder.Diagnostics.Diagnostics.Where(d => d.IsError).Select(d => d.Message))}" :
             "No errors");
     }
 
@@ -150,6 +151,7 @@ pub fn main() -> i32 {
         string source = @"
 from std::graphics::intuition import WindowHandle
 from std::core import Option
+from std::strings::core import Str
 
 pub fn test_set_titles(window: &WindowHandle) {
     // String literals should auto-coerce to *u8 inside Option::Some
@@ -174,7 +176,7 @@ pub fn main() -> i32 {
         Assert.NotNull(module);
         Assert.False(builder.Diagnostics.HasErrors,
             builder.Diagnostics.HasErrors ?
-            $"Compilation failed: {string.Join(", ", builder.Diagnostics.GetAllErrors())}" :
+            $"Compilation failed: {string.Join(", ", builder.Diagnostics.Diagnostics.Where(d => d.IsError).Select(d => d.Message))}" :
             "No errors");
     }
 
@@ -206,7 +208,7 @@ pub fn main() -> i32 {
         Assert.NotNull(module);
         Assert.False(builder.Diagnostics.HasErrors,
             builder.Diagnostics.HasErrors ?
-            $"Compilation failed: {string.Join(", ", builder.Diagnostics.GetAllErrors())}" :
+            $"Compilation failed: {string.Join(", ", builder.Diagnostics.Diagnostics.Where(d => d.IsError).Select(d => d.Message))}" :
             "No errors");
     }
 
@@ -247,7 +249,7 @@ pub fn main() -> i32 {
         Assert.NotNull(module);
         Assert.False(builder.Diagnostics.HasErrors,
             builder.Diagnostics.HasErrors ?
-            $"Compilation failed: {string.Join(", ", builder.Diagnostics.GetAllErrors())}" :
+            $"Compilation failed: {string.Join(", ", builder.Diagnostics.Diagnostics.Where(d => d.IsError).Select(d => d.Message))}" :
             "No errors");
     }
 }

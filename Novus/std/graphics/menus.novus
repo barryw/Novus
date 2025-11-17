@@ -1,0 +1,515 @@
+// Menu System - Hierarchical Builder API for GadTools menus
+//
+// This module provides an ergonomic, type-safe menu builder that translates
+// to the Amiga Way™ using GadTools NewMenu arrays.
+//
+// ## Design Pattern: Hierarchical Builder → Flat Array
+//
+// The user sees a beautiful hierarchical API:
+//   let mut file_menu = builder.add_menu("File")
+//   file_menu.add_item("New")
+//   file_menu.add_item("Open")
+//
+// Behind the scenes, we build a flat Vec<NewMenu> that matches the
+// NewMenu array structure GadTools expects. At build() time, we allocate
+// memory for NewMenu structs and copy the data.
+
+from std::core import Option, Result, Vec
+from std::error::core import IntuitionError, StringError
+from std::ffi::amiga_structs import Menu, MenuItem, VisualInfo, Window, Screen, TagItem
+from std::ffi::gadtools import NewMenu
+from std::ffi::amiga_consts import *
+from std::ffi::intuition import SetMenuStrip, ClearMenuStrip, ItemAddress
+from std::ffi::gadtools import CreateMenusA, LayoutMenusA, FreeMenus, GetVisualInfoA, FreeVisualInfo
+from std::ffi::exec import AllocVec, FreeVec, CopyMem, MEMF_PUBLIC, MEMF_CLEAR
+from std::strings::core import Str, String
+
+// ============================================================================
+// GadTools Library - Auto-opened by VBCC
+// ============================================================================
+//
+// GadTools functions (CreateMenusA, etc.) automatically open gadtools.library
+// through VBCC's auto-library-opening mechanism. The _GadToolsBase is defined
+// in gadtools_base.s and initialized automatically when needed.
+//
+// No manual initialization required - just call the functions!
+
+// ============================================================================
+// NewMenu Helper Functions - Use NDK struct directly
+// ============================================================================
+// We use the NDK's NewMenu struct directly instead of creating our own.
+// This ensures proper padding and alignment handled by VBCC.
+
+impl NewMenu {
+    fn new_title(label: *u8) -> NewMenu {
+        return NewMenu {
+            nm_Type: (u8)NM_TITLE,
+            nm_Label: label,
+            nm_CommKey: (*u8)0,
+            nm_Flags: 0,
+            nm_MutualExclude: 0,
+            nm_UserData: (*u8)0
+        }
+    }
+
+    fn new_item(label: *u8) -> NewMenu {
+        return NewMenu {
+            nm_Type: (u8)NM_ITEM,
+            nm_Label: label,
+            nm_CommKey: (*u8)0,
+            nm_Flags: 0,
+            nm_MutualExclude: 0,
+            nm_UserData: (*u8)0
+        }
+    }
+
+    fn new_sub_item(label: *u8) -> NewMenu {
+        return NewMenu {
+            nm_Type: (u8)NM_SUB,
+            nm_Label: label,
+            nm_CommKey: (*u8)0,
+            nm_Flags: 0,
+            nm_MutualExclude: 0,
+            nm_UserData: (*u8)0
+        }
+    }
+
+    fn new_end() -> NewMenu {
+        return NewMenu {
+            nm_Type: (u8)NM_END,
+            nm_Label: (*u8)0,
+            nm_CommKey: (*u8)0,
+            nm_Flags: 0,
+            nm_MutualExclude: 0,
+            nm_UserData: (*u8)0
+        }
+    }
+}
+
+// ============================================================================
+// GadTools Menu Builder - Top Level
+// ============================================================================
+
+pub struct GadToolsMenuBuilder {
+    // Store menu entries as a word-aligned array of NewMenu structs
+    // Using direct pointer allocation ensures proper alignment for 68k
+    entries: *NewMenu
+    entry_count: u32
+    entry_capacity: u32
+    screen: *Screen
+    // TODO: Track allocated label pointers and free them in Drop
+    // Currently we leak the allocated strings - acceptable for short-running programs
+}
+
+impl GadToolsMenuBuilder {
+    /// Create a new GadTools menu builder for the given screen
+    pub fn new(screen: *Screen) -> GadToolsMenuBuilder {
+        unsafe {
+            // Allocate initial capacity for 32 menu entries (word-aligned by AllocVec for structs)
+            let initial_capacity: u32 = 32
+            let sizeof_entry: u32 = @sizeof(NewMenu)
+            let size = initial_capacity * sizeof_entry
+            let mem = AllocVec(size, MEMF_PUBLIC | MEMF_CLEAR)
+
+            if !mem {
+                panic!("Failed to allocate memory for menu builder")
+            }
+
+            return GadToolsMenuBuilder {
+                entries: (*NewMenu)mem,
+                entry_count: 0,
+                entry_capacity: initial_capacity,
+                screen: screen
+            }
+        }
+    }
+
+    /// Internal helper to append a NewMenu to the array
+    fn push_entry_fields(&mut self, nm_type: u8, label: *u8, commkey: *u8, flags: u16, mutual: i32, userdata: *u8) {
+        unsafe {
+            // Check if we need to resize
+            if self.entry_count >= self.entry_capacity {
+                // Double the capacity
+                let new_capacity = self.entry_capacity * 2
+                let sizeof_entry = @sizeof(NewMenu)
+                let new_size = new_capacity * sizeof_entry
+                let new_mem = AllocVec(new_size, MEMF_PUBLIC | MEMF_CLEAR)
+
+                if !new_mem {
+                    panic!("Failed to resize menu builder array")
+                }
+
+                // Copy existing entries to new memory
+                let old_size = self.entry_count * sizeof_entry
+                let src = (*u8)self.entries
+                let dst = (*u8)new_mem
+                let mut i: u32 = 0
+                forever {
+                    if i >= old_size {
+                        break
+                    }
+                    dst[i] = src[i]
+                    i++
+                }
+
+                // Free old memory
+                let old_mem = (*u8)self.entries
+                FreeVec(old_mem)
+
+                // Update to new memory
+                self.entries = (*NewMenu)new_mem
+                self.entry_capacity = new_capacity
+            }
+
+            // Write fields using pointer arithmetic to avoid loading the struct
+            let idx = self.entry_count
+            let offset = idx * @sizeof(NewMenu)
+            let base = (*u8)self.entries
+            let dest = base + offset
+            let entry_ptr = (*NewMenu)dest
+            entry_ptr.nm_Type = nm_type
+            entry_ptr.nm_Label = label
+            entry_ptr.nm_CommKey = commkey
+            entry_ptr.nm_Flags = flags
+            entry_ptr.nm_MutualExclude = mutual
+            entry_ptr.nm_UserData = userdata
+
+            self.entry_count = self.entry_count + 1
+        }
+    }
+
+    /// Add a menu (returns a handle to add items to it)
+    pub fn add_menu(&mut self, title: Str) -> MenuHandle {
+        unsafe {
+            // Allocate a copy of the string
+            let len = title.len
+            let size = len + 1
+            let label_mem = AllocVec(size, MEMF_PUBLIC | MEMF_CLEAR)
+
+            // Must succeed - if we can't allocate a few bytes for a menu label, we're in trouble
+            if !label_mem {
+                panic!("Failed to allocate memory for menu label")
+            }
+
+            let src = title.ptr
+            CopyMem(src, label_mem, len)
+
+            // NULL-terminate the string for C interop
+            let label_bytes = (*u8)label_mem
+            label_bytes[len] = 0
+
+            let label_ptr = (*u8)label_mem
+
+            // Add menu entry with individual fields to avoid struct alignment issues
+            self.push_entry_fields((u8)NM_TITLE, label_ptr, (*u8)0, 0, 0, (*u8)0)
+
+            return MenuHandle {
+                builder: self
+            }
+        }
+    }
+
+    /// Build the menu strip (allocates NewMenu array and creates menus)
+    pub fn build(&mut self) -> Result<GadToolsMenuStrip, IntuitionError> {
+        // Add terminator entry
+        unsafe {
+            self.push_entry_fields((u8)NM_END, (*u8)0, (*u8)0, 0, 0, (*u8)0)
+        }
+
+        // Calculate size for NewMenu array
+        let count = self.entry_count
+        let sizeof_newmenu: u32 = @sizeof(NewMenu)
+        let size = count * sizeof_newmenu
+
+        unsafe {
+            // Allocate memory for NewMenu array
+            let mem = AllocVec(size, MEMF_PUBLIC | MEMF_CLEAR)
+            let menu_array = (*NewMenu)mem
+            if !menu_array {
+                return Result::Err(IntuitionError::MenuCreateFailed)
+            }
+
+            // Copy all entries field-by-field to the NewMenu array
+            // Don't copy byte-by-byte because NewMenu and NewMenu might have different layouts in C
+            // Manually copy each field to avoid compiler issues with struct access
+            let mut i: u32 = 0
+            forever {
+                if i >= count {
+                    break
+                }
+                // Read each field from NewMenu
+                let e_type = self.entries[i].nm_Type
+                let e_label = self.entries[i].nm_Label
+                let e_commkey = self.entries[i].nm_CommKey
+                let e_flags = self.entries[i].nm_Flags
+                let e_mutual = self.entries[i].nm_MutualExclude
+                let e_userdata = self.entries[i].nm_UserData
+
+                // Write each field to NewMenu
+                menu_array[i].nm_Type = e_type
+                menu_array[i].nm_Label = e_label
+                menu_array[i].nm_CommKey = e_commkey
+                menu_array[i].nm_Flags = e_flags
+                menu_array[i].nm_MutualExclude = e_mutual
+                menu_array[i].nm_UserData = e_userdata
+                i = i + 1
+            }
+
+            // Create menus from NewMenu array
+            let menu = CreateMenusA(menu_array, (*TagItem)0)
+            if !menu {
+                let mem_to_free = (*u8)menu_array
+                FreeVec(mem_to_free)
+                return Result::Err(IntuitionError::MenuCreateFailed)
+            }
+
+            // Get visual info for screen
+            let vi = GetVisualInfoA(self.screen, (*TagItem)0)
+            if !vi {
+                FreeMenus(menu)
+                let mem_to_free = (*u8)menu_array
+                FreeVec(mem_to_free)
+                return Result::Err(IntuitionError::MenuCreateFailed)
+            }
+
+            // Layout menus
+            let result = LayoutMenusA(menu, vi, (*TagItem)0)
+            if result == 0 {
+                FreeVisualInfo(vi)
+                FreeMenus(menu)
+                let mem_to_free = (*u8)menu_array
+                FreeVec(mem_to_free)
+                return Result::Err(IntuitionError::MenuCreateFailed)
+            }
+
+            // TODO: We currently leak the label strings allocated in add_menu/add_item/add_sub_item
+            // This is a known issue that needs to be fixed with a proper cleanup mechanism
+            // For now, the leak is acceptable for short-running programs,
+            // but needs to be addressed for long-running applications
+
+            return Result::Ok(GadToolsMenuStrip {
+                menu: menu,
+                visual_info: vi,
+                screen: self.screen,
+                menu_array: menu_array
+            })
+        }
+    }
+}
+
+// ============================================================================
+// MenuHandle - Handle to a menu (lets you add items)
+// ============================================================================
+
+pub struct MenuHandle {
+    builder: *GadToolsMenuBuilder
+}
+
+impl MenuHandle {
+    /// Add an item to this menu (returns a handle to add sub-items or modifiers)
+    pub fn add_item(&mut self, label: Str) -> MenuItemHandle {
+        unsafe {
+            // Allocate a copy of the string
+            let len = label.len
+            let size = len + 1
+            let label_mem = AllocVec(size, MEMF_PUBLIC | MEMF_CLEAR)
+
+            if !label_mem {
+                panic!("Failed to allocate memory for menu item label")
+            }
+
+            let src = label.ptr
+            CopyMem(src, label_mem, len)
+
+            // NULL-terminate the string for C interop
+            let label_bytes = (*u8)label_mem
+            label_bytes[len] = 0
+
+            let label_ptr = (*u8)label_mem
+
+            // Add menu item with individual fields to avoid struct alignment issues
+            (*self.builder).push_entry_fields((u8)NM_ITEM, label_ptr, (*u8)0, 0, 0, (*u8)0)
+
+            return MenuItemHandle {
+                builder: self.builder
+            }
+        }
+    }
+
+    /// Add a separator bar to this menu
+    pub fn add_separator(&mut self) {
+        unsafe {
+            // NULL label = separator
+            (*self.builder).push_entry_fields((u8)NM_ITEM, (*u8)0, (*u8)0, 0, 0, (*u8)0)
+        }
+    }
+}
+
+// ============================================================================
+// MenuItemHandle - Handle to a menu item (lets you add sub-items or modifiers)
+// ============================================================================
+
+pub struct MenuItemHandle {
+    builder: *GadToolsMenuBuilder
+}
+
+impl MenuItemHandle {
+    /// Add a sub-item under this item
+    pub fn add_sub_item(&mut self, label: Str) -> MenuItemHandle {
+        unsafe {
+            // Allocate a copy of the string
+            let len = label.len
+            let size = len + 1
+            let label_mem = AllocVec(size, MEMF_PUBLIC | MEMF_CLEAR)
+
+            if !label_mem {
+                panic!("Failed to allocate memory for sub-item label")
+            }
+
+            let src = label.ptr
+            CopyMem(src, label_mem, len)
+
+            // NULL-terminate the string for C interop
+            let label_bytes = (*u8)label_mem
+            label_bytes[len] = 0
+
+            let label_ptr = (*u8)label_mem
+
+            // Add sub-item with individual fields to avoid struct alignment issues
+            (*self.builder).push_entry_fields((u8)NM_SUB, label_ptr, (*u8)0, 0, 0, (*u8)0)
+
+            return MenuItemHandle {
+                builder: self.builder
+            }
+        }
+    }
+
+    /// Add command key shortcut (fluent API - returns self)
+    pub fn with_command_key(&mut self, key: u8) -> MenuItemHandle {
+        // FIXME: Need to modify the last entry in the Vec
+        // For now, this is a placeholder
+        return MenuItemHandle {
+            builder: self.builder
+        }
+    }
+
+    /// Enable checkmark (fluent API - returns self)
+    pub fn with_checkmark(&mut self) -> MenuItemHandle {
+        // FIXME: Need to modify the last entry's flags
+        return MenuItemHandle {
+            builder: self.builder
+        }
+    }
+
+    /// Mark as initially checked (fluent API - returns self)
+    pub fn checked(&mut self) -> MenuItemHandle {
+        // FIXME: Need to modify the last entry's flags
+        return MenuItemHandle {
+            builder: self.builder
+        }
+    }
+}
+
+// ============================================================================
+// GadToolsMenuStrip - RAII wrapper for created menus
+// ============================================================================
+
+pub struct GadToolsMenuStrip {
+    menu: *Menu
+    visual_info: *VisualInfo
+    screen: *Screen
+    menu_array: *NewMenu
+}
+
+impl GadToolsMenuStrip {
+    /// Attach this menu strip to a window
+    pub fn attach(&self, window: *Window) -> Result<(), IntuitionError> {
+        unsafe {
+            let result = SetMenuStrip(window, self.menu)
+            if result == 0 {
+                return Result::Err(IntuitionError::MenuCreateFailed)
+            }
+            return Result::Ok(())
+        }
+    }
+
+    /// Detach this menu strip from a window
+    pub fn detach(&self, window: *Window) {
+        unsafe {
+            ClearMenuStrip(window)
+        }
+    }
+
+    /// Get MenuItem pointer for a given menu number
+    pub fn get_item(&self, encoded_num: u16) -> Option<*MenuItem> {
+        unsafe {
+            let item = ItemAddress(self.menu, encoded_num)
+            if !item {
+                return Option::None
+            }
+            return Option::Some(item)
+        }
+    }
+}
+
+impl Drop for GadToolsMenuStrip {
+    fn drop(&mut self) {
+        unsafe {
+            if let vi = self.visual_info {
+                FreeVisualInfo(vi)
+                self.visual_info = (*VisualInfo)0
+            }
+            if let menu = self.menu {
+                FreeMenus(menu)
+                self.menu = (*Menu)0
+            }
+            if let arr = self.menu_array {
+                let mem_to_free = (*u8)arr
+                FreeVec(mem_to_free)
+                self.menu_array = (*NewMenu)0
+            }
+        }
+    }
+}
+
+// ============================================================================
+// MenuSelection - Decoded menu event
+// ============================================================================
+
+pub struct MenuSelection {
+    menu: u16
+    item: u16
+    sub: u16
+    encoded: u16
+}
+
+impl MenuSelection {
+    /// Create menu selection from encoded menu number
+    pub fn from_code(code: u16) -> MenuSelection {
+        let menu = code & $001F
+        let item = (code >> 5) & $003F
+        let sub = (code >> 11) & $001F
+
+        return MenuSelection {
+            menu: menu,
+            item: item,
+            sub: sub,
+            encoded: code
+        }
+    }
+
+    /// Check if this is a menu title (no item)
+    pub fn is_title(&self) -> bool {
+        return self.item == NOITEM
+    }
+
+    /// Check if this is a menu item (no sub-item)
+    pub fn is_item(&self) -> bool {
+        return self.item != NOITEM && self.sub == NOSUB
+    }
+
+    /// Check if this is a sub-item
+    pub fn is_sub_item(&self) -> bool {
+        return self.item != NOITEM && self.sub != NOSUB
+    }
+}

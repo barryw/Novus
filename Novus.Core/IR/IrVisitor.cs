@@ -123,6 +123,7 @@ public abstract class IrVisitor<TResult, TContext>
             IrDereferenceValue derefValue => VisitDereferenceValue(derefValue, context),
             IrBorrowValue borrowValue => VisitBorrowValue(borrowValue, context),
             IrFieldReference fieldRef => VisitFieldReference(fieldRef, context),
+            IrIndexedFieldAccess indexedField => VisitIndexedFieldAccess(indexedField, context),
             IrCastValue castValue => VisitCastValue(castValue, context),
             IrFunctionAddress funcAddr => VisitFunctionAddress(funcAddr, context),
             IrEnumValue enumValue => VisitEnumValue(enumValue, context),
@@ -503,6 +504,16 @@ public abstract class IrVisitor<TResult, TContext>
     public virtual TResult VisitFieldReference(IrFieldReference fieldRef, TContext context)
     {
         VisitValue(fieldRef.Struct, context);
+        return default!;
+    }
+
+    /// <summary>
+    /// Visit an indexed field access (array[index].field optimization)
+    /// </summary>
+    public virtual TResult VisitIndexedFieldAccess(IrIndexedFieldAccess indexedField, TContext context)
+    {
+        VisitValue(indexedField.Array, context);
+        VisitValue(indexedField.Index, context);
         return default!;
     }
 

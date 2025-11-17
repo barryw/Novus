@@ -17,9 +17,9 @@ extern pub fn GT_SetGadgetAttrsA(gad: *Gadget, win: *Window, req: *Requester, ta
 extern pub fn CreateMenusA(newmenu: *NewMenu, taglist: *TagItem) -> *Menu
 // Varargs function CreateMenus skipped - needs manual implementation
 extern pub fn FreeMenus(menu: *Menu)
-extern pub fn LayoutMenuItemsA(firstitem: *MenuItem, vi: *u8, taglist: *TagItem) -> i16
+extern pub fn LayoutMenuItemsA(firstitem: *MenuItem, vi: *VisualInfo, taglist: *TagItem) -> i16
 // Varargs function LayoutMenuItems skipped - needs manual implementation
-extern pub fn LayoutMenusA(firstmenu: *Menu, vi: *u8, taglist: *TagItem) -> i16
+extern pub fn LayoutMenusA(firstmenu: *Menu, vi: *VisualInfo, taglist: *TagItem) -> i16
 // Varargs function LayoutMenus skipped - needs manual implementation
 extern pub fn GT_GetIMsg(iport: *MsgPort) -> *IntuiMessage
 extern pub fn GT_ReplyIMsg(imsg: *IntuiMessage)
@@ -31,8 +31,19 @@ extern pub fn GT_PostFilterIMsg(imsg: *IntuiMessage) -> *IntuiMessage
 extern pub fn CreateContext(glistptr: *Gadget) -> *Gadget
 extern pub fn DrawBevelBoxA(rport: *RastPort, left: i16, top: i16, width: i16, height: i16, taglist: *TagItem)
 // Varargs function DrawBevelBox skipped - needs manual implementation
-extern pub fn GetVisualInfoA(screen: *Screen, taglist: *TagItem) -> *u8
+extern pub fn GetVisualInfoA(screen: *Screen, taglist: *TagItem) -> *VisualInfo
 // Varargs function GetVisualInfo skipped - needs manual implementation
-extern pub fn FreeVisualInfo(vi: *u8)
+extern pub fn FreeVisualInfo(vi: *VisualInfo)
 extern pub fn GT_GetGadgetAttrsA(gad: *Gadget, win: *Window, req: *Requester, taglist: *TagItem) -> i32
 // Varargs function GT_GetGadgetAttrs skipped - needs manual implementation
+
+// GadTools NewMenu struct (from NDK headers)
+// Fields match NDK definition - VBCC handles layout and padding
+pub struct NewMenu {
+    nm_Type: u8,
+    nm_Label: *u8,
+    nm_CommKey: *u8,
+    nm_Flags: u16,
+    nm_MutualExclude: i32,
+    nm_UserData: *u8
+}

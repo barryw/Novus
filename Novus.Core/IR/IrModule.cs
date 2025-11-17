@@ -505,6 +505,19 @@ public class IrConstant : IrValue
 }
 
 /// <summary>
+/// Size of type expression - emits C's sizeof() operator
+/// </summary>
+public class IrSizeOf : IrValue
+{
+    public IrType TargetType { get; set; }
+
+    public IrSizeOf(IrType targetType, IrType returnType) : base(returnType)
+    {
+        TargetType = targetType;
+    }
+}
+
+/// <summary>
 /// Boolean constant value
 /// </summary>
 public class IrBoolConstant : IrValue
@@ -1118,6 +1131,28 @@ public class IrFieldReference : IrValue
 }
 
 /// <summary>
+/// Indexed field access - represents array[index].field without creating intermediate struct copy
+/// This is critical for 68k to avoid creating misaligned struct temporaries
+/// Example: self.entries[i].nm_Type becomes IrIndexedFieldAccess instead of IrIndexAccess + IrMemberAccess
+/// </summary>
+public class IrIndexedFieldAccess : IrValue
+{
+    public IrValue Array { get; set; }
+    public IrValue Index { get; set; }
+    public string FieldName { get; set; }
+    public int FieldOffset { get; set; }
+
+    public IrIndexedFieldAccess(IrValue array, IrValue index, string fieldName, int fieldOffset, IrType fieldType)
+        : base(fieldType)
+    {
+        Array = array;
+        Index = index;
+        FieldName = fieldName;
+        FieldOffset = fieldOffset;
+    }
+}
+
+/// <summary>
 /// Tuple element access - represents accessing an element by index from a tuple
 /// Example: accessing element 0 from tuple (u8, u8, u8)
 /// </summary>
@@ -1236,6 +1271,29 @@ public class IrIndexStore : IrInstruction
     {
         Array = array;
         Index = index;
+        Value = value;
+    }
+}
+
+/// <summary>
+/// Store value to array[index].field - specialized instruction for indexed field assignment
+/// This avoids creating a temporary copy of the struct element
+/// Example: menu_array[i].nm_Type = value
+/// </summary>
+public class IrIndexedFieldStore : IrInstruction
+{
+    public IrValue Array { get; set; }
+    public IrValue Index { get; set; }
+    public string FieldName { get; set; }
+    public int FieldOffset { get; set; }
+    public IrValue Value { get; set; }
+
+    public IrIndexedFieldStore(IrValue array, IrValue index, string fieldName, int fieldOffset, IrValue value)
+    {
+        Array = array;
+        Index = index;
+        FieldName = fieldName;
+        FieldOffset = fieldOffset;
         Value = value;
     }
 }

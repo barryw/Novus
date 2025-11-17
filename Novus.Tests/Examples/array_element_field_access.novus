@@ -1,0 +1,55 @@
+// Test array element field access - compiler bug fix
+// This tests that accessing fields on array elements works correctly
+// without creating intermediate stack copies that could be misaligned
+
+pub struct Point {
+    x: i32
+    y: i32
+}
+
+pub fn main() -> i32 {
+    // Test 1: Read fields from array elements
+    let points: [Point; 3] = [
+        Point { x: 10, y: 20 },
+        Point { x: 30, y: 40 },
+        Point { x: 50, y: 60 }
+    ]
+
+    let x0 = points[0].x
+    let y0 = points[0].y
+    let x1 = points[1].x
+    let y1 = points[1].y
+    let x2 = points[2].x
+    let y2 = points[2].y
+
+    // Verify values
+    if x0 != 10 { return 1 }
+    if y0 != 20 { return 2 }
+    if x1 != 30 { return 3 }
+    if y1 != 40 { return 4 }
+    if x2 != 50 { return 5 }
+    if y2 != 60 { return 6 }
+
+    // Test 2: Write fields to array elements
+    let mut mutable_points: [Point; 2] = [
+        Point { x: 0, y: 0 },
+        Point { x: 0, y: 0 }
+    ]
+
+    mutable_points[0].x = 100
+    mutable_points[0].y = 200
+    mutable_points[1].x = 300
+    mutable_points[1].y = 400
+
+    // Verify writes worked
+    if mutable_points[0].x != 100 { return 7 }
+    if mutable_points[0].y != 200 { return 8 }
+    if mutable_points[1].x != 300 { return 9 }
+    if mutable_points[1].y != 400 { return 10 }
+
+    // Test 3: Nested field access
+    let x_sum = mutable_points[0].x + mutable_points[1].x
+    if x_sum != 400 { return 11 }
+
+    return 0  // Success
+}

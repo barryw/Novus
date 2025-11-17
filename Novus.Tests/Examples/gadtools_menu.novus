@@ -1,0 +1,158 @@
+// GadTools Menu Example
+// Demonstrates using the high-level GadTools menu API
+
+from std::graphics::intuition import WindowHandle, WindowEvent
+from std::graphics::menus import GadToolsMenuBuilder, MenuSelection
+from std::ffi::amiga_structs import MenuItem
+from std::io::core import write
+from std::ffi::amiga_consts import IDCMP_CLOSEWINDOW, IDCMP_MENUPICK, MENUNULL
+
+pub fn main() -> i32 {
+    write("=== GadTools Menu Example ===\n")
+    write("Creating window with GadTools menus...\n")
+
+    // Create window first
+    let window_result = WindowHandle::simple("Menu Demo", 400, 300)
+
+    match window_result {
+        Result::Ok(window) => {
+            write("Window created successfully\n")
+            window.activate()
+
+            // Get the window's screen for GadTools
+            let screen = window.get_screen()
+
+            // Build menus using the hierarchical GadTools API
+            write("Building menus...\n")
+            let mut menu_builder = GadToolsMenuBuilder::new(screen)
+
+            // Project menu - add_menu returns a MenuHandle
+            let mut project_menu = menu_builder.add_menu("Project")
+            project_menu.add_item("New")
+            project_menu.add_item("Open")
+            project_menu.add_separator()
+            project_menu.add_item("Save")
+            project_menu.add_separator()
+            project_menu.add_item("Quit")
+
+            // Edit menu
+            let mut edit_menu = menu_builder.add_menu("Edit")
+            edit_menu.add_item("Cut")
+            edit_menu.add_item("Copy")
+            edit_menu.add_item("Paste")
+
+            // View menu with sub-items
+            let mut view_menu = menu_builder.add_menu("View")
+            let mut toolbar_item = view_menu.add_item("Toolbar")
+            toolbar_item.add_sub_item("Large Icons")
+            toolbar_item.add_sub_item("Small Icons")
+            view_menu.add_item("Status Bar")
+
+            let menu_result = menu_builder.build()
+
+            match menu_result {
+                Result::Ok(menu_strip) => {
+                    write("Menus created successfully\n")
+
+                    // Attach menus to window
+                    let attach_result = menu_strip.attach(window.window)
+                    match attach_result {
+                        Result::Ok(_) => {
+                            write("Menus attached to window\n")
+                            write("Try selecting menu items!\n")
+                            write("Close the window to exit.\n\n")
+
+                            window.activate()
+
+                            // Event loop
+                            forever {
+                                let event = window.wait_event()
+
+                                match event {
+                                    WindowEvent::Close => {
+                                        write("Close window requested - exiting\n")
+                                        break
+                                    },
+                                    WindowEvent::MenuPick(code) => {
+                                        // Decode menu selection
+                                        let mut menu_code = code
+                                        forever {
+                                            if menu_code == MENUNULL {
+                                                break
+                                            }
+
+                                            let selection = MenuSelection::from_code(menu_code)
+                                            write("Menu selected: menu=")
+                                            write_u16(selection.menu)
+                                            write(" item=")
+                                            write_u16(selection.item)
+                                            write(" sub=")
+                                            write_u16(selection.sub)
+                                            write("\n")
+
+                                            // Get next selection in chain
+                                            let item_opt = menu_strip.get_item(menu_code)
+                                            match item_opt {
+                                                Option::Some(item) => {
+                                                    unsafe {
+                                                        menu_code = (*item).NextSelect
+                                                    }
+                                                },
+                                                Option::None => {
+                                                    break
+                                                }
+                                            }
+                                        }
+                                    },
+                                    _ => {}
+                                }
+                            }
+
+                            // Menus automatically detached and freed by Drop
+                        },
+                        Result::Err(err) => {
+                            write("Failed to attach menus to window\n")
+                            return -1
+                        }
+                    }
+                },
+                Result::Err(err) => {
+                    write("Failed to create menus\n")
+                    return -1
+                }
+            }
+
+            // Window automatically cleaned up by Drop
+        },
+        Result::Err(err) => {
+            write("Failed to create window\n")
+            return -1
+        }
+    }
+
+    write("\nGadTools menu demo completed.\n")
+    return 0
+}
+
+// Helper to write u16 values
+fn write_u16(value: u16) {
+    // Convert to string and write
+    // FIXME: Need proper u16::Display implementation
+    unsafe {
+        if value == 0 {
+            write("0")
+        } else if value == 1 {
+            write("1")
+        } else if value == 2 {
+            write("2")
+        } else if value == 3 {
+            write("3")
+        } else if value == 4 {
+            write("4")
+        } else if value == 5 {
+            write("5")
+        } else {
+            write("?")
+        }
+    }
+}

@@ -105,7 +105,7 @@ public class TypeRegistry
                 }
             }
 
-            // Scan instructions for enum and struct types
+            // Scan instructions for enum, struct, and tuple types
             foreach (var block in function.BasicBlocks)
             {
                 foreach (var instruction in block.Instructions)
@@ -121,6 +121,16 @@ public class TypeRegistry
                         {
                             AddOrUpdateStructType(structDeclType);
                         }
+                        else if (localDecl.Type is IrTupleType tupleDeclType)
+                        {
+                            AddTupleType(tupleDeclType);
+                        }
+
+                        // Also check the initial value for tuple types
+                        if (localDecl.InitialValue != null)
+                        {
+                            ScanValueForTypes(localDecl.InitialValue);
+                        }
                     }
 
                     if (instruction is IrMatch match &&
@@ -128,6 +138,16 @@ public class TypeRegistry
                         IsConcreteEnum(matchEnumType))
                     {
                         AddOrUpdateEnumType(matchEnumType);
+                    }
+
+                    if (instruction is IrStore store)
+                    {
+                        ScanValueForTypes(store.Value);
+                    }
+
+                    if (instruction is IrReturn returnInstr && returnInstr.Value != null)
+                    {
+                        ScanValueForTypes(returnInstr.Value);
                     }
                 }
             }
@@ -274,6 +294,38 @@ public class TypeRegistry
             return;
 
         _tupleTypes.Add(tupleType);
+    }
+
+    /// <summary>
+    /// Recursively scan an IrValue for tuple, enum, and struct types
+    /// </summary>
+    private void ScanValueForTypes(IrValue value)
+    {
+        if (value == null)
+            return;
+
+        // Check the value's type
+        if (value.Type is IrTupleType tupleType)
+        {
+            AddTupleType(tupleType);
+        }
+        else if (value.Type is IrEnumType enumType && IsConcreteEnum(enumType))
+        {
+            AddOrUpdateEnumType(enumType);
+        }
+        else if (value.Type is IrStructType structType && structType.GenericParameters.Count == 0)
+        {
+            AddOrUpdateStructType(structType);
+        }
+
+        // For tuple literals, also scan element types recursively
+        if (value is IrTupleLiteral tupleLiteral)
+        {
+            foreach (var element in tupleLiteral.Elements)
+            {
+                ScanValueForTypes(element);
+            }
+        }
     }
 
     private string GetStructName(IrStructType structType)

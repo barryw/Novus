@@ -443,6 +443,41 @@ pub struct DrawInfo {
     dri_Reserved: [u32; 5],
 }
 
+// ============================================================================
+// Menu System Structs
+// ============================================================================
+
+// IntuiText structure - text rendering in menus/gadgets
+pub struct IntuiText {
+    FrontPen: u8,
+    BackPen: u8,
+    DrawMode: u8,
+    LeftEdge: i16,
+    TopEdge: i16,
+    ITextFont: *TextAttr,
+    IText: *u8,
+    NextText: *IntuiText,
+}
+
+// MenuItem and Menu are NDK Intuition structs - forward-declared automatically
+// DO NOT define them here or they will conflict with NDK headers
+
+// ============================================================================
+// GadTools Menu Structs
+// ============================================================================
+
+// NewMenu is an NDK GadTools struct - forward-declared automatically
+// DO NOT define it here or it will conflict with NDK headers
+
+// Opaque struct for VisualInfo (screen layout information)
+pub struct VisualInfo {
+    _opaque: u8,
+}
+
+// ============================================================================
+// Gadget and Requester Structs
+// ============================================================================
+
 pub struct Gadget {
     NextGadget: *Gadget,
     LeftEdge: i16,
@@ -551,7 +586,7 @@ pub struct Window {
     FirstRequest: *Requester,
     DMRequest: *Requester,
     ReqCount: i16,
-    WScreen: *u8,
+    WScreen: *Screen,
     RPort: *RastPort,
     BorderLeft: i8,
     BorderTop: i8,

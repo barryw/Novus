@@ -14,6 +14,7 @@
 	xref	_SysBase		; From library_bases.s
 	xref	_DOSBase		; From library_bases.s
 	xref	_IntuitionBase		; From library_bases.s
+	xref	_GadToolsBase		; From library_bases.s
 	xref	___dos_init		; From dos_init.s
 	xref	___dos_cleanup		; From dos_init.s
 
@@ -46,9 +47,25 @@ _start:
 	move.l	d0,_IntuitionBase	; Save the base
 	beq.s	.no_intuition		; If NULL, skip cleanup
 
+	; Open gadtools.library v37
+	movea.l	_SysBase,a6		; Get exec.library base
+	lea	.gadtools_name(pc),a1	; Library name
+	moveq	#37,d0			; Minimum version (v37 = AmigaOS 2.0+)
+	jsr	-552(a6)		; OpenLibrary()
+	move.l	d0,_GadToolsBase	; Save the base
+	beq.s	.no_gadtools		; If NULL, skip gadtools cleanup
+
 	; Call main()
 	jsr	_main
 
+	; Close gadtools.library
+	move.l	d0,-(sp)		; Save return code
+	movea.l	_SysBase,a6		; Get exec.library base
+	movea.l	_GadToolsBase,a1	; Library to close
+	jsr	-414(a6)		; CloseLibrary()
+	move.l	(sp)+,d0		; Restore return code
+
+.no_gadtools:
 	; Close intuition.library
 	move.l	d0,-(sp)		; Save return code
 	movea.l	_SysBase,a6		; Get exec.library base
@@ -68,5 +85,9 @@ _start:
 
 .intuition_name:
 	dc.b	'intuition.library',0
+	even
+
+.gadtools_name:
+	dc.b	'gadtools.library',0
 	even
 

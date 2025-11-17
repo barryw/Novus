@@ -315,6 +315,13 @@ impl WindowHandle {
         }
     }
 
+    /// Get the screen this window is displayed on
+    pub fn get_screen(&self) -> *Screen {
+        unsafe {
+            return (*self.window).WScreen
+        }
+    }
+
     /// Get window width
     pub fn width(&self) -> i16 {
         unsafe {
@@ -392,14 +399,14 @@ impl WindowHandle {
     /// let window = WindowHandle::simple("My App", 320, 200)?
     /// ```
     @suppress("W0002", "We're casting from i16 to u32 for tag data")
-    pub fn simple(title: &Str, width: i16, height: i16) -> Result<WindowHandle, IntuitionError> {
+    pub fn simple(title: Str, width: i16, height: i16) -> Result<WindowHandle, IntuitionError> {
         let flags = WFLG_CLOSEGADGET | WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_SIZEGADGET | WFLG_SIZEBRIGHT | WFLG_SIZEBBOTTOM
         // TODO: IDCMP_REFRESHWINDOW causes guru crashes after resize+close
         // Even with proper BeginRefresh/EndRefresh calls, something corrupts Intuition state.
         // Windows resize fine WITHOUT listening for REFRESHWINDOW, so we omit it for now.
         // May be related to how we're handling the refresh in parse_intui_message or a deeper
         // issue with window refresh semantics. Needs investigation.
-        let idcmp = IDCMP_CLOSEWINDOW | IDCMP_DELTAMOVE | IDCMP_NEWSIZE | IDCMP_MOUSEMOVE | IDCMP_MOUSEBUTTONS | IDCMP_RAWKEY | IDCMP_VANILLAKEY
+        let idcmp = IDCMP_CLOSEWINDOW | IDCMP_DELTAMOVE | IDCMP_NEWSIZE | IDCMP_MOUSEMOVE | IDCMP_MOUSEBUTTONS | IDCMP_RAWKEY | IDCMP_VANILLAKEY | IDCMP_MENUPICK
 
         let tags = [
             TagItem { ti_Tag: WA_Left, ti_Data: 50 },

@@ -3,7 +3,7 @@ from std::graphics::intuition import WindowHandle
 from std::ffi::dos import Delay
 
 pub fn main() -> i32 {
-    let result = WindowHandle::simple(&"Novus Window", 320, 200)
+    let result = WindowHandle::simple("Novus Window", 320, 200)
 
     match result {
         Result::Ok(window) => {

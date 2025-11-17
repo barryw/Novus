@@ -331,6 +331,138 @@ public partial class IrBuilder
 
                 // Register traits
                 RegisterTraitsForImport(moduleContext, selectiveImports);
+
+                // Register impl blocks for ALL types (not just selective imports)
+                // This is critical: when you import a type, you also need its methods!
+                // For example: "from std::graphics::menus import GadToolsMenuBuilder"
+                // should also import methods on MenuHandle, MenuItemHandle, etc.
+                foreach (var implDecl in moduleContext.implDeclaration())
+                {
+                    // Handle generic parameters if present (e.g., impl<T> Vec<T>)
+                    var genericParams = new List<string>();
+                    if (implDecl.genericParams() != null)
+                    {
+                        foreach (var paramId in implDecl.genericParams().IDENTIFIER())
+                        {
+                            var paramName = paramId.GetText();
+                            genericParams.Add(paramName);
+                            _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
+                        }
+                    }
+
+                    // Determine if this is a trait impl or inherent impl
+                    bool isTraitImpl = implDecl.KW_FOR() != null;
+                    string? traitName = null;
+                    List<IrType> traitTypeArgs = new();
+
+                    // Extract implementing type name
+                    string typeName;
+                    IrType? implementingType = null;
+
+                    if (isTraitImpl)
+                    {
+                        traitName = implDecl.traitTypeName.IDENTIFIER(0).GetText();
+
+                        // Parse trait type arguments if present
+                        if (implDecl.traitTypeArgs != null)
+                        {
+                            var typeList = implDecl.traitTypeArgs.typeList();
+                            foreach (var typeCtx in typeList.type())
+                            {
+                                traitTypeArgs.Add(ParseType(typeCtx));
+                            }
+                        }
+
+                        // Get implementing type
+                        var targetTypeCtx = implDecl.implTargetType();
+                        if (targetTypeCtx is NovusParser.PrimitiveImplTargetContext primitiveCtx)
+                        {
+                            var primitiveTypeNameCtx = primitiveCtx.primitiveTypeName();
+                            typeName = primitiveTypeNameCtx.GetText().ToLowerInvariant();
+                            implementingType = MapPrimitiveTypeName(typeName);
+                        }
+                        else if (targetTypeCtx is NovusParser.NamedImplTargetContext namedCtx)
+                        {
+                            typeName = namedCtx.typeName().IDENTIFIER(0).GetText();
+                            implementingType = _symbols.LookupStruct(typeName) ?? (IrType?)_symbols.LookupEnum(typeName);
+                        }
+                        else
+                        {
+                            _symbols.ClearGenericParameters();
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        typeName = implDecl.targetTypeName.IDENTIFIER(0).GetText();
+                        implementingType = _symbols.LookupStruct(typeName) ?? (IrType?)_symbols.LookupEnum(typeName);
+                    }
+
+                    // Skip if implementing type not found
+                    if (implementingType == null)
+                    {
+                        _symbols.ClearGenericParameters();
+                        continue;
+                    }
+
+                    _currentSelfType = implementingType;
+
+                    // Register all pub methods in this impl block
+                    foreach (var implItem in implDecl.implItem())
+                    {
+                        var funcDecl = implItem.functionDeclaration();
+                        if (funcDecl == null) continue;
+
+                        var methodName = funcDecl.IDENTIFIER().GetText();
+                        var isPub = AstModifierHelper.HasModifier(funcDecl, "pub", 3);
+
+                        // For trait impls, methods are implicitly public
+                        if (isTraitImpl)
+                        {
+                            isPub = true;
+                        }
+
+                        // For generic impl blocks, store as templates
+                        if (genericParams.Count > 0)
+                        {
+                            StoreGenericMethodTemplate(typeName, methodName, genericParams, funcDecl);
+                            continue;
+                        }
+
+                        // Only import pub methods for non-generic impl blocks
+                        if (!isPub)
+                        {
+                            continue;
+                        }
+
+                        // Generate mangled name
+                        var mangledName = GenerateMethodMangledName(typeName, methodName, isTraitImpl, traitName, traitTypeArgs);
+
+                        // Skip if already registered
+                        if (_module.Functions.Any(f => f.Name == mangledName))
+                        {
+                            continue;
+                        }
+
+                        // Create function
+                        var returnType = ParseReturnType(funcDecl.type());
+                        var function = new IrFunction(mangledName, returnType, Visibility.Private, false);
+
+                        // Parse parameters
+                        if (funcDecl.parameterList() != null)
+                        {
+                            var paramList = funcDecl.parameterList();
+                            ParseSelfParameter(paramList.selfParameter(), function, typeName);
+                            ParseFunctionParameters(funcDecl, function);
+                        }
+
+                        _module.AddFunction(function);
+                    }
+
+                    // Clear generic params and Self type
+                    _symbols.ClearGenericParameters();
+                    _currentSelfType = null;
+                }
             }
 
             return; // Don't reprocess the entire module
@@ -528,19 +660,13 @@ public partial class IrBuilder
                 // Will check for null below
             }
 
-            // Skip if the type this impl is for is not in the import list
-            // This prevents importing methods for types we don't have access to
-            // However, ALWAYS allow impl blocks for primitive types (i8, i16, i32, u8, etc.)
-            // because primitives are universally available and their trait impls should be imported
-            bool isPrimitiveType = typeName is "i8" or "i16" or "i32" or "i64" or
-                                                "u8" or "u16" or "u32" or "u64" or
-                                                "bool" or "f32" or "f64";
-
-            if (!isPrimitiveType && !namesToImport.Contains(typeName))
-            {
-                _symbols.ClearGenericParameters();
-                continue;
-            }
+            // IMPORTANT: We do NOT skip impl blocks based on whether the type is in namesToImport
+            // Even if a type isn't explicitly imported, it may still be used (returned from methods,
+            // passed as parameters, etc.). For example:
+            //   from std::graphics::menus import GadToolsMenuBuilder
+            //   let menu = builder.add_menu("File")  // returns MenuHandle (not explicitly imported)
+            //   menu.add_item("New")  // need MenuHandle::add_item method!
+            // So we import ALL pub methods from ALL impl blocks in the module.
 
             // Skip if implementing type not found (type not imported or not registered yet)
             if (implementingType == null)

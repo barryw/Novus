@@ -141,3 +141,13 @@ extern pub fn SetWindowPointerA(win: *Window, taglist: *TagItem)
 // Varargs function SetWindowPointer skipped - needs manual implementation
 extern pub fn TimedDisplayAlert(alertNumber: u32, string: *u8, height: u16, time: u32) -> i16
 extern pub fn HelpControl(win: *Window, flags: u32)
+
+// Opaque Intuition menu structures (defined in NDK headers)
+pub struct Menu {
+    _opaque: u8
+}
+
+pub struct MenuItem {
+    _opaque: u8
+}
+

@@ -173,6 +173,49 @@ Source (.novus) → Lexer → Parser → AST → Type Checker → IR Builder →
 - Fat pointers (ptr+len) used for slices with debug bounds checks
 - Async lowering creates state machines backed by Exec signals
 
+### Hierarchical Builder Pattern for AmigaOS APIs
+
+When wrapping AmigaOS APIs that use flat C arrays (like GadTools NewMenu), use the **Hierarchical Builder Pattern**:
+
+**Pattern**: User sees a beautiful hierarchical API that internally builds a flat array matching the C API structure.
+
+**Example - GadTools Menu Builder** (`std::graphics::menus`):
+```novus
+let mut menu_builder = GadToolsMenuBuilder::new(screen)
+
+// Hierarchical API - returns handles for chaining
+let mut file_menu = menu_builder.add_menu("File")
+file_menu.add_item("New")
+file_menu.add_item("Open")
+file_menu.add_separator()
+
+let mut toolbar_item = file_menu.add_item("Toolbar")
+toolbar_item.add_sub_item("Large Icons")
+toolbar_item.add_sub_item("Small Icons")
+
+let menu_strip = menu_builder.build()?
+```
+
+**Implementation Strategy**:
+- Builder stores entries as `Vec<u8>` (raw bytes) to avoid VBCC struct-by-value assignment issues
+- Each entry is 14 bytes matching the C struct layout exactly
+- `push_entry()` serializes struct fields byte-by-byte into the Vec
+- `build()` allocates AmigaOS memory and uses `CopyMem()` to copy the flat byte array
+- Returns RAII wrapper that handles cleanup in `Drop`
+
+**Why `Vec<u8>` instead of `Vec<MenuEntry>`**:
+VBCC cannot compile struct-by-value assignment for complex structs. `Vec<T>::push()` does `self.ptr[self.len] = value`, which is struct assignment. By storing raw bytes and only doing byte assignments, we avoid this VBCC limitation while maintaining the same memory layout.
+
+**Handle Types**:
+- `MenuHandle` - returned by `add_menu()`, provides `add_item()` and `add_separator()`
+- `MenuItemHandle` - returned by `add_item()`, provides `add_sub_item()` and modifier methods
+- Each handle holds a `*GadToolsMenuBuilder` pointer back to the builder
+
+**Memory Management**:
+- String labels are heap-allocated and currently leaked (FIXME: need lifetime tracking)
+- Builder owns the Vec<u8> entries
+- RAII wrapper (`GadToolsMenuStrip`) owns allocated AmigaOS structures and frees them in Drop
+
 ## Notes for Claude
 
 - When implementing compiler features, prioritize safety and clear error messages

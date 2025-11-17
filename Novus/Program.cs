@@ -848,8 +848,8 @@ class Program
 
                 foreach (var function in generableFunctions)
                 {
-                    // Check if this is a monomorphized trait method
-                    bool isMonomorphized = moduleCodegen.IsMonomorphizedTraitMethod(function);
+                    // Check if this is a monomorphized function (trait method or static generic function)
+                    bool isMonomorphized = moduleCodegen.IsMonomorphizedFunction(function);
                     var mangledName = moduleCodegen.MangleName(function);
 
                     if (isMonomorphized)

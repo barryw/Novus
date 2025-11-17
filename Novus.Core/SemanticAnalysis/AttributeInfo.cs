@@ -201,6 +201,7 @@ public static class KnownAttributes
 
     // C interop attributes
     public const string Export = "export";
+    public const string ExternType = "extern_type";
 
     // Diagnostic attributes
     public const string Suppress = "suppress";
@@ -218,6 +219,7 @@ public static class KnownAttributes
         Cold, Hot, Const,
         Target, Cfg,
         Export,
+        ExternType,
         Suppress
     };
 

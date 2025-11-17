@@ -1,0 +1,49 @@
+// Test array element with pointer fields - ensures no alignment issues
+// This specifically tests the bug that caused Guru 80000006 on Amiga
+
+pub struct Record {
+    id: u32
+    name: *u8
+    data: *u8
+}
+
+pub fn main() -> i32 {
+    // Create array of structs with pointer fields
+    let records: [Record; 2] = [
+        Record { id: 1, name: (*u8)0, data: (*u8)0 },
+        Record { id: 2, name: (*u8)0, data: (*u8)0 }
+    ]
+
+    // Test reading pointer fields from array elements
+    // This would crash with address error if pointers are misaligned
+    let id0 = records[0].id
+    let name0 = records[0].name
+    let data0 = records[0].data
+
+    let id1 = records[1].id
+    let name1 = records[1].name
+    let data1 = records[1].data
+
+    // Verify IDs
+    if id0 != 1 { return 1 }
+    if id1 != 2 { return 2 }
+
+    // Test writing to pointer fields
+    let mut mut_records: [Record; 1] = [
+        Record { id: 0, name: (*u8)0, data: (*u8)0 }
+    ]
+
+    let test_addr1: *u8 = (*u8)4096  // 0x1000
+    let test_addr2: *u8 = (*u8)8192  // 0x2000
+
+    mut_records[0].id = 99
+    mut_records[0].name = test_addr1
+    mut_records[0].data = test_addr2
+
+    // Verify writes
+    if mut_records[0].id != 99 { return 3 }
+    if (u32)mut_records[0].name != (u32)test_addr1 { return 4 }
+    if (u32)mut_records[0].data != (u32)test_addr2 { return 5 }
+
+    return 0  // Success
+}

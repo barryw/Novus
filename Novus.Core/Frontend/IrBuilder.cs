@@ -34,6 +34,10 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
     private readonly Stack<string> _loopExitLabels = new(); // Track loop exit labels for break
     private readonly Dictionary<string, IrLocalVariable> _localVariables = new(); // Track local variables in current function
 
+    // Track which temporaries came from IrIndexAccess for optimized member access
+    // Key: temp variable name (e.g., "%t59"), Value: (array, index, elementType)
+    private readonly Dictionary<string, (IrValue Array, IrValue Index, IrType ElementType)> _indexAccessTemps = new();
+
     // Unified symbol table for types, functions, and constants
     private readonly SymbolTable _symbols = new();
 

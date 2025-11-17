@@ -1,47 +1,86 @@
-// Simple Window Example - Modern Ergonomic Version
+// Simple Window Example with Menus - Modern Ergonomic Version
 //
-// Demonstrates the WindowHandle RAII wrapper with:
-// - Automatic window cleanup (no manual message draining!)
+// Demonstrates:
+// - WindowHandle RAII wrapper with automatic cleanup
+// - GadTools hierarchical menu builder
 // - Type-safe event handling via WindowEvent enum
-// - Simple blocking event loop
-// - Convenience constructor (simple window preset)
-//
-// Compare to the original 106-line version - this is just 30 lines!
+// - Menu event decoding with MenuSelection
 
 from std::graphics::intuition import WindowHandle, WindowEvent
+from std::graphics::menus import GadToolsMenuBuilder, MenuSelection
 from std::strings::core import Str
 from std::io::core import write
 
 pub fn main() -> i32 {
     // Open a simple window with standard gadgets
-    // WindowHandle automatically handles cleanup on drop!
-    let result = WindowHandle::simple("Novus Window", 800, 600)
+    let result = WindowHandle::simple("Novus Window with Menus", 800, 600)
 
     match result {
         Result::Ok(window) => {
-            // Activate the window immediately so it's ready for input
-            window.activate()
+            // Get the screen for menu builder
+            let screen = window.get_screen()
 
-            forever {
-                // Wait for next event (blocks until event arrives)
-                let event = window.wait_event()
+            // Build menus using the hierarchical builder API
+            let mut builder = GadToolsMenuBuilder::new(screen)
 
-                // Handle the event with pattern matching
-                match event {
-                    WindowEvent::Close => {
-                        // User clicked close gadget - stop loop
-                        break
-                    },
-                    _ => {
-                        write("event: {event}\n")
-                        // Continue running for other events
+            // Add File menu with items
+            let mut file_menu = builder.add_menu("File")
+            file_menu.add_item("New")
+            file_menu.add_item("Open")
+            file_menu.add_separator()
+            file_menu.add_item("Quit")
+
+            // Add Edit menu with items
+            let mut edit_menu = builder.add_menu("Edit")
+            edit_menu.add_item("Cut")
+            edit_menu.add_item("Copy")
+            edit_menu.add_item("Paste")
+
+            // Build and attach menus
+            let menu_result = builder.build()
+            match menu_result {
+                Result::Ok(menu_strip) => {
+                    let attach_result = menu_strip.attach(window.window)
+                    match attach_result {
+                        Result::Ok(_) => {
+                            write("Menus attached successfully!\n")
+                        },
+                        Result::Err(_) => {
+                            write("Failed to attach menus\n")
+                            return 20
+                        }
                     }
+
+                    // Activate the window
+                    window.activate()
+
+                    forever {
+                        let event = window.wait_event()
+
+                        match event {
+                            WindowEvent::Close => {
+                                break
+                            },
+                            WindowEvent::MenuPick(code) => {
+                                let sel = MenuSelection::from_code(code)
+                                write("Menu selected: menu={sel.menu} item={sel.item} sub={sel.sub}\n")
+                            },
+                            _ => {
+                                write("event: {event}\n")
+                            }
+                        }
+                    }
+
+                    // Detach menus before window closes
+                    menu_strip.detach(window.window)
+                    // MenuStrip automatically cleaned up via Drop
+                    return 0
+                },
+                Result::Err(_) => {
+                    write("Failed to build menus\n")
+                    return 20
                 }
             }
-
-            // Window is automatically cleaned up here (Drop impl)!
-            // No need to manually drain messages or call CloseWindow.
-            return 0
         },
         Result::Err(_) => {
             return 20  // RETURN_FAIL

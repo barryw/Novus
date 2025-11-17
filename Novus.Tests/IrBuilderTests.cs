@@ -1044,4 +1044,59 @@ pub fn bitwise_test(a: u32, b: u32) -> u32 {
         Assert.Contains(binaryOps, op => op.Operation == IrBinaryOp.OpKind.Or);
         Assert.Contains(binaryOps, op => op.Operation == IrBinaryOp.OpKind.Xor);
     }
+
+    [Fact]
+    public void BuildIr_IndexedFieldAssignment_CreatesIndexedFieldStore()
+    {
+        // Test that array[index].field = value creates IrIndexedFieldStore, not a temporary copy
+        var source = @"
+struct Point {
+    x: i32,
+    y: i32
+}
+
+pub fn set_point_x(points: *Point, index: u32, value: i32) {
+    points[index].x = value
+}";
+        var module = BuildIr(source);
+        var function = module.Functions.First(f => f.Name == "set_point_x");
+        var block = function.BasicBlocks[0];
+
+        // Should have exactly one IrIndexedFieldStore instruction
+        var indexedFieldStore = Assert.Single(block.Instructions.OfType<IrIndexedFieldStore>());
+        Assert.Equal("x", indexedFieldStore.FieldName);
+
+        // Verify no IrIndexAccess instructions were created (which would indicate a temporary copy)
+        var indexAccess = block.Instructions.OfType<IrIndexAccess>();
+        Assert.Empty(indexAccess);
+    }
+
+    [Fact]
+    public void BuildIr_MultipleIndexedFieldAssignments_CreatesMultipleIndexedFieldStores()
+    {
+        // Test that multiple assignments to different fields create separate IrIndexedFieldStore instructions
+        var source = @"
+struct Point {
+    x: i32,
+    y: i32
+}
+
+pub fn set_point(points: *Point, index: u32, x_val: i32, y_val: i32) {
+    points[index].x = x_val
+    points[index].y = y_val
+}";
+        var module = BuildIr(source);
+        var function = module.Functions.First(f => f.Name == "set_point");
+        var block = function.BasicBlocks[0];
+
+        // Should have exactly two IrIndexedFieldStore instructions
+        var indexedFieldStores = block.Instructions.OfType<IrIndexedFieldStore>().ToList();
+        Assert.Equal(2, indexedFieldStores.Count);
+        Assert.Contains(indexedFieldStores, store => store.FieldName == "x");
+        Assert.Contains(indexedFieldStores, store => store.FieldName == "y");
+
+        // Verify no IrIndexAccess instructions were created
+        var indexAccess = block.Instructions.OfType<IrIndexAccess>();
+        Assert.Empty(indexAccess);
+    }
 }

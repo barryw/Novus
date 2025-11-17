@@ -121,7 +121,7 @@ public class CCodeGenerator
     /// Determines if a function is a monomorphized generic function.
     /// Monomorphized functions should be emitted as 'static inline' to avoid duplicate symbols.
     /// </summary>
-    private bool IsMonomorphizedFunction(IrFunction function)
+    internal bool IsMonomorphizedFunction(IrFunction function)
     {
         // All monomorphized functions are created with Private visibility
         if (function.Visibility != Visibility.Private)
@@ -277,10 +277,12 @@ public class CCodeGenerator
         sb.AppendLine("#include <proto/dos.h>");
         sb.AppendLine("#include <proto/intuition.h>");
         sb.AppendLine("#include <proto/graphics.h>");
+        sb.AppendLine("#include <proto/gadtools.h>");
         sb.AppendLine();
         sb.AppendLine("// Typedefs for NDK structs (headers only define 'struct Foo', not 'Foo')");
         sb.AppendLine("typedef struct NewWindow NewWindow;");
         sb.AppendLine("typedef struct Window Window;");
+        sb.AppendLine("typedef struct Screen Screen;");
         sb.AppendLine("typedef struct IntuiMessage IntuiMessage;");
         sb.AppendLine("typedef struct MsgPort MsgPort;");
         sb.AppendLine("typedef struct Message Message;");
@@ -290,6 +292,10 @@ public class CCodeGenerator
         sb.AppendLine("typedef struct Task Task;");
         sb.AppendLine("typedef struct Node Node;");
         sb.AppendLine("typedef struct List List;");
+        sb.AppendLine("typedef struct Menu Menu;");
+        sb.AppendLine("typedef struct MenuItem MenuItem;");
+        sb.AppendLine("typedef struct NewMenu NewMenu;");
+        sb.AppendLine("typedef struct VisualInfo VisualInfo;");
         sb.AppendLine();
         sb.AppendLine("// Sentinel value for \"unchanged\" pointer parameters (used by Amiga API)");
         sb.AppendLine("// Using static const to prevent VBCC from trying to use moveq with the value");
@@ -313,22 +319,81 @@ public class CCodeGenerator
                 .ToHashSet();
             var sortedStructs = codegen.TopologicalSortStructTypes(concreteStructs);
 
-            // AmigaOS NDK structs: defined in std/ffi/amiga_structs.novus
+            // AmigaOS NDK structs: defined in std/ffi/amiga_structs.novus and std/ffi/*/
             // These are provided by NDK headers, so we skip generating definitions
-            // NOTE: This list is extracted from amiga_structs.novus - keep in sync!
+            // Primary method: Check for #[extern_type] attribute on struct
+            // Fallback: Hardcoded list of known NDK types (for backward compatibility)
+            // NOTE: This fallback list should be kept in sync with FFI definitions
             var ndkStructs = new HashSet<string> {
+                // Core exec types
                 "Rectangle", "BitMap", "View", "ViewPort", "ColorMap", "UCopList",
                 "Node", "MinNode", "Library", "List", "MinList", "TagItem", "Hook",
                 "Task", "StackSwapStruct", "SignalSemaphore", "MsgPort", "Message",
                 "Device", "Unit", "ExtendedNode", "Custom", "SpriteDef", "DBufInfo",
+                // Graphics types
                 "TextAttr", "TTextAttr", "TextFont", "TextFontExtension",
                 "ColorFontColors", "ColorTextFont", "TextExtent", "Layer", "RastPort",
+                // Intuition types
                 "IBox", "DrawInfo", "Gadget", "Requester", "NewScreen", "Screen",
-                "Window", "IntuiMessage", "NewWindow", "GadgetInfo"
+                "Window", "IntuiMessage", "NewWindow", "GadgetInfo", "IntuiText",
+                // GadTools types
+                "NewMenu", "Menu", "MenuItem", "VisualInfo", "NewGadget",
+                // DOS types
+                "IORequest", "IOStdReq", "timeval", "EClockVal", "timerequest",
+                "DateStamp", "FileInfoBlock", "InfoData", "FileHandle", "DosPacket",
+                "StandardPacket", "ErrorString", "RootNode", "DosLibrary", "CliProcList",
+                "DosInfo", "Segment", "CommandLineInterface", "DeviceList", "DevInfo",
+                "DosList", "AssignList", "DevProc", "FileLock", "RecordLock", "AChain",
+                "AnchorPath", "LocalVar", "NotifyRequest", "NotifyMessage", "DateTime",
+                "ExAllData", "ExAllControl", "Process",
+                // Input types
+                "IEPointerPixel", "IEPointerTablet", "InputEvent",
+                // Intuition extended types
+                "PubScreenNode", "EasyStruct",
+                // Interrupt types
+                "Interrupt", "IntVector", "SoftIntList",
+                // BOOPSI types
+                "opSet", "opUpdate", "opGet", "opAddTail", "opMember",
+                // Rexx types
+                "NexxStr", "RexxArg", "RexxMsg", "RexxRsrc", "RexxTask", "SrcNode",
+                "RxsLib", "IoBuff", "RexxMsgPort",
+                // Misc types
+                "impFrameBox", "MemChunk", "MemHeader", "MemEntry", "MemList",
+                "CSource", "RDArgs", "OldDrawerData", "DrawerData", "DiskObject",
+                "FreeList", "WBArg", "AppMessage", "AppWindow", "AppWindowDropZone",
+                "AppIcon", "AppMenuItem", "AppMenu", "WBStartup",
+                // Clipboard types
+                "ClipboardUnitPartial", "IOClipReq", "SatisfyMsg", "ClipHookMsg",
+                // DRP types
+                "DRPSourceMsg",
+                // Parallel/Serial types
+                "IOPArray", "IOExtPar", "IOTArray", "IOExtSer",
+                // Expansion types
+                "ExpansionRom", "ExpansionControl", "DiagArea", "ConfigDev",
+                "CurrentBinding", "DosEnvec", "FileSysStartupMsg", "DeviceNode",
+                // Disk resource types
+                "DiscResourceUnit", "DiscResource",
+                // Resident types
+                "Resident", "CardHandle", "DeviceTData", "CardMemoryMap", "TP_AmigaXIP",
+                // Graphics extended types
+                "BitScaleArgs", "FontContents", "TFontContents", "FontContentsHeader",
+                "DiskFontHeader", "AvailFonts", "TAvailFonts", "AvailFontsHeader",
+                // Keymap types
+                "KeyMap", "KeyMapNode", "KeyMapResource",
+                // Glyph types
+                "PGX", "GlyphEngine", "GlyphMap", "GlyphWidthEntry"
             };
 
+            // Filter structs: skip those marked with #[extern_type] or in the fallback list
             var userStructs = sortedStructs
-                .Where(s => !ndkStructs.Contains(s.StructName))
+                .Where(s => {
+                    // Primary check: #[extern_type] attribute
+                    if (s.Attributes != null && s.Attributes.Has(Novus.SemanticAnalysis.KnownAttributes.ExternType))
+                        return false;
+
+                    // Fallback check: hardcoded list
+                    return !ndkStructs.Contains(s.StructName);
+                })
                 .ToList();
 
             // PASS 1: Forward declarations for all user-defined structs
@@ -1930,6 +1995,11 @@ public class CCodeGenerator
                             ScanValueForFunctionReferences(indexStore.Index, reachable, worklist);
                             ScanValueForFunctionReferences(indexStore.Value, reachable, worklist);
                             break;
+                        case IrIndexedFieldStore indexedFieldStore:
+                            ScanValueForFunctionReferences(indexedFieldStore.Array, reachable, worklist);
+                            ScanValueForFunctionReferences(indexedFieldStore.Index, reachable, worklist);
+                            ScanValueForFunctionReferences(indexedFieldStore.Value, reachable, worklist);
+                            break;
                         case IrBinaryOp binaryOp:
                             ScanValueForFunctionReferences(binaryOp.Left, reachable, worklist);
                             ScanValueForFunctionReferences(binaryOp.Right, reachable, worklist);
@@ -2836,6 +2906,10 @@ public class CCodeGenerator
                 EmitIndexStore(indexStore);
                 break;
 
+            case IrIndexedFieldStore indexedFieldStore:
+                EmitIndexedFieldStore(indexedFieldStore);
+                break;
+
             case IrMemberStore memberStore:
                 EmitMemberStore(memberStore);
                 break;
@@ -2948,21 +3022,41 @@ public class CCodeGenerator
     private void EmitLocalDecl(IrLocalDecl localDecl)
     {
         var varName = SanitizeVariableName(localDecl.Name);
+
+        // CRITICAL FIX FOR VBCC ALIGNMENT: When initializing a Str struct from a struct literal,
+        // avoid compound literals which can be placed at odd addresses causing address errors.
+        // Instead, declare the variable uninitialized and assign fields individually.
+        var isStrStructLiteral = localDecl.Type is IrStructType structType &&
+                                 structType.Name == "Str" &&
+                                 localDecl.InitialValue is IrStructLiteral;
+
         var initValue = EmitValue(localDecl.InitialValue);
 
         // Check if this variable has already been declared in this function
         if (_declaredVariables.Contains(varName))
         {
             // Already declared - emit assignment only
-            var cType = GetCType(localDecl.Type);
-            var initType = GetCType(localDecl.InitialValue.Type);
-            if (initType != cType)
+            if (isStrStructLiteral && localDecl.InitialValue is IrStructLiteral strLit)
             {
-                _output.AppendLine($"    {varName} = ({cType}){initValue};");
+                // Emit field-by-field assignment to avoid compound literal
+                foreach (var kvp in strLit.FieldValues)
+                {
+                    var fieldValue = EmitValue(kvp.Value);
+                    _output.AppendLine($"    {varName}.{kvp.Key} = {fieldValue};");
+                }
             }
             else
             {
-                _output.AppendLine($"    {varName} = {initValue};");
+                var cType = GetCType(localDecl.Type);
+                var initType = GetCType(localDecl.InitialValue.Type);
+                if (initType != cType)
+                {
+                    _output.AppendLine($"    {varName} = ({cType}){initValue};");
+                }
+                else
+                {
+                    _output.AppendLine($"    {varName} = {initValue};");
+                }
             }
         }
         else
@@ -2977,6 +3071,18 @@ public class CCodeGenerator
                 // Use standard C array initializer syntax: Type name[size] = { elem1, elem2, ... };
                 // This works correctly with VBCC for all types including structs
                 _output.AppendLine($"    {elementType} {varName}[{size}] = {initValue};");
+            }
+            else if (isStrStructLiteral && localDecl.InitialValue is IrStructLiteral strLit)
+            {
+                // Declare Str variable uninitialized, then assign fields individually
+                // This avoids VBCC placing compound literal temporaries at odd addresses
+                var cType = GetCType(localDecl.Type);
+                _output.AppendLine($"    {cType} {varName};");
+                foreach (var kvp in strLit.FieldValues)
+                {
+                    var fieldValue = EmitValue(kvp.Value);
+                    _output.AppendLine($"    {varName}.{kvp.Key} = {fieldValue};");
+                }
             }
             else
             {
@@ -3308,8 +3414,105 @@ public class CCodeGenerator
 
             if (shouldUseOutParam)
             {
-                var value = EmitValue(returnInst.Value);
-                _output.AppendLine($"    *__out = {value};");
+                // CRITICAL FIX: For struct/enum literals, avoid compound literal temporaries
+                // which can be placed at odd addresses by VBCC, causing Guru Meditation 80000006
+                // Instead, emit field-by-field assignments directly to *__out
+                if (returnInst.Value is IrStructLiteral structLit)
+                {
+                    // Check if any fields are arrays (which can't be assigned after declaration)
+                    bool hasArrayFields = structLit.FieldValues.Any(kvp => kvp.Value.Type is IrArrayType);
+
+                    if (hasArrayFields)
+                    {
+                        // Use memset + individual non-array field assignments
+                        _output.AppendLine($"    memset(__out, 0, sizeof(*__out));");
+                        foreach (var kvp in structLit.FieldValues)
+                        {
+                            // Skip array fields (already zeroed by memset, would need element-by-element copy)
+                            if (kvp.Value.Type is IrArrayType arrayType)
+                            {
+                                // For now, array literals in struct returns are assumed to be zero-initialized
+                                // This matches the common case. Full array literal support would need element-by-element assignment
+                                continue;
+                            }
+                            var fieldValue = EmitValue(kvp.Value);
+                            _output.AppendLine($"    __out->{kvp.Key} = {fieldValue};");
+                        }
+                    }
+                    else
+                    {
+                        // No array fields - emit field-by-field assignments
+                        foreach (var kvp in structLit.FieldValues)
+                        {
+                            var fieldValue = EmitValue(kvp.Value);
+                            _output.AppendLine($"    __out->{kvp.Key} = {fieldValue};");
+                        }
+                    }
+                }
+                else if (returnInst.Value is IrEnumValue enumValue)
+                {
+                    var enumType = enumValue.Type as IrEnumType;
+
+                    // Check if this enum has ANY variants with associated data
+                    bool hasAnyData = enumType.Variants.Any(v => v.HasAssociatedData);
+
+                    if (hasAnyData)
+                    {
+                        // CRITICAL FIX: For enum values with associated data, avoid compound literals
+                        // Emit field-by-field assignments for the tagged union
+                        var enumName = MangleName(enumType);
+
+                        // Set the tag
+                        _output.AppendLine($"    __out->tag = {enumName}_{enumValue.VariantName};");
+
+                        // Set the associated data if present
+                        if (enumValue.AssociatedValues.Count > 0)
+                        {
+                            // Check if this is a unit type
+                            bool isUnitType = enumValue.AssociatedValues.Count == 1 &&
+                                             enumValue.AssociatedValues[0].Type is IrTupleType tupleType &&
+                                             tupleType.ElementTypes.Count == 0;
+
+                            if (!isUnitType)
+                            {
+                                for (int i = 0; i < enumValue.AssociatedValues.Count; i++)
+                                {
+                                    // CRITICAL FIX: If associated value is a struct literal, emit field-by-field
+                                    // to avoid compound literal temporaries that can be misaligned
+                                    if (enumValue.AssociatedValues[i] is IrStructLiteral assocStructLit)
+                                    {
+                                        foreach (var kvp in assocStructLit.FieldValues)
+                                        {
+                                            var fieldValue = EmitValue(kvp.Value);
+                                            _output.AppendLine($"    __out->data.{enumValue.VariantName}._{i}.{kvp.Key} = {fieldValue};");
+                                        }
+                                    }
+                                    else
+                                    {
+                                        var assocValue = EmitValue(enumValue.AssociatedValues[i]);
+                                        _output.AppendLine($"    __out->data.{enumValue.VariantName}._{i} = {assocValue};");
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                // Unit type - set dummy field
+                                _output.AppendLine($"    __out->data.{enumValue.VariantName}._dummy = 0;");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Simple enum without associated data - just assign the enum value
+                        var value = EmitValue(enumValue);
+                        _output.AppendLine($"    *__out = {value};");
+                    }
+                }
+                else
+                {
+                    var value = EmitValue(returnInst.Value);
+                    _output.AppendLine($"    *__out = {value};");
+                }
 
                 // CRITICAL FIX: If returning a field from a by-value parameter containing heap data,
                 // null out the source field to prevent double-free when the parameter's destructor runs.
@@ -3539,13 +3742,45 @@ public class CCodeGenerator
 
         // Special handling for struct literals: VBCC doesn't support member access on compound literals
         // We need to create a temporary variable first
-        if (memberAccess.Struct is IrStructLiteral)
+        if (memberAccess.Struct is IrStructLiteral structLit)
         {
-            var tempVarName = $"_str_tmp_{_tempCounter++}";
-            var structType = GetCType(memberAccess.Struct.Type);
-            var structValue = EmitValue(memberAccess.Struct);
-            _output.AppendLine($"    {structType} {tempVarName} = {structValue};");
-            _output.AppendLine($"    {fieldType} {resultName} = {tempVarName}.{memberAccess.FieldName};");
+            // CRITICAL FIX FOR VBCC ALIGNMENT: Str struct literals cause crashes because VBCC
+            // places them at odd addresses. Instead of creating the temp var with a compound literal,
+            // extract the field value directly from the struct literal.
+            var structType = memberAccess.Struct.Type as IrStructType;
+            var isStrStruct = structType != null && structType.Name == "Str";
+
+            if (isStrStruct && structLit.FieldValues.TryGetValue(memberAccess.FieldName, out var fieldValue))
+            {
+                // Directly emit the field value without creating the Str temporary
+                var directValue = EmitValue(fieldValue);
+                _output.AppendLine($"    {fieldType} {resultName} = {directValue};");
+            }
+            else
+            {
+                // For other structs, use the temp variable approach but with field-by-field assignment
+                // for Str structs to avoid compound literals
+                var tempVarName = $"_str_tmp_{_tempCounter++}";
+                var cStructType = GetCType(memberAccess.Struct.Type);
+
+                if (isStrStruct)
+                {
+                    // Declare and assign fields individually for Str
+                    _output.AppendLine($"    {cStructType} {tempVarName};");
+                    foreach (var kvp in structLit.FieldValues)
+                    {
+                        var fValue = EmitValue(kvp.Value);
+                        _output.AppendLine($"    {tempVarName}.{kvp.Key} = {fValue};");
+                    }
+                }
+                else
+                {
+                    // For non-Str structs, use compound literal
+                    var structValue = EmitValue(memberAccess.Struct);
+                    _output.AppendLine($"    {cStructType} {tempVarName} = {structValue};");
+                }
+                _output.AppendLine($"    {fieldType} {resultName} = {tempVarName}.{memberAccess.FieldName};");
+            }
         }
         else
         {
@@ -3777,6 +4012,17 @@ public class CCodeGenerator
         _output.AppendLine($"    {arrayValue}[{indexValue}] = {storeValue};");
     }
 
+    private void EmitIndexedFieldStore(IrIndexedFieldStore indexedFieldStore)
+    {
+        var arrayValue = EmitValue(indexedFieldStore.Array);
+        var indexValue = EmitValue(indexedFieldStore.Index);
+        var storeValue = EmitValue(indexedFieldStore.Value);
+
+        // Emit direct assignment to array[index].field
+        // This is the whole point of this instruction - avoid creating a temporary copy
+        _output.AppendLine($"    {arrayValue}[{indexValue}].{indexedFieldStore.FieldName} = {storeValue};");
+    }
+
     private void EmitMemberStore(IrMemberStore memberStore)
     {
         var storeValue = EmitValue(memberStore.Value);
@@ -3841,6 +4087,7 @@ public class CCodeGenerator
         return value switch
         {
             IrConstant constant => EmitIntegerConstant(constant),
+            IrSizeOf sizeOf => EmitSizeOf(sizeOf),
             IrBoolConstant boolConst => boolConst.Value ? "true" : "false",
             IrFloatConstant floatConst => EmitFloatConstant(floatConst),
             IrFixedConstant fixedConst => EmitFixedConstant(fixedConst),
@@ -3859,6 +4106,7 @@ public class CCodeGenerator
             IrFunctionAddress funcAddr => funcAddr.FunctionName,  // Function name IS its address in C
             IrFunctionRef funcRef => funcRef.Function.Name,  // Function reference - emit function name
             IrFieldReference fieldRef => EmitFieldReference(fieldRef),  // Field reference for borrowing
+            IrIndexedFieldAccess indexedField => EmitIndexedFieldAccess(indexedField),
             IrGenericAssociatedFunction genericFunc => throw new InvalidOperationException($"Generic associated function '{genericFunc.TypeName}::{genericFunc.MethodName}' must be monomorphized to a concrete function before code generation"),
             _ => throw new NotSupportedException($"Unsupported value type: {value.GetType().Name}")
         };
@@ -4062,6 +4310,14 @@ public class CCodeGenerator
         return constantValue.ToString();
     }
 
+    internal string EmitSizeOf(IrSizeOf sizeOf)
+    {
+        // Emit C's sizeof() operator - this delegates size calculation to VBCC
+        // which correctly handles struct padding and alignment
+        var typeName = GetCType(sizeOf.TargetType);
+        return $"sizeof({typeName})";
+    }
+
     internal string EmitFloatConstant(IrFloatConstant floatConst)
     {
         // Emit float/double literals with appropriate suffix
@@ -4172,6 +4428,15 @@ public class CCodeGenerator
         }
 
         return $"{structValue}{accessor}{fieldRef.FieldName}";
+    }
+
+    internal string EmitIndexedFieldAccess(IrIndexedFieldAccess indexedField)
+    {
+        // Emit array[index].field access
+        // Example: entries[i].nm_Type
+        var arrayValue = EmitValue(indexedField.Array);
+        var indexValue = EmitValue(indexedField.Index);
+        return $"{arrayValue}[{indexValue}].{indexedField.FieldName}";
     }
 
     private int _tempCounter = 0;

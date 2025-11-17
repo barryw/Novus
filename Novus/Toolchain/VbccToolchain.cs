@@ -146,6 +146,8 @@ public class VbccToolchain
         var args = new List<string>
         {
             "-bamigahunk",      // Amiga HUNK format
+            "-g",               // DEBUG: Preserve debug symbols
+            "-M",               // DEBUG: Generate map file
             "-o", outputFile    // Output executable
         };
 
@@ -245,6 +247,11 @@ public class VbccToolchain
         }
 
         // Don't print here - caller shows final success message
+        // Special handling for vlink with -M flag to save map file
+        if (args.Contains("-M"))
+        {
+            return await RunToolWithMapFile(vlinkPath, args, outputFile + ".map");
+        }
         return await RunTool(vlinkPath, args);
     }
 
@@ -264,7 +271,8 @@ public class VbccToolchain
             "+aos68k",          // Target AmigaOS 2.0+ (68020+)
             "-c99",             // Enable C99 standard
             $"-cpu={cpu}",      // CPU target
-            $"-O{optimization}", // Optimization level
+            "-O=0",             // DEBUG: Disable all optimizations for debugging
+            "-g",               // DEBUG: Enable debug symbols
             "-use-framepointer", // CRITICAL: Force frame pointer (A6) for all functions to fix stack offset bugs
             "-c",               // Compile only, don't link
             "-o", objFile,      // Output object file
@@ -292,7 +300,8 @@ public class VbccToolchain
             "+aos68k",          // Target AmigaOS 2.0+ (68020+)
             "-c99",             // Enable C99 standard
             $"-cpu={cpu}",      // CPU target
-            $"-O{optimization}", // Optimization level
+            "-O=0",             // DEBUG: Disable all optimizations for debugging
+            "-g",               // DEBUG: Enable debug symbols
             "-use-framepointer", // CRITICAL: Force frame pointer (A6) for all functions to fix stack offset bugs
             "-nostdlib",        // Don't use standard library startup
             "-o", outputPath    // Output file
@@ -706,6 +715,77 @@ public class VbccToolchain
 
         Console.WriteLine($"=== Total detected libraries: {libraries.Count} ===\n");
         return libraries;
+    }
+
+    /// <summary>
+    /// Run vlink with -M flag and save map output to file
+    /// </summary>
+    private async Task<bool> RunToolWithMapFile(string toolPath, List<string> args, string mapFilePath)
+    {
+        if (!File.Exists(toolPath))
+        {
+            Console.WriteLine($"Tool not found: {toolPath}");
+            return false;
+        }
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = toolPath,
+            Arguments = string.Join(" ", args.Select(QuoteIfNeeded)),
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        try
+        {
+            using var process = Process.Start(startInfo);
+            if (process == null)
+            {
+                Console.WriteLine("Failed to start process");
+                return false;
+            }
+
+            var output = new StringBuilder();
+            var error = new StringBuilder();
+
+            process.OutputDataReceived += (sender, e) =>
+            {
+                if (e.Data != null)
+                    output.AppendLine(e.Data);
+            };
+
+            process.ErrorDataReceived += (sender, e) =>
+            {
+                if (e.Data != null)
+                    error.AppendLine(e.Data);
+            };
+
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+
+            await process.WaitForExitAsync();
+
+            var exitCode = process.ExitCode;
+
+            // Save stdout to map file (this contains the symbol map from -M flag)
+            if (output.Length > 0)
+            {
+                await File.WriteAllTextAsync(mapFilePath, output.ToString());
+                Console.WriteLine($"  → Map file saved: {Path.GetFileName(mapFilePath)}");
+            }
+
+            if (error.Length > 0)
+                Console.Error.WriteLine(error.ToString());
+
+            return exitCode == 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error running tool: {ex.Message}");
+            return false;
+        }
     }
 
     private async Task<bool> RunTool(string toolPath, List<string> args)

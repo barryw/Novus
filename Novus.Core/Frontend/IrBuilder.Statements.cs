@@ -874,6 +874,80 @@ public partial class IrBuilder
                 return null;
             }
 
+            // OPTIMIZATION: Detect array[index].field = value pattern
+            // This is common and we can emit a specialized instruction to avoid creating a temporary copy
+            if (lvalueSuffixes.Length == 2 &&
+                lvalueSuffixes[0].GetChild(0).GetText() == "[" &&
+                lvalueSuffixes[1].GetChild(0).GetText() == ".")
+            {
+                // Parse the index expression
+                var indexExpr = (IrValue?)Visit(lvalueSuffixes[0].expression());
+                if (indexExpr == null)
+                {
+                    errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.MissingExpression,
+                        "Index expression is required",
+                        errorLocation
+                    );
+                    return null;
+                }
+
+                // Get the field name
+                var memberName = lvalueSuffixes[1].IDENTIFIER().GetText();
+
+                // Determine the element type of the array
+                IrType elementType;
+                if (baseVar.Type is IrPointerType pt)
+                {
+                    elementType = pt.PointeeType;
+                }
+                else if (baseVar.Type is IrArrayType at)
+                {
+                    elementType = at.ElementType;
+                }
+                else
+                {
+                    errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.CannotIndexType,
+                        $"Cannot index type '{baseVar.Type}' - must be pointer or array",
+                        errorLocation
+                    );
+                    return null;
+                }
+
+                // Verify element is a struct
+                if (elementType is not IrStructType irStructType)
+                {
+                    errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.CannotAccessMember,
+                        $"Cannot access member '{memberName}' on non-struct type",
+                        errorLocation
+                    );
+                    return null;
+                }
+
+                // Find the field
+                var field = irStructType.Fields.FirstOrDefault(f => f.Name == memberName);
+                if (field == null)
+                {
+                    errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.FieldNotFound,
+                        $"Field '{memberName}' not found in struct '{irStructType.Name}'",
+                        errorLocation
+                    );
+                    return null;
+                }
+
+                // Emit specialized indexed field store instruction
+                var indexedFieldStore = new IrIndexedFieldStore(baseVar, indexExpr, memberName, field.Offset, value);
+                _currentBlock!.AddInstruction(indexedFieldStore);
+                return null;
+            }
+
             // Handle complex lvalue chains (e.g., self.ptr[index] = value, self.field1.field2 = value)
             // Build up the lvalue by processing each suffix in order
             IrValue currentLValue = baseVar;
