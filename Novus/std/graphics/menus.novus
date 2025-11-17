@@ -97,8 +97,10 @@ pub struct GadToolsMenuBuilder {
     entry_count: u32
     entry_capacity: u32
     screen: *Screen
-    // TODO: Track allocated label pointers and free them in Drop
-    // Currently we leak the allocated strings - acceptable for short-running programs
+    // Track allocated label pointers so we can free them properly
+    labels: **u8
+    label_count: u32
+    label_capacity: u32
 }
 
 impl GadToolsMenuBuilder {
@@ -115,12 +117,65 @@ impl GadToolsMenuBuilder {
                 panic!("Failed to allocate memory for menu builder")
             }
 
+            // Allocate initial capacity for label pointers (32 pointers = 128 bytes)
+            let label_capacity: u32 = 32
+            let label_size = label_capacity * 4  // 4 bytes per pointer
+            let label_mem = AllocVec(label_size, MEMF_PUBLIC | MEMF_CLEAR)
+
+            if !label_mem {
+                FreeVec(mem)
+                panic!("Failed to allocate memory for label tracking")
+            }
+
             return GadToolsMenuBuilder {
                 entries: (*NewMenu)mem,
                 entry_count: 0,
                 entry_capacity: initial_capacity,
-                screen: screen
+                screen: screen,
+                labels: (**u8)label_mem,
+                label_count: 0,
+                label_capacity: label_capacity
             }
+        }
+    }
+
+    /// Internal helper to track an allocated label pointer
+    fn track_label(&mut self, label: *u8) {
+        unsafe {
+            // Check if we need to resize the label array
+            if self.label_count >= self.label_capacity {
+                let new_capacity = self.label_capacity * 2
+                let new_size = new_capacity * 4  // 4 bytes per pointer
+                let new_mem = AllocVec(new_size, MEMF_PUBLIC | MEMF_CLEAR)
+
+                if !new_mem {
+                    panic!("Failed to resize label tracking array")
+                }
+
+                // Copy existing pointers to new memory
+                let mut i: u32 = 0
+                forever {
+                    if i >= self.label_count {
+                        break
+                    }
+                    let old_labels = self.labels
+                    let new_labels = (**u8)new_mem
+                    new_labels[i] = old_labels[i]
+                    i = i + 1
+                }
+
+                // Free old memory
+                let old_mem = (*u8)self.labels
+                FreeVec(old_mem)
+
+                // Update to new memory
+                self.labels = (**u8)new_mem
+                self.label_capacity = new_capacity
+            }
+
+            // Add the label pointer
+            self.labels[self.label_count] = label
+            self.label_count = self.label_count + 1
         }
     }
 
@@ -199,6 +254,9 @@ impl GadToolsMenuBuilder {
             label_bytes[len] = 0
 
             let label_ptr = (*u8)label_mem
+
+            // Track this allocation for cleanup
+            self.track_label(label_ptr)
 
             // Add menu entry with individual fields to avoid struct alignment issues
             self.push_entry_fields((u8)NM_TITLE, label_ptr, (*u8)0, 0, 0, (*u8)0)
@@ -282,16 +340,22 @@ impl GadToolsMenuBuilder {
                 return Result::Err(IntuitionError::MenuCreateFailed)
             }
 
-            // TODO: We currently leak the label strings allocated in add_menu/add_item/add_sub_item
-            // This is a known issue that needs to be fixed with a proper cleanup mechanism
-            // For now, the leak is acceptable for short-running programs,
-            // but needs to be addressed for long-running applications
+            // Transfer ownership of labels to the menu strip for cleanup
+            // The strip will free all labels in its Drop implementation
+            let labels = self.labels
+            let label_count = self.label_count
+
+            // Clear builder's label tracking so it doesn't free them
+            self.labels = (**u8)0
+            self.label_count = 0
 
             return Result::Ok(GadToolsMenuStrip {
                 menu: menu,
                 visual_info: vi,
                 screen: self.screen,
-                menu_array: menu_array
+                menu_array: menu_array,
+                labels: labels,
+                label_count: label_count
             })
         }
     }
@@ -326,6 +390,9 @@ impl MenuHandle {
             label_bytes[len] = 0
 
             let label_ptr = (*u8)label_mem
+
+            // Track this allocation for cleanup
+            (*self.builder).track_label(label_ptr)
 
             // Add menu item with individual fields to avoid struct alignment issues
             (*self.builder).push_entry_fields((u8)NM_ITEM, label_ptr, (*u8)0, 0, 0, (*u8)0)
@@ -375,6 +442,9 @@ impl MenuItemHandle {
 
             let label_ptr = (*u8)label_mem
 
+            // Track this allocation for cleanup
+            (*self.builder).track_label(label_ptr)
+
             // Add sub-item with individual fields to avoid struct alignment issues
             (*self.builder).push_entry_fields((u8)NM_SUB, label_ptr, (*u8)0, 0, 0, (*u8)0)
 
@@ -419,6 +489,9 @@ pub struct GadToolsMenuStrip {
     visual_info: *VisualInfo
     screen: *Screen
     menu_array: *NewMenu
+    // Track allocated label pointers for cleanup
+    labels: **u8
+    label_count: u32
 }
 
 impl GadToolsMenuStrip {
@@ -455,18 +528,40 @@ impl GadToolsMenuStrip {
 impl Drop for GadToolsMenuStrip {
     fn drop(&mut self) {
         unsafe {
+            // Free visual info first
             if let vi = self.visual_info {
                 FreeVisualInfo(vi)
                 self.visual_info = (*VisualInfo)0
             }
+            // Free the menu structures
             if let menu = self.menu {
                 FreeMenus(menu)
                 self.menu = (*Menu)0
             }
+            // Free the NewMenu array
             if let arr = self.menu_array {
                 let mem_to_free = (*u8)arr
                 FreeVec(mem_to_free)
                 self.menu_array = (*NewMenu)0
+            }
+            // Free all allocated label strings
+            if let labels = self.labels {
+                let mut i: u32 = 0
+                forever {
+                    if i >= self.label_count {
+                        break
+                    }
+                    let label = labels[i]
+                    if label {
+                        FreeVec(label)
+                    }
+                    i = i + 1
+                }
+                // Free the label pointer array itself
+                let label_mem = (*u8)labels
+                FreeVec(label_mem)
+                self.labels = (**u8)0
+                self.label_count = 0
             }
         }
     }
