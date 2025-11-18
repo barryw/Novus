@@ -273,7 +273,8 @@ public class VbccToolchain
         var vcPath = Path.Combine(_vbccPath, "bin", "vc");
 
         // Determine optimization level based on build mode
-        var optLevel = buildMode == BuildMode.Release ? Math.Max(optimization, 2) : 0;
+        // Note: Using O=0 for release to test if optimization is the issue
+        var optLevel = 0;
 
         var args = new List<string>
         {
@@ -311,7 +312,8 @@ public class VbccToolchain
         var vcPath = Path.Combine(_vbccPath, "bin", "vc");
 
         // Determine optimization level based on build mode
-        var optLevel = buildMode == BuildMode.Release ? Math.Max(optimization, 2) : 0;
+        // Note: Using O=0 for release to test if optimization is the issue
+        var optLevel = 0;
 
         var args = new List<string>
         {
