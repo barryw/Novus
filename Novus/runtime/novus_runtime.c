@@ -9,7 +9,32 @@
 #include <graphics/gfxbase.h>
 #include <proto/exec.h>
 #include <proto/intuition.h>
-#include <stdint.h>
+
+// Integer types - fallback definitions (may already be in exec/types.h)
+#ifndef int8_t
+typedef signed char int8_t;
+#endif
+#ifndef int16_t
+typedef short int16_t;
+#endif
+#ifndef int32_t
+typedef long int32_t;
+#endif
+#ifndef int64_t
+typedef long long int64_t;
+#endif
+#ifndef uint8_t
+typedef unsigned char uint8_t;
+#endif
+#ifndef uint16_t
+typedef unsigned short uint16_t;
+#endif
+#ifndef uint32_t
+typedef unsigned long uint32_t;
+#endif
+#ifndef uint64_t
+typedef unsigned long long uint64_t;
+#endif
 
 // Custom alert codes for Novus runtime errors
 #define AN_NovusLib    (0x7F000000)  // User application alert
@@ -535,11 +560,30 @@ uint32_t u64_to_string(uint64_t value, uint8_t* buffer, uint32_t buffer_size) {
     return u32_to_string((uint32_t)value, buffer, buffer_size);
 }
 
+// Memory set helper
+// Simple byte-by-byte set (no stdlib dependency)
+void __novus_memset(void* dest, int value, uint32_t n) {
+    uint8_t* d = (uint8_t*)dest;
+    while (n--) {
+        *d++ = (uint8_t)value;
+    }
+}
+
 // Memory copy helper for StackFormatter
 // Simple byte-by-byte copy (no stdlib dependency)
 void __novus_memcpy(uint8_t* dest, const uint8_t* src, uint32_t n) {
     while (n--) {
         *dest++ = *src++;
     }
+}
+
+// String length - no stdlib dependency
+// Used by Str::from_cstr and other string functions
+uint32_t strlen(const char* str) {
+    uint32_t len = 0;
+    while (*str++) {
+        len++;
+    }
+    return len;
 }
 

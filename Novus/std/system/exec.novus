@@ -439,16 +439,7 @@ impl MsgPortHandle {
 impl Drop for MsgPortHandle {
     fn drop(&mut self) {
         if let p = self.port {
-            // CRITICAL: Drain and reply to all pending messages
-            // before deleting the port. Unreplied messages cause
-            // system hangs and crashes.
-            forever {
-                if let msg = GetMsg(p) {
-                    ReplyMsg(msg)
-                } else {
-                    break
-                }
-            }
+            self.drain_messages()
 
             // Now safe to delete the port
             DeleteMsgPort(p)

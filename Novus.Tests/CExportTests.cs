@@ -189,8 +189,8 @@ fn not_exported() -> i32 {
         // Header should have proper structure
         Assert.Contains("#ifndef NOVUS_EXPORTS_H", header);
         Assert.Contains("#define NOVUS_EXPORTS_H", header);
-        Assert.Contains("#include <stdint.h>", header);
-        Assert.Contains("#include <stdbool.h>", header);
+        // We no longer include stdint.h/stdbool.h - we define types inline or in novus_types.h
+        Assert.Contains("#include <exec/types.h>", header);
         Assert.Contains("#include \"novus_types.h\"", header);
         Assert.Contains("extern \"C\"", header);
     }
