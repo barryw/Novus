@@ -203,10 +203,12 @@ statement
     | variableDeclaration
     | assignmentStatement
     | ifStatement
+    | labeledLoop
     | whileStatement
     | forStatement
     | foreverStatement
     | breakStatement
+    | continueStatement
     | deferStatement
     | assertStatement
     | panicStatement
@@ -214,6 +216,12 @@ statement
     | usingStatement
     | block
     | expressionStatement
+    ;
+
+labeledLoop
+    : IDENTIFIER ':' whileStatement
+    | IDENTIFIER ':' forStatement
+    | IDENTIFIER ':' foreverStatement
     ;
 
 deferStatement
@@ -316,7 +324,11 @@ foreverStatement
     ;
 
 breakStatement
-    : KW_BREAK postfixCondition?
+    : KW_BREAK IDENTIFIER? postfixCondition?
+    ;
+
+continueStatement
+    : KW_CONTINUE IDENTIFIER? postfixCondition?
     ;
 
 expressionStatement
@@ -333,8 +345,8 @@ expression
     | expression '++' # PostIncrementExpr
     | expression '--'                                      # PostDecrementExpr
     | expression '?'                                       # TryExpr               // Result propagation with auto-conversion
-    | expression '..' expression                           # RangeExpr            // TODO: Not yet implemented in IrBuilder/codegen
-    | expression '..=' expression                          # RangeInclusiveExpr   // TODO: Not yet implemented in IrBuilder/codegen
+    | expression DOTDOT expression                          # RangeExpr
+    | expression DOTDOTEQ expression                       # RangeInclusiveExpr
     | '(' type ')' expression                              # CastExpr
     | '&' KW_MUT? expression                               # BorrowExpr
     | ('!' | '~' | '-') expression                         # UnaryExpr
@@ -370,8 +382,8 @@ primaryExpression
     | '-'? INTEGER_LITERAL                         # IntegerLiteral
     | '-'? BINARY_LITERAL                          # BinaryLiteral
     | '-'? HEX_LITERAL                             # HexLiteral
+    | typeName '{' NEWLINE* arrayLiteralInit NEWLINE* '}'                                       # StructArrayInit
     | typeName '{' NEWLINE* structFieldInit (',' NEWLINE* structFieldInit)* ','? NEWLINE* '}'  # StructLiteral
-    | typeName '{' NEWLINE* expression NEWLINE* '}'                                           # StructArrayInit
     | identifier                                   # IdentifierExpr
     | KW_MATCH expression '{' NEWLINE* matchArm (',' NEWLINE* matchArm)* ','? NEWLINE* '}'  # MatchExpr
     | '(' ')'                                      # UnitLiteral
@@ -383,6 +395,10 @@ primaryExpression
 
 identifier
     : IDENTIFIER ('::' IDENTIFIER)*
+    ;
+
+arrayLiteralInit
+    : '[' NEWLINE* (expression (',' NEWLINE* expression)*)? NEWLINE* ']'
     ;
 
 structFieldInit
@@ -421,6 +437,7 @@ KW_FOR      : 'for';
 KW_IN       : 'in';
 KW_FOREVER  : 'forever';
 KW_BREAK    : 'break';
+KW_CONTINUE : 'continue';
 KW_MATCH    : 'match';
 KW_DEFER     : 'defer';
 KW_UNLESS    : 'unless';
@@ -447,9 +464,13 @@ KW_F64      : 'f64';
 KW_FIXED16  : 'fixed16';
 KW_FIXED32  : 'fixed32';
 
+// Range operators - must come before FLOAT_LITERAL to prevent lexer consuming '0.' as float
+DOTDOTEQ    : '..=';
+DOTDOT      : '..';
+
 FLOAT_LITERAL
-    : [0-9]+ '.' [0-9]* ('f32' | 'f64' | 'fixed16' | 'fixed32')?
-    | [0-9]* '.' [0-9]+ ('f32' | 'f64' | 'fixed16' | 'fixed32')?
+    : [0-9]+ '.' [0-9]+ ('f32' | 'f64' | 'fixed16' | 'fixed32')?  // Both sides required (e.g., 3.14)
+    | [0-9]* '.' [0-9]+ ('f32' | 'f64' | 'fixed16' | 'fixed32')?  // Digits after only (e.g., .5)
     ;
 
 INTEGER_LITERAL

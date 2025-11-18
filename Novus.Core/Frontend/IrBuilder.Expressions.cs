@@ -4180,29 +4180,48 @@ public partial class IrBuilder
             return null;
         }
 
-        // Get the array literal expression
-        var arrayExpr = (IrValue?)Visit(context.expression());
-        if (arrayExpr == null)
+        // Get the array literal expressions
+        var arrayLiteralCtx = context.arrayLiteralInit();
+        var elements = new List<IrValue>();
+        IrType? elementType = null;
+
+        foreach (var exprCtx in arrayLiteralCtx.expression())
+        {
+            var elem = (IrValue?)Visit(exprCtx);
+            if (elem == null)
+            {
+                var errorLocation = SourceLocationHelper.FromContext(exprCtx, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    "Invalid array element",
+                    errorLocation
+                );
+                return null;
+            }
+            elements.Add(elem);
+            if (elementType == null)
+            {
+                elementType = elem.Type;
+            }
+        }
+
+        if (elements.Count == 0 || elementType == null)
         {
             var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
-                "Struct array initializer requires an expression",
+                "Struct array initializer requires at least one element",
                 errorLocation
             );
             return null;
         }
 
-        // Verify it's an array literal
-        if (arrayExpr is not IrArrayLiteral arrayLiteral)
+        // Create array type and literal
+        var arrayType = new IrArrayType(elementType, elements.Count);
+        var arrayLiteral = new IrArrayLiteral(arrayType);
+        foreach (var elem in elements)
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
-            _diagnostics.ReportError(
-                ErrorCodes.InvalidExpressionType,
-                $"Struct array initializer for '{structName}' requires an array literal, got {arrayExpr.GetType().Name}",
-                errorLocation
-            );
-            return null;
+            arrayLiteral.Elements.Add(elem);
         }
 
         // For now, only support this for Vec type
@@ -4217,20 +4236,7 @@ public partial class IrBuilder
             return null;
         }
 
-        // Extract element type from array
-        if (arrayLiteral.Type is not IrArrayType arrayType)
-        {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
-            _diagnostics.ReportError(
-                ErrorCodes.InvalidExpressionType,
-                $"Expected array type, got {arrayLiteral.Type}",
-                errorLocation
-            );
-            return null;
-        }
-
-        var elementType = arrayType.ElementType;
-        var arrayLength = arrayType.Length;
+        var arrayLength = elements.Count;
 
         // Create a static variable to hold the array data
         var staticVarName = $"_vec_data_{_staticVarCounter++}";

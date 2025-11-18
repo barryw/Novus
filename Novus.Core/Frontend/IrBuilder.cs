@@ -32,6 +32,9 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
 
     private int _staticVarCounter = 0;  // Counter for auto-generated static variables
     private readonly Stack<string> _loopExitLabels = new(); // Track loop exit labels for break
+    private readonly Stack<string> _loopContinueLabels = new(); // Track loop continue labels for continue
+    // For labeled loops: maps label name to (exitLabel, continueLabel)
+    private readonly Dictionary<string, (string ExitLabel, string ContinueLabel)> _labeledLoops = new();
     private readonly Dictionary<string, IrLocalVariable> _localVariables = new(); // Track local variables in current function
 
     // Track which temporaries came from IrIndexAccess for optimized member access

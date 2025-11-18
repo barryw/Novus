@@ -1506,6 +1506,144 @@ public partial class IrBuilder
     // Helper to declare the if let/var variable in the then block
     private (string varName, string tempName, IrType type, bool isMutable)? _pendingIfLetVariable;
 
+    public override object? VisitLabeledLoop([NotNull] NovusParser.LabeledLoopContext context)
+    {
+        // Get the label name
+        var labelName = context.IDENTIFIER().GetText();
+
+        // Check for duplicate label name
+        if (_labeledLoops.ContainsKey(labelName))
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"duplicate loop label '{labelName}'",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Determine which loop type we have and visit it
+        // The loop will push its exit/continue labels to the stacks
+        // We need to capture those labels to register with the label name
+
+        // Generate labels for this loop
+        var exitLabel = $"labeled_{labelName}_end_{_labelCounter}";
+        var continueLabel = $"labeled_{labelName}_cont_{_labelCounter}";
+        _labelCounter++;
+
+        // Pre-register the labels (the actual loop will use these via peek after we push them)
+        _loopExitLabels.Push(exitLabel);
+        _loopContinueLabels.Push(continueLabel);
+
+        // Register the labeled loop
+        _labeledLoops[labelName] = (exitLabel, continueLabel);
+
+        // Visit the inner loop - we need to handle this specially since we've already pushed the labels
+        if (context.whileStatement() != null)
+        {
+            // Visit while statement body directly
+            var whileCtx = context.whileStatement();
+
+            // Jump to condition check
+            _currentBlock!.AddInstruction(new IrBranch(continueLabel));
+
+            // Continue label (condition check)
+            _currentBlock!.AddInstruction(new IrLabel(continueLabel));
+            var condition = (IrValue?)Visit(whileCtx.expression());
+
+            // Automatic pointer-to-bool coercion
+            if (condition!.Type is IrPointerType or IrReferenceType or IrMutReferenceType)
+            {
+                var ptrToBoolTemp = $"%t{_tempCounter++}";
+                var zeroValue = new IrConstant(0, IrIntType.U32);
+                var comparison = new IrBinaryOp(ptrToBoolTemp, IrBinaryOp.OpKind.Ne, condition, zeroValue, IrBoolType.Instance);
+                _currentBlock!.AddInstruction(comparison);
+                condition = new IrVariable(ptrToBoolTemp, IrBoolType.Instance);
+            }
+
+            var bodyLabel = $"labeled_{labelName}_body_{_labelCounter - 1}";
+            _currentBlock!.AddInstruction(new IrConditionalBranch(condition, bodyLabel, exitLabel));
+
+            // Body
+            _currentBlock!.AddInstruction(new IrLabel(bodyLabel));
+            Visit(whileCtx.block());
+
+            // Jump back to condition
+            if (!CurrentBlockHasTerminator())
+            {
+                _currentBlock!.AddInstruction(new IrBranch(continueLabel));
+            }
+        }
+        else if (context.forStatement() != null)
+        {
+            // For loops are more complex - visit the child and it will use our pushed labels
+            // But we need to prevent it from pushing its own labels
+            // For now, let's pop our labels and let the for statement handle it normally
+            _loopExitLabels.Pop();
+            _loopContinueLabels.Pop();
+
+            // Update the registered labels to match what the for loop will generate
+            var forCtx = context.forStatement();
+            if (forCtx is NovusParser.ForCStyleContext)
+            {
+                var incrLabel = $"for_incr_{_labelCounter}";
+                var endLabel = $"for_end_{_labelCounter}";
+                _labeledLoops[labelName] = (endLabel, incrLabel);
+            }
+            else // ForInLoop
+            {
+                // Check if this is a range expression (uses range_* labels) or iterable (uses for_* labels)
+                var forInCtx = forCtx as NovusParser.ForInLoopContext;
+                var exprCtx = forInCtx?.expression();
+                bool isRangeExpr = exprCtx is NovusParser.RangeExprContext or NovusParser.RangeInclusiveExprContext;
+
+                if (isRangeExpr)
+                {
+                    var incrLabel = $"range_incr_{_labelCounter}";
+                    var endLabel = $"range_end_{_labelCounter}";
+                    _labeledLoops[labelName] = (endLabel, incrLabel);
+                }
+                else
+                {
+                    var incrLabel = $"for_incr_{_labelCounter}";
+                    var endLabel = $"for_end_{_labelCounter}";
+                    _labeledLoops[labelName] = (endLabel, incrLabel);
+                }
+            }
+
+            Visit(forCtx);
+        }
+        else if (context.foreverStatement() != null)
+        {
+            // Forever loop - continue goes to body
+            var foreverCtx = context.foreverStatement();
+
+            // Body label
+            _currentBlock!.AddInstruction(new IrLabel(continueLabel)); // Continue jumps here
+            Visit(foreverCtx.block());
+
+            // Jump back to start
+            if (!CurrentBlockHasTerminator())
+            {
+                _currentBlock!.AddInstruction(new IrBranch(continueLabel));
+            }
+        }
+
+        // Exit label
+        _currentBlock!.AddInstruction(new IrLabel(exitLabel));
+
+        // Clean up
+        if (context.forStatement() == null)
+        {
+            _loopExitLabels.Pop();
+            _loopContinueLabels.Pop();
+        }
+        _labeledLoops.Remove(labelName);
+
+        return null;
+    }
+
     public override object? VisitWhileStatement([NotNull] NovusParser.WhileStatementContext context)
     {
         var condLabel = $"while_cond_{_labelCounter}";
@@ -1513,8 +1651,9 @@ public partial class IrBuilder
         var endLabel = $"while_end_{_labelCounter}";
         _labelCounter++;
 
-        // Push exit label for break statements
+        // Push exit and continue labels for break/continue statements
         _loopExitLabels.Push(endLabel);
+        _loopContinueLabels.Push(condLabel); // continue jumps to condition check
 
         // Jump to condition check
         _currentBlock!.AddInstruction(new IrBranch(condLabel));
@@ -1549,8 +1688,9 @@ public partial class IrBuilder
         // End label
         _currentBlock!.AddInstruction(new IrLabel(endLabel));
 
-        // Pop exit label
+        // Pop exit and continue labels
         _loopExitLabels.Pop();
+        _loopContinueLabels.Pop();
         return null;
     }
 
@@ -1562,15 +1702,18 @@ public partial class IrBuilder
         var endLabel = $"for_end_{_labelCounter}";
         _labelCounter++;
 
-        // Push exit label for break statements
+        // Push exit and continue labels for break/continue statements
         _loopExitLabels.Push(endLabel);
+        _loopContinueLabels.Push(incrLabel); // continue jumps to increment section
 
         // Initialization (optional)
-        if (context.GetChild(2) is NovusParser.VariableDeclarationContext varDecl)
+        // Grammar: KW_FOR (variableDeclaration | assignmentStatement) ';' expression ';' assignmentStatement block
+        // Child indices: 0=for, 1=init, 2=';', 3=expr, 4=';', 5=incr, 6=block
+        if (context.GetChild(1) is NovusParser.VariableDeclarationContext varDecl)
         {
             Visit(varDecl);
         }
-        else if (context.GetChild(2) is NovusParser.AssignmentStatementContext assignment)
+        else if (context.GetChild(1) is NovusParser.AssignmentStatementContext assignment)
         {
             Visit(assignment);
         }
@@ -1597,31 +1740,48 @@ public partial class IrBuilder
         _currentBlock!.AddInstruction(new IrLabel(bodyLabel));
         Visit(context.block());
 
-        // Increment label (only if block doesn't end with return/break)
+        // Jump to increment (only if block doesn't end with return/break)
         if (!CurrentBlockHasTerminator())
         {
-            _currentBlock!.AddInstruction(new IrLabel(incrLabel));
-
-            // Increment statement (optional)
-            if (context.GetChild(6) is NovusParser.AssignmentStatementContext incrAssignment)
-            {
-                Visit(incrAssignment);
-            }
-
-            // Jump back to condition
-            _currentBlock!.AddInstruction(new IrBranch(condLabel));
+            _currentBlock!.AddInstruction(new IrBranch(incrLabel));
         }
+
+        // Increment label (continue jumps here)
+        _currentBlock!.AddInstruction(new IrLabel(incrLabel));
+
+        // Increment statement (optional)
+        // Grammar: KW_FOR (variableDeclaration | assignmentStatement) ';' expression ';' assignmentStatement block
+        // Child indices: 0=for, 1=init, 2=';', 3=expr, 4=';', 5=incr, 6=block
+        if (context.GetChild(5) is NovusParser.AssignmentStatementContext incrAssignment)
+        {
+            Visit(incrAssignment);
+        }
+
+        // Jump back to condition
+        _currentBlock!.AddInstruction(new IrBranch(condLabel));
 
         // End label
         _currentBlock!.AddInstruction(new IrLabel(endLabel));
 
-        // Pop exit label
+        // Pop exit and continue labels
         _loopExitLabels.Pop();
+        _loopContinueLabels.Pop();
 
         return null;
     }
     public override object? VisitForInLoop([NotNull] NovusParser.ForInLoopContext context)
     {
+        // Check if this is a range expression - handle it specially for efficiency
+        var exprCtx = context.expression();
+        if (exprCtx is NovusParser.RangeExprContext rangeExpr)
+        {
+            return VisitForInRangeLoop(context, rangeExpr, false);
+        }
+        if (exprCtx is NovusParser.RangeInclusiveExprContext rangeInclusiveExpr)
+        {
+            return VisitForInRangeLoop(context, rangeInclusiveExpr, true);
+        }
+
         // Desugar: for item in collection { body }
         // Into:    let _coll = collection
         //          let _idx = 0
@@ -1641,6 +1801,7 @@ public partial class IrBuilder
         var lenVarName = $"_for_len_{_labelCounter}";
         var condLabel = $"for_cond_{_labelCounter}";
         var bodyLabel = $"for_body_{_labelCounter}";
+        var incrLabel = $"for_incr_{_labelCounter}";
         var endLabel = $"for_end_{_labelCounter}";
         var matchSomeLabel = $"for_some_{_labelCounter}";
         var matchNoneLabel = $"for_none_{_labelCounter}";
@@ -1722,8 +1883,9 @@ public partial class IrBuilder
         var zeroLiteral = new IrConstant(0, IrIntType.U32);
         _currentBlock!.AddInstruction(new IrLocalDecl(idxVarName, IrIntType.U32, true, zeroLiteral));
 
-        // Push exit label for break statements
+        // Push exit and continue labels for break/continue statements
         _loopExitLabels.Push(endLabel);
+        _loopContinueLabels.Push(incrLabel); // continue jumps to increment section
 
         // Jump to condition check
         _currentBlock!.AddInstruction(new IrBranch(condLabel));
@@ -1873,27 +2035,171 @@ public partial class IrBuilder
         // Visit the loop body
         Visit(context.block());
 
-        // Increment index: _idx = _idx + 1
+        // Jump to increment (only if block doesn't end with return/break)
         if (!CurrentBlockHasTerminator())
         {
-            var incResultName = $"%t{_tempCounter++}";
-            var oneLiteral = new IrConstant(1, IrIntType.U32);
-            var incOp = new IrBinaryOp(incResultName, IrBinaryOp.OpKind.Add, idxVarRef, oneLiteral, IrIntType.U32);
-            _currentBlock!.AddInstruction(incOp);
-            var incResult = new IrVariable(incResultName, IrIntType.U32);
-            _currentBlock!.AddInstruction(new IrStore(idxVarName, incResult));
-
-            // Jump back to condition
-            _currentBlock!.AddInstruction(new IrBranch(condLabel));
+            _currentBlock!.AddInstruction(new IrBranch(incrLabel));
         }
+
+        // Increment label (continue jumps here)
+        _currentBlock!.AddInstruction(new IrLabel(incrLabel));
+
+        // Increment index: _idx = _idx + 1
+        var incResultName = $"%t{_tempCounter++}";
+        var oneLiteral = new IrConstant(1, IrIntType.U32);
+        var incOp = new IrBinaryOp(incResultName, IrBinaryOp.OpKind.Add, idxVarRef, oneLiteral, IrIntType.U32);
+        _currentBlock!.AddInstruction(incOp);
+        var incResult = new IrVariable(incResultName, IrIntType.U32);
+        _currentBlock!.AddInstruction(new IrStore(idxVarName, incResult));
+
+        // Jump back to condition
+        _currentBlock!.AddInstruction(new IrBranch(condLabel));
 
         // End label
         _currentBlock!.AddInstruction(new IrLabel(endLabel));
 
-        // Pop exit label
+        // Pop exit and continue labels
         _loopExitLabels.Pop();
+        _loopContinueLabels.Pop();
 
         return null;
+    }
+
+    /// <summary>
+    /// Handles for-in loops over range expressions (e.g., 0..10 or 1..=5)
+    /// Generates efficient counter-based code without needing Iterable trait.
+    /// </summary>
+    private object? VisitForInRangeLoop(NovusParser.ForInLoopContext context, NovusParser.ExpressionContext rangeExpr, bool inclusive)
+    {
+        // for i in start..end { body }
+        // Desugars to:
+        //   let i = start
+        //   while i < end {  (or i <= end for inclusive)
+        //       body
+        //       i = i + 1
+        //   }
+
+        var itemName = context.IDENTIFIER().GetText();
+        var isMutable = context.KW_MUT() != null;
+        var condLabel = $"range_cond_{_labelCounter}";
+        var bodyLabel = $"range_body_{_labelCounter}";
+        var incrLabel = $"range_incr_{_labelCounter}";
+        var endLabel = $"range_end_{_labelCounter}";
+        _labelCounter++;
+
+        // Get the two operands of the range expression
+        IrValue startValue, endValue;
+        if (rangeExpr is NovusParser.RangeExprContext exclusiveRange)
+        {
+            startValue = (IrValue)Visit(exclusiveRange.expression(0))!;
+            endValue = (IrValue)Visit(exclusiveRange.expression(1))!;
+        }
+        else if (rangeExpr is NovusParser.RangeInclusiveExprContext inclusiveRange)
+        {
+            startValue = (IrValue)Visit(inclusiveRange.expression(0))!;
+            endValue = (IrValue)Visit(inclusiveRange.expression(1))!;
+        }
+        else
+        {
+            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Invalid range expression",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Determine the type for the loop variable (use the start value's type)
+        var rangeType = startValue.Type;
+
+        // Ensure both operands have the same type
+        if (startValue.Type.Name != endValue.Type.Name)
+        {
+            // Try to coerce to a common type
+            if (startValue.Type is IrIntType && endValue.Type is IrIntType)
+            {
+                // Use the larger type
+                rangeType = GetLargerIntType((IrIntType)startValue.Type, (IrIntType)endValue.Type);
+            }
+        }
+
+        // Declare the loop variable with the start value
+        var loopVar = new IrLocalVariable(itemName, rangeType, true); // Always mutable for incrementing
+        _currentFunction!.LocalVariables.Add(loopVar);
+        _localVariables[itemName] = loopVar;
+        _currentBlock!.AddInstruction(new IrLocalDecl(itemName, rangeType, true, startValue));
+
+        // Store the end value in a temp variable to avoid re-evaluating
+        var endVarName = $"_range_end_{_labelCounter - 1}";
+        var endVar = new IrLocalVariable(endVarName, rangeType, false);
+        _currentFunction!.LocalVariables.Add(endVar);
+        _localVariables[endVarName] = endVar;
+        _currentBlock!.AddInstruction(new IrLocalDecl(endVarName, rangeType, false, endValue));
+
+        // Push exit and continue labels for break/continue statements
+        _loopExitLabels.Push(endLabel);
+        _loopContinueLabels.Push(incrLabel); // continue jumps to increment
+
+        // Jump to condition
+        _currentBlock!.AddInstruction(new IrBranch(condLabel));
+
+        // Condition label
+        _currentBlock!.AddInstruction(new IrLabel(condLabel));
+
+        // Check: i < end (or i <= end for inclusive)
+        var loopVarRef = new IrVariable(itemName, rangeType);
+        var endVarRef = new IrVariable(endVarName, rangeType);
+        var condResultName = $"%t{_tempCounter++}";
+        var compareOp = inclusive ? IrBinaryOp.OpKind.Le : IrBinaryOp.OpKind.Lt;
+        var condCheck = new IrBinaryOp(condResultName, compareOp, loopVarRef, endVarRef, IrBoolType.Instance);
+        _currentBlock!.AddInstruction(condCheck);
+        var condResult = new IrVariable(condResultName, IrBoolType.Instance);
+        _currentBlock!.AddInstruction(new IrConditionalBranch(condResult, bodyLabel, endLabel));
+
+        // Body label
+        _currentBlock!.AddInstruction(new IrLabel(bodyLabel));
+
+        // Visit the loop body
+        Visit(context.block());
+
+        // Increment label (continue jumps here)
+        _currentBlock!.AddInstruction(new IrLabel(incrLabel));
+
+        // Increment: i = i + 1
+        var incResultName = $"%t{_tempCounter++}";
+        var oneLiteral = new IrConstant(1, rangeType);
+        var incOp = new IrBinaryOp(incResultName, IrBinaryOp.OpKind.Add, loopVarRef, oneLiteral, rangeType);
+        _currentBlock!.AddInstruction(incOp);
+        var incResult = new IrVariable(incResultName, rangeType);
+        _currentBlock!.AddInstruction(new IrStore(itemName, incResult));
+
+        // Jump back to condition
+        _currentBlock!.AddInstruction(new IrBranch(condLabel));
+
+        // End label
+        _currentBlock!.AddInstruction(new IrLabel(endLabel));
+
+        // Pop exit and continue labels
+        _loopExitLabels.Pop();
+        _loopContinueLabels.Pop();
+
+        // Remove the loop variable from scope (it's local to the loop)
+        _localVariables.Remove(itemName);
+        _localVariables.Remove(endVarName);
+
+        return null;
+    }
+
+    /// <summary>
+    /// Returns the larger of two integer types for range type coercion.
+    /// </summary>
+    private IrIntType GetLargerIntType(IrIntType a, IrIntType b)
+    {
+        // Simple heuristic: prefer the type with more bits
+        int sizeA = a.BitWidth;
+        int sizeB = b.BitWidth;
+        return sizeA >= sizeB ? a : b;
     }
 
     public override object? VisitForeverStatement([NotNull] NovusParser.ForeverStatementContext context)
@@ -1902,8 +2208,9 @@ public partial class IrBuilder
         var endLabel = $"forever_end_{_labelCounter}";
         _labelCounter++;
 
-        // Push exit label for break statements
+        // Push exit and continue labels for break/continue statements
         _loopExitLabels.Push(endLabel);
+        _loopContinueLabels.Push(bodyLabel); // continue jumps back to body start
 
         // Body label
         _currentBlock!.AddInstruction(new IrLabel(bodyLabel));
@@ -1918,32 +2225,114 @@ public partial class IrBuilder
         // End label (only reachable via break)
         _currentBlock!.AddInstruction(new IrLabel(endLabel));
 
-        // Pop exit label
+        // Pop exit and continue labels
         _loopExitLabels.Pop();
+        _loopContinueLabels.Pop();
         return null;
     }
 
     public override object? VisitBreakStatement([NotNull] NovusParser.BreakStatementContext context)
     {
-        if (_loopExitLabels.Count == 0)
+        // Check for optional label
+        var labelIdentifier = context.IDENTIFIER();
+
+        if (labelIdentifier != null)
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
-            _diagnostics.ReportError(
-                ErrorCodes.InvalidExpressionType,
-                "break statement outside of loop",
-                errorLocation
-            );
-            return null;
+            // Labeled break: break label_name
+            var labelName = labelIdentifier.GetText();
+            if (!_labeledLoops.TryGetValue(labelName, out var loopLabels))
+            {
+                var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"unknown loop label '{labelName}'",
+                    errorLocation
+                );
+                return null;
+            }
+
+            // Handle postfix conditional (if/unless)
+            var postfixCondition = context.postfixCondition();
+            HandlePostfixCondition(postfixCondition, () =>
+            {
+                _currentBlock!.AddInstruction(new IrBranch(loopLabels.ExitLabel));
+            });
+        }
+        else
+        {
+            // Regular break (innermost loop)
+            if (_loopExitLabels.Count == 0)
+            {
+                var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    "break statement outside of loop",
+                    errorLocation
+                );
+                return null;
+            }
+
+            // Handle postfix conditional (if/unless)
+            var postfixCondition = context.postfixCondition();
+            HandlePostfixCondition(postfixCondition, () =>
+            {
+                var exitLabel = _loopExitLabels.Peek();
+                _currentBlock!.AddInstruction(new IrBranch(exitLabel));
+            });
         }
 
-        // Handle postfix conditional (if/unless)
-        var postfixCondition = context.postfixCondition();
+        return null;
+    }
 
-        HandlePostfixCondition(postfixCondition, () =>
+    public override object? VisitContinueStatement([NotNull] NovusParser.ContinueStatementContext context)
+    {
+        // Check for optional label
+        var labelIdentifier = context.IDENTIFIER();
+
+        if (labelIdentifier != null)
         {
-            var exitLabel = _loopExitLabels.Peek();
-            _currentBlock!.AddInstruction(new IrBranch(exitLabel));
-        });
+            // Labeled continue: continue label_name
+            var labelName = labelIdentifier.GetText();
+            if (!_labeledLoops.TryGetValue(labelName, out var loopLabels))
+            {
+                var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"unknown loop label '{labelName}'",
+                    errorLocation
+                );
+                return null;
+            }
+
+            // Handle postfix conditional (if/unless)
+            var postfixCondition = context.postfixCondition();
+            HandlePostfixCondition(postfixCondition, () =>
+            {
+                _currentBlock!.AddInstruction(new IrBranch(loopLabels.ContinueLabel));
+            });
+        }
+        else
+        {
+            // Regular continue (innermost loop)
+            if (_loopContinueLabels.Count == 0)
+            {
+                var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    "continue statement outside of loop",
+                    errorLocation
+                );
+                return null;
+            }
+
+            // Handle postfix conditional (if/unless)
+            var postfixCondition = context.postfixCondition();
+            HandlePostfixCondition(postfixCondition, () =>
+            {
+                var continueLabel = _loopContinueLabels.Peek();
+                _currentBlock!.AddInstruction(new IrBranch(continueLabel));
+            });
+        }
 
         return null;
     }

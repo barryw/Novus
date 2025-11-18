@@ -829,10 +829,15 @@ public class CCodeGenerator
             }
         }
 
-        // Find all variables that are stored to but never declared
-        // (common for match result variables when match is lowered to basic blocks)
-        var declaredVars = new HashSet<string>();
-        var storedVars = new Dictionary<string, IrType>(); // var name -> type
+        // CRITICAL FIX: Pre-declare ALL local variables at function start
+        // This ensures variables are declared before they're used, regardless of control flow.
+        // In C, labels can be jumped to out of order, but variables must be declared before use.
+        // For loops are a common case: the init block declares a variable, but control flow
+        // jumps to the condition label first where the variable is used.
+
+        // Collect all variables from IrLocalDecl and IrStore instructions
+        var localDeclVars = new Dictionary<string, (IrType Type, bool IsArray, int ArraySize)>(); // from IrLocalDecl
+        var storedVars = new Dictionary<string, IrType>(); // from IrStore (for variables not declared via IrLocalDecl)
 
         foreach (var block in function.BasicBlocks)
         {
@@ -840,7 +845,14 @@ public class CCodeGenerator
             {
                 if (instruction is IrLocalDecl localDecl)
                 {
-                    declaredVars.Add(SanitizeVariableName(localDecl.Name));
+                    var varName = SanitizeVariableName(localDecl.Name);
+                    if (!localDeclVars.ContainsKey(varName))
+                    {
+                        // Track array information for proper declaration
+                        var isArray = localDecl.Type is IrArrayType;
+                        var arraySize = isArray ? ((IrArrayType)localDecl.Type).Length : 0;
+                        localDeclVars[varName] = (localDecl.Type, isArray, arraySize);
+                    }
                 }
                 else if (instruction is IrStore store)
                 {
@@ -859,20 +871,33 @@ public class CCodeGenerator
         foreach (var (varName, varType) in deferReferencedVars)
         {
             var sanitizedName = SanitizeVariableName(varName);
-            if (!declaredVars.Contains(sanitizedName))
+            if (!localDeclVars.ContainsKey(sanitizedName))
             {
                 var cType = GetCType(varType);
                 targetBuilder.AppendLine($"    {cType} {sanitizedName};  // Pre-declared for defer cleanup");
                 _declaredVariables.Add(sanitizedName);
-                declaredVars.Add(sanitizedName);  // Mark as declared to avoid double-declaration
+                localDeclVars[sanitizedName] = (varType, false, 0);  // Mark as declared to avoid double-declaration
             }
         }
 
-        // Emit declarations for variables that are stored to but never declared
-        // (common for match result variables when match is lowered to basic blocks)
-        foreach (var (varName, varType) in storedVars)
+        // Pre-declare all variables from IrLocalDecl at function start
+        // This ensures they're available regardless of control flow order
+        foreach (var (varName, varInfo) in localDeclVars)
         {
-            if (!declaredVars.Contains(varName))
+            // Skip if already declared (e.g., by defer pre-declaration above)
+            if (_declaredVariables.Contains(varName))
+                continue;
+
+            var (varType, isArray, arraySize) = varInfo;
+
+            if (isArray)
+            {
+                // Array declarations need special syntax
+                var arrayType = (IrArrayType)varType;
+                var elementType = GetCType(arrayType.ElementType);
+                targetBuilder.AppendLine($"    {elementType} {varName}[{arraySize}];");
+            }
+            else
             {
                 var cType = GetCType(varType);
 
@@ -880,7 +905,27 @@ public class CCodeGenerator
                 // Enums and structs MUST be initialized (even with garbage) to force VBCC
                 // to align them properly on the stack. Without this, VBCC may place them at
                 // odd addresses, causing guru meditation 81000005 (odd-address access error).
-                // The memset with 0 ensures proper alignment and zero-initialization.
+                if (varType is IrEnumType || varType is IrStructType)
+                {
+                    targetBuilder.AppendLine($"    {cType} {varName}; memset(&{varName}, 0, sizeof({cType}));");
+                }
+                else
+                {
+                    targetBuilder.AppendLine($"    {cType} {varName};");
+                }
+            }
+            _declaredVariables.Add(varName);
+        }
+
+        // Also emit declarations for variables that are stored to but never declared via IrLocalDecl
+        // (common for match result variables when match is lowered to basic blocks)
+        foreach (var (varName, varType) in storedVars)
+        {
+            if (!localDeclVars.ContainsKey(varName))
+            {
+                var cType = GetCType(varType);
+
+                // CRITICAL FIX FOR 68K ALIGNMENT (same as above)
                 if (varType is IrEnumType || varType is IrStructType)
                 {
                     targetBuilder.AppendLine($"    {cType} {varName}; memset(&{varName}, 0, sizeof({cType}));");
@@ -2747,10 +2792,15 @@ public class CCodeGenerator
         // handle the duplicate symbols at the Program.cs level by generating them once.
         _output.AppendLine($"{returnType} {funcName}({parameters}) {{");
 
-        // Find all variables that are stored to but never declared
-        // (common for match result variables when match is lowered to basic blocks)
-        var declaredVars = new HashSet<string>();
-        var storedVars = new Dictionary<string, IrType>(); // var name -> type
+        // CRITICAL FIX: Pre-declare ALL local variables at function start
+        // This ensures variables are declared before they're used, regardless of control flow.
+        // In C, labels can be jumped to out of order, but variables must be declared before use.
+        // For loops are a common case: the init block declares a variable, but control flow
+        // jumps to the condition label first where the variable is used.
+
+        // Collect all variables from IrLocalDecl and IrStore instructions
+        var localDeclVars = new Dictionary<string, (IrType Type, bool IsArray, int ArraySize)>(); // from IrLocalDecl
+        var storedVars = new Dictionary<string, IrType>(); // from IrStore (for variables not declared via IrLocalDecl)
 
         foreach (var block in function.BasicBlocks)
         {
@@ -2758,7 +2808,14 @@ public class CCodeGenerator
             {
                 if (instruction is IrLocalDecl localDecl)
                 {
-                    declaredVars.Add(SanitizeVariableName(localDecl.Name));
+                    var varName = SanitizeVariableName(localDecl.Name);
+                    if (!localDeclVars.ContainsKey(varName))
+                    {
+                        // Track array information for proper declaration
+                        var isArray = localDecl.Type is IrArrayType;
+                        var arraySize = isArray ? ((IrArrayType)localDecl.Type).Length : 0;
+                        localDeclVars[varName] = (localDecl.Type, isArray, arraySize);
+                    }
                 }
                 else if (instruction is IrStore store)
                 {
@@ -2771,10 +2828,20 @@ public class CCodeGenerator
             }
         }
 
-        // Emit declarations for variables that are stored to but never declared
-        foreach (var (varName, varType) in storedVars)
+        // Pre-declare all variables from IrLocalDecl at function start
+        // This ensures they're available regardless of control flow order
+        foreach (var (varName, varInfo) in localDeclVars)
         {
-            if (!declaredVars.Contains(varName))
+            var (varType, isArray, arraySize) = varInfo;
+
+            if (isArray)
+            {
+                // Array declarations need special syntax
+                var arrayType = (IrArrayType)varType;
+                var elementType = GetCType(arrayType.ElementType);
+                _output.AppendLine($"    {elementType} {varName}[{arraySize}];");
+            }
+            else
             {
                 var cType = GetCType(varType);
 
@@ -2782,7 +2849,27 @@ public class CCodeGenerator
                 // Enums and structs MUST be initialized (even with garbage) to force VBCC
                 // to align them properly on the stack. Without this, VBCC may place them at
                 // odd addresses, causing guru meditation 81000005 (odd-address access error).
-                // The memset with 0 ensures proper alignment and zero-initialization.
+                if (varType is IrEnumType || varType is IrStructType)
+                {
+                    _output.AppendLine($"    {cType} {varName}; memset(&{varName}, 0, sizeof({cType}));");
+                }
+                else
+                {
+                    _output.AppendLine($"    {cType} {varName};");
+                }
+            }
+            _declaredVariables.Add(varName);
+        }
+
+        // Also emit declarations for variables that are stored to but never declared via IrLocalDecl
+        // (common for match result variables when match is lowered to basic blocks)
+        foreach (var (varName, varType) in storedVars)
+        {
+            if (!localDeclVars.ContainsKey(varName))
+            {
+                var cType = GetCType(varType);
+
+                // CRITICAL FIX FOR 68K ALIGNMENT (same as above)
                 if (varType is IrEnumType || varType is IrStructType)
                 {
                     _output.AppendLine($"    {cType} {varName}; memset(&{varName}, 0, sizeof({cType}));");
@@ -3045,17 +3132,37 @@ public class CCodeGenerator
                     _output.AppendLine($"    {varName}.{kvp.Key} = {fieldValue};");
                 }
             }
+            else if (localDecl.Type is IrArrayType arrayType && localDecl.InitialValue is IrArrayLiteral arrayLiteral)
+            {
+                // Arrays can't be assigned with initializer syntax after declaration.
+                // Use memcpy from a compound literal instead.
+                var elementType = GetCType(arrayType.ElementType);
+                var size = arrayType.Length;
+                _output.AppendLine($"    memcpy({varName}, ({elementType}[{size}]){initValue}, sizeof({varName}));");
+            }
             else
             {
-                var cType = GetCType(localDecl.Type);
-                var initType = GetCType(localDecl.InitialValue.Type);
-                if (initType != cType)
+                // For struct/enum types that were pre-declared with memset, don't emit a `= 0` assignment.
+                // The variable was already zero-initialized, and `structVar = 0` is invalid C.
+                // Match result variables are initialized this way by the IR builder when we don't know the type yet.
+                if ((localDecl.Type is IrEnumType || localDecl.Type is IrStructType) &&
+                    localDecl.InitialValue is IrConstant constVal &&
+                    constVal.Value is long longVal && longVal == 0)
                 {
-                    _output.AppendLine($"    {varName} = ({cType}){initValue};");
+                    // Skip the assignment - variable already zero-initialized by memset at function start
                 }
                 else
                 {
-                    _output.AppendLine($"    {varName} = {initValue};");
+                    var cType = GetCType(localDecl.Type);
+                    var initType = GetCType(localDecl.InitialValue.Type);
+                    if (initType != cType)
+                    {
+                        _output.AppendLine($"    {varName} = ({cType}){initValue};");
+                    }
+                    else
+                    {
+                        _output.AppendLine($"    {varName} = {initValue};");
+                    }
                 }
             }
         }

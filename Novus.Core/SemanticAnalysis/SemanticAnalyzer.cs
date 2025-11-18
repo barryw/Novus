@@ -7766,10 +7766,14 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         // Validate the array literal expression
-        var arrayType = Visit(context.expression());
-        if (arrayType == null)
+        var arrayLiteralInit = context.arrayLiteralInit();
+        foreach (var expr in arrayLiteralInit.expression())
         {
-            return null;  // Error already reported
+            var elemType = Visit(expr);
+            if (elemType == null)
+            {
+                return null;  // Error already reported
+            }
         }
 
         // Return the struct type

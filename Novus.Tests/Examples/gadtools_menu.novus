@@ -3,9 +3,8 @@
 
 from std::graphics::intuition import WindowHandle, WindowEvent
 from std::graphics::menus import GadToolsMenuBuilder, MenuSelection
-from std::ffi::amiga_structs import MenuItem
 from std::io::core import write
-from std::ffi::amiga_consts import IDCMP_CLOSEWINDOW, IDCMP_MENUPICK, MENUNULL
+from std::ffi::amiga_consts import MENUNULL
 
 pub fn main() -> i32 {
     write("=== GadTools Menu Example ===\n")
@@ -75,33 +74,12 @@ pub fn main() -> i32 {
                                     },
                                     WindowEvent::MenuPick(code) => {
                                         // Decode menu selection
-                                        let mut menu_code = code
-                                        forever {
-                                            if menu_code == MENUNULL {
-                                                break
-                                            }
-
-                                            let selection = MenuSelection::from_code(menu_code)
-                                            write("Menu selected: menu=")
-                                            write_u16(selection.menu)
-                                            write(" item=")
-                                            write_u16(selection.item)
-                                            write(" sub=")
-                                            write_u16(selection.sub)
-                                            write("\n")
-
-                                            // Get next selection in chain
-                                            let item_opt = menu_strip.get_item(menu_code)
-                                            match item_opt {
-                                                Option::Some(item) => {
-                                                    unsafe {
-                                                        menu_code = (*item).NextSelect
-                                                    }
-                                                },
-                                                Option::None => {
-                                                    break
-                                                }
-                                            }
+                                        // Note: For multi-select menus, you would need to chase
+                                        // the NextSelect chain through MenuItem, which requires
+                                        // exposing the full MenuItem struct or adding a helper.
+                                        if code != MENUNULL {
+                                            let selection = MenuSelection::from_code(code)
+                                            write("Menu selected: menu={selection.menu} item={selection.item} sub={selection.sub}\n")
                                         }
                                     },
                                     _ => {}
@@ -132,27 +110,4 @@ pub fn main() -> i32 {
 
     write("\nGadTools menu demo completed.\n")
     return 0
-}
-
-// Helper to write u16 values
-fn write_u16(value: u16) {
-    // Convert to string and write
-    // FIXME: Need proper u16::Display implementation
-    unsafe {
-        if value == 0 {
-            write("0")
-        } else if value == 1 {
-            write("1")
-        } else if value == 2 {
-            write("2")
-        } else if value == 3 {
-            write("3")
-        } else if value == 4 {
-            write("4")
-        } else if value == 5 {
-            write("5")
-        } else {
-            write("?")
-        }
-    }
 }

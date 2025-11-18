@@ -1,0 +1,77 @@
+// Test for continue statement
+// Demonstrates continue in while, for, and forever loops
+
+from std::io::core import write
+from std::strings::core import Str
+
+pub fn main() -> i32 {
+    // Test 1: continue in while loop
+    let mut sum1: i32 = 0
+    let mut i: i32 = 0
+    while i < 10 {
+        i = i + 1
+        if i == 5 {
+            continue  // Skip 5
+        }
+        sum1 = sum1 + i
+    }
+    // sum1 should be 1+2+3+4+6+7+8+9+10 = 50
+    if sum1 != 50 {
+        write("Test 1 FAILED: while continue\n")
+        return 1
+    }
+    write("Test 1 PASSED: while continue\n")
+
+    // Test 2: continue in for loop
+    let mut sum2: i32 = 0
+    for let mut j = 0; j < 10; j = j + 1 {
+        if j % 2 == 0 {
+            continue  // Skip even numbers
+        }
+        sum2 = sum2 + j
+    }
+    // sum2 should be 1+3+5+7+9 = 25
+    if sum2 != 25 {
+        write("Test 2 FAILED: for continue\n")
+        return 2
+    }
+    write("Test 2 PASSED: for continue\n")
+
+    // Test 3: continue in forever loop
+    let mut sum3: i32 = 0
+    let mut k: i32 = 0
+    forever {
+        k = k + 1
+        if k > 10 {
+            break
+        }
+        if k == 3 || k == 7 {
+            continue  // Skip 3 and 7
+        }
+        sum3 = sum3 + k
+    }
+    // sum3 should be 1+2+4+5+6+8+9+10 = 45
+    if sum3 != 45 {
+        write("Test 3 FAILED: forever continue\n")
+        return 3
+    }
+    write("Test 3 PASSED: forever continue\n")
+
+    // Test 4: continue with postfix condition
+    let mut sum4: i32 = 0
+    let mut m: i32 = 0
+    while m < 10 {
+        m = m + 1
+        continue if m % 3 == 0  // Skip multiples of 3
+        sum4 = sum4 + m
+    }
+    // sum4 should be 1+2+4+5+7+8+10 = 37
+    if sum4 != 37 {
+        write("Test 4 FAILED: continue with postfix condition\n")
+        return 4
+    }
+    write("Test 4 PASSED: continue with postfix condition\n")
+
+    write("All continue tests PASSED!\n")
+    return 0
+}
