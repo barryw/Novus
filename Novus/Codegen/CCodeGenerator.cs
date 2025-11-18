@@ -524,6 +524,24 @@ public class CCodeGenerator
         sb.AppendLine("void __novus_div_check(int32_t divisor, const char* file, int32_t line);");
         sb.AppendLine();
 
+        // Memory functions
+        sb.AppendLine("// Memory functions - no C library dependency");
+        sb.AppendLine("void __novus_memset(void* dest, int value, uint32_t n);");
+        sb.AppendLine("void __novus_memcpy(uint8_t* dest, const uint8_t* src, uint32_t n);");
+        sb.AppendLine();
+
+        // String conversion functions
+        sb.AppendLine("// String conversion functions");
+        sb.AppendLine("uint32_t i8_to_string(int8_t value, uint8_t* buffer, uint32_t buffer_size);");
+        sb.AppendLine("uint32_t i16_to_string(int16_t value, uint8_t* buffer, uint32_t buffer_size);");
+        sb.AppendLine("uint32_t i32_to_string(int32_t value, uint8_t* buffer, uint32_t buffer_size);");
+        sb.AppendLine("uint32_t i64_to_string(int64_t value, uint8_t* buffer, uint32_t buffer_size);");
+        sb.AppendLine("uint32_t u8_to_string(uint8_t value, uint8_t* buffer, uint32_t buffer_size);");
+        sb.AppendLine("uint32_t u16_to_string(uint16_t value, uint8_t* buffer, uint32_t buffer_size);");
+        sb.AppendLine("uint32_t u32_to_string(uint32_t value, uint8_t* buffer, uint32_t buffer_size);");
+        sb.AppendLine("uint32_t u64_to_string(uint64_t value, uint8_t* buffer, uint32_t buffer_size);");
+        sb.AppendLine();
+
         sb.AppendLine("#endif // NOVUS_TYPES_H");
 
         return sb.ToString();
@@ -726,9 +744,26 @@ public class CCodeGenerator
                 var funcObj = _module.Functions.FirstOrDefault(f => f.Name == funcName);
                 if (funcObj != null)
                 {
-                    // Skip extern FFI functions - they're provided by proto headers (AmigaOS libraries)
+                    // Handle extern functions
                     if (funcObj.IsExtern)
                     {
+                        // Skip AmigaOS library functions - they're provided by proto headers
+                        // AmigaOS functions typically start with uppercase (e.g., AllocMem, OpenWindow)
+                        // Runtime functions start with __, lowercase, or are variadic (like write)
+                        bool isAmigaOSFunction = funcName.Length > 0 &&
+                                                 char.IsUpper(funcName[0]) &&
+                                                 !funcName.StartsWith("__") &&
+                                                 !funcObj.IsVariadic;
+
+                        if (isAmigaOSFunction)
+                        {
+                            continue;
+                        }
+
+                        // Emit declaration for runtime extern functions (write, strlen, etc.)
+                        var returnTypeStr = GetCType(funcObj.ReturnType);
+                        var parameters = GetParameterList(funcObj, false);
+                        sb.AppendLine($"extern {returnTypeStr} {funcName}({parameters});");
                         continue;
                     }
 
@@ -736,14 +771,14 @@ public class CCodeGenerator
                     // Extern functions use their actual C signatures (e.g., runtime functions return enums directly)
                     var isStructOrEnumReturn = funcObj.ReturnType is IrStructType or IrEnumType;
                     var shouldUseOutParam = isStructOrEnumReturn && !funcObj.IsExtern;
-                    var returnTypeStr = shouldUseOutParam ? "void" : GetCType(funcObj.ReturnType);
-                    var parameters = GetParameterList(funcObj, shouldUseOutParam);
+                    var returnTypeStr2 = shouldUseOutParam ? "void" : GetCType(funcObj.ReturnType);
+                    var parameters2 = GetParameterList(funcObj, shouldUseOutParam);
 
                     // Don't mangle public cross-module function names - use the plain name
                     // MangleName adds type suffixes for monomorphization, but public functions
                     // have stable names across modules
                     var exportedFuncName = funcObj.IsPublic ? MangleName(funcName) : MangleName(funcObj);
-                    sb.AppendLine($"extern {returnTypeStr} {exportedFuncName}({parameters});");
+                    sb.AppendLine($"extern {returnTypeStr2} {exportedFuncName}({parameters2});");
                 }
                 else
                 {
