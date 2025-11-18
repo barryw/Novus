@@ -265,36 +265,22 @@ public class CCodeGenerator
         sb.AppendLine("#include <exec/types.h>");
         sb.AppendLine();
 
-        // Define standard integer types if not already defined by exec/types.h
-        // These provide fallback definitions for older NDK headers
-        sb.AppendLine("// Integer types - fallback definitions (may already be in exec/types.h)");
-        sb.AppendLine("#ifndef int8_t");
+        // Define standard integer types only if stdint.h wasn't included by exec/types.h
+        // VBCC's exec/types.h includes <stdint.h> which defines __STDINT_H
+        sb.AppendLine("// Integer types - fallback definitions if stdint.h not included");
+        sb.AppendLine("#ifndef __STDINT_H");
         sb.AppendLine("typedef signed char int8_t;");
-        sb.AppendLine("#endif");
-        sb.AppendLine("#ifndef int16_t");
         sb.AppendLine("typedef short int16_t;");
-        sb.AppendLine("#endif");
-        sb.AppendLine("#ifndef int32_t");
         sb.AppendLine("typedef long int32_t;");
-        sb.AppendLine("#endif");
-        sb.AppendLine("#ifndef int64_t");
         sb.AppendLine("typedef long long int64_t;");
-        sb.AppendLine("#endif");
-        sb.AppendLine("#ifndef uint8_t");
         sb.AppendLine("typedef unsigned char uint8_t;");
-        sb.AppendLine("#endif");
-        sb.AppendLine("#ifndef uint16_t");
         sb.AppendLine("typedef unsigned short uint16_t;");
-        sb.AppendLine("#endif");
-        sb.AppendLine("#ifndef uint32_t");
         sb.AppendLine("typedef unsigned long uint32_t;");
-        sb.AppendLine("#endif");
-        sb.AppendLine("#ifndef uint64_t");
         sb.AppendLine("typedef unsigned long long uint64_t;");
         sb.AppendLine("#endif");
         sb.AppendLine();
         sb.AppendLine("// Boolean type - no C library dependency");
-        sb.AppendLine("#ifndef bool");
+        sb.AppendLine("#ifndef __STDBOOL_H");
         sb.AppendLine("typedef int bool;");
         sb.AppendLine("#define true 1");
         sb.AppendLine("#define false 0");
@@ -593,15 +579,19 @@ public class CCodeGenerator
         // These types are defined in NDK headers but need to be forward-declared
         // before they're used in enum variant definitions
         // Use typedef so we can use "Screen*" instead of "struct Screen*"
-        var ffiTypes = CollectFFIStructTypesForFunction(function);
-        if (ffiTypes.Count > 0)
+        // Skip when using shared types header - novus_types.h already has these
+        if (!_useSharedTypesHeader)
         {
-            sb.AppendLine("// Forward declarations for FFI struct types");
-            foreach (var ffiType in ffiTypes.OrderBy(t => t))
+            var ffiTypes = CollectFFIStructTypesForFunction(function);
+            if (ffiTypes.Count > 0)
             {
-                sb.AppendLine($"typedef struct {ffiType} {ffiType};");
+                sb.AppendLine("// Forward declarations for FFI struct types");
+                foreach (var ffiType in ffiTypes.OrderBy(t => t))
+                {
+                    sb.AppendLine($"typedef struct {ffiType} {ffiType};");
+                }
+                sb.AppendLine();
             }
-            sb.AppendLine();
         }
 
         // Note: AmigaOS headers are included via novus_types.h
@@ -2268,37 +2258,23 @@ public class CCodeGenerator
     /// </summary>
     private static void EmitInlineTypeDefinitions(StringBuilder sb)
     {
-        // Include exec/types.h first - it may define int*_t/uint*_t types
+        // Include exec/types.h first - it includes <stdint.h> which defines __STDINT_H
         sb.AppendLine("#include <exec/types.h>");
         sb.AppendLine();
-        sb.AppendLine("// Integer types - fallback definitions (may already be in exec/types.h)");
-        sb.AppendLine("#ifndef int8_t");
+        sb.AppendLine("// Integer types - fallback definitions if stdint.h not included");
+        sb.AppendLine("#ifndef __STDINT_H");
         sb.AppendLine("typedef signed char int8_t;");
-        sb.AppendLine("#endif");
-        sb.AppendLine("#ifndef int16_t");
         sb.AppendLine("typedef short int16_t;");
-        sb.AppendLine("#endif");
-        sb.AppendLine("#ifndef int32_t");
         sb.AppendLine("typedef long int32_t;");
-        sb.AppendLine("#endif");
-        sb.AppendLine("#ifndef int64_t");
         sb.AppendLine("typedef long long int64_t;");
-        sb.AppendLine("#endif");
-        sb.AppendLine("#ifndef uint8_t");
         sb.AppendLine("typedef unsigned char uint8_t;");
-        sb.AppendLine("#endif");
-        sb.AppendLine("#ifndef uint16_t");
         sb.AppendLine("typedef unsigned short uint16_t;");
-        sb.AppendLine("#endif");
-        sb.AppendLine("#ifndef uint32_t");
         sb.AppendLine("typedef unsigned long uint32_t;");
-        sb.AppendLine("#endif");
-        sb.AppendLine("#ifndef uint64_t");
         sb.AppendLine("typedef unsigned long long uint64_t;");
         sb.AppendLine("#endif");
         sb.AppendLine();
         sb.AppendLine("// Boolean type - no C library dependency");
-        sb.AppendLine("#ifndef bool");
+        sb.AppendLine("#ifndef __STDBOOL_H");
         sb.AppendLine("typedef int bool;");
         sb.AppendLine("#define true 1");
         sb.AppendLine("#define false 0");
