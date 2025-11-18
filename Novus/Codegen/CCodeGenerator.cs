@@ -44,6 +44,11 @@ public class CCodeGenerator
     // Maps result variable name -> (array expression, index expression)
     private Dictionary<string, (string arrayExpr, string indexExpr)> _indexAccessInfo = new();
 
+    // Track field access chains so we can reconstruct lvalue expressions for stores and address-of
+    // Maps result variable name -> (base expression, field name, accessor)
+    // This allows reconstructing chains like self->timereq->tr_node from intermediate variables
+    private Dictionary<string, (string baseExpr, string fieldName, string accessor)> _fieldAccessChainInfo = new();
+
     // Counter for defer block emissions to ensure unique labels across multiple defer cleanup sites
     private int _deferEmissionCounter = 0;
 
@@ -278,6 +283,7 @@ public class CCodeGenerator
         sb.AppendLine("#include <proto/intuition.h>");
         sb.AppendLine("#include <proto/graphics.h>");
         sb.AppendLine("#include <proto/gadtools.h>");
+        sb.AppendLine("#include <devices/timer.h>");
         sb.AppendLine();
         sb.AppendLine("// Typedefs for NDK structs (headers only define 'struct Foo', not 'Foo')");
         sb.AppendLine("typedef struct NewWindow NewWindow;");
@@ -296,6 +302,13 @@ public class CCodeGenerator
         sb.AppendLine("typedef struct MenuItem MenuItem;");
         sb.AppendLine("typedef struct NewMenu NewMenu;");
         sb.AppendLine("typedef struct VisualInfo VisualInfo;");
+        sb.AppendLine("typedef struct timeval timeval;");
+        sb.AppendLine("typedef struct timerequest timerequest;");
+        sb.AppendLine("typedef struct EClockVal EClockVal;");
+        sb.AppendLine("typedef struct IORequest IORequest;");
+        sb.AppendLine("typedef struct IOStdReq IOStdReq;");
+        sb.AppendLine("typedef struct Device Device;");
+        sb.AppendLine("typedef struct Unit Unit;");
         sb.AppendLine();
         sb.AppendLine("// Sentinel value for \"unchanged\" pointer parameters (used by Amiga API)");
         sb.AppendLine("// Using static const to prevent VBCC from trying to use moveq with the value");
@@ -780,6 +793,7 @@ public class CCodeGenerator
         _memberAccessInfo.Clear();
         _activatedDeferBlocks.Clear();
         _indexAccessInfo.Clear();
+        _fieldAccessChainInfo.Clear();
 
         // Track which parameters were converted to pointers in the C signature
         _pointerConvertedParameters.Clear();
@@ -2771,6 +2785,7 @@ public class CCodeGenerator
         // Set current function for defer cleanup
         _currentEmittingFunction = function;
         _memberAccessInfo.Clear();
+        _fieldAccessChainInfo.Clear();
 
         // VBCC FIX: For struct/enum returns on 68k, use output parameter pattern
         var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType;
@@ -3940,6 +3955,23 @@ public class CCodeGenerator
 
             _output.AppendLine($"    {fieldType} {resultName} = {structValue}{accessor}{memberAccess.FieldName};");
 
+            // Track this field access for lvalue chain reconstruction
+            // This allows us to reconstruct the full chain (e.g., self->timereq->tr_node)
+            // when this result is later used in a store or address-of operation
+            // IMPORTANT: If structValue itself is a variable that came from a field access,
+            // we need to use the reconstructed chain as the base to build a complete chain
+            string chainBase = structValue;
+            if (memberAccess.Struct is IrVariable baseVar)
+            {
+                var sanitizedBaseName = SanitizeVariableName(baseVar.Name);
+                if (_fieldAccessChainInfo.ContainsKey(sanitizedBaseName))
+                {
+                    // The base came from a field access - use its reconstructed chain
+                    chainBase = ReconstructFieldAccessChain(baseVar.Name);
+                }
+            }
+            _fieldAccessChainInfo[resultName] = (chainBase, memberAccess.FieldName, accessor);
+
             // Track this member access for potential move semantics
             // If this result is later returned, we'll need to null out the source
             if (memberAccess.Struct is IrVariable trackVar &&
@@ -4001,6 +4033,33 @@ public class CCodeGenerator
                 NullOutPointerFields(structValue, $"{fieldName}.{field.Name}", nestedStruct, accessor);
             }
         }
+    }
+
+    /// <summary>
+    /// Reconstruct the full lvalue expression for a variable that may have come from a field access chain.
+    /// For example, if _t1 = self->timereq and _t2 = _t1->tr_node, then reconstructing _t2 gives "self->timereq->tr_node".
+    /// </summary>
+    private string ReconstructFieldAccessChain(string varName)
+    {
+        var sanitizedName = SanitizeVariableName(varName);
+
+        if (_fieldAccessChainInfo.TryGetValue(sanitizedName, out var chainInfo))
+        {
+            var (baseExpr, fieldName, accessor) = chainInfo;
+            return $"{baseExpr}{accessor}{fieldName}";
+        }
+
+        // Not a field access chain - return the variable name as-is
+        return sanitizedName;
+    }
+
+    /// <summary>
+    /// Check if a variable came from a field access (and thus has chain info available).
+    /// </summary>
+    private bool IsFieldAccessVariable(string varName)
+    {
+        var sanitizedName = SanitizeVariableName(varName);
+        return _fieldAccessChainInfo.ContainsKey(sanitizedName);
     }
 
     /// <summary>
@@ -4149,6 +4208,24 @@ public class CCodeGenerator
             structValue = EmitValue(memberStore.Struct);
         }
 
+        // CRITICAL FIX: Check if the structValue is a variable that came from a field access chain
+        // If so, we need to reconstruct the full lvalue expression to avoid storing to a temporary copy.
+        // Example: if we have _t1 = self->timereq and we're storing to _t1.tr_node,
+        // we should emit self->timereq->tr_node instead of _t1->tr_node (which would modify a copy)
+        if (memberStore.Struct is IrVariable structVar)
+        {
+            var sanitizedStructName = SanitizeVariableName(structVar.Name);
+            if (_fieldAccessChainInfo.ContainsKey(sanitizedStructName))
+            {
+                // Reconstruct the full chain
+                structValue = ReconstructFieldAccessChain(structVar.Name);
+                // The reconstructed chain already includes the accessor from the previous access,
+                // so we need to determine the new accessor for the field we're storing to
+                // Since we loaded a struct value (not a pointer), we use "."
+                accessor = ".";
+            }
+        }
+
         _output.AppendLine($"    {structValue}{accessor}{memberStore.FieldName} = {storeValue};");
     }
 
@@ -4182,6 +4259,20 @@ public class CCodeGenerator
             {
                 var (arrayExpr, indexExpr) = indexInfo;
                 return $"&{arrayExpr}[{indexExpr}]";
+            }
+        }
+
+        // CRITICAL FIX: Check if we're borrowing a variable that came from a field access chain
+        // If so, reconstruct the full lvalue expression (&base->field1.field2) instead of taking
+        // address of the temporary copy
+        if (borrowValue.BorrowedValue is IrVariable fieldVar)
+        {
+            var sanitizedName = SanitizeVariableName(fieldVar.Name);
+
+            if (_fieldAccessChainInfo.ContainsKey(sanitizedName))
+            {
+                var fullChain = ReconstructFieldAccessChain(fieldVar.Name);
+                return $"&({fullChain})";
             }
         }
 
@@ -4497,6 +4588,13 @@ public class CCodeGenerator
             {
                 var (arrayExpr, indexExpr) = indexInfo;
                 return $"({targetType})&{arrayExpr}[{indexExpr}]";
+            }
+
+            // Also check for field access chains
+            if (_fieldAccessChainInfo.ContainsKey(sanitizedName))
+            {
+                var fullChain = ReconstructFieldAccessChain(indexVar.Name);
+                return $"({targetType})&({fullChain})";
             }
         }
 

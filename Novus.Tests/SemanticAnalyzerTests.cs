@@ -1564,13 +1564,13 @@ pub fn main() -> i32 {
     }
 
     #region Variable Mutability Regression Tests
-    // These tests ensure that variable mutability tracking never regresses
-    // Critical fix: var/let without 'mut' must be immutable
+    // These tests ensure that variable mutability tracking works correctly
+    // Per the language design: var = mutable, let = immutable
 
     [Fact]
-    public void Analyze_VarWithoutMut_IsImmutable()
+    public void Analyze_Var_IsMutable()
     {
-        // Regression test: ensure 'var x' is immutable (not mutable)
+        // var is mutable by default - should allow reassignment
         var source = @"
 pub fn test() -> i32 {
     var x: i32 = 0
@@ -1578,8 +1578,7 @@ pub fn test() -> i32 {
     return x
 }";
         var diagnostics = Analyze(source);
-        Assert.True(diagnostics.HasErrors);
-        Assert.Contains(diagnostics.Diagnostics, d => d.Message.Contains("immutable"));
+        Assert.False(diagnostics.HasErrors);
     }
 
     [Fact]
@@ -1623,12 +1622,12 @@ pub fn test() -> i32 {
     }
 
     [Fact]
-    public void Analyze_PreIncrementImmutableVar_ReportsError()
+    public void Analyze_PreIncrementImmutableLet_ReportsError()
     {
-        // Regression test: ++x on immutable variable should error
+        // ++x on immutable let binding should error
         var source = @"
 pub fn test() -> i32 {
-    var x: i32 = 0
+    let x: i32 = 0
     return ++x
 }";
         var diagnostics = Analyze(source);
@@ -1637,11 +1636,11 @@ pub fn test() -> i32 {
     }
 
     [Fact]
-    public void Analyze_PostIncrementImmutableVar_ReportsError()
+    public void Analyze_PostIncrementImmutableLet_ReportsError()
     {
         var source = @"
 pub fn test() -> i32 {
-    var x: i32 = 0
+    let x: i32 = 0
     return x++
 }";
         var diagnostics = Analyze(source);
@@ -1650,11 +1649,11 @@ pub fn test() -> i32 {
     }
 
     [Fact]
-    public void Analyze_PreDecrementImmutableVar_ReportsError()
+    public void Analyze_PreDecrementImmutableLet_ReportsError()
     {
         var source = @"
 pub fn test() -> i32 {
-    var x: i32 = 10
+    let x: i32 = 10
     return --x
 }";
         var diagnostics = Analyze(source);
@@ -1663,11 +1662,11 @@ pub fn test() -> i32 {
     }
 
     [Fact]
-    public void Analyze_PostDecrementImmutableVar_ReportsError()
+    public void Analyze_PostDecrementImmutableLet_ReportsError()
     {
         var source = @"
 pub fn test() -> i32 {
-    var x: i32 = 10
+    let x: i32 = 10
     return x--
 }";
         var diagnostics = Analyze(source);
@@ -1678,9 +1677,10 @@ pub fn test() -> i32 {
     [Fact]
     public void Analyze_IncrementMutableVar_NoError()
     {
+        // var is mutable by default, so increment should work
         var source = @"
 pub fn test() -> i32 {
-    var mut x: i32 = 0
+    var x: i32 = 0
     return ++x
 }";
         var diagnostics = Analyze(source);
@@ -1690,9 +1690,10 @@ pub fn test() -> i32 {
     [Fact]
     public void Analyze_DecrementMutableVar_NoError()
     {
+        // var is mutable by default, so decrement should work
         var source = @"
 pub fn test() -> i32 {
-    var mut x: i32 = 10
+    var x: i32 = 10
     return x--
 }";
         var diagnostics = Analyze(source);

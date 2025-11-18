@@ -1,0 +1,135 @@
+// Timer Test - Demonstrates timer.device usage in Novus
+//
+// Tests:
+// 1. Simple delay
+// 2. Get system time
+// 3. Measure elapsed time
+// 4. Duration arithmetic
+
+from std::system::timer import Timer, Duration, delay, now, elapsed_since
+from std::strings::core import Str, String
+from std::strings::format import Formatter, Display
+from std::io::core import write
+
+pub fn main() -> i32 {
+    write("Timer.device Test\n")
+    write("=================\n\n")
+
+    // Test 1: Get current system time
+    write("Test 1: Get system time\n")
+    match now() {
+        Result::Ok(time) => {
+            write(f"  System time: {time.get_secs()} seconds, {time.get_micros()} microseconds\n")
+        },
+        Result::Err(_) => {
+            write("  ERROR: Failed to get system time\n")
+            return 20
+        }
+    }
+
+    // Test 2: Simple delay using static function
+    write("\nTest 2: Simple delay (500ms)\n")
+    write("  Starting delay...\n")
+    match delay(Duration::millis(500)) {
+        Result::Ok(_) => {
+            write("  Delay complete!\n")
+        },
+        Result::Err(_) => {
+            write("  ERROR: Delay failed\n")
+            return 20
+        }
+    }
+
+    // Test 3: Measure elapsed time
+    write("\nTest 3: Measure elapsed time\n")
+    match now() {
+        Result::Ok(start) => {
+            // Do some work (delay 250ms)
+            match delay(Duration::millis(250)) {
+                Result::Ok(_) => {},
+                Result::Err(_) => {
+                    write("  ERROR: Work delay failed\n")
+                    return 20
+                }
+            }
+
+            match elapsed_since(start) {
+                Result::Ok(elapsed) => {
+                    write(f"  Elapsed: {elapsed.as_millis()} ms\n")
+                },
+                Result::Err(_) => {
+                    write("  ERROR: Failed to measure elapsed time\n")
+                    return 20
+                }
+            }
+        },
+        Result::Err(_) => {
+            write("  ERROR: Failed to get start time\n")
+            return 20
+        }
+    }
+
+    // Test 4: Using Timer handle for multiple operations
+    write("\nTest 4: Timer handle for efficient repeated use\n")
+    match Timer::microhz() {
+        Result::Ok(timer) => {
+            // Get time
+            match timer.get_time() {
+                Result::Ok(t1) => {
+                    write(f"  Time 1: {t1.get_secs()}.{t1.get_micros() / 1000}s\n")
+                },
+                Result::Err(_) => {
+                    write("  ERROR: Failed to get time 1\n")
+                    return 20
+                }
+            }
+
+            // Delay
+            match timer.delay(Duration::millis(100)) {
+                Result::Ok(_) => {},
+                Result::Err(_) => {
+                    write("  ERROR: Timer delay failed\n")
+                    return 20
+                }
+            }
+
+            // Get time again
+            match timer.get_time() {
+                Result::Ok(t2) => {
+                    write(f"  Time 2: {t2.get_secs()}.{t2.get_micros() / 1000}s\n")
+                },
+                Result::Err(_) => {
+                    write("  ERROR: Failed to get time 2\n")
+                    return 20
+                }
+            }
+
+            // Timer automatically closed here
+        },
+        Result::Err(_) => {
+            write("  ERROR: Failed to open timer\n")
+            return 20
+        }
+    }
+
+    // Test 5: Duration arithmetic
+    write("\nTest 5: Duration arithmetic\n")
+    let d1 = Duration::secs(2)
+    let d2 = Duration::millis(500)
+    let sum = d1.add(d2)
+    let diff = d1.sub(d2)
+
+    write(f"  2s + 500ms = {sum.as_millis()} ms\n")
+    write(f"  2s - 500ms = {diff.as_millis()} ms\n")
+
+    // Test comparison
+    if d1.cmp(d2) > 0 {
+        write("  2s > 500ms: correct\n")
+    } else {
+        write("  2s > 500ms: WRONG\n")
+        return 20
+    }
+
+    write("\nAll tests passed!\n")
+    return 0
+}

@@ -138,7 +138,7 @@ public partial class IrBuilder
 
     public override object? VisitVariableDeclaration([NotNull] NovusParser.VariableDeclarationContext context)
     {
-        var isMutable = context.GetChild(0)?.GetText() == "var";
+        var isMutable = context.KW_VAR() != null;
 
         // Check if this is a tuple destructuring pattern
         var tuplePatternNode = context.tuplePattern();

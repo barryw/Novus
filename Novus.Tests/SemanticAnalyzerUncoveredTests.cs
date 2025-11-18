@@ -364,9 +364,10 @@ pub fn test() -> i32 {
     [Fact]
     public void Analyze_PreIncrementImmutableVariable_ReportsError()
     {
+        // Using 'let' which is immutable by design
         var source = @"
 pub fn test() -> i32 {
-    var x: i32 = 0
+    let x: i32 = 0
     return ++x
 }";
         var diagnostics = Analyze(source);
@@ -376,9 +377,10 @@ pub fn test() -> i32 {
     [Fact]
     public void Analyze_PostDecrementImmutableVariable_ReportsError()
     {
+        // Using 'let' which is immutable by design
         var source = @"
 pub fn test() -> i32 {
-    var x: i32 = 10
+    let x: i32 = 10
     return x--
 }";
         var diagnostics = Analyze(source);

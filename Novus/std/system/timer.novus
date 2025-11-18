@@ -1,0 +1,433 @@
+// Novus Standard Library - Timer (High-Level)
+// Namespace: std::system::timer
+//
+// High-level wrappers for timer.device
+// For low-level FFI access, use std::ffi::timer_device
+
+from std::core import Option, Result, Drop
+from std::strings::core import Str
+from std::error::core import ExecError
+from std::ffi::amiga_structs import timeval, timerequest, IORequest, MsgPort, Message, IOStdReq
+from std::ffi::timer_device import AddTime, SubTime, CmpTime, GetSysTime
+from std::ffi::exec import OpenDevice, CloseDevice, DoIO, CreateIORequest, DeleteIORequest, CreateMsgPort, DeleteMsgPort
+from std::ffi::amiga_consts import UNIT_MICROHZ, UNIT_VBLANK, UNIT_ECLOCK, TR_ADDREQUEST, TR_GETSYSTIME
+
+// ============================================================================
+// Error Types
+// ============================================================================
+
+/// Errors that can occur during timer operations
+pub enum TimerError {
+    /// Failed to open timer.device
+    OpenFailed,
+    /// Out of memory (couldn't create port or IORequest)
+    NoMemory,
+    /// Timer command failed with error code
+    CommandFailed(i8),
+}
+
+// ============================================================================
+// Duration
+// ============================================================================
+
+/// Represents a duration of time
+///
+/// This is the user-facing type for time values. Internally converts to/from
+/// AmigaOS timeval structure.
+///
+/// Example:
+/// ```novus
+/// let half_second = Duration::millis(500)
+/// let two_secs = Duration::secs(2)
+/// let precise = Duration::micros(1500)  // 1.5ms
+/// ```
+pub struct Duration {
+    secs: u32,
+    micros: u32,
+}
+
+impl Duration {
+    /// Create a duration from seconds
+    pub fn secs(s: u32) -> Duration {
+        return Duration { secs: s, micros: 0 }
+    }
+
+    /// Create a duration from milliseconds
+    @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
+    pub fn millis(ms: u32) -> Duration {
+        let s = ms / 1000
+        let us = (ms % 1000) * 1000
+        return Duration { secs: s, micros: us }
+    }
+
+    /// Create a duration from microseconds
+    @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
+    pub fn micros(us: u32) -> Duration {
+        let s = us / 1000000
+        let remaining = us % 1000000
+        return Duration { secs: s, micros: remaining }
+    }
+
+    /// Create a duration from seconds and microseconds
+    @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
+    pub fn new(secs: u32, micros: u32) -> Duration {
+        // Normalize in case micros >= 1000000
+        let extra_secs = micros / 1000000
+        let normalized_micros = micros % 1000000
+        return Duration { secs: secs + extra_secs, micros: normalized_micros }
+    }
+
+    /// Create a zero duration
+    pub fn zero() -> Duration {
+        return Duration { secs: 0, micros: 0 }
+    }
+
+    /// Get the seconds component
+    pub fn get_secs(&self) -> u32 {
+        return self.secs
+    }
+
+    /// Get the microseconds component (0-999999)
+    pub fn get_micros(&self) -> u32 {
+        return self.micros
+    }
+
+    /// Get total duration in milliseconds
+    @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
+    pub fn as_millis(&self) -> u32 {
+        return self.secs * 1000 + self.micros / 1000
+    }
+
+    /// Get total duration in microseconds (may overflow for large durations)
+    @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
+    pub fn as_micros(&self) -> u32 {
+        return self.secs * 1000000 + self.micros
+    }
+
+    /// Add two durations
+    @suppress("W0001", "Comparison of u32 with integer literal is safe")
+    pub fn add(&self, other: Duration) -> Duration {
+        var total_micros = self.micros + other.micros
+        var total_secs = self.secs + other.secs
+
+        if total_micros >= 1000000 {
+            total_secs = total_secs + 1
+            total_micros = total_micros - 1000000
+        }
+
+        return Duration { secs: total_secs, micros: total_micros }
+    }
+
+    /// Subtract two durations (saturates at zero)
+    @suppress("W0001", "Arithmetic with u32 and integer literals is safe here")
+    pub fn sub(&self, other: Duration) -> Duration {
+        // Check if other is larger
+        if other.secs > self.secs {
+            return Duration::zero()
+        }
+        if other.secs == self.secs && other.micros > self.micros {
+            return Duration::zero()
+        }
+
+        var result_secs = self.secs - other.secs
+        var result_micros: u32 = 0
+
+        if other.micros > self.micros {
+            // Borrow from seconds
+            result_secs = result_secs - 1
+            result_micros = 1000000 + self.micros - other.micros
+        } else {
+            result_micros = self.micros - other.micros
+        }
+
+        return Duration { secs: result_secs, micros: result_micros }
+    }
+
+    /// Compare two durations
+    /// Returns: -1 if self < other, 0 if equal, 1 if self > other
+    pub fn cmp(&self, other: Duration) -> i32 {
+        if self.secs < other.secs {
+            return -1
+        }
+        if self.secs > other.secs {
+            return 1
+        }
+        // secs are equal, compare micros
+        if self.micros < other.micros {
+            return -1
+        }
+        if self.micros > other.micros {
+            return 1
+        }
+        return 0
+    }
+
+    /// Check if duration is zero
+    pub fn is_zero(&self) -> bool {
+        return self.secs == 0 && self.micros == 0
+    }
+
+    /// Convert to AmigaOS timeval
+    fn to_timeval(&self) -> timeval {
+        return timeval { tv_secs: self.secs, tv_micro: self.micros }
+    }
+
+    /// Create from AmigaOS timeval
+    fn from_timeval(tv: timeval) -> Duration {
+        return Duration { secs: tv.tv_secs, micros: tv.tv_micro }
+    }
+}
+
+// ============================================================================
+// Timer Handle
+// ============================================================================
+
+/// RAII wrapper for timer.device
+///
+/// Manages the complete lifecycle of a timer device:
+/// - Message port for replies
+/// - IORequest structure
+/// - Device open/close
+///
+/// Automatically cleans up all resources when dropped.
+///
+/// Example:
+/// ```novus
+/// // Create timer and delay
+/// let timer = Timer::microhz()?
+/// timer.delay(Duration::millis(100))?
+///
+/// // Get current time
+/// let now = timer.get_time()?
+///
+/// // Timer automatically closed and freed here
+/// ```
+pub struct Timer {
+    timereq: *timerequest,
+    port: *MsgPort,
+}
+
+impl Timer {
+    /// Open timer.device with microsecond precision (UNIT_MICROHZ)
+    ///
+    /// This is the most common timer unit for general delays and timing.
+    pub fn microhz() -> Result<Timer, TimerError> {
+        return Timer::open(UNIT_MICROHZ)
+    }
+
+    /// Open timer.device with VBlank precision (UNIT_VBLANK)
+    ///
+    /// Uses vertical blank interrupts for timing. Lower precision but
+    /// useful for synchronizing with display refresh (50Hz PAL, 60Hz NTSC).
+    pub fn vblank() -> Result<Timer, TimerError> {
+        return Timer::open(UNIT_VBLANK)
+    }
+
+    /// Open timer.device with EClock precision (UNIT_ECLOCK)
+    ///
+    /// Uses the system EClock for highest precision timing.
+    pub fn eclock() -> Result<Timer, TimerError> {
+        return Timer::open(UNIT_ECLOCK)
+    }
+
+    /// Open timer.device with specified unit
+    fn open(unit: u32) -> Result<Timer, TimerError> {
+        // Create message port for replies
+        let port = CreateMsgPort()
+        if (u32)port == 0 {
+            return Result::Err(TimerError::NoMemory)
+        }
+
+        // Create IORequest - size must match timerequest
+        let req = CreateIORequest(port, @sizeof(timerequest))
+        if (u32)req == 0 {
+            DeleteMsgPort(port)
+            return Result::Err(TimerError::NoMemory)
+        }
+
+        let timereq = (*timerequest)req
+
+        // Open timer.device
+        unsafe {
+            let ioreq_ptr = &timereq.tr_node
+            let ioreq = (*IORequest)ioreq_ptr
+            let error = OpenDevice("timer.device", unit, ioreq, 0)
+            if error != 0 {
+                DeleteIORequest(req)
+                DeleteMsgPort(port)
+                return Result::Err(TimerError::OpenFailed)
+            }
+        }
+
+        return Result::Ok(Timer { timereq: timereq, port: port })
+    }
+
+    /// Get the current system time
+    pub fn get_time(&self) -> Result<Duration, TimerError> {
+        self.timereq.tr_node.io_Command = TR_GETSYSTIME
+
+        let ioreq_ptr = &self.timereq.tr_node
+        let ioreq = (*IORequest)ioreq_ptr
+        let error = DoIO(ioreq)
+        if error != 0 {
+            return Result::Err(TimerError::CommandFailed(error))
+        }
+
+        return Result::Ok(Duration::from_timeval(self.timereq.tr_time))
+    }
+
+    /// Delay for a specified duration
+    ///
+    /// Blocks until the time has elapsed.
+    ///
+    /// Example:
+    /// ```novus
+    /// let timer = Timer::microhz()?
+    /// timer.delay(Duration::millis(500))?  // Wait 500ms
+    /// ```
+    pub fn delay(&self, duration: Duration) -> Result<(), TimerError> {
+        self.timereq.tr_node.io_Command = TR_ADDREQUEST
+        self.timereq.tr_time = duration.to_timeval()
+
+        let ioreq_ptr = &self.timereq.tr_node
+        let ioreq = (*IORequest)ioreq_ptr
+        let error = DoIO(ioreq)
+        if error != 0 {
+            return Result::Err(TimerError::CommandFailed(error))
+        }
+
+        return Result::Ok(())
+    }
+
+    /// Wait until a specific absolute time
+    ///
+    /// The time is relative to system boot.
+    ///
+    /// Example:
+    /// ```novus
+    /// let timer = Timer::microhz()?
+    /// let now = timer.get_time()?
+    /// let target = now.add(Duration::secs(5))
+    /// timer.wait_until(target)?  // Wait until 5 seconds from now
+    /// ```
+    pub fn wait_until(&self, time: Duration) -> Result<(), TimerError> {
+        // Get current time
+        let current_time = self.get_time()?
+
+        // Calculate delay needed
+        let delay_duration = time.sub(current_time)
+
+        // If target time has passed, return immediately
+        if delay_duration.is_zero() {
+            return Result::Ok(())
+        }
+
+        return self.delay(delay_duration)
+    }
+
+    /// Wait for a number of vertical blank frames
+    ///
+    /// Only useful with UNIT_VBLANK timer.
+    /// PAL = 50 frames/sec, NTSC = 60 frames/sec
+    ///
+    /// Example:
+    /// ```novus
+    /// let timer = Timer::vblank()?
+    /// timer.wait_frames(60)?  // Wait ~1 second (PAL) or ~1 second (NTSC)
+    /// ```
+    pub fn wait_frames(&self, count: u32) -> Result<(), TimerError> {
+        // Each VBlank is one frame
+        // We delay for 'count' seconds worth of VBlanks
+        // Since UNIT_VBLANK counts in VBlanks, secs=count gives us count VBlanks
+        self.timereq.tr_node.io_Command = TR_ADDREQUEST
+        self.timereq.tr_time = timeval { tv_secs: count, tv_micro: 0 }
+
+        let ioreq_ptr = &self.timereq.tr_node
+        let ioreq = (*IORequest)ioreq_ptr
+        let error = DoIO(ioreq)
+        if error != 0 {
+            return Result::Err(TimerError::CommandFailed(error))
+        }
+
+        return Result::Ok(())
+    }
+
+    /// Get the raw timerequest pointer for advanced FFI usage
+    pub fn handle(&self) -> *timerequest {
+        return self.timereq
+    }
+}
+
+// Automatic cleanup for Timer (RAII)
+impl Drop for Timer {
+    fn drop(&mut self) {
+        if let req = self.timereq {
+            // Close device first
+            unsafe {
+                let ioreq_ptr = &req.tr_node
+                let ioreq = (*IORequest)ioreq_ptr
+                CloseDevice(ioreq)
+            }
+
+            // Delete IORequest
+            DeleteIORequest((*u8)req)
+            self.timereq = (*timerequest)0
+        }
+
+        if let port = self.port {
+            // Delete message port
+            DeleteMsgPort(port)
+            self.port = (*MsgPort)0
+        }
+    }
+}
+
+// ============================================================================
+// Static Convenience Functions
+// ============================================================================
+
+/// Simple delay without managing a timer handle
+///
+/// Creates a timer, delays, then cleans up automatically.
+/// Convenient for one-off delays but less efficient for repeated use.
+///
+/// Example:
+/// ```novus
+/// from std::system::timer import delay, Duration
+///
+/// delay(Duration::millis(500))?  // Wait 500ms
+/// ```
+pub fn delay(duration: Duration) -> Result<(), TimerError> {
+    let timer = Timer::microhz()?
+    return timer.delay(duration)
+}
+
+/// Get the current system time without managing a timer handle
+///
+/// Convenient for one-off time checks but less efficient for repeated use.
+///
+/// Example:
+/// ```novus
+/// from std::system::timer import now
+///
+/// let current_time = now()?
+/// ```
+pub fn now() -> Result<Duration, TimerError> {
+    let timer = Timer::microhz()?
+    return timer.get_time()
+}
+
+/// Calculate elapsed time since a start point
+///
+/// Example:
+/// ```novus
+/// from std::system::timer import now, elapsed_since
+///
+/// let start = now()?
+/// // ... do work ...
+/// let elapsed = elapsed_since(start)?
+/// ```
+pub fn elapsed_since(start: Duration) -> Result<Duration, TimerError> {
+    let current = now()?
+    return Result::Ok(current.sub(start))
+}

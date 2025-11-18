@@ -2346,8 +2346,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public override IrType? VisitVariableDeclaration([NotNull] NovusParser.VariableDeclarationContext context)
     {
-        // Check if KW_MUT is present - variable is only mutable if "mut" keyword is explicitly specified
-        var isMutable = context.KW_MUT() != null;
+        // Variable is mutable if declared with 'var' (mutable by default) or with explicit 'mut' keyword
+        var isMutable = context.KW_VAR() != null || context.KW_MUT() != null;
 
         // Check if this is tuple destructuring
         var tuplePattern = context.tuplePattern();

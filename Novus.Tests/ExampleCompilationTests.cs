@@ -68,6 +68,10 @@ public class ExampleCompilationTests
         using var process = Process.Start(startInfo);
         Assert.NotNull(process);
 
+        // Read output asynchronously to avoid deadlock when buffer fills
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+
         var exited = process.WaitForExit(timeout: TimeSpan.FromSeconds(300));
 
         // If process didn't exit within timeout, kill it and fail the test
@@ -77,8 +81,8 @@ public class ExampleCompilationTests
             Assert.Fail($"Example '{exampleName}' compilation timed out after 300 seconds.");
         }
 
-        var stdout = process.StandardOutput.ReadToEnd();
-        var stderr = process.StandardError.ReadToEnd();
+        var stdout = stdoutTask.Result;
+        var stderr = stderrTask.Result;
 
         // Check that compilation succeeded
         var success = process.ExitCode == 0 && stdout.Contains("Successfully created:");

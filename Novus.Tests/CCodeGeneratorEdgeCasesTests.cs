@@ -464,4 +464,132 @@ pub fn zero_array() -> i32 {
         // Should generate array with zeros
         Assert.Contains("int32_t", code);
     }
+
+    [Fact]
+    public void CCodeGen_ChainedFieldAccess_StoreToNestedField_GeneratesDirectAccess()
+    {
+        // This test verifies the fix for the critical bug where storing to a nested field
+        // through pointer indirection created a temporary copy instead of direct access.
+        // The bug caused code like: self.timereq.tr_node.io_Command = 11
+        // to generate: IORequest _t1 = self->timereq->tr_node; _t1.io_Command = 11;
+        // instead of: self->timereq->tr_node.io_Command = 11;
+        var source = @"
+struct Inner {
+    value: i32,
+}
+
+struct Outer {
+    inner: Inner,
+}
+
+struct Container {
+    outer: *Outer,
+}
+
+impl Container {
+    pub fn set_value(&mut self, v: i32) {
+        self.outer.inner.value = v
+    }
+}";
+
+        var module = BuildIR(source);
+        var code = GenerateCCode(module);
+
+        // The generated code should store directly to the nested field without storing to a temporary copy
+        // Since we track field access chains, the store should go to the original location
+        // The pattern is: (pointer_to_outer)->inner.value = v
+        // which may use an intermediate variable for the pointer (e.g., _field_outer_0->inner.value)
+        Assert.Contains("->inner.value =", code);
+
+        // Critically, the value should NOT be stored to a temporary Inner copy
+        // The bug was: Inner _t = ptr->inner; _t.value = v; (modifies copy)
+        // Fixed: ptr->inner.value = v; (modifies original)
+        // Check that the store is NOT to a plain identifier followed by .value
+        // The store MUST go through a pointer dereference (->)
+        var lines = code.Split('\n');
+        bool foundCorrectStore = false;
+        foreach (var line in lines)
+        {
+            if (line.Contains(".value ="))
+            {
+                // This should be ptr->inner.value = v, not _tempVar.value = v
+                foundCorrectStore = line.Contains("->inner.value =");
+                if (!foundCorrectStore && line.Trim().StartsWith("_"))
+                {
+                    // If it's storing to _tempVar.value, that's the bug
+                    Assert.Fail($"Store goes to temporary copy instead of original: {line}");
+                }
+            }
+        }
+        Assert.True(foundCorrectStore, "Should have a store to nested field through pointer");
+
+        // Note: We still generate the IrMemberAccess for inner (which creates a temp copy),
+        // but we don't USE that copy for the store - we reconstruct the chain instead.
+    }
+
+    [Fact]
+    public void CCodeGen_ChainedFieldAccess_AddressOfNestedField_GeneratesDirectAddress()
+    {
+        // This test verifies the fix for taking address of a nested field through pointer indirection.
+        // The bug caused code like: &self.timereq.tr_node
+        // to generate: IORequest _t1 = self->timereq->tr_node; &_t1
+        // instead of: &(self->timereq->tr_node)
+        var source = @"
+struct Inner {
+    value: i32,
+}
+
+struct Outer {
+    inner: Inner,
+}
+
+struct Container {
+    outer: *Outer,
+}
+
+fn takes_inner_ptr(p: *Inner) {
+    // empty
+}
+
+impl Container {
+    pub fn pass_inner(&mut self) {
+        takes_inner_ptr(&self.outer.inner)
+    }
+}";
+
+        var module = BuildIR(source);
+        var code = GenerateCCode(module);
+
+        // The generated code should take the address of the field directly
+        // It should contain &(...->outer->inner) or similar pattern
+        // Note: The exact pattern depends on how the chain is reconstructed
+        // It might be &(self->outer->inner) or &(_field_outer_0->inner)
+        Assert.Contains("&(", code);
+        // Check for the pattern of taking address of a nested field
+        Assert.True(code.Contains("->inner)") || code.Contains("->outer->inner)"),
+            $"Should have address-of nested field pattern. Generated code: {code}");
+    }
+
+    [Fact]
+    public void CCodeGen_SimpleFieldAccess_StoresDirectly()
+    {
+        // Test single-level field access to ensure we didn't break simple cases
+        var source = @"
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+impl Point {
+    pub fn set_x(&mut self, v: i32) {
+        self.x = v
+    }
+}";
+
+        var module = BuildIR(source);
+        var code = GenerateCCode(module);
+
+        // Should generate direct field store
+        Assert.Contains("->x =", code);
+    }
 }
