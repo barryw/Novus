@@ -41,6 +41,9 @@ public class CompilerOptions
     [Option('v', "verbose", Required = false, HelpText = "Verbose output")]
     public bool Verbose { get; set; }
 
+    [Option("release", Required = false, HelpText = "Build in release mode (optimized, no debug symbols)")]
+    public bool Release { get; set; }
+
     [Option("safety-level", Required = false, HelpText = "Safety level (0=unsafe, 1=basic, 2=full, 3=paranoid). Default: 2 for debug, 1 for release")]
     public int? SafetyLevelOption { get; set; }
 

@@ -304,7 +304,8 @@ public static class StdlibBuildCommand
                 tempCFile,
                 outputFile,
                 cpu,
-                optimizationLevel);
+                optimizationLevel,
+                buildMode);
             var result = success ? 0 : 1;
 
             // Clean up temporary C file (keep it for debugging if verbose)

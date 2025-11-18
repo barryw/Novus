@@ -487,6 +487,12 @@ class Program
         // Compute safety level from command-line options
         var safetyLevel = options.GetSafetyLevel();
 
+        // Set build mode from --release flag
+        if (options.Release)
+        {
+            options.BuildMode = BuildMode.Release;
+        }
+
         try
         {
             // Read source file
@@ -1253,7 +1259,7 @@ class Program
                             var objFile = Path.Combine(outputDir, cFileName + ".o");
                             Console.WriteLine($"    → {Path.GetFileName(cFile)}");
 
-                            if (!await toolchain.CompileToObject(cFile, objFile, assemblyCpu, options.OptimizationLevel))
+                            if (!await toolchain.CompileToObject(cFile, objFile, assemblyCpu, options.OptimizationLevel, options.BuildMode))
                             {
                                 Console.WriteLine($"\n✗ Failed to compile {Path.GetFileName(cFile)}");
                                 return 1;
@@ -1275,7 +1281,7 @@ class Program
                     var objFile = Path.Combine(outputDir, Path.GetFileNameWithoutExtension(cFile) + ".o");
 
                     Console.WriteLine($"  → {cFileName}");
-                    if (!await toolchain.CompileToObject(cFile, objFile, assemblyCpu, options.OptimizationLevel))
+                    if (!await toolchain.CompileToObject(cFile, objFile, assemblyCpu, options.OptimizationLevel, options.BuildMode))
                     {
                         Console.WriteLine($"\n✗ Failed to compile {cFileName}");
                         return 1;
@@ -1410,7 +1416,7 @@ class Program
                         var cFileName = Path.GetFileName(cFile);
 
                         // Compile
-                        var success = await toolchain.CompileToObject(cFile, objFile, assemblyCpu, options.OptimizationLevel);
+                        var success = await toolchain.CompileToObject(cFile, objFile, assemblyCpu, options.OptimizationLevel, options.BuildMode);
                         if (!success)
                         {
                             return (success: false, cFileName, objFile, cFile, cacheInfo: (string.Empty, string.Empty));
@@ -1514,7 +1520,8 @@ class Program
                 exeFile,
                 options.Fpu,
                 includeStartup: false,  // startup already in objectFiles
-                isLibrary: isLibrary || isDevice  // libraries and devices need relocations
+                isLibrary: isLibrary || isDevice,  // libraries and devices need relocations
+                buildMode: options.BuildMode
             );
 
             if (success)

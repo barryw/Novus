@@ -139,17 +139,22 @@ public class VbccToolchain
     /// <summary>
     /// Link object files to create an Amiga executable using vlink
     /// </summary>
-    public async Task<bool> Link(string[] objFiles, string outputFile, string fpuMode = "auto", bool includeStartup = true, bool isLibrary = false)
+    public async Task<bool> Link(string[] objFiles, string outputFile, string fpuMode = "auto", bool includeStartup = true, bool isLibrary = false, BuildMode buildMode = BuildMode.Debug)
     {
         var vlinkPath = Path.Combine(_vbccPath, "bin", "vlink");
 
         var args = new List<string>
         {
             "-bamigahunk",      // Amiga HUNK format
-            "-g",               // DEBUG: Preserve debug symbols
-            "-M",               // DEBUG: Generate map file
             "-o", outputFile    // Output executable
         };
+
+        // Debug symbols and map file only in debug mode
+        if (buildMode == BuildMode.Debug)
+        {
+            args.Insert(1, "-g");   // Preserve debug symbols
+            args.Insert(2, "-M");   // Generate map file
+        }
 
         // Add linker flags (library-specific behavior)
         args.Add("-x");  // Discard local symbols
@@ -262,22 +267,31 @@ public class VbccToolchain
         string cFile,
         string objFile,
         string cpu = "68020",
-        int optimization = 0)
+        int optimization = 0,
+        BuildMode buildMode = BuildMode.Debug)
     {
         var vcPath = Path.Combine(_vbccPath, "bin", "vc");
+
+        // Determine optimization level based on build mode
+        var optLevel = buildMode == BuildMode.Release ? Math.Max(optimization, 2) : 0;
 
         var args = new List<string>
         {
             "+aos68k",          // Target AmigaOS 2.0+ (68020+)
             "-c99",             // Enable C99 standard
             $"-cpu={cpu}",      // CPU target
-            "-O=0",             // DEBUG: Disable all optimizations for debugging
-            "-g",               // DEBUG: Enable debug symbols
+            $"-O={optLevel}",   // Optimization level
             "-use-framepointer", // CRITICAL: Force frame pointer (A6) for all functions to fix stack offset bugs
             "-c",               // Compile only, don't link
             "-o", objFile,      // Output object file
             cFile               // Input C file
         };
+
+        // Debug symbols only in debug mode
+        if (buildMode == BuildMode.Debug)
+        {
+            args.Insert(4, "-g");
+        }
 
         // Don't print here - caller will show progress
         return await RunTool(vcPath, args);
@@ -291,21 +305,30 @@ public class VbccToolchain
         List<string> objectFiles,
         string outputPath,
         string cpu = "68020",
-        int optimization = 2)
+        int optimization = 2,
+        BuildMode buildMode = BuildMode.Debug)
     {
         var vcPath = Path.Combine(_vbccPath, "bin", "vc");
+
+        // Determine optimization level based on build mode
+        var optLevel = buildMode == BuildMode.Release ? Math.Max(optimization, 2) : 0;
 
         var args = new List<string>
         {
             "+aos68k",          // Target AmigaOS 2.0+ (68020+)
             "-c99",             // Enable C99 standard
             $"-cpu={cpu}",      // CPU target
-            "-O=0",             // DEBUG: Disable all optimizations for debugging
-            "-g",               // DEBUG: Enable debug symbols
+            $"-O={optLevel}",   // Optimization level
             "-use-framepointer", // CRITICAL: Force frame pointer (A6) for all functions to fix stack offset bugs
             "-nostdlib",        // Don't use standard library startup
             "-o", outputPath    // Output file
         };
+
+        // Debug symbols only in debug mode
+        if (buildMode == BuildMode.Debug)
+        {
+            args.Insert(4, "-g");
+        }
 
         // CRITICAL: Add pre-assembled object files FIRST
         // novus_startup.o MUST come before C code so _start is at CODE+0
