@@ -10,11 +10,11 @@ pub fn main() -> i32 {
     outer1: while true {
         let mut inner: i32 = 0
         while inner < 5 {
-            count1 = count1 + 1
+            count1++
             if count1 == 7 {
                 break outer1  // Break outer loop when count reaches 7
             }
-            inner = inner + 1
+            inner++
         }
     }
     if count1 != 7 {
@@ -27,14 +27,14 @@ pub fn main() -> i32 {
     let mut sum2: i32 = 0
     let mut i: i32 = 0
     outer2: while i < 5 {
-        i = i + 1
+        i++
         let mut j: i32 = 0
         while j < 3 {
-            j = j + 1
+            j++
             if i == 3 && j == 2 {
                 continue outer2  // Skip rest of inner loop and continue outer
             }
-            sum2 = sum2 + 1
+            sum2++
         }
     }
     // Without continue: 5 * 3 = 15
@@ -49,7 +49,7 @@ pub fn main() -> i32 {
     let mut count3: i32 = 0
     outer3: forever {
         forever {
-            count3 = count3 + 1
+            count3++
             if count3 >= 10 {
                 break outer3  // Break both loops
             }
@@ -66,8 +66,8 @@ pub fn main() -> i32 {
     outer4: while true {
         let mut k: i32 = 0
         while k < 100 {
-            count4 = count4 + 1
-            k = k + 1
+            count4++
+            k++
             break outer4 if count4 == 5  // Break outer when count is 5
         }
     }
@@ -83,8 +83,8 @@ pub fn main() -> i32 {
         middle: while true {
             let mut x: i32 = 0
             while x < 3 {
-                x = x + 1
-                result5 = result5 + 1
+                x++
+                result5++
                 if result5 == 3 {
                     break middle  // Break middle, continue outer
                 }

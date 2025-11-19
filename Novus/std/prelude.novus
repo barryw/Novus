@@ -1,0 +1,22 @@
+// Novus Standard Library - Prelude
+// Namespace: std::prelude
+//
+// Common types and traits that are frequently used across Novus programs.
+// Import all at once with:
+// ```novus
+// from std::prelude import *
+// ```
+//
+// Or import specific types:
+// ```novus
+// from std::prelude import Option, Result, Str
+// ```
+
+// Re-export core types and traits
+pub use std::core::Option, Result, Drop, From
+
+// Re-export string types
+pub use std::strings::core::Str
+
+// Re-export error types
+pub use std::error::core::DosError, ExecError, IntuitionError, GraphicsError, NovusError

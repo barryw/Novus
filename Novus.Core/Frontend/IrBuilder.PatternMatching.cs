@@ -170,10 +170,11 @@ public partial class IrBuilder
         // Extract tag from enum value (before declaring match result, so it appears first)
         // Only needed for enum matches
         IrVariable? tagVar = null;
+        IrValue? enumValueForExtract = null;  // For extracting variant data later
         if (isEnumMatch)
         {
             // If matchValue is a pointer/reference to an enum, we need to dereference it first
-            IrValue enumValueForExtract = matchValue;
+            enumValueForExtract = matchValue;
             if (matchValue.Type is IrPointerType || matchValue.Type is IrReferenceType || matchValue.Type is IrMutReferenceType)
             {
                 // Create a dereference value - use the resolved enum type
@@ -423,9 +424,10 @@ public partial class IrBuilder
                             var bindingName = idPattern.IDENTIFIER().GetText();
                             var dataType = variant!.AssociatedData[dataIdx];
 
-                            // Extract the data
+                            // Extract the data - use enumValueForExtract which has the proper enum type
+                            // (dereferenced if matchValue was a pointer/reference)
                             var extractName = $"%t{_tempCounter++}";
-                            _currentBlock!.AddInstruction(new IrExtractVariantData(extractName, matchValue, variantName, dataIdx, dataType));
+                            _currentBlock!.AddInstruction(new IrExtractVariantData(extractName, enumValueForExtract!, variantName, dataIdx, dataType));
 
                             // Store in a local variable
                             var localVar = new IrLocalVariable(bindingName, dataType, false);

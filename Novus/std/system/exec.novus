@@ -14,6 +14,8 @@ from std::ffi::exec import AllocMem, FreeMem, AllocVec, FreeVec, CopyMem
 from std::ffi::exec import FindTask, SetTaskPri, AllocSignal, FreeSignal, Wait, Signal
 from std::ffi::exec import Forbid, Permit, Disable, Enable
 from std::ffi::exec import CreateMsgPort, DeleteMsgPort, GetMsg, PutMsg, ReplyMsg
+from std::ffi::exec import InitSemaphore, ObtainSemaphore, ReleaseSemaphore, AttemptSemaphore, ObtainSemaphoreShared, AttemptSemaphoreShared
+from std::ffi::exec import __novus_init_semaphore, __novus_obtain_semaphore, __novus_release_semaphore, __novus_attempt_semaphore, __novus_obtain_semaphore_shared, __novus_attempt_semaphore_shared
 from std::ffi::amiga_consts import MEMF_ANY, MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, MEMF_LOCAL, MEMF_24BITDMA, MEMF_KICK, MEMF_CLEAR, MEMF_LARGEST, MEMF_REVERSE
 
 // ============================================================================
@@ -232,7 +234,7 @@ pub fn enable() {
 // RAII Resource Wrappers (Automatic Cleanup)
 // ============================================================================
 
-/// Signal - RAII wrapper for Exec signal bits
+/// SignalHandle - RAII wrapper for Exec signal bits
 ///
 /// Automatically frees the signal when it goes out of scope.
 /// This prevents signal exhaustion (only 16 user signals available per task).
@@ -240,7 +242,7 @@ pub fn enable() {
 /// Example:
 /// ```novus
 /// fn wait_for_event() -> Result<(), ExecError> {
-///     let signal = Signal::alloc()?;
+///     let signal = SignalHandle::alloc()?;
 ///     let mask = signal.mask();
 ///
 ///     // Wait for event
@@ -249,18 +251,18 @@ pub fn enable() {
 ///     // Signal automatically freed here!
 /// }
 /// ```
-pub struct Signal {
+pub struct SignalHandle {
     sigbit: i8,  // Signal bit number (-1 = invalid)
 }
 
-impl Signal {
+impl SignalHandle {
     /// Allocate a signal bit
     ///
     /// Returns Err if no signals are available (limit of 16 user signals).
     @suppress("W0002", "Safe: AllocSignal returns -1 or 0-31, which fits in i8 range (-128 to 127)")
-    pub fn alloc() -> Result<Signal, ExecError> {
+    pub fn alloc() -> Result<SignalHandle, ExecError> {
         let sigbit = AllocSignal(-1)
-        return sigbit == -1 ? Result::Err(ExecError::BadSignal) : Result::Ok(Signal { sigbit: sigbit })
+        return sigbit == -1 ? Result::Err(ExecError::BadSignal) : Result::Ok(SignalHandle { sigbit: sigbit })
     }
 
     /// Get the signal bit number (0-31)
@@ -268,14 +270,14 @@ impl Signal {
         return self.sigbit
     }
 
-    /// Create Signal from raw signal bit (takes ownership)
+    /// Create SignalHandle from raw signal bit (takes ownership)
     ///
-    /// The signal will be automatically freed when the Signal is dropped.
+    /// The signal will be automatically freed when the SignalHandle is dropped.
     /// Only use this if you own the signal and it should be freed.
     ///
     /// DO NOT use for system signals like SIGBREAKF_CTRL_C.
-    pub fn from_raw(sigbit: i8) -> Signal {
-        return Signal { sigbit: sigbit }
+    pub fn from_raw(sigbit: i8) -> SignalHandle {
+        return SignalHandle { sigbit: sigbit }
     }
 
     /// Extract raw signal bit and prevent automatic free
@@ -321,8 +323,8 @@ impl Signal {
     }
 }
 
-// Automatic cleanup for Signal (RAII)
-impl Drop for Signal {
+// Automatic cleanup for SignalHandle (RAII)
+impl Drop for SignalHandle {
     fn drop(&mut self) {
         if self.sigbit >= 0 {
             FreeSignal(self.sigbit)
@@ -397,9 +399,8 @@ impl MsgPortHandle {
     ///
     /// Returns None if no messages are waiting.
     pub fn get_msg(&self) -> Option<*Message> {
-        let msg = GetMsg(self.port)
-        if let m = msg {
-            return Option::Some(m)
+        if let msg = GetMsg(self.port) {
+            return Option::Some(msg)
         }
         return Option::None
     }
@@ -444,6 +445,151 @@ impl Drop for MsgPortHandle {
             // Now safe to delete the port
             DeleteMsgPort(p)
             self.port = (*MsgPort)0
+        }
+    }
+}
+
+// ============================================================================
+// Semaphores
+// ============================================================================
+
+/// SemaphoreHandle - RAII wrapper for Exec signal semaphores
+///
+/// Provides mutual exclusion for shared resources between tasks.
+/// Use `obtain()` or `try_obtain()` to get a SemaphoreGuard that
+/// automatically releases the semaphore when dropped.
+///
+/// Example:
+/// ```novus
+/// from std::exec import SemaphoreHandle
+///
+/// fn use_shared_resource() {
+///     match SemaphoreHandle::new() {
+///         Some(sem) => {
+///             let guard = sem.obtain();  // Blocks until semaphore is available
+///             // Critical section - exclusive access to shared resource
+///             // ...
+///         }  // Semaphore automatically released here
+///         None => {
+///             // Failed to allocate semaphore
+///         }
+///     }
+/// }
+/// ```
+pub struct SemaphoreHandle {
+    sem: *u8,  // Pointer to allocated semaphore (void* to avoid FFI type in header)
+}
+
+impl SemaphoreHandle {
+    /// Create a new semaphore
+    ///
+    /// Returns Some(handle) on success, None if allocation fails.
+    /// The semaphore starts in the "available" state.
+    pub fn new() -> Option<SemaphoreHandle> {
+        // Allocate zeroed memory for the semaphore
+        let sem_size: u32 = @sizeof(SignalSemaphore)
+        var sem_mem: *u8 = (*u8)0
+        unsafe {
+            sem_mem = AllocMem(sem_size, MEMF_PUBLIC | MEMF_CLEAR)
+        }
+
+        // Check allocation
+        if (u32)sem_mem == 0 {
+            return Option::None
+        }
+
+        // Initialize the semaphore - pass raw pointer, FFI declaration handles the type
+        unsafe {
+            __novus_init_semaphore(sem_mem)
+        }
+
+        return Option::Some(SemaphoreHandle { sem: sem_mem })
+    }
+
+    /// Obtain exclusive access to the semaphore (blocking)
+    ///
+    /// Blocks until the semaphore is available. Returns a guard that
+    /// automatically releases the semaphore when dropped.
+    ///
+    /// Semaphores can be nested - the same task can obtain the same
+    /// semaphore multiple times (must release the same number of times).
+    pub fn obtain(&self) -> SemaphoreGuard {
+        unsafe {
+            __novus_obtain_semaphore(self.sem)
+        }
+        return SemaphoreGuard { sem: self.sem }
+    }
+
+    /// Try to obtain exclusive access without blocking
+    ///
+    /// Returns Some(guard) if successful, None if semaphore is held by another task.
+    pub fn try_obtain(&self) -> Option<SemaphoreGuard> {
+        var result: i32 = 0
+        unsafe {
+            result = __novus_attempt_semaphore(self.sem)
+        }
+        if result != 0 {
+            return Option::Some(SemaphoreGuard { sem: self.sem })
+        }
+        return Option::None
+    }
+
+    /// Obtain shared (read) access to the semaphore (blocking)
+    ///
+    /// Multiple tasks can hold shared access simultaneously.
+    /// Blocks if another task holds exclusive access.
+    pub fn obtain_shared(&self) -> SemaphoreGuard {
+        unsafe {
+            __novus_obtain_semaphore_shared(self.sem)
+        }
+        return SemaphoreGuard { sem: self.sem }
+    }
+
+    /// Try to obtain shared (read) access without blocking
+    ///
+    /// Returns Some(guard) if successful, None if semaphore is exclusively held.
+    pub fn try_obtain_shared(&self) -> Option<SemaphoreGuard> {
+        var result: i32 = 0
+        unsafe {
+            result = __novus_attempt_semaphore_shared(self.sem)
+        }
+        if result != 0 {
+            return Option::Some(SemaphoreGuard { sem: self.sem })
+        }
+        return Option::None
+    }
+}
+
+// Automatic cleanup for SemaphoreHandle (RAII)
+impl Drop for SemaphoreHandle {
+    fn drop(&mut self) {
+        if (u32)self.sem != 0 {
+            // Free the allocated semaphore memory
+            let sem_size: u32 = @sizeof(SignalSemaphore)
+            unsafe {
+                FreeMem(self.sem, sem_size)
+            }
+            self.sem = (*u8)0
+        }
+    }
+}
+
+/// SemaphoreGuard - RAII guard for automatic semaphore release
+///
+/// When dropped, automatically releases the semaphore.
+/// This ensures you can't forget to release the semaphore.
+pub struct SemaphoreGuard {
+    sem: *u8,  // Pointer to semaphore (non-owning, void* to avoid FFI type in header)
+}
+
+// Automatic release for SemaphoreGuard (RAII)
+impl Drop for SemaphoreGuard {
+    fn drop(&mut self) {
+        if (u32)self.sem != 0 {
+            unsafe {
+                __novus_release_semaphore(self.sem)
+            }
+            self.sem = (*u8)0
         }
     }
 }

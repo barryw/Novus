@@ -111,7 +111,7 @@ impl Duration {
         var total_secs = self.secs + other.secs
 
         if total_micros >= 1000000 {
-            total_secs = total_secs + 1
+            total_secs++
             total_micros = total_micros - 1000000
         }
 
@@ -134,7 +134,7 @@ impl Duration {
 
         if other.micros > self.micros {
             // Borrow from seconds
-            result_secs = result_secs - 1
+            result_secs--
             result_micros = 1000000 + self.micros - other.micros
         } else {
             result_micros = self.micros - other.micros

@@ -949,8 +949,8 @@ public class CCodeGenerator
             var sanitizedName = SanitizeVariableName(varName);
             if (!localDeclVars.ContainsKey(sanitizedName))
             {
-                var cType = GetCType(varType);
-                targetBuilder.AppendLine($"    {cType} {sanitizedName};  // Pre-declared for defer cleanup");
+                var decl = GetCVariableDeclaration(varType, sanitizedName);
+                targetBuilder.AppendLine($"    {decl};  // Pre-declared for defer cleanup");
                 _declaredVariables.Add(sanitizedName);
                 localDeclVars[sanitizedName] = (varType, false, 0);  // Mark as declared to avoid double-declaration
             }
@@ -975,6 +975,7 @@ public class CCodeGenerator
             }
             else
             {
+                var decl = GetCVariableDeclaration(varType, varName);
                 var cType = GetCType(varType);
 
                 // CRITICAL FIX FOR 68K ALIGNMENT:
@@ -983,11 +984,11 @@ public class CCodeGenerator
                 // odd addresses, causing guru meditation 81000005 (odd-address access error).
                 if (varType is IrEnumType || varType is IrStructType)
                 {
-                    targetBuilder.AppendLine($"    {cType} {varName}; __novus_memset(&{varName}, 0, sizeof({cType}));");
+                    targetBuilder.AppendLine($"    {decl}; __novus_memset(&{varName}, 0, sizeof({cType}));");
                 }
                 else
                 {
-                    targetBuilder.AppendLine($"    {cType} {varName};");
+                    targetBuilder.AppendLine($"    {decl};");
                 }
             }
             _declaredVariables.Add(varName);
@@ -999,16 +1000,17 @@ public class CCodeGenerator
         {
             if (!localDeclVars.ContainsKey(varName))
             {
+                var decl = GetCVariableDeclaration(varType, varName);
                 var cType = GetCType(varType);
 
                 // CRITICAL FIX FOR 68K ALIGNMENT (same as above)
                 if (varType is IrEnumType || varType is IrStructType)
                 {
-                    targetBuilder.AppendLine($"    {cType} {varName}; __novus_memset(&{varName}, 0, sizeof({cType}));");
+                    targetBuilder.AppendLine($"    {decl}; __novus_memset(&{varName}, 0, sizeof({cType}));");
                 }
                 else
                 {
-                    targetBuilder.AppendLine($"    {cType} {varName};");
+                    targetBuilder.AppendLine($"    {decl};");
                 }
                 _declaredVariables.Add(varName);
             }
@@ -2947,6 +2949,7 @@ public class CCodeGenerator
             }
             else
             {
+                var decl = GetCVariableDeclaration(varType, varName);
                 var cType = GetCType(varType);
 
                 // CRITICAL FIX FOR 68K ALIGNMENT:
@@ -2955,11 +2958,11 @@ public class CCodeGenerator
                 // odd addresses, causing guru meditation 81000005 (odd-address access error).
                 if (varType is IrEnumType || varType is IrStructType)
                 {
-                    _output.AppendLine($"    {cType} {varName}; __novus_memset(&{varName}, 0, sizeof({cType}));");
+                    _output.AppendLine($"    {decl}; __novus_memset(&{varName}, 0, sizeof({cType}));");
                 }
                 else
                 {
-                    _output.AppendLine($"    {cType} {varName};");
+                    _output.AppendLine($"    {decl};");
                 }
             }
             _declaredVariables.Add(varName);
@@ -2971,16 +2974,17 @@ public class CCodeGenerator
         {
             if (!localDeclVars.ContainsKey(varName))
             {
+                var decl = GetCVariableDeclaration(varType, varName);
                 var cType = GetCType(varType);
 
                 // CRITICAL FIX FOR 68K ALIGNMENT (same as above)
                 if (varType is IrEnumType || varType is IrStructType)
                 {
-                    _output.AppendLine($"    {cType} {varName}; __novus_memset(&{varName}, 0, sizeof({cType}));");
+                    _output.AppendLine($"    {decl}; __novus_memset(&{varName}, 0, sizeof({cType}));");
                 }
                 else
                 {
-                    _output.AppendLine($"    {cType} {varName};");
+                    _output.AppendLine($"    {decl};");
                 }
                 _declaredVariables.Add(varName);
             }
@@ -3287,8 +3291,8 @@ public class CCodeGenerator
             {
                 // Declare Str variable uninitialized, then assign fields individually
                 // This avoids VBCC placing compound literal temporaries at odd addresses
-                var cType = GetCType(localDecl.Type);
-                _output.AppendLine($"    {cType} {varName};");
+                var decl = GetCVariableDeclaration(localDecl.Type, varName);
+                _output.AppendLine($"    {decl};");
                 foreach (var kvp in strLit.FieldValues)
                 {
                     var fieldValue = EmitValue(kvp.Value);
@@ -3297,15 +3301,16 @@ public class CCodeGenerator
             }
             else
             {
+                var decl = GetCVariableDeclaration(localDecl.Type, varName);
                 var cType = GetCType(localDecl.Type);
                 var initType = GetCType(localDecl.InitialValue.Type);
                 if (initType != cType)
                 {
-                    _output.AppendLine($"    {cType} {varName} = ({cType}){initValue};");
+                    _output.AppendLine($"    {decl} = ({cType}){initValue};");
                 }
                 else
                 {
-                    _output.AppendLine($"    {cType} {varName} = {initValue};");
+                    _output.AppendLine($"    {decl} = {initValue};");
                 }
             }
             _declaredVariables.Add(varName);
@@ -3509,11 +3514,11 @@ public class CCodeGenerator
         if (shouldUseOutParam && call.ResultName != null)
         {
             // Use output parameter pattern: void func(Result* out, args...)
-            var cType = GetCType(call.ReturnType);
             var resultName = SanitizeVariableName(call.ResultName);
+            var decl = GetCVariableDeclaration(call.ReturnType, resultName);
 
             // Declare result variable
-            _output.AppendLine($"    {cType} {resultName};");
+            _output.AppendLine($"    {decl};");
 
             // Call function with output parameter
             var allArgs = new List<string> { $"&{resultName}" };
@@ -3528,9 +3533,9 @@ public class CCodeGenerator
 
             if (call.ResultName != null && call.ReturnType is not IrVoidType)
             {
-                var cType = GetCType(call.ReturnType);
                 var resultName = SanitizeVariableName(call.ResultName);
-                _output.AppendLine($"    {cType} {resultName} = {callExpr};");
+                var decl = GetCVariableDeclaration(call.ReturnType, resultName);
+                _output.AppendLine($"    {decl} = {callExpr};");
             }
             else
             {
@@ -3549,9 +3554,9 @@ public class CCodeGenerator
 
         if (call.ResultName != null && call.ReturnType is not IrVoidType)
         {
-            var cType = GetCType(call.ReturnType);
             var resultName = SanitizeVariableName(call.ResultName);
-            _output.AppendLine($"    {cType} {resultName} = {callExpr};");
+            var decl = GetCVariableDeclaration(call.ReturnType, resultName);
+            _output.AppendLine($"    {decl} = {callExpr};");
         }
         else
         {
@@ -3850,8 +3855,8 @@ public class CCodeGenerator
         if (match.ResultName != null && match.ResultType != null)
         {
             var resultVarName = SanitizeVariableName(match.ResultName);
-            var resultType = GetCType(match.ResultType);
-            _output.AppendLine($"    {resultType} {resultVarName};");
+            var decl = GetCVariableDeclaration(match.ResultType, resultVarName);
+            _output.AppendLine($"    {decl};");
 
             // Track that we've declared this variable
             _declaredVariables.Add(resultVarName);
@@ -3881,8 +3886,8 @@ public class CCodeGenerator
 
                     if (i < variant.AssociatedData.Count)
                     {
-                        var dataType = GetCType(variant.AssociatedData[i]);
-                        _output.AppendLine($"        {dataType} {boundVar} = {matchValue}.data.{variantPattern.VariantName}._{i};");
+                        var decl = GetCVariableDeclaration(variant.AssociatedData[i], boundVar);
+                        _output.AppendLine($"        {decl} = {matchValue}.data.{variantPattern.VariantName}._{i};");
                     }
                 }
 
@@ -4599,10 +4604,101 @@ public class CCodeGenerator
 
     internal string EmitSizeOf(IrSizeOf sizeOf)
     {
-        // Emit C's sizeof() operator - this delegates size calculation to VBCC
-        // which correctly handles struct padding and alignment
+        // Compute size at compile time for known types
+        // This is necessary because FFI types may not be available in generated C headers
+        var size = CalculateTypeSize(sizeOf.TargetType);
+        if (size > 0)
+        {
+            return size.ToString();
+        }
+
+        // Fallback to C's sizeof() for types we can't compute
         var typeName = GetCType(sizeOf.TargetType);
         return $"sizeof({typeName})";
+    }
+
+    /// <summary>
+    /// Calculate the size of a type in bytes for 68k architecture.
+    /// Uses 2-byte alignment for fields > 1 byte (typical 68k ABI).
+    /// Returns 0 if the size cannot be determined.
+    /// </summary>
+    private int CalculateTypeSize(IrType type)
+    {
+        return type switch
+        {
+            IrIntType it => it.BitWidth / 8,
+            IrBoolType => 1,
+            IrPointerType => 4,
+            IrFloatType ft => ft.BitWidth / 8,
+            IrFixedType fxt => fxt.BitWidth / 8,
+            IrArrayType at => CalculateTypeSize(at.ElementType) * at.Length,
+            IrStructType st => CalculateStructSize(st),
+            IrEnumType et => CalculateEnumSize(et),
+            _ => 0 // Unknown type, fallback to sizeof()
+        };
+    }
+
+    /// <summary>
+    /// Calculate struct size with 68k alignment (2-byte for fields > 1 byte).
+    /// </summary>
+    private int CalculateStructSize(IrStructType structType)
+    {
+        int offset = 0;
+        int maxAlignment = 1;
+
+        foreach (var field in structType.Fields)
+        {
+            var fieldSize = CalculateTypeSize(field.Type);
+            if (fieldSize == 0) return 0; // Can't compute
+
+            // Get field alignment (min of field size and 2 for 68k)
+            int fieldAlign = Math.Min(fieldSize, 2);
+            if (fieldSize >= 4) fieldAlign = 2; // 68k typically uses 2-byte alignment
+
+            maxAlignment = Math.Max(maxAlignment, fieldAlign);
+
+            // Align offset
+            if (fieldAlign > 1 && offset % fieldAlign != 0)
+            {
+                offset += fieldAlign - (offset % fieldAlign);
+            }
+
+            offset += fieldSize;
+        }
+
+        // Align struct to its maximum alignment
+        if (maxAlignment > 1 && offset % maxAlignment != 0)
+        {
+            offset += maxAlignment - (offset % maxAlignment);
+        }
+
+        return offset;
+    }
+
+    /// <summary>
+    /// Calculate enum size (tag + largest variant data).
+    /// </summary>
+    private int CalculateEnumSize(IrEnumType enumType)
+    {
+        int tagSize = 4; // u32 tag
+        int maxDataSize = 0;
+
+        foreach (var variant in enumType.Variants)
+        {
+            int variantSize = 0;
+            if (variant.HasAssociatedData && variant.AssociatedData != null)
+            {
+                foreach (var dataType in variant.AssociatedData)
+                {
+                    var fieldSize = CalculateTypeSize(dataType);
+                    if (fieldSize == 0) return 0; // Can't compute
+                    variantSize += fieldSize;
+                }
+            }
+            maxDataSize = Math.Max(maxDataSize, variantSize);
+        }
+
+        return tagSize + maxDataSize;
     }
 
     internal string EmitFloatConstant(IrFloatConstant floatConst)
@@ -4816,6 +4912,80 @@ public class CCodeGenerator
             ? string.Join(", ", fpType.ParameterTypes.Select(GetCType))
             : "void";
         return $"{returnType} (*)({paramTypes})";
+    }
+
+    /// <summary>
+    /// Generate a C variable declaration, handling function pointer types correctly.
+    /// Function pointer syntax in C requires the variable name inside parentheses:
+    ///   int32_t (*callback)(int32_t, int32_t)  // correct
+    ///   int32_t (*)(int32_t, int32_t) callback // incorrect
+    ///
+    /// For pointers to function pointers:
+    ///   int32_t (**callback)(int32_t)  // correct (pointer to function pointer)
+    ///   int32_t (*)(int32_t)* callback // incorrect
+    /// </summary>
+    internal string GetCVariableDeclaration(IrType type, string name)
+    {
+        // Check for function pointer (including through pointer indirections)
+        return GetCDeclaratorForType(type, name);
+    }
+
+    /// <summary>
+    /// Build a C declarator for a type, handling function pointer syntax correctly.
+    /// The declarator (name with pointer decorations) goes inside the function pointer parentheses.
+    /// </summary>
+    private string GetCDeclaratorForType(IrType type, string declarator)
+    {
+        switch (type)
+        {
+            case IrFunctionPointerType fpType:
+            {
+                // Function pointer: return_type (*declarator)(params)
+                var returnType = GetCType(fpType.ReturnType);
+                var paramTypes = fpType.ParameterTypes.Count > 0
+                    ? string.Join(", ", fpType.ParameterTypes.Select(GetCType))
+                    : "void";
+                return $"{returnType} (*{declarator})({paramTypes})";
+            }
+
+            case IrPointerType ptrType when ContainsFunctionPointer(ptrType.PointeeType):
+            {
+                // Pointer to something containing a function pointer
+                // Build up the declarator with * prefix, then recurse
+                return GetCDeclaratorForType(ptrType.PointeeType, $"*{declarator}");
+            }
+
+            case IrReferenceType refType when ContainsFunctionPointer(refType.PointeeType):
+            {
+                // Reference to something containing a function pointer
+                return GetCDeclaratorForType(refType.PointeeType, $"*{declarator}");
+            }
+
+            case IrMutReferenceType mutRefType when ContainsFunctionPointer(mutRefType.PointeeType):
+            {
+                // Mut reference to something containing a function pointer
+                return GetCDeclaratorForType(mutRefType.PointeeType, $"*{declarator}");
+            }
+
+            default:
+                // No function pointer involved, use simple syntax
+                return $"{GetCType(type)} {declarator}";
+        }
+    }
+
+    /// <summary>
+    /// Check if a type contains a function pointer (directly or through pointer indirection).
+    /// </summary>
+    private bool ContainsFunctionPointer(IrType type)
+    {
+        return type switch
+        {
+            IrFunctionPointerType => true,
+            IrPointerType ptrType => ContainsFunctionPointer(ptrType.PointeeType),
+            IrReferenceType refType => ContainsFunctionPointer(refType.PointeeType),
+            IrMutReferenceType mutRefType => ContainsFunctionPointer(mutRefType.PointeeType),
+            _ => false
+        };
     }
 
     internal string GetTupleTypeName(IrTupleType tupleType)

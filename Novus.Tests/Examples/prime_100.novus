@@ -15,7 +15,7 @@ pub fn main() -> i32 {
     let mut i: u32 = 0
     while i <= 100 {
         sieve.push(true)
-        i = i + 1
+        i++
     }
 
     // Mark 0 and 1 as not prime
@@ -35,7 +35,7 @@ pub fn main() -> i32 {
                 m = m + p
             }
         }
-        p = p + 1
+        p++
     }
 
     // Print primes
@@ -47,12 +47,12 @@ pub fn main() -> i32 {
         let is_set = (u32)val
         if is_set != 0 {
             write("%ld ", i)
-            count = count + 1
+            count++
             if count % 10 == 0 {
                 write("\n")
             }
         }
-        i = i + 1
+        i++
     }
 
     write("\n\nFound %ld primes\n", count)

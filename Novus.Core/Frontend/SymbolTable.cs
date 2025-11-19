@@ -62,6 +62,10 @@ public class SymbolTable
     // Imported names: maps imported name -> module name (for semantic analysis)
     private readonly Dictionary<string, string> _importedNames = new();
 
+    // Re-exported symbols: maps symbol name -> source module path
+    // When a module does `pub use std::core::Option`, this tracks that Option is re-exported
+    private readonly Dictionary<string, string> _reexportedSymbols = new();
+
     /// <summary>
     /// Creates a new root-level symbol table
     /// </summary>
@@ -572,6 +576,42 @@ public class SymbolTable
         if (_importedNames.TryGetValue(importedName, out var moduleName))
             return moduleName;
         return _parent?.GetImportSource(importedName);
+    }
+
+    // ============================================================================
+    // RE-EXPORT TRACKING (for pub use)
+    // ============================================================================
+
+    /// <summary>
+    /// Records that a symbol is re-exported from this module
+    /// </summary>
+    public void RegisterReexport(string symbolName, string sourceModule)
+    {
+        _reexportedSymbols[symbolName] = sourceModule;
+    }
+
+    /// <summary>
+    /// Checks if a symbol is re-exported from this module
+    /// </summary>
+    public bool IsReexported(string symbolName)
+    {
+        return _reexportedSymbols.ContainsKey(symbolName);
+    }
+
+    /// <summary>
+    /// Gets the source module for a re-exported symbol
+    /// </summary>
+    public string? GetReexportSource(string symbolName)
+    {
+        return _reexportedSymbols.TryGetValue(symbolName, out var source) ? source : null;
+    }
+
+    /// <summary>
+    /// Gets all re-exported symbols from this module
+    /// </summary>
+    public IReadOnlyDictionary<string, string> GetReexportedSymbols()
+    {
+        return _reexportedSymbols;
     }
 
     // ============================================================================

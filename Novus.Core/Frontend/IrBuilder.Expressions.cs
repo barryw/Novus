@@ -3120,13 +3120,9 @@ public partial class IrBuilder
         var strType = _symbols.LookupStruct("Str");
         if (strType == null)
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
-            _diagnostics.ReportError(
-                ErrorCodes.InvalidExpressionType,
-                "String literals require Str type from std::strings module",
-                errorLocation
-            );
-            return null;
+            // When Str type is not available, fall back to *u8 (C-style string pointer)
+            // This allows string literals to work in modules that can't import std::strings
+            return stringLiteral;  // Return just the *u8 pointer
         }
 
         // Create struct literal with ptr and len fields

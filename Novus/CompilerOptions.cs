@@ -123,7 +123,8 @@ public class CompilerOptions
     public string? PackageVersion { get; set; }
 
     /// <summary>
-    /// Force rebuild of stdlib from source (ignores cached stdlib object files)
+    /// Use cached stdlib object files if available (default: always rebuild fresh)
     /// </summary>
-    public bool RebuildStdlib { get; set; }
+    [Option("use-stdlib-cache", Required = false, HelpText = "Use cached stdlib object files if available (default: always rebuild stdlib fresh)")]
+    public bool UseStdlibCache { get; set; }
 }

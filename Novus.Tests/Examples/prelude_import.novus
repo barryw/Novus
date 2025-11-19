@@ -1,0 +1,15 @@
+// Test file for prelude import issue
+// This tests that importing from std::prelude doesn't cause duplicate enum registration
+from std::prelude import DosError
+
+fn test_error() -> i32 {
+    let err = DosError::NotFound
+    match err {
+        DosError::NotFound => return 42,
+        _ => return 0
+    }
+}
+
+pub fn main() -> i32 {
+    return test_error()
+}

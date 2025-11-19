@@ -23,7 +23,7 @@ pub fn main() -> i32 {
     let mut i: u32 = 0
     while i <= max {
         sieve.push(true)
-        i = i + 1
+        i++
     }
 
     write("Sieve allocated and initialized\n")
@@ -49,7 +49,7 @@ pub fn main() -> i32 {
             while multiple <= max {
                 sieve.set(multiple, false)
                 multiple = multiple + p
-                sieve_ops = sieve_ops + 1
+                sieve_ops++
             }
 
             // Progress indicator every 100 primes found
@@ -57,7 +57,7 @@ pub fn main() -> i32 {
                 write("  Processing p=%ld...\n", p)
             }
         }
-        p = p + 1
+        p++
     }
 
     write("\nSieve complete! %ld operations performed\n", sieve_ops)
@@ -75,8 +75,8 @@ pub fn main() -> i32 {
 
         if is_prime_val != 0 {
             write("%ld ", i)
-            prime_count = prime_count + 1
-            line_count = line_count + 1
+            prime_count++
+            line_count++
 
             // Newline every 10 primes for readability
             if line_count >= 10 {
@@ -84,7 +84,7 @@ pub fn main() -> i32 {
                 line_count = 0
             }
         }
-        i = i + 1
+        i++
     }
 
     // Final statistics

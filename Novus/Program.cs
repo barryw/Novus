@@ -1125,9 +1125,10 @@ class Program
             var buildModeStr = options.BuildMode == BuildMode.Release ? "release" : "debug";
             var stdlibPrecompiledDir = Path.Combine(compilerDir, "stdlib", assemblyCpu, buildModeStr);
 
-            // Check if stdlib cache exists and is up-to-date (hash-based invalidation)
-            // Force rebuild if --rebuild-stdlib flag is set
-            bool needsRebuild = options.RebuildStdlib
+            // Check if stdlib cache should be used
+            // By default, always rebuild stdlib fresh to avoid stale cache issues
+            // Use --use-stdlib-cache flag to opt-in to caching (for faster test runs)
+            bool needsRebuild = !options.UseStdlibCache
                 || !Directory.Exists(stdlibPrecompiledDir)
                 || Commands.StdlibBuildCommand.NeedsRebuild(compilerDir, assemblyCpu, options.BuildMode, CODEGEN_VERSION);
 

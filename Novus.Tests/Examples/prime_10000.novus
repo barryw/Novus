@@ -21,7 +21,7 @@ pub fn main() -> i32 {
     let mut i: u32 = 0
     while i <= max {
         sieve.push(true)
-        i = i + 1
+        i++
     }
 
     write("Sieve allocated successfully\n")
@@ -45,7 +45,7 @@ pub fn main() -> i32 {
                 multiple = multiple + p
             }
         }
-        p = p + 1
+        p++
     }
 
     write("Sieve complete! Counting primes...\n\n")
@@ -61,8 +61,8 @@ pub fn main() -> i32 {
         let is_prime_val = (u32)val
         if is_prime_val != 0 {
             write("%ld ", i)
-            prime_count = prime_count + 1
-            line_count = line_count + 1
+            prime_count++
+            line_count++
 
             // Print newline every 10 primes for readability
             if line_count >= 10 {
@@ -70,7 +70,7 @@ pub fn main() -> i32 {
                 line_count = 0
             }
         }
-        i = i + 1
+        i++
     }
 
     write("\n\n========================================\n")

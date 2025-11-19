@@ -324,3 +324,108 @@ pub fn novus_error_to_code(err: NovusError) -> i32 {
     }
 }
 
+// ============================================================================
+// Error Message Methods
+// ============================================================================
+
+// Get human-readable message for DosError
+impl DosError {
+    pub fn message(&self) -> *u8 {
+        match *self {
+            DosError::NotFound => return "Object not found",
+            DosError::AlreadyExists => return "Object already exists",
+            DosError::DirNotFound => return "Directory not found",
+            DosError::DirectoryNotEmpty => return "Directory not empty",
+            DosError::PermissionDenied => return "Permission denied",
+            DosError::WriteProtected => return "Write protected",
+            DosError::ReadProtected => return "Read protected",
+            DosError::DeleteProtected => return "Delete protected",
+            DosError::DiskFull => return "Disk full",
+            DosError::DiskNotValidated => return "Disk not validated",
+            DosError::DiskWriteProtected => return "Disk write protected",
+            DosError::NoDisk => return "No disk in drive",
+            DosError::NotADosDisk => return "Not a DOS disk",
+            DosError::DeviceNotMounted => return "Device not mounted",
+            DosError::SeekError => return "Seek error",
+            DosError::BufferOverflow => return "Buffer overflow",
+            DosError::BadStreamName => return "Bad stream name",
+            DosError::NoFreeStore => return "Out of memory",
+            DosError::ObjectInUse => return "Object in use",
+            DosError::ObjectTooLarge => return "Object too large",
+            DosError::TooManyLevels => return "Too many directory levels",
+            DosError::InvalidLock => return "Invalid lock",
+            DosError::RecordNotLocked => return "Record not locked",
+            DosError::LockCollision => return "Lock collision",
+            DosError::LockTimeout => return "Lock timeout",
+            DosError::NotImplemented => return "Not implemented",
+            DosError::BadNumber => return "Bad number",
+            DosError::InvalidInput => return "Invalid input",
+            DosError::Unknown => return "Unknown error",
+        }
+    }
+}
+
+// Get human-readable message for ExecError
+impl ExecError {
+    pub fn message(&self) -> *u8 {
+        match *self {
+            ExecError::NoMem => return "Memory allocation failed",
+            ExecError::BadSignal => return "Invalid signal number",
+            ExecError::NullReturn => return "Unexpected null return",
+            ExecError::BadTask => return "Invalid task pointer",
+            ExecError::BadNode => return "Invalid list node",
+            ExecError::BadPort => return "Invalid message port",
+            ExecError::SignalInUse => return "Signal already allocated",
+            ExecError::TaskNotFound => return "Task not found",
+            ExecError::LibraryNotFound => return "Library not found",
+            ExecError::InvalidAddress => return "Invalid memory address",
+            ExecError::AlignmentError => return "Memory alignment error",
+        }
+    }
+}
+
+// Get human-readable message for IntuitionError
+impl IntuitionError {
+    pub fn message(&self) -> *u8 {
+        match *self {
+            IntuitionError::WindowOpenFailed => return "Failed to open window",
+            IntuitionError::ScreenOpenFailed => return "Failed to open screen",
+            IntuitionError::GadgetCreateFailed => return "Failed to create gadget",
+            IntuitionError::MenuCreateFailed => return "Failed to create menu",
+            IntuitionError::InvalidWindow => return "Invalid window pointer",
+            IntuitionError::InvalidScreen => return "Invalid screen pointer",
+            IntuitionError::NoIDCMP => return "IDCMP setup failed",
+            IntuitionError::BadDisplayMode => return "Invalid display mode",
+            IntuitionError::ModifyIDCMPFailed => return "Failed to modify IDCMP",
+            IntuitionError::LibraryOpenFailed => return "Failed to open library",
+        }
+    }
+}
+
+// Get human-readable message for GraphicsError
+impl GraphicsError {
+    pub fn message(&self) -> *u8 {
+        match *self {
+            GraphicsError::BitMapAllocFailed => return "BitMap allocation failed",
+            GraphicsError::RastPortInitFailed => return "RastPort init failed",
+            GraphicsError::FontOpenFailed => return "Failed to open font",
+            GraphicsError::InvalidBitMap => return "Invalid BitMap pointer",
+            GraphicsError::InvalidRastPort => return "Invalid RastPort pointer",
+            GraphicsError::BadDisplayMode => return "Invalid display mode",
+            GraphicsError::CopperListFailed => return "Copper list setup failed",
+        }
+    }
+}
+
+// Get human-readable message for NovusError
+impl NovusError {
+    pub fn message(&self) -> *u8 {
+        match *self {
+            NovusError::Dos(err) => return err.message(),
+            NovusError::Exec(err) => return err.message(),
+            NovusError::Intuition(err) => return err.message(),
+            NovusError::Graphics(err) => return err.message(),
+        }
+    }
+}
+

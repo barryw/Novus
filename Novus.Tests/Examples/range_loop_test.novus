@@ -77,7 +77,7 @@ pub fn main() -> i32 {
     let mut sum6: i32 = 0
     for i in 0..3 {
         for j in 0..4 {
-            sum6 = sum6 + 1
+            sum6++
         }
     }
     // sum6 should be 3*4 = 12
@@ -90,7 +90,7 @@ pub fn main() -> i32 {
     // Test 7: Empty range (5..5 should not execute body)
     let mut sum7: i32 = 0
     for i in 5..5 {
-        sum7 = sum7 + 1
+        sum7++
     }
     if sum7 != 0 {
         write("Test 7 FAILED: empty range\n")
@@ -102,7 +102,7 @@ pub fn main() -> i32 {
     let mut count8: i32 = 0
     outer: for i in 0..10 {
         for j in 0..10 {
-            count8 = count8 + 1
+            count8++
             if count8 == 15 {
                 break outer
             }

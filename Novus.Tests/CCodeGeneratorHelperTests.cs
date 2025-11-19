@@ -549,4 +549,104 @@ public class CCodeGeneratorHelperTests
     }
 
     #endregion
+
+    #region GetCVariableDeclaration Tests
+
+    [Fact]
+    public void GetCVariableDeclaration_FunctionPointer_CorrectSyntax()
+    {
+        // Function pointer variable: int32_t (*callback)(int32_t)
+        var gen = CreateGenerator();
+        var fpType = new IrFunctionPointerType(
+            new List<IrType> { new IrIntType(32, true) },
+            new IrIntType(32, true)
+        );
+
+        var result = gen.GetCVariableDeclaration(fpType, "callback");
+        Assert.Equal("int32_t (*callback)(int32_t)", result);
+    }
+
+    [Fact]
+    public void GetCVariableDeclaration_PointerToFunctionPointer_CorrectSyntax()
+    {
+        // Pointer to function pointer: int32_t (**param_addr)(void)
+        var gen = CreateGenerator();
+        var fpType = new IrFunctionPointerType(
+            new List<IrType>(),
+            new IrIntType(32, true)
+        );
+        var ptrToFp = new IrPointerType(fpType);
+
+        var result = gen.GetCVariableDeclaration(ptrToFp, "param_addr");
+        Assert.Equal("int32_t (**param_addr)(void)", result);
+    }
+
+    [Fact]
+    public void GetCVariableDeclaration_NormalPointer_CorrectSyntax()
+    {
+        // Normal pointer: int32_t* ptr
+        var gen = CreateGenerator();
+        var ptrType = new IrPointerType(new IrIntType(32, true));
+
+        var result = gen.GetCVariableDeclaration(ptrType, "ptr");
+        Assert.Equal("int32_t* ptr", result);
+    }
+
+    [Fact]
+    public void GetCVariableDeclaration_PrimitiveType_CorrectSyntax()
+    {
+        // Primitive: int32_t x
+        var gen = CreateGenerator();
+        var intType = new IrIntType(32, true);
+
+        var result = gen.GetCVariableDeclaration(intType, "x");
+        Assert.Equal("int32_t x", result);
+    }
+
+    [Fact]
+    public void GetCVariableDeclaration_VoidFunctionPointer_CorrectSyntax()
+    {
+        // void (*handler)(void)
+        var gen = CreateGenerator();
+        var fpType = new IrFunctionPointerType(
+            new List<IrType>(),
+            IrVoidType.Instance
+        );
+
+        var result = gen.GetCVariableDeclaration(fpType, "handler");
+        Assert.Equal("void (*handler)(void)", result);
+    }
+
+    [Fact]
+    public void GetCVariableDeclaration_PointerToPointerToFunctionPointer_CorrectSyntax()
+    {
+        // Double pointer to function pointer: int32_t (***ppp)(void)
+        var gen = CreateGenerator();
+        var fpType = new IrFunctionPointerType(
+            new List<IrType>(),
+            new IrIntType(32, true)
+        );
+        var ptrToFp = new IrPointerType(fpType);
+        var ptrToPtrToFp = new IrPointerType(ptrToFp);
+
+        var result = gen.GetCVariableDeclaration(ptrToPtrToFp, "ppp");
+        Assert.Equal("int32_t (***ppp)(void)", result);
+    }
+
+    [Fact]
+    public void GetCVariableDeclaration_ReferenceToFunctionPointer_CorrectSyntax()
+    {
+        // Reference to function pointer (becomes pointer in C): int32_t (**ref)(void)
+        var gen = CreateGenerator();
+        var fpType = new IrFunctionPointerType(
+            new List<IrType>(),
+            new IrIntType(32, true)
+        );
+        var refToFp = new IrReferenceType(fpType);
+
+        var result = gen.GetCVariableDeclaration(refToFp, "ref_fp");
+        Assert.Equal("int32_t (**ref_fp)(void)", result);
+    }
+
+    #endregion
 }

@@ -1,0 +1,31 @@
+// Signal Demo - Demonstrates RAII signal management
+//
+// This example shows how to use signals with automatic cleanup
+// via the Drop trait.
+
+from std::io::core import write
+from std::system::exec import SignalHandle
+
+pub fn main() -> i32 {
+    write("SignalHandle Demo\n")
+    write("=================\n\n")
+
+    // Allocate a signal bit with RAII wrapper
+    match SignalHandle::alloc() {
+        Ok(signal) => {
+            write("Allocated signal bit\n")
+
+            // Get the signal mask for use with Wait()
+            let mask = signal.mask()
+            write("Got signal mask\n")
+
+            write("Signal will be automatically freed on exit (RAII)\n")
+        },
+        Err(e) => {
+            write("Failed to allocate signal\n")
+        }
+    }
+
+    write("\nDemo complete!\n")
+    return 0
+}

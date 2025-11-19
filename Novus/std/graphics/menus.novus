@@ -161,7 +161,7 @@ impl GadToolsMenuBuilder {
                     let old_labels = self.labels
                     let new_labels = (**u8)new_mem
                     new_labels[i] = old_labels[i]
-                    i = i + 1
+                    i++
                 }
 
                 // Free old memory
@@ -175,7 +175,7 @@ impl GadToolsMenuBuilder {
 
             // Add the label pointer
             self.labels[self.label_count] = label
-            self.label_count = self.label_count + 1
+            self.label_count++
         }
     }
 
@@ -229,7 +229,7 @@ impl GadToolsMenuBuilder {
             entry_ptr.nm_MutualExclude = mutual
             entry_ptr.nm_UserData = userdata
 
-            self.entry_count = self.entry_count + 1
+            self.entry_count++
         }
     }
 
@@ -310,7 +310,7 @@ impl GadToolsMenuBuilder {
                 menu_array[i].nm_Flags = e_flags
                 menu_array[i].nm_MutualExclude = e_mutual
                 menu_array[i].nm_UserData = e_userdata
-                i = i + 1
+                i++
             }
 
             // Create menus from NewMenu array
@@ -555,7 +555,7 @@ impl Drop for GadToolsMenuStrip {
                     if label {
                         FreeVec(label)
                     }
-                    i = i + 1
+                    i++
                 }
                 // Free the label pointer array itself
                 let label_mem = (*u8)labels

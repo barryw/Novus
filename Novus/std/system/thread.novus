@@ -1,0 +1,438 @@
+// Novus Standard Library - Thread System
+// Namespace: std::system::thread
+//
+// Lightweight threads using Exec Tasks.
+//
+// IMPORTANT: Threads are raw Exec Tasks, NOT DOS Processes!
+// They CANNOT use DOS functions like:
+//   - File I/O (Open, Close, Read, Write)
+//   - Console I/O (FPuts, FGetC)
+//   - Directory operations (Lock, UnLock, Examine)
+//   - Any dos.library functions
+//
+// Use threads for:
+//   - CPU-bound computation
+//   - Signal-based coordination
+//   - Lightweight background work
+//
+// Use processes (std::system::task) for:
+//   - File I/O operations
+//   - Console output
+//   - Anything needing DOS context
+
+from std::core import Option, Result, Drop
+from std::strings::core import Str
+from std::error::core import DosError
+from std::ffi::amiga_structs import Task, MsgPort, List, Node
+from std::ffi::exec import AllocMem, FreeMem, Wait, Signal, FindTask, SetSignal
+from std::ffi::exec import AddTask, RemTask, AllocSignal, FreeSignal, Forbid
+from std::ffi::amiga_consts import SIGBREAKF_CTRL_C, SIGBREAKF_CTRL_D
+from std::ffi::amiga_consts import SIGBREAKF_CTRL_E, SIGBREAKF_CTRL_F
+from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
+
+// ============================================================================
+// Thread Communication Data
+// ============================================================================
+
+// ThreadComm layout (8 bytes total):
+//   bytes 0-3: parent_task (*Task)
+//   byte 4: death_signal (i8)
+//   bytes 5-7: padding
+//
+// We use raw memory access instead of a struct to avoid import resolution
+// issues with private types being referenced by public API methods.
+const THREAD_COMM_SIZE: u32 = 8
+
+// ============================================================================
+// ThreadHandle
+// ============================================================================
+
+/// Handle to a spawned thread (Exec Task)
+///
+/// Provides methods to wait for completion, send signals, and check status.
+/// Memory is properly freed after wait() completes.
+///
+/// WARNING: Threads cannot use DOS functions! See module documentation.
+///
+/// Example:
+/// ```novus
+/// fn worker() -> i32 {
+///     // Do computation (no DOS calls!)
+///     let mut sum: i32 = 0
+///     for let mut i = 0; i < 1000000; i++ {
+///         sum = sum + i
+///     }
+///     return 0
+/// }
+///
+/// let handle = spawn_thread("Worker", worker, 4096)?
+/// handle.break_ctrl_c()
+/// let code = handle.wait()
+/// ```
+pub struct ThreadHandle {
+    task: *Task,
+    stack_mem: *u8,
+    stack_size: u32,
+    comm: *u8,               // Communication data (ThreadComm*, opaque to importers)
+    death_signal: i8,        // Our allocated signal number
+    is_running: bool,
+}
+
+impl ThreadHandle {
+    /// Check if the thread is still running
+    pub fn is_running(&self) -> bool {
+        return self.is_running
+    }
+
+    /// Wait for the thread to complete and free its resources
+    /// Returns 0 on success
+    /// Note: This blocks the calling task until thread exits
+    pub fn wait(&mut self) -> i32 {
+        if !self.is_running {
+            return 0
+        }
+
+        // Wait for the death signal from the child
+        let signal_mask = (u32)1 << (u32)self.death_signal
+        Wait(signal_mask)
+
+        // Child has signaled - it's safe to free memory now
+        // The child is in Wait(0) state after RemTask, so memory is safe to free
+        self.free_resources()
+
+        return 0
+    }
+
+    /// Send a signal to the thread
+    pub fn signal(&self, signal_mask: u32) -> bool {
+        if !self.is_running {
+            return false
+        }
+
+        Signal(self.task, signal_mask)
+        return true
+    }
+
+    /// Send CTRL-C break signal to request termination
+    pub fn break_ctrl_c(&self) -> bool {
+        return self.signal(SIGBREAKF_CTRL_C)
+    }
+
+    /// Send CTRL-D break signal
+    pub fn break_ctrl_d(&self) -> bool {
+        return self.signal(SIGBREAKF_CTRL_D)
+    }
+
+    /// Get raw task pointer
+    /// WARNING: Only valid while is_running() returns true
+    pub fn handle(&self) -> *Task {
+        return self.task
+    }
+
+    /// Free all thread resources
+    /// Called after thread has terminated and signaled us
+    fn free_resources(&mut self) {
+        // Free the communication data
+        if (u32)self.comm != 0 {
+            unsafe {
+                FreeMem(self.comm, THREAD_COMM_SIZE)
+            }
+            self.comm = (*u8)0
+        }
+
+        // Free the stack memory
+        if (u32)self.stack_mem != 0 {
+            unsafe {
+                FreeMem(self.stack_mem, self.stack_size)
+            }
+            self.stack_mem = (*u8)0
+        }
+
+        // Free the Task structure
+        if (u32)self.task != 0 {
+            unsafe {
+                FreeMem((*u8)self.task, @sizeof(Task))
+            }
+            self.task = (*Task)0
+        }
+
+        // Free our signal
+        if self.death_signal >= 0 {
+            FreeSignal(self.death_signal)
+            self.death_signal = -1
+        }
+
+        self.is_running = false
+    }
+
+    /// Clean up thread resources - waits if still running
+    pub fn cleanup(&mut self) {
+        if self.is_running {
+            // Must wait for thread to finish before freeing
+            self.wait()
+        } else {
+            // Already done, just free
+            self.free_resources()
+        }
+    }
+}
+
+impl Drop for ThreadHandle {
+    fn drop(&mut self) {
+        self.cleanup()
+    }
+}
+
+// ============================================================================
+// Spawn Functions
+// ============================================================================
+
+/// Spawn a thread using a function pointer
+///
+/// Creates a lightweight Exec Task (not a DOS Process).
+///
+/// WARNING: The thread CANNOT use DOS functions!
+/// No file I/O, no console output, no directory operations.
+/// Use std::system::task::spawn_task_fn() if you need DOS access.
+///
+/// The function should implement a proper event loop with signal checking.
+/// Use run_thread_loop() to implement the loop correctly.
+///
+/// Example:
+/// ```novus
+/// fn my_worker() -> i32 {
+///     let break_mask = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D
+///
+///     forever {
+///         let signals = Wait(break_mask)
+///
+///         if (signals & break_mask) != 0 {
+///             break
+///         }
+///
+///         // Do computation (no DOS calls!)
+///     }
+///
+///     return 0
+/// }
+///
+/// let handle = spawn_thread("Worker", my_worker, 4096)?
+/// ```
+pub fn spawn_thread(name: Str, entry: fn() -> i32, stack_size: u32) -> Result<ThreadHandle, DosError> {
+    // Allocate a signal for death notification
+    let death_signal = AllocSignal(-1)
+    if death_signal == -1 {
+        return Result::Err(DosError::NoFreeStore)
+    }
+
+    // Allocate communication data
+    var comm_mem: *u8 = (*u8)0
+    unsafe {
+        comm_mem = AllocMem(THREAD_COMM_SIZE, MEMF_PUBLIC | MEMF_CLEAR)
+    }
+    if (u32)comm_mem == 0 {
+        FreeSignal(death_signal)
+        return Result::Err(DosError::NoFreeStore)
+    }
+    // Set up communication data using raw memory access
+    // ThreadComm layout: bytes 0-3 = parent_task, byte 4 = death_signal
+    let parent_task_ptr = (**Task)comm_mem
+    *parent_task_ptr = FindTask((*u8)0)  // Get our own task
+    let death_signal_ptr = (*i8)((u32)comm_mem + 4)
+    *death_signal_ptr = death_signal
+
+    // Allocate Task structure
+    var task_mem: *u8 = (*u8)0
+    unsafe {
+        task_mem = AllocMem(@sizeof(Task), MEMF_PUBLIC | MEMF_CLEAR)
+    }
+    if (u32)task_mem == 0 {
+        unsafe {
+            FreeMem(comm_mem, THREAD_COMM_SIZE)
+        }
+        FreeSignal(death_signal)
+        return Result::Err(DosError::NoFreeStore)
+    }
+
+    let task = (*Task)task_mem
+
+    // Allocate stack - must be long-word aligned for 68k
+    // Round up stack_size to 4-byte boundary
+    let aligned_stack_size = (stack_size + (u32)3) & (~(u32)3)
+    var stack_mem: *u8 = (*u8)0
+    unsafe {
+        stack_mem = AllocMem(aligned_stack_size, MEMF_PUBLIC | MEMF_CLEAR)
+    }
+    if (u32)stack_mem == 0 {
+        unsafe {
+            FreeMem(task_mem, @sizeof(Task))
+            FreeMem(comm_mem, THREAD_COMM_SIZE)
+        }
+        FreeSignal(death_signal)
+        return Result::Err(DosError::NoFreeStore)
+    }
+
+    // Initialize Task structure
+    let task_ref = task
+
+    // Set up the Node
+    task_ref.tc_Node.ln_Type = 1  // NT_TASK
+    task_ref.tc_Node.ln_Pri = 0
+    task_ref.tc_Node.ln_Name = name.as_cstr()
+
+    // CRITICAL: Initialize nesting counts
+    // -1 means interrupts/task-switching enabled (default state)
+    task_ref.tc_IDNestCnt = -1  // Interrupt disable nest count
+    task_ref.tc_TDNestCnt = -1  // Task disable nest count
+
+    // CRITICAL: Initialize tc_MemEntry as an empty List
+    // This is an embedded List structure, not a pointer
+    // An empty List has: Head -> &Tail, Tail = NULL, TailPred -> &Head
+    let mem_list = &task_ref.tc_MemEntry
+    let tail_addr = (*u8)&mem_list.lh_Tail
+    let head_addr = (*u8)&mem_list.lh_Head
+    mem_list.lh_Head = (*Node)tail_addr
+    mem_list.lh_Tail = (*Node)0
+    mem_list.lh_TailPred = (*Node)head_addr
+    mem_list.lh_Type = 0
+
+    // Set up stack pointers
+    // Stack grows downward on 68k
+    task_ref.tc_SPLower = stack_mem
+    task_ref.tc_SPUpper = (*u8)((u32)stack_mem + aligned_stack_size)
+    task_ref.tc_SPReg = task_ref.tc_SPUpper  // Start at top of stack
+
+    // Store communication data pointer in tc_UserData
+    task_ref.tc_UserData = comm_mem
+
+    // Get entry point address
+    // Use a temporary pointer to extract the function address
+    let entry_ptr = (*u32)&entry
+    let fn_addr_value = *entry_ptr
+    let entry_addr = (*u8)fn_addr_value
+
+    // FinalPC - we don't use it since run_thread_loop handles cleanup
+    let final_addr = (*u8)0
+
+    // Add the task to the system
+    let result = AddTask(task, entry_addr, final_addr)
+
+    // Check if AddTask succeeded (returns non-null on success for 2.0+)
+    // On 1.x it returns nothing, so we assume success
+
+    return Result::Ok(ThreadHandle {
+        task: task,
+        stack_mem: stack_mem,
+        stack_size: aligned_stack_size,
+        comm: comm_mem,
+        death_signal: death_signal,
+        is_running: true
+    })
+}
+
+// ============================================================================
+// Thread Loop Helpers
+// ============================================================================
+
+/// Run a signal-based event loop for threads
+///
+/// This implements the proper signal-based wait loop.
+/// The thread blocks until signals arrive, then calls the tick function.
+/// When done, it signals the parent and removes itself from the system.
+///
+/// Example:
+/// ```novus
+/// fn my_thread_entry() -> i32 {
+///     var state = MyState { count: 0 }
+///     let my_signal = 1u32 << 16  // Custom signal
+///     return run_thread_loop(my_signal, (*u8)&state, tick_handler)
+/// }
+///
+/// fn tick_handler(state: *u8) -> bool {
+///     let my_state = (*MyState)state
+///     my_state.count++
+///     return my_state.count < 100
+/// }
+/// ```
+pub fn run_thread_loop(thread_signals: u32, state: *u8, tick_fn: fn(*u8) -> bool) -> i32 {
+    // Get break signal mask
+    let break_mask = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D
+
+    // Combined mask
+    let wait_mask = break_mask | thread_signals
+
+    // Main event loop
+    forever {
+        // Block until signals arrive - CPU friendly!
+        let signals = Wait(wait_mask)
+
+        // Check for break signals first - guaranteed termination
+        if (signals & break_mask) != 0 {
+            break
+        }
+
+        // Call user's tick
+        if !tick_fn(state) {
+            break
+        }
+    }
+
+    // Get our task and communication data
+    let my_task = FindTask((*u8)0)
+    let comm = my_task.tc_UserData
+
+    // CRITICAL: Forbid() prevents task switching, so the parent cannot wake up
+    // and free our memory while we're still executing Signal/RemTask
+    Forbid()
+
+    // Signal parent that we're about to exit
+    // Parent can then safely free our memory
+    if (u32)comm != 0 {
+        // Read parent_task from bytes 0-3
+        let parent_task_ptr = (**Task)comm
+        let parent_task = *parent_task_ptr
+        // Read death_signal from byte 4
+        let signal_ptr = (*i8)((u32)comm + 4)
+        let death_signal = *signal_ptr
+        let signal_mask = (u32)1 << (u32)death_signal
+        Signal(parent_task, signal_mask)
+    }
+
+    // CRITICAL: Call RemTask(NULL) to remove ourselves from the system
+    // This never returns - the task is deleted immediately
+    // Because we called Forbid(), the parent won't run until we're fully removed
+    RemTask((*Task)0)
+
+    // Wait forever - RemTask doesn't return but we must not execute past it
+    // This prevents RTS to garbage after RemTask
+    Wait(0)
+
+    // This code is never reached, but compiler needs a return
+    return 0
+}
+
+// ============================================================================
+// Convenience Functions
+// ============================================================================
+
+/// Check if a break signal has been received
+/// Returns true if CTRL-C or CTRL-D was signaled
+pub fn should_exit() -> bool {
+    let mask = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D
+    // Use SetSignal to check without clearing
+    let signals = SetSignal(0, 0)
+    return (signals & mask) != 0
+}
+
+/// Clear break signals
+/// Call this after handling a break to reset the signal state
+pub fn clear_break_signals() {
+    let mask = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D
+    SetSignal(0, mask)
+}
+
+/// Get the combined break signal mask
+pub fn break_signal_mask() -> u32 {
+    return SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D
+}
+

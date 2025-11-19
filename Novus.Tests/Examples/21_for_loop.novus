@@ -12,7 +12,7 @@ pub fn main() -> i32 {
     let mut i = 0
     while i < 10 {
         sum = sum + i
-        i = i + 1
+        i++
     }
 
     // sum should be 0+1+2+3+4+5+6+7+8+9 = 45
@@ -38,7 +38,7 @@ pub fn main() -> i32 {
     let mut k = 10
     while k > 0 {
         countdown = countdown + k
-        k = k - 1
+        k--
     }
 
     // countdown should be 10+9+8+7+6+5+4+3+2+1 = 55
@@ -52,10 +52,10 @@ pub fn main() -> i32 {
     while x < 3 {
         let mut y = 0
         while y < 3 {
-            nested = nested + 1
-            y = y + 1
+            nested++
+            y++
         }
-        x = x + 1
+        x++
     }
 
     // nested should be 3*3 = 9

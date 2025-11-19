@@ -116,6 +116,15 @@ extern pub fn DeletePool(poolHeader: *u8)
 extern pub fn AllocPooled(poolHeader: *u8, memSize: u32) -> *u8
 extern pub fn FreePooled(poolHeader: *u8, memory: *u8, memSize: u32)
 extern pub fn AttemptSemaphoreShared(sigSem: *SignalSemaphore) -> u32
+
+// Void pointer wrappers for semaphore functions (to avoid FFI type issues in generated C)
+extern pub fn __novus_init_semaphore(sigSem: *u8)
+extern pub fn __novus_obtain_semaphore(sigSem: *u8)
+extern pub fn __novus_release_semaphore(sigSem: *u8)
+extern pub fn __novus_attempt_semaphore(sigSem: *u8) -> i32
+extern pub fn __novus_obtain_semaphore_shared(sigSem: *u8)
+extern pub fn __novus_attempt_semaphore_shared(sigSem: *u8) -> i32
+
 extern pub fn ColdReboot()
 extern pub fn StackSwap(newStack: *StackSwapStruct)
 extern pub fn CachePreDMA(address: *u8, length: *u8, flags: u32) -> *u8

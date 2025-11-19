@@ -269,7 +269,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             {
                 if (enumDecl.IDENTIFIER().GetText() == symbolName)
                 {
-                    RegisterEnum(enumDecl);
+                    // Check if enum already exists with variants (fully registered)
+                    // This can happen with pub use chains that cause the same enum to be imported multiple times
+                    var existingEnum = _symbols.LookupEnum(symbolName);
+                    if (existingEnum == null || existingEnum.Variants.Count == 0)
+                    {
+                        RegisterEnum(enumDecl);
+                    }
                     return; // Found it
                 }
             }
@@ -6211,18 +6217,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var strType = _symbols.LookupStruct("Str");
         if (strType == null)
         {
-            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
-            _diagnostics.ReportError(
-                "E0999",
-                "string literals require Str type from std::strings module",
-                location,
-                helpTexts: new List<string>
-                {
-                    "ensure std::strings is imported",
-                    "the Str struct must be available to use string literals"
-                }
-            );
-            return null;
+            // When Str type is not available, fall back to *u8 (C-style string pointer)
+            // This allows string literals to work in modules that can't import std::strings
+            return new IrPointerType(IrIntType.U8);
         }
 
         return strType;

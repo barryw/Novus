@@ -7,7 +7,7 @@ pub fn main() -> i32 {
 
     while i < 100 {
         sum = sum + i
-        i = i + 1
+        i++
         break if i > 5  // Exit when i reaches 6
     }
 

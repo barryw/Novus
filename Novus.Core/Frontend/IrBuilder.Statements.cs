@@ -425,7 +425,7 @@ public partial class IrBuilder
                 // Build the full lvalue expression and use HandlePostIncrementDecrement
 
                 // Get the variable
-                IrVariable? baseVar = null;
+                IrValue? baseVar = null;
                 if (_localVariables.ContainsKey(name))
                 {
                     var localVar = _localVariables[name];
@@ -437,6 +437,26 @@ public partial class IrBuilder
                     if (param != null)
                     {
                         baseVar = new IrVariable(name, param.Type);
+                    }
+                }
+
+                // Check for static variables
+                if (baseVar == null)
+                {
+                    var staticVar = _module.StaticVariables.FirstOrDefault(sv => sv.Name == name);
+                    if (staticVar != null)
+                    {
+                        baseVar = new IrGlobalVariable(name, staticVar.Type);
+                    }
+                }
+
+                // Check for external variables
+                if (baseVar == null)
+                {
+                    var externVar = _module.ExternalVariables.FirstOrDefault(ev => ev.Name == name);
+                    if (externVar != null)
+                    {
+                        baseVar = new IrGlobalVariable(name, externVar.Type);
                     }
                 }
 
@@ -701,7 +721,7 @@ public partial class IrBuilder
             else
             {
                 // Simple variable increment/decrement: var++
-                IrVariable? variable = null;
+                IrValue? variable = null;
                 IrType? varType = null;
 
                 if (_localVariables.ContainsKey(name))
@@ -720,9 +740,31 @@ public partial class IrBuilder
                     }
                 }
 
+                // Check for static variables
+                if (variable == null)
+                {
+                    var staticVar = _module.StaticVariables.FirstOrDefault(sv => sv.Name == name);
+                    if (staticVar != null)
+                    {
+                        variable = new IrGlobalVariable(name, staticVar.Type);
+                        varType = staticVar.Type;
+                    }
+                }
+
+                // Check for external variables
+                if (variable == null)
+                {
+                    var externVar = _module.ExternalVariables.FirstOrDefault(ev => ev.Name == name);
+                    if (externVar != null)
+                    {
+                        variable = new IrGlobalVariable(name, externVar.Type);
+                        varType = externVar.Type;
+                    }
+                }
+
                 if (variable == null || varType == null)
                 {
-                    errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
                     _diagnostics.ReportError(
                         ErrorCodes.VariableNotFound,
                         $"Variable {name} not found",
@@ -1111,7 +1153,7 @@ public partial class IrBuilder
             }
 
             // Get the variable
-            IrVariable? variable = null;
+            IrValue? variable = null;
             IrType? varType = null;
 
             if (_localVariables.ContainsKey(name))
@@ -1130,9 +1172,31 @@ public partial class IrBuilder
                 }
             }
 
+            // Check for static variables
+            if (variable == null)
+            {
+                var staticVar = _module.StaticVariables.FirstOrDefault(sv => sv.Name == name);
+                if (staticVar != null)
+                {
+                    variable = new IrGlobalVariable(name, staticVar.Type);
+                    varType = staticVar.Type;
+                }
+            }
+
+            // Check for external variables
+            if (variable == null)
+            {
+                var externVar = _module.ExternalVariables.FirstOrDefault(ev => ev.Name == name);
+                if (externVar != null)
+                {
+                    variable = new IrGlobalVariable(name, externVar.Type);
+                    varType = externVar.Type;
+                }
+            }
+
             if (variable == null || varType == null)
             {
-                errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
                 _diagnostics.ReportError(
                     ErrorCodes.VariableNotFound,
                     $"Variable {name} not found",
@@ -1191,7 +1255,7 @@ public partial class IrBuilder
             if (op != "=")
             {
                 // Get the variable
-                IrVariable? variable = null;
+                IrValue? variable = null;
                 IrType? varType = null;
 
                 if (_localVariables.ContainsKey(name))
@@ -1210,9 +1274,31 @@ public partial class IrBuilder
                     }
                 }
 
+                // Check for static variables
+                if (variable == null)
+                {
+                    var staticVar = _module.StaticVariables.FirstOrDefault(sv => sv.Name == name);
+                    if (staticVar != null)
+                    {
+                        variable = new IrGlobalVariable(name, staticVar.Type);
+                        varType = staticVar.Type;
+                    }
+                }
+
+                // Check for external variables
+                if (variable == null)
+                {
+                    var externVar = _module.ExternalVariables.FirstOrDefault(ev => ev.Name == name);
+                    if (externVar != null)
+                    {
+                        variable = new IrGlobalVariable(name, externVar.Type);
+                        varType = externVar.Type;
+                    }
+                }
+
                 if (variable == null || varType == null)
                 {
-                    errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
                     _diagnostics.ReportError(
                         ErrorCodes.VariableNotFound,
                         $"Variable {name} not found",

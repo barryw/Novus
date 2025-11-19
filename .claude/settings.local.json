@@ -108,7 +108,13 @@
       "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Release/net9.0/novusc:*)",
       "Bash(readlink:*)",
       "Bash(pwd:*)",
-      "Bash(/dev/null)"
+      "Bash(/dev/null)",
+      "Bash(git rm:*)",
+      "Bash(/Users/barry/amiga-cc/vbcc/bin/vc:*)",
+      "Bash(/Users/barry/amiga-cc/vbcc/bin/vbccm68k:*)",
+      "Bash(/Users/barry/amiga-cc/vbcc/bin/vasmm68k_mot:*)",
+      "WebFetch(domain:amigadev.elowar.com)",
+      "WebFetch(domain:wiki.amigaos.net)"
     ],
     "deny": [],
     "ask": []

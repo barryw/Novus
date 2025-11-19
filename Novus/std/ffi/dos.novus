@@ -87,7 +87,7 @@ extern pub fn Fault(code: i32, header: *u8, buffer: *u8, len: i32) -> i16
 extern pub fn PrintFault(code: i32, header: *u8) -> i16
 extern pub fn ErrorReport(code: i32, _type: i32, arg1: u32, device: *MsgPort) -> i32
 extern pub fn Cli() -> *CommandLineInterface
-extern pub fn CreateNewProc(tags: *TagItem) -> *Process
+extern pub fn CreateNewProc(tags: *TagItem) -> *u8  // Returns *Process, use *u8 to avoid struct gen issues
 // Varargs function CreateNewProcTags skipped - needs manual implementation
 extern pub fn RunCommand(seg: i32, stack: i32, paramptr: *u8, paramlen: i32) -> i32
 extern pub fn GetConsoleTask() -> *MsgPort

@@ -34,7 +34,7 @@ pub fn main() -> i32 {
     let more = counter + PI_TIMES_100 + cache_size
 
     unsafe {
-        frame_count = frame_count + 1
+        frame_count++
         global_state = global_state + 10
     }
 

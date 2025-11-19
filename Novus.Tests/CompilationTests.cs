@@ -35,7 +35,7 @@ public class CompilationTests
         var startInfo = new ProcessStartInfo
         {
             FileName = "dotnet",
-            Arguments = $"\"{compilerPath}\" \"{inputFile}\" -o \"{outputFile}\"",
+            Arguments = $"\"{compilerPath}\" \"{inputFile}\" -o \"{outputFile}\" --use-stdlib-cache",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,

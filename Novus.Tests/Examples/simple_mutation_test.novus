@@ -12,7 +12,7 @@ struct Counter {
 
 impl Counter {
     fn increment(&mut self) {
-        self.value = self.value + 1
+        self.value++
     }
 }
 

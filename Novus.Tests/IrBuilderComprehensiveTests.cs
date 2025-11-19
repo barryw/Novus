@@ -337,6 +337,59 @@ fn unwrap_or_zero(opt: Option) -> i32 {
     }
 
     [Fact]
+    public void BuildIr_MatchOnDereferencedSelf_ExtractsVariantData()
+    {
+        // This test covers the case where we match on *self (dereferenced pointer to enum)
+        // and extract variant data. The IR builder must use the dereferenced enum type
+        // for IrExtractVariantData, not the original pointer type.
+        var source = @"
+enum InnerError {
+    NotFound,
+    InvalidArg
+}
+
+enum OuterError {
+    Inner(InnerError),
+    Other
+}
+
+impl OuterError {
+    pub fn get_inner(&self) -> i32 {
+        match *self {
+            OuterError::Inner(err) => {
+                return 1
+            },
+            OuterError::Other => {
+                return 0
+            }
+        }
+    }
+}
+
+fn main() -> i32 {
+    return 0
+}";
+        var module = BuildIr(source);
+
+        var func = module.Functions.FirstOrDefault(f => f.Name.Contains("get_inner"));
+        Assert.NotNull(func);
+
+        // Match on dereferenced self should create extract instructions
+        var allInstructions = func.BasicBlocks.SelectMany(b => b.Instructions).ToList();
+        var extractInstructions = allInstructions.OfType<IrExtractVariantData>().ToList();
+
+        // Should have at least one extract for the Inner variant's err binding
+        Assert.NotEmpty(extractInstructions);
+
+        // The extract should have an enum type (not a pointer type)
+        foreach (var extract in extractInstructions)
+        {
+            Assert.True(extract.EnumValue.Type is IrEnumType,
+                $"Expected IrEnumType but got {extract.EnumValue.Type.GetType().Name}: {extract.EnumValue.Type.Name}");
+        }
+    }
+
+    [Fact]
     public void BuildIr_MatchWithLiterals_CreatesLiteralPatterns()
     {
         var source = @"

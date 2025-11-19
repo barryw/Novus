@@ -2354,6 +2354,10 @@ pub const SIGBREAKB_CTRL_C: u32 = 12
 pub const SIGBREAKB_CTRL_D: u32 = 13
 pub const SIGBREAKB_CTRL_E: u32 = 14
 pub const SIGBREAKB_CTRL_F: u32 = 15
+pub const SIGBREAKF_CTRL_C: u32 = (1 << 12)
+pub const SIGBREAKF_CTRL_D: u32 = (1 << 13)
+pub const SIGBREAKF_CTRL_E: u32 = (1 << 14)
+pub const SIGBREAKF_CTRL_F: u32 = (1 << 15)
 pub const SIGB_ABORT: u32 = 0
 pub const SIGB_BLIT: u32 = 4
 pub const SIGB_CHILD: u32 = 1
@@ -2903,3 +2907,36 @@ pub const mskHasMask: u32 = 1
 pub const mskHasTransparentColor: u32 = 2
 pub const mskLasso: u32 = 3
 pub const mskNone: u32 = 0
+
+// =============================================================================
+// DOS Process Creation Tags (for CreateNewProc)
+// =============================================================================
+
+// Process creation tags - use with CreateNewProc()
+// NP_Dummy = TAG_USER + 1000 = $800003E8
+pub const NP_Seglist: u32 = $800003E9        // Seglist for code
+pub const NP_FreeSeglist: u32 = $800003EA    // Free seglist on exit
+pub const NP_Entry: u32 = $800003EB          // Entry point function
+pub const NP_Input: u32 = $800003EC          // Input file handle
+pub const NP_Output: u32 = $800003ED         // Output file handle
+pub const NP_CloseInput: u32 = $800003EE     // Close input on exit
+pub const NP_CloseOutput: u32 = $800003EF    // Close output on exit
+pub const NP_Error: u32 = $800003F0          // Error file handle
+pub const NP_CloseError: u32 = $800003F1     // Close error on exit
+pub const NP_CurrentDir: u32 = $800003F2     // Current directory lock
+pub const NP_StackSize: u32 = $800003F3      // Stack size in bytes
+pub const NP_Name: u32 = $800003F4           // Process name
+pub const NP_Priority: u32 = $800003F5       // Task priority (-128 to 127)
+pub const NP_ConsoleTask: u32 = $800003F6    // Console handler task
+pub const NP_WindowPtr: u32 = $800003F7      // Window for requesters
+pub const NP_HomeDir: u32 = $800003F8        // Home directory lock
+pub const NP_CopyVars: u32 = $800003F9       // Copy local variables
+pub const NP_Cli: u32 = $800003FA            // Create as CLI process
+pub const NP_Path: u32 = $800003FB           // Command search path
+pub const NP_CommandName: u32 = $800003FC    // Command name
+pub const NP_Arguments: u32 = $800003FD      // Command line arguments
+pub const NP_NotifyOnDeath: u32 = $800003FE  // Signal parent on exit
+pub const NP_Synchronous: u32 = $800003FF    // Wait for process to exit
+pub const NP_ExitCode: u32 = $80000400       // Pointer to store exit code
+pub const NP_ExitData: u32 = $80000401       // Pointer to store exit data
+

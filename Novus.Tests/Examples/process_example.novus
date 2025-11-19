@@ -1,0 +1,84 @@
+// Example: Process spawning with signal handling
+//
+// Description:
+//   Spawns a background process that counts and responds to CTRL-C.
+//   Demonstrates spawn_task_fn, run_timer_loop, and ProcessHandle.
+//
+// Expected Output:
+//   Process counts from 1 to 10, then exits cleanly
+//   Exit code: 0
+
+from std::io::core import write
+from std::strings::core import Str
+from std::system::task import spawn_task_fn, run_timer_loop, ProcessHandle
+from std::system::timer import Duration
+from std::ffi::exec import Wait
+from std::ffi::amiga_consts import SIGBREAKF_CTRL_C, SIGBREAKF_CTRL_D
+
+// State shared with the worker process
+struct WorkerState {
+    count: i32,
+    max_count: i32,
+}
+
+// Worker tick function - called periodically
+fn worker_tick(state_ptr: *u8) -> bool {
+    let state = (*WorkerState)state_ptr
+
+    state.count++
+
+    // Print progress (process can use DOS functions!)
+    write(f"Count: {state.count}\n")
+
+    // Continue until we reach max
+    return state.count < state.max_count
+}
+
+// Worker entry point
+fn worker_entry() -> i32 {
+    var state = WorkerState {
+        count: 0,
+        max_count: 10,
+    }
+
+    // Run timer loop - ticks every 500ms
+    // Will exit on CTRL-C or when tick returns false
+    return run_timer_loop(Duration::millis(500), (*u8)&state, worker_tick)
+}
+
+pub fn main() -> i32 {
+    write("Starting process example...\n")
+
+    // Spawn the worker process
+    let result = spawn_task_fn("Counter", worker_entry, 8192)
+
+    match result {
+        Err(_) => {
+            write("Failed to spawn process!\n")
+            return 1
+        },
+        Ok(handle) => {
+            write("Process spawned successfully\n")
+
+            // Wait a bit then let it run
+            // In a real app you'd do other work here
+
+            // The process will count to 10 and exit on its own
+            // Or you could send: handle.break_ctrl_c()
+
+            write("Main process waiting...\n")
+
+            // Simple delay - wait for a signal we won't get
+            // This lets the child process run
+            // In real code, use proper synchronization
+            var i: i32 = 0
+            while i < 500000000 {
+                i++
+            }
+
+            write("Process example complete\n")
+            return 0
+        }
+    }
+}
+

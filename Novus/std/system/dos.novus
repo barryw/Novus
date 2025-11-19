@@ -69,9 +69,9 @@ pub fn CreateProcess(tags_ptr: *TagItem, count: u32) -> Result<*Process, DosErro
 
     let process = CreateNewProc((*TagItem)tag_list.as_ptr())
 
-    // Check if process creation succeeded (null check)
-    if let proc = process {
-        return Result::Ok(proc)
+    // Check if process creation succeeded - CreateNewProc returns NULL on failure
+    if (u32)process != 0 {
+        return Result::Ok((*Process)process)
     }
 
     return Result::Err(DosError::Unknown)
