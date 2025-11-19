@@ -130,7 +130,7 @@ impl Drop for BitMapHandle {
     }
 }
 
-/// CopperList - RAII wrapper for custom copper lists
+/// CopperListHandle - RAII wrapper for custom copper lists
 ///
 /// Automatically restores the system copper list and waits for vertical blank
 /// before freeing the copper list memory. This prevents:
@@ -144,9 +144,9 @@ impl Drop for BitMapHandle {
 ///
 /// Example:
 /// ```novus
-/// fn create_custom_display() -> Result<CopperList, GraphicsError> {
+/// fn create_custom_display() -> Result<CopperListHandle, GraphicsError> {
 ///     let copper_mem = MemoryBlock::alloc(1024, MEMF_CHIP)?;
-///     let copper = CopperList::new(copper_mem, true);
+///     let copper = CopperListHandle::new(copper_mem, true);
 ///
 ///     // Build copper list...
 ///     // Install with LoadView()...
@@ -157,18 +157,18 @@ impl Drop for BitMapHandle {
 ///     // 3. Memory freed
 /// }
 /// ```
-pub struct CopperList {
+pub struct CopperListHandle {
     memory: MemoryBlock,  // Copper list memory (must be CHIP RAM)
     active: bool,  // Is this copper list currently active?
 }
 
-impl CopperList {
+impl CopperListHandle {
     /// Create a copper list from allocated memory
     ///
     /// memory: CHIP RAM containing copper list instructions
     /// active: Set to true if this list is currently active (installed via LoadView)
-    pub fn new(memory: MemoryBlock, active: bool) -> CopperList {
-        return CopperList {
+    pub fn new(memory: MemoryBlock, active: bool) -> CopperListHandle {
+        return CopperListHandle {
             memory: memory,
             active: active,
         }
@@ -216,8 +216,8 @@ impl CopperList {
     }
 }
 
-// Automatic cleanup for CopperList (RAII)
-impl Drop for CopperList {
+// Automatic cleanup for CopperListHandle (RAII)
+impl Drop for CopperListHandle {
     fn drop(&mut self) {
         // CRITICAL: If this copper list is active, we must:
         // 1. Restore system copper (LoadView(null))

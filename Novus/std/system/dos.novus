@@ -268,7 +268,7 @@ pub fn seek_file(fh: i32, position: i32, offset: i32) -> i32 {
 // RAII Resource Wrappers (Automatic Cleanup)
 // ============================================================================
 
-/// FileHandleWrapper - RAII wrapper for DOS file handles
+/// OwnedFileHandle - RAII wrapper for DOS file handles
 ///
 /// Automatically closes the file when the handle goes out of scope.
 /// This prevents file handle leaks, which are a common source of bugs
@@ -277,16 +277,16 @@ pub fn seek_file(fh: i32, position: i32, offset: i32) -> i32 {
 /// Example:
 /// ```novus
 /// fn read_config() -> Result<String, DosError> {
-///     let file = FileHandleWrapper::open("S:Startup-Sequence", MODE_OLDFILE)?;
+///     let file = OwnedFileHandle::open("S:Startup-Sequence", MODE_OLDFILE)?;
 ///     // Use file...
 ///     // Automatically closed here!
 /// }
 /// ```
-pub struct FileHandleWrapper {
+pub struct OwnedFileHandle {
     fh: i32,  // BPTR file handle (0 = invalid)
 }
 
-impl FileHandleWrapper {
+impl OwnedFileHandle {
     /// Open a file and return a RAII handle
     ///
     /// Mode should be one of:
@@ -295,9 +295,9 @@ impl FileHandleWrapper {
     /// - MODE_READWRITE (1004): Open with shared lock
     ///
     /// Returns Err on failure (use IoErr() for details).
-    pub fn open(path: Str, mode: i32) -> Result<FileHandleWrapper, DosError> {
+    pub fn open(path: Str, mode: i32) -> Result<OwnedFileHandle, DosError> {
         let fh = Open(path.as_cstr(), mode)
-        return fh == 0 ? Result::Err(DosError::Unknown) : Result::Ok(FileHandleWrapper { fh: fh })
+        return fh == 0 ? Result::Err(DosError::Unknown) : Result::Ok(OwnedFileHandle { fh: fh })
     }
 
     /// Get the raw BPTR handle for FFI calls
@@ -305,14 +305,14 @@ impl FileHandleWrapper {
         return self.fh
     }
 
-    /// Create FileHandleWrapper from raw BPTR (takes ownership)
+    /// Create OwnedFileHandle from raw BPTR (takes ownership)
     ///
-    /// The handle will be automatically closed when the FileHandleWrapper is dropped.
+    /// The handle will be automatically closed when the OwnedFileHandle is dropped.
     /// Only use this if you own the handle and it should be closed.
     ///
     /// DO NOT use for system-owned handles like Input(), Output(), Error().
-    pub fn from_raw(fh: i32) -> FileHandleWrapper {
-        return FileHandleWrapper { fh: fh }
+    pub fn from_raw(fh: i32) -> OwnedFileHandle {
+        return OwnedFileHandle { fh: fh }
     }
 
     /// Extract raw BPTR and prevent automatic close
@@ -352,8 +352,8 @@ impl FileHandleWrapper {
     }
 }
 
-// Automatic cleanup for FileHandleWrapper (RAII)
-impl Drop for FileHandleWrapper {
+// Automatic cleanup for OwnedFileHandle (RAII)
+impl Drop for OwnedFileHandle {
     fn drop(&mut self) {
         if self.fh != 0 {
             Close(self.fh)
@@ -362,7 +362,7 @@ impl Drop for FileHandleWrapper {
     }
 }
 
-/// DirLock - RAII wrapper for DOS directory locks
+/// DirLockHandle - RAII wrapper for DOS directory locks
 ///
 /// Automatically unlocks the directory when the lock goes out of scope.
 /// This prevents lock leaks, which cause "Volume is in use" errors and
@@ -371,16 +371,16 @@ impl Drop for FileHandleWrapper {
 /// Example:
 /// ```novus
 /// fn list_directory() -> Result<(), DosError> {
-///     let lock = DirLock::lock("SYS:", ACCESS_READ)?;
+///     let lock = DirLockHandle::lock("SYS:", ACCESS_READ)?;
 ///     // Examine directory...
 ///     // Automatically unlocked here!
 /// }
 /// ```
-pub struct DirLock {
+pub struct DirLockHandle {
     lock: i32,  // BPTR lock (0 = invalid)
 }
 
-impl DirLock {
+impl DirLockHandle {
     /// Lock a directory and return a RAII handle
     ///
     /// Type should be:
@@ -388,9 +388,9 @@ impl DirLock {
     /// - ACCESS_WRITE (-1): Exclusive write lock
     ///
     /// Returns Err on failure (use IoErr() for details).
-    pub fn lock(path: Str, lock_type: i32) -> Result<DirLock, DosError> {
+    pub fn lock(path: Str, lock_type: i32) -> Result<DirLockHandle, DosError> {
         let lock = Lock(path.as_cstr(), lock_type)
-        return lock == 0 ? Result::Err(DosError::Unknown) : Result::Ok(DirLock { lock: lock })
+        return lock == 0 ? Result::Err(DosError::Unknown) : Result::Ok(DirLockHandle { lock: lock })
     }
 
     /// Get the raw BPTR lock for FFI calls
@@ -398,12 +398,12 @@ impl DirLock {
         return self.lock
     }
 
-    /// Create DirLock from raw BPTR (takes ownership)
+    /// Create DirLockHandle from raw BPTR (takes ownership)
     ///
-    /// The lock will be automatically unlocked when the DirLock is dropped.
+    /// The lock will be automatically unlocked when the DirLockHandle is dropped.
     /// Only use this if you own the lock and it should be unlocked.
-    pub fn from_raw(lock: i32) -> DirLock {
-        return DirLock { lock: lock }
+    pub fn from_raw(lock: i32) -> DirLockHandle {
+        return DirLockHandle { lock: lock }
     }
 
     /// Extract raw BPTR and prevent automatic unlock
@@ -418,8 +418,8 @@ impl DirLock {
     }
 }
 
-// Automatic cleanup for DirLock (RAII)
-impl Drop for DirLock {
+// Automatic cleanup for DirLockHandle (RAII)
+impl Drop for DirLockHandle {
     fn drop(&mut self) {
         if self.lock != 0 {
             UnLock(self.lock)

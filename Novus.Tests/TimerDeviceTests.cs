@@ -674,10 +674,10 @@ pub fn main() -> i32 {
     public void Timer_ShouldGenerateTimerDeviceIncludes()
     {
         var code = @"
-from std::system::timer import Timer, Duration
+from std::system::timer import TimerHandle, Duration
 
 pub fn main() -> i32 {
-    match Timer::microhz() {
+    match TimerHandle::microhz() {
         Result::Ok(timer) => {
             match timer.get_time() {
                 Result::Ok(time) => {
@@ -694,8 +694,8 @@ pub fn main() -> i32 {
         Assert.True(success, $"Compilation failed: {string.Join(", ", errors)}");
         Assert.NotNull(generatedCode);
 
-        // Check for timer device related code - Timer struct should be generated
-        Assert.Contains("Timer", generatedCode);
+        // Check for timer device related code - TimerHandle struct should be generated
+        Assert.Contains("TimerHandle", generatedCode);
     }
 
     [Fact]

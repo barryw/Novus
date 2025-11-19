@@ -194,7 +194,7 @@ impl Duration {
 /// Example:
 /// ```novus
 /// // Create timer and delay
-/// let timer = Timer::microhz()?
+/// let timer = TimerHandle::microhz()?
 /// timer.delay(Duration::millis(100))?
 ///
 /// // Get current time
@@ -202,36 +202,36 @@ impl Duration {
 ///
 /// // Timer automatically closed and freed here
 /// ```
-pub struct Timer {
+pub struct TimerHandle {
     timereq: *timerequest,
     port: *MsgPort,
 }
 
-impl Timer {
+impl TimerHandle {
     /// Open timer.device with microsecond precision (UNIT_MICROHZ)
     ///
     /// This is the most common timer unit for general delays and timing.
-    pub fn microhz() -> Result<Timer, TimerError> {
-        return Timer::open(UNIT_MICROHZ)
+    pub fn microhz() -> Result<TimerHandle, TimerError> {
+        return TimerHandle::open(UNIT_MICROHZ)
     }
 
     /// Open timer.device with VBlank precision (UNIT_VBLANK)
     ///
     /// Uses vertical blank interrupts for timing. Lower precision but
     /// useful for synchronizing with display refresh (50Hz PAL, 60Hz NTSC).
-    pub fn vblank() -> Result<Timer, TimerError> {
-        return Timer::open(UNIT_VBLANK)
+    pub fn vblank() -> Result<TimerHandle, TimerError> {
+        return TimerHandle::open(UNIT_VBLANK)
     }
 
     /// Open timer.device with EClock precision (UNIT_ECLOCK)
     ///
     /// Uses the system EClock for highest precision timing.
-    pub fn eclock() -> Result<Timer, TimerError> {
-        return Timer::open(UNIT_ECLOCK)
+    pub fn eclock() -> Result<TimerHandle, TimerError> {
+        return TimerHandle::open(UNIT_ECLOCK)
     }
 
     /// Open timer.device with specified unit
-    fn open(unit: u32) -> Result<Timer, TimerError> {
+    fn open(unit: u32) -> Result<TimerHandle, TimerError> {
         // Create message port for replies
         let port = CreateMsgPort()
         if (u32)port == 0 {
@@ -259,7 +259,7 @@ impl Timer {
             }
         }
 
-        return Result::Ok(Timer { timereq: timereq, port: port })
+        return Result::Ok(TimerHandle { timereq: timereq, port: port })
     }
 
     /// Get the current system time
@@ -282,7 +282,7 @@ impl Timer {
     ///
     /// Example:
     /// ```novus
-    /// let timer = Timer::microhz()?
+    /// let timer = TimerHandle::microhz()?
     /// timer.delay(Duration::millis(500))?  // Wait 500ms
     /// ```
     pub fn delay(&self, duration: Duration) -> Result<(), TimerError> {
@@ -305,7 +305,7 @@ impl Timer {
     ///
     /// Example:
     /// ```novus
-    /// let timer = Timer::microhz()?
+    /// let timer = TimerHandle::microhz()?
     /// let now = timer.get_time()?
     /// let target = now.add(Duration::secs(5))
     /// timer.wait_until(target)?  // Wait until 5 seconds from now
@@ -332,7 +332,7 @@ impl Timer {
     ///
     /// Example:
     /// ```novus
-    /// let timer = Timer::vblank()?
+    /// let timer = TimerHandle::vblank()?
     /// timer.wait_frames(60)?  // Wait ~1 second (PAL) or ~1 second (NTSC)
     /// ```
     pub fn wait_frames(&self, count: u32) -> Result<(), TimerError> {
@@ -358,8 +358,8 @@ impl Timer {
     }
 }
 
-// Automatic cleanup for Timer (RAII)
-impl Drop for Timer {
+// Automatic cleanup for TimerHandle (RAII)
+impl Drop for TimerHandle {
     fn drop(&mut self) {
         if let req = self.timereq {
             // Close device first
@@ -398,7 +398,7 @@ impl Drop for Timer {
 /// delay(Duration::millis(500))?  // Wait 500ms
 /// ```
 pub fn delay(duration: Duration) -> Result<(), TimerError> {
-    let timer = Timer::microhz()?
+    let timer = TimerHandle::microhz()?
     return timer.delay(duration)
 }
 
@@ -413,7 +413,7 @@ pub fn delay(duration: Duration) -> Result<(), TimerError> {
 /// let current_time = now()?
 /// ```
 pub fn now() -> Result<Duration, TimerError> {
-    let timer = Timer::microhz()?
+    let timer = TimerHandle::microhz()?
     return timer.get_time()
 }
 
