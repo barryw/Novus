@@ -10,13 +10,13 @@ pub fn main() -> i32 {
     write("ANSI Console Test\n")
     write("=================\n\n")
 
-    // Test 1: Simple color functions
-    write("Test 1: Colors\n")
+    // Test 1: Simple pen functions
+    write("Test 1: Pens\n")
     let rst = reset()
 
-    write(f"{fg(Color::Red)}Red text{rst} | ")
-    write(f"{fg(Color::Green)}Green text{rst} | ")
-    write(f"{fg(Color::Blue)}Blue text{rst}\n\n")
+    write(f"{fg(Pen::Pen1)}Pen1 text{rst} | ")
+    write(f"{fg(Pen::Pen2)}Pen2 text{rst} | ")
+    write(f"{fg(Pen::Pen3)}Pen3 text{rst}\n\n")
 
     // Test 2: Text styling
     write("Test 2: Styles\n")
@@ -28,9 +28,9 @@ pub fn main() -> i32 {
     write("Test 3: Builder pattern\n")
     var builder = Ansi::new()
     builder.bold()
-    builder.fg(Color::Yellow)
-    builder.bg(Color::Blue)
-    write(f"{builder.build()}Bold Yellow on Blue{rst}\n\n")
+    builder.fg(Pen::Pen2)  // White on standard WB
+    builder.bg(Pen::Pen3)  // Blue on standard WB
+    write(f"{builder.build()}Bold Pen2 on Pen3{rst}\n\n")
 
     // Test 4: Cursor movement
     write("Test 4: Cursor positioning\n")
@@ -75,10 +75,10 @@ pub fn main() -> i32 {
         write("ERROR\n")
     }
 
-    // Test 6: Background colors
-    write("\nTest 6: Background colors\n")
-    write(f"{bg(Color::Red)} Red BG {rst} ")
-    write(f"{bg(Color::Green)} Green BG {rst}\n\n")
+    // Test 6: Background pens
+    write("\nTest 6: Background pens\n")
+    write(f"{bg(Pen::Pen1)} Pen1 BG {rst} ")
+    write(f"{bg(Pen::Pen3)} Pen3 BG {rst}\n\n")
 
     // Test 7: Default size
     write("Test 7: Default console size\n")

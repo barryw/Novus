@@ -60,6 +60,18 @@ public class CCodeGenerator
     // Maps defer block -> defer index (1-based, matching _defer_N_active variable)
     private HashSet<int> _activatedDeferBlocks = new();
 
+    // Block-scoped variable tracking for reduced stack usage
+    // These are set during EmitFunction and used by EmitBasicBlock
+    private Dictionary<string, HashSet<string>>? _currentBlockScopedVars;
+    private Dictionary<string, (IrType Type, bool IsArray, int ArraySize)>? _currentLocalDeclVars;
+    private Dictionary<string, IrType>? _currentStoredVars;
+
+    // Liveness-based variable slot mapping for stack usage reduction
+    // Maps IR variable names to shared slot names (e.g., "_formatter0" -> "_slot_StackFormatter_0")
+    private Dictionary<string, string>? _variableToSlot;
+    // Maps slot names to their types (for declaration)
+    private Dictionary<string, IrType>? _slotTypes;
+
     /// <summary>
     /// Determines if a function is a monomorphized trait implementation.
     /// These functions need special handling to avoid duplicate symbol errors when
@@ -867,6 +879,12 @@ public class CCodeGenerator
             }
         }
 
+        // Run liveness analysis for variable slot reuse
+        var livenessAnalysis = new LivenessAnalysis(function);
+        var (variableToSlot, slotTypes) = livenessAnalysis.Analyze();
+        _variableToSlot = variableToSlot;
+        _slotTypes = slotTypes;
+
         // VBCC FIX: For struct/enum returns on 68k, use output parameter pattern
         var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType;
         var shouldUseOutParam = isStructOrEnumReturn;
@@ -891,6 +909,26 @@ public class CCodeGenerator
             targetBuilder.AppendLine($"    bool _defer_{i + 1}_active = false;");
         }
 
+        // Emit slot declarations for temporaries that have been consolidated
+        // These are declared at function scope since they may be reused across the function
+        foreach (var (slotName, slotType) in slotTypes)
+        {
+            var decl = GetCVariableDeclaration(slotType, slotName);
+            var cType = GetCType(slotType);
+
+            // CRITICAL FIX FOR 68K ALIGNMENT:
+            // Enums and structs MUST be initialized to force VBCC to align them properly
+            if (slotType is IrEnumType || slotType is IrStructType)
+            {
+                targetBuilder.AppendLine($"    {decl}; __novus_memset(&{slotName}, 0, sizeof({cType}));");
+            }
+            else
+            {
+                targetBuilder.AppendLine($"    {decl};");
+            }
+            _declaredVariables.Add(slotName);
+        }
+
         // Find all variables referenced by defer blocks and pre-declare them at function scope
         // This ensures defer cleanup code can reference these variables even if they're
         // declared in inner scopes (e.g., match arms) that may not be active
@@ -905,13 +943,19 @@ public class CCodeGenerator
             }
         }
 
+        // Helper to check if a variable is mapped to a slot (i.e., is a temporary)
+        bool IsMappedToSlot(string varName)
+        {
+            return variableToSlot.ContainsKey(varName);
+        }
+
         // CRITICAL FIX: Pre-declare ALL local variables at function start
         // This ensures variables are declared before they're used, regardless of control flow.
         // In C, labels can be jumped to out of order, but variables must be declared before use.
         // For loops are a common case: the init block declares a variable, but control flow
         // jumps to the condition label first where the variable is used.
 
-        // Collect all variables from IrLocalDecl and IrStore instructions
+        // Collect all non-temporary variables from IrLocalDecl and IrStore instructions
         var localDeclVars = new Dictionary<string, (IrType Type, bool IsArray, int ArraySize)>(); // from IrLocalDecl
         var storedVars = new Dictionary<string, IrType>(); // from IrStore (for variables not declared via IrLocalDecl)
 
@@ -921,6 +965,10 @@ public class CCodeGenerator
             {
                 if (instruction is IrLocalDecl localDecl)
                 {
+                    // Skip if this variable is mapped to a slot (check ORIGINAL name since liveness uses original names)
+                    if (IsMappedToSlot(localDecl.Name))
+                        continue;
+
                     var varName = SanitizeVariableName(localDecl.Name);
                     if (!localDeclVars.ContainsKey(varName))
                     {
@@ -932,6 +980,10 @@ public class CCodeGenerator
                 }
                 else if (instruction is IrStore store)
                 {
+                    // Skip if this variable is mapped to a slot (check ORIGINAL name since liveness uses original names)
+                    if (IsMappedToSlot(store.VariableName))
+                        continue;
+
                     var varName = SanitizeVariableName(store.VariableName);
                     if (!storedVars.ContainsKey(varName))
                     {
@@ -1050,8 +1102,10 @@ public class CCodeGenerator
 
         targetBuilder.AppendLine("}");
 
-        // Clear current function
+        // Clear current function and liveness data
         _currentEmittingFunction = null;
+        _variableToSlot = null;
+        _slotTypes = null;
     }
 
     /// <summary>
@@ -2902,6 +2956,12 @@ public class CCodeGenerator
         _memberAccessInfo.Clear();
         _fieldAccessChainInfo.Clear();
 
+        // Run liveness analysis for variable slot reuse
+        var livenessAnalysis = new LivenessAnalysis(function);
+        var (variableToSlot, slotTypes) = livenessAnalysis.Analyze();
+        _variableToSlot = variableToSlot;
+        _slotTypes = slotTypes;
+
         // VBCC FIX: For struct/enum returns on 68k, use output parameter pattern
         var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType;
         var shouldUseOutParam = isStructOrEnumReturn;
@@ -2922,15 +2982,39 @@ public class CCodeGenerator
         // handle the duplicate symbols at the Program.cs level by generating them once.
         _output.AppendLine($"{returnType} {funcName}({parameters}) {{");
 
-        // CRITICAL FIX: Pre-declare ALL local variables at function start
-        // This ensures variables are declared before they're used, regardless of control flow.
-        // In C, labels can be jumped to out of order, but variables must be declared before use.
-        // For loops are a common case: the init block declares a variable, but control flow
-        // jumps to the condition label first where the variable is used.
+        // Build CFG for scope analysis and return path checking
+        var cfg = new ControlFlowGraph(function);
+        var (functionScopedVars, blockScopedVars) = cfg.ComputeVariableScopes();
 
-        // Collect all variables from IrLocalDecl and IrStore instructions
-        var localDeclVars = new Dictionary<string, (IrType Type, bool IsArray, int ArraySize)>(); // from IrLocalDecl
-        var storedVars = new Dictionary<string, IrType>(); // from IrStore (for variables not declared via IrLocalDecl)
+        // Emit slot declarations for temporaries that have been consolidated
+        // These are declared at function scope since they may be reused across the function
+        foreach (var (slotName, slotType) in slotTypes)
+        {
+            var decl = GetCVariableDeclaration(slotType, slotName);
+            var cType = GetCType(slotType);
+
+            // CRITICAL FIX FOR 68K ALIGNMENT:
+            // Enums and structs MUST be initialized to force VBCC to align them properly
+            if (slotType is IrEnumType || slotType is IrStructType)
+            {
+                _output.AppendLine($"    {decl}; __novus_memset(&{slotName}, 0, sizeof({cType}));");
+            }
+            else
+            {
+                _output.AppendLine($"    {decl};");
+            }
+            _declaredVariables.Add(slotName);
+        }
+
+        // Collect all non-temporary variables and their types for declaration
+        var localDeclVars = new Dictionary<string, (IrType Type, bool IsArray, int ArraySize)>();
+        var storedVars = new Dictionary<string, IrType>();
+
+        // Helper to check if a variable is mapped to a slot (i.e., is a temporary)
+        bool IsMappedToSlot(string varName)
+        {
+            return variableToSlot.ContainsKey(varName);
+        }
 
         foreach (var block in function.BasicBlocks)
         {
@@ -2938,10 +3022,15 @@ public class CCodeGenerator
             {
                 if (instruction is IrLocalDecl localDecl)
                 {
-                    var varName = SanitizeVariableName(localDecl.Name);
+                    // Use raw sanitization without slot mapping for collection phase
+                    var varName = localDecl.Name.StartsWith("%") ? "_" + localDecl.Name.Substring(1) : localDecl.Name;
+
+                    // Skip if this variable is mapped to a slot (check ORIGINAL name since liveness uses original names)
+                    if (IsMappedToSlot(localDecl.Name))
+                        continue;
+
                     if (!localDeclVars.ContainsKey(varName))
                     {
-                        // Track array information for proper declaration
                         var isArray = localDecl.Type is IrArrayType;
                         var arraySize = isArray ? ((IrArrayType)localDecl.Type).Length : 0;
                         localDeclVars[varName] = (localDecl.Type, isArray, arraySize);
@@ -2949,7 +3038,12 @@ public class CCodeGenerator
                 }
                 else if (instruction is IrStore store)
                 {
-                    var varName = SanitizeVariableName(store.VariableName);
+                    var varName = store.VariableName.StartsWith("%") ? "_" + store.VariableName.Substring(1) : store.VariableName;
+
+                    // Skip if this variable is mapped to a slot (check ORIGINAL name since liveness uses original names)
+                    if (IsMappedToSlot(store.VariableName))
+                        continue;
+
                     if (!storedVars.ContainsKey(varName))
                     {
                         storedVars[varName] = store.Value.Type;
@@ -2958,15 +3052,18 @@ public class CCodeGenerator
             }
         }
 
-        // Pre-declare all variables from IrLocalDecl at function start
-        // This ensures they're available regardless of control flow order
+        // Pre-declare ONLY function-scoped variables at function start
+        // Variables that are only used in one block will be declared in that block
         foreach (var (varName, varInfo) in localDeclVars)
         {
+            // Only declare at function scope if the variable crosses block boundaries
+            if (!functionScopedVars.Contains(varName))
+                continue;
+
             var (varType, isArray, arraySize) = varInfo;
 
             if (isArray)
             {
-                // Array declarations need special syntax
                 var arrayType = (IrArrayType)varType;
                 var elementType = GetCType(arrayType.ElementType);
                 _output.AppendLine($"    {elementType} {varName}[{arraySize}];");
@@ -2977,9 +3074,7 @@ public class CCodeGenerator
                 var cType = GetCType(varType);
 
                 // CRITICAL FIX FOR 68K ALIGNMENT:
-                // Enums and structs MUST be initialized (even with garbage) to force VBCC
-                // to align them properly on the stack. Without this, VBCC may place them at
-                // odd addresses, causing guru meditation 81000005 (odd-address access error).
+                // Enums and structs MUST be initialized to force VBCC to align them properly
                 if (varType is IrEnumType || varType is IrStructType)
                 {
                     _output.AppendLine($"    {decl}; __novus_memset(&{varName}, 0, sizeof({cType}));");
@@ -2992,16 +3087,14 @@ public class CCodeGenerator
             _declaredVariables.Add(varName);
         }
 
-        // Also emit declarations for variables that are stored to but never declared via IrLocalDecl
-        // (common for match result variables when match is lowered to basic blocks)
+        // Also emit function-scoped declarations for stored variables
         foreach (var (varName, varType) in storedVars)
         {
-            if (!localDeclVars.ContainsKey(varName))
+            if (!localDeclVars.ContainsKey(varName) && functionScopedVars.Contains(varName))
             {
                 var decl = GetCVariableDeclaration(varType, varName);
                 var cType = GetCType(varType);
 
-                // CRITICAL FIX FOR 68K ALIGNMENT (same as above)
                 if (varType is IrEnumType || varType is IrStructType)
                 {
                     _output.AppendLine($"    {decl}; __novus_memset(&{varName}, 0, sizeof({cType}));");
@@ -3014,22 +3107,24 @@ public class CCodeGenerator
             }
         }
 
+        // Store scope info for use during block emission
+        _currentBlockScopedVars = blockScopedVars;
+        _currentLocalDeclVars = localDeclVars;
+        _currentStoredVars = storedVars;
+
         // Emit function body
         foreach (var block in function.BasicBlocks)
         {
             EmitBasicBlock(block);
         }
 
-        // DISABLED: Match arm scopes are no longer emitted
-        // Close any pending match arm scope
-        //if (_inMatchArmScope)
-        //{
-        //    _output.AppendLine("    }");
-        //    _inMatchArmScope = false;
-        //}
+        // Clear scope info
+        _currentBlockScopedVars = null;
+        _currentLocalDeclVars = null;
+        _currentStoredVars = null;
+        _variableToSlot = null;
+        _slotTypes = null;
 
-        // Build CFG to check if all paths return
-        var cfg = new ControlFlowGraph(function);
         var allPathsReturn = cfg.AllPathsReturn();
 
         // Emit deferred cleanup at end of function ONLY if not all paths return
@@ -3047,9 +3142,81 @@ public class CCodeGenerator
 
     private void EmitBasicBlock(IrBasicBlock block)
     {
+        // Check if this block has block-scoped variables that need to be declared
+        HashSet<string>? blockVars = null;
+        var hasBlockScopedVars = _currentBlockScopedVars != null &&
+                                  _currentBlockScopedVars.TryGetValue(block.Label, out blockVars) &&
+                                  blockVars != null && blockVars.Count > 0;
+
+        if (hasBlockScopedVars)
+        {
+            // Open a new scope for block-local variables
+            _output.AppendLine("    {");
+
+            // Emit declarations for block-scoped variables
+            foreach (var varName in blockVars!)
+            {
+                // Skip if already declared (shouldn't happen, but defensive)
+                if (_declaredVariables.Contains(varName))
+                    continue;
+
+                // Check if this is a local decl variable
+                if (_currentLocalDeclVars != null && _currentLocalDeclVars.TryGetValue(varName, out var varInfo))
+                {
+                    var (varType, isArray, arraySize) = varInfo;
+
+                    if (isArray)
+                    {
+                        var arrayType = (IrArrayType)varType;
+                        var elementType = GetCType(arrayType.ElementType);
+                        _output.AppendLine($"        {elementType} {varName}[{arraySize}];");
+                    }
+                    else
+                    {
+                        var decl = GetCVariableDeclaration(varType, varName);
+                        var cType = GetCType(varType);
+
+                        // CRITICAL FIX FOR 68K ALIGNMENT
+                        if (varType is IrEnumType || varType is IrStructType)
+                        {
+                            _output.AppendLine($"        {decl}; __novus_memset(&{varName}, 0, sizeof({cType}));");
+                        }
+                        else
+                        {
+                            _output.AppendLine($"        {decl};");
+                        }
+                    }
+                    _declaredVariables.Add(varName);
+                }
+                // Check if this is a stored variable
+                else if (_currentStoredVars != null && _currentStoredVars.TryGetValue(varName, out var varType2))
+                {
+                    var decl = GetCVariableDeclaration(varType2, varName);
+                    var cType = GetCType(varType2);
+
+                    if (varType2 is IrEnumType || varType2 is IrStructType)
+                    {
+                        _output.AppendLine($"        {decl}; __novus_memset(&{varName}, 0, sizeof({cType}));");
+                    }
+                    else
+                    {
+                        _output.AppendLine($"        {decl};");
+                    }
+                    _declaredVariables.Add(varName);
+                }
+            }
+        }
+
+        // Emit the block's instructions
         foreach (var instruction in block.Instructions)
         {
             EmitInstruction(instruction);
+        }
+
+        if (hasBlockScopedVars)
+        {
+            // Close the scope
+            _output.AppendLine("    }");
         }
     }
 
@@ -3356,6 +3523,7 @@ public class CCodeGenerator
         var resultName = SanitizeVariableName(binaryOp.ResultName);
         var left = EmitValue(binaryOp.Left);
         var right = EmitValue(binaryOp.Right);
+        var alreadyDeclared = _declaredVariables.Contains(resultName);
 
         // Special handling for division/modulo with safety checks
         if (_safetyLevel.EnableDivisionByZeroChecks() &&
@@ -3365,7 +3533,10 @@ public class CCodeGenerator
 
             // Emit conditional: if divisor is zero, show error and return safe value
             // Otherwise perform the actual division
-            _output.AppendLine($"    {cType} {resultName};");
+            if (!alreadyDeclared)
+            {
+                _output.AppendLine($"    {cType} {resultName};");
+            }
             _output.AppendLine($"    if ({right} == 0) {{");
             _output.AppendLine($"        __novus_div_check({right}, \"<compiler-generated>\", 0);");
 
@@ -3394,12 +3565,26 @@ public class CCodeGenerator
             var op = binaryOp.Operation == IrBinaryOp.OpKind.Shl ? "<<" : ">>";
 
             // Mask the shift amount to prevent undefined behavior
-            _output.AppendLine($"    {cType} {resultName} = {left} {op} (({right}) & {mask});");
+            if (alreadyDeclared)
+            {
+                _output.AppendLine($"    {resultName} = {left} {op} (({right}) & {mask});");
+            }
+            else
+            {
+                _output.AppendLine($"    {cType} {resultName} = {left} {op} (({right}) & {mask});");
+            }
         }
         else
         {
             var op = GetBinaryOperator(binaryOp.Operation);
-            _output.AppendLine($"    {cType} {resultName} = {left} {op} {right};");
+            if (alreadyDeclared)
+            {
+                _output.AppendLine($"    {resultName} = {left} {op} {right};");
+            }
+            else
+            {
+                _output.AppendLine($"    {cType} {resultName} = {left} {op} {right};");
+            }
         }
     }
 
@@ -3539,10 +3724,13 @@ public class CCodeGenerator
         {
             // Use output parameter pattern: void func(Result* out, args...)
             var resultName = SanitizeVariableName(call.ResultName);
-            var decl = GetCVariableDeclaration(call.ReturnType, resultName);
 
-            // Declare result variable
-            _output.AppendLine($"    {decl};");
+            // Only declare if not already declared (e.g., as a slot for variable reuse)
+            if (!_declaredVariables.Contains(resultName))
+            {
+                var decl = GetCVariableDeclaration(call.ReturnType, resultName);
+                _output.AppendLine($"    {decl};");
+            }
 
             // Call function with output parameter
             var allArgs = new List<string> { $"&{resultName}" };
@@ -3558,8 +3746,17 @@ public class CCodeGenerator
             if (call.ResultName != null && call.ReturnType is not IrVoidType)
             {
                 var resultName = SanitizeVariableName(call.ResultName);
-                var decl = GetCVariableDeclaration(call.ReturnType, resultName);
-                _output.AppendLine($"    {decl} = {callExpr};");
+
+                // Only emit declaration if not already declared (e.g., as a slot for variable reuse)
+                if (_declaredVariables.Contains(resultName))
+                {
+                    _output.AppendLine($"    {resultName} = {callExpr};");
+                }
+                else
+                {
+                    var decl = GetCVariableDeclaration(call.ReturnType, resultName);
+                    _output.AppendLine($"    {decl} = {callExpr};");
+                }
             }
             else
             {
@@ -3579,8 +3776,17 @@ public class CCodeGenerator
         if (call.ResultName != null && call.ReturnType is not IrVoidType)
         {
             var resultName = SanitizeVariableName(call.ResultName);
-            var decl = GetCVariableDeclaration(call.ReturnType, resultName);
-            _output.AppendLine($"    {decl} = {callExpr};");
+
+            // Only emit declaration if not already declared (e.g., as a slot for variable reuse)
+            if (_declaredVariables.Contains(resultName))
+            {
+                _output.AppendLine($"    {resultName} = {callExpr};");
+            }
+            else
+            {
+                var decl = GetCVariableDeclaration(call.ReturnType, resultName);
+                _output.AppendLine($"    {decl} = {callExpr};");
+            }
         }
         else
         {
@@ -3879,11 +4085,14 @@ public class CCodeGenerator
         if (match.ResultName != null && match.ResultType != null)
         {
             var resultVarName = SanitizeVariableName(match.ResultName);
-            var decl = GetCVariableDeclaration(match.ResultType, resultVarName);
-            _output.AppendLine($"    {decl};");
 
-            // Track that we've declared this variable
-            _declaredVariables.Add(resultVarName);
+            // Only declare if not already declared (e.g., as a slot for variable reuse)
+            if (!_declaredVariables.Contains(resultVarName))
+            {
+                var decl = GetCVariableDeclaration(match.ResultType, resultVarName);
+                _output.AppendLine($"    {decl};");
+                _declaredVariables.Add(resultVarName);
+            }
         }
 
         // Switch on the tag
@@ -3948,15 +4157,32 @@ public class CCodeGenerator
         // Check if this enum has any associated data
         bool hasAnyData = enumType.Variants.Any(v => v.HasAssociatedData);
 
+        // Check if variable was already declared (e.g., as a slot for variable reuse)
+        var alreadyDeclared = _declaredVariables.Contains(resultName);
+
         if (!hasAnyData)
         {
             // OPTIMIZATION: For plain enums, the value IS the tag
-            _output.AppendLine($"    int32_t {resultName} = {enumValue};");
+            if (alreadyDeclared)
+            {
+                _output.AppendLine($"    {resultName} = {enumValue};");
+            }
+            else
+            {
+                _output.AppendLine($"    int32_t {resultName} = {enumValue};");
+            }
         }
         else
         {
             // For enums with associated data, extract the tag field
-            _output.AppendLine($"    int32_t {resultName} = {enumValue}.tag;");
+            if (alreadyDeclared)
+            {
+                _output.AppendLine($"    {resultName} = {enumValue}.tag;");
+            }
+            else
+            {
+                _output.AppendLine($"    int32_t {resultName} = {enumValue}.tag;");
+            }
         }
     }
 
@@ -3971,14 +4197,25 @@ public class CCodeGenerator
 
         var dataType = GetCType(extractData.DataType);
 
+        // Check if variable was already declared (e.g., as a slot for variable reuse)
+        var alreadyDeclared = _declaredVariables.Contains(resultName);
+
         // Extract data from the specific variant
-        _output.AppendLine($"    {dataType} {resultName} = {enumValue}.data.{extractData.VariantName}._{extractData.DataIndex};");
+        if (alreadyDeclared)
+        {
+            _output.AppendLine($"    {resultName} = {enumValue}.data.{extractData.VariantName}._{extractData.DataIndex};");
+        }
+        else
+        {
+            _output.AppendLine($"    {dataType} {resultName} = {enumValue}.data.{extractData.VariantName}._{extractData.DataIndex};");
+        }
     }
 
     private void EmitMemberAccess(IrMemberAccess memberAccess)
     {
         var resultName = SanitizeVariableName(memberAccess.ResultName);
         var fieldType = GetCType(memberAccess.FieldType);
+        var alreadyDeclared = _declaredVariables.Contains(resultName);
 
         // Special handling for struct literals: VBCC doesn't support member access on compound literals
         // We need to create a temporary variable first
@@ -3994,7 +4231,14 @@ public class CCodeGenerator
             {
                 // Directly emit the field value without creating the Str temporary
                 var directValue = EmitValue(fieldValue);
-                _output.AppendLine($"    {fieldType} {resultName} = {directValue};");
+                if (alreadyDeclared)
+                {
+                    _output.AppendLine($"    {resultName} = {directValue};");
+                }
+                else
+                {
+                    _output.AppendLine($"    {fieldType} {resultName} = {directValue};");
+                }
             }
             else
             {
@@ -4019,7 +4263,14 @@ public class CCodeGenerator
                     var structValue = EmitValue(memberAccess.Struct);
                     _output.AppendLine($"    {cStructType} {tempVarName} = {structValue};");
                 }
-                _output.AppendLine($"    {fieldType} {resultName} = {tempVarName}.{memberAccess.FieldName};");
+                if (alreadyDeclared)
+                {
+                    _output.AppendLine($"    {resultName} = {tempVarName}.{memberAccess.FieldName};");
+                }
+                else
+                {
+                    _output.AppendLine($"    {fieldType} {resultName} = {tempVarName}.{memberAccess.FieldName};");
+                }
             }
         }
         else
@@ -4071,7 +4322,14 @@ public class CCodeGenerator
                 }
             }
 
-            _output.AppendLine($"    {fieldType} {resultName} = {structValue}{accessor}{memberAccess.FieldName};");
+            if (alreadyDeclared)
+            {
+                _output.AppendLine($"    {resultName} = {structValue}{accessor}{memberAccess.FieldName};");
+            }
+            else
+            {
+                _output.AppendLine($"    {fieldType} {resultName} = {structValue}{accessor}{memberAccess.FieldName};");
+            }
 
             // Track this field access for lvalue chain reconstruction
             // This allows us to reconstruct the full chain (e.g., self->timereq->tr_node)
@@ -4232,6 +4490,7 @@ public class CCodeGenerator
         var indexValue = EmitValue(indexAccess.Index);
         var resultName = SanitizeVariableName(indexAccess.ResultName);
         var elementType = GetCType(indexAccess.ElementType);
+        var alreadyDeclared = _declaredVariables.Contains(resultName);
 
         // Store the array and index expressions for later use when taking address
         _indexAccessInfo[resultName] = (arrayValue, indexValue);
@@ -4241,7 +4500,10 @@ public class CCodeGenerator
         {
             // Emit conditional: if index is out of bounds, show error and return
             // Otherwise perform the actual array access
-            _output.AppendLine($"    {elementType} {resultName};");
+            if (!alreadyDeclared)
+            {
+                _output.AppendLine($"    {elementType} {resultName};");
+            }
             _output.AppendLine($"    if ((uint32_t){indexValue} >= (uint32_t){arrayType.Length}) {{");
 
             // Note: We don't have location info on IR instructions yet, so we use 0
@@ -4262,7 +4524,14 @@ public class CCodeGenerator
         else
         {
             // No bounds checking - direct access
-            _output.AppendLine($"    {elementType} {resultName} = {arrayValue}[{indexValue}];");
+            if (alreadyDeclared)
+            {
+                _output.AppendLine($"    {resultName} = {arrayValue}[{indexValue}];");
+            }
+            else
+            {
+                _output.AppendLine($"    {elementType} {resultName} = {arrayValue}[{indexValue}];");
+            }
         }
     }
 
@@ -4857,11 +5126,19 @@ public class CCodeGenerator
 
     internal string SanitizeVariableName(string name)
     {
+        // Apply slot mapping if available (for liveness-based variable reuse)
+        // Check ORIGINAL name first since liveness analysis uses original IR names
+        if (_variableToSlot != null && _variableToSlot.TryGetValue(name, out var slotName))
+        {
+            return slotName;
+        }
+
         // Convert IR temp variable names (%t0, %t1, etc.) to valid C identifiers (_t0, _t1, etc.)
         if (name.StartsWith("%"))
         {
             return "_" + name.Substring(1);
         }
+
         return name;
     }
 

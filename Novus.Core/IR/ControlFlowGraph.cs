@@ -361,6 +361,210 @@ public class ControlFlowGraph
     }
 
     /// <summary>
+    /// Compute variable scope information - determines which variables can be block-scoped
+    /// vs which must be function-scoped.
+    /// </summary>
+    /// <returns>
+    /// A tuple containing:
+    /// - functionScopedVars: Variables that must be declared at function scope (used across blocks)
+    /// - blockScopedVars: Dictionary mapping block label to variables that can be scoped to that block
+    /// </returns>
+    public (HashSet<string> functionScopedVars, Dictionary<string, HashSet<string>> blockScopedVars) ComputeVariableScopes()
+    {
+        // Track where each variable is defined (IrLocalDecl or first IrStore)
+        var definedIn = new Dictionary<string, string>(); // varName -> block label
+        // Track where each variable is used
+        var usedIn = new Dictionary<string, HashSet<string>>(); // varName -> set of block labels
+
+        foreach (var block in Function.BasicBlocks)
+        {
+            foreach (var instruction in block.Instructions)
+            {
+                // Collect variable definitions
+                if (instruction is IrLocalDecl localDecl)
+                {
+                    var varName = localDecl.Name;
+                    if (!definedIn.ContainsKey(varName))
+                    {
+                        definedIn[varName] = block.Label;
+                    }
+
+                    // Also count uses in initial value
+                    CollectUsedVariables(localDecl.InitialValue, block.Label, usedIn);
+                }
+                else if (instruction is IrStore store)
+                {
+                    var varName = store.VariableName;
+                    if (!definedIn.ContainsKey(varName))
+                    {
+                        definedIn[varName] = block.Label;
+                    }
+                    // Store target is also a use of the destination
+                    if (!usedIn.ContainsKey(varName))
+                        usedIn[varName] = new HashSet<string>();
+                    usedIn[varName].Add(block.Label);
+
+                    // Collect uses in stored value
+                    CollectUsedVariables(store.Value, block.Label, usedIn);
+                }
+                else
+                {
+                    // Collect all variable uses in this instruction
+                    CollectUsedVariablesInInstruction(instruction, block.Label, usedIn);
+                }
+            }
+        }
+
+        var functionScopedVars = new HashSet<string>();
+        var blockScopedVars = new Dictionary<string, HashSet<string>>();
+
+        // Initialize block scopes
+        foreach (var block in Function.BasicBlocks)
+        {
+            blockScopedVars[block.Label] = new HashSet<string>();
+        }
+
+        // Determine scope for each variable
+        foreach (var (varName, defBlock) in definedIn)
+        {
+            // Get all blocks where this variable is used
+            var useBlocks = usedIn.GetValueOrDefault(varName, new HashSet<string>());
+
+            // A variable needs function scope if:
+            // 1. It's used in multiple blocks, OR
+            // 2. It's used in a block other than where it's defined
+            if (useBlocks.Count > 1 || (useBlocks.Count == 1 && !useBlocks.Contains(defBlock)))
+            {
+                functionScopedVars.Add(varName);
+            }
+            else
+            {
+                // Can be block-scoped to its definition block
+                blockScopedVars[defBlock].Add(varName);
+            }
+        }
+
+        return (functionScopedVars, blockScopedVars);
+    }
+
+    /// <summary>
+    /// Collect variable names used in an IrValue
+    /// </summary>
+    private void CollectUsedVariables(IrValue value, string blockLabel, Dictionary<string, HashSet<string>> usedIn)
+    {
+        switch (value)
+        {
+            case IrVariable variable:
+                if (!usedIn.ContainsKey(variable.Name))
+                    usedIn[variable.Name] = new HashSet<string>();
+                usedIn[variable.Name].Add(blockLabel);
+                break;
+
+            case IrBorrowValue borrow:
+                CollectUsedVariables(borrow.BorrowedValue, blockLabel, usedIn);
+                break;
+
+            case IrFieldReference fieldRef:
+                CollectUsedVariables(fieldRef.Struct, blockLabel, usedIn);
+                break;
+
+            case IrIndexedFieldAccess indexedField:
+                CollectUsedVariables(indexedField.Array, blockLabel, usedIn);
+                CollectUsedVariables(indexedField.Index, blockLabel, usedIn);
+                break;
+
+            case IrDereferenceValue deref:
+                CollectUsedVariables(deref.PointerValue, blockLabel, usedIn);
+                break;
+
+            case IrCastValue cast:
+                CollectUsedVariables(cast.Value, blockLabel, usedIn);
+                break;
+
+            case IrTupleElementAccess tupleAccess:
+                CollectUsedVariables(tupleAccess.Tuple, blockLabel, usedIn);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Collect variable names used in an instruction
+    /// </summary>
+    private void CollectUsedVariablesInInstruction(IrInstruction instruction, string blockLabel, Dictionary<string, HashSet<string>> usedIn)
+    {
+        switch (instruction)
+        {
+            case IrCall call:
+                foreach (var arg in call.Arguments)
+                {
+                    CollectUsedVariables(arg, blockLabel, usedIn);
+                }
+                break;
+
+            case IrIndirectCall indirectCall:
+                CollectUsedVariables(indirectCall.FunctionPointer, blockLabel, usedIn);
+                foreach (var arg in indirectCall.Arguments)
+                {
+                    CollectUsedVariables(arg, blockLabel, usedIn);
+                }
+                break;
+
+            case IrBinaryOp binOp:
+                CollectUsedVariables(binOp.Left, blockLabel, usedIn);
+                CollectUsedVariables(binOp.Right, blockLabel, usedIn);
+                break;
+
+            case IrReturn ret:
+                if (ret.Value != null)
+                    CollectUsedVariables(ret.Value, blockLabel, usedIn);
+                break;
+
+            case IrConditionalBranch condBranch:
+                CollectUsedVariables(condBranch.Condition, blockLabel, usedIn);
+                break;
+
+            case IrMemberStore memberStore:
+                CollectUsedVariables(memberStore.Struct, blockLabel, usedIn);
+                CollectUsedVariables(memberStore.Value, blockLabel, usedIn);
+                break;
+
+            case IrIndexStore indexStore:
+                CollectUsedVariables(indexStore.Array, blockLabel, usedIn);
+                CollectUsedVariables(indexStore.Index, blockLabel, usedIn);
+                CollectUsedVariables(indexStore.Value, blockLabel, usedIn);
+                break;
+
+            case IrIndexedFieldStore indexedFieldStore:
+                CollectUsedVariables(indexedFieldStore.Array, blockLabel, usedIn);
+                CollectUsedVariables(indexedFieldStore.Index, blockLabel, usedIn);
+                CollectUsedVariables(indexedFieldStore.Value, blockLabel, usedIn);
+                break;
+
+            case IrDereferenceStore derefStore:
+                CollectUsedVariables(derefStore.Pointer, blockLabel, usedIn);
+                CollectUsedVariables(derefStore.Value, blockLabel, usedIn);
+                break;
+
+            case IrIndexAccess indexAccess:
+                CollectUsedVariables(indexAccess.Array, blockLabel, usedIn);
+                CollectUsedVariables(indexAccess.Index, blockLabel, usedIn);
+                break;
+
+            case IrMemberAccess memberAccess:
+                CollectUsedVariables(memberAccess.Struct, blockLabel, usedIn);
+                break;
+
+            case IrAssert assert:
+                CollectUsedVariables(assert.Condition, blockLabel, usedIn);
+                break;
+
+            case IrPanic panic:
+                // panic has a message string, no variables typically
+                break;
+        }
+    }
+
+    /// <summary>
     /// Check if all paths from entry reach the exit node (i.e., all paths end with a return).
     /// Returns true if the function is guaranteed to return on all code paths.
     /// </summary>

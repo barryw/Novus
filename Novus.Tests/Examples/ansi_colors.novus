@@ -1,27 +1,35 @@
-// ANSI Colors Demo - Shows Amiga console colors
+// ANSI Pen Demo - Shows Amiga console pen colors
 //
-// Demonstrates foreground and background colors
+// Demonstrates foreground and background pen colors
 // using the std::console::ansi library.
+//
+// Note: Amiga console uses pen numbers (0-7) that map to Workbench palette.
+// Standard palette: Pen0=grey, Pen1=black, Pen2=white, Pen3=blue
 
 from std::console::ansi import *
 from std::io::core import write
 
 pub fn main() -> i32 {
-    write("Amiga Console Colors Demo\n")
-    write("=========================\n\n")
+    write("Amiga Console Pen Demo\n")
+    write("======================\n\n")
 
     let rst = reset()
 
-    // Foreground colors - one per line to minimize stack usage
-    write("Foreground Colors:\n")
-    write(f"  {fg(Color::Red)}Red{rst}\n")
-    write(f"  {fg(Color::Green)}Green{rst}\n")
-    write(f"  {fg(Color::Blue)}Blue{rst}\n")
+    // Foreground pens - one per line to minimize stack usage
+    write("Foreground Pens:\n")
+    write(f"  {fg(Pen::Pen1)}Pen1 (black){rst}\n")
+    write(f"  {fg(Pen::Pen2)}Pen2 (white){rst}\n")
+    write(f"  {fg(Pen::Pen3)}Pen3 (blue){rst}\n")
 
-    write("\nBackground Colors:\n")
-    write(f"  {bg(Color::Red)} Red {rst}\n")
-    write(f"  {bg(Color::Green)} Green {rst}\n")
-    write(f"  {bg(Color::Blue)} Blue {rst}\n")
+    write("\nBackground Pens:\n")
+    write(f"  {bg(Pen::Pen1)} Pen1 {rst}\n")
+    write(f"  {bg(Pen::Pen2)} Pen2 {rst}\n")
+    write(f"  {bg(Pen::Pen3)} Pen3 {rst}\n")
+
+    write("\nBuilder test:\n")
+    var builder = Ansi::new()
+    builder.fg(Pen::Pen3)
+    write(f"  {builder.build()} Pen3 via builder {rst}\n")
 
     write("\nDone!\n")
     return 0

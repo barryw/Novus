@@ -23,19 +23,19 @@ pub fn main() -> i32 {
     write(f"  {bld}F{rst}ile   {bld}E{rst}dit   {bld}V{rst}iew   {bld}T{rst}ools   {bld}H{rst}elp\n")
 
     // Separator line
-    let sep_color = fg(Color::Cyan)
+    let sep_color = fg(Pen::Pen3)  // Blue on standard WB
     write(f"{sep_color}  ------------------------------------------------\n{rst}")
 
     // File listing header
     var header_style = Ansi::new()
     header_style.underline()
-    header_style.fg(Color::Yellow)
+    header_style.fg(Pen::Pen2)  // White on standard WB
     write(f"\n  {header_style.build()}Name                Size       Date{rst}\n\n")
 
     // File entries
-    let dir_color = fg(Color::Blue)
-    let file_color = fg(Color::White)
-    let exe_color = fg(Color::Green)
+    let dir_color = fg(Pen::Pen3)   // Blue on standard WB
+    let file_color = fg(Pen::Pen2)  // White on standard WB
+    let exe_color = fg(Pen::Pen1)   // Black on standard WB
 
     // Directories
     write(f"  {dir_color}Devs/{rst}               <DIR>      01-Jan-24\n")
@@ -54,8 +54,8 @@ pub fn main() -> i32 {
 
     // Status bar
     var status_style = Ansi::new()
-    status_style.fg(Color::Black)
-    status_style.bg(Color::Cyan)
+    status_style.fg(Pen::Pen1)  // Black on standard WB
+    status_style.bg(Pen::Pen3)  // Blue on standard WB
     write(f"{status_style.build()}  3 Dirs, 3 Files    2,002 bytes    RAM: 1,234K free  {rst}\n")
 
     return 0

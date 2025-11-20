@@ -23,8 +23,8 @@ pub fn main() -> i32 {
         // Draw progress bar
         write("[")
 
-        // Filled portion in green
-        write(f"{fg(Color::Green)}")
+        // Filled portion (Pen3 = blue on standard WB)
+        write(f"{fg(Pen::Pen3)}")
 
         let mut j: u32 = 0u32
         while j < current {

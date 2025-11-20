@@ -11,7 +11,7 @@
 // from std::io::core import write
 //
 // write(f"{clear_screen()}{home()}")
-// write(f"{fg(Color::Red)}{bold()}Error:{reset()} Failed\n")
+// write(f"{fg(Pen::Pen1)}{bold()}Error:{reset()} Failed\n")
 // ```
 
 from std::core import Option, Result
@@ -26,28 +26,32 @@ extern fn u32_to_string(value: u32, buffer: *u8, buffer_size: u32) -> u32
 // Enums
 // ============================================================================
 
-/// Console colors (8-color Amiga palette)
+/// Console pen selection (Amiga palette)
 ///
-/// These correspond to the Amiga's 8-pen palette. Actual colors depend
-/// on the console's palette configuration, but typical defaults are shown.
-pub enum Color {
-    /// Pen 0 - typically black (background)
-    Black,
-    /// Pen 1 - typically red
-    Red,
-    /// Pen 2 - typically green
-    Green,
-    /// Pen 3 - typically yellow/brown
-    Yellow,
-    /// Pen 4 - typically blue
-    Blue,
-    /// Pen 5 - typically magenta/purple
-    Magenta,
-    /// Pen 6 - typically cyan
-    Cyan,
-    /// Pen 7 - typically white
-    White,
-    /// Reset to default color
+/// The Amiga console uses pen numbers, not fixed colors. The actual color
+/// displayed depends on the Workbench palette settings. Standard Workbench
+/// 2.0+ uses: Pen0=grey, Pen1=black, Pen2=white, Pen3=blue.
+///
+/// Note: On 4-color screens, only Pen0-Pen3 are available. Pen4-Pen7 will
+/// be remapped (Pen4=invisible, Pen5→Pen1, Pen6→Pen2, Pen7→Pen3).
+pub enum Pen {
+    /// Pen 0 - typically background color (grey on Workbench)
+    Pen0,
+    /// Pen 1 - typically text color (black on Workbench)
+    Pen1,
+    /// Pen 2 - typically highlight (white on Workbench)
+    Pen2,
+    /// Pen 3 - typically fill/shine (blue on Workbench 2.0+)
+    Pen3,
+    /// Pen 4 - only available on 8+ color screens
+    Pen4,
+    /// Pen 5 - only available on 8+ color screens
+    Pen5,
+    /// Pen 6 - only available on 8+ color screens
+    Pen6,
+    /// Pen 7 - only available on 8+ color screens
+    Pen7,
+    /// Reset to default pen
     Default,
 }
 
@@ -258,22 +262,26 @@ pub fn cursor_left(n: u32) -> String {
     return result
 }
 
-/// Set foreground color
-pub fn fg(color: Color) -> String {
+/// Set foreground pen
+///
+/// On Amiga console, foreground colors are set using pen numbers 30-37.
+/// The actual color depends on the Workbench palette.
+pub fn fg(pen: Pen) -> String {
     var result = String::new()
     result.push_byte($9b)  // CSI
 
-    // Color codes: 30-37 for foreground, 39 for default
-    let code: u32 = match color {
-        Color::Black => 30u32,
-        Color::Red => 31u32,
-        Color::Green => 32u32,
-        Color::Yellow => 33u32,
-        Color::Blue => 34u32,
-        Color::Magenta => 35u32,
-        Color::Cyan => 36u32,
-        Color::White => 37u32,
-        Color::Default => 39u32,
+    // ANSI SGR codes: 30-37 for foreground, 39 for default
+    // These map to Amiga pens 0-7
+    let code: u32 = match pen {
+        Pen::Pen0 => 30u32,
+        Pen::Pen1 => 31u32,
+        Pen::Pen2 => 32u32,
+        Pen::Pen3 => 33u32,
+        Pen::Pen4 => 34u32,
+        Pen::Pen5 => 35u32,
+        Pen::Pen6 => 36u32,
+        Pen::Pen7 => 37u32,
+        Pen::Default => 39u32,
     }
 
     var buf: [u8; 16] = [0u8; 16]
@@ -289,22 +297,26 @@ pub fn fg(color: Color) -> String {
     return result
 }
 
-/// Set background color
-pub fn bg(color: Color) -> String {
+/// Set background pen
+///
+/// On Amiga console, background colors are set using pen numbers 40-47.
+/// The actual color depends on the Workbench palette.
+pub fn bg(pen: Pen) -> String {
     var result = String::new()
     result.push_byte($9b)  // CSI
 
-    // Color codes: 40-47 for background, 49 for default
-    let code: u32 = match color {
-        Color::Black => 40u32,
-        Color::Red => 41u32,
-        Color::Green => 42u32,
-        Color::Yellow => 43u32,
-        Color::Blue => 44u32,
-        Color::Magenta => 45u32,
-        Color::Cyan => 46u32,
-        Color::White => 47u32,
-        Color::Default => 49u32,
+    // ANSI SGR codes: 40-47 for background, 49 for default
+    // These map to Amiga pens 0-7
+    let code: u32 = match pen {
+        Pen::Pen0 => 40u32,
+        Pen::Pen1 => 41u32,
+        Pen::Pen2 => 42u32,
+        Pen::Pen3 => 43u32,
+        Pen::Pen4 => 44u32,
+        Pen::Pen5 => 45u32,
+        Pen::Pen6 => 46u32,
+        Pen::Pen7 => 47u32,
+        Pen::Default => 49u32,
     }
 
     var buf: [u8; 16] = [0u8; 16]
@@ -378,34 +390,34 @@ impl Ansi {
         self.codes.push(7u32)
     }
 
-    /// Set foreground color
-    pub fn fg(&mut self, color: Color) {
-        let code: u32 = match color {
-            Color::Black => 30u32,
-            Color::Red => 31u32,
-            Color::Green => 32u32,
-            Color::Yellow => 33u32,
-            Color::Blue => 34u32,
-            Color::Magenta => 35u32,
-            Color::Cyan => 36u32,
-            Color::White => 37u32,
-            Color::Default => 39u32,
+    /// Set foreground pen
+    pub fn fg(&mut self, pen: Pen) {
+        let code: u32 = match pen {
+            Pen::Pen0 => 30u32,
+            Pen::Pen1 => 31u32,
+            Pen::Pen2 => 32u32,
+            Pen::Pen3 => 33u32,
+            Pen::Pen4 => 34u32,
+            Pen::Pen5 => 35u32,
+            Pen::Pen6 => 36u32,
+            Pen::Pen7 => 37u32,
+            Pen::Default => 39u32,
         }
         self.codes.push(code)
     }
 
-    /// Set background color
-    pub fn bg(&mut self, color: Color) {
-        let code: u32 = match color {
-            Color::Black => 40u32,
-            Color::Red => 41u32,
-            Color::Green => 42u32,
-            Color::Yellow => 43u32,
-            Color::Blue => 44u32,
-            Color::Magenta => 45u32,
-            Color::Cyan => 46u32,
-            Color::White => 47u32,
-            Color::Default => 49u32,
+    /// Set background pen
+    pub fn bg(&mut self, pen: Pen) {
+        let code: u32 = match pen {
+            Pen::Pen0 => 40u32,
+            Pen::Pen1 => 41u32,
+            Pen::Pen2 => 42u32,
+            Pen::Pen3 => 43u32,
+            Pen::Pen4 => 44u32,
+            Pen::Pen5 => 45u32,
+            Pen::Pen6 => 46u32,
+            Pen::Pen7 => 47u32,
+            Pen::Default => 49u32,
         }
         self.codes.push(code)
     }
