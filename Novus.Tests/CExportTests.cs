@@ -26,7 +26,7 @@ public class CExportTests
         return (analyzer.Diagnostics, analyzer);
     }
 
-    private IR.IrModule BuildIR(string source)
+    private Novus.IR.IrModule BuildIR(string source)
     {
         var inputStream = new AntlrInputStream(source);
         var lexer = new NovusLexer(inputStream);
@@ -106,7 +106,7 @@ pub fn my_function(x: i32) -> i32 {
         var module = BuildIR(source);
         var codegen = new CCodeGenerator(
             module,
-            new System.Collections.Generic.List<IR.IrStringLiteral>(),
+            new System.Collections.Generic.List<Novus.IR.IrStringLiteral>(),
             "68020",
             "auto",
             BuildMode.Debug,
@@ -168,7 +168,7 @@ fn not_exported() -> i32 {
         var module = BuildIR(source);
         var codegen = new CCodeGenerator(
             module,
-            new System.Collections.Generic.List<IR.IrStringLiteral>(),
+            new System.Collections.Generic.List<Novus.IR.IrStringLiteral>(),
             "68020",
             "auto",
             BuildMode.Debug,
@@ -205,7 +205,7 @@ fn internal_only() -> i32 {
         var module = BuildIR(source);
         var codegen = new CCodeGenerator(
             module,
-            new System.Collections.Generic.List<IR.IrStringLiteral>(),
+            new System.Collections.Generic.List<Novus.IR.IrStringLiteral>(),
             "68020",
             "auto",
             BuildMode.Debug,
@@ -242,7 +242,7 @@ pub fn returns_ptr() -> *u8 {
         var module = BuildIR(source);
         var codegen = new CCodeGenerator(
             module,
-            new System.Collections.Generic.List<IR.IrStringLiteral>(),
+            new System.Collections.Generic.List<Novus.IR.IrStringLiteral>(),
             "68020",
             "auto",
             BuildMode.Debug,
@@ -279,7 +279,7 @@ fn main() -> i32 {
         var module = BuildIR(source);
         var codegen = new CCodeGenerator(
             module,
-            new System.Collections.Generic.List<IR.IrStringLiteral>(),
+            new System.Collections.Generic.List<Novus.IR.IrStringLiteral>(),
             "68020",
             "auto",
             BuildMode.Debug,
@@ -332,7 +332,7 @@ pub fn my_func(x: i32) -> i32 {
         var module = BuildIR(source);
         var codegen = new CCodeGenerator(
             module,
-            new System.Collections.Generic.List<IR.IrStringLiteral>(),
+            new System.Collections.Generic.List<Novus.IR.IrStringLiteral>(),
             "68020",
             "auto",
             BuildMode.Debug,

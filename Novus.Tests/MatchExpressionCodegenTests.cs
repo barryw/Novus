@@ -26,7 +26,7 @@ public class MatchExpressionCodegenTests
 
         var codegen = new CCodeGenerator(
             module,
-            new List<IR.IrStringLiteral>(),
+            new List<Novus.IR.IrStringLiteral>(),
             "68020",
             "auto",
             BuildMode.Debug,
