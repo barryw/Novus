@@ -1,1 +1,2 @@
 - you will always fix failing tests whether they're related to your most recent changes or not. you will not say, "these failures are pre-existing and not related to our changes". EVER. FIX. BROKEN. TESTS!
+- if you need to build a single novus file, use the fucking 'compile' command. the 'build' command is for workspaces and projects. if i ask you to compile a file, just use the goddamn novus compile command
