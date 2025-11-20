@@ -3335,6 +3335,12 @@ public partial class IrBuilder
             // For Str types, just write the string directly
             EmitWriteStr(formatterVarName, formatterType, exprValue);
         }
+        else if (exprType is IrStructType strSt && strSt.StructName == "String")
+        {
+            // For String types, call String::as_str() and write the result
+            // This bypasses the Display trait which expects Formatter, not StackFormatter
+            EmitFormatString(formatterVarName, formatterType, exprValue);
+        }
         else if (exprType is IrIntType intType)
         {
             // For integer types, convert to string using built-in functions
@@ -3582,6 +3588,38 @@ public partial class IrBuilder
 
         // End
         _currentBlock!.AddInstruction(new IrLabel(endLabel));
+    }
+
+    private void EmitFormatString(string formatterVarName, IrType formatterType, IrValue stringValue)
+    {
+        // Call String::as_str() to get a Str, then write it to the formatter
+        // This bypasses the Display trait which expects Formatter, not StackFormatter
+
+        var asStrMethodName = "String::as_str";
+        var asStrMethod = _module.Functions.FirstOrDefault(f => f.Name == asStrMethodName);
+        if (asStrMethod == null)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.MethodNotFound,
+                "String::as_str() method not found",
+                errorLocation
+            );
+            return;
+        }
+
+        // Borrow the String value
+        var stringBorrow = new IrBorrowValue(stringValue, asStrMethod.Parameters[0].Type, false);
+
+        // Call String::as_str(&self)
+        var asStrResultName = $"%t{_tempCounter++}";
+        var asStrCall = new IrCall(asStrMethodName, asStrMethod.ReturnType, asStrResultName);
+        asStrCall.Arguments.Add(stringBorrow);
+        _currentBlock!.AddInstruction(asStrCall);
+
+        // Get the Str result and write it to the formatter
+        var strValue = new IrVariable(asStrResultName, asStrMethod.ReturnType);
+        EmitWriteStr(formatterVarName, formatterType, strValue);
     }
 
     private List<InterpolationSegment> ParseInterpolatedString(string content)
