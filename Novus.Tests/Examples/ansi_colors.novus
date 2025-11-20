@@ -1,6 +1,6 @@
-// ANSI Colors Demo - Shows all 8 Amiga console colors
+// ANSI Colors Demo - Shows Amiga console colors
 //
-// Demonstrates foreground and background color combinations
+// Demonstrates foreground and background colors
 // using the std::console::ansi library.
 
 from std::console::ansi import *
@@ -10,61 +10,18 @@ pub fn main() -> i32 {
     write("Amiga Console Colors Demo\n")
     write("=========================\n\n")
 
-    // Foreground colors
-    write("Foreground Colors:\n")
-
     let rst = reset()
 
-    // All foreground colors using string interpolation
-    write(f"  {fg(Color::Black)}Black  {rst}\n")
-    write(f"  {fg(Color::Red)}Red    {rst}\n")
-    write(f"  {fg(Color::Green)}Green  {rst}\n")
-    write(f"  {fg(Color::Yellow)}Yellow {rst}\n")
-    write(f"  {fg(Color::Blue)}Blue   {rst}\n")
-    write(f"  {fg(Color::Magenta)}Magenta{rst}\n")
-    write(f"  {fg(Color::Cyan)}Cyan   {rst}\n")
-    write(f"  {fg(Color::White)}White  {rst}\n")
+    // Foreground colors - one per line to minimize stack usage
+    write("Foreground Colors:\n")
+    write(f"  {fg(Color::Red)}Red{rst}\n")
+    write(f"  {fg(Color::Green)}Green{rst}\n")
+    write(f"  {fg(Color::Blue)}Blue{rst}\n")
 
     write("\nBackground Colors:\n")
-
-    let fg_white = fg(Color::White)
-    let fg_black = fg(Color::Black)
-
-    // Background colors with contrasting foreground
-    write(f"  {bg(Color::Black)}{fg_white} Black   {rst}\n")
-    write(f"  {bg(Color::Red)}{fg_white} Red     {rst}\n")
-    write(f"  {bg(Color::Green)}{fg_white} Green   {rst}\n")
-    write(f"  {bg(Color::Yellow)}{fg_black} Yellow  {rst}\n")
-    write(f"  {bg(Color::Blue)}{fg_white} Blue    {rst}\n")
-    write(f"  {bg(Color::Magenta)}{fg_black} Magenta {rst}\n")
-    write(f"  {bg(Color::Cyan)}{fg_black} Cyan    {rst}\n")
-    write(f"  {bg(Color::White)}{fg_black} White   {rst}\n")
-
-    write("\nColor Combinations:\n")
-
-    // Red on Black
-    var builder = Ansi::new()
-    builder.fg(Color::Red)
-    builder.bg(Color::Black)
-    write(f"  {builder.build()} Red on Black {rst}\n")
-
-    // Yellow on Blue
-    builder = Ansi::new()
-    builder.fg(Color::Yellow)
-    builder.bg(Color::Blue)
-    write(f"  {builder.build()} Yellow on Blue {rst}\n")
-
-    // Cyan on Magenta
-    builder = Ansi::new()
-    builder.fg(Color::Cyan)
-    builder.bg(Color::Magenta)
-    write(f"  {builder.build()} Cyan on Magenta {rst}\n")
-
-    // Black on White
-    builder = Ansi::new()
-    builder.fg(Color::Black)
-    builder.bg(Color::White)
-    write(f"  {builder.build()} Black on White {rst}\n")
+    write(f"  {bg(Color::Red)} Red {rst}\n")
+    write(f"  {bg(Color::Green)} Green {rst}\n")
+    write(f"  {bg(Color::Blue)} Blue {rst}\n")
 
     write("\nDone!\n")
     return 0

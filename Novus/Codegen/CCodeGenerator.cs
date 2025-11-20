@@ -2509,12 +2509,36 @@ public class CCodeGenerator
 
     internal string EscapeString(string value)
     {
-        return value
-            .Replace("\\", "\\\\")
-            .Replace("\"", "\\\"")
-            .Replace("\n", "\\n")
-            .Replace("\r", "\\r")
-            .Replace("\t", "\\t");
+        var sb = new StringBuilder();
+        for (int i = 0; i < value.Length; i++)
+        {
+            char c = value[i];
+            switch (c)
+            {
+                case '\\': sb.Append("\\\\"); break;
+                case '"': sb.Append("\\\""); break;
+                case '\n': sb.Append("\\n"); break;
+                case '\r': sb.Append("\\r"); break;
+                case '\t': sb.Append("\\t"); break;
+                case '\0': sb.Append("\\0"); break;
+                default:
+                    // Escape any non-printable or non-ASCII characters as octal
+                    // We use octal instead of hex because C's \x is greedy and will
+                    // consume following hex digits (e.g., \x9b0 becomes 0x9b0, not 0x9b + '0')
+                    if (c < 32 || c >= 127)
+                    {
+                        // Convert to octal manually (C# doesn't have octal format specifier)
+                        int val = (int)c;
+                        sb.Append($"\\{Convert.ToString(val, 8).PadLeft(3, '0')}");
+                    }
+                    else
+                    {
+                        sb.Append(c);
+                    }
+                    break;
+            }
+        }
+        return sb.ToString();
     }
 
     private void EmitExternalVariables()
