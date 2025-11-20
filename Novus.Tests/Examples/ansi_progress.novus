@@ -1,0 +1,108 @@
+// ANSI Progress Bar - Simple text-based progress indicator
+//
+// Demonstrates cursor movement and screen clearing
+// using the std::console::ansi library.
+
+from std::console::ansi import *
+from std::io::core import write
+
+pub fn main() -> i32 {
+    write("Progress Bar Demo\n")
+    write("=================\n\n")
+
+    let rst = reset()
+
+    // Simulate a 20-step progress bar
+    let total: u32 = 20u32
+    let mut current: u32 = 0u32
+
+    while current <= total {
+        // Move to beginning of line and clear it
+        write(f"\r{clear_to_eol()}")
+
+        // Draw progress bar
+        write("[")
+
+        // Filled portion in green
+        write(f"{fg(Color::Green)}")
+
+        let mut j: u32 = 0u32
+        while j < current {
+            write("=")
+            j++
+        }
+
+        write(f"{rst}")
+
+        // Empty portion
+        j = current
+        while j < total {
+            write(" ")
+            j++
+        }
+
+        write("] ")
+
+        // Percentage
+        let pct = (current * 100u32) / total
+        if pct < 10u32 {
+            write("  ")
+        } else if pct < 100u32 {
+            write(" ")
+        }
+
+        // Simple number output (would be better with format strings)
+        if pct == 0u32 {
+            write("0")
+        } else if pct == 5u32 {
+            write("5")
+        } else if pct == 10u32 {
+            write("10")
+        } else if pct == 15u32 {
+            write("15")
+        } else if pct == 20u32 {
+            write("20")
+        } else if pct == 25u32 {
+            write("25")
+        } else if pct == 30u32 {
+            write("30")
+        } else if pct == 35u32 {
+            write("35")
+        } else if pct == 40u32 {
+            write("40")
+        } else if pct == 45u32 {
+            write("45")
+        } else if pct == 50u32 {
+            write("50")
+        } else if pct == 55u32 {
+            write("55")
+        } else if pct == 60u32 {
+            write("60")
+        } else if pct == 65u32 {
+            write("65")
+        } else if pct == 70u32 {
+            write("70")
+        } else if pct == 75u32 {
+            write("75")
+        } else if pct == 80u32 {
+            write("80")
+        } else if pct == 85u32 {
+            write("85")
+        } else if pct == 90u32 {
+            write("90")
+        } else if pct == 95u32 {
+            write("95")
+        } else {
+            write("100")
+        }
+        write("%")
+
+        current++
+
+        // Small delay would go here in real code
+        // For now we just loop
+    }
+
+    write("\n\nComplete!\n")
+    return 0
+}

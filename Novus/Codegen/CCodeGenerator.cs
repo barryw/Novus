@@ -822,7 +822,7 @@ public class CCodeGenerator
                     // If using out-parameter, add output parameter as first parameter
                     if (isStructOrEnumReturn)
                     {
-                        paramTypes.Insert(0, GetCType(returnType) + "*");
+                        paramTypes.Insert(0, GetCType(returnType) + "* __out");
                     }
 
                     var paramList = paramTypes.Count > 0 ? string.Join(", ", paramTypes) : "void";

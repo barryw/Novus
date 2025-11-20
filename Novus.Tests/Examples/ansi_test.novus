@@ -1,0 +1,102 @@
+// ANSI Console Test - Demonstrates ANSI escape sequence usage in Novus
+//
+// This test exercises the std::console::ansi library functions
+// for cursor control, colors, and text styling.
+
+from std::console::ansi import *
+from std::io::core import write
+
+pub fn main() -> i32 {
+    write("ANSI Console Test\n")
+    write("=================\n\n")
+
+    // Test 1: Simple color functions
+    write("Test 1: Colors\n")
+    let rst = reset()
+
+    write(f"{fg(Color::Red)}Red text{rst} | ")
+    write(f"{fg(Color::Green)}Green text{rst} | ")
+    write(f"{fg(Color::Blue)}Blue text{rst}\n\n")
+
+    // Test 2: Text styling
+    write("Test 2: Styles\n")
+    write(f"{bold()}Bold{rst} | ")
+    write(f"{underline()}Underline{rst} | ")
+    write(f"{reverse()}Reverse{rst}\n\n")
+
+    // Test 3: Builder pattern
+    write("Test 3: Builder pattern\n")
+    var builder = Ansi::new()
+    builder.bold()
+    builder.fg(Color::Yellow)
+    builder.bg(Color::Blue)
+    write(f"{builder.build()}Bold Yellow on Blue{rst}\n\n")
+
+    // Test 4: Cursor movement
+    write("Test 4: Cursor positioning\n")
+    let pos = move_to(1, 1)  // Would move to top-left
+    write("  move_to(1, 1) = [")
+    // Print the bytes in hex-like format
+    let mut i: u32 = 0u32
+    while i < pos.len() {
+        if i > 0 {
+            write(" ")
+        }
+        let byte = pos.as_str().get(i)
+        match byte {
+            Option::Some(b) => {
+                // Just show we got a byte
+                write(".")
+            },
+            Option::None => {}
+        }
+        i++
+    }
+    write("]\n")
+
+    let up = cursor_up(5)
+    write("  cursor_up(5) length = ")
+    // Show length
+    if up.len() > 0 {
+        write("OK\n")
+    } else {
+        write("ERROR\n")
+    }
+
+    // Test 5: Clear functions
+    write("\nTest 5: Clear sequence lengths\n")
+    write(f"  clear_screen() = {clear_screen()} (function)\n")
+
+    let clr = clear(ClearMode::All)
+    write("  clear(ClearMode::All) length = ")
+    if clr.len() > 0 {
+        write("OK\n")
+    } else {
+        write("ERROR\n")
+    }
+
+    // Test 6: Background colors
+    write("\nTest 6: Background colors\n")
+    write(f"{bg(Color::Red)} Red BG {rst} ")
+    write(f"{bg(Color::Green)} Green BG {rst}\n\n")
+
+    // Test 7: Default size
+    write("Test 7: Default console size\n")
+    let size = default_size()
+    write("  Default: 80x25 (width=")
+    if size.width == 80u32 {
+        write("80")
+    } else {
+        write("?")
+    }
+    write(", height=")
+    if size.height == 25u32 {
+        write("25")
+    } else {
+        write("?")
+    }
+    write(")\n")
+
+    write("\nAll tests completed!\n")
+    return 0
+}

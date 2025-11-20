@@ -7,6 +7,7 @@ namespace Novus.Tests;
 /// Integration tests that ensure ALL example files compile successfully.
 /// These tests catch regressions as the grammar and compiler evolve.
 /// </summary>
+[Collection("StdlibCache")]
 public class ExampleCompilationTests
 {
     private static string GetProjectRoot()

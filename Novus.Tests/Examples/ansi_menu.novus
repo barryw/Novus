@@ -1,0 +1,62 @@
+// ANSI Menu Demo - Simple styled menu display
+//
+// Demonstrates combining styles, colors, and cursor positioning
+// using the std::console::ansi library.
+
+from std::console::ansi import *
+from std::io::core import write
+
+pub fn main() -> i32 {
+    let rst = reset()
+
+    // Clear screen and go home
+    write(f"{clear_screen()}{home()}")
+
+    // Title bar - reverse video
+    var title_style = Ansi::new()
+    title_style.reverse()
+    title_style.bold()
+    write(f"{title_style.build()}  NOVUS FILE MANAGER v1.0                              {rst}\n\n")
+
+    // Menu items with keyboard shortcuts
+    let bld = bold()
+    write(f"  {bld}F{rst}ile   {bld}E{rst}dit   {bld}V{rst}iew   {bld}T{rst}ools   {bld}H{rst}elp\n")
+
+    // Separator line
+    let sep_color = fg(Color::Cyan)
+    write(f"{sep_color}  ------------------------------------------------\n{rst}")
+
+    // File listing header
+    var header_style = Ansi::new()
+    header_style.underline()
+    header_style.fg(Color::Yellow)
+    write(f"\n  {header_style.build()}Name                Size       Date{rst}\n\n")
+
+    // File entries
+    let dir_color = fg(Color::Blue)
+    let file_color = fg(Color::White)
+    let exe_color = fg(Color::Green)
+
+    // Directories
+    write(f"  {dir_color}Devs/{rst}               <DIR>      01-Jan-24\n")
+    write(f"  {dir_color}Libs/{rst}               <DIR>      01-Jan-24\n")
+    write(f"  {dir_color}S/{rst}                  <DIR>      01-Jan-24\n")
+
+    // Executable
+    write(f"  {exe_color}LoadWB{rst}              1,234      15-Mar-24\n")
+
+    // Regular files
+    write(f"  {file_color}Startup-Sequence{rst}      512      10-Feb-24\n")
+    write(f"  {file_color}User-Startup{rst}          256      20-Feb-24\n")
+
+    // Bottom separator
+    write(f"\n{sep_color}  ------------------------------------------------\n{rst}")
+
+    // Status bar
+    var status_style = Ansi::new()
+    status_style.fg(Color::Black)
+    status_style.bg(Color::Cyan)
+    write(f"{status_style.build()}  3 Dirs, 3 Files    2,002 bytes    RAM: 1,234K free  {rst}\n")
+
+    return 0
+}

@@ -7,6 +7,7 @@ namespace Novus.Tests;
 /// Tests that ensure generated code assembles and links successfully
 /// These are critical smoke tests to catch codegen regressions
 /// </summary>
+[Collection("StdlibCache")]
 public class CompilationTests
 {
     [Theory]

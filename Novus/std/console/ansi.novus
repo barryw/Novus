@@ -1,0 +1,463 @@
+// Novus Standard Library - ANSI Console Control
+// Namespace: std::console::ansi
+//
+// Provides ANSI escape sequence support for the Amiga console.
+// The Amiga console supports ANSI X3.64 escape sequences for cursor control,
+// colors, and text styling.
+//
+// Example:
+// ```novus
+// from std::console::ansi import *
+// from std::io::core import write
+//
+// write(f"{clear_screen()}{home()}")
+// write(f"{fg(Color::Red)}{bold()}Error:{reset()} Failed\n")
+// ```
+
+from std::core import Option, Result
+from std::strings::core import Str, String
+from std::collections::core import Vec
+from std::error::core import DosError
+
+// Runtime helper for integer to string conversion
+extern fn u32_to_string(value: u32, buffer: *u8, buffer_size: u32) -> u32
+
+// ============================================================================
+// Enums
+// ============================================================================
+
+/// Console colors (8-color Amiga palette)
+///
+/// These correspond to the Amiga's 8-pen palette. Actual colors depend
+/// on the console's palette configuration, but typical defaults are shown.
+pub enum Color {
+    /// Pen 0 - typically black (background)
+    Black,
+    /// Pen 1 - typically red
+    Red,
+    /// Pen 2 - typically green
+    Green,
+    /// Pen 3 - typically yellow/brown
+    Yellow,
+    /// Pen 4 - typically blue
+    Blue,
+    /// Pen 5 - typically magenta/purple
+    Magenta,
+    /// Pen 6 - typically cyan
+    Cyan,
+    /// Pen 7 - typically white
+    White,
+    /// Reset to default color
+    Default,
+}
+
+/// Text styling attributes supported by Amiga console
+pub enum Style {
+    /// Bold/bright intensity
+    Bold,
+    /// Underlined text
+    Underline,
+    /// Reverse video (swap fg/bg)
+    Reverse,
+}
+
+/// Screen/line clearing modes
+pub enum ClearMode {
+    /// Clear from cursor to end
+    ToEnd,
+    /// Clear from start to cursor
+    ToStart,
+    /// Clear entire screen/line
+    All,
+}
+
+/// Console dimensions
+pub struct ConsoleSize {
+    width: u32,
+    height: u32,
+}
+
+// ============================================================================
+// Raw Constants (use the functions instead for ergonomic API)
+// ============================================================================
+
+// Note: String literals cannot be compile-time constants in Novus because Str
+// is a slice type (pointer + length). Use the functions below instead, which
+// return Str directly from string literals.
+
+// ============================================================================
+// Simple Functions (return Str for fixed sequences)
+// ============================================================================
+
+/// Reset all text attributes to default
+pub fn reset() -> Str {
+    return "\x9b0m"
+}
+
+/// Enable bold/bright text
+pub fn bold() -> Str {
+    return "\x9b1m"
+}
+
+/// Enable underlined text
+pub fn underline() -> Str {
+    return "\x9b4m"
+}
+
+/// Enable reverse video (swap foreground/background)
+pub fn reverse() -> Str {
+    return "\x9b7m"
+}
+
+/// Move cursor to home position (top-left, 1,1)
+pub fn home() -> Str {
+    return "\x9bH"
+}
+
+/// Clear entire screen
+pub fn clear_screen() -> Str {
+    return "\x9b2J"
+}
+
+/// Clear entire current line
+pub fn clear_line() -> Str {
+    return "\x9b2K"
+}
+
+/// Clear from cursor to end of line
+pub fn clear_to_eol() -> Str {
+    return "\x9bK"
+}
+
+/// Clear from cursor to end of screen
+pub fn clear_to_eos() -> Str {
+    return "\x9bJ"
+}
+
+// ============================================================================
+// Parameterized Functions (return String)
+// ============================================================================
+
+/// Move cursor to absolute position (1-indexed)
+///
+/// Example:
+/// ```novus
+/// write(f"{move_to(10, 20)}At row 10, col 20")
+/// ```
+pub fn move_to(row: u32, col: u32) -> String {
+    // Validate parameters
+    let r = row == 0 ? 1u32 : (row > 999 ? 999u32 : row)
+    let c = col == 0 ? 1u32 : (col > 999 ? 999u32 : col)
+
+    // Build escape sequence: CSI row ; col H
+    var result = String::new()
+    result.push_byte($9b)  // CSI
+
+    // Convert row to string
+    var row_buf: [u8; 16] = [0u8; 16]
+    let row_len = u32_to_string(r, (*u8)&row_buf[0], 16u32)
+    let mut i: u32 = 0u32
+    while i < row_len {
+        result.push_byte(row_buf[i])
+        i++
+    }
+
+    result.push_byte($3b)  // ';'
+
+    // Convert col to string
+    var col_buf: [u8; 16] = [0u8; 16]
+    let col_len = u32_to_string(c, (*u8)&col_buf[0], 16u32)
+    i = 0u32
+    while i < col_len {
+        result.push_byte(col_buf[i])
+        i++
+    }
+
+    result.push_byte($48)  // 'H'
+
+    return result
+}
+
+/// Move cursor up by n rows
+pub fn cursor_up(n: u32) -> String {
+    let count = n == 0 ? 1u32 : (n > 999 ? 999u32 : n)
+
+    var result = String::new()
+    result.push_byte($9b)  // CSI
+
+    var buf: [u8; 16] = [0u8; 16]
+    let len = u32_to_string(count, (*u8)&buf[0], 16u32)
+    let mut i: u32 = 0u32
+    while i < len {
+        result.push_byte(buf[i])
+        i++
+    }
+
+    result.push_byte($41)  // 'A'
+
+    return result
+}
+
+/// Move cursor down by n rows
+pub fn cursor_down(n: u32) -> String {
+    let count = n == 0 ? 1u32 : (n > 999 ? 999u32 : n)
+
+    var result = String::new()
+    result.push_byte($9b)  // CSI
+
+    var buf: [u8; 16] = [0u8; 16]
+    let len = u32_to_string(count, (*u8)&buf[0], 16u32)
+    let mut i: u32 = 0u32
+    while i < len {
+        result.push_byte(buf[i])
+        i++
+    }
+
+    result.push_byte($42)  // 'B'
+
+    return result
+}
+
+/// Move cursor right by n columns
+pub fn cursor_right(n: u32) -> String {
+    let count = n == 0 ? 1u32 : (n > 999 ? 999u32 : n)
+
+    var result = String::new()
+    result.push_byte($9b)  // CSI
+
+    var buf: [u8; 16] = [0u8; 16]
+    let len = u32_to_string(count, (*u8)&buf[0], 16u32)
+    let mut i: u32 = 0u32
+    while i < len {
+        result.push_byte(buf[i])
+        i++
+    }
+
+    result.push_byte($43)  // 'C'
+
+    return result
+}
+
+/// Move cursor left by n columns
+pub fn cursor_left(n: u32) -> String {
+    let count = n == 0 ? 1u32 : (n > 999 ? 999u32 : n)
+
+    var result = String::new()
+    result.push_byte($9b)  // CSI
+
+    var buf: [u8; 16] = [0u8; 16]
+    let len = u32_to_string(count, (*u8)&buf[0], 16u32)
+    let mut i: u32 = 0u32
+    while i < len {
+        result.push_byte(buf[i])
+        i++
+    }
+
+    result.push_byte($44)  // 'D'
+
+    return result
+}
+
+/// Set foreground color
+pub fn fg(color: Color) -> String {
+    var result = String::new()
+    result.push_byte($9b)  // CSI
+
+    // Color codes: 30-37 for foreground, 39 for default
+    let code: u32 = match color {
+        Color::Black => 30u32,
+        Color::Red => 31u32,
+        Color::Green => 32u32,
+        Color::Yellow => 33u32,
+        Color::Blue => 34u32,
+        Color::Magenta => 35u32,
+        Color::Cyan => 36u32,
+        Color::White => 37u32,
+        Color::Default => 39u32,
+    }
+
+    var buf: [u8; 16] = [0u8; 16]
+    let len = u32_to_string(code, (*u8)&buf[0], 16u32)
+    let mut i: u32 = 0u32
+    while i < len {
+        result.push_byte(buf[i])
+        i++
+    }
+
+    result.push_byte($6d)  // 'm'
+
+    return result
+}
+
+/// Set background color
+pub fn bg(color: Color) -> String {
+    var result = String::new()
+    result.push_byte($9b)  // CSI
+
+    // Color codes: 40-47 for background, 49 for default
+    let code: u32 = match color {
+        Color::Black => 40u32,
+        Color::Red => 41u32,
+        Color::Green => 42u32,
+        Color::Yellow => 43u32,
+        Color::Blue => 44u32,
+        Color::Magenta => 45u32,
+        Color::Cyan => 46u32,
+        Color::White => 47u32,
+        Color::Default => 49u32,
+    }
+
+    var buf: [u8; 16] = [0u8; 16]
+    let len = u32_to_string(code, (*u8)&buf[0], 16u32)
+    let mut i: u32 = 0u32
+    while i < len {
+        result.push_byte(buf[i])
+        i++
+    }
+
+    result.push_byte($6d)  // 'm'
+
+    return result
+}
+
+/// Clear screen with specified mode
+pub fn clear(mode: ClearMode) -> String {
+    var result = String::new()
+    result.push_byte($9b)  // CSI
+
+    // Match mode to digit character
+    let digit: u8 = match mode {
+        ClearMode::ToEnd => $30,    // '0'
+        ClearMode::ToStart => $31,  // '1'
+        ClearMode::All => $32,      // '2'
+    }
+    result.push_byte(digit)
+
+    result.push_byte($4a)  // 'J'
+
+    return result
+}
+
+// ============================================================================
+// Builder Pattern
+// ============================================================================
+
+/// Builder for constructing complex ANSI escape sequences
+///
+/// Example:
+/// ```novus
+/// var builder = Ansi::new()
+/// builder.bold()
+/// builder.fg(Color::Red)
+/// builder.bg(Color::Black)
+/// let style = builder.build()
+/// write(f"{style}Error!{reset()}")
+/// ```
+pub struct Ansi {
+    codes: Vec<u32>,
+}
+
+impl Ansi {
+    /// Create a new ANSI builder
+    pub fn new() -> Ansi {
+        return Ansi { codes: Vec::<u32>::new() }
+    }
+
+    /// Add bold attribute
+    pub fn bold(&mut self) {
+        self.codes.push(1u32)
+    }
+
+    /// Add underline attribute
+    pub fn underline(&mut self) {
+        self.codes.push(4u32)
+    }
+
+    /// Add reverse video attribute
+    pub fn reverse(&mut self) {
+        self.codes.push(7u32)
+    }
+
+    /// Set foreground color
+    pub fn fg(&mut self, color: Color) {
+        let code: u32 = match color {
+            Color::Black => 30u32,
+            Color::Red => 31u32,
+            Color::Green => 32u32,
+            Color::Yellow => 33u32,
+            Color::Blue => 34u32,
+            Color::Magenta => 35u32,
+            Color::Cyan => 36u32,
+            Color::White => 37u32,
+            Color::Default => 39u32,
+        }
+        self.codes.push(code)
+    }
+
+    /// Set background color
+    pub fn bg(&mut self, color: Color) {
+        let code: u32 = match color {
+            Color::Black => 40u32,
+            Color::Red => 41u32,
+            Color::Green => 42u32,
+            Color::Yellow => 43u32,
+            Color::Blue => 44u32,
+            Color::Magenta => 45u32,
+            Color::Cyan => 46u32,
+            Color::White => 47u32,
+            Color::Default => 49u32,
+        }
+        self.codes.push(code)
+    }
+
+    /// Build the escape sequence string
+    pub fn build(&self) -> String {
+        var result = String::new()
+
+        // Only add content if we have codes
+        if self.codes.len > 0 {
+            result.push_byte($9b)  // CSI
+
+            let mut i: u32 = 0u32
+            while i < self.codes.len {
+                if i > 0 {
+                    result.push_byte($3b)  // ';'
+                }
+
+                // Access directly via pointer arithmetic
+                let c = self.codes.ptr[i]
+                var buf: [u8; 16] = [0u8; 16]
+                let len = u32_to_string(c, (*u8)&buf[0], 16u32)
+                let mut j: u32 = 0u32
+                while j < len {
+                    result.push_byte(buf[j])
+                    j++
+                }
+
+                i++
+            }
+
+            result.push_byte($6d)  // 'm'
+        }
+
+        return result
+    }
+}
+
+// ============================================================================
+// Console Size Query (Advanced)
+// ============================================================================
+
+// TODO: Implement query_size() using console.device ACTION_DISK_INFO
+// This requires opening the console as a device and querying the ConUnit structure
+// to get cu_XMax and cu_YMax (character dimensions).
+//
+// For now, users can use reasonable defaults (80x25) or pass dimensions as parameters.
+
+/// Get default console size (common default for Amiga shells)
+///
+/// Returns 80x25 as a reasonable default. For actual console dimensions,
+/// a future version will query the console device directly.
+pub fn default_size() -> ConsoleSize {
+    return ConsoleSize { width: 80u32, height: 25u32 }
+}
