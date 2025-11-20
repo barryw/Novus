@@ -71,7 +71,7 @@ public partial class IrBuilder
             if (implType == null)
             {
                 var errorLocation = selfParam != null
-                    ? SourceLocationHelper.FromContext(selfParam, _inputFilePath, _sourceLines.ToArray())
+                    ? GetLocation(selfParam)
                     : new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
                 _diagnostics.ReportError(
                     ErrorCodes.TypeNotFound,
@@ -227,16 +227,7 @@ public partial class IrBuilder
         // This is especially important during imports where enums may reference each other
 
         // Handle generic parameters if present
-        var genericParams = new List<string>();
-        if (context.genericParams() != null)
-        {
-            foreach (var paramId in context.genericParams().IDENTIFIER())
-            {
-                var paramName = paramId.GetText();
-                genericParams.Add(paramName);
-                _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
-            }
-        }
+        var genericParams = ParseGenericParameters(context.genericParams(), registerInSymbolTable: true);
 
         // Create placeholder enum with empty variants
         var placeholderEnum = new IrEnumType(name, new List<IrEnumVariant>(), genericParams.Count > 0 ? genericParams : null);
@@ -387,16 +378,7 @@ public partial class IrBuilder
         var attributes = ParseAttributesSimple(context.attribute());
 
         // Handle generic parameters if present
-        var genericParams = new List<string>();
-        if (context.genericParams() != null)
-        {
-            foreach (var paramId in context.genericParams().IDENTIFIER())
-            {
-                var paramName = paramId.GetText();
-                genericParams.Add(paramName);
-                _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
-            }
-        }
+        var genericParams = ParseGenericParameters(context.genericParams(), registerInSymbolTable: true);
 
         // Parse trait method signatures
         var methods = new List<IrTraitMethod>();
@@ -450,12 +432,7 @@ public partial class IrBuilder
                     }
 
                     // Regular parameters
-                    foreach (var paramCtx in paramList.parameter())
-                    {
-                        var paramName = paramCtx.IDENTIFIER().GetText();
-                        var paramType = ParseType(paramCtx.type());
-                        parameters.Add(new IrParameter(paramName, paramType));
-                    }
+                    ParseRegularParameters(paramList, parameters);
 
                     // Variadic parameters
                     ParseVariadicParameter(paramList, parameters);

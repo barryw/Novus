@@ -136,31 +136,55 @@ public partial class IrBuilder
         }
     }
 
+    /// <summary>
+    /// Extract type suffix from numeric literal text. Consolidates the duplicated type suffix checking
+    /// logic from ParseIntegerLiteral, ParseBinaryLiteral, and ParseHexLiteral.
+    /// </summary>
+    /// <param name="text">The literal text (with underscores already stripped)</param>
+    /// <param name="defaultType">The default type if no suffix is found</param>
+    /// <returns>Tuple of (numeric part without suffix, type)</returns>
+    private (string NumericPart, IrType Type) ExtractIntegerTypeSuffix(string text, IrType defaultType)
+    {
+        // Check suffixes in order of decreasing length to avoid partial matches
+        // For example, check "u64" before "u8" to avoid matching "u8" in "123u64"
+        if (text.Length >= 3)
+        {
+            var suffix3 = text[^3..];
+            switch (suffix3)
+            {
+                case "u64": return (text[..^3], IrIntType.U64);
+                case "i64": return (text[..^3], IrIntType.I64);
+                case "u32": return (text[..^3], IrIntType.U32);
+                case "i32": return (text[..^3], IrIntType.I32);
+                case "u16": return (text[..^3], IrIntType.U16);
+                case "i16": return (text[..^3], IrIntType.I16);
+            }
+        }
+
+        if (text.Length >= 2)
+        {
+            var suffix2 = text[^2..];
+            switch (suffix2)
+            {
+                case "u8": return (text[..^2], IrIntType.U8);
+                case "i8": return (text[..^2], IrIntType.I8);
+            }
+        }
+
+        // No suffix found, use default type
+        return (text, defaultType);
+    }
+
     private (long value, IrType type) ParseIntegerLiteral(string text)
     {
         // Strip underscores for readability (e.g., 1_000_000)
         text = text.Replace("_", "");
 
-        // Check for type suffix
-        if (text.EndsWith("u8"))
-            return (long.Parse(text[..^2]), IrIntType.U8);
-        if (text.EndsWith("u16"))
-            return (long.Parse(text[..^3]), IrIntType.U16);
-        if (text.EndsWith("u32"))
-            return (long.Parse(text[..^3]), IrIntType.U32);
-        if (text.EndsWith("u64"))
-            return (long.Parse(text[..^3]), IrIntType.U64);
-        if (text.EndsWith("i8"))
-            return (long.Parse(text[..^2]), IrIntType.I8);
-        if (text.EndsWith("i16"))
-            return (long.Parse(text[..^3]), IrIntType.I16);
-        if (text.EndsWith("i32"))
-            return (long.Parse(text[..^3]), IrIntType.I32);
-        if (text.EndsWith("i64"))
-            return (long.Parse(text[..^3]), IrIntType.I64);
+        // Extract type suffix and numeric part
+        var (numericPart, type) = ExtractIntegerTypeSuffix(text, IrIntType.I32);
 
-        // Default to i32
-        return (long.Parse(text), IrIntType.I32);
+        // Parse the numeric part
+        return (long.Parse(numericPart), type);
     }
 
     private (double value, IrType type) ParseFloatLiteral(string text)
@@ -196,50 +220,8 @@ public partial class IrBuilder
         // Remove '%' prefix and underscores
         text = text[1..].Replace("_", "");
 
-        // Extract type suffix if present
-        IrType type = IrIntType.I32;
-        string binaryText = text;
-
-        if (text.EndsWith("u8"))
-        {
-            type = IrIntType.U8;
-            binaryText = text[..^2];
-        }
-        else if (text.EndsWith("u16"))
-        {
-            type = IrIntType.U16;
-            binaryText = text[..^3];
-        }
-        else if (text.EndsWith("u32"))
-        {
-            type = IrIntType.U32;
-            binaryText = text[..^3];
-        }
-        else if (text.EndsWith("u64"))
-        {
-            type = IrIntType.U64;
-            binaryText = text[..^3];
-        }
-        else if (text.EndsWith("i8"))
-        {
-            type = IrIntType.I8;
-            binaryText = text[..^2];
-        }
-        else if (text.EndsWith("i16"))
-        {
-            type = IrIntType.I16;
-            binaryText = text[..^3];
-        }
-        else if (text.EndsWith("i32"))
-        {
-            type = IrIntType.I32;
-            binaryText = text[..^3];
-        }
-        else if (text.EndsWith("i64"))
-        {
-            type = IrIntType.I64;
-            binaryText = text[..^3];
-        }
+        // Extract type suffix and binary part
+        var (binaryText, type) = ExtractIntegerTypeSuffix(text, IrIntType.I32);
 
         // Parse binary string to long
         var value = Convert.ToInt64(binaryText, 2);
@@ -251,50 +233,8 @@ public partial class IrBuilder
         // Remove '$' prefix and underscores
         text = text[1..].Replace("_", "");
 
-        // Extract type suffix if present
-        IrType type = IrIntType.I32;
-        string hexText = text;
-
-        if (text.EndsWith("u8"))
-        {
-            type = IrIntType.U8;
-            hexText = text[..^2];
-        }
-        else if (text.EndsWith("u16"))
-        {
-            type = IrIntType.U16;
-            hexText = text[..^3];
-        }
-        else if (text.EndsWith("u32"))
-        {
-            type = IrIntType.U32;
-            hexText = text[..^3];
-        }
-        else if (text.EndsWith("u64"))
-        {
-            type = IrIntType.U64;
-            hexText = text[..^3];
-        }
-        else if (text.EndsWith("i8"))
-        {
-            type = IrIntType.I8;
-            hexText = text[..^2];
-        }
-        else if (text.EndsWith("i16"))
-        {
-            type = IrIntType.I16;
-            hexText = text[..^3];
-        }
-        else if (text.EndsWith("i32"))
-        {
-            type = IrIntType.I32;
-            hexText = text[..^3];
-        }
-        else if (text.EndsWith("i64"))
-        {
-            type = IrIntType.I64;
-            hexText = text[..^3];
-        }
+        // Extract type suffix and hex part
+        var (hexText, type) = ExtractIntegerTypeSuffix(text, IrIntType.I32);
 
         // Parse hex string to long
         var value = Convert.ToInt64(hexText, 16);
@@ -373,6 +313,24 @@ public partial class IrBuilder
     }
 
     /// <summary>
+    /// Parse regular parameters (not self, not variadic) from a parameter list and add to a parameter collection.
+    /// This helper consolidates the repeated pattern that appears 8+ times across IrBuilder files.
+    /// </summary>
+    /// <param name="paramList">The parameter list context from the parse tree</param>
+    /// <param name="parameters">The list to add parsed parameters to</param>
+    private void ParseRegularParameters(NovusParser.ParameterListContext? paramList, List<IrParameter> parameters)
+    {
+        if (paramList == null) return;
+
+        foreach (var paramCtx in paramList.parameter())
+        {
+            var paramName = paramCtx.IDENTIFIER().GetText();
+            var paramType = ParseType(paramCtx.type());
+            parameters.Add(new IrParameter(paramName, paramType));
+        }
+    }
+
+    /// <summary>
     /// Parses return type from a function declaration context.
     /// This helper consolidates the repeated ternary pattern that appears throughout both
     /// IrBuilder (9+ occurrences) and SemanticAnalyzer (3+ occurrences).
@@ -392,8 +350,9 @@ public partial class IrBuilder
     /// for extracting generic parameter names from the parse tree.
     /// </summary>
     /// <param name="genericParamsContext">The generic parameters context from the parse tree (may be null)</param>
+    /// <param name="registerInSymbolTable">Whether to register the parameters in the symbol table (default: false)</param>
     /// <returns>List of generic parameter names, or empty list if no generic parameters</returns>
-    private List<string> ParseGenericParameters(NovusParser.GenericParamsContext? genericParamsContext)
+    private List<string> ParseGenericParameters(NovusParser.GenericParamsContext? genericParamsContext, bool registerInSymbolTable = false)
     {
         if (genericParamsContext == null)
             return new List<string>();
@@ -401,9 +360,36 @@ public partial class IrBuilder
         var genericParams = new List<string>();
         foreach (var paramId in genericParamsContext.IDENTIFIER())
         {
-            genericParams.Add(paramId.GetText());
+            var paramName = paramId.GetText();
+            genericParams.Add(paramName);
+
+            if (registerInSymbolTable)
+            {
+                _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
+            }
         }
         return genericParams;
+    }
+
+    /// <summary>
+    /// Parse type arguments from a generic type args context (e.g., From&lt;DosError&gt;).
+    /// This helper consolidates the repeated pattern that appears 6+ times across IrBuilder.cs
+    /// and IrBuilder.Imports.cs for parsing trait/generic type arguments.
+    /// </summary>
+    /// <param name="typeArgsContext">The generic type arguments context from the parse tree (may be null)</param>
+    /// <returns>List of parsed types, or empty list if no type arguments</returns>
+    private List<IrType> ParseTypeArguments(NovusParser.GenericTypeArgsContext? typeArgsContext)
+    {
+        var typeArgs = new List<IrType>();
+        if (typeArgsContext != null)
+        {
+            var typeList = typeArgsContext.typeList();
+            foreach (var typeCtx in typeList.type())
+            {
+                typeArgs.Add(ParseType(typeCtx));
+            }
+        }
+        return typeArgs;
     }
 
     /// <summary>
@@ -463,5 +449,93 @@ public partial class IrBuilder
             "bool" or "void" or "f32" or "f64" or "Self" => true,
             _ => false
         };
+    }
+
+    /// <summary>
+    /// Parse an impl target type (either primitive or named) and return the type name and implementing type.
+    /// This helper consolidates the repeated impl target type parsing logic that appears 5+ times across
+    /// IrBuilder.cs and IrBuilder.Imports.cs.
+    /// </summary>
+    /// <param name="targetTypeCtx">The impl target type context from the parse tree (may be null for inherent impls)</param>
+    /// <param name="targetTypeName">The target type name context for inherent impls (may be null for trait impls)</param>
+    /// <param name="errorContext">Context for error reporting</param>
+    /// <returns>Tuple of (type name, implementing type), or (null, null) if error occurred</returns>
+    private (string? TypeName, IrType? ImplementingType) ParseImplTargetType(
+        NovusParser.ImplTargetTypeContext? targetTypeCtx,
+        NovusParser.TypeNameContext? targetTypeName,
+        Antlr4.Runtime.ParserRuleContext errorContext)
+    {
+        string typeName;
+        IrType? implementingType = null;
+
+        if (targetTypeCtx != null)
+        {
+            // Trait impl format: impl Trait for TargetType
+            if (targetTypeCtx is NovusParser.PrimitiveImplTargetContext primitiveCtx)
+            {
+                // impl Trait for i32, bool, etc.
+                var primitiveTypeNameCtx = primitiveCtx.primitiveTypeName();
+                typeName = primitiveTypeNameCtx.GetText().ToLowerInvariant();
+                implementingType = MapPrimitiveTypeName(typeName);
+            }
+            else if (targetTypeCtx is NovusParser.NamedImplTargetContext namedCtx)
+            {
+                // impl Trait for MyType
+                typeName = namedCtx.typeName().IDENTIFIER(0).GetText();
+
+                // Look up the implementing type (could be struct or enum)
+                implementingType = _symbols.LookupStruct(typeName) ?? (IrType?)_symbols.LookupEnum(typeName);
+
+                if (implementingType == null)
+                {
+                    var errorLocation = GetLocation(errorContext);
+                    _diagnostics.ReportError(
+                        ErrorCodes.TypeNotFound,
+                        $"Type '{typeName}' not found for impl block",
+                        errorLocation
+                    );
+                    return (null, null);
+                }
+            }
+            else
+            {
+                throw new CompilerBugException(
+                    $"Unknown impl target type context: {targetTypeCtx?.GetType().Name}",
+                    "ParseImplTargetType",
+                    _inputFilePath,
+                    null
+                );
+            }
+        }
+        else if (targetTypeName != null)
+        {
+            // Inherent impl format: impl TargetType
+            typeName = targetTypeName.IDENTIFIER(0).GetText();
+
+            // Look up the implementing type (could be struct or enum)
+            implementingType = _symbols.LookupStruct(typeName) ?? (IrType?)_symbols.LookupEnum(typeName);
+
+            if (implementingType == null)
+            {
+                var errorLocation = GetLocation(errorContext);
+                _diagnostics.ReportError(
+                    ErrorCodes.TypeNotFound,
+                    $"Type '{typeName}' not found for impl block",
+                    errorLocation
+                );
+                return (null, null);
+            }
+        }
+        else
+        {
+            throw new CompilerBugException(
+                "Both targetTypeCtx and targetTypeName are null in ParseImplTargetType",
+                "ParseImplTargetType",
+                _inputFilePath,
+                null
+            );
+        }
+
+        return (typeName, implementingType);
     }
 }

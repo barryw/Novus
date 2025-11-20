@@ -34,13 +34,7 @@ public partial class IrBuilder
         }
 
         // Parse generic parameters
-        if (context.genericParams() != null)
-        {
-            foreach (var paramId in context.genericParams().IDENTIFIER())
-            {
-                function.GenericParameters.Add(paramId.GetText());
-            }
-        }
+        function.GenericParameters.AddRange(ParseGenericParameters(context.genericParams()));
 
         // Parse where clause
         function.WhereClause = ParseWhereClause(context.whereClause());
@@ -49,12 +43,7 @@ public partial class IrBuilder
         if (context.parameterList() != null)
         {
             var paramList = context.parameterList();
-            foreach (var paramCtx in paramList.parameter())
-            {
-                var paramName = paramCtx.IDENTIFIER().GetText();
-                var paramType = ParseType(paramCtx.type());
-                function.Parameters.Add(new IrParameter(paramName, paramType));
-            }
+            ParseRegularParameters(paramList, function.Parameters);
 
             // Add variadic parameter if present
             ParseVariadicParameter(paramList, function);
@@ -170,7 +159,7 @@ public partial class IrBuilder
 
         if (value == null)
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.MissingInitializer,
                 $"Variable must have an initial value",
@@ -221,7 +210,7 @@ public partial class IrBuilder
             annotatedType = ParseType(typeContext);
             if (annotatedType is not IrTupleType)
             {
-                var errorLocation = SourceLocationHelper.FromContext(fullContext, _inputFilePath, _sourceLines.ToArray());
+                var errorLocation = GetLocation(fullContext);
                 _diagnostics.ReportError(
                     ErrorCodes.TypeMismatch,
                     $"Type annotation for tuple destructuring must be a tuple type",
@@ -242,7 +231,7 @@ public partial class IrBuilder
 
         if (value == null)
         {
-            var errorLocation = SourceLocationHelper.FromContext(fullContext, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(fullContext);
             _diagnostics.ReportError(
                 ErrorCodes.MissingInitializer,
                 $"Tuple destructuring must have an initial value",
@@ -254,7 +243,7 @@ public partial class IrBuilder
         // Verify the value is a tuple type
         if (value.Type is not IrTupleType tupleType)
         {
-            var errorLocation = SourceLocationHelper.FromContext(fullContext, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(fullContext);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 $"Cannot destructure non-tuple type '{value.Type.Name}'",
@@ -281,7 +270,7 @@ public partial class IrBuilder
         // Verify element count matches
         if (patternElements.Count != tupleType.ElementTypes.Count)
         {
-            var errorLocation = SourceLocationHelper.FromContext(fullContext, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(fullContext);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 $"Tuple destructuring pattern has {patternElements.Count} elements but value has {tupleType.ElementTypes.Count} elements",
@@ -365,7 +354,7 @@ public partial class IrBuilder
         }
         else
         {
-            errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.CannotAssignToExpression,
                 "Assignment statement must have either IDENTIFIER or KW_SELF",
@@ -462,7 +451,7 @@ public partial class IrBuilder
 
                 if (baseVar == null)
                 {
-                    errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                    errorLocation = GetLocation(context);
                     _diagnostics.ReportError(
                         ErrorCodes.VariableNotFound,
                         $"Variable {name} not found",
@@ -764,7 +753,7 @@ public partial class IrBuilder
 
                 if (variable == null || varType == null)
                 {
-                    errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                    errorLocation = GetLocation(context);
                     _diagnostics.ReportError(
                         ErrorCodes.VariableNotFound,
                         $"Variable {name} not found",
@@ -1196,7 +1185,7 @@ public partial class IrBuilder
 
             if (variable == null || varType == null)
             {
-                errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                errorLocation = GetLocation(context);
                 _diagnostics.ReportError(
                     ErrorCodes.VariableNotFound,
                     $"Variable {name} not found",
@@ -1298,7 +1287,7 @@ public partial class IrBuilder
 
                 if (variable == null || varType == null)
                 {
-                    errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                    errorLocation = GetLocation(context);
                     _diagnostics.ReportError(
                         ErrorCodes.VariableNotFound,
                         $"Variable {name} not found",
@@ -1476,7 +1465,7 @@ public partial class IrBuilder
 
         if (expression == null)
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 $"if let expression returned null",
@@ -1501,7 +1490,7 @@ public partial class IrBuilder
         }
         else
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 $"if let only works with pointers or integers, got {expression.Type.Name}",
@@ -1539,7 +1528,7 @@ public partial class IrBuilder
 
         if (expression == null)
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 $"if var expression returned null",
@@ -1564,7 +1553,7 @@ public partial class IrBuilder
         }
         else
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 $"if var only works with pointers or integers, got {expression.Type.Name}",
@@ -1600,7 +1589,7 @@ public partial class IrBuilder
         // Check for duplicate label name
         if (_labeledLoops.ContainsKey(labelName))
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 $"duplicate loop label '{labelName}'",
@@ -1938,7 +1927,7 @@ public partial class IrBuilder
 
         if (lenMethod == null)
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 $"Type '{typeName}' does not implement Iterable trait (missing len() method). For-in loops require types to implement Iterable<T>.",
@@ -2187,7 +2176,7 @@ public partial class IrBuilder
         }
         else
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 "Invalid range expression",
@@ -2328,7 +2317,7 @@ public partial class IrBuilder
             var labelName = labelIdentifier.GetText();
             if (!_labeledLoops.TryGetValue(labelName, out var loopLabels))
             {
-                var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                var errorLocation = GetLocation(context);
                 _diagnostics.ReportError(
                     ErrorCodes.InvalidExpressionType,
                     $"unknown loop label '{labelName}'",
@@ -2349,7 +2338,7 @@ public partial class IrBuilder
             // Regular break (innermost loop)
             if (_loopExitLabels.Count == 0)
             {
-                var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                var errorLocation = GetLocation(context);
                 _diagnostics.ReportError(
                     ErrorCodes.InvalidExpressionType,
                     "break statement outside of loop",
@@ -2381,7 +2370,7 @@ public partial class IrBuilder
             var labelName = labelIdentifier.GetText();
             if (!_labeledLoops.TryGetValue(labelName, out var loopLabels))
             {
-                var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                var errorLocation = GetLocation(context);
                 _diagnostics.ReportError(
                     ErrorCodes.InvalidExpressionType,
                     $"unknown loop label '{labelName}'",
@@ -2402,7 +2391,7 @@ public partial class IrBuilder
             // Regular continue (innermost loop)
             if (_loopContinueLabels.Count == 0)
             {
-                var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                var errorLocation = GetLocation(context);
                 _diagnostics.ReportError(
                     ErrorCodes.InvalidExpressionType,
                     "continue statement outside of loop",

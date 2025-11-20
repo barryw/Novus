@@ -187,6 +187,18 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
     }
 
     /// <summary>
+    /// Get source location for error reporting from a parser context.
+    /// This helper consolidates the repeated pattern that appears 181+ times across IrBuilder
+    /// for constructing SourceLocation objects for error reporting.
+    /// </summary>
+    /// <param name="context">The parser context from which to extract location information</param>
+    /// <returns>A SourceLocation object for error reporting</returns>
+    private SourceLocation GetLocation(Antlr4.Runtime.ParserRuleContext context)
+    {
+        return SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+    }
+
+    /// <summary>
     /// Helper to get constants in tuple format for generic templates
     /// </summary>
     private Dictionary<string, (IrType Type, object Value)> GetConstantsAsTuples()
@@ -237,6 +249,28 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
 
         var lastInst = _currentBlock.Instructions[^1];
         return lastInst is IrReturn or IrBranch;
+    }
+
+    /// <summary>
+    /// Add an implicit return at the end of a function if it doesn't already have a terminator.
+    /// This helper consolidates the repeated implicit return logic that appears in Pass 5 and Pass 6.
+    /// </summary>
+    /// <param name="lastValue">The last expression value from the function body (may be null)</param>
+    private void AddImplicitReturn(IrValue? lastValue)
+    {
+        if (!CurrentBlockHasTerminator())
+        {
+            if (_currentFunction!.ReturnType is not IrVoidType && lastValue != null)
+            {
+                // Non-void function with expression: return the value
+                _currentBlock!.AddInstruction(new IrReturn(lastValue));
+            }
+            else
+            {
+                // Void function or no return value: add void return
+                _currentBlock!.AddInstruction(new IrReturn(null));
+            }
+        }
     }
 
     /// <summary>
@@ -421,19 +455,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
             }
 
             // Parse parameters
-            if (funcContext.parameterList() != null)
-            {
-                var paramList = funcContext.parameterList();
-                foreach (var paramCtx in paramList.parameter())
-                {
-                    var paramName = paramCtx.IDENTIFIER().GetText();
-                    var paramType = ParseType(paramCtx.type());
-                    function.Parameters.Add(new IrParameter(paramName, paramType));
-                }
-
-                // Add variadic parameter if present
-                ParseVariadicParameter(paramList, function);
-            }
+            ParseFunctionParameters(funcContext, function);
 
             _module.AddFunction(function);
         }
@@ -443,16 +465,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
         {
             // IMPORTANT: Extract generic parameters FIRST before parsing trait type args
             // This ensures that 'T' is in scope when parsing 'Iterable<T>'
-            var genericParams = new List<string>();
-            if (implContext.genericParams() != null)
-            {
-                foreach (var paramId in implContext.genericParams().IDENTIFIER())
-                {
-                    var paramName = paramId.GetText();
-                    genericParams.Add(paramName);
-                    _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
-                }
-            }
+            var genericParams = ParseGenericParameters(implContext.genericParams(), registerInSymbolTable: true);
 
             // Determine if this is a trait impl or inherent impl
             bool isTraitImpl = implContext.KW_FOR() != null;
@@ -460,8 +473,8 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
             List<IrType> traitTypeArgs = new();
 
             // Extract implementing type name and type
-            string typeName;
-            IrType? implementingType = null;
+            string? typeName;
+            IrType? implementingType;
 
             if (isTraitImpl)
             {
@@ -470,89 +483,22 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
                 traitName = implContext.traitTypeName.IDENTIFIER(0).GetText();
 
                 // Parse trait type arguments if present (e.g., From<DosError>)
-                if (implContext.traitTypeArgs != null)
-                {
-                    var typeList = implContext.traitTypeArgs.typeList();
-                    foreach (var typeCtx in typeList.type())
-                    {
-                        traitTypeArgs.Add(ParseType(typeCtx));
-                    }
-                }
+                traitTypeArgs = ParseTypeArguments(implContext.traitTypeArgs);
 
-                // implTargetType is the type receiving the implementation
-                var targetTypeCtx = implContext.implTargetType();
-
-                if (targetTypeCtx is NovusParser.PrimitiveImplTargetContext primitiveCtx)
+                // Parse the impl target type (primitive or named)
+                (typeName, implementingType) = ParseImplTargetType(implContext.implTargetType(), null, implContext);
+                if (implementingType == null)
                 {
-                    // impl Trait for i32, bool, etc.
-                    var primitiveTypeNameCtx = primitiveCtx.primitiveTypeName();
-                    typeName = primitiveTypeNameCtx.GetText().ToLowerInvariant();
-                    implementingType = MapPrimitiveTypeName(typeName);
-                }
-                else if (targetTypeCtx is NovusParser.NamedImplTargetContext namedCtx)
-                {
-                    // impl Trait for MyType<T>
-                    typeName = namedCtx.typeName().IDENTIFIER(0).GetText();
-
-                    // Look up the implementing type (could be struct or enum)
-                    var structType = _symbols.LookupStruct(typeName);
-                    var enumType = _symbols.LookupEnum(typeName);
-
-                    if (structType != null)
-                    {
-                        implementingType = structType;
-                    }
-                    else if (enumType != null)
-                    {
-                        implementingType = enumType;
-                    }
-                    else
-                    {
-                        var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
-                        _diagnostics.ReportError(
-                            ErrorCodes.TypeNotFound,
-                            $"Type '{typeName}' not found for impl block",
-                            errorLocation
-                        );
-                        return null;
-                    }
-                }
-                else
-                {
-                    throw new CompilerBugException(
-                        $"Unknown impl target type context: {targetTypeCtx?.GetType().Name}",
-                        "ProcessModuleDeclarations - impl block processing",
-                        _inputFilePath,
-                        null
-                    );
+                    return null;
                 }
             }
             else
             {
                 // Format: impl [<GenericParams>] TargetType<TypeArgs>
-                // targetTypeName is the type receiving inherent methods
-                typeName = implContext.targetTypeName.IDENTIFIER(0).GetText();
-
-                // Look up the implementing type (could be struct or enum)
-                var structType = _symbols.LookupStruct(typeName);
-                var enumType = _symbols.LookupEnum(typeName);
-
-                if (structType != null)
+                // Parse the impl target type (inherent impl)
+                (typeName, implementingType) = ParseImplTargetType(null, implContext.targetTypeName, implContext);
+                if (implementingType == null)
                 {
-                    implementingType = structType;
-                }
-                else if (enumType != null)
-                {
-                    implementingType = enumType;
-                }
-                else
-                {
-                    var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
-                    _diagnostics.ReportError(
-                        ErrorCodes.TypeNotFound,
-                        $"Type '{typeName}' not found for impl block",
-                        errorLocation
-                    );
                     return null;
                 }
             }
@@ -673,19 +619,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
             var lastValue = Visit(funcContext.block()) as IrValue;
 
             // Add implicit return if block doesn't already have a terminator
-            if (!CurrentBlockHasTerminator())
-            {
-                if (_currentFunction.ReturnType is not IrVoidType && lastValue != null)
-                {
-                    // Non-void function with expression: return the value
-                    _currentBlock!.AddInstruction(new IrReturn(lastValue));
-                }
-                else
-                {
-                    // Void function or no return value: add void return
-                    _currentBlock!.AddInstruction(new IrReturn(null));
-                }
-            }
+            AddImplicitReturn(lastValue);
         }
 
         // Pass 6: Build impl method bodies (only for non-generic impl blocks)
@@ -705,8 +639,8 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
             List<IrType> traitTypeArgs = new();
 
             // Extract implementing type name and type
-            string typeName;
-            IrType? implementingType = null;
+            string? typeName;
+            IrType? implementingType;
 
             if (isTraitImpl)
             {
@@ -715,89 +649,22 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
                 traitName = implContext.traitTypeName.IDENTIFIER(0).GetText();
 
                 // Parse trait type arguments if present (e.g., From<DosError>)
-                if (implContext.traitTypeArgs != null)
-                {
-                    var typeList = implContext.traitTypeArgs.typeList();
-                    foreach (var typeCtx in typeList.type())
-                    {
-                        traitTypeArgs.Add(ParseType(typeCtx));
-                    }
-                }
+                traitTypeArgs = ParseTypeArguments(implContext.traitTypeArgs);
 
-                // implTargetType is the type receiving the implementation
-                var targetTypeCtx = implContext.implTargetType();
-
-                if (targetTypeCtx is NovusParser.PrimitiveImplTargetContext primitiveCtx)
+                // Parse the impl target type (primitive or named)
+                (typeName, implementingType) = ParseImplTargetType(implContext.implTargetType(), null, implContext);
+                if (implementingType == null)
                 {
-                    // impl Trait for i32, bool, etc.
-                    var primitiveTypeNameCtx = primitiveCtx.primitiveTypeName();
-                    typeName = primitiveTypeNameCtx.GetText().ToLowerInvariant();
-                    implementingType = MapPrimitiveTypeName(typeName);
-                }
-                else if (targetTypeCtx is NovusParser.NamedImplTargetContext namedCtx)
-                {
-                    // impl Trait for MyType
-                    typeName = namedCtx.typeName().IDENTIFIER(0).GetText();
-
-                    // Look up the implementing type (could be struct or enum)
-                    var structType = _symbols.LookupStruct(typeName);
-                    var enumType = _symbols.LookupEnum(typeName);
-
-                    if (structType != null)
-                    {
-                        implementingType = structType;
-                    }
-                    else if (enumType != null)
-                    {
-                        implementingType = enumType;
-                    }
-                    else
-                    {
-                        var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
-                        _diagnostics.ReportError(
-                            ErrorCodes.TypeNotFound,
-                            $"Type '{typeName}' not found for impl block",
-                            errorLocation
-                        );
-                        return null;
-                    }
-                }
-                else
-                {
-                    throw new CompilerBugException(
-                        $"Unknown impl target type context: {targetTypeCtx?.GetType().Name}",
-                        "ProcessModuleDeclarations Pass 6 - impl block processing",
-                        _inputFilePath,
-                        null
-                    );
+                    return null;
                 }
             }
             else
             {
                 // Format: impl TargetType
-                // targetTypeName is the type receiving inherent methods
-                typeName = implContext.targetTypeName.IDENTIFIER(0).GetText();
-
-                // Look up the implementing type (could be struct or enum)
-                var structType = _symbols.LookupStruct(typeName);
-                var enumType = _symbols.LookupEnum(typeName);
-
-                if (structType != null)
+                // Parse the impl target type (inherent impl)
+                (typeName, implementingType) = ParseImplTargetType(null, implContext.targetTypeName, implContext);
+                if (implementingType == null)
                 {
-                    implementingType = structType;
-                }
-                else if (enumType != null)
-                {
-                    implementingType = enumType;
-                }
-                else
-                {
-                    var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
-                    _diagnostics.ReportError(
-                        ErrorCodes.TypeNotFound,
-                        $"Type '{typeName}' not found for impl block",
-                        errorLocation
-                    );
                     return null;
                 }
             }
@@ -865,17 +732,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
                 var lastValue = Visit(funcDecl.block()) as IrValue;
 
                 // Add implicit return if block doesn't already have a terminator
-                if (!CurrentBlockHasTerminator())
-                {
-                    if (_currentFunction.ReturnType is not IrVoidType && lastValue != null)
-                    {
-                        _currentBlock!.AddInstruction(new IrReturn(lastValue));
-                    }
-                    else
-                    {
-                        _currentBlock!.AddInstruction(new IrReturn(null));
-                    }
-                }
+                AddImplicitReturn(lastValue);
             }
 
             // Clear Self type after processing impl block

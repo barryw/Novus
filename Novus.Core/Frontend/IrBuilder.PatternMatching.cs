@@ -72,7 +72,7 @@ public partial class IrBuilder
 
         if (matchValue == null)
         {
-            errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 "Match expression requires a value",
@@ -118,7 +118,7 @@ public partial class IrBuilder
 
         if (!isEnumMatch && !isIntegerMatch)
         {
-            errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 $"Match can only be used with enum or integer types, got '{matchValue.Type.Name}'",

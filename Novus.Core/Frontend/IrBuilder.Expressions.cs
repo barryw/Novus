@@ -128,12 +128,7 @@ public partial class IrBuilder
             if (template.Context.parameterList() != null)
             {
                 var paramList = template.Context.parameterList();
-                foreach (var paramCtx in paramList.parameter())
-                {
-                    var paramName = paramCtx.IDENTIFIER().GetText();
-                    var paramType = ParseType(paramCtx.type());
-                    templateParams.Add(new IrParameter(paramName, paramType));
-                }
+                ParseRegularParameters(paramList, templateParams);
 
                 // Add variadic parameter if present (for template analysis)
                 ParseVariadicParameter(paramList, templateParams);
@@ -1302,7 +1297,7 @@ public partial class IrBuilder
         var receiver = (IrValue?)Visit(receiverExpr);
         if (receiver == null)
         {
-            var errorLocation = SourceLocationHelper.FromContext(callCtx, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(callCtx);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 "Method call receiver is null",
@@ -1346,7 +1341,7 @@ public partial class IrBuilder
             }
             else
             {
-                var errorLocation = SourceLocationHelper.FromContext(callCtx, _inputFilePath, _sourceLines.ToArray());
+                var errorLocation = GetLocation(callCtx);
                 _diagnostics.ReportError(
                     ErrorCodes.InvalidExpressionType,
                     $"Cannot infer generic type parameters for '{partialType.GenericTypeName}' from method call '{methodName}'",
@@ -1421,7 +1416,7 @@ public partial class IrBuilder
         }
         else
         {
-            var errorLocation = SourceLocationHelper.FromContext(callCtx, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(callCtx);
             _diagnostics.ReportError(
                 ErrorCodes.CannotCallMethodOnType,
                 $"Cannot call methods on type: {receiverType.Name}",
@@ -1797,7 +1792,7 @@ public partial class IrBuilder
             return new IrVariable(tempName, ptrType.PointeeType);
         }
 
-        var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+        var errorLocation = GetLocation(context);
         _diagnostics.ReportError(
             ErrorCodes.InvalidExpressionType,
             $"Cannot index into non-array/non-pointer type: {baseExpr.Type.Name}",
@@ -1825,7 +1820,7 @@ public partial class IrBuilder
 
         if (elements.Count == 0)
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 "Array literals cannot be empty",
@@ -1855,7 +1850,7 @@ public partial class IrBuilder
         var expressions = context.expression();
         if (expressions.Length != 2)
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 "Array repeat literal must have exactly 2 expressions",
@@ -1871,7 +1866,7 @@ public partial class IrBuilder
         var countExpr = (IrValue)Visit(expressions[1])!;
         if (countExpr is not IrConstant countConstant)
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidArrayRepeatCount,
                 "Array repeat count must be a compile-time constant",
@@ -1907,7 +1902,7 @@ public partial class IrBuilder
 
         if (count < 0)
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidArrayRepeatCount,
                 "Array repeat count must be non-negative",
@@ -2082,7 +2077,7 @@ public partial class IrBuilder
             }
             else
             {
-                errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                errorLocation = GetLocation(context);
                 _diagnostics.ReportError(
                     ErrorCodes.CannotDereferenceType,
                     $"Cannot dereference non-pointer/reference type: {operand.Type.Name}",
@@ -2138,7 +2133,7 @@ public partial class IrBuilder
             return new IrVariable(tempName, operandValue.Type);
         }
 
-        errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+        errorLocation = GetLocation(context);
         _diagnostics.ReportError(
             ErrorCodes.UnknownOperator,
             $"Unknown unary operator: {op}",
@@ -2183,7 +2178,7 @@ public partial class IrBuilder
         // 1. Verify innerExpr type is Result<T, E>
         if (innerExpr.Type is not IrEnumType resultType || resultType.EnumName != "Result")
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.TryOperatorInvalidContext,
                 $"? operator requires a Result<T, E> type, got {innerExpr.Type}",
@@ -2220,7 +2215,7 @@ public partial class IrBuilder
 
         if (okVariant.AssociatedData.Count == 0)
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 "Result::Ok variant missing associated data",
@@ -2230,7 +2225,7 @@ public partial class IrBuilder
         }
         if (errVariant.AssociatedData.Count == 0)
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 "Result::Err variant missing associated data",
@@ -2245,7 +2240,7 @@ public partial class IrBuilder
         // 2. Get current function's return type Result<T2, E2>
         if (_currentFunction == null)
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.TryOperatorInvalidContext,
                 "? operator can only be used inside a function",
@@ -2256,7 +2251,7 @@ public partial class IrBuilder
 
         if (_currentFunction.ReturnType is not IrEnumType funcResultType || funcResultType.EnumName != "Result")
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.TryOperatorInvalidContext,
                 $"? operator requires current function to return Result<T, E>, got {_currentFunction.ReturnType}",
@@ -2279,7 +2274,7 @@ public partial class IrBuilder
 
         if (funcErrVariant.AssociatedData.Count == 0)
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 "Function return type Result::Err missing associated data",
@@ -2549,7 +2544,7 @@ public partial class IrBuilder
 
             if (baseType is not IrStructType structType)
             {
-                errorLocation = SourceLocationHelper.FromContext(exprContext, _inputFilePath, _sourceLines.ToArray());
+                errorLocation = GetLocation(exprContext);
                 _diagnostics.ReportError(
                     ErrorCodes.CannotAccessMember,
                     $"Cannot access member '{memberName}' on non-struct type '{baseType}'",
@@ -2561,7 +2556,7 @@ public partial class IrBuilder
             var field = structType.Fields.FirstOrDefault(f => f.Name == memberName);
             if (field == null)
             {
-                errorLocation = SourceLocationHelper.FromContext(exprContext, _inputFilePath, _sourceLines.ToArray());
+                errorLocation = GetLocation(exprContext);
                 _diagnostics.ReportError(
                     ErrorCodes.InvalidExpressionType,
                     $"Struct '{structType.Name}' has no field '{memberName}'",
@@ -2607,7 +2602,7 @@ public partial class IrBuilder
             }
         }
 
-        errorLocation = SourceLocationHelper.FromContext(exprContext, _inputFilePath, _sourceLines.ToArray());
+        errorLocation = GetLocation(exprContext);
         _diagnostics.ReportError(
             ErrorCodes.InvalidExpressionType,
             $"Cannot store to expression type: {exprContext.GetType().Name}",
@@ -2719,7 +2714,7 @@ public partial class IrBuilder
             // Get the struct type and field info
             if (baseType is not IrStructType structType)
             {
-                errorLocation = SourceLocationHelper.FromContext(exprContext, _inputFilePath, _sourceLines.ToArray());
+                errorLocation = GetLocation(exprContext);
                 _diagnostics.ReportError(
                     ErrorCodes.CannotAccessMember,
                     $"Cannot access member '{memberName}' on non-struct type '{baseType}'",
@@ -2731,7 +2726,7 @@ public partial class IrBuilder
             var field = structType.Fields.FirstOrDefault(f => f.Name == memberName);
             if (field == null)
             {
-                errorLocation = SourceLocationHelper.FromContext(exprContext, _inputFilePath, _sourceLines.ToArray());
+                errorLocation = GetLocation(exprContext);
                 _diagnostics.ReportError(
                     ErrorCodes.InvalidExpressionType,
                     $"Struct '{structType.Name}' has no field '{memberName}'",
@@ -2771,7 +2766,7 @@ public partial class IrBuilder
                 elementType = at.ElementType;
             else
             {
-                errorLocation = SourceLocationHelper.FromContext(exprContext, _inputFilePath, _sourceLines.ToArray());
+                errorLocation = GetLocation(exprContext);
                 _diagnostics.ReportError(
                     ErrorCodes.CannotIndexType,
                     $"Cannot index type '{arrayExpr.Type}'",
@@ -3010,7 +3005,7 @@ public partial class IrBuilder
         }
         else
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 $"Unexpected float literal type: {type.Name}",
@@ -3185,7 +3180,7 @@ public partial class IrBuilder
         var formatterType = _symbols.LookupStruct("StackFormatter");
         if (formatterType == null)
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 "Interpolated strings require StackFormatter type from std::fmt module",
@@ -3203,7 +3198,7 @@ public partial class IrBuilder
         var formatterNewMethod = _module.Functions.FirstOrDefault(f => f.Name == formatterNewMethodName);
         if (formatterNewMethod == null)
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.MethodNotFound,
                 "StackFormatter::new() method not found. Ensure std::fmt is imported.",
@@ -3748,7 +3743,7 @@ public partial class IrBuilder
 
         if (targetType == null)
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 $"could not determine type for @sizeof",
@@ -3945,7 +3940,7 @@ public partial class IrBuilder
             return new IrVariable("self", selfParam.Type);
         }
 
-        var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+        var errorLocation = GetLocation(context);
         _diagnostics.ReportError(
             ErrorCodes.InvalidExpressionType,
             "'self' can only be used inside methods",
@@ -3975,7 +3970,7 @@ public partial class IrBuilder
             var value = Visit(exprCtx) as IrValue;
             if (value == null)
             {
-                var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                var errorLocation = GetLocation(context);
                 _diagnostics.ReportError(
                     ErrorCodes.InvalidExpressionType,
                     $"Invalid expression in tuple literal",
@@ -3999,7 +3994,7 @@ public partial class IrBuilder
 
         if (!_symbols.HasStruct(structName))
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 $"Unknown struct type '{structName}'",
@@ -4040,7 +4035,7 @@ public partial class IrBuilder
 
             if (fieldValue == null)
             {
-                var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                var errorLocation = GetLocation(context);
                 _diagnostics.ReportError(
                     ErrorCodes.InvalidExpressionType,
                     $"Field '{fieldName}' in struct '{structName}' requires a value",
@@ -4063,7 +4058,7 @@ public partial class IrBuilder
                     // For string literals, extract the ptr field directly
                     if (!strLiteral.FieldValues.TryGetValue("ptr", out ptrValue!))
                     {
-                        var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                        var errorLocation = GetLocation(context);
                         _diagnostics.ReportError(
                             ErrorCodes.InvalidExpressionType,
                             "Str struct literal must have a 'ptr' field for coercion to u32",
@@ -4078,7 +4073,7 @@ public partial class IrBuilder
                     var ptrField = strStructType.GetField("ptr");
                     if (ptrField == null)
                     {
-                        var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                        var errorLocation = GetLocation(context);
                         _diagnostics.ReportError(
                             ErrorCodes.InvalidExpressionType,
                             "Str struct must have a 'ptr' field for coercion to u32",
@@ -4197,7 +4192,7 @@ public partial class IrBuilder
 
         if (!_symbols.HasStruct(structName))
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 $"Unknown struct type '{structName}'",
@@ -4224,7 +4219,7 @@ public partial class IrBuilder
             var elem = (IrValue?)Visit(exprCtx);
             if (elem == null)
             {
-                var errorLocation = SourceLocationHelper.FromContext(exprCtx, _inputFilePath, _sourceLines.ToArray());
+                var errorLocation = GetLocation(exprCtx);
                 _diagnostics.ReportError(
                     ErrorCodes.InvalidExpressionType,
                     "Invalid array element",
@@ -4241,7 +4236,7 @@ public partial class IrBuilder
 
         if (elements.Count == 0 || elementType == null)
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 "Struct array initializer requires at least one element",
@@ -4261,7 +4256,7 @@ public partial class IrBuilder
         // For now, only support this for Vec type
         if (structName != "Vec")
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 $"Struct array initializer syntax is only supported for Vec, not '{structName}'",
@@ -4351,7 +4346,7 @@ public partial class IrBuilder
         var baseExpr = (IrValue?)Visit(context.expression());
         if (baseExpr == null)
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 "Member access requires a base expression",
@@ -4372,7 +4367,7 @@ public partial class IrBuilder
                 var indexedField = indexedStructType.GetField(memberName);
                 if (indexedField == null)
                 {
-                    var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                    var errorLocation = GetLocation(context);
                     _diagnostics.ReportError(
                         ErrorCodes.InvalidExpressionType,
                         $"Struct '{indexedStructType.Name}' does not have a field named '{memberName}'",
@@ -4420,7 +4415,7 @@ public partial class IrBuilder
         // Check if the base expression is a struct type
         if (baseType is not IrStructType structType)
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.CannotAccessMember,
                 $"Cannot access member '{memberName}' on non-struct type '{baseType.Name}'",
@@ -4433,7 +4428,7 @@ public partial class IrBuilder
         var field = structType.GetField(memberName);
         if (field == null)
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 $"Struct '{structType.Name}' does not have a field named '{memberName}'",
@@ -4475,7 +4470,7 @@ public partial class IrBuilder
 
         if (typeName == null)
         {
-            var errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 $"Turbo-fish expression must reference a type",
@@ -4522,7 +4517,7 @@ public partial class IrBuilder
         {
             var baseExprType = baseExpr?.GetType().Name ?? "null";
             var baseExprText = baseExpr?.GetText() ?? "null";
-            errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+            errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 $"Path expression must reference a type (got {baseExprType}: '{baseExprText}')",
@@ -4539,7 +4534,7 @@ public partial class IrBuilder
 
             if (variant == null)
             {
-                errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                errorLocation = GetLocation(context);
                 _diagnostics.ReportError(
                     ErrorCodes.InvalidExpressionType,
                     $"Enum '{typeName}' has no variant '{memberName}'",
@@ -4601,7 +4596,7 @@ public partial class IrBuilder
             }
             else
             {
-                errorLocation = SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+                errorLocation = GetLocation(context);
                 _diagnostics.ReportError(
                     ErrorCodes.CannotCallMethodOnType,
                     $"Cannot call method '{memberName}' of type '{typeName}' without an instance (it requires 'self')",

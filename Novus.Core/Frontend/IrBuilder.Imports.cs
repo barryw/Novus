@@ -122,7 +122,7 @@ public partial class IrBuilder
         if (moduleContext == null || syntaxErrors > 0)
         {
             var errorLocation = importList != null
-                ? SourceLocationHelper.FromContext(importList, _inputFilePath, _sourceLines.ToArray())
+                ? GetLocation(importList)
                 : new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
             _diagnostics.ReportError(
                 ErrorCodes.ModuleNotFound,
@@ -157,16 +157,7 @@ public partial class IrBuilder
                 foreach (var implDecl in moduleContext.implDeclaration())
                 {
                     // Handle generic parameters if present (e.g., impl<T> Vec<T>)
-                    var genericParams = new List<string>();
-                    if (implDecl.genericParams() != null)
-                    {
-                        foreach (var paramId in implDecl.genericParams().IDENTIFIER())
-                        {
-                            var paramName = paramId.GetText();
-                            genericParams.Add(paramName);
-                            _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
-                        }
-                    }
+                    var genericParams = ParseGenericParameters(implDecl.genericParams(), registerInSymbolTable: true);
 
                     // Determine if this is a trait impl or inherent impl
                     bool isTraitImpl = implDecl.KW_FOR() != null;
@@ -174,37 +165,19 @@ public partial class IrBuilder
                     List<IrType> traitTypeArgs = new();
 
                     // Extract implementing type name
-                    string typeName;
-                    IrType? implementingType = null;
+                    string? typeName;
+                    IrType? implementingType;
 
                     if (isTraitImpl)
                     {
                         traitName = implDecl.traitTypeName.IDENTIFIER(0).GetText();
 
                         // Parse trait type arguments if present
-                        if (implDecl.traitTypeArgs != null)
-                        {
-                            var typeList = implDecl.traitTypeArgs.typeList();
-                            foreach (var typeCtx in typeList.type())
-                            {
-                                traitTypeArgs.Add(ParseType(typeCtx));
-                            }
-                        }
+                        traitTypeArgs = ParseTypeArguments(implDecl.traitTypeArgs);
 
-                        // Get implementing type
-                        var targetTypeCtx = implDecl.implTargetType();
-                        if (targetTypeCtx is NovusParser.PrimitiveImplTargetContext primitiveCtx)
-                        {
-                            var primitiveTypeNameCtx = primitiveCtx.primitiveTypeName();
-                            typeName = primitiveTypeNameCtx.GetText().ToLowerInvariant();
-                            implementingType = MapPrimitiveTypeName(typeName);
-                        }
-                        else if (targetTypeCtx is NovusParser.NamedImplTargetContext namedCtx)
-                        {
-                            typeName = namedCtx.typeName().IDENTIFIER(0).GetText();
-                            implementingType = _symbols.LookupStruct(typeName) ?? (IrType?)_symbols.LookupEnum(typeName);
-                        }
-                        else
+                        // Parse the impl target type (primitive or named)
+                        (typeName, implementingType) = ParseImplTargetType(implDecl.implTargetType(), null, implDecl);
+                        if (implementingType == null)
                         {
                             _symbols.ClearGenericParameters();
                             continue;
@@ -212,15 +185,13 @@ public partial class IrBuilder
                     }
                     else
                     {
-                        typeName = implDecl.targetTypeName.IDENTIFIER(0).GetText();
-                        implementingType = _symbols.LookupStruct(typeName) ?? (IrType?)_symbols.LookupEnum(typeName);
-                    }
-
-                    // Skip if implementing type not found
-                    if (implementingType == null)
-                    {
-                        _symbols.ClearGenericParameters();
-                        continue;
+                        // Parse the impl target type (inherent impl)
+                        (typeName, implementingType) = ParseImplTargetType(null, implDecl.targetTypeName, implDecl);
+                        if (implementingType == null)
+                        {
+                            _symbols.ClearGenericParameters();
+                            continue;
+                        }
                     }
 
                     _currentSelfType = implementingType;
@@ -339,16 +310,7 @@ public partial class IrBuilder
                 foreach (var implDecl in moduleContext.implDeclaration())
                 {
                     // Handle generic parameters if present (e.g., impl<T> Vec<T>)
-                    var genericParams = new List<string>();
-                    if (implDecl.genericParams() != null)
-                    {
-                        foreach (var paramId in implDecl.genericParams().IDENTIFIER())
-                        {
-                            var paramName = paramId.GetText();
-                            genericParams.Add(paramName);
-                            _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
-                        }
-                    }
+                    var genericParams = ParseGenericParameters(implDecl.genericParams(), registerInSymbolTable: true);
 
                     // Determine if this is a trait impl or inherent impl
                     bool isTraitImpl = implDecl.KW_FOR() != null;
@@ -356,37 +318,19 @@ public partial class IrBuilder
                     List<IrType> traitTypeArgs = new();
 
                     // Extract implementing type name
-                    string typeName;
-                    IrType? implementingType = null;
+                    string? typeName;
+                    IrType? implementingType;
 
                     if (isTraitImpl)
                     {
                         traitName = implDecl.traitTypeName.IDENTIFIER(0).GetText();
 
                         // Parse trait type arguments if present
-                        if (implDecl.traitTypeArgs != null)
-                        {
-                            var typeList = implDecl.traitTypeArgs.typeList();
-                            foreach (var typeCtx in typeList.type())
-                            {
-                                traitTypeArgs.Add(ParseType(typeCtx));
-                            }
-                        }
+                        traitTypeArgs = ParseTypeArguments(implDecl.traitTypeArgs);
 
-                        // Get implementing type
-                        var targetTypeCtx = implDecl.implTargetType();
-                        if (targetTypeCtx is NovusParser.PrimitiveImplTargetContext primitiveCtx)
-                        {
-                            var primitiveTypeNameCtx = primitiveCtx.primitiveTypeName();
-                            typeName = primitiveTypeNameCtx.GetText().ToLowerInvariant();
-                            implementingType = MapPrimitiveTypeName(typeName);
-                        }
-                        else if (targetTypeCtx is NovusParser.NamedImplTargetContext namedCtx)
-                        {
-                            typeName = namedCtx.typeName().IDENTIFIER(0).GetText();
-                            implementingType = _symbols.LookupStruct(typeName) ?? (IrType?)_symbols.LookupEnum(typeName);
-                        }
-                        else
+                        // Parse the impl target type (primitive or named)
+                        (typeName, implementingType) = ParseImplTargetType(implDecl.implTargetType(), null, implDecl);
+                        if (implementingType == null)
                         {
                             _symbols.ClearGenericParameters();
                             continue;
@@ -394,15 +338,13 @@ public partial class IrBuilder
                     }
                     else
                     {
-                        typeName = implDecl.targetTypeName.IDENTIFIER(0).GetText();
-                        implementingType = _symbols.LookupStruct(typeName) ?? (IrType?)_symbols.LookupEnum(typeName);
-                    }
-
-                    // Skip if implementing type not found
-                    if (implementingType == null)
-                    {
-                        _symbols.ClearGenericParameters();
-                        continue;
+                        // Parse the impl target type (inherent impl)
+                        (typeName, implementingType) = ParseImplTargetType(null, implDecl.targetTypeName, implDecl);
+                        if (implementingType == null)
+                        {
+                            _symbols.ClearGenericParameters();
+                            continue;
+                        }
                     }
 
                     _currentSelfType = implementingType;
@@ -581,8 +523,8 @@ public partial class IrBuilder
             List<IrType> traitTypeArgs = new();
 
             // Extract implementing type name
-            string typeName;
-            IrType? implementingType = null;
+            string? typeName;
+            IrType? implementingType;
 
             if (isTraitImpl)
             {
@@ -591,73 +533,16 @@ public partial class IrBuilder
                 traitName = implDecl.traitTypeName.IDENTIFIER(0).GetText();
 
                 // Parse trait type arguments if present (e.g., From<DosError>)
-                if (implDecl.traitTypeArgs != null)
-                {
-                    var typeList = implDecl.traitTypeArgs.typeList();
-                    foreach (var typeCtx in typeList.type())
-                    {
-                        traitTypeArgs.Add(ParseType(typeCtx));
-                    }
-                }
+                traitTypeArgs = ParseTypeArguments(implDecl.traitTypeArgs);
 
-                // implTargetType is the type receiving the implementation
-                var targetTypeCtx = implDecl.implTargetType();
-
-                if (targetTypeCtx is NovusParser.PrimitiveImplTargetContext primitiveCtx)
-                {
-                    // impl Trait for i32, bool, etc.
-                    var primitiveTypeNameCtx = primitiveCtx.primitiveTypeName();
-                    typeName = primitiveTypeNameCtx.GetText().ToLowerInvariant();
-                    implementingType = MapPrimitiveTypeName(typeName);
-                }
-                else if (targetTypeCtx is NovusParser.NamedImplTargetContext namedCtx)
-                {
-                    // impl Trait for MyType
-                    typeName = namedCtx.typeName().IDENTIFIER(0).GetText();
-
-                    // Look up the implementing type (could be struct or enum)
-                    var structType = _symbols.LookupStruct(typeName);
-                    var enumType = _symbols.LookupEnum(typeName);
-
-                    if (structType != null)
-                    {
-                        implementingType = structType;
-                    }
-                    else if (enumType != null)
-                    {
-                        implementingType = enumType;
-                    }
-                    // Will check for null below
-                }
-                else
-                {
-                    throw new CompilerBugException(
-                        $"Unknown impl target type context: {targetTypeCtx?.GetType().Name}",
-                        "ImportModule Pass 7 - impl block processing",
-                        _inputFilePath,
-                        null
-                    );
-                }
+                // Parse the impl target type (primitive or named)
+                (typeName, implementingType) = ParseImplTargetType(implDecl.implTargetType(), null, implDecl);
             }
             else
             {
                 // Format: impl [<GenericParams>] TargetType
-                // targetTypeName is the type receiving inherent methods
-                typeName = implDecl.targetTypeName.IDENTIFIER(0).GetText();
-
-                // Look up the implementing type (could be struct or enum)
-                var structType = _symbols.LookupStruct(typeName);
-                var enumType = _symbols.LookupEnum(typeName);
-
-                if (structType != null)
-                {
-                    implementingType = structType;
-                }
-                else if (enumType != null)
-                {
-                    implementingType = enumType;
-                }
-                // Will check for null below
+                // Parse the impl target type (inherent impl)
+                (typeName, implementingType) = ParseImplTargetType(null, implDecl.targetTypeName, implDecl);
             }
 
             // IMPORTANT: We do NOT skip impl blocks based on whether the type is in namesToImport
@@ -1643,16 +1528,9 @@ public partial class IrBuilder
                 if (!_symbols.HasEnum(enumName))
                 {
                     // Parse generic parameters for stub so type checking works correctly
-                    List<string>? genericParams = null;
-                    if (enumDecl.genericParams() != null)
-                    {
-                        genericParams = new List<string>();
-                        foreach (var paramId in enumDecl.genericParams().IDENTIFIER())
-                        {
-                            genericParams.Add(paramId.GetText());
-                        }
-                    }
-                    var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), genericParams);
+                    var genericParams = ParseGenericParameters(enumDecl.genericParams());
+                    List<string>? genericParamsOrNull = genericParams.Count > 0 ? genericParams : null;
+                    var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), genericParamsOrNull);
                     _symbols.RegisterEnum(enumName, stubEnum);
                 }
             }
@@ -1831,7 +1709,7 @@ public partial class IrBuilder
 
             if (!isPub && !isExtern)
             {
-                var errorLocation = SourceLocationHelper.FromContext(funcDecl, _inputFilePath, _sourceLines.ToArray());
+                var errorLocation = GetLocation(funcDecl);
                 _diagnostics.ReportError(
                     ErrorCodes.CannotImportPrivate,
                     $"Cannot import private function '{funcName}' from module '{moduleNamespace}'",
