@@ -1017,71 +1017,6 @@ class Program
                 }
             }
 
-            // Detect which library stubs are actually needed by scanning generated C code
-            Console.WriteLine("\n=== DEBUG: Detecting required libraries from C code ===");
-
-            var requiredLibraries = new HashSet<string>();
-
-            // Always include exec (needed for basic Amiga operations like AllocMem/FreeMem)
-            requiredLibraries.Add("exec");
-            Console.WriteLine("  ✓ Always including 'exec' library");
-
-            // Scan generated C files for DOS and Intuition library function calls
-            // Note: DOS is NOT unconditionally included - only if actually used
-            foreach (var cFile in cFiles)
-            {
-                var cCode = await File.ReadAllTextAsync(cFile);
-
-                // Check for DOS function calls in the C code
-                if (cCode.Contains("_Output(") ||
-                    cCode.Contains("_Input(") ||
-                    cCode.Contains("_Write(") ||
-                    cCode.Contains("_Read(") ||
-                    cCode.Contains("_Printf(") ||
-                    cCode.Contains("IoErr("))
-                {
-                    requiredLibraries.Add("dos");
-                    Console.WriteLine($"  ✓ Detected DOS library usage in {Path.GetFileName(cFile)}");
-                }
-
-                // Check for Intuition library function calls (used by assert handler)
-                if (cCode.Contains("EasyRequest") ||
-                    cCode.Contains("__novus_assert_failed"))
-                {
-                    requiredLibraries.Add("intuition");
-                    Console.WriteLine($"  ✓ Detected Intuition library usage in {Path.GetFileName(cFile)}");
-                }
-            }
-
-            Console.WriteLine($"=== Required libraries: {string.Join(", ", requiredLibraries)} ===\n");
-
-            // NOTE: Library bases are handled differently for different project types:
-            // - Executables: Use library_bases.s (provides both _SysBase and _DOSBase) - assembled at line 627
-            // - Libraries: Use exec_base.s and dos_base.s separately - assembled at line 697
-            // No additional dos_base assembly needed here
-
-            // Assemble library stubs (skip for libraries/devices - they handle SysBase differently)
-            if (!isLibrary && !isDevice)
-            {
-                foreach (var stub in requiredLibraries)
-                {
-                    var stubSource = Path.Combine(compilerDir, "stubs", $"{stub}_stubs.s");
-                    if (File.Exists(stubSource))
-                {
-                    var stubObj = Path.Combine(outputDir, $"{stub}_stubs.o");
-                    if (!await toolchain.Assemble(stubSource, stubObj, assemblyCpu, false))
-                    {
-                        Console.WriteLine($"Failed to assemble {stub} stubs");
-                        return 1;
-                    }
-                    objectFiles.Add(stubObj);
-
-                    // NOTE: dos_init.o is already assembled at line 627 for executables
-                    // No need to assemble it again here
-                }
-                }
-            }
-
             // Add any additional C files from the project (e.g., library wrappers)
             if (options.AdditionalCFiles.Count > 0)
             {
@@ -1317,6 +1252,92 @@ class Program
                     options.BuildMode,
                     stdlibSourcePaths,
                     CODEGEN_VERSION);
+            }
+
+            // ============================================================================
+            // DETECT REQUIRED LIBRARIES: Scan C code to determine which stubs to link
+            // ============================================================================
+
+            // Detect which library stubs are actually needed by scanning generated C code
+            Console.WriteLine("\n=== DEBUG: Detecting required libraries from C code ===");
+
+            var requiredLibraries = new HashSet<string>();
+
+            // Always include exec (needed for basic Amiga operations like AllocMem/FreeMem)
+            requiredLibraries.Add("exec");
+            Console.WriteLine("  ✓ Always including 'exec' library");
+
+            // Scan generated C files for DOS and Intuition library function calls
+            // Note: DOS is NOT unconditionally included - only if actually used
+            // Also scan stdlib C files to detect library dependencies from stdlib modules
+            var allCFilesToScan = new List<string>(cFiles);
+            allCFilesToScan.AddRange(stdlibCFiles);
+
+            foreach (var cFile in allCFilesToScan)
+            {
+                var cCode = await File.ReadAllTextAsync(cFile);
+
+                // Check for DOS function calls in the C code
+                if (cCode.Contains("_Output(") ||
+                    cCode.Contains("_Input(") ||
+                    cCode.Contains("_Write(") ||
+                    cCode.Contains("_Read(") ||
+                    cCode.Contains("_Printf(") ||
+                    cCode.Contains("IoErr("))
+                {
+                    requiredLibraries.Add("dos");
+                    Console.WriteLine($"  ✓ Detected DOS library usage in {Path.GetFileName(cFile)}");
+                }
+
+                // Check for Intuition library function calls (used by assert handler)
+                if (cCode.Contains("EasyRequest") ||
+                    cCode.Contains("__novus_assert_failed"))
+                {
+                    requiredLibraries.Add("intuition");
+                    Console.WriteLine($"  ✓ Detected Intuition library usage in {Path.GetFileName(cFile)}");
+                }
+
+                // Check for Graphics library function calls
+                if (cCode.Contains("LoadView(") ||
+                    cCode.Contains("WaitTOF(") ||
+                    cCode.Contains("WaitBlit(") ||
+                    cCode.Contains("SetRast(") ||
+                    cCode.Contains("BltBitMap(") ||
+                    cCode.Contains("Text(") ||
+                    cCode.Contains("_GfxBase"))
+                {
+                    requiredLibraries.Add("graphics");
+                    Console.WriteLine($"  ✓ Detected Graphics library usage in {Path.GetFileName(cFile)}");
+                }
+            }
+
+            Console.WriteLine($"=== Required libraries: {string.Join(", ", requiredLibraries)} ===\n");
+
+            // NOTE: Library bases are handled differently for different project types:
+            // - Executables: Use library_bases.s (provides both _SysBase and _DOSBase) - assembled at line 627
+            // - Libraries: Use exec_base.s and dos_base.s separately - assembled at line 697
+            // No additional dos_base assembly needed here
+
+            // Assemble library stubs (skip for libraries/devices - they handle SysBase differently)
+            if (!isLibrary && !isDevice)
+            {
+                foreach (var stub in requiredLibraries)
+                {
+                    var stubSource = Path.Combine(compilerDir, "stubs", $"{stub}_stubs.s");
+                    if (File.Exists(stubSource))
+                    {
+                        var stubObj = Path.Combine(outputDir, $"{stub}_stubs.o");
+                        if (!await toolchain.Assemble(stubSource, stubObj, assemblyCpu, false))
+                        {
+                            Console.WriteLine($"Failed to assemble {stub} stubs");
+                            return 1;
+                        }
+                        objectFiles.Add(stubObj);
+
+                        // NOTE: dos_init.o is already assembled earlier for executables
+                        // No need to assemble it again here
+                    }
+                }
             }
 
             // Step 2: Compile user C files with caching and parallelization

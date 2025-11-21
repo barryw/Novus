@@ -1,0 +1,93 @@
+// Classic Amiga Copper Bars Demo
+// Displays colorful horizontal bars that cycle through the screen
+//
+// This example demonstrates:
+// - Building a copper list with WAIT and MOVE instructions
+// - Changing background colors at specific scanlines
+// - RAII-based resource management with automatic cleanup
+
+from std::core import Result
+from std::graphics::copper import CopperListBuilder, CopperError
+from std::hardware::amiga_registers import rgb12
+from std::system::timer import delay, Duration
+from std::ffi::graphics import WaitTOF
+
+pub fn main() -> i32 {
+    // Ensure graphics.library is opened (used by copper functions)
+    unsafe {
+        WaitTOF()  // This forces the graphics library to be opened
+    }
+    // Create a copper list that displays color bars
+    let mut builder = CopperListBuilder::new()
+
+    // Start at the top of the screen
+    let start_line: u16 = 40
+    let bar_height: u16 = 20
+
+    // Define 8 colorful bars
+    // Each bar: WAIT for scanline, then set COLOR00 (background color)
+
+    // Bar 1: Red
+    let _ = builder.wait(start_line, 0)
+    let _ = builder.move_color(0, rgb12(15, 0, 0))
+
+    // Bar 2: Orange
+    let line2: u16 = start_line + bar_height
+    let _ = builder.wait(line2, 0)
+    let _ = builder.move_color(0, rgb12(15, 8, 0))
+
+    // Bar 3: Yellow
+    let line3: u16 = line2 + bar_height
+    let _ = builder.wait(line3, 0)
+    let _ = builder.move_color(0, rgb12(15, 15, 0))
+
+    // Bar 4: Green
+    let line4: u16 = line3 + bar_height
+    let _ = builder.wait(line4, 0)
+    let _ = builder.move_color(0, rgb12(0, 15, 0))
+
+    // Bar 5: Cyan
+    let line5: u16 = line4 + bar_height
+    let _ = builder.wait(line5, 0)
+    let _ = builder.move_color(0, rgb12(0, 15, 15))
+
+    // Bar 6: Blue
+    let line6: u16 = line5 + bar_height
+    let _ = builder.wait(line6, 0)
+    let _ = builder.move_color(0, rgb12(0, 0, 15))
+
+    // Bar 7: Purple
+    let line7: u16 = line6 + bar_height
+    let _ = builder.wait(line7, 0)
+    let _ = builder.move_color(0, rgb12(15, 0, 15))
+
+    // Bar 8: White
+    let line8: u16 = line7 + bar_height
+    let _ = builder.wait(line8, 0)
+    let _ = builder.move_color(0, rgb12(15, 15, 15))
+
+    // Reset to black at the bottom
+    let line9: u16 = line8 + bar_height
+    let _ = builder.wait(line9, 0)
+    let _ = builder.move_color(0, rgb12(0, 0, 0))
+
+    // Build the copper list
+    let build_result = builder.build()
+    match build_result {
+        Result::Ok(copper_list) => {
+            // Activate the copper list
+            unsafe {
+                copper_list.activate()
+            }
+
+            // Display the bars for 5 seconds
+            let _ = delay(Duration::secs(5))
+
+            // Copper list is automatically deactivated and freed when it goes out of scope
+            return 0
+        },
+        Result::Err(error) => {
+            return 1  // Failed to build copper list
+        }
+    }
+}
