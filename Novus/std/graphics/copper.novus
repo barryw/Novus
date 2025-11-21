@@ -1,0 +1,407 @@
+// Copper List Builder API for Amiga Custom Chip
+// Module: std::graphics::copper
+//
+// Provides type-safe copper list construction with automatic validation
+// and RAII-based resource management.
+//
+// Example:
+//   let mut builder = CopperListBuilder::new()
+//   builder.wait(0, 0)
+//   builder.move_color(0, rgb12(15, 0, 0))
+//   builder.wait(100, 0)
+//   builder.move_color(0, rgb12(0, 0, 15))
+//   let copper_list_handle = builder.build()
+//
+//   unsafe {
+//       copper_list_handle.activate()
+//   }
+//   // Copper list automatically deactivated and freed when dropped
+
+from std::core import Option, Result, Drop
+from std::error::core import GraphicsError
+from std::ffi::exec import AllocVec, FreeVec, MEMF_CHIP, MEMF_CLEAR
+from std::ffi::amiga_structs import View
+from std::ffi::graphics import LoadView, WaitTOF
+from std::hardware::amiga_registers import is_register_safe_for_copper, color_register, rgb12, CUSTOM_BASE, COP1LC
+from std::system::system import SystemChipset
+
+/// Copper list construction errors
+pub enum CopperError {
+    InvalidWaitPosition,    // Wait position out of range or not even
+    BackwardsWait,          // Wait position before previous wait
+    DangerousRegister,      // Attempted write to dangerous register
+    AllocationFailed,       // Out of chip RAM
+    ListAlreadyFinalized,   // Tried to modify after build()
+}
+
+/// Copper list builder - constructs copper lists with validation
+///
+/// Uses a growable buffer to build copper lists in chip RAM.
+/// Validates all operations to prevent crashes and undefined behavior.
+///
+/// The builder cannot be modified after calling build().
+pub struct CopperListBuilder {
+    instructions: *u32,      // Pointer to instruction array in chip RAM
+    count: u32,              // Number of instructions
+    capacity: u32,           // Current capacity in instructions
+    last_vpos: u16,          // Last vertical position for ordering check
+    last_hpos: u16,          // Last horizontal position for ordering check
+    finalized: bool,         // Prevent modifications after build()
+}
+
+impl CopperListBuilder {
+    /// Create a new copper list builder
+    ///
+    /// Allocates initial capacity for 64 instructions (256 bytes).
+    pub fn new() -> CopperListBuilder {
+        unsafe {
+            let initial_capacity: u32 = 64
+            let size: u32 = initial_capacity * 4  // 4 bytes per instruction
+            let mem: *u8 = AllocVec(size, MEMF_CHIP | MEMF_CLEAR)
+
+            if !mem {
+                panic!("Failed to allocate copper list builder memory")
+            }
+
+            return CopperListBuilder {
+                instructions: (*u32)mem,
+                count: 0,
+                capacity: initial_capacity,
+                last_vpos: 0,
+                last_hpos: 0,
+                finalized: false,
+            }
+        }
+    }
+
+    /// Resize internal buffer (called automatically when needed)
+    fn grow(&mut self) -> bool {
+        if self.finalized {
+            return false
+        }
+
+        unsafe {
+            let new_capacity: u32 = self.capacity * 2
+            let new_size: u32 = new_capacity * 4
+            let new_mem: *u8 = AllocVec(new_size, MEMF_CHIP | MEMF_CLEAR)
+
+            if !new_mem {
+                return false  // Allocation failed
+            }
+
+            // Copy existing instructions
+            let old_size: u32 = self.count * 4
+            let mut i: u32 = 0
+            let src: *u8 = (*u8)self.instructions
+            let dst: *u8 = new_mem
+            while i < old_size {
+                let src_offset: *u8 = (*u8)((u32)src + i)
+                let dst_offset: *u8 = (*u8)((u32)dst + i)
+                let byte_val: u8 = *src_offset
+                *dst_offset = byte_val
+                i++
+            }
+
+            // Free old memory
+            FreeVec(src)
+
+            // Update to new buffer
+            self.instructions = (*u32)new_mem
+            self.capacity = new_capacity
+            return true
+        }
+    }
+
+    /// Add a WAIT instruction
+    ///
+    /// Waits for the raster beam to reach the specified position.
+    /// - vpos: Vertical position (line number, 0-312 PAL / 0-262 NTSC)
+    /// - hpos: Horizontal position (must be even, 0-226)
+    ///
+    /// Returns error if position is invalid or goes backwards.
+    pub fn wait(&mut self, vpos: u16, hpos: u16) -> Result<(), CopperError> {
+        if self.finalized {
+            return Result::Err(CopperError::ListAlreadyFinalized)
+        }
+
+        // Validate position
+        if !self.is_wait_position_valid(vpos, hpos) {
+            return Result::Err(CopperError::InvalidWaitPosition)
+        }
+
+        // Check for backwards wait
+        if vpos < self.last_vpos {
+            return Result::Err(CopperError::BackwardsWait)
+        }
+        if vpos == self.last_vpos && hpos < self.last_hpos {
+            return Result::Err(CopperError::BackwardsWait)
+        }
+
+        // Ensure capacity
+        if self.count >= self.capacity {
+            if !self.grow() {
+                return Result::Err(CopperError::AllocationFailed)
+            }
+        }
+
+        // Encode WAIT instruction
+        // Format: [VVVVVVVVHHHHHHHH1] [$FFFE]
+        // VP = vertical position (bits 15-8 of first word)
+        // HP = horizontal position (bits 7-1 of first word)
+        // Bit 0 of first word = 1 (WAIT vs MOVE discriminator)
+        let vp = ((u32)vpos) & $FF
+        let hp = ((u32)hpos) & $FE  // Must be even
+        var vp_shift = vp
+        vp_shift <<= 8  // Shift left by 8 bits
+        let word1 = vp_shift | hp | 1u32  // Bit 0 = 1 for WAIT
+        let word2 = $FFFEu32  // Wait mask
+        var word1_shift = word1
+        word1_shift <<= 16  // Shift left by 16 bits
+        let instruction = word1_shift | word2
+
+        unsafe {
+            let ptr: *u32 = (*u32)((u32)self.instructions + (self.count * 4))
+            *ptr = instruction
+        }
+        self.count++
+
+        // Update validation state
+        self.last_vpos = vpos
+        self.last_hpos = hpos
+
+        return Result::Ok(())
+    }
+
+    /// Add a MOVE instruction (write to custom chip register)
+    ///
+    /// Writes a value to a custom chip register.
+    /// - reg_addr: Custom chip register offset (e.g., 0x180 for COLOR00)
+    /// - value: 16-bit value to write
+    ///
+    /// Returns error if register is dangerous.
+    pub fn move_register(&mut self, reg_addr: u32, value: u16) -> Result<(), CopperError> {
+        if self.finalized {
+            return Result::Err(CopperError::ListAlreadyFinalized)
+        }
+
+        // Validate register address
+        if !is_register_safe_for_copper(reg_addr) {
+            return Result::Err(CopperError::DangerousRegister)
+        }
+
+        // Ensure capacity
+        if self.count >= self.capacity {
+            if !self.grow() {
+                return Result::Err(CopperError::AllocationFailed)
+            }
+        }
+
+        // Encode MOVE instruction
+        // Format: [register_offset][value]
+        // Register offset is from custom chip base ($DFF000)
+        // Bit 0 of first word = 0 (MOVE vs WAIT discriminator)
+        let offset = reg_addr & $1FE  // Ensure even, bit 0 = 0
+        let val = (u32)value
+        var offset_shift = offset
+        offset_shift <<= 16  // Shift left by 16 bits
+        let instruction = offset_shift | val
+
+        unsafe {
+            let ptr: *u32 = (*u32)((u32)self.instructions + (self.count * 4))
+            *ptr = instruction
+        }
+        self.count++
+
+        return Result::Ok(())
+    }
+
+    /// Convenience: Set a color register
+    ///
+    /// - index: Color register index (0-31)
+    /// - color: 12-bit RGB value (use rgb12() function to construct)
+    pub fn move_color(&mut self, index: u8, color: u16) -> Result<(), CopperError> {
+        let reg_addr: u32 = color_register(index)
+        return self.move_register(reg_addr, color)
+    }
+
+    /// Convenience: Wait for vertical blank
+    ///
+    /// Waits for the start of vertical blank (line 262 on NTSC, 312 on PAL).
+    /// Uses conservative NTSC value for compatibility.
+    pub fn wait_vblank(&mut self) -> Result<(), CopperError> {
+        return self.wait(262, 0)
+    }
+
+    /// Validate WAIT position
+    fn is_wait_position_valid(&self, vpos: u16, hpos: u16) -> bool {
+        // Horizontal: must be even and in range 0-226
+        if (hpos & 1) != 0 {
+            return false
+        }
+        if hpos > 226 {
+            return false
+        }
+
+        // Vertical: Use NTSC limits (0-262) as most restrictive
+        let max_lines: u16 = 262  // NTSC (most restrictive)
+
+        if vpos > max_lines {
+            return false
+        }
+
+        return true
+    }
+
+    /// Finalize and build the copper list
+    ///
+    /// Adds the terminator instruction (WAIT $FFFF, $FFFE) and allocates
+    /// final chip RAM. Returns an RAII handle that automatically restores
+    /// the system copper on drop.
+    ///
+    /// After calling build(), the builder cannot be modified.
+    pub fn build(&mut self) -> Result<CopperListHandle, CopperError> {
+        if self.finalized {
+            return Result::Err(CopperError::ListAlreadyFinalized)
+        }
+
+        // Add END instruction: WAIT($FFFF, $FFFE)
+        if self.count >= self.capacity {
+            if !self.grow() {
+                return Result::Err(CopperError::AllocationFailed)
+            }
+        }
+
+        // END instruction: $FFFFFFFE
+        unsafe {
+            let ptr: *u32 = (*u32)((u32)self.instructions + (self.count * 4))
+            *ptr = $FFFFFFFEu32
+        }
+        self.count++
+
+        // Allocate final chip RAM and copy instructions
+        let final_size: u32 = self.count * 4
+        unsafe {
+            let final_mem: *u8 = AllocVec(final_size, MEMF_CHIP | MEMF_CLEAR)
+            if !final_mem {
+                return Result::Err(CopperError::AllocationFailed)
+            }
+
+            // Copy instructions to final buffer
+            let src: *u8 = (*u8)self.instructions
+            let dst: *u8 = final_mem
+            let mut i: u32 = 0
+            while i < final_size {
+                let src_offset: *u8 = (*u8)((u32)src + i)
+                let dst_offset: *u8 = (*u8)((u32)dst + i)
+                let byte_val: u8 = *src_offset
+                *dst_offset = byte_val
+                i++
+            }
+
+            // Mark as finalized
+            self.finalized = true
+
+            // Create RAII handle
+            return Result::Ok(CopperListHandle {
+                memory: (*u32)final_mem,
+                size: final_size,
+                active: false,
+            })
+        }
+    }
+}
+
+// Automatic cleanup for builder
+impl Drop for CopperListBuilder {
+    fn drop(&mut self) {
+        if self.capacity > 0 {
+            unsafe {
+                let mem: *u8 = (*u8)self.instructions
+                FreeVec(mem)
+                self.instructions = null
+                self.capacity = 0
+                self.count = 0
+            }
+        }
+    }
+}
+
+/// Copper List Handle - RAII handle for a finalized copper list
+///
+/// Automatically restores system copper and frees memory on drop.
+/// This ensures you can never leak copper lists or leave the hardware
+/// in an inconsistent state.
+pub struct CopperListHandle {
+    memory: *u32,      // Chip RAM containing copper instructions
+    size: u32,         // Size in bytes
+    active: bool,      // Is this list currently active?
+}
+
+impl CopperListHandle {
+    /// Get pointer to copper list memory (for direct COP1LC write if needed)
+    pub fn ptr(&self) -> *u32 {
+        return self.memory
+    }
+
+    /// Get size in bytes
+    pub fn size(&self) -> u32 {
+        return self.size
+    }
+
+    /// Activate this copper list (loads it into the copper)
+    ///
+    /// SAFETY: This directly writes to hardware registers.
+    /// The copper list must remain valid for as long as it's active.
+    /// You should keep the CopperList handle in scope.
+    pub fn activate(&mut self) {
+        unsafe {
+            // CRITICAL: Must stop current copper first
+            LoadView(null)
+            WaitTOF()
+
+            // Write copper list pointer to COP1LC register
+            let cop1lc_addr: u32 = CUSTOM_BASE + COP1LC
+            let cop1lc_ptr: *u32 = (*u32)cop1lc_addr
+            *cop1lc_ptr = (u32)self.memory
+
+            self.active = true
+        }
+    }
+
+    /// Deactivate and restore system copper
+    ///
+    /// This is called automatically by Drop, but you can call it manually
+    /// if you want to restore the system copper before the handle is dropped.
+    pub fn deactivate(&mut self) {
+        if self.active {
+            unsafe {
+                LoadView(null)  // Restore system copper
+                WaitTOF()           // Wait for switch
+            }
+            self.active = false
+        }
+    }
+}
+
+// Automatic cleanup for copper list
+impl Drop for CopperListHandle {
+    fn drop(&mut self) {
+        // CRITICAL: Restore system copper before freeing memory!
+        if self.active {
+            unsafe {
+                LoadView(null)
+                WaitTOF()
+            }
+        }
+
+        // Free chip RAM
+        if self.size > 0 {
+            unsafe {
+                let mem: *u8 = (*u8)self.memory
+                FreeVec(mem)
+                self.memory = null
+                self.size = 0
+            }
+        }
+    }
+}

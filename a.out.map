@@ -1,0 +1,39 @@
+
+Files:
+  novus_startup.s:  CODE 0(a4) hex
+  library_bases.s:  __MERGED c(10) hex
+  dos_init.s:  CODE a4(68), data 0(c) hex
+  novus_io.s:  symbols only
+  exec_stubs.s:  symbols only
+  intuition_stubs.s:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-91362/a_is_register_safe_for_copper.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-91362/a_color_register.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-91362/a_rgb12.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-91362/a_rgb12_from_u8.c:  symbols only
+  /Users/barry/RiderProjects/Novus/Novus/bin/Debug/net9.0/runtime/novus_runtime.c:  symbols only
+
+
+Section mapping (numbers in hex):
+------------------------------
+  00000000 CODE  (size 10c)
+           00000000 - 000000a4 novus_startup.s(CODE)
+           000000a4 - 0000010c dos_init.s(CODE)
+------------------------------
+  00000000 data  (size 1c, allocated b)
+           00000000 - 0000000c dos_init.s(data)
+           0000000c - 0000001c library_bases.s(__MERGED)
+
+
+Symbols of CODE:
+  0x00000000 _start: global reloc, size 0
+  0x000000a4 ___dos_init: global reloc, size 0
+  0x000000e4 ___dos_cleanup: global reloc, size 0
+
+Symbols of data:
+  0x00000000 dos_name: local reloc, size 0
+  0x0000000c _SysBase: global reloc, size 0
+  0x00000010 _DOSBase: global reloc, size 0
+  0x00000014 _IntuitionBase: global reloc, size 0
+  0x00000018 _GadToolsBase: global reloc, size 0
+
+Linker symbols:
