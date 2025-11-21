@@ -22,6 +22,7 @@ from std::error::core import GraphicsError
 from std::ffi::exec import AllocVec, FreeVec, MEMF_CHIP, MEMF_CLEAR
 from std::ffi::amiga_structs import View
 from std::ffi::graphics import LoadView, WaitTOF
+from std::ffi::intuition import ViewAddress
 from std::hardware::amiga_registers import is_register_safe_for_copper, color_register, rgb12, CUSTOM_BASE, COP1LC
 from std::system::system import SystemChipset
 
@@ -311,6 +312,7 @@ impl CopperListBuilder {
                 memory: (*u32)final_mem,
                 size: final_size,
                 active: false,
+                saved_view: null,
             })
         }
     }
@@ -340,6 +342,7 @@ pub struct CopperListHandle {
     memory: *u32,      // Chip RAM containing copper instructions
     size: u32,         // Size in bytes
     active: bool,      // Is this list currently active?
+    saved_view: *View, // Saved system view to restore later
 }
 
 impl CopperListHandle {
@@ -360,6 +363,9 @@ impl CopperListHandle {
     /// You should keep the CopperList handle in scope.
     pub fn activate(&mut self) {
         unsafe {
+            // Save the current view so we can restore it later
+            self.saved_view = ViewAddress()
+
             // CRITICAL: Must stop current copper first
             LoadView(null)
             WaitTOF()
@@ -380,8 +386,8 @@ impl CopperListHandle {
     pub fn deactivate(&mut self) {
         if self.active {
             unsafe {
-                LoadView(null)  // Restore system copper
-                WaitTOF()           // Wait for switch
+                LoadView(self.saved_view)  // Restore saved view
+                WaitTOF()                  // Wait for switch
             }
             self.active = false
         }
@@ -394,7 +400,7 @@ impl Drop for CopperListHandle {
         // CRITICAL: Restore system copper before freeing memory!
         if self.active {
             unsafe {
-                LoadView(null)
+                LoadView(self.saved_view)
                 WaitTOF()
             }
         }

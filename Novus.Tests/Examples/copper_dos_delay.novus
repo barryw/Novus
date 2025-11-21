@@ -1,0 +1,39 @@
+// Copper Test with DOS Delay
+// Uses DOS Delay() instead of timer to rule out timer.device issues
+
+from std::core import Result
+from std::graphics::copper import CopperListBuilder, CopperError
+from std::hardware::amiga_registers import rgb12
+from std::ffi::graphics import WaitTOF
+from std::ffi::dos import Delay
+
+pub fn main() -> i32 {
+    // Ensure graphics.library is opened
+    unsafe {
+        WaitTOF()
+    }
+
+    // Create a simple copper list that sets the background to blue
+    let mut builder = CopperListBuilder::new()
+    let _ = builder.wait(0, 0)
+    let _ = builder.move_color(0, rgb12(0, 0, 15))
+
+    // Build and activate
+    let build_result = builder.build()
+    match build_result {
+        Result::Ok(copper_list) => {
+            unsafe {
+                copper_list.activate()
+            }
+
+            // Use DOS Delay instead of timer - 150 ticks = 3 seconds
+            Delay(150)
+
+            // Copper list auto-deactivated when it goes out of scope
+            return 0
+        },
+        Result::Err(error) => {
+            return 1
+        }
+    }
+}
