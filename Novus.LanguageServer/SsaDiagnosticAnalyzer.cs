@@ -70,7 +70,7 @@ public class SsaDiagnosticAnalyzer
             if (symbol.WriteCount > 0 && symbol.ReadCount == 0)
             {
                 _diagnostics.ReportWarning(
-                    "W001",
+                    "W4001",
                     $"Variable '{name}' is assigned but never used",
                     symbol.DeclarationLocation,
                     helpTexts: new List<string>
@@ -86,7 +86,7 @@ public class SsaDiagnosticAnalyzer
             if (symbol.WriteCount == 0 && symbol.ReadCount == 0)
             {
                 _diagnostics.ReportWarning(
-                    "W002",
+                    "W4002",
                     $"Variable '{name}' is declared but never used",
                     symbol.DeclarationLocation,
                     helpTexts: new List<string>
@@ -115,7 +115,7 @@ public class SsaDiagnosticAnalyzer
                 if (!symbol.HasInitializer && symbol.FirstReadBeforeWrite)
                 {
                     _diagnostics.ReportError(
-                        "E001",
+                        "E4001",
                         $"Variable '{name}' may be used before it is initialized",
                         symbol.FirstUseLocation,
                         helpTexts: new List<string>
@@ -131,28 +131,33 @@ public class SsaDiagnosticAnalyzer
 
     /// <summary>
     /// Detect unreachable code (e.g., code after return statements)
+    /// NOTE: This is currently disabled as W0003 already detects unreachable code
+    /// in the semantic analyzer. This method is kept for future SSA-based dead code analysis.
     /// </summary>
     private void AnalyzeDeadCode()
     {
         // This requires control flow analysis
         // For now, we'll detect simple cases like code after unconditional returns
 
-        var controlFlow = _semanticAnalyzer.GetControlFlowInfo();
+        // DISABLED: W0003 already detects unreachable code in SemanticAnalyzer
+        // We'll implement SSA-based dead code analysis in the future which can detect
+        // more complex cases like unreachable code due to constant propagation.
 
-        foreach (var block in controlFlow.UnreachableBlocks)
-        {
-            _diagnostics.ReportWarning(
-                "W003",
-                "Unreachable code detected",
-                block.Location,
-                helpTexts: new List<string>
-                {
-                    "This code will never be executed due to control flow.",
-                    "It may follow an unconditional return, break, or continue statement.",
-                    "Consider removing this code or restructuring your control flow."
-                }
-            );
-        }
+        // var controlFlow = _semanticAnalyzer.GetControlFlowInfo();
+        // foreach (var block in controlFlow.UnreachableBlocks)
+        // {
+        //     _diagnostics.ReportWarning(
+        //         "W4003",  // Reserved for future SSA-based dead code detection
+        //         "Unreachable code detected",
+        //         block.Location,
+        //         helpTexts: new List<string>
+        //         {
+        //             "This code will never be executed due to control flow.",
+        //             "It may follow an unconditional return, break, or continue statement.",
+        //             "Consider removing this code or restructuring your control flow."
+        //         }
+        //     );
+        // }
     }
 
     /// <summary>
@@ -165,7 +170,7 @@ public class SsaDiagnosticAnalyzer
         foreach (var assignment in dataFlow.RedundantAssignments)
         {
             _diagnostics.ReportWarning(
-                "W004",
+                "W4003",
                 $"Variable '{assignment.VariableName}' is assigned a value that is never used",
                 assignment.Location,
                 helpTexts: new List<string>

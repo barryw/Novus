@@ -70,7 +70,7 @@ public class Preprocessor
                     case DirectiveType.Elif:
                         if (stack.Count == 0)
                         {
-                            ReportError("E_PREPROC_001", $"#elif without matching #if", lineNumber);
+                            ReportError("E9001", $"#elif without matching #if", lineNumber);
                             output.AppendLine();
                             continue;
                         }
@@ -94,7 +94,7 @@ public class Preprocessor
                     case DirectiveType.Else:
                         if (stack.Count == 0)
                         {
-                            ReportError("E_PREPROC_002", $"#else without matching #if", lineNumber);
+                            ReportError("E9002", $"#else without matching #if", lineNumber);
                             output.AppendLine();
                             continue;
                         }
@@ -113,7 +113,7 @@ public class Preprocessor
                     case DirectiveType.Endif:
                         if (stack.Count == 0)
                         {
-                            ReportError("E_PREPROC_003", $"#endif without matching #if", lineNumber);
+                            ReportError("E9003", $"#endif without matching #if", lineNumber);
                             output.AppendLine();
                             continue;
                         }
@@ -145,7 +145,7 @@ public class Preprocessor
         // Check for unmatched #if directives
         if (stack.Count > 0)
         {
-            ReportError("E_PREPROC_004",
+            ReportError("E9004",
                 $"unmatched #if directive ({stack.Count} unclosed block{(stack.Count > 1 ? "s" : "")})",
                 lines.Length);
         }
@@ -167,7 +167,7 @@ public class Preprocessor
             case "#if":
                 if (parts.Length != 2)
                 {
-                    ReportError("E_PREPROC_005", $"#if requires exactly one constant name", lineNumber);
+                    ReportError("E9005", $"#if requires exactly one constant name", lineNumber);
                     return null;
                 }
                 return new Directive { Type = DirectiveType.If, Constant = parts[1] };
@@ -175,7 +175,7 @@ public class Preprocessor
             case "#elif":
                 if (parts.Length != 2)
                 {
-                    ReportError("E_PREPROC_006", $"#elif requires exactly one constant name", lineNumber);
+                    ReportError("E9006", $"#elif requires exactly one constant name", lineNumber);
                     return null;
                 }
                 return new Directive { Type = DirectiveType.Elif, Constant = parts[1] };
@@ -183,7 +183,7 @@ public class Preprocessor
             case "#else":
                 if (parts.Length != 1)
                 {
-                    ReportError("E_PREPROC_007", $"#else takes no arguments", lineNumber);
+                    ReportError("E9007", $"#else takes no arguments", lineNumber);
                     return null;
                 }
                 return new Directive { Type = DirectiveType.Else };
@@ -191,13 +191,13 @@ public class Preprocessor
             case "#endif":
                 if (parts.Length != 1)
                 {
-                    ReportError("E_PREPROC_008", $"#endif takes no arguments", lineNumber);
+                    ReportError("E9008", $"#endif takes no arguments", lineNumber);
                     return null;
                 }
                 return new Directive { Type = DirectiveType.Endif };
 
             default:
-                ReportError("E_PREPROC_009", $"unknown preprocessor directive '{parts[0]}'", lineNumber);
+                ReportError("E9009", $"unknown preprocessor directive '{parts[0]}'", lineNumber);
                 return null;
         }
     }
@@ -211,7 +211,7 @@ public class Preprocessor
 
         // Unknown constant - report error and return false
         var availableConstants = string.Join(", ", _constants.Keys.OrderBy(k => k));
-        ReportError("E_PREPROC_010",
+        ReportError("E9010",
             $"undefined preprocessor constant '{constantName}'",
             lineNumber,
             helpText: $"Available constants: {availableConstants}");

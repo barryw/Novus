@@ -283,7 +283,7 @@ let x = 1;";
         var (result, diagnostics) = Preprocess(source, constants);
 
         Assert.Single(GetErrors(diagnostics));
-        Assert.Contains("E_PREPROC_004", GetErrors(diagnostics)[0].Code);
+        Assert.Contains("E9004", GetErrors(diagnostics)[0].Code);
         Assert.Contains("unmatched #if", GetErrors(diagnostics)[0].Message);
     }
 
@@ -299,7 +299,7 @@ let x = 1;
 
         var errors = GetErrors(diagnostics);
         Assert.NotEmpty(errors);
-        Assert.Contains(errors, e => e.Code == "E_PREPROC_001" && e.Message.Contains("#elif without matching #if"));
+        Assert.Contains(errors, e => e.Code == "E9001" && e.Message.Contains("#elif without matching #if"));
     }
 
     [Fact]
@@ -314,7 +314,7 @@ let x = 1;
 
         var errors = GetErrors(diagnostics);
         Assert.NotEmpty(errors);
-        Assert.Contains(errors, e => e.Code == "E_PREPROC_002" && e.Message.Contains("#else without matching #if"));
+        Assert.Contains(errors, e => e.Code == "E9002" && e.Message.Contains("#else without matching #if"));
     }
 
     [Fact]
@@ -327,7 +327,7 @@ let x = 1;
         var (result, diagnostics) = Preprocess(source, constants);
 
         Assert.Single(GetErrors(diagnostics));
-        Assert.Contains("E_PREPROC_003", GetErrors(diagnostics)[0].Code);
+        Assert.Contains("E9003", GetErrors(diagnostics)[0].Code);
         Assert.Contains("#endif without matching #if", GetErrors(diagnostics)[0].Message);
     }
 
@@ -342,7 +342,7 @@ let x = 1;
         var (result, diagnostics) = Preprocess(source, constants);
 
         Assert.Single(GetErrors(diagnostics));
-        Assert.Contains("E_PREPROC_010", GetErrors(diagnostics)[0].Code);
+        Assert.Contains("E9010", GetErrors(diagnostics)[0].Code);
         Assert.Contains("undefined preprocessor constant 'UNDEFINED_CONSTANT'", GetErrors(diagnostics)[0].Message);
     }
 
@@ -358,7 +358,7 @@ let x = 1;
 
         var errors = GetErrors(diagnostics);
         Assert.NotEmpty(errors);
-        Assert.Contains(errors, e => e.Code == "E_PREPROC_005" && e.Message.Contains("#if requires exactly one constant name"));
+        Assert.Contains(errors, e => e.Code == "E9005" && e.Message.Contains("#if requires exactly one constant name"));
     }
 
     [Fact]
@@ -373,7 +373,7 @@ let x = 1;
 
         var errors = GetErrors(diagnostics);
         Assert.NotEmpty(errors);
-        Assert.Contains(errors, e => e.Code == "E_PREPROC_005");
+        Assert.Contains(errors, e => e.Code == "E9005");
     }
 
     [Fact]
@@ -389,7 +389,7 @@ let x = 2;
         var (result, diagnostics) = Preprocess(source, constants);
 
         Assert.Single(GetErrors(diagnostics));
-        Assert.Contains("E_PREPROC_006", GetErrors(diagnostics)[0].Code);
+        Assert.Contains("E9006", GetErrors(diagnostics)[0].Code);
         Assert.Contains("#elif requires exactly one constant name", GetErrors(diagnostics)[0].Message);
     }
 
@@ -406,7 +406,7 @@ let x = 2;
         var (result, diagnostics) = Preprocess(source, constants);
 
         Assert.Single(GetErrors(diagnostics));
-        Assert.Contains("E_PREPROC_007", GetErrors(diagnostics)[0].Code);
+        Assert.Contains("E9007", GetErrors(diagnostics)[0].Code);
         Assert.Contains("#else takes no arguments", GetErrors(diagnostics)[0].Message);
     }
 
@@ -422,7 +422,7 @@ let x = 1;
 
         var errors = GetErrors(diagnostics);
         Assert.NotEmpty(errors);
-        Assert.Contains(errors, e => e.Code == "E_PREPROC_008" && e.Message.Contains("#endif takes no arguments"));
+        Assert.Contains(errors, e => e.Code == "E9008" && e.Message.Contains("#endif takes no arguments"));
     }
 
     [Fact]
@@ -435,7 +435,7 @@ let x = 1;";
         var (result, diagnostics) = Preprocess(source, constants);
 
         Assert.Single(GetErrors(diagnostics));
-        Assert.Contains("E_PREPROC_009", GetErrors(diagnostics)[0].Code);
+        Assert.Contains("E9009", GetErrors(diagnostics)[0].Code);
         Assert.Contains("unknown preprocessor directive '#define'", GetErrors(diagnostics)[0].Message);
     }
 
