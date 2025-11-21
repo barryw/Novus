@@ -1,0 +1,49 @@
+// Simple Copper List Example
+// Demonstrates basic copper list creation and activation
+//
+// This example shows the minimal steps to create and use a copper list:
+// - Build a copper list with a single color change
+// - Activate it
+// - Let RAII handle cleanup automatically
+
+from std::core import Result
+from std::graphics::copper import CopperListBuilder, CopperError
+from std::hardware::amiga_registers import rgb12
+from std::system::timer import delay, Duration
+from std::ffi::graphics import WaitTOF
+
+pub fn main() -> i32 {
+    // Ensure graphics.library is opened
+    unsafe {
+        WaitTOF()
+    }
+
+    // Create a simple copper list that sets the background to blue
+    let mut builder = CopperListBuilder::new()
+
+    // Wait for line 0 (top of screen)
+    let _ = builder.wait(0, 0)
+
+    // Set background color (COLOR00) to blue
+    let _ = builder.move_color(0, rgb12(0, 0, 15))
+
+    // Build the copper list
+    let build_result = builder.build()
+    match build_result {
+        Result::Ok(copper_list) => {
+            // Activate the copper list
+            unsafe {
+                copper_list.activate()
+            }
+
+            // Keep the blue screen displayed for 3 seconds
+            let _ = delay(Duration::secs(3))
+
+            // Copper list is automatically deactivated when it goes out of scope
+            return 0
+        },
+        Result::Err(error) => {
+            return 1  // Failed to build copper list
+        }
+    }
+}

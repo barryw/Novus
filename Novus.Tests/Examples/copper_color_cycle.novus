@@ -1,0 +1,76 @@
+// Copper Color Cycle Demo
+// Animates background color through a rainbow palette
+//
+// This example demonstrates:
+// - Multiple copper lists with different effects
+// - Creating and switching between copper lists
+// - Time-based animation using the timer API
+// - RAII cleanup with multiple resources
+
+from std::core import Result
+from std::graphics::copper import CopperListBuilder, CopperError
+from std::hardware::amiga_registers import rgb12
+from std::system::timer import delay, Duration
+from std::ffi::graphics import WaitTOF
+
+pub fn main() -> i32 {
+    // Ensure graphics.library is opened
+    unsafe {
+        WaitTOF()
+    }
+
+    // Define a palette of rainbow colors
+    let colors: [u16; 16] = [
+        rgb12(15, 0, 0),   // Red
+        rgb12(15, 4, 0),   // Red-Orange
+        rgb12(15, 8, 0),   // Orange
+        rgb12(15, 12, 0),  // Yellow-Orange
+        rgb12(15, 15, 0),  // Yellow
+        rgb12(8, 15, 0),   // Yellow-Green
+        rgb12(0, 15, 0),   // Green
+        rgb12(0, 15, 8),   // Green-Cyan
+        rgb12(0, 15, 15),  // Cyan
+        rgb12(0, 8, 15),   // Cyan-Blue
+        rgb12(0, 0, 15),   // Blue
+        rgb12(8, 0, 15),   // Blue-Purple
+        rgb12(15, 0, 15),  // Purple
+        rgb12(15, 0, 8),   // Purple-Pink
+        rgb12(15, 0, 4),   // Pink
+        rgb12(15, 0, 0)    // Red (loop back)
+    ]
+
+    // Cycle through colors 60 times (about 10 seconds at 6fps)
+    let mut frame: u32 = 0
+    while frame < 60 {
+        // Calculate color index (cycles every 16 frames)
+        let color_idx: u32 = frame % 16
+        let color: u16 = colors[color_idx]
+
+        // Create copper list for this frame
+        let mut builder = CopperListBuilder::new()
+        let _ = builder.wait(0, 0)
+        let _ = builder.move_color(0, color)
+
+        // Build and activate
+        let build_result = builder.build()
+        match build_result {
+            Result::Ok(copper_list) => {
+                unsafe {
+                    copper_list.activate()
+                }
+
+                // Hold this frame for about 1/6 second
+                let _ = delay(Duration::millis(166))
+
+                // Copper list auto-deactivated when it goes out of scope
+            },
+            Result::Err(error) => {
+                return 1  // Failed to build copper list
+            }
+        }
+
+        frame++
+    }
+
+    return 0
+}
