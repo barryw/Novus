@@ -80,6 +80,7 @@ public class IrRewriterTests
         public int StoreCount { get; private set; }
         public int BranchCount { get; private set; }
         public int LocalDeclCount { get; private set; }
+        public int PhiCount { get; private set; }
 
         public override IrInstruction? RewriteBinaryOp(IrBinaryOp binaryOp)
         {
@@ -97,6 +98,12 @@ public class IrRewriterTests
         {
             ReturnCount++;
             return base.RewriteReturn(ret);
+        }
+
+        public override IrPhi? RewritePhi(IrPhi phi)
+        {
+            PhiCount++;
+            return base.RewritePhi(phi);
         }
 
         public override IrInstruction? RewriteStore(IrStore store)
@@ -566,5 +573,192 @@ public class IrRewriterTests
         Assert.Equal(2, block.Instructions.Count);
         Assert.All(block.Instructions, instr => Assert.IsType<IrReturn>(instr));
         Assert.Equal(3, rewriter.LabelsRemoved);
+    }
+
+    [Fact]
+    public void RewritePhi_RewritesIncomingValues()
+    {
+        var x0 = new IrVariable("x", 0, IrIntType.I32);
+        var x1 = new IrVariable("x", 1, IrIntType.I32);
+        var x2 = new IrVariable("x", 2, IrIntType.I32);
+
+        var phi = new IrPhi(x2);
+        var block1 = new IrBasicBlock("block1");
+        var block2 = new IrBasicBlock("block2");
+
+        // Use constants as incoming values to test rewriting
+        phi.AddIncoming(new IrConstant(10, IrIntType.I32), block1);
+        phi.AddIncoming(new IrConstant(20, IrIntType.I32), block2);
+
+        var rewriter = new ConstantZeroRewriter();
+        var result = rewriter.RewritePhi(phi);
+
+        Assert.NotNull(result);
+        Assert.Equal(2, result.IncomingValues.Count);
+        Assert.All(result.IncomingValues, value =>
+        {
+            var constant = Assert.IsType<IrConstant>(value);
+            Assert.Equal(0, constant.Value);
+        });
+        Assert.Equal(2, rewriter.ConstantsRewritten);
+    }
+
+    [Fact]
+    public void RewriteBasicBlock_WithPhiFunctions_RewritesPhis()
+    {
+        var block = new IrBasicBlock("test");
+
+        var x0 = new IrVariable("x", 0, IrIntType.I32);
+        var x1 = new IrVariable("x", 1, IrIntType.I32);
+        var x2 = new IrVariable("x", 2, IrIntType.I32);
+
+        var phi = new IrPhi(x2);
+        var pred1 = new IrBasicBlock("pred1");
+        var pred2 = new IrBasicBlock("pred2");
+        phi.AddIncoming(new IrConstant(10, IrIntType.I32), pred1);
+        phi.AddIncoming(new IrConstant(20, IrIntType.I32), pred2);
+        block.AddPhi(phi);
+
+        block.Instructions.Add(new IrReturn(x2));
+
+        var rewriter = new ConstantZeroRewriter();
+        rewriter.RewriteBasicBlock(block);
+
+        Assert.Single(block.PhiFunctions);
+        var rewrittenPhi = block.PhiFunctions[0];
+        Assert.All(rewrittenPhi.IncomingValues, value =>
+        {
+            var constant = Assert.IsType<IrConstant>(value);
+            Assert.Equal(0, constant.Value);
+        });
+        Assert.Equal(2, rewriter.ConstantsRewritten);
+    }
+
+    [Fact]
+    public void RewriteBasicBlock_PhiReturnsNull_RemovesPhi()
+    {
+        // Create a rewriter that removes all phis
+        var phiRemover = new PhiRemovingRewriter();
+
+        var block = new IrBasicBlock("test");
+        var phi1 = new IrPhi(new IrVariable("x", 0, IrIntType.I32));
+        var phi2 = new IrPhi(new IrVariable("y", 0, IrIntType.I32));
+        block.AddPhi(phi1);
+        block.AddPhi(phi2);
+
+        Assert.Equal(2, block.PhiFunctions.Count);
+
+        phiRemover.RewriteBasicBlock(block);
+
+        Assert.Empty(block.PhiFunctions);
+        Assert.Equal(2, phiRemover.PhisRemoved);
+    }
+
+    [Fact]
+    public void RewriteFunction_WithPhiFunctions_RewritesAllPhis()
+    {
+        var function = new IrFunction("test", IrIntType.I32);
+
+        // Create if-then-else-merge with phi
+        var entry = new IrBasicBlock("entry");
+        var thenBlock = new IrBasicBlock("then");
+        var elseBlock = new IrBasicBlock("else");
+        var merge = new IrBasicBlock("merge");
+
+        entry.Instructions.Add(new IrConditionalBranch(new IrVariable("cond", IrBoolType.Instance), "then", "else"));
+
+        thenBlock.Instructions.Add(new IrBranch("merge"));
+        elseBlock.Instructions.Add(new IrBranch("merge"));
+
+        var x1 = new IrVariable("x", 1, IrIntType.I32);
+        var x2 = new IrVariable("x", 2, IrIntType.I32);
+        var x3 = new IrVariable("x", 3, IrIntType.I32);
+
+        var phi = new IrPhi(x3);
+        phi.AddIncoming(new IrConstant(10, IrIntType.I32), thenBlock);
+        phi.AddIncoming(new IrConstant(20, IrIntType.I32), elseBlock);
+        merge.AddPhi(phi);
+        merge.Instructions.Add(new IrReturn(x3));
+
+        function.BasicBlocks.Add(entry);
+        function.BasicBlocks.Add(thenBlock);
+        function.BasicBlocks.Add(elseBlock);
+        function.BasicBlocks.Add(merge);
+
+        var rewriter = new ConstantZeroRewriter();
+        rewriter.RewriteFunction(function);
+
+        Assert.Single(merge.PhiFunctions);
+        var rewrittenPhi = merge.PhiFunctions[0];
+        Assert.All(rewrittenPhi.IncomingValues, value =>
+        {
+            var constant = Assert.IsType<IrConstant>(value);
+            Assert.Equal(0, constant.Value);
+        });
+        Assert.Equal(2, rewriter.ConstantsRewritten);
+    }
+
+    [Fact]
+    public void InstructionTrackingRewriter_CountsPhiFunctions()
+    {
+        var function = new IrFunction("test", IrVoidType.Instance);
+        var block1 = new IrBasicBlock("block1");
+        var block2 = new IrBasicBlock("block2");
+
+        // Add multiple phi functions
+        var phi1 = new IrPhi(new IrVariable("x", 1, IrIntType.I32));
+        phi1.AddIncoming(new IrConstant(0, IrIntType.I32), block1);
+
+        var phi2 = new IrPhi(new IrVariable("y", 1, IrIntType.I32));
+        phi2.AddIncoming(new IrConstant(0, IrIntType.I32), block1);
+
+        block2.AddPhi(phi1);
+        block2.AddPhi(phi2);
+        block2.Instructions.Add(new IrReturn(null));
+
+        function.BasicBlocks.Add(block1);
+        function.BasicBlocks.Add(block2);
+
+        var rewriter = new InstructionTrackingRewriter();
+        rewriter.RewriteFunction(function);
+
+        Assert.Equal(2, rewriter.PhiCount);
+        Assert.Equal(1, rewriter.ReturnCount);
+    }
+
+    [Fact]
+    public void RewritePhi_PreservesDestinationAndBlocks()
+    {
+        var dest = new IrVariable("result", 3, IrIntType.I32);
+        var phi = new IrPhi(dest);
+
+        var block1 = new IrBasicBlock("block1");
+        var block2 = new IrBasicBlock("block2");
+
+        phi.AddIncoming(new IrConstant(10, IrIntType.I32), block1);
+        phi.AddIncoming(new IrConstant(20, IrIntType.I32), block2);
+
+        var rewriter = new ConstantZeroRewriter();
+        var result = rewriter.RewritePhi(phi);
+
+        Assert.NotNull(result);
+        Assert.Same(dest, result.Destination);
+        Assert.Equal(2, result.IncomingBlocks.Count);
+        Assert.Equal(block1, result.IncomingBlocks[0]);
+        Assert.Equal(block2, result.IncomingBlocks[1]);
+    }
+
+    /// <summary>
+    /// Concrete rewriter that removes all phi functions
+    /// </summary>
+    private class PhiRemovingRewriter : IrRewriter
+    {
+        public int PhisRemoved { get; private set; }
+
+        public override IrPhi? RewritePhi(IrPhi phi)
+        {
+            PhisRemoved++;
+            return null; // Delete the phi
+        }
     }
 }

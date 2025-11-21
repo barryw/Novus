@@ -64,6 +64,12 @@ public abstract class IrVisitor<TResult, TContext>
     /// </summary>
     public virtual TResult VisitBasicBlock(IrBasicBlock block, TContext context)
     {
+        // Visit phi functions first (they execute at block entry in SSA form)
+        foreach (var phi in block.PhiFunctions)
+        {
+            VisitPhi(phi, context);
+        }
+
         foreach (var instruction in block.Instructions)
         {
             VisitInstruction(instruction, context);
@@ -79,6 +85,7 @@ public abstract class IrVisitor<TResult, TContext>
     {
         return instruction switch
         {
+            IrPhi phi => VisitPhi(phi, context),
             IrBinaryOp binaryOp => VisitBinaryOp(binaryOp, context),
             IrCall call => VisitCall(call, context),
             IrIndirectCall indirectCall => VisitIndirectCall(indirectCall, context),
@@ -225,6 +232,19 @@ public abstract class IrVisitor<TResult, TContext>
     public virtual TResult VisitConditionalBranch(IrConditionalBranch condBranch, TContext context)
     {
         VisitValue(condBranch.Condition, context);
+        return default!;
+    }
+
+    /// <summary>
+    /// Visit a phi function (SSA form only)
+    /// </summary>
+    public virtual TResult VisitPhi(IrPhi phi, TContext context)
+    {
+        // Visit all incoming values
+        foreach (var value in phi.IncomingValues)
+        {
+            VisitValue(value, context);
+        }
         return default!;
     }
 

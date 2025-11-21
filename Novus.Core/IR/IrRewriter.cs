@@ -52,6 +52,22 @@ public abstract class IrRewriter
     /// </summary>
     public virtual IrBasicBlock RewriteBasicBlock(IrBasicBlock block)
     {
+        // Rewrite phi functions first (they execute at block entry in SSA form)
+        for (int i = 0; i < block.PhiFunctions.Count; i++)
+        {
+            var rewritten = RewritePhi(block.PhiFunctions[i]);
+            if (rewritten != null)
+            {
+                block.PhiFunctions[i] = rewritten;
+            }
+            else
+            {
+                // Null means delete the phi function
+                block.PhiFunctions.RemoveAt(i);
+                i--;
+            }
+        }
+
         // Rewrite instructions in-place
         for (int i = 0; i < block.Instructions.Count; i++)
         {
@@ -80,6 +96,7 @@ public abstract class IrRewriter
     {
         return instruction switch
         {
+            IrPhi phi => RewritePhi(phi),
             IrBinaryOp binaryOp => RewriteBinaryOp(binaryOp),
             IrCall call => RewriteCall(call),
             IrIndirectCall indirectCall => RewriteIndirectCall(indirectCall),
@@ -137,6 +154,19 @@ public abstract class IrRewriter
     }
 
     // Instruction rewrite methods (default: return unmodified)
+
+    /// <summary>
+    /// Rewrite a phi function (SSA form only)
+    /// </summary>
+    public virtual IrPhi? RewritePhi(IrPhi phi)
+    {
+        // Rewrite all incoming values
+        for (int i = 0; i < phi.IncomingValues.Count; i++)
+        {
+            phi.IncomingValues[i] = RewriteValue(phi.IncomingValues[i]);
+        }
+        return phi;
+    }
 
     /// <summary>
     /// Rewrite a binary operation instruction

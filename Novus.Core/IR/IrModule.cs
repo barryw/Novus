@@ -236,6 +236,13 @@ public class IrLocalVariable
 public class IrBasicBlock
 {
     public string Label { get; set; }
+
+    /// <summary>
+    /// Phi functions for this block - these execute "simultaneously" at block entry
+    /// before any normal instructions. Only populated when the function is in SSA form.
+    /// </summary>
+    public List<IrPhi> PhiFunctions { get; } = new();
+
     public List<IrInstruction> Instructions { get; } = new();
 
     public IrBasicBlock(string label)
@@ -246,6 +253,14 @@ public class IrBasicBlock
     public void AddInstruction(IrInstruction instruction)
     {
         Instructions.Add(instruction);
+    }
+
+    /// <summary>
+    /// Add a phi function to this block
+    /// </summary>
+    public void AddPhi(IrPhi phi)
+    {
+        PhiFunctions.Add(phi);
     }
 }
 
@@ -379,6 +394,72 @@ public class IrConditionalBranch : IrInstruction
         Condition = condition;
         TrueTarget = trueTarget;
         FalseTarget = falseTarget;
+    }
+}
+
+/// <summary>
+/// Phi function - merges values from multiple control flow paths in SSA form
+/// A phi function has one incoming value for each predecessor block
+/// The phi "executes" conceptually at block entry, selecting the value from
+/// whichever predecessor was taken
+///
+/// Example: x_2 = φ(x_0 from block1, x_1 from block2)
+/// </summary>
+public class IrPhi : IrInstruction
+{
+    /// <summary>
+    /// The variable being defined by this phi function (the LHS)
+    /// </summary>
+    public IrVariable Destination { get; set; }
+
+    /// <summary>
+    /// Incoming values - parallel array with IncomingBlocks
+    /// IncomingValues[i] is the value to use if we came from IncomingBlocks[i]
+    /// </summary>
+    public List<IrValue> IncomingValues { get; } = new();
+
+    /// <summary>
+    /// Incoming blocks - parallel array with IncomingValues
+    /// These are the predecessor blocks that provide the corresponding values
+    /// </summary>
+    public List<IrBasicBlock> IncomingBlocks { get; } = new();
+
+    public IrPhi(IrVariable destination)
+    {
+        Destination = destination;
+    }
+
+    /// <summary>
+    /// Add an incoming value from a specific predecessor block
+    /// </summary>
+    public void AddIncoming(IrValue value, IrBasicBlock block)
+    {
+        IncomingValues.Add(value);
+        IncomingBlocks.Add(block);
+    }
+
+    /// <summary>
+    /// Get the value for a specific predecessor block
+    /// Returns null if the block is not a predecessor
+    /// </summary>
+    public IrValue? GetValueForBlock(IrBasicBlock block)
+    {
+        var index = IncomingBlocks.IndexOf(block);
+        return index >= 0 ? IncomingValues[index] : null;
+    }
+
+    /// <summary>
+    /// Replace all occurrences of an old value with a new value
+    /// </summary>
+    public void ReplaceValue(IrValue oldValue, IrValue newValue)
+    {
+        for (int i = 0; i < IncomingValues.Count; i++)
+        {
+            if (IncomingValues[i] == oldValue)
+            {
+                IncomingValues[i] = newValue;
+            }
+        }
     }
 }
 
@@ -579,12 +660,47 @@ public class IrStringLiteral : IrValue
 /// </summary>
 public class IrVariable : IrValue
 {
+    /// <summary>
+    /// Base name of the variable (e.g., "x", "count", "result")
+    /// In non-SSA form, this is the only name component
+    /// </summary>
     public string Name { get; set; }
 
+    /// <summary>
+    /// SSA version number for this variable
+    /// -1 means not in SSA form (regular variable)
+    /// >= 0 means SSA form with version number (e.g., x_0, x_1, x_2)
+    /// </summary>
+    public int Version { get; set; } = -1;
+
+    /// <summary>
+    /// Get the full SSA name including version (e.g., "x_2")
+    /// If not in SSA form (Version == -1), returns just the base name
+    /// </summary>
+    public string SsaName => Version >= 0 ? $"{Name}_{Version}" : Name;
+
+    /// <summary>
+    /// Create a non-SSA variable (Version = -1)
+    /// </summary>
     public IrVariable(string name, IrType type) : base(type)
     {
         Name = name;
+        Version = -1;
     }
+
+    /// <summary>
+    /// Create an SSA variable with explicit version
+    /// </summary>
+    public IrVariable(string name, int version, IrType type) : base(type)
+    {
+        Name = name;
+        Version = version;
+    }
+
+    /// <summary>
+    /// Check if this variable is in SSA form
+    /// </summary>
+    public bool IsInSsaForm => Version >= 0;
 }
 
 /// <summary>

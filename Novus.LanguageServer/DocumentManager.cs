@@ -130,7 +130,22 @@ public class DocumentManager
             // Store the analyzer for language server features (go-to-definition, hover, etc.)
             state.SemanticAnalyzer = analyzer;
 
-            Console.Error.WriteLine($"[LSP] Semantic analysis completed. Total diagnostics: {diagnostics.Diagnostics.Count}");
+            Console.Error.WriteLine($"[LSP] Semantic analysis completed. Diagnostics so far: {diagnostics.Diagnostics.Count}");
+
+            // Run SSA-based diagnostic analysis for code quality issues
+            try
+            {
+                var ssaAnalyzer = new SsaDiagnosticAnalyzer(analyzer, diagnostics);
+                ssaAnalyzer.Analyze();
+                Console.Error.WriteLine($"[LSP] SSA analysis completed. Total diagnostics: {diagnostics.Diagnostics.Count}");
+            }
+            catch (Exception ssaEx)
+            {
+                Console.Error.WriteLine($"[LSP] SSA analysis failed: {ssaEx.Message}");
+                // Continue without SSA diagnostics
+            }
+
+            Console.Error.WriteLine($"[LSP] All analysis completed. Total diagnostics: {diagnostics.Diagnostics.Count}");
         }
         catch (Exception ex)
         {
