@@ -929,7 +929,7 @@ class Program
             if (!isLibrary && !isDevice)
             {
                 // Only executables need startup code and library initialization
-                var coreFiles = new[] { "novus_startup", "library_bases", "dos_init" };
+                var coreFiles = new[] { "novus_startup", "library_bases", "dos_init", "graphics_init" };
                 foreach (var coreFile in coreFiles)
                 {
                     var coreSource = Path.Combine(compilerDir, "stubs", $"{coreFile}.s");

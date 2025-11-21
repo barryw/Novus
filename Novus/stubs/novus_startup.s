@@ -15,8 +15,11 @@
 	xref	_DOSBase		; From library_bases.s
 	xref	_IntuitionBase		; From library_bases.s
 	xref	_GadToolsBase		; From library_bases.s
+	xref	_GfxBase		; From library_bases.s
 	xref	___dos_init		; From dos_init.s
 	xref	___dos_cleanup		; From dos_init.s
+	xref	___graphics_init	; From graphics_init.s
+	xref	___graphics_cleanup	; From graphics_init.s
 
 ; ============================================================================
 ; Entry Point
@@ -38,6 +41,11 @@ _start:
 	jsr	___dos_init
 	tst.l	d0
 	beq.s	.exit_no_dos		; Exit if DOS library couldn't open
+
+	; Initialize Graphics library
+	jsr	___graphics_init
+	; Note: Don't fail if graphics.library doesn't open - not all programs need it
+	; The library stubs will handle NULL base pointers gracefully
 
 	; Open intuition.library v33
 	movea.l	_SysBase,a6		; Get exec.library base
@@ -74,6 +82,11 @@ _start:
 	move.l	(sp)+,d0		; Restore return code
 
 .no_intuition:
+	; Clean up Graphics library
+	move.l	d0,-(sp)		; Save return code
+	jsr	___graphics_cleanup
+	move.l	(sp)+,d0		; Restore return code
+
 	; Clean up DOS library
 	move.l	d0,-(sp)		; Save return code
 	jsr	___dos_cleanup
