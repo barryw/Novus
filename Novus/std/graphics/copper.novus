@@ -53,6 +53,7 @@ impl CopperListBuilder {
     /// Create a new copper list builder
     ///
     /// Allocates initial capacity for 64 instructions (256 bytes).
+    @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
     pub fn new() -> CopperListBuilder {
         unsafe {
             let initial_capacity: u32 = 64
@@ -75,6 +76,7 @@ impl CopperListBuilder {
     }
 
     /// Resize internal buffer (called automatically when needed)
+    @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
     fn grow(&mut self) -> bool {
         if self.finalized {
             return false
@@ -119,6 +121,7 @@ impl CopperListBuilder {
     /// - hpos: Horizontal position (must be even, 0-226)
     ///
     /// Returns error if position is invalid or goes backwards.
+    @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
     pub fn wait(&mut self, vpos: u16, hpos: u16) -> Result<(), CopperError> {
         if self.finalized {
             return Result::Err(CopperError::ListAlreadyFinalized)
@@ -179,6 +182,7 @@ impl CopperListBuilder {
     /// - value: 16-bit value to write
     ///
     /// Returns error if register is dangerous.
+    @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
     pub fn move_register(&mut self, reg_addr: u32, value: u16) -> Result<(), CopperError> {
         if self.finalized {
             return Result::Err(CopperError::ListAlreadyFinalized)
@@ -259,6 +263,7 @@ impl CopperListBuilder {
     /// the system copper on drop.
     ///
     /// After calling build(), the builder cannot be modified.
+    @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
     pub fn build(&mut self) -> Result<CopperListHandle, CopperError> {
         if self.finalized {
             return Result::Err(CopperError::ListAlreadyFinalized)
