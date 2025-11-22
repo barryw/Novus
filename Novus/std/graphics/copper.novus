@@ -390,6 +390,48 @@ impl CopperListHandle {
         }
     }
 
+    /// Replace the current copper list with a new one without restoring the view.
+    /// This enables smooth transitions between copper effects.
+    ///
+    /// # Arguments
+    /// * `new_list` - The new copper list to activate
+    ///
+    /// # Safety
+    /// This is unsafe because it directly writes to hardware registers.
+    /// The view remains null during the transition (no workbench flash).
+    pub fn replace(&mut self, new_list: &mut CopperListHandle) {
+        if self.active {
+            unsafe {
+                // Transfer the saved view to the new list
+                new_list.saved_view = self.saved_view
+
+                // Write new copper list pointer without changing the view
+                let addr: u32 = (u32)new_list.memory
+                let addr_high: u16 = (u16)(addr >> 16)
+                let addr_low: u16 = (u16)(addr & $FFFF)
+
+                // Write high word to COP1LCH ($DFF080)
+                let cop1lch_ptr: *u16 = (*u16)(CUSTOM_BASE + $80)
+                *cop1lch_ptr = addr_high
+
+                // Write low word to COP1LCL ($DFF082)
+                let cop1lcl_ptr: *u16 = (*u16)(CUSTOM_BASE + $82)
+                *cop1lcl_ptr = addr_low
+
+                // Strobe COPJMP1 to trigger copper load
+                let copjmp1_ptr: *u16 = (*u16)(CUSTOM_BASE + COPJMP1)
+                *copjmp1_ptr = 0
+
+                // Wait for copper to switch
+                WaitTOF()
+
+                // Mark new list as active and old list as inactive
+                new_list.active = true
+                self.active = false
+            }
+        }
+    }
+
     /// Deactivate and restore system copper
     ///
     /// This is called automatically by Drop, but you can call it manually

@@ -19,6 +19,21 @@ pub fn main() -> i32 {
         WaitTOF()
     }
 
+    // Build first copper list
+    let mut builder = CopperListBuilder::new()
+    let _ = builder.wait(0, 0)
+    let _ = builder.move_color(0, rgb12(15, 0, 0))
+
+    let build_result = builder.build()
+    match build_result {
+        Result::Ok(first_list) => {
+            let mut current_list = first_list
+
+            // Activate once at the start
+            unsafe {
+                current_list.activate()
+            }
+
     // Define a palette of rainbow colors
     let colors: [u16; 16] = [
         rgb12(15, 0, 0),   // Red
@@ -46,31 +61,40 @@ pub fn main() -> i32 {
         let color_idx: u32 = frame % 16
         let color: u16 = colors[color_idx]
 
-        // Create copper list for this frame
-        let mut builder = CopperListBuilder::new()
-        let _ = builder.wait(0, 0)
-        let _ = builder.move_color(0, color)
+        // Build a new copper list with the new color
+        let mut new_builder = CopperListBuilder::new()
+        let _ = new_builder.wait(0, 0)
+        let _ = new_builder.move_color(0, color)
 
-        // Build and activate
-        let build_result = builder.build()
-        match build_result {
-            Result::Ok(copper_list) => {
+        let new_build_result = new_builder.build()
+        match new_build_result {
+            Result::Ok(new_list) => {
+                let mut mutable_new_list = new_list
+
+                // Replace the old copper list with the new one (no view flash!)
                 unsafe {
-                    copper_list.activate()
+                    current_list.replace(&mut mutable_new_list)
                 }
 
-                // Hold this frame for about 1/6 second
-                let _ = delay(Duration::millis(166))
-
-                // Copper list auto-deactivated when it goes out of scope
+                // Replace current with new
+                current_list = mutable_new_list
             },
-            Result::Err(error) => {
-                return 1  // Failed to build copper list
+            Result::Err(_) => {
+                return 1
             }
         }
+
+        // Hold this frame for about 1/6 second
+        let _ = delay(Duration::millis(166))
 
         frame++
     }
 
-    return 0
+            // current_list will auto-deactivate when it goes out of scope
+            return 0
+        },
+        Result::Err(_) => {
+            return 1
+        }
+    }
 }
