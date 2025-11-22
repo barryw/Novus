@@ -739,7 +739,7 @@ public static class BuildCommand
             // Forward safety level flags from BuildOptions (critical fix - was missing!)
             SafetyLevelOption = buildOptions.SafetyLevel,
             UnsafeMode = buildOptions.UnsafeMode,
-            UseStdlibCache = buildOptions.UseStdlibCache
+            RebuildStdlib = buildOptions.RebuildStdlib
         };
 
         if (workspace == null)
