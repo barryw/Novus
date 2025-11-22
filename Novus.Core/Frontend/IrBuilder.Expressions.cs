@@ -2142,6 +2142,40 @@ public partial class IrBuilder
         return null;
     }
 
+    public override object? VisitDereferenceExpr([NotNull] NovusParser.DereferenceExprContext context)
+    {
+        // Handle pointer/reference dereference: *ptr
+        var operand = (IrValue)Visit(context.expression())!;
+
+        // Determine the pointee type
+        IrType pointeeType;
+        if (operand.Type is IrPointerType ptrType)
+        {
+            pointeeType = ptrType.PointeeType;
+        }
+        else if (operand.Type is IrReferenceType refType)
+        {
+            pointeeType = refType.PointeeType;
+        }
+        else if (operand.Type is IrMutReferenceType mutRefType)
+        {
+            pointeeType = mutRefType.PointeeType;
+        }
+        else
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.CannotDereferenceType,
+                $"Cannot dereference non-pointer/reference type: {operand.Type.Name}",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Create a dereference value
+        return new IrDereferenceValue(operand, pointeeType);
+    }
+
     public override object? VisitPostIncrementExpr([NotNull] NovusParser.PostIncrementExprContext context)
     {
         // Post-increment: return old value, but increment the lvalue

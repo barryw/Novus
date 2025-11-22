@@ -2,10 +2,10 @@
 // Animates background color through a rainbow palette
 //
 // This example demonstrates:
-// - Multiple copper lists with different effects
-// - Creating and switching between copper lists
+// - Creating a single copper list and reusing it
+// - Updating copper list instructions in-place
 // - Time-based animation using the timer API
-// - RAII cleanup with multiple resources
+// - RAII cleanup with copper resources
 
 from std::core import Result
 from std::graphics::copper import CopperListBuilder, CopperError
@@ -18,21 +18,6 @@ pub fn main() -> i32 {
     unsafe {
         WaitTOF()
     }
-
-    // Build first copper list
-    let mut builder = CopperListBuilder::new()
-    let _ = builder.wait(0, 0)
-    let _ = builder.move_color(0, rgb12(15, 0, 0))
-
-    let build_result = builder.build()
-    match build_result {
-        Result::Ok(first_list) => {
-            let mut current_list = first_list
-
-            // Activate once at the start
-            unsafe {
-                current_list.activate()
-            }
 
     // Define a palette of rainbow colors
     let colors: [u16; 16] = [
@@ -54,43 +39,39 @@ pub fn main() -> i32 {
         rgb12(15, 0, 0)    // Red (loop back)
     ]
 
-    // Cycle through colors 60 times (about 10 seconds at 6fps)
-    let mut frame: u32 = 0
-    while frame < 60 {
-        // Calculate color index (cycles every 16 frames)
-        let color_idx: u32 = frame % 16
-        let color: u16 = colors[color_idx]
+    // Build ONE copper list with initial color
+    let mut builder = CopperListBuilder::new()
+    let _ = builder.wait(0, 0)
+    let _ = builder.move_color(0, colors[0])
 
-        // Build a new copper list with the new color
-        let mut new_builder = CopperListBuilder::new()
-        let _ = new_builder.wait(0, 0)
-        let _ = new_builder.move_color(0, color)
+    let build_result = builder.build()
+    match build_result {
+        Result::Ok(copper_list) => {
+            let mut list = copper_list
 
-        let new_build_result = new_builder.build()
-        match new_build_result {
-            Result::Ok(new_list) => {
-                let mut mutable_new_list = new_list
-
-                // Replace the old copper list with the new one (no view flash!)
-                unsafe {
-                    current_list.replace(&mut mutable_new_list)
-                }
-
-                // Replace current with new
-                current_list = mutable_new_list
-            },
-            Result::Err(_) => {
-                return 1
+            // Activate once at the start
+            unsafe {
+                list.activate()
             }
-        }
 
-        // Hold this frame for about 1/6 second
-        let _ = delay(Duration::millis(166))
+            // Cycle through colors 60 times (about 10 seconds at 6fps)
+            let mut frame: u32 = 0
+            while frame < 60 {
+                // Calculate color index (cycles every 16 frames)
+                let color_idx: u32 = frame % 16
+                let color: u16 = colors[color_idx]
 
-        frame++
-    }
+                // Update the color in the existing copper list
+                // Instruction 1 is the MOVE COLOR00 instruction (after WAIT at 0)
+                list.update_color_at(1, color)
 
-            // current_list will auto-deactivate when it goes out of scope
+                // Hold this frame for about 1/6 second
+                let _ = delay(Duration::millis(166))
+
+                frame++
+            }
+
+            // list will auto-deactivate when it goes out of scope
             return 0
         },
         Result::Err(_) => {

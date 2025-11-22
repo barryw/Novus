@@ -23,6 +23,7 @@ from std::ffi::exec import AllocVec, FreeVec, CopyMem, MEMF_CHIP, MEMF_CLEAR
 from std::ffi::amiga_structs import View
 from std::ffi::graphics import LoadView, WaitTOF, WaitBlit
 from std::ffi::intuition import ViewAddress, RethinkDisplay
+from std::ffi::exec import CacheClearU
 from std::hardware::amiga_registers import is_register_safe_for_copper, color_register, rgb12, CUSTOM_BASE, COP1LC, DMACON
 from std::system::system import SystemChipset
 
@@ -345,6 +346,46 @@ impl CopperListHandle {
         return self.size
     }
 
+    /// Update a color value in the copper list at a specific instruction index
+    ///
+    /// This allows you to modify an existing copper list without rebuilding it.
+    /// The instruction at the given index must be a MOVE instruction to a color register.
+    ///
+    /// This version waits for vertical blank before updating to prevent visual glitches.
+    /// For maximum performance, use update_color_at_unchecked() if you're managing
+    /// synchronization yourself.
+    ///
+    /// # Arguments
+    /// * `instruction_idx` - Index of the instruction to update (0-based)
+    /// * `new_color` - New 12-bit RGB color value
+    ///
+    /// # Safety
+    /// This is unsafe because it directly modifies copper list memory.
+    /// The caller must ensure the instruction index is valid and points to a color MOVE.
+    @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
+    pub fn update_color_at(&mut self, instruction_idx: u32, new_color: u16) {
+        unsafe {
+            // Wait for vertical blank to avoid glitches from copper reading while we write
+            WaitTOF()
+
+            // Each instruction is 4 bytes (32 bits)
+            // MOVE format: [register_offset << 16 | value]
+            // We only need to update the lower 16 bits (the value)
+            let offset: u32 = instruction_idx * 4
+            let instr_ptr: *u32 = (*u32)((u32)self.memory + offset)
+            let old_instr: u32 = *instr_ptr
+
+            // Clear lower 16 bits and OR in new color
+            let new_instr: u32 = (old_instr & $FFFF0000u32) | (u32)new_color
+            *instr_ptr = new_instr
+
+            // CRITICAL for 68040/68060: Flush CPU data cache to chip RAM
+            // Without this, the copper reads stale data from chip RAM while
+            // the new value sits in the CPU's copyback cache
+            CacheClearU()
+        }
+    }
+
     /// Activate this copper list (loads it into the copper)
     ///
     /// SAFETY: This directly writes to hardware registers.
@@ -390,46 +431,51 @@ impl CopperListHandle {
         }
     }
 
-    /// Replace the current copper list with a new one without restoring the view.
+    /// Switch to a new copper list without restoring the view.
     /// This enables smooth transitions between copper effects.
+    /// Simply updates the copper hardware pointer - memory management is caller's responsibility.
     ///
     /// # Arguments
-    /// * `new_list` - The new copper list to activate
+    /// * `new_list` - The new copper list to switch to
     ///
     /// # Safety
     /// This is unsafe because it directly writes to hardware registers.
-    /// The view remains null during the transition (no workbench flash).
-    pub fn replace(&mut self, new_list: &mut CopperListHandle) {
-        if self.active {
-            unsafe {
-                // Transfer the saved view to the new list
-                new_list.saved_view = self.saved_view
+    /// The caller must ensure the new copper list remains valid.
+    pub fn switch_to(&mut self, new_list: &CopperListHandle) {
+        unsafe {
+            // Wait for current copper to finish current frame
+            WaitTOF()
 
-                // Write new copper list pointer without changing the view
-                let addr: u32 = (u32)new_list.memory
-                let addr_high: u16 = (u16)(addr >> 16)
-                let addr_low: u16 = (u16)(addr & $FFFF)
+            // Write new copper list pointer
+            let addr: u32 = (u32)new_list.memory
+            let addr_high: u16 = (u16)(addr >> 16)
+            let addr_low: u16 = (u16)(addr & $FFFF)
 
-                // Write high word to COP1LCH ($DFF080)
-                let cop1lch_ptr: *u16 = (*u16)(CUSTOM_BASE + $80)
-                *cop1lch_ptr = addr_high
+            // Write high word to COP1LCH ($DFF080)
+            let cop1lch_ptr: *u16 = (*u16)(CUSTOM_BASE + $80)
+            *cop1lch_ptr = addr_high
 
-                // Write low word to COP1LCL ($DFF082)
-                let cop1lcl_ptr: *u16 = (*u16)(CUSTOM_BASE + $82)
-                *cop1lcl_ptr = addr_low
+            // Write low word to COP1LCL ($DFF082)
+            let cop1lcl_ptr: *u16 = (*u16)(CUSTOM_BASE + $82)
+            *cop1lcl_ptr = addr_low
 
-                // Strobe COPJMP1 to trigger copper load
-                let copjmp1_ptr: *u16 = (*u16)(CUSTOM_BASE + COPJMP1)
-                *copjmp1_ptr = 0
+            // Strobe COPJMP1 to trigger copper load
+            let copjmp1_ptr: *u16 = (*u16)(CUSTOM_BASE + COPJMP1)
+            *copjmp1_ptr = 0
 
-                // Wait for copper to switch
-                WaitTOF()
-
-                // Mark new list as active and old list as inactive
-                new_list.active = true
-                self.active = false
-            }
+            // Wait for copper to switch to new list
+            WaitTOF()
         }
+    }
+
+    /// Mark this copper list as inactive without restoring the view.
+    ///
+    /// Use this when you've switched to a different copper list and want to
+    /// drop the old one without restoring the workbench view.
+    /// The copper hardware is already pointing at a different list, so we
+    /// just need to prevent Drop from restoring the view.
+    pub fn deactivate_without_restore(&mut self) {
+        self.active = false
     }
 
     /// Deactivate and restore system copper
@@ -446,8 +492,9 @@ impl CopperListHandle {
                 LoadView(self.saved_view)  // Restore saved view
                 WaitTOF()                  // Wait for switch
 
-                // Rebuild Intuition copper lists
-                RethinkDisplay()
+                // Note: RethinkDisplay() not needed for copper-only changes
+                // It rebuilds the entire display database which is slow (1-5 seconds)
+                // and unnecessary when we're just restoring the original view
             }
             self.active = false
         }
@@ -468,7 +515,8 @@ impl Drop for CopperListHandle {
                 if self.saved_view != null {
                     LoadView(self.saved_view)
                     WaitTOF()
-                    RethinkDisplay()
+                    // Note: RethinkDisplay() not needed for copper-only changes
+                    // It rebuilds the entire display database which is slow (1-5 seconds)
                 }
             }
         }
