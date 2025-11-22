@@ -19,12 +19,15 @@
 
 from std::core import Option, Result, Drop
 from std::error::core import GraphicsError
-from std::ffi::exec import AllocVec, FreeVec, MEMF_CHIP, MEMF_CLEAR
+from std::ffi::exec import AllocVec, FreeVec, CopyMem, MEMF_CHIP, MEMF_CLEAR
 from std::ffi::amiga_structs import View
-from std::ffi::graphics import LoadView, WaitTOF
-from std::ffi::intuition import ViewAddress
+from std::ffi::graphics import LoadView, WaitTOF, WaitBlit
+from std::ffi::intuition import ViewAddress, RethinkDisplay
 from std::hardware::amiga_registers import is_register_safe_for_copper, color_register, rgb12, CUSTOM_BASE, COP1LC, DMACON
 from std::system::system import SystemChipset
+
+// Copper control registers
+pub const COPJMP1: u32 = $088  // Copper jump strobe register
 
 /// Copper list construction errors
 pub enum CopperError {
@@ -92,18 +95,11 @@ impl CopperListBuilder {
                 return false  // Allocation failed
             }
 
-            // Copy existing instructions
+            // Copy existing instructions using CopyMem
             let old_size: u32 = self.count * 4
-            let mut i: u32 = 0
             let src: *u8 = (*u8)self.instructions
             let dst: *u8 = new_mem
-            while i < old_size {
-                let src_offset: *u8 = (*u8)((u32)src + i)
-                let dst_offset: *u8 = (*u8)((u32)dst + i)
-                let byte_val: u8 = *src_offset
-                *dst_offset = byte_val
-                i++
-            }
+            CopyMem(src, dst, old_size)
 
             // Free old memory
             FreeVec(src)
@@ -292,17 +288,10 @@ impl CopperListBuilder {
                 return Result::Err(CopperError::AllocationFailed)
             }
 
-            // Copy instructions to final buffer
+            // Copy instructions to final buffer using CopyMem
             let src: *u8 = (*u8)self.instructions
             let dst: *u8 = final_mem
-            let mut i: u32 = 0
-            while i < final_size {
-                let src_offset: *u8 = (*u8)((u32)src + i)
-                let dst_offset: *u8 = (*u8)((u32)dst + i)
-                let byte_val: u8 = *src_offset
-                *dst_offset = byte_val
-                i++
-            }
+            CopyMem(src, dst, final_size)
 
             // Mark as finalized
             self.finalized = true
@@ -367,6 +356,8 @@ impl CopperListHandle {
             self.saved_view = ViewAddress()
 
             // CRITICAL: Must stop current copper first
+            // Ensure blitter is idle before changing view
+            WaitBlit()
             LoadView(null)
             WaitTOF()
 
@@ -384,9 +375,16 @@ impl CopperListHandle {
             let cop1lcl_ptr: *u16 = (*u16)(CUSTOM_BASE + $82)
             *cop1lcl_ptr = addr_low
 
+            // Strobe COPJMP1 to trigger copper load
+            let copjmp1_ptr: *u16 = (*u16)(CUSTOM_BASE + COPJMP1)
+            *copjmp1_ptr = 0
+
             // Enable copper DMA (bit 7 = copper, bit 15 = set/clear)
             let dmacon_ptr: *u16 = (*u16)(CUSTOM_BASE + DMACON)
             *dmacon_ptr = $8080  // Set bit 7 (copper enable)
+
+            // Wait for copper to start
+            WaitTOF()
 
             self.active = true
         }
@@ -399,8 +397,15 @@ impl CopperListHandle {
     pub fn deactivate(&mut self) {
         if self.active {
             unsafe {
+                // Disable copper DMA before restoring view
+                let dmacon_ptr: *u16 = (*u16)(CUSTOM_BASE + DMACON)
+                *dmacon_ptr = $0080  // Clear bit 7 (copper disable)
+
                 LoadView(self.saved_view)  // Restore saved view
                 WaitTOF()                  // Wait for switch
+
+                // Rebuild Intuition copper lists
+                RethinkDisplay()
             }
             self.active = false
         }
@@ -413,8 +418,16 @@ impl Drop for CopperListHandle {
         // CRITICAL: Restore system copper before freeing memory!
         if self.active {
             unsafe {
-                LoadView(self.saved_view)
-                WaitTOF()
+                // Disable copper DMA before restoring view
+                let dmacon_ptr: *u16 = (*u16)(CUSTOM_BASE + DMACON)
+                *dmacon_ptr = $0080  // Clear bit 7 (copper disable)
+
+                // Only restore view if we saved one
+                if self.saved_view != null {
+                    LoadView(self.saved_view)
+                    WaitTOF()
+                    RethinkDisplay()
+                }
             }
         }
 
