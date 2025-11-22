@@ -1,670 +1,188 @@
 
 Files:
-  novus_startup.s:  CODE 0(a4) hex
-  library_bases.s:  __MERGED c(14) hex
-  dos_init.s:  CODE a4(68), data 0(c) hex
+  novus_startup.s:  CODE 0(b4) hex
+  library_bases.s:  __MERGED 20(14) hex
+  dos_init.s:  CODE b4(68), data 0(c) hex
+  graphics_init.s:  CODE 11c(68), data c(14) hex
   novus_io.s:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_LibraryVersion_new.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_LibraryVersion_major.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_LibraryVersion_minor.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_LibraryVersion_patch.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/copper_CopperListBuilder_new.c:  CODE 10c(140) hex
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/copper_CopperListBuilder_grow.c:  CODE 24c(14c) hex
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/copper_CopperListBuilder_wait.c:  CODE 398(294) hex
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/copper_CopperListBuilder_move_register.c:  CODE 62c(180) hex
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/copper_CopperListBuilder_move_color.c:  CODE 7ac(64) hex
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/copper_CopperListBuilder_wait_vblank.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/copper_CopperListBuilder_is_wait_position_valid.c:  CODE 810(64) hex
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/copper_CopperListBuilder_build.c:  CODE 874(210) hex
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/copper_CopperListBuilder_Drop_drop.c:  CODE a84(58) hex
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/copper_CopperListHandle_ptr.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/copper_CopperListHandle_size.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/copper_CopperListHandle_activate.c:  CODE adc(50) hex
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/copper_CopperListHandle_deactivate.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/copper_CopperListHandle_Drop_drop.c:  CODE b2c(74) hex
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_dos_last_error.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_dos_error_from_code.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_dos_error_to_code.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_exec_error_to_code.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_intuition_error_to_code.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_graphics_error_to_code.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_novus_error_from_dos.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_novus_error_from_exec.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_novus_error_from_intuition.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_novus_error_from_graphics.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_novus_error_to_code.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_NovusError_From_DosError_convert.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_NovusError_From_ExecError_convert.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_NovusError_From_IntuitionError_convert.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_NovusError_From_GraphicsError_convert.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_DosError_message.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_ExecError_message.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_IntuitionError_message.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_GraphicsError_message.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_NovusError_message.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/amiga_registers_is_register_safe_for_copper.c:  CODE ba0(ac) hex
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/amiga_registers_color_register.c:  CODE c4c(28) hex
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/amiga_registers_rgb12.c:  CODE c74(74) hex
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/amiga_registers_rgb12_from_u8.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/system_CPU.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/system_FPU.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/system_CHIPSET.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/system_CHIP_RAM.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/system_SystemCPU_Display_fmt.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/system_SystemFPU_Display_fmt.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/system_SystemChipset_Display_fmt.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/format_StackFormatter_new.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/format_StackFormatter_write_str.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/format_StackFormatter_write_char.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/format_StackFormatter_as_str.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/format_Formatter_new.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/format_Formatter_with_capacity.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/format_Formatter_write_str.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/format_Formatter_write_char.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/format_Formatter_finish.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/format_Formatter_as_str.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Str_from_raw.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Str_from_cstr.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Str_len.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Str_is_empty.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Str_as_ptr.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Str_get.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Str_slice.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Str_slice_from.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Str_slice_to.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Str_equals.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Str_compare.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Str_starts_with.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Str_ends_with.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Str_contains.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Str_find.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Str_find_byte.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Str_rfind_byte.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Str_trim.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Str_trim_start.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Str_trim_end.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Str_to_string.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Str_as_cstr.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_String_new.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_String_with_capacity.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_String_new_from_str.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_String_len.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_String_is_empty.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_String_capacity.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_String_as_str.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_String_push_str.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_String_push_byte.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_String_clear.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_String_reserve.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_String_as_mut_ptr.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_String_as_ptr.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_NameString_new.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_NameString_len.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_NameString_is_empty.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_NameString_capacity.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_NameString_as_str.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_NameString_as_mut_ptr.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_NameString_push_str.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_NameString_push_byte.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_NameString_clear.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_GadgetString_new.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_GadgetString_len.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_GadgetString_is_empty.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_GadgetString_capacity.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_GadgetString_as_str.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_GadgetString_as_mut_ptr.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_GadgetString_push_str.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_GadgetString_push_byte.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_GadgetString_clear.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_PathString_new.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_PathString_len.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_PathString_is_empty.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_PathString_capacity.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_PathString_as_str.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_PathString_as_mut_ptr.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_PathString_push_str.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_PathString_push_byte.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_PathString_clear.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_BStr_new_from_str.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_BStr_as_bptr.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_BStr_as_ptr.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_BStr_len.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_BStr_as_str.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_BStr_drop.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Option_is_some_u32.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Vec_u8__new.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Vec_u8__reserve.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Vec_u8__push.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Vec_u8__is_empty.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Vec_u8__capacity.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Vec_u8__as_ptr.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Vec_u8__clear.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_Vec_u8__as_mut_ptr.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_MemoryBlock_alloc.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_MemoryBlock_try_alloc.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_MemoryBlock_ptr.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_MemoryBlock_size.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_MemoryBlock_is_empty.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_MemoryBlock_free.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_MemoryBlock_resize.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/core_MemoryBlock_Drop_drop.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_delay.c:  CODE ce8(194) hex
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_now.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_elapsed_since.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_Duration_secs.c:  CODE e7c(28) hex
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_Duration_millis.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_Duration_micros.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_Duration_new.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_Duration_zero.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_Duration_get_secs.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_Duration_get_micros.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_Duration_as_millis.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_Duration_as_micros.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_Duration_add.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_Duration_sub.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_Duration_cmp.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_Duration_is_zero.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_Duration_to_timeval.c:  CODE ea4(3c) hex
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_Duration_from_timeval.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_TimerHandle_microhz.c:  CODE ee0(50) hex
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_TimerHandle_vblank.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_TimerHandle_eclock.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_TimerHandle_open.c:  CODE f30(1a0) hex
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_TimerHandle_get_time.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_TimerHandle_delay.c:  CODE 10d0(124) hex
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_TimerHandle_wait_until.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_TimerHandle_wait_frames.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_TimerHandle_handle.c:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_TimerHandle_Drop_drop.c:  CODE 11f4(dc) hex
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/a_CopperListBuilder_new.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/a_CopperListBuilder_grow.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/a_CopperListBuilder_wait.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/a_CopperListBuilder_move_register.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/a_CopperListBuilder_move_color.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/a_CopperListBuilder_wait_vblank.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/a_CopperListBuilder_is_wait_position_valid.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/a_CopperListBuilder_build.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/a_CopperListBuilder_Drop_drop.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/a_CopperListHandle_ptr.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/a_CopperListHandle_size.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/a_CopperListHandle_activate.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/a_CopperListHandle_deactivate.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/a_CopperListHandle_Drop_drop.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_LibraryVersion_new.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_LibraryVersion_major.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_LibraryVersion_minor.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_LibraryVersion_patch.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_dos_last_error.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_dos_error_from_code.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_dos_error_to_code.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_exec_error_to_code.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_intuition_error_to_code.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_graphics_error_to_code.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_novus_error_from_dos.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_novus_error_from_exec.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_novus_error_from_intuition.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_novus_error_from_graphics.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_novus_error_to_code.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_NovusError_From_DosError_convert.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_NovusError_From_ExecError_convert.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_NovusError_From_IntuitionError_convert.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_NovusError_From_GraphicsError_convert.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_DosError_message.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_ExecError_message.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_IntuitionError_message.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_GraphicsError_message.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_NovusError_message.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/amiga_registers_is_register_safe_for_copper.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/amiga_registers_color_register.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/amiga_registers_rgb12.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/amiga_registers_rgb12_from_u8.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/system_CPU.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/system_FPU.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/system_CHIPSET.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/system_CHIP_RAM.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/system_SystemCPU_Display_fmt.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/system_SystemFPU_Display_fmt.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/system_SystemChipset_Display_fmt.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/format_StackFormatter_new.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/format_StackFormatter_write_str.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/format_StackFormatter_write_char.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/format_StackFormatter_as_str.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/format_Formatter_new.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/format_Formatter_with_capacity.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/format_Formatter_write_str.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/format_Formatter_write_char.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/format_Formatter_finish.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/format_Formatter_as_str.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Str_from_raw.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Str_from_cstr.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Str_len.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Str_is_empty.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Str_as_ptr.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Str_get.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Str_slice.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Str_slice_from.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Str_slice_to.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Str_equals.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Str_compare.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Str_starts_with.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Str_ends_with.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Str_contains.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Str_find.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Str_find_byte.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Str_rfind_byte.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Str_trim.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Str_trim_start.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Str_trim_end.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Str_to_string.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Str_as_cstr.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_String_new.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_String_with_capacity.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_String_new_from_str.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_String_len.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_String_is_empty.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_String_capacity.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_String_as_str.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_String_push_str.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_String_push_byte.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_String_clear.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_String_reserve.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_String_as_mut_ptr.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_String_as_ptr.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_NameString_new.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_NameString_len.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_NameString_is_empty.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_NameString_capacity.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_NameString_as_str.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_NameString_as_mut_ptr.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_NameString_push_str.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_NameString_push_byte.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_NameString_clear.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_GadgetString_new.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_GadgetString_len.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_GadgetString_is_empty.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_GadgetString_capacity.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_GadgetString_as_str.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_GadgetString_as_mut_ptr.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_GadgetString_push_str.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_GadgetString_push_byte.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_GadgetString_clear.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_PathString_new.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_PathString_len.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_PathString_is_empty.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_PathString_capacity.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_PathString_as_str.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_PathString_as_mut_ptr.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_PathString_push_str.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_PathString_push_byte.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_PathString_clear.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_BStr_new_from_str.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_BStr_as_bptr.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_BStr_as_ptr.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_BStr_len.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_BStr_as_str.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_BStr_drop.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Option_is_some_u32.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Vec_u8__new.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Vec_u8__reserve.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Vec_u8__push.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Vec_u8__is_empty.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Vec_u8__capacity.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Vec_u8__as_ptr.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Vec_u8__clear.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_Vec_u8__as_mut_ptr.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_MemoryBlock_alloc.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_MemoryBlock_try_alloc.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_MemoryBlock_ptr.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_MemoryBlock_size.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_MemoryBlock_is_empty.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_MemoryBlock_free.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_MemoryBlock_resize.c:  symbols only
+  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-29241/core_MemoryBlock_Drop_drop.c:  symbols only
   exec_stubs.s:  symbols only
   graphics_stubs.s:  symbols only
   dos_stubs.s:  symbols only
   intuition_stubs.s:  symbols only
-  /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/a_main.c:  CODE 12d0(284) hex
-  /Users/barry/RiderProjects/Novus/Novus/bin/Debug/net9.0/runtime/novus_runtime.c:  CODE 1554(b04), BSS 20(200) hex
+  /Users/barry/RiderProjects/Novus/Novus/bin/Debug/net9.0/runtime/novus_runtime.c:  symbols only
 
 
 Section mapping (numbers in hex):
 ------------------------------
-  00000000 CODE  (size 2058)
-           00000000 - 000000a4 novus_startup.s(CODE)
-           000000a4 - 0000010c dos_init.s(CODE)
-           0000010c - 0000024c /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/copper_CopperListBuilder_new.c(CODE)
-           0000024c - 00000398 /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/copper_CopperListBuilder_grow.c(CODE)
-           00000398 - 0000062c /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/copper_CopperListBuilder_wait.c(CODE)
-           0000062c - 000007ac /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/copper_CopperListBuilder_move_register.c(CODE)
-           000007ac - 00000810 /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/copper_CopperListBuilder_move_color.c(CODE)
-           00000810 - 00000874 /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/copper_CopperListBuilder_is_wait_position_valid.c(CODE)
-           00000874 - 00000a84 /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/copper_CopperListBuilder_build.c(CODE)
-           00000a84 - 00000adc /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/copper_CopperListBuilder_Drop_drop.c(CODE)
-           00000adc - 00000b2c /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/copper_CopperListHandle_activate.c(CODE)
-           00000b2c - 00000ba0 /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/copper_CopperListHandle_Drop_drop.c(CODE)
-           00000ba0 - 00000c4c /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/amiga_registers_is_register_safe_for_copper.c(CODE)
-           00000c4c - 00000c74 /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/amiga_registers_color_register.c(CODE)
-           00000c74 - 00000ce8 /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/amiga_registers_rgb12.c(CODE)
-           00000ce8 - 00000e7c /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_delay.c(CODE)
-           00000e7c - 00000ea4 /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_Duration_secs.c(CODE)
-           00000ea4 - 00000ee0 /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_Duration_to_timeval.c(CODE)
-           00000ee0 - 00000f30 /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_TimerHandle_microhz.c(CODE)
-           00000f30 - 000010d0 /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_TimerHandle_open.c(CODE)
-           000010d0 - 000011f4 /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_TimerHandle_delay.c(CODE)
-           000011f4 - 000012d0 /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/timer_TimerHandle_Drop_drop.c(CODE)
-           000012d0 - 00001554 /var/folders/52/5656d2050tz7nvc4b1m1tfqw0000gn/T/novus-build-42383/a_main.c(CODE)
-           00001554 - 00002058 /Users/barry/RiderProjects/Novus/Novus/bin/Debug/net9.0/runtime/novus_runtime.c(CODE)
+  00000000 CODE  (size 184)
+           00000000 - 000000b4 novus_startup.s(CODE)
+           000000b4 - 0000011c dos_init.s(CODE)
+           0000011c - 00000184 graphics_init.s(CODE)
 ------------------------------
-  00000000 data  (size 220, allocated b)
+  00000000 data  (size 34, allocated 1c)
            00000000 - 0000000c dos_init.s(data)
-           0000000c - 00000020 library_bases.s(__MERGED)
-           00000020 - 00000220 /Users/barry/RiderProjects/Novus/Novus/bin/Debug/net9.0/runtime/novus_runtime.c(BSS)
+           0000000c - 00000020 graphics_init.s(data)
+           00000020 - 00000034 library_bases.s(__MERGED)
 
 
 Symbols of CODE:
   0x00000000 _start: global reloc, size 0
-  0x000000a4 ___dos_init: global reloc, size 0
-  0x000000e4 ___dos_cleanup: global reloc, size 0
-  0x0000010c _CopperListBuilder_new: global reloc, size 0
-  0x00000152 l6: local reloc, size 0
-  0x00000156 l4: local reloc, size 0
-  0x00000158 l5: local reloc, size 0
-  0x00000170 l8: local reloc, size 0
-  0x00000172 l9: local reloc, size 0
-  0x0000018e l10: local reloc, size 0
-  0x000001c0 l2: local reloc, size 0
-  0x000001c8 l11: local reloc, size 0
-  0x0000021c l12: local reloc, size 0
-  0x0000024c _CopperListBuilder_grow: global reloc, size 0
-  0x00000260 l5: local reloc, size 0
-  0x00000262 l6: local reloc, size 0
-  0x00000268 l7: local reloc, size 0
-  0x000002ba l10: local reloc, size 0
-  0x000002be l8: local reloc, size 0
-  0x000002c0 l9: local reloc, size 0
-  0x000002d8 l12: local reloc, size 0
-  0x000002da l13: local reloc, size 0
-  0x000002e0 l14: local reloc, size 0
-  0x00000312 l15: local reloc, size 0
-  0x0000031c l18: local reloc, size 0
-  0x00000320 l16: local reloc, size 0
-  0x00000322 l17: local reloc, size 0
-  0x00000328 l20: local reloc, size 0
-  0x0000032a l21: local reloc, size 0
-  0x0000036e l22: local reloc, size 0
-  0x00000390 l2: local reloc, size 0
-  0x00000398 _CopperListBuilder_wait: global reloc, size 0
-  0x000003aa l5: local reloc, size 0
-  0x000003ac l6: local reloc, size 0
-  0x000003c2 l7: local reloc, size 0
-  0x000003f8 l9: local reloc, size 0
-  0x000003fa l10: local reloc, size 0
-  0x0000040e l11: local reloc, size 0
-  0x00000422 l14: local reloc, size 0
-  0x00000426 l12: local reloc, size 0
-  0x00000428 l13: local reloc, size 0
-  0x0000042e l16: local reloc, size 0
-  0x00000430 l17: local reloc, size 0
-  0x00000446 l18: local reloc, size 0
-  0x0000045a l21: local reloc, size 0
-  0x0000045e l19: local reloc, size 0
-  0x00000460 l20: local reloc, size 0
-  0x00000466 l23: local reloc, size 0
-  0x00000468 l24: local reloc, size 0
-  0x0000047c l28: local reloc, size 0
-  0x00000480 l26: local reloc, size 0
-  0x00000482 l27: local reloc, size 0
-  0x00000488 l30: local reloc, size 0
-  0x0000048a l31: local reloc, size 0
-  0x00000492 l25: local reloc, size 0
-  0x00000496 l32: local reloc, size 0
-  0x0000049c l34: local reloc, size 0
-  0x0000049e l35: local reloc, size 0
-  0x000004b4 l36: local reloc, size 0
-  0x000004d2 l39: local reloc, size 0
-  0x000004d6 l37: local reloc, size 0
-  0x000004d8 l38: local reloc, size 0
-  0x000004de l41: local reloc, size 0
-  0x000004e0 l42: local reloc, size 0
-  0x00000504 l45: local reloc, size 0
-  0x00000506 l46: local reloc, size 0
-  0x0000051c l43: local reloc, size 0
-  0x0000051c l47: local reloc, size 0
-  0x00000626 l2: local reloc, size 0
-  0x0000062c _CopperListBuilder_move_register: global reloc, size 0
-  0x0000063e l5: local reloc, size 0
-  0x00000640 l6: local reloc, size 0
-  0x00000656 l7: local reloc, size 0
-  0x0000067a l9: local reloc, size 0
-  0x0000067c l10: local reloc, size 0
-  0x00000692 l11: local reloc, size 0
-  0x000006b0 l14: local reloc, size 0
-  0x000006b4 l12: local reloc, size 0
-  0x000006b6 l13: local reloc, size 0
-  0x000006bc l16: local reloc, size 0
-  0x000006be l17: local reloc, size 0
-  0x000006e2 l20: local reloc, size 0
-  0x000006e4 l21: local reloc, size 0
-  0x000006fa l22: local reloc, size 0
-  0x000006fa l18: local reloc, size 0
-  0x000007a4 l2: local reloc, size 0
-  0x000007ac _CopperListBuilder_move_color: global reloc, size 0
-  0x0000080a l2: local reloc, size 0
-  0x00000810 _CopperListBuilder_is_wait_position_valid: global reloc, size 0
-  0x00000820 l6: local reloc, size 0
-  0x00000824 l4: local reloc, size 0
-  0x00000826 l5: local reloc, size 0
-  0x0000082c l8: local reloc, size 0
-  0x0000082e l9: local reloc, size 0
-  0x00000832 l10: local reloc, size 0
-  0x0000083a l13: local reloc, size 0
-  0x0000083e l11: local reloc, size 0
-  0x00000840 l12: local reloc, size 0
-  0x00000846 l15: local reloc, size 0
-  0x00000848 l16: local reloc, size 0
-  0x0000084c l17: local reloc, size 0
-  0x0000085c l20: local reloc, size 0
-  0x00000860 l18: local reloc, size 0
-  0x00000862 l19: local reloc, size 0
-  0x00000868 l22: local reloc, size 0
-  0x0000086a l23: local reloc, size 0
-  0x0000086e l24: local reloc, size 0
-  0x00000870 l2: local reloc, size 0
-  0x00000874 _CopperListBuilder_build: global reloc, size 0
-  0x00000888 l5: local reloc, size 0
-  0x0000088a l6: local reloc, size 0
-  0x000008a0 l7: local reloc, size 0
-  0x000008be l10: local reloc, size 0
-  0x000008c2 l8: local reloc, size 0
-  0x000008c4 l9: local reloc, size 0
-  0x000008ca l12: local reloc, size 0
-  0x000008cc l13: local reloc, size 0
-  0x000008f0 l16: local reloc, size 0
-  0x000008f2 l17: local reloc, size 0
-  0x00000908 l14: local reloc, size 0
-  0x00000908 l18: local reloc, size 0
-  0x000009a0 l21: local reloc, size 0
-  0x000009a4 l19: local reloc, size 0
-  0x000009a6 l20: local reloc, size 0
-  0x000009be l23: local reloc, size 0
-  0x000009c0 l24: local reloc, size 0
-  0x000009d6 l25: local reloc, size 0
-  0x000009ee l26: local reloc, size 0
-  0x000009f8 l29: local reloc, size 0
-  0x000009fc l27: local reloc, size 0
-  0x000009fe l28: local reloc, size 0
-  0x00000a04 l31: local reloc, size 0
-  0x00000a06 l32: local reloc, size 0
-  0x00000a4a l33: local reloc, size 0
-  0x00000a7a l2: local reloc, size 0
-  0x00000a84 _CopperListBuilder_Drop_drop: global reloc, size 0
-  0x00000a96 l6: local reloc, size 0
-  0x00000a9a l4: local reloc, size 0
-  0x00000a9c l5: local reloc, size 0
-  0x00000aa2 l8: local reloc, size 0
-  0x00000aa4 l9: local reloc, size 0
-  0x00000ad6 l2: local reloc, size 0
-  0x00000ad6 l10: local reloc, size 0
-  0x00000adc _CopperListHandle_activate: global reloc, size 0
-  0x00000b26 l2: local reloc, size 0
-  0x00000b2c _CopperListHandle_Drop_drop: global reloc, size 0
-  0x00000b3e l5: local reloc, size 0
-  0x00000b40 l6: local reloc, size 0
-  0x00000b56 l7: local reloc, size 0
-  0x00000b62 l10: local reloc, size 0
-  0x00000b66 l8: local reloc, size 0
-  0x00000b68 l9: local reloc, size 0
-  0x00000b6e l12: local reloc, size 0
-  0x00000b70 l13: local reloc, size 0
-  0x00000b9a l14: local reloc, size 0
-  0x00000b9a l2: local reloc, size 0
-  0x00000ba0 _is_register_safe_for_copper: global reloc, size 0
-  0x00000bc2 l6: local reloc, size 0
-  0x00000bc6 l4: local reloc, size 0
-  0x00000bc8 l5: local reloc, size 0
-  0x00000bce l8: local reloc, size 0
-  0x00000bd0 l9: local reloc, size 0
-  0x00000bd4 l10: local reloc, size 0
-  0x00000bde l13: local reloc, size 0
-  0x00000be2 l11: local reloc, size 0
-  0x00000be4 l12: local reloc, size 0
-  0x00000bea l15: local reloc, size 0
-  0x00000bec l16: local reloc, size 0
-  0x00000bf0 l17: local reloc, size 0
-  0x00000bfa l20: local reloc, size 0
-  0x00000bfe l18: local reloc, size 0
-  0x00000c00 l19: local reloc, size 0
-  0x00000c06 l22: local reloc, size 0
-  0x00000c08 l23: local reloc, size 0
-  0x00000c0c l24: local reloc, size 0
-  0x00000c16 l27: local reloc, size 0
-  0x00000c1a l25: local reloc, size 0
-  0x00000c1c l26: local reloc, size 0
-  0x00000c22 l29: local reloc, size 0
-  0x00000c24 l30: local reloc, size 0
-  0x00000c28 l31: local reloc, size 0
-  0x00000c32 l34: local reloc, size 0
-  0x00000c36 l32: local reloc, size 0
-  0x00000c38 l33: local reloc, size 0
-  0x00000c3e l36: local reloc, size 0
-  0x00000c40 l37: local reloc, size 0
-  0x00000c44 l38: local reloc, size 0
-  0x00000c46 l2: local reloc, size 0
-  0x00000c4c _color_register: global reloc, size 0
-  0x00000c6e l2: local reloc, size 0
-  0x00000c74 _rgb12: global reloc, size 0
-  0x00000ce4 l2: local reloc, size 0
-  0x00000ce8 _delay: global reloc, size 0
-  0x00000d96 l7: local reloc, size 0
-  0x00000d9a l5: local reloc, size 0
-  0x00000d9c l6: local reloc, size 0
-  0x00000da2 l9: local reloc, size 0
-  0x00000da4 l10: local reloc, size 0
-  0x00000dbe l11: local reloc, size 0
-  0x00000e04 l12: local reloc, size 0
-  0x00000e48 l15: local reloc, size 0
-  0x00000e58 l3: local reloc, size 0
-  0x00000e60 l13: local reloc, size 0
-  0x00000e6c l2: local reloc, size 0
-  0x00000e7c _Duration_secs: global reloc, size 0
-  0x00000e90 l3: local reloc, size 0
-  0x00000e94 l2: local reloc, size 0
-  0x00000ea4 _Duration_to_timeval: global reloc, size 0
-  0x00000ecc l3: local reloc, size 0
-  0x00000ed0 l2: local reloc, size 0
-  0x00000ee0 _TimerHandle_microhz: global reloc, size 0
-  0x00000f1a l3: local reloc, size 0
-  0x00000f20 l2: local reloc, size 0
-  0x00000f30 _TimerHandle_open: global reloc, size 0
-  0x00000f68 l7: local reloc, size 0
-  0x00000f6c l5: local reloc, size 0
-  0x00000f6e l6: local reloc, size 0
-  0x00000f74 l9: local reloc, size 0
-  0x00000f76 l10: local reloc, size 0
-  0x00000f9c l11: local reloc, size 0
-  0x00000fbe l14: local reloc, size 0
-  0x00000fc2 l12: local reloc, size 0
-  0x00000fc4 l13: local reloc, size 0
-  0x00000fca l16: local reloc, size 0
-  0x00000fcc l17: local reloc, size 0
-  0x00001000 l18: local reloc, size 0
-  0x00001012 l29: local reloc, size 0
-  0x00001050 l21: local reloc, size 0
-  0x00001054 l19: local reloc, size 0
-  0x00001056 l20: local reloc, size 0
-  0x0000105c l23: local reloc, size 0
-  0x0000105e l24: local reloc, size 0
-  0x0000109c l25: local reloc, size 0
-  0x000010b8 l3: local reloc, size 0
-  0x000010c0 l2: local reloc, size 0
-  0x000010d0 _TimerHandle_delay: global reloc, size 0
-  0x00001110 l15: local reloc, size 0
-  0x00001164 l16: local reloc, size 0
-  0x0000119a l7: local reloc, size 0
-  0x0000119e l5: local reloc, size 0
-  0x000011a0 l6: local reloc, size 0
-  0x000011a6 l9: local reloc, size 0
-  0x000011a8 l10: local reloc, size 0
-  0x000011ce l11: local reloc, size 0
-  0x000011dc l3: local reloc, size 0
-  0x000011e4 l2: local reloc, size 0
-  0x000011f4 _TimerHandle_Drop_drop: global reloc, size 0
-  0x00001222 l7: local reloc, size 0
-  0x00001226 l5: local reloc, size 0
-  0x00001228 l6: local reloc, size 0
-  0x0000122e l9: local reloc, size 0
-  0x00001230 l10: local reloc, size 0
-  0x00001242 l22: local reloc, size 0
-  0x0000127c l11: local reloc, size 0
-  0x0000128e l14: local reloc, size 0
-  0x00001292 l12: local reloc, size 0
-  0x00001294 l13: local reloc, size 0
-  0x0000129a l16: local reloc, size 0
-  0x0000129c l17: local reloc, size 0
-  0x000012b8 l18: local reloc, size 0
-  0x000012b8 l3: local reloc, size 0
-  0x000012c0 l2: local reloc, size 0
-  0x000012d0 _main: global reloc, size 0
-  0x00001444 l6: local reloc, size 0
-  0x00001448 l4: local reloc, size 0
-  0x0000144a l5: local reloc, size 0
-  0x00001450 l8: local reloc, size 0
-  0x00001450 l10: local reloc, size 0
-  0x00001458 l13: local reloc, size 0
-  0x0000145c l11: local reloc, size 0
-  0x0000145e l12: local reloc, size 0
-  0x00001466 l15: local reloc, size 0
-  0x0000146a l9: local reloc, size 0
-  0x000014d4 l19: local reloc, size 0
-  0x000014e8 l21: local reloc, size 0
-  0x000014ec l16: local reloc, size 0
-  0x0000150c l23: local reloc, size 0
-  0x00001520 l25: local reloc, size 0
-  0x00001524 l17: local reloc, size 0
-  0x00001538 l27: local reloc, size 0
-  0x0000154c l29: local reloc, size 0
-  0x0000154e l2: local reloc, size 0
-  0x00001554 l2: local reloc, size 0
-  0x0000155a l5: local reloc, size 0
-  0x0000156c l6: local reloc, size 0
-  0x00001574 l7: local reloc, size 0
-  0x0000157e l3: local reloc, size 0
-  0x00001584 l11: local reloc, size 0
-  0x00001596 l14: local reloc, size 0
-  0x000015aa l15: local reloc, size 0
-  0x000015b4 l16: local reloc, size 0
-  0x000015c4 l17: local reloc, size 0
-  0x000015ca l19: local reloc, size 0
-  0x000015d4 l20: local reloc, size 0
-  0x000015d6 l21: local reloc, size 0
-  0x0000160c l22: local reloc, size 0
-  0x00001612 l23: local reloc, size 0
-  0x0000162e l25: local reloc, size 0
-  0x00001630 l26: local reloc, size 0
-  0x00001654 l27: local reloc, size 0
-  0x0000165a l28: local reloc, size 0
-  0x00001664 l12: local reloc, size 0
-  0x00001668 l18: local reloc, size 0
-  0x00001674 l32: local reloc, size 0
-  0x00001694 l36: local reloc, size 0
-  0x000016ac l37: local reloc, size 0
-  0x000016f6 l33: local reloc, size 0
-  0x00001700 l35: local reloc, size 0
-  0x00001714 l38: local reloc, size 0
-  0x00001728 l39: local reloc, size 0
-  0x0000172c ___novus_assert_failed: global reloc, size 0
-  0x000017c2 l48: local reloc, size 0
-  0x000017e6 l49: local reloc, size 0
-  0x000017f0 l43: local reloc, size 0
-  0x000017f4 l50: local reloc, size 0
-  0x000017f8 l45: local reloc, size 0
-  0x00001814 l46: local reloc, size 0
-  0x0000181c l47: local reloc, size 0
-  0x00001828 ___novus_panic: global reloc, size 0
-  0x000018e0 l54: local reloc, size 0
-  0x000018e4 l56: local reloc, size 0
-  0x000018ec l57: local reloc, size 0
-  0x000018f8 l58: local reloc, size 0
-  0x00001900 l59: local reloc, size 0
-  0x0000190c ___novus_bounds_check_failed: global reloc, size 0
-  0x000019e4 l63: local reloc, size 0
-  0x000019e8 l65: local reloc, size 0
-  0x00001a0c l66: local reloc, size 0
-  0x00001a14 l67: local reloc, size 0
-  0x00001a20 l68: local reloc, size 0
-  0x00001a2c l69: local reloc, size 0
-  0x00001a34 ___novus_div_check: global reloc, size 0
-  0x00001a3e l75: local reloc, size 0
-  0x00001ab2 l73: local reloc, size 0
-  0x00001ab2 l76: local reloc, size 0
-  0x00001ab8 l77: local reloc, size 0
-  0x00001ad4 l78: local reloc, size 0
-  0x00001adc l79: local reloc, size 0
-  0x00001ae4 ___detect_cpu: global reloc, size 0
-  0x00001b02 l86: local reloc, size 0
-  0x00001b10 l88: local reloc, size 0
-  0x00001b1e l90: local reloc, size 0
-  0x00001b2c l92: local reloc, size 0
-  0x00001b3a l94: local reloc, size 0
-  0x00001b3c l83: local reloc, size 0
-  0x00001b40 ___detect_fpu: global reloc, size 0
-  0x00001b5a l102: local reloc, size 0
-  0x00001b64 l100: local reloc, size 0
-  0x00001b68 l101: local reloc, size 0
-  0x00001b72 l105: local reloc, size 0
-  0x00001b7c l103: local reloc, size 0
-  0x00001b80 l104: local reloc, size 0
-  0x00001b8e l107: local reloc, size 0
-  0x00001b9c l109: local reloc, size 0
-  0x00001b9e l98: local reloc, size 0
-  0x00001ba4 ___detect_chipset: global reloc, size 0
-  0x00001bc2 l116: local reloc, size 0
-  0x00001bc6 l117: local reloc, size 0
-  0x00001bd2 l118: local reloc, size 0
-  0x00001be4 l119: local reloc, size 0
-  0x00001c08 l120: local reloc, size 0
-  0x00001c10 l121: local reloc, size 0
-  0x00001c20 l124: local reloc, size 0
-  0x00001c24 l122: local reloc, size 0
-  0x00001c24 l125: local reloc, size 0
-  0x00001c28 l113: local reloc, size 0
-  0x00001c30 l115: local reloc, size 0
-  0x00001c44 ___get_chip_ram_total: global reloc, size 0
-  0x00001c58 l129: local reloc, size 0
-  0x00001c5c ___get_chip_ram_free: global reloc, size 0
-  0x00001c6e l134: local reloc, size 0
-  0x00001c74 ___get_chip_ram_largest: global reloc, size 0
-  0x00001c8a l139: local reloc, size 0
-  0x00001c90 l144: local reloc, size 0
-  0x00001c9a l147: local reloc, size 0
-  0x00001cb0 l148: local reloc, size 0
-  0x00001cbc l150: local reloc, size 0
-  0x00001cc8 l149: local reloc, size 0
-  0x00001cd6 l145: local reloc, size 0
-  0x00001cdc l154: local reloc, size 0
-  0x00001cea l157: local reloc, size 0
-  0x00001cfc l158: local reloc, size 0
-  0x00001cfe l159: local reloc, size 0
-  0x00001d34 l160: local reloc, size 0
-  0x00001d3a l161: local reloc, size 0
-  0x00001d40 l162: local reloc, size 0
-  0x00001d64 l163: local reloc, size 0
-  0x00001d6a l164: local reloc, size 0
-  0x00001d74 l155: local reloc, size 0
-  0x00001d78 _i8_to_string: global reloc, size 0
-  0x00001da4 l168: local reloc, size 0
-  0x00001da8 _i16_to_string: global reloc, size 0
-  0x00001dd4 l173: local reloc, size 0
-  0x00001dd8 _i32_to_string: global reloc, size 0
-  0x00001e00 l178: local reloc, size 0
-  0x00001e04 _i64_to_string: global reloc, size 0
-  0x00001e1e l185: local reloc, size 0
-  0x00001e2a l186: local reloc, size 0
-  0x00001e3e l187: local reloc, size 0
-  0x00001e4e l188: local reloc, size 0
-  0x00001e64 l183: local reloc, size 0
-  0x00001e6c _u8_to_string: global reloc, size 0
-  0x00001e98 l192: local reloc, size 0
-  0x00001e9c _u16_to_string: global reloc, size 0
-  0x00001ec8 l197: local reloc, size 0
-  0x00001ecc _u32_to_string: global reloc, size 0
-  0x00001ef4 l202: local reloc, size 0
-  0x00001ef8 _u64_to_string: global reloc, size 0
-  0x00001f12 l209: local reloc, size 0
-  0x00001f1e l210: local reloc, size 0
-  0x00001f32 l207: local reloc, size 0
-  0x00001f38 ___novus_memset: global reloc, size 0
-  0x00001f44 l216: local reloc, size 0
-  0x00001f52 l217: local reloc, size 0
-  0x00001f5e l214: local reloc, size 0
-  0x00001f5e l218: local reloc, size 0
-  0x00001f64 ___novus_memcpy: global reloc, size 0
-  0x00001f6a l224: local reloc, size 0
-  0x00001f7c l225: local reloc, size 0
-  0x00001f88 l222: local reloc, size 0
-  0x00001f88 l226: local reloc, size 0
-  0x00001f8c _strlen: global reloc, size 0
-  0x00001f96 l232: local reloc, size 0
-  0x00001f9a l233: local reloc, size 0
-  0x00001fa6 l234: local reloc, size 0
-  0x00001faa l230: local reloc, size 0
-  0x00001fb0 ___novus_init_semaphore: global reloc, size 0
-  0x00001fc4 l238: local reloc, size 0
-  0x00001fcc ___novus_obtain_semaphore: global reloc, size 0
-  0x00001fe0 l243: local reloc, size 0
-  0x00001fe8 ___novus_release_semaphore: global reloc, size 0
-  0x00001ffc l248: local reloc, size 0
-  0x00002004 ___novus_attempt_semaphore: global reloc, size 0
-  0x00002018 l253: local reloc, size 0
-  0x00002020 ___novus_obtain_semaphore_shared: global reloc, size 0
-  0x00002034 l258: local reloc, size 0
-  0x0000203c ___novus_attempt_semaphore_shared: global reloc, size 0
-  0x00002050 l263: local reloc, size 0
+  0x000000b4 ___dos_init: global reloc, size 0
+  0x000000f4 ___dos_cleanup: global reloc, size 0
+  0x0000011c ___graphics_init: global reloc, size 0
+  0x0000015c ___graphics_cleanup: global reloc, size 0
 
 Symbols of data:
   0x00000000 dos_name: local reloc, size 0
-  0x0000000c _SysBase: global reloc, size 0
-  0x00000010 _DOSBase: global reloc, size 0
-  0x00000014 _IntuitionBase: global reloc, size 0
-  0x00000018 _GadToolsBase: global reloc, size 0
-  0x0000001c _GfxBase: global reloc, size 0
-  0x00000020 l1: local reloc, size 0
+  0x0000000c graphics_name: local reloc, size 0
+  0x00000020 _SysBase: global reloc, size 0
+  0x00000024 _DOSBase: global reloc, size 0
+  0x00000028 _IntuitionBase: global reloc, size 0
+  0x0000002c _GadToolsBase: global reloc, size 0
+  0x00000030 _GfxBase: global reloc, size 0
 
 Linker symbols:

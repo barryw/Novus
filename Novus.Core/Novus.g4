@@ -141,11 +141,11 @@ implItem
     ;
 
 genericParams
-    : '<' IDENTIFIER (',' IDENTIFIER)* '>'
+    : LESS IDENTIFIER (',' IDENTIFIER)* GREATER
     ;
 
 genericTypeArgs
-    : '<' typeList '>'
+    : LESS typeList GREATER
     ;
 
 whereClause
@@ -183,7 +183,7 @@ type
     | KW_F64                                                  # PrimitiveType
     | KW_FIXED16                                              # PrimitiveType
     | KW_FIXED32                                              # PrimitiveType
-    | typeName ('<' typeList '>')?                          # NamedType
+    | typeName (LESS typeList GREATER)?                     # NamedType
     ;
 
 typeName
@@ -292,7 +292,7 @@ tuplePattern
 
 assignmentStatement
     : ('*')* (IDENTIFIER | KW_SELF) (lvalueSuffix)* ('++' | '--') postfixCondition?
-    | ('*')* (IDENTIFIER | KW_SELF) (lvalueSuffix)* ('=' | '+=' | '-=' | '*=' | '/=' | '%=' | '&=' | '|=' | '^=' | '<<=' | '>>=') expression postfixCondition?
+    | ('*')* (IDENTIFIER | KW_SELF) (lvalueSuffix)* ('=' | '+=' | '-=' | '*=' | '/=' | '%=' | '&=' | '|=' | '^=' | LSHIFT_ASSIGN | RSHIFT_ASSIGN) expression postfixCondition?
     ;
 
 lvalueSuffix
@@ -355,11 +355,12 @@ expression
     | '*' expression                                       # DereferenceExpr
     | expression ('*' | '/' | '%') expression              # MultiplicativeExpr
     | expression ('+' | '-') expression                     # AdditiveExpr
-    | expression ('<<' | '>>') expression                  # ShiftExpr
+    | expression LSHIFT expression                         # ShiftExpr
+    | expression RSHIFT expression                         # ShiftExpr
     | expression '&' expression                            # BitwiseAndExpr
     | expression '^' expression                            # BitwiseXorExpr
     | expression '|' expression                            # BitwiseOrExpr
-    | expression ('==' | '!=' | '<' | '>' | '<=' | '>=') expression  # ComparisonExpr
+    | expression ('==' | '!=' | LESS | GREATER | '<=' | '>=') expression  # ComparisonExpr
     | expression '&&' expression                           # LogicalAndExpr
     | expression '||' expression                           # LogicalOrExpr
     | <assoc=right> expression '?' expression ':' expression  # TernaryExpr
@@ -467,6 +468,16 @@ KW_FIXED32  : 'fixed32';
 // Range operators - must come before FLOAT_LITERAL to prevent lexer consuming '0.' as float
 DOTDOTEQ    : '..=';
 DOTDOT      : '..';
+
+// Shift operators - these will be split by AngleBracketTokenStream when in generic contexts
+// IMPORTANT: These must come BEFORE the individual < and > tokens
+// so the lexer prefers matching << and >> when possible
+LSHIFT_ASSIGN  : '<<=';
+RSHIFT_ASSIGN  : '>>=';
+LSHIFT         : '<<';
+RSHIFT         : '>>';
+LESS           : '<';
+GREATER        : '>';
 
 FLOAT_LITERAL
     : [0-9]+ '.' [0-9]+ ('f32' | 'f64' | 'fixed16' | 'fixed32')?  // Both sides required (e.g., 3.14)

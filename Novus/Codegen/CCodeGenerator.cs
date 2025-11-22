@@ -322,6 +322,7 @@ public class CCodeGenerator
         sb.AppendLine("typedef struct NewWindow NewWindow;");
         sb.AppendLine("typedef struct Window Window;");
         sb.AppendLine("typedef struct Screen Screen;");
+        sb.AppendLine("typedef struct View View;");
         sb.AppendLine("typedef struct IntuiMessage IntuiMessage;");
         sb.AppendLine("typedef struct MsgPort MsgPort;");
         sb.AppendLine("typedef struct Message Message;");

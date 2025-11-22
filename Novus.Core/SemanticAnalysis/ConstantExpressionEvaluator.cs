@@ -160,8 +160,9 @@ public class ConstantExpressionEvaluator : NovusBaseVisitor<int?>
         if (!left.HasValue || !right.HasValue)
             return null;
 
-        var op = context.GetChild(1).GetText(); // Get the operator: << or >>
-        return op == "<<" ? left.Value << right.Value : left.Value >> right.Value;
+        // Check which shift operator is used
+        var isLeftShift = context.LSHIFT() != null;
+        return isLeftShift ? left.Value << right.Value : left.Value >> right.Value;
     }
 
     public override int? VisitAdditiveExpr([NotNull] NovusParser.AdditiveExprContext context)

@@ -1942,8 +1942,8 @@ public partial class IrBuilder
         var left = (IrValue)Visit(context.expression(0))!;
         var right = (IrValue)Visit(context.expression(1))!;
 
-        var op = context.GetChild(1).GetText(); // Get the operator: << or >>
-        var opKind = op == "<<" ? IrBinaryOp.OpKind.Shl : IrBinaryOp.OpKind.Shr;
+        // Determine which shift operator is used
+        var opKind = context.LSHIFT() != null ? IrBinaryOp.OpKind.Shl : IrBinaryOp.OpKind.Shr;
 
         var tempName = $"%t{_tempCounter++}";
         var binOp = new IrBinaryOp(tempName, opKind, left, right, left.Type);

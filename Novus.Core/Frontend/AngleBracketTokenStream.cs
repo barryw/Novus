@@ -41,6 +41,8 @@ public class AngleBracketTokenStream : CommonTokenStream
         TOKEN_LSHIFT = FindTokenType(vocabulary, "<<");
         TOKEN_RSHIFT = FindTokenType(vocabulary, ">>");
 
+        // Token types discovered from lexer vocabulary
+
         if (TOKEN_LESS == -1 || TOKEN_GREATER == -1 || TOKEN_LSHIFT == -1 || TOKEN_RSHIFT == -1)
         {
             throw new InvalidOperationException(
@@ -124,6 +126,9 @@ public class AngleBracketTokenStream : CommonTokenStream
         UpdateAngleBracketDepth(currentToken);
     }
 
+    private IToken? _previousToken = null;
+    private bool _inTypeContext = false;
+
     private void UpdateAngleBracketDepth(IToken token)
     {
         if (token.Type == TokenConstants.EOF)
@@ -132,14 +137,73 @@ public class AngleBracketTokenStream : CommonTokenStream
         }
 
         var tokenType = token.Type;
+        var lexer = TokenSource as Lexer;
+        var vocab = lexer?.Vocabulary;
+
+        // Update type context state based on current token
+        if (_previousToken != null && vocab != null)
+        {
+            var prevLiteral = vocab.GetLiteralName(_previousToken.Type);
+            var prevSymbol = vocab.GetSymbolicName(_previousToken.Type);
+
+            // Enter type context after these tokens
+            if (prevLiteral == "':'" || prevLiteral == "'->'" || prevLiteral == "'=>'" ||
+                prevLiteral == "','" || prevLiteral == "'<'" || prevLiteral == "'('")
+            {
+                _inTypeContext = true;
+            }
+            // Stay in type context while parsing type names (identifiers, ::, type keywords)
+            else if (_inTypeContext)
+            {
+                var currLiteral = vocab.GetLiteralName(tokenType);
+                var currSymbol = vocab.GetSymbolicName(tokenType);
+
+                // Type keywords keep us in type context
+                bool isTypeKeyword = currSymbol != null && (
+                    currSymbol.StartsWith("KW_U") || currSymbol.StartsWith("KW_I") ||
+                    currSymbol == "KW_BOOL" || currSymbol == "KW_F32" || currSymbol == "KW_F64" ||
+                    currSymbol == "KW_FIXED16" || currSymbol == "KW_FIXED32" ||
+                    currSymbol == "KW_SELF_TYPE" || currSymbol == "IDENTIFIER");
+
+                // Exit type context after certain tokens
+                bool shouldExitTypeContext = currLiteral == "'=>'" || currLiteral == "'{'" ||
+                    currLiteral == "';'" || currSymbol == "NEWLINE" ||
+                    currSymbol == "KW_WHERE" || currSymbol == "KW_IF" || currSymbol == "KW_WHILE";
+
+                if (shouldExitTypeContext)
+                {
+                    _inTypeContext = false;
+                }
+            }
+        }
+
         if (tokenType == TOKEN_LESS)
         {
-            _angleBracketDepth++;
+            // Only increment depth if < appears in a type context
+            if (_inTypeContext)
+            {
+                _angleBracketDepth++;
+            }
         }
         else if (tokenType == TOKEN_GREATER && _angleBracketDepth > 0)
         {
             _angleBracketDepth--;
+
+            // Exit type context after closing all angle brackets
+            if (_angleBracketDepth == 0)
+            {
+                _inTypeContext = false;
+            }
         }
+
+        _previousToken = token;
+    }
+
+    private string GetTokenName(IToken? token)
+    {
+        if (token == null) return "null";
+        var lexer = TokenSource as Lexer;
+        return lexer?.Vocabulary.GetSymbolicName(token.Type) ?? $"Type{token.Type}";
     }
 
     private bool ShouldSplitToken(IToken token)

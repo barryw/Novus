@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(./compile:*)",
-      "Bash(novus compile:*)"
+      "Bash(novus compile:*)",
+      "Bash(./novus compile:*)",
+      "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Debug/net9.0/novus compile:*)",
+      "Bash(/tmp/copper_partial.novus)"
     ],
     "deny": [],
     "ask": []

@@ -23,7 +23,7 @@ from std::ffi::exec import AllocVec, FreeVec, MEMF_CHIP, MEMF_CLEAR
 from std::ffi::amiga_structs import View
 from std::ffi::graphics import LoadView, WaitTOF
 from std::ffi::intuition import ViewAddress
-from std::hardware::amiga_registers import is_register_safe_for_copper, color_register, rgb12, CUSTOM_BASE, COP1LC
+from std::hardware::amiga_registers import is_register_safe_for_copper, color_register, rgb12, CUSTOM_BASE, COP1LC, DMACON
 from std::system::system import SystemChipset
 
 /// Copper list construction errors
@@ -370,10 +370,23 @@ impl CopperListHandle {
             LoadView(null)
             WaitTOF()
 
-            // Write copper list pointer to COP1LC register
-            let cop1lc_addr: u32 = CUSTOM_BASE + COP1LC
-            let cop1lc_ptr: *u32 = (*u32)cop1lc_addr
-            *cop1lc_ptr = (u32)self.memory
+            // Write copper list pointer to COP1LC/COP1LCL registers
+            // Must split 32-bit address into two 16-bit writes
+            let addr: u32 = (u32)self.memory
+            let addr_high: u16 = (u16)(addr >> 16)
+            let addr_low: u16 = (u16)(addr & $FFFF)
+
+            // Write high word to COP1LCH ($DFF080)
+            let cop1lch_ptr: *u16 = (*u16)(CUSTOM_BASE + $80)
+            *cop1lch_ptr = addr_high
+
+            // Write low word to COP1LCL ($DFF082)
+            let cop1lcl_ptr: *u16 = (*u16)(CUSTOM_BASE + $82)
+            *cop1lcl_ptr = addr_low
+
+            // Enable copper DMA (bit 7 = copper, bit 15 = set/clear)
+            let dmacon_ptr: *u16 = (*u16)(CUSTOM_BASE + DMACON)
+            *dmacon_ptr = $8080  // Set bit 7 (copper enable)
 
             self.active = true
         }
