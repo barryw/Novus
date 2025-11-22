@@ -123,8 +123,14 @@ public class CompilerOptions
     public string? PackageVersion { get; set; }
 
     /// <summary>
-    /// Force rebuild of stdlib even if cached version exists (default: use cache if valid)
+    /// Use cached stdlib if available (default: always rebuild stdlib fresh)
     /// </summary>
-    [Option("rebuild-stdlib", Required = false, HelpText = "Force rebuild of stdlib even if cached version exists (default: use cache if valid)")]
-    public bool RebuildStdlib { get; set; }
+    [Option("use-stdlib-cache", Required = false, HelpText = "Use cached stdlib if available (default: always rebuild stdlib fresh)")]
+    public bool UseStdlibCache { get; set; }
+
+    /// <summary>
+    /// Rebuild stdlib and cache it for future use with --use-stdlib-cache
+    /// </summary>
+    [Option("rebuild-stdlib-cache", Required = false, HelpText = "Rebuild stdlib and cache it for future use")]
+    public bool RebuildStdlibCache { get; set; }
 }

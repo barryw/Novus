@@ -1,126 +1,103 @@
-using System;
 using System.Diagnostics;
-using System.IO;
 using Xunit;
 
 namespace Novus.Tests;
 
 /// <summary>
-/// Fixture that clears and rebuilds the stdlib cache once before any tests run.
-/// This ensures all tests use a fresh, consistent stdlib cache.
+/// Collection fixture that rebuilds stdlib cache once before all tests run.
+/// All tests that use the "StdlibCache" collection will share this fixture.
 /// </summary>
 public class StdlibCacheFixture : IDisposable
 {
-    private static readonly object _lock = new();
-    private static bool _initialized = false;
-
     public StdlibCacheFixture()
     {
-        lock (_lock)
-        {
-            if (!_initialized)
-            {
-                InitializeStdlibCache();
-                _initialized = true;
-            }
-        }
+        Console.WriteLine("=== Rebuilding stdlib cache for test run ===");
+        RebuildStdlibCache();
+        Console.WriteLine("=== Stdlib cache ready for tests ===\n");
     }
 
-    private void InitializeStdlibCache()
+    private void RebuildStdlibCache()
     {
-        var projectRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
-        var compilerDir = Path.Combine(projectRoot, "Novus", "bin", "Debug", "net9.0");
-        var stdlibCacheDir = Path.Combine(compilerDir, "stdlib");
+        var projectRoot = GetProjectRoot();
+        var novusExe = Path.Combine(projectRoot, "Novus", "bin", "Debug", "net9.0", "Novus.dll");
 
-        // Clear entire stdlib cache directory
-        if (Directory.Exists(stdlibCacheDir))
+        if (!File.Exists(novusExe))
         {
-            Console.WriteLine($"[StdlibCacheFixture] Clearing stdlib cache at: {stdlibCacheDir}");
-            try
-            {
-                Directory.Delete(stdlibCacheDir, recursive: true);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[StdlibCacheFixture] Warning: Could not delete cache: {ex.Message}");
-            }
-        }
-
-        // Build stdlib cache by compiling a minimal test file
-        // This will populate the cache for the 68020/debug target (default)
-        Console.WriteLine("[StdlibCacheFixture] Building fresh stdlib cache...");
-
-        var compilerPath = Path.Combine(compilerDir, "Novus.dll");
-        if (!File.Exists(compilerPath))
-        {
-            Console.WriteLine($"[StdlibCacheFixture] Warning: Compiler not found at {compilerPath}");
+            Console.WriteLine($"Warning: Novus compiler not found at {novusExe}");
             return;
         }
 
-        // Create a minimal test file that imports core stdlib
-        var tempDir = Path.Combine(Path.GetTempPath(), "novus_stdlib_init");
-        Directory.CreateDirectory(tempDir);
-        var testFile = Path.Combine(tempDir, "stdlib_init.novus");
-        var outputFile = Path.Combine(tempDir, "stdlib_init");
-
-        File.WriteAllText(testFile, @"
-from std::io::core import write
-
-pub fn main() -> i32 {
-    return 0
-}
-");
-
-        var startInfo = new ProcessStartInfo
+        // Use stdlib-build command to rebuild for common test targets
+        // Most tests use debug mode with 68020 target
+        var psi = new ProcessStartInfo
         {
             FileName = "dotnet",
-            Arguments = $"\"{compilerPath}\" \"{testFile}\" -o \"{outputFile}\" --use-stdlib-cache",
+            Arguments = $"\"{novusExe}\" stdlib-build --cpu 68020 --mode debug",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
 
-        using var process = Process.Start(startInfo);
-        if (process != null)
+        try
         {
-            process.WaitForExit(TimeSpan.FromMinutes(5));
+            using var process = Process.Start(psi);
+            if (process == null)
+            {
+                Console.WriteLine("Failed to start stdlib-build process");
+                return;
+            }
+
+            process.WaitForExit(timeout: TimeSpan.FromMinutes(5));
+
+            var output = process.StandardOutput.ReadToEnd();
+            var error = process.StandardError.ReadToEnd();
 
             if (process.ExitCode == 0)
             {
-                Console.WriteLine("[StdlibCacheFixture] Stdlib cache built successfully");
+                Console.WriteLine("  ✓ Stdlib cache rebuilt successfully");
             }
             else
             {
-                var stderr = process.StandardError.ReadToEnd();
-                Console.WriteLine($"[StdlibCacheFixture] Warning: Stdlib build failed: {stderr}");
+                Console.WriteLine($"  ✗ Stdlib rebuild failed with exit code {process.ExitCode}");
+                if (!string.IsNullOrEmpty(output))
+                    Console.WriteLine($"  Output: {output}");
+                if (!string.IsNullOrEmpty(error))
+                    Console.WriteLine($"  Error: {error}");
             }
         }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  Exception during stdlib rebuild: {ex.Message}");
+        }
+    }
 
-        // Cleanup temp files
-        try
+    private static string GetProjectRoot()
+    {
+        var directory = Directory.GetCurrentDirectory();
+        while (!File.Exists(Path.Combine(directory, "Novus.sln")))
         {
-            Directory.Delete(tempDir, recursive: true);
+            directory = Directory.GetParent(directory)?.FullName;
+            if (directory == null)
+            {
+                throw new InvalidOperationException("Could not find project root");
+            }
         }
-        catch
-        {
-            // Ignore cleanup errors
-        }
+        return directory;
     }
 
     public void Dispose()
     {
-        // Nothing to clean up - cache persists for future test runs
+        // Cleanup if needed
     }
 }
 
 /// <summary>
-/// Collection definition that uses the stdlib cache fixture.
-/// All test classes that need stdlib should use this collection.
+/// Collection definition for tests that need stdlib cache.
+/// All tests in this collection will share a single StdlibCacheFixture instance.
 /// </summary>
 [CollectionDefinition("StdlibCache")]
 public class StdlibCacheCollection : ICollectionFixture<StdlibCacheFixture>
 {
-    // This class has no code, and is never created.
-    // Its purpose is to be the place to apply [CollectionDefinition]
+    // This class has no code, it's just used to define the collection
 }

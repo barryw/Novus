@@ -1061,9 +1061,13 @@ class Program
             var stdlibPrecompiledDir = Path.Combine(compilerDir, "stdlib", assemblyCpu, buildModeStr);
 
             // Check if stdlib cache should be used
-            // By default, use cached stdlib if it exists and is valid
-            // Use --rebuild-stdlib flag to force rebuild even if cache is valid
-            bool needsRebuild = options.RebuildStdlib
+            // By default, always rebuild stdlib fresh to avoid stale cache issues
+            // Use --use-stdlib-cache to opt-in to using cached stdlib
+            // Use --rebuild-stdlib-cache to rebuild and cache for future use
+            bool forceRebuildAndCache = options.RebuildStdlibCache;
+            bool useCache = options.UseStdlibCache && !forceRebuildAndCache;
+            bool needsRebuild = forceRebuildAndCache
+                || !useCache
                 || !Directory.Exists(stdlibPrecompiledDir)
                 || Commands.StdlibBuildCommand.NeedsRebuild(compilerDir, assemblyCpu, options.BuildMode, CODEGEN_VERSION);
 
