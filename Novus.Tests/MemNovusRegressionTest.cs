@@ -31,7 +31,7 @@ public class MemNovusRegressionTest
         // This is a simplified version of Allocation<T>::try_new from mem.novus lines 222-250
         var source = @"
 from std::core import Result
-from std::error::core import ExecError
+from std::error::errors import ExecError
 
 pub struct TestAllocation<T> {
     value: T,
@@ -85,7 +85,7 @@ pub fn try_new_error<T>() -> Result<TestAllocation<T>, ExecError> {
         // This is a simplified version of Box<T>::try_new_in from mem.novus lines 368-372
         var source = @"
 from std::core import Result, Option
-from std::error::core import ExecError
+from std::error::errors import ExecError
 
 pub struct TestBox<T> {
     value: T,

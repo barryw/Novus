@@ -232,7 +232,7 @@ pub fn main() -> i32 {
     public void BuildIr_StringToU8PtrCoercion_Compiles()
     {
         var source = @"
-from std::collections::core import Vec
+from std::collections::vec import Vec
 
 // Minimal String type definition for testing
 pub struct String {
@@ -267,7 +267,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 from std::strings::core import Str
-from std::collections::core import Vec
+from std::collections::vec import Vec
 
 // Minimal String type definition for testing
 pub struct String {

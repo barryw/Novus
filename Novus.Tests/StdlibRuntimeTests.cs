@@ -179,7 +179,7 @@ public class StdlibRuntimeTests
     public void Stdlib_Error_ConvertDosErrorToCode()
     {
         var code = @"
-            from std::error::core import dos_error_from_code, dos_error_to_code
+            from std::error::errors import dos_error_from_code, dos_error_to_code
 
             fn main() -> i32 {
                 let err = dos_error_from_code(103)
@@ -201,7 +201,7 @@ public class StdlibRuntimeTests
     public void Stdlib_Error_NovusErrorConversion_RealFlow()
     {
         var code = @"
-            from std::error::core import dos_error_from_code, novus_error_from_dos, novus_error_to_code
+            from std::error::errors import dos_error_from_code, novus_error_from_dos, novus_error_to_code
 
             fn main() -> i32 {
                 let dos_err = dos_error_from_code(103)
@@ -227,7 +227,7 @@ public class StdlibRuntimeTests
             from std::system::dos import open_file, read_file, close_file
             from std::core import Option
             from std::strings::core import Str
-            from std::error::core import dos_last_error, dos_error_to_code
+            from std::error::errors import dos_last_error, dos_error_to_code
 
             fn main() -> i32 {
                 let path = ""RAM:test.txt""
@@ -267,7 +267,7 @@ public class StdlibRuntimeTests
         var code = @"
             from std::system::exec import allocate_signal, free_signal
             from std::core import Option
-            from std::error::core import novus_error_from_exec, novus_error_to_code
+            from std::error::errors import novus_error_from_exec, novus_error_to_code
 
             fn main() -> i32 {
                 let signal = allocate_signal(-1)

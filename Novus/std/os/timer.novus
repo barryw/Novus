@@ -1,12 +1,12 @@
 // Novus Standard Library - Timer (High-Level)
-// Namespace: std::system::timer
+// Namespace: std::os::timer
 //
 // High-level wrappers for timer.device
 // For low-level FFI access, use std::ffi::timer_device
 
 from std::core import Option, Result, Drop
 from std::strings::core import Str
-from std::error::core import ExecError
+from std::error::errors import ExecError
 from std::ffi::amiga_structs import timeval, timerequest, IORequest, MsgPort, Message, IOStdReq
 from std::ffi::timer_device import AddTime, SubTime, CmpTime, GetSysTime
 from std::ffi::exec import OpenDevice, CloseDevice, DoIO, CreateIORequest, DeleteIORequest, CreateMsgPort, DeleteMsgPort
@@ -393,7 +393,7 @@ impl Drop for TimerHandle {
 ///
 /// Example:
 /// ```novus
-/// from std::system::timer import delay, Duration
+/// from std::os::timer import delay, Duration
 ///
 /// delay(Duration::millis(500))?  // Wait 500ms
 /// ```
@@ -408,7 +408,7 @@ pub fn delay(duration: Duration) -> Result<(), TimerError> {
 ///
 /// Example:
 /// ```novus
-/// from std::system::timer import now
+/// from std::os::timer import now
 ///
 /// let current_time = now()?
 /// ```
@@ -421,7 +421,7 @@ pub fn now() -> Result<Duration, TimerError> {
 ///
 /// Example:
 /// ```novus
-/// from std::system::timer import now, elapsed_since
+/// from std::os::timer import now, elapsed_since
 ///
 /// let start = now()?
 /// // ... do work ...

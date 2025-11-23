@@ -1,5 +1,5 @@
 // Novus Standard Library - ANSI Console Control
-// Namespace: std::console::ansi
+// Namespace: std::io::ansi
 //
 // Provides ANSI escape sequence support for the Amiga console.
 // The Amiga console supports ANSI X3.64 escape sequences for cursor control,
@@ -7,8 +7,8 @@
 //
 // Example:
 // ```novus
-// from std::console::ansi import *
-// from std::io::core import write
+// from std::io::ansi import *
+// from std::io::file import write
 //
 // write(f"{clear_screen()}{home()}")
 // write(f"{fg(Pen::Pen1)}{bold()}Error:{reset()} Failed\n")
@@ -16,8 +16,8 @@
 
 from std::core import Option, Result
 from std::strings::core import Str, String
-from std::collections::core import Vec
-from std::error::core import DosError
+from std::collections::vec import Vec
+from std::error::errors import DosError
 
 // Runtime helper for integer to string conversion
 extern fn u32_to_string(value: u32, buffer: *u8, buffer_size: u32) -> u32

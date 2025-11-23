@@ -2042,6 +2042,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         if (stmt.panicStatement() != null)
             return true;
 
+        // Unsafe block returns if its inner block returns
+        if (stmt.unsafeBlock() != null)
+        {
+            var unsafeBlock = stmt.unsafeBlock();
+            return AnalyzeBlockReturns(unsafeBlock.block());
+        }
+
         // If statement returns if both branches return
         if (stmt.ifStatement() != null)
         {
@@ -3620,6 +3627,45 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     {
         // Analyze the deferred expression
         Visit(context.expression());
+        return null;
+    }
+
+    // Handle: using expression { statements }
+    public override IrType? VisitUsingStatement([NotNull] NovusParser.UsingStatementContext context)
+    {
+        // Evaluate the expression (should be a value with Drop trait)
+        var exprType = Visit(context.expression());
+
+        if (exprType == null)
+        {
+            return null; // Error already reported
+        }
+
+        var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
+
+        // Check if the type implements Drop trait
+        if (!TypeImplementsTrait(exprType, "Drop", new List<IrType>()))
+        {
+            _diagnostics.ReportError(
+                "E0379",
+                $"type '{TypeToString(exprType)}' does not implement the 'Drop' trait",
+                location,
+                helpTexts: new List<string>
+                {
+                    $"'using' requires a type that implements Drop for automatic cleanup",
+                    $"add an impl block: impl Drop for {TypeToString(exprType)}",
+                    $"or use a 'defer' statement for manual cleanup"
+                }
+            );
+        }
+
+        // The expression must be a value, not a complex expression
+        // We need to be able to call drop() on it at the end of scope
+        // For now, we'll analyze the block - the IR builder will handle creating the implicit drop call
+
+        // Analyze the block body
+        AnalyzeBlock(context.block());
+
         return null;
     }
 
@@ -5678,25 +5724,28 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                                 fieldType = field?.Type;
                             }
 
-                            // Only track field move if the field type is non-Copy
+                            // Only track field move if field type is non-Copy
                             if (fieldType != null && !IsCopyType(fieldType))
                             {
                                 // Moving a specific field of a struct
                                 RecordFieldMove(argVar.Id, argVarName, argFieldName, moveLocation,
                                     $"field '{argFieldName}' moved into consuming parameter '{param.Name}' of function '{functionName}'");
                             }
-                            // If field is Copy, no move tracking needed
                         }
-                        else if (!IsCopyType(argVar.Type))
+                        else
                         {
-                            // Moving the entire value
-                            RecordMove(argVar.Id, new MoveInfo
+                            // Only track move for non-Copy types
+                            // Copy types (primitives, pointers) are implicitly copied when passed to functions
+                            if (!IsCopyType(argVar.Type))
                             {
-                                VariableName = argVarName,
-                                VariableId = argVar.Id,
-                                MoveLocation = moveLocation,
-                                Reason = $"value moved into consuming parameter '{param.Name}' of function '{functionName}'"
-                            });
+                                RecordMove(argVar.Id, new MoveInfo
+                                {
+                                    VariableName = argVarName,
+                                    VariableId = argVar.Id,
+                                    MoveLocation = moveLocation,
+                                    Reason = $"value moved into consuming parameter '{param.Name}' of function '{functionName}'"
+                                });
+                            }
                         }
                     }
                 }
@@ -6103,25 +6152,28 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                                 fieldType = field?.Type;
                             }
 
-                            // Only track field move if the field type is non-Copy
+                            // Only track field move if field type is non-Copy
                             if (fieldType != null && !IsCopyType(fieldType))
                             {
                                 // Moving a specific field of a struct
                                 RecordFieldMove(argVar.Id, argVarName, argFieldName, moveLocation,
                                     $"field '{argFieldName}' moved into consuming parameter '{param.Name}'");
                             }
-                            // If field is Copy, no move tracking needed
                         }
-                        else if (!IsCopyType(argVar.Type))
+                        else
                         {
-                            // Moving the entire value
-                            RecordMove(argVar.Id, new MoveInfo
+                            // Only track move for non-Copy types
+                            // Copy types (primitives, pointers) are implicitly copied when passed to functions
+                            if (!IsCopyType(argVar.Type))
                             {
-                                VariableName = argVarName,
-                                VariableId = argVar.Id,
-                                MoveLocation = moveLocation,
-                                Reason = $"value moved into consuming parameter '{param.Name}'"
-                            });
+                                RecordMove(argVar.Id, new MoveInfo
+                                {
+                                    VariableName = argVarName,
+                                    VariableId = argVar.Id,
+                                    MoveLocation = moveLocation,
+                                    Reason = $"value moved into consuming parameter '{param.Name}'"
+                                });
+                            }
                         }
                     }
                 }

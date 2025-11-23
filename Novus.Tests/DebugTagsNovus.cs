@@ -16,6 +16,13 @@ public class DebugTagsNovus
     {
         var stdPath = "/Users/barry/RiderProjects/Novus/Novus/std";
         var fullPath = Path.Combine(stdPath, "error", "tags.novus");
+
+        // Skip if the file doesn't exist (developer debug file)
+        if (!File.Exists(fullPath))
+        {
+            return;
+        }
+
         var source = File.ReadAllText(fullPath);
 
         var inputStream = new AntlrInputStream(source);

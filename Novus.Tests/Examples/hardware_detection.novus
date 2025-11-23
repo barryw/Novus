@@ -1,7 +1,7 @@
 // hardware_detection.novus - Demonstrates both compile-time and runtime hardware detection
 
-from std::system::system import CPU, FPU, CHIPSET, SystemCPU, SystemFPU, SystemChipset
-from std::io::core import write
+from std::hardware::chipset import CPU, FPU, CHIPSET, SystemCPU, SystemFPU, SystemChipset
+from std::io::file import write
 from std::strings::format import Formatter
 
 fn main() -> i32 {

@@ -3,8 +3,8 @@
 // This example shows how to use signals with automatic cleanup
 // via the Drop trait.
 
-from std::io::core import write
-from std::system::exec import SignalHandle
+from std::io::file import write
+from std::os::exec import SignalHandle
 
 pub fn main() -> i32 {
     write("SignalHandle Demo\n")

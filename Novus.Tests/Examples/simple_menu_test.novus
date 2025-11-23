@@ -1,8 +1,8 @@
 // Simple menu test - just window with menu activation
 // Testing menu event handling without GadTools for now
 
-from std::graphics::intuition import WindowHandle, WindowEvent
-from std::io::core import write
+from std::ui::window import WindowHandle, WindowEvent
+from std::io::file import write
 
 pub fn main() -> i32 {
     write("=== Simple Menu Test ===\n")

@@ -2467,6 +2467,37 @@ public partial class IrBuilder
         return null;
     }
 
+    // Handle: using expression { statements }
+    public override object? VisitUsingStatement([NotNull] NovusParser.UsingStatementContext context)
+    {
+        // Evaluate the expression to get the resource
+        var resourceValue = (IrValue)Visit(context.expression())!;
+        var resourceType = resourceValue.Type;
+
+        // Store the resource in a temporary variable so we can reference it in the deferred drop call
+        var tempVarName = $"__using_resource_{_labelCounter++}";
+        var tempVar = new IrLocalVariable(tempVarName, resourceType, true); // Mutable because drop() takes &mut self
+
+        _currentFunction!.LocalVariables.Add(tempVar);
+        _localVariables[tempVarName] = tempVar;
+        _currentBlock!.AddInstruction(new IrLocalDecl(tempVarName, resourceType, true, resourceValue));
+
+        // Ensure the type has a drop() method and inject automatic cleanup
+        // This leverages the existing RAII infrastructure
+        if (EnsureDropMethodInstantiated(resourceType))
+        {
+            InjectAutomaticDrop(tempVarName, resourceType);
+        }
+
+        // Now visit the body block
+        foreach (var statement in context.block().statement())
+        {
+            Visit(statement);
+        }
+
+        return null;
+    }
+
     // Handle: assert!(condition) or assert!(condition, "message")
     public override object? VisitAssertStatement([NotNull] NovusParser.AssertStatementContext context)
     {

@@ -4,7 +4,7 @@
 // - Collection initializer syntax: Vec { {...} }
 // - For-in loops that work with types having get() and len() methods
 
-from std::collections::core import Vec
+from std::collections::vec import Vec
 
 pub fn main() -> i32 {
     // Create a Vec<i32> using collection initializer syntax

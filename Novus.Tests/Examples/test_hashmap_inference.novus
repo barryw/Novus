@@ -1,5 +1,5 @@
 // Test Vec with explicit generic type parameters
-from std::collections::core import Vec
+from std::collections::vec import Vec
 
 fn main() {
     // Call with explicit type parameter

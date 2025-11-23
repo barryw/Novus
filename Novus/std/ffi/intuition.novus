@@ -15,8 +15,8 @@ extern pub fn AddGadget(window: *Window, gadget: *Gadget, position: u16) -> u16
 extern pub fn ClearDMRequest(window: *Window) -> i16
 extern pub fn ClearMenuStrip(window: *Window)
 extern pub fn ClearPointer(window: *Window)
-extern pub fn CloseScreen(screen: *Screen) -> i16
-extern pub fn CloseWindow(window: *Window)
+extern pub fn CloseScreen(consuming screen: *Screen) -> i16
+extern pub fn CloseWindow(consuming window: *Window)
 extern pub fn CloseWorkBench() -> i32
 extern pub fn CurrentTime(seconds: *u8, micros: *u8)
 extern pub fn DisplayAlert(alertNumber: u32, string: *u8, height: u16) -> i16
@@ -66,12 +66,12 @@ extern pub fn AutoRequest(window: *Window, body: *IntuiText, posText: *IntuiText
 extern pub fn BeginRefresh(window: *Window)
 extern pub fn BuildSysRequest(window: *Window, body: *IntuiText, posText: *IntuiText, negText: *IntuiText, flags: u32, width: u16, height: u16) -> *Window
 extern pub fn EndRefresh(window: *Window, complete: i32)
-extern pub fn FreeSysRequest(window: *Window)
+extern pub fn FreeSysRequest(consuming window: *Window)
 extern pub fn MakeScreen(screen: *Screen) -> i32
 extern pub fn RemakeDisplay() -> i32
 extern pub fn RethinkDisplay() -> i32
 extern pub fn AllocRemember(rememberKey: *Remember, size: u32, flags: u32) -> *u8
-extern pub fn FreeRemember(rememberKey: *Remember, reallyForget: i16)
+extern pub fn FreeRemember(consuming rememberKey: *Remember, reallyForget: i16)
 extern pub fn LockIBase(dontknow: u32) -> u32
 extern pub fn UnlockIBase(ibLock: u32)
 extern pub fn GetScreenData(buffer: *u8, size: u16, _type: u16, screen: *Screen) -> i32
@@ -114,7 +114,7 @@ extern pub fn PointInImage(point: u32, image: *Image) -> i16
 extern pub fn EraseImage(rp: *RastPort, image: *Image, leftOffset: i16, topOffset: i16)
 extern pub fn NewObjectA(classPtr: *IClass, classID: *u8, tagList: *TagItem) -> *u8
 // Varargs function NewObject skipped - needs manual implementation
-extern pub fn DisposeObject(object: *u8)
+extern pub fn DisposeObject(consuming object: *u8)
 extern pub fn SetAttrsA(object: *u8, tagList: *TagItem) -> u32
 // Varargs function SetAttrs skipped - needs manual implementation
 extern pub fn GetAttr(attrID: u32, object: *u8, storagePtr: *u8) -> u32
@@ -124,12 +124,12 @@ extern pub fn NextObject(objectPtrPtr: *u8) -> *u8
 extern pub fn MakeClass(classID: *u8, superClassID: *u8, superClassPtr: *IClass, instanceSize: u16, flags: u32) -> *IClass
 extern pub fn AddClass(classPtr: *IClass)
 extern pub fn GetScreenDrawInfo(screen: *Screen) -> *DrawInfo
-extern pub fn FreeScreenDrawInfo(screen: *Screen, drawInfo: *DrawInfo)
+extern pub fn FreeScreenDrawInfo(consuming screen: *Screen, drawInfo: *DrawInfo)
 extern pub fn ResetMenuStrip(window: *Window, menu: *Menu) -> i16
 extern pub fn RemoveClass(classPtr: *IClass)
-extern pub fn FreeClass(classPtr: *IClass) -> i16
+extern pub fn FreeClass(consuming classPtr: *IClass) -> i16
 extern pub fn AllocScreenBuffer(sc: *Screen, bm: *BitMap, flags: u32) -> *ScreenBuffer
-extern pub fn FreeScreenBuffer(sc: *Screen, sb: *ScreenBuffer)
+extern pub fn FreeScreenBuffer(consuming sc: *Screen, sb: *ScreenBuffer)
 extern pub fn ChangeScreenBuffer(sc: *Screen, sb: *ScreenBuffer) -> u32
 extern pub fn ScreenDepth(screen: *Screen, flags: u32, reserved: *u8)
 extern pub fn ScreenPosition(screen: *Screen, flags: u32, x1: i32, y1: i32, x2: i32, y2: i32)

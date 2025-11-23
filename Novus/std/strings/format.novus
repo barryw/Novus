@@ -3,7 +3,7 @@
 
 from std::core import Option, Drop
 from std::strings::core import String, Str
-from std::error::core import StringError
+from std::error::errors import StringError
 
 // Runtime helper for memory copy (implemented in novus_runtime.c)
 extern fn __novus_memcpy(dest: *u8, src: *u8, n: u32)

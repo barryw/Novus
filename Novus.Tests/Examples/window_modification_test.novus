@@ -10,9 +10,9 @@
 //
 // This example cycles through different operations on keyboard input
 
-from std::graphics::intuition import WindowHandle, WindowEvent, IDCMP_CLOSEWINDOW, IDCMP_VANILLAKEY, IDCMP_NEWSIZE, IDCMP_REFRESHWINDOW, IDCMP_MOUSEBUTTONS
+from std::ui::window import WindowHandle, WindowEvent, IDCMP_CLOSEWINDOW, IDCMP_VANILLAKEY, IDCMP_NEWSIZE, IDCMP_REFRESHWINDOW, IDCMP_MOUSEBUTTONS
 from std::strings::core import Str
-from std::io::core import write
+from std::io::file import write
 
 pub fn main() -> i32 {
     // Open initial window

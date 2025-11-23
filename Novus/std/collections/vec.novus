@@ -4,8 +4,9 @@
 
 // Import core types and memory management
 from std::core import Option, Result, Iterable, From, Drop
-from std::memory::core import MemoryBlock
-from std::ffi::exec import MEMF_PUBLIC, MEMF_CLEAR, CopyMem, FreeMem
+from std::memory::block import MemoryBlock
+from std::ffi::exec import CopyMem, FreeMem
+from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
 
 // Vec<T> - dynamic array (growable)
 // A contiguous growable array type with heap-allocated contents

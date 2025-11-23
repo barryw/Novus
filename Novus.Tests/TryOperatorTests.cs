@@ -24,7 +24,7 @@ public class TryOperatorTests
     {
         var source = @"
 from std::core import Result
-from std::error::core import DosError
+from std::error::errors import DosError
 
 fn may_fail() -> Result<i32, DosError> {
     return Result::Err(DosError::NotFound)
@@ -50,7 +50,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 from std::core import Result
-from std::error::core import *
+from std::error::errors import *
 
 fn dos_operation() -> Result<i32, DosError> {
     return Result::Err(DosError::NotFound)
@@ -81,7 +81,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 from std::core import Result
-from std::error::core import *
+from std::error::errors import *
 
 fn dos_op() -> Result<i32, DosError> {
     return Result::Err(DosError::NoFreeStore)
@@ -109,7 +109,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 from std::core import Result
-from std::error::core import DosError
+from std::error::errors import DosError
 
 fn may_fail() -> Result<i32, DosError> {
     return Result::Ok(42)
@@ -131,7 +131,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 from std::core import Result
-from std::error::core import DosError
+from std::error::errors import DosError
 
 fn may_fail() -> Result<i32, DosError> {
     return Result::Ok(5)
@@ -157,7 +157,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 from std::core import Result
-from std::error::core import DosError
+from std::error::errors import DosError
 
 fn step1() -> Result<i32, DosError> {
     return Result::Ok(1)
@@ -190,7 +190,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 from std::core import Result
-from std::error::core import DosError
+from std::error::errors import DosError
 
 struct Point {
     x: i32,
@@ -218,7 +218,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 from std::core import Result
-from std::error::core import DosError, ExecError, IntuitionError, GraphicsError, NovusError
+from std::error::errors import DosError, ExecError, IntuitionError, GraphicsError, NovusError
 
 fn dos_op() -> Result<i32, DosError> {
     return Result::Err(DosError::NotFound)

@@ -1,0 +1,316 @@
+// Advanced Copper Demo - Showcases Priority 1 Features
+// Demonstrates:
+// 1. PAL/NTSC detection using SKIP instruction
+// 2. Sprite multiplexing (reusing hardware sprites)
+// 3. Split-screen effect (changing bitplane pointers)
+// 4. Blitter synchronization with copper
+//
+// Visual effect:
+// - Top half: Starfield background with color cycling
+// - Bottom half: Different background with status bar
+// - Multiple sprites bouncing (more than 8 hardware sprites via multiplexing)
+// - PAL systems show blue border, NTSC shows red border
+
+from std::core import Option, Result
+from std::ffi::exec import AllocVec, FreeVec
+from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR
+from std::ffi::graphics import WaitTOF
+from std::graphics::copper import CopperListBuilder, CopperError
+from std::hardware::registers import rgb12, COLOR00, BPLCON0, DIWSTRT, DIWSTOP, DDFSTRT, DDFSTOP
+
+// Screen dimensions
+const SCREEN_WIDTH: u16 = 320
+const SCREEN_HEIGHT: u16 = 256
+const SCREEN_DEPTH: u8 = 3  // 8 colors
+const BYTES_PER_ROW: u32 = 40  // 320 pixels / 8 bits
+
+// Split screen position
+const SPLIT_LINE: u16 = 128  // Split at middle of screen
+
+// Sprite data for multiplexing demo
+// Simple 16x16 sprite (ball shape)
+// Each sprite is 4 words: VSTART/VSTOP control words + 2 words of image data per line
+static SPRITE_BALL: [u16; 72] = [
+    // Control words
+    $3C00, $4000,  // Start at line 60, end at line 76, attached
+
+    // Image data (16 lines, 2 words each = 32 words)
+    $0000, $0000,  // Line 0: empty
+    $03C0, $0000,  // Line 1: ....####........
+    $0FF0, $0000,  // Line 2: ....########....
+    $1FF8, $0000,  // Line 3: ...##########...
+    $3FFC, $0000,  // Line 4: ..############..
+    $3FFC, $0000,  // Line 5: ..############..
+    $7FFE, $0000,  // Line 6: .##############.
+    $7FFE, $0000,  // Line 7: .##############.
+    $7FFE, $0000,  // Line 8: .##############.
+    $7FFE, $0000,  // Line 9: .##############.
+    $3FFC, $0000,  // Line 10: ..############..
+    $3FFC, $0000,  // Line 11: ..############..
+    $1FF8, $0000,  // Line 12: ...##########...
+    $0FF0, $0000,  // Line 13: ....########....
+    $03C0, $0000,  // Line 14: .....####.......
+    $0000, $0000,  // Line 15: empty
+
+    // End control words
+    $0000, $0000
+]
+
+// Create empty sprite for sprites we're not using
+static SPRITE_EMPTY: [u16; 4] = [
+    $0000, $0000,  // Start at line 0, end immediately
+    $0000, $0000   // End control
+]
+
+// Fill bitplane with pattern
+fn fill_bitplane(plane: *u8, pattern: u8, size: u32) {
+    unsafe {
+        var i: u32 = 0
+        while i < size {
+            let ptr: *u8 = (*u8)((u32)plane + i)
+            *ptr = pattern
+            i++
+        }
+    }
+}
+
+// Create a simple starfield pattern
+fn create_starfield(plane: *u8) {
+    unsafe {
+        let plane_size: u32 = BYTES_PER_ROW * ((u32)SCREEN_HEIGHT)
+
+        // Fill with random-looking pattern for stars
+        var y: u32 = 0
+        while y < ((u32)SCREEN_HEIGHT) {
+            var x: u32 = 0
+            while x < BYTES_PER_ROW {
+                let offset: u32 = y * BYTES_PER_ROW + x
+                let ptr: *u8 = (*u8)((u32)plane + offset)
+
+                // Create sparse star pattern
+                var val: u8 = 0
+                if ((x + y) % 7) == 0 {
+                    val = (u8)($80 >> (x % 8))
+                }
+                *ptr = val
+                x++
+            }
+            y++
+        }
+    }
+}
+
+// Create status bar pattern
+fn create_status_bar(plane: *u8) {
+    unsafe {
+        let plane_size: u32 = BYTES_PER_ROW * ((u32)SCREEN_HEIGHT)
+
+        // Fill with horizontal stripes
+        var y: u32 = 0
+        while y < ((u32)SCREEN_HEIGHT) {
+            var x: u32 = 0
+            while x < BYTES_PER_ROW {
+                let offset: u32 = y * BYTES_PER_ROW + x
+                let ptr: *u8 = (*u8)((u32)plane + offset)
+
+                // Create stripe pattern every 8 lines
+                var val: u8 = 0
+                if (y % 16) < 2 {
+                    val = $FF
+                }
+                *ptr = val
+                x++
+            }
+            y++
+        }
+    }
+}
+
+fn main() -> i32 {
+    unsafe {
+        // Allocate chip RAM for bitplanes
+        let plane_size: u32 = BYTES_PER_ROW * ((u32)SCREEN_HEIGHT)
+
+        // Top screen bitplanes (starfield)
+        let top_plane0: *u8 = AllocVec(plane_size, MEMF_CHIP | MEMF_CLEAR)
+        let top_plane1: *u8 = AllocVec(plane_size, MEMF_CHIP | MEMF_CLEAR)
+        let top_plane2: *u8 = AllocVec(plane_size, MEMF_CHIP | MEMF_CLEAR)
+
+        // Bottom screen bitplanes (status bar)
+        let bottom_plane0: *u8 = AllocVec(plane_size, MEMF_CHIP | MEMF_CLEAR)
+        let bottom_plane1: *u8 = AllocVec(plane_size, MEMF_CHIP | MEMF_CLEAR)
+        let bottom_plane2: *u8 = AllocVec(plane_size, MEMF_CHIP | MEMF_CLEAR)
+
+        if !top_plane0 || !top_plane1 || !top_plane2 || !bottom_plane0 || !bottom_plane1 || !bottom_plane2 {
+            return 1
+        }
+
+        // Create visual patterns
+        create_starfield(top_plane0)
+        fill_bitplane(top_plane1, $AA, plane_size)  // Pattern for plane 1
+        fill_bitplane(top_plane2, $55, plane_size)  // Pattern for plane 2
+
+        create_status_bar(bottom_plane0)
+        fill_bitplane(bottom_plane1, $F0, plane_size)
+        fill_bitplane(bottom_plane2, $0F, plane_size)
+
+        // Allocate sprite data in chip RAM
+        let sprite0_data: *u8 = AllocVec(144, MEMF_CHIP)  // 72 words = 144 bytes
+        let sprite1_data: *u8 = AllocVec(144, MEMF_CHIP)
+        let sprite2_data: *u8 = AllocVec(144, MEMF_CHIP)
+
+        if !sprite0_data || !sprite1_data || !sprite2_data {
+            FreeVec((*u8)top_plane0)
+            FreeVec((*u8)top_plane1)
+            FreeVec((*u8)top_plane2)
+            FreeVec((*u8)bottom_plane0)
+            FreeVec((*u8)bottom_plane1)
+            FreeVec((*u8)bottom_plane2)
+            return 1
+        }
+
+        // Copy sprite data
+        let src_base: *u16 = (*u16)(*u8)(&SPRITE_BALL[0])
+        var i: u32 = 0
+        while i < 72 {
+            let src_ptr: *u16 = (*u16)((u32)src_base + (i * 2))
+            let dst0_ptr: *u16 = (*u16)((u32)sprite0_data + (i * 2))
+            let dst1_ptr: *u16 = (*u16)((u32)sprite1_data + (i * 2))
+            let dst2_ptr: *u16 = (*u16)((u32)sprite2_data + (i * 2))
+            *dst0_ptr = *src_ptr
+            *dst1_ptr = *src_ptr
+            *dst2_ptr = *src_ptr
+            i++
+        }
+
+        // Build copper list
+        let mut builder = CopperListBuilder::new()
+
+        // === WAIT for start of frame ===
+        let _ = builder.wait(0, 0)
+
+        // === PAL/NTSC Detection using SKIP ===
+        // If we're past line 262, we're on PAL (skip next instruction)
+        let _ = builder.skip(262, 0)
+        let _ = builder.move_color(0, rgb12(15, 0, 0))  // NTSC only: Red background
+        // This instruction runs on both PAL and NTSC:
+        // PAL will override with blue later, NTSC keeps red
+
+        // === Setup display registers ===
+        let _ = builder.move_register(BPLCON0, $3200)  // 3 bitplanes, color enabled
+        let _ = builder.move_register(DIWSTRT, $2C81)  // Display window start
+        let _ = builder.move_register(DIWSTOP, $2CC1)  // Display window stop
+        let _ = builder.move_register(DDFSTRT, $0038)  // Data fetch start
+        let _ = builder.move_register(DDFSTOP, $00D0)  // Data fetch stop
+
+        // === Top screen palette (starfield) ===
+        let _ = builder.move_color(0, rgb12(0, 0, 8))   // Background: deep blue
+        let _ = builder.move_color(1, rgb12(15, 15, 15)) // Stars: white
+        let _ = builder.move_color(2, rgb12(12, 12, 15)) // Bright blue
+        let _ = builder.move_color(3, rgb12(8, 8, 12))   // Medium blue
+        let _ = builder.move_color(4, rgb12(4, 4, 8))    // Dark blue
+        let _ = builder.move_color(5, rgb12(15, 15, 0))  // Yellow stars
+        let _ = builder.move_color(6, rgb12(15, 12, 0))  // Orange stars
+        let _ = builder.move_color(7, rgb12(12, 8, 0))   // Brown stars
+
+        // === Sprite colors ===
+        let _ = builder.move_color(17, rgb12(15, 0, 0))  // Sprite 0: red
+        let _ = builder.move_color(18, rgb12(12, 0, 0))  // Sprite 0: dark red
+        let _ = builder.move_color(19, rgb12(8, 0, 0))   // Sprite 0: darker red
+
+        // === Set top screen bitplane pointers ===
+        let _ = builder.move_bitplane_ptr(0, top_plane0)
+        let _ = builder.move_bitplane_ptr(1, top_plane1)
+        let _ = builder.move_bitplane_ptr(2, top_plane2)
+
+        // === Sprite Multiplexing Demo ===
+        // Position 1: Sprite at line 50
+        let _ = builder.wait(50, 0)
+        let _ = builder.move_sprite_ptr(0, sprite0_data)
+        let _ = builder.move_color(17, rgb12(15, 0, 0))  // Red
+
+        // Position 2: Reuse same sprite at line 100
+        let _ = builder.wait(100, 0)
+        let _ = builder.move_sprite_ptr(0, sprite1_data)
+        let _ = builder.move_color(17, rgb12(0, 15, 0))  // Green
+
+        // Position 3: Reuse again at line 150
+        let _ = builder.wait(150, 0)
+        let _ = builder.move_sprite_ptr(0, sprite2_data)
+        let _ = builder.move_color(17, rgb12(0, 0, 15))  // Blue
+
+        // === Split Screen at middle ===
+        let _ = builder.wait(SPLIT_LINE, 0)
+
+        // Change to bottom screen palette (status bar style)
+        let _ = builder.move_color(0, rgb12(0, 8, 0))    // Background: green
+        let _ = builder.move_color(1, rgb12(15, 15, 15)) // White bars
+        let _ = builder.move_color(2, rgb12(0, 12, 0))   // Bright green
+        let _ = builder.move_color(3, rgb12(0, 8, 0))    // Medium green
+        let _ = builder.move_color(4, rgb12(0, 4, 0))    // Dark green
+        let _ = builder.move_color(5, rgb12(15, 15, 0))  // Yellow
+        let _ = builder.move_color(6, rgb12(15, 8, 0))   // Orange
+        let _ = builder.move_color(7, rgb12(8, 4, 0))    // Brown
+
+        // Change bitplane pointers for bottom half
+        let _ = builder.move_bitplane_ptr(0, bottom_plane0)
+        let _ = builder.move_bitplane_ptr(1, bottom_plane1)
+        let _ = builder.move_bitplane_ptr(2, bottom_plane2)
+
+        // === Color cycling in bottom section ===
+        let _ = builder.wait(180, 0)
+        let _ = builder.move_color(0, rgb12(8, 0, 8))  // Purple
+
+        let _ = builder.wait(200, 0)
+        let _ = builder.move_color(0, rgb12(12, 0, 12))  // Bright purple
+
+        let _ = builder.wait(220, 0)
+        let _ = builder.move_color(0, rgb12(15, 0, 15))  // Magenta
+
+        // === PAL detection override ===
+        // At line 280, if we get here we're PAL (NTSC ends at 262)
+        let _ = builder.wait(280, 0)
+        let _ = builder.move_color(0, rgb12(0, 0, 15))  // PAL only: Blue background
+
+        // Build the copper list
+        let build_result = builder.build()
+        match build_result {
+            Result::Err(e) => {
+                FreeVec((*u8)top_plane0)
+                FreeVec((*u8)top_plane1)
+                FreeVec((*u8)top_plane2)
+                FreeVec((*u8)bottom_plane0)
+                FreeVec((*u8)bottom_plane1)
+                FreeVec((*u8)bottom_plane2)
+                FreeVec((*u8)sprite0_data)
+                FreeVec((*u8)sprite1_data)
+                FreeVec((*u8)sprite2_data)
+                return 1
+            },
+            Result::Ok(copper_list) => {
+                // Activate copper list
+                copper_list.activate()
+
+                // Run for 5 seconds
+                var frames: i32 = 0
+                while frames < 300 {  // 5 seconds at 60fps
+                    WaitTOF()
+                    frames++
+                }
+
+                // Free resources
+                FreeVec((*u8)top_plane0)
+                FreeVec((*u8)top_plane1)
+                FreeVec((*u8)top_plane2)
+                FreeVec((*u8)bottom_plane0)
+                FreeVec((*u8)bottom_plane1)
+                FreeVec((*u8)bottom_plane2)
+                FreeVec((*u8)sprite0_data)
+                FreeVec((*u8)sprite1_data)
+                FreeVec((*u8)sprite2_data)
+
+                return 0
+            }
+        }
+    }
+}

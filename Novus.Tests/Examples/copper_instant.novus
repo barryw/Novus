@@ -3,7 +3,7 @@
 
 from std::core import Result
 from std::graphics::copper import CopperListBuilder, CopperError
-from std::hardware::amiga_registers import rgb12
+from std::hardware::registers import rgb12
 from std::ffi::graphics import WaitTOF
 
 pub fn main() -> i32 {

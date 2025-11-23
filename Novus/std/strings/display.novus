@@ -3,7 +3,7 @@
 
 from std::strings::format import Formatter, Display, Debug
 from std::strings::core import Str, String
-from std::error::core import StringError
+from std::error::errors import StringError
 
 // Helper functions for integer to string conversion
 // These are built-in compiler intrinsics that will be implemented in the runtime

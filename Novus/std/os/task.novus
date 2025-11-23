@@ -1,5 +1,5 @@
 // Novus Standard Library - Task System
-// Namespace: std::system::task
+// Namespace: std::os::task
 //
 // High-level task spawning with guaranteed signal handling.
 // Tasks implement the Task trait and run in a managed event loop
@@ -7,8 +7,8 @@
 
 from std::core import Option, Result, Drop
 from std::strings::core import Str
-from std::error::core import DosError
-from std::system::timer import TimerHandle, Duration
+from std::error::errors import DosError
+from std::os::timer import TimerHandle, Duration
 from std::ffi::amiga_structs import Task, MsgPort, TagItem
 from std::ffi::dos import CreateNewProc, CheckSignal, Input, Output
 from std::ffi::exec import AllocMem, FreeMem, Wait, Signal, FindTask, SetSignal

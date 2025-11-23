@@ -1,0 +1,26 @@
+// Test using statement with Drop trait
+
+pub struct Resource {
+    value: i32
+}
+
+impl Drop for Resource {
+    fn drop(&mut self) {
+        // Cleanup happens here
+        // In a real implementation, this would free resources
+    }
+}
+
+fn create_resource(v: i32) -> Resource {
+    return Resource { value: v }
+}
+
+fn main() -> i32 {
+    // Test using statement - resource should be automatically dropped at end of block
+    using create_resource(42) {
+        // Do something with the resource in this scope
+        let x: i32 = 10
+    }
+
+    return 0
+}

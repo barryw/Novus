@@ -18,14 +18,15 @@
 //   // Copper list automatically deactivated and freed when dropped
 
 from std::core import Option, Result, Drop
-from std::error::core import GraphicsError
-from std::ffi::exec import AllocVec, FreeVec, CopyMem, MEMF_CHIP, MEMF_CLEAR
+from std::error::errors import GraphicsError
+from std::ffi::exec import AllocVec, FreeVec, CopyMem
+from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR
 from std::ffi::amiga_structs import View
 from std::ffi::graphics import LoadView, WaitTOF, WaitBlit
 from std::ffi::intuition import ViewAddress, RethinkDisplay
 from std::ffi::exec import CacheClearU
-from std::hardware::amiga_registers import is_register_safe_for_copper, color_register, rgb12, CUSTOM_BASE, COP1LC, DMACON
-from std::system::system import SystemChipset
+from std::hardware::registers import is_register_safe_for_copper, color_register, rgb12, CUSTOM_BASE, COP1LC, DMACON, SPR0PTH, SPR0PTL, SPR1PTH, SPR1PTL, SPR2PTH, SPR2PTL, SPR3PTH, SPR3PTL, SPR4PTH, SPR4PTL, SPR5PTH, SPR5PTL, SPR6PTH, SPR6PTL, SPR7PTH, SPR7PTL, BPL1PTH, BPL1PTL, BPL2PTH, BPL2PTL, BPL3PTH, BPL3PTL, BPL4PTH, BPL4PTL, BPL5PTH, BPL5PTL, BPL6PTH, BPL6PTL, BPL7PTH, BPL7PTL, BPL8PTH, BPL8PTL
+from std::hardware::chipset import SystemChipset
 
 // Copper control registers
 pub const COPJMP1: u32 = $088  // Copper jump strobe register
@@ -37,6 +38,9 @@ pub enum CopperError {
     DangerousRegister,      // Attempted write to dangerous register
     AllocationFailed,       // Out of chip RAM
     ListAlreadyFinalized,   // Tried to modify after build()
+    InvalidSpriteIndex,     // Sprite index out of range (must be 0-7)
+    InvalidPlaneIndex,      // Bitplane index out of range (must be 0-7 for AGA, 0-5 for OCS/ECS)
+    MisalignedPointer,      // Pointer must be word-aligned (even address)
 }
 
 /// Copper list builder - constructs copper lists with validation
@@ -118,9 +122,38 @@ impl CopperListBuilder {
     /// - vpos: Vertical position (line number, 0-312 PAL / 0-262 NTSC)
     /// - hpos: Horizontal position (must be even, 0-226)
     ///
+    /// Note: This does NOT wait for blitter to finish. Use wait_with_blitter() if you
+    /// need to synchronize with blitter operations.
+    ///
     /// Returns error if position is invalid or goes backwards.
     @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
     pub fn wait(&mut self, vpos: u16, hpos: u16) -> Result<(), CopperError> {
+        // wait() without blitter synchronization
+        return self.wait_internal(vpos, hpos, false)
+    }
+
+    /// Add a WAIT instruction that also waits for the blitter to finish
+    ///
+    /// Waits for the raster beam to reach the specified position AND for the
+    /// blitter to finish any pending operations. This is essential when the copper
+    /// needs to modify memory that the blitter might be accessing (e.g., changing
+    /// bitplane pointers after a blitter fill operation).
+    ///
+    /// - vpos: Vertical position (line number, 0-312 PAL / 0-262 NTSC)
+    /// - hpos: Horizontal position (must be even, 0-226)
+    ///
+    /// Returns error if position is invalid or goes backwards.
+    @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
+    pub fn wait_with_blitter(&mut self, vpos: u16, hpos: u16) -> Result<(), CopperError> {
+        // wait() WITH blitter synchronization
+        return self.wait_internal(vpos, hpos, true)
+    }
+
+    /// Internal WAIT instruction implementation
+    ///
+    /// - wait_blitter: If true, BFD=0 (wait for blitter). If false, BFD=1 (don't wait).
+    @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
+    fn wait_internal(&mut self, vpos: u16, hpos: u16, wait_blitter: bool) -> Result<(), CopperError> {
         if self.finalized {
             return Result::Err(CopperError::ListAlreadyFinalized)
         }
@@ -146,16 +179,25 @@ impl CopperListBuilder {
         }
 
         // Encode WAIT instruction
-        // Format: [VVVVVVVVHHHHHHHH1] [$FFFE]
+        // Format: [VVVVVVVVHHHHHHHH1] [BFD | mask]
         // VP = vertical position (bits 15-8 of first word)
         // HP = horizontal position (bits 7-1 of first word)
         // Bit 0 of first word = 1 (WAIT vs MOVE discriminator)
+        // BFD = Blitter Finish Disable (bit 15 of second word)
+        //   BFD=1 (0x8000): Don't wait for blitter
+        //   BFD=0 (0x0000): Wait for blitter to finish before proceeding
         let vp = ((u32)vpos) & $FF
         let hp = ((u32)hpos) & $FE  // Must be even
         var vp_shift = vp
         vp_shift <<= 8  // Shift left by 8 bits
         let word1 = vp_shift | hp | 1u32  // Bit 0 = 1 for WAIT
-        let word2 = $FFFEu32  // Wait mask
+
+        // Set BFD bit based on wait_blitter parameter
+        var word2: u32 = $FFFEu32  // BFD=1 (bit 15 set): Don't wait for blitter (default)
+        if wait_blitter {
+            word2 = $7FFEu32  // BFD=0 (bit 15 clear): Wait for blitter
+        }
+
         var word1_shift = word1
         word1_shift <<= 16  // Shift left by 16 bits
         let instruction = word1_shift | word2
@@ -169,6 +211,74 @@ impl CopperListBuilder {
         // Update validation state
         self.last_vpos = vpos
         self.last_hpos = hpos
+
+        return Result::Ok(())
+    }
+
+    /// Add a SKIP instruction (conditional copper execution)
+    ///
+    /// Compares the current beam position against the specified position and skips
+    /// the next copper instruction if the condition is met. This is useful for:
+    /// - PAL/NTSC detection and conditional execution
+    /// - Blitter synchronization (when combined with wait_with_blitter)
+    /// - Complex display mode switching
+    ///
+    /// The skip occurs if: (current_vpos > vpos) OR (current_vpos == vpos AND current_hpos >= hpos)
+    ///
+    /// - vpos: Vertical position to compare against
+    /// - hpos: Horizontal position to compare against (must be even)
+    ///
+    /// Example: PAL detection
+    ///   builder.skip(262, 0)  // Skip next instruction if beam is past NTSC limit
+    ///   builder.move_color(0, ntsc_only_color)  // Only executed on NTSC machines
+    ///
+    /// Returns error if position is invalid.
+    @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
+    pub fn skip(&mut self, vpos: u16, hpos: u16) -> Result<(), CopperError> {
+        if self.finalized {
+            return Result::Err(CopperError::ListAlreadyFinalized)
+        }
+
+        // Validate position (same rules as WAIT)
+        if !self.is_wait_position_valid(vpos, hpos) {
+            return Result::Err(CopperError::InvalidWaitPosition)
+        }
+
+        // Ensure capacity
+        if self.count >= self.capacity {
+            if !self.grow() {
+                return Result::Err(CopperError::AllocationFailed)
+            }
+        }
+
+        // Encode SKIP instruction
+        // Format: [VVVVVVVVHHHHHHHH1] [BFD | $0001]
+        // Same as WAIT but with bit 0 of second word = 1
+        // VP = vertical position (bits 15-8 of first word)
+        // HP = horizontal position (bits 7-1 of first word)
+        // Bit 0 of first word = 1 (indicates compare instruction)
+        // Bit 0 of second word = 1 (SKIP vs WAIT discriminator)
+        let vp = ((u32)vpos) & $FF
+        let hp = ((u32)hpos) & $FE  // Must be even
+        var vp_shift = vp
+        vp_shift <<= 8  // Shift left by 8 bits
+        let word1 = vp_shift | hp | 1u32  // Bit 0 = 1 for compare instruction
+
+        // SKIP: bit 0 of second word = 1 (vs WAIT which has bit 0 = 0)
+        // BFD bit is typically set for SKIP (don't wait for blitter)
+        let word2 = $FFFFu32  // BFD=1, bit 0=1 for SKIP
+
+        var word1_shift = word1
+        word1_shift <<= 16  // Shift left by 16 bits
+        let instruction = word1_shift | word2
+
+        unsafe {
+            let ptr: *u32 = (*u32)((u32)self.instructions + (self.count * 4))
+            *ptr = instruction
+        }
+        self.count++
+
+        // Note: We don't update last_vpos/last_hpos for SKIP because it's not a real wait
 
         return Result::Ok(())
     }
@@ -224,6 +334,129 @@ impl CopperListBuilder {
     pub fn move_color(&mut self, index: u8, color: u16) -> Result<(), CopperError> {
         let reg_addr: u32 = color_register(index)
         return self.move_register(reg_addr, color)
+    }
+
+    /// Convenience: Set a sprite data pointer (enables sprite multiplexing)
+    ///
+    /// Changes the data pointer for a hardware sprite. This allows reusing the 8 hardware
+    /// sprites multiple times per frame by changing their data pointers at different
+    /// scanlines.
+    ///
+    /// The pointer is automatically split into high and low words and written to the
+    /// appropriate SPRxPTH/SPRxPTL registers.
+    ///
+    /// # Arguments
+    /// * `sprite` - Sprite index (0-7)
+    /// * `addr` - Pointer to sprite data in chip RAM (must be word-aligned)
+    ///
+    /// # Example: Sprite Multiplexing
+    ///   builder.wait(50, 0)
+    ///   builder.move_sprite_ptr(0, enemy1_sprite)?  // Sprite 0 shows enemy at top
+    ///   builder.wait(150, 0)
+    ///   builder.move_sprite_ptr(0, player_sprite)?  // Reuse sprite 0 for player
+    ///
+    /// Returns error if sprite index is out of range or pointer is misaligned.
+    @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
+    pub fn move_sprite_ptr(&mut self, sprite: u8, addr: *u8) -> Result<(), CopperError> {
+        // Validate sprite index
+        if sprite > 7 {
+            return Result::Err(CopperError::InvalidSpriteIndex)
+        }
+
+        // Validate pointer alignment (must be word-aligned)
+        let ptr_val: u32 = (u32)addr
+        if (ptr_val & 1) != 0 {
+            return Result::Err(CopperError::MisalignedPointer)
+        }
+
+        // Split pointer into high and low words
+        let addr_high: u16 = (u16)(ptr_val >> 16)
+        let addr_low: u16 = (u16)(ptr_val & $FFFF)
+
+        // Calculate register addresses for this sprite
+        // SPR0PTH = $120, SPR1PTH = $124, etc. (4 bytes per sprite)
+        let sprite_offset: u32 = (u32)sprite * 4
+        let pth_reg: u32 = SPR0PTH + sprite_offset
+        let ptl_reg: u32 = SPR0PTL + sprite_offset
+
+        // Write high word first, then low word
+        // Note: Explicit error handling to work around codegen issue with Result<(), E>
+        let result1 = self.move_register(pth_reg, addr_high)
+        match result1 {
+            Result::Err(e) => return Result::Err(e),
+            Result::Ok(_) => {}
+        }
+
+        let result2 = self.move_register(ptl_reg, addr_low)
+        match result2 {
+            Result::Err(e) => return Result::Err(e),
+            Result::Ok(_) => {}
+        }
+
+        return Result::Ok(())
+    }
+
+    /// Convenience: Set a bitplane data pointer (enables split-screen effects)
+    ///
+    /// Changes the data pointer for a bitplane. This allows advanced display effects like:
+    /// - Split-screen displays (different buffers for top/bottom of screen)
+    /// - Parallax scrolling (different scroll speeds for different layers)
+    /// - Display list chaining
+    ///
+    /// The pointer is automatically split into high and low words and written to the
+    /// appropriate BPLxPTH/BPLxPTL registers.
+    ///
+    /// # Arguments
+    /// * `plane` - Bitplane index (0-7 for AGA, 0-5 for OCS/ECS)
+    /// * `addr` - Pointer to bitplane data in chip RAM (must be word-aligned)
+    ///
+    /// # Example: Split Screen
+    ///   builder.wait(100, 0)
+    ///   builder.move_bitplane_ptr(0, top_buffer)?    // Top half uses one buffer
+    ///   builder.wait(200, 0)
+    ///   builder.move_bitplane_ptr(0, bottom_buffer)? // Bottom half uses different buffer
+    ///
+    /// Returns error if plane index is out of range or pointer is misaligned.
+    @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
+    pub fn move_bitplane_ptr(&mut self, plane: u8, addr: *u8) -> Result<(), CopperError> {
+        // Validate bitplane index
+        // TODO: Could check actual chipset and enforce 0-5 for OCS/ECS, 0-7 for AGA
+        // For now, allow 0-7 (AGA max) and let hardware ignore planes 6-7 on OCS/ECS
+        if plane > 7 {
+            return Result::Err(CopperError::InvalidPlaneIndex)
+        }
+
+        // Validate pointer alignment (must be word-aligned)
+        let ptr_val: u32 = (u32)addr
+        if (ptr_val & 1) != 0 {
+            return Result::Err(CopperError::MisalignedPointer)
+        }
+
+        // Split pointer into high and low words
+        let addr_high: u16 = (u16)(ptr_val >> 16)
+        let addr_low: u16 = (u16)(ptr_val & $FFFF)
+
+        // Calculate register addresses for this bitplane
+        // BPL1PTH = $0E0, BPL2PTH = $0E4, etc. (4 bytes per plane)
+        let plane_offset: u32 = (u32)plane * 4
+        let pth_reg: u32 = BPL1PTH + plane_offset
+        let ptl_reg: u32 = BPL1PTL + plane_offset
+
+        // Write high word first, then low word
+        // Note: Explicit error handling to work around codegen issue with Result<(), E>
+        let result1 = self.move_register(pth_reg, addr_high)
+        match result1 {
+            Result::Err(e) => return Result::Err(e),
+            Result::Ok(_) => {}
+        }
+
+        let result2 = self.move_register(ptl_reg, addr_low)
+        match result2 {
+            Result::Err(e) => return Result::Err(e),
+            Result::Ok(_) => {}
+        }
+
+        return Result::Ok(())
     }
 
     /// Convenience: Wait for vertical blank

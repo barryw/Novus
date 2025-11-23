@@ -10,7 +10,7 @@
 // ============================================================================
 
 extern pub fn Open(name: *u8, accessMode: i32) -> i32
-extern pub fn Close(file: i32) -> i32
+extern pub fn Close(consuming file: i32) -> i32
 extern pub fn Read(file: i32, buffer: *u8, length: i32) -> i32
 extern pub fn Write(file: i32, buffer: *u8, length: i32) -> i32
 extern pub fn Input() -> i32
@@ -42,7 +42,7 @@ extern pub fn IsInteractive(file: i32) -> i32
 extern pub fn Execute(string: *u8, file: i32, file2: i32) -> i32
 extern pub fn AllocDosObject(_type: u32, tags: *TagItem) -> *u8
 // Varargs function AllocDosObjectTags skipped - needs manual implementation
-extern pub fn FreeDosObject(_type: u32, ptr: *u8)
+extern pub fn FreeDosObject(_type: u32, consuming ptr: u32, ptr: *u8)
 extern pub fn DoPkt(port: *MsgPort, action: i32, arg1: i32, arg2: i32, arg3: i32, arg4: i32, arg5: i32) -> i32
 extern pub fn SendPkt(dp: *DosPacket, port: *MsgPort, replyport: *MsgPort)
 extern pub fn WaitPkt() -> *DosPacket
@@ -114,7 +114,7 @@ extern pub fn AssignPath(name: *u8, path: *u8) -> i16
 extern pub fn AssignAdd(name: *u8, lock: i32) -> i16
 extern pub fn RemAssignList(name: *u8, lock: i32) -> i32
 extern pub fn GetDeviceProc(name: *u8, dp: *DevProc) -> *DevProc
-extern pub fn FreeDeviceProc(dp: *DevProc)
+extern pub fn FreeDeviceProc(consuming dp: *DevProc)
 extern pub fn LockDosList(flags: u32) -> *DosList
 extern pub fn UnLockDosList(flags: u32)
 extern pub fn AttemptLockDosList(flags: u32) -> *DosList
@@ -123,7 +123,7 @@ extern pub fn AddDosEntry(dlist: *DosList) -> i32
 extern pub fn FindDosEntry(dlist: *DosList, name: *u8, flags: u32) -> *DosList
 extern pub fn NextDosEntry(dlist: *DosList, flags: u32) -> *DosList
 extern pub fn MakeDosEntry(name: *u8, _type: i32) -> *DosList
-extern pub fn FreeDosEntry(dlist: *DosList)
+extern pub fn FreeDosEntry(consuming dlist: *DosList)
 extern pub fn IsFileSystem(name: *u8) -> i16
 extern pub fn Format(filesystem: *u8, volumename: *u8, dostype: u32) -> i16
 extern pub fn Relabel(drive: *u8, newname: *u8) -> i32
@@ -149,7 +149,7 @@ extern pub fn MatchNext(anchor: *AnchorPath) -> i32
 extern pub fn MatchEnd(anchor: *AnchorPath)
 extern pub fn ParsePattern(pat: *u8, buf: *u8, buflen: i32) -> i32
 extern pub fn MatchPattern(pat: *u8, str: *u8) -> i16
-extern pub fn FreeArgs(args: *RDArgs)
+extern pub fn FreeArgs(consuming args: *RDArgs)
 extern pub fn FilePart(path: *u8) -> *u8
 extern pub fn PathPart(path: *u8) -> *u8
 extern pub fn AddPart(dirname: *u8, filename: *u8, size: u32) -> i16

@@ -3193,7 +3193,7 @@ public partial class IrBuilder
     {
         // Auto-import required modules for f-string support
         // F-strings need:
-        // - std::strings::primitives for Display trait implementations on primitive types
+        // - std::strings::display for Display trait implementations on primitive types
         // - std::strings::format for StackFormatter type (stack-allocated, zero heap allocation!)
         // - std::strings::core for Str type
         bool isStdLibraryModule = _inputFilePath != null && _inputFilePath.Contains(System.IO.Path.DirectorySeparatorChar + "std" + System.IO.Path.DirectorySeparatorChar);
@@ -3202,7 +3202,7 @@ public partial class IrBuilder
         {
             // Always import these modules to ensure all necessary types and methods are available
             // The ImportModule function handles already-processed modules correctly
-            ImportModule("std::strings::primitives", importAll: true);
+            ImportModule("std::strings::display", importAll: true);
             ImportModule("std::strings::format", importAll: true);
             ImportModule("std::strings::core", importAll: true);
         }

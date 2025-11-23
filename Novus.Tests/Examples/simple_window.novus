@@ -6,10 +6,10 @@
 // - Type-safe event handling via WindowEvent enum
 // - Menu event decoding with MenuSelection
 
-from std::graphics::intuition import WindowHandle, WindowEvent
-from std::graphics::menus import GadToolsMenuBuilder, MenuSelection
+from std::ui::window import WindowHandle, WindowEvent
+from std::ui::menu import GadToolsMenuBuilder, MenuSelection
 from std::strings::core import Str
-from std::io::core import write
+from std::io::file import write
 
 pub fn main() -> i32 {
     // Open a simple window with standard gadgets

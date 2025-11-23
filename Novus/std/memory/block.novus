@@ -3,7 +3,7 @@
 // Unified memory management API with automatic size tracking
 
 from std::core import Option, Result, From, Drop
-from std::error::core import ExecError
+from std::error::errors import ExecError
 from std::ffi::exec import AllocMem, FreeMem, CopyMem
 from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, MEMF_CLEAR, MEMF_ANY
 

@@ -1,5 +1,5 @@
 // Novus Standard Library - Thread System
-// Namespace: std::system::thread
+// Namespace: std::thread::thread
 //
 // Lightweight threads using Exec Tasks.
 //
@@ -15,14 +15,14 @@
 //   - Signal-based coordination
 //   - Lightweight background work
 //
-// Use processes (std::system::task) for:
+// Use processes (std::os::task) for:
 //   - File I/O operations
 //   - Console output
 //   - Anything needing DOS context
 
 from std::core import Option, Result, Drop
 from std::strings::core import Str
-from std::error::core import DosError
+from std::error::errors import DosError
 from std::ffi::amiga_structs import Task, MsgPort, List, Node
 from std::ffi::exec import AllocMem, FreeMem, Wait, Signal, FindTask, SetSignal
 from std::ffi::exec import AddTask, RemTask, AllocSignal, FreeSignal, Forbid
@@ -193,7 +193,7 @@ impl Drop for ThreadHandle {
 ///
 /// WARNING: The thread CANNOT use DOS functions!
 /// No file I/O, no console output, no directory operations.
-/// Use std::system::task::spawn_task_fn() if you need DOS access.
+/// Use std::os::task::spawn_task_fn() if you need DOS access.
 ///
 /// The function should implement a proper event loop with signal checking.
 /// Use run_thread_loop() to implement the loop correctly.
@@ -220,26 +220,20 @@ impl Drop for ThreadHandle {
 /// ```
 pub fn spawn_thread(name: Str, entry: fn() -> i32, stack_size: u32) -> Result<ThreadHandle, DosError> {
     // Allocate a signal for death notification
-    let death_signal = AllocSignal(-1)
-    if death_signal == -1 {
+    let signal = AllocSignal(-1)
+    if signal == -1 {
         return Result::Err(DosError::NoFreeStore)
     }
 
     // Allocate communication data
-    var comm_mem: *u8 = (*u8)0
+    var comm: *u8 = (*u8)0
     unsafe {
-        comm_mem = AllocMem(THREAD_COMM_SIZE, MEMF_PUBLIC | MEMF_CLEAR)
+        comm = AllocMem(THREAD_COMM_SIZE, MEMF_PUBLIC | MEMF_CLEAR)
     }
-    if (u32)comm_mem == 0 {
-        FreeSignal(death_signal)
+    if (u32)comm == 0 {
+        FreeSignal(signal)
         return Result::Err(DosError::NoFreeStore)
     }
-    // Set up communication data using raw memory access
-    // ThreadComm layout: bytes 0-3 = parent_task, byte 4 = death_signal
-    let parent_task_ptr = (**Task)comm_mem
-    *parent_task_ptr = FindTask((*u8)0)  // Get our own task
-    let death_signal_ptr = (*i8)((u32)comm_mem + 4)
-    *death_signal_ptr = death_signal
 
     // Allocate Task structure
     var task_mem: *u8 = (*u8)0
@@ -248,31 +242,37 @@ pub fn spawn_thread(name: Str, entry: fn() -> i32, stack_size: u32) -> Result<Th
     }
     if (u32)task_mem == 0 {
         unsafe {
-            FreeMem(comm_mem, THREAD_COMM_SIZE)
+            FreeMem(comm, THREAD_COMM_SIZE)
         }
-        FreeSignal(death_signal)
+        FreeSignal(signal)
         return Result::Err(DosError::NoFreeStore)
     }
-
-    let task = (*Task)task_mem
 
     // Allocate stack - must be long-word aligned for 68k
     // Round up stack_size to 4-byte boundary
     let aligned_stack_size = (stack_size + (u32)3) & (~(u32)3)
-    var stack_mem: *u8 = (*u8)0
+    var stk: *u8 = (*u8)0
     unsafe {
-        stack_mem = AllocMem(aligned_stack_size, MEMF_PUBLIC | MEMF_CLEAR)
+        stk = AllocMem(aligned_stack_size, MEMF_PUBLIC | MEMF_CLEAR)
     }
-    if (u32)stack_mem == 0 {
+    if (u32)stk == 0 {
         unsafe {
             FreeMem(task_mem, @sizeof(Task))
-            FreeMem(comm_mem, THREAD_COMM_SIZE)
+            FreeMem(comm, THREAD_COMM_SIZE)
         }
-        FreeSignal(death_signal)
+        FreeSignal(signal)
         return Result::Err(DosError::NoFreeStore)
     }
 
+    // Set up communication data using raw memory access
+    // ThreadComm layout: bytes 0-3 = parent_task, byte 4 = death_signal
+    let parent_task_ptr = (**Task)comm
+    *parent_task_ptr = FindTask((*u8)0)  // Get our own task
+    let signal_ptr = (*i8)((u32)comm + 4)
+    *signal_ptr = signal
+
     // Initialize Task structure
+    let task = (*Task)task_mem
     let task_ref = task
 
     // Set up the Node
@@ -298,12 +298,12 @@ pub fn spawn_thread(name: Str, entry: fn() -> i32, stack_size: u32) -> Result<Th
 
     // Set up stack pointers
     // Stack grows downward on 68k
-    task_ref.tc_SPLower = stack_mem
-    task_ref.tc_SPUpper = (*u8)((u32)stack_mem + aligned_stack_size)
+    task_ref.tc_SPLower = stk
+    task_ref.tc_SPUpper = (*u8)((u32)stk + aligned_stack_size)
     task_ref.tc_SPReg = task_ref.tc_SPUpper  // Start at top of stack
 
     // Store communication data pointer in tc_UserData
-    task_ref.tc_UserData = comm_mem
+    task_ref.tc_UserData = comm
 
     // Get entry point address
     // Use a temporary pointer to extract the function address
@@ -322,10 +322,10 @@ pub fn spawn_thread(name: Str, entry: fn() -> i32, stack_size: u32) -> Result<Th
 
     return Result::Ok(ThreadHandle {
         task: task,
-        stack_mem: stack_mem,
+        stack_mem: stk,
         stack_size: aligned_stack_size,
-        comm: comm_mem,
-        death_signal: death_signal,
+        comm: comm,
+        death_signal: signal,
         is_running: true
     })
 }

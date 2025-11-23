@@ -7,7 +7,7 @@
 // - Returns 2 if running on 68020
 // - Returns 3 otherwise
 
-from std::system::system import CPU, FPU, CHIPSET, SystemCPU
+from std::hardware::chipset import CPU, FPU, CHIPSET, SystemCPU
 
 fn main() -> i32 {
     // Return different values based on detected CPU

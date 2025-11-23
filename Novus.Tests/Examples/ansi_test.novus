@@ -1,10 +1,10 @@
 // ANSI Console Test - Demonstrates ANSI escape sequence usage in Novus
 //
-// This test exercises the std::console::ansi library functions
+// This test exercises the std::io::ansi library functions
 // for cursor control, colors, and text styling.
 
-from std::console::ansi import *
-from std::io::core import write
+from std::io::ansi import *
+from std::io::file import write
 
 pub fn main() -> i32 {
     write("ANSI Console Test\n")

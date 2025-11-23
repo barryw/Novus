@@ -1,0 +1,93 @@
+// Amiga memory management utilities with RAII safety
+// Provides safe wrappers for chip/fast memory allocation
+
+from std::core import Option
+from std::ffi::exec import AllocVec, FreeVec
+from std::ffi::amiga_consts import MEMF_CHIP, MEMF_FAST, MEMF_CLEAR, MEMF_PUBLIC
+
+// RAII wrapper for chip memory allocation
+// Automatically frees memory when going out of scope
+pub struct ChipMemHandle {
+    ptr: *u8,
+    size: u32
+}
+
+impl ChipMemHandle {
+    // Allocate chip memory (returns Option to handle allocation failure)
+    pub fn new(size: u32) -> Option<ChipMemHandle> {
+        let ptr: *u8 = AllocVec(size, MEMF_CHIP | MEMF_CLEAR | MEMF_PUBLIC)
+        if !ptr {
+            return Option::None
+        }
+        return Option::Some(ChipMemHandle { ptr: ptr, size: size })
+    }
+
+    // Get raw pointer (for FFI calls)
+    pub fn ptr(&self) -> *u8 {
+        return self.ptr
+    }
+
+    // Get size
+    pub fn size(&self) -> u32 {
+        return self.size
+    }
+
+    // Check if allocation succeeded
+    pub fn is_valid(&self) -> bool {
+        if self.ptr {
+            return true
+        }
+        return false
+    }
+}
+
+impl Drop for ChipMemHandle {
+    fn drop(&mut self) {
+        if self.ptr {
+            FreeVec(self.ptr)
+        }
+    }
+}
+
+// RAII wrapper for fast memory allocation
+pub struct FastMemHandle {
+    ptr: *u8,
+    size: u32
+}
+
+impl FastMemHandle {
+    // Allocate fast memory (returns Option to handle allocation failure)
+    pub fn new(size: u32) -> Option<FastMemHandle> {
+        let ptr: *u8 = AllocVec(size, MEMF_FAST | MEMF_CLEAR | MEMF_PUBLIC)
+        if !ptr {
+            return Option::None
+        }
+        return Option::Some(FastMemHandle { ptr: ptr, size: size })
+    }
+
+    // Get raw pointer (for FFI calls)
+    pub fn ptr(&self) -> *u8 {
+        return self.ptr
+    }
+
+    // Get size
+    pub fn size(&self) -> u32 {
+        return self.size
+    }
+
+    // Check if allocation succeeded
+    pub fn is_valid(&self) -> bool {
+        if self.ptr {
+            return true
+        }
+        return false
+    }
+}
+
+impl Drop for FastMemHandle {
+    fn drop(&mut self) {
+        if self.ptr {
+            FreeVec(self.ptr)
+        }
+    }
+}

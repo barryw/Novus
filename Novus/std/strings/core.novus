@@ -3,9 +3,10 @@
 // Powerful, ergonomic, Amiga-optimized string types
 
 from std::core import Option, Result, Drop
-from std::collections::core import Vec
-from std::memory::core import MemoryBlock
-from std::ffi::exec import MEMF_PUBLIC, MEMF_CLEAR, FreeMem
+from std::collections::vec import Vec
+from std::memory::block import MemoryBlock
+from std::ffi::exec import FreeMem
+from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
 
 // ============================================================================
 // Error Types

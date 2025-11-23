@@ -1,6 +1,6 @@
 // RefreshGuard RAII Test - demonstrates automatic BeginRefresh/EndRefresh
-from std::graphics::intuition import WindowHandle, WindowEvent, RefreshGuard
-from std::io::core import write
+from std::ui::window import WindowHandle, WindowEvent, RefreshGuard
+from std::io::file import write
 
 pub fn main() -> i32 {
     let result = WindowHandle::app_window("RefreshGuard Test", 640, 480)

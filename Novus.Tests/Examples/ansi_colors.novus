@@ -1,13 +1,13 @@
 // ANSI Pen Demo - Shows Amiga console pen colors
 //
 // Demonstrates foreground and background pen colors
-// using the std::console::ansi library.
+// using the std::io::ansi library.
 //
 // Note: Amiga console uses pen numbers (0-7) that map to Workbench palette.
 // Standard palette: Pen0=grey, Pen1=black, Pen2=white, Pen3=blue
 
-from std::console::ansi import *
-from std::io::core import write
+from std::io::ansi import *
+from std::io::file import write
 
 pub fn main() -> i32 {
     write("Amiga Console Pen Demo\n")

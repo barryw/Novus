@@ -8,10 +8,10 @@
 //   Process counts from 1 to 10, then exits cleanly
 //   Exit code: 0
 
-from std::io::core import write
+from std::io::file import write
 from std::strings::core import Str
-from std::system::task import spawn_task_fn, run_timer_loop, ProcessHandle
-from std::system::timer import Duration
+from std::os::task import spawn_task_fn, run_timer_loop, ProcessHandle
+from std::os::timer import Duration
 from std::ffi::exec import Wait
 from std::ffi::amiga_consts import SIGBREAKF_CTRL_C, SIGBREAKF_CTRL_D
 

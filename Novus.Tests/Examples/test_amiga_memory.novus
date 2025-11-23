@@ -1,0 +1,68 @@
+// Test Amiga memory allocation with RAII
+
+from std::core import Option
+from std::memory::amiga import ChipMemHandle, FastMemHandle
+
+fn test_chip_memory() -> i32 {
+    // Allocate chip memory
+    let mem_opt: Option<ChipMemHandle> = ChipMemHandle::new(1024)
+
+    match mem_opt {
+        Option::None => {
+            return 1  // Allocation failed
+        },
+        Option::Some(mem) => {
+            // Verify allocation
+            if !mem.is_valid() {
+                return 2
+            }
+
+            let size: u32 = mem.size()
+            if size != 1024 {
+                return 3
+            }
+
+            // mem will be automatically freed via Drop when it goes out of scope
+            return 0
+        }
+    }
+}
+
+fn test_fast_memory() -> i32 {
+    // Allocate fast memory
+    let mem_opt: Option<FastMemHandle> = FastMemHandle::new(2048)
+
+    match mem_opt {
+        Option::None => {
+            return 1  // Allocation failed
+        },
+        Option::Some(mem) => {
+            // Verify allocation
+            if !mem.is_valid() {
+                return 2
+            }
+
+            let size: u32 = mem.size()
+            if size != 2048 {
+                return 3
+            }
+
+            // mem will be automatically freed via Drop when it goes out of scope
+            return 0
+        }
+    }
+}
+
+pub fn main() -> i32 {
+    let chip_result: i32 = test_chip_memory()
+    if chip_result != 0 {
+        return chip_result
+    }
+
+    let fast_result: i32 = test_fast_memory()
+    if fast_result != 0 {
+        return fast_result + 10
+    }
+
+    return 0
+}

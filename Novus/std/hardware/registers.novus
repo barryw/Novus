@@ -1,5 +1,5 @@
 // Hardware register constants for Amiga custom chip
-// Module: std::hardware::amiga_registers
+// Module: std::hardware::registers
 //
 // This module provides symbolic names for Amiga custom chip registers.
 // All register addresses are offsets from the custom chip base ($DFF000).
@@ -28,6 +28,27 @@ pub const BPLCON1: u32 = $102  // Bitplane control register 1
 pub const BPLCON2: u32 = $104  // Bitplane control register 2
 pub const BPL1MOD: u32 = $108  // Bitplane modulo (odd planes)
 pub const BPL2MOD: u32 = $10A  // Bitplane modulo (even planes)
+
+//
+// Bitplane Pointer Registers
+//
+
+pub const BPL1PTH: u32 = $0E0  // Bitplane 1 pointer (high 3 bits)
+pub const BPL1PTL: u32 = $0E2  // Bitplane 1 pointer (low 15 bits)
+pub const BPL2PTH: u32 = $0E4  // Bitplane 2 pointer (high 3 bits)
+pub const BPL2PTL: u32 = $0E6  // Bitplane 2 pointer (low 15 bits)
+pub const BPL3PTH: u32 = $0E8  // Bitplane 3 pointer (high 3 bits)
+pub const BPL3PTL: u32 = $0EA  // Bitplane 3 pointer (low 15 bits)
+pub const BPL4PTH: u32 = $0EC  // Bitplane 4 pointer (high 3 bits)
+pub const BPL4PTL: u32 = $0EE  // Bitplane 4 pointer (low 15 bits)
+pub const BPL5PTH: u32 = $0F0  // Bitplane 5 pointer (high 3 bits)
+pub const BPL5PTL: u32 = $0F2  // Bitplane 5 pointer (low 15 bits)
+pub const BPL6PTH: u32 = $0F4  // Bitplane 6 pointer (high 3 bits)
+pub const BPL6PTL: u32 = $0F6  // Bitplane 6 pointer (low 15 bits)
+pub const BPL7PTH: u32 = $0F8  // Bitplane 7 pointer (high 3 bits) [AGA only]
+pub const BPL7PTL: u32 = $0FA  // Bitplane 7 pointer (low 15 bits) [AGA only]
+pub const BPL8PTH: u32 = $0FC  // Bitplane 8 pointer (high 3 bits) [AGA only]
+pub const BPL8PTL: u32 = $0FE  // Bitplane 8 pointer (low 15 bits) [AGA only]
 
 //
 // Display Window Registers

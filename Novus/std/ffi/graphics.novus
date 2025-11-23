@@ -17,7 +17,7 @@ extern pub fn TextLength(rp: *RastPort, string: *u8, count: u16) -> i16
 extern pub fn Text(rp: *RastPort, string: *u8, count: u16) -> i32
 extern pub fn SetFont(rp: *RastPort, textFont: *TextFont) -> i32
 extern pub fn OpenFont(textAttr: *TextAttr) -> *TextFont
-extern pub fn CloseFont(textFont: *TextFont)
+extern pub fn CloseFont(consuming textFont: *TextFont)
 extern pub fn AskSoftStyle(rp: *RastPort) -> u32
 extern pub fn SetSoftStyle(rp: *RastPort, style: u32, enable: u32) -> u32
 extern pub fn AddBob(bob: *Bob, rp: *RastPort)
@@ -73,7 +73,7 @@ extern pub fn InitBitMap(bitMap: *BitMap, depth: i8, width: i16, height: i16)
 extern pub fn ScrollRaster(rp: *RastPort, dx: i16, dy: i16, xMin: i16, yMin: i16, xMax: i16, yMax: i16)
 extern pub fn WaitBOVP(vp: *ViewPort)
 extern pub fn GetSprite(sprite: *SimpleSprite, num: i16) -> i16
-extern pub fn FreeSprite(num: i16)
+extern pub fn FreeSprite(consuming num: i16)
 extern pub fn ChangeSprite(vp: *ViewPort, sprite: *SimpleSprite, newData: *u8)
 extern pub fn MoveSprite(vp: *ViewPort, sprite: *SimpleSprite, x: i16, y: i16)
 extern pub fn LockLayerRom(layer: *Layer)
@@ -87,24 +87,24 @@ extern pub fn AskFont(rp: *RastPort, textAttr: *TextAttr)
 extern pub fn AddFont(textFont: *TextFont)
 extern pub fn RemFont(textFont: *TextFont)
 extern pub fn AllocRaster(width: u16, height: u16) -> *u8
-extern pub fn FreeRaster(p: *u8, width: u16, height: u16)
+extern pub fn FreeRaster(consuming p: *u8, width: u16, height: u16)
 extern pub fn AndRectRegion(region: *Region, rectangle: *Rectangle)
 extern pub fn OrRectRegion(region: *Region, rectangle: *Rectangle) -> i16
 extern pub fn NewRegion() -> *Region
 extern pub fn ClearRectRegion(region: *Region, rectangle: *Rectangle) -> i16
 extern pub fn ClearRegion(region: *Region)
-extern pub fn DisposeRegion(region: *Region)
-extern pub fn FreeVPortCopLists(vp: *ViewPort)
-extern pub fn FreeCopList(copList: *CopList)
+extern pub fn DisposeRegion(consuming region: *Region)
+extern pub fn FreeVPortCopLists(consuming vp: *ViewPort)
+extern pub fn FreeCopList(consuming copList: *CopList)
 extern pub fn ClipBlit(srcRP: *RastPort, xSrc: i16, ySrc: i16, destRP: *RastPort, xDest: i16, yDest: i16, xSize: i16, ySize: i16, minterm: u8)
 extern pub fn XorRectRegion(region: *Region, rectangle: *Rectangle) -> i16
-extern pub fn FreeCprList(cprList: *cprlist)
+extern pub fn FreeCprList(consuming cprList: *cprlist)
 extern pub fn GetColorMap(entries: i32) -> *ColorMap
-extern pub fn FreeColorMap(colorMap: *ColorMap)
+extern pub fn FreeColorMap(consuming colorMap: *ColorMap)
 extern pub fn GetRGB4(colorMap: *ColorMap, entry: i32) -> u32
 extern pub fn ScrollVPort(vp: *ViewPort)
 extern pub fn UCopperListInit(uCopList: *UCopList, n: i16) -> *CopList
-extern pub fn FreeGBuffers(anOb: *AnimOb, rp: *RastPort, flag: i16)
+extern pub fn FreeGBuffers(consuming anOb: *AnimOb, rp: *RastPort, flag: i16)
 extern pub fn BltBitMapRastPort(srcBitMap: *BitMap, xSrc: i16, ySrc: i16, destRP: *RastPort, xDest: i16, yDest: i16, xSize: i16, ySize: i16, minterm: u8)
 extern pub fn OrRegionRegion(srcRegion: *Region, destRegion: *Region) -> i16
 extern pub fn XorRegionRegion(srcRegion: *Region, destRegion: *Region) -> i16
@@ -123,7 +123,7 @@ extern pub fn GfxLookUp(associateNode: *u8) -> *u8
 extern pub fn VideoControl(colorMap: *ColorMap, tagarray: *TagItem) -> i16
 // Varargs function VideoControlTags skipped - needs manual implementation
 extern pub fn OpenMonitor(monitorName: *u8, displayID: u32) -> *MonitorSpec
-extern pub fn CloseMonitor(monitorSpec: *MonitorSpec) -> i16
+extern pub fn CloseMonitor(consuming monitorSpec: *MonitorSpec) -> i16
 extern pub fn FindDisplayInfo(displayID: u32) -> *u8 /* DisplayInfoHandle */
 extern pub fn NextDisplayInfo(displayID: u32) -> u32
 extern pub fn GetDisplayInfoData(handle: *u8 /* const DisplayInfoHandle */, buf: *u8, size: u32, tagID: u32, displayID: u32) -> u32
@@ -152,7 +152,7 @@ extern pub fn SetChipRev(want: u32) -> u32
 extern pub fn SetABPenDrMd(rp: *RastPort, apen: u32, bpen: u32, drawmode: u32)
 extern pub fn GetRGB32(cm: *ColorMap, firstcolor: u32, ncolors: u32, table: *u8)
 extern pub fn AllocBitMap(sizex: u32, sizey: u32, depth: u32, flags: u32, friend_bitmap: *BitMap) -> *BitMap
-extern pub fn FreeBitMap(bm: *BitMap)
+extern pub fn FreeBitMap(consuming bm: *BitMap)
 extern pub fn GetExtSpriteA(ss: *ExtSprite, tags: *TagItem) -> i32
 // Varargs function GetExtSprite skipped - needs manual implementation
 extern pub fn CoerceMode(vp: *ViewPort, monitorid: u32, flags: u32) -> u32
@@ -161,7 +161,7 @@ extern pub fn ReleasePen(cm: *ColorMap, n: u32)
 extern pub fn ObtainPen(cm: *ColorMap, n: u32, r: u32, g: u32, b: u32, f: i32) -> u32
 extern pub fn GetBitMapAttr(bm: *BitMap, attrnum: u32) -> u32
 extern pub fn AllocDBufInfo(vp: *ViewPort) -> *DBufInfo
-extern pub fn FreeDBufInfo(dbi: *DBufInfo)
+extern pub fn FreeDBufInfo(consuming dbi: *DBufInfo)
 extern pub fn SetOutlinePen(rp: *RastPort, pen: u32) -> u32
 extern pub fn SetWriteMask(rp: *RastPort, msk: u32) -> u32
 extern pub fn SetMaxPen(rp: *RastPort, maxpen: u32)
@@ -172,7 +172,7 @@ extern pub fn AllocSpriteDataA(bm: *BitMap, tags: *TagItem) -> *ExtSprite
 // Varargs function AllocSpriteData skipped - needs manual implementation
 extern pub fn ChangeExtSpriteA(vp: *ViewPort, oldsprite: *ExtSprite, newsprite: *ExtSprite, tags: *TagItem) -> i32
 // Varargs function ChangeExtSprite skipped - needs manual implementation
-extern pub fn FreeSpriteData(sp: *ExtSprite)
+extern pub fn FreeSpriteData(consuming sp: *ExtSprite)
 extern pub fn SetRPAttrsA(rp: *RastPort, tags: *TagItem)
 // Varargs function SetRPAttrs skipped - needs manual implementation
 extern pub fn GetRPAttrsA(rp: *RastPort, tags: *TagItem)

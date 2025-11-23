@@ -1,9 +1,9 @@
 // Prime Numbers up to 100
 // Simple example demonstrating loops and Vec
 
-from std::io::core import write
+from std::io::file import write
 from std::strings::core import Str
-from std::collections::core import Vec
+from std::collections::vec import Vec
 
 pub fn main() -> i32 {
     write("Prime numbers up to 100:\n\n")

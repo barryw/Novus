@@ -1,10 +1,10 @@
 // ANSI Menu Demo - Simple styled menu display
 //
 // Demonstrates combining styles, colors, and cursor positioning
-// using the std::console::ansi library.
+// using the std::io::ansi library.
 
-from std::console::ansi import *
-from std::io::core import write
+from std::io::ansi import *
+from std::io::file import write
 
 pub fn main() -> i32 {
     let rst = reset()

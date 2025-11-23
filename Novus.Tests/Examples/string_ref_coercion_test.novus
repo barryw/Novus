@@ -1,7 +1,7 @@
 // Test automatic string literal to reference coercion
 // This should compile without errors
 
-from std::graphics::intuition import WindowHandle
+from std::ui::window import WindowHandle
 
 pub fn main() -> i32 {
     // Before: had to write &"Novus Window"

@@ -15,13 +15,13 @@
 // memory for NewMenu structs and copy the data.
 
 from std::core import Option, Result, Vec
-from std::error::core import IntuitionError, StringError
+from std::error::errors import IntuitionError, StringError
 from std::ffi::amiga_structs import Menu, MenuItem, VisualInfo, Window, Screen, TagItem
 from std::ffi::gadtools import NewMenu
 from std::ffi::amiga_consts import *
 from std::ffi::intuition import SetMenuStrip, ClearMenuStrip, ItemAddress
 from std::ffi::gadtools import CreateMenusA, LayoutMenusA, FreeMenus, GetVisualInfoA, FreeVisualInfo
-from std::ffi::exec import AllocVec, FreeVec, CopyMem, MEMF_PUBLIC, MEMF_CLEAR
+from std::ffi::exec import AllocVec, FreeVec, CopyMem
 from std::strings::core import Str, String
 
 // ============================================================================

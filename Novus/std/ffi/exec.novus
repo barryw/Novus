@@ -5,6 +5,9 @@
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
 
+// NOTE: Memory flags should be imported from std::ffi::amiga_consts
+// Example: from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR, MEMF_PUBLIC
+
 // ============================================================================
 // Library Functions
 // ============================================================================
@@ -30,13 +33,13 @@ extern pub fn AddIntServer(intNumber: i32, interrupt: *Interrupt)
 extern pub fn RemIntServer(intNumber: i32, interrupt: *Interrupt)
 extern pub fn Cause(interrupt: *Interrupt)
 extern pub fn Allocate(freeList: *MemHeader, byteSize: u32) -> *u8
-extern pub fn Deallocate(freeList: *MemHeader, memoryBlock: *u8, byteSize: u32)
+extern pub fn Deallocate(freeList: *MemHeader, consuming memoryBlock: *u8, byteSize: u32)
 extern pub fn AllocMem(byteSize: u32, requirements: u32) -> *u8
 extern pub fn AllocAbs(byteSize: u32, location: *u8) -> *u8
-extern pub fn FreeMem(memoryBlock: *u8, byteSize: u32)
+extern pub fn FreeMem(consuming memoryBlock: *u8, byteSize: u32)
 extern pub fn AvailMem(requirements: u32) -> u32
 extern pub fn AllocEntry(entry: *MemList) -> *MemList
-extern pub fn FreeEntry(entry: *MemList)
+extern pub fn FreeEntry(consuming entry: *MemList)
 extern pub fn Insert(list: *List, node: *Node, pred: *Node)
 extern pub fn AddHead(list: *List, node: *Node)
 extern pub fn AddTail(list: *List, node: *Node)
@@ -54,9 +57,9 @@ extern pub fn SetExcept(newSignals: u32, signalSet: u32) -> u32
 extern pub fn Wait(signalSet: u32) -> u32
 extern pub fn Signal(task: *Task, signalSet: u32)
 extern pub fn AllocSignal(signalNum: i8) -> i8
-extern pub fn FreeSignal(signalNum: i8)
+extern pub fn FreeSignal(consuming signalNum: i8)
 extern pub fn AllocTrap(trapNum: i32) -> i32
-extern pub fn FreeTrap(trapNum: i32)
+extern pub fn FreeTrap(consuming trapNum: i32)
 extern pub fn AddPort(port: *MsgPort)
 extern pub fn RemPort(port: *MsgPort)
 extern pub fn PutMsg(port: *MsgPort, message: *Message)
@@ -67,13 +70,13 @@ extern pub fn FindPort(name: *u8) -> *MsgPort
 extern pub fn AddLibrary(library: *Library)
 extern pub fn RemLibrary(library: *Library)
 extern pub fn OldOpenLibrary(libName: *u8) -> *Library
-extern pub fn CloseLibrary(library: *Library)
+extern pub fn CloseLibrary(consuming library: *Library)
 extern pub fn SetFunction(library: *Library, funcOffset: i32, newFunction: *u8) -> *u8
 extern pub fn SumLibrary(library: *Library)
 extern pub fn AddDevice(device: *Device)
 extern pub fn RemDevice(device: *Device)
 extern pub fn OpenDevice(devName: *u8, unit: u32, ioRequest: *IORequest, flags: u32) -> i8
-extern pub fn CloseDevice(ioRequest: *IORequest)
+extern pub fn CloseDevice(consuming ioRequest: *IORequest)
 extern pub fn DoIO(ioRequest: *IORequest) -> i8
 extern pub fn SendIO(ioRequest: *IORequest)
 extern pub fn CheckIO(ioRequest: *IORequest) -> *IORequest
@@ -105,16 +108,16 @@ extern pub fn CacheClearU()
 extern pub fn CacheClearE(address: *u8, length: u32, caches: u32)
 extern pub fn CacheControl(cacheBits: u32, cacheMask: u32) -> u32
 extern pub fn CreateIORequest(port: *MsgPort, size: u32) -> *u8
-extern pub fn DeleteIORequest(iorequest: *u8)
+extern pub fn DeleteIORequest(consuming iorequest: *u8)
 extern pub fn CreateMsgPort() -> *MsgPort
-extern pub fn DeleteMsgPort(port: *MsgPort)
+extern pub fn DeleteMsgPort(consuming port: *MsgPort)
 extern pub fn ObtainSemaphoreShared(sigSem: *SignalSemaphore)
 extern pub fn AllocVec(byteSize: u32, requirements: u32) -> *u8
-extern pub fn FreeVec(memoryBlock: *u8)
+extern pub fn FreeVec(consuming memoryBlock: *u8)
 extern pub fn CreatePool(requirements: u32, puddleSize: u32, threshSize: u32) -> *u8
-extern pub fn DeletePool(poolHeader: *u8)
+extern pub fn DeletePool(consuming poolHeader: *u8)
 extern pub fn AllocPooled(poolHeader: *u8, memSize: u32) -> *u8
-extern pub fn FreePooled(poolHeader: *u8, memory: *u8, memSize: u32)
+extern pub fn FreePooled(poolHeader: *u8, consuming memory: *u8, memSize: u32)
 extern pub fn AttemptSemaphoreShared(sigSem: *SignalSemaphore) -> u32
 
 // Void pointer wrappers for semaphore functions (to avoid FFI type issues in generated C)
