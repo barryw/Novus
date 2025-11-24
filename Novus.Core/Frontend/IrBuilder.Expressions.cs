@@ -495,7 +495,56 @@ public partial class IrBuilder
                     }
                 }
 
-                // Coercion 4: String/Str → &String/&Str for reference parameters
+                // Coercion 4: &[T; N] → Slice<T> (sized array reference to Slice struct)
+                // When a function expects &[T] (unsized slice), actually pass Slice<T>
+                // This is because &[T] is syntactic sugar for Slice<T>
+                if (paramType is IrReferenceType expectedSliceRef &&
+                    expectedSliceRef.PointeeType is IrArrayType expectedSliceArray &&
+                    expectedSliceArray.Length == -1 &&
+                    argValue.Type is IrReferenceType actualArrayRef &&
+                    actualArrayRef.PointeeType is IrArrayType actualArray &&
+                    actualArray.Length >= 0 &&
+                    expectedSliceArray.ElementType.Equals(actualArray.ElementType))
+                {
+                    // The function parameter is &[T] which is unsized slice syntax
+                    // We need to create a Slice<T> struct from the array reference
+                    // First, look up the Slice<T> struct
+                    var sliceStructDef = _module.Structs.FirstOrDefault(s => s.StructName == "Slice");
+                    if (sliceStructDef != null)
+                    {
+                        // Check if we already have Slice<ElementType> monomorphized
+                        var elementType = expectedSliceArray.ElementType;
+                        var sliceCacheKey = $"Slice<{elementType.Name}>";
+                        var monomorphizedSliceStruct = _module.Structs.FirstOrDefault(s => s.CacheKey == sliceCacheKey);
+
+                        if (monomorphizedSliceStruct != null)
+                        {
+                            // Create Slice<T> from &[T; N]
+                            // Get pointer to first element
+                            var elemPtrType = _typeInterner.GetPointerType(elementType);
+                            var ptrValue = new IrCastValue(argValue, argValue.Type, elemPtrType);
+
+                            // Create length constant
+                            var lenValue = new IrConstant(actualArray.Length, IrIntType.U32);
+
+                            // Create Slice struct literal
+                            var sliceFields = new Dictionary<string, IrValue>
+                            {
+                                { "ptr", ptrValue },
+                                { "len", lenValue }
+                            };
+
+                            var sliceValue = new IrStructLiteral(monomorphizedSliceStruct, sliceFields);
+                            arguments[i] = sliceValue;
+                            continue;
+                        }
+                    }
+
+                    // Fallback: if Slice<T> isn't available, just pass the reference as-is
+                    // This will likely fail type checking later
+                }
+
+                // Coercion 5: String/Str → &String/&Str for reference parameters
                 // Automatically create a reference when a value is passed to a function expecting a reference
                 if (paramType is IrReferenceType expectedRefType &&
                     argValue.Type is IrStructType argStructType &&
@@ -1391,6 +1440,66 @@ public partial class IrBuilder
             {
                 typeName = refEnum.EnumName;
             }
+            else if (refType.PointeeType is IrArrayType arrayType && arrayType.Length == -1)
+            {
+                // Handle unsized slices &[T] which are fat pointers at runtime
+                // They should work like Slice<T> struct
+                // For now, only .len() is supported as an intrinsic
+                if (methodName == "len")
+                {
+                    // Treat &[T] like Slice<T> and access the .len field
+                    // At runtime, &[T] parameters are passed as Slice<T> structs
+                    // So we can access the len field directly from the receiver
+
+                    // The receiver should be the slice value (which is actually a Slice<T> at runtime)
+                    // We need to access the .len field
+                    var lenFieldName = "len";
+                    var lenResultName = $"%t{_tempCounter++}";
+
+                    // Try to find Slice<ElementType> to get the field offset
+                    var elementType = arrayType.ElementType;
+                    var sliceCacheKey = $"Slice<{elementType.Name}>";
+                    var sliceStruct = _module.Structs.FirstOrDefault(s => s.CacheKey == sliceCacheKey);
+
+                    if (sliceStruct != null)
+                    {
+                        var lenField = sliceStruct.GetField(lenFieldName);
+                        if (lenField != null)
+                        {
+                            // Generate member access to the len field
+                            var memberAccess = new IrMemberAccess(lenResultName, receiver, lenFieldName, lenField.Type, lenField.Offset);
+                            _currentBlock!.AddInstruction(memberAccess);
+                            return new IrVariable(lenResultName, lenField.Type);
+                        }
+                    }
+
+                    // Fallback error: Slice<T> struct not found
+                    var lenErrorLocation = GetLocation(callCtx);
+                    _diagnostics.ReportError(
+                        ErrorCodes.MethodNotFound,
+                        $"Cannot call .len() on slice '{receiverType.Name}': Slice<{elementType.Name}> type not found",
+                        lenErrorLocation,
+                        helpTexts: new List<string>
+                        {
+                            "Make sure to import std::memory::slice",
+                            "The Slice<T> struct must be available for slice operations"
+                        }
+                    );
+                    return null;
+                }
+
+                var errorLocation = GetLocation(callCtx);
+                _diagnostics.ReportError(
+                    ErrorCodes.MethodNotFound,
+                    $"Method '{methodName}' not found for slice type '{receiverType.Name}'",
+                    errorLocation,
+                    helpTexts: new List<string>
+                    {
+                        "Slices currently only support the .len() method"
+                    }
+                );
+                return null;
+            }
             else
             {
                 // Allow methods on primitive types (u64, bool, etc.)
@@ -1740,7 +1849,13 @@ public partial class IrBuilder
         // For variables, struct members, array elements, etc., create a pointer
         // In Novus, & produces pointer types, not reference types
         // Visit the expression to get its value
-        var value = (IrValue)Visit(exprContext)!;
+        var value = Visit(exprContext) as IrValue;
+
+        // If expression had an error, bail out
+        if (value == null)
+        {
+            return null;
+        }
 
         // Create a pointer type (& in Novus produces *T, not &T)
         var ptrType = _typeInterner.GetPointerType(value.Type);
@@ -1755,8 +1870,14 @@ public partial class IrBuilder
 
     public override object? VisitIndexExpr([NotNull] NovusParser.IndexExprContext context)
     {
-        var baseExpr = (IrValue)Visit(context.expression(0))!;
-        var indexExpr = (IrValue)Visit(context.expression(1))!;
+        var baseExpr = Visit(context.expression(0)) as IrValue;
+        var indexExpr = Visit(context.expression(1)) as IrValue;
+
+        // If either expression had an error, bail out
+        if (baseExpr == null || indexExpr == null)
+        {
+            return null;
+        }
 
         // Handle array indexing
         if (baseExpr.Type is IrArrayType arrayType)
@@ -1926,8 +2047,15 @@ public partial class IrBuilder
 
     public override object? VisitAdditiveExpr([NotNull] NovusParser.AdditiveExprContext context)
     {
-        var left = (IrValue)Visit(context.expression(0))!;
-        var right = (IrValue)Visit(context.expression(1))!;
+        var left = Visit(context.expression(0)) as IrValue;
+        var right = Visit(context.expression(1)) as IrValue;
+
+        // If either operand had an error, bail out
+        if (left == null || right == null)
+        {
+            return null;
+        }
+
         var op = context.GetChild(1).GetText() == "+" ? IrBinaryOp.OpKind.Add : IrBinaryOp.OpKind.Sub;
 
         var tempName = $"%t{_tempCounter++}";
@@ -1939,8 +2067,14 @@ public partial class IrBuilder
 
     public override object? VisitShiftExpr([NotNull] NovusParser.ShiftExprContext context)
     {
-        var left = (IrValue)Visit(context.expression(0))!;
-        var right = (IrValue)Visit(context.expression(1))!;
+        var left = Visit(context.expression(0)) as IrValue;
+        var right = Visit(context.expression(1)) as IrValue;
+
+        // If either operand had an error, bail out
+        if (left == null || right == null)
+        {
+            return null;
+        }
 
         // Determine which shift operator is used
         var opKind = context.LSHIFT() != null ? IrBinaryOp.OpKind.Shl : IrBinaryOp.OpKind.Shr;
@@ -1954,8 +2088,14 @@ public partial class IrBuilder
 
     public override object? VisitBitwiseAndExpr([NotNull] NovusParser.BitwiseAndExprContext context)
     {
-        var left = (IrValue)Visit(context.expression(0))!;
-        var right = (IrValue)Visit(context.expression(1))!;
+        var left = Visit(context.expression(0)) as IrValue;
+        var right = Visit(context.expression(1)) as IrValue;
+
+        // If either operand had an error, bail out
+        if (left == null || right == null)
+        {
+            return null;
+        }
 
         var tempName = $"%t{_tempCounter++}";
         var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.And, left, right, left.Type);
@@ -1966,8 +2106,14 @@ public partial class IrBuilder
 
     public override object? VisitBitwiseXorExpr([NotNull] NovusParser.BitwiseXorExprContext context)
     {
-        var left = (IrValue)Visit(context.expression(0))!;
-        var right = (IrValue)Visit(context.expression(1))!;
+        var left = Visit(context.expression(0)) as IrValue;
+        var right = Visit(context.expression(1)) as IrValue;
+
+        // If either operand had an error, bail out
+        if (left == null || right == null)
+        {
+            return null;
+        }
 
         var tempName = $"%t{_tempCounter++}";
         var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Xor, left, right, left.Type);
@@ -1978,8 +2124,14 @@ public partial class IrBuilder
 
     public override object? VisitBitwiseOrExpr([NotNull] NovusParser.BitwiseOrExprContext context)
     {
-        var left = (IrValue)Visit(context.expression(0))!;
-        var right = (IrValue)Visit(context.expression(1))!;
+        var left = Visit(context.expression(0)) as IrValue;
+        var right = Visit(context.expression(1)) as IrValue;
+
+        // If either operand had an error, bail out
+        if (left == null || right == null)
+        {
+            return null;
+        }
 
         var tempName = $"%t{_tempCounter++}";
         var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Or, left, right, left.Type);
@@ -1991,7 +2143,13 @@ public partial class IrBuilder
     public override object? VisitCastExpr([NotNull] NovusParser.CastExprContext context)
     {
         var targetType = ParseType(context.type());
-        var value = (IrValue)Visit(context.expression())!;
+        var value = Visit(context.expression()) as IrValue;
+
+        // If child expression had an error, bail out
+        if (value == null)
+        {
+            return null;
+        }
 
         // If it's already a constant, just change its type
         if (value is IrConstant constant)
@@ -2007,8 +2165,14 @@ public partial class IrBuilder
 
     public override object? VisitMultiplicativeExpr([NotNull] NovusParser.MultiplicativeExprContext context)
     {
-        var left = (IrValue)Visit(context.expression(0))!;
-        var right = (IrValue)Visit(context.expression(1))!;
+        var left = Visit(context.expression(0)) as IrValue;
+        var right = Visit(context.expression(1)) as IrValue;
+
+        // If either operand had an error, bail out
+        if (left == null || right == null)
+        {
+            return null;
+        }
 
         var opText = context.GetChild(1).GetText();
         var op = opText switch
@@ -2028,8 +2192,14 @@ public partial class IrBuilder
 
     public override object? VisitComparisonExpr([NotNull] NovusParser.ComparisonExprContext context)
     {
-        var left = (IrValue)Visit(context.expression(0))!;
-        var right = (IrValue)Visit(context.expression(1))!;
+        var left = Visit(context.expression(0)) as IrValue;
+        var right = Visit(context.expression(1)) as IrValue;
+
+        // If either operand had an error, bail out
+        if (left == null || right == null)
+        {
+            return null;
+        }
 
         var opText = context.GetChild(1).GetText();
         var op = opText switch
@@ -2059,7 +2229,13 @@ public partial class IrBuilder
         // Handle dereference specially - we need to determine the type first
         if (op == "*")
         {
-            var operand = (IrValue)Visit(context.expression())!;
+            var operand = Visit(context.expression()) as IrValue;
+
+            // If operand had an error, bail out
+            if (operand == null)
+            {
+                return null;
+            }
 
             // Determine the pointee type
             IrType pointeeType;
@@ -2091,7 +2267,13 @@ public partial class IrBuilder
         }
 
         // For other unary ops, visit the operand first
-        var operandValue = (IrValue)Visit(context.expression())!;
+        var operandValue = Visit(context.expression()) as IrValue;
+
+        // If operand had an error, bail out
+        if (operandValue == null)
+        {
+            return null;
+        }
 
         if (op == "!")
         {
@@ -2883,7 +3065,13 @@ public partial class IrBuilder
     public override object? VisitLogicalAndExpr([NotNull] NovusParser.LogicalAndExprContext context)
     {
         // Short-circuit evaluation: if left is false, don't evaluate right
-        var left = (IrValue)Visit(context.expression(0))!;
+        var left = Visit(context.expression(0)) as IrValue;
+
+        // If left operand had an error, bail out
+        if (left == null)
+        {
+            return null;
+        }
 
         var evalRightLabel = $"and_right_{_labelCounter}";
         var setTrueLabel = $"and_true_{_labelCounter}";
@@ -2902,7 +3090,13 @@ public partial class IrBuilder
 
         // Evaluate right
         _currentBlock!.AddInstruction(new IrLabel(evalRightLabel));
-        var right = (IrValue)Visit(context.expression(1))!;
+        var right = Visit(context.expression(1)) as IrValue;
+
+        // If right operand had an error, bail out
+        if (right == null)
+        {
+            return null;
+        }
 
         // If right is true, set result to 1, otherwise 0
         _currentBlock!.AddInstruction(new IrConditionalBranch(right, setTrueLabel, setFalseLabel));
@@ -2925,7 +3119,13 @@ public partial class IrBuilder
     public override object? VisitLogicalOrExpr([NotNull] NovusParser.LogicalOrExprContext context)
     {
         // Short-circuit evaluation: if left is true, don't evaluate right
-        var left = (IrValue)Visit(context.expression(0))!;
+        var left = Visit(context.expression(0)) as IrValue;
+
+        // If left operand had an error, bail out
+        if (left == null)
+        {
+            return null;
+        }
 
         var evalRightLabel = $"or_right_{_labelCounter}";
         var setTrueLabel = $"or_true_{_labelCounter}";
@@ -2944,7 +3144,13 @@ public partial class IrBuilder
 
         // Evaluate right
         _currentBlock!.AddInstruction(new IrLabel(evalRightLabel));
-        var right = (IrValue)Visit(context.expression(1))!;
+        var right = Visit(context.expression(1)) as IrValue;
+
+        // If right operand had an error, bail out
+        if (right == null)
+        {
+            return null;
+        }
 
         // If right is true, set result to 1, otherwise 0
         _currentBlock!.AddInstruction(new IrConditionalBranch(right, setTrueLabel, setFalseLabel));
@@ -2967,7 +3173,13 @@ public partial class IrBuilder
     public override object? VisitTernaryExpr([NotNull] NovusParser.TernaryExprContext context)
     {
         // Ternary operator: condition ? trueExpr : falseExpr
-        var condition = (IrValue)Visit(context.expression(0))!;
+        var condition = Visit(context.expression(0)) as IrValue;
+
+        // If condition had an error, bail out
+        if (condition == null)
+        {
+            return null;
+        }
 
         var trueLabel = $"ternary_true_{_labelCounter}";
         var falseLabel = $"ternary_false_{_labelCounter}";

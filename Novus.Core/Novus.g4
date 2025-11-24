@@ -56,7 +56,7 @@ constDeclaration
     ;
 
 staticDeclaration
-    : attribute* (KW_PUB | KW_INTERNAL)? KW_STATIC KW_MUT? IDENTIFIER ':' type '=' expression NEWLINE*
+    : attribute* (KW_PUB | KW_INTERNAL)? KW_STATIC KW_MUT? IDENTIFIER (':' type)? '=' expression NEWLINE*
     ;
 
 globalVariableDeclaration

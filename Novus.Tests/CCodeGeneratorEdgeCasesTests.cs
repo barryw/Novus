@@ -271,7 +271,7 @@ pub fn neq_test(a: i32, b: i32) -> bool {
     {
         var source = @"
 pub fn array_repeat() -> i32 {
-    var arr: [i32; 5] = [42; 5]
+    var arr = [42; 5]
     return arr[0]
 }";
 
@@ -454,7 +454,7 @@ pub fn while_loop(n: i32) -> i32 {
     {
         var source = @"
 pub fn zero_array() -> i32 {
-    var arr: [i32; 10] = [0; 10]
+    var arr = [0; 10]
     return arr[5]
 }";
 
@@ -591,5 +591,72 @@ impl Point {
 
         // Should generate direct field store
         Assert.Contains("->x =", code);
+    }
+
+    [Fact]
+    public void CCodeGen_DivisionByZeroCheck_TupleReturn_GeneratesCorrectReturnType()
+    {
+        // Regression test for division-by-zero check with non-int return types
+        // Previously generated "return 1;" for tuple-returning functions, causing VBCC errors
+        var source = @"
+pub fn divide_values(a: u8, b: u8, divisor: u8) -> (u8, u8) {
+    let x = a / divisor
+    let y = b / divisor
+    return (x, y)
+}";
+
+        var module = BuildIR(source);
+        var code = GenerateCCode(module, BuildMode.Debug);
+
+        // Should call __novus_div_check
+        Assert.Contains("__novus_div_check", code);
+
+        // Should NOT have "return 1;" which is invalid for tuple return type
+        Assert.DoesNotContain("return 1;", code);
+
+        // Should have zero-initialized tuple return after error path (VBCC compatible)
+        Assert.Contains("return (Tuple_u8_u8){0};", code);
+    }
+
+    [Fact]
+    public void CCodeGen_DivisionByZeroCheck_VoidReturn_GeneratesPlainReturn()
+    {
+        // Test that void-returning functions get plain "return;" after div check
+        var source = @"
+pub fn divide_void(a: u8, divisor: u8) {
+    let x = a / divisor
+}";
+
+        var module = BuildIR(source);
+        var code = GenerateCCode(module, BuildMode.Debug);
+
+        // Should call __novus_div_check
+        Assert.Contains("__novus_div_check", code);
+
+        // Should have plain return (not "return 1;")
+        // The error path should have "return;" without a value
+        var lines = code.Split('\n');
+        bool foundDivCheck = false;
+        bool foundPlainReturn = false;
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            if (lines[i].Contains("__novus_div_check"))
+            {
+                foundDivCheck = true;
+                // Check the next few lines for the return statement
+                for (int j = i + 1; j < Math.Min(i + 5, lines.Length); j++)
+                {
+                    if (lines[j].Trim() == "return;")
+                    {
+                        foundPlainReturn = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        Assert.True(foundDivCheck, "Should contain __novus_div_check call");
+        Assert.True(foundPlainReturn, "Should contain plain 'return;' after error handler for void function");
     }
 }

@@ -438,7 +438,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let arr: [i32; 3] = [1, 2, 3]
+    let arr = [1, 2, 3]
     return 42 if arr[0] < arr[2]
     return 0
 }";

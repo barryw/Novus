@@ -941,7 +941,56 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     {
         var name = context.IDENTIFIER().GetText();
         var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
-        var type = ParseType(context.type());
+
+        // Type annotation is optional - if not provided, type will be inferred from initializer
+        IrType type;
+        if (context.type() != null)
+        {
+            type = ParseType(context.type());
+        }
+        else
+        {
+            // Infer type from initializer expression
+            // For array literals, we can infer the type directly
+            var initExpr = context.expression();
+
+            // Check if it's a primary expression wrapping an array literal
+            if (initExpr is NovusParser.PrimaryExprContext primaryExpr)
+            {
+                var primaryInner = primaryExpr.primaryExpression();
+                if (primaryInner is NovusParser.ArrayLiteralContext arrayLit)
+                {
+                    // Infer array type from literal
+                    type = InferArrayLiteralType(arrayLit);
+                }
+                else if (primaryInner is NovusParser.ArrayRepeatLiteralContext arrayRepeat)
+                {
+                    // Infer array type from repeat literal [value; count]
+                    var expressions = arrayRepeat.expression();
+                    if (expressions.Length == 2)
+                    {
+                        var elementType = InferExpressionType(expressions[0]);
+                        // Try to extract count - for now use placeholder
+                        type = new IrArrayType(elementType, 1); // Count will be determined in IR building
+                    }
+                    else
+                    {
+                        type = IrVoidType.Instance;
+                    }
+                }
+                else
+                {
+                    // For other expressions, use a placeholder type
+                    type = IrVoidType.Instance;
+                }
+            }
+            else
+            {
+                // For complex expressions, use a placeholder type
+                // The actual type will be determined during IR building
+                type = IrVoidType.Instance;
+            }
+        }
 
         // Check for mut keyword
         var isMutable = false;
@@ -975,6 +1024,49 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         _globalVariables[name] = new VariableSymbol(name, type, IsMutable: isMutable, location, Id: _nextVariableId++);
+    }
+
+    private IrType InferArrayLiteralType(NovusParser.ArrayLiteralContext arrayLit)
+    {
+        var expressions = arrayLit.expression();
+        if (expressions.Length == 0)
+        {
+            // Empty array - return void as placeholder (error will be reported during IR building)
+            return IrVoidType.Instance;
+        }
+
+        // Infer element type from first element
+        var firstExpr = expressions[0];
+        var elementType = InferExpressionType(firstExpr);
+        var arrayLength = expressions.Length;
+
+        return new IrArrayType(elementType, arrayLength);
+    }
+
+    private IrType InferExpressionType(NovusParser.ExpressionContext expr)
+    {
+        // Simple type inference for literals and basic expressions
+        // This is a simplified version that handles common cases
+        if (expr is NovusParser.IntegerLiteralContext)
+        {
+            return IrIntType.I32; // Default integer type
+        }
+        else if (expr is NovusParser.HexLiteralContext)
+        {
+            var hexText = expr.GetText();
+            if (hexText.EndsWith("u16"))
+                return IrIntType.U16;
+            if (hexText.EndsWith("u32"))
+                return IrIntType.U32;
+            return IrIntType.I32;
+        }
+        else if (expr is NovusParser.BoolLiteralContext)
+        {
+            return IrBoolType.Instance;
+        }
+
+        // For complex expressions, use i32 as default
+        return IrIntType.I32;
     }
 
     private void RegisterGlobalVariable(NovusParser.GlobalVariableDeclarationContext context)
@@ -5766,6 +5858,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                         continue;
                     }
 
+                    // Check if we can coerce &[T; N] to &[T] (sized to unsized slice)
+                    if (CanCoerceSizedArrayRefToUnsizedSliceRef(paramType, argType))
+                    {
+                        // Allow this coercion - IrBuilder will handle unsizing
+                        continue;
+                    }
+
                     // Check if we can coerce Str to &Str
                     if (CanCoerceStrToStrRef(paramType, argType))
                     {
@@ -6199,6 +6298,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                         if (CanCoerceArrayToSlice(paramType, argType))
                         {
                             // Allow this coercion - IrBuilder will handle Slice construction
+                            continue;
+                        }
+
+                        // Check if we can coerce &[T; N] to &[T] (sized to unsized slice)
+                        if (CanCoerceSizedArrayRefToUnsizedSliceRef(paramType, argType))
+                        {
+                            // Allow this coercion - IrBuilder will handle unsizing
                             continue;
                         }
 
@@ -8498,6 +8604,27 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 // Verify array element type matches Slice element type
                 return TypesCompatible(slicePtrType.PointeeType, arrayType.ElementType);
             }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Check if we can coerce &[T; N] → &[T] (sized array ref to unsized slice ref)
+    /// This allows passing array references to functions expecting slice references
+    /// </summary>
+    private bool CanCoerceSizedArrayRefToUnsizedSliceRef(IrType expectedType, IrType actualType)
+    {
+        // Check if expected is &[T] (unsized, length -1) and actual is &[T; N] (sized)
+        if (expectedType is IrReferenceType expectedRef &&
+            expectedRef.PointeeType is IrArrayType expectedArray &&
+            expectedArray.Length == -1 &&
+            actualType is IrReferenceType actualRef &&
+            actualRef.PointeeType is IrArrayType actualArray &&
+            actualArray.Length >= 0)
+        {
+            // Verify element types match
+            return TypesCompatible(expectedArray.ElementType, actualArray.ElementType);
         }
 
         return false;

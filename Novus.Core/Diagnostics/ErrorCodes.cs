@@ -73,6 +73,7 @@ public static class ErrorCodes
     public const string InvalidArrayRepeatCount = "E2601";
     public const string UnknownEscapeSequence = "E2602";
     public const string UnmatchedBracesInFString = "E2603";
+    public const string RedundantTypeAnnotation = "E2604";
 
     // ========================================================================
     // E27XX: Struct/Enum Errors

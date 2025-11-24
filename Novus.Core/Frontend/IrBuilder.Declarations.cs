@@ -117,6 +117,12 @@ public partial class IrBuilder
     {
         var name = context.IDENTIFIER().GetText();
 
+        // Reject explicit array type annotations - they are redundant and not allowed
+        if (RejectArrayTypeAnnotation(context.type(), name, context))
+        {
+            return;
+        }
+
         // Check for pub/internal keywords
         var (visibility, _, _) = AstModifierHelper.ParseModifiers(context, 3);
 
@@ -154,7 +160,12 @@ public partial class IrBuilder
     private void RegisterStatic(NovusParser.StaticDeclarationContext context)
     {
         var name = context.IDENTIFIER().GetText();
-        var type = ParseType(context.type());
+
+        // Reject explicit array type annotations - they are redundant and not allowed
+        if (RejectArrayTypeAnnotation(context.type(), name, context))
+        {
+            return;
+        }
 
         // Check for pub/internal/mut keywords
         var (visibility, _, isMutable) = AstModifierHelper.ParseModifiers(context, 5);
@@ -175,6 +186,19 @@ public partial class IrBuilder
 
         if (initialValue != null)
         {
+            // Handle type - either explicit or inferred from initial value
+            IrType type;
+            if (context.type() != null)
+            {
+                // Explicit type annotation provided
+                type = ParseType(context.type());
+            }
+            else
+            {
+                // Infer type from the initial value
+                type = initialValue.Type;
+            }
+
             var staticVar = new IrStaticVariable(name, type, visibility, isMutable, initialValue);
             _module.StaticVariables.Add(staticVar);
         }

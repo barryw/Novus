@@ -30,7 +30,7 @@ const SPLIT_LINE: u16 = 128  // Split at middle of screen
 // Sprite data for multiplexing demo
 // Simple 16x16 sprite (ball shape)
 // Each sprite is 4 words: VSTART/VSTOP control words + 2 words of image data per line
-static SPRITE_BALL: [u16; 72] = [
+static SPRITE_BALL = [
     // Control words
     $3C00, $4000,  // Start at line 60, end at line 76, attached
 
@@ -57,7 +57,7 @@ static SPRITE_BALL: [u16; 72] = [
 ]
 
 // Create empty sprite for sprites we're not using
-static SPRITE_EMPTY: [u16; 4] = [
+static SPRITE_EMPTY = [
     $0000, $0000,  // Start at line 0, end immediately
     $0000, $0000   // End control
 ]

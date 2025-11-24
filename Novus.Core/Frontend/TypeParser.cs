@@ -399,15 +399,17 @@ public class TypeParser
     }
 
     /// <summary>
-    /// Parse array type with inferred size: [i32]
-    /// Size will be inferred from the initializer expression
+    /// Parse array type with inferred/unsized: [i32]
+    /// When used in type position (not initialization), this represents an unsized slice
+    /// When used in initialization, size will be inferred from the initializer expression
     /// </summary>
     private IrType ParseArrayTypeInferred(NovusParser.ArrayTypeInferredContext context)
     {
-        // For inferred size arrays, we create a placeholder with size -1
+        // For unsized/inferred size arrays, we create a placeholder with size -1
         // The actual size will be determined when we parse the array literal initializer
+        // OR this represents an unsized slice type (runtime fat pointer)
         var elementType = ParseType(context.type());
-        // Use size -1 as a sentinel value to indicate "size to be inferred"
+        // Use size -1 as a sentinel value to indicate "size to be inferred" or "unsized slice"
         return _context.GetArrayType(elementType, -1);
     }
 

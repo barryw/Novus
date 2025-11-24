@@ -9,7 +9,7 @@ pub struct Record {
 
 pub fn main() -> i32 {
     // Create array of structs with pointer fields
-    let records: [Record; 2] = [
+    let records = [
         Record { id: 1, name: (*u8)0, data: (*u8)0 },
         Record { id: 2, name: (*u8)0, data: (*u8)0 }
     ]
@@ -29,7 +29,7 @@ pub fn main() -> i32 {
     if id1 != 2 { return 2 }
 
     // Test writing to pointer fields
-    let mut mut_records: [Record; 1] = [
+    let mut mut_records = [
         Record { id: 0, name: (*u8)0, data: (*u8)0 }
     ]
 

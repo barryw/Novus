@@ -115,6 +115,9 @@ static void display_error_requester(uint32_t alert_code)
 
     // Close the library
     CloseLibrary(IntuitionBase);
+
+    // Return to caller so deferred cleanup can execute
+    // This allows proper resource cleanup (defer blocks) before program exits
 }
 
 /**

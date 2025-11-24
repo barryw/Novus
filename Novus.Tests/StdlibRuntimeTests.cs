@@ -101,7 +101,7 @@ public class StdlibRuntimeTests
             from std::system::dos import read_file
 
             fn main() -> i32 {
-                let buffer: [u8; 256] = [0; 256]
+                let buffer = [0u8; 256]
                 let fh: i32 = 0
 
                 let bytes_read = read_file(fh, &buffer[0], 256)
@@ -235,7 +235,7 @@ public class StdlibRuntimeTests
 
                 match fh {
                     Option::Some(handle) => {
-                        let buffer: [u8; 256] = [0; 256]
+                        let buffer = [0u8; 256]
 
                         let bytes_read = read_file(handle, &buffer[0], 256)
                         close_file(handle)
@@ -321,7 +321,7 @@ public class StdlibRuntimeTests
     {
         var code = @"
             fn main() -> i32 {
-                let arr: [i32; 10] = [0; 10]
+                let arr = [0; 10]
                 let ptr = &arr[0]
                 let ptr2 = &arr[5]
                 return 0

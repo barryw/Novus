@@ -57,11 +57,11 @@ pub fn main() -> i32 {
     }
 
     [Fact]
-    public void BuildIr_ArrayType_ExplicitSizeAndType_Compiles()
+    public void BuildIr_ArrayType_InferredTypeFromLiteral_Compiles()
     {
         var source = @"
 pub fn main() -> i32 {
-    let arr: [i32; 3] = [1, 2, 3]
+    let arr = [1, 2, 3]
     return 0
 }";
         var module = BuildIr(source);
@@ -119,7 +119,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let arr: [i8; 3] = [1, 2, 3]
+    let arr = [1i8, 2i8, 3i8]
     let val = arr[0]
     return (i32)val
 }";
@@ -132,7 +132,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let arr: [u32; 3] = [100, 200, 300]
+    let arr = [100u32, 200u32, 300u32]
     let val = arr[0]
     return (i32)val
 }";

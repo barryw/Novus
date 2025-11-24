@@ -319,7 +319,7 @@ pub struct Point {
 }
 
 pub fn make_array() -> i32 {
-    var points: [Point; 3] = [Point { x: 1, y: 2 }; 3]
+    var points = [Point { x: 1, y: 2 }; 3]
     return points[0].x
 }";
 

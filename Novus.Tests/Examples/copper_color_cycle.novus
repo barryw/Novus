@@ -20,7 +20,7 @@ pub fn main() -> i32 {
     }
 
     // Define a palette of rainbow colors
-    let colors: [u16; 16] = [
+    let colors = [
         rgb12(15, 0, 0),   // Red
         rgb12(15, 4, 0),   // Red-Orange
         rgb12(15, 8, 0),   // Orange

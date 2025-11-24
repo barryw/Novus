@@ -208,14 +208,12 @@ pub fn set_color(vp: *ViewPort, index: u8, color: Color) -> Result<(), GraphicsE
 /// load_palette(vp, &palette)?
 /// ```
 @suppress("W0002", "Hardware color table formats and graphics.library FFI require specific bit widths. Values validated to fit target types")
-pub fn load_palette(vp: *ViewPort, colors: &[Color]) -> Result<(), GraphicsError> {
+pub fn load_palette(vp: *ViewPort, colors: *Color, color_count: u32) -> Result<(), GraphicsError> {
     // Validate ViewPort pointer
     if (u32)vp == 0u32 {
         return Result::Err(GraphicsError::InvalidRastPort)
     }
 
-    // Get colors slice info
-    let color_count: u32 = colors.len()
     if color_count == 0u32 {
         return Result::Ok(())  // Empty palette is valid (no-op)
     }

@@ -323,11 +323,13 @@ public class CCodeGenerator
         sb.AppendLine("typedef struct Window Window;");
         sb.AppendLine("typedef struct Screen Screen;");
         sb.AppendLine("typedef struct View View;");
+        sb.AppendLine("typedef struct ViewPort ViewPort;");
         sb.AppendLine("typedef struct IntuiMessage IntuiMessage;");
         sb.AppendLine("typedef struct MsgPort MsgPort;");
         sb.AppendLine("typedef struct Message Message;");
         sb.AppendLine("typedef struct TagItem TagItem;");
         sb.AppendLine("typedef struct BitMap BitMap;");
+        sb.AppendLine("typedef struct ColorMap ColorMap;");
         sb.AppendLine("typedef struct TextFont TextFont;");
         sb.AppendLine("typedef struct Task Task;");
         sb.AppendLine("typedef struct Node Node;");
@@ -914,6 +916,12 @@ public class CCodeGenerator
         // These are declared at function scope since they may be reused across the function
         foreach (var (slotName, slotType) in slotTypes)
         {
+            // Skip unit type () / void - it has no runtime representation and can't be stored in a variable
+            if (slotType is IrVoidType)
+                continue;
+            if (slotType is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
+                continue;
+
             var decl = GetCVariableDeclaration(slotType, slotName);
             var cType = GetCType(slotType);
 
@@ -968,6 +976,10 @@ public class CCodeGenerator
                 {
                     // Skip if this variable is mapped to a slot (check ORIGINAL name since liveness uses original names)
                     if (IsMappedToSlot(localDecl.Name))
+                        continue;
+
+                    // Skip unit type () variables - they have no runtime representation
+                    if (localDecl.Type is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
                         continue;
 
                     var varName = SanitizeVariableName(localDecl.Name);
@@ -2991,6 +3003,12 @@ public class CCodeGenerator
         // These are declared at function scope since they may be reused across the function
         foreach (var (slotName, slotType) in slotTypes)
         {
+            // Skip unit type () / void - it has no runtime representation and can't be stored in a variable
+            if (slotType is IrVoidType)
+                continue;
+            if (slotType is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
+                continue;
+
             var decl = GetCVariableDeclaration(slotType, slotName);
             var cType = GetCType(slotType);
 
@@ -3028,6 +3046,10 @@ public class CCodeGenerator
 
                     // Skip if this variable is mapped to a slot (check ORIGINAL name since liveness uses original names)
                     if (IsMappedToSlot(localDecl.Name))
+                        continue;
+
+                    // Skip unit type () variables - they have no runtime representation
+                    if (localDecl.Type is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
                         continue;
 
                     if (!localDeclVars.ContainsKey(varName))
@@ -3408,6 +3430,13 @@ public class CCodeGenerator
 
     private void EmitLocalDecl(IrLocalDecl localDecl)
     {
+        // Skip void/unit type local declarations - they have no runtime representation
+        // IMPORTANT: Check this BEFORE calling EmitValue to avoid trying to declare void variables
+        if (localDecl.Type is IrVoidType)
+            return;
+        if (localDecl.Type is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
+            return;
+
         var varName = SanitizeVariableName(localDecl.Name);
 
         // CRITICAL FIX FOR VBCC ALIGNMENT: When initializing a Str struct from a struct literal,
@@ -3451,6 +3480,13 @@ public class CCodeGenerator
                 {
                     // Skip the assignment - variable already zero-initialized by memset at function start
                 }
+                // VBCC FIX: For struct types with nested structs, use memcpy instead of assignment
+                else if (localDecl.InitialValue.Type is IrStructType structTypeInit &&
+                         TypeContainsNestedStructs(structTypeInit))
+                {
+                    var cType = GetCType(localDecl.Type);
+                    _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}, (uint8_t*)&{initValue}, sizeof({cType}));");
+                }
                 else
                 {
                     var cType = GetCType(localDecl.Type);
@@ -3491,6 +3527,15 @@ public class CCodeGenerator
                     _output.AppendLine($"    {varName}.{kvp.Key} = {fieldValue};");
                 }
             }
+            // VBCC FIX: For struct types with nested structs, declare then use memcpy for initialization
+            else if (localDecl.InitialValue.Type is IrStructType structTypeInitFirst &&
+                     TypeContainsNestedStructs(structTypeInitFirst))
+            {
+                var decl = GetCVariableDeclaration(localDecl.Type, varName);
+                var cType = GetCType(localDecl.Type);
+                _output.AppendLine($"    {decl};");
+                _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}, (uint8_t*)&{initValue}, sizeof({cType}));");
+            }
             else
             {
                 var decl = GetCVariableDeclaration(localDecl.Type, varName);
@@ -3511,11 +3556,29 @@ public class CCodeGenerator
 
     private void EmitStore(IrStore store)
     {
+        // Skip void/unit type stores - they have no runtime representation
+        if (store.Value.Type is IrVoidType)
+            return;
+        if (store.Value.Type is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
+            return;
+
         var varName = SanitizeVariableName(store.VariableName);
         var value = EmitValue(store.Value);
 
-        // TODO: Add cast support if needed for Store
-        _output.AppendLine($"    {varName} = {value};");
+        // VBCC FIX: VBCC cannot compile struct-by-value assignment when the struct contains nested structs.
+        // For example: `SpriteData s = sprite->plane23;` fails when SpriteData contains a ChipMemHandle struct.
+        // The error is: "error 86: lvalue required for assignment"
+        // Solution: Use __novus_memcpy() for struct types that contain nested structs.
+        if (store.Value.Type is IrStructType structType && TypeContainsNestedStructs(structType))
+        {
+            var cType = GetCType(store.Value.Type);
+            _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}, (uint8_t*)&{value}, sizeof({cType}));");
+        }
+        else
+        {
+            // For primitives, pointers, and simple structs, direct assignment works fine
+            _output.AppendLine($"    {varName} = {value};");
+        }
     }
 
     private void EmitBinaryOp(IrBinaryOp binaryOp)
@@ -3547,7 +3610,8 @@ public class CCodeGenerator
                 EmitDeferredCleanup(_currentEmittingFunction, 2); // indent level 2
             }
 
-            _output.AppendLine($"        return 1;  // Exit after division by zero error");
+            // Return from function after error (emits proper return type)
+            EmitErrorPathReturn(2);  // indent level 2
             _output.AppendLine($"    }} else {{");
             _output.AppendLine($"        {resultName} = {left} {op} {right};");
             _output.AppendLine($"    }}");
@@ -3744,7 +3808,11 @@ public class CCodeGenerator
             // Normal return value
             var callExpr = $"{callFuncName}({string.Join(", ", args)})";
 
-            if (call.ResultName != null && call.ReturnType is not IrVoidType)
+            // Skip result storage for void/unit types - they have no runtime representation
+            bool isVoidOrUnit = call.ReturnType is IrVoidType ||
+                               (call.ReturnType is IrTupleType tt && tt.ElementTypes.Count == 0);
+
+            if (call.ResultName != null && !isVoidOrUnit)
             {
                 var resultName = SanitizeVariableName(call.ResultName);
 
@@ -3995,6 +4063,38 @@ public class CCodeGenerator
         }
     }
 
+    /// <summary>
+    /// Emits a return statement appropriate for the current function's return type.
+    /// Used after error handlers (panic, assert, div-by-zero) that display an error and return.
+    /// For void functions: emits "return;"
+    /// For non-void functions: emits "return (Type){0};" (zero-initialized value - VBCC compatible)
+    /// </summary>
+    /// <param name="indentLevel">Number of indentation levels (each is 4 spaces)</param>
+    private void EmitErrorPathReturn(int indentLevel)
+    {
+        if (_currentEmittingFunction == null)
+        {
+            // Shouldn't happen, but be defensive
+            _output.AppendLine($"{new string(' ', indentLevel * 4)}return;");
+            return;
+        }
+
+        var indent = new string(' ', indentLevel * 4);
+        var returnType = _currentEmittingFunction.ReturnType;
+
+        if (returnType is IrVoidType)
+        {
+            // Void function: just return
+            _output.AppendLine($"{indent}return;");
+        }
+        else
+        {
+            // Non-void function: return zero-initialized value
+            var cType = GetCType(returnType);
+            _output.AppendLine($"{indent}return ({cType}){{0}};  // Zero-initialized after error");
+        }
+    }
+
     private void EmitAssert(IrAssert assert)
     {
         // In release mode, asserts are completely elided (no-op)
@@ -4037,8 +4137,8 @@ public class CCodeGenerator
             EmitDeferredCleanup(_currentEmittingFunction, 2); // indent level 2 for inside the if block
         }
 
-        // Exit with error code
-        _output.AppendLine("        return 1;  // Assert failed");
+        // Return from function after error (emits proper return type)
+        EmitErrorPathReturn(2);  // indent level 2
         _output.AppendLine("    }");
     }
 
@@ -4067,9 +4167,9 @@ public class CCodeGenerator
             EmitDeferredCleanup(_currentEmittingFunction, 1); // indent level 1
         }
 
-        // __novus_panic never returns, but for C semantics we add unreachable return
-        // This helps the C compiler understand control flow
-        _output.AppendLine("    return 1;  // Unreachable (panic never returns)");
+        // Return from function after error (emits proper return type)
+        // Note: This code is unreachable after showing the error, but required for C semantics
+        EmitErrorPathReturn(1);  // indent level 1
     }
 
     private void EmitMatch(IrMatch match)
@@ -4189,6 +4289,10 @@ public class CCodeGenerator
 
     private void EmitExtractVariantData(IrExtractVariantData extractData)
     {
+        // Skip unit type () extractions - unit has no runtime representation
+        if (extractData.DataType is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
+            return;
+
         var enumValue = EmitValue(extractData.EnumValue);
         var resultName = SanitizeVariableName(extractData.ResultName);
         var enumType = extractData.EnumValue.Type as IrEnumType;
@@ -4323,13 +4427,36 @@ public class CCodeGenerator
                 }
             }
 
-            if (alreadyDeclared)
+            // VBCC FIX: VBCC cannot compile struct-by-value assignment when the struct contains nested structs.
+            // For example: `SpriteData s = sprite->plane23;` fails when SpriteData contains a ChipMemHandle struct.
+            // The error is: "error 86: lvalue required for assignment"
+            // Solution: Use __novus_memcpy() for struct types that contain nested structs.
+            bool useMemcpy = memberAccess.FieldType is IrStructType structFieldType && TypeContainsNestedStructs(structFieldType);
+
+            if (useMemcpy)
             {
-                _output.AppendLine($"    {resultName} = {structValue}{accessor}{memberAccess.FieldName};");
+                // For structs with nested structs, use memcpy
+                if (alreadyDeclared)
+                {
+                    _output.AppendLine($"    __novus_memcpy((uint8_t*)&{resultName}, (uint8_t*)&({structValue}{accessor}{memberAccess.FieldName}), sizeof({fieldType}));");
+                }
+                else
+                {
+                    _output.AppendLine($"    {fieldType} {resultName};");
+                    _output.AppendLine($"    __novus_memcpy((uint8_t*)&{resultName}, (uint8_t*)&({structValue}{accessor}{memberAccess.FieldName}), sizeof({fieldType}));");
+                }
             }
             else
             {
-                _output.AppendLine($"    {fieldType} {resultName} = {structValue}{accessor}{memberAccess.FieldName};");
+                // For simple types and structs without nested structs, direct assignment works
+                if (alreadyDeclared)
+                {
+                    _output.AppendLine($"    {resultName} = {structValue}{accessor}{memberAccess.FieldName};");
+                }
+                else
+                {
+                    _output.AppendLine($"    {fieldType} {resultName} = {structValue}{accessor}{memberAccess.FieldName};");
+                }
             }
 
             // Track this field access for lvalue chain reconstruction
@@ -5345,6 +5472,41 @@ public class CCodeGenerator
 
             default:
                 // Primitives, enums without data, etc. don't contain heap data
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Check if a struct type contains nested structs as fields.
+    /// VBCC cannot handle struct-by-value assignment when the struct contains nested structs.
+    /// For these cases, we must use __novus_memcpy() instead of direct assignment.
+    /// </summary>
+    private bool TypeContainsNestedStructs(IrType type)
+    {
+        switch (type)
+        {
+            case IrStructType structType:
+                // Check if any field is itself a struct (nested struct)
+                foreach (var field in structType.Fields)
+                {
+                    if (field.Type is IrStructType)
+                    {
+                        return true;
+                    }
+                    // Also check recursively in case of deeply nested structs
+                    if (TypeContainsNestedStructs(field.Type))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+
+            case IrArrayType arrayType:
+                // Arrays might contain structs with nested structs
+                return TypeContainsNestedStructs(arrayType.ElementType);
+
+            default:
+                // Primitives, pointers, etc. don't contain nested structs
                 return false;
         }
     }

@@ -326,6 +326,44 @@ public partial class IrBuilder
         {
             var paramName = paramCtx.IDENTIFIER().GetText();
             var paramType = ParseType(paramCtx.type());
+
+            // Special case: &[T] (unsized slice reference) should be treated as Slice<T>
+            // This is syntactic sugar: &[T] in parameter position becomes Slice<T>
+            if (paramType is IrReferenceType refType &&
+                refType.PointeeType is IrArrayType arrayType &&
+                arrayType.Length == -1)
+            {
+                // Try to find Slice<T> struct
+                var sliceStruct = _module.Structs.FirstOrDefault(s => s.StructName == "Slice");
+                if (sliceStruct != null && sliceStruct.GenericParameters != null && sliceStruct.GenericParameters.Count > 0)
+                {
+                    // Check if we already have this monomorphization
+                    var elementType = arrayType.ElementType;
+                    var cacheKey = $"Slice<{elementType.Name}>";
+                    var monomorphizedSlice = _module.Structs.FirstOrDefault(s => s.CacheKey == cacheKey);
+
+                    if (monomorphizedSlice == null)
+                    {
+                        // Need to monomorphize Slice<T> for this element type
+                        var typeArgs = new List<IrType> { elementType };
+
+                        monomorphizedSlice = IrStructType.Monomorphize(sliceStruct, typeArgs);
+                        if (monomorphizedSlice != null)
+                        {
+                            // Register the monomorphized struct
+                            monomorphizedSlice.CacheKey = cacheKey;
+                            _module.Structs.Add(monomorphizedSlice);
+                        }
+                    }
+
+                    if (monomorphizedSlice != null)
+                    {
+                        // Use the monomorphized Slice<T> instead of &[T]
+                        paramType = monomorphizedSlice;
+                    }
+                }
+            }
+
             parameters.Add(new IrParameter(paramName, paramType));
         }
     }
@@ -537,5 +575,34 @@ public partial class IrBuilder
         }
 
         return (typeName, implementingType);
+    }
+
+    /// <summary>
+    /// Check if a type annotation is an array type and report an error if so.
+    /// Array type annotations are redundant and not allowed - the compiler infers array types from literals.
+    /// </summary>
+    /// <param name="typeContext">The type context from the parse tree (may be null)</param>
+    /// <param name="declarationName">The name of the variable/constant being declared</param>
+    /// <param name="errorContext">Context for error reporting</param>
+    /// <returns>True if the type annotation is an array type (error reported), false otherwise</returns>
+    private bool RejectArrayTypeAnnotation(NovusParser.TypeContext? typeContext, string declarationName, Antlr4.Runtime.ParserRuleContext errorContext)
+    {
+        if (typeContext == null)
+            return false;
+
+        var parsedType = ParseType(typeContext);
+        if (parsedType is IrArrayType arrayType)
+        {
+            var errorLocation = GetLocation(errorContext);
+            var typeText = typeContext.GetText(); // Get original source text like "[u16; 10]"
+            _diagnostics.ReportError(
+                ErrorCodes.RedundantTypeAnnotation,
+                $"Array type annotations are not allowed. Remove ': {typeText}' from '{declarationName}' and let the compiler infer the type from the array literal.",
+                errorLocation
+            );
+            return true;
+        }
+
+        return false;
     }
 }

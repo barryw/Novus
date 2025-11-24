@@ -169,7 +169,7 @@ pub fn test() -> i32 {
     {
         var source = @"
 pub fn test() -> i32 {
-    var arr: [i32; 5] = [1, 2, 3, 4, 5]
+    var arr = [1, 2, 3, 4, 5]
     var mut sum: i32 = 0
     for x in arr {
         sum = sum + x
@@ -185,7 +185,7 @@ pub fn test() -> i32 {
     {
         var source = @"
 pub fn test() -> i32 {
-    var arr: [i32; 3] = [1, 2, 3]
+    var arr = [1, 2, 3]
     for mut x in arr {
         x = x * 2
     }
@@ -559,7 +559,7 @@ pub fn test(x: i32) -> i32 {
     {
         var source = @"
 pub fn test() -> i32 {
-    var arr: [i32; 5] = [1, 2, 3, 4, 5]
+    var arr = [1, 2, 3, 4, 5]
     return arr[2]
 }";
         var diagnostics = Analyze(source);
@@ -571,7 +571,7 @@ pub fn test() -> i32 {
     {
         var source = @"
 pub fn test() -> i32 {
-    var mut arr: [i32; 5] = [1, 2, 3, 4, 5]
+    var mut arr = [1, 2, 3, 4, 5]
     arr[2] = 100
     return arr[2]
 }";

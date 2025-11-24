@@ -1,0 +1,285 @@
+// Hardware Sprite Support for Amiga
+//
+// This module provides safe, ergonomic access to Amiga hardware sprites.
+//
+// Quick Start:
+//   const PLAYER_DATA = [
+//       $0000, $0000,  // Control words
+//       $0FF0, $0000,  // Scanline 1: bitplane 0, bitplane 1
+//       $1FF8, $0000,  // Scanline 2
+//       $0FF0, $0000,  // Scanline 3
+//       $0000, $0000   // Terminator
+//   ]
+//
+//   let mut sprite_data = SpriteData::from_raw(&PLAYER_DATA)?
+//   let mut sprite = SpriteHandle::alloc(0)?
+//   sprite.set_colors(&[Color::rgb(255, 0, 0), Color::rgb(0, 255, 0), Color::rgb(0, 0, 255)])?
+//   sprite.show(&sprite_data, 100, 50)?
+//   sprite.move_to(200, 100)
+
+from std::core import Result, Option
+from std::error::errors import GraphicsError
+from std::graphics::palette import Color
+from std::memory::amiga import ChipMemHandle
+from std::ffi::amiga_structs import Custom
+
+// Sprite data in CHIP RAM
+// Always 2 bitplanes (4 colors) for regular sprites
+pub struct SpriteData {
+    chip_mem: ChipMemHandle,
+    height: u16,
+}
+
+impl SpriteData {
+    // Create sprite data from raw hardware format
+    // Data must be: control_word, plane0_line0, plane1_line0, plane0_line1, plane1_line1, ..., terminator
+    pub fn from_raw(data: *u16, len: u32) -> Result<SpriteData, GraphicsError> {
+        if len < 4u32 {
+            return Result::Err(GraphicsError::InvalidSpriteData)
+        }
+
+        let size_bytes: u32 = len * 2u32
+        let chip_mem_opt = ChipMemHandle::new(size_bytes)
+
+        match chip_mem_opt {
+            Option::None => {
+                return Result::Err(GraphicsError::BitMapAllocFailed)
+            },
+            Option::Some(chip_mem) => {
+                // Copy data to CHIP RAM
+                unsafe {
+                    let dest = (*u16)chip_mem.ptr()
+                    for i in 0..(u32)len {
+                        dest[i] = data[i]
+                    }
+                }
+
+                let num_words = len - 2u32
+                let num_lines = num_words / 2u32
+                return Result::Ok(SpriteData {
+                    chip_mem: chip_mem,
+                    height: (u16)num_lines,  // Subtract control words, divide by 2 planes
+                })
+            }
+        }
+    }
+
+    // Get pointer to sprite data (for hardware registers)
+    pub fn as_ptr(&self) -> *u16 {
+        return (*u16)self.chip_mem.ptr()
+    }
+
+    // Get sprite height
+    pub fn height(&self) -> u16 {
+        return self.height
+    }
+}
+
+// Drop is automatically handled by ChipMemHandle
+
+// Manages a single hardware sprite channel (0-7)
+pub struct SpriteHandle {
+    channel: u8,         // 0-7
+    is_allocated: bool,
+    custom: *u8,  // Pointer to Custom chipset registers at $DFF000
+}
+
+impl SpriteHandle {
+    // Allocate a sprite channel
+    pub fn alloc(channel: u8) -> Result<SpriteHandle, GraphicsError> {
+        if channel > 7 {
+            return Result::Err(GraphicsError::InvalidSpriteChannel)
+        }
+
+        // TODO: Check if channel is already allocated
+
+        let custom = (*u8)$DFF000
+
+        return Result::Ok(SpriteHandle {
+            channel: channel,
+            is_allocated: true,
+            custom: custom,
+        })
+    }
+
+    // Show sprite at position
+    pub fn show(&mut self, sprite: &SpriteData, x: i16, y: i16) -> Result<(), GraphicsError> {
+        if !self.is_allocated {
+            return Result::Err(GraphicsError::SpriteNotAllocated)
+        }
+
+        // Set sprite pointer in copper list / simple sprite pointers
+        let channel_offset = self.channel * 4
+        let spr_ptr_offset = $120 + (u32)channel_offset
+        unsafe {
+            let spr_ptr_reg = (**u16)((u32)self.custom + spr_ptr_offset)
+            *spr_ptr_reg = sprite.as_ptr()
+        }
+
+        // Set position
+        self.move_to(x, y)
+
+        return Result::Ok(())
+    }
+
+    // Move sprite to new position
+    pub fn move_to(&mut self, x: i16, y: i16) {
+        if !self.is_allocated {
+            return
+        }
+
+        // Calculate hardware position with offset
+        let hw_x = (u16)(x + $81)
+        let hw_y = (u16)(y + $2C)  // PAL offset
+
+        // Calculate VSTART/VSTOP
+        let vstart = hw_y
+        let vstop = hw_y  // Will be set by sprite data
+
+        // SPRxPOS format: VSTART (8 bits) | HSTART (8 bits)
+        let pos = ((vstart & $FF) << 8) | (hw_x & $FF)
+
+        // SPRxCTL format: VSTOP (8 bits) | ATTACH | VSTART[8] | HSTART[8:1]
+        let ctl = ((vstop & $FF) << 8) | ((hw_x >> 8) & 1)
+
+        // Write to hardware registers
+        let channel_offset = self.channel * 8
+        let spr_pos_offset = $140 + (u32)channel_offset
+        let spr_ctl_offset = $142 + (u32)channel_offset
+
+        unsafe {
+            let pos_reg = (*u16)((u32)self.custom + spr_pos_offset)
+            let ctl_reg = (*u16)((u32)self.custom + spr_ctl_offset)
+            *pos_reg = pos
+            *ctl_reg = ctl
+        }
+    }
+
+    // Hide sprite (move offscreen)
+    pub fn hide(&mut self) {
+        self.move_to(-100, -100)
+    }
+
+    // Set colors for this sprite channel
+    pub fn set_colors(&mut self, colors: &[Color; 3]) -> Result<(), GraphicsError> {
+        // Sprite color register mapping:
+        // Sprite 0/1: colors 17-19 ($DFF1A2-$DFF1A8)
+        // Sprite 2/3: colors 21-23 ($DFF1AA-$DFF1B0)
+        // Sprite 4/5: colors 25-27 ($DFF1B2-$DFF1B8)
+        // Sprite 6/7: colors 29-31 ($DFF1BA-$DFF1C0)
+
+        let base_color: i32 = match self.channel {
+            0 | 1 => 17,
+            2 | 3 => 21,
+            4 | 5 => 25,
+            6 | 7 => 29,
+            _ => return Result::Err(GraphicsError::InvalidSpriteChannel),
+        }
+
+        // Write colors to hardware
+        // Convert reference to pointer so we can index it
+        let colors_ptr: *Color = (*Color)colors
+        unsafe {
+            for i in 0..3 {
+                let color_index_offset = (base_color + i) * 2
+                let color_reg_offset = $180 + (u32)color_index_offset
+                let color_reg = (*u16)((u32)self.custom + color_reg_offset)
+                let (r4, g4, b4) = colors_ptr[i].to_rgb4()
+
+                // Pack into 12-bit Amiga RGB format: 0x0RGB
+                let rgb12 = ((u16)r4 << 8) | ((u16)g4 << 4) | (u16)b4
+                *color_reg = rgb12
+            }
+        }
+
+        return Result::Ok(())
+    }
+
+    // Release the sprite channel
+    pub fn release(&mut self) {
+        if self.is_allocated {
+            self.hide()
+            self.is_allocated = false
+        }
+    }
+}
+
+impl Drop for SpriteHandle {
+    fn drop(&mut self) {
+        self.release()
+    }
+}
+
+// Attached sprite handle (for 15-color sprites using 2 channels)
+pub struct AttachedSpriteHandle {
+    channel: u8,  // Must be even (0, 2, 4, 6)
+    sprite0: SpriteHandle,
+    sprite1: SpriteHandle,
+}
+
+impl AttachedSpriteHandle {
+    // Allocate an attached sprite pair
+    // channel must be even (0, 2, 4, 6) and will use channel+1 as well
+    pub fn alloc_pair(channel: u8) -> Result<AttachedSpriteHandle, GraphicsError> {
+        if channel % 2 != 0 || channel > 6 {
+            return Result::Err(GraphicsError::InvalidAttachedSpriteChannel)
+        }
+
+        let sprite0 = SpriteHandle::alloc(channel)?
+        let sprite1 = SpriteHandle::alloc(channel + 1)?
+
+        return Result::Ok(AttachedSpriteHandle {
+            channel: channel,
+            sprite0: sprite0,
+            sprite1: sprite1,
+        })
+    }
+
+    // Show attached sprite at position
+    pub fn show(&mut self, sprite: &AttachedSpriteData, x: i16, y: i16) -> Result<(), GraphicsError> {
+        // TODO: Set ATTACH bit in SPRxCTL
+        // TODO: Handle 4-bitplane sprite data
+        self.sprite0.show(&sprite.plane01, x, y)?
+        self.sprite1.show(&sprite.plane23, x, y)?
+        return Result::Ok(())
+    }
+
+    // Move attached sprite
+    pub fn move_to(&mut self, x: i16, y: i16) {
+        self.sprite0.move_to(x, y)
+        self.sprite1.move_to(x, y)
+    }
+
+    // Hide attached sprite
+    pub fn hide(&mut self) {
+        self.sprite0.hide()
+        self.sprite1.hide()
+    }
+
+    // Set colors (15 colors + transparent)
+    pub fn set_colors(&mut self, colors: &[Color; 15]) -> Result<(), GraphicsError> {
+        // Attached sprites use colors 16-31
+        // Convert reference to pointer so we can index it
+        let colors_ptr: *Color = (*Color)colors
+        unsafe {
+            for i in 0..15 {
+                let color_index_offset = (16 + i) * 2
+                let color_reg_offset = $180 + (u32)color_index_offset
+                let color_reg = (*u16)((u32)self.sprite0.custom + color_reg_offset)
+                let (r4, g4, b4) = colors_ptr[i].to_rgb4()
+
+                // Pack into 12-bit Amiga RGB format: 0x0RGB
+                let rgb12 = ((u16)r4 << 8) | ((u16)g4 << 4) | (u16)b4
+                *color_reg = rgb12
+            }
+        }
+
+        return Result::Ok(())
+    }
+}
+
+// Attached sprite data (4 bitplanes, 16 colors)
+pub struct AttachedSpriteData {
+    plane01: SpriteData,  // Bitplanes 0 and 1
+    plane23: SpriteData,  // Bitplanes 2 and 3
+}

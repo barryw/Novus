@@ -141,6 +141,12 @@ public partial class IrBuilder
         var name = identifierNode?.GetText() ?? "_";
         var isThrowaway = name == "_";
 
+        // Reject explicit array type annotations - they are redundant and not allowed
+        if (RejectArrayTypeAnnotation(context.type(), name, context))
+        {
+            return null;
+        }
+
         // Parse type annotation if present (before evaluating the expression)
         IrType? annotatedType = null;
         if (context.type() != null)
@@ -1429,12 +1435,19 @@ public partial class IrBuilder
 
     public override object? VisitIfConditionExpression([NotNull] NovusParser.IfConditionExpressionContext context)
     {
-        var condition = (IrValue?)Visit(context.expression());
+        var condition = Visit(context.expression()) as IrValue;
+
+        // If condition had an error, bail out
+        if (condition == null)
+        {
+            return null;
+        }
+
         var (thenLabel, falseTarget) = _ifLabels!.Value;
 
         // Automatic pointer-to-bool coercion: if ptr { ... }
         // Convert pointer to bool by comparing with null (ptr != 0)
-        if (condition!.Type is IrPointerType or IrReferenceType or IrMutReferenceType)
+        if (condition.Type is IrPointerType or IrReferenceType or IrMutReferenceType)
         {
             var resultTemp = $"%t{_tempCounter++}";
             var zeroValue = new IrConstant(0, IrIntType.U32);
@@ -2163,16 +2176,16 @@ public partial class IrBuilder
         _labelCounter++;
 
         // Get the two operands of the range expression
-        IrValue startValue, endValue;
+        IrValue? startValue = null, endValue = null;
         if (rangeExpr is NovusParser.RangeExprContext exclusiveRange)
         {
-            startValue = (IrValue)Visit(exclusiveRange.expression(0))!;
-            endValue = (IrValue)Visit(exclusiveRange.expression(1))!;
+            startValue = Visit(exclusiveRange.expression(0)) as IrValue;
+            endValue = Visit(exclusiveRange.expression(1)) as IrValue;
         }
         else if (rangeExpr is NovusParser.RangeInclusiveExprContext inclusiveRange)
         {
-            startValue = (IrValue)Visit(inclusiveRange.expression(0))!;
-            endValue = (IrValue)Visit(inclusiveRange.expression(1))!;
+            startValue = Visit(inclusiveRange.expression(0)) as IrValue;
+            endValue = Visit(inclusiveRange.expression(1)) as IrValue;
         }
         else
         {
@@ -2182,6 +2195,12 @@ public partial class IrBuilder
                 "Invalid range expression",
                 errorLocation
             );
+            return null;
+        }
+
+        // If either operand had an error, bail out
+        if (startValue == null || endValue == null)
+        {
             return null;
         }
 

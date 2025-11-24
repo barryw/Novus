@@ -213,13 +213,18 @@ pub fn intuition_error_to_code(err: IntuitionError) -> i32 {
 
 // Graphics library errors
 pub enum GraphicsError {
-    BitMapAllocFailed,      // BitMap allocation failed
-    RastPortInitFailed,     // RastPort init failed
-    FontOpenFailed,         // OpenFont failed
-    InvalidBitMap,          // Invalid BitMap pointer
-    InvalidRastPort,        // Invalid RastPort pointer
-    BadDisplayMode,         // Invalid display mode
-    CopperListFailed,       // Copper list setup failed
+    BitMapAllocFailed,              // BitMap allocation failed
+    RastPortInitFailed,             // RastPort init failed
+    FontOpenFailed,                 // OpenFont failed
+    InvalidBitMap,                  // Invalid BitMap pointer
+    InvalidRastPort,                // Invalid RastPort pointer
+    BadDisplayMode,                 // Invalid display mode
+    CopperListFailed,               // Copper list setup failed
+    InvalidSpriteData,              // Invalid sprite data format
+    InvalidSpriteChannel,           // Invalid sprite channel (must be 0-7)
+    InvalidAttachedSpriteChannel,   // Invalid attached sprite channel (must be even 0-6)
+    SpriteNotAllocated,             // Sprite handle not allocated
+    InvalidColorCount,              // Wrong number of colors for sprite type
 }
 
 // Convert GraphicsError to error code
@@ -232,6 +237,11 @@ pub fn graphics_error_to_code(err: GraphicsError) -> i32 {
         GraphicsError::InvalidRastPort => return -304,
         GraphicsError::BadDisplayMode => return -305,
         GraphicsError::CopperListFailed => return -306,
+        GraphicsError::InvalidSpriteData => return -307,
+        GraphicsError::InvalidSpriteChannel => return -308,
+        GraphicsError::InvalidAttachedSpriteChannel => return -309,
+        GraphicsError::SpriteNotAllocated => return -310,
+        GraphicsError::InvalidColorCount => return -311,
     }
 }
 
@@ -413,6 +423,11 @@ impl GraphicsError {
             GraphicsError::InvalidRastPort => return "Invalid RastPort pointer",
             GraphicsError::BadDisplayMode => return "Invalid display mode",
             GraphicsError::CopperListFailed => return "Copper list setup failed",
+            GraphicsError::InvalidSpriteData => return "Invalid sprite data format",
+            GraphicsError::InvalidSpriteChannel => return "Invalid sprite channel (must be 0-7)",
+            GraphicsError::InvalidAttachedSpriteChannel => return "Invalid attached sprite channel (must be even 0-6)",
+            GraphicsError::SpriteNotAllocated => return "Sprite handle not allocated",
+            GraphicsError::InvalidColorCount => return "Wrong number of colors for sprite type",
         }
     }
 }
