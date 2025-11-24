@@ -590,8 +590,13 @@ public partial class IrBuilder
         if (typeContext == null)
             return false;
 
-        var parsedType = ParseType(typeContext);
-        if (parsedType is IrArrayType arrayType)
+        // Check syntactically if this is an array type BEFORE trying to parse it
+        // This avoids the chicken-and-egg problem where type annotations might reference
+        // types that haven't been registered yet (e.g., const declarations before struct declarations)
+        bool isArrayType = typeContext is NovusParser.ArrayTypeWithSizeContext ||
+                          typeContext is NovusParser.ArrayTypeInferredContext;
+
+        if (isArrayType)
         {
             var errorLocation = GetLocation(errorContext);
             var typeText = typeContext.GetText(); // Get original source text like "[u16; 10]"

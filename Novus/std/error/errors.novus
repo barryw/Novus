@@ -224,6 +224,7 @@ pub enum GraphicsError {
     InvalidSpriteChannel,           // Invalid sprite channel (must be 0-7)
     InvalidAttachedSpriteChannel,   // Invalid attached sprite channel (must be even 0-6)
     SpriteNotAllocated,             // Sprite handle not allocated
+    SpriteChannelInUse,             // Sprite channel already allocated
     InvalidColorCount,              // Wrong number of colors for sprite type
 }
 
@@ -241,7 +242,8 @@ pub fn graphics_error_to_code(err: GraphicsError) -> i32 {
         GraphicsError::InvalidSpriteChannel => return -308,
         GraphicsError::InvalidAttachedSpriteChannel => return -309,
         GraphicsError::SpriteNotAllocated => return -310,
-        GraphicsError::InvalidColorCount => return -311,
+        GraphicsError::SpriteChannelInUse => return -311,
+        GraphicsError::InvalidColorCount => return -312,
     }
 }
 
@@ -427,6 +429,7 @@ impl GraphicsError {
             GraphicsError::InvalidSpriteChannel => return "Invalid sprite channel (must be 0-7)",
             GraphicsError::InvalidAttachedSpriteChannel => return "Invalid attached sprite channel (must be even 0-6)",
             GraphicsError::SpriteNotAllocated => return "Sprite handle not allocated",
+            GraphicsError::SpriteChannelInUse => return "Sprite channel already allocated",
             GraphicsError::InvalidColorCount => return "Wrong number of colors for sprite type",
         }
     }

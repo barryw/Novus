@@ -3998,8 +3998,26 @@ public class CCodeGenerator
                                     {
                                         foreach (var kvp in assocStructLit.FieldValues)
                                         {
-                                            var fieldValue = EmitValue(kvp.Value);
-                                            _output.AppendLine($"    __out->data.{enumValue.VariantName}._{i}.{kvp.Key} = {fieldValue};");
+                                            // CRITICAL FIX: If field value is a pointer-converted parameter containing a struct,
+                                            // we need to copy field-by-field instead of assigning the pointer
+                                            if (kvp.Value is IrVariable fieldVar &&
+                                                kvp.Value.Type is IrStructType fieldStructType &&
+                                                _pointerConvertedParameters.Contains(SanitizeVariableName(fieldVar.Name)))
+                                            {
+                                                // This is a by-value parameter that was converted to a pointer
+                                                // Copy each field of the struct
+                                                var srcVarName = SanitizeVariableName(fieldVar.Name);
+                                                foreach (var structField in fieldStructType.Fields)
+                                                {
+                                                    _output.AppendLine($"    __out->data.{enumValue.VariantName}._{i}.{kvp.Key}.{structField.Name} = {srcVarName}->{structField.Name};");
+                                                }
+                                            }
+                                            else
+                                            {
+                                                // Normal field assignment
+                                                var fieldValue = EmitValue(kvp.Value);
+                                                _output.AppendLine($"    __out->data.{enumValue.VariantName}._{i}.{kvp.Key} = {fieldValue};");
+                                            }
                                         }
                                     }
                                     else
