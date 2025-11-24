@@ -15,7 +15,7 @@
 //   let mut sprite = SpriteHandle::alloc(0)?
 //   sprite.set_colors(&[Color::rgb(255, 0, 0), Color::rgb(0, 255, 0), Color::rgb(0, 0, 255)])?
 //   sprite.show(&sprite_data, 100, 50)?
-//   sprite.move_to(200, 100)
+//   sprite.move_to(200, 100)?
 
 from std::core import Result, Option
 from std::error::errors import GraphicsError
@@ -23,17 +23,39 @@ from std::graphics::palette import Color
 from std::memory::amiga import ChipMemHandle
 from std::ffi::amiga_structs import Custom
 
-// Display mode detection
+// Display mode detection - MUST be initialized before using sprites
 static mut IS_PAL: bool = true
+static mut INITIALIZED: bool = false
 
-pub fn detect_display_mode() {
-    // Read VPOSR register at $DFF004
-    let vposr = (*u16)$DFF004
+// Initialize the sprite system - MUST be called before using sprites
+// Detects PAL vs NTSC display mode for correct vertical positioning
+// Enables sprite DMA
+pub fn init_sprite_system() {
     unsafe {
+        if INITIALIZED {
+            return
+        }
+
+        // Read VPOSR register at $DFF004 to detect PAL/NTSC
+        // Note: This is a simplified detection. For production code, should check
+        // GfxBase->DisplayFlags or SysBase->ex_EClockFrequency for more reliability
+        let vposr = (*u16)$DFF004
         let agnus_id = (*vposr >> 8) & $7F
         // PAL has different Agnus IDs than NTSC
         IS_PAL = (agnus_id & $10) != 0
+
+        // Enable sprite DMA (DMACON register at $DFF096)
+        // Set bit 15 (SETCLR) + bit 5 (SPREN - sprite DMA enable)
+        let dmacon = (*u16)$DFF096
+        *dmacon = $8020
+
+        INITIALIZED = true
     }
+}
+
+// Deprecated: Use init_sprite_system() instead
+pub fn detect_display_mode() {
+    init_sprite_system()
 }
 
 fn get_vstart_offset() -> u16 {
@@ -111,6 +133,7 @@ pub struct SpriteHandle {
     visible: bool,       // Track visibility state
     pos_x: i16,          // Current X position
     pos_y: i16,          // Current Y position
+    sprite_height: u16,  // Current sprite height (for vstop calculation)
 }
 
 impl SpriteHandle {
@@ -138,14 +161,19 @@ impl SpriteHandle {
             visible: false,
             pos_x: 0,
             pos_y: 0,
+            sprite_height: 0,
         })
     }
 
     // Show sprite at position
+    // WARNING: sprite must remain valid (not dropped) while in use by hardware
     pub fn show(&mut self, sprite: &SpriteData, x: i16, y: i16) -> Result<(), GraphicsError> {
         if !self.is_allocated {
             return Result::Err(GraphicsError::SpriteNotAllocated)
         }
+
+        // Store sprite height for vstop calculation
+        self.sprite_height = sprite.height()
 
         // Set 32-bit sprite pointer (split into PTH and PTL registers)
         // SPRxPTH/SPRxPTL are at $DFF120 + (channel * 4)
@@ -168,15 +196,15 @@ impl SpriteHandle {
         self.visible = true
         self.pos_x = x
         self.pos_y = y
-        self.move_to(x, y)
+        self.move_to(x, y)?
 
         return Result::Ok(())
     }
 
     // Move sprite to new position
-    pub fn move_to(&mut self, x: i16, y: i16) {
+    pub fn move_to(&mut self, x: i16, y: i16) -> Result<(), GraphicsError> {
         if !self.is_allocated {
-            return
+            return Result::Err(GraphicsError::SpriteNotAllocated)
         }
 
         // Update tracked position
@@ -188,8 +216,9 @@ impl SpriteHandle {
         let hw_y = (u16)(y + (i16)get_vstart_offset())
 
         // Calculate VSTART/VSTOP
+        // VSTOP = VSTART + height + 1 (hardware requirement)
         let vstart = hw_y
-        let vstop = hw_y + 255u16  // Max sprite height
+        let vstop = hw_y + self.sprite_height + 1u16
 
         // SPRxPOS format: VSTART (8 bits) | HSTART (8 bits)
         let pos = ((vstart & $FF) << 8) | (hw_x & $FF)
@@ -211,12 +240,15 @@ impl SpriteHandle {
             *pos_reg = pos
             *ctl_reg = ctl
         }
+
+        return Result::Ok(())
     }
 
     // Hide sprite (move offscreen)
-    pub fn hide(&mut self) {
+    pub fn hide(&mut self) -> Result<(), GraphicsError> {
         self.visible = false
-        self.move_to(-100, -100)
+        self.move_to(-100, -100)?
+        return Result::Ok(())
     }
 
     // Query if sprite is visible
@@ -229,11 +261,37 @@ impl SpriteHandle {
         return (self.pos_x, self.pos_y)
     }
 
-    // Change sprite image (for animation)
-    pub fn set_image(&mut self, sprite: &SpriteData) {
-        if !self.is_allocated {
-            return
+    // Move sprite by relative offset
+    pub fn move_by(&mut self, dx: i16, dy: i16) -> Result<(), GraphicsError> {
+        let new_x = self.pos_x + dx
+        let new_y = self.pos_y + dy
+        return self.move_to(new_x, new_y)
+    }
+
+    // Check if sprite position is within screen bounds
+    // Assumes standard screen size (320x256 for PAL, 320x200 for NTSC)
+    pub fn is_on_screen(&self) -> bool {
+        if self.pos_x < -16 || self.pos_x > 320 {
+            return false
         }
+        unsafe {
+            let max_y: i16 = if IS_PAL { 256 } else { 200 }
+            if self.pos_y < 0 || self.pos_y > max_y {
+                return false
+            }
+        }
+        return true
+    }
+
+    // Change sprite image (for animation)
+    // WARNING: sprite must remain valid (not dropped) while in use by hardware
+    pub fn set_image(&mut self, sprite: &SpriteData) -> Result<(), GraphicsError> {
+        if !self.is_allocated {
+            return Result::Err(GraphicsError::SpriteNotAllocated)
+        }
+
+        // Store new sprite height
+        self.sprite_height = sprite.height()
 
         // Update sprite pointer registers
         let sprite_ptr_addr = (u32)sprite.as_ptr()
@@ -250,15 +308,21 @@ impl SpriteHandle {
             *pth_reg = ptr_high
             *ptl_reg = ptr_low
         }
+
+        return Result::Ok(())
     }
 
     // Set colors for this sprite channel
+    //
+    // IMPORTANT: Sprite pairs share color registers!
+    // - Sprites 0 & 1 share colors 17-19 ($DFF1A2-$DFF1A8)
+    // - Sprites 2 & 3 share colors 21-23 ($DFF1AA-$DFF1B0)
+    // - Sprites 4 & 5 share colors 25-27 ($DFF1B2-$DFF1B8)
+    // - Sprites 6 & 7 share colors 29-31 ($DFF1BA-$DFF1C0)
+    //
+    // Setting colors for sprite 0 will affect sprite 1, and vice versa.
+    // Same applies to all other pairs (2+3, 4+5, 6+7).
     pub fn set_colors(&mut self, colors: &[Color; 3]) -> Result<(), GraphicsError> {
-        // Sprite color register mapping:
-        // Sprite 0/1: colors 17-19 ($DFF1A2-$DFF1A8)
-        // Sprite 2/3: colors 21-23 ($DFF1AA-$DFF1B0)
-        // Sprite 4/5: colors 25-27 ($DFF1B2-$DFF1B8)
-        // Sprite 6/7: colors 29-31 ($DFF1BA-$DFF1C0)
 
         let base_color: i32 = match self.channel {
             0 | 1 => 17,
@@ -290,7 +354,7 @@ impl SpriteHandle {
     // Release the sprite channel
     pub fn release(&mut self) {
         if self.is_allocated {
-            self.hide()
+            let _ = self.hide()
             unsafe {
                 let channel_mask = 1u8 << self.channel
                 // Clear the bit by XORing if it's set
@@ -356,15 +420,17 @@ impl AttachedSpriteHandle {
     }
 
     // Move attached sprite
-    pub fn move_to(&mut self, x: i16, y: i16) {
-        self.sprite0.move_to(x, y)
-        self.sprite1.move_to(x, y)
+    pub fn move_to(&mut self, x: i16, y: i16) -> Result<(), GraphicsError> {
+        self.sprite0.move_to(x, y)?
+        self.sprite1.move_to(x, y)?
+        return Result::Ok(())
     }
 
     // Hide attached sprite
-    pub fn hide(&mut self) {
-        self.sprite0.hide()
-        self.sprite1.hide()
+    pub fn hide(&mut self) -> Result<(), GraphicsError> {
+        self.sprite0.hide()?
+        self.sprite1.hide()?
+        return Result::Ok(())
     }
 
     // Get the two channel numbers used
@@ -373,9 +439,10 @@ impl AttachedSpriteHandle {
     }
 
     // Change sprite image (for animation)
-    pub fn set_image(&mut self, sprite: &AttachedSpriteData) {
-        self.sprite0.set_image(&sprite.plane01)
-        self.sprite1.set_image(&sprite.plane23)
+    pub fn set_image(&mut self, sprite: &AttachedSpriteData) -> Result<(), GraphicsError> {
+        self.sprite0.set_image(&sprite.plane01)?
+        self.sprite1.set_image(&sprite.plane23)?
+        return Result::Ok(())
     }
 
     // Set colors (15 colors + transparent)
@@ -509,4 +576,23 @@ pub fn read_sprite_collisions() -> u16 {
 // Collisions are cleared by reading the CLXDAT register
 pub fn clear_sprite_collisions() {
     let _ = read_sprite_collisions()
+}
+
+// Check if a specific sprite channel is free
+pub fn is_channel_free(channel: u8) -> bool {
+    if channel > 7 {
+        return false
+    }
+    unsafe {
+        let channel_mask = 1u8 << channel
+        return (SPRITE_CHANNELS_ALLOCATED & channel_mask) == 0
+    }
+}
+
+// Release all allocated sprite channels
+// Useful for cleanup or resetting sprite system
+pub fn release_all_sprites() {
+    unsafe {
+        SPRITE_CHANNELS_ALLOCATED = 0
+    }
 }
