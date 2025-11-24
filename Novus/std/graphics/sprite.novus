@@ -195,10 +195,10 @@ impl SpriteHandle {
         let pos = ((vstart & $FF) << 8) | (hw_x & $FF)
 
         // SPRxCTL format: VSTOP[7:0] | ATTACH | unused | unused | unused | unused | VSTOP[8] | VSTART[8] | HSTART[0]
-        let ctl = ((vstop & $FF) << 8) |     // VSTOP[7:0] in bits 15-8
-                  (((vstop >> 8) & 1) << 2) | // VSTOP[8] in bit 2
-                  (((vstart >> 8) & 1) << 1) | // VSTART[8] in bit 1
-                  ((hw_x >> 8) & 1)            // HSTART[0] in bit 0
+        let vstop_hi = (vstop >> 8) & 1
+        let vstart_hi = (vstart >> 8) & 1
+        let hstart_hi = (hw_x >> 8) & 1
+        let ctl = ((vstop & $FF) << 8) | (vstop_hi << 2) | (vstart_hi << 1) | hstart_hi
 
         // Write to hardware registers
         let channel_offset = self.channel * 8
