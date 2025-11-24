@@ -275,7 +275,7 @@ impl SpriteHandle {
             return false
         }
         unsafe {
-            let max_y: i16 = if IS_PAL { 256 } else { 200 }
+            let max_y: i16 = IS_PAL ? 256 : 200
             if self.pos_y < 0 || self.pos_y > max_y {
                 return false
             }
