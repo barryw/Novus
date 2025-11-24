@@ -194,8 +194,11 @@ impl SpriteHandle {
         // SPRxPOS format: VSTART (8 bits) | HSTART (8 bits)
         let pos = ((vstart & $FF) << 8) | (hw_x & $FF)
 
-        // SPRxCTL format: VSTOP (8 bits) | ATTACH | VSTART[8] | HSTART[8:1]
-        let ctl = ((vstop & $FF) << 8) | ((hw_x >> 8) & 1)
+        // SPRxCTL format: VSTOP[7:0] | ATTACH | unused | unused | unused | unused | VSTOP[8] | VSTART[8] | HSTART[0]
+        let ctl = ((vstop & $FF) << 8) |     // VSTOP[7:0] in bits 15-8
+                  (((vstop >> 8) & 1) << 2) | // VSTOP[8] in bit 2
+                  (((vstart >> 8) & 1) << 1) | // VSTART[8] in bit 1
+                  ((hw_x >> 8) & 1)            // HSTART[0] in bit 0
 
         // Write to hardware registers
         let channel_offset = self.channel * 8
@@ -212,6 +215,7 @@ impl SpriteHandle {
 
     // Hide sprite (move offscreen)
     pub fn hide(&mut self) {
+        self.visible = false
         self.move_to(-100, -100)
     }
 
@@ -502,9 +506,7 @@ pub fn read_sprite_collisions() -> u16 {
 }
 
 // Clear collision detection latches
+// Collisions are cleared by reading the CLXDAT register
 pub fn clear_sprite_collisions() {
-    let custom = (*u16)$DFF09C  // CLXCON register
-    unsafe {
-        *custom = $FFFF  // Write to clear
-    }
+    let _ = read_sprite_collisions()
 }

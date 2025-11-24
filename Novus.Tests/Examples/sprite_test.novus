@@ -3,7 +3,7 @@
 
 from std::graphics::sprite import SpriteData, SpriteHandle, AttachedSpriteData, AttachedSpriteHandle
 from std::graphics::sprite import detect_display_mode, read_sprite_collisions, clear_sprite_collisions
-from std::graphics::palette import Color
+from std::graphics::palette import Color, rgb
 from std::core import Result
 
 // Simple 4x4 sprite data (2 bitplanes, 4 colors)
@@ -50,9 +50,9 @@ fn test_sprite_display() -> Result<(), i32> {
 
     // Set colors
     let colors: [Color; 3] = [
-        Color::rgb(255, 0, 0),    // Red
-        Color::rgb(0, 255, 0),    // Green
-        Color::rgb(0, 0, 255)     // Blue
+        rgb(255, 0, 0),    // Red
+        rgb(0, 255, 0),    // Green
+        rgb(0, 0, 255)     // Blue
     ]
     sprite.set_colors(&colors)?
 
@@ -89,9 +89,9 @@ fn test_sprite_animation() -> Result<(), i32> {
     let mut sprite = SpriteHandle::alloc(2)?
 
     let colors: [Color; 3] = [
-        Color::rgb(255, 255, 0),
-        Color::rgb(255, 0, 255),
-        Color::rgb(0, 255, 255)
+        rgb(255, 255, 0),
+        rgb(255, 0, 255),
+        rgb(0, 255, 255)
     ]
     sprite.set_colors(&colors)?
 
@@ -123,11 +123,11 @@ fn test_attached_sprite() -> Result<(), i32> {
 
     // Set 15 colors
     let colors: [Color; 15] = [
-        Color::rgb(255, 0, 0), Color::rgb(0, 255, 0), Color::rgb(0, 0, 255),
-        Color::rgb(255, 255, 0), Color::rgb(255, 0, 255), Color::rgb(0, 255, 255),
-        Color::rgb(128, 0, 0), Color::rgb(0, 128, 0), Color::rgb(0, 0, 128),
-        Color::rgb(128, 128, 0), Color::rgb(128, 0, 128), Color::rgb(0, 128, 128),
-        Color::rgb(192, 192, 192), Color::rgb(64, 64, 64), Color::rgb(255, 128, 0)
+        rgb(255, 0, 0), rgb(0, 255, 0), rgb(0, 0, 255),
+        rgb(255, 255, 0), rgb(255, 0, 255), rgb(0, 255, 255),
+        rgb(128, 0, 0), rgb(0, 128, 0), rgb(0, 0, 128),
+        rgb(128, 128, 0), rgb(128, 0, 128), rgb(0, 128, 128),
+        rgb(192, 192, 192), rgb(64, 64, 64), rgb(255, 128, 0)
     ]
     attached.set_colors(&colors)?
 
