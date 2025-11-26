@@ -345,10 +345,11 @@ public class CCodeGenerator
         sb.AppendLine("typedef struct IOStdReq IOStdReq;");
         sb.AppendLine("typedef struct Device Device;");
         sb.AppendLine("typedef struct Unit Unit;");
+        sb.AppendLine("typedef struct SimpleSprite SimpleSprite;");
         sb.AppendLine();
         sb.AppendLine("// Sentinel value for \"unchanged\" pointer parameters (used by Amiga API)");
-        sb.AppendLine("// Using static const to prevent VBCC from trying to use moveq with the value");
-        sb.AppendLine("static const void* NULL_PTR_SENTINEL = (void*)(~0);");
+        sb.AppendLine("// Using explicit 32-bit constant to prevent VBCC from treating as 64-bit value");
+        sb.AppendLine("static const void* NULL_PTR_SENTINEL = (void*)0xFFFFFFFFUL;");
         sb.AppendLine();
         sb.AppendLine("// Memory functions - no C library dependency");
         sb.AppendLine("void __novus_memset(void* dest, int value, uint32_t n);");
@@ -383,6 +384,7 @@ public class CCodeGenerator
                 "Node", "MinNode", "Library", "List", "MinList", "TagItem", "Hook",
                 "Task", "StackSwapStruct", "SignalSemaphore", "MsgPort", "Message",
                 "Device", "Unit", "ExtendedNode", "Custom", "SpriteDef", "DBufInfo",
+                "SimpleSprite",
                 // Graphics types
                 "TextAttr", "TTextAttr", "TextFont", "TextFontExtension",
                 "ColorFontColors", "ColorTextFont", "TextExtent", "Layer", "RastPort",
@@ -449,6 +451,48 @@ public class CCodeGenerator
                 })
                 .ToList();
 
+            // CRITICAL: Collect and emit tuple types referenced by struct fields BEFORE struct definitions
+            // This prevents duplicate typedef warnings when multiple structs use the same tuple type
+            var tuplesUsedByStructs = new HashSet<IrTupleType>();
+            foreach (var structType in userStructs)
+            {
+                foreach (var field in structType.Fields)
+                {
+                    codegen.CollectTupleTypesFromType(field.Type, tuplesUsedByStructs);
+                }
+            }
+
+            if (tuplesUsedByStructs.Any())
+            {
+                sb.AppendLine("// Tuple types used by struct fields");
+                foreach (var tupleType in tuplesUsedByStructs.OrderBy(t => codegen.GetTupleTypeName(t)))
+                {
+                    codegen.EmitTupleTypeToBuilder(sb, tupleType);
+                }
+                sb.AppendLine();
+            }
+
+            // CRITICAL: Collect and emit enum types referenced by struct fields BEFORE struct definitions
+            // This prevents "undefined type" errors when structs use enum types as fields
+            var enumsUsedByStructs = new HashSet<IrEnumType>();
+            foreach (var structType in userStructs)
+            {
+                foreach (var field in structType.Fields)
+                {
+                    codegen.CollectEnumTypesFromType(field.Type, enumsUsedByStructs);
+                }
+            }
+
+            if (enumsUsedByStructs.Any())
+            {
+                sb.AppendLine("// Enum types used by struct fields");
+                foreach (var enumType in enumsUsedByStructs.OrderBy(e => codegen.MangleName(e)))
+                {
+                    codegen.EmitEnumTypeToBuilder(sb, enumType);
+                }
+                sb.AppendLine();
+            }
+
             // PASS 1: Forward declarations for all user-defined structs
             // This is required for self-referential structs (e.g., Gadget* NextGadget in Gadget)
             sb.AppendLine("// Forward declarations");
@@ -478,9 +522,15 @@ public class CCodeGenerator
             sb.AppendLine("// ============================================================================");
             sb.AppendLine();
 
+            // Deduplicate tuple types by their C type name to prevent redeclaration warnings
+            var seenTupleNames = new HashSet<string>();
             foreach (var tupleType in typeRegistry.TupleTypes.OrderBy(t => t.Name))
             {
-                codegen.EmitTupleTypeToBuilder(sb, tupleType);
+                var tupleName = codegen.GetTupleTypeName(tupleType);
+                if (seenTupleNames.Add(tupleName))
+                {
+                    codegen.EmitTupleTypeToBuilder(sb, tupleType);
+                }
             }
         }
 
@@ -927,9 +977,11 @@ public class CCodeGenerator
 
             // CRITICAL FIX FOR 68K ALIGNMENT:
             // Enums and structs MUST be initialized to force VBCC to align them properly
+            // VBCC FIX: Split declaration and memset onto separate lines for compatibility
             if (slotType is IrEnumType || slotType is IrStructType)
             {
-                targetBuilder.AppendLine($"    {decl}; __novus_memset(&{slotName}, 0, sizeof({cType}));");
+                targetBuilder.AppendLine($"    {decl};");
+                targetBuilder.AppendLine($"    __novus_memset(&{slotName}, 0, sizeof({cType}));");
             }
             else
             {
@@ -982,6 +1034,10 @@ public class CCodeGenerator
                     if (localDecl.Type is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
                         continue;
 
+                    // BUG FIX: Skip if this variable is a module static - don't shadow it with a local
+                    if (IsModuleStaticVariable(localDecl.Name))
+                        continue;
+
                     var varName = SanitizeVariableName(localDecl.Name);
                     if (!localDeclVars.ContainsKey(varName))
                     {
@@ -995,6 +1051,10 @@ public class CCodeGenerator
                 {
                     // Skip if this variable is mapped to a slot (check ORIGINAL name since liveness uses original names)
                     if (IsMappedToSlot(store.VariableName))
+                        continue;
+
+                    // BUG FIX: Skip if this variable is a module static - don't shadow it with a local
+                    if (IsModuleStaticVariable(store.VariableName))
                         continue;
 
                     var varName = SanitizeVariableName(store.VariableName);
@@ -1047,9 +1107,11 @@ public class CCodeGenerator
                 // Enums and structs MUST be initialized (even with garbage) to force VBCC
                 // to align them properly on the stack. Without this, VBCC may place them at
                 // odd addresses, causing guru meditation 81000005 (odd-address access error).
+                // VBCC FIX: Split declaration and memset onto separate lines for compatibility
                 if (varType is IrEnumType || varType is IrStructType)
                 {
-                    targetBuilder.AppendLine($"    {decl}; __novus_memset(&{varName}, 0, sizeof({cType}));");
+                    targetBuilder.AppendLine($"    {decl};");
+                    targetBuilder.AppendLine($"    __novus_memset(&{varName}, 0, sizeof({cType}));");
                 }
                 else
                 {
@@ -1069,9 +1131,11 @@ public class CCodeGenerator
                 var cType = GetCType(varType);
 
                 // CRITICAL FIX FOR 68K ALIGNMENT (same as above)
+                // VBCC FIX: Split declaration and memset onto separate lines for compatibility
                 if (varType is IrEnumType || varType is IrStructType)
                 {
-                    targetBuilder.AppendLine($"    {decl}; __novus_memset(&{varName}, 0, sizeof({cType}));");
+                    targetBuilder.AppendLine($"    {decl};");
+                    targetBuilder.AppendLine($"    __novus_memset(&{varName}, 0, sizeof({cType}));");
                 }
                 else
                 {
@@ -1464,6 +1528,7 @@ public class CCodeGenerator
         "Node", "MinNode", "Library", "List", "MinList", "TagItem", "Hook",
         "Task", "StackSwapStruct", "SignalSemaphore", "MsgPort", "Message",
         "Device", "Unit", "ExtendedNode", "Custom", "SpriteDef", "DBufInfo",
+        "SimpleSprite",
         "TextAttr", "TTextAttr", "TextFont", "TextFontExtension",
         "ColorFontColors", "ColorTextFont", "TextExtent", "Layer", "RastPort",
         "IBox", "DrawInfo", "Gadget", "Requester", "NewScreen", "Screen",
@@ -1565,6 +1630,68 @@ public class CCodeGenerator
             case IrMutReferenceType mutRefType:
                 // Recursively check the pointee type
                 CollectEnumTypesFromType(mutRefType.PointeeType, enumTypes);
+                break;
+
+            // For other types (primitive, function pointers, etc.) we don't need to recurse
+        }
+    }
+
+    /// <summary>
+    /// Recursively collect all tuple types referenced by a given type.
+    /// This is used to emit tuple type definitions before struct definitions that use them.
+    /// </summary>
+    private void CollectTupleTypesFromType(IrType type, HashSet<IrTupleType> tupleTypes)
+    {
+        switch (type)
+        {
+            case IrTupleType tupleType:
+                // Skip unit type ()
+                if (tupleType.ElementTypes.Count > 0)
+                {
+                    tupleTypes.Add(tupleType);
+                    // Also recursively scan tuple element types for nested tuples
+                    foreach (var elementType in tupleType.ElementTypes)
+                    {
+                        CollectTupleTypesFromType(elementType, tupleTypes);
+                    }
+                }
+                break;
+
+            case IrArrayType arrayType:
+                CollectTupleTypesFromType(arrayType.ElementType, tupleTypes);
+                break;
+
+            case IrStructType structType:
+                foreach (var field in structType.Fields)
+                {
+                    CollectTupleTypesFromType(field.Type, tupleTypes);
+                }
+                break;
+
+            case IrEnumType enumType:
+                // Check enum variant associated data for tuple types
+                foreach (var variant in enumType.Variants)
+                {
+                    if (variant.HasAssociatedData && variant.AssociatedData != null)
+                    {
+                        foreach (var dataType in variant.AssociatedData)
+                        {
+                            CollectTupleTypesFromType(dataType, tupleTypes);
+                        }
+                    }
+                }
+                break;
+
+            case IrPointerType pointerType:
+                CollectTupleTypesFromType(pointerType.PointeeType, tupleTypes);
+                break;
+
+            case IrReferenceType refType:
+                CollectTupleTypesFromType(refType.PointeeType, tupleTypes);
+                break;
+
+            case IrMutReferenceType mutRefType:
+                CollectTupleTypesFromType(mutRefType.PointeeType, tupleTypes);
                 break;
 
             // For other types (primitive, function pointers, etc.) we don't need to recurse
@@ -3014,9 +3141,11 @@ public class CCodeGenerator
 
             // CRITICAL FIX FOR 68K ALIGNMENT:
             // Enums and structs MUST be initialized to force VBCC to align them properly
+            // VBCC FIX: Split declaration and memset onto separate lines for compatibility
             if (slotType is IrEnumType || slotType is IrStructType)
             {
-                _output.AppendLine($"    {decl}; __novus_memset(&{slotName}, 0, sizeof({cType}));");
+                _output.AppendLine($"    {decl};");
+                _output.AppendLine($"    __novus_memset(&{slotName}, 0, sizeof({cType}));");
             }
             else
             {
@@ -3052,6 +3181,10 @@ public class CCodeGenerator
                     if (localDecl.Type is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
                         continue;
 
+                    // BUG FIX: Skip if this variable is a module static - don't shadow it with a local
+                    if (IsModuleStaticVariable(localDecl.Name))
+                        continue;
+
                     if (!localDeclVars.ContainsKey(varName))
                     {
                         var isArray = localDecl.Type is IrArrayType;
@@ -3065,6 +3198,10 @@ public class CCodeGenerator
 
                     // Skip if this variable is mapped to a slot (check ORIGINAL name since liveness uses original names)
                     if (IsMappedToSlot(store.VariableName))
+                        continue;
+
+                    // BUG FIX: Skip if this variable is a module static - don't shadow it with a local
+                    if (IsModuleStaticVariable(store.VariableName))
                         continue;
 
                     if (!storedVars.ContainsKey(varName))
@@ -3098,9 +3235,11 @@ public class CCodeGenerator
 
                 // CRITICAL FIX FOR 68K ALIGNMENT:
                 // Enums and structs MUST be initialized to force VBCC to align them properly
+                // VBCC FIX: Split declaration and memset onto separate lines for compatibility
                 if (varType is IrEnumType || varType is IrStructType)
                 {
-                    _output.AppendLine($"    {decl}; __novus_memset(&{varName}, 0, sizeof({cType}));");
+                    _output.AppendLine($"    {decl};");
+                    _output.AppendLine($"    __novus_memset(&{varName}, 0, sizeof({cType}));");
                 }
                 else
                 {
@@ -3118,9 +3257,11 @@ public class CCodeGenerator
                 var decl = GetCVariableDeclaration(varType, varName);
                 var cType = GetCType(varType);
 
+                // VBCC FIX: Split declaration and memset onto separate lines for compatibility
                 if (varType is IrEnumType || varType is IrStructType)
                 {
-                    _output.AppendLine($"    {decl}; __novus_memset(&{varName}, 0, sizeof({cType}));");
+                    _output.AppendLine($"    {decl};");
+                    _output.AppendLine($"    __novus_memset(&{varName}, 0, sizeof({cType}));");
                 }
                 else
                 {
@@ -3200,9 +3341,11 @@ public class CCodeGenerator
                         var cType = GetCType(varType);
 
                         // CRITICAL FIX FOR 68K ALIGNMENT
+                        // VBCC FIX: Split declaration and memset onto separate lines for compatibility
                         if (varType is IrEnumType || varType is IrStructType)
                         {
-                            _output.AppendLine($"        {decl}; __novus_memset(&{varName}, 0, sizeof({cType}));");
+                            _output.AppendLine($"        {decl};");
+                            _output.AppendLine($"        __novus_memset(&{varName}, 0, sizeof({cType}));");
                         }
                         else
                         {
@@ -3437,28 +3580,75 @@ public class CCodeGenerator
         if (localDecl.Type is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
             return;
 
+        // BUG FIX: Skip if this variable is a module static - don't shadow it with a local
+        // Module statics are already declared as extern at the top of the file
+        if (IsModuleStaticVariable(localDecl.Name))
+            return;
+
         var varName = SanitizeVariableName(localDecl.Name);
 
-        // CRITICAL FIX FOR VBCC ALIGNMENT: When initializing a Str struct from a struct literal,
-        // avoid compound literals which can be placed at odd addresses causing address errors.
-        // Instead, declare the variable uninitialized and assign fields individually.
-        var isStrStructLiteral = localDecl.Type is IrStructType structType &&
-                                 structType.Name == "Str" &&
-                                 localDecl.InitialValue is IrStructLiteral;
+        // VBCC FIX: When initializing from struct/enum literals, avoid C99 compound literals
+        // which VBCC doesn't support. Instead, use field-by-field assignment.
+        var isStructLiteral = localDecl.InitialValue is IrStructLiteral;
+        var isEnumLiteral = localDecl.InitialValue is IrEnumValue;
 
-        var initValue = EmitValue(localDecl.InitialValue);
+        // Don't call EmitValue yet for struct/enum literals - we'll handle them specially
+        var initValue = (isStructLiteral || isEnumLiteral) ? null : EmitValue(localDecl.InitialValue);
 
         // Check if this variable has already been declared in this function
         if (_declaredVariables.Contains(varName))
         {
             // Already declared - emit assignment only
-            if (isStrStructLiteral && localDecl.InitialValue is IrStructLiteral strLit)
+
+            // VBCC FIX: For struct literals, emit field-by-field assignment instead of compound literal
+            if (localDecl.InitialValue is IrStructLiteral structLitAssign)
             {
-                // Emit field-by-field assignment to avoid compound literal
-                foreach (var kvp in strLit.FieldValues)
+                foreach (var kvp in structLitAssign.FieldValues)
                 {
                     var fieldValue = EmitValue(kvp.Value);
                     _output.AppendLine($"    {varName}.{kvp.Key} = {fieldValue};");
+                }
+            }
+            // VBCC FIX: For enum literals with associated data, emit field-by-field assignment
+            else if (localDecl.InitialValue is IrEnumValue enumValueAssign)
+            {
+                var enumType = enumValueAssign.Type as IrEnumType;
+                var enumName = MangleName(enumType);
+                bool hasAnyData = enumType.Variants.Any(v => v.HasAssociatedData);
+
+                if (hasAnyData)
+                {
+                    // Emit tag assignment
+                    _output.AppendLine($"    {varName}.tag = {enumName}_{enumValueAssign.VariantName};");
+
+                    // Emit associated data assignments if present
+                    if (enumValueAssign.AssociatedValues.Count > 0)
+                    {
+                        // Check if this is a unit type
+                        bool isUnitType = enumValueAssign.AssociatedValues.Count == 1 &&
+                                         enumValueAssign.AssociatedValues[0].Type is IrTupleType unitTupleType &&
+                                         unitTupleType.ElementTypes.Count == 0;
+
+                        if (!isUnitType)
+                        {
+                            for (int i = 0; i < enumValueAssign.AssociatedValues.Count; i++)
+                            {
+                                var assocValue = EmitValue(enumValueAssign.AssociatedValues[i]);
+                                _output.AppendLine($"    {varName}.data.{enumValueAssign.VariantName}._{i} = {assocValue};");
+                            }
+                        }
+                        else
+                        {
+                            // Unit type - set dummy field
+                            _output.AppendLine($"    {varName}.data.{enumValueAssign.VariantName}._dummy = 0;");
+                        }
+                    }
+                }
+                else
+                {
+                    // For enums without associated data, just assign the tag value
+                    initValue = EmitValue(localDecl.InitialValue);
+                    _output.AppendLine($"    {varName} = {initValue};");
                 }
             }
             else if (localDecl.Type is IrArrayType arrayType && localDecl.InitialValue is IrArrayLiteral arrayLiteral)
@@ -3467,10 +3657,15 @@ public class CCodeGenerator
                 // Use memcpy from a compound literal instead.
                 var elementType = GetCType(arrayType.ElementType);
                 var size = arrayType.Length;
+                initValue = EmitValue(localDecl.InitialValue);
                 _output.AppendLine($"    __novus_memcpy((uint8_t*){varName}, (uint8_t*)({elementType}[{size}]){initValue}, sizeof({varName}));");
             }
             else
             {
+                // Compute initValue now if we haven't already
+                if (initValue == null)
+                    initValue = EmitValue(localDecl.InitialValue);
+
                 // For struct/enum types that were pre-declared with memset, don't emit a `= 0` assignment.
                 // The variable was already zero-initialized, and `structVar = 0` is invalid C.
                 // Match result variables are initialized this way by the IR builder when we don't know the type yet.
@@ -3515,16 +3710,55 @@ public class CCodeGenerator
                 // This works correctly with VBCC for all types including structs
                 _output.AppendLine($"    {elementType} {varName}[{size}] = {initValue};");
             }
-            else if (isStrStructLiteral && localDecl.InitialValue is IrStructLiteral strLit)
+            // VBCC FIX: For struct literals, declare variable then assign fields individually
+            // This avoids VBCC C99 compound literal incompatibility
+            else if (isStructLiteral && localDecl.InitialValue is IrStructLiteral structLitDecl)
             {
-                // Declare Str variable uninitialized, then assign fields individually
-                // This avoids VBCC placing compound literal temporaries at odd addresses
                 var decl = GetCVariableDeclaration(localDecl.Type, varName);
                 _output.AppendLine($"    {decl};");
-                foreach (var kvp in strLit.FieldValues)
+                foreach (var kvp in structLitDecl.FieldValues)
                 {
                     var fieldValue = EmitValue(kvp.Value);
                     _output.AppendLine($"    {varName}.{kvp.Key} = {fieldValue};");
+                }
+            }
+            // VBCC FIX: For enum literals with associated data, declare variable then assign tag and data
+            else if (isEnumLiteral && localDecl.InitialValue is IrEnumValue enumValueDecl)
+            {
+                var enumType = enumValueDecl.Type as IrEnumType;
+                var enumName = MangleName(enumType);
+                bool hasAnyData = enumType.Variants.Any(v => v.HasAssociatedData);
+
+                var decl = GetCVariableDeclaration(localDecl.Type, varName);
+                _output.AppendLine($"    {decl};");
+
+                if (hasAnyData)
+                {
+                    // Emit tag assignment
+                    _output.AppendLine($"    {varName}.tag = {enumName}_{enumValueDecl.VariantName};");
+
+                    // Emit associated data assignments if present
+                    if (enumValueDecl.AssociatedValues.Count > 0)
+                    {
+                        // Check if this is a unit type
+                        bool isUnitType = enumValueDecl.AssociatedValues.Count == 1 &&
+                                         enumValueDecl.AssociatedValues[0].Type is IrTupleType unitTupleType &&
+                                         unitTupleType.ElementTypes.Count == 0;
+
+                        if (!isUnitType)
+                        {
+                            for (int i = 0; i < enumValueDecl.AssociatedValues.Count; i++)
+                            {
+                                var assocValue = EmitValue(enumValueDecl.AssociatedValues[i]);
+                                _output.AppendLine($"    {varName}.data.{enumValueDecl.VariantName}._{i} = {assocValue};");
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    // Simple enum without data - just emit as cast
+                    _output.AppendLine($"    {varName} = {initValue};");
                 }
             }
             // VBCC FIX: For struct types with nested structs, declare then use memcpy for initialization
@@ -3563,6 +3797,58 @@ public class CCodeGenerator
             return;
 
         var varName = SanitizeVariableName(store.VariableName);
+
+        // VBCC FIX: VBCC doesn't support C99 compound literals in assignments.
+        // For struct literals, emit field-by-field assignment instead of compound literal.
+        if (store.Value is IrStructLiteral structLit)
+        {
+            foreach (var kvp in structLit.FieldValues)
+            {
+                var fieldValue = EmitValue(kvp.Value);
+                _output.AppendLine($"    {varName}.{kvp.Key} = {fieldValue};");
+            }
+            return;
+        }
+
+        // VBCC FIX: For enum literals with associated data, emit field-by-field assignment
+        if (store.Value is IrEnumValue enumValue)
+        {
+            var enumType = enumValue.Type as IrEnumType;
+            var enumName = MangleName(enumType);
+            bool hasAnyData = enumType.Variants.Any(v => v.HasAssociatedData);
+
+            if (hasAnyData)
+            {
+                // Emit tag assignment
+                _output.AppendLine($"    {varName}.tag = {enumName}_{enumValue.VariantName};");
+
+                // Emit associated data assignments if present
+                if (enumValue.AssociatedValues.Count > 0)
+                {
+                    // Check if this is a unit type
+                    bool isUnitType = enumValue.AssociatedValues.Count == 1 &&
+                                     enumValue.AssociatedValues[0].Type is IrTupleType unitTupleType &&
+                                     unitTupleType.ElementTypes.Count == 0;
+
+                    if (!isUnitType)
+                    {
+                        for (int i = 0; i < enumValue.AssociatedValues.Count; i++)
+                        {
+                            var assocValue = EmitValue(enumValue.AssociatedValues[i]);
+                            _output.AppendLine($"    {varName}.data.{enumValue.VariantName}._{i} = {assocValue};");
+                        }
+                    }
+                    else
+                    {
+                        // Unit type - set dummy field
+                        _output.AppendLine($"    {varName}.data.{enumValue.VariantName}._dummy = 0;");
+                    }
+                }
+                return;
+            }
+            // For enums without associated data, fall through to simple assignment
+        }
+
         var value = EmitValue(store.Value);
 
         // VBCC FIX: VBCC cannot compile struct-by-value assignment when the struct contains nested structs.
@@ -4582,6 +4868,16 @@ public class CCodeGenerator
     {
         var sanitizedName = SanitizeVariableName(varName);
         return _fieldAccessChainInfo.ContainsKey(sanitizedName);
+    }
+
+    /// <summary>
+    /// Check if a variable name matches a module static variable.
+    /// Used to prevent local variables from shadowing module statics.
+    /// </summary>
+    private bool IsModuleStaticVariable(string varName)
+    {
+        var sanitizedName = SanitizeVariableName(varName);
+        return _module.StaticVariables.Any(sv => SanitizeVariableName(sv.Name) == sanitizedName);
     }
 
     /// <summary>

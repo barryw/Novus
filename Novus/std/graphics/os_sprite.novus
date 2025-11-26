@@ -1,0 +1,243 @@
+// OS-Backed Hardware Sprite Support for Amiga
+//
+// This module provides OS-managed sprites using graphics.library functions.
+// Unlike the low-level hardware API (std::graphics::sprite), this API:
+// - Requires a ViewPort from an Intuition screen
+// - Uses OS sprite allocation (GetSprite/FreeSprite)
+// - Provides multitasking-safe sprite management
+// - Coordinates are ViewPort-relative (OS handles offsets)
+//
+// Use this API when:
+// - Building Intuition-based applications
+// - Want OS to manage sprite allocation
+// - Need multitasking safety
+// - Using standard Workbench screens
+//
+// Use hardware API (std::graphics::sprite) when:
+// - Need maximum performance (no OS overhead)
+// - Working without Intuition (bare metal)
+// - Need specific sprite channels
+// - Using custom copper lists
+//
+// Quick Start:
+//   let sprite_data = SpriteData::from_raw(&CURSOR_DATA, 10)?
+//   let mut cursor = OsSpriteHandle::alloc(screen.viewport(), -1)?
+//   cursor.show(&sprite_data, 100, 50)?
+//   cursor.move_to(200, 100)?
+//   // Automatic cleanup via Drop
+
+from std::core import Result, Option
+from std::error::errors import GraphicsError
+from std::graphics::sprite import SpriteData
+from std::ffi::amiga_structs import SimpleSprite, ViewPort
+from std::ffi::graphics import GetSprite, FreeSprite, MoveSprite, ChangeSprite, WaitTOF
+
+// OS-managed sprite handle
+// Uses graphics.library GetSprite/FreeSprite/MoveSprite/ChangeSprite
+// Automatically frees sprite on drop (RAII)
+//
+// Uses the unified SpriteData type from std::graphics::sprite
+pub struct OsSpriteHandle {
+    sprite_num: i16,              // Sprite number allocated by OS (-1 if none)
+    simple_sprite: SimpleSprite,  // OS SimpleSprite structure
+    viewport: *ViewPort,          // ViewPort this sprite is attached to
+    is_allocated: bool,           // Track allocation state
+    current_data: Option<*u16>,   // Current sprite data pointer
+}
+
+impl OsSpriteHandle {
+    // Allocate OS sprite with optional preference
+    // preference = -1 for any available sprite, or 0-7 for preference
+    // Returns sprite allocated by OS (may differ from preference)
+    //
+    // Example:
+    //   let sprite = OsSpriteHandle::alloc(screen.viewport(), -1)?  // Any sprite
+    //   let sprite0 = OsSpriteHandle::alloc(screen.viewport(), 0)?  // Prefer sprite 0
+    pub fn alloc(viewport: *ViewPort, preference: i16) -> Result<OsSpriteHandle, GraphicsError> {
+        if (u32)viewport == 0u32 {
+            return Result::Err(GraphicsError::InvalidViewPort)
+        }
+
+        // Initialize SimpleSprite structure
+        let mut simple_sprite = SimpleSprite {
+            posctldata: (*u16)0,
+            height: 0u16,
+            x: 0u16,
+            y: 0u16,
+            num: (u16)preference,
+        }
+
+        // Ask OS to allocate sprite
+        let allocated_num = GetSprite(&simple_sprite, preference)
+
+        if allocated_num < 0 {
+            return Result::Err(GraphicsError::NoSpritesAvailable)
+        }
+
+        let empty_option: Option<*u16> = Option::None
+
+        return Result::Ok(OsSpriteHandle {
+            sprite_num: allocated_num,
+            simple_sprite: simple_sprite,
+            viewport: viewport,
+            is_allocated: true,
+            current_data: empty_option,
+        })
+    }
+
+    // Show sprite at position within ViewPort
+    // Coordinates are relative to ViewPort origin (OS handles hardware offsets)
+    //
+    // Example:
+    //   sprite.show(&sprite_data, 100, 50)?
+    pub fn show(&mut self, sprite_data: &SpriteData, x: i16, y: i16) -> Result<(), GraphicsError> {
+        if !self.is_allocated {
+            return Result::Err(GraphicsError::SpriteNotAllocated)
+        }
+
+        // Validate ViewPort is still valid
+        if (u32)self.viewport == 0u32 {
+            return Result::Err(GraphicsError::InvalidViewPort)
+        }
+
+        // Update SimpleSprite structure
+        self.simple_sprite.posctldata = sprite_data.as_ptr()
+        self.simple_sprite.height = sprite_data.height()
+
+        // Store current data pointer
+        self.current_data = Option::Some(sprite_data.as_ptr())
+
+        // Get pointer to simple_sprite for FFI calls
+        let sprite_ptr = &self.simple_sprite
+
+        // Let OS update sprite via ChangeSprite
+        ChangeSprite(self.viewport, sprite_ptr, (*u8)sprite_data.as_ptr())
+
+        // Move sprite to position (MoveSprite updates x/y internally)
+        MoveSprite(self.viewport, sprite_ptr, x, y)
+
+        // Wait for vertical blank to display changes
+        WaitTOF()
+
+        return Result::Ok(())
+    }
+
+    // Move sprite to new position (ViewPort-relative coordinates)
+    // OS handles hardware offset calculations
+    //
+    // Example:
+    //   sprite.move_to(200, 100)?
+    pub fn move_to(&mut self, x: i16, y: i16) -> Result<(), GraphicsError> {
+        if !self.is_allocated {
+            return Result::Err(GraphicsError::SpriteNotAllocated)
+        }
+
+        // Validate ViewPort is still valid
+        if (u32)self.viewport == 0u32 {
+            return Result::Err(GraphicsError::InvalidViewPort)
+        }
+
+        // Get pointer to simple_sprite for FFI call
+        let sprite_ptr = &self.simple_sprite
+
+        // Let OS move sprite (updates x/y internally)
+        MoveSprite(self.viewport, sprite_ptr, x, y)
+
+        // Wait for vertical blank to display changes
+        WaitTOF()
+
+        return Result::Ok(())
+    }
+
+    // Hide sprite by moving it offscreen
+    // More efficient than freeing and reallocating
+    pub fn hide(&mut self) -> Result<(), GraphicsError> {
+        if !self.is_allocated {
+            return Result::Err(GraphicsError::SpriteNotAllocated)
+        }
+
+        // Validate ViewPort is still valid
+        if (u32)self.viewport == 0u32 {
+            return Result::Err(GraphicsError::InvalidViewPort)
+        }
+
+        // Move far offscreen to guarantee it's hidden
+        // -256 is well beyond any possible display resolution
+        return self.move_to(-256, -256)
+    }
+
+    // Change sprite image (for animation)
+    // Waits for VBlank to avoid tearing
+    //
+    // Example:
+    //   sprite.set_image(&frame2)?  // Animate to next frame
+    pub fn set_image(&mut self, sprite_data: &SpriteData) -> Result<(), GraphicsError> {
+        if !self.is_allocated {
+            return Result::Err(GraphicsError::SpriteNotAllocated)
+        }
+
+        // Validate ViewPort is still valid
+        if (u32)self.viewport == 0u32 {
+            return Result::Err(GraphicsError::InvalidViewPort)
+        }
+
+        // Update sprite data pointer
+        self.simple_sprite.posctldata = sprite_data.as_ptr()
+        self.simple_sprite.height = sprite_data.height()
+        self.current_data = Option::Some(sprite_data.as_ptr())
+
+        // Get pointer to simple_sprite for FFI call
+        let sprite_ptr = &self.simple_sprite
+
+        // Let OS change sprite data
+        ChangeSprite(self.viewport, sprite_ptr, (*u8)sprite_data.as_ptr())
+
+        // Wait for vertical blank to display changes
+        WaitTOF()
+
+        return Result::Ok(())
+    }
+
+    // Get allocated sprite number (0-7)
+    // Returns the actual sprite number allocated by OS
+    // (may differ from preference passed to alloc)
+    pub fn sprite_num(&self) -> i16 {
+        return self.sprite_num
+    }
+
+    // Get current position (ViewPort-relative)
+    // Returns (x, y) coordinates
+    pub fn position(&self) -> (i16, i16) {
+        return ((i16)self.simple_sprite.x, (i16)self.simple_sprite.y)
+    }
+
+    // Check if sprite is allocated
+    pub fn is_allocated(&self) -> bool {
+        return self.is_allocated
+    }
+
+    // Manually release sprite back to OS
+    // Called automatically by Drop, but can be called early if needed
+    pub fn release(&mut self) {
+        if self.is_allocated {
+            // Hide sprite before freeing
+            let _ = self.hide()
+
+            // Free sprite via OS
+            FreeSprite(self.sprite_num)
+
+            self.is_allocated = false
+            self.sprite_num = -1
+            let empty_option: Option<*u16> = Option::None
+            self.current_data = empty_option
+        }
+    }
+}
+
+// Automatic cleanup via RAII
+// Sprite is freed when handle goes out of scope
+impl Drop for OsSpriteHandle {
+    fn drop(&mut self) {
+        self.release()
+    }
+}

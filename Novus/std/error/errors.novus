@@ -226,6 +226,8 @@ pub enum GraphicsError {
     SpriteNotAllocated,             // Sprite handle not allocated
     SpriteChannelInUse,             // Sprite channel already allocated
     InvalidColorCount,              // Wrong number of colors for sprite type
+    NoSpritesAvailable,             // OS couldn't allocate sprite (all in use)
+    InvalidViewPort,                // NULL or invalid ViewPort pointer
 }
 
 // Convert GraphicsError to error code
@@ -244,6 +246,8 @@ pub fn graphics_error_to_code(err: GraphicsError) -> i32 {
         GraphicsError::SpriteNotAllocated => return -310,
         GraphicsError::SpriteChannelInUse => return -311,
         GraphicsError::InvalidColorCount => return -312,
+        GraphicsError::NoSpritesAvailable => return -313,
+        GraphicsError::InvalidViewPort => return -314,
     }
 }
 
@@ -431,6 +435,8 @@ impl GraphicsError {
             GraphicsError::SpriteNotAllocated => return "Sprite handle not allocated",
             GraphicsError::SpriteChannelInUse => return "Sprite channel already allocated",
             GraphicsError::InvalidColorCount => return "Wrong number of colors for sprite type",
+            GraphicsError::NoSpritesAvailable => return "No sprites available (all in use)",
+            GraphicsError::InvalidViewPort => return "Invalid ViewPort pointer",
         }
     }
 }

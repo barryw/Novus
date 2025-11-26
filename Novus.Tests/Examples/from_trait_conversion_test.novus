@@ -1,0 +1,28 @@
+// Test for automatic From<T> conversion in ? operator
+//
+// This demonstrates that the ? operator can automatically convert
+// between error types when a From<T> trait implementation exists.
+//
+// For example:
+// - WindowHandle::simple() returns Result<WindowHandle, IntuitionError>
+// - But we can use it in a function returning Result<T, NovusError>
+// - The ? operator automatically calls From<IntuitionError>::convert()
+
+from std::core import Result
+from std::error::errors import NovusError, IntuitionError, GraphicsError
+from std::ui::window import WindowHandle
+
+// This function returns NovusError, but calls functions that return
+// more specific error types (IntuitionError, GraphicsError)
+fn test_error_conversion() -> Result<(), NovusError> {
+    // WindowHandle::simple returns Result<WindowHandle, IntuitionError>
+    // The ? operator will automatically convert IntuitionError -> NovusError
+    let window = WindowHandle::simple("Test Window", 320, 200)?
+
+    // Function succeeds, return Ok
+    return Result::Ok(())
+}
+
+fn main() -> Result<(), NovusError> {
+    return test_error_conversion()
+}

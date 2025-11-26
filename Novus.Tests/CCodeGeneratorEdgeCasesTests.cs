@@ -659,4 +659,68 @@ pub fn divide_void(a: u8, divisor: u8) {
         Assert.True(foundDivCheck, "Should contain __novus_div_check call");
         Assert.True(foundPlainReturn, "Should contain plain 'return;' after error handler for void function");
     }
+
+    [Fact]
+    public void CCodeGen_ModuleStaticVariables_DoNotShadowWithLocalDeclarations()
+    {
+        // Test for bug fix: Module static variables were being shadowed by local variable declarations
+        // in functions that used them, causing assignments to update the local instead of the global
+        var source = @"
+static mut COUNTER: u32 = 0u32
+static mut INITIALIZED: bool = false
+
+pub fn init_system() {
+    if INITIALIZED {
+        return
+    }
+    INITIALIZED = true
+}
+
+pub fn increment_counter() -> u32 {
+    COUNTER = COUNTER + 1u32
+    return COUNTER
+}";
+
+        var module = BuildIR(source);
+        var codegen = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft");
+        var code = codegen.GenerateFunctionFile(module.Functions.First(f => f.Name == "init_system"));
+
+        // Verify extern declarations are present
+        Assert.Contains("extern bool INITIALIZED", code);
+
+        // Verify NO local variable shadowing the module static
+        // The bug would generate: "bool INITIALIZED;" inside the function body
+        var lines = code.Split('\n');
+        bool foundLocalDecl = false;
+        bool insideFunctionBody = false;
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i].Trim();
+
+            // Detect function body start
+            if (line.StartsWith("void init_system") && i + 1 < lines.Length && lines[i + 1].Trim() == "{")
+            {
+                insideFunctionBody = true;
+                continue;
+            }
+
+            // Inside function body, check for local declaration that would shadow the static
+            if (insideFunctionBody)
+            {
+                // This would be the bug: "bool INITIALIZED;" declared as a local variable
+                if (line == "bool INITIALIZED;" || line == "uint32_t COUNTER;")
+                {
+                    foundLocalDecl = true;
+                    break;
+                }
+            }
+        }
+
+        Assert.False(foundLocalDecl, "Module static variables should NOT be declared as locals (shadowing bug)");
+
+        // Verify the assignment uses the global, not a local
+        // The correct code should have "INITIALIZED = true;" not "INITIALIZED = 0;" followed by "true"
+        Assert.Contains("INITIALIZED = true", code);
+    }
 }

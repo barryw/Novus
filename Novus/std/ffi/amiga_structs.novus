@@ -33,11 +33,6 @@ pub struct View {
     _opaque: u8,
 }
 
-// Opaque struct for ViewPort (per-screen display parameters)
-pub struct ViewPort {
-    _opaque: u8,
-}
-
 // Opaque struct for ColorMap (palette data)
 pub struct ColorMap {
     _opaque: u8,
@@ -46,6 +41,34 @@ pub struct ColorMap {
 // Opaque struct for UCopList (user copper list)
 pub struct UCopList {
     _opaque: u8,
+}
+
+// Opaque struct for ViewPort (per-screen display parameters)
+pub struct ViewPort {
+    Next: *ViewPort,
+    ColorMap: *ColorMap,
+    DspIns: *u8,
+    SprIns: *u8,
+    ClrIns: *u8,
+    UCopIns: *UCopList,
+    DWidth: i16,
+    DHeight: i16,
+    DxOffset: i16,
+    DyOffset: i16,
+    Modes: u16,
+    SpritePriorities: u8,
+    ExtendedModes: u8,
+    RasInfo: *u8,
+}
+
+// SimpleSprite structure for hardware sprites (from NDK graphics/sprite.h)
+#[extern_type]
+pub struct SimpleSprite {
+    posctldata: *u16,  // Pointer to sprite data (position/control words + image data)
+    height: u16,       // Height of sprite in scanlines
+    x: u16,            // Current X position
+    y: u16,            // Current Y position
+    num: u16,          // Sprite number (0-7)
 }
 
 // ============================================================================
@@ -555,7 +578,7 @@ pub struct Screen {
     WBorRight: i8,
     WBorBottom: i8,
     Font: *TextAttr,
-    ViewPort: *u8,
+    ViewPort: ViewPort,
     RastPort: RastPort,
     BitMap: BitMap,
     LayerInfo: *u8,
