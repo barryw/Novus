@@ -367,7 +367,7 @@ expression
     ;
 
 argumentList
-    : expression (',' expression)*
+    : NEWLINE* expression (',' NEWLINE* expression)* (',' NEWLINE*)? NEWLINE*
     ;
 
 primaryExpression
@@ -391,7 +391,7 @@ primaryExpression
     | '(' expression (',' expression)+ ')'         # TupleLiteral
     | '(' expression ')'                           # ParenExpr
     | '[' NEWLINE* expression NEWLINE* ';' NEWLINE* expression NEWLINE* ']'  # ArrayRepeatLiteral
-    | '[' NEWLINE* (expression (',' NEWLINE* expression)*)? NEWLINE* ']'     # ArrayLiteral
+    | '[' NEWLINE* (expression (',' NEWLINE* expression)* (',' NEWLINE*)?)? NEWLINE* ']'     # ArrayLiteral
     ;
 
 identifier
@@ -399,7 +399,7 @@ identifier
     ;
 
 arrayLiteralInit
-    : '[' NEWLINE* (expression (',' NEWLINE* expression)*)? NEWLINE* ']'
+    : '[' NEWLINE* (expression (',' NEWLINE* expression)* (',' NEWLINE*)?)? NEWLINE* ']'
     ;
 
 structFieldInit

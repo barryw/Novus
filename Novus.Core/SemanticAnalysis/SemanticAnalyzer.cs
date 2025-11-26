@@ -5872,6 +5872,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                         continue;
                     }
 
+                    // Check if we can coerce &T to *T (for extern functions)
+                    if (CanCoerceReferenceToPointer(paramType, argType))
+                    {
+                        // Allow this coercion - IrBuilder will handle reference-to-pointer conversion
+                        continue;
+                    }
+
                     var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
 
                     // Check if this is a function pointer mismatch - give detailed error
@@ -6312,6 +6319,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                         if (CanCoerceStrToStrRef(paramType, argType))
                         {
                             // Allow this coercion - IrBuilder will handle reference creation
+                            continue;
+                        }
+
+                        // Check if we can coerce &T to *T (for extern functions)
+                        if (CanCoerceReferenceToPointer(paramType, argType))
+                        {
+                            // Allow this coercion - IrBuilder will handle reference-to-pointer conversion
                             continue;
                         }
 
@@ -8644,6 +8658,29 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             actualStruct.StructName == "Str")
         {
             return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Check if we can coerce &T → *T
+    /// This allows passing references to extern functions that expect pointers
+    /// </summary>
+    private bool CanCoerceReferenceToPointer(IrType expectedType, IrType actualType)
+    {
+        // Check if expected is *T and actual is &T (or &mut T)
+        if (expectedType is IrPointerType ptrType &&
+            (actualType is IrReferenceType refType || actualType is IrMutReferenceType mutRefType))
+        {
+            var actualPointeeType = actualType is IrReferenceType r ? r.PointeeType :
+                                   actualType is IrMutReferenceType m ? m.PointeeType : null;
+
+            if (actualPointeeType != null)
+            {
+                // Check if the pointee types are compatible
+                return TypesCompatible(ptrType.PointeeType, actualPointeeType);
+            }
         }
 
         return false;

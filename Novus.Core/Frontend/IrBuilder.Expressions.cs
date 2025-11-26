@@ -869,6 +869,43 @@ public partial class IrBuilder
                     arguments[i] = new IrBorrowValue(argValue, refType, false);
                     continue;
                 }
+
+                // Coercion: &T → *T or &mut T → *T when parameter expects a pointer
+                if (paramType is IrPointerType expectedPtrType &&
+                    (argValue.Type is IrReferenceType argRefType || argValue.Type is IrMutReferenceType argMutRefType))
+                {
+                    var argPointeeType = argValue.Type is IrReferenceType r ? r.PointeeType :
+                                        argValue.Type is IrMutReferenceType m ? m.PointeeType : null;
+
+                    if (argPointeeType != null && argPointeeType.Equals(expectedPtrType.PointeeType))
+                    {
+                        // References and pointers have the same representation (both are addresses)
+                        // so we can just reinterpret the reference as a pointer (zero-cost conversion)
+                        if (argValue is IrVariable variable)
+                        {
+                            arguments[i] = new IrVariable(variable.Name, expectedPtrType);
+                        }
+                        else if (argValue is IrBorrowValue borrowValue)
+                        {
+                            // For borrow expressions, we need to evaluate them first, then cast
+                            var tempName = $"%t{_tempCounter++}";
+                            var moveOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Add,
+                                argValue, new IrConstant(0, argValue.Type), argValue.Type);
+                            _currentBlock!.AddInstruction(moveOp);
+                            arguments[i] = new IrVariable(tempName, expectedPtrType);
+                        }
+                        else
+                        {
+                            // For other expressions, create a temp with pointer type
+                            var tempName = $"%t{_tempCounter++}";
+                            var moveOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Add,
+                                argValue, new IrConstant(0, argValue.Type), argValue.Type);
+                            _currentBlock!.AddInstruction(moveOp);
+                            arguments[i] = new IrVariable(tempName, expectedPtrType);
+                        }
+                        continue;
+                    }
+                }
             }
 
             returnType = fpType.ReturnType;
@@ -1159,6 +1196,54 @@ public partial class IrBuilder
                 var refType = _typeInterner.GetReferenceType(argStructType);
                 arguments[i] = new IrBorrowValue(argValue, refType, false);
                 continue;
+            }
+        }
+
+        // Apply automatic &T → *T coercion for extern function calls
+        for (int i = 0; i < arguments.Count; i++)
+        {
+            // Skip variadic parameters (they don't have a declared type)
+            if (i >= function.Parameters.Count || function.Parameters[i].IsVariadic)
+                continue;
+
+            var paramType = function.Parameters[i].Type;
+            var argValue = arguments[i];
+
+            // Coercion: &T → *T or &mut T → *T when parameter expects a pointer
+            if (paramType is IrPointerType expectedPtrType &&
+                (argValue.Type is IrReferenceType argRefType || argValue.Type is IrMutReferenceType argMutRefType))
+            {
+                var argPointeeType = argValue.Type is IrReferenceType r ? r.PointeeType :
+                                    argValue.Type is IrMutReferenceType m ? m.PointeeType : null;
+
+                if (argPointeeType != null && argPointeeType.Equals(expectedPtrType.PointeeType))
+                {
+                    // References and pointers have the same representation (both are addresses)
+                    // so we can just reinterpret the reference as a pointer (zero-cost conversion)
+                    if (argValue is IrVariable variable)
+                    {
+                        arguments[i] = new IrVariable(variable.Name, expectedPtrType);
+                    }
+                    else if (argValue is IrBorrowValue borrowValue)
+                    {
+                        // For borrow expressions, we need to evaluate them first, then cast
+                        var tempName = $"%t{_tempCounter++}";
+                        var moveOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Add,
+                            argValue, new IrConstant(0, argValue.Type), argValue.Type);
+                        _currentBlock!.AddInstruction(moveOp);
+                        arguments[i] = new IrVariable(tempName, expectedPtrType);
+                    }
+                    else
+                    {
+                        // For other expressions, create a temp with pointer type
+                        var tempName = $"%t{_tempCounter++}";
+                        var moveOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Add,
+                            argValue, new IrConstant(0, argValue.Type), argValue.Type);
+                        _currentBlock!.AddInstruction(moveOp);
+                        arguments[i] = new IrVariable(tempName, expectedPtrType);
+                    }
+                    continue;
+                }
             }
         }
 
@@ -2576,7 +2661,8 @@ public partial class IrBuilder
             var targetTypeName = GetTypeName(targetErrorType);
 
             // Find the From<sourceType> trait impl for targetType
-            var convertMethodName = _module.FindTraitMethod(targetTypeName, "convert");
+            // Use the new FindGenericTraitMethod to match the specific From<SourceType> implementation
+            var convertMethodName = _module.FindGenericTraitMethod(targetTypeName, "From", sourceTypeName, "convert");
 
             if (convertMethodName == null)
             {

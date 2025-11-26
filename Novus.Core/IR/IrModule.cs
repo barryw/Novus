@@ -119,6 +119,66 @@ public class IrModule
     }
 
     /// <summary>
+    /// Find trait implementation for a parameterized generic trait
+    /// Returns the mangled convert method name if found
+    /// Example: Find From<IntuitionError> implemented for GraphicsError
+    ///   FindGenericTraitMethod("GraphicsError", "From", "IntuitionError", "convert")
+    /// </summary>
+    public string? FindGenericTraitMethod(string typeName, string traitBaseName, string traitParam, string methodName)
+    {
+        // Look through all trait implementations for this type
+        foreach (var traitImpl in TraitImpls.Where(ti => ti.TypeName == typeName))
+        {
+            // Extract base trait name from potentially generic trait name
+            // e.g., "From<DosError>" -> "From"
+            var baseTraitName = traitImpl.TraitName;
+            var genericIndex = baseTraitName.IndexOf('<');
+            if (genericIndex > 0)
+            {
+                baseTraitName = baseTraitName.Substring(0, genericIndex);
+            }
+
+            // Check if this is the right trait (e.g., "From")
+            if (baseTraitName != traitBaseName)
+            {
+                continue;
+            }
+
+            // Check if the trait has the correct generic parameter
+            // For From<IntuitionError>, we need TraitTypeArgs to contain IntuitionError
+            if (traitImpl.TraitTypeArgs.Count > 0)
+            {
+                // Get the first type argument (From<T> has one parameter)
+                var firstTypeArg = traitImpl.TraitTypeArgs[0];
+                var typeArgName = firstTypeArg switch
+                {
+                    IrEnumType enumType => enumType.EnumName,
+                    IrStructType structType => structType.StructName,
+                    IrIntType intType => intType.IsSigned ? $"i{intType.BitWidth}" : $"u{intType.BitWidth}",
+                    IrBoolType => "bool",
+                    _ => firstTypeArg.Name
+                };
+
+                // Check if it matches the requested parameter
+                if (typeArgName != traitParam)
+                {
+                    continue;
+                }
+            }
+
+            // Check if this trait has the method
+            var trait = GetTrait(baseTraitName);
+            if (trait != null && trait.GetMethod(methodName) != null)
+            {
+                // Return the mangled name
+                return traitImpl.GetMangledMethodName(methodName);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Check if a type implements the Drop trait
     /// </summary>
     public bool TypeImplementsDrop(string typeName)

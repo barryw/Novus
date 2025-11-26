@@ -8,9 +8,9 @@ namespace Novus.Codegen;
 /// </summary>
 public class TypeRegistry
 {
-    private readonly HashSet<IrEnumType> _enumTypes = new();
-    private readonly HashSet<IrStructType> _structTypes = new();
-    private readonly HashSet<IrTupleType> _tupleTypes = new();
+    private readonly List<IrEnumType> _enumTypes = new();
+    private readonly List<IrStructType> _structTypes = new();
+    private readonly List<IrTupleType> _tupleTypes = new();
     private bool _needsString = false;
 
     /// <summary>
