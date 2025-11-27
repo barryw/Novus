@@ -68,13 +68,13 @@ functionDeclaration
     ;
 
 parameterList
-    : selfParameter (',' parameter)* (',' variadicParameter)?
-    | parameter (',' parameter)* (',' variadicParameter)?
+    : selfParameter (',' NEWLINE* parameter)* (',' NEWLINE* variadicParameter)?
+    | parameter (',' NEWLINE* parameter)* (',' NEWLINE* variadicParameter)?
     | variadicParameter
     ;
 
 parameter
-    : KW_CONSUMING? IDENTIFIER ':' type
+    : NEWLINE* KW_CONSUMING? IDENTIFIER ':' type NEWLINE*
     ;
 
 variadicParameter
@@ -164,11 +164,11 @@ traitBound
 type
     : '&' KW_MUT? type                                        # ReferenceType
     | '*' type                                                # PointerType
-    | '[' type ';' expression ']'                            # ArrayTypeWithSize      // [u8; 100] - fixed-size uninitialized array
-    | '[' type ']'                                           # ArrayTypeInferred      // [i32] - size inferred from initializer
+    | '[' NEWLINE* type NEWLINE* ';' NEWLINE* expression NEWLINE* ']'  # ArrayTypeWithSize      // [u8; 100] - fixed-size uninitialized array
+    | '[' NEWLINE* type NEWLINE* ']'                         # ArrayTypeInferred      // [i32] - size inferred from initializer
     | '(' ')'                                                # UnitType               // Unit type ()
-    | '(' type (',' type)+ ')'                               # TupleType              // Tuple with 2+ elements
-    | KW_FN '(' typeList? ')' ('->' type)?                   # FunctionPointerType
+    | '(' NEWLINE* type (',' NEWLINE* type)+ NEWLINE* ')'    # TupleType              // Tuple with 2+ elements
+    | KW_FN '(' NEWLINE* typeList? NEWLINE* ')' ('->' type)? # FunctionPointerType
     | KW_SELF_TYPE                                           # SelfType              // Self - refers to implementing type in trait context
     | KW_U8                                                   # PrimitiveType
     | KW_U16                                                  # PrimitiveType
@@ -191,7 +191,7 @@ typeName
     ;
 
 typeList
-    : type (',' type)*
+    : NEWLINE* type (',' NEWLINE* type)* NEWLINE*
     ;
 
 block
@@ -388,8 +388,8 @@ primaryExpression
     | identifier                                   # IdentifierExpr
     | KW_MATCH expression '{' NEWLINE* matchArm (',' NEWLINE* matchArm)* ','? NEWLINE* '}'  # MatchExpr
     | '(' ')'                                      # UnitLiteral
-    | '(' expression (',' expression)+ ')'         # TupleLiteral
-    | '(' expression ')'                           # ParenExpr
+    | '(' NEWLINE* expression (',' NEWLINE* expression)+ NEWLINE* ')'  # TupleLiteral
+    | '(' NEWLINE* expression NEWLINE* ')'         # ParenExpr
     | '[' NEWLINE* expression NEWLINE* ';' NEWLINE* expression NEWLINE* ']'  # ArrayRepeatLiteral
     | '[' NEWLINE* (expression (',' NEWLINE* expression)* (',' NEWLINE*)?)? NEWLINE* ']'     # ArrayLiteral
     ;
