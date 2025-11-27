@@ -3326,6 +3326,13 @@ public partial class IrBuilder
             value = -value;
         }
 
+        // If expected type is fixed-point and we have an unsuffixed float literal,
+        // convert to fixed-point. This allows: var pos: fixed16 = 100.0
+        if (_expectedType is IrFixedType expectedFixed && type is IrFloatType)
+        {
+            return new IrFixedConstant(value, expectedFixed);
+        }
+
         // Return appropriate constant type based on whether it's float or fixed
         if (type is IrFloatType floatType)
         {

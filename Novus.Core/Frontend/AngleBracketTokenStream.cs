@@ -146,11 +146,16 @@ public class AngleBracketTokenStream : CommonTokenStream
             var prevLiteral = vocab.GetLiteralName(_previousToken.Type);
             var prevSymbol = vocab.GetSymbolicName(_previousToken.Type);
 
-            // Enter type context after these tokens
-            if (prevLiteral == "':'" || prevLiteral == "'->'" || prevLiteral == "'=>'" ||
-                prevLiteral == "','" || prevLiteral == "'<'" || prevLiteral == "'('")
+            // Enter type context after these tokens (NOT '<' by itself - that could be a comparison!)
+            // We enter type context after ':' (type annotation), '->' (return type), etc.
+            if (prevLiteral == "':'" || prevLiteral == "'->'" || prevLiteral == "'=>'")
             {
                 _inTypeContext = true;
+            }
+            // Exit type context immediately after '=' because RHS is an expression, not a type
+            else if (prevLiteral == "'='")
+            {
+                _inTypeContext = false;
             }
             // Stay in type context while parsing type names (identifiers, ::, type keywords)
             else if (_inTypeContext)
@@ -173,6 +178,12 @@ public class AngleBracketTokenStream : CommonTokenStream
                 if (shouldExitTypeContext)
                 {
                     _inTypeContext = false;
+                    // Reset angle bracket depth when exiting type context at statement boundaries
+                    // This prevents incorrectly incremented depth from affecting subsequent statements
+                    if (currLiteral == "';'" || currSymbol == "NEWLINE")
+                    {
+                        _angleBracketDepth = 0;
+                    }
                 }
             }
         }

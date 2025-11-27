@@ -3879,8 +3879,6 @@ public class CCodeGenerator
         if (_safetyLevel.EnableDivisionByZeroChecks() &&
             (binaryOp.Operation == IrBinaryOp.OpKind.Div || binaryOp.Operation == IrBinaryOp.OpKind.Mod))
         {
-            var op = GetBinaryOperator(binaryOp.Operation);
-
             // Emit conditional: if divisor is zero, show error and return safe value
             // Otherwise perform the actual division
             if (!alreadyDeclared)
@@ -3899,7 +3897,19 @@ public class CCodeGenerator
             // Return from function after error (emits proper return type)
             EmitErrorPathReturn(2);  // indent level 2
             _output.AppendLine($"    }} else {{");
-            _output.AppendLine($"        {resultName} = {left} {op} {right};");
+
+            // Handle fixed-point division specially
+            if (binaryOp.Type is IrFixedType fixedTypeDiv && binaryOp.Operation == IrBinaryOp.OpKind.Div)
+            {
+                int fracBits = fixedTypeDiv.BitWidth / 2;
+                string wideType = fixedTypeDiv.BitWidth == 16 ? "int32_t" : "int64_t";
+                _output.AppendLine($"        {resultName} = ({cType})((({wideType}){left} << {fracBits}) / {right});");
+            }
+            else
+            {
+                var op = GetBinaryOperator(binaryOp.Operation);
+                _output.AppendLine($"        {resultName} = {left} {op} {right};");
+            }
             _output.AppendLine($"    }}");
         }
         // Special handling for shift operations: mask shift amount to bit width
@@ -3923,6 +3933,39 @@ public class CCodeGenerator
             else
             {
                 _output.AppendLine($"    {cType} {resultName} = {left} {op} (({right}) & {mask});");
+            }
+        }
+        // Special handling for fixed-point multiplication and division
+        // fixed16 = 8.8 format (8 fractional bits), fixed32 = 16.16 format (16 fractional bits)
+        else if (binaryOp.Type is IrFixedType fixedType &&
+                 (binaryOp.Operation == IrBinaryOp.OpKind.Mul || binaryOp.Operation == IrBinaryOp.OpKind.Div))
+        {
+            // Fractional bits = half the total bit width
+            int fracBits = fixedType.BitWidth / 2;
+            // Use wider type for intermediate calculations to avoid overflow
+            string wideType = fixedType.BitWidth == 16 ? "int32_t" : "int64_t";
+
+            string expr;
+            if (binaryOp.Operation == IrBinaryOp.OpKind.Mul)
+            {
+                // Fixed-point multiplication: (a * b) >> fracBits
+                // Cast to wider type first to prevent overflow during multiply
+                expr = $"({cType})((({wideType}){left} * ({wideType}){right}) >> {fracBits})";
+            }
+            else // Div
+            {
+                // Fixed-point division: (a << fracBits) / b
+                // Cast to wider type first to allow the left shift without overflow
+                expr = $"({cType})((({wideType}){left} << {fracBits}) / {right})";
+            }
+
+            if (alreadyDeclared)
+            {
+                _output.AppendLine($"    {resultName} = {expr};");
+            }
+            else
+            {
+                _output.AppendLine($"    {cType} {resultName} = {expr};");
             }
         }
         else
@@ -4236,8 +4279,19 @@ public class CCodeGenerator
                                 // This matches the common case. Full array literal support would need element-by-element assignment
                                 continue;
                             }
-                            var fieldValue = EmitValue(kvp.Value);
-                            _output.AppendLine($"    __out->{kvp.Key} = {fieldValue};");
+                            // CRITICAL FIX: If field value is a pointer-converted parameter, dereference it
+                            if (kvp.Value is IrVariable fieldVarWithArray &&
+                                kvp.Value.Type is IrStructType &&
+                                _pointerConvertedParameters.Contains(fieldVarWithArray.Name))
+                            {
+                                var srcVarName = SanitizeVariableName(fieldVarWithArray.Name);
+                                _output.AppendLine($"    __out->{kvp.Key} = *{srcVarName};");
+                            }
+                            else
+                            {
+                                var fieldValue = EmitValue(kvp.Value);
+                                _output.AppendLine($"    __out->{kvp.Key} = {fieldValue};");
+                            }
                         }
                     }
                     else
@@ -4245,8 +4299,21 @@ public class CCodeGenerator
                         // No array fields - emit field-by-field assignments
                         foreach (var kvp in structLit.FieldValues)
                         {
-                            var fieldValue = EmitValue(kvp.Value);
-                            _output.AppendLine($"    __out->{kvp.Key} = {fieldValue};");
+                            // CRITICAL FIX: If field value is a pointer-converted parameter (struct by-value
+                            // parameter converted to pointer for ABI), we need to dereference it
+                            if (kvp.Value is IrVariable fieldVar &&
+                                kvp.Value.Type is IrStructType fieldStructType &&
+                                _pointerConvertedParameters.Contains(fieldVar.Name))
+                            {
+                                // The parameter is a pointer in C - need to dereference and copy
+                                var srcVarName = SanitizeVariableName(fieldVar.Name);
+                                _output.AppendLine($"    __out->{kvp.Key} = *{srcVarName};");
+                            }
+                            else
+                            {
+                                var fieldValue = EmitValue(kvp.Value);
+                                _output.AppendLine($"    __out->{kvp.Key} = {fieldValue};");
+                            }
                         }
                     }
                 }

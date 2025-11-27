@@ -8499,6 +8499,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
+        // Allow float literals to be assigned to fixed-point types
+        // This enables clean syntax: var pos: fixed16 = 100.0 instead of 100.0fixed16
+        if (expected is IrFixedType && actual is IrFloatType)
+        {
+            return true;  // Conversion will be handled by IR builder
+        }
+
         // Struct types - allow generic to concrete matching (e.g., Vec<T> can match Vec<i32>)
         if (expected is IrStructType expectedStruct && actual is IrStructType actualStruct)
         {
