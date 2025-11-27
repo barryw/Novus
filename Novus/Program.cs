@@ -41,13 +41,14 @@ class Program
 
     static async Task<int> Main(string[] args)
     {
-        return await CommandLine.Parser.Default.ParseArguments<CompilerOptions, BuildOptions, GenerateStubsOptions, NewCommandOptions, StdlibBuildOptions>(args)
+        return await CommandLine.Parser.Default.ParseArguments<CompilerOptions, BuildOptions, GenerateStubsOptions, NewCommandOptions, StdlibBuildOptions, FmtOptions>(args)
             .MapResult(
                 (CompilerOptions options) => RunCompiler(options),
                 (BuildOptions options) => RunBuild(options),
                 (GenerateStubsOptions options) => Task.FromResult(RunGenerateStubs(options)),
                 (NewCommandOptions options) => Task.FromResult(Commands.NewCommand.Run(options)),
                 (StdlibBuildOptions options) => RunStdlibBuild(options),
+                (FmtOptions options) => Task.FromResult(Commands.FmtCommand.Run(options)),
                 errors => Task.FromResult(1)
             );
     }

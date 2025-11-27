@@ -293,7 +293,15 @@ public class TypeRegistry
         if (tupleType.ElementTypes.Count == 0)
             return;
 
-        _tupleTypes.Add(tupleType);
+        // Check if we already have this tuple type (by comparing element types)
+        var exists = _tupleTypes.Any(t =>
+            t.ElementTypes.Count == tupleType.ElementTypes.Count &&
+            t.ElementTypes.Zip(tupleType.ElementTypes, (a, b) => a.Name == b.Name).All(x => x));
+
+        if (!exists)
+        {
+            _tupleTypes.Add(tupleType);
+        }
     }
 
     /// <summary>
