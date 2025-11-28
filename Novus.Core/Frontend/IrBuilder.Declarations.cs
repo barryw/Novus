@@ -359,39 +359,48 @@ public partial class IrBuilder
         {
             var placeholderStruct = new IrStructType(name, new List<IrStructField>(), genericParams, null, attributes);
             _symbols.RegisterStruct(name, placeholderStruct);
+            existingStruct = placeholderStruct;
         }
 
-        // Now parse struct fields (can now reference the struct being defined)
-        var fields = new List<IrStructField>();
+        // Now parse struct fields and add them DIRECTLY to the existing placeholder
+        // This is critical because pointer types (*StructName) that were already created
+        // hold references to this placeholder instance. If we create a new struct,
+        // those pointer types would still reference the empty placeholder and not see the fields.
         foreach (var fieldCtx in context.structField())
         {
             var fieldName = fieldCtx.IDENTIFIER().GetText();
             var fieldType = ParseType(fieldCtx.type());
-            fields.Add(new IrStructField(fieldName, fieldType));
+            existingStruct.Fields.Add(new IrStructField(fieldName, fieldType));
         }
 
-        // Parse where clause
+        // Parse where clause and update the existing struct
         var whereClause = ParseWhereClause(context.whereClause());
+        if (whereClause != null)
+        {
+            existingStruct.WhereClause = whereClause;
+        }
+
+        // Update attributes on the existing struct if they were parsed
+        if (attributes != null && attributes.Count > 0)
+        {
+            existingStruct.Attributes = attributes;
+        }
 
         // Clear generic params from scope after struct registration
         _symbols.ClearGenericParameters();
-
-        // Replace placeholder with complete struct type
-        var structType = new IrStructType(name, fields, genericParams, null, attributes, whereClause);
 
         // Force offset calculation by accessing SizeInBytes (only for non-generic structs)
         // Generic structs will be monomorphized later when instantiated with concrete types
         if (genericParams.Count == 0)
         {
-            _ = structType.SizeInBytes;
+            _ = existingStruct.SizeInBytes;
         }
 
-        // Add all structs to the module (both generic and non-generic) - but only if not already added
-        if (existingStruct == null || !_module.Structs.Contains(structType))
+        // Add struct to the module (if not already added)
+        if (!_module.Structs.Contains(existingStruct))
         {
-            _module.Structs.Add(structType);
+            _module.Structs.Add(existingStruct);
         }
-        _symbols.RegisterStruct(name, structType);
     }
 
     private void RegisterTrait(NovusParser.TraitDeclarationContext context)

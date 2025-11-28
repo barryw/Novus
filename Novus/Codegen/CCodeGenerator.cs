@@ -346,6 +346,15 @@ public class CCodeGenerator
         sb.AppendLine("typedef struct Device Device;");
         sb.AppendLine("typedef struct Unit Unit;");
         sb.AppendLine("typedef struct SimpleSprite SimpleSprite;");
+        // GEL system types
+        sb.AppendLine("typedef struct VSprite VSprite;");
+        sb.AppendLine("typedef struct Bob Bob;");
+        sb.AppendLine("typedef struct AnimOb AnimOb;");
+        sb.AppendLine("typedef struct AnimComp AnimComp;");
+        sb.AppendLine("typedef struct GelsInfo GelsInfo;");
+        sb.AppendLine("typedef struct collTable collTable;");
+        sb.AppendLine("typedef struct RastPort RastPort;");
+        sb.AppendLine("typedef struct DBufInfo DBufInfo;");
         sb.AppendLine();
         sb.AppendLine("// Sentinel value for \"unchanged\" pointer parameters (used by Amiga API)");
         sb.AppendLine("// Using explicit 32-bit constant to prevent VBCC from treating as 64-bit value");
@@ -664,24 +673,6 @@ public class CCodeGenerator
 
         // Check for generic types (both enums and structs) in the function
         var enumTypes = CollectEnumTypesForFunction(function);
-        Console.WriteLine($"DEBUG GenFunction({function.Name}): Found {enumTypes.Count} enum types: {string.Join(", ", enumTypes.Select(e => $"{e.Name}/{e.EnumName}"))}");
-        foreach (var et in enumTypes)
-        {
-            Console.WriteLine($"  - {et.Name} (EnumName={et.EnumName}, GenericParams={et.GenericParameters.Count})");
-            foreach (var v in et.Variants)
-            {
-                if (v.HasAssociatedData && v.AssociatedData != null)
-                {
-                    foreach (var ad in v.AssociatedData)
-                    {
-                        if (ad is IrStructType st)
-                            Console.WriteLine($"      variant {v.Name} has struct {st.Name} (GenericParams={st.GenericParameters.Count}, CacheKey={st.CacheKey})");
-                        else if (ad is IrEnumType et2)
-                            Console.WriteLine($"      variant {v.Name} has enum {et2.Name} (GenericParams={et2.GenericParameters.Count}, CacheKey={et2.CacheKey})");
-                    }
-                }
-            }
-        }
         var genericEnums = enumTypes.Where(e => !IsConcreteEnum(e)).ToList();
 
         // Also check for generic structs by scanning the function's types
@@ -1583,7 +1574,12 @@ public class CCodeGenerator
     /// <summary>
     /// Recursively collect all enum types from a type, including those nested in structs, arrays, and enum variant associated data
     /// </summary>
-    private void CollectEnumTypesFromType(IrType type, HashSet<IrEnumType> enumTypes)
+    internal void CollectEnumTypesFromType(IrType type, HashSet<IrEnumType> enumTypes)
+    {
+        CollectEnumTypesFromType(type, enumTypes, new HashSet<string>());
+    }
+
+    private void CollectEnumTypesFromType(IrType type, HashSet<IrEnumType> enumTypes, HashSet<string> visitedStructs)
     {
         switch (type)
         {
@@ -1598,7 +1594,7 @@ public class CCodeGenerator
                     {
                         foreach (var dataType in variant.AssociatedData)
                         {
-                            CollectEnumTypesFromType(dataType, enumTypes);
+                            CollectEnumTypesFromType(dataType, enumTypes, visitedStructs);
                         }
                     }
                 }
@@ -1606,30 +1602,39 @@ public class CCodeGenerator
 
             case IrArrayType arrayType:
                 // Recursively check the element type
-                CollectEnumTypesFromType(arrayType.ElementType, enumTypes);
+                CollectEnumTypesFromType(arrayType.ElementType, enumTypes, visitedStructs);
                 break;
 
             case IrStructType structType:
+                // Use cache key if available, otherwise struct name for cycle detection
+                var structKey = structType.CacheKey ?? structType.StructName;
+                if (visitedStructs.Contains(structKey))
+                {
+                    // Already visited this struct, skip to prevent infinite recursion
+                    return;
+                }
+                visitedStructs.Add(structKey);
+
                 // Recursively check all field types
                 foreach (var field in structType.Fields)
                 {
-                    CollectEnumTypesFromType(field.Type, enumTypes);
+                    CollectEnumTypesFromType(field.Type, enumTypes, visitedStructs);
                 }
                 break;
 
             case IrPointerType pointerType:
                 // Recursively check the pointee type
-                CollectEnumTypesFromType(pointerType.PointeeType, enumTypes);
+                CollectEnumTypesFromType(pointerType.PointeeType, enumTypes, visitedStructs);
                 break;
 
             case IrReferenceType refType:
                 // Recursively check the pointee type
-                CollectEnumTypesFromType(refType.PointeeType, enumTypes);
+                CollectEnumTypesFromType(refType.PointeeType, enumTypes, visitedStructs);
                 break;
 
             case IrMutReferenceType mutRefType:
                 // Recursively check the pointee type
-                CollectEnumTypesFromType(mutRefType.PointeeType, enumTypes);
+                CollectEnumTypesFromType(mutRefType.PointeeType, enumTypes, visitedStructs);
                 break;
 
             // For other types (primitive, function pointers, etc.) we don't need to recurse
@@ -1640,7 +1645,12 @@ public class CCodeGenerator
     /// Recursively collect all tuple types referenced by a given type.
     /// This is used to emit tuple type definitions before struct definitions that use them.
     /// </summary>
-    private void CollectTupleTypesFromType(IrType type, HashSet<IrTupleType> tupleTypes)
+    internal void CollectTupleTypesFromType(IrType type, HashSet<IrTupleType> tupleTypes)
+    {
+        CollectTupleTypesFromType(type, tupleTypes, new HashSet<string>());
+    }
+
+    private void CollectTupleTypesFromType(IrType type, HashSet<IrTupleType> tupleTypes, HashSet<string> visitedStructs)
     {
         switch (type)
         {
@@ -1652,19 +1662,28 @@ public class CCodeGenerator
                     // Also recursively scan tuple element types for nested tuples
                     foreach (var elementType in tupleType.ElementTypes)
                     {
-                        CollectTupleTypesFromType(elementType, tupleTypes);
+                        CollectTupleTypesFromType(elementType, tupleTypes, visitedStructs);
                     }
                 }
                 break;
 
             case IrArrayType arrayType:
-                CollectTupleTypesFromType(arrayType.ElementType, tupleTypes);
+                CollectTupleTypesFromType(arrayType.ElementType, tupleTypes, visitedStructs);
                 break;
 
             case IrStructType structType:
+                // Use cache key if available, otherwise struct name for cycle detection
+                var structKey = structType.CacheKey ?? structType.StructName;
+                if (visitedStructs.Contains(structKey))
+                {
+                    // Already visited this struct, skip to prevent infinite recursion
+                    return;
+                }
+                visitedStructs.Add(structKey);
+
                 foreach (var field in structType.Fields)
                 {
-                    CollectTupleTypesFromType(field.Type, tupleTypes);
+                    CollectTupleTypesFromType(field.Type, tupleTypes, visitedStructs);
                 }
                 break;
 
@@ -1676,22 +1695,22 @@ public class CCodeGenerator
                     {
                         foreach (var dataType in variant.AssociatedData)
                         {
-                            CollectTupleTypesFromType(dataType, tupleTypes);
+                            CollectTupleTypesFromType(dataType, tupleTypes, visitedStructs);
                         }
                     }
                 }
                 break;
 
             case IrPointerType pointerType:
-                CollectTupleTypesFromType(pointerType.PointeeType, tupleTypes);
+                CollectTupleTypesFromType(pointerType.PointeeType, tupleTypes, visitedStructs);
                 break;
 
             case IrReferenceType refType:
-                CollectTupleTypesFromType(refType.PointeeType, tupleTypes);
+                CollectTupleTypesFromType(refType.PointeeType, tupleTypes, visitedStructs);
                 break;
 
             case IrMutReferenceType mutRefType:
-                CollectTupleTypesFromType(mutRefType.PointeeType, tupleTypes);
+                CollectTupleTypesFromType(mutRefType.PointeeType, tupleTypes, visitedStructs);
                 break;
 
             // For other types (primitive, function pointers, etc.) we don't need to recurse

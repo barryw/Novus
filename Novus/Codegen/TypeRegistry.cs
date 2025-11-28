@@ -240,6 +240,11 @@ public class TypeRegistry
     /// </summary>
     private void CollectEnumTypesFromType(IrType type)
     {
+        CollectEnumTypesFromType(type, new HashSet<string>());
+    }
+
+    private void CollectEnumTypesFromType(IrType type, HashSet<string> visitedStructs)
+    {
         switch (type)
         {
             case IrEnumType enumType when IsConcreteEnum(enumType):
@@ -251,36 +256,45 @@ public class TypeRegistry
                 // Recursively check element types
                 foreach (var elementType in tupleType.ElementTypes)
                 {
-                    CollectEnumTypesFromType(elementType);
+                    CollectEnumTypesFromType(elementType, visitedStructs);
                 }
                 break;
 
             case IrArrayType arrayType:
                 // Recursively check the element type
-                CollectEnumTypesFromType(arrayType.ElementType);
+                CollectEnumTypesFromType(arrayType.ElementType, visitedStructs);
                 break;
 
             case IrStructType structType:
+                // Use cache key if available, otherwise struct name for cycle detection
+                var structKey = structType.CacheKey ?? structType.StructName;
+                if (visitedStructs.Contains(structKey))
+                {
+                    // Already visited this struct, skip to prevent infinite recursion
+                    return;
+                }
+                visitedStructs.Add(structKey);
+
                 // Recursively check all field types
                 foreach (var field in structType.Fields)
                 {
-                    CollectEnumTypesFromType(field.Type);
+                    CollectEnumTypesFromType(field.Type, visitedStructs);
                 }
                 break;
 
             case IrPointerType pointerType:
                 // Recursively check the pointee type
-                CollectEnumTypesFromType(pointerType.PointeeType);
+                CollectEnumTypesFromType(pointerType.PointeeType, visitedStructs);
                 break;
 
             case IrReferenceType refType:
                 // Recursively check the pointee type
-                CollectEnumTypesFromType(refType.PointeeType);
+                CollectEnumTypesFromType(refType.PointeeType, visitedStructs);
                 break;
 
             case IrMutReferenceType mutRefType:
                 // Recursively check the pointee type
-                CollectEnumTypesFromType(mutRefType.PointeeType);
+                CollectEnumTypesFromType(mutRefType.PointeeType, visitedStructs);
                 break;
 
             // For other types (primitive, function pointers, etc.) we don't need to recurse

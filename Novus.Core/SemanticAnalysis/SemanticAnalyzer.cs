@@ -166,21 +166,34 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             ProcessImport(importDecl);
         }
 
-        // First pass: collect all struct declarations FIRST (before enums that might use structs in variants)
-        // CRITICAL: Structs must be registered before enums because enum variants may have structs
-        // as associated data (e.g., WindowEvent::Refresh(RefreshGuard))
+        // First pass: register all struct PLACEHOLDERS first (before parsing fields)
+        // This allows mutually recursive struct definitions (struct A { b: *B } struct B { a: *A })
         foreach (var structDecl in context.structDeclaration())
         {
-            RegisterStruct(structDecl);
+            RegisterStructPlaceholder(structDecl);
         }
 
-        // Second pass: collect all enum declarations (after structs, before constants)
+        // Second pass: register all enum STUBS (names only, no variants)
+        // This allows struct fields to reference enums defined later in the file
         foreach (var enumDecl in context.enumDeclaration())
         {
-            RegisterEnum(enumDecl);
+            RegisterEnumStub(enumDecl);
         }
 
-        // Third pass: collect all trait declarations
+        // Third pass: fill in all struct fields (now all struct and enum names are known)
+        foreach (var structDecl in context.structDeclaration())
+        {
+            FillStructFields(structDecl);
+        }
+
+        // Fourth pass: fill in enum variants (now all struct types are fully defined)
+        // CRITICAL: Enum variants may reference structs (e.g., WindowEvent::Refresh(RefreshGuard))
+        foreach (var enumDecl in context.enumDeclaration())
+        {
+            FillEnumVariants(enumDecl);
+        }
+
+        // Fifth pass: collect all trait declarations
         foreach (var traitDecl in context.traitDeclaration())
         {
             RegisterTrait(traitDecl);
@@ -525,9 +538,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
-        // CRITICAL: Register ALL pub structs from the module BEFORE filling enum variants
-        // This is necessary because enum variants may reference structs (e.g., WindowEvent::Refresh(RefreshGuard))
-        // We must register structs before parsing enum variant types
+        // CRITICAL: Register ALL pub struct PLACEHOLDERS from the module FIRST
+        // This allows mutually recursive struct definitions (e.g., VSprite -> Bob -> AnimComp -> AnimOb)
+        // Must happen before filling in fields or enum variants
         foreach (var structDecl in moduleContext.structDeclaration())
         {
             var structName = structDecl.IDENTIFIER().GetText();
@@ -544,18 +557,50 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 continue;
             }
 
-            // Register ALL pub structs from the module (not just explicitly imported ones)
-            // This ensures types are available when parsing enum variant types and impl block method signatures
-            RegisterStruct(structDecl);
+            // Register placeholder first - fields will be filled in the next pass
+            RegisterStructPlaceholder(structDecl);
+        }
 
-            // Only mark as imported if it was explicitly requested
+        // Pass 2: Fill in struct fields now that all struct names are known
+        foreach (var structDecl in moduleContext.structDeclaration())
+        {
+            var structName = structDecl.IDENTIFIER().GetText();
+
+            // Skip private structs
+            if (!ModuleImportHelper.IsPub(structDecl))
+            {
+                continue;
+            }
+
+            // Check if this struct exists and needs field filling
+            var existingStruct = _symbols.LookupStruct(structName);
+            if (existingStruct == null)
+            {
+                continue;
+            }
+
+            // Skip if already fully registered (has fields) - from transitive imports
+            if (existingStruct.Fields.Count > 0)
+            {
+                // Mark as imported if it was explicitly requested
+                if (namesToImport.Contains(structName))
+                {
+                    _importedNames[structName] = moduleNamespace;
+                }
+                continue;
+            }
+
+            // Fill in the struct fields (placeholder has empty fields)
+            FillStructFields(structDecl);
+
+            // Mark as imported if it was explicitly requested
             if (namesToImport.Contains(structName))
             {
                 _importedNames[structName] = moduleNamespace;
             }
         }
 
-        // Pass 2: Fill in enum variants for imported enums only
+        // Pass 3: Fill in enum variants for imported enums only
         // This must happen AFTER struct registration so that struct types used in enum variants are available
         foreach (var enumDecl in moduleContext.enumDeclaration())
         {
@@ -1475,7 +1520,22 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         _functions[mangledName] = new FunctionSymbol(mangledName, returnType, parameters, location, false, genericParams.Count > 0 ? genericParams : null, attributes, hasVariadic);
     }
 
+    /// <summary>
+    /// Register a struct in a single pass (placeholder + fill fields).
+    /// Used for individual imports where mutual recursion within the import is not needed.
+    /// For files with mutually recursive structs, use RegisterStructPlaceholder + FillStructFields.
+    /// </summary>
     private void RegisterStruct(NovusParser.StructDeclarationContext context)
+    {
+        RegisterStructPlaceholder(context);
+        FillStructFields(context);
+    }
+
+    /// <summary>
+    /// Phase 1: Register a placeholder struct with just its name and generic parameters.
+    /// This allows mutually recursive struct definitions where struct A references struct B and vice versa.
+    /// </summary>
+    private void RegisterStructPlaceholder(NovusParser.StructDeclarationContext context)
     {
         var name = context.IDENTIFIER().GetText();
         var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
@@ -1506,44 +1566,81 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             {
                 var paramName = paramId.GetText();
                 genericParams.Add(paramName);
+            }
+        }
 
+        // Parse where clause (can be done without fields)
+        var whereClause = ParseWhereClause(context.whereClause());
+
+        // Register placeholder struct type - fields will be filled in by FillStructFields
+        var placeholderStruct = new IrStructType(name, new List<IrStructField>(), genericParams, null, attributes, whereClause);
+        _symbols.RegisterStruct(name, placeholderStruct, location);
+    }
+
+    /// <summary>
+    /// Phase 2: Fill in the struct fields now that all struct names are known.
+    /// This resolves forward references to other structs defined later in the file.
+    /// </summary>
+    private void FillStructFields(NovusParser.StructDeclarationContext context)
+    {
+        var name = context.IDENTIFIER().GetText();
+        var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+
+        // Skip if struct wasn't registered (error already reported)
+        if (!_symbols.HasStruct(name))
+        {
+            return;
+        }
+
+        // Get the placeholder - we will MUTATE it to add fields
+        // This is critical because pointer types (*StructName) that were already created
+        // hold references to this placeholder instance. If we create a new struct and
+        // replace it in the symbol table, those pointer types will still reference the
+        // empty placeholder and won't see the fields.
+        var placeholder = _symbols.LookupStruct(name);
+        if (placeholder == null)
+        {
+            return; // Should never happen if HasStruct returned true
+        }
+
+        // Handle generic parameters if present
+        if (context.genericParams() != null)
+        {
+            foreach (var paramId in context.genericParams().IDENTIFIER())
+            {
+                var paramName = paramId.GetText();
                 // Add to generic param scope for field parsing
                 _genericParams[paramName] = new IrGenericType(paramName);
             }
         }
 
-        // Parse where clause
-        var whereClause = ParseWhereClause(context.whereClause());
-
-        // Register placeholder struct type FIRST to allow self-referential types
-        var placeholderStruct = new IrStructType(name, new List<IrStructField>(), genericParams, null, attributes, whereClause);
-        _symbols.RegisterStruct(name, placeholderStruct, location);
-
-        // Now parse struct fields (can now reference the struct being defined)
-        var fields = new List<IrStructField>();
+        // Parse struct fields and add them to the EXISTING placeholder
+        // (now all struct names are known, including those defined later)
         foreach (var fieldCtx in context.structField())
         {
             var fieldName = fieldCtx.IDENTIFIER().GetText();
             var fieldType = ParseType(fieldCtx.type());
-            fields.Add(new IrStructField(fieldName, fieldType));
+            placeholder.Fields.Add(new IrStructField(fieldName, fieldType));
         }
 
         // Clear generic params from scope after struct registration
-        foreach (var paramName in genericParams)
+        if (context.genericParams() != null)
         {
-            _genericParams.Remove(paramName);
+            foreach (var paramId in context.genericParams().IDENTIFIER())
+            {
+                var paramName = paramId.GetText();
+                _genericParams.Remove(paramName);
+            }
         }
-
-        // Replace placeholder with complete struct type
-        var structType = new IrStructType(name, fields, genericParams, null, attributes, whereClause);
 
         // Force offset calculation by accessing SizeInBytes (only for non-generic structs)
-        if (genericParams.Count == 0)
+        // The placeholder already has its GenericParameters set from RegisterStructPlaceholder
+        if (placeholder.GenericParameters.Count == 0)
         {
-            _ = structType.SizeInBytes;
+            _ = placeholder.SizeInBytes;
         }
 
-        _symbols.RegisterStruct(name, structType, location);
+        // No need to re-register - we mutated the existing placeholder in place
     }
 
     private void RegisterEnum(NovusParser.EnumDeclarationContext context)
@@ -1624,6 +1721,123 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         _symbols.RegisterEnum(name, enumType, location);
+
+        // Clear generic param scope
+        _genericParams.Clear();
+    }
+
+    /// <summary>
+    /// Phase 1: Register an enum stub with just its name and generic parameters.
+    /// This allows struct fields to reference enums defined later in the file.
+    /// </summary>
+    private void RegisterEnumStub(NovusParser.EnumDeclarationContext context)
+    {
+        var name = context.IDENTIFIER().GetText();
+        var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+
+        // Check for duplicate enum names
+        if (_symbols.HasEnum(name))
+        {
+            _diagnostics.ReportError(
+                "E0030",
+                $"enum '{name}' is defined multiple times",
+                location,
+                helpTexts: new List<string>
+                {
+                    "consider renaming one of the enums"
+                }
+            );
+            return;
+        }
+
+        // Handle generic parameters if present
+        var genericParams = new List<string>();
+        if (context.genericParams() != null)
+        {
+            foreach (var paramId in context.genericParams().IDENTIFIER())
+            {
+                var paramName = paramId.GetText();
+                genericParams.Add(paramName);
+            }
+        }
+
+        // Parse attributes
+        var attributes = ParseAttributes(context.attribute());
+
+        // Register stub enum with empty variants - variants will be filled in by FillEnumVariants
+        var stubEnum = new IrEnumType(name, new List<IrEnumVariant>(), genericParams.Count > 0 ? genericParams : null, null, attributes);
+        _symbols.RegisterEnum(name, stubEnum, location);
+    }
+
+    /// <summary>
+    /// Phase 2: Fill in the enum variants now that all struct types are known.
+    /// This resolves forward references to structs defined later in the file.
+    /// IMPORTANT: We mutate the stub in-place to preserve references from struct fields.
+    /// </summary>
+    private void FillEnumVariants(NovusParser.EnumDeclarationContext context)
+    {
+        var name = context.IDENTIFIER().GetText();
+
+        // Skip if enum wasn't registered (error already reported)
+        if (!_symbols.HasEnum(name))
+        {
+            return;
+        }
+
+        // Get the stub - we'll mutate it in-place
+        var stub = _symbols.LookupEnum(name);
+        if (stub == null)
+        {
+            return;
+        }
+
+        // Skip if already fully registered (has variants) - from imports
+        if (stub.Variants.Count > 0)
+        {
+            return;
+        }
+
+        // Handle generic parameters if present
+        if (context.genericParams() != null)
+        {
+            foreach (var paramId in context.genericParams().IDENTIFIER())
+            {
+                var paramName = paramId.GetText();
+
+                // Add to generic param scope for variant parsing
+                _genericParams[paramName] = new IrGenericType(paramName);
+            }
+        }
+
+        // Parse enum variants and add to the stub's Variants list in-place
+        int tag = 0;
+        foreach (var variantCtx in context.enumVariant())
+        {
+            var variantName = variantCtx.IDENTIFIER().GetText();
+            var associatedData = new List<IrType>();
+
+            // Parse associated data types if present
+            if (variantCtx.typeList() != null)
+            {
+                foreach (var typeCtx in variantCtx.typeList().type())
+                {
+                    var dataType = ParseType(typeCtx);
+                    associatedData.Add(dataType);
+                }
+            }
+
+            stub.Variants.Add(new IrEnumVariant(variantName, tag++, associatedData));
+        }
+
+        // Parse and set where clause
+        var whereClause = ParseWhereClause(context.whereClause());
+        stub.WhereClause = whereClause;
+
+        // Force size calculation (only for non-generic enums)
+        if (stub.GenericParameters.Count == 0)
+        {
+            _ = stub.SizeInBytes;
+        }
 
         // Clear generic param scope
         _genericParams.Clear();
@@ -5538,8 +5752,16 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                             var arguments = context.argumentList().expression();
                             for (int i = 0; i < arguments.Length; i++)
                             {
-                                var argType = Visit(arguments[i]);
                                 var expectedType = variant.AssociatedData[i];
+
+                                // Set expected type for bidirectional type checking (enables null inference)
+                                var savedExpectedType = _expectedType;
+                                _expectedType = expectedType;
+
+                                var argType = Visit(arguments[i]);
+
+                                // Restore previous expected type
+                                _expectedType = savedExpectedType;
 
                                 if (argType != null && !TypesCompatible(expectedType, argType))
                                 {
@@ -5634,8 +5856,16 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     var arguments = context.argumentList().expression();
                     for (int i = 0; i < arguments.Length; i++)
                     {
-                        var argType = Visit(arguments[i]);
                         var paramType = fpType.ParameterTypes[i];
+
+                        // Set expected type for bidirectional type checking (enables null inference)
+                        var savedExpectedType = _expectedType;
+                        _expectedType = paramType;
+
+                        var argType = Visit(arguments[i]);
+
+                        // Restore previous expected type
+                        _expectedType = savedExpectedType;
 
                         if (argType != null && !TypesCompatible(paramType, argType))
                         {
@@ -5784,16 +6014,24 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
             for (int i = 0; i < arguments.Length; i++)
             {
-                var argType = Visit(arguments[i]);
-
                 // For variadic functions, skip type checking for args beyond non-variadic params
                 if (function.IsVariadic && i >= nonVariadicParamCount)
                 {
+                    Visit(arguments[i]); // Still visit, just don't type check
                     continue; // Extra args for variadic function - no type checking needed
                 }
 
                 var param = function.Parameters[i];
                 var paramType = param.Type;
+
+                // Set expected type for bidirectional type checking (enables null inference)
+                var savedExpectedType = _expectedType;
+                _expectedType = paramType;
+
+                var argType = Visit(arguments[i]);
+
+                // Restore previous expected type
+                _expectedType = savedExpectedType;
 
                 // Check if this parameter is consuming and mark the argument as moved
                 if (param.IsConsuming)
@@ -6233,8 +6471,11 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
             for (int i = 0; i < arguments.Length; i++)
             {
-                var argType = Visit(arguments[i]);
                 var paramType = method.Parameters[paramStartIndex + i].Type;
+                var savedExpectedType = _expectedType;
+                _expectedType = paramType;
+                var argType = Visit(arguments[i]);
+                _expectedType = savedExpectedType;
                 var param = method.Parameters[paramStartIndex + i];
 
                 // Check if this parameter is consuming and mark the argument as moved
@@ -6354,6 +6595,18 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     public override IrType? VisitBoolLiteral([NotNull] NovusParser.BoolLiteralContext context)
     {
         return IrBoolType.Instance;
+    }
+
+    public override IrType? VisitNullLiteral([NotNull] NovusParser.NullLiteralContext context)
+    {
+        // null is compatible with any pointer type
+        // If we have an expected type from bidirectional type checking, use it
+        if (_expectedType is IrPointerType)
+        {
+            return _expectedType;
+        }
+        // Otherwise, return a generic "null pointer" type (*u8) which is compatible with all pointers
+        return new IrPointerType(IrIntType.U8);
     }
 
     public override IrType? VisitStringLiteral([NotNull] NovusParser.StringLiteralContext context)
@@ -7052,6 +7305,43 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                         location
                     );
                 }
+            }
+
+            return IrBoolType.Instance;
+        }
+
+        // Pointer types can be compared with == and != (for null checks)
+        if (leftType is IrPointerType || rightType is IrPointerType)
+        {
+            if (op != "==" && op != "!=")
+            {
+                var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0004",
+                    $"pointer types can only be compared with == and !=, not '{op}'",
+                    location
+                );
+                return IrBoolType.Instance;
+            }
+
+            // Both sides must be pointer types (for ptr == ptr or ptr == null)
+            if (!(leftType is IrPointerType) && !IsNumericType(leftType))
+            {
+                var location = SourceLocationHelper.FromContext(context.expression(0), _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0004",
+                    $"cannot compare '{TypeToString(leftType)}' with pointer type",
+                    location
+                );
+            }
+            if (!(rightType is IrPointerType) && !IsNumericType(rightType))
+            {
+                var location = SourceLocationHelper.FromContext(context.expression(1), _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0004",
+                    $"cannot compare pointer type with '{TypeToString(rightType)}'",
+                    location
+                );
             }
 
             return IrBoolType.Instance;
@@ -7877,8 +8167,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
             initializedFields.Add(fieldName);
 
-            // Validate field value type
+            // Validate field value type (set expected type for bidirectional type checking)
+            var previousExpectedType = _expectedType;
+            _expectedType = field.Type;
             var fieldValueType = Visit(fieldInit.expression());
+            _expectedType = previousExpectedType;
+
             if (fieldValueType != null && !TypesCompatible(field.Type, fieldValueType))
             {
                 var location = SourceLocationHelper.FromContext(fieldInit.expression(), _filePath, _sourceLines);

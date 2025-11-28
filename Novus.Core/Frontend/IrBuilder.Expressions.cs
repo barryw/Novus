@@ -763,8 +763,20 @@ public partial class IrBuilder
         string? resultName;
         IrType returnType;
 
+        // Handle case where funcExpr is null (e.g., failed to resolve function)
+        if (funcExpr == null)
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.FunctionNotFound,
+                $"Cannot resolve function call - expression did not evaluate to a callable",
+                errorLocation
+            );
+            return null;
+        }
+
         // Check if this is an indirect call through a function pointer
-        if (funcExpr!.Type is IrFunctionPointerType fpType)
+        if (funcExpr.Type is IrFunctionPointerType fpType)
         {
             // Indirect call through function pointer
             if (arguments.Count != fpType.ParameterTypes.Count)

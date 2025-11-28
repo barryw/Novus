@@ -1599,9 +1599,19 @@ public partial class IrBuilder
                 continue;
             }
 
+            // Parse generic parameters for placeholder so type checking works correctly
+            List<string> genericParams = new List<string>();
+            if (structDecl.genericParams() != null)
+            {
+                foreach (var paramId in structDecl.genericParams().IDENTIFIER())
+                {
+                    genericParams.Add(paramId.GetText());
+                }
+            }
+
             // Register placeholder struct in symbol table (but NOT in module.Structs yet)
             // The struct will be filled in later only if it's in the import list
-            var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), new List<string>(), null, null);
+            var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), genericParams, null, null);
             _symbols.RegisterStruct(structName, placeholderStruct);
         }
     }
@@ -1615,7 +1625,17 @@ public partial class IrBuilder
             {
                 if (!_symbols.HasStruct(structName))
                 {
-                    var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), new List<string>(), null, null);
+                    // Parse generic parameters for placeholder so type checking works correctly
+                    List<string> genericParams = new List<string>();
+                    if (structDecl.genericParams() != null)
+                    {
+                        foreach (var paramId in structDecl.genericParams().IDENTIFIER())
+                        {
+                            genericParams.Add(paramId.GetText());
+                        }
+                    }
+
+                    var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), genericParams, null, null);
                     _symbols.RegisterStruct(structName, placeholderStruct);
                 }
             }

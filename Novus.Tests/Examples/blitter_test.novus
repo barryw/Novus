@@ -4,6 +4,7 @@
 from std::graphics::blitter import BlitterOps, BlitterError, BlitOp
 from std::graphics::blitter import MINTERM_COPY, MINTERM_COOKIE_CUT, MINTERM_SET, MINTERM_CLEAR
 from std::graphics::bitmap import BitMapHandle
+from std::ffi::amiga_structs import BitMap
 from std::core import Result
 
 fn main() -> i32 {

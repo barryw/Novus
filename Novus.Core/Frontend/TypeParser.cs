@@ -573,6 +573,15 @@ public class TypeParser
     /// </summary>
     public IrType SubstituteGenericTypes(IrType type, Dictionary<string, IrType> substitutions)
     {
+        // Use a visited set to prevent infinite recursion for self-referential structs
+        return SubstituteGenericTypesInternal(type, substitutions, new HashSet<string>());
+    }
+
+    /// <summary>
+    /// Internal implementation with cycle detection for self-referential types
+    /// </summary>
+    private IrType SubstituteGenericTypesInternal(IrType type, Dictionary<string, IrType> substitutions, HashSet<string> visitedStructs)
+    {
         // Handle Self type - resolve to current implementing type
         if (type is IrSelfType)
         {
@@ -592,7 +601,7 @@ public class TypeParser
         // Pointer type substitution
         if (type is IrPointerType ptrType)
         {
-            var substitutedPointee = SubstituteGenericTypes(ptrType.PointeeType, substitutions);
+            var substitutedPointee = SubstituteGenericTypesInternal(ptrType.PointeeType, substitutions, visitedStructs);
             if (substitutedPointee != ptrType.PointeeType)
             {
                 return _context.GetPointerType(substitutedPointee);
@@ -602,7 +611,7 @@ public class TypeParser
         // Immutable reference type substitution
         if (type is IrReferenceType refType)
         {
-            var substitutedPointee = SubstituteGenericTypes(refType.PointeeType, substitutions);
+            var substitutedPointee = SubstituteGenericTypesInternal(refType.PointeeType, substitutions, visitedStructs);
             if (substitutedPointee != refType.PointeeType)
             {
                 return _context.GetReferenceType(substitutedPointee);
@@ -612,7 +621,7 @@ public class TypeParser
         // Mutable reference type substitution
         if (type is IrMutReferenceType mutRefType)
         {
-            var substitutedPointee = SubstituteGenericTypes(mutRefType.PointeeType, substitutions);
+            var substitutedPointee = SubstituteGenericTypesInternal(mutRefType.PointeeType, substitutions, visitedStructs);
             if (substitutedPointee != mutRefType.PointeeType)
             {
                 return _context.GetMutReferenceType(substitutedPointee);
@@ -622,7 +631,7 @@ public class TypeParser
         // Array type substitution
         if (type is IrArrayType arrayType)
         {
-            var substitutedElement = SubstituteGenericTypes(arrayType.ElementType, substitutions);
+            var substitutedElement = SubstituteGenericTypesInternal(arrayType.ElementType, substitutions, visitedStructs);
             if (substitutedElement != arrayType.ElementType)
             {
                 return _context.GetArrayType(substitutedElement, arrayType.Length);
@@ -632,6 +641,15 @@ public class TypeParser
         // Struct type substitution (recursive field substitution)
         if (type is IrStructType structType)
         {
+            // Cycle detection: if we've already visited this struct, return it unchanged
+            // This prevents infinite recursion for self-referential structs like LinkedList, Window, etc.
+            var structKey = structType.CacheKey ?? structType.StructName;
+            if (visitedStructs.Contains(structKey))
+            {
+                return structType;
+            }
+            visitedStructs.Add(structKey);
+
             // If the struct still has generic parameters and we're in a generic context,
             // we should not create a new struct type - just return the original
             // This prevents creating duplicate generic struct instances
@@ -670,7 +688,7 @@ public class TypeParser
 
             foreach (var field in structType.Fields)
             {
-                var substitutedFieldType = SubstituteGenericTypes(field.Type, substitutions);
+                var substitutedFieldType = SubstituteGenericTypesInternal(field.Type, substitutions, visitedStructs);
                 substitutedFields.Add(new IrStructField(field.Name, substitutedFieldType));
 
                 if (!TypesAreEqual(substitutedFieldType, field.Type))
@@ -756,7 +774,7 @@ public class TypeParser
                 var substitutedData = new List<IrType>();
                 foreach (var dataType in variant.AssociatedData)
                 {
-                    var substitutedDataType = SubstituteGenericTypes(dataType, substitutions);
+                    var substitutedDataType = SubstituteGenericTypesInternal(dataType, substitutions, visitedStructs);
                     substitutedData.Add(substitutedDataType);
 
                     if (!TypesAreEqual(substitutedDataType, dataType))

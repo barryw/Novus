@@ -72,6 +72,177 @@ pub struct SimpleSprite {
 }
 
 // ============================================================================
+// Graphics Elements (GEL) Structs - from graphics/gels.h
+// ============================================================================
+
+// VSprite - Virtual Sprite, sorted in GEL list by (y,x) position
+// Can be used standalone for fast 16-pixel-wide sprites, or as part of a Bob
+#[extern_type]
+pub struct VSprite {
+    // System variables - linked list pointers sorted by y,x
+    NextVSprite: *VSprite,
+    PrevVSprite: *VSprite,
+    // Draw/clear paths for overlay operations
+    DrawPath: *VSprite,
+    ClearPath: *VSprite,
+    // Previous position (y,x order for sorting)
+    OldY: i16,
+    OldX: i16,
+    // Flags (see VSPRITE, SAVEBACK, OVERLAY, etc.)
+    Flags: i16,
+    // Current position (y,x order for sorting)
+    Y: i16,
+    X: i16,
+    // Dimensions
+    Height: i16,
+    Width: i16,         // Number of words (16-bit) per row
+    Depth: i16,         // Number of bitplanes
+    // Collision masks
+    MeMask: i16,        // What collision types this VSprite belongs to
+    HitMask: i16,       // What collision types this VSprite detects
+    // Image data
+    ImageData: *i16,
+    // Collision detection data
+    BorderLine: *i16,   // Logical OR of all bits per row
+    CollMask: *i16,     // Full collision mask matrix
+    // Color definitions (not used by Bobs)
+    SprColors: *i16,
+    // Back-pointer if this VSprite is part of a Bob
+    VSBob: *Bob,
+    // Plane selection for drawing
+    PlanePick: i8,
+    PlaneOnOff: i8,
+    // User extension (VUserStuff = WORD)
+    VUserExt: i16,
+}
+
+// Bob - Blitter Object, uses VSprite for positioning but adds background save
+#[extern_type]
+pub struct Bob {
+    // Flags (see SAVEBOB, BOBISCOMP, BWAITING, etc.)
+    Flags: i16,
+    // Buffer for saving background before drawing
+    SaveBuffer: *i16,
+    // Shadow mask for cookie-cutting
+    ImageShadow: *i16,
+    // Sequenced drawing order
+    Before: *Bob,       // Draw this Bob before the one pointed to
+    After: *Bob,        // Draw this Bob after the one pointed to
+    // VSprite used for this Bob's position and image
+    BobVSprite: *VSprite,
+    // AnimComp if this Bob is part of an animation
+    BobComp: *AnimComp,
+    // Double-buffering packet (if used)
+    DBuffer: *DBufPacket,
+    // User extension (BUserStuff = WORD)
+    BUserExt: i16,
+}
+
+// AnimComp - Animation Component, a single image in an animation sequence
+#[extern_type]
+pub struct AnimComp {
+    // Flags
+    Flags: i16,
+    // Timer for frame duration (counts down to 0, then switches to NextSeq)
+    Timer: i16,
+    // Initial timer value when activated
+    TimeSet: i16,
+    // Links to other components in the same AnimOb
+    NextComp: *AnimComp,
+    PrevComp: *AnimComp,
+    // Links to next/previous in animation sequence
+    NextSeq: *AnimComp,
+    PrevSeq: *AnimComp,
+    // Routine called during animation
+    AnimCRoutine: *u8,  // Actually fn(*AnimComp) -> i16
+    // Translation offsets relative to AnimOb position
+    YTrans: i16,
+    XTrans: i16,
+    // Parent AnimOb
+    HeadOb: *AnimOb,
+    // Bob used for this component's rendering
+    AnimBob: *Bob,
+}
+
+// AnimOb - Animation Object, contains one or more AnimComps
+#[extern_type]
+pub struct AnimOb {
+    // System-managed linked list
+    NextOb: *AnimOb,
+    PrevOb: *AnimOb,
+    // Animation frame counter
+    Clock: i32,
+    // Previous position
+    AnOldY: i16,
+    AnOldX: i16,
+    // Current position
+    AnY: i16,
+    AnX: i16,
+    // Velocity
+    YVel: i16,
+    XVel: i16,
+    // Acceleration
+    YAccel: i16,
+    XAccel: i16,
+    // Ring translation (for looping animations)
+    RingYTrans: i16,
+    RingXTrans: i16,
+    // Custom animation routine
+    AnimORoutine: *u8,  // Actually fn(*AnimOb) -> i16
+    // First component in this AnimOb
+    HeadComp: *AnimComp,
+    // User extension (AUserStuff = WORD)
+    AUserExt: i16,
+}
+
+// DBufPacket - Double buffer packet for Bob double-buffering
+#[extern_type]
+pub struct DBufPacket {
+    // Other buffer's screen coordinates
+    BufY: i16,
+    BufX: i16,
+    // Draw path from other buffer
+    BufPath: *VSprite,
+    // Other buffer's background save buffer
+    BufBuffer: *i16,
+}
+
+// GelsInfo - Configuration structure for GEL system
+#[extern_type]
+pub struct GelsInfo {
+    // Which hardware sprites to reserve from VSprite system
+    sprRsrvd: i8,
+    // System flags
+    Flags: u8,
+    // Dummy VSprites for list head/tail
+    gelHead: *VSprite,
+    gelTail: *VSprite,
+    // Sprite line availability (array of 8 WORDs)
+    nextLine: *i16,
+    // Last color assigned to VSprites (array of 8 pointers to WORDs)
+    lastColor: **i16,
+    // Collision handler table
+    collHandler: *collTable,
+    // Bounding box for VSprite clipping
+    leftmost: i16,
+    rightmost: i16,
+    topmost: i16,
+    bottommost: i16,
+    // System use only
+    firstBlissObj: *u8,
+    lastBlissObj: *u8,
+}
+
+// collTable - Table of 16 collision procedure addresses
+#[extern_type]
+pub struct collTable {
+    // Array of 16 collision handler function pointers
+    // First entry: LONG (*)(VSprite*, WORD) - collision testing
+    // Entries 1-15: VOID (*)(VSprite*, VSprite*) - collision reporting
+    collPtrs: [*u8; 16],
+}
+
+// ============================================================================
 // Exec Library Structs
 // ============================================================================
 
