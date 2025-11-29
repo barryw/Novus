@@ -69,14 +69,18 @@ public class TransformPipeline
         var pipeline = new TransformPipeline(verbose);
 
         // Add transformation passes in order
-        // Note: These are currently skeletons for future implementation
 
+        // HIR Lowering passes - run first to convert high-level DSLs to IR
+        pipeline.AddPass(new Passes.CopperLoweringPass());
+        pipeline.AddPass(new Passes.BlitterLoweringPass());
+
+        // Inlining pass - runs after lowering, before optimization
         if (enableInlining)
         {
             pipeline.AddPass(new Passes.InlineExpansionPass());
         }
 
-        // Future passes (currently skeletons):
+        // Future passes:
         // pipeline.AddPass(new Passes.GenericMonomorphizationPass());
         // pipeline.AddPass(new Passes.AsyncLoweringPass());
 

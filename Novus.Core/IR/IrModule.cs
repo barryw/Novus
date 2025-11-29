@@ -1693,3 +1693,106 @@ public class IrGlobalVariable : IrValue
         Name = name;
     }
 }
+
+/// <summary>
+/// Copper list data - pre-computed copper list words for chip RAM
+/// Each copper instruction is 2 words (4 bytes):
+/// - WAIT: (VP<<8 | HP<<1 | 1, $fffe)  - Wait for beam position
+/// - MOVE: (register offset, value)     - Write value to custom chip register
+/// - SKIP: (VP<<8 | HP<<1 | 1, $ffff)   - Skip next instruction if beam past position
+/// - END:  ($ffff, $fffe)               - Terminate copper list
+/// </summary>
+public class IrCopperListData : IrValue
+{
+    /// <summary>
+    /// Label for this copper list in the data section
+    /// </summary>
+    public string Label { get; set; }
+
+    /// <summary>
+    /// Pre-computed copper list words (pairs of u16 values)
+    /// Each instruction is 2 words: instruction word + data word
+    /// </summary>
+    public List<ushort> Words { get; } = new();
+
+    /// <summary>
+    /// Whether this copper list requires chip RAM placement
+    /// </summary>
+    public bool RequiresChipRam { get; set; } = true;
+
+    public IrCopperListData(string label, List<ushort> words) : base(new IrPointerType(IrIntType.U16))
+    {
+        Label = label;
+        Words = words;
+    }
+}
+
+/// <summary>
+/// Blitter operation data - pre-computed blitter register values
+/// </summary>
+public class IrBlitterOpData : IrValue
+{
+    /// <summary>
+    /// BLTCON0 register value (control, minterms, channel enables)
+    /// </summary>
+    public ushort BltCon0 { get; set; }
+
+    /// <summary>
+    /// BLTCON1 register value (fill mode, exclusive fill, etc.)
+    /// </summary>
+    public ushort BltCon1 { get; set; }
+
+    /// <summary>
+    /// BLTSIZE register value (height << 6 | width_words)
+    /// </summary>
+    public ushort BltSize { get; set; }
+
+    /// <summary>
+    /// Source A pointer expression
+    /// </summary>
+    public IrValue? SourceA { get; set; }
+
+    /// <summary>
+    /// Source B pointer expression
+    /// </summary>
+    public IrValue? SourceB { get; set; }
+
+    /// <summary>
+    /// Source C pointer expression
+    /// </summary>
+    public IrValue? SourceC { get; set; }
+
+    /// <summary>
+    /// Destination pointer expression
+    /// </summary>
+    public IrValue? Destination { get; set; }
+
+    /// <summary>
+    /// Source A modulo
+    /// </summary>
+    public short ModuloA { get; set; }
+
+    /// <summary>
+    /// Source B modulo
+    /// </summary>
+    public short ModuloB { get; set; }
+
+    /// <summary>
+    /// Source C modulo
+    /// </summary>
+    public short ModuloC { get; set; }
+
+    /// <summary>
+    /// Destination modulo
+    /// </summary>
+    public short ModuloD { get; set; }
+
+    /// <summary>
+    /// Whether to wait for blitter completion after operation
+    /// </summary>
+    public bool WaitForCompletion { get; set; } = true;
+
+    public IrBlitterOpData() : base(IrTupleType.Unit)
+    {
+    }
+}

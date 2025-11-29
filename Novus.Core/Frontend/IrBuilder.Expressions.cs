@@ -2,6 +2,7 @@ using Antlr4.Runtime;
 using Antlr4.Runtime.Misc;
 using Antlr4.Runtime.Tree;
 using Novus.Diagnostics;
+using Novus.HIR;
 using Novus.IR;
 using Novus.Parser;
 
@@ -4983,4 +4984,99 @@ public partial class IrBuilder
     /// Recursively extracts generic type mappings by comparing base and monomorphized types.
     /// Handles nested generics in pointers, arrays, and other type constructors.
     /// </summary>
+
+    // ===========================
+    // Copper DSL Expression
+    // ===========================
+
+    /// <summary>
+    /// Handle Copper DSL expression: copper { wait(0, 100); move(COLOR00, $F00); }
+    /// Generates HIR Copper instructions that will be lowered to actual copper list data.
+    /// </summary>
+    public override object? VisitCopperExpr([NotNull] NovusParser.CopperExprContext context)
+    {
+        var copperList = context.copperList();
+        var operations = new List<HirCopperInstruction>();
+
+        // Process each copper operation
+        foreach (var opContext in copperList.copperOperation())
+        {
+            // Get the operation name from copperOpName (IDENTIFIER)
+            var opName = opContext.copperOpName().IDENTIFIER().GetText().ToLower();
+            var arg0 = (IrValue?)Visit(opContext.expression(0));
+            var arg1 = (IrValue?)Visit(opContext.expression(1));
+
+            if (arg0 != null && arg1 != null)
+            {
+                switch (opName)
+                {
+                    case "wait":
+                        operations.Add(new HirCopperInstruction.Wait(arg0, arg1));
+                        break;
+                    case "move":
+                        operations.Add(new HirCopperInstruction.Move(arg0, arg1));
+                        break;
+                    case "skip":
+                        operations.Add(new HirCopperInstruction.Skip(arg0, arg1));
+                        break;
+                }
+            }
+        }
+
+        // Generate a temporary to hold the copper list pointer
+        var resultTemp = $"%copper_{_tempCounter++}";
+        var copperPtrType = new IrPointerType(IrIntType.U16);
+
+        // Create HIR copper list node with result variable info
+        var copperListNode = new HirCopperList(operations)
+        {
+            ResultName = resultTemp,
+            ResultType = copperPtrType
+        };
+
+        // Add HIR instruction to module - will be lowered by CopperLoweringPass
+        _module.HirInstructions.Add(copperListNode);
+
+        // Declare local variable to hold the copper list pointer
+        var resultLocal = new IrLocalVariable(resultTemp, copperPtrType, false);
+        _currentFunction?.LocalVariables.Add(resultLocal);
+        _currentBlock?.AddInstruction(new IrLocalDecl(resultTemp, copperPtrType, false, new IrConstant(0, IrIntType.U32)));
+
+        return new IrVariable(resultTemp, copperPtrType);
+    }
+
+    // ===========================
+    // Blitter DSL Expression
+    // ===========================
+
+    /// <summary>
+    /// Handle Blitter DSL expression: blitter { source: ptr, dest: screen, width: 16, height: 16, minterm: $F0 }
+    /// Generates HIR Blitter instructions that will be lowered to actual blitter register setup.
+    /// </summary>
+    public override object? VisitBlitterExpr([NotNull] NovusParser.BlitterExprContext context)
+    {
+        var blitterJob = context.blitterJob();
+        var fields = new Dictionary<string, IrValue>();
+
+        // Process each blitter field
+        foreach (var fieldContext in blitterJob.blitterField())
+        {
+            var fieldName = fieldContext.IDENTIFIER().GetText();
+            var fieldValue = (IrValue?)Visit(fieldContext.expression());
+
+            if (fieldValue != null)
+            {
+                fields[fieldName.ToLower()] = fieldValue;
+            }
+        }
+
+        // Create HIR blitter job node
+        var blitterJobNode = new HirBlitterJob(fields);
+
+        // Add HIR instruction to module - will be lowered by BlitterLoweringPass
+        _module.HirInstructions.Add(blitterJobNode);
+
+        // Blitter jobs return unit (execute synchronously by default)
+        return new IrTupleLiteral(IrTupleType.Unit, new List<IrValue>());
+    }
 }

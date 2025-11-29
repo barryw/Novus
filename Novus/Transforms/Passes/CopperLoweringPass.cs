@@ -11,64 +11,10 @@ public class CopperLoweringPass : TransformPassBase
 {
     public override string Name => "Copper Lowering";
 
+    private int _copperListCounter = 0;
+
     public override bool Transform(IrModule module)
     {
-        // TODO: Implement Copper list lowering
-        //
-        // Algorithm:
-        // 1. Find all HirCopperList instructions in module
-        //
-        // 2. For each Copper list:
-        //    a. Validate operations (if enabled)
-        //       - Check WAIT positions are valid
-        //       - Check MOVE register addresses are in custom chip range
-        //       - Verify no dangerous operations
-        //
-        //    b. Generate copper list data structure
-        //       - Allocate space in .data section (chip RAM)
-        //       - Convert operations to copper instruction format:
-        //         * WAIT: position word, $fffe
-        //         * MOVE: register offset, value
-        //       - Add terminator: $fffffffe
-        //
-        //    c. Create IR instructions to access copper list
-        //       - Load address of copper list into register
-        //       - Return address for use in COP1LC/COP2LC
-        //
-        // 3. Replace HirCopperList with lowered IR instructions
-        //
-        // Example:
-        //
-        // HIR:
-        //   let copper_list = copper {
-        //     wait(0, 100)
-        //     move(COLOR00, 0xF00)
-        //     wait(0, 150)
-        //     move(COLOR00, 0x00F)
-        //   }
-        //
-        // Lowered to LIR:
-        //   ; Generate data in .data section:
-        //   __copper_list_0:
-        //     dc.w $6401,$fffe    ; WAIT(100, 0): VP=$64, HP=$01
-        //     dc.w $0180,$0f00    ; MOVE COLOR00, red
-        //     dc.w $9601,$fffe    ; WAIT(150, 0): VP=$96, HP=$01
-        //     dc.w $0180,$000f    ; MOVE COLOR00, blue
-        //     dc.w $ffff,$fffe    ; END
-        //
-        //   ; Generate IR to load address:
-        //   let copper_list = &__copper_list_0
-        //
-        // Integration with graphics.lib:
-        //   LoadView() expects copper list pointer
-        //   Set custom->cop1lc = copper_list
-        //
-        // Validation:
-        //   - WAIT positions: Y in 0-312 (PAL), 0-262 (NTSC)
-        //   - MOVE registers: $dff000-$dff1ff only
-        //   - No writes to dangerous registers (COP1LC causes infinite loop)
-        //   - Proper termination ($fffffffe)
-
         bool changed = false;
 
         // Find HIR instructions that need lowering
@@ -77,10 +23,7 @@ public class CopperLoweringPass : TransformPassBase
             if (hirInstruction is HirCopperList copperList)
             {
                 // Lower this copper list
-                var loweredInstructions = LowerCopperList(copperList);
-
-                // TODO: Add lowered instructions to appropriate location in IR
-                // For now, just mark as changed
+                LowerCopperList(module, copperList);
 
                 module.HirInstructions.Remove(hirInstruction);
                 changed = true;
@@ -90,20 +33,170 @@ public class CopperLoweringPass : TransformPassBase
         return changed;
     }
 
-    private List<IrInstruction> LowerCopperList(HirCopperList copperList)
+    private void LowerCopperList(IrModule module, HirCopperList copperList)
     {
-        // Validate if requested
-        if (copperList.ValidateAtCompileTime)
+        // Generate copper list words from HIR instructions
+        var words = new List<ushort>();
+        bool allConstant = true;
+
+        foreach (var instruction in copperList.Instructions)
         {
-            foreach (var operation in copperList.Operations)
+            switch (instruction)
             {
-                operation.Validate();
+                case HirCopperInstruction.Wait wait:
+                    if (TryEvaluateConstant(wait.X, out int waitX) &&
+                        TryEvaluateConstant(wait.Y, out int waitY))
+                    {
+                        // Generate WAIT instruction
+                        // Format: VP<<8 | HP<<1 | 1 (vertical position, horizontal position, wait bit)
+                        // The second word is the compare enable mask ($fffe means compare all bits except HP LSB)
+                        ushort waitWord1 = (ushort)(((waitY & 0xFF) << 8) | ((waitX & 0x7F) << 1) | 0x01);
+                        ushort waitWord2 = 0xFFFE; // Standard wait mask
+                        words.Add(waitWord1);
+                        words.Add(waitWord2);
+                    }
+                    else
+                    {
+                        allConstant = false;
+                    }
+                    break;
+
+                case HirCopperInstruction.Move move:
+                    if (TryEvaluateConstant(move.Register, out int regAddr) &&
+                        TryEvaluateConstant(move.Value, out int moveValue))
+                    {
+                        // Generate MOVE instruction
+                        // Format: register_offset (low 9 bits of address from $DFF000), value
+                        // The register address must be in custom chip range $DFF000-$DFF1FF
+                        ushort regOffset = (ushort)(regAddr & 0x1FE); // Extract offset, clear bit 0
+                        ushort dataWord = (ushort)(moveValue & 0xFFFF);
+                        words.Add(regOffset);
+                        words.Add(dataWord);
+                    }
+                    else
+                    {
+                        allConstant = false;
+                    }
+                    break;
+
+                case HirCopperInstruction.Skip skip:
+                    if (TryEvaluateConstant(skip.X, out int skipX) &&
+                        TryEvaluateConstant(skip.Y, out int skipY))
+                    {
+                        // Generate SKIP instruction (same as WAIT but with $FFFF mask)
+                        ushort skipWord1 = (ushort)(((skipY & 0xFF) << 8) | ((skipX & 0x7F) << 1) | 0x01);
+                        ushort skipWord2 = 0xFFFF; // Skip mask (bit 0 = 1 distinguishes from WAIT)
+                        words.Add(skipWord1);
+                        words.Add(skipWord2);
+                    }
+                    else
+                    {
+                        allConstant = false;
+                    }
+                    break;
             }
         }
 
-        // TODO: Generate copper list data structure and IR instructions
-        // For now, return empty list (skeleton)
+        // Add terminator: END instruction ($FFFF, $FFFE)
+        words.Add(0xFFFF);
+        words.Add(0xFFFE);
 
-        return new List<IrInstruction>();
+        if (allConstant && copperList.ResultName != null)
+        {
+            // Generate static copper list data
+            var label = $"__copper_list_{_copperListCounter++}";
+            var copperData = new IrCopperListData(label, words);
+
+            // Create a static variable for the copper list
+            // Note: This needs chip RAM attribute, but for now we use regular static
+            var arrayType = new IrArrayType(IrIntType.U16, words.Count);
+            var arrayLiteral = new IrArrayLiteral(arrayType);
+            foreach (var word in words)
+            {
+                arrayLiteral.Elements.Add(new IrConstant(word, IrIntType.U16));
+            }
+
+            var staticVar = new IrStaticVariable(
+                label,
+                arrayType,
+                Visibility.Private,
+                isMutable: false,
+                arrayLiteral
+            );
+            module.StaticVariables.Add(staticVar);
+
+            // Find the function containing the local variable and update the initialization
+            // The copper expression created a local variable initialized to 0
+            // We need to find that and replace it with the address of our static data
+            UpdateCopperVariableInit(module, copperList.ResultName, label);
+        }
+        else if (!allConstant)
+        {
+            // TODO: Generate runtime copper list building code
+            // For now, emit a warning comment in the output
+            Console.WriteLine($"Warning: Copper list contains non-constant values, runtime generation not yet implemented");
+        }
+    }
+
+    /// <summary>
+    /// Try to evaluate an IrValue to a compile-time constant integer
+    /// </summary>
+    private bool TryEvaluateConstant(IrValue value, out int result)
+    {
+        result = 0;
+
+        switch (value)
+        {
+            case IrConstant constant:
+                result = (int)constant.Value;
+                return true;
+
+            case IrVariable variable:
+                // Could look up constant values from module.Constants
+                // For now, treat variables as non-constant
+                return false;
+
+            case IrCastValue cast:
+                // Recursively evaluate the cast source
+                return TryEvaluateConstant(cast.Value, out result);
+
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Update the copper variable initialization to point to static data
+    /// </summary>
+    private void UpdateCopperVariableInit(IrModule module, string varName, string staticLabel)
+    {
+        foreach (var function in module.Functions)
+        {
+            foreach (var block in function.BasicBlocks)
+            {
+                for (int i = 0; i < block.Instructions.Count; i++)
+                {
+                    if (block.Instructions[i] is IrLocalDecl localDecl && localDecl.Name == varName)
+                    {
+                        // Replace the initialization (which is 0) with address of static data
+                        // Create a borrow of the static array's first element
+                        var staticVarRef = new IrGlobalVariable(staticLabel, new IrArrayType(IrIntType.U16, 0));
+                        var ptrType = new IrPointerType(IrIntType.U16);
+
+                        // Create a new local declaration with proper initialization
+                        // The C codegen will handle the array-to-pointer decay
+                        var newDecl = new IrLocalDecl(
+                            varName,
+                            ptrType,
+                            localDecl.IsMutable,
+                            new IrBorrowValue(staticVarRef, ptrType, false)
+                        );
+
+                        block.Instructions[i] = newDecl;
+                        return;
+                    }
+                }
+            }
+        }
     }
 }

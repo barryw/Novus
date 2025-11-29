@@ -35,7 +35,17 @@ public abstract class HirInstruction
 public class HirCopperList : HirInstruction
 {
     /// <summary>
-    /// List of Copper operations (WAIT, MOVE, SKIP)
+    /// List of Copper instructions (WAIT, MOVE, SKIP) with IR values
+    /// </summary>
+    public List<HirCopperInstruction> Instructions { get; }
+
+    public HirCopperList(List<HirCopperInstruction> instructions)
+    {
+        Instructions = instructions;
+    }
+
+    /// <summary>
+    /// List of Copper operations (WAIT, MOVE, SKIP) - legacy, use Instructions instead
     /// </summary>
     public List<CopperOperation> Operations { get; } = new();
 
@@ -142,11 +152,88 @@ public class CopperMove : CopperOperation
 }
 
 /// <summary>
+/// HIR-level Copper instruction with IR values (for use during IR building).
+/// These instructions hold IrValue references that will be lowered to actual
+/// copper list data during the CopperLoweringPass.
+/// </summary>
+public abstract class HirCopperInstruction
+{
+    /// <summary>
+    /// WAIT instruction - wait for beam to reach position (X, Y)
+    /// </summary>
+    public class Wait : HirCopperInstruction
+    {
+        public IrValue X { get; }
+        public IrValue Y { get; }
+
+        public Wait(IrValue x, IrValue y)
+        {
+            X = x;
+            Y = y;
+        }
+    }
+
+    /// <summary>
+    /// MOVE instruction - write value to custom chip register
+    /// </summary>
+    public class Move : HirCopperInstruction
+    {
+        public IrValue Register { get; }
+        public IrValue Value { get; }
+
+        public Move(IrValue register, IrValue value)
+        {
+            Register = register;
+            Value = value;
+        }
+    }
+
+    /// <summary>
+    /// SKIP instruction - skip next instruction if beam past position (X, Y)
+    /// </summary>
+    public class Skip : HirCopperInstruction
+    {
+        public IrValue X { get; }
+        public IrValue Y { get; }
+
+        public Skip(IrValue x, IrValue y)
+        {
+            X = x;
+            Y = y;
+        }
+    }
+}
+
+/// <summary>
 /// Represents a Blitter operation (Amiga custom chip)
 /// The Blitter is a co-processor for fast memory copying and bit manipulation
 /// </summary>
 public class HirBlitterJob : HirInstruction
 {
+    /// <summary>
+    /// DSL fields from the blitter block (source, dest, width, height, minterm, etc.)
+    /// Keys are lowercased field names, values are the IR values.
+    /// </summary>
+    public Dictionary<string, IrValue> Fields { get; }
+
+    /// <summary>
+    /// Create a blitter job from DSL fields.
+    /// </summary>
+    public HirBlitterJob(Dictionary<string, IrValue> fields)
+    {
+        Fields = fields;
+
+        // Extract commonly used fields for convenience
+        if (fields.TryGetValue("source", out var source) || fields.TryGetValue("sourcea", out source))
+            SourceA = source;
+        if (fields.TryGetValue("sourceb", out var sourceB))
+            SourceB = sourceB;
+        if (fields.TryGetValue("sourcec", out var sourceC))
+            SourceC = sourceC;
+        if (fields.TryGetValue("dest", out var dest) || fields.TryGetValue("destination", out dest))
+            Destination = dest;
+    }
+
     /// <summary>
     /// Blitter operation type (copy, fill, line drawing, etc.)
     /// </summary>

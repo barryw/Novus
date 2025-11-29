@@ -388,6 +388,8 @@ primaryExpression
     | identifier                                   # IdentifierExpr
     | KW_MATCH expression '{' NEWLINE* matchArm (',' NEWLINE* matchArm)* ','? NEWLINE* '}'  # MatchExpr
     | KW_UNSAFE block                              # UnsafeExpr
+    | copperList                                   # CopperExpr
+    | blitterJob                                   # BlitterExpr
     | '(' ')'                                      # UnitLiteral
     | '(' NEWLINE* expression (',' NEWLINE* expression)+ NEWLINE* ')'  # TupleLiteral
     | '(' NEWLINE* expression NEWLINE* ')'         # ParenExpr
@@ -405,6 +407,32 @@ arrayLiteralInit
 
 structFieldInit
     : IDENTIFIER ':' NEWLINE* expression
+    ;
+
+// Copper DSL - hardware-level display list programming
+// Example: copper { wait(0, 100); move(COLOR00, $F00); }
+copperList
+    : KW_COPPER '{' NEWLINE* copperOperation* NEWLINE* '}'
+    ;
+
+copperOperation
+    : copperOpName '(' expression ',' expression ')' ';'? NEWLINE*
+    ;
+
+// Contextual keywords for copper operations (wait, move, skip)
+// These are matched as IDENTIFIER to avoid conflicting with method names
+copperOpName
+    : IDENTIFIER    // Semantic analyzer validates: wait, move, skip
+    ;
+
+// Blitter DSL - hardware-level memory copy/manipulation
+// Example: blitter { source: ptr, dest: screen, width: 16, height: 16, minterm: $F0 }
+blitterJob
+    : KW_BLITTER '{' NEWLINE* blitterField (',' NEWLINE* blitterField)* ','? NEWLINE* '}'
+    ;
+
+blitterField
+    : IDENTIFIER ':' expression
     ;
 
 // Lexer Rules
@@ -447,6 +475,10 @@ KW_UNSAFE    : 'unsafe';
 KW_USING     : 'using';
 KW_SIZEOF    : 'sizeof';
 KW_CONSUMING : 'consuming';
+KW_COPPER    : 'copper';
+KW_BLITTER   : 'blitter';
+// Note: wait, move, skip are NOT reserved keywords - they are handled as
+// contextual identifiers inside copper blocks to avoid breaking method names like .wait()
 KW_TRUE     : 'true';
 KW_FALSE    : 'false';
 KW_NULL     : 'null';

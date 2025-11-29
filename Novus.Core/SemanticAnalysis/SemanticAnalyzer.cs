@@ -4255,6 +4255,156 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     }
 
     /// <summary>
+    /// Handle Copper DSL expression: copper { wait(0, 100); move(COLOR00, $F00); }
+    /// Returns a pointer type that points to the generated copper list data.
+    /// </summary>
+    public override IrType? VisitCopperExpr([NotNull] NovusParser.CopperExprContext context)
+    {
+        // Copper list is inherently unsafe (direct hardware access)
+        RequireUnsafe(context, "copper list", "it directly programs the Copper coprocessor hardware");
+
+        // Visit all copper operations for validation
+        var copperList = context.copperList();
+        foreach (var operation in copperList.copperOperation())
+        {
+            ValidateCopperOperation(operation);
+        }
+
+        // Copper list evaluates to a pointer to the copper list data (chip RAM)
+        // This pointer can then be stored in COP1LC/COP2LC registers
+        return new IrPointerType(IrIntType.U16);
+    }
+
+    /// <summary>
+    /// Validate a copper operation for semantic correctness
+    /// </summary>
+    private void ValidateCopperOperation(NovusParser.CopperOperationContext operation)
+    {
+        // Get the operation name from copperOpName rule (IDENTIFIER)
+        var opName = operation.copperOpName().IDENTIFIER().GetText().ToLower();
+        var expr0 = operation.expression(0);
+        var expr1 = operation.expression(1);
+
+        // Validate operation name is a valid copper instruction
+        if (opName != "wait" && opName != "move" && opName != "skip")
+        {
+            var location = SourceLocationHelper.FromContext(operation.copperOpName(), _filePath, _sourceLines);
+            _diagnostics.ReportError("E1056", $"Unknown copper operation '{opName}'. Valid operations are: wait, move, skip", location);
+            return;
+        }
+
+        // Validate expression types based on operation
+        var type0 = Visit(expr0) as IrType;
+        var type1 = Visit(expr1) as IrType;
+
+        if (opName == "wait" || opName == "skip")
+        {
+            // wait(x, y) / skip(x, y) - both must be integers
+            if (type0 != null && !IsIntegralType(type0))
+            {
+                var location = SourceLocationHelper.FromContext(expr0, _filePath, _sourceLines);
+                _diagnostics.ReportError("E1050", $"Copper {opName.ToUpper()} horizontal position must be an integer, got {type0.Name}", location);
+            }
+            if (type1 != null && !IsIntegralType(type1))
+            {
+                var location = SourceLocationHelper.FromContext(expr1, _filePath, _sourceLines);
+                _diagnostics.ReportError("E1051", $"Copper {opName.ToUpper()} vertical position must be an integer, got {type1.Name}", location);
+            }
+        }
+        else if (opName == "move")
+        {
+            // move(register, value) - both must be integers
+            if (type0 != null && !IsIntegralType(type0))
+            {
+                var location = SourceLocationHelper.FromContext(expr0, _filePath, _sourceLines);
+                _diagnostics.ReportError("E1052", $"Copper MOVE register must be an integer, got {type0.Name}", location);
+            }
+            if (type1 != null && !IsIntegralType(type1))
+            {
+                var location = SourceLocationHelper.FromContext(expr1, _filePath, _sourceLines);
+                _diagnostics.ReportError("E1053", $"Copper MOVE value must be an integer, got {type1.Name}", location);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Handle Blitter DSL expression: blitter { source: ptr, dest: screen, width: 16, height: 16 }
+    /// Returns unit type (blitter jobs execute synchronously by default).
+    /// </summary>
+    public override IrType? VisitBlitterExpr([NotNull] NovusParser.BlitterExprContext context)
+    {
+        // Blitter job is inherently unsafe (direct hardware access)
+        RequireUnsafe(context, "blitter job", "it directly programs the Blitter hardware");
+
+        // Validate blitter fields
+        var blitterJob = context.blitterJob();
+        foreach (var field in blitterJob.blitterField())
+        {
+            var fieldName = field.IDENTIFIER().GetText();
+            var fieldExpr = field.expression();
+            var fieldType = Visit(fieldExpr) as IrType;
+
+            // Validate based on field name
+            switch (fieldName.ToLower())
+            {
+                case "source":
+                case "source_a":
+                case "source_b":
+                case "source_c":
+                case "dest":
+                case "destination":
+                    // Should be a pointer type
+                    if (fieldType != null && fieldType is not IrPointerType)
+                    {
+                        var location = SourceLocationHelper.FromContext(fieldExpr, _filePath, _sourceLines);
+                        _diagnostics.ReportError("E1060", $"Blitter {fieldName} must be a pointer, got {fieldType.Name}", location);
+                    }
+                    break;
+
+                case "width":
+                case "height":
+                case "minterm":
+                case "modulo":
+                case "modulo_a":
+                case "modulo_b":
+                case "modulo_c":
+                case "modulo_d":
+                case "shift":
+                case "shift_a":
+                case "shift_b":
+                    // Should be an integer type
+                    if (fieldType != null && !IsIntegralType(fieldType))
+                    {
+                        var location = SourceLocationHelper.FromContext(fieldExpr, _filePath, _sourceLines);
+                        _diagnostics.ReportError("E1061", $"Blitter {fieldName} must be an integer, got {fieldType.Name}", location);
+                    }
+                    break;
+
+                case "wait":
+                case "async":
+                case "fill":
+                case "descending":
+                    // Should be a boolean
+                    if (fieldType != null && fieldType is not IrBoolType)
+                    {
+                        var location = SourceLocationHelper.FromContext(fieldExpr, _filePath, _sourceLines);
+                        _diagnostics.ReportError("E1062", $"Blitter {fieldName} must be a boolean, got {fieldType.Name}", location);
+                    }
+                    break;
+
+                default:
+                    // Unknown field - report warning
+                    var loc = SourceLocationHelper.FromContext(field, _filePath, _sourceLines);
+                    _diagnostics.ReportWarning("W1060", $"Unknown blitter field '{fieldName}'", loc);
+                    break;
+            }
+        }
+
+        // Blitter job returns unit (no value)
+        return IrTupleType.Unit;
+    }
+
+    /// <summary>
     /// Analyze a block and return the type of the last expression.
     /// Used for block expressions like unsafe { } and potentially future block expressions.
     /// </summary>
