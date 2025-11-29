@@ -60,9 +60,9 @@ return x + y
         var result = Format(source);
 
         var lines = result.Split('\n');
-        Assert.True(lines.Any(l => l.Trim().StartsWith("let x = 1")));
-        Assert.True(lines.Any(l => l.Trim().StartsWith("let y = 2")));
-        Assert.True(lines.Any(l => l.Trim().StartsWith("return x + y")));
+        Assert.Contains(lines, l => l.Trim().StartsWith("let x = 1"));
+        Assert.Contains(lines, l => l.Trim().StartsWith("let y = 2"));
+        Assert.Contains(lines, l => l.Trim().StartsWith("return x + y"));
     }
 
     // ==================== Comment Preservation Tests ====================

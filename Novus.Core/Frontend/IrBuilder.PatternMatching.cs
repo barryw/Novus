@@ -458,10 +458,14 @@ public partial class IrBuilder
                 var guardValue = (IrValue?)Visit(expressions[0]);
                 if (guardValue != null)
                 {
-                    // If guard is false, jump to next case
+                    // If guard is true, execute this arm. If false, jump to next case
+                    var executeLabel = $"%match_{matchId}_arm_{i}_execute";
                     var skipLabel = $"%match_{matchId}_arm_{i}_skip";
-                    _currentBlock!.AddInstruction(new IrConditionalBranch(guardValue, null, skipLabel));
-                    // Guard passed - continue with this arm
+                    _currentBlock!.AddInstruction(new IrConditionalBranch(guardValue, executeLabel, skipLabel));
+
+                    // Create the execute block for this arm
+                    var executeBlock = _currentFunction!.CreateBasicBlock(executeLabel);
+                    _currentBlock = executeBlock;
                 }
                 valueExprIndex = 1;
             }

@@ -99,8 +99,6 @@ public class SparseConditionalConstantPropagation
     /// </summary>
     private Queue<IrBasicBlock> _workList = new();
 
-    private bool _madeChanges = false;
-
     public SparseConditionalConstantPropagation(IrFunction function)
     {
         _function = function;
@@ -379,7 +377,6 @@ public class SparseConditionalConstantPropagation
                 {
                     block.Instructions[i] = replaced;
                     replacementCount++;
-                    _madeChanges = true;
                 }
             }
         }

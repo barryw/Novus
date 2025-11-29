@@ -226,24 +226,16 @@ pub fn spawn_thread(name: Str, entry: fn() -> i32, stack_size: u32) -> Result<Th
     }
 
     // Allocate communication data
-    var comm: *u8 = (*u8)0
-    unsafe {
-        comm = AllocMem(THREAD_COMM_SIZE, MEMF_PUBLIC | MEMF_CLEAR)
-    }
+    let comm = unsafe { AllocMem(THREAD_COMM_SIZE, MEMF_PUBLIC | MEMF_CLEAR) }
     if (u32)comm == 0 {
         FreeSignal(signal)
         return Result::Err(DosError::NoFreeStore)
     }
 
     // Allocate Task structure
-    var task_mem: *u8 = (*u8)0
-    unsafe {
-        task_mem = AllocMem(@sizeof(Task), MEMF_PUBLIC | MEMF_CLEAR)
-    }
+    let task_mem = unsafe { AllocMem(@sizeof(Task), MEMF_PUBLIC | MEMF_CLEAR) }
     if (u32)task_mem == 0 {
-        unsafe {
-            FreeMem(comm, THREAD_COMM_SIZE)
-        }
+        unsafe { FreeMem(comm, THREAD_COMM_SIZE) }
         FreeSignal(signal)
         return Result::Err(DosError::NoFreeStore)
     }
@@ -251,10 +243,7 @@ pub fn spawn_thread(name: Str, entry: fn() -> i32, stack_size: u32) -> Result<Th
     // Allocate stack - must be long-word aligned for 68k
     // Round up stack_size to 4-byte boundary
     let aligned_stack_size = (stack_size + (u32)3) & (~(u32)3)
-    var stk: *u8 = (*u8)0
-    unsafe {
-        stk = AllocMem(aligned_stack_size, MEMF_PUBLIC | MEMF_CLEAR)
-    }
+    let stk = unsafe { AllocMem(aligned_stack_size, MEMF_PUBLIC | MEMF_CLEAR) }
     if (u32)stk == 0 {
         unsafe {
             FreeMem(task_mem, @sizeof(Task))

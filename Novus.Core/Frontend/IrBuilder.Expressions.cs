@@ -757,7 +757,7 @@ public partial class IrBuilder
             }
 
             // Create the enum value with the monomorphized type
-            return new IrEnumValue(finalEnumType, enumCtor.VariantName, finalVariant.Tag, convertedArguments);
+            return new IrEnumValue(finalEnumType, enumCtor.VariantName, finalVariant!.Tag, convertedArguments);
         }
 
         string? resultName;
@@ -2730,7 +2730,7 @@ public partial class IrBuilder
             IrIntType intType => intType.IsSigned ? $"i{intType.BitWidth}" : $"u{intType.BitWidth}",
             IrBoolType => "bool",
             IrPointerType ptrType => $"*{GetTypeName(ptrType.PointeeType)}",
-            _ => type.ToString()
+            _ => type.ToString() ?? "unknown"
         };
     }
 
@@ -3034,7 +3034,8 @@ public partial class IrBuilder
                     $"Cannot access member '{memberName}' on non-struct type '{baseType}'",
                     errorLocation
                 );
-                return null;
+                // Return error recovery value
+                return new IrConstant(0, IrIntType.I32);
             }
 
             var field = structType.Fields.FirstOrDefault(f => f.Name == memberName);
@@ -3046,7 +3047,8 @@ public partial class IrBuilder
                     $"Struct '{structType.Name}' has no field '{memberName}'",
                     errorLocation
                 );
-                return null;
+                // Return error recovery value
+                return new IrConstant(0, IrIntType.I32);
             }
 
             // Load current value
@@ -3086,7 +3088,8 @@ public partial class IrBuilder
                     $"Cannot index type '{arrayExpr.Type}'",
                     errorLocation
                 );
-                return null;
+                // Return error recovery value
+                return new IrConstant(0, IrIntType.I32);
             }
 
             // Load current value
@@ -3133,7 +3136,8 @@ public partial class IrBuilder
                     $"Cannot dereference non-pointer/reference type '{ptrExpr.Type}'",
                     errorLocation
                 );
-                return null;
+                // Return error recovery value
+                return new IrConstant(0, IrIntType.I32);
             }
 
             // Load current value (dereference)
@@ -3157,7 +3161,8 @@ public partial class IrBuilder
             $"Pre-{(isIncrement ? "increment" : "decrement")} not supported for expression type: {exprContext.GetType().Name}",
             errorLocation
         );
-        return null;
+        // Return error recovery value
+        return new IrConstant(0, IrIntType.I32);
     }
 
     public override object? VisitLogicalAndExpr([NotNull] NovusParser.LogicalAndExprContext context)
@@ -3786,7 +3791,7 @@ public partial class IrBuilder
         // This avoids pulling in ALL Display implementations and reduces code size dramatically
 
         // Determine the runtime function name based on integer type
-        string runtimeFuncName = intType.Name switch
+        string? runtimeFuncName = intType.Name switch
         {
             "i8" => "i8_to_string",
             "i16" => "i16_to_string",
@@ -4054,7 +4059,8 @@ public partial class IrBuilder
                         "Unmatched braces in f-string interpolation",
                         errorLocation
                     );
-                    return null;
+                    // Return empty list for error recovery
+                    return new List<InterpolationSegment>();
                 }
 
                 // Extract the expression

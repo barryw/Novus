@@ -1200,16 +1200,183 @@ public class IrStructType : IrType
 
     private static IrType SubstituteType(IrType type, Dictionary<string, IrType> substitutions)
     {
-        // If the type is a generic parameter, substitute it
+        // Direct generic parameter substitution (e.g., T -> i32)
+        if (type is IrGenericType genericType)
+        {
+            if (substitutions.TryGetValue(genericType.ParameterName, out var substitution))
+            {
+                return substitution;
+            }
+            return type; // Unbound generic parameter, return as-is
+        }
+
+        // Legacy check: struct with single generic parameter used as a type parameter placeholder
+        // This handles cases where IrStructType is used instead of IrGenericType
         if (type is IrStructType structType && structType.GenericParameters.Count == 1 &&
+            structType.Fields.Count == 0 && // Only if it's a placeholder struct
             substitutions.ContainsKey(structType.GenericParameters[0]))
         {
             return substitutions[structType.GenericParameters[0]];
         }
 
-        // TODO: Handle nested generic types like Option<Vec<T>>
+        // Handle pointer types (e.g., *T -> *i32)
+        if (type is IrPointerType pointerType)
+        {
+            var substitutedInner = SubstituteType(pointerType.PointeeType, substitutions);
+            if (substitutedInner != pointerType.PointeeType)
+            {
+                return new IrPointerType(substitutedInner);
+            }
+            return type;
+        }
+
+        // Handle reference types (e.g., &T -> &i32)
+        if (type is IrReferenceType refType)
+        {
+            var substitutedInner = SubstituteType(refType.PointeeType, substitutions);
+            if (substitutedInner != refType.PointeeType)
+            {
+                return new IrReferenceType(substitutedInner);
+            }
+            return type;
+        }
+
+        // Handle mutable reference types (e.g., &mut T -> &mut i32)
+        if (type is IrMutReferenceType mutRefType)
+        {
+            var substitutedInner = SubstituteType(mutRefType.PointeeType, substitutions);
+            if (substitutedInner != mutRefType.PointeeType)
+            {
+                return new IrMutReferenceType(substitutedInner);
+            }
+            return type;
+        }
+
+        // Handle array types (e.g., [T; 10] -> [i32; 10])
+        if (type is IrArrayType arrayType)
+        {
+            var substitutedElement = SubstituteType(arrayType.ElementType, substitutions);
+            if (substitutedElement != arrayType.ElementType)
+            {
+                return new IrArrayType(substitutedElement, arrayType.Length);
+            }
+            return type;
+        }
+
+        // Handle nested generic struct types (e.g., Option<Vec<T>> -> Option<Vec<i32>>)
+        // These have a CacheKey that contains the generic parameters
+        if (type is IrStructType nestedStruct && nestedStruct.CacheKey != null && nestedStruct.CacheKey.Contains("<"))
+        {
+            // Check if any generic parameter from our substitutions appears in the CacheKey
+            bool needsSubstitution = substitutions.Keys.Any(param => nestedStruct.CacheKey.Contains(param));
+            if (needsSubstitution)
+            {
+                // Substitute in the CacheKey string
+                string newCacheKey = nestedStruct.CacheKey;
+                foreach (var (paramName, paramType) in substitutions)
+                {
+                    newCacheKey = SubstituteInCacheKey(newCacheKey, paramName, paramType.Name);
+                }
+
+                // Also substitute field types
+                var substitutedFields = new List<IrStructField>();
+                bool fieldsChanged = false;
+                foreach (var field in nestedStruct.Fields)
+                {
+                    var substitutedFieldType = SubstituteType(field.Type, substitutions);
+                    substitutedFields.Add(new IrStructField(field.Name, substitutedFieldType));
+                    if (substitutedFieldType != field.Type)
+                    {
+                        fieldsChanged = true;
+                    }
+                }
+
+                if (newCacheKey != nestedStruct.CacheKey || fieldsChanged)
+                {
+                    return new IrStructType(nestedStruct.StructName, substitutedFields, new List<string>(), newCacheKey);
+                }
+            }
+        }
+
+        // Handle nested generic enum types (e.g., Result<T, E> -> Result<i32, Error>)
+        if (type is IrEnumType enumType && enumType.CacheKey != null && enumType.CacheKey.Contains("<"))
+        {
+            bool needsSubstitution = substitutions.Keys.Any(param => enumType.CacheKey.Contains(param));
+            if (needsSubstitution)
+            {
+                string newCacheKey = enumType.CacheKey;
+                foreach (var (paramName, paramType) in substitutions)
+                {
+                    newCacheKey = SubstituteInCacheKey(newCacheKey, paramName, paramType.Name);
+                }
+
+                // Also substitute in variants' associated data types
+                var substitutedVariants = new List<IrEnumVariant>();
+                bool variantsChanged = false;
+                foreach (var variant in enumType.Variants)
+                {
+                    var substitutedData = new List<IrType>();
+                    bool dataChanged = false;
+                    foreach (var dataType in variant.AssociatedData)
+                    {
+                        var substitutedType = SubstituteType(dataType, substitutions);
+                        substitutedData.Add(substitutedType);
+                        if (substitutedType != dataType)
+                        {
+                            dataChanged = true;
+                        }
+                    }
+                    substitutedVariants.Add(new IrEnumVariant(variant.Name, variant.Tag, substitutedData));
+                    if (dataChanged)
+                    {
+                        variantsChanged = true;
+                    }
+                }
+
+                if (newCacheKey != enumType.CacheKey || variantsChanged)
+                {
+                    var newEnumType = new IrEnumType(enumType.EnumName, substitutedVariants, new List<string>());
+                    newEnumType.CacheKey = newCacheKey;
+                    return newEnumType;
+                }
+            }
+        }
 
         return type;
+    }
+
+    /// <summary>
+    /// Substitute a type parameter in a CacheKey string, handling nested angle brackets correctly.
+    /// For example: "Option<Vec<T>>" with T->i32 becomes "Option<Vec<i32>>"
+    /// </summary>
+    private static string SubstituteInCacheKey(string cacheKey, string paramName, string replacement)
+    {
+        // Simple case-sensitive replace, but we need to be careful about partial matches
+        // e.g., "T" should not match "Type" or "TResult"
+        var result = new System.Text.StringBuilder();
+        int i = 0;
+        while (i < cacheKey.Length)
+        {
+            // Check if we're at the start of the parameter name
+            if (i + paramName.Length <= cacheKey.Length &&
+                cacheKey.Substring(i, paramName.Length) == paramName)
+            {
+                // Check that it's not part of a larger identifier
+                bool isWordStart = i == 0 || !char.IsLetterOrDigit(cacheKey[i - 1]) && cacheKey[i - 1] != '_';
+                bool isWordEnd = i + paramName.Length == cacheKey.Length ||
+                                 (!char.IsLetterOrDigit(cacheKey[i + paramName.Length]) && cacheKey[i + paramName.Length] != '_');
+
+                if (isWordStart && isWordEnd)
+                {
+                    result.Append(replacement);
+                    i += paramName.Length;
+                    continue;
+                }
+            }
+            result.Append(cacheKey[i]);
+            i++;
+        }
+        return result.ToString();
     }
 }
 

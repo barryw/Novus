@@ -295,7 +295,7 @@ public class LibraryGenerator
         sb.AppendLine();
 
         // Forward declarations
-        var structName = $"{_libraryStruct.StructName}Base";
+        var structName = $"{_libraryStruct!.StructName}Base";
         sb.AppendLine("// Forward declarations for C functions");
         sb.AppendLine("struct InitData {");
         sb.AppendLine("    ULONG LibSize;");
@@ -945,7 +945,7 @@ public class LibraryGenerator
         sb.AppendLine($"; Wrapper for {func.CName}");
         sb.AppendLine($"        XDEF    {wrapperName}");
         sb.AppendLine($"        XREF    {cFuncName}");
-        sb.AppendLine($"        XREF    _{_libraryStruct.StructName}_IncrementCallCount");
+        sb.AppendLine($"        XREF    _{_libraryStruct!.StructName}_IncrementCallCount");
         sb.AppendLine($"{wrapperName}:");
 
         // Auto-increment call counter by calling C helper function
@@ -953,7 +953,7 @@ public class LibraryGenerator
         // instead of hardcoding it in assembly (which can be wrong due to padding)
         sb.AppendLine("        movem.l d0-d1/a0-a1,-(sp)  ; Save registers");
         sb.AppendLine("        move.l  a6,-(sp)            ; Push library base");
-        sb.AppendLine($"        jsr     _{_libraryStruct.StructName}_IncrementCallCount");
+        sb.AppendLine($"        jsr     _{_libraryStruct!.StructName}_IncrementCallCount");
         sb.AppendLine("        addq.l  #4,sp               ; Clean up parameter");
         sb.AppendLine("        movem.l (sp)+,d0-d1/a0-a1  ; Restore registers");
 

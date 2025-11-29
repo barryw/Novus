@@ -177,7 +177,7 @@ public partial class IrBuilder
 
                         // Parse the impl target type (primitive or named)
                         (typeName, implementingType) = ParseImplTargetType(implDecl.implTargetType(), null, implDecl);
-                        if (implementingType == null)
+                        if (implementingType == null || typeName == null)
                         {
                             _symbols.ClearGenericParameters();
                             continue;
@@ -187,7 +187,7 @@ public partial class IrBuilder
                     {
                         // Parse the impl target type (inherent impl)
                         (typeName, implementingType) = ParseImplTargetType(null, implDecl.targetTypeName, implDecl);
-                        if (implementingType == null)
+                        if (implementingType == null || typeName == null)
                         {
                             _symbols.ClearGenericParameters();
                             continue;
@@ -214,7 +214,7 @@ public partial class IrBuilder
                         // For generic impl blocks, store as templates
                         if (genericParams.Count > 0)
                         {
-                            StoreGenericMethodTemplate(typeName, methodName, genericParams, funcDecl);
+                            StoreGenericMethodTemplate(typeName!, methodName, genericParams, funcDecl);
                             continue;
                         }
 
@@ -225,7 +225,7 @@ public partial class IrBuilder
                         }
 
                         // Generate mangled name
-                        var mangledName = GenerateMethodMangledName(typeName, methodName, isTraitImpl, traitName, traitTypeArgs);
+                        var mangledName = GenerateMethodMangledName(typeName!, methodName, isTraitImpl, traitName, traitTypeArgs);
 
                         // Skip if already registered
                         if (_module.Functions.Any(f => f.Name == mangledName))
@@ -241,7 +241,7 @@ public partial class IrBuilder
                         if (funcDecl.parameterList() != null)
                         {
                             var paramList = funcDecl.parameterList();
-                            ParseSelfParameter(paramList.selfParameter(), function, typeName);
+                            ParseSelfParameter(paramList.selfParameter(), function, typeName!);
                             ParseFunctionParameters(funcDecl, function);
                         }
 
@@ -330,7 +330,7 @@ public partial class IrBuilder
 
                         // Parse the impl target type (primitive or named)
                         (typeName, implementingType) = ParseImplTargetType(implDecl.implTargetType(), null, implDecl);
-                        if (implementingType == null)
+                        if (implementingType == null || typeName == null)
                         {
                             _symbols.ClearGenericParameters();
                             continue;
@@ -340,7 +340,7 @@ public partial class IrBuilder
                     {
                         // Parse the impl target type (inherent impl)
                         (typeName, implementingType) = ParseImplTargetType(null, implDecl.targetTypeName, implDecl);
-                        if (implementingType == null)
+                        if (implementingType == null || typeName == null)
                         {
                             _symbols.ClearGenericParameters();
                             continue;
@@ -367,7 +367,7 @@ public partial class IrBuilder
                         // For generic impl blocks, store as templates
                         if (genericParams.Count > 0)
                         {
-                            StoreGenericMethodTemplate(typeName, methodName, genericParams, funcDecl);
+                            StoreGenericMethodTemplate(typeName!, methodName, genericParams, funcDecl);
                             continue;
                         }
 
@@ -378,7 +378,7 @@ public partial class IrBuilder
                         }
 
                         // Generate mangled name
-                        var mangledName = GenerateMethodMangledName(typeName, methodName, isTraitImpl, traitName, traitTypeArgs);
+                        var mangledName = GenerateMethodMangledName(typeName!, methodName, isTraitImpl, traitName, traitTypeArgs);
 
                         // Skip if already registered
                         if (_module.Functions.Any(f => f.Name == mangledName))
@@ -394,7 +394,7 @@ public partial class IrBuilder
                         if (funcDecl.parameterList() != null)
                         {
                             var paramList = funcDecl.parameterList();
-                            ParseSelfParameter(paramList.selfParameter(), function, typeName);
+                            ParseSelfParameter(paramList.selfParameter(), function, typeName!);
                             ParseFunctionParameters(funcDecl, function);
                         }
 
@@ -554,7 +554,7 @@ public partial class IrBuilder
             // So we import ALL pub methods from ALL impl blocks in the module.
 
             // Skip if implementing type not found (type not imported or not registered yet)
-            if (implementingType == null)
+            if (implementingType == null || typeName == null)
             {
                 // Clear generic params before skipping
                 _symbols.ClearGenericParameters();
@@ -584,7 +584,7 @@ public partial class IrBuilder
                 // because instantiating one method may need to call private helper methods
                 if (genericParams.Count > 0)
                 {
-                    StoreGenericMethodTemplate(typeName, methodName, genericParams, funcDecl);
+                    StoreGenericMethodTemplate(typeName!, methodName, genericParams, funcDecl);
                     // Don't create function yet - it will be instantiated when called with concrete types
                     continue;
                 }
@@ -599,7 +599,7 @@ public partial class IrBuilder
                 var returnType = ParseReturnType(funcDecl.type());
 
                 // Methods are registered with mangled names
-                var mangledName = GenerateMethodMangledName(typeName, methodName, isTraitImpl, traitName, traitTypeArgs);
+                var mangledName = GenerateMethodMangledName(typeName!, methodName, isTraitImpl, traitName, traitTypeArgs);
                 var function = new IrFunction(mangledName, returnType, Visibility.Private, false);
 
                 // Parse parameters (including self)
@@ -642,7 +642,7 @@ public partial class IrBuilder
 
                 // Create IrTraitImpl and add to module
                 // For generic impls, this is a template that will be instantiated later
-                var traitImpl = new IrTraitImpl(fullTraitName, traitTypeArgs, typeName, implementingType, genericParams);
+                var traitImpl = new IrTraitImpl(fullTraitName, traitTypeArgs, typeName!, implementingType, genericParams);
                 _module.TraitImpls.Add(traitImpl);
             }
 
@@ -1186,7 +1186,7 @@ public partial class IrBuilder
                 bool needsSubstitution = enumType.GenericParameters.Any(p => substitutions.ContainsKey(p));
                 if (needsSubstitution)
                 {
-                    return MonomorphizeEnum(enumType, substitutions);
+                    return MonomorphizeEnum(enumType, substitutions) ?? enumType;
                 }
             }
             // Already monomorphized or no generic parameters

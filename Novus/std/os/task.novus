@@ -200,10 +200,7 @@ pub fn spawn_task_fn(name: Str, entry: fn() -> i32, stack_size: u32) -> Result<P
     let tag_count: u32 = 12
     let tag_size = tag_count * @sizeof(TagItem)
 
-    var tag_mem: *u8 = (*u8)0
-    unsafe {
-        tag_mem = AllocMem(tag_size, MEMF_PUBLIC | MEMF_CLEAR)
-    }
+    let tag_mem = unsafe { AllocMem(tag_size, MEMF_PUBLIC | MEMF_CLEAR) }
     if (u32)tag_mem == 0 {
         return Result::Err(DosError::Unknown)
     }

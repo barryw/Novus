@@ -107,6 +107,8 @@ public class OptimizationPipeline
 
             case 3:
                 // Aggressive optimizations - longer compile time
+                // Function inlining runs first to expose more optimization opportunities
+                pipeline.AddPass(new Passes.FunctionInliningPass());
                 pipeline.AddPass(new Passes.ConstantFoldingPass());
                 pipeline.AddPass(new Passes.AlgebraicSimplificationPass());
                 pipeline.AddPass(new Passes.ConstantPropagationPass());

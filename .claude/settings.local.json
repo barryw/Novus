@@ -1,19 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(./compile:*)",
-      "Bash(novus compile:*)",
-      "Bash(./novus compile:*)",
-      "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Debug/net9.0/novus compile:*)",
-      "Bash(/tmp/copper_partial.novus)",
-      "Bash(Novus/bin/Release/net9.0/Novus compile:*)",
-      "Bash(Novus/std/ffi/graphics.novus)",
-      "Bash(Novus/std/ffi/intuition.novus)",
-      "Bash(Novus/std/ffi/dos.novus)",
-      "Bash(for:*)",
-      "Bash(do echo \"=== $file ===\" head -20 \"$file\")",
-      "Bash(/tmp/stdlib_reorganize.sh)",
-      "Bash(/tmp/update_imports.sh)"
+      "Bash(git push:*)",
+      "Bash(dotnet run:*)",
+      "Bash(dotnet clean:*)",
+      "Bash(tee:*)",
+      "Bash(dotnet msbuild:*)",
+      "Bash(awk:*)",
+      "Bash(wait)"
     ],
     "deny": [],
     "ask": []

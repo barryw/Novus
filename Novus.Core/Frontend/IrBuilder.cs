@@ -195,7 +195,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
     /// <returns>A SourceLocation object for error reporting</returns>
     private SourceLocation GetLocation(Antlr4.Runtime.ParserRuleContext context)
     {
-        return SourceLocationHelper.FromContext(context, _inputFilePath, _sourceLines.ToArray());
+        return SourceLocationHelper.FromContext(context, _inputFilePath ?? "<unknown>", _sourceLines.ToArray());
     }
 
     /// <summary>
@@ -487,9 +487,9 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
 
                 // Parse the impl target type (primitive or named)
                 (typeName, implementingType) = ParseImplTargetType(implContext.implTargetType(), null, implContext);
-                if (implementingType == null)
+                if (implementingType == null || typeName == null)
                 {
-                    return null;
+                    continue;
                 }
             }
             else
@@ -497,9 +497,9 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
                 // Format: impl [<GenericParams>] TargetType<TypeArgs>
                 // Parse the impl target type (inherent impl)
                 (typeName, implementingType) = ParseImplTargetType(null, implContext.targetTypeName, implContext);
-                if (implementingType == null)
+                if (implementingType == null || typeName == null)
                 {
-                    return null;
+                    continue;
                 }
             }
 
@@ -517,7 +517,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
                 // For generic impl blocks, store methods as templates for later instantiation
                 if (genericParams.Count > 0)
                 {
-                    StoreGenericMethodTemplate(typeName, methodName, genericParams, funcDecl);
+                    StoreGenericMethodTemplate(typeName!, methodName, genericParams, funcDecl);
                     // Don't create function yet - it will be instantiated when called with concrete types
                     continue;
                 }
@@ -529,7 +529,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
                 var (visibility, isExtern, _) = AstModifierHelper.ParseModifiers(funcDecl, 4);
 
                 // Methods are registered with mangled names
-                var mangledName = GenerateMethodMangledName(typeName, methodName, isTraitImpl, traitName, traitTypeArgs);
+                var mangledName = GenerateMethodMangledName(typeName!, methodName, isTraitImpl, traitName, traitTypeArgs);
 
                 var function = new IrFunction(mangledName, returnType, visibility, isExtern);
 
@@ -562,7 +562,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
                         $"Type '{typeName}' not found for trait implementation",
                         errorLocation
                     );
-                    return null;
+                    continue;
                 }
 
                 // Construct full trait name with type arguments (e.g., "From<DosError>")
@@ -603,7 +603,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
                     $"Function '{funcName}' not found in module. This indicates a compiler bug in an earlier pass.",
                     errorLocation
                 );
-                return null;
+                continue;
             }
 
             // Skip extern functions - they have no body
@@ -655,7 +655,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
                 (typeName, implementingType) = ParseImplTargetType(implContext.implTargetType(), null, implContext);
                 if (implementingType == null)
                 {
-                    return null;
+                    continue; // Skip this impl block if type parsing failed
                 }
             }
             else
@@ -665,7 +665,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
                 (typeName, implementingType) = ParseImplTargetType(null, implContext.targetTypeName, implContext);
                 if (implementingType == null)
                 {
-                    return null;
+                    continue; // Skip this impl block if type parsing failed
                 }
             }
 
@@ -702,7 +702,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
                         $"Method '{mangledName}' not found in module. This indicates a compiler bug in an earlier pass.",
                         errorLocation
                     );
-                    return null;
+                    continue; // Skip this method if it wasn't found
                 }
 
                 // Skip extern functions or methods with no body

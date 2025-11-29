@@ -65,7 +65,7 @@ public class SsaDestruction
             // Collect all phi functions that need copies from this predecessor
             foreach (var phi in block.PhiFunctions)
             {
-                var value = phi.GetValueForBlock(pred);
+                var value = phi.GetValueForBlock(pred!);
                 if (value != null && phi.Destination != null)
                 {
                     // Need to insert: phi.Destination = value
@@ -74,7 +74,7 @@ public class SsaDestruction
             }
 
             // Insert copies at the end of predecessor block (before the branch)
-            InsertCopiesBeforeBranch(pred, copiesToInsert);
+            InsertCopiesBeforeBranch(pred!, copiesToInsert);
         }
 
         // Remove all phi functions from the block

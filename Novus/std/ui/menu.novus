@@ -233,6 +233,28 @@ impl GadToolsMenuBuilder {
         }
     }
 
+    /// Internal helper to set command key on the last entry
+    fn set_last_entry_commkey(&mut self, commkey: *u8) {
+        unsafe {
+            if self.entry_count > 0 {
+                let idx = self.entry_count - 1
+                let entry_ptr = &mut self.entries[idx]
+                entry_ptr.nm_CommKey = commkey
+            }
+        }
+    }
+
+    /// Internal helper to add flags to the last entry
+    fn add_last_entry_flags(&mut self, flags: u16) {
+        unsafe {
+            if self.entry_count > 0 {
+                let idx = self.entry_count - 1
+                let entry_ptr = &mut self.entries[idx]
+                entry_ptr.nm_Flags = entry_ptr.nm_Flags | flags
+            }
+        }
+    }
+
     /// Add a menu (returns a handle to add items to it)
     pub fn add_menu(&mut self, title: Str) -> MenuHandle {
         unsafe {
@@ -455,25 +477,65 @@ impl MenuItemHandle {
     }
 
     /// Add command key shortcut (fluent API - returns self)
+    ///
+    /// The key is the keyboard shortcut that will appear next to the menu item.
+    /// On Amiga, this is typically shown as "Amiga-X" where X is the key.
+    ///
+    /// Example:
+    /// ```novus
+    /// file_menu.add_item("Save").with_command_key('S')  // Amiga-S
+    /// ```
     pub fn with_command_key(&mut self, key: u8) -> MenuItemHandle {
-        // FIXME: Need to modify the last entry in the Vec
-        // For now, this is a placeholder
+        unsafe {
+            // Allocate a 2-byte string: key + null terminator
+            let key_mem = AllocVec(2, MEMF_PUBLIC | MEMF_CLEAR)
+            if key_mem {
+                let key_ptr = (*u8)key_mem
+                key_ptr[0] = key
+                key_ptr[1] = 0
+
+                // Track this allocation for cleanup
+                (*self.builder).track_label(key_ptr)
+
+                // Set the command key on the last entry
+                (*self.builder).set_last_entry_commkey(key_ptr)
+            }
+        }
         return MenuItemHandle {
             builder: self.builder
         }
     }
 
     /// Enable checkmark (fluent API - returns self)
+    ///
+    /// When enabled, the menu item can display a checkmark next to it.
+    /// Use `.checked()` to have it initially checked.
+    ///
+    /// Example:
+    /// ```novus
+    /// options_menu.add_item("Enable Feature").with_checkmark()
+    /// ```
     pub fn with_checkmark(&mut self) -> MenuItemHandle {
-        // FIXME: Need to modify the last entry's flags
+        unsafe {
+            (*self.builder).add_last_entry_flags((u16)CHECKIT)
+        }
         return MenuItemHandle {
             builder: self.builder
         }
     }
 
     /// Mark as initially checked (fluent API - returns self)
+    ///
+    /// Must be combined with `.with_checkmark()` for the check to be visible.
+    ///
+    /// Example:
+    /// ```novus
+    /// options_menu.add_item("Enable Feature").with_checkmark().checked()
+    /// ```
     pub fn checked(&mut self) -> MenuItemHandle {
-        // FIXME: Need to modify the last entry's flags
+        unsafe {
+            (*self.builder).add_last_entry_flags((u16)CHECKED)
+        }
         return MenuItemHandle {
             builder: self.builder
         }

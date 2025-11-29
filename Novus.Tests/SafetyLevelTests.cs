@@ -265,7 +265,7 @@ public class SafetyLevelTests
     [Fact]
     public void SafetyLevel_AllLevels_GetDescription_NotNull()
     {
-        foreach (SafetyLevel level in Enum.GetValues(typeof(SafetyLevel)))
+        foreach (SafetyLevel level in Enum.GetValues<SafetyLevel>())
         {
             var description = level.GetDescription();
             Assert.NotNull(description);

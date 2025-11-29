@@ -488,10 +488,7 @@ impl SemaphoreHandle {
     pub fn new() -> Option<SemaphoreHandle> {
         // Allocate zeroed memory for the semaphore
         let sem_size: u32 = @sizeof(SignalSemaphore)
-        var sem_mem: *u8 = (*u8)0
-        unsafe {
-            sem_mem = AllocMem(sem_size, MEMF_PUBLIC | MEMF_CLEAR)
-        }
+        let sem_mem = unsafe { AllocMem(sem_size, MEMF_PUBLIC | MEMF_CLEAR) }
 
         // Check allocation
         if (u32)sem_mem == 0 {
@@ -524,10 +521,7 @@ impl SemaphoreHandle {
     ///
     /// Returns Some(guard) if successful, None if semaphore is held by another task.
     pub fn try_obtain(&self) -> Option<SemaphoreGuard> {
-        var result: i32 = 0
-        unsafe {
-            result = __novus_attempt_semaphore(self.sem)
-        }
+        let result = unsafe { __novus_attempt_semaphore(self.sem) }
         if result != 0 {
             return Option::Some(SemaphoreGuard { sem: self.sem })
         }
@@ -549,10 +543,7 @@ impl SemaphoreHandle {
     ///
     /// Returns Some(guard) if successful, None if semaphore is exclusively held.
     pub fn try_obtain_shared(&self) -> Option<SemaphoreGuard> {
-        var result: i32 = 0
-        unsafe {
-            result = __novus_attempt_semaphore_shared(self.sem)
-        }
+        let result = unsafe { __novus_attempt_semaphore_shared(self.sem) }
         if result != 0 {
             return Option::Some(SemaphoreGuard { sem: self.sem })
         }

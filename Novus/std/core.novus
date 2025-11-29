@@ -144,6 +144,38 @@ pub trait Iterable<T> {
 }
 
 // ============================================================================
+// Copy Trait - Marker Trait for Copyable Types
+// ============================================================================
+
+// Copy is a marker trait that indicates a type can be copied bitwise.
+// Types implementing Copy will be implicitly copied when passed by value,
+// rather than moved.
+//
+// When to implement Copy:
+// - Simple value types with no resources (integers, bools, pointers)
+// - Small structs containing only Copy types
+// - Wrapper types around primitives
+//
+// When NOT to implement Copy:
+// - Types that own heap memory (Vec, String, Box)
+// - Types with Drop implementations that free resources
+// - Types containing non-Copy fields
+//
+// Example:
+// ```novus
+// struct Point { x: i32, y: i32 }
+// impl Copy for Point {}
+//
+// let p1 = Point { x: 10, y: 20 }
+// let p2 = p1  // Copies p1 instead of moving it
+// // p1 is still valid here!
+// ```
+//
+// Note: The compiler automatically considers primitive types (i32, u32, bool, etc.)
+// and pointer types as Copy without requiring explicit impl.
+pub trait Copy {}
+
+// ============================================================================
 // From Trait - Automatic Type Conversions
 // ============================================================================
 

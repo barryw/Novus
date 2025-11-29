@@ -1316,11 +1316,7 @@ impl AnimObBuilder {
 
         for seq_i in 0u32..sequence_count {
             // Get sequence frame count from unsafe block
-            var mut seq_frame_count: u32 = 0u32
-            unsafe {
-                let seq_for_count = &sequences_ptr[seq_i]
-                seq_frame_count = seq_for_count.frame_count
-            }
+            let seq_frame_count = unsafe { (&sequences_ptr[seq_i]).frame_count }
             let seq_first_comp_idx = comp_idx
 
             for frame_i in 0u32..seq_frame_count {
@@ -1500,12 +1496,8 @@ impl AnimObBuilder {
         }
 
         // Get rast_port and view_port from gels pointer
-        var mut rp: *RastPort = null
-        var mut vp: *ViewPort = null
-        unsafe {
-            rp = (*gels_ptr).rast_port
-            vp = (*gels_ptr).view_port
-        }
+        let rp = unsafe { (*gels_ptr).rast_port }
+        let vp = unsafe { (*gels_ptr).view_port }
 
         return Result::Ok(AnimObHandle {
             anim_ob: animob,

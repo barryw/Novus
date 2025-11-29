@@ -387,6 +387,7 @@ primaryExpression
     | typeName '{' NEWLINE* structFieldInit (',' NEWLINE* structFieldInit)* ','? NEWLINE* '}'  # StructLiteral
     | identifier                                   # IdentifierExpr
     | KW_MATCH expression '{' NEWLINE* matchArm (',' NEWLINE* matchArm)* ','? NEWLINE* '}'  # MatchExpr
+    | KW_UNSAFE block                              # UnsafeExpr
     | '(' ')'                                      # UnitLiteral
     | '(' NEWLINE* expression (',' NEWLINE* expression)+ NEWLINE* ')'  # TupleLiteral
     | '(' NEWLINE* expression NEWLINE* ')'         # ParenExpr

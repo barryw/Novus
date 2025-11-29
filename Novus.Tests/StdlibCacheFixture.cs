@@ -89,6 +89,7 @@ public class StdlibCacheFixture : IDisposable
     public void Dispose()
     {
         // Cleanup if needed
+        GC.SuppressFinalize(this);
     }
 }
 

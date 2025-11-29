@@ -46,7 +46,6 @@ namespace Novus.IR;
 public class LoopInvariantCodeMotion
 {
     private readonly IrFunction _function;
-    private bool _madeChanges = false;
 
     /// <summary>
     /// Represents a loop in the control flow graph
@@ -183,7 +182,6 @@ public class LoopInvariantCodeMotion
             {
                 HoistInstruction(instruction, block, loop);
                 hoistedCount++;
-                _madeChanges = true;
             }
         }
 

@@ -113,7 +113,7 @@ public static class NewCommand
     private static int CreateWorkspaceFromTemplate(string workspaceName, string workspaceDir, NewCommandOptions options)
     {
         // Find template directory
-        var templateDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "templates", options.ProjectType);
+        var templateDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "templates", options.ProjectType ?? "cli");
 
         if (!Directory.Exists(templateDir))
         {
@@ -330,7 +330,7 @@ public static class NewCommand
 
     private static string GenerateMainFile(string projectName, NewCommandOptions options)
     {
-        return options.ProjectType.ToLower() switch
+        return (options.ProjectType ?? "cli").ToLower() switch
         {
             "cli" => GenerateCliTemplate(projectName),
             "workbench" => GenerateWorkbenchTemplate(projectName),

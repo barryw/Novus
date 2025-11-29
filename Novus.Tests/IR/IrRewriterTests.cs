@@ -193,7 +193,7 @@ public class IrRewriterTests
         var rewriter = new LabelRemovingRewriter();
         rewriter.RewriteBasicBlock(block);
 
-        Assert.Equal(1, block.Instructions.Count); // Only return remains
+        Assert.Single(block.Instructions); // Only return remains
         Assert.Equal(3, rewriter.LabelsRemoved);
         Assert.IsType<IrReturn>(block.Instructions[0]);
     }
@@ -340,8 +340,8 @@ public class IrRewriterTests
         var rewriter = new LabelRemovingRewriter();
         rewriter.RewriteFunction(function);
 
-        Assert.Equal(0, function.BasicBlocks[0].Instructions.Count);
-        Assert.Equal(0, function.BasicBlocks[1].Instructions.Count);
+        Assert.Empty(function.BasicBlocks[0].Instructions);
+        Assert.Empty(function.BasicBlocks[1].Instructions);
         Assert.Equal(2, rewriter.LabelsRemoved);
     }
 
@@ -361,8 +361,8 @@ public class IrRewriterTests
         var rewriter = new LabelRemovingRewriter();
         rewriter.RewriteFunction(function);
 
-        Assert.Equal(0, function.BasicBlocks[0].Instructions.Count);
-        Assert.Equal(0, function.DeferredBlocks[0].Instructions.Count);
+        Assert.Empty(function.BasicBlocks[0].Instructions);
+        Assert.Empty(function.DeferredBlocks[0].Instructions);
         Assert.Equal(2, rewriter.LabelsRemoved);
     }
 

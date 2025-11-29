@@ -157,7 +157,7 @@ public class SsaConstructor
                     var frontierBlock = frontierNode.Block;
 
                     // Only insert phi if we haven't already
-                    if (!phiInserted.Contains(frontierBlock))
+                    if (frontierBlock != null && !phiInserted.Contains(frontierBlock))
                     {
                         // Create a temporary variable for the phi result
                         // We'll set the proper version during renaming

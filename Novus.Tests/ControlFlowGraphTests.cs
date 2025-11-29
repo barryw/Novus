@@ -234,13 +234,13 @@ public class ControlFlowGraphTests
         var block1Node = cfg.GetNode("block1");
 
         // entry is dominated by ENTRY and itself
-        Assert.Contains(cfg.EntryNode, dominators[entryNode!]);
-        Assert.Contains(entryNode, dominators[entryNode]);
+        Assert.Contains(cfg.EntryNode, dominators[entryNode!]!);
+        Assert.Contains(entryNode, dominators[entryNode!]!);
 
         // block1 is dominated by ENTRY, entry, and itself
-        Assert.Contains(cfg.EntryNode, dominators[block1Node!]);
-        Assert.Contains(entryNode, dominators[block1Node]);
-        Assert.Contains(block1Node, dominators[block1Node]);
+        Assert.Contains(cfg.EntryNode, dominators[block1Node!]!);
+        Assert.Contains(entryNode, dominators[block1Node!]!);
+        Assert.Contains(block1Node, dominators[block1Node!]!);
     }
 
     [Fact]
@@ -272,13 +272,13 @@ public class ControlFlowGraphTests
         var elseNode = cfg.GetNode("else");
 
         // entry dominates exit (all paths go through entry)
-        Assert.Contains(entryNode, dominators[exitNode!]);
+        Assert.Contains(entryNode, dominators[exitNode!]!);
 
         // then does NOT dominate exit (can go through else)
-        Assert.DoesNotContain(thenNode, dominators[exitNode]);
+        Assert.DoesNotContain(thenNode, dominators[exitNode!]!);
 
         // else does NOT dominate exit (can go through then)
-        Assert.DoesNotContain(elseNode, dominators[exitNode]);
+        Assert.DoesNotContain(elseNode, dominators[exitNode!]!);
     }
 
     [Fact]
@@ -374,7 +374,7 @@ public class ControlFlowGraphTests
         var unreachableNode = cfg.GetNode("unreachable");
 
         // Unreachable block should not be in reachable set
-        Assert.DoesNotContain(unreachableNode, reachableNodes);
+        Assert.DoesNotContain(unreachableNode!, reachableNodes);
     }
 
     [Fact]
@@ -426,10 +426,10 @@ public class ControlFlowGraphTests
         // Dominance frontier of 'then' should include 'exit'
         // (then dominates a predecessor of exit but doesn't strictly dominate exit)
         var thenFrontier = domTree.GetDominanceFrontier(thenNode!, cfg);
-        Assert.Contains(exitNode, thenFrontier);
+        Assert.Contains(exitNode!, thenFrontier);
 
         // Dominance frontier of 'else' should also include 'exit'
         var elseFrontier = domTree.GetDominanceFrontier(elseNode!, cfg);
-        Assert.Contains(exitNode, elseFrontier);
+        Assert.Contains(exitNode!, elseFrontier);
     }
 }

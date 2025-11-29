@@ -401,12 +401,8 @@ impl WindowHandle {
     @suppress("W0002", "We're casting from i16 to u32 for tag data")
     pub fn simple(title: Str, width: i16, height: i16) -> Result<WindowHandle, IntuitionError> {
         let flags = WFLG_CLOSEGADGET | WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_SIZEGADGET | WFLG_SIZEBRIGHT | WFLG_SIZEBBOTTOM
-        // TODO: IDCMP_REFRESHWINDOW causes guru crashes after resize+close
-        // Even with proper BeginRefresh/EndRefresh calls, something corrupts Intuition state.
-        // Windows resize fine WITHOUT listening for REFRESHWINDOW, so we omit it for now.
-        // May be related to how we're handling the refresh in parse_intui_message or a deeper
-        // issue with window refresh semantics. Needs investigation.
-        let idcmp = IDCMP_CLOSEWINDOW | IDCMP_DELTAMOVE | IDCMP_NEWSIZE | IDCMP_MOUSEMOVE | IDCMP_MOUSEBUTTONS | IDCMP_RAWKEY | IDCMP_VANILLAKEY | IDCMP_MENUPICK
+        // IDCMP_REFRESHWINDOW is safe with RefreshGuard RAII pattern that ensures BeginRefresh/EndRefresh are balanced
+        let idcmp = IDCMP_CLOSEWINDOW | IDCMP_DELTAMOVE | IDCMP_NEWSIZE | IDCMP_REFRESHWINDOW | IDCMP_MOUSEMOVE | IDCMP_MOUSEBUTTONS | IDCMP_RAWKEY | IDCMP_VANILLAKEY | IDCMP_MENUPICK
 
         let tags = [
             TagItem { ti_Tag: WA_Left, ti_Data: 50 },
@@ -772,21 +768,12 @@ impl Drop for WindowHandle {
 /// This is an internal helper that extracts relevant fields from
 /// the IntuiMessage based on the IDCMP class.
 fn parse_intui_message(msg: *IntuiMessage) -> WindowEvent {
-    let mut class: u32 = 0
-    let mut code: u16 = 0
-    let mut qualifier: u16 = 0
-    let mut mouse_x: i16 = 0
-    let mut mouse_y: i16 = 0
-    let mut iaddress: u32 = 0
-
-    unsafe {
-        class = (*msg).Class
-        code = (*msg).Code
-        qualifier = (*msg).Qualifier
-        mouse_x = (*msg).MouseX
-        mouse_y = (*msg).MouseY
-        iaddress = (u32)(*msg).IAddress
-    }
+    let class = unsafe { (*msg).Class }
+    let code = unsafe { (*msg).Code }
+    let qualifier = unsafe { (*msg).Qualifier }
+    let mouse_x = unsafe { (*msg).MouseX }
+    let mouse_y = unsafe { (*msg).MouseY }
+    let iaddress = unsafe { (u32)(*msg).IAddress }
 
     return match class {
         IDCMP_CLOSEWINDOW => {

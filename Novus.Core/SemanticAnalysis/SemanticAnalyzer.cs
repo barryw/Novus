@@ -271,7 +271,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 _diagnostics.ReportError(
                     "E0026",
                     $"module '{moduleNamespace}' not found in reexport",
-                    location
+                    location ?? new SourceLocation(_filePath, 0, 0, 0, "")
                 );
                 return;
             }
@@ -1092,22 +1092,30 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     {
         // Simple type inference for literals and basic expressions
         // This is a simplified version that handles common cases
-        if (expr is NovusParser.IntegerLiteralContext)
+
+        // Check the text for simple literal patterns
+        var text = expr.GetText();
+
+        // Check for boolean literals
+        if (text == "true" || text == "false")
         {
-            return IrIntType.I32; // Default integer type
+            return IrBoolType.Instance;
         }
-        else if (expr is NovusParser.HexLiteralContext)
+
+        // Check for hex literals
+        if (text.StartsWith("0x") || text.StartsWith("0X"))
         {
-            var hexText = expr.GetText();
-            if (hexText.EndsWith("u16"))
+            if (text.EndsWith("u16"))
                 return IrIntType.U16;
-            if (hexText.EndsWith("u32"))
+            if (text.EndsWith("u32"))
                 return IrIntType.U32;
             return IrIntType.I32;
         }
-        else if (expr is NovusParser.BoolLiteralContext)
+
+        // Check for integer literals (simple digit check)
+        if (text.All(char.IsDigit))
         {
-            return IrBoolType.Instance;
+            return IrIntType.I32; // Default integer type
         }
 
         // For complex expressions, use i32 as default
@@ -1370,7 +1378,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             var implLocation = SourceLocationHelper.FromToken(context.KW_IMPL().Symbol, _filePath, _sourceLines);
             _traitImpls[implKey] = new TraitImplInfo(
                 implTypeName,
-                traitName,
+                traitName!, // traitName is guaranteed non-null when isTraitImpl is true
                 traitTypeArgs,
                 genericParams,
                 implLocation
@@ -3860,15 +3868,50 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // for [mut] item in collection { ... }
         var itemName = context.IDENTIFIER().GetText();
         var collectionType = Visit(context.expression());
+        var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
 
         // Check if the binding is mutable
         var isMutable = context.KW_MUT() != null;
 
-        // TODO: Validate that collection implements Iterator trait
-        // For now, just add the item variable with a placeholder type
-        // The IR builder will properly type it when it unwraps the Option
-        var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
-        var itemSymbol = new VariableSymbol(itemName, IrIntType.I32, isMutable, location!);  // Placeholder type
+        // Determine the item type from the collection type
+        IrType itemType = IrIntType.I32; // Default fallback
+
+        if (collectionType != null)
+        {
+            // Check if this is a range expression (handled specially - ranges yield their element type)
+            var exprCtx = context.expression();
+            if (exprCtx is NovusParser.RangeExprContext || exprCtx is NovusParser.RangeInclusiveExprContext)
+            {
+                // Range expressions yield their element type (the integer type)
+                itemType = collectionType;
+            }
+            else
+            {
+                // For collections, validate that the type implements Iterable<T> and extract T
+                var elementType = GetIterableElementType(collectionType);
+                if (elementType != null)
+                {
+                    itemType = elementType;
+                }
+                else
+                {
+                    // Type doesn't implement Iterable<T> - report error
+                    var typeName = GetBaseTypeName(collectionType);
+                    _diagnostics.ReportError(
+                        "E0050",
+                        $"Type '{typeName}' cannot be used in a for-in loop",
+                        location,
+                        helpTexts: new List<string>
+                        {
+                            $"For-in loops require the collection type to implement Iterable<T>",
+                            $"Implement 'impl<T> Iterable<T> for {typeName}' with get() and len() methods"
+                        }
+                    );
+                }
+            }
+        }
+
+        var itemSymbol = new VariableSymbol(itemName, itemType, isMutable, location!);
         _variables[itemName] = itemSymbol;
 
         // Enter loop context
@@ -3879,6 +3922,138 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Remove the item variable from scope
         _variables.Remove(itemName);
 
+        return null;
+    }
+
+    /// <summary>
+    /// Get the element type T for a type that implements Iterable<T>
+    /// Returns null if the type doesn't implement Iterable
+    /// </summary>
+    private IrType? GetIterableElementType(IrType collectionType)
+    {
+        string typeName = GetBaseTypeName(collectionType);
+
+        // Search through all trait impls to find Iterable<T> for this type
+        foreach (var kvp in _traitImpls)
+        {
+            var implInfo = kvp.Value;
+
+            // Check if this is an Iterable impl for our type
+            if (implInfo.TraitName != "Iterable")
+                continue;
+
+            if (implInfo.TypeName != typeName)
+                continue;
+
+            // Found an Iterable impl for this type!
+            // The element type is the first (and only) trait type argument
+            if (implInfo.TraitTypeArgs.Count > 0)
+            {
+                var elementType = implInfo.TraitTypeArgs[0];
+
+                // If the element type is still a generic parameter, try to substitute from the collection type's CacheKey
+                if (elementType is IrGenericType genericElement && collectionType is IrStructType structType)
+                {
+                    // Find the index of this generic parameter in the impl's generic params
+                    var paramIndex = implInfo.ImplGenericParams.IndexOf(genericElement.ParameterName);
+                    if (paramIndex >= 0 && structType.CacheKey != null)
+                    {
+                        // Parse type arguments from CacheKey like "Vec<i32>" -> ["i32"]
+                        var typeArgs = ParseTypeArgsFromCacheKey(structType.CacheKey);
+                        if (paramIndex < typeArgs.Count)
+                        {
+                            // Resolve the type argument name to an actual type
+                            var resolvedType = ResolveTypeByName(typeArgs[paramIndex]);
+                            if (resolvedType != null)
+                            {
+                                return resolvedType;
+                            }
+                        }
+                    }
+                }
+
+                return elementType;
+            }
+
+            // Iterable impl exists but no type argument - shouldn't happen for valid impls
+            return null;
+        }
+
+        // Also check for array types - arrays are implicitly iterable
+        if (collectionType is IrArrayType arrayType)
+        {
+            return arrayType.ElementType;
+        }
+
+        return null; // No Iterable impl found
+    }
+
+    /// <summary>
+    /// Parse type arguments from a CacheKey like "Vec<i32>" or "HashMap<string, i32>"
+    /// </summary>
+    private List<string> ParseTypeArgsFromCacheKey(string cacheKey)
+    {
+        var result = new List<string>();
+        var startIdx = cacheKey.IndexOf('<');
+        if (startIdx < 0) return result;
+
+        var endIdx = cacheKey.LastIndexOf('>');
+        if (endIdx <= startIdx) return result;
+
+        var argsStr = cacheKey.Substring(startIdx + 1, endIdx - startIdx - 1);
+
+        // Split by comma, but respect nested angle brackets
+        int depth = 0;
+        int lastStart = 0;
+        for (int i = 0; i < argsStr.Length; i++)
+        {
+            char c = argsStr[i];
+            if (c == '<') depth++;
+            else if (c == '>') depth--;
+            else if (c == ',' && depth == 0)
+            {
+                result.Add(argsStr.Substring(lastStart, i - lastStart).Trim());
+                lastStart = i + 1;
+            }
+        }
+        // Add the last argument
+        if (lastStart < argsStr.Length)
+        {
+            result.Add(argsStr.Substring(lastStart).Trim());
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Resolve a type name to an IrType
+    /// </summary>
+    private IrType? ResolveTypeByName(string typeName)
+    {
+        // Handle primitive types
+        return typeName switch
+        {
+            "i8" => IrIntType.I8,
+            "i16" => IrIntType.I16,
+            "i32" => IrIntType.I32,
+            "i64" => IrIntType.I64,
+            "u8" => IrIntType.U8,
+            "u16" => IrIntType.U16,
+            "u32" => IrIntType.U32,
+            "u64" => IrIntType.U64,
+            "bool" => IrBoolType.Instance,
+            "f32" => IrFloatType.F32,
+            "f64" => IrFloatType.F64,
+            _ => TryResolveStructOrEnumType(typeName)
+        };
+    }
+
+    private IrType? TryResolveStructOrEnumType(string typeName)
+    {
+        // During semantic analysis, we don't have access to the IrModule yet.
+        // For struct/enum types referenced in generic parameters, we rely on
+        // the type already being correctly resolved in TraitTypeArgs.
+        // This method is a fallback for primitive types which are handled above.
         return null;
     }
 
@@ -4037,6 +4212,81 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Handle unsafe block as an expression: unsafe { ... }
+    /// Returns the type of the last expression in the block.
+    /// </summary>
+    public override IrType? VisitUnsafeExpr([NotNull] NovusParser.UnsafeExprContext context)
+    {
+        // Track this unsafe block for warnings
+        var startLine = context.Start.Line;
+        var startColumn = context.Start.Column;
+        var endLine = context.Stop.Line;
+        var lineCount = endLine - startLine + 1;
+
+        _unsafeBlocks.Add(new UnsafeBlockInfo
+        {
+            FilePath = _filePath,
+            Line = startLine,
+            Column = startColumn,
+            LineCount = lineCount,
+            Reason = "Unsafe expression"
+        });
+
+        // Enter unsafe context
+        _unsafeDepth++;
+
+        IrType? resultType = null;
+        try
+        {
+            // Analyze the block and get the type of the last expression
+            resultType = AnalyzeBlockAsExpression(context.block());
+        }
+        finally
+        {
+            // Exit unsafe context
+            _unsafeDepth--;
+        }
+
+        // Return the type of the last expression, or unit if no expression
+        return resultType ?? IrTupleType.Unit;
+    }
+
+    /// <summary>
+    /// Analyze a block and return the type of the last expression.
+    /// Used for block expressions like unsafe { } and potentially future block expressions.
+    /// </summary>
+    private IrType? AnalyzeBlockAsExpression(NovusParser.BlockContext block)
+    {
+        var statements = block.statement();
+        IrType? lastType = null;
+
+        foreach (var stmt in statements)
+        {
+            // Visit the statement for semantic analysis
+            var stmtType = Visit(stmt);
+
+            // Check if this is an expression statement that has a type
+            if (stmt.expressionStatement() != null)
+            {
+                // Get the type from visiting the expression
+                var exprStmt = stmt.expressionStatement();
+                var expr = exprStmt.expression();
+                if (expr != null)
+                {
+                    lastType = Visit(expr) as IrType;
+                }
+            }
+            else
+            {
+                // Non-expression statements don't contribute a value
+                lastType = null;
+            }
+        }
+
+        return lastType;
     }
 
     /// <summary>
@@ -9204,7 +9454,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     /// Determines if a type implements Copy semantics (can be copied instead of moved).
     /// Primitive types like i32, u32, bool, etc. are always Copy.
     /// Pointer types are Copy (copying a pointer doesn't move the pointed-to data).
-    /// Structs can implement Copy trait (future work).
+    /// Structs and enums can implement the Copy trait to enable copying.
     /// </summary>
     private bool IsCopyType(IrType type)
     {
@@ -9220,19 +9470,25 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         if (type is IrFunctionPointerType)
             return true;
 
-        // TODO: Check if struct implements Copy trait
-        // For now, all structs are non-Copy (require explicit cloning)
-        if (type is IrStructType)
-            return false;
+        // Check if struct implements Copy trait
+        if (type is IrStructType structType)
+        {
+            return TypeImplementsTrait(structType, "Copy", new List<IrType>());
+        }
 
-        // Arrays are non-Copy
+        // Check if enum implements Copy trait
+        if (type is IrEnumType enumType)
+        {
+            return TypeImplementsTrait(enumType, "Copy", new List<IrType>());
+        }
+
+        // Arrays are non-Copy (contain elements that may need individual handling)
         if (type is IrArrayType)
             return false;
 
-        // Enums can be Copy if all their variants are Copy (future work)
-        // For now, enums are non-Copy
-        // if (type is IrEnumType)
-        //     return false;
+        // References are Copy (like pointers, just copying the reference)
+        if (type is IrReferenceType)
+            return true;
 
         // Default to non-Copy for safety
         return false;
@@ -9872,7 +10128,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         else if (expr is NovusParser.PrimaryExprContext primaryCtx)
         {
             // Unwrap primary expressions
-            return ExtractVariableName(primaryCtx.GetChild(0) as ParserRuleContext);
+            return ExtractVariableName((primaryCtx.GetChild(0) as ParserRuleContext)!);
         }
         else if (expr is NovusParser.MemberAccessExprContext memberCtx)
         {
@@ -9899,7 +10155,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         else if (expr is NovusParser.PrimaryExprContext primaryCtx)
         {
             // Unwrap primary expressions
-            return ExtractFieldName(primaryCtx.GetChild(0) as ParserRuleContext);
+            return ExtractFieldName((primaryCtx.GetChild(0) as ParserRuleContext)!);
         }
 
         return null;

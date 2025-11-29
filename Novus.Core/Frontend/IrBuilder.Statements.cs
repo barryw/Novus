@@ -1953,7 +1953,7 @@ public partial class IrBuilder
         var collVarRef = new IrVariable(collVarName, collectionType);
         var lenReceiverArg = new IrBorrowValue(collVarRef, lenMethod.Parameters[0].Type, false);
         var lenResultName = $"%t{_tempCounter++}";
-        var lenCall = new IrCall(lenMethodName, lenMethod.ReturnType, lenResultName);
+        var lenCall = new IrCall(lenMethodName!, lenMethod.ReturnType, lenResultName);
         lenCall.Arguments.Add(lenReceiverArg);
         _currentBlock!.AddInstruction(lenCall);
 
@@ -2037,7 +2037,7 @@ public partial class IrBuilder
         // Call get(index)
         var getReceiverArg = new IrBorrowValue(collVarRef, getMethod.Parameters[0].Type, false);
         var getResultName = $"%t{_tempCounter++}";
-        var getCall = new IrCall(getMethodName, getMethod.ReturnType, getResultName);
+        var getCall = new IrCall(getMethodName!, getMethod.ReturnType, getResultName);
         getCall.Arguments.Add(getReceiverArg);
         getCall.Arguments.Add(idxVarRef);
         _currentBlock!.AddInstruction(getCall);

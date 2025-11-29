@@ -31,7 +31,12 @@ public class ConstantFolder : IrRewriter
     public override IrInstruction RewriteBinaryOp(IrBinaryOp binaryOp)
     {
         // First rewrite child values
-        binaryOp = (IrBinaryOp)base.RewriteBinaryOp(binaryOp);
+        var rewritten = base.RewriteBinaryOp(binaryOp);
+        if (rewritten is not IrBinaryOp rewrittenBinaryOp)
+        {
+            return rewritten!; // If rewriting changed the type, return as-is
+        }
+        binaryOp = rewrittenBinaryOp;
 
         // Check if both operands are constants
         if (binaryOp.Left is IrConstant leftConst && binaryOp.Right is IrConstant rightConst)

@@ -42,7 +42,7 @@ public class ExampleCompilationTests
 
     [Theory]
     [MemberData(nameof(GetExampleFiles))]
-    public void Example_ShouldCompileSuccessfully(string exampleName)
+    public async Task Example_ShouldCompileSuccessfully(string exampleName)
     {
         var projectRoot = GetProjectRoot();
         var inputFile = Path.Combine(projectRoot, "Novus.Tests", "Examples", $"{exampleName}.novus");
@@ -82,8 +82,8 @@ public class ExampleCompilationTests
             Assert.Fail($"Example '{exampleName}' compilation timed out after 300 seconds.");
         }
 
-        var stdout = stdoutTask.Result;
-        var stderr = stderrTask.Result;
+        var stdout = await stdoutTask;
+        var stderr = await stderrTask;
 
         // Check that compilation succeeded
         var success = process.ExitCode == 0 && stdout.Contains("Successfully created:");

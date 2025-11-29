@@ -112,8 +112,7 @@ fn create_point() -> Point {
         var instructions = func.BasicBlocks[0].Instructions;
         Assert.NotEmpty(instructions);
 
-        // Look for struct literal or return instruction
-        var hasStructLiteral = instructions.Any(i => i is IrStructLiteral);
+        // Look for return instruction
         var hasReturn = instructions.Any(i => i is IrReturn);
         Assert.True(hasReturn);
     }
@@ -241,8 +240,7 @@ fn get_red() -> Color {
         Assert.NotNull(func);
 
         var instructions = func.BasicBlocks[0].Instructions;
-        var hasEnumConstructor = instructions.Any(i => i is IrEnumConstructor);
-        Assert.True(hasEnumConstructor || instructions.Any(i => i is IrReturn));
+        Assert.Contains(instructions, i => i is IrReturn);
     }
 
     [Fact]

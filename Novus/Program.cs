@@ -1,6 +1,4 @@
-﻿using System.Text;
-using System.Text.Json.Serialization;
-using Antlr4.Runtime;
+﻿using System.Text.Json.Serialization;
 using CommandLine;
 using Novus.Codegen;
 using Novus.Compilation;
@@ -86,7 +84,7 @@ class Program
             foreach (var mode in modes)
             {
                 var result = await Commands.StdlibBuildCommand.BuildForTarget(
-                    cpu,
+                    cpu!,
                     mode,
                     options.VbccPath,
                     options.NdkPath,

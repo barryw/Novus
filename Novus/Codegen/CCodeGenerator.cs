@@ -3492,7 +3492,7 @@ public class CCodeGenerator
             case IrDefer defer:
                 // IrDefer marker - set the flag to indicate this defer block is now active
                 // Find which defer block this corresponds to
-                for (int i = 0; i < _currentEmittingFunction.DeferredBlocks.Count; i++)
+                for (int i = 0; i < _currentEmittingFunction!.DeferredBlocks.Count; i++)
                 {
                     if (_currentEmittingFunction.DeferredBlocks[i] == defer.DeferredBlock)
                     {
@@ -3632,8 +3632,8 @@ public class CCodeGenerator
             else if (localDecl.InitialValue is IrEnumValue enumValueAssign)
             {
                 var enumType = enumValueAssign.Type as IrEnumType;
-                var enumName = MangleName(enumType);
-                bool hasAnyData = enumType.Variants.Any(v => v.HasAssociatedData);
+                var enumName = MangleName(enumType!);
+                bool hasAnyData = enumType!.Variants.Any(v => v.HasAssociatedData);
 
                 if (hasAnyData)
                 {
@@ -3745,8 +3745,8 @@ public class CCodeGenerator
             else if (isEnumLiteral && localDecl.InitialValue is IrEnumValue enumValueDecl)
             {
                 var enumType = enumValueDecl.Type as IrEnumType;
-                var enumName = MangleName(enumType);
-                bool hasAnyData = enumType.Variants.Any(v => v.HasAssociatedData);
+                var enumName = MangleName(enumType!);
+                bool hasAnyData = enumType!.Variants.Any(v => v.HasAssociatedData);
 
                 var decl = GetCVariableDeclaration(localDecl.Type, varName);
                 _output.AppendLine($"    {decl};");
@@ -3833,8 +3833,8 @@ public class CCodeGenerator
         if (store.Value is IrEnumValue enumValue)
         {
             var enumType = enumValue.Type as IrEnumType;
-            var enumName = MangleName(enumType);
-            bool hasAnyData = enumType.Variants.Any(v => v.HasAssociatedData);
+            var enumName = MangleName(enumType!);
+            bool hasAnyData = enumType!.Variants.Any(v => v.HasAssociatedData);
 
             if (hasAnyData)
             {
@@ -4211,8 +4211,6 @@ public class CCodeGenerator
         }
     }
 
-    private bool _inMatchArmScope = false;
-
     private void EmitLabel(IrLabel label)
     {
         // Append suffix to label name to make it unique across defer block emissions
@@ -4341,7 +4339,7 @@ public class CCodeGenerator
                     var enumType = enumValue.Type as IrEnumType;
 
                     // Check if this enum has ANY variants with associated data
-                    bool hasAnyData = enumType.Variants.Any(v => v.HasAssociatedData);
+                    bool hasAnyData = enumType!.Variants.Any(v => v.HasAssociatedData);
 
                     if (hasAnyData)
                     {

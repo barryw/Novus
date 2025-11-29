@@ -178,10 +178,10 @@ public class IrOptimizationPipeline
                 }
             }
 
-            // TODO: Additional optimization passes for O3
+            // Note: Function Inlining is handled at the module level via FunctionInliningPass in OptimizationPipeline
+            // TODO: Additional optimization passes for O3:
             // - Loop-Invariant Code Motion
             // - Induction Variable Optimization
-            // - Function Inlining
             // - Global Value Numbering
             // - Partial Redundancy Elimination
 

@@ -483,11 +483,11 @@ public class CompletionHandler : ICompletionHandler
         }
 
         // Same for enums
-        if (analyzer.Enums.ContainsKey(typeName))
+        if (analyzer.Enums.TryGetValue(typeName, out var enumTypeForMethods))
         {
             foreach (var (funcName, function) in analyzer.Functions)
             {
-                if (funcName.StartsWith($"{typeName}::") && !enumType.Variants.Any(v => v.Name == funcName.Substring(typeName.Length + 2)))
+                if (funcName.StartsWith($"{typeName}::") && !enumTypeForMethods.Variants.Any(v => v.Name == funcName.Substring(typeName.Length + 2)))
                 {
                     var methodName = funcName.Substring(typeName.Length + 2);
 

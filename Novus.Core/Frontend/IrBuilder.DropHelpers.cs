@@ -88,7 +88,7 @@ public partial class IrBuilder
                     return true;
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 // Log the error for debugging
                 return false;

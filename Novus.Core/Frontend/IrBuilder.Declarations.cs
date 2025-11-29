@@ -512,7 +512,7 @@ public partial class IrBuilder
         {
             var attrName = attrCtx.IDENTIFIER().GetText();
             // Simple location - just use line/column from token
-            var errorLocation = new Novus.Diagnostics.SourceLocation(_inputFilePath, attrCtx.Start.Line, attrCtx.Start.Column, 0, "");
+            var errorLocation = new Novus.Diagnostics.SourceLocation(_inputFilePath ?? "<unknown>", attrCtx.Start.Line, attrCtx.Start.Column, 0, "");
             var attr = new Novus.SemanticAnalysis.AttributeInfo(attrName, errorLocation);
 
             // Parse attribute arguments if present

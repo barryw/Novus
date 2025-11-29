@@ -187,7 +187,7 @@ pub struct ConditionalStruct {
         Assert.Equal(3, attr.PositionalArgs.Count);
         Assert.Equal("arg1", attr.GetPositionalArg<string>(0));
         Assert.Equal(42, attr.GetPositionalArg<int>(1));
-        Assert.Equal(true, attr.GetPositionalArg<bool>(2));
+        Assert.True(attr.GetPositionalArg<bool>(2));
     }
 
     [Fact]

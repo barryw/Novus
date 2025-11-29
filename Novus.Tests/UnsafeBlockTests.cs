@@ -177,9 +177,7 @@ fn test() -> i32 {
         var (diagnostics, analyzer) = Analyze(source);
 
         Assert.NotNull(analyzer);
-        Assert.Equal(1, analyzer.UnsafeBlocks.Count);
-
-        var unsafeBlock = analyzer.UnsafeBlocks[0];
+        var unsafeBlock = Assert.Single(analyzer.UnsafeBlocks);
         Assert.Equal("test.novus", unsafeBlock.FilePath);
         Assert.True(unsafeBlock.Line > 0);
         Assert.Equal("Manual unsafe block", unsafeBlock.Reason);

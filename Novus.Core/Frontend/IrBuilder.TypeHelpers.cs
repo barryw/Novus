@@ -267,7 +267,8 @@ public partial class IrBuilder
             $"Cannot parse complex mangled type name '{mangledName}' yet",
             errorLocation
         );
-        return null;
+        // Return error recovery type
+        return IrIntType.I32;
     }
 
     /// <summary>
@@ -471,7 +472,8 @@ public partial class IrBuilder
             $"Cannot get mangled name for type '{type.Name}'",
             errorLocation
         );
-        return null;
+        // Return error recovery value
+        return "unknown";
     }
 
     /// <summary>
