@@ -311,6 +311,12 @@ typedef enum {
     SystemChipset_AGA = 2
 } SystemChipset;
 
+// DisplayType enum values (must match std::hardware::chipset::DisplayType)
+typedef enum {
+    DisplayType_PAL = 0,
+    DisplayType_NTSC = 1
+} DisplayType;
+
 /**
  * Detect CPU type at runtime
  * Reads ExecBase->AttnFlags to determine which CPU features are available
@@ -417,6 +423,45 @@ SystemChipset __detect_chipset(void)
         result = SystemChipset_OCS;
     }
 
+    return result;
+}
+
+/**
+ * Detect display type (PAL vs NTSC) at runtime
+ *
+ * Uses GfxBase->DisplayFlags which is the most reliable method.
+ * This flag is set by the OS during initialization based on the
+ * actual hardware configuration (Agnus chip ID and system preferences).
+ *
+ * Alternative methods (not used):
+ * - VPOSR register ($DFF004): Can be unreliable on some systems
+ * - SysBase->VBlankFrequency: 50=PAL, 60=NTSC (requires newer exec)
+ *
+ * NOTE: This returns the system's native display type, not necessarily
+ * what a program is currently using (e.g., PAL games on NTSC with
+ * mode promotion).
+ */
+DisplayType __detect_display(void)
+{
+    struct GfxBase *GfxBase;
+    DisplayType result;
+
+    // Open graphics.library V33+ (Kickstart 1.2+)
+    GfxBase = (struct GfxBase *)OpenLibrary("graphics.library", 33L);
+    if (GfxBase == NULL) {
+        // Can't determine - default to PAL (more common in Amiga world)
+        return DisplayType_PAL;
+    }
+
+    // Check DisplayFlags - bit 5 (0x20) = DISPLAYPAL
+    // From graphics/gfxbase.h: DISPLAYPAL = 0x0020
+    if (GfxBase->DisplayFlags & 0x0020) {
+        result = DisplayType_PAL;
+    } else {
+        result = DisplayType_NTSC;
+    }
+
+    CloseLibrary((struct Library *)GfxBase);
     return result;
 }
 

@@ -31,6 +31,12 @@ pub enum SystemChipset {
     AGA,       // Advanced Graphics Architecture (A1200/A4000/CD32)
 }
 
+// Display type detected via GfxBase->DisplayFlags
+pub enum DisplayType {
+    PAL,       // PAL: 50Hz, 312 lines, 256 visible lines
+    NTSC,      // NTSC: 60Hz, 262 lines, 200 visible lines
+}
+
 // Memory information structure
 pub struct MemoryInfo {
     total: u32,    // Total bytes
@@ -43,6 +49,7 @@ pub struct MemoryInfo {
 extern fn __detect_cpu() -> SystemCPU
 extern fn __detect_fpu() -> SystemFPU
 extern fn __detect_chipset() -> SystemChipset
+extern fn __detect_display() -> DisplayType
 extern fn __get_chip_ram_total() -> u32
 extern fn __get_chip_ram_free() -> u32
 extern fn __get_chip_ram_largest() -> u32
@@ -59,6 +66,10 @@ pub fn FPU() -> SystemFPU {
 
 pub fn CHIPSET() -> SystemChipset {
     return __detect_chipset()
+}
+
+pub fn DISPLAY() -> DisplayType {
+    return __detect_display()
 }
 
 pub fn CHIP_RAM() -> MemoryInfo {
@@ -100,6 +111,15 @@ impl Display for SystemChipset {
             SystemChipset::OCS => f.write_str("OCS"),
             SystemChipset::ECS => f.write_str("ECS"),
             SystemChipset::AGA => f.write_str("AGA"),
+        }
+    }
+}
+
+impl Display for DisplayType {
+    fn fmt(&self, f: &mut Formatter) -> bool {
+        return match *self {
+            DisplayType::PAL => f.write_str("PAL"),
+            DisplayType::NTSC => f.write_str("NTSC"),
         }
     }
 }

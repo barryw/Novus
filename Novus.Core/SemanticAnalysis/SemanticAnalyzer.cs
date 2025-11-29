@@ -4655,9 +4655,27 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         IrEnumType? enumTypeForValidation = null;
         if (isEnumMatch)
         {
-            enumTypeForValidation = (IrEnumType)actualMatchType;
-            foreach (var v in enumTypeForValidation.Variants)
+            var enumFromType = (IrEnumType)actualMatchType;
+            // When matching on a function return type, the IrEnumType stored in the function
+            // might be a stale stub reference (created before variants were filled in during import).
+            // Try to get the best available enum type with variants:
+            // 1. If it's a monomorphized type (has CacheKey), look up from cache first (has concrete types)
+            // 2. Otherwise look up by name (may be generic like Option<T>)
+            // 3. Fall back to the type from the expression
+            if (!string.IsNullOrEmpty(enumFromType.CacheKey))
             {
+                // It's a monomorphized type like Option<MemoryBlock>
+                enumTypeForValidation = _symbols.LookupMonomorphizedEnum(enumFromType.CacheKey) ?? enumFromType;
+            }
+            else if (enumFromType.Variants.Count > 0)
+            {
+                // Already has variants, use it directly
+                enumTypeForValidation = enumFromType;
+            }
+            else
+            {
+                // Stale stub, look up by name
+                enumTypeForValidation = _symbols.LookupEnum(enumFromType.EnumName) ?? enumFromType;
             }
         }
         else if (!isIntegerMatch && actualMatchType is IrGenericType genericType)

@@ -24,27 +24,18 @@ from std::memory::amiga import ChipMemHandle
 from std::ffi::amiga_structs import Custom
 from std::ffi::graphics import WaitTOF
 from std::ffi::exec import FreeVec
+from std::hardware::chipset import DisplayType, DISPLAY
 
-// Display mode detection - MUST be initialized before using sprites
-static mut IS_PAL: bool = true
-static mut INITIALIZED: bool = false
+// Track if sprite DMA has been enabled
+static mut DMA_ENABLED: bool = false
 
-// Initialize the sprite system - MUST be called before using sprites
-// Detects PAL vs NTSC display mode for correct vertical positioning
-// Enables sprite DMA
+// Initialize the sprite system - enables sprite DMA
+// PAL/NTSC detection is handled automatically by std::hardware::chipset::DISPLAY()
 pub fn init_sprite_system() {
     unsafe {
-        if INITIALIZED {
+        if DMA_ENABLED {
             return
         }
-
-        // Read VPOSR register at $DFF004 to detect PAL/NTSC
-        // Note: This is a simplified detection. For production code, should check
-        // GfxBase->DisplayFlags or SysBase->ex_EClockFrequency for more reliability
-        let vposr = (*u16)$DFF004
-        let agnus_id = (*vposr >> 8) & $7F
-        // PAL has different Agnus IDs than NTSC
-        IS_PAL = (agnus_id & $10) != 0
 
         // Enable sprite DMA (DMACON register at $DFF096)
         // Set bit 15 (SETCLR) + bit 5 (SPREN - sprite DMA enable)
@@ -52,7 +43,7 @@ pub fn init_sprite_system() {
         let dmacon = (*u16)$DFF096
         *dmacon = *dmacon | $8020
 
-        INITIALIZED = true
+        DMA_ENABLED = true
     }
 }
 
@@ -61,30 +52,10 @@ pub fn detect_display_mode() {
     init_sprite_system()
 }
 
-// Initialize sprite system with explicit PAL/NTSC mode
-// Use this when you need to override the automatic detection
-// or when running on systems where VPOSR detection is unreliable
-pub fn init_sprite_system_with_mode(is_pal: bool) {
-    unsafe {
-        IS_PAL = is_pal
-
-        // Enable sprite DMA (DMACON register at $DFF096)
-        // Set bit 15 (SETCLR) + bit 5 (SPREN - sprite DMA enable)
-        // Preserve other DMA bits by ORing with existing value
-        let dmacon = (*u16)$DFF096
-        *dmacon = *dmacon | $8020
-
-        INITIALIZED = true
-    }
-}
-
 fn get_vstart_offset() -> u16 {
-    unsafe {
-        if IS_PAL {
-            return $2Cu16  // PAL offset
-        } else {
-            return $18u16  // NTSC offset
-        }
+    return match DISPLAY() {
+        DisplayType::PAL => $2Cu16,   // PAL offset
+        DisplayType::NTSC => $18u16,  // NTSC offset
     }
 }
 
@@ -349,11 +320,12 @@ impl SpriteHandle {
         if self.pos_x < -16 || self.pos_x > 320 {
             return false
         }
-        unsafe {
-            let max_y: i16 = IS_PAL ? 256 : 200
-            if self.pos_y < 0 || self.pos_y > max_y {
-                return false
-            }
+        let max_y: i16 = match DISPLAY() {
+            DisplayType::PAL => 256i16,
+            DisplayType::NTSC => 200i16,
+        }
+        if self.pos_y < 0 || self.pos_y > max_y {
+            return false
         }
         return true
     }

@@ -429,7 +429,7 @@ class Program
             if (options.OptimizationLevel > 0)
             {
                 var transformPipeline = Novus.Transforms.TransformPipeline.CreatePipeline(
-                    enableInlining: false, // TODO: Enable when implemented
+                    enableInlining: options.OptimizationLevel >= 2, // Enable inlining at -O2 and above
                     verbose: options.Verbose
                 );
                 if (transformPipeline != null)
