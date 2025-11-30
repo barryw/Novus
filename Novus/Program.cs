@@ -34,8 +34,9 @@ internal partial class CacheMetadataJsonContext : JsonSerializerContext
 class Program
 {
     // Codegen format version - increment to invalidate all cached object files
-    // when making breaking changes to code generation (e.g., static variable handling)
-    private const int CODEGEN_VERSION = 3;
+    // when making breaking changes to code generation or compilation process
+    // v4: Added debug label injection via assembly post-processing in debug builds
+    private const int CODEGEN_VERSION = 4;
 
     static async Task<int> Main(string[] args)
     {
@@ -424,11 +425,16 @@ class Program
             irBuilder.SetInputFilePath(inputFile);
             var module = irBuilder.BuildModule(compilationUnit);
 
-            // Run transformation passes (before optimization)
+            // Run required HIR lowering passes (ALWAYS run, regardless of optimization level)
+            // These convert high-level DSLs (copper/blitter) to standard IR
+            var requiredLoweringPipeline = Novus.Transforms.TransformPipeline.CreateLoweringPipeline(options.Verbose);
+            requiredLoweringPipeline.Run(module);
+
+            // Run optional transformation passes (only when optimizing)
             // Transformations can modify IR structure (inlining, monomorphization, etc.)
             if (options.OptimizationLevel > 0)
             {
-                var transformPipeline = Novus.Transforms.TransformPipeline.CreatePipeline(
+                var transformPipeline = Novus.Transforms.TransformPipeline.CreateOptimizationPipeline(
                     enableInlining: options.OptimizationLevel >= 2, // Enable inlining at -O2 and above
                     verbose: options.Verbose
                 );
@@ -611,6 +617,23 @@ class Program
                 Console.WriteLine($"  Module cache: {moduleCache.Count} modules cached");
             }
 
+            // ============================================================================
+            // PHASE 1.5: Run HIR lowering passes on all modules
+            // These convert high-level DSLs (copper/blitter) to standard IR
+            // MUST run before code generation, regardless of optimization level
+            // ============================================================================
+
+            var loweringPipeline = Novus.Transforms.TransformPipeline.CreateLoweringPipeline(options.Verbose);
+
+            // Run lowering on main module
+            loweringPipeline.Run(mainIR.IrModule);
+
+            // Run lowering on all imported modules
+            foreach (var moduleIR in allModulesIR.Values)
+            {
+                loweringPipeline.Run(moduleIR.IrModule);
+            }
+
             // Optionally emit IR
             if (options.EmitIr)
             {
@@ -685,6 +708,9 @@ class Program
             // Generate C files - collect all file paths
             var cFiles = new List<string>();
 
+            // Collect all code generators for statement-level debug symbol collection
+            var allCodeGenerators = new List<CCodeGenerator>();
+
             // Main module: generate one C file per function (consistent with library modules)
             var mainFunctions = mainIR.IrModule.Functions
                 .Where(f => !f.IsExtern && f.BasicBlocks.Count > 0)
@@ -702,6 +728,7 @@ class Program
                     explicitEntryPoints: null,
                     useSharedTypesHeader: true,
                     projectVersion: options.PackageVersion);
+                allCodeGenerators.Add(mainCodegen);
 
                 // Generate one C file per function
                 // Filter out functions with unresolved types to avoid symbol conflicts
@@ -836,6 +863,7 @@ class Program
                     explicitEntryPoints: null,
                     useSharedTypesHeader: true,
                     projectVersion: options.PackageVersion);
+                allCodeGenerators.Add(moduleCodegen);
 
                 // Generate one C file per function
                 // Filter out functions with unresolved types to avoid symbol conflicts
@@ -891,6 +919,38 @@ class Program
 
                 var displayName = isStdModule ? $"std::{moduleName}" : moduleName;
                 Console.WriteLine($"  → {displayName} ({functions.Count} function{(functions.Count > 1 ? "s" : "")})");
+            }
+
+            // Always generate debug_symbols.c - it provides __novus_init_debug_symbols()
+            // which is called from the runtime. In Paranoid safety mode it contains real symbols,
+            // otherwise it's a no-op stub that still provides the required function.
+            {
+                string debugSymbolsCode;
+                if (safetyLevel >= SafetyLevel.Paranoid)
+                {
+                    var allModules = new List<IrModule> { mainIR.IrModule };
+                    allModules.AddRange(allModulesIR.Values.Select(m => m.IrModule));
+
+                    // Collect statement-level debug markers from all code generators
+                    var allDebugMarkers = new List<(string LabelName, string FileName, int Line, string FuncName)>();
+                    foreach (var codegen in allCodeGenerators)
+                    {
+                        allDebugMarkers.AddRange(codegen.GetDebugLineMarkers());
+                    }
+
+                    debugSymbolsCode = CCodeGenerator.GenerateDebugSymbolsFile(allModules, allDebugMarkers);
+                    var markerCount = allDebugMarkers.Count;
+                    Console.WriteLine($"  → debug_symbols.c ({markerCount} statement marker{(markerCount != 1 ? "s" : "")} for precise line info)");
+                }
+                else
+                {
+                    // Generate stub for non-debug builds
+                    debugSymbolsCode = "// No debug symbols in release build\n" +
+                                       "void __novus_init_debug_symbols(void) { /* no-op */ }\n";
+                }
+                var debugSymbolsCFile = Path.Combine(outputDir, "debug_symbols.c");
+                await File.WriteAllTextAsync(debugSymbolsCFile, debugSymbolsCode);
+                cFiles.Add(debugSymbolsCFile);
             }
 
             // Add Novus runtime library (novus_runtime.c - contains assert handler with EasyRequest)

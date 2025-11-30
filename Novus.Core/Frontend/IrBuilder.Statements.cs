@@ -98,6 +98,9 @@ public partial class IrBuilder
 
     public override object? VisitReturnStatement([NotNull] NovusParser.ReturnStatementContext context)
     {
+        // Set current statement location for debug symbols
+        _currentStatementLocation = GetLocation(context);
+
         // Handle postfix conditional (if/unless)
         var postfixCondition = context.postfixCondition();
 
@@ -119,7 +122,7 @@ public partial class IrBuilder
                 _expectedType = savedExpectedType;
             }
 
-            _currentBlock!.AddInstruction(new IrReturn(value));
+            Emit(new IrReturn(value));
         });
 
         return null;
@@ -127,6 +130,9 @@ public partial class IrBuilder
 
     public override object? VisitVariableDeclaration([NotNull] NovusParser.VariableDeclarationContext context)
     {
+        // Set current statement location for debug symbols
+        _currentStatementLocation = GetLocation(context);
+
         var isMutable = context.KW_VAR() != null;
 
         // Check if this is a tuple destructuring pattern
@@ -193,7 +199,7 @@ public partial class IrBuilder
         _localVariables[name] = localVar;
 
         // Generate IR for the declaration with initial value
-        _currentBlock!.AddInstruction(new IrLocalDecl(name, type, isMutable, value));
+        Emit(new IrLocalDecl(name, type, isMutable, value));
 
         // Automatic defer for types with drop() method (RAII-style cleanup)
         // For generic types, eagerly instantiate the drop() method if it exists as a template
@@ -326,6 +332,9 @@ public partial class IrBuilder
 
     public override object? VisitAssignmentStatement([NotNull] NovusParser.AssignmentStatementContext context)
     {
+        // Set current statement location for debug symbols
+        _currentStatementLocation = GetLocation(context);
+
         // Handle postfix conditional (if/unless)
         var postfixCondition = context.postfixCondition();
 
@@ -1228,7 +1237,7 @@ public partial class IrBuilder
             }
 
             // Generate the dereference store instruction
-            _currentBlock!.AddInstruction(new IrDereferenceStore(pointer, value));
+            Emit(new IrDereferenceStore(pointer, value));
         }
         else
         {
@@ -1330,7 +1339,7 @@ public partial class IrBuilder
                 // Simple assignment: x = value
                 // The semantic analyzer will check if the variable is mutable
                 // Here we just generate the IR
-                _currentBlock!.AddInstruction(new IrStore(name, value));
+                Emit(new IrStore(name, value));
             }
         }
 
@@ -1339,6 +1348,9 @@ public partial class IrBuilder
 
     public override object? VisitExpressionStatement([NotNull] NovusParser.ExpressionStatementContext context)
     {
+        // Set current statement location for debug symbols
+        _currentStatementLocation = GetLocation(context);
+
         // Handle postfix conditional (if/unless)
         var postfixCondition = context.postfixCondition();
 
@@ -1354,6 +1366,9 @@ public partial class IrBuilder
 
     public override object? VisitIfStatement([NotNull] NovusParser.IfStatementContext context)
     {
+        // Set current statement location for debug symbols
+        _currentStatementLocation = GetLocation(context);
+
         var thenLabel = $"if_then_{_labelCounter}";
         var elseLabel = $"if_else_{_labelCounter}";
         var endLabel = $"if_end_{_labelCounter}";
@@ -1734,6 +1749,9 @@ public partial class IrBuilder
 
     public override object? VisitWhileStatement([NotNull] NovusParser.WhileStatementContext context)
     {
+        // Set current statement location for debug symbols
+        _currentStatementLocation = GetLocation(context);
+
         var condLabel = $"while_cond_{_labelCounter}";
         var bodyLabel = $"while_body_{_labelCounter}";
         var endLabel = $"while_end_{_labelCounter}";
@@ -1784,6 +1802,9 @@ public partial class IrBuilder
 
     public override object? VisitForCStyle([NotNull] NovusParser.ForCStyleContext context)
     {
+        // Set current statement location for debug symbols
+        _currentStatementLocation = GetLocation(context);
+
         var condLabel = $"for_cond_{_labelCounter}";
         var bodyLabel = $"for_body_{_labelCounter}";
         var incrLabel = $"for_incr_{_labelCounter}";
@@ -1859,6 +1880,9 @@ public partial class IrBuilder
     }
     public override object? VisitForInLoop([NotNull] NovusParser.ForInLoopContext context)
     {
+        // Set current statement location for debug symbols
+        _currentStatementLocation = GetLocation(context);
+
         // Check if this is a range expression - handle it specially for efficiency
         var exprCtx = context.expression();
         if (exprCtx is NovusParser.RangeExprContext rangeExpr)
@@ -1954,6 +1978,7 @@ public partial class IrBuilder
         var lenReceiverArg = new IrBorrowValue(collVarRef, lenMethod.Parameters[0].Type, false);
         var lenResultName = $"%t{_tempCounter++}";
         var lenCall = new IrCall(lenMethodName!, lenMethod.ReturnType, lenResultName);
+        lenCall.Location = GetLocation(context);
         lenCall.Arguments.Add(lenReceiverArg);
         _currentBlock!.AddInstruction(lenCall);
 
@@ -2038,6 +2063,7 @@ public partial class IrBuilder
         var getReceiverArg = new IrBorrowValue(collVarRef, getMethod.Parameters[0].Type, false);
         var getResultName = $"%t{_tempCounter++}";
         var getCall = new IrCall(getMethodName!, getMethod.ReturnType, getResultName);
+        getCall.Location = GetLocation(context);
         getCall.Arguments.Add(getReceiverArg);
         getCall.Arguments.Add(idxVarRef);
         _currentBlock!.AddInstruction(getCall);
@@ -2298,6 +2324,9 @@ public partial class IrBuilder
 
     public override object? VisitForeverStatement([NotNull] NovusParser.ForeverStatementContext context)
     {
+        // Set current statement location for debug symbols
+        _currentStatementLocation = GetLocation(context);
+
         var bodyLabel = $"forever_body_{_labelCounter}";
         var endLabel = $"forever_end_{_labelCounter}";
         _labelCounter++;

@@ -235,6 +235,7 @@ public class IrFunction
     public List<IrBasicBlock> DeferredBlocks { get; } = new();  // Blocks to execute on function exit (LIFO)
     public List<string> GenericParameters { get; } = new();  // Generic type parameters (e.g., ["T", "U"])
     public IrWhereClause? WhereClause { get; set; }  // Generic type constraints (e.g., where T: Sortable)
+    public SourceLocation? Location { get; set; }  // Source location of function definition (for debug info)
 
     public IrFunction(string name, IrType returnType, Visibility visibility = Visibility.Private, bool isExtern = false, bool isVariadic = false)
     {
@@ -329,6 +330,10 @@ public class IrBasicBlock
 /// </summary>
 public abstract class IrInstruction
 {
+    /// <summary>
+    /// Source location where this instruction originated (for debug/error messages)
+    /// </summary>
+    public SourceLocation? Location { get; set; }
 }
 
 /// <summary>
@@ -366,7 +371,6 @@ public class IrAssert : IrInstruction
 {
     public IrValue Condition { get; set; }
     public string? Message { get; set; }
-    public SourceLocation Location { get; set; }
 
     public IrAssert(IrValue condition, string? message, SourceLocation location)
     {
@@ -383,7 +387,6 @@ public class IrAssert : IrInstruction
 public class IrPanic : IrInstruction
 {
     public string Message { get; set; }
-    public SourceLocation Location { get; set; }
 
     public IrPanic(string message, SourceLocation location)
     {
@@ -1074,17 +1077,19 @@ public class IrStructType : IrType
     public string StructName { get; }
     public List<IrStructField> Fields { get; }
     public List<string> GenericParameters { get; }  // Type parameter names (e.g., ["T"])
+    public List<IrType>? TypeArguments { get; set; }  // Actual type arguments for monomorphized types (e.g., [Str])
     public string? CacheKey { get; set; }  // Cache key for monomorphized types (e.g., "Vec<i32>")
     public Novus.SemanticAnalysis.AttributeCollection? Attributes { get; set; }  // Struct attributes (@library, @packed, etc.)
     public IrWhereClause? WhereClause { get; set; }  // Generic type constraints (e.g., where T: Sortable)
     public bool ImplementsDrop { get; set; }  // True if this type implements the Drop trait
     private int? _cachedSize;
 
-    public IrStructType(string structName, List<IrStructField> fields, List<string>? genericParams = null, string? cacheKey = null, Novus.SemanticAnalysis.AttributeCollection? attributes = null, IrWhereClause? whereClause = null)
+    public IrStructType(string structName, List<IrStructField> fields, List<string>? genericParams = null, string? cacheKey = null, Novus.SemanticAnalysis.AttributeCollection? attributes = null, IrWhereClause? whereClause = null, List<IrType>? typeArguments = null)
     {
         StructName = structName;
         Fields = fields;
         GenericParameters = genericParams ?? new List<string>();
+        TypeArguments = typeArguments;
         CacheKey = cacheKey;
         Attributes = attributes;
         WhereClause = whereClause;
@@ -1642,6 +1647,19 @@ public class IrIndexedFieldStore : IrInstruction
 }
 
 /// <summary>
+/// Memory section for static variables (Amiga-specific)
+/// </summary>
+public enum MemorySection
+{
+    /// Default - placed in any available memory (usually Fast RAM)
+    Default,
+    /// Chip RAM - required for DMA (Copper, Blitter, sprites, audio)
+    Chip,
+    /// Fast RAM - CPU-only access, faster than chip RAM
+    Fast
+}
+
+/// <summary>
 /// Static variable - global variable with fixed address and lifetime
 /// Can be immutable or mutable (requires unsafe to access if mut)
 /// </summary>
@@ -1652,14 +1670,19 @@ public class IrStaticVariable
     public Visibility Visibility { get; set; }
     public bool IsMutable { get; set; }
     public IrValue InitialValue { get; set; }
+    /// <summary>
+    /// Memory section for Amiga DMA requirements (Copper lists, Blitter, sprites, audio)
+    /// </summary>
+    public MemorySection Section { get; set; } = MemorySection.Default;
 
-    public IrStaticVariable(string name, IrType type, Visibility visibility, bool isMutable, IrValue initialValue)
+    public IrStaticVariable(string name, IrType type, Visibility visibility, bool isMutable, IrValue initialValue, MemorySection section = MemorySection.Default)
     {
         Name = name;
         Type = type;
         Visibility = visibility;
         IsMutable = isMutable;
         InitialValue = initialValue;
+        Section = section;
     }
 }
 

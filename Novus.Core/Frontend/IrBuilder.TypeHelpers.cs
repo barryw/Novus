@@ -580,36 +580,17 @@ public partial class IrBuilder
     }
 
     /// <summary>
-    /// Check if a type annotation is an array type and report an error if so.
-    /// Array type annotations are redundant and not allowed - the compiler infers array types from literals.
+    /// Check if a type annotation is an array type.
+    /// Array type annotations are now allowed - they serve as expected type hints for type checking.
     /// </summary>
     /// <param name="typeContext">The type context from the parse tree (may be null)</param>
     /// <param name="declarationName">The name of the variable/constant being declared</param>
     /// <param name="errorContext">Context for error reporting</param>
-    /// <returns>True if the type annotation is an array type (error reported), false otherwise</returns>
+    /// <returns>Always returns false - array type annotations are allowed</returns>
     private bool RejectArrayTypeAnnotation(NovusParser.TypeContext? typeContext, string declarationName, Antlr4.Runtime.ParserRuleContext errorContext)
     {
-        if (typeContext == null)
-            return false;
-
-        // Check syntactically if this is an array type BEFORE trying to parse it
-        // This avoids the chicken-and-egg problem where type annotations might reference
-        // types that haven't been registered yet (e.g., const declarations before struct declarations)
-        bool isArrayType = typeContext is NovusParser.ArrayTypeWithSizeContext ||
-                          typeContext is NovusParser.ArrayTypeInferredContext;
-
-        if (isArrayType)
-        {
-            var errorLocation = GetLocation(errorContext);
-            var typeText = typeContext.GetText(); // Get original source text like "[u16; 10]"
-            _diagnostics.ReportError(
-                ErrorCodes.RedundantTypeAnnotation,
-                $"Array type annotations are not allowed. Remove ': {typeText}' from '{declarationName}' and let the compiler infer the type from the array literal.",
-                errorLocation
-            );
-            return true;
-        }
-
+        // Array type annotations are now allowed.
+        // The annotated type will be parsed and used for type checking.
         return false;
     }
 }

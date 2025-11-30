@@ -1,0 +1,767 @@
+// Novus Standard Library - CLI Argument Parsing
+// Namespace: std::args
+//
+// High-level CLI argument parsing using AmigaDOS ReadArgs().
+// Provides typed, safe access to command-line arguments with RAII cleanup.
+//
+// AmigaDOS template syntax:
+//   NAME      - positional argument (optional)
+//   NAME/A    - required argument
+//   NAME/S    - switch (boolean flag)
+//   NAME/K    - keyword argument (NAME=value)
+//   NAME/N    - numeric argument
+//   NAME/M    - multiple arguments (array)
+//   NAME/F    - rest of line (everything after)
+//
+// Example templates:
+//   "FROM/A,TO/A"              - Two required filenames
+//   "FILE/A,VERBOSE/S"         - Required file + optional switch
+//   "COUNT/N/A"                - Required number
+//   "FILES/M"                  - Multiple files
+
+from std::core import Option, Result, Drop, From
+from std::strings::core import Str, String
+from std::collections::vec import Vec
+from std::error::errors import DosError, dos_last_error
+from std::ffi::amiga_structs import RDArgs, WBStartup, WBArg, Process, MsgPort, Message
+from std::ffi::dos import ReadArgs, FreeArgs, FindArg, NameFromLock, IoErr
+from std::ffi::exec import FindTask, WaitPort, GetMsg, ReplyMsg
+from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
+from std::ffi::exec import AllocMem, FreeMem
+
+// ============================================================================
+// Error Types
+// ============================================================================
+
+/// Argument parsing errors
+pub enum ArgsError {
+    /// DOS library error (wrapped)
+    Dos(DosError),
+    /// Template syntax error
+    InvalidTemplate,
+    /// Required argument missing
+    MissingRequired,
+    /// Invalid argument value
+    InvalidValue,
+    /// Too many arguments
+    TooManyArgs,
+    /// Memory allocation failed
+    AllocationFailed,
+    /// Argument not found in template
+    ArgNotFound,
+}
+
+/// Convert DosError to ArgsError
+impl From<DosError> for ArgsError {
+    fn convert(err: DosError) -> ArgsError {
+        return ArgsError::Dos(err)
+    }
+}
+
+// Error message helper
+impl ArgsError {
+    pub fn message(&self) -> *u8 {
+        match *self {
+            ArgsError::Dos(err) => return err.message(),
+            ArgsError::InvalidTemplate => return "Invalid argument template syntax",
+            ArgsError::MissingRequired => return "Required argument missing",
+            ArgsError::InvalidValue => return "Invalid argument value",
+            ArgsError::TooManyArgs => return "Too many arguments",
+            ArgsError::AllocationFailed => return "Memory allocation failed",
+            ArgsError::ArgNotFound => return "Argument not found in template",
+        }
+    }
+}
+
+// ============================================================================
+// Args - Parsed Command-Line Arguments
+// ============================================================================
+
+// Maximum number of arguments supported
+pub const MAX_ARGS: u32 = 32
+
+/// Parsed command-line arguments
+///
+/// Wraps AmigaDOS ReadArgs() with safe, typed access to arguments.
+/// Automatically frees RDArgs structure on drop.
+///
+/// Example:
+/// ```novus
+/// from std::args import Args
+///
+/// pub fn main() -> i32 {
+///     let args_result = Args::parse("FROM/A,TO/A,VERBOSE/S")
+///     match args_result {
+///         Ok(args) => {
+///             let from = args.get_str("FROM") or { return 10 }
+///             let to = args.get_str("TO") or { return 10 }
+///             let verbose = args.get_switch("VERBOSE")
+///             // ... use arguments
+///             return 0
+///         },
+///         Err(e) => {
+///             return 10
+///         }
+///     }
+/// }
+/// ```
+pub struct Args {
+    // Pointer to RDArgs (owned, must be freed)
+    rdargs: *RDArgs,
+    // Result array (one slot per template argument)
+    // Each slot is i32:
+    //   - For strings: pointer to string
+    //   - For switches: 0 or non-zero
+    //   - For numbers: pointer to i32
+    //   - For multi: pointer to array of pointers
+    results: [i32; 32],
+    // Number of arguments in template
+    arg_count: u32,
+    // Template string (null-terminated)
+    template: [u8; 256],
+}
+
+impl Args {
+    /// Parse command-line arguments using template
+    ///
+    /// Template syntax:
+    /// - `NAME` - positional argument
+    /// - `NAME/A` - required argument
+    /// - `NAME/S` - switch (boolean flag)
+    /// - `NAME/K` - keyword argument (NAME=value)
+    /// - `NAME/N` - numeric argument
+    /// - `NAME/M` - multiple arguments
+    /// - `NAME/F` - rest of line
+    ///
+    /// Modifiers can be combined: `COUNT/N/A` = required number
+    ///
+    /// Example:
+    /// ```novus
+    /// let args = Args::parse("FROM/A,TO/A,VERBOSE/S")?
+    /// ```
+    pub fn parse(template: Str) -> Result<Args, ArgsError> {
+        // Validate template length
+        if template.len() >= 255 {
+            return Result::Err(ArgsError::InvalidTemplate)
+        }
+
+        // Copy template into struct
+        var args = Args {
+            rdargs: (*RDArgs)0,
+            results: [0i32; 32],
+            arg_count: 0,
+            template: [0u8; 256],
+        }
+
+        // Copy template with null terminator
+        var i: u32 = 0
+        while i < template.len() {
+            args.template[i] = template.as_ptr()[i]
+            i++
+        }
+        args.template[i] = 0  // Null terminate
+
+        // Count arguments (number of commas + 1)
+        args.arg_count = 1
+        i = 0
+        while i < template.len() {
+            if template.as_ptr()[i] == $2C {  // Comma
+                args.arg_count++
+            }
+            i++
+        }
+
+        if args.arg_count > MAX_ARGS {
+            return Result::Err(ArgsError::TooManyArgs)
+        }
+
+        // Call ReadArgs
+        let rdargs_result = ReadArgs((*u8)&args.template, (*u8)&args.results, (*RDArgs)0)
+        if (u32)rdargs_result == 0 {
+            // ReadArgs failed - get error from DOS
+            let err = dos_last_error()
+            return Result::Err(ArgsError::Dos(err))
+        }
+
+        args.rdargs = rdargs_result
+        return Result::Ok(args)
+    }
+
+    /// Get string argument value
+    ///
+    /// Returns Some(Str) if argument was provided, None otherwise.
+    /// For required arguments (/A), this should always return Some.
+    ///
+    /// Example:
+    /// ```novus
+    /// let filename = args.get_str("FILE")?
+    /// ```
+    pub fn get_str(&self, name: Str) -> Option<Str> {
+        let idx = self.find_arg_index(name)
+        if idx == -1 {
+            return Option::None
+        }
+
+        let value = self.results[(u32)idx]
+        if value == 0 {
+            return Option::None
+        }
+
+        // Value is a pointer to null-terminated string
+        // from_cstr returns Option<Str>, so we return it directly
+        return Str::from_cstr((*u8)value)
+    }
+
+    /// Get switch value (true if present, false if not)
+    ///
+    /// For /S arguments - returns true if switch was set.
+    ///
+    /// Example:
+    /// ```novus
+    /// if args.get_switch("VERBOSE") {
+    ///     // verbose mode
+    /// }
+    /// ```
+    pub fn get_switch(&self, name: Str) -> bool {
+        let idx = self.find_arg_index(name)
+        if idx == -1 {
+            return false
+        }
+
+        // Switch value is non-zero if set
+        return self.results[(u32)idx] != 0
+    }
+
+    /// Get numeric argument value
+    ///
+    /// For /N arguments - returns the number if provided.
+    ///
+    /// Note: ReadArgs stores a POINTER to the number, not the number itself!
+    ///
+    /// Example:
+    /// ```novus
+    /// let count = args.get_number("COUNT") or { 10 }  // default 10
+    /// ```
+    pub fn get_number(&self, name: Str) -> Option<i32> {
+        let idx = self.find_arg_index(name)
+        if idx == -1 {
+            return Option::None
+        }
+
+        let value_ptr = self.results[(u32)idx]
+        if value_ptr == 0 {
+            return Option::None
+        }
+
+        // Value is a POINTER to an i32
+        let num_ptr = (*i32)value_ptr
+        return Option::Some(*num_ptr)
+    }
+
+    /// Get multiple string arguments
+    ///
+    /// For /M arguments - returns iterator over all values.
+    ///
+    /// Example:
+    /// ```novus
+    /// // Template: "FILES/M"
+    /// // Command: myprogram file1.txt file2.txt file3.txt
+    /// let files_opt = args.get_multi("FILES")
+    /// match files_opt {
+    ///     Some(files) => {
+    ///         // files is Vec<Str>
+    ///         var i: u32 = 0
+    ///         while i < files.len {
+    ///             let file = files.get(i) or { continue }
+    ///             // process file
+    ///             i++
+    ///         }
+    ///     },
+    ///     None => {}
+    /// }
+    /// ```
+    pub fn get_multi(&self, name: Str) -> Option<Vec<Str>> {
+        let idx = self.find_arg_index(name)
+        if idx == -1 {
+            return Option::None
+        }
+
+        let array_ptr = self.results[(u32)idx]
+        if array_ptr == 0 {
+            return Option::None
+        }
+
+        // Value is a pointer to an array of string pointers, null-terminated
+        let strings_ptr = (**u8)array_ptr
+
+        // Count strings
+        var count: u32 = 0
+        while (u32)strings_ptr[count] != 0 {
+            count++
+        }
+
+        if count == 0 {
+            return Option::None
+        }
+
+        // Build Vec<Str>
+        var result: Vec<Str> = Vec::new()
+
+        var i: u32 = 0
+        while i < count {
+            let str_ptr: *u8 = strings_ptr[i]
+            let str_opt = Str::from_cstr(str_ptr)
+            match str_opt {
+                Some(s) => {
+                    result.push(s)
+                },
+                None => {}
+            }
+            i++
+        }
+
+        return Option::Some(result)
+    }
+
+    /// Check if argument was provided
+    ///
+    /// Returns true if the argument has a value (for any argument type).
+    pub fn is_present(&self, name: Str) -> bool {
+        let idx = self.find_arg_index(name)
+        if idx == -1 {
+            return false
+        }
+
+        return self.results[(u32)idx] != 0
+    }
+
+    /// Get argument count from template
+    pub fn count(&self) -> u32 {
+        return self.arg_count
+    }
+
+    // ========================================================================
+    // Private Helpers
+    // ========================================================================
+
+    /// Find argument index in template
+    ///
+    /// Uses DOS FindArg() to locate the argument.
+    fn find_arg_index(&self, name: Str) -> i32 {
+        // Copy name to null-terminated buffer
+        var name_buf = [0u8; 64]
+        if name.len() >= 63 {
+            return -1
+        }
+
+        var i: u32 = 0
+        while i < name.len() {
+            name_buf[i] = name.as_ptr()[i]
+            i++
+        }
+        name_buf[i] = 0
+
+        // FindArg returns -1 if not found
+        return FindArg((*u8)&name_buf, (*u8)&self.template)
+    }
+}
+
+// RAII cleanup - free RDArgs structure
+impl Drop for Args {
+    fn drop(&mut self) {
+        if (u32)self.rdargs != 0 {
+            FreeArgs(self.rdargs)
+            self.rdargs = (*RDArgs)0
+        }
+    }
+}
+
+// ============================================================================
+// ArgParser - Builder API for Templates
+// ============================================================================
+
+/// Argument type for builder API
+pub enum ArgType {
+    /// Regular optional argument (no modifier)
+    Optional,
+    /// Required argument (/A)
+    Required,
+    /// Switch/flag (/S)
+    Switch,
+    /// Keyword argument (/K)
+    Keyword,
+    /// Numeric argument (/N)
+    Number,
+    /// Multiple values (/M)
+    Multi,
+    /// Rest of line (/F)
+    RestOfLine,
+    /// Required number (/N/A)
+    RequiredNumber,
+    /// Required keyword (/K/A)
+    RequiredKeyword,
+}
+
+/// ArgParser - build argument templates programmatically
+///
+/// Alternative to writing template strings manually.
+///
+/// Example:
+/// ```novus
+/// var parser = ArgParser::new()
+/// parser.add("FROM", ArgType::Required)
+/// parser.add("TO", ArgType::Required)
+/// parser.add("VERBOSE", ArgType::Switch)
+/// let args = parser.parse()?
+/// ```
+pub struct ArgParser {
+    template: [u8; 256],
+    len: u32,
+    arg_count: u32,
+}
+
+impl ArgParser {
+    /// Create new argument parser
+    pub fn new() -> ArgParser {
+        return ArgParser {
+            template: [0u8; 256],
+            len: 0,
+            arg_count: 0,
+        }
+    }
+
+    /// Add argument to template
+    ///
+    /// Returns true on success, false if template buffer full.
+    pub fn add(&mut self, name: Str, arg_type: ArgType) -> bool {
+        // Check if we need a comma
+        if self.len > 0 {
+            if self.len >= 254 {
+                return false
+            }
+            self.template[self.len] = $2C  // Comma
+            self.len++
+        }
+
+        // Add name
+        if self.len + name.len() >= 250 {
+            return false
+        }
+
+        var i: u32 = 0
+        while i < name.len() {
+            self.template[self.len] = name.as_ptr()[i]
+            self.len++
+            i++
+        }
+
+        // Add modifier(s)
+        let modifier = self.get_modifier(arg_type)
+        i = 0
+        while modifier[i] != 0 {
+            if self.len >= 254 {
+                return false
+            }
+            self.template[self.len] = modifier[i]
+            self.len++
+            i++
+        }
+
+        // Null terminate
+        self.template[self.len] = 0
+        self.arg_count++
+
+        return true
+    }
+
+    /// Get the template string
+    pub fn template(&self) -> Str {
+        return Str::from_raw((*u8)&self.template, self.len)
+    }
+
+    /// Parse arguments using built template
+    pub fn parse(&self) -> Result<Args, ArgsError> {
+        return Args::parse(self.template())
+    }
+
+    /// Get modifier string for argument type
+    fn get_modifier(&self, arg_type: ArgType) -> *u8 {
+        match arg_type {
+            ArgType::Optional => return "",
+            ArgType::Required => return "/A",
+            ArgType::Switch => return "/S",
+            ArgType::Keyword => return "/K",
+            ArgType::Number => return "/N",
+            ArgType::Multi => return "/M",
+            ArgType::RestOfLine => return "/F",
+            ArgType::RequiredNumber => return "/N/A",
+            ArgType::RequiredKeyword => return "/K/A",
+        }
+    }
+}
+
+// ============================================================================
+// Workbench Support
+// ============================================================================
+
+/// Check if program was launched from Workbench
+///
+/// Returns true if launched from icon/Workbench, false if from CLI.
+///
+/// When launched from Workbench:
+/// - No stdin/stdout
+/// - Arguments come from icon tooltypes and WBStartup message
+/// - Must reply to startup message before exiting
+///
+/// Example:
+/// ```novus
+/// if is_workbench() {
+///     // Handle Workbench launch
+///     let wb = get_workbench_startup() or { return 20 }
+///     // ... process wb.num_args(), wb.arg(i), etc.
+/// } else {
+///     // Handle CLI launch
+///     let args = Args::parse("FROM/A,TO/A")?
+///     // ...
+/// }
+/// ```
+pub fn is_workbench() -> bool {
+    // Get our process
+    let task = FindTask((*u8)0)
+    if (u32)task == 0 {
+        return false
+    }
+
+    // Cast to Process (Task is first field in Process)
+    let process = (*Process)task
+
+    // Check pr_CLI field - if zero, we're a Workbench process
+    // The pr_CLI field is at offset after pr_Task and pr_MsgPort
+    // We need to check if we have a CLI structure
+    return process.pr_CLI == 0
+}
+
+/// Workbench startup message wrapper
+///
+/// Provides safe access to WBStartup message fields.
+/// IMPORTANT: The startup message must NOT be replied until the program exits.
+/// This struct borrows the message, it does NOT own it.
+pub struct WorkbenchStartup {
+    // Raw WBStartup pointer (borrowed from system, do NOT free)
+    msg: *WBStartup,
+    // Whether we need to reply on drop
+    needs_reply: bool,
+}
+
+impl WorkbenchStartup {
+    /// Get number of arguments (files/icons clicked)
+    ///
+    /// Index 0 is always the program's own icon.
+    /// Indices 1..n are any files/icons that were selected when
+    /// the program was double-clicked (shift-click multi-select).
+    pub fn num_args(&self) -> u32 {
+        if (u32)self.msg == 0 {
+            return 0
+        }
+        return (u32)self.msg.sm_NumArgs
+    }
+
+    /// Get argument at index
+    ///
+    /// Returns WBArgument with lock and filename.
+    /// Index 0 = program icon, 1..n = selected files.
+    pub fn arg(&self, index: u32) -> Option<WBArgument> {
+        if (u32)self.msg == 0 {
+            return Option::None
+        }
+
+        if index >= (u32)self.msg.sm_NumArgs {
+            return Option::None
+        }
+
+        let args_base = self.msg.sm_ArgList
+        // Calculate offset: WBArg is 8 bytes (4-byte lock + 4-byte name ptr)
+        let offset: u32 = (u32)args_base + index * 8
+        let arg_ptr: *WBArg = (*WBArg)offset
+
+        return Option::Some(WBArgument {
+            lock: arg_ptr.wa_Lock,
+            name_ptr: arg_ptr.wa_Name,
+        })
+    }
+
+    /// Get tool window specification
+    ///
+    /// If the program's icon has a TOOLWINDOW tooltype,
+    /// this returns the window specification (e.g., "CON:0/0/640/200/Output").
+    pub fn tool_window(&self) -> Option<Str> {
+        if (u32)self.msg == 0 {
+            return Option::None
+        }
+
+        if (u32)self.msg.sm_ToolWindow == 0 {
+            return Option::None
+        }
+
+        // from_cstr returns Option<Str> already
+        return Str::from_cstr(self.msg.sm_ToolWindow)
+    }
+
+    /// Mark that the message should NOT be replied on drop
+    ///
+    /// Use this if you're handling the reply manually or passing
+    /// ownership elsewhere.
+    pub fn suppress_reply(&mut self) {
+        self.needs_reply = false
+    }
+}
+
+// IMPORTANT: Reply to Workbench startup message on drop
+// This is REQUIRED - the Workbench waits for this reply!
+impl Drop for WorkbenchStartup {
+    fn drop(&mut self) {
+        if self.needs_reply && (u32)self.msg != 0 {
+            // Forbid/Permit not needed - ReplyMsg is atomic
+            ReplyMsg((*Message)self.msg)
+            self.msg = (*WBStartup)0
+        }
+    }
+}
+
+/// Workbench argument (file or icon)
+pub struct WBArgument {
+    /// DOS lock on directory containing the file
+    lock: i32,
+    /// Pointer to filename (not full path)
+    name_ptr: *u8,
+}
+
+impl WBArgument {
+    /// Get directory lock
+    ///
+    /// This is a lock on the directory containing the file.
+    /// Use with CurrentDir() to access the file.
+    pub fn lock(&self) -> i32 {
+        return self.lock
+    }
+
+    /// Get filename (not full path)
+    ///
+    /// Just the filename portion - combine with lock for full path.
+    /// Returns None if no name is available.
+    pub fn name(&self) -> Option<Str> {
+        if (u32)self.name_ptr == 0 {
+            return Option::None
+        }
+        return Str::from_cstr(self.name_ptr)
+    }
+
+    /// Get full path by combining lock and name
+    ///
+    /// Allocates memory for the path string.
+    pub fn full_path(&self) -> Result<String, DosError> {
+        // Buffer for path (Amiga max path ~256)
+        var path_buf = [0u8; 512]
+
+        // Get path from lock
+        if self.lock != 0 {
+            let result = NameFromLock(self.lock, (*u8)&path_buf, 508)
+            if result == 0 {
+                return Result::Err(dos_last_error())
+            }
+        } else {
+            path_buf[0] = 0
+        }
+
+        // Find length of current path
+        var path_len: u32 = 0
+        while path_buf[path_len] != 0 {
+            path_len++
+        }
+
+        // Add separator if needed
+        if path_len > 0 {
+            let last_char = path_buf[path_len - 1]
+            // Add / if last char isn't : or /
+            if last_char != $3A && last_char != $2F {  // : and /
+                path_buf[path_len] = $2F  // /
+                path_len++
+            }
+        }
+
+        // Append filename
+        if (u32)self.name_ptr != 0 {
+            var i: u32 = 0
+            while self.name_ptr[i] != 0 && path_len < 510 {
+                path_buf[path_len] = self.name_ptr[i]
+                path_len++
+                i++
+            }
+        }
+        path_buf[path_len] = 0
+
+        // Convert to String
+        var result = String::new()
+        var i: u32 = 0
+        while i < path_len {
+            if !result.push_byte(path_buf[i]) {
+                return Result::Err(DosError::NoFreeStore)
+            }
+            i++
+        }
+
+        return Result::Ok(result)
+    }
+}
+
+/// Get Workbench startup message
+///
+/// Call this early in main() if is_workbench() returns true.
+///
+/// IMPORTANT: The returned WorkbenchStartup will automatically reply
+/// to the startup message when it's dropped. This is REQUIRED by
+/// Workbench - if you don't reply, Workbench will hang!
+///
+/// Example:
+/// ```novus
+/// pub fn main() -> i32 {
+///     if is_workbench() {
+///         let wb = get_workbench_startup() or { return 20 }
+///         // Use wb.num_args(), wb.arg(i), etc.
+///         // Message is replied when wb goes out of scope
+///     } else {
+///         // CLI launch - use Args::parse()
+///     }
+///     return 0
+/// }
+/// ```
+pub fn get_workbench_startup() -> Option<WorkbenchStartup> {
+    // Get our process
+    let task = FindTask((*u8)0)
+    if (u32)task == 0 {
+        return Option::None
+    }
+
+    // Cast to Process
+    let process = (*Process)task
+
+    // Get our message port (pr_MsgPort)
+    let msg_port = &process.pr_MsgPort
+
+    // Wait for message (should already be there)
+    WaitPort(msg_port)
+
+    // Get the message
+    let msg = GetMsg(msg_port)
+    if (u32)msg == 0 {
+        return Option::None
+    }
+
+    // Cast to WBStartup
+    let wb_msg = (*WBStartup)msg
+
+    return Option::Some(WorkbenchStartup {
+        msg: wb_msg,
+        needs_reply: true,
+    })
+}

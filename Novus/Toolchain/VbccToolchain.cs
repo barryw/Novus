@@ -262,6 +262,10 @@ public class VbccToolchain
 
     /// <summary>
     /// Compile a C file to an object file using VBCC's vc frontend (compile only, no linking)
+    /// In debug mode with statement-level debug markers, we use a two-step process:
+    /// 1. Generate assembly with -S
+    /// 2. Post-process to inject debug labels from DBG comments
+    /// 3. Assemble with vasm
     /// </summary>
     public async Task<bool> CompileToObject(
         string cFile,
@@ -276,6 +280,40 @@ public class VbccToolchain
         // Note: Using O=0 for release to test if optimization is the issue
         var optLevel = 0;
 
+        // In debug mode, we use a two-step compile: C -> asm (with post-processing) -> object
+        // This allows us to inject debug labels that VBCC's direct C->obj path doesn't support
+        if (buildMode == BuildMode.Debug)
+        {
+            var asmFile = Path.ChangeExtension(objFile, ".s");
+
+            // Step 1: Compile C to assembly
+            var asmArgs = new List<string>
+            {
+                "+aos68k",          // Target AmigaOS 2.0+ (68020+)
+                "-c99",             // Enable C99 standard
+                $"-cpu={cpu}",      // CPU target
+                "-g",               // Debug symbols
+                $"-O={optLevel}",   // Optimization level
+                "-use-framepointer", // CRITICAL: Force frame pointer (A6) for all functions
+                "-S",               // Generate assembly output
+                "-o", asmFile,      // Output assembly file
+                cFile               // Input C file
+            };
+
+            if (!await RunTool(vcPath, asmArgs))
+            {
+                Console.WriteLine($"VBCC assembly generation failed for {cFile}");
+                return false;
+            }
+
+            // Step 2: Post-process assembly to inject debug labels
+            await InjectDebugLabelsIntoAssembly(asmFile);
+
+            // Step 3: Assemble to object file
+            return await Assemble(asmFile, objFile, cpu, false);
+        }
+
+        // Release mode: direct C -> object compilation
         var args = new List<string>
         {
             "+aos68k",          // Target AmigaOS 2.0+ (68020+)
@@ -288,14 +326,88 @@ public class VbccToolchain
             cFile               // Input C file
         };
 
-        // Debug symbols only in debug mode
-        if (buildMode == BuildMode.Debug)
-        {
-            args.Insert(4, "-g");
-        }
-
         // Don't print here - caller will show progress
         return await RunTool(vcPath, args);
+    }
+
+    /// <summary>
+    /// Post-process VBCC-generated assembly to inject debug labels.
+    ///
+    /// Strategy:
+    /// 1. Parse the C file to extract mapping: C line number → (label name, Novus source:line)
+    /// 2. Parse the assembly file to find VBCC's "debug N" directives
+    /// 3. Inject labels before each "debug N" instruction based on the mapping
+    /// </summary>
+    private async Task InjectDebugLabelsIntoAssembly(string asmFile)
+    {
+        if (!File.Exists(asmFile))
+            return;
+
+        // Get corresponding C file
+        var cFile = Path.ChangeExtension(asmFile, ".c");
+        if (!File.Exists(cFile))
+            return;
+
+        // Step 1: Parse C file to build mapping of C line number → debug info
+        // Format: /* DBG: __dbg_funcname_N = filename:line */
+        var dbgPattern = new System.Text.RegularExpressions.Regex(
+            @"/\*\s*DBG:\s*(__dbg_\w+)\s*=\s*(\S+):(\d+)\s*\*/");
+
+        var lineToDebugInfo = new Dictionary<int, (string LabelName, string FileName, int NovusLine)>();
+        var cLines = await File.ReadAllLinesAsync(cFile);
+
+        for (int i = 0; i < cLines.Length; i++)
+        {
+            var match = dbgPattern.Match(cLines[i]);
+            if (match.Success)
+            {
+                var labelName = match.Groups[1].Value;
+                var fileName = match.Groups[2].Value;
+                var novusLine = int.Parse(match.Groups[3].Value);
+
+                // The DBG comment is on line i+1 (1-indexed), but the actual code is on the NEXT line
+                // So we map the C line AFTER the comment to this debug info
+                lineToDebugInfo[i + 2] = (labelName, fileName, novusLine);
+            }
+        }
+
+        if (lineToDebugInfo.Count == 0)
+            return; // No debug markers to process
+
+        // Step 2: Parse assembly and inject labels at "debug N" directives
+        var asmLines = await File.ReadAllLinesAsync(asmFile);
+        var output = new StringBuilder();
+        var labelCount = 0;
+        var debugPattern = new System.Text.RegularExpressions.Regex(@"^\s*debug\s+(\d+)");
+        var injectedLines = new HashSet<int>(); // Track which C lines we've already injected labels for
+
+        foreach (var line in asmLines)
+        {
+            var match = debugPattern.Match(line);
+            if (match.Success)
+            {
+                var cLineNum = int.Parse(match.Groups[1].Value);
+
+                // Check if we have debug info for this C line and haven't injected it yet
+                if (lineToDebugInfo.TryGetValue(cLineNum, out var info) && !injectedLines.Contains(cLineNum))
+                {
+                    // Emit the label as a global symbol so it appears in the symbol table
+                    output.AppendLine($"\txdef\t_{info.LabelName}");
+                    output.AppendLine($"_{info.LabelName}:");
+                    output.AppendLine($"; Source: {info.FileName}:{info.NovusLine}");
+                    labelCount++;
+                    injectedLines.Add(cLineNum);
+                }
+            }
+            output.AppendLine(line);
+        }
+
+        if (labelCount > 0)
+        {
+            Console.WriteLine($"  → Injected {labelCount} debug label(s) into {Path.GetFileName(asmFile)}");
+        }
+
+        await File.WriteAllTextAsync(asmFile, output.ToString());
     }
 
     /// <summary>

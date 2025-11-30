@@ -1,0 +1,191 @@
+// Copper and Blitter DSL Demo
+// Demonstrates the low-level DSL syntax for direct hardware programming
+//
+// This example shows:
+// 1. Copper DSL: Creating and ACTIVATING a display list with gradient bars
+// 2. Blitter DSL: Direct hardware register writes for fast memory operations
+
+from std::core import Result
+from std::ffi::exec import AllocMem, FreeMem, TypeOfMem
+from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR
+from std::ffi::graphics import OwnBlitter, DisownBlitter, WaitBlit, WaitTOF, LoadView
+from std::ffi::intuition import ViewAddress
+from std::ffi::amiga_structs import View
+from std::hardware::registers import CUSTOM_BASE, COP1LC, COPJMP1, DMACON
+
+/// Run a copper list for a specified number of frames, then restore system
+@suppress("W0001", "Arithmetic operations are intentional")
+@suppress("W0002", "Truncation is intentional")
+fn run_copper_for_frames(copper_list: *u16, frames: i32) {
+    unsafe {
+        // Save system view
+        let saved: *View = ViewAddress()
+        WaitBlit()
+        LoadView(null)
+        WaitTOF()
+
+        // Write copper list pointer to hardware
+        let addr: u32 = (u32)copper_list
+        let cop1lc: *u32 = (*u32)(CUSTOM_BASE + COP1LC)
+        *cop1lc = addr
+
+        // Strobe COPJMP1 and enable copper DMA
+        let copjmp: *u16 = (*u16)(CUSTOM_BASE + COPJMP1)
+        *copjmp = 0
+        let dmacon: *u16 = (*u16)(CUSTOM_BASE + DMACON)
+        *dmacon = $8080
+
+        WaitTOF()
+
+        // Wait for specified frames
+        var count: i32 = 0
+        while count < frames {
+            WaitTOF()
+            count = count + 1
+        }
+
+        // Restore system
+        *dmacon = $0080  // Disable copper DMA
+        LoadView(saved)
+        WaitTOF()
+    }
+}
+
+/// Demo: Create and activate a copper list with color gradient
+pub fn demo_copper_gradient() -> i32 {
+    unsafe {
+        // Create a copper list with vertical color gradient
+        let copper_list: *u16 = copper {
+            wait(0, 44)    move($180, $000)   // Black
+            wait(0, 60)    move($180, $100)   // Dark red
+            wait(0, 80)    move($180, $300)   // Medium-dark red
+            wait(0, 100)   move($180, $500)   // Medium red
+            wait(0, 120)   move($180, $700)   // Medium-bright red
+            wait(0, 140)   move($180, $900)   // Bright red
+            wait(0, 160)   move($180, $B00)   // Brighter red
+            wait(0, 180)   move($180, $F00)   // Full red
+            wait(0, 200)   move($180, $D20)   // Orange-red
+            wait(0, 220)   move($180, $A40)   // Orange
+            wait(0, 240)   move($180, $680)   // Yellow-green
+            wait(0, 4)     move($180, $2A0)   // Green (wrapped to next frame)
+            wait(0, 24)    move($180, $000)   // Back to black
+        }
+
+        if !copper_list {
+            return 1
+        }
+
+        // Show the gradient for 3 seconds (150 frames at 50Hz)
+        run_copper_for_frames(copper_list, 150)
+    }
+
+    return 0
+}
+
+/// Demo: Blitter fill operation
+@suppress("W0001", "Arithmetic operations are intentional")
+pub fn demo_blitter_fill() -> i32 {
+    let buffer_size: u32 = 1024
+
+    unsafe {
+        let buffer: *u8 = AllocMem(buffer_size, MEMF_CHIP | MEMF_CLEAR)
+
+        if !buffer {
+            return 1
+        }
+
+        let mem_type: u32 = TypeOfMem(buffer)
+        if (mem_type & MEMF_CHIP) == 0 {
+            FreeMem(buffer, buffer_size)
+            return 2
+        }
+
+        OwnBlitter()
+        WaitBlit()
+
+        // Fill 64x16 pixels
+        blitter {
+            dest: buffer,
+            width: 64,
+            height: 16,
+            minterm: $F0
+        }
+
+        WaitBlit()
+        DisownBlitter()
+        FreeMem(buffer, buffer_size)
+    }
+
+    return 0
+}
+
+/// Demo: Blitter copy between buffers
+@suppress("W0001", "Arithmetic operations are intentional")
+@suppress("W0002", "Truncation is intentional")
+pub fn demo_blitter_copy() -> i32 {
+    let half_size: u32 = 1024
+
+    unsafe {
+        let src: *u8 = AllocMem(half_size, MEMF_CHIP | MEMF_CLEAR)
+        if !src { return 1 }
+
+        let dst: *u8 = AllocMem(half_size, MEMF_CHIP | MEMF_CLEAR)
+        if !dst {
+            FreeMem(src, half_size)
+            return 2
+        }
+
+        // Fill source with pattern
+        var idx: u32 = 0
+        while idx < half_size {
+            let ptr: *u8 = (*u8)((u32)src + idx)
+            *ptr = (u8)(idx & $FF)
+            idx = idx + 1
+        }
+
+        OwnBlitter()
+        WaitBlit()
+
+        // Copy 32x32 pixels
+        blitter {
+            source: src,
+            dest: dst,
+            width: 32,
+            height: 32,
+            minterm: $F0
+        }
+
+        WaitBlit()
+        DisownBlitter()
+
+        // Verify copy
+        var success: bool = true
+        var check_idx: u32 = 0
+        while check_idx < 128 && success {
+            let s: *u8 = (*u8)((u32)src + check_idx)
+            let d: *u8 = (*u8)((u32)dst + check_idx)
+            if *s != *d { success = false }
+            check_idx = check_idx + 1
+        }
+
+        FreeMem(dst, half_size)
+        FreeMem(src, half_size)
+
+        if success { return 0 }
+        return 3
+    }
+}
+
+/// Main entry point
+pub fn main() -> i32 {
+    let copper_result: i32 = demo_copper_gradient()
+    if copper_result != 0 { return 10 + copper_result }
+
+    let fill_result: i32 = demo_blitter_fill()
+    if fill_result != 0 { return 20 + fill_result }
+
+    let copy_result: i32 = demo_blitter_copy()
+    if copy_result != 0 { return 30 + copy_result }
+
+    return 0
+}

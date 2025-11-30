@@ -133,7 +133,7 @@ fn test() {
     #region Blitter DSL Parsing Tests
 
     [Fact]
-    public void BlitterDsl_SimpleCopy_Parses()
+    public void BlitterDsl_SimpleCopy_GeneratesRegisterWrites()
     {
         // Note: blitter fields are comma-separated per grammar
         var source = @"
@@ -151,12 +151,21 @@ fn test(src: *u8, dst: *u8) {
         var module = BuildIR(source);
         Assert.NotNull(module);
         Assert.Single(module.Functions);
-        Assert.Single(module.HirInstructions);
-        Assert.IsType<HirBlitterJob>(module.HirInstructions[0]);
+
+        // Blitter DSL now generates inline code instead of HIR instructions
+        Assert.Empty(module.HirInstructions);
+
+        // Check that register write instructions were generated
+        var func = module.Functions[0];
+        var allInstructions = func.BasicBlocks.SelectMany(b => b.Instructions).ToList();
+
+        // Should have multiple IrDereferenceStore instructions for blitter registers
+        var derefStores = allInstructions.OfType<IrDereferenceStore>().ToList();
+        Assert.True(derefStores.Count >= 7, $"Expected at least 7 register writes, got {derefStores.Count}");
     }
 
     [Fact]
-    public void BlitterDsl_WithAllFields_Parses()
+    public void BlitterDsl_WithAllFields_GeneratesRegisterWrites()
     {
         // Note: blitter fields are comma-separated per grammar
         var source = @"
@@ -177,12 +186,16 @@ fn test(a: *u8, b: *u8, c: *u8, d: *u8) {
         var module = BuildIR(source);
         Assert.NotNull(module);
 
-        var blitterJob = Assert.Single(module.HirInstructions) as HirBlitterJob;
-        Assert.NotNull(blitterJob);
-        Assert.True(blitterJob.Fields.ContainsKey("sourcea"));
-        Assert.True(blitterJob.Fields.ContainsKey("sourceb"));
-        Assert.True(blitterJob.Fields.ContainsKey("sourcec"));
-        Assert.True(blitterJob.Fields.ContainsKey("dest"));
+        // Blitter DSL now generates inline code instead of HIR instructions
+        Assert.Empty(module.HirInstructions);
+
+        // Check that register write instructions were generated
+        var func = module.Functions[0];
+        var allInstructions = func.BasicBlocks.SelectMany(b => b.Instructions).ToList();
+
+        // With all sources (A, B, C) and dest, should have more register writes
+        var derefStores = allInstructions.OfType<IrDereferenceStore>().ToList();
+        Assert.True(derefStores.Count >= 10, $"Expected at least 10 register writes for full blitter setup, got {derefStores.Count}");
     }
 
     [Fact]
@@ -338,12 +351,14 @@ fn test() {
 
     #endregion
 
-    #region Blitter Lowering Tests
+    #region Blitter Inline Code Generation Tests
 
     [Fact]
-    public void BlitterLowering_RemovesHirInstruction()
+    public void BlitterDsl_GeneratesInlineCode_NoHirInstruction()
     {
         // Note: blitter fields are comma-separated per grammar
+        // Blitter DSL now generates inline code directly in IrBuilder,
+        // not an HIR instruction that needs lowering
         var source = @"
 fn test(src: *u8, dst: *u8) {
     unsafe {
@@ -358,19 +373,21 @@ fn test(src: *u8, dst: *u8) {
 }";
         var module = BuildIR(source);
 
-        // Run the blitter lowering pass
-        var pass = new BlitterLoweringPass();
-        bool changed = pass.Transform(module);
-
-        Assert.True(changed);
-        // HIR instruction should be removed
+        // No HIR instruction is created - blitter generates inline register writes
         Assert.Empty(module.HirInstructions);
+
+        // Verify register write instructions were generated
+        var func = module.Functions[0];
+        var allInstructions = func.BasicBlocks.SelectMany(b => b.Instructions).ToList();
+        var derefStores = allInstructions.OfType<IrDereferenceStore>().ToList();
+        Assert.True(derefStores.Count >= 7, $"Expected at least 7 register writes, got {derefStores.Count}");
     }
 
     [Fact]
-    public void BlitterLowering_ValidatesDestinationRequired()
+    public void BlitterDsl_ValidatesDestinationRequired()
     {
         // Note: blitter fields are comma-separated per grammar
+        // Missing destination should cause a semantic error during analysis
         var source = @"
 fn test(src: *u8) {
     unsafe {
@@ -381,11 +398,30 @@ fn test(src: *u8) {
         }
     }
 }";
-        var module = BuildIR(source);
+        var (diagnostics, _) = Analyze(source);
+        // Should report an error about missing destination
+        Assert.True(diagnostics.HasErrors);
+    }
 
-        // Run the blitter lowering pass - should throw because no destination
-        var pass = new BlitterLoweringPass();
-        Assert.Throws<InvalidOperationException>(() => pass.Transform(module));
+    [Fact]
+    public void BlitterDsl_ValidatesMintermRequired()
+    {
+        // Note: blitter fields are comma-separated per grammar
+        // Missing minterm should cause a semantic error
+        var source = @"
+fn test(src: *u8, dst: *u8) {
+    unsafe {
+        blitter {
+            source: src,
+            dest: dst,
+            width: 16,
+            height: 16
+        }
+    }
+}";
+        var (diagnostics, _) = Analyze(source);
+        // Should report an error about missing minterm
+        Assert.True(diagnostics.HasErrors);
     }
 
     #endregion

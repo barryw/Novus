@@ -1981,6 +1981,13 @@ public class NovusFormatter : NovusBaseVisitor<object?>
         return null;
     }
 
+    public override object? VisitMutIdentifierPattern(NovusParser.MutIdentifierPatternContext context)
+    {
+        Write("mut ");
+        Write(context.IDENTIFIER().GetText());
+        return null;
+    }
+
     public override object? VisitLiteralPattern(NovusParser.LiteralPatternContext context)
     {
         Write(context.GetText());

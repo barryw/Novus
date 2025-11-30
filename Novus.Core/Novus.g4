@@ -254,6 +254,7 @@ pattern
     | '&' pattern                               # ReferencePattern
     | variantName '(' patternList? ')'         # VariantPattern
     | IDENTIFIER '::' IDENTIFIER ('::' IDENTIFIER)*  # SimpleVariantPattern
+    | KW_MUT IDENTIFIER                         # MutIdentifierPattern
     | IDENTIFIER                                # IdentifierPattern
     | INTEGER_LITERAL                           # LiteralPattern
     | HEX_LITERAL                               # LiteralPattern

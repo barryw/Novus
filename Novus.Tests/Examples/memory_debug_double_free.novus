@@ -1,0 +1,51 @@
+// Example: Double-Free Detection
+//
+// Description:
+//   Demonstrates double-free detection in debug builds.
+//   Allocates memory, frees it, then attempts to free it again.
+//   When compiled with --safety-level 2 or 3, an Amiga system
+//   requester will appear immediately when the double-free
+//   is attempted.
+//
+// Build:
+//   novus compile memory_debug_double_free.novus --safety-level 2
+//
+// Expected Behavior:
+//   Shows a requester:
+//   "DOUBLE FREE DETECTED at memory_debug_double_free.novus:42
+//    Pointer 0xXXXXXX was already freed!"
+//
+//   WARNING: This program demonstrates a bug. On a real Amiga
+//   without debug mode, double-free can corrupt memory and crash.
+//
+// Exit code: Should not reach normal exit due to double-free
+
+from std::ffi::exec import AllocMem, FreeMem
+from std::ffi::amiga_consts import MEMF_ANY
+
+pub fn main() -> i32 {
+    unsafe {
+        // Allocate some memory
+        let ptr = AllocMem(64, MEMF_ANY)
+
+        if ptr == null {
+            return 1  // Allocation failed
+        }
+
+        // Use the memory
+        let byte_ptr: *u8 = (*u8)ptr
+        byte_ptr[0] = 170u8  // 0xAA
+        byte_ptr[1] = 187u8  // 0xBB
+
+        // Free the memory - this is correct
+        FreeMem(ptr, 64)
+
+        // INTENTIONAL BUG: Double-free!
+        // The memory debugger should catch this immediately
+        // and show an error before this line completes
+        FreeMem(ptr, 64)
+
+        // Should never reach here in debug builds
+        return 0
+    }
+}

@@ -205,3 +205,4 @@ pub fn rgb12_from_u8(r: u8, g: u8, b: u8) -> u16 {
     let b4: u8 = b / 17
     return rgb12(r4, g4, b4)
 }
+

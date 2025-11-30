@@ -105,10 +105,9 @@ public class CopperLoweringPass : TransformPassBase
         {
             // Generate static copper list data
             var label = $"__copper_list_{_copperListCounter++}";
-            var copperData = new IrCopperListData(label, words);
 
-            // Create a static variable for the copper list
-            // Note: This needs chip RAM attribute, but for now we use regular static
+            // Create a static variable for the copper list in CHIP RAM
+            // Copper DMA requires chip RAM - this is enforced at compile time
             var arrayType = new IrArrayType(IrIntType.U16, words.Count);
             var arrayLiteral = new IrArrayLiteral(arrayType);
             foreach (var word in words)
@@ -121,7 +120,8 @@ public class CopperLoweringPass : TransformPassBase
                 arrayType,
                 Visibility.Private,
                 isMutable: false,
-                arrayLiteral
+                arrayLiteral,
+                section: MemorySection.Chip  // CHIP RAM required for Copper DMA
             );
             module.StaticVariables.Add(staticVar);
 

@@ -1,0 +1,43 @@
+// mmu_detect.novus - MMU Detection Test
+// Demonstrates the std::hardware::mmu module for detecting MMU presence
+// Run with: novus compile mmu_detect.novus -o mmu_detect
+
+from std::hardware::mmu import MMU, has_mmu, page_size, has_mmu_library, SystemMMU
+from std::ffi::dos import PutStr
+
+pub fn main() -> i32 {
+    PutStr("=== MMU Detection Test ===\n\n")
+
+    // Get the MMU type
+    let mmu_type = MMU()
+
+    // Check if MMU is present
+    if has_mmu() {
+        // Print detected MMU type
+        match mmu_type {
+            SystemMMU::M68851 => PutStr("MMU Type: 68851 PMMU (external)\n"),
+            SystemMMU::M68030 => PutStr("MMU Type: 68030 (integrated)\n"),
+            SystemMMU::M68040 => PutStr("MMU Type: 68040 (integrated)\n"),
+            SystemMMU::M68060 => PutStr("MMU Type: 68060 (integrated)\n"),
+            SystemMMU::None => PutStr("MMU Type: None (bug - has_mmu() returned true)\n"),
+        }
+
+        // Check mmu.library availability
+        if has_mmu_library() {
+            PutStr("mmu.library: Available\n\n")
+            PutStr("Advanced MMU features can be used!\n")
+        } else {
+            PutStr("mmu.library: Not available\n\n")
+            PutStr("Note: Install mmu.library for advanced MMU features\n")
+        }
+    } else {
+        PutStr("MMU Type: None\n\n")
+        PutStr("No MMU detected on this system.\n")
+        PutStr("MMU is only available on 68030/040/060 processors\n")
+        PutStr("(or 68020 with external 68851 PMMU)\n")
+    }
+
+    PutStr("\n=== Test Complete ===\n")
+
+    return 0
+}

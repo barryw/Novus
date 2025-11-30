@@ -804,37 +804,36 @@ public class TypeParser
                 string? cacheKey = null;
                 if (remainingGenericParams.Count == 0)
                 {
-                    // Fully monomorphized - generate cache key
-                    // BUG FIX: Even if enumType.GenericParameters.Count == 0, we may have substituted
-                    // generic types in the variant data. Extract the actual type args from variant data.
-                    if (enumType.GenericParameters.Count > 0)
+                    // Fully monomorphized - generate cache key from SUBSTITUTED variant data
+                    // BUG FIX: We must generate the cache key from the actual substituted types in variant data,
+                    // NOT from the raw substitution map. This is because the variant data may be a complex type
+                    // like Vec<T> which becomes Vec<u32> after substitution, not just u32.
+                    // For example: Option<Vec<T>> with T->u32 should become Option<Vec<u32>>, not Option<u32>.
+                    var typeArgKeys = new List<string>();
+                    foreach (var variant in substitutedVariants)
                     {
-                        // Original enum had generic parameters - use those
-                        var typeArgKeys = enumType.GenericParameters.Select(p =>
-                            substitutions.ContainsKey(p) ? GetTypeCacheKey(substitutions[p]) : p);
+                        foreach (var dataType in variant.AssociatedData)
+                        {
+                            // Add the cache key for each concrete type in variant data
+                            if (!(dataType is IrGenericType))
+                            {
+                                typeArgKeys.Add(GetTypeCacheKey(dataType));
+                            }
+                        }
+                    }
+                    if (typeArgKeys.Count > 0)
+                    {
+                        // Use the first non-generic type argument (most enums have only one)
+                        // For enums with multiple type params, we'd need to match them up properly
                         cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
                     }
                     else
                     {
-                        // Original enum had no generic parameters listed, but we substituted types in variant data
-                        // Extract the type arguments from the SUBSTITUTED variant data
-                        // This handles cases like Option<*T> where T gets substituted in the variant data to *u8
-                        var typeArgKeys = new HashSet<string>();
-                        foreach (var variant in substitutedVariants)
-                        {
-                            foreach (var dataType in variant.AssociatedData)
-                            {
-                                // Add the cache key for each concrete type in variant data
-                                if (!(dataType is IrGenericType))
-                                {
-                                    typeArgKeys.Add(GetTypeCacheKey(dataType));
-                                }
-                            }
-                        }
-                        if (typeArgKeys.Count > 0)
-                        {
-                            cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys.OrderBy(x => x))}>";
-                        }
+                        // No associated data with concrete types (unit variants only)
+                        // Fall back to using the raw substitution map
+                        var fallbackTypeArgKeys = enumType.GenericParameters.Select(p =>
+                            substitutions.ContainsKey(p) ? GetTypeCacheKey(substitutions[p]) : p);
+                        cacheKey = $"{enumType.EnumName}<{string.Join(",", fallbackTypeArgKeys)}>";
                     }
                 }
 

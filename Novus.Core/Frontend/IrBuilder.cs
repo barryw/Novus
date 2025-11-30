@@ -86,6 +86,23 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
     private readonly DiagnosticBag _diagnostics = new();
     private readonly List<string> _sourceLines = new();
 
+    // Statement-level source location tracking for debug symbols
+    // Set at the start of each statement and propagated to IR instructions
+    private SourceLocation? _currentStatementLocation = null;
+
+    /// <summary>
+    /// Emit an instruction with the current statement's source location attached.
+    /// This enables statement-level debug symbols for precise crash location reporting.
+    /// </summary>
+    private void Emit(IrInstruction instruction)
+    {
+        if (_currentStatementLocation != null)
+        {
+            instruction.Location = _currentStatementLocation;
+        }
+        _currentBlock!.AddInstruction(instruction);
+    }
+
     /// <summary>
     /// Nested class that implements ITypeParsingContext for IrBuilder
     /// </summary>
@@ -446,6 +463,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
             var (visibility, isExtern, _) = AstModifierHelper.ParseModifiers(funcContext, 4);
 
             var function = new IrFunction(name, returnType, visibility, isExtern);
+            function.Location = GetLocation(funcContext);  // Store source location for debug info
 
             // Check for #[export] attribute
             var attributes = ParseAttributesSimple(funcContext.attribute());
@@ -532,6 +550,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
                 var mangledName = GenerateMethodMangledName(typeName!, methodName, isTraitImpl, traitName, traitTypeArgs);
 
                 var function = new IrFunction(mangledName, returnType, visibility, isExtern);
+                function.Location = GetLocation(funcDecl);  // Store source location for debug info
 
                 // Parse parameters (including self)
                 if (funcDecl.parameterList() != null)

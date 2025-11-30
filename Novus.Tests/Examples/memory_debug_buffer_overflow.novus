@@ -1,0 +1,59 @@
+// Example: Buffer Overflow Detection (Guard Bytes)
+//
+// Description:
+//   Demonstrates buffer overflow detection using guard bytes.
+//   Allocates memory and writes past the end of the buffer.
+//   When compiled with --safety-level 3 (paranoid), guard bytes
+//   are placed before and after each allocation. When FreeMem is
+//   called, the guard bytes are checked and corruption is detected.
+//
+// Build:
+//   novus compile memory_debug_buffer_overflow.novus --safety-level 3
+//
+// Expected Behavior:
+//   When FreeMem is called, shows a requester:
+//   "BUFFER OVERFLOW DETECTED!
+//    Guard bytes corrupted at 0xXXXXXX
+//    Allocated at memory_debug_buffer_overflow.novus:31
+//    Freed at memory_debug_buffer_overflow.novus:50"
+//
+//   WARNING: This program demonstrates a bug. On a real Amiga
+//   without paranoid mode, buffer overflow corrupts adjacent memory.
+//
+// Exit code: May not reach normal exit due to guard byte check
+
+from std::ffi::exec import AllocMem, FreeMem
+from std::ffi::amiga_consts import MEMF_ANY
+
+pub fn main() -> i32 {
+    unsafe {
+        // Allocate a small buffer (16 bytes)
+        let ptr = AllocMem(16, MEMF_ANY)
+
+        if ptr == null {
+            return 1  // Allocation failed
+        }
+
+        let byte_ptr: *u8 = (*u8)ptr
+
+        // Fill the buffer with valid data
+        var i: u32 = 0
+        while i < 16 {
+            byte_ptr[i] = (u8)i
+            i = i + 1
+        }
+
+        // INTENTIONAL BUG: Write past the end of the buffer!
+        // This overwrites the trailing guard bytes (in paranoid mode)
+        byte_ptr[16] = 255u8  // 0xFF - 1 byte past end
+        byte_ptr[17] = 255u8  // 0xFF - 2 bytes past end
+        byte_ptr[18] = 255u8  // 0xFF - 3 bytes past end
+        byte_ptr[19] = 255u8  // 0xFF - 4 bytes past end (all guard bytes corrupted)
+
+        // When we free, the guard byte check will detect the corruption
+        FreeMem(ptr, 16)
+
+        // Should not reach here in paranoid builds
+        return 0
+    }
+}

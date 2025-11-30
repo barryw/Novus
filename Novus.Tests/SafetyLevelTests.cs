@@ -212,7 +212,7 @@ public class SafetyLevelTests
 
         var description = level.GetDescription();
 
-        Assert.Equal("Full safety checks (includes overflow detection)", description);
+        Assert.Equal("Full safety checks (overflow, memory tracking, leak detection)", description);
     }
 
     [Fact]
@@ -222,7 +222,7 @@ public class SafetyLevelTests
 
         var description = level.GetDescription();
 
-        Assert.Equal("Paranoid mode (maximum safety, slower)", description);
+        Assert.Equal("Paranoid mode (guard bytes, memory poisoning, maximum safety)", description);
     }
 
     [Fact]

@@ -62,7 +62,45 @@ public class TransformPipeline
     }
 
     /// <summary>
-    /// Create a standard transformation pipeline
+    /// Create a pipeline for required HIR lowering passes.
+    /// These MUST run regardless of optimization level to convert DSLs to standard IR.
+    /// </summary>
+    public static TransformPipeline CreateLoweringPipeline(bool verbose = false)
+    {
+        var pipeline = new TransformPipeline(verbose);
+
+        // HIR Lowering passes - convert high-level DSLs to standard IR
+        pipeline.AddPass(new Passes.CopperLoweringPass());
+        pipeline.AddPass(new Passes.BlitterLoweringPass());
+
+        // Future required lowering passes:
+        // pipeline.AddPass(new Passes.AsyncLoweringPass());
+
+        return pipeline;
+    }
+
+    /// <summary>
+    /// Create a pipeline for optional optimization-related transformations.
+    /// These only run when optimization is enabled.
+    /// </summary>
+    public static TransformPipeline CreateOptimizationPipeline(bool enableInlining = false, bool verbose = false)
+    {
+        var pipeline = new TransformPipeline(verbose);
+
+        // Inlining pass - only when optimizing
+        if (enableInlining)
+        {
+            pipeline.AddPass(new Passes.InlineExpansionPass());
+        }
+
+        // Future optimization passes:
+        // pipeline.AddPass(new Passes.GenericMonomorphizationPass());
+
+        return pipeline;
+    }
+
+    /// <summary>
+    /// Create a standard transformation pipeline (legacy - for tests)
     /// </summary>
     public static TransformPipeline CreatePipeline(bool enableInlining = false, bool verbose = false)
     {

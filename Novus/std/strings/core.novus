@@ -773,3 +773,922 @@ extern fn strstr(haystack: *u8, needle: *u8) -> *u8
 extern fn memmove(dest: *u8, src: *u8, n: u32) -> *u8
 extern fn memset(ptr: *u8, value: i32, n: u32) -> *u8
 extern fn memcmp(s1: *u8, s2: *u8, n: u32) -> i32
+
+// ============================================================================
+// Parse Errors
+// ============================================================================
+
+/// Errors that can occur during string parsing operations
+pub enum ParseError {
+    /// Empty string where value expected
+    Empty,
+    /// Invalid character at position
+    InvalidChar(u32),
+    /// Number overflow (value too large)
+    Overflow,
+    /// Number underflow (value too small for signed)
+    Underflow,
+    /// Invalid boolean (not "true" or "false")
+    InvalidBool,
+}
+
+// ============================================================================
+// String Parsing Methods
+// ============================================================================
+
+impl Str {
+    /// Parse signed 32-bit integer
+    ///
+    /// Accepts optional leading '-' or '+', then digits 0-9
+    /// Handles overflow/underflow
+    ///
+    /// Example:
+    /// ```novus
+    /// let s = Str::from_cstr("-12345")
+    /// let value = s.parse_i32()?  // Returns Ok(-12345)
+    /// ```
+    pub fn parse_i32(&self) -> Result<i32, ParseError> {
+        if self.len == 0 {
+            return Result::Err(ParseError::Empty)
+        }
+
+        var idx: u32 = 0
+        var negative: bool = false
+
+        // Check for sign
+        let first_char: u8 = self.ptr[0]
+        if first_char == $2D {  // '-'
+            negative = true
+            idx = 1
+        } else if first_char == $2B {  // '+'
+            idx = 1
+        }
+
+        // Must have at least one digit after sign
+        if idx >= self.len {
+            return Result::Err(ParseError::Empty)
+        }
+
+        var result: i32 = 0
+        let min_val: i32 = -2147483648
+        let max_val: i32 = 2147483647
+
+        while idx < self.len {
+            let ch: u8 = self.ptr[idx]
+
+            // Check for digit 0-9
+            if ch < $30 || ch > $39 {
+                return Result::Err(ParseError::InvalidChar(idx))
+            }
+
+            let digit: i32 = (i32)(ch - $30)
+
+            // Check for overflow before multiplication
+            if negative {
+                // For negative: check if result * 10 - digit < MIN
+                if result < (min_val + digit) / 10 {
+                    return Result::Err(ParseError::Underflow)
+                }
+                result = result * 10 - digit
+            } else {
+                // For positive: check if result * 10 + digit > MAX
+                if result > (max_val - digit) / 10 {
+                    return Result::Err(ParseError::Overflow)
+                }
+                result = result * 10 + digit
+            }
+
+            idx++
+        }
+
+        return Result::Ok(result)
+    }
+
+    /// Parse unsigned 32-bit integer
+    ///
+    /// Accepts digits 0-9, no sign
+    ///
+    /// Example:
+    /// ```novus
+    /// let s = Str::from_cstr("42")
+    /// let value = s.parse_u32()?  // Returns Ok(42)
+    /// ```
+    pub fn parse_u32(&self) -> Result<u32, ParseError> {
+        if self.len == 0 {
+            return Result::Err(ParseError::Empty)
+        }
+
+        var result: u32 = 0
+        // max_val for u32 overflow check: 0xFFFFFFFF
+        let max_val: u32 = (u32)(-1)
+        var idx: u32 = 0
+
+        while idx < self.len {
+            let ch: u8 = self.ptr[idx]
+
+            // Check for digit 0-9
+            if ch < $30 || ch > $39 {
+                return Result::Err(ParseError::InvalidChar(idx))
+            }
+
+            let digit: u32 = (u32)(ch - $30)
+
+            // Check for overflow before multiplication
+            if result > (max_val - digit) / 10 {
+                return Result::Err(ParseError::Overflow)
+            }
+
+            result = result * 10 + digit
+            idx++
+        }
+
+        return Result::Ok(result)
+    }
+
+    /// Parse hexadecimal (case-insensitive, optional 0x prefix)
+    ///
+    /// Example:
+    /// ```novus
+    /// let s1 = Str::from_cstr("0xFF00")
+    /// let s2 = Str::from_cstr("ff00")
+    /// let v1 = s1.parse_hex()?  // Ok(0xFF00)
+    /// let v2 = s2.parse_hex()?  // Ok(0xFF00)
+    /// ```
+    pub fn parse_hex(&self) -> Result<u32, ParseError> {
+        if self.len == 0 {
+            return Result::Err(ParseError::Empty)
+        }
+
+        var idx: u32 = 0
+
+        // Skip optional "0x" or "0X" prefix
+        if self.len >= 2 {
+            let c0: u8 = self.ptr[0]
+            let c1: u8 = self.ptr[1]
+            if c0 == $30 && (c1 == $78 || c1 == $58) {  // '0x' or '0X'
+                idx = 2
+            }
+        }
+
+        // Must have at least one hex digit
+        if idx >= self.len {
+            return Result::Err(ParseError::Empty)
+        }
+
+        var result: u32 = 0
+        let max_before_shift: u32 = 268435455  // 0x0FFFFFFF - max value before << 4
+
+        while idx < self.len {
+            let ch: u8 = self.ptr[idx]
+            var digit: u32 = 0
+
+            // Convert hex digit to value
+            if ch >= $30 && ch <= $39 {  // '0'-'9'
+                digit = (u32)(ch - $30)
+            } else if ch >= $41 && ch <= $46 {  // 'A'-'F'
+                digit = (u32)(ch - $41 + 10)
+            } else if ch >= $61 && ch <= $66 {  // 'a'-'f'
+                digit = (u32)(ch - $61 + 10)
+            } else {
+                return Result::Err(ParseError::InvalidChar(idx))
+            }
+
+            // Check for overflow before shift
+            if result > max_before_shift {
+                return Result::Err(ParseError::Overflow)
+            }
+
+            result = (result << 4) | digit
+            idx++
+        }
+
+        return Result::Ok(result)
+    }
+
+    /// Parse boolean ("true" or "false", case-insensitive)
+    pub fn parse_bool(&self) -> Result<bool, ParseError> {
+        if self.len == 4 {
+            // Check for "true" (case-insensitive)
+            let c0: u8 = self.ptr[0]
+            let c1: u8 = self.ptr[1]
+            let c2: u8 = self.ptr[2]
+            let c3: u8 = self.ptr[3]
+
+            // Convert to lowercase for comparison
+            let l0: u8 = c0 | $20
+            let l1: u8 = c1 | $20
+            let l2: u8 = c2 | $20
+            let l3: u8 = c3 | $20
+
+            if l0 == $74 && l1 == $72 && l2 == $75 && l3 == $65 {  // "true"
+                return Result::Ok(true)
+            }
+        } else if self.len == 5 {
+            // Check for "false" (case-insensitive)
+            let c0: u8 = self.ptr[0]
+            let c1: u8 = self.ptr[1]
+            let c2: u8 = self.ptr[2]
+            let c3: u8 = self.ptr[3]
+            let c4: u8 = self.ptr[4]
+
+            // Convert to lowercase for comparison
+            let l0: u8 = c0 | $20
+            let l1: u8 = c1 | $20
+            let l2: u8 = c2 | $20
+            let l3: u8 = c3 | $20
+            let l4: u8 = c4 | $20
+
+            if l0 == $66 && l1 == $61 && l2 == $6C && l3 == $73 && l4 == $65 {  // "false"
+                return Result::Ok(false)
+            }
+        }
+
+        return Result::Err(ParseError::InvalidBool)
+    }
+}
+
+// ============================================================================
+// String Splitting and Iteration
+// ============================================================================
+
+/// Iterator over string split by delimiter
+///
+/// Example:
+/// ```novus
+/// let path = Str::from_cstr("SYS:C/Dir")
+/// var split = path.split($2F)  // '/' = 0x2F
+/// while let Some(part) = split.next() {
+///     // part is Str for each segment
+/// }
+/// ```
+pub struct SplitIter {
+    remaining: Str,
+    delimiter: u8,
+    done: bool,
+}
+
+impl SplitIter {
+    /// Create a new split iterator
+    pub fn new(s: Str, delimiter: u8) -> SplitIter {
+        return SplitIter {
+            remaining: s,
+            delimiter: delimiter,
+            done: false,
+        }
+    }
+
+    /// Get next substring
+    pub fn next(&mut self) -> Option<Str> {
+        if self.done {
+            return Option::None
+        }
+
+        // Find delimiter in remaining string
+        var idx: u32 = 0
+        var found: bool = false
+        while idx < self.remaining.len && !found {
+            if self.remaining.ptr[idx] == self.delimiter {
+                found = true
+            } else {
+                idx++
+            }
+        }
+
+        if found {
+            // Return substring up to delimiter, advance past delimiter
+            let result = Str { ptr: self.remaining.ptr, len: idx }
+            if idx + 1 < self.remaining.len {
+                self.remaining = Str {
+                    ptr: self.remaining.ptr + idx + 1,
+                    len: self.remaining.len - idx - 1,
+                }
+            } else {
+                // Delimiter at end - remaining is empty, but need one more iteration
+                self.remaining = Str { ptr: self.remaining.ptr, len: 0 }
+            }
+            return Option::Some(result)
+        } else {
+            // No delimiter found - return remaining string and mark done
+            self.done = true
+            return Option::Some(self.remaining)
+        }
+    }
+}
+
+/// Iterator over lines in a string (splits by LF, CR, or CRLF)
+pub struct LinesIter {
+    remaining: Str,
+    done: bool,
+}
+
+impl LinesIter {
+    /// Create a new lines iterator
+    pub fn new(s: Str) -> LinesIter {
+        return LinesIter {
+            remaining: s,
+            done: false,
+        }
+    }
+
+    /// Get next line
+    pub fn next(&mut self) -> Option<Str> {
+        if self.done {
+            return Option::None
+        }
+
+        if self.remaining.len == 0 {
+            self.done = true
+            return Option::None
+        }
+
+        // Find line ending (LF, CR, or CRLF)
+        var idx: u32 = 0
+        var found: bool = false
+        var skip: u32 = 1  // How many bytes to skip (1 for LF/CR, 2 for CRLF)
+
+        while idx < self.remaining.len && !found {
+            let ch: u8 = self.remaining.ptr[idx]
+            if ch == $0A {  // LF
+                found = true
+            } else if ch == $0D {  // CR
+                found = true
+                // Check for CRLF
+                if idx + 1 < self.remaining.len && self.remaining.ptr[idx + 1] == $0A {
+                    skip = 2
+                }
+            } else {
+                idx++
+            }
+        }
+
+        if found {
+            // Return line without line ending
+            let result = Str { ptr: self.remaining.ptr, len: idx }
+            let new_start: u32 = idx + skip
+            if new_start < self.remaining.len {
+                self.remaining = Str {
+                    ptr: self.remaining.ptr + new_start,
+                    len: self.remaining.len - new_start,
+                }
+            } else {
+                self.remaining = Str { ptr: self.remaining.ptr, len: 0 }
+            }
+            return Option::Some(result)
+        } else {
+            // No line ending found - return remaining string
+            self.done = true
+            return Option::Some(self.remaining)
+        }
+    }
+}
+
+impl Str {
+    /// Split string by byte delimiter
+    pub fn split(&self, delimiter: u8) -> SplitIter {
+        return SplitIter::new(Str { ptr: self.ptr, len: self.len }, delimiter)
+    }
+
+    /// Split into lines (by LF, CR, or CRLF)
+    pub fn lines(&self) -> LinesIter {
+        return LinesIter::new(Str { ptr: self.ptr, len: self.len })
+    }
+}
+
+// ============================================================================
+// String Transformations
+// ============================================================================
+
+impl Str {
+    /// Convert to uppercase (Latin-1)
+    ///
+    /// Returns new String with uppercase characters
+    /// Allocates heap memory
+    pub fn to_uppercase(&self) -> Result<String, StringError> {
+        var result = String::new()
+        if !result.reserve(self.len) {
+            return Result::Err(StringError::AllocationFailed)
+        }
+
+        var idx: u32 = 0
+        while idx < self.len {
+            var ch: u8 = self.ptr[idx]
+            // Convert lowercase a-z to uppercase A-Z
+            if ch >= $61 && ch <= $7A {
+                ch = ch - $20
+            } else if ch >= $E0 && ch <= $F6 {
+                // Latin-1 lowercase letters (à-ö = 0xE0-0xF6)
+                ch = ch - $20
+            } else if ch >= $F8 && ch <= $FE {
+                // Latin-1 lowercase letters (ø-þ = 0xF8-0xFE)
+                ch = ch - $20
+            }
+
+            if !result.push_byte(ch) {
+                return Result::Err(StringError::AllocationFailed)
+            }
+            idx++
+        }
+
+        return Result::Ok(result)
+    }
+
+    /// Convert to lowercase (Latin-1)
+    ///
+    /// Returns new String with lowercase characters
+    /// Allocates heap memory
+    pub fn to_lowercase(&self) -> Result<String, StringError> {
+        var result = String::new()
+        if !result.reserve(self.len) {
+            return Result::Err(StringError::AllocationFailed)
+        }
+
+        var idx: u32 = 0
+        while idx < self.len {
+            var ch: u8 = self.ptr[idx]
+            // Convert uppercase A-Z to lowercase a-z
+            if ch >= $41 && ch <= $5A {
+                ch = ch + $20
+            } else if ch >= $C0 && ch <= $D6 {
+                // Latin-1 uppercase letters (À-Ö = 0xC0-0xD6)
+                ch = ch + $20
+            } else if ch >= $D8 && ch <= $DE {
+                // Latin-1 uppercase letters (Ø-Þ = 0xD8-0xDE)
+                ch = ch + $20
+            }
+
+            if !result.push_byte(ch) {
+                return Result::Err(StringError::AllocationFailed)
+            }
+            idx++
+        }
+
+        return Result::Ok(result)
+    }
+
+    /// Replace all occurrences of pattern with replacement
+    ///
+    /// Example:
+    /// ```novus
+    /// let s = Str::from_cstr("foo bar foo")
+    /// let result = s.replace("foo", "baz")?
+    /// // result is "baz bar baz"
+    /// ```
+    pub fn replace(&self, pattern: Str, replacement: Str) -> Result<String, StringError> {
+        // Empty pattern - return copy of original
+        if pattern.len == 0 {
+            return String::new_from_str(Str { ptr: self.ptr, len: self.len })
+        }
+
+        var result = String::new()
+        var pos: u32 = 0
+
+        while pos < self.len {
+            // Check if pattern matches at current position
+            var matches: bool = true
+            if pos + pattern.len <= self.len {
+                var j: u32 = 0
+                while j < pattern.len && matches {
+                    if self.ptr[pos + j] != pattern.ptr[j] {
+                        matches = false
+                    }
+                    j++
+                }
+            } else {
+                matches = false
+            }
+
+            if matches {
+                // Append replacement
+                if !result.push_str(replacement) {
+                    return Result::Err(StringError::AllocationFailed)
+                }
+                pos = pos + pattern.len
+            } else {
+                // Append current character
+                if !result.push_byte(self.ptr[pos]) {
+                    return Result::Err(StringError::AllocationFailed)
+                }
+                pos++
+            }
+        }
+
+        return Result::Ok(result)
+    }
+}
+
+/// Join array of strings with separator
+///
+/// Example:
+/// ```novus
+/// let parts: [Str; 3] = [/* ... */]
+/// let path = str_join(&parts, 3, "/")?
+/// ```
+pub fn str_join(parts: *Str, count: u32, separator: Str) -> Result<String, StringError> {
+    var result = String::new()
+
+    var i: u32 = 0
+    while i < count {
+        if i > 0 && separator.len > 0 {
+            if !result.push_str(separator) {
+                return Result::Err(StringError::AllocationFailed)
+            }
+        }
+
+        if !result.push_str(parts[i]) {
+            return Result::Err(StringError::AllocationFailed)
+        }
+        i++
+    }
+
+    return Result::Ok(result)
+}
+
+// ============================================================================
+// StringBuilder - Efficient String Building with Formatting
+// ============================================================================
+
+/// StringBuilder - efficient string construction with heap allocation
+///
+/// Use when building strings dynamically where final size is unknown
+/// or when returning owned strings from functions.
+///
+/// Example:
+/// ```novus
+/// var builder = StringBuilder::new()?
+/// builder.push_str("Hello, ")
+/// builder.push_str("World!")
+/// let result: String = builder.build()
+/// ```
+pub struct StringBuilder {
+    string: String,
+}
+
+impl StringBuilder {
+    /// Create new builder with default capacity (256 bytes)
+    pub fn new() -> Option<StringBuilder> {
+        let string_opt = String::with_capacity(256)
+        match string_opt {
+            Some(s) => return Option::Some(StringBuilder { string: s }),
+            None => return Option::None,
+        }
+    }
+
+    /// Create builder with specific capacity
+    pub fn with_capacity(capacity: u32) -> Option<StringBuilder> {
+        let string_opt = String::with_capacity(capacity)
+        match string_opt {
+            Some(s) => return Option::Some(StringBuilder { string: s }),
+            None => return Option::None,
+        }
+    }
+
+    /// Append a string slice
+    pub fn push_str(&mut self, s: Str) -> bool {
+        return self.string.push_str(s)
+    }
+
+    /// Append a single byte
+    pub fn push_byte(&mut self, byte: u8) -> bool {
+        return self.string.push_byte(byte)
+    }
+
+    /// Append a character (Latin-1)
+    pub fn push_char(&mut self, ch: u8) -> bool {
+        return self.string.push_byte(ch)
+    }
+
+    /// Append formatted integer (signed)
+    @suppress("W0002", "Safe: i32 division and modulo produce i32 results within range")
+    pub fn push_i32(&mut self, value: i32) -> bool {
+        // Handle zero specially
+        if value == 0 {
+            return self.string.push_byte($30)  // '0'
+        }
+
+        // Use stack buffer for formatting (max: "-2147483648" = 11 chars)
+        var buffer = [0u8; 12]
+        var idx: u32 = 11  // Start from end
+        var val: i32 = value
+        var negative: bool = false
+
+        if val < 0 {
+            negative = true
+            // Handle MIN_INT specially to avoid overflow on negation
+            if val == -2147483648 {
+                // Write the digits manually
+                buffer[11] = $38  // '8'
+                buffer[10] = $34  // '4'
+                buffer[9] = $36   // '6'
+                buffer[8] = $33   // '3'
+                buffer[7] = $38   // '8'
+                buffer[6] = $34   // '4'
+                buffer[5] = $37   // '7'
+                buffer[4] = $34   // '4'
+                buffer[3] = $31   // '1'
+                buffer[2] = $32   // '2'
+                buffer[1] = $2D   // '-'
+                idx = 1
+
+                let s = Str::from_raw((*u8)&buffer + idx, 12 - idx)
+                return self.string.push_str(s)
+            }
+            val = -val
+        }
+
+        // Extract digits in reverse order
+        while val > 0 {
+            let digit: i32 = val % 10
+            buffer[idx] = (u8)(digit + $30)
+            idx--
+            val = val / 10
+        }
+
+        // Add negative sign
+        if negative {
+            buffer[idx] = $2D  // '-'
+            idx--
+        }
+
+        // Push the formatted string
+        let s = Str::from_raw((*u8)&buffer + idx + 1, 11 - idx)
+        return self.string.push_str(s)
+    }
+
+    /// Append formatted integer (unsigned)
+    pub fn push_u32(&mut self, value: u32) -> bool {
+        // Handle zero specially
+        if value == 0 {
+            return self.string.push_byte($30)  // '0'
+        }
+
+        // Use stack buffer for formatting (max: "4294967295" = 10 chars)
+        var buffer = [0u8; 11]
+        var idx: u32 = 10  // Start from end
+        var val: u32 = value
+
+        // Extract digits in reverse order
+        while val > 0 {
+            let digit: u32 = val % 10
+            buffer[idx] = (u8)(digit + $30)
+            idx--
+            val = val / 10
+        }
+
+        // Push the formatted string
+        let s = Str::from_raw((*u8)&buffer + idx + 1, 10 - idx)
+        return self.string.push_str(s)
+    }
+
+    /// Append formatted hex (lowercase)
+    pub fn push_hex(&mut self, value: u32) -> bool {
+        // Handle zero specially
+        if value == 0 {
+            return self.string.push_byte($30)  // '0'
+        }
+
+        // Hex lookup table (lowercase)
+        let hex_chars = [$30u8, $31u8, $32u8, $33u8, $34u8, $35u8, $36u8, $37u8,
+                         $38u8, $39u8, $61u8, $62u8, $63u8, $64u8, $65u8, $66u8]
+
+        // Use stack buffer for formatting (max: 8 hex digits)
+        var buffer = [0u8; 8]
+        var idx: u32 = 7  // Start from end
+        var val: u32 = value
+
+        // Extract hex digits in reverse order
+        while val > 0 {
+            let digit: u32 = val & $0F
+            buffer[idx] = hex_chars[digit]
+            idx--
+            val = val >> 4
+        }
+
+        // Push the formatted string
+        let s = Str::from_raw((*u8)&buffer + idx + 1, 7 - idx)
+        return self.string.push_str(s)
+    }
+
+    /// Append formatted hex (uppercase)
+    pub fn push_hex_upper(&mut self, value: u32) -> bool {
+        // Handle zero specially
+        if value == 0 {
+            return self.string.push_byte($30)  // '0'
+        }
+
+        // Hex lookup table (uppercase)
+        let hex_chars = [$30u8, $31u8, $32u8, $33u8, $34u8, $35u8, $36u8, $37u8,
+                         $38u8, $39u8, $41u8, $42u8, $43u8, $44u8, $45u8, $46u8]
+
+        // Use stack buffer for formatting (max: 8 hex digits)
+        var buffer = [0u8; 8]
+        var idx: u32 = 7  // Start from end
+        var val: u32 = value
+
+        // Extract hex digits in reverse order
+        while val > 0 {
+            let digit: u32 = val & $0F
+            buffer[idx] = hex_chars[digit]
+            idx--
+            val = val >> 4
+        }
+
+        // Push the formatted string
+        let s = Str::from_raw((*u8)&buffer + idx + 1, 7 - idx)
+        return self.string.push_str(s)
+    }
+
+    /// Append formatted boolean ("true" or "false")
+    pub fn push_bool(&mut self, value: bool) -> bool {
+        let s = Str::from_raw(value ? "true" : "false", value ? 4u32 : 5u32)
+        return self.string.push_str(s)
+    }
+
+    /// Get current length
+    pub fn len(&self) -> u32 {
+        return self.string.len()
+    }
+
+    /// Check if empty
+    pub fn is_empty(&self) -> bool {
+        return self.string.is_empty()
+    }
+
+    /// Get as Str slice (borrows)
+    pub fn as_str(&self) -> Str {
+        return self.string.as_str()
+    }
+
+    /// Clear contents (keeps capacity)
+    pub fn clear(&mut self) {
+        self.string.clear()
+    }
+
+    /// Build final String (consumes builder)
+    pub fn build(consuming self) -> String {
+        return self.string
+    }
+}
+
+// ============================================================================
+// Path Manipulation (AmigaDOS-specific)
+// ============================================================================
+
+/// Parsed components of an AmigaDOS path
+///
+/// Example:
+/// ```novus
+/// let path = Str::from_cstr("Work:Projects/Novus/main.novus")
+/// let parts = path_split(path)?
+/// // parts.volume = Some("Work:")
+/// // parts.directory = Some("Projects/Novus")
+/// // parts.filename = Some("main.novus")
+/// ```
+pub struct PathComponents {
+    volume: Option<Str>,      // "SYS:", "RAM:", etc.
+    directory: Option<Str>,   // parent directories
+    filename: Option<Str>,    // final component
+}
+
+/// Split AmigaDOS path into components
+pub fn path_split(path: Str) -> PathComponents {
+    var volume: Option<Str> = Option::None
+    var directory: Option<Str> = Option::None
+    var filename: Option<Str> = Option::None
+
+    if path.len == 0 {
+        return PathComponents { volume: volume, directory: directory, filename: filename }
+    }
+
+    var start: u32 = 0
+
+    // Find volume (ends with ':')
+    var colon_pos: Option<u32> = path.find_byte($3A)  // ':'
+    match colon_pos {
+        Some(pos) => {
+            volume = Option::Some(Str { ptr: path.ptr, len: pos + 1 })
+            start = pos + 1
+        },
+        None => {}
+    }
+
+    // Now find the last '/' to split directory from filename
+    if start < path.len {
+        var last_slash: Option<u32> = Option::None
+        var idx: u32 = path.len - 1
+        var searching: bool = true
+        while searching {
+            if path.ptr[idx] == $2F {  // '/'
+                if idx >= start {
+                    last_slash = Option::Some(idx)
+                }
+                searching = false
+            } else if idx == start {
+                searching = false
+            } else {
+                idx--
+            }
+        }
+
+        match last_slash {
+            Some(slash_idx) => {
+                // Directory is from start to slash
+                if slash_idx > start {
+                    directory = Option::Some(Str { ptr: path.ptr + start, len: slash_idx - start })
+                }
+                // Filename is after slash
+                if slash_idx + 1 < path.len {
+                    filename = Option::Some(Str { ptr: path.ptr + slash_idx + 1, len: path.len - slash_idx - 1 })
+                }
+            },
+            None => {
+                // No slash - everything after volume is filename
+                if start < path.len {
+                    filename = Option::Some(Str { ptr: path.ptr + start, len: path.len - start })
+                }
+            }
+        }
+    }
+
+    return PathComponents { volume: volume, directory: directory, filename: filename }
+}
+
+/// Get filename from path (last component)
+pub fn path_filename(path: Str) -> Option<Str> {
+    let components = path_split(path)
+    return components.filename
+}
+
+/// Get directory from path (all but last component)
+pub fn path_dirname(path: Str) -> Option<Str> {
+    if path.len == 0 {
+        return Option::None
+    }
+
+    // Find last '/' or ':'
+    var last_sep: u32 = 0
+    var found: bool = false
+    var idx: u32 = path.len - 1
+    var searching: bool = true
+
+    while searching {
+        let ch: u8 = path.ptr[idx]
+        if ch == $2F || ch == $3A {  // '/' or ':'
+            last_sep = idx
+            found = true
+            searching = false
+        } else if idx == 0 {
+            searching = false
+        } else {
+            idx--
+        }
+    }
+
+    if found {
+        // Include the separator for volume: (e.g., "SYS:")
+        let len: u32 = path.ptr[last_sep] == $3A ? last_sep + 1 : last_sep
+        if len > 0 {
+            return Option::Some(Str { ptr: path.ptr, len: len })
+        }
+    }
+
+    return Option::None
+}
+
+/// Check if path is absolute (has volume/device)
+pub fn path_is_absolute(path: Str) -> bool {
+    // Path is absolute if it contains ':'
+    return path.find_byte($3A).is_some()
+}
+
+/// Join path components with AmigaDOS conventions
+///
+/// Handles:
+/// - Volume: prefix correctly (no separator after ':')
+/// - Adds '/' between directory components
+pub fn path_join(base: Str, component: Str) -> Result<String, StringError> {
+    if base.len == 0 {
+        return String::new_from_str(component)
+    }
+    if component.len == 0 {
+        return String::new_from_str(base)
+    }
+
+    var result = String::new()
+    if !result.push_str(base) {
+        return Result::Err(StringError::AllocationFailed)
+    }
+
+    // Check if we need a separator
+    let last_char: u8 = base.ptr[base.len - 1]
+    if last_char != $3A && last_char != $2F {  // Not ':' or '/'
+        if !result.push_byte($2F) {  // Add '/'
+            return Result::Err(StringError::AllocationFailed)
+        }
+    }
+
+    if !result.push_str(component) {
+        return Result::Err(StringError::AllocationFailed)
+    }
+
+    return Result::Ok(result)
+}

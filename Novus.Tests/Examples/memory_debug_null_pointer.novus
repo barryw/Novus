@@ -1,0 +1,42 @@
+// Example: Null Pointer Dereference Detection
+//
+// Description:
+//   Demonstrates automatic null pointer dereference detection using MMU.
+//   When mmu.library is available, page 0 is marked as invalid.
+//   Any attempt to dereference a null pointer causes a hardware trap.
+//
+// Build:
+//   novus compile memory_debug_null_pointer.novus --safety-level 3
+//
+// Expected Behavior:
+//   On systems with mmu.library:
+//   - The MMU marks page 0 (address 0x0000 - 0x0FFF typically) as invalid
+//   - When the null pointer is dereferenced, a hardware exception occurs
+//   - Programs like Enforcer or MuForce will report the access
+//
+//   On systems without mmu.library:
+//   - The program will still run but the null access won't be caught
+//     at the hardware level (may corrupt data at address 0)
+//
+// How it works:
+//   In debug mode (--safety-level 3):
+//   1. At program start, __novus_init_mmu_protection() is called
+//   2. If mmu.library is available, page 0 is marked MAPP_INVALID
+//   3. Any read/write to address 0 (null) triggers MMU exception
+//   4. At exit, __novus_cleanup_mmu_protection() restores page 0
+//
+// Exit code: Should never return normally - MMU trap fires first
+
+pub fn main() -> i32 {
+    unsafe {
+        // Create a null pointer
+        let ptr: *u8 = null
+
+        // Attempt to read from address 0 - this will trigger MMU trap
+        // On systems with mmu.library, this causes an immediate exception
+        let value = *ptr
+
+        // We should never reach here
+        return (i32)value
+    }
+}

@@ -62,6 +62,11 @@ impl<T> Vec<T> {
         return self.len == 0
     }
 
+    // Get the number of elements in the vector
+    pub fn len(&self) -> u32 {
+        return self.len
+    }
+
     // Get the capacity of the vector
     pub fn capacity(&self) -> u32 {
         return self.capacity

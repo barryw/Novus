@@ -10,7 +10,6 @@ from std::os::tags import make_tags
 from std::strings::core import Str
 from std::strings::format import Display, Formatter
 from std::memory::slice import Slice
-from std::io::file import write
 from std::ffi::amiga_structs import TagItem, Window, Screen, NewWindow, NewScreen, IntuiMessage, Message, MsgPort
 from std::ffi::intuition import OpenWindowTagList, OpenScreenTagList, CloseWindow, CloseScreen, BeginRefresh, EndRefresh, MoveWindow, SizeWindow, ChangeWindowBox, WindowLimits, ZipWindow, WindowToFront, WindowToBack, MoveWindowInFrontOf, ModifyIDCMP, SetWindowTitles, ActivateWindow, RefreshWindowFrame, SetMouseQueue, ClearMenuStrip
 from std::ffi::amiga_consts import TAG_DONE, IDCMP_*, WA_*, WFLG_*, FALSE, NULL

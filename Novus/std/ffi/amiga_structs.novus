@@ -546,6 +546,18 @@ pub struct TextExtent {
     te_Extent: Rectangle,
 }
 
+/// Clip rectangle for layers clipping
+pub struct ClipRect {
+    Next: *ClipRect,     // roms used to find next ClipRect
+    prev: *ClipRect,     // Temp use in layers (private)
+    lobs: *Layer,        // Private use for layers
+    BitMap: *BitMap,     // Bitmap for layers private use
+    bounds: Rectangle,   // bounds of cliprect
+    _p1: *u8,            // Layers private use
+    _p2: *u8,            // Layers private use
+    reserved: i32,       // system use (Layers private)
+}
+
 pub struct Layer {
     front: *Layer,
     back: *Layer,
@@ -1912,5 +1924,191 @@ pub struct GlyphWidthEntry {
     gwe_Node: MinNode,
     gwe_Code: u16,
     gwe_Width: *u8 /* FIXED */,
+}
+
+// ============================================================================
+// Blitter Structures
+// ============================================================================
+
+/// Blitter node for queued blitter operations (QBlit/QBSBlit)
+pub struct bltnode {
+    bn_Next: *bltnode,
+    bn_Function: *u8,  // void (*blitRoutine)(void)
+    bn_Stat: i8,
+    bn_Pad: [i8; 1],
+    bn_BlitSize: u16,
+    bn_BeamSync: u16,
+    bn_CleanUp: *u8,   // void (*cleanupRoutine)(void)
+}
+
+// ============================================================================
+// Extended Sprite Structures (OS 3.0+)
+// ============================================================================
+
+/// Extended sprite structure for OS 3.0+ extended sprite support
+pub struct ExtSprite {
+    es_SimpleSprite: SimpleSprite,
+    es_WordWidth: u16,
+    es_Flags: u16,
+}
+
+// ============================================================================
+// Monitor Structures
+// ============================================================================
+
+/// Monitor specification structure
+pub struct MonitorSpec {
+    ms_Node: ExtendedNode,
+    ms_Flags: u16,
+    ms_ratioh: i32,
+    ms_ratiov: i32,
+    ms_total_rows: u16,
+    ms_total_colorclocks: u16,
+    ms_DeniseMaxDisplayColumn: u16,
+    ms_BeamCon0: u16,
+    ms_min_row: u16,
+    ms_Special: *u8,  // SpecialMonitor *
+    ms_OpenCount: u16,
+    ms_transform: *u8,
+    ms_translate: *u8,
+    ms_scale: *u8,
+    ms_xoffset: u16,
+    ms_yoffset: u16,
+    ms_LegalView: Rectangle,
+    ms_maxoscan: *u8,
+    ms_videoscan: *u8,
+    ms_DeniseMinDisplayColumn: u16,
+    ms_DisplayCompatible: u32,
+    ms_DisplayInfoDataBase: List,
+    ms_DisplayInfoDataBaseSemaphore: SignalSemaphore,
+    ms_MrgCop: *u8,
+    ms_LoadView: *u8,
+    ms_KillView: *u8,
+}
+
+// ============================================================================
+// RastPort Support Structures
+// ============================================================================
+
+/// Temporary raster for area fill operations
+pub struct TmpRas {
+    RasPtr: *i8,    // Pointer to temporary raster buffer
+    Size: i32,      // Size of the buffer in bytes
+}
+
+/// Area fill information for RastPort
+pub struct AreaInfo {
+    VctrTbl: *i16,     // ptr to start of vector table
+    VctrPtr: *i16,     // ptr to current vertex
+    FlagTbl: *i8,      // ptr to start of vector flag table
+    FlagPtr: *i8,      // ptrs to areafill flags
+    Count: i16,        // number of vertices in list
+    MaxCount: i16,     // AreaMove/Draw will not allow Count>MaxCount
+    FirstX: i16,       // first point for this polygon
+    FirstY: i16,       // first point for this polygon
+}
+
+// ============================================================================
+// Region Structures
+// ============================================================================
+
+/// Region rectangle node for linked list
+pub struct RegionRectangle {
+    Next: *RegionRectangle,
+    Prev: *RegionRectangle,
+    bounds: Rectangle,
+}
+
+/// Region structure for clipping operations
+pub struct Region {
+    bounds: Rectangle,
+    RegionRectangle: *RegionRectangle,
+}
+
+// ============================================================================
+// Copper Structures
+// ============================================================================
+
+/// Hardware copper list (used by MrgCop)
+pub struct cprlist {
+    Next: *cprlist,
+    start: *u16,      // start of copper list
+    MaxCount: i16,    // number of long instructions
+}
+
+/// Copper instruction
+pub struct CopIns {
+    OpCode: i16,      // 0 = move, 1 = wait
+    // Union: nxtlist or VWaitPos/HWaitPos or DestAddr/DestData
+    u3_word1: i16,    // VWaitPos/DestAddr
+    u3_word2: i16,    // HWaitPos/DestData
+}
+
+/// Copper list
+pub struct CopList {
+    Next: *CopList,       // next block for this copper list
+    _CopList: *CopList,   // system use
+    _ViewPort: *ViewPort, // system use
+    CopIns: *CopIns,      // start of this block
+    CopPtr: *CopIns,      // intermediate ptr
+    CopLStart: *u16,      // mrgcop fills for Long Frame
+    CopSStart: *u16,      // mrgcop fills for Short Frame
+    Count: i16,           // intermediate counter
+    MaxCount: i16,        // max # of copins for this block
+    DyOffset: i16,        // offset this copper list vertical waits
+    SLRepeat: u16,
+    Flags: u16,
+}
+
+/// Private copper initialization structure
+pub struct copinit {
+    vsync_hblank: [u16; 2],
+    diagstrt: [u16; 12],
+    fm0: [u16; 2],
+    diwstart: [u16; 10],
+    bplcon2: [u16; 2],
+    sprfix: [u16; 16],       // 2*8
+    sprstrtup: [u16; 32],    // 2*8*2
+    wait14: [u16; 2],
+    norm_hblank: [u16; 2],
+    jump: [u16; 2],
+    wait_forever: [u16; 6],
+    sprstop: [u16; 8],
+}
+
+// ============================================================================
+// View/RasInfo Structures
+// ============================================================================
+
+/// Raster info for ViewPort bitmap
+pub struct RasInfo {
+    Next: *RasInfo,     // used for dualpf
+    BitMap: *BitMap,
+    RxOffset: i16,      // scroll offset X
+    RyOffset: i16,      // scroll offset Y
+}
+
+// ============================================================================
+// Layer Structures
+// ============================================================================
+
+/// Layer info for screen layering
+pub struct Layer_Info {
+    top_layer: *Layer,
+    check_lp: *Layer,           // Private
+    obs: *ClipRect,
+    FreeClipRects: *ClipRect,   // Private
+    PrivateReserve1: i32,       // Private
+    PrivateReserve2: i32,       // Private
+    Lock: SignalSemaphore,      // Private
+    gs_Head: MinList,           // Private
+    PrivateReserve3: i16,       // Private
+    PrivateReserve4: *u8,       // Private
+    Flags: u16,
+    fatten_count: i8,           // Private
+    LockLayersCount: i8,        // Private
+    PrivateReserve5: i16,       // Private
+    BlankHook: *u8,             // Private
+    LayerInfo_extra: *u8,       // Private
 }
 

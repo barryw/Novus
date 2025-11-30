@@ -5,6 +5,15 @@
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
 
+// Import struct types used in function signatures
+from std::ffi::amiga_structs import BitMap, RastPort, View, ViewPort, TextFont, TextAttr
+from std::ffi::amiga_structs import Bob, VSprite, GelsInfo, AnimOb, ColorMap, Region
+from std::ffi::amiga_structs import TmpRas, AreaInfo, Layer, Layer_Info, ClipRect
+from std::ffi::amiga_structs import Rectangle, SimpleSprite, CopList, UCopList
+from std::ffi::amiga_structs import RasInfo, cprlist, copinit
+from std::ffi::amiga_structs import bltnode, BitScaleArgs, TextExtent, MonitorSpec
+from std::ffi::amiga_structs import ExtSprite, DBufInfo, TagItem
+
 // ============================================================================
 // Library Functions
 // ============================================================================

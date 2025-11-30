@@ -30,6 +30,9 @@ public enum SafetyLevel
     /// - All Level 1 checks
     /// - Integer overflow detection
     /// - Null pointer checks where possible
+    /// - Memory allocation tracking (leak detection)
+    /// - Double-free detection
+    /// - Leak report on exit
     /// Use: Development, catches most bugs
     /// </summary>
     Full = 2,
@@ -39,7 +42,8 @@ public enum SafetyLevel
     /// - All Level 2 checks
     /// - Stack canaries (future)
     /// - Additional runtime validation
-    /// - Memory poisoning (future)
+    /// - Memory poisoning (use-after-free detection)
+    /// - Guard bytes (buffer overflow detection)
     /// Use: Finding subtle bugs, security-critical code
     /// </summary>
     Paranoid = 3
@@ -91,6 +95,36 @@ public static class SafetyLevelExtensions
     }
 
     /// <summary>
+    /// Check if memory allocation tracking should be enabled.
+    /// Tracks all allocations in a linked list to detect leaks and double-frees.
+    /// Reports memory leaks on program exit.
+    /// </summary>
+    public static bool EnableMemoryTracking(this SafetyLevel level)
+    {
+        return level >= SafetyLevel.Full;
+    }
+
+    /// <summary>
+    /// Check if memory poisoning should be enabled (use-after-free detection).
+    /// Fills freed memory with a poison pattern (0xDEADBEEF) so that
+    /// use-after-free bugs cause obvious failures.
+    /// </summary>
+    public static bool EnableMemoryPoisoning(this SafetyLevel level)
+    {
+        return level >= SafetyLevel.Paranoid;
+    }
+
+    /// <summary>
+    /// Check if guard bytes should be added (buffer overflow detection).
+    /// Adds sentinel values before and after each allocation to detect
+    /// buffer overflows and underflows.
+    /// </summary>
+    public static bool EnableGuardBytes(this SafetyLevel level)
+    {
+        return level >= SafetyLevel.Paranoid;
+    }
+
+    /// <summary>
     /// Get default safety level for a build mode
     /// </summary>
     public static SafetyLevel GetDefaultForBuildMode(BuildMode mode)
@@ -112,8 +146,8 @@ public static class SafetyLevelExtensions
         {
             SafetyLevel.Unsafe => "No runtime checks (footguns enabled)",
             SafetyLevel.Basic => "Basic safety checks (bounds, division-by-zero)",
-            SafetyLevel.Full => "Full safety checks (includes overflow detection)",
-            SafetyLevel.Paranoid => "Paranoid mode (maximum safety, slower)",
+            SafetyLevel.Full => "Full safety checks (overflow, memory tracking, leak detection)",
+            SafetyLevel.Paranoid => "Paranoid mode (guard bytes, memory poisoning, maximum safety)",
             _ => "Unknown"
         };
     }

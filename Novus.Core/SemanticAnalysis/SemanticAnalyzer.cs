@@ -4336,6 +4336,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Blitter job is inherently unsafe (direct hardware access)
         RequireUnsafe(context, "blitter job", "it directly programs the Blitter hardware");
 
+        // Track which required fields are present
+        bool hasDestination = false;
+        bool hasMinterm = false;
+
         // Validate blitter fields
         var blitterJob = context.blitterJob();
         foreach (var field in blitterJob.blitterField())
@@ -4348,11 +4352,20 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             switch (fieldName.ToLower())
             {
                 case "source":
-                case "source_a":
-                case "source_b":
-                case "source_c":
+                case "sourcea":
+                case "sourceb":
+                case "sourcec":
+                    // Should be a pointer type
+                    if (fieldType != null && fieldType is not IrPointerType)
+                    {
+                        var location = SourceLocationHelper.FromContext(fieldExpr, _filePath, _sourceLines);
+                        _diagnostics.ReportError("E1060", $"Blitter {fieldName} must be a pointer, got {fieldType.Name}", location);
+                    }
+                    break;
+
                 case "dest":
                 case "destination":
+                    hasDestination = true;
                     // Should be a pointer type
                     if (fieldType != null && fieldType is not IrPointerType)
                     {
@@ -4363,7 +4376,6 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
                 case "width":
                 case "height":
-                case "minterm":
                 case "modulo":
                 case "modulo_a":
                 case "modulo_b":
@@ -4372,6 +4384,16 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 case "shift":
                 case "shift_a":
                 case "shift_b":
+                    // Should be an integer type
+                    if (fieldType != null && !IsIntegralType(fieldType))
+                    {
+                        var location = SourceLocationHelper.FromContext(fieldExpr, _filePath, _sourceLines);
+                        _diagnostics.ReportError("E1061", $"Blitter {fieldName} must be an integer, got {fieldType.Name}", location);
+                    }
+                    break;
+
+                case "minterm":
+                    hasMinterm = true;
                     // Should be an integer type
                     if (fieldType != null && !IsIntegralType(fieldType))
                     {
@@ -4398,6 +4420,18 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     _diagnostics.ReportWarning("W1060", $"Unknown blitter field '{fieldName}'", loc);
                     break;
             }
+        }
+
+        // Validate required fields
+        if (!hasDestination)
+        {
+            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            _diagnostics.ReportError("E1063", "Blitter job requires a 'dest' field specifying the destination pointer", location);
+        }
+        if (!hasMinterm)
+        {
+            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            _diagnostics.ReportError("E1064", "Blitter job requires a 'minterm' field specifying the boolean operation (e.g., $F0 for copy)", location);
         }
 
         // Blitter job returns unit (no value)
@@ -4665,7 +4699,47 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             if (!string.IsNullOrEmpty(enumFromType.CacheKey))
             {
                 // It's a monomorphized type like Option<MemoryBlock>
-                enumTypeForValidation = _symbols.LookupMonomorphizedEnum(enumFromType.CacheKey) ?? enumFromType;
+                enumTypeForValidation = _symbols.LookupMonomorphizedEnum(enumFromType.CacheKey);
+
+                // If not in cache but we have a CacheKey, create monomorphized version on the fly
+                if (enumTypeForValidation == null)
+                {
+                    // Get the base generic enum definition
+                    var baseEnum = _symbols.LookupEnum(enumFromType.EnumName);
+                    if (baseEnum != null && baseEnum.GenericParameters.Count > 0)
+                    {
+                        // Parse type arguments from CacheKey (format: "EnumName<TypeArg1,TypeArg2,...>")
+                        var typeArgs = ParseTypeArgsFromCacheKey(enumFromType.CacheKey, enumFromType.EnumName, baseEnum.GenericParameters.Count);
+                        if (typeArgs != null && typeArgs.Count == baseEnum.GenericParameters.Count)
+                        {
+                            // Build substitution map
+                            var typeSubstitutions = new Dictionary<string, IrType>();
+                            for (int i = 0; i < baseEnum.GenericParameters.Count; i++)
+                            {
+                                typeSubstitutions[baseEnum.GenericParameters[i]] = typeArgs[i];
+                            }
+
+                            // Create monomorphized variants
+                            var monomorphizedVariants = new List<IrEnumVariant>();
+                            foreach (var origVariant in baseEnum.Variants)
+                            {
+                                var monomorphizedData = new List<IrType>();
+                                foreach (var dataType in origVariant.AssociatedData)
+                                {
+                                    monomorphizedData.Add(_typeParser.SubstituteGenericTypes(dataType, typeSubstitutions));
+                                }
+                                monomorphizedVariants.Add(new IrEnumVariant(origVariant.Name, origVariant.Tag, monomorphizedData));
+                            }
+
+                            // Create and cache the monomorphized enum
+                            enumTypeForValidation = new IrEnumType(baseEnum.EnumName, monomorphizedVariants, null, enumFromType.CacheKey);
+                            _symbols.RegisterMonomorphizedEnum(enumFromType.CacheKey, enumTypeForValidation);
+                        }
+                    }
+
+                    // Fall back to enumFromType if we couldn't monomorphize
+                    enumTypeForValidation ??= enumFromType;
+                }
             }
             else if (enumFromType.Variants.Count > 0)
             {
@@ -4984,15 +5058,25 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     {
                         var subPattern = patterns[i];
 
-                        // Only bind identifier patterns (e.g., Some(x) binds x)
+                        // Handle identifier patterns (e.g., Some(x) binds x as immutable)
                         if (subPattern is NovusParser.IdentifierPatternContext idPattern)
                         {
                             var bindingName = idPattern.IDENTIFIER().GetText();
                             var bindingType = variant.AssociatedData[i];
                             var location = SourceLocationHelper.FromToken(idPattern.IDENTIFIER().Symbol, _filePath, _sourceLines);
 
-                            // Register this variable as immutable (pattern bindings are always immutable)
-                            _variables[bindingName] = new VariableSymbol(bindingName, bindingType, false, location);
+                            // Register this variable as immutable
+                            _variables[bindingName] = new VariableSymbol(bindingName, bindingType!, false, location);
+                        }
+                        // Handle mut identifier patterns (e.g., Some(mut x) binds x as mutable)
+                        else if (subPattern is NovusParser.MutIdentifierPatternContext mutIdPattern)
+                        {
+                            var bindingName = mutIdPattern.IDENTIFIER().GetText();
+                            var bindingType = variant.AssociatedData[i];
+                            var location = SourceLocationHelper.FromToken(mutIdPattern.IDENTIFIER().Symbol, _filePath, _sourceLines);
+
+                            // Register this variable as mutable
+                            _variables[bindingName] = new VariableSymbol(bindingName, bindingType!, true, location);
                         }
                     }
                 }
@@ -5406,59 +5490,198 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // If paramType is a struct (Vec<T>) and argType is a struct (Vec<i32>), match structure
         if (paramType is IrStructType paramStruct && argType is IrStructType argStruct)
         {
-            // Must be the same struct
-            if (paramStruct.Name != argStruct.Name)
+            // Must be the same struct (compare StructName, not Name, because Name includes generic params)
+            if (paramStruct.StructName != argStruct.StructName)
                 return false;
 
             // Check if paramStruct contains generic types and argStruct is fully concrete
             var paramCacheKey = paramStruct.CacheKey ?? paramStruct.Name;
             var argCacheKey = argStruct.CacheKey ?? argStruct.Name;
 
-            // If both have cache keys with type arguments, try to match them
-            if (paramCacheKey.Contains("<") && argCacheKey.Contains("<"))
+            // Case 1: paramStruct has generic type parameters (either in GenericParameters or in CacheKey like "Vec<T>")
+            // and argStruct is monomorphized (has CacheKey with concrete type args like "Vec<Str>")
+            // This handles Vec::new() -> Vec<T> being matched against expected type Vec<Str>
+            if (argCacheKey.Contains("<") && paramCacheKey.Contains("<"))
             {
-                // Extract type arguments from both
+                // Extract type arguments from param cache key
                 var paramStartIdx = paramCacheKey.IndexOf('<');
                 var paramEndIdx = paramCacheKey.LastIndexOf('>');
                 var paramTypeArgsStr = paramCacheKey.Substring(paramStartIdx + 1, paramEndIdx - paramStartIdx - 1);
                 var paramTypeArgKeys = paramTypeArgsStr.Split(',').Select(s => s.Trim()).ToArray();
 
-                var argStartIdx = argCacheKey.IndexOf('<');
-                var argEndIdx = argCacheKey.LastIndexOf('>');
-                var argTypeArgsStr = argCacheKey.Substring(argStartIdx + 1, argEndIdx - argStartIdx - 1);
-                var argTypeArgKeys = argTypeArgsStr.Split(',').Select(s => s.Trim()).ToArray();
+                // Use TypeArguments directly if available, otherwise fall back to parsing from cache key
+                IrType?[] argTypeArgs;
+                if (argStruct.TypeArguments != null && argStruct.TypeArguments.Count == paramTypeArgKeys.Length)
+                {
+                    argTypeArgs = argStruct.TypeArguments.ToArray();
+                }
+                else
+                {
+                    // Fall back to parsing from cache key
+                    var argStartIdx = argCacheKey.IndexOf('<');
+                    var argEndIdx = argCacheKey.LastIndexOf('>');
+                    var argTypeArgsStr = argCacheKey.Substring(argStartIdx + 1, argEndIdx - argStartIdx - 1);
+                    var argTypeArgKeys = argTypeArgsStr.Split(',').Select(s => s.Trim()).ToArray();
+                    argTypeArgs = argTypeArgKeys.Select(k => ParseTypeFromCacheKey(k)).ToArray();
+
+                    if (argTypeArgKeys.Length != paramTypeArgKeys.Length)
+                        return false;
+                }
 
                 // Match each type argument
-                if (paramTypeArgKeys.Length == argTypeArgKeys.Length)
+                for (int i = 0; i < paramTypeArgKeys.Length; i++)
                 {
-                    for (int i = 0; i < paramTypeArgKeys.Length; i++)
-                    {
-                        var paramTypeArgKey = paramTypeArgKeys[i];
-                        var argTypeArgKey = argTypeArgKeys[i];
+                    var paramTypeArgKey = paramTypeArgKeys[i];
+                    var inferredType = argTypeArgs[i];
 
-                        // Check if paramTypeArgKey is a generic parameter (single capital letter like T, E, etc.)
-                        if (paramTypeArgKey.Length == 1 && char.IsUpper(paramTypeArgKey[0]))
+                    // Check if paramTypeArgKey is a generic parameter (typically single capital letter like T, E, etc.)
+                    // Note: could also be multi-char like "Item" but single cap letters are most common
+                    if (IsGenericParameterName(paramTypeArgKey))
+                    {
+                        // This is a generic parameter - infer it from the argument type
+                        if (inferredType != null)
                         {
-                            // This is a generic parameter - infer it from the argument type
-                            var inferredType = ParseTypeFromCacheKey(argTypeArgKey);
-                            if (inferredType != null)
+                            if (substitutions.ContainsKey(paramTypeArgKey))
                             {
-                                if (substitutions.ContainsKey(paramTypeArgKey))
-                                {
-                                    // Check consistency
-                                    if (!TypesCompatible(substitutions[paramTypeArgKey], inferredType))
-                                        return false;
-                                }
-                                else
-                                {
-                                    substitutions[paramTypeArgKey] = inferredType;
-                                }
+                                // Check consistency
+                                if (!TypesCompatible(substitutions[paramTypeArgKey], inferredType))
+                                    return false;
+                            }
+                            else
+                            {
+                                substitutions[paramTypeArgKey] = inferredType;
                             }
                         }
-                        else if (paramTypeArgKey != argTypeArgKey)
+                    }
+                    else
+                    {
+                        // Concrete types must match - compare types directly if available
+                        if (inferredType != null)
                         {
-                            // Concrete types must match
-                            return false;
+                            var expectedType = ParseTypeFromCacheKey(paramTypeArgKey);
+                            if (expectedType != null && !TypesCompatible(expectedType, inferredType))
+                                return false;
+                        }
+                    }
+                }
+                return true;
+            }
+
+            // Case 1b: paramStruct has GenericParameters list (the generic template itself)
+            if (paramStruct.GenericParameters.Count > 0 && (argStruct.TypeArguments != null || argCacheKey.Contains("<")))
+            {
+                // Use TypeArguments directly if available, otherwise fall back to parsing from cache key
+                IrType?[] argTypeArgs;
+                if (argStruct.TypeArguments != null && argStruct.TypeArguments.Count == paramStruct.GenericParameters.Count)
+                {
+                    argTypeArgs = argStruct.TypeArguments.ToArray();
+                }
+                else if (argCacheKey.Contains("<"))
+                {
+                    // Fall back to parsing from cache key
+                    var argStartIdx = argCacheKey.IndexOf('<');
+                    var argEndIdx = argCacheKey.LastIndexOf('>');
+                    var argTypeArgsStr = argCacheKey.Substring(argStartIdx + 1, argEndIdx - argStartIdx - 1);
+                    var argTypeArgKeys = argTypeArgsStr.Split(',').Select(s => s.Trim()).ToArray();
+
+                    if (paramStruct.GenericParameters.Count != argTypeArgKeys.Length)
+                        return false;
+
+                    argTypeArgs = argTypeArgKeys.Select(k => ParseTypeFromCacheKey(k)).ToArray();
+                }
+                else
+                {
+                    return false;
+                }
+
+                // Match each generic parameter to its corresponding type argument
+                for (int i = 0; i < paramStruct.GenericParameters.Count; i++)
+                {
+                    var paramName = paramStruct.GenericParameters[i];
+                    var inferredType = argTypeArgs[i];
+
+                    // Infer the generic parameter from the argument type
+                    if (inferredType != null)
+                    {
+                        if (substitutions.ContainsKey(paramName))
+                        {
+                            // Check consistency
+                            if (!TypesCompatible(substitutions[paramName], inferredType))
+                                return false;
+                        }
+                        else
+                        {
+                            substitutions[paramName] = inferredType;
+                        }
+                    }
+                }
+                return true;
+            }
+
+            // Case 2: Both have cache keys with type arguments, try to match them
+            if (paramCacheKey.Contains("<") && (argStruct.TypeArguments != null || argCacheKey.Contains("<")))
+            {
+                // Extract type arguments from param cache key
+                var paramStartIdx = paramCacheKey.IndexOf('<');
+                var paramEndIdx = paramCacheKey.LastIndexOf('>');
+                var paramTypeArgsStr = paramCacheKey.Substring(paramStartIdx + 1, paramEndIdx - paramStartIdx - 1);
+                var paramTypeArgKeys = paramTypeArgsStr.Split(',').Select(s => s.Trim()).ToArray();
+
+                // Use TypeArguments directly if available, otherwise fall back to parsing from cache key
+                IrType?[] argTypeArgs;
+                if (argStruct.TypeArguments != null && argStruct.TypeArguments.Count == paramTypeArgKeys.Length)
+                {
+                    argTypeArgs = argStruct.TypeArguments.ToArray();
+                }
+                else if (argCacheKey.Contains("<"))
+                {
+                    var argStartIdx = argCacheKey.IndexOf('<');
+                    var argEndIdx = argCacheKey.LastIndexOf('>');
+                    var argTypeArgsStr = argCacheKey.Substring(argStartIdx + 1, argEndIdx - argStartIdx - 1);
+                    var argTypeArgKeys = argTypeArgsStr.Split(',').Select(s => s.Trim()).ToArray();
+
+                    if (paramTypeArgKeys.Length != argTypeArgKeys.Length)
+                        return false;
+
+                    argTypeArgs = argTypeArgKeys.Select(k => ParseTypeFromCacheKey(k)).ToArray();
+                }
+                else
+                {
+                    return false;
+                }
+
+                // Match each type argument
+                for (int i = 0; i < paramTypeArgKeys.Length; i++)
+                {
+                    var paramTypeArgKey = paramTypeArgKeys[i];
+                    var inferredType = argTypeArgs[i];
+
+                    // Check if paramTypeArgKey is a generic parameter (single capital letter like T, E, etc.)
+                    if (paramTypeArgKey.Length == 1 && char.IsUpper(paramTypeArgKey[0]))
+                    {
+                        // This is a generic parameter - infer it from the argument type
+                        if (inferredType != null)
+                        {
+                            if (substitutions.ContainsKey(paramTypeArgKey))
+                            {
+                                // Check consistency
+                                if (!TypesCompatible(substitutions[paramTypeArgKey], inferredType))
+                                    return false;
+                            }
+                            else
+                            {
+                                substitutions[paramTypeArgKey] = inferredType;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Concrete types must match - compare types directly if available
+                        if (inferredType != null)
+                        {
+                            var expectedType = ParseTypeFromCacheKey(paramTypeArgKey);
+                            if (expectedType != null && !TypesCompatible(expectedType, inferredType))
+                                return false;
                         }
                     }
                 }
@@ -5522,6 +5745,197 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         {
             return enumLookup;
         }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Parse type arguments from a cache key string like "Option&lt;Vec&lt;u8&gt;&gt;"
+    /// Returns list of IrType or null if parsing fails.
+    /// </summary>
+    private List<IrType>? ParseTypeArgsFromCacheKey(string cacheKey, string enumName, int expectedCount)
+    {
+        // CacheKey format: "EnumName<TypeArg1,TypeArg2,...>"
+        // Need to handle nested generics like "Option<Vec<u8>>"
+
+        var prefix = enumName + "<";
+        if (!cacheKey.StartsWith(prefix) || !cacheKey.EndsWith(">"))
+            return null;
+
+        // Extract the type arguments part: "Vec<u8>" from "Option<Vec<u8>>"
+        var argsString = cacheKey.Substring(prefix.Length, cacheKey.Length - prefix.Length - 1);
+
+        // Split by comma, respecting nested angle brackets
+        var typeArgStrings = SplitTypeArgs(argsString);
+        if (typeArgStrings.Count != expectedCount)
+            return null;
+
+        // Parse each type argument string into IrType
+        var result = new List<IrType>();
+        foreach (var typeStr in typeArgStrings)
+        {
+            var irType = ParseTypeFromCacheKeyRecursive(typeStr);
+            if (irType == null)
+                return null;
+            result.Add(irType);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Split type argument string by comma, respecting nested angle brackets.
+    /// E.g., "Vec&lt;u8&gt;,i32" -> ["Vec&lt;u8&gt;", "i32"]
+    /// </summary>
+    private List<string> SplitTypeArgs(string argsString)
+    {
+        var result = new List<string>();
+        var depth = 0;
+        var start = 0;
+
+        for (int i = 0; i < argsString.Length; i++)
+        {
+            var c = argsString[i];
+            if (c == '<')
+                depth++;
+            else if (c == '>')
+                depth--;
+            else if (c == ',' && depth == 0)
+            {
+                result.Add(argsString.Substring(start, i - start).Trim());
+                start = i + 1;
+            }
+        }
+
+        // Add the last argument
+        if (start < argsString.Length)
+            result.Add(argsString.Substring(start).Trim());
+
+        return result;
+    }
+
+    /// <summary>
+    /// Recursively parse a type from cache key format (handles nested generics)
+    /// </summary>
+    private IrType? ParseTypeFromCacheKeyRecursive(string key)
+    {
+        key = key.Trim();
+
+        // Handle primitive types
+        switch (key)
+        {
+            case "i8": return IrIntType.I8;
+            case "i16": return IrIntType.I16;
+            case "i32": return IrIntType.I32;
+            case "i64": return IrIntType.I64;
+            case "u8": return IrIntType.U8;
+            case "u16": return IrIntType.U16;
+            case "u32": return IrIntType.U32;
+            case "u64": return IrIntType.U64;
+            case "bool": return IrBoolType.Instance;
+            case "void": return IrVoidType.Instance;
+        }
+
+        // Handle pointer types (ptr_...)
+        if (key.StartsWith("ptr_"))
+        {
+            var pointeeType = ParseTypeFromCacheKeyRecursive(key.Substring(4));
+            return pointeeType != null ? _typeInterner.GetPointerType(pointeeType) : null;
+        }
+
+        // Handle generic types (Name<Args>)
+        if (key.Contains("<"))
+        {
+            var openBracket = key.IndexOf('<');
+            var baseName = key.Substring(0, openBracket);
+            var argsString = key.Substring(openBracket + 1, key.Length - openBracket - 2);
+            var typeArgStrings = SplitTypeArgs(argsString);
+
+            // Try to look up in monomorphized cache first
+            var cached = _symbols.LookupMonomorphizedEnum(key);
+            if (cached != null)
+                return cached;
+
+            var cachedStruct = _symbols.LookupMonomorphizedStruct(key);
+            if (cachedStruct != null)
+                return cachedStruct;
+
+            // Try to build it from base type
+            var baseEnum = _symbols.LookupEnum(baseName);
+            if (baseEnum != null && baseEnum.GenericParameters.Count == typeArgStrings.Count)
+            {
+                var typeArgs = new List<IrType>();
+                foreach (var argStr in typeArgStrings)
+                {
+                    var argType = ParseTypeFromCacheKeyRecursive(argStr);
+                    if (argType == null) return null;
+                    typeArgs.Add(argType);
+                }
+
+                // Build substitutions and create monomorphized enum
+                var typeSubstitutions = new Dictionary<string, IrType>();
+                for (int i = 0; i < baseEnum.GenericParameters.Count; i++)
+                {
+                    typeSubstitutions[baseEnum.GenericParameters[i]] = typeArgs[i];
+                }
+
+                var monomorphizedVariants = new List<IrEnumVariant>();
+                foreach (var origVariant in baseEnum.Variants)
+                {
+                    var monomorphizedData = new List<IrType>();
+                    foreach (var dataType in origVariant.AssociatedData)
+                    {
+                        monomorphizedData.Add(_typeParser.SubstituteGenericTypes(dataType, typeSubstitutions));
+                    }
+                    monomorphizedVariants.Add(new IrEnumVariant(origVariant.Name, origVariant.Tag, monomorphizedData));
+                }
+
+                var monomorphizedEnum = new IrEnumType(baseName, monomorphizedVariants, null, key);
+                _symbols.RegisterMonomorphizedEnum(key, monomorphizedEnum);
+                return monomorphizedEnum;
+            }
+
+            var baseStruct = _symbols.LookupStruct(baseName);
+            if (baseStruct != null && baseStruct.GenericParameters.Count == typeArgStrings.Count)
+            {
+                var typeArgs = new List<IrType>();
+                foreach (var argStr in typeArgStrings)
+                {
+                    var argType = ParseTypeFromCacheKeyRecursive(argStr);
+                    if (argType == null) return null;
+                    typeArgs.Add(argType);
+                }
+
+                // Build substitutions and create monomorphized struct
+                var typeSubstitutions = new Dictionary<string, IrType>();
+                for (int i = 0; i < baseStruct.GenericParameters.Count; i++)
+                {
+                    typeSubstitutions[baseStruct.GenericParameters[i]] = typeArgs[i];
+                }
+
+                var monomorphizedFields = new List<IrStructField>();
+                foreach (var field in baseStruct.Fields)
+                {
+                    var substitutedType = _typeParser.SubstituteGenericTypes(field.Type, typeSubstitutions);
+                    monomorphizedFields.Add(new IrStructField(field.Name, substitutedType));
+                }
+
+                var monomorphizedStruct = new IrStructType(baseName, monomorphizedFields, null, key);
+                _symbols.RegisterMonomorphizedStruct(key, monomorphizedStruct);
+                return monomorphizedStruct;
+            }
+
+            return null;
+        }
+
+        // Try as simple struct/enum name
+        var structLookup = _symbols.LookupStruct(key);
+        if (structLookup != null)
+            return structLookup;
+
+        var enumLookup = _symbols.LookupEnum(key);
+        if (enumLookup != null)
+            return enumLookup;
 
         return null;
     }
@@ -5667,7 +6081,6 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             // Handle enum constructors
             if (resultType is IrEnumType enumType)
             {
-
             // Validate arguments match the variant's associated data
             var variantName = pathCtx.IDENTIFIER().GetText();
             var variant = ((IrEnumType)enumType).GetVariant(variantName);
@@ -5915,7 +6328,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                             if (substitutions == null)
                             {
                                 substitutions = new Dictionary<string, IrType>();
-                                if (InferGenericTypeFromPair(funcSymbol.ReturnType, _expectedType, substitutions))
+                                if (funcSymbol.ReturnType != null && _expectedType != null && InferGenericTypeFromPair(funcSymbol.ReturnType, _expectedType, substitutions))
                                 {
                                     // Check if all generic parameters were inferred
                                     var allInferred = true;
@@ -5937,7 +6350,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                                 substitutions = null; // Inference failed
                             }
 
-                            if (substitutions != null)
+                            if (substitutions != null && funcSymbol.ReturnType != null)
                             {
                                 // Successfully inferred - return the substituted return type
                                 return _typeParser.SubstituteGenericTypes(funcSymbol.ReturnType, substitutions);
@@ -6350,10 +6763,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             var substitutions = InferGenericTypes(function.GenericParameters, paramTypes, argTypes);
 
             // If argument-based inference failed, try inference from expected type
-            if (substitutions == null && _expectedType != null)
+            var expectedType = _expectedType;  // Capture to local to help nullability flow analysis
+            var returnType = function.ReturnType;  // Capture to local to help nullability flow analysis
+            if (substitutions == null && expectedType != null && returnType != null)
             {
                 substitutions = new Dictionary<string, IrType>();
-                if (InferGenericTypeFromPair(function.ReturnType, _expectedType, substitutions))
+                if (InferGenericTypeFromPair(returnType, expectedType, substitutions))
                 {
                     // Check if all generic parameters were inferred
                     var allInferred = true;
@@ -8405,7 +8820,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     }
 
                     // Substitute generic parameters in the return type
-                    return _typeParser.SubstituteGenericTypes(funcSymbol.ReturnType, substitutions);
+                    var result = funcSymbol.ReturnType != null ? _typeParser.SubstituteGenericTypes(funcSymbol.ReturnType, substitutions) : null;
+                    return result;
                 }
             }
 
@@ -8928,7 +9344,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 // Create new struct type - preserve generic parameters if any type args still contain generics
                 var hasGenerics = typeArgs.Any(t => ContainsGenericType(t));
                 var genericParams = hasGenerics ? structType.GenericParameters : null;
-                var monomorphizedStruct = new IrStructType(structType.StructName, monomorphizedFields, genericParams, cacheKey);
+                var monomorphizedStruct = new IrStructType(structType.StructName, monomorphizedFields, genericParams, cacheKey, typeArguments: typeArgs);
 
                 // Cache it for future use
                 _symbols.RegisterMonomorphizedStruct(cacheKey, monomorphizedStruct);
@@ -9002,7 +9418,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     foreach (var dataType in origVariant.AssociatedData)
                     {
                         // Use SubstituteGenericTypes to handle nested generic types (e.g., Vec<T> in Option<Vec<T>>)
-                        monomorphizedData.Add(_typeParser.SubstituteGenericTypes(dataType, typeSubstitutions));
+                        var substituted = _typeParser.SubstituteGenericTypes(dataType, typeSubstitutions);
+                        monomorphizedData.Add(substituted);
                     }
                     monomorphizedVariants.Add(new IrEnumVariant(origVariant.Name, origVariant.Tag, monomorphizedData));
                 }
@@ -9131,37 +9548,32 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 return false;
             }
 
-            // Same number of variants
-            if (expectedEnum.Variants.Count != actualEnum.Variants.Count)
-                return false;
-
-            // Each variant must match
-            for (int i = 0; i < expectedEnum.Variants.Count; i++)
+            // For non-generic enums with matching names, consider them compatible
+            // This handles the case where multiple IrEnumType instances exist for the same enum
+            // (e.g., one from import stub creation, another from full registration)
+            var expectedGenericCount = expectedEnum.GenericParameters?.Count ?? 0;
+            var actualGenericCount = actualEnum.GenericParameters?.Count ?? 0;
+            if (expectedGenericCount == 0 && actualGenericCount == 0)
             {
-                var expVariant = expectedEnum.Variants[i];
-                var actVariant = actualEnum.Variants[i];
-
-                // Same variant name and tag
-                if (expVariant.Name != actVariant.Name || expVariant.Tag != actVariant.Tag)
-                    return false;
-
-                // Same associated data count
-                if (expVariant.AssociatedData.Count != actVariant.AssociatedData.Count)
-                    return false;
-
-                // Each associated data type must be compatible
-                for (int j = 0; j < expVariant.AssociatedData.Count; j++)
-                {
-                    var expData = expVariant.AssociatedData[j];
-                    var actData = actVariant.AssociatedData[j];
-                    if (!TypesCompatible(expData, actData))
-                    {
-                        return false;
-                    }
-                }
+                // Non-generic enum with same name - they're the same type
+                return true;
             }
 
-            return true;
+            // For generic enums, check if both are instantiated (have CacheKeys)
+            // If both have CacheKeys, compare them directly (handles Option<i32> vs Option<i32>)
+            if (expectedEnum.CacheKey != null && actualEnum.CacheKey != null)
+            {
+                return expectedEnum.CacheKey == actualEnum.CacheKey;
+            }
+
+            // If generic param counts match and both are uninstantiated templates, they're the same
+            if (expectedGenericCount == actualGenericCount)
+            {
+                // Both are generic templates with same parameter count - consider compatible
+                return true;
+            }
+
+            return false;
         }
 
         // Both are integers - allow safe implicit conversions
@@ -9423,6 +9835,30 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     private bool IsBoolOrNumericOrPointerType(IrType type)
     {
         return type is IrBoolType || IsNumericType(type) || type is IrPointerType || type is IrReferenceType || type is IrMutReferenceType;
+    }
+
+    /// <summary>
+    /// Check if a string looks like a generic type parameter name (e.g., T, E, K, V, Item)
+    /// Generic parameters are typically single uppercase letters, but can be longer like "Item"
+    /// They are NOT primitive types, struct names, or enum names
+    /// </summary>
+    private bool IsGenericParameterName(string name)
+    {
+        if (string.IsNullOrEmpty(name))
+            return false;
+
+        // If it's a primitive type name, it's not a generic parameter
+        if (GetPrimitiveType(name) != null)
+            return false;
+
+        // If it's a known struct or enum, it's not a generic parameter
+        if (_symbols.LookupStruct(name) != null || _symbols.LookupEnum(name) != null)
+            return false;
+
+        // Common generic parameter names: single uppercase letters like T, E, K, V
+        // or longer names like Item, Self (though Self is special)
+        // Typically start with uppercase
+        return char.IsUpper(name[0]) && !name.Contains("::") && !name.Contains("<");
     }
 
     private IrType? GetPrimitiveType(string typeName)

@@ -418,10 +418,23 @@ public partial class IrBuilder
                     {
                         var bindingPattern = bindingPatterns[dataIdx];
 
-                        // Only handle identifier bindings for now
+                        // Extract binding name and mutability from pattern
+                        string? bindingName = null;
+                        bool isMutable = false;
+
                         if (bindingPattern is NovusParser.IdentifierPatternContext idPattern)
                         {
-                            var bindingName = idPattern.IDENTIFIER().GetText();
+                            bindingName = idPattern.IDENTIFIER().GetText();
+                            isMutable = false;
+                        }
+                        else if (bindingPattern is NovusParser.MutIdentifierPatternContext mutIdPattern)
+                        {
+                            bindingName = mutIdPattern.IDENTIFIER().GetText();
+                            isMutable = true;
+                        }
+
+                        if (bindingName != null)
+                        {
                             var dataType = variant!.AssociatedData[dataIdx];
 
                             // Extract the data - use enumValueForExtract which has the proper enum type
@@ -430,12 +443,12 @@ public partial class IrBuilder
                             _currentBlock!.AddInstruction(new IrExtractVariantData(extractName, enumValueForExtract!, variantName, dataIdx, dataType));
 
                             // Store in a local variable
-                            var localVar = new IrLocalVariable(bindingName, dataType, false);
+                            var localVar = new IrLocalVariable(bindingName, dataType, isMutable);
                             _currentFunction!.LocalVariables.Add(localVar);
                             _localVariables[bindingName] = localVar;
 
                             var extractedValue = new IrVariable(extractName, dataType);
-                            _currentBlock!.AddInstruction(new IrLocalDecl(bindingName, dataType, false, extractedValue));
+                            _currentBlock!.AddInstruction(new IrLocalDecl(bindingName, dataType, isMutable, extractedValue));
 
                             // Automatic defer for types with drop() method (RAII-style cleanup)
                             // This ensures pattern-bound variables in match arms are properly cleaned up

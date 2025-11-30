@@ -72,6 +72,14 @@ public class CCodeGenerator
     // Maps slot names to their types (for declaration)
     private Dictionary<string, IrType>? _slotTypes;
 
+    // Statement-level debug symbol tracking for exact line numbers in crash dialogs
+    // Maps label name -> (file, line, function name) for all emitted debug line markers
+    private List<(string LabelName, string FileName, int Line, string FuncName)> _debugLineMarkers = new();
+    // Track the last emitted line number to avoid duplicate markers for same line
+    private int _lastEmittedDebugLine = -1;
+    // Counter for unique debug label generation within a function
+    private int _debugLabelCounter = 0;
+
     /// <summary>
     /// Determines if a function is a monomorphized trait implementation.
     /// These functions need special handling to avoid duplicate symbol errors when
@@ -397,6 +405,9 @@ public class CCodeGenerator
                 // Graphics types
                 "TextAttr", "TTextAttr", "TextFont", "TextFontExtension",
                 "ColorFontColors", "ColorTextFont", "TextExtent", "Layer", "RastPort",
+                "AreaInfo", "TmpRas", "ClipRect", "Region", "RegionRectangle",
+                "CopIns", "CopList", "cprlist", "copinit", "RasInfo", "Layer_Info",
+                "ExtSprite", "MonitorSpec", "bltnode",
                 // Intuition types
                 "IBox", "DrawInfo", "Gadget", "Requester", "NewScreen", "Screen",
                 "Window", "IntuiMessage", "NewWindow", "GadgetInfo", "IntuiText",
@@ -481,7 +492,7 @@ public class CCodeGenerator
                 sb.AppendLine();
             }
 
-            // CRITICAL: Collect and emit enum types referenced by struct fields BEFORE struct definitions
+            // CRITICAL: Collect enum types referenced by struct fields
             // This prevents "undefined type" errors when structs use enum types as fields
             var enumsUsedByStructs = new HashSet<IrEnumType>();
             foreach (var structType in userStructs)
@@ -492,14 +503,12 @@ public class CCodeGenerator
                 }
             }
 
-            if (enumsUsedByStructs.Any())
+            // CRITICAL: Collect struct types that are used BY VALUE in enum variant payloads
+            // These structs must be fully defined BEFORE the enums that contain them
+            var structsUsedByEnumPayloads = new HashSet<IrStructType>();
+            foreach (var enumType in enumsUsedByStructs)
             {
-                sb.AppendLine("// Enum types used by struct fields");
-                foreach (var enumType in enumsUsedByStructs.OrderBy(e => codegen.MangleName(e)))
-                {
-                    codegen.EmitEnumTypeToBuilder(sb, enumType);
-                }
-                sb.AppendLine();
+                codegen.CollectStructTypesFromEnumPayloads(enumType, structsUsedByEnumPayloads);
             }
 
             // PASS 1: Forward declarations for all user-defined structs
@@ -512,10 +521,40 @@ public class CCodeGenerator
             }
             sb.AppendLine();
 
-            // PASS 2: Full struct definitions
+            // PASS 2: Emit structs that are needed by enum payloads FIRST
+            // This ensures enums like Option<Str> can reference Str by value
+            var structsNeededByEnums = userStructs
+                .Where(s => structsUsedByEnumPayloads.Any(e =>
+                    (e.CacheKey ?? e.StructName) == (s.CacheKey ?? s.StructName)))
+                .ToHashSet();
+
+            if (structsNeededByEnums.Any())
+            {
+                sb.AppendLine("// Struct types used by enum payloads (defined early)");
+                foreach (var structType in structsNeededByEnums.OrderBy(s => codegen.MangleName(s)))
+                {
+                    codegen.EmitStructTypeToBuilder(sb, structType);
+                }
+            }
+
+            // PASS 3: Emit enum types that depend on those struct definitions
+            if (enumsUsedByStructs.Any())
+            {
+                sb.AppendLine("// Enum types used by struct fields");
+                foreach (var enumType in enumsUsedByStructs.OrderBy(e => codegen.MangleName(e)))
+                {
+                    codegen.EmitEnumTypeToBuilder(sb, enumType);
+                }
+                sb.AppendLine();
+            }
+
+            // PASS 4: Emit remaining struct definitions (those not already emitted)
             foreach (var structType in userStructs)
             {
-                codegen.EmitStructTypeToBuilder(sb, structType);
+                if (!structsNeededByEnums.Contains(structType))
+                {
+                    codegen.EmitStructTypeToBuilder(sb, structType);
+                }
             }
 
             // Note: Vec_*_as_ptr functions are generated as regular functions in stdlib,
@@ -605,6 +644,158 @@ public class CCodeGenerator
         sb.AppendLine("#endif // NOVUS_TYPES_H");
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Returns the collected debug line markers from code generation.
+    /// Call this after generating all function files to get statement-level debug info.
+    /// </summary>
+    public List<(string LabelName, string FileName, int Line, string FuncName)> GetDebugLineMarkers()
+    {
+        return _debugLineMarkers;
+    }
+
+    /// <summary>
+    /// Generate a debug symbols C file that maps function and statement addresses to source locations.
+    /// This is used by the runtime to display file:line information in crash dialogs.
+    /// Must be generated separately from per-function files because it references all functions.
+    /// </summary>
+    /// <param name="modules">IR modules containing functions</param>
+    /// <param name="statementMarkers">Optional statement-level debug markers collected during code generation</param>
+    public static string GenerateDebugSymbolsFile(
+        IEnumerable<IrModule> modules,
+        List<(string LabelName, string FileName, int Line, string FuncName)>? statementMarkers = null)
+    {
+        var sb = new StringBuilder();
+
+        // Collect all implemented functions with locations from all modules
+        var functionsWithLocations = new List<(IrFunction Function, string CName)>();
+        foreach (var module in modules)
+        {
+            foreach (var func in module.Functions)
+            {
+                // Skip extern functions (no implementation) and functions without locations
+                if (func.IsExtern || func.BasicBlocks.Count == 0 || func.Location == null)
+                    continue;
+
+                // Compute C function name using the same logic as MangleName
+                var cName = MangleNameStatic(func.Name);
+                functionsWithLocations.Add((func, cName));
+            }
+        }
+
+        var hasStatementMarkers = statementMarkers != null && statementMarkers.Count > 0;
+
+        if (functionsWithLocations.Count == 0 && !hasStatementMarkers)
+        {
+            // Return empty file comment - no debug symbols to emit
+            return "// No debug symbols (no functions with source locations)\n";
+        }
+
+        sb.AppendLine("// Generated by Novus compiler");
+        sb.AppendLine("// Debug Symbol Table for runtime source location lookup");
+        if (hasStatementMarkers)
+            sb.AppendLine("// Includes statement-level debug markers for precise line numbers");
+        sb.AppendLine("// Target: AmigaOS 2.0+ (68020+), C99");
+        sb.AppendLine();
+        sb.AppendLine("#include \"novus_types.h\"");
+        sb.AppendLine();
+        sb.AppendLine("// ============================================================================");
+        sb.AppendLine("// Debug Symbol Table");
+        sb.AppendLine("// ============================================================================");
+        sb.AppendLine();
+
+        // Emit the struct definition (matches the runtime's expectation)
+        sb.AppendLine("typedef struct {");
+        sb.AppendLine("    void* func_addr;       // Function/statement address");
+        sb.AppendLine("    const char* file;      // Source file path");
+        sb.AppendLine("    uint16_t line;         // Line number");
+        sb.AppendLine("    const char* name;      // Function name");
+        sb.AppendLine("} NovusDebugSymbol;");
+        sb.AppendLine();
+
+        // Declare the registration function from the runtime
+        sb.AppendLine("extern void __novus_register_debug_symbols(const NovusDebugSymbol* symbols, uint32_t count);");
+        sb.AppendLine();
+
+        // Emit extern declarations for all functions we're referencing
+        sb.AppendLine("// Function declarations for symbol table");
+        foreach (var (func, cName) in functionsWithLocations)
+        {
+            // Just declare as void function - we only need the address
+            sb.AppendLine($"extern void {cName}(void);");
+        }
+        sb.AppendLine();
+
+        // Emit extern label declarations for statement markers
+        // These labels are emitted as inline asm in the generated C code
+        if (hasStatementMarkers)
+        {
+            sb.AppendLine("// Statement-level debug label declarations");
+            sb.AppendLine("// These labels are defined via inline asm in the function bodies");
+            foreach (var (labelName, _, _, _) in statementMarkers!)
+            {
+                sb.AppendLine($"extern void {labelName}(void);");
+            }
+            sb.AppendLine();
+        }
+
+        // Count total symbols (functions + statement markers)
+        var totalSymbols = functionsWithLocations.Count + (statementMarkers?.Count ?? 0);
+
+        // Emit the symbol table as static (accessed only via registration)
+        sb.AppendLine($"static const NovusDebugSymbol __novus_debug_symbols[] = {{");
+
+        // First emit function entry points
+        foreach (var (func, cName) in functionsWithLocations)
+        {
+            var loc = func.Location!;
+            var fileName = EscapeCStringStatic(System.IO.Path.GetFileName(loc.FilePath));
+            var funcName = EscapeCStringStatic(func.Name);
+
+            sb.AppendLine($"    {{ (void*){cName}, \"{fileName}\", {loc.Line}, \"{funcName}\" }},");
+        }
+
+        // Then emit statement-level markers
+        if (hasStatementMarkers)
+        {
+            sb.AppendLine("    // Statement-level markers for precise line numbers:");
+            foreach (var (labelName, fileName, line, funcName) in statementMarkers!)
+            {
+                var escapedFileName = EscapeCStringStatic(fileName);
+                var escapedFuncName = EscapeCStringStatic(funcName);
+                sb.AppendLine($"    {{ (void*){labelName}, \"{escapedFileName}\", {line}, \"{escapedFuncName}\" }},");
+            }
+        }
+
+        sb.AppendLine("};");
+        sb.AppendLine();
+
+        // Emit registration function that's called during startup
+        sb.AppendLine("void __novus_init_debug_symbols(void) {");
+        sb.AppendLine($"    __novus_register_debug_symbols(__novus_debug_symbols, {totalSymbols});");
+        sb.AppendLine("}");
+        sb.AppendLine();
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Static version of EscapeCString for use in static methods
+    /// </summary>
+    private static string EscapeCStringStatic(string s)
+    {
+        return s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r").Replace("\t", "\\t");
+    }
+
+    /// <summary>
+    /// Static version of MangleName for use in static methods
+    /// </summary>
+    private static string MangleNameStatic(string name)
+    {
+        // Replace :: with _ for namespaced names
+        // Replace < and > with _ for generic instantiations
+        return name.Replace("::", "_").Replace("<", "_").Replace(">", "_").Replace(",", "_").Replace(" ", "");
     }
 
     /// <summary>
@@ -913,6 +1104,10 @@ public class CCodeGenerator
         _indexAccessInfo.Clear();
         _fieldAccessChainInfo.Clear();
 
+        // Reset debug line tracking for this function
+        _lastEmittedDebugLine = -1;
+        _debugLabelCounter = 0;
+
         // Track which parameters were converted to pointers in the C signature
         _pointerConvertedParameters.Clear();
         foreach (var param in function.Parameters)
@@ -1136,6 +1331,13 @@ public class CCodeGenerator
             }
         }
 
+        // MMU protection: Initialize at start of main() if memory tracking is enabled
+        if (_safetyLevel.EnableMemoryTracking() && funcName == "main")
+        {
+            targetBuilder.AppendLine("    // Initialize MMU protection (null page, guard pages)");
+            targetBuilder.AppendLine("    __novus_init_mmu_protection();");
+        }
+
         // Emit all basic blocks
         foreach (var block in function.BasicBlocks)
         {
@@ -1328,6 +1530,15 @@ public class CCodeGenerator
         // Do NOT use 'static' keyword - these need to be visible to other .o files
         var constKeyword = !staticVar.IsMutable ? "const" : "";
 
+        // Memory section attribute for VBCC
+        // __chip forces data into chip RAM (required for DMA: Copper, Blitter, audio, sprites)
+        var sectionAttr = staticVar.Section switch
+        {
+            MemorySection.Chip => "__chip ",
+            MemorySection.Fast => "", // VBCC default is any memory, no specific attribute for fast-only
+            _ => ""
+        };
+
         // Generate initial value
         var initialValue = EmitValue(staticVar.InitialValue);
 
@@ -1339,12 +1550,12 @@ public class CCodeGenerator
         {
             var elementType = GetCType(arrayType.ElementType);
             var size = arrayType.Length;
-            sb.AppendLine($"{keywordStr}{elementType} {staticVar.Name}[{size}] = {initialValue};");
+            sb.AppendLine($"{sectionAttr}{keywordStr}{elementType} {staticVar.Name}[{size}] = {initialValue};");
         }
         else
         {
             var cType = GetCType(staticVar.Type);
-            sb.AppendLine($"{keywordStr}{cType} {staticVar.Name} = {initialValue};");
+            sb.AppendLine($"{sectionAttr}{keywordStr}{cType} {staticVar.Name} = {initialValue};");
         }
     }
 
@@ -1638,6 +1849,67 @@ public class CCodeGenerator
                 break;
 
             // For other types (primitive, function pointers, etc.) we don't need to recurse
+        }
+    }
+
+    /// <summary>
+    /// Collect all struct types that are used BY VALUE in enum variant payloads.
+    /// These structs must be fully defined before the enums that contain them.
+    /// Note: Pointer types are excluded since they only need forward declarations.
+    /// </summary>
+    internal void CollectStructTypesFromEnumPayloads(IrEnumType enumType, HashSet<IrStructType> structTypes)
+    {
+        CollectStructTypesFromEnumPayloads(enumType, structTypes, new HashSet<string>());
+    }
+
+    private void CollectStructTypesFromEnumPayloads(IrEnumType enumType, HashSet<IrStructType> structTypes, HashSet<string> visitedEnums)
+    {
+        var enumKey = MangleName(enumType);
+        if (visitedEnums.Contains(enumKey))
+            return;
+        visitedEnums.Add(enumKey);
+
+        foreach (var variant in enumType.Variants)
+        {
+            if (variant.HasAssociatedData && variant.AssociatedData != null)
+            {
+                foreach (var dataType in variant.AssociatedData)
+                {
+                    CollectStructTypesFromType(dataType, structTypes, visitedEnums);
+                }
+            }
+        }
+    }
+
+    private void CollectStructTypesFromType(IrType type, HashSet<IrStructType> structTypes, HashSet<string> visitedEnums)
+    {
+        switch (type)
+        {
+            case IrStructType structType:
+                // Only add non-extern structs (those we actually emit definitions for)
+                structTypes.Add(structType);
+                break;
+
+            case IrEnumType nestedEnum:
+                // Recursively collect from nested enums
+                CollectStructTypesFromEnumPayloads(nestedEnum, structTypes, visitedEnums);
+                break;
+
+            case IrTupleType tupleType:
+                // Recursively check tuple element types
+                foreach (var elementType in tupleType.ElementTypes)
+                {
+                    CollectStructTypesFromType(elementType, structTypes, visitedEnums);
+                }
+                break;
+
+            case IrArrayType arrayType:
+                // Recursively check array element type
+                CollectStructTypesFromType(arrayType.ElementType, structTypes, visitedEnums);
+                break;
+
+            // Note: Pointer types are NOT recursed into because pointers only need
+            // forward declarations, not full struct definitions.
         }
     }
 
@@ -2094,6 +2366,12 @@ public class CCodeGenerator
         EmitForwardDeclarations(reachableFunctions);
         EmitFunctions(reachableFunctions);
 
+        // Emit debug symbol table in debug builds for runtime source lookup
+        if (_safetyLevel >= SafetyLevel.Full)
+        {
+            EmitDebugSymbolTable(reachableFunctions);
+        }
+
         // Generate library boilerplate if @library attribute is present
         Console.WriteLine($"DEBUG CCodeGenerator: libraryGen.IsLibrary = {libraryGen.IsLibrary}");
         if (libraryGen.IsLibrary)
@@ -2456,6 +2734,29 @@ public class CCodeGenerator
         {
             // Emit inline type definitions (no C library dependency)
             EmitInlineTypeDefinitions(_output);
+            _output.AppendLine();
+        }
+
+        // Memory tracking configuration
+        if (_safetyLevel.EnableMemoryTracking())
+        {
+            _output.AppendLine("// Memory tracking enabled");
+            _output.AppendLine("#define NOVUS_MEMORY_DEBUG 1");
+
+            if (_safetyLevel.EnableMemoryPoisoning())
+            {
+                _output.AppendLine("#define NOVUS_MEMORY_PARANOID 1");
+            }
+
+            _output.AppendLine();
+            _output.AppendLine("// Memory tracking runtime functions");
+            _output.AppendLine("extern void* __novus_tracked_alloc(uint32_t size, uint32_t flags, const char* file, int32_t line);");
+            _output.AppendLine("extern void __novus_tracked_free(void* ptr, uint32_t size, const char* file, int32_t line);");
+            _output.AppendLine("extern void __novus_memory_report(void);");
+            _output.AppendLine();
+            _output.AppendLine("// MMU protection runtime functions");
+            _output.AppendLine("extern void __novus_init_mmu_protection(void);");
+            _output.AppendLine("extern void __novus_cleanup_mmu_protection(void);");
             _output.AppendLine();
         }
 
@@ -3033,6 +3334,89 @@ public class CCodeGenerator
         };
     }
 
+    /// <summary>
+    /// Escape a string for use in a C string literal
+    /// </summary>
+    private static string EscapeCString(string s)
+    {
+        return s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r");
+    }
+
+    /// <summary>
+    /// Get the C function name for an IR function
+    /// </summary>
+    private string GetCFunctionName(IrFunction func)
+    {
+        // For 'main', we keep it as 'main'
+        if (func.Name == "main")
+            return "main";
+
+        // Otherwise, mangle the name to be valid C
+        return MangleName(func.Name);
+    }
+
+    /// <summary>
+    /// Emit a debug symbol table mapping function addresses to source locations.
+    /// This enables the runtime to display file:line information when a crash occurs.
+    /// The table consists of:
+    /// 1. NovusDebugSymbol struct with function pointer, file, line, name
+    /// 2. Global array of symbols sorted by function address
+    /// 3. Count variable for runtime lookup
+    /// </summary>
+    private void EmitDebugSymbolTable(HashSet<string> reachableFunctions)
+    {
+        // Only emit for non-extern implemented functions with source locations
+        var functionsWithLocations = _module.Functions
+            .Where(f => !f.IsExtern && f.BasicBlocks.Count > 0
+                        && reachableFunctions.Contains(f.Name)
+                        && f.Location != null)
+            .ToList();
+
+        if (functionsWithLocations.Count == 0)
+            return;
+
+        _output.AppendLine();
+        _output.AppendLine("// ============================================================================");
+        _output.AppendLine("// Debug Symbol Table (for runtime source location lookup)");
+        _output.AppendLine("// ============================================================================");
+        _output.AppendLine();
+
+        // Emit the struct definition (matches the runtime's expectation)
+        _output.AppendLine("typedef struct {");
+        _output.AppendLine("    void* func_addr;       // Function start address");
+        _output.AppendLine("    const char* file;      // Source file path");
+        _output.AppendLine("    uint16_t line;         // Line number");
+        _output.AppendLine("    const char* name;      // Function name");
+        _output.AppendLine("} NovusDebugSymbol;");
+        _output.AppendLine();
+
+        // Declare the registration function from the runtime
+        _output.AppendLine("extern void __novus_register_debug_symbols(const NovusDebugSymbol* symbols, uint32_t count);");
+        _output.AppendLine();
+
+        // Emit the symbol table as static (accessed only via registration)
+        _output.AppendLine($"static const NovusDebugSymbol __novus_debug_symbols[] = {{");
+
+        foreach (var func in functionsWithLocations)
+        {
+            var loc = func.Location!;
+            var fileName = EscapeCString(System.IO.Path.GetFileName(loc.FilePath));
+            var funcName = EscapeCString(func.Name);
+            var cFuncName = GetCFunctionName(func);
+
+            _output.AppendLine($"    {{ (void*){cFuncName}, \"{fileName}\", {loc.Line}, \"{funcName}\" }},");
+        }
+
+        _output.AppendLine("};");
+        _output.AppendLine();
+
+        // Emit registration function that's called during startup (not static - called from main)
+        _output.AppendLine("void __novus_init_debug_symbols(void) {");
+        _output.AppendLine($"    __novus_register_debug_symbols(__novus_debug_symbols, {functionsWithLocations.Count});");
+        _output.AppendLine("}");
+        _output.AppendLine();
+    }
+
     private void EmitFunctions(HashSet<string> reachableFunctions)
     {
         // Only emit reachable functions (dead code elimination)
@@ -3114,6 +3498,10 @@ public class CCodeGenerator
         _currentEmittingFunction = function;
         _memberAccessInfo.Clear();
         _fieldAccessChainInfo.Clear();
+
+        // Reset debug line tracking for this function
+        _lastEmittedDebugLine = -1;
+        _debugLabelCounter = 0;
 
         // Run liveness analysis for variable slot reuse
         var livenessAnalysis = new LivenessAnalysis(function);
@@ -3295,6 +3683,13 @@ public class CCodeGenerator
         _currentLocalDeclVars = localDeclVars;
         _currentStoredVars = storedVars;
 
+        // MMU protection: Initialize at start of main() if memory tracking is enabled
+        if (_safetyLevel.EnableMemoryTracking() && funcName == "main")
+        {
+            _output.AppendLine("    // Initialize MMU protection (null page, guard pages)");
+            _output.AppendLine("    __novus_init_mmu_protection();");
+        }
+
         // Emit function body
         foreach (var block in function.BasicBlocks)
         {
@@ -3405,8 +3800,52 @@ public class CCodeGenerator
         }
     }
 
+    /// <summary>
+    /// Emit a debug line marker if the instruction has a location that differs from the last emitted line.
+    /// This creates an addressable label in the generated code that the runtime can map back to source.
+    /// Only emitted when building with SafetyLevel.Paranoid (--safety-level 3).
+    /// </summary>
+    private void MaybeEmitDebugLineMarker(IrInstruction instruction)
+    {
+        // Only emit debug markers in paranoid safety mode (level 3)
+        if (_safetyLevel < SafetyLevel.Paranoid)
+            return;
+
+        // Skip if no location info
+        if (instruction.Location == null)
+            return;
+
+        var loc = instruction.Location;
+
+        // Skip if same line as last marker (avoid redundant markers)
+        if (loc.Line == _lastEmittedDebugLine)
+            return;
+
+        // Skip IrLabel instructions - they're not real statements
+        if (instruction is IrLabel)
+            return;
+
+        _lastEmittedDebugLine = loc.Line;
+
+        // Generate unique label name: __dbg_{funcname}_{counter}
+        var funcName = _currentEmittingFunction != null ? MangleName(_currentEmittingFunction) : "unknown";
+        var labelName = $"__dbg_{funcName}_{_debugLabelCounter++}";
+        var fileName = System.IO.Path.GetFileName(loc.FilePath);
+
+        // Record this marker for the debug symbol table
+        _debugLineMarkers.Add((labelName, fileName, loc.Line, _currentEmittingFunction?.Name ?? "unknown"));
+
+        // Note: VBCC doesn't support GCC-style __asm volatile() for inline labels.
+        // Instead, we emit a comment marker that can be used for approximate line info.
+        // TODO: Post-process assembly output to insert actual labels for precise mapping.
+        _output.AppendLine($"    /* DBG: {labelName} = {fileName}:{loc.Line} */");
+    }
+
     private void EmitInstruction(IrInstruction instruction)
     {
+        // Emit debug line marker before the instruction if location changed
+        MaybeEmitDebugLineMarker(instruction);
+
         switch (instruction)
         {
             case IrLocalDecl localDecl:
@@ -4003,6 +4442,52 @@ public class CCodeGenerator
 
     private void EmitCall(IrCall call)
     {
+        // Memory tracking: Intercept AllocMem/FreeMem calls when tracking is enabled
+        if (_safetyLevel.EnableMemoryTracking())
+        {
+            // AllocMem(size, flags) -> __novus_tracked_alloc(size, flags, file, line)
+            if (call.FunctionName == "AllocMem" && call.Arguments.Count == 2)
+            {
+                var sizeArg = EmitValue(call.Arguments[0]);
+                var flagsArg = EmitValue(call.Arguments[1]);
+                var fileName = call.Location?.FilePath ?? "unknown";
+                var lineNumber = call.Location?.Line ?? 0;
+
+                var callExpr = $"__novus_tracked_alloc({sizeArg}, {flagsArg}, \"{fileName}\", {lineNumber})";
+
+                if (call.ResultName != null)
+                {
+                    var resultName = SanitizeVariableName(call.ResultName);
+                    if (_declaredVariables.Contains(resultName))
+                    {
+                        _output.AppendLine($"    {resultName} = ({GetCType(call.ReturnType)}){callExpr};");
+                    }
+                    else
+                    {
+                        var decl = GetCVariableDeclaration(call.ReturnType, resultName);
+                        _output.AppendLine($"    {decl} = ({GetCType(call.ReturnType)}){callExpr};");
+                    }
+                }
+                else
+                {
+                    _output.AppendLine($"    {callExpr};");
+                }
+                return;
+            }
+
+            // FreeMem(ptr, size) -> __novus_tracked_free(ptr, size, file, line)
+            if (call.FunctionName == "FreeMem" && call.Arguments.Count == 2)
+            {
+                var ptrArg = EmitValue(call.Arguments[0]);
+                var sizeArg = EmitValue(call.Arguments[1]);
+                var fileName = call.Location?.FilePath ?? "unknown";
+                var lineNumber = call.Location?.Line ?? 0;
+
+                _output.AppendLine($"    __novus_tracked_free({ptrArg}, {sizeArg}, \"{fileName}\", {lineNumber});");
+                return;
+            }
+        }
+
         // For FFI calls, we need to cast pointer arguments to int32_t
         var function = _module.Functions.FirstOrDefault(f => f.Name == call.FunctionName);
         var args = new List<string>();
@@ -4266,6 +4751,15 @@ public class CCodeGenerator
             EmitDeferredCleanup(_currentEmittingFunction, 1);
         }
 
+        // Memory tracking: Emit cleanup and report before main() returns
+        if (_safetyLevel.EnableMemoryTracking() &&
+            _currentEmittingFunction != null &&
+            _currentEmittingFunction.Name == "main")
+        {
+            _output.AppendLine("    __novus_memory_report();");
+            _output.AppendLine("    __novus_cleanup_mmu_protection();");
+        }
+
         if (returnInst.Value != null)
         {
             // VBCC FIX: For struct/enum returns, write to output parameter instead of returning directly
@@ -4498,9 +4992,9 @@ public class CCodeGenerator
         _output.AppendLine($"    if (!({condition})) {{");
 
         // Call runtime assert handler to display error (uses EasyRequest on Amiga)
-        var fileName = assert.Location.FilePath;
-        var line = assert.Location.Line;
-        var col = assert.Location.Column;
+        var fileName = assert.Location?.FilePath ?? "<unknown>";
+        var line = assert.Location?.Line ?? 0;
+        var col = assert.Location?.Column ?? 0;
 
         if (assert.Message != null)
         {
@@ -4535,9 +5029,9 @@ public class CCodeGenerator
         // Panic is NEVER elided (even in release mode) - it's for unrecoverable runtime errors
 
         // Call runtime panic handler to display error (uses EasyRequest on Amiga)
-        var fileName = panic.Location.FilePath;
-        var line = panic.Location.Line;
-        var col = panic.Location.Column;
+        var fileName = panic.Location?.FilePath ?? "<unknown>";
+        var line = panic.Location?.Line ?? 0;
+        var col = panic.Location?.Column ?? 0;
 
         // Escape the message for C string literal
         var escapedMessage = panic.Message
@@ -5021,6 +5515,10 @@ public class CCodeGenerator
         // Store the array and index expressions for later use when taking address
         _indexAccessInfo[resultName] = (arrayValue, indexValue);
 
+        // Get source location if available
+        var filePath = indexAccess.Location?.FilePath ?? "<unknown>";
+        var line = indexAccess.Location?.Line ?? 0;
+
         // Add runtime bounds check if enabled and array type information is available
         if (_safetyLevel.EnableBoundsChecking() && indexAccess.Array.Type is IrArrayType arrayType)
         {
@@ -5032,9 +5530,7 @@ public class CCodeGenerator
             }
             _output.AppendLine($"    if ((uint32_t){indexValue} >= (uint32_t){arrayType.Length}) {{");
 
-            // Note: We don't have location info on IR instructions yet, so we use 0
-            // TODO: Add location tracking to IR instructions
-            _output.AppendLine($"        __novus_bounds_check_failed({indexValue}, {arrayType.Length}, \"<compiler-generated>\", 0);");
+            _output.AppendLine($"        __novus_bounds_check_failed({indexValue}, {arrayType.Length}, \"{EscapeString(filePath)}\", {line});");
 
             // Execute deferred cleanup before returning
             if (_currentEmittingFunction != null)
@@ -5047,9 +5543,25 @@ public class CCodeGenerator
             _output.AppendLine($"        {resultName} = {arrayValue}[{indexValue}];");
             _output.AppendLine($"    }}");
         }
+        // Add use-after-free check for pointer access at safety level 3
+        else if (_safetyLevel.EnableMemoryTracking() && indexAccess.Array.Type is IrPointerType)
+        {
+            // Emit UAF check before pointer dereference
+            _output.AppendLine($"    __novus_check_ptr_access((void*){arrayValue}, \"{EscapeString(filePath)}\", {line});");
+
+            // Then perform the access
+            if (alreadyDeclared)
+            {
+                _output.AppendLine($"    {resultName} = {arrayValue}[{indexValue}];");
+            }
+            else
+            {
+                _output.AppendLine($"    {elementType} {resultName} = {arrayValue}[{indexValue}];");
+            }
+        }
         else
         {
-            // No bounds checking - direct access
+            // No checking - direct access
             if (alreadyDeclared)
             {
                 _output.AppendLine($"    {resultName} = {arrayValue}[{indexValue}];");
@@ -5985,7 +6497,14 @@ public class CCodeGenerator
         if (!IsMonomorphizedFunction(function))
             return baseName;
 
-        // For monomorphized generic functions, we need to extract the type arguments
+        // If the function name already contains type parameters (e.g., "Vec<u32>::new"),
+        // then MangleName has already converted it to "Vec_u32_new" with the type args embedded.
+        // In this case, we should NOT try to insert type args again.
+        if (function.Name.Contains('<'))
+            return baseName;
+
+        // For monomorphized generic functions where the function name doesn't already
+        // contain type args, we need to extract them from parameters or return type
         // and include them in the mangled name to avoid duplicate symbols.
         //
         // Strategy: Look at the function's parameters or return type to find

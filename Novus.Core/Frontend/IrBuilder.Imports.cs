@@ -25,52 +25,103 @@ public partial class IrBuilder
 
     private void ImportModuleSpecificSymbols(string moduleNamespace, List<string> symbolNames)
     {
-        // Build a pseudo import list that contains the specific symbols
-        // We can't create a real ImportListContext without the parser, so we'll
-        // pass the symbol names another way
-        // For now, recursively call ImportModule for each symbol individually
+        // Parse the module ONCE (not per-symbol)
+        string modulePath = ModuleImportHelper.ResolveModulePath(moduleNamespace, _stdLibPath);
+        var (moduleContext, syntaxErrors) = ModuleImportHelper.ParseModuleFile(modulePath);
+
+        if (moduleContext == null || syntaxErrors > 0)
+        {
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.ModuleNotFound,
+                $"Module '{moduleNamespace}' not found or has syntax errors",
+                errorLocation
+            );
+            return;
+        }
+
+        // IMPORTANT: Process the module's own reexports first
+        // This ensures that types used by the symbols we're importing are available
+        foreach (var reexportDecl in moduleContext.reexportDeclaration())
+        {
+            var reexportPath = reexportDecl.modulePath().GetText();
+            var reexportText = reexportDecl.GetText();
+            if (reexportText.EndsWith("::*"))
+            {
+                ImportModule(reexportPath, importAll: true, importList: null);
+            }
+            else
+            {
+                var reexportList = reexportDecl.reexportList();
+                if (reexportList != null)
+                {
+                    var reexportSymbols = new List<string>();
+                    foreach (var id in reexportList.IDENTIFIER())
+                    {
+                        reexportSymbols.Add(id.GetText());
+                    }
+                    ImportModuleSpecificSymbols(reexportPath, reexportSymbols);
+                }
+            }
+        }
+
+        // CRITICAL: Register struct/enum placeholders for the REQUESTED symbols ONLY
+        // But do it BEFORE processing any symbols, so that cross-references work correctly.
+        // For example, if importing struct A which has a field of type B, and B is in the same module,
+        // we need to register placeholder for A first, then when parsing A's fields, the RegisterStruct
+        // call will handle creating placeholder for B if needed.
         foreach (var symbolName in symbolNames)
         {
-            // Parse the module to get the symbols
-            string modulePath = ModuleImportHelper.ResolveModulePath(moduleNamespace, _stdLibPath);
-            var (moduleContext, syntaxErrors) = ModuleImportHelper.ParseModuleFile(modulePath);
-
-            if (moduleContext == null || syntaxErrors > 0)
+            // Register placeholder for enums
+            foreach (var enumDecl in moduleContext.enumDeclaration())
             {
-                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
-                _diagnostics.ReportError(
-                    ErrorCodes.ModuleNotFound,
-                    $"Module '{moduleNamespace}' not found or has syntax errors",
-                    errorLocation
-                );
-                return;
-            }
-
-            // IMPORTANT: Process the module's own reexports first
-            // This ensures that types used by the symbol we're importing are available
-            foreach (var reexportDecl in moduleContext.reexportDeclaration())
-            {
-                var reexportPath = reexportDecl.modulePath().GetText();
-                var reexportText = reexportDecl.GetText();
-                if (reexportText.EndsWith("::*"))
+                if (enumDecl.IDENTIFIER().GetText() == symbolName)
                 {
-                    ImportModule(reexportPath, importAll: true, importList: null);
-                }
-                else
-                {
-                    var reexportList = reexportDecl.reexportList();
-                    if (reexportList != null)
+                    // RegisterEnum will handle placeholder registration
+                    if (!_symbols.HasEnum(symbolName))
                     {
-                        var reexportSymbols = new List<string>();
-                        foreach (var id in reexportList.IDENTIFIER())
+                        // Parse generic parameters for stub so type checking works correctly
+                        List<string>? genericParams = null;
+                        if (enumDecl.genericParams() != null)
                         {
-                            reexportSymbols.Add(id.GetText());
+                            genericParams = new List<string>();
+                            foreach (var paramId in enumDecl.genericParams().IDENTIFIER())
+                            {
+                                genericParams.Add(paramId.GetText());
+                            }
                         }
-                        ImportModuleSpecificSymbols(reexportPath, reexportSymbols);
+                        var stubEnum = new IrEnumType(symbolName, new List<IrEnumVariant>(), genericParams);
+                        _symbols.RegisterEnum(symbolName, stubEnum);
                     }
                 }
             }
 
+            // Register placeholder for structs
+            foreach (var structDecl in moduleContext.structDeclaration())
+            {
+                if (structDecl.IDENTIFIER().GetText() == symbolName)
+                {
+                    // RegisterStruct will handle placeholder registration and self-referential types
+                    if (!_symbols.HasStruct(symbolName))
+                    {
+                        List<string> genericParams = new List<string>();
+                        if (structDecl.genericParams() != null)
+                        {
+                            foreach (var paramId in structDecl.genericParams().IDENTIFIER())
+                            {
+                                genericParams.Add(paramId.GetText());
+                            }
+                        }
+                        var placeholderStruct = new IrStructType(symbolName, new List<IrStructField>(), genericParams, null, null);
+                        _symbols.RegisterStruct(symbolName, placeholderStruct);
+                    }
+                }
+            }
+        }
+
+        // Now process each specific symbol requested
+        foreach (var symbolName in symbolNames)
+        {
             // Find and register the specific symbol
             // Check enums
             foreach (var enumDecl in moduleContext.enumDeclaration())
@@ -78,7 +129,7 @@ public partial class IrBuilder
                 if (enumDecl.IDENTIFIER().GetText() == symbolName)
                 {
                     RegisterEnum(enumDecl);
-                    return; // Found it
+                    goto nextSymbol; // Found it, move to next symbol
                 }
             }
             // Check structs
@@ -87,7 +138,7 @@ public partial class IrBuilder
                 if (structDecl.IDENTIFIER().GetText() == symbolName)
                 {
                     RegisterStruct(structDecl);
-                    return; // Found it
+                    goto nextSymbol; // Found it, move to next symbol
                 }
             }
             // Check traits
@@ -96,7 +147,7 @@ public partial class IrBuilder
                 if (traitDecl.IDENTIFIER().GetText() == symbolName)
                 {
                     RegisterTrait(traitDecl);
-                    return; // Found it
+                    goto nextSymbol; // Found it, move to next symbol
                 }
             }
             // Check constants
@@ -105,9 +156,12 @@ public partial class IrBuilder
                 if (constDecl.IDENTIFIER().GetText() == symbolName)
                 {
                     RegisterConstant(constDecl);
-                    return; // Found it
+                    goto nextSymbol; // Found it, move to next symbol
                 }
             }
+
+            nextSymbol:
+                ; // Continue to next symbol
         }
     }
 
@@ -258,11 +312,31 @@ public partial class IrBuilder
                 // Build the list of names to import for this specific import statement
                 var selectiveImports = ModuleImportHelper.BuildImportNameSet(moduleContext, importAll, importList);
 
-                // Fill in enum variants for selective imports only
+                // CRITICAL: Follow the same order as the "not already processed" path!
+                // Type registrations MUST happen before parsing function signatures.
+
+                // Step 1: Fill in enum variants for selective imports
                 FillEnumVariantsForImport(moduleContext, selectiveImports);
 
-                // Register functions from the already-parsed module
-                // At this point, all type stubs are registered so function signatures can reference any type
+                // Step 2: Register constants
+                RegisterConstantsForImport(moduleContext, selectiveImports);
+
+                // Step 3: Register structs (with dependency expansion)
+                // First, expand selective imports to include struct dependencies
+                var expandedStructImports = ExpandStructDependencies(moduleContext, selectiveImports);
+
+                // Step 4: Register placeholder structs
+                RegisterStructPlaceholdersForImport(moduleContext, expandedStructImports);
+
+                // Step 5: Fill in struct fields
+                // At this point, enum stubs are registered so struct fields can reference enums
+                FillStructFieldsForImport(moduleContext, expandedStructImports);
+
+                // Step 6: Register traits
+                RegisterTraitsForImport(moduleContext, selectiveImports);
+
+                // Step 7: NOW register functions - all type stubs are registered
+                // so function signatures can reference any type
                 foreach (var funcDecl in moduleContext.functionDeclaration())
                 {
                     var funcName = funcDecl.IDENTIFIER().GetText();
@@ -285,23 +359,6 @@ public partial class IrBuilder
                         }
                     }
                 }
-
-                // Register constants
-                RegisterConstantsForImport(moduleContext, selectiveImports);
-
-                // Register structs (with dependency expansion)
-                // First, expand selective imports to include struct dependencies
-                var expandedStructImports = ExpandStructDependencies(moduleContext, selectiveImports);
-
-                // Register placeholder structs
-                RegisterStructPlaceholdersForImport(moduleContext, expandedStructImports);
-
-                // Fill in struct fields
-                // At this point, enum stubs are registered so struct fields can reference enums
-                FillStructFieldsForImport(moduleContext, expandedStructImports);
-
-                // Register traits
-                RegisterTraitsForImport(moduleContext, selectiveImports);
 
                 // Register impl blocks for ALL types (not just selective imports)
                 // This is critical: when you import a type, you also need its methods!
@@ -815,7 +872,7 @@ public partial class IrBuilder
         var returnType = ParseReturnType(funcDecl.type());
 
         // Substitute generic types in return type
-        returnType = _typeParser.SubstituteGenericTypes(returnType, typeSubstitutions);
+        returnType = _typeParser.SubstituteGenericTypes(returnType!, typeSubstitutions);
 
         // Generate correct mangled name for trait impls vs inherent methods (using mangledTypeName from above)
         var mangledMethodName = GenerateMethodMangledName(
@@ -825,7 +882,7 @@ public partial class IrBuilder
             traitName,
             traitTypeArgs ?? new List<IrType>()
         );
-        var function = new IrFunction(mangledMethodName, returnType, Visibility.Private, false);
+        var function = new IrFunction(mangledMethodName, returnType!, Visibility.Private, false);
 
         // Parse parameters with substitutions
         if (funcDecl.parameterList() != null)
