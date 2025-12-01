@@ -1,0 +1,115 @@
+// HashMap test example
+// Tests basic HashMap operations with generic keys (u32 keys, u32 values)
+
+from std::core import Option
+from std::collections::hashmap import HashMap, HashMapEntry, EntryState, KeyValue, HashMapIter
+
+fn main() -> i32 {
+    // Create a new HashMap<u32, u32> (u32 keys, u32 values)
+    let map_opt: Option<HashMap<u32, u32>> = HashMap::<u32, u32>::new()
+
+    match map_opt {
+        Some(mut map) => {
+            // Insert some values
+            map.insert(1u32, 100u32)
+            map.insert(2u32, 200u32)
+            map.insert(3u32, 300u32)
+
+            // Check length
+            if map.len() != 3u32 {
+                return 1  // Error: wrong length
+            }
+
+            // Test get
+            let key2: u32 = 2u32
+            match map.get(&key2) {
+                Some(val_ptr) => {
+                    if *val_ptr != 200u32 {
+                        return 2  // Error: wrong value
+                    }
+                },
+                None => {
+                    return 3  // Error: key not found
+                }
+            }
+
+            // Test contains_key
+            let key4: u32 = 4u32
+            let key1: u32 = 1u32
+            if map.contains_key(&key4) {
+                return 4  // Error: should not contain key 4
+            }
+
+            if !map.contains_key(&key1) {
+                return 5  // Error: should contain key 1
+            }
+
+            // Test update (insert existing key)
+            map.insert(2u32, 250u32)
+            match map.get(&key2) {
+                Some(val_ptr) => {
+                    if *val_ptr != 250u32 {
+                        return 6  // Error: value not updated
+                    }
+                },
+                None => {
+                    return 7  // Error: key not found after update
+                }
+            }
+
+            // Test remove
+            match map.remove(&key1) {
+                Some(val) => {
+                    if val != 100u32 {
+                        return 8  // Error: wrong removed value
+                    }
+                },
+                None => {
+                    return 9  // Error: key not found for removal
+                }
+            }
+
+            // Verify removal
+            if map.len() != 2u32 {
+                return 10  // Error: wrong length after removal
+            }
+
+            if map.contains_key(&key1) {
+                return 11  // Error: key still exists after removal
+            }
+
+            // Test iteration
+            let mut count: u32 = 0u32
+            let mut iter: HashMapIter<u32, u32> = map.iter()
+            let mut done: bool = false
+            while !done {
+                match iter.next() {
+                    Some(kv) => {
+                        count = count + 1u32
+                    },
+                    None => {
+                        done = true
+                    }
+                }
+            }
+
+            if count != 2u32 {
+                return 12  // Error: wrong iteration count
+            }
+
+            // Test clear
+            map.clear()
+            if !map.is_empty() {
+                return 13  // Error: not empty after clear
+            }
+
+            // Cleanup
+            map.drop()
+
+            return 0  // Success
+        },
+        None => {
+            return -1  // Error: allocation failed
+        }
+    }
+}

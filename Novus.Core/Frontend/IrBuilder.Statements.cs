@@ -920,14 +920,79 @@ public partial class IrBuilder
                 return null;
             }
 
-            // OPTIMIZATION: Detect array[index].field = value pattern
-            // This is common and we can emit a specialized instruction to avoid creating a temporary copy
-            if (lvalueSuffixes.Length == 2 &&
-                lvalueSuffixes[0].GetChild(0).GetText() == "[" &&
-                lvalueSuffixes[1].GetChild(0).GetText() == ".")
+            // OPTIMIZATION: Detect patterns ending with [index].field = value
+            // This includes: arr[i].field, base.ptr[i].field, etc.
+            // We need to emit IrIndexedFieldStore to write directly to the array element,
+            // not create a copy of the struct and then write to it.
+            if (lvalueSuffixes.Length >= 2 &&
+                lvalueSuffixes[lvalueSuffixes.Length - 2].GetChild(0).GetText() == "[" &&
+                lvalueSuffixes[lvalueSuffixes.Length - 1].GetChild(0).GetText() == ".")
             {
-                // Parse the index expression
-                var indexExpr = (IrValue?)Visit(lvalueSuffixes[0].expression());
+                // First, process all leading suffixes to get to the array/pointer
+                IrValue arrayBase = baseVar;
+                for (int i = 0; i < lvalueSuffixes.Length - 2; i++)
+                {
+                    var suffix = lvalueSuffixes[i];
+                    if (suffix.GetChild(0).GetText() == ".")
+                    {
+                        // Field access - load the field to get to the array
+                        var fieldName = suffix.IDENTIFIER().GetText();
+
+                        // Auto-dereference pointers and references
+                        IrValue actualBase = arrayBase;
+                        var structType = arrayBase.Type;
+                        if (structType is IrPointerType ptrType && ptrType.PointeeType is IrStructType)
+                        {
+                            actualBase = new IrDereferenceValue(arrayBase, ptrType.PointeeType);
+                            structType = ptrType.PointeeType;
+                        }
+                        else if (structType is IrReferenceType refType && refType.PointeeType is IrStructType)
+                        {
+                            actualBase = new IrDereferenceValue(arrayBase, refType.PointeeType);
+                            structType = refType.PointeeType;
+                        }
+                        else if (structType is IrMutReferenceType mutRefType && mutRefType.PointeeType is IrStructType)
+                        {
+                            actualBase = new IrDereferenceValue(arrayBase, mutRefType.PointeeType);
+                            structType = mutRefType.PointeeType;
+                        }
+
+                        if (structType is IrStructType irStruct)
+                        {
+                            var leadingField = irStruct.Fields.FirstOrDefault(f => f.Name == fieldName);
+                            if (leadingField != null)
+                            {
+                                var tempName = $"_field_{fieldName}_{_tempCounter++}";
+                                var loadMember = new IrMemberAccess(tempName, actualBase, fieldName, leadingField.Type, leadingField.Offset);
+                                _currentBlock!.AddInstruction(loadMember);
+                                arrayBase = new IrVariable(tempName, leadingField.Type);
+                            }
+                        }
+                    }
+                    else if (suffix.GetChild(0).GetText() == "[")
+                    {
+                        // Index access - load the element
+                        var idxExpr = (IrValue?)Visit(suffix.expression());
+                        if (idxExpr != null)
+                        {
+                            IrType elemType;
+                            if (arrayBase.Type is IrPointerType leadingPt)
+                                elemType = leadingPt.PointeeType;
+                            else if (arrayBase.Type is IrArrayType leadingAt)
+                                elemType = leadingAt.ElementType;
+                            else
+                                break; // Error case - will be caught below
+
+                            var tempName = $"_indexed_{_tempCounter++}";
+                            var loadIndex = new IrIndexAccess(tempName, arrayBase, idxExpr, elemType);
+                            _currentBlock!.AddInstruction(loadIndex);
+                            arrayBase = new IrVariable(tempName, elemType);
+                        }
+                    }
+                }
+
+                // Parse the final index expression
+                var indexExpr = (IrValue?)Visit(lvalueSuffixes[lvalueSuffixes.Length - 2].expression());
                 if (indexExpr == null)
                 {
                     errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
@@ -940,15 +1005,15 @@ public partial class IrBuilder
                 }
 
                 // Get the field name
-                var memberName = lvalueSuffixes[1].IDENTIFIER().GetText();
+                var memberName = lvalueSuffixes[lvalueSuffixes.Length - 1].IDENTIFIER().GetText();
 
                 // Determine the element type of the array
                 IrType elementType;
-                if (baseVar.Type is IrPointerType pt)
+                if (arrayBase.Type is IrPointerType pt)
                 {
                     elementType = pt.PointeeType;
                 }
-                else if (baseVar.Type is IrArrayType at)
+                else if (arrayBase.Type is IrArrayType at)
                 {
                     elementType = at.ElementType;
                 }
@@ -957,7 +1022,7 @@ public partial class IrBuilder
                     errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
                     _diagnostics.ReportError(
                         ErrorCodes.CannotIndexType,
-                        $"Cannot index type '{baseVar.Type}' - must be pointer or array",
+                        $"Cannot index type '{arrayBase.Type}' - must be pointer or array",
                         errorLocation
                     );
                     return null;
@@ -989,7 +1054,7 @@ public partial class IrBuilder
                 }
 
                 // Emit specialized indexed field store instruction
-                var indexedFieldStore = new IrIndexedFieldStore(baseVar, indexExpr, memberName, field.Offset, value);
+                var indexedFieldStore = new IrIndexedFieldStore(arrayBase, indexExpr, memberName, field.Offset, value);
                 _currentBlock!.AddInstruction(indexedFieldStore);
                 return null;
             }

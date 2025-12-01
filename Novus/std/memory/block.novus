@@ -108,6 +108,31 @@ impl MemoryBlock {
         return self.size == 0
     }
 
+    /// Take ownership of the raw pointer, preventing automatic cleanup
+    ///
+    /// This "leaks" the memory from the MemoryBlock's perspective - the caller
+    /// is now responsible for freeing the memory manually via FreeMem.
+    /// Returns a tuple of (pointer, size).
+    ///
+    /// Use this when you need to store the raw pointer elsewhere (e.g., in a
+    /// struct that manages its own memory) without triggering double-free.
+    ///
+    /// Example:
+    /// ```novus
+    /// let block = MemoryBlock::alloc(1024, MEMF_FAST)?
+    /// let (ptr, size) = block.into_raw()
+    /// // block is now "empty" - Drop won't free anything
+    /// // caller must manually: FreeMem(ptr, size)
+    /// ```
+    pub fn into_raw(&mut self) -> (*u8, u32) {
+        let ptr = self.ptr
+        let size = self.size
+        // Clear our fields so Drop won't free
+        self.ptr = (*u8)0
+        self.size = 0
+        return (ptr, size)
+    }
+
     /// Free the memory block
     /// After calling free(), the block becomes invalid
     ///
@@ -130,23 +155,25 @@ impl MemoryBlock {
 
         let new_block_opt = MemoryBlock::alloc(new_size, flags)
         match new_block_opt {
-            Some(new_block) => {
+            Some(mut new_block) => {
                 // Copy old data to new block
                 let mut copy_size: u32 = self.size
                 if new_size < self.size {
                     copy_size = new_size
                 }
 
+                let new_ptr = new_block.ptr()
                 if copy_size > 0 {
-                    unsafe { CopyMem(self.ptr, new_block.ptr(), copy_size) }
+                    unsafe { CopyMem(self.ptr, new_ptr, copy_size) }
                 }
 
                 // Free old block
                 self.free()
 
-                // Update to new block
-                self.ptr = new_block.ptr()
-                self.size = new_block.size()
+                // Take ownership of new block's memory (prevents double-free)
+                let (ptr, size) = new_block.into_raw()
+                self.ptr = ptr
+                self.size = size
 
                 return true
             },

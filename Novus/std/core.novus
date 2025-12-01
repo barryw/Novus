@@ -270,3 +270,210 @@ pub trait From<T> {
 pub trait Drop {
     fn drop(&mut self)
 }
+
+// ============================================================================
+// Hash Trait - For computing hash values
+// ============================================================================
+
+// Hash - enables types to be used as keys in hash-based collections
+//
+// Types implementing Hash can be used as keys in HashMap, HashSet, etc.
+// The hash function should return a u32 value that represents the object.
+//
+// Contract:
+// - If two values are equal (via Eq), they MUST produce the same hash value
+// - It's acceptable for different values to produce the same hash (collision)
+// - The hash function should distribute values uniformly across the u32 range
+//
+// Example implementation:
+// ```novus
+// impl Hash for Point {
+//     fn hash(&self) -> u32 {
+//         // Combine hashes of x and y coordinates
+//         let mut h: u32 = self.x.hash()
+//         h = h ^ (self.y.hash() * $9e3779b9)
+//         return h
+//     }
+// }
+// ```
+pub trait Hash {
+    fn hash(&self) -> u32
+}
+
+// ============================================================================
+// Eq Trait - For equality comparison
+// ============================================================================
+
+// Eq - enables types to be compared for equality
+//
+// Types implementing Eq can be compared using == and != operators.
+// This trait is required for hash map keys to resolve hash collisions.
+//
+// Contract:
+// - Reflexive: a.eq(&a) must return true
+// - Symmetric: a.eq(&b) must equal b.eq(&a)
+// - Transitive: if a.eq(&b) and b.eq(&c), then a.eq(&c)
+//
+// Note: If implementing both Hash and Eq, the following MUST hold:
+//       If a.eq(&b), then a.hash() == b.hash()
+//
+// Example implementation:
+// ```novus
+// impl Eq for Point {
+//     fn eq(&self, other: &Point) -> bool {
+//         return self.x == other.x && self.y == other.y
+//     }
+// }
+// ```
+pub trait Eq {
+    fn eq(&self, other: &Self) -> bool
+}
+
+// ============================================================================
+// Hash implementations for primitive types
+// ============================================================================
+
+// Hash mixing constants as u32
+// Note: We use decimal form to avoid signed/unsigned literal issues
+// $85ebca6b = 2246822507
+// $c2b2ae35 = 3266489909
+
+// Hash for u8
+impl Hash for u8 {
+    fn hash(&self) -> u32 {
+        // Mix the bits for better distribution
+        let mut h: u32 = (u32)*self
+        h = h ^ (h >> 4)
+        h = h * 2246822507u32
+        h = h ^ (h >> 13)
+        return h
+    }
+}
+
+// Hash for u16
+impl Hash for u16 {
+    fn hash(&self) -> u32 {
+        let mut h: u32 = (u32)*self
+        h = h ^ (h >> 8)
+        h = h * 2246822507u32
+        h = h ^ (h >> 13)
+        return h
+    }
+}
+
+// Hash for u32
+impl Hash for u32 {
+    fn hash(&self) -> u32 {
+        // FNV-1a inspired mixing
+        let mut h: u32 = *self
+        h = h ^ (h >> 16)
+        h = h * 2246822507u32
+        h = h ^ (h >> 13)
+        h = h * 3266489909u32
+        h = h ^ (h >> 16)
+        return h
+    }
+}
+
+// Hash for i8
+impl Hash for i8 {
+    fn hash(&self) -> u32 {
+        // Cast to u8 first to avoid sign extension, then to u32
+        let byte_val: u8 = (u8)*self
+        let mut h: u32 = (u32)byte_val
+        h = h ^ (h >> 4)
+        h = h * 2246822507u32
+        h = h ^ (h >> 13)
+        return h
+    }
+}
+
+// Hash for i16
+impl Hash for i16 {
+    fn hash(&self) -> u32 {
+        // Cast to u16 first to avoid sign extension, then to u32
+        let short_val: u16 = (u16)*self
+        let mut h: u32 = (u32)short_val
+        h = h ^ (h >> 8)
+        h = h * 2246822507u32
+        h = h ^ (h >> 13)
+        return h
+    }
+}
+
+// Hash for i32
+impl Hash for i32 {
+    fn hash(&self) -> u32 {
+        // Reinterpret as unsigned
+        let mut h: u32 = (u32)*self
+        h = h ^ (h >> 16)
+        h = h * 2246822507u32
+        h = h ^ (h >> 13)
+        h = h * 3266489909u32
+        h = h ^ (h >> 16)
+        return h
+    }
+}
+
+// Hash for bool
+impl Hash for bool {
+    fn hash(&self) -> u32 {
+        if *self {
+            return 1u32
+        }
+        return 0u32
+    }
+}
+
+// ============================================================================
+// Eq implementations for primitive types
+// ============================================================================
+
+// Eq for u8
+impl Eq for u8 {
+    fn eq(&self, other: &u8) -> bool {
+        return *self == *other
+    }
+}
+
+// Eq for u16
+impl Eq for u16 {
+    fn eq(&self, other: &u16) -> bool {
+        return *self == *other
+    }
+}
+
+// Eq for u32
+impl Eq for u32 {
+    fn eq(&self, other: &u32) -> bool {
+        return *self == *other
+    }
+}
+
+// Eq for i8
+impl Eq for i8 {
+    fn eq(&self, other: &i8) -> bool {
+        return *self == *other
+    }
+}
+
+// Eq for i16
+impl Eq for i16 {
+    fn eq(&self, other: &i16) -> bool {
+        return *self == *other
+    }
+}
+
+// Eq for i32
+impl Eq for i32 {
+    fn eq(&self, other: &i32) -> bool {
+        return *self == *other
+    }
+}
+
+// Eq for bool
+impl Eq for bool {
+    fn eq(&self, other: &bool) -> bool {
+        return *self == *other
+    }
+}

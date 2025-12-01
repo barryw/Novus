@@ -26,6 +26,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     private readonly Dictionary<string, string> _importedNames = new(); // Maps imported name -> module name
     private readonly HashSet<string> _importedModules = new(); // Track which modules have been imported (by path)
     private FunctionSymbol? _currentFunction;
+    private IrWhereClause? _currentStructWhereClause; // Track where clause for current struct/impl block
     private int _loopDepth = 0; // Track loop nesting for break validation
     private readonly string _stdLibPath; // Path to standard library
 
@@ -1982,6 +1983,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
+        // Parse the where clause for this impl block (if any)
+        var implWhereClause = ParseWhereClause(context.whereClause());
+
         // Determine if this is a trait impl or inherent impl
         bool isTraitImpl = context.KW_FOR() != null;
         string? traitName = null;
@@ -2036,6 +2040,27 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             implTypeName = context.targetTypeName.IDENTIFIER(0).GetText();
         }
 
+        // Look up the struct type to get its where clause constraints
+        var structType = _symbols.LookupStruct(implTypeName);
+        IrWhereClause? combinedWhereClause = null;
+
+        if (structType?.WhereClause != null && implWhereClause != null)
+        {
+            // Combine struct where clause with impl where clause
+            var combinedConstraints = new List<IrTypeConstraint>();
+            combinedConstraints.AddRange(structType.WhereClause.Constraints);
+            combinedConstraints.AddRange(implWhereClause.Constraints);
+            combinedWhereClause = new IrWhereClause(combinedConstraints);
+        }
+        else
+        {
+            combinedWhereClause = structType?.WhereClause ?? implWhereClause;
+        }
+
+        // Set the current struct where clause for the duration of method analysis
+        var savedStructWhereClause = _currentStructWhereClause;
+        _currentStructWhereClause = combinedWhereClause;
+
         // Analyze each method
         foreach (var item in context.implItem())
         {
@@ -2044,6 +2069,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 AnalyzeImplMethod(item.functionDeclaration(), implTypeName, traitName, traitTypeArgs);
             }
         }
+
+        // Restore previous where clause
+        _currentStructWhereClause = savedStructWhereClause;
 
         // Clear generic params after analysis
         foreach (var paramName in genericParams)
@@ -5890,7 +5918,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     monomorphizedVariants.Add(new IrEnumVariant(origVariant.Name, origVariant.Tag, monomorphizedData));
                 }
 
-                var monomorphizedEnum = new IrEnumType(baseName, monomorphizedVariants, null, key);
+                // IMPORTANT: Pass typeArgs as typeArguments so method calls can substitute generic params
+                var monomorphizedEnum = new IrEnumType(baseName, monomorphizedVariants, null, key, typeArguments: typeArgs);
                 _symbols.RegisterMonomorphizedEnum(key, monomorphizedEnum);
                 return monomorphizedEnum;
             }
@@ -5920,7 +5949,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     monomorphizedFields.Add(new IrStructField(field.Name, substitutedType));
                 }
 
-                var monomorphizedStruct = new IrStructType(baseName, monomorphizedFields, null, key);
+                // IMPORTANT: Pass typeArgs as typeArguments so method calls can substitute generic params
+                var monomorphizedStruct = new IrStructType(baseName, monomorphizedFields, null, key, typeArguments: typeArgs);
                 _symbols.RegisterMonomorphizedStruct(key, monomorphizedStruct);
                 return monomorphizedStruct;
             }
@@ -7078,6 +7108,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             {
                 typeName = refEnum.EnumName;
             }
+            else if (refType.PointeeType is IrGenericType refGenericType)
+            {
+                // The receiver is a reference to a generic type parameter (e.g., &K in HashMap<K, V>)
+                // We need to check if the type parameter has trait bounds that include this method
+                return HandleTraitMethodCallOnGenericType(callCtx, memberAccessCtx, refGenericType, methodName);
+            }
             else if (refType.PointeeType is IrArrayType arrayType)
             {
                 // Handle slice methods (arrays with length -1 are slices)
@@ -7131,6 +7167,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             {
                 typeName = mutRefEnum.EnumName;
             }
+            else if (mutRefType.PointeeType is IrGenericType mutRefGenericType)
+            {
+                // The receiver is a mutable reference to a generic type parameter (e.g., &mut K in HashMap<K, V>)
+                // We need to check if the type parameter has trait bounds that include this method
+                return HandleTraitMethodCallOnGenericType(callCtx, memberAccessCtx, mutRefGenericType, methodName);
+            }
             else
             {
                 var location = SourceLocationHelper.FromContext(memberAccessCtx, _filePath, _sourceLines);
@@ -7145,6 +7187,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 );
                 return null;
             }
+        }
+        else if (receiverType is IrGenericType genericType)
+        {
+            // The receiver is a generic type parameter (e.g., K in HashMap<K, V>)
+            // We need to check if the type parameter has trait bounds that include this method
+            return HandleTraitMethodCallOnGenericType(callCtx, memberAccessCtx, genericType, methodName);
         }
         else
         {
@@ -7185,30 +7233,42 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var typeSubstitutions = new Dictionary<string, IrType>();
         if (receiverType is IrStructType receiverStruct && receiverStruct.CacheKey != null)
         {
-            // Receiver is a monomorphized struct (e.g., Vec<i32>)
+            // Receiver is a monomorphized struct (e.g., Vec<i32>, HashMap<u32, u32>)
             // Get the base generic struct to find generic parameter names
             var baseStruct = _symbols.LookupStruct(receiverStruct.StructName);
             if (baseStruct != null && baseStruct.GenericParameters.Count > 0)
             {
-                // Extract type arguments from the monomorphized struct fields
-                // For now, we'll match them based on field positions
-                for (int i = 0; i < baseStruct.GenericParameters.Count && i < baseStruct.Fields.Count; i++)
+                // First, try to use TypeArguments directly if available (most reliable method)
+                if (receiverStruct.TypeArguments != null && receiverStruct.TypeArguments.Count == baseStruct.GenericParameters.Count)
                 {
-                    var genericParam = baseStruct.GenericParameters[i];
-                    var baseFieldType = baseStruct.Fields[i].Type;
-                    var monomorphizedFieldType = receiverStruct.Fields[i].Type;
-
-                    // If base field is generic type T, map T to the monomorphized type
-                    if (baseFieldType is IrGenericType gt)
+                    for (int i = 0; i < baseStruct.GenericParameters.Count; i++)
                     {
-                        typeSubstitutions[gt.ParameterName] = monomorphizedFieldType;
+                        var genericParam = baseStruct.GenericParameters[i];
+                        typeSubstitutions[genericParam] = receiverStruct.TypeArguments[i];
                     }
-                    // If base field is *T, extract T from monomorphized *i32
-                    else if (baseFieldType is IrPointerType basePtrType && basePtrType.PointeeType is IrGenericType ptrGt)
+                }
+                else
+                {
+                    // Fallback: Extract type arguments from the monomorphized struct fields
+                    // For now, we'll match them based on field positions
+                    for (int i = 0; i < baseStruct.GenericParameters.Count && i < baseStruct.Fields.Count; i++)
                     {
-                        if (monomorphizedFieldType is IrPointerType monoPtrType)
+                        var genericParam = baseStruct.GenericParameters[i];
+                        var baseFieldType = baseStruct.Fields[i].Type;
+                        var monomorphizedFieldType = receiverStruct.Fields[i].Type;
+
+                        // If base field is generic type T, map T to the monomorphized type
+                        if (baseFieldType is IrGenericType gt)
                         {
-                            typeSubstitutions[ptrGt.ParameterName] = monoPtrType.PointeeType;
+                            typeSubstitutions[gt.ParameterName] = monomorphizedFieldType;
+                        }
+                        // If base field is *T, extract T from monomorphized *i32
+                        else if (baseFieldType is IrPointerType basePtrType && basePtrType.PointeeType is IrGenericType ptrGt)
+                        {
+                            if (monomorphizedFieldType is IrPointerType monoPtrType)
+                            {
+                                typeSubstitutions[ptrGt.ParameterName] = monoPtrType.PointeeType;
+                            }
                         }
                     }
                 }
@@ -7221,36 +7281,48 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             var baseEnum = _symbols.LookupEnum(receiverEnum.EnumName);
             if (baseEnum != null && baseEnum.GenericParameters.Count > 0)
             {
-                // Extract type mappings by comparing base enum variants with monomorphized enum variants
-                for (int varIdx = 0; varIdx < baseEnum.Variants.Count && varIdx < receiverEnum.Variants.Count; varIdx++)
+                // First, try to use TypeArguments directly if available (most reliable method)
+                if (receiverEnum.TypeArguments != null && receiverEnum.TypeArguments.Count == baseEnum.GenericParameters.Count)
                 {
-                    var baseVariant = baseEnum.Variants[varIdx];
-                    var monoVariant = receiverEnum.Variants[varIdx];
-
-                    if (baseVariant.Name == monoVariant.Name &&
-                        baseVariant.AssociatedData.Count == monoVariant.AssociatedData.Count)
+                    for (int i = 0; i < baseEnum.GenericParameters.Count; i++)
                     {
-                        for (int dataIdx = 0; dataIdx < baseVariant.AssociatedData.Count; dataIdx++)
-                        {
-                            var baseDataType = baseVariant.AssociatedData[dataIdx];
-                            var monoDataType = monoVariant.AssociatedData[dataIdx];
+                        var genericParam = baseEnum.GenericParameters[i];
+                        typeSubstitutions[genericParam] = receiverEnum.TypeArguments[i];
+                    }
+                }
+                else
+                {
+                    // Fallback: Extract type mappings by comparing base enum variants with monomorphized enum variants
+                    for (int varIdx = 0; varIdx < baseEnum.Variants.Count && varIdx < receiverEnum.Variants.Count; varIdx++)
+                    {
+                        var baseVariant = baseEnum.Variants[varIdx];
+                        var monoVariant = receiverEnum.Variants[varIdx];
 
-                            // If base variant data is generic type T, map T to the monomorphized type
-                            if (baseDataType is IrGenericType gt)
+                        if (baseVariant.Name == monoVariant.Name &&
+                            baseVariant.AssociatedData.Count == monoVariant.AssociatedData.Count)
+                        {
+                            for (int dataIdx = 0; dataIdx < baseVariant.AssociatedData.Count; dataIdx++)
                             {
-                                if (!typeSubstitutions.ContainsKey(gt.ParameterName))
+                                var baseDataType = baseVariant.AssociatedData[dataIdx];
+                                var monoDataType = monoVariant.AssociatedData[dataIdx];
+
+                                // If base variant data is generic type T, map T to the monomorphized type
+                                if (baseDataType is IrGenericType gt)
                                 {
-                                    typeSubstitutions[gt.ParameterName] = monoDataType;
-                                }
-                            }
-                            // If base variant data is *T, extract T from monomorphized *i32
-                            else if (baseDataType is IrPointerType basePtrType && basePtrType.PointeeType is IrGenericType ptrGt)
-                            {
-                                if (monoDataType is IrPointerType monoPtrType)
-                                {
-                                    if (!typeSubstitutions.ContainsKey(ptrGt.ParameterName))
+                                    if (!typeSubstitutions.ContainsKey(gt.ParameterName))
                                     {
-                                        typeSubstitutions[ptrGt.ParameterName] = monoPtrType.PointeeType;
+                                        typeSubstitutions[gt.ParameterName] = monoDataType;
+                                    }
+                                }
+                                // If base variant data is *T, extract T from monomorphized *i32
+                                else if (baseDataType is IrPointerType basePtrType && basePtrType.PointeeType is IrGenericType ptrGt)
+                                {
+                                    if (monoDataType is IrPointerType monoPtrType)
+                                    {
+                                        if (!typeSubstitutions.ContainsKey(ptrGt.ParameterName))
+                                        {
+                                            typeSubstitutions[ptrGt.ParameterName] = monoPtrType.PointeeType;
+                                        }
                                     }
                                 }
                             }
@@ -7423,6 +7495,181 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var returnType = _typeParser.SubstituteGenericTypes(method.ReturnType, typeSubstitutions);
 
         return returnType;
+    }
+
+    /// <summary>
+    /// Handle method calls on generic type parameters (e.g., key.hash() where key: K and K: Hash)
+    /// This enables calling trait methods on generic types that have trait bounds.
+    /// </summary>
+    private IrType? HandleTraitMethodCallOnGenericType(
+        NovusParser.CallExprContext callCtx,
+        NovusParser.MemberAccessExprContext memberAccessCtx,
+        IrGenericType genericType,
+        string methodName)
+    {
+        var location = SourceLocationHelper.FromContext(memberAccessCtx, _filePath, _sourceLines);
+
+        // Find the where clause constraints for this generic parameter
+        // We need to search through enclosing contexts (function, impl, struct) for constraints
+        var bounds = GetBoundsForGenericParameter(genericType.ParameterName);
+
+        if (bounds == null || bounds.Count == 0)
+        {
+            _diagnostics.ReportError(
+                "E0100",
+                $"type '{genericType.ParameterName}' does not implement trait '{methodName}'",
+                location,
+                helpTexts: new List<string>
+                {
+                    $"the trait bound '{genericType.ParameterName}: {methodName}' is not satisfied",
+                    $"add an impl block: impl {methodName} for {genericType.ParameterName}"
+                }
+            );
+            return null;
+        }
+
+        // Find which trait defines this method
+        foreach (var bound in bounds)
+        {
+            var trait = _symbols.LookupTrait(bound.TraitName);
+            if (trait == null)
+                continue;
+
+            // Check if this trait has a method with the given name
+            var traitMethod = trait.Methods.FirstOrDefault(m => m.Name == methodName);
+            if (traitMethod != null)
+            {
+                // Found the trait method!
+                // Validate argument count (excluding self)
+                var providedArgCount = callCtx.argumentList()?.expression().Length ?? 0;
+                var hasSelfParam = traitMethod.Parameters.Count > 0 && traitMethod.Parameters[0].Name == "self";
+                var expectedArgCount = hasSelfParam ? traitMethod.Parameters.Count - 1 : traitMethod.Parameters.Count;
+
+                if (providedArgCount != expectedArgCount)
+                {
+                    _diagnostics.ReportError(
+                        "E0014",
+                        $"trait method '{methodName}' expects {expectedArgCount} argument(s), but {providedArgCount} were provided",
+                        location
+                    );
+                }
+
+                // Validate argument types (skip self parameter)
+                // Note: We need to substitute Self with the receiver's generic type
+                if (callCtx.argumentList() != null)
+                {
+                    var arguments = callCtx.argumentList().expression();
+                    var paramStartIndex = hasSelfParam ? 1 : 0;
+
+                    for (int i = 0; i < arguments.Length && paramStartIndex + i < traitMethod.Parameters.Count; i++)
+                    {
+                        var paramType = traitMethod.Parameters[paramStartIndex + i].Type;
+                        var argType = Visit(arguments[i]);
+
+                        // Substitute Self with the generic type in parameter types
+                        // e.g., for Eq::eq(&self, other: &Self), when called on K, &Self becomes &K
+                        paramType = SubstituteSelfType(paramType, genericType);
+
+                        if (argType != null && paramType != null && !TypesCompatible(paramType, argType))
+                        {
+                            var argLocation = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
+                            _diagnostics.ReportError(
+                                "E0015",
+                                $"mismatched types in trait method call",
+                                argLocation,
+                                helpTexts: new List<string>
+                                {
+                                    $"argument {i + 1}: expected '{TypeToString(paramType)}', found '{TypeToString(argType)}'"
+                                }
+                            );
+                        }
+                    }
+                }
+
+                // Return the method's return type
+                // Note: The return type might be Self, which should be substituted with the generic type
+                var returnType = traitMethod.ReturnType;
+                if (returnType is IrSelfType)
+                {
+                    return genericType;
+                }
+                return returnType;
+            }
+        }
+
+        // No matching method found in any of the trait bounds
+        var traitNames = string.Join(", ", bounds.Select(b => b.TraitName));
+        _diagnostics.ReportError(
+            "E0053",
+            $"no method named '{methodName}' found in traits {traitNames}",
+            location,
+            helpTexts: new List<string>
+            {
+                $"type parameter '{genericType.ParameterName}' is bounded by: {traitNames}",
+                $"none of these traits define a method named '{methodName}'"
+            }
+        );
+        return null;
+    }
+
+    /// <summary>
+    /// Substitute Self type with the given concrete type in a type expression.
+    /// Used when validating trait method calls on generic types.
+    /// </summary>
+    /// <param name="type">The type that may contain Self</param>
+    /// <param name="selfType">The concrete type to substitute for Self</param>
+    /// <returns>The type with Self replaced by selfType</returns>
+    private IrType SubstituteSelfType(IrType type, IrType selfType)
+    {
+        if (type is IrSelfType)
+        {
+            return selfType;
+        }
+
+        if (type is IrReferenceType refType)
+        {
+            var substitutedPointee = SubstituteSelfType(refType.PointeeType, selfType);
+            if (substitutedPointee != refType.PointeeType)
+            {
+                return new IrReferenceType(substitutedPointee);
+            }
+        }
+
+        if (type is IrMutReferenceType mutRefType)
+        {
+            var substitutedPointee = SubstituteSelfType(mutRefType.PointeeType, selfType);
+            if (substitutedPointee != mutRefType.PointeeType)
+            {
+                return new IrMutReferenceType(substitutedPointee);
+            }
+        }
+
+        if (type is IrPointerType ptrType)
+        {
+            var substitutedPointee = SubstituteSelfType(ptrType.PointeeType, selfType);
+            if (substitutedPointee != ptrType.PointeeType)
+            {
+                return new IrPointerType(substitutedPointee);
+            }
+        }
+
+        return type;
+    }
+
+    /// <summary>
+    /// Get the trait bounds for a generic type parameter from the current context
+    /// </summary>
+    private List<IrTraitBound>? GetBoundsForGenericParameter(string paramName)
+    {
+        // Check the current struct/impl being analyzed (if any)
+        if (_currentStructWhereClause != null)
+        {
+            var bounds = _currentStructWhereClause.GetBoundsFor(paramName);
+            if (bounds.Count > 0)
+                return bounds;
+        }
+
+        return null;
     }
 
     public override IrType? VisitBoolLiteral([NotNull] NovusParser.BoolLiteralContext context)
@@ -8140,6 +8387,21 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 }
             }
 
+            return IrBoolType.Instance;
+        }
+
+        // Bool types can be compared with == and !=
+        if (leftType is IrBoolType && rightType is IrBoolType)
+        {
+            if (op != "==" && op != "!=")
+            {
+                var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0004",
+                    $"bool types can only be compared with == and !=, not '{op}'",
+                    location
+                );
+            }
             return IrBoolType.Instance;
         }
 
@@ -9301,12 +9563,18 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     return IrIntType.I32;
                 }
 
-                // Validate generic constraints
-                var structLocation = SourceLocationHelper.FromToken(context.typeName().Start, _filePath, _sourceLines);
-                if (!ValidateGenericConstraints(structType.WhereClause, structType.GenericParameters, typeArgs, structLocation))
+                // Validate generic constraints only for concrete types
+                // Skip validation if type args contain generic type parameters (e.g., HashMap<K, V> in a generic context)
+                // Constraints will be validated when the type is fully instantiated with concrete types
+                bool hasGenericTypeArgs = typeArgs.Any(t => ContainsGenericType(t));
+                if (!hasGenericTypeArgs)
                 {
-                    // Error already reported by ValidateGenericConstraints
-                    return IrIntType.I32;
+                    var structLocation = SourceLocationHelper.FromToken(context.typeName().Start, _filePath, _sourceLines);
+                    if (!ValidateGenericConstraints(structType.WhereClause, structType.GenericParameters, typeArgs, structLocation))
+                    {
+                        // Error already reported by ValidateGenericConstraints
+                        return IrIntType.I32;
+                    }
                 }
 
                 // NOTE: Even if type arguments contain generics (e.g., *T), we proceed to create a specialized struct
@@ -9341,10 +9609,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     monomorphizedFields.Add(new IrStructField(origField.Name, fieldType));
                 }
 
-                // Create new struct type - preserve generic parameters if any type args still contain generics
-                var hasGenerics = typeArgs.Any(t => ContainsGenericType(t));
-                var genericParams = hasGenerics ? structType.GenericParameters : null;
-                var monomorphizedStruct = new IrStructType(structType.StructName, monomorphizedFields, genericParams, cacheKey, typeArguments: typeArgs);
+                // Create new struct type - this is a monomorphized instance (GenericParameters should be empty)
+                // Even if type args contain generics (e.g., Vec<T>), we've instantiated this specific type
+                var monomorphizedStruct = new IrStructType(structType.StructName, monomorphizedFields, null, cacheKey, typeArguments: typeArgs);
 
                 // Cache it for future use
                 _symbols.RegisterMonomorphizedStruct(cacheKey, monomorphizedStruct);
@@ -9381,12 +9648,18 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     return IrIntType.I32;
                 }
 
-                // Validate generic constraints
-                var enumLocation = SourceLocationHelper.FromToken(context.typeName().Start, _filePath, _sourceLines);
-                if (!ValidateGenericConstraints(enumType.WhereClause, enumType.GenericParameters, typeArgs, enumLocation))
+                // Validate generic constraints only for concrete types
+                // Skip validation if type args contain generic type parameters (e.g., Option<K> in a generic context)
+                // Constraints will be validated when the type is fully instantiated with concrete types
+                bool hasGenericTypeArgs = typeArgs.Any(t => ContainsGenericType(t));
+                if (!hasGenericTypeArgs)
                 {
-                    // Error already reported by ValidateGenericConstraints
-                    return IrIntType.I32;
+                    var enumLocation = SourceLocationHelper.FromToken(context.typeName().Start, _filePath, _sourceLines);
+                    if (!ValidateGenericConstraints(enumType.WhereClause, enumType.GenericParameters, typeArgs, enumLocation))
+                    {
+                        // Error already reported by ValidateGenericConstraints
+                        return IrIntType.I32;
+                    }
                 }
 
                 // NOTE: Even if type arguments contain generics (e.g., *T), we proceed to create a specialized enum
@@ -9424,10 +9697,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     monomorphizedVariants.Add(new IrEnumVariant(origVariant.Name, origVariant.Tag, monomorphizedData));
                 }
 
-                // Create new enum type - preserve generic parameters if any type args still contain generics
-                var hasGenerics = typeArgs.Any(t => ContainsGenericType(t));
-                var genericParams = hasGenerics ? enumType.GenericParameters : null;
-                var monomorphizedEnum = new IrEnumType(enumType.EnumName, monomorphizedVariants, genericParams, cacheKey);
+                // Create new enum type - this is a monomorphized instance (GenericParameters should be empty)
+                // Even if type args contain generics (e.g., Option<T>), we've instantiated this specific type
+                var monomorphizedEnum = new IrEnumType(enumType.EnumName, monomorphizedVariants, null, cacheKey, typeArguments: typeArgs);
 
                 // Cache it for future use
                 _symbols.RegisterMonomorphizedEnum(cacheKey, monomorphizedEnum);
@@ -10529,6 +10801,17 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         public void RegisterMonomorphizedEnum(string key, IrEnumType type)
         {
             _analyzer._symbols.RegisterMonomorphizedEnum(key, type);
+        }
+
+        // Finalization (SemanticAnalyzer doesn't need to add to module, just no-op)
+        public void FinalizeMonomorphizedStruct(IrStructType type)
+        {
+            // SemanticAnalyzer doesn't build a module, so nothing to do here
+        }
+
+        public void FinalizeMonomorphizedEnum(IrEnumType type)
+        {
+            // SemanticAnalyzer doesn't build a module, so nothing to do here
         }
 
         // Type interning

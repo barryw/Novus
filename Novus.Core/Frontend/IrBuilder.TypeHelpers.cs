@@ -12,7 +12,15 @@ public partial class IrBuilder
 {
     private IrType ParseType(NovusParser.TypeContext context)
     {
-        return _typeParser.ParseType(context);
+        var type = _typeParser.ParseType(context);
+
+        // Apply type substitutions if we're instantiating a generic method
+        if (_currentTypeSubstitutions != null && _currentTypeSubstitutions.Count > 0)
+        {
+            type = _typeParser.SubstituteGenericTypes(type, _currentTypeSubstitutions);
+        }
+
+        return type;
     }
 
     /// <summary>

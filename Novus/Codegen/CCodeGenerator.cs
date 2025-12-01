@@ -29,8 +29,9 @@ public class CCodeGenerator
     // to avoid redeclaration errors when the same variable is assigned in multiple branches
     private HashSet<string> _declaredVariables = new();
 
-    // Track current function being emitted (for defer cleanup)
+    // Track current function/struct being emitted (for error messages)
     private IrFunction? _currentEmittingFunction = null;
+    private string? _currentEmittingStruct = null;
 
     // Track which function parameters were converted to pointers in the C signature
     // (due to TypeContainsHeapData) so we don't add & when passing them to other functions
@@ -795,7 +796,8 @@ public class CCodeGenerator
     {
         // Replace :: with _ for namespaced names
         // Replace < and > with _ for generic instantiations
-        return name.Replace("::", "_").Replace("<", "_").Replace(">", "_").Replace(",", "_").Replace(" ", "");
+        // Replace & and * for reference/pointer types in generic params
+        return name.Replace("::", "_").Replace("<", "_").Replace(">", "_").Replace(",", "_").Replace(" ", "").Replace("&", "ref_").Replace("*", "ptr_");
     }
 
     /// <summary>
@@ -1602,6 +1604,7 @@ public class CCodeGenerator
     private void EmitStructTypeToBuilder(StringBuilder sb, IrStructType structType)
     {
         var structName = MangleName(structType);
+        _currentEmittingStruct = structName;  // For error messages
 
         sb.AppendLine($"// Struct: {structType.Name}");
         // Use named struct instead of anonymous to allow self-references
@@ -1625,6 +1628,8 @@ public class CCodeGenerator
 
         sb.AppendLine($"}};");
         sb.AppendLine();
+
+        _currentEmittingStruct = null;  // Clear after emitting
     }
 
     /// <summary>
@@ -4505,9 +4510,10 @@ public class CCodeGenerator
 
                 // BUG FIX: If argument is a pointer to a primitive type, but parameter expects a value, dereference
                 // This happens when calling helper functions from Display::fmt methods where self is int8_t*
+                // NOTE: IrReferenceType and IrMutReferenceType are also "pointer-like" in C, so don't dereference for those either
                 if (arg.Type is IrPointerType ptrType &&
                     (ptrType.PointeeType is IrIntType or IrBoolType or IrFloatType) &&
-                    !(paramType is IrPointerType))
+                    !(paramType is IrPointerType or IrReferenceType or IrMutReferenceType))
                 {
                     argValue = $"*{argValue}";
                 }
@@ -6237,6 +6243,7 @@ public class CCodeGenerator
             IrMutReferenceType mutRefType => $"{GetCType(mutRefType.PointeeType)}*",  // Mut references as pointers
             IrFunctionPointerType fpType => GetFunctionPointerType(fpType),
             IrTupleType tupleType => GetTupleTypeName(tupleType),
+            IrGenericType genericType => throw new InvalidOperationException($"Generic type parameter '{genericType.ParameterName}' in {(_currentEmittingStruct != null ? $"struct '{_currentEmittingStruct}'" : _currentEmittingFunction != null ? $"function '{_currentEmittingFunction.Name}'" : "unknown context")} was not substituted during monomorphization. Stack trace will show where this type is being used."),
             IrUnresolvedGenericType unresolvedGeneric => throw new InvalidOperationException($"Unresolved generic type '{unresolvedGeneric.Name}' must be monomorphized before code generation"),
             IrPartiallyResolvedGenericType partiallyResolved => throw new InvalidOperationException($"Partially resolved generic type must be fully monomorphized before code generation"),
             _ => throw new NotSupportedException($"Unsupported type: {type.GetType().Name}")
@@ -6478,9 +6485,15 @@ public class CCodeGenerator
     {
         // Handle module separators and generic type parameters
         // Generic names like "From<DosError>" become "From_DosError"
+        // Multiple type parameters like "HashMap<u32, u32>" become "HashMap_u32_u32"
+        // Reference types like "Option<&u32>" become "Option_ref_u32"
         return name.Replace("::", "_")
                    .Replace("<", "_")
-                   .Replace(">", "");
+                   .Replace(">", "")
+                   .Replace(",", "_")
+                   .Replace("&", "ref_")
+                   .Replace("*", "ptr_")
+                   .Replace(" ", "");
     }
 
     /// <summary>
@@ -6669,12 +6682,14 @@ public class CCodeGenerator
         // Option<i32> -> Option_i32
         // Result<i32, *u8> -> Result_i32_ptr_u8
         // Result<(), IntuitionError> -> Result_unit_IntuitionError
+        // Option<&u32> -> Option_ref_u32
         return name.Replace("::", "_")
                    .Replace("()", "unit")     // Handle unit type before removing parens
                    .Replace("<", "_")
                    .Replace(">", "")
                    .Replace(",", "")
                    .Replace("*", "ptr_")
+                   .Replace("&", "ref_")      // Handle reference types
                    .Replace("(", "")          // Remove any remaining parens
                    .Replace(")", "")
                    .Replace(" ", "");
@@ -6694,6 +6709,7 @@ public class CCodeGenerator
                    .Replace(">", "")
                    .Replace(",", "")
                    .Replace("*", "ptr_")
+                   .Replace("&", "ref_")      // Handle reference types
                    .Replace("(", "")          // Remove any remaining parens
                    .Replace(")", "")
                    .Replace(" ", "");

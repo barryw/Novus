@@ -9,16 +9,18 @@ public class IrEnumType : IrType
     public string EnumName { get; }
     public List<IrEnumVariant> Variants { get; }
     public List<string> GenericParameters { get; }  // Type parameter names (e.g., ["T", "E"])
+    public List<IrType>? TypeArguments { get; set; }  // Actual type arguments for monomorphized types (e.g., [i32])
     public string? CacheKey { get; set; }  // Cache key for monomorphized types (e.g., "Option<i32>")
     public Novus.SemanticAnalysis.AttributeCollection? Attributes { get; set; }  // Enum attributes
     public IrWhereClause? WhereClause { get; set; }  // Generic type constraints (e.g., where T: Sortable)
     private int? _cachedSize;
 
-    public IrEnumType(string enumName, List<IrEnumVariant> variants, List<string>? genericParams = null, string? cacheKey = null, Novus.SemanticAnalysis.AttributeCollection? attributes = null, IrWhereClause? whereClause = null)
+    public IrEnumType(string enumName, List<IrEnumVariant> variants, List<string>? genericParams = null, string? cacheKey = null, Novus.SemanticAnalysis.AttributeCollection? attributes = null, IrWhereClause? whereClause = null, List<IrType>? typeArguments = null)
     {
         EnumName = enumName;
         Variants = variants;
         GenericParameters = genericParams ?? new List<string>();
+        TypeArguments = typeArguments;
         CacheKey = cacheKey;
         Attributes = attributes;
         WhereClause = whereClause;
@@ -61,8 +63,12 @@ public class IrEnumType : IrType
     {
         get
         {
+            // For generic enums, show the generic parameters
             if (GenericParameters.Count > 0)
                 return $"{EnumName}<{string.Join(", ", GenericParameters)}>";
+            // For monomorphized enums, show the concrete type arguments
+            if (TypeArguments != null && TypeArguments.Count > 0)
+                return $"{EnumName}<{string.Join(", ", TypeArguments.Select(t => t.Name))}>";
             return EnumName;
         }
     }

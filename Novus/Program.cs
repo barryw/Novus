@@ -741,8 +741,8 @@ class Program
                     var functionCCode = mainCodegen.GenerateFunctionFile(function);
                     // Always write the C file (even if it's a stub that panics)
                     // This ensures linking succeeds even if the function isn't called
-                    // Sanitize function name for use in C filenames (replace :: with _ to match MangleName, and remove < >)
-                    var sanitizedFunctionName = function.Name.Replace("::", "_").Replace("<", "_").Replace(">", "_");
+                    // Sanitize function name for use in C filenames (replace :: with _ to match MangleName, and remove < > , & * etc.)
+                    var sanitizedFunctionName = function.Name.Replace("::", "_").Replace("<", "_").Replace(">", "_").Replace(",", "_").Replace(" ", "").Replace("&", "ref_").Replace("*", "ptr_");
                     var functionCFile = Path.Combine(outputDir, $"{baseName}_{sanitizedFunctionName}.c");
                     await File.WriteAllTextAsync(functionCFile, functionCCode);
                     cFiles.Add(functionCFile);
@@ -901,8 +901,8 @@ class Program
                     var functionCCode = moduleCodegen.GenerateFunctionFile(function);
                     // Always write the C file (even if it's a stub that panics)
                     // This ensures linking succeeds even if the function isn't called
-                    // Sanitize function name for use in C filenames (replace :: with _ to match MangleName, and remove < >)
-                    var sanitizedFunctionName = function.Name.Replace("::", "_").Replace("<", "_").Replace(">", "_");
+                    // Sanitize function name for use in C filenames (replace :: with _ to match MangleName, and remove < > , & * etc.)
+                    var sanitizedFunctionName = function.Name.Replace("::", "_").Replace("<", "_").Replace(">", "_").Replace(",", "_").Replace(" ", "").Replace("&", "ref_").Replace("*", "ptr_");
                     var functionCFile = Path.Combine(outputDir, $"{moduleName}_{sanitizedFunctionName}.c");
                     await File.WriteAllTextAsync(functionCFile, functionCCode);
                     cFiles.Add(functionCFile);

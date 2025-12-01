@@ -822,15 +822,69 @@ public partial class IrBuilder
             return null;
         }
 
-        // Scan all fields to find which ones use generic types
-        // This handles cases where generics aren't in the first N fields
-        for (int i = 0; i < baseStruct.Fields.Count && i < monomorphizedStruct.Fields.Count; i++)
+        // First, try to build substitutions directly from TypeArguments if available
+        // This is the most reliable method when the monomorphized struct has its type arguments set correctly
+        if (monomorphizedStruct.TypeArguments != null &&
+            monomorphizedStruct.TypeArguments.Count == baseStruct.GenericParameters.Count)
         {
-            var baseFieldType = baseStruct.Fields[i].Type;
-            var monomorphizedFieldType = monomorphizedStruct.Fields[i].Type;
+            for (int i = 0; i < baseStruct.GenericParameters.Count; i++)
+            {
+                typeSubstitutions[baseStruct.GenericParameters[i]] = monomorphizedStruct.TypeArguments[i];
+            }
+        }
+        // Second, try to parse type arguments from the cache key (e.g., "HashMap<u32,u32>")
+        else if (monomorphizedStruct.CacheKey != null && monomorphizedStruct.CacheKey.Contains("<"))
+        {
+            // Parse the cache key to extract type argument names
+            // Format: TypeName<Type1,Type2,...>
+            var openBracket = monomorphizedStruct.CacheKey.IndexOf('<');
+            var closeBracket = monomorphizedStruct.CacheKey.LastIndexOf('>');
+            if (openBracket >= 0 && closeBracket > openBracket)
+            {
+                var typeArgsStr = monomorphizedStruct.CacheKey.Substring(openBracket + 1, closeBracket - openBracket - 1);
+                var typeArgNames = typeArgsStr.Split(',');
 
-            // Recursively extract generic type mappings from field types
-            ExtractGenericTypeMapping(baseFieldType, monomorphizedFieldType, typeSubstitutions);
+                if (typeArgNames.Length == baseStruct.GenericParameters.Count)
+                {
+                    for (int i = 0; i < baseStruct.GenericParameters.Count; i++)
+                    {
+                        var typeArgName = typeArgNames[i].Trim();
+                        // Look up the type by name - use simple name-based lookup for primitive types
+                        IrType? concreteType = typeArgName switch
+                        {
+                            "u8" => IrIntType.U8,
+                            "u16" => IrIntType.U16,
+                            "u32" => IrIntType.U32,
+                            "u64" => IrIntType.U64,
+                            "i8" => IrIntType.I8,
+                            "i16" => IrIntType.I16,
+                            "i32" => IrIntType.I32,
+                            "i64" => IrIntType.I64,
+                            "bool" => IrBoolType.Instance,
+                            "void" => IrVoidType.Instance,
+                            _ => null
+                        };
+
+                        if (concreteType != null)
+                        {
+                            typeSubstitutions[baseStruct.GenericParameters[i]] = concreteType;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback: scan fields to extract generic type mappings if we still don't have all substitutions
+        if (typeSubstitutions.Count < baseStruct.GenericParameters.Count)
+        {
+            for (int i = 0; i < baseStruct.Fields.Count && i < monomorphizedStruct.Fields.Count; i++)
+            {
+                var baseFieldType = baseStruct.Fields[i].Type;
+                var monomorphizedFieldType = monomorphizedStruct.Fields[i].Type;
+
+                // Recursively extract generic type mappings from field types
+                ExtractGenericTypeMapping(baseFieldType, monomorphizedFieldType, typeSubstitutions);
+            }
         }
 
         // Verify all generic parameters were resolved

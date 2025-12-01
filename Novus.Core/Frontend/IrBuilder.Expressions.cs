@@ -1528,6 +1528,27 @@ public partial class IrBuilder
             {
                 typeName = pointeeEnum.EnumName;
             }
+            else if (ptrType.PointeeType is IrGenericType genericType)
+            {
+                // Handle generic type parameters (e.g., *K where K: Hash)
+                // During monomorphization, substitute K with concrete type from _currentTypeSubstitutions
+                if (_currentTypeSubstitutions != null && _currentTypeSubstitutions.TryGetValue(genericType.ParameterName, out var concreteType))
+                {
+                    // Use the concrete type name for method lookup
+                    typeName = concreteType.Name;
+                }
+                else
+                {
+                    // Generic type not substituted yet - this is an error during monomorphization
+                    var errorLocation = GetLocation(callCtx);
+                    _diagnostics.ReportError(
+                        ErrorCodes.CannotCallMethodOnType,
+                        $"Cannot call methods on unresolved generic type parameter: {genericType.ParameterName}",
+                        errorLocation
+                    );
+                    return null;
+                }
+            }
             else
             {
                 // Allow methods on primitive types (u64, bool, etc.)
@@ -1544,6 +1565,27 @@ public partial class IrBuilder
             else if (refType.PointeeType is IrEnumType refEnum)
             {
                 typeName = refEnum.EnumName;
+            }
+            else if (refType.PointeeType is IrGenericType genericType)
+            {
+                // Handle generic type parameters (e.g., &K where K: Hash)
+                // During monomorphization, substitute K with concrete type from _currentTypeSubstitutions
+                if (_currentTypeSubstitutions != null && _currentTypeSubstitutions.TryGetValue(genericType.ParameterName, out var concreteType))
+                {
+                    // Use the concrete type name for method lookup
+                    typeName = concreteType.Name;
+                }
+                else
+                {
+                    // Generic type not substituted yet - this is an error during monomorphization
+                    var errorLocation = GetLocation(callCtx);
+                    _diagnostics.ReportError(
+                        ErrorCodes.CannotCallMethodOnType,
+                        $"Cannot call methods on unresolved generic type parameter: {genericType.ParameterName}",
+                        errorLocation
+                    );
+                    return null;
+                }
             }
             else if (refType.PointeeType is IrArrayType arrayType && arrayType.Length == -1)
             {
@@ -1622,10 +1664,57 @@ public partial class IrBuilder
             {
                 typeName = mutRefEnum.EnumName;
             }
+            else if (mutRefType.PointeeType is IrGenericType genericType)
+            {
+                // Handle generic type parameters (e.g., &mut K where K: Hash)
+                // During monomorphization, substitute K with concrete type from _currentTypeSubstitutions
+                if (_currentTypeSubstitutions != null && _currentTypeSubstitutions.TryGetValue(genericType.ParameterName, out var concreteType))
+                {
+                    // Use the concrete type name for method lookup
+                    typeName = concreteType.Name;
+                }
+                else
+                {
+                    // Generic type not substituted yet - this is an error during monomorphization
+                    var errorLocation = GetLocation(callCtx);
+                    _diagnostics.ReportError(
+                        ErrorCodes.CannotCallMethodOnType,
+                        $"Cannot call methods on unresolved generic type parameter: {genericType.ParameterName}",
+                        errorLocation
+                    );
+                    return null;
+                }
+            }
             else
             {
                 // Allow methods on primitive types (u64, bool, etc.)
                 typeName = mutRefType.PointeeType.Name;
+            }
+        }
+        else if (receiverType is IrIntType || receiverType is IrBoolType)
+        {
+            // Primitive types can have trait method implementations (e.g., u32::hash())
+            typeName = receiverType.Name;
+        }
+        else if (receiverType is IrGenericType genericType)
+        {
+            // Handle direct generic type parameters (e.g., K where K: Hash)
+            // During monomorphization, substitute K with concrete type from _currentTypeSubstitutions
+            if (_currentTypeSubstitutions != null && _currentTypeSubstitutions.TryGetValue(genericType.ParameterName, out var concreteType))
+            {
+                // Use the concrete type name for method lookup
+                typeName = concreteType.Name;
+            }
+            else
+            {
+                // Generic type not substituted yet - this is an error during monomorphization
+                var errorLocation = GetLocation(callCtx);
+                _diagnostics.ReportError(
+                    ErrorCodes.CannotCallMethodOnType,
+                    $"Cannot call methods on unresolved generic type parameter: {genericType.ParameterName}",
+                    errorLocation
+                );
+                return null;
             }
         }
         else
@@ -1793,6 +1882,20 @@ public partial class IrBuilder
                 // The method will infer generic type parameters from the argument types
                 method = InstantiateGenericEnumMethod(monomorphizedEnum, methodName, allArgs);
             }
+        }
+
+        // If method still not found, try looking for trait method implementations
+        // Trait methods are mangled as: TypeName_TraitName_methodName
+        if (method == null)
+        {
+            // Search for any function that matches the pattern: typeName_*_methodName
+            // This handles trait implementations for primitive types and other types
+            var traitMethodPattern = $"{typeName}_";
+            var traitMethodSuffix = $"_{methodName}";
+            method = _module.Functions.FirstOrDefault(f =>
+                f.Name.StartsWith(traitMethodPattern) &&
+                f.Name.EndsWith(traitMethodSuffix) &&
+                f.Name.Length > traitMethodPattern.Length + traitMethodSuffix.Length - 1);
         }
 
         if (method == null)
@@ -4757,8 +4860,15 @@ public partial class IrBuilder
                     _currentBlock.Instructions.Remove(indexAccess);
                 }
 
+                // IMPORTANT: Substitute generic types in field type if we're in a monomorphized context
+                var indexedFieldType = indexedField.Type;
+                if (_currentTypeSubstitutions != null)
+                {
+                    indexedFieldType = _typeParser.SubstituteGenericTypes(indexedFieldType, _currentTypeSubstitutions);
+                }
+
                 // Return IrIndexedFieldAccess value instead of creating IrMemberAccess instruction
-                return new IrIndexedFieldAccess(array, index, memberName, indexedField.Offset, indexedField.Type);
+                return new IrIndexedFieldAccess(array, index, memberName, indexedField.Offset, indexedFieldType);
             }
         }
 
@@ -4812,10 +4922,20 @@ public partial class IrBuilder
 
         // Generate a member access instruction
         var resultName = $"%t{_tempCounter++}";
-        var memberAccess = new IrMemberAccess(resultName, actualBase, memberName, field.Type, field.Offset);
+
+        // IMPORTANT: Substitute generic types in field type if we're in a monomorphized context
+        // For example, when accessing `self.entries[index].value` in `HashMap<u32,u32>::insert`,
+        // the field type `V` should be substituted with `u32`
+        var fieldType = field.Type;
+        if (_currentTypeSubstitutions != null)
+        {
+            fieldType = _typeParser.SubstituteGenericTypes(fieldType, _currentTypeSubstitutions);
+        }
+
+        var memberAccess = new IrMemberAccess(resultName, actualBase, memberName, fieldType, field.Offset);
         _currentBlock!.AddInstruction(memberAccess);
 
-        return new IrVariable(resultName, field.Type);
+        return new IrVariable(resultName, fieldType);
     }
 
     public override object? VisitTurboFishExpr([NotNull] NovusParser.TurboFishExprContext context)

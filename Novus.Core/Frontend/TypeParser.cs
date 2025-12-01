@@ -21,6 +21,10 @@ public interface ITypeParsingContext
     void RegisterMonomorphizedStruct(string key, IrStructType type);
     void RegisterMonomorphizedEnum(string key, IrEnumType type);
 
+    // Finalization (called after fields are fully populated)
+    void FinalizeMonomorphizedStruct(IrStructType type);
+    void FinalizeMonomorphizedEnum(IrEnumType type);
+
     // Type interning (for reference/pointer types)
     IrType GetReferenceType(IrType pointeeType);
     IrType GetMutReferenceType(IrType pointeeType);
@@ -139,6 +143,15 @@ public class TypeParser
             return genericParam;
         }
 
+        // ADDED: Check if we have a type substitution even if genericParam lookup failed
+        // This can happen if we're instantiating a method body and generic params are in _currentTypeSubstitutions
+        // but not yet registered in the symbol table
+        if (_context.CurrentTypeSubstitutions != null &&
+            _context.CurrentTypeSubstitutions.ContainsKey(typeName))
+        {
+            return _context.CurrentTypeSubstitutions[typeName];
+        }
+
         // Check if it's a struct type
         var structType = _context.LookupStruct(typeName);
         if (structType != null)
@@ -247,6 +260,11 @@ public class TypeParser
             var fieldType = SubstituteGenericTypes(origField.Type, typeSubstitutions);
             monomorphizedFields.Add(new IrStructField(origField.Name, fieldType));
 
+            // DEBUG
+            if (structType.StructName == "KeyValue")
+            {
+            }
+
             // Check if field type is still generic
             if (ContainsGenericTypes(fieldType))
             {
@@ -268,10 +286,25 @@ public class TypeParser
             _ = placeholderStruct.SizeInBytes;
         }
 
-        // If we used a different final cache key, register under that too
+        // If we used a different final cache key, update the struct and register under that too
         if (finalCacheKey != preliminaryCacheKey)
         {
+            // IMPORTANT: Update the struct's CacheKey to use the final (correct) cache key
+            // The preliminary cache key was based on raw text, but the final one is based on actual types
+            placeholderStruct.CacheKey = finalCacheKey;
             _context.RegisterMonomorphizedStruct(finalCacheKey, placeholderStruct);
+        }
+
+        // IMPORTANT: Only finalize if fully monomorphized (no generic types remain in fields)
+        // This adds the struct to the module so it gets emitted in code generation
+        // Partially monomorphized structs (like HashMapEntry<K,V> during HashMap<K,V> processing)
+        // will be finalized later when they're fully instantiated with concrete types
+        if (placeholderStruct.StructName == "KeyValue")
+        {
+        }
+        if (fullyMonomorphized)
+        {
+            _context.FinalizeMonomorphizedStruct(placeholderStruct);
         }
 
         return placeholderStruct;
@@ -283,10 +316,44 @@ public class TypeParser
     /// </summary>
     private IrType MonomorphizeEnum(IrEnumType enumType, NovusParser.NamedTypeContext context)
     {
-        // First, create a preliminary cache key to check if we're already processing this type
+        // First, create a preliminary cache key using raw text to check for cycles
         // This prevents infinite recursion when the enum's type arguments reference the enum itself
-        var typeArgNames = context.typeList()!.type().Select(t => t.GetText());
-        var preliminaryCacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgNames)}>";
+        var rawTypeArgNames = context.typeList()!.type().Select(t => t.GetText());
+        var rawPreliminaryCacheKey = $"{enumType.EnumName}<{string.Join(",", rawTypeArgNames)}>";
+
+        // If we have type substitutions, compute the "true" cache key by substituting generic params
+        // This ensures Option<HashMap<K,V>> with K=u32,V=u32 maps to Option<HashMap<u32,u32>>
+        string preliminaryCacheKey = rawPreliminaryCacheKey;
+        if (_context.CurrentTypeSubstitutions != null && _context.CurrentTypeSubstitutions.Count > 0)
+        {
+            var substitutedArgNames = context.typeList()!.type().Select(t => {
+                var rawText = t.GetText();
+                // Simple case: the type arg itself is a generic parameter (e.g., "K")
+                if (_context.CurrentTypeSubstitutions.TryGetValue(rawText, out var substitutedType))
+                {
+                    return GetTypeCacheKey(substitutedType);
+                }
+                // Check if raw text contains any generic parameters needing substitution
+                bool needsSubstitution = _context.CurrentTypeSubstitutions.Keys.Any(k => rawText.Contains(k));
+                if (needsSubstitution)
+                {
+                    // Complex case: the type arg contains generic parameters (e.g., "HashMap<K,V>")
+                    // We can't parse it yet (would cause infinite recursion), so do string substitution
+                    var substitutedText = rawText;
+                    foreach (var kvp in _context.CurrentTypeSubstitutions)
+                    {
+                        // Replace generic param with its concrete type's cache key
+                        // Be careful to replace whole words only (K but not KV)
+                        var pattern = $@"\b{kvp.Key}\b";
+                        substitutedText = System.Text.RegularExpressions.Regex.Replace(
+                            substitutedText, pattern, GetTypeCacheKey(kvp.Value));
+                    }
+                    return substitutedText;
+                }
+                return rawText;
+            });
+            preliminaryCacheKey = $"{enumType.EnumName}<{string.Join(",", substitutedArgNames)}>";
+        }
 
         // Check cache first - this catches already-completed monomorphizations
         var cached = _context.LookupMonomorphizedEnum(preliminaryCacheKey);
@@ -314,11 +381,11 @@ public class TypeParser
             typeArgs.Add(ParseType(typeCtx));
         }
 
-        // Create final cache key using actual parsed types
+        // Create final cache key using actual parsed types (should match preliminary if substitutions were correct)
         var typeArgKeys = typeArgs.Select(t => GetTypeCacheKey(t));
         var finalCacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
 
-        // If the final cache key is different (shouldn't happen often), check cache again
+        // If the final cache key is different, check cache again and also register under final key
         if (finalCacheKey != preliminaryCacheKey)
         {
             cached = _context.LookupMonomorphizedEnum(finalCacheKey);
@@ -337,6 +404,7 @@ public class TypeParser
 
         // Create monomorphized variants
         var monomorphizedVariants = new List<IrEnumVariant>();
+        bool fullyMonomorphized = true;
         foreach (var origVariant in enumType.Variants)
         {
             var monomorphizedData = new List<IrType>();
@@ -344,6 +412,12 @@ public class TypeParser
             {
                 var substitutedType = SubstituteGenericTypes(dataType, typeSubstitutions);
                 monomorphizedData.Add(substitutedType);
+
+                // Check if variant data type is still generic
+                if (ContainsGenericTypes(substitutedType))
+                {
+                    fullyMonomorphized = false;
+                }
             }
             monomorphizedVariants.Add(new IrEnumVariant(
                 origVariant.Name,
@@ -363,6 +437,13 @@ public class TypeParser
         if (finalCacheKey != preliminaryCacheKey)
         {
             _context.RegisterMonomorphizedEnum(finalCacheKey, placeholderEnum);
+        }
+
+        // IMPORTANT: Only finalize if fully monomorphized (no generic types remain in variant data)
+        // This adds the enum to the module so it gets emitted in code generation
+        if (fullyMonomorphized)
+        {
+            _context.FinalizeMonomorphizedEnum(placeholderEnum);
         }
 
         return placeholderEnum;
@@ -601,9 +682,15 @@ public class TypeParser
         // Pointer type substitution
         if (type is IrPointerType ptrType)
         {
+            if (ptrType.PointeeType is IrStructType st && st.StructName == "HashMapEntry")
+            {
+            }
             var substitutedPointee = SubstituteGenericTypesInternal(ptrType.PointeeType, substitutions, visitedStructs);
             if (substitutedPointee != ptrType.PointeeType)
             {
+                if (ptrType.PointeeType is IrStructType st2 && st2.StructName == "HashMapEntry")
+                {
+                }
                 return _context.GetPointerType(substitutedPointee);
             }
         }
@@ -650,13 +737,16 @@ public class TypeParser
             }
             visitedStructs.Add(structKey);
 
-            // If the struct still has generic parameters and we're in a generic context,
-            // we should not create a new struct type - just return the original
-            // This prevents creating duplicate generic struct instances
+            // Check if this struct needs substitution. This can happen in two cases:
+            // 1. The struct has generic parameters (e.g., HashMap<K, V> where K and V are unbound)
+            // 2. The struct has type arguments that contain generic types (e.g., HashMap<K, V> where K and V come from an outer generic context)
+            bool needsParameterSubstitution = false;
+
+
+            // Case 1: Check if the struct has generic parameters that need substitution
             if (structType.GenericParameters.Count > 0)
             {
                 // Check if any of the substitutions actually change generic to concrete
-                bool hasConcreteSubstitution = false;
                 foreach (var genericParam in structType.GenericParameters)
                 {
                     if (substitutions.ContainsKey(genericParam))
@@ -665,21 +755,149 @@ public class TypeParser
                         // Check if it's being replaced with a concrete (non-generic) type
                         if (!(substType is IrGenericType))
                         {
-                            hasConcreteSubstitution = true;
+                            needsParameterSubstitution = true;
                             break;
-                        }
-                        else
-                        {
                         }
                     }
                 }
-
-                // If no generic parameters are being replaced with concrete types,
-                // return the original struct unchanged
-                if (!hasConcreteSubstitution)
+            }
+            // Case 2: Check if the struct has type arguments that contain generic types
+            else if (structType.TypeArguments != null && structType.TypeArguments.Count > 0)
+            {
+                // Check if any type argument is a generic type that needs substitution
+                foreach (var typeArg in structType.TypeArguments)
                 {
-                    return structType;
+                    if (typeArg is IrGenericType gtArg && substitutions.ContainsKey(gtArg.ParameterName))
+                    {
+                        needsParameterSubstitution = true;
+                        break;
+                    }
+                    // Also check nested generic types (like Option<K> where K needs substitution)
+                    if (typeArg is IrStructType || typeArg is IrEnumType || typeArg is IrPointerType || typeArg is IrReferenceType)
+                    {
+                        // Recursively check if this type needs substitution
+                        var substitutedTypeArg = SubstituteGenericTypesInternal(typeArg, substitutions, new HashSet<string>(visitedStructs));
+                        if (!TypesAreEqual(substitutedTypeArg, typeArg))
+                        {
+                            needsParameterSubstitution = true;
+                            break;
+                        }
+                    }
                 }
+            }
+
+            // SPECIAL CASE: Struct has a CacheKey with generic type names but no TypeArguments
+            // This can happen when a struct is referenced in a field like `entries: *HashMapEntry<K,V>`
+            // The HashMapEntry gets a CacheKey of "HashMapEntry<K,V>" but TypeArguments is null/empty
+            // We need to check if the CacheKey contains any of the substitution keys
+            if (structType.StructName == "HashMapEntry")
+            {
+            }
+
+            if (!needsParameterSubstitution && structType.GenericParameters.Count == 0 &&
+                (structType.TypeArguments == null || structType.TypeArguments.Count == 0) &&
+                structType.CacheKey != null && structType.CacheKey.Contains('<'))
+            {
+                // Extract type parameter names from the cache key
+                // CacheKey format: "StructName<Type1,Type2,...>"
+                var startIdx = structType.CacheKey.IndexOf('<');
+                var endIdx = structType.CacheKey.LastIndexOf('>');
+                if (startIdx >= 0 && endIdx > startIdx)
+                {
+                    var typeParamsStr = structType.CacheKey.Substring(startIdx + 1, endIdx - startIdx - 1);
+                    var typeParamNames = typeParamsStr.Split(',').Select(s => s.Trim()).ToList();
+
+                    // Check if any of these type parameter names are in our substitutions
+                    bool anySubstituted = false;
+                    var newTypeArgKeys = new List<string>();
+                    var newTypeArgs = new List<IrType>();
+
+                    foreach (var paramName in typeParamNames)
+                    {
+                        if (substitutions.ContainsKey(paramName))
+                        {
+                            var substType = substitutions[paramName];
+                            newTypeArgs.Add(substType);
+                            var substKey = GetTypeCacheKey(substType);
+                            newTypeArgKeys.Add(substKey);
+                            // Only mark as substituted if we're replacing with a different concrete type
+                            // (not just replacing K with another generic K)
+                            if (substKey != paramName)
+                            {
+                                anySubstituted = true;
+                            }
+                        }
+                        else
+                        {
+                            // This type parameter is not being substituted
+                            newTypeArgKeys.Add(paramName);
+                            // Create a generic type for it
+                            newTypeArgs.Add(new IrGenericType(paramName));
+                        }
+                    }
+
+                    if (anySubstituted)
+                    {
+                        // Build the new cache key with substituted types
+                        var newCacheKey = $"{structType.StructName}<{string.Join(",", newTypeArgKeys)}>";
+
+                        // DEBUG
+
+                        // Check cache first
+                        var cachedSubstituted = _context.LookupMonomorphizedStruct(newCacheKey);
+                        if (cachedSubstituted != null)
+                        {
+                            return cachedSubstituted;
+                        }
+
+                        // Substitute field types with the new substitutions
+                        var newSubstitutedFields = new List<IrStructField>();
+                        foreach (var field in structType.Fields)
+                        {
+                            var substitutedFieldType = SubstituteGenericTypesInternal(field.Type, substitutions, visitedStructs);
+                            newSubstitutedFields.Add(new IrStructField(field.Name, substitutedFieldType));
+                        }
+
+                        // Determine remaining generic parameters
+                        var remainingGenericParams = new List<string>();
+                        foreach (var paramName in typeParamNames)
+                        {
+                            if (!substitutions.ContainsKey(paramName) || substitutions[paramName] is IrGenericType)
+                            {
+                                remainingGenericParams.Add(paramName);
+                            }
+                        }
+
+                        // Create the new struct
+                        var substitutedStruct = new IrStructType(
+                            structType.StructName,
+                            newSubstitutedFields,
+                            remainingGenericParams,
+                            newCacheKey,
+                            structType.Attributes,
+                            structType.WhereClause,
+                            newTypeArgs
+                        );
+
+                        // Register and finalize
+                        _context.RegisterMonomorphizedStruct(newCacheKey, substitutedStruct);
+
+                        bool fullyMonomorphized = !ContainsGenericTypes(substitutedStruct);
+                        if (fullyMonomorphized)
+                        {
+                            _context.FinalizeMonomorphizedStruct(substitutedStruct);
+                        }
+
+                        return substitutedStruct;
+                    }
+                }
+            }
+
+            // If no generic parameters or type arguments need substitution, return the original struct unchanged
+            if (!needsParameterSubstitution && structType.GenericParameters.Count == 0 &&
+                (structType.TypeArguments == null || structType.TypeArguments.Count == 0))
+            {
+                return structType;
             }
 
             // Check if any field types contain generics that need substitution
@@ -697,7 +915,8 @@ public class TypeParser
                 }
             }
 
-            if (needsSubstitution)
+            // If either fields need substitution OR type arguments need substitution, create a new struct
+            if (needsSubstitution || needsParameterSubstitution)
             {
                 // Create a new struct type with substituted field types
                 // Check if ALL generic parameters have been substituted with concrete types
@@ -711,14 +930,58 @@ public class TypeParser
                     }
                 }
 
-                // Generate cache key if fully monomorphized
+                // Generate cache key and type arguments
                 string? cacheKey = null;
+                List<IrType>? typeArguments = null;
+
+                // Case 1: We started with a generic struct (has GenericParameters) and fully substituted it
                 if (remainingGenericParams.Count == 0 && structType.GenericParameters.Count > 0)
                 {
-                    // Fully monomorphized - generate cache key
-                    var typeArgKeys = structType.GenericParameters.Select(p =>
-                        substitutions.ContainsKey(p) ? GetTypeCacheKey(substitutions[p]) : p);
+                    // Fully monomorphized from generic - build type arguments from substitutions
+                    typeArguments = new List<IrType>();
+                    var typeArgKeys = new List<string>();
+                    foreach (var p in structType.GenericParameters)
+                    {
+                        if (substitutions.ContainsKey(p))
+                        {
+                            typeArguments.Add(substitutions[p]);
+                            typeArgKeys.Add(GetTypeCacheKey(substitutions[p]));
+                        }
+                        else
+                        {
+                            typeArgKeys.Add(p);
+                        }
+                    }
                     cacheKey = $"{structType.StructName}<{string.Join(",", typeArgKeys)}>";
+
+                    // DEBUG: Log the substitution
+                }
+                // Case 2: We started with an already-monomorphized struct (has TypeArguments) and substituted within it
+                else if (structType.TypeArguments != null && structType.TypeArguments.Count > 0)
+                {
+                    // Substitute within the existing type arguments
+                    typeArguments = new List<IrType>();
+                    var typeArgKeys = new List<string>();
+                    foreach (var typeArg in structType.TypeArguments)
+                    {
+                        // Use a fresh visited set to allow re-substitution of nested types
+                        var substitutedTypeArg = SubstituteGenericTypesInternal(typeArg, substitutions, new HashSet<string>());
+                        typeArguments.Add(substitutedTypeArg);
+                        typeArgKeys.Add(GetTypeCacheKey(substitutedTypeArg));
+                    }
+                    cacheKey = $"{structType.StructName}<{string.Join(",", typeArgKeys)}>";
+
+                    // DEBUG: Log the substitution
+                }
+
+                // Check cache first to avoid creating duplicate structs
+                if (cacheKey != null)
+                {
+                    var cachedSubstituted = _context.LookupMonomorphizedStruct(cacheKey);
+                    if (cachedSubstituted != null)
+                    {
+                        return cachedSubstituted;
+                    }
                 }
 
                 var substitutedStruct = new IrStructType(
@@ -727,8 +990,24 @@ public class TypeParser
                     remainingGenericParams,  // Use the remaining generic parameters, not the original list
                     cacheKey,
                     structType.Attributes,
-                    structType.WhereClause
+                    structType.WhereClause,
+                    typeArguments  // Pass type arguments for monomorphized types
                 );
+
+                // Register and finalize the substituted struct if it's fully monomorphized
+                // This ensures it gets added to the module for code generation
+                if (cacheKey != null)
+                {
+                    _context.RegisterMonomorphizedStruct(cacheKey, substitutedStruct);
+
+                    // Only finalize if fully monomorphized (check both fields and type arguments)
+                    bool fullyMonomorphizedSubst = !ContainsGenericTypes(substitutedStruct);
+                    if (fullyMonomorphizedSubst)
+                    {
+                        _context.FinalizeMonomorphizedStruct(substitutedStruct);
+                    }
+                }
+
                 return substitutedStruct;
             }
         }
@@ -736,13 +1015,15 @@ public class TypeParser
         // Enum type substitution (recursive variant substitution)
         if (type is IrEnumType enumType)
         {
-            // If the enum still has generic parameters and we're in a generic context,
-            // we should not create a new enum type - just return the original
-            // This prevents creating duplicate generic enum instances
+            // Check if this enum needs substitution. This can happen in two cases:
+            // 1. The enum has generic parameters (e.g., Option<T> where T is unbound)
+            // 2. The enum has type arguments that contain generic types (e.g., Option<K> where K comes from an outer generic context)
+            bool needsParameterSubstitution = false;
+
+            // Case 1: Check if the enum has generic parameters that need substitution
             if (enumType.GenericParameters.Count > 0)
             {
                 // Check if any of the substitutions actually change generic to concrete
-                bool hasConcreteSubstitution = false;
                 foreach (var genericParam in enumType.GenericParameters)
                 {
                     if (substitutions.ContainsKey(genericParam))
@@ -751,15 +1032,48 @@ public class TypeParser
                         // Check if it's being replaced with a concrete (non-generic) type
                         if (!(substType is IrGenericType))
                         {
-                            hasConcreteSubstitution = true;
+                            needsParameterSubstitution = true;
                             break;
                         }
                     }
                 }
+            }
+            // Case 2: Check if the enum has type arguments that contain generic types
+            else if (enumType.TypeArguments != null && enumType.TypeArguments.Count > 0)
+            {
+                // Check if any type argument is a generic type that needs substitution
+                foreach (var typeArg in enumType.TypeArguments)
+                {
+                    if (typeArg is IrGenericType gtArg && substitutions.ContainsKey(gtArg.ParameterName))
+                    {
+                        needsParameterSubstitution = true;
+                        break;
+                    }
+                    // Also check nested generic types (like HashMap<K, V> where K and V need substitution)
+                    if (typeArg is IrStructType || typeArg is IrEnumType || typeArg is IrPointerType || typeArg is IrReferenceType)
+                    {
+                        // Recursively check if this type needs substitution
+                        var substitutedTypeArg = SubstituteGenericTypesInternal(typeArg, substitutions, new HashSet<string>(visitedStructs));
+                        if (!TypesAreEqual(substitutedTypeArg, typeArg))
+                        {
+                            needsParameterSubstitution = true;
+                            break;
+                        }
+                    }
+                }
+            }
 
-                // If no generic parameters are being replaced with concrete types,
-                // return the original enum unchanged
-                if (!hasConcreteSubstitution)
+            // If no generic parameters or type arguments need substitution, check variants anyway
+            // because even fully concrete enums might have variants with generic data
+            // (Actually, we should always check variants if we have any possibility of substitution)
+            if (!needsParameterSubstitution && enumType.GenericParameters.Count == 0 &&
+                (enumType.TypeArguments == null || enumType.TypeArguments.Count == 0))
+            {
+                // Still check if variants contain generics (they shouldn't, but be safe)
+                // If there are no generics anywhere, we can safely return unchanged
+                bool hasGenericInVariants = enumType.Variants.Any(v =>
+                    v.AssociatedData.Any(d => d is IrGenericType));
+                if (!hasGenericInVariants)
                 {
                     return enumType;
                 }
@@ -786,7 +1100,8 @@ public class TypeParser
                 substitutedVariants.Add(new IrEnumVariant(variant.Name, variant.Tag, substitutedData));
             }
 
-            if (needsSubstitution)
+            // If either variants need substitution OR type arguments need substitution, create a new enum
+            if (needsSubstitution || needsParameterSubstitution)
             {
                 // Create a new enum type with substituted variant types
                 // Check if ALL generic parameters have been substituted with concrete types
@@ -800,40 +1115,53 @@ public class TypeParser
                     }
                 }
 
-                // Generate cache key if fully monomorphized
+                // Generate cache key and type arguments
                 string? cacheKey = null;
-                if (remainingGenericParams.Count == 0)
+                List<IrType>? typeArguments = null;
+
+                // Case 1: We started with a generic enum (has GenericParameters) and fully substituted it
+                if (remainingGenericParams.Count == 0 && enumType.GenericParameters.Count > 0)
                 {
-                    // Fully monomorphized - generate cache key from SUBSTITUTED variant data
-                    // BUG FIX: We must generate the cache key from the actual substituted types in variant data,
-                    // NOT from the raw substitution map. This is because the variant data may be a complex type
-                    // like Vec<T> which becomes Vec<u32> after substitution, not just u32.
-                    // For example: Option<Vec<T>> with T->u32 should become Option<Vec<u32>>, not Option<u32>.
+                    // Fully monomorphized from generic - build type arguments from substitutions
+                    typeArguments = new List<IrType>();
                     var typeArgKeys = new List<string>();
-                    foreach (var variant in substitutedVariants)
+                    foreach (var p in enumType.GenericParameters)
                     {
-                        foreach (var dataType in variant.AssociatedData)
+                        if (substitutions.ContainsKey(p))
                         {
-                            // Add the cache key for each concrete type in variant data
-                            if (!(dataType is IrGenericType))
-                            {
-                                typeArgKeys.Add(GetTypeCacheKey(dataType));
-                            }
+                            typeArguments.Add(substitutions[p]);
+                            typeArgKeys.Add(GetTypeCacheKey(substitutions[p]));
+                        }
+                        else
+                        {
+                            typeArgKeys.Add(p);
                         }
                     }
-                    if (typeArgKeys.Count > 0)
+                    cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
+                }
+                // Case 2: We started with an already-monomorphized enum (has TypeArguments) and substituted within it
+                else if (enumType.TypeArguments != null && enumType.TypeArguments.Count > 0)
+                {
+                    // Substitute within the existing type arguments
+                    typeArguments = new List<IrType>();
+                    var typeArgKeys = new List<string>();
+                    foreach (var typeArg in enumType.TypeArguments)
                     {
-                        // Use the first non-generic type argument (most enums have only one)
-                        // For enums with multiple type params, we'd need to match them up properly
-                        cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
+                        // Use a fresh visited set to allow re-substitution of nested types
+                        var substitutedTypeArg = SubstituteGenericTypesInternal(typeArg, substitutions, new HashSet<string>());
+                        typeArguments.Add(substitutedTypeArg);
+                        typeArgKeys.Add(GetTypeCacheKey(substitutedTypeArg));
                     }
-                    else
+                    cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
+                }
+
+                // Check cache first to avoid creating duplicate enums
+                if (cacheKey != null)
+                {
+                    var cachedSubstituted = _context.LookupMonomorphizedEnum(cacheKey);
+                    if (cachedSubstituted != null)
                     {
-                        // No associated data with concrete types (unit variants only)
-                        // Fall back to using the raw substitution map
-                        var fallbackTypeArgKeys = enumType.GenericParameters.Select(p =>
-                            substitutions.ContainsKey(p) ? GetTypeCacheKey(substitutions[p]) : p);
-                        cacheKey = $"{enumType.EnumName}<{string.Join(",", fallbackTypeArgKeys)}>";
+                        return cachedSubstituted;
                     }
                 }
 
@@ -841,8 +1169,26 @@ public class TypeParser
                     enumType.EnumName,
                     substitutedVariants,
                     remainingGenericParams,  // Use the remaining generic parameters, not the original list
-                    cacheKey
+                    cacheKey,
+                    enumType.Attributes,
+                    enumType.WhereClause,
+                    typeArguments  // Pass type arguments for monomorphized types
                 );
+
+                // Register and finalize the substituted enum if it's fully monomorphized
+                // This ensures it gets added to the module for code generation
+                if (cacheKey != null)
+                {
+                    _context.RegisterMonomorphizedEnum(cacheKey, substitutedEnum);
+
+                    // Only finalize if fully monomorphized (check both variants and type arguments)
+                    bool fullyMonomorphizedSubst = !ContainsGenericTypes(substitutedEnum);
+                    if (fullyMonomorphizedSubst)
+                    {
+                        _context.FinalizeMonomorphizedEnum(substitutedEnum);
+                    }
+                }
+
                 return substitutedEnum;
             }
         }

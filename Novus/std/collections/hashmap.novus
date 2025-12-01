@@ -1,0 +1,475 @@
+// Novus Standard Library - HashMap Module
+// Namespace: std::collections
+// A hash map implementation using open addressing with linear probing
+//
+// This implementation supports any key type that implements Hash + Eq traits.
+
+from std::core import Option, Result, Drop, Hash, Eq
+from std::memory::block import MemoryBlock
+from std::ffi::exec import FreeMem
+from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
+
+// ============================================================================
+// Entry State - Tracks bucket occupancy
+// ============================================================================
+
+/// Entry state for tracking bucket occupancy
+/// Used internally by HashMap
+pub enum EntryState {
+    Empty,      // Never used
+    Occupied,   // Contains a key-value pair
+    Tombstone,  // Was occupied, now deleted (needed for linear probing)
+}
+
+// ============================================================================
+// HashMapEntry - Internal bucket structure for generic keys
+// ============================================================================
+
+/// Internal entry structure for HashMap buckets
+pub struct HashMapEntry<K, V> {
+    state: EntryState,
+    key: K,
+    value: V,
+}
+
+// ============================================================================
+// HashMap<K, V> - Generic hash map with trait-bounded keys
+// ============================================================================
+
+/// HashMap<K, V> - A hash table with generic keys using open addressing
+///
+/// This implementation uses:
+/// - Open addressing (all entries stored in a single array)
+/// - Linear probing for collision resolution
+/// - Tombstones for deletion support
+/// - Automatic resizing at 70% load factor
+/// - Key hashing via the Hash trait
+/// - Key equality via the Eq trait
+///
+/// Example:
+/// ```novus
+/// var map: HashMap<u32, u32> = HashMap::new()?
+/// map.insert(1u32, 100u32)
+/// map.insert(2u32, 200u32)
+///
+/// match map.get(&1u32) {
+///     Some(val_ptr) => print_num(*val_ptr),
+///     None => print("not found")
+/// }
+/// ```
+pub struct HashMap<K, V> where K: Hash + Eq {
+    entries: *HashMapEntry<K, V>,
+    capacity: u32,
+    len: u32,
+    tombstones: u32,  // Track tombstones for load factor calculation
+}
+
+impl<K, V> HashMap<K, V> where K: Hash + Eq {
+    /// Create a new empty HashMap with default capacity (16)
+    /// Returns None if memory allocation fails
+    pub fn new() -> Option<HashMap<K, V>> {
+        return HashMap::<K, V>::with_capacity(16u32)
+    }
+
+    /// Create a new HashMap with the specified initial capacity
+    /// Returns None if memory allocation fails
+    ///
+    /// The capacity will be rounded up to a power of 2 for efficient modulo.
+    pub fn with_capacity(requested: u32) -> Option<HashMap<K, V>> {
+        // Round up to power of 2 for fast modulo (using bitwise AND)
+        let capacity: u32 = HashMap::<K, V>::next_power_of_two(requested)
+
+        let entry_size: u32 = @sizeof(HashMapEntry<K, V>)
+        let bytes_needed: u32 = capacity * entry_size
+
+        let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
+
+        match block_opt {
+            Some(mut block) => {
+                let entries: *HashMapEntry<K, V> = (*HashMapEntry<K, V>)block.ptr()
+
+                // Initialize all entries as Empty
+                let mut i: u32 = 0u32
+                while i < capacity {
+                    entries[i].state = EntryState::Empty
+                    i = i + 1u32
+                }
+
+                // Take ownership of memory - HashMap will manage it directly
+                // This prevents MemoryBlock's Drop from freeing the memory
+                block.into_raw()
+
+                return Option::Some(HashMap {
+                    entries: entries,
+                    capacity: capacity,
+                    len: 0u32,
+                    tombstones: 0u32,
+                })
+            },
+            None => {
+                return Option::None
+            }
+        }
+    }
+
+    /// Get the number of key-value pairs in the map
+    pub fn len(&self) -> u32 {
+        return self.len
+    }
+
+    /// Check if the map is empty
+    pub fn is_empty(&self) -> bool {
+        return self.len == 0u32
+    }
+
+    /// Get the current capacity
+    pub fn capacity(&self) -> u32 {
+        return self.capacity
+    }
+
+    /// Insert a key-value pair into the map
+    ///
+    /// If the key already exists, the value is updated and the old value is returned.
+    /// Returns None if this is a new key, or Some(old_value) if updating.
+    /// Returns None on allocation failure during resize (map unchanged).
+    pub fn insert(&mut self, key: K, value: V) -> Option<V> {
+        // Check if we need to resize (load factor > 70%)
+        let load: u32 = (self.len + self.tombstones + 1u32) * 10u32
+        let threshold: u32 = self.capacity * 7u32
+        if load > threshold {
+            let success: bool = self.resize(self.capacity * 2u32)
+            if !success {
+                // Resize failed, but we might still have room
+                if self.len + self.tombstones >= self.capacity {
+                    return Option::None
+                }
+            }
+        }
+
+        let hash: u32 = key.hash()
+        let mask: u32 = self.capacity - 1u32
+        let mut index: u32 = hash & mask
+        let mut tombstone_index: Option<u32> = Option::None
+
+        // Linear probing
+        let mut probes: u32 = 0u32
+        while probes < self.capacity {
+            let state: EntryState = self.entries[index].state
+
+            match state {
+                Empty => {
+                    // Found empty slot - use tombstone slot if we passed one
+                    match tombstone_index {
+                        Some(ti) => {
+                            self.entries[ti].state = EntryState::Occupied
+                            self.entries[ti].key = key
+                            self.entries[ti].value = value
+                            self.len = self.len + 1u32
+                            self.tombstones = self.tombstones - 1u32
+                        },
+                        None => {
+                            self.entries[index].state = EntryState::Occupied
+                            self.entries[index].key = key
+                            self.entries[index].value = value
+                            self.len = self.len + 1u32
+                        }
+                    }
+                    return Option::None
+                },
+                Tombstone => {
+                    // Remember first tombstone for potential reuse
+                    if tombstone_index.is_none() {
+                        tombstone_index = Option::Some(index)
+                    }
+                },
+                Occupied => {
+                    // Check if this is the same key using Eq trait
+                    if self.entries[index].key.eq(&key) {
+                        // Update existing entry
+                        let old_value: V = self.entries[index].value
+                        self.entries[index].value = value
+                        return Option::Some(old_value)
+                    }
+                }
+            }
+
+            index = (index + 1u32) & mask
+            probes = probes + 1u32
+        }
+
+        // Table is full (shouldn't happen with proper resizing)
+        return Option::None
+    }
+
+    /// Get a reference to the value associated with the key
+    ///
+    /// Returns Some(ref_to_value) if found, None otherwise.
+    pub fn get(&self, key: &K) -> Option<&V> {
+        if self.len == 0u32 {
+            return Option::None
+        }
+
+        let hash: u32 = key.hash()
+        let mask: u32 = self.capacity - 1u32
+        let mut index: u32 = hash & mask
+
+        let mut probes: u32 = 0u32
+        while probes < self.capacity {
+            let state: EntryState = self.entries[index].state
+
+            match state {
+                Empty => {
+                    // Key not found
+                    return Option::None
+                },
+                Tombstone => {
+                    // Continue searching
+                },
+                Occupied => {
+                    if self.entries[index].key.eq(key) {
+                        // Found it - return reference to value
+                        let ref_val: &V = &self.entries[index].value
+                        return Option::Some(ref_val)
+                    }
+                }
+            }
+
+            index = (index + 1u32) & mask
+            probes = probes + 1u32
+        }
+
+        return Option::None
+    }
+
+    /// Check if the map contains the given key
+    pub fn contains_key(&self, key: &K) -> bool {
+        return self.get(key).is_some()
+    }
+
+    /// Remove a key-value pair from the map
+    ///
+    /// Returns Some(value) if the key was found and removed, None otherwise.
+    pub fn remove(&mut self, key: &K) -> Option<V> {
+        if self.len == 0u32 {
+            return Option::None
+        }
+
+        let hash: u32 = key.hash()
+        let mask: u32 = self.capacity - 1u32
+        let mut index: u32 = hash & mask
+
+        let mut probes: u32 = 0u32
+        while probes < self.capacity {
+            let state: EntryState = self.entries[index].state
+
+            match state {
+                Empty => {
+                    return Option::None
+                },
+                Tombstone => {
+                    // Continue searching
+                },
+                Occupied => {
+                    if self.entries[index].key.eq(key) {
+                        // Found it - mark as tombstone
+                        let value: V = self.entries[index].value
+                        self.entries[index].state = EntryState::Tombstone
+                        self.len = self.len - 1u32
+                        self.tombstones = self.tombstones + 1u32
+                        return Option::Some(value)
+                    }
+                }
+            }
+
+            index = (index + 1u32) & mask
+            probes = probes + 1u32
+        }
+
+        return Option::None
+    }
+
+    /// Remove all entries from the map
+    ///
+    /// This keeps the current capacity but marks all entries as empty.
+    pub fn clear(&mut self) {
+        let mut i: u32 = 0u32
+        while i < self.capacity {
+            self.entries[i].state = EntryState::Empty
+            i = i + 1u32
+        }
+        self.len = 0u32
+        self.tombstones = 0u32
+    }
+
+    /// Internal: Resize the hash table to a new capacity
+    fn resize(&mut self, new_capacity: u32) -> bool {
+        let entry_size: u32 = @sizeof(HashMapEntry<K, V>)
+        let bytes_needed: u32 = new_capacity * entry_size
+
+        let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
+
+        match block_opt {
+            Some(mut block) => {
+                let new_entries: *HashMapEntry<K, V> = (*HashMapEntry<K, V>)block.ptr()
+
+                // Take ownership of memory before block goes out of scope
+                block.into_raw()
+
+                // Initialize all new entries as Empty
+                let mut i: u32 = 0u32
+                while i < new_capacity {
+                    new_entries[i].state = EntryState::Empty
+                    i = i + 1u32
+                }
+
+                // Re-insert all occupied entries
+                let old_entries: *HashMapEntry<K, V> = self.entries
+                let old_capacity: u32 = self.capacity
+                let mask: u32 = new_capacity - 1u32
+
+                i = 0u32
+                while i < old_capacity {
+                    match old_entries[i].state {
+                        Occupied => {
+                            // Compute new index using Hash trait
+                            let hash: u32 = old_entries[i].key.hash()
+                            let mut index: u32 = hash & mask
+
+                            // Linear probe to find empty slot
+                            while new_entries[index].state != EntryState::Empty {
+                                index = (index + 1u32) & mask
+                            }
+
+                            // Copy entry
+                            new_entries[index].state = EntryState::Occupied
+                            new_entries[index].key = old_entries[i].key
+                            new_entries[index].value = old_entries[i].value
+                        },
+                        _ => {
+                            // Skip empty and tombstone entries
+                        }
+                    }
+                    i = i + 1u32
+                }
+
+                // Free old entries
+                let old_bytes: u32 = old_capacity * entry_size
+                let old_mem: *u8 = (*u8)old_entries
+                unsafe {
+                    FreeMem(old_mem, old_bytes)
+                }
+
+                // Update map fields
+                self.entries = new_entries
+                self.capacity = new_capacity
+                self.tombstones = 0u32
+
+                return true
+            },
+            None => {
+                return false
+            }
+        }
+    }
+
+    /// Internal: Round up to the next power of 2
+    fn next_power_of_two(n: u32) -> u32 {
+        if n == 0u32 {
+            return 1u32
+        }
+
+        let mut v: u32 = n - 1u32
+        v = v | (v >> 1)
+        v = v | (v >> 2)
+        v = v | (v >> 4)
+        v = v | (v >> 8)
+        v = v | (v >> 16)
+        return v + 1u32
+    }
+
+    /// Free the map's memory
+    pub fn drop(&mut self) {
+        if self.capacity > 0u32 {
+            let entry_size: u32 = @sizeof(HashMapEntry<K, V>)
+            let bytes: u32 = self.capacity * entry_size
+            let mem: *u8 = (*u8)self.entries
+            unsafe {
+                FreeMem(mem, bytes)
+            }
+            self.entries = 0
+            self.capacity = 0u32
+            self.len = 0u32
+            self.tombstones = 0u32
+        }
+    }
+
+    /// Create an iterator over the map's entries
+    pub fn iter(&self) -> HashMapIter<K, V> {
+        return HashMapIter {
+            entries: self.entries,
+            capacity: self.capacity,
+            current: 0u32,
+        }
+    }
+}
+
+// Automatic cleanup for HashMap (RAII)
+impl<K, V> Drop for HashMap<K, V> where K: Hash + Eq {
+    fn drop(&mut self) {
+        if self.capacity > 0u32 {
+            let entry_size: u32 = @sizeof(HashMapEntry<K, V>)
+            let bytes: u32 = self.capacity * entry_size
+            let mem: *u8 = (*u8)self.entries
+            unsafe {
+                FreeMem(mem, bytes)
+            }
+            self.entries = 0
+            self.capacity = 0u32
+            self.len = 0u32
+            self.tombstones = 0u32
+        }
+    }
+}
+
+// ============================================================================
+// HashMapIter - Iterator for HashMap
+// ============================================================================
+
+/// Iterator over HashMap entries
+pub struct HashMapIter<K, V> {
+    entries: *HashMapEntry<K, V>,
+    capacity: u32,
+    current: u32,
+}
+
+/// Key-value pair returned by iterator
+pub struct KeyValue<K, V> {
+    key: K,
+    value: V,
+}
+
+impl<K, V> HashMapIter<K, V> {
+    /// Get the next key-value pair
+    ///
+    /// Returns Some(KeyValue) if there are more entries, None when done.
+    pub fn next(&mut self) -> Option<KeyValue<K, V>> {
+        while self.current < self.capacity {
+            let idx: u32 = self.current
+            self.current = self.current + 1u32
+
+            match self.entries[idx].state {
+                Occupied => {
+                    return Option::Some(KeyValue {
+                        key: self.entries[idx].key,
+                        value: self.entries[idx].value,
+                    })
+                },
+                _ => {
+                    // Skip empty and tombstone entries
+                }
+            }
+        }
+
+        return Option::None
+    }
+}

@@ -123,8 +123,68 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
         public IrEnumType? LookupMonomorphizedEnum(string cacheKey) => _builder._symbols.LookupMonomorphizedEnum(cacheKey);
 
         // Registration
-        public void RegisterMonomorphizedStruct(string key, IrStructType type) => _builder._symbols.RegisterMonomorphizedStruct(key, type);
-        public void RegisterMonomorphizedEnum(string key, IrEnumType type) => _builder._symbols.RegisterMonomorphizedEnum(key, type);
+        public void RegisterMonomorphizedStruct(string key, IrStructType type)
+        {
+            _builder._symbols.RegisterMonomorphizedStruct(key, type);
+            // NOTE: We don't add to module here because fields may not be populated yet
+            // FinalizeMonomorphizedStruct will be called after fields are fully substituted
+        }
+
+        public void RegisterMonomorphizedEnum(string key, IrEnumType type)
+        {
+            _builder._symbols.RegisterMonomorphizedEnum(key, type);
+            // NOTE: We don't add to module here because variants may not be populated yet
+            // FinalizeMonomorphizedEnum will be called after variants are fully substituted
+        }
+
+        // Finalization (called after fields/variants are fully populated)
+        public void FinalizeMonomorphizedStruct(IrStructType type)
+        {
+            // IMPORTANT: Add the monomorphized struct to the module so it gets emitted in the types header
+            // This is critical for nested generic structs like HashMapEntry<u32, u32> which are referenced
+            // through pointers but still need their full definition for field access
+            // ONLY add fully monomorphized structs (no generic parameters AND no generic type arguments)
+            // TypeArguments can contain IrGenericType instances for partially-monomorphized structs like
+            // HashMap<K,V>::entries which has type *HashMapEntry<K,V> where K,V are still generic
+            bool hasGenericTypeArgs = type.TypeArguments != null &&
+                                      type.TypeArguments.Any(arg => arg is IrGenericType);
+
+            if (type.StructName == "KeyValue")
+            {
+                Console.WriteLine($"[IrBuilder] FinalizeMonomorphizedStruct called with KeyValue: CacheKey={type.CacheKey}, TypeArgs={type.TypeArguments?.Count ?? 0}");
+                if (type.TypeArguments != null)
+                {
+                    foreach (var arg in type.TypeArguments)
+                    {
+                        Console.WriteLine($"  TypeArg: {arg.Name} (is generic: {arg is IrGenericType})");
+                    }
+                }
+                // Print stack trace to find caller
+                Console.WriteLine($"  Stack trace:\n{Environment.StackTrace}");
+            }
+
+            if (type.GenericParameters.Count == 0 && !hasGenericTypeArgs && !_builder._module.Structs.Contains(type))
+            {
+                Console.WriteLine($"[IrBuilder] Adding monomorphized struct to module: {type.StructName} CacheKey={type.CacheKey}");
+                _builder._module.Structs.Add(type);
+            }
+            else
+            {
+                Console.WriteLine($"[IrBuilder] NOT adding struct: {type.StructName} CacheKey={type.CacheKey} (GenericParams={type.GenericParameters.Count}, HasGenericTypeArgs={hasGenericTypeArgs}, AlreadyInModule={_builder._module.Structs.Contains(type)})");
+            }
+        }
+
+        public void FinalizeMonomorphizedEnum(IrEnumType type)
+        {
+            // IMPORTANT: Add the monomorphized enum to the module so it gets emitted in the types header
+            // ONLY add fully monomorphized enums (no generic parameters AND no generic type arguments)
+            bool hasGenericTypeArgs = type.TypeArguments != null &&
+                                      type.TypeArguments.Any(arg => arg is IrGenericType);
+            if (type.GenericParameters.Count == 0 && !hasGenericTypeArgs && !_builder._module.Enums.Contains(type))
+            {
+                _builder._module.Enums.Add(type);
+            }
+        }
 
         // Type interning
         public IrType GetReferenceType(IrType pointeeType) => _builder._typeInterner.GetReferenceType(pointeeType);

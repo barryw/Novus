@@ -1161,8 +1161,12 @@ public class IrStructType : IrType
     {
         get
         {
+            // For generic structs, show the generic parameters
             if (GenericParameters.Count > 0)
                 return $"{StructName}<{string.Join(", ", GenericParameters)}>";
+            // For monomorphized structs, show the concrete type arguments
+            if (TypeArguments != null && TypeArguments.Count > 0)
+                return $"{StructName}<{string.Join(", ", TypeArguments.Select(t => t.Name))}>";
             return StructName;
         }
     }
