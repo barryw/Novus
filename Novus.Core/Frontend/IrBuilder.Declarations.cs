@@ -510,7 +510,8 @@ public partial class IrBuilder
 
         var section = useChipRam ? MemorySection.Chip : MemorySection.Default;
 
-        // Create static byte array for MOD data
+        // Create static byte array for MOD data (internal, with _data suffix when chip=false)
+        var dataName = useChipRam ? name : name + "_data";
         var arrayType = new IrArrayType(IrIntType.U8, data.Length);
         var arrayLiteral = new IrArrayLiteral(arrayType);
         foreach (var b in data)
@@ -518,8 +519,63 @@ public partial class IrBuilder
             arrayLiteral.Elements.Add(new IrConstant(b, IrIntType.U8));
         }
 
-        var staticVar = new IrStaticVariable(name, arrayType, visibility, false, arrayLiteral, section);
+        var staticVar = new IrStaticVariable(dataName, arrayType, visibility, false, arrayLiteral, section);
         _module.StaticVariables.Add(staticVar);
+
+        // When chip=false, also create a ModAsset struct with pointer and size
+        // This allows automatic chip RAM management via init_asset()
+        if (!useChipRam)
+        {
+            CreateStaticModAsset(name, dataName, data.Length, visibility);
+        }
+    }
+
+    /// <summary>
+    /// Create a static ModAsset struct that references MOD data.
+    /// </summary>
+    private void CreateStaticModAsset(string name, string dataName, int dataLength, Visibility visibility)
+    {
+        // ModAsset struct layout:
+        // - data: *u8 (pointer to the data array)
+        // - size: u32 (size in bytes)
+
+        // Try to look up the real ModAsset struct from imports
+        var modAssetStruct = _symbols.LookupStruct("ModAsset");
+        if (modAssetStruct == null)
+        {
+            // ModAsset not imported - create an anonymous struct type with the same layout
+            var fields = new List<IrStructField>
+            {
+                new IrStructField("data", new IrPointerType(IrIntType.U8)),
+                new IrStructField("size", IrIntType.U32)
+            };
+            modAssetStruct = new IrStructType("ModAsset", fields);
+        }
+        // Always add to module structs so code generator can emit the typedef
+        // The code generator will check if it's already defined before emitting
+        if (!_module.Structs.Any(s => s.StructName == modAssetStruct.StructName))
+        {
+            _module.Structs.Add(modAssetStruct);
+        }
+
+        // Build field values dictionary
+        // data: pointer to the static array we created
+        // Use IrGlobalVariable to reference the static data array
+        var dataArrayType = new IrArrayType(IrIntType.U8, dataLength);
+        var dataArrayRef = new IrGlobalVariable(dataName, dataArrayType);
+        var dataPtr = new IrCastValue(dataArrayRef, dataArrayType, new IrPointerType(IrIntType.U8));
+
+        var fieldValues = new Dictionary<string, IrValue>
+        {
+            { "data", dataPtr },
+            { "size", new IrConstant((uint)dataLength, IrIntType.U32) }
+        };
+
+        // Create the struct literal with field values
+        var structLiteral = new IrStructLiteral(modAssetStruct, fieldValues);
+
+        var assetVar = new IrStaticVariable(name, modAssetStruct, visibility, false, structLiteral, MemorySection.Default);
+        _module.StaticVariables.Add(assetVar);
     }
 
     /// <summary>

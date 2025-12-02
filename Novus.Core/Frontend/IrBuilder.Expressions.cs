@@ -2676,41 +2676,52 @@ public partial class IrBuilder
             return null;
         }
 
-        if (_currentFunction.ReturnType is not IrEnumType funcResultType || funcResultType.EnumName != "Result")
+        // Check if function returns Result<T, E> or i32 (for main-style functions)
+        bool isResultReturn = _currentFunction.ReturnType is IrEnumType funcResultType && funcResultType.EnumName == "Result";
+        bool isI32Return = _currentFunction.ReturnType is IrIntType retIntType && retIntType.BitWidth == 32 && retIntType.IsSigned;
+
+        if (!isResultReturn && !isI32Return)
         {
             var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.TryOperatorInvalidContext,
-                $"? operator requires current function to return Result<T, E>, got {_currentFunction.ReturnType}",
+                $"? operator requires function to return Result<T, E> or i32, got {_currentFunction.ReturnType}",
                 errorLocation
             );
             return null;
         }
 
-        var funcErrVariant = funcResultType.Variants.FirstOrDefault(v => v.Name == "Err");
-        if (funcErrVariant == null)
+        IrType? targetErrorType = null;
+        IrEnumVariant? funcErrVariant = null;
+
+        if (isResultReturn)
         {
-            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
-            _diagnostics.ReportError(
-                ErrorCodes.TryOperatorInvalidType,
-                "Function return type Result missing Err variant",
-                errorLocation
-            );
-            return null;
-        }
+            var resultReturnType = (IrEnumType)_currentFunction.ReturnType;
+            funcErrVariant = resultReturnType.Variants.FirstOrDefault(v => v.Name == "Err");
+            if (funcErrVariant == null)
+            {
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.TryOperatorInvalidType,
+                    "Function return type Result missing Err variant",
+                    errorLocation
+                );
+                return null;
+            }
 
-        if (funcErrVariant.AssociatedData.Count == 0)
-        {
-            var errorLocation = GetLocation(context);
-            _diagnostics.ReportError(
-                ErrorCodes.InvalidExpressionType,
-                "Function return type Result::Err missing associated data",
-                errorLocation
-            );
-            return null;
-        }
+            if (funcErrVariant.AssociatedData.Count == 0)
+            {
+                var errorLocation = GetLocation(context);
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    "Function return type Result::Err missing associated data",
+                    errorLocation
+                );
+                return null;
+            }
 
-        var targetErrorType = funcErrVariant.AssociatedData[0];
+            targetErrorType = funcErrVariant.AssociatedData[0];
+        }
 
         // 3. Generate match expression to unwrap Result
         // This is similar to VisitMatchExpr, but we generate the match structure in IR directly
@@ -2770,59 +2781,97 @@ public partial class IrBuilder
         okBlock.AddInstruction(new IrStore(okValueTemp, new IrVariable(extractedTemp, okPayloadType)));
         okBlock.AddInstruction(new IrBranch(continueBlock.Label));
 
-        // Err branch: extract error, optionally convert, and return
+        // Err branch: extract error and handle based on function return type
         _currentBlock = errBlock;
         errBlock.AddInstruction(new IrLabel(errBlock.Label));
         var errValueTemp = $"%try_err_val_{_tempCounter++}";
         errBlock.AddInstruction(new IrExtractVariantData(errValueTemp, resultVar, "Err", 0, sourceErrorType));
         var errVar = new IrVariable(errValueTemp, sourceErrorType);
 
-        // 4. If E != E2, look for From<E> impl for E2 and call convert()
-        IrValue finalError;
-        if (!TypesEqual(sourceErrorType, targetErrorType))
+        if (isI32Return)
         {
-            // Need to convert error via From<E>::convert()
-            // Look for From<sourceErrorType> impl for targetErrorType
-            var sourceTypeName = GetTypeName(sourceErrorType);
-            var targetTypeName = GetTypeName(targetErrorType);
+            // For i32-returning functions (like main), print error and return 1
+            // Generate: __novus_try_failed("ErrorType", tag, "Variant1,Variant2,..."); return 1;
+            var errorTypeName = GetTypeName(sourceErrorType);
 
-            // Find the From<sourceType> trait impl for targetType
-            // Use the new FindGenericTraitMethod to match the specific From<SourceType> implementation
-            var convertMethodName = _module.FindGenericTraitMethod(targetTypeName, "From", sourceTypeName, "convert");
+            // Extract the tag to get the variant name at runtime
+            var errTagTemp = $"%try_err_tag_{_tempCounter++}";
+            errBlock.AddInstruction(new IrExtractTag(errTagTemp, errVar));
 
-            if (convertMethodName == null)
+            // Create string literals for type name and variant names
+            var typeNameLabel = $"_str{_stringCounter++}";
+            var typeNameLiteral = new IrStringLiteral(errorTypeName, typeNameLabel);
+            StringLiterals.Add(typeNameLiteral);
+
+            string variantNames;
+            if (sourceErrorType is IrEnumType sourceEnumType)
             {
-                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
-                _diagnostics.ReportError(
-                    ErrorCodes.InvalidExpressionType,
-                    $"Cannot convert {sourceTypeName} to {targetTypeName}: no From<{sourceTypeName}> implementation found for {targetTypeName}",
-                    errorLocation
-                );
-                return null;
+                variantNames = string.Join(",", sourceEnumType.Variants.Select(v => v.Name));
             }
+            else
+            {
+                variantNames = "Unknown";
+            }
+            var variantNamesLabel = $"_str{_stringCounter++}";
+            var variantNamesLiteral = new IrStringLiteral(variantNames, variantNamesLabel);
+            StringLiterals.Add(variantNamesLiteral);
 
-            // Call the convert method
-            var convertedTemp = $"%try_converted_{_tempCounter++}";
-            var convertCall = new IrCall(convertMethodName, targetErrorType, convertedTemp);
-            convertCall.Location = GetLocation(context);
-            convertCall.Arguments.Add(errVar);
-            errBlock.AddInstruction(convertCall);
-            finalError = new IrVariable(convertedTemp, targetErrorType);
+            // Call runtime helper: __novus_try_failed(error_type_name, tag, variant_names)
+            var callTemp = $"%try_print_{_tempCounter++}";
+            var printCall = new IrCall("__novus_try_failed", IrVoidType.Instance, callTemp);
+            printCall.Arguments.Add(typeNameLiteral);
+            printCall.Arguments.Add(new IrVariable(errTagTemp, IrIntType.I32));
+            printCall.Arguments.Add(variantNamesLiteral);
+
+            errBlock.AddInstruction(printCall);
+            // Use RETURN_FAIL (20) - the standard DOS error code for failures
+            errBlock.AddInstruction(new IrReturn(new IrConstant(20, IrIntType.I32)));
         }
         else
         {
-            // No conversion needed
-            finalError = errVar;
-        }
+            // For Result-returning functions, convert error if needed and return Err
+            IrValue finalError;
+            if (!TypesEqual(sourceErrorType, targetErrorType!))
+            {
+                // Need to convert error via From<E>::convert()
+                var sourceTypeName = GetTypeName(sourceErrorType);
+                var targetTypeName = GetTypeName(targetErrorType!);
 
-        // Construct Result::Err(finalError) and return it
-        var returnErrTemp = $"%try_return_err_{_tempCounter++}";
-        var returnErrLocal = new IrLocalVariable(returnErrTemp, funcResultType, false);
-        _currentFunction.LocalVariables.Add(returnErrLocal);
-        var funcErrTag = funcErrVariant.Tag;
-        var returnErrValue = new IrEnumValue(funcResultType, "Err", funcErrTag, new List<IrValue> { finalError });
-        errBlock.AddInstruction(new IrLocalDecl(returnErrTemp, funcResultType, false, returnErrValue));
-        errBlock.AddInstruction(new IrReturn(new IrVariable(returnErrTemp, funcResultType)));
+                var convertMethodName = _module.FindGenericTraitMethod(targetTypeName, "From", sourceTypeName, "convert");
+
+                if (convertMethodName == null)
+                {
+                    var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.InvalidExpressionType,
+                        $"Cannot convert {sourceTypeName} to {targetTypeName}: no From<{sourceTypeName}> implementation found for {targetTypeName}",
+                        errorLocation
+                    );
+                    return null;
+                }
+
+                var convertedTemp = $"%try_converted_{_tempCounter++}";
+                var convertCall = new IrCall(convertMethodName, targetErrorType!, convertedTemp);
+                convertCall.Location = GetLocation(context);
+                convertCall.Arguments.Add(errVar);
+                errBlock.AddInstruction(convertCall);
+                finalError = new IrVariable(convertedTemp, targetErrorType!);
+            }
+            else
+            {
+                finalError = errVar;
+            }
+
+            // Construct Result::Err(finalError) and return it
+            var resultReturnType = (IrEnumType)_currentFunction.ReturnType;
+            var returnErrTemp = $"%try_return_err_{_tempCounter++}";
+            var returnErrLocal = new IrLocalVariable(returnErrTemp, resultReturnType, false);
+            _currentFunction.LocalVariables.Add(returnErrLocal);
+            var funcErrTag = funcErrVariant!.Tag;
+            var returnErrValue = new IrEnumValue(resultReturnType, "Err", funcErrTag, new List<IrValue> { finalError });
+            errBlock.AddInstruction(new IrLocalDecl(returnErrTemp, resultReturnType, false, returnErrValue));
+            errBlock.AddInstruction(new IrReturn(new IrVariable(returnErrTemp, resultReturnType)));
+        }
 
         // Continue block: the value from Ok is the result of this expression
         _currentBlock = continueBlock;
@@ -4090,6 +4139,82 @@ public partial class IrBuilder
         // Get the Str result and write it to the formatter
         var strValue = new IrVariable(asStrResultName, asStrMethod.ReturnType);
         EmitWriteStr(formatterVarName, formatterType, strValue);
+
+        // Drop the temporary String after we've extracted and copied its data
+        // This prevents memory leaks when functions like move_to() return String values
+        // that get used in f-strings and then need to be cleaned up.
+        EmitDropForTemporaryString(stringValue);
+    }
+
+    /// <summary>
+    /// Emit a Drop call for a temporary String value used in f-strings.
+    /// This is necessary because String contains Vec&lt;u8&gt; which owns heap memory.
+    ///
+    /// NOTE: We call Vec_u8_drop directly on the String's vec field rather than
+    /// String_Drop_drop because String intentionally doesn't implement Drop.
+    /// This is due to a compiler bug where defer cleanup runs before return
+    /// value is copied out, causing double-free when functions return String.
+    /// </summary>
+    private void EmitDropForTemporaryString(IrValue stringValue)
+    {
+        // Get the String type and find the 'vec' field
+        var stringType = stringValue.Type as IrStructType;
+        if (stringType == null || stringType.StructName != "String")
+        {
+            return;
+        }
+
+        var vecField = stringType.Fields.FirstOrDefault(f => f.Name == "vec");
+        if (vecField == null)
+        {
+            return;
+        }
+
+        // Get the Vec<u8> type from the field
+        var vecType = vecField.Type as IrStructType;
+        if (vecType == null)
+        {
+            return;
+        }
+
+        // Ensure the Drop method for Vec<u8> is instantiated
+        // This may trigger generic instantiation if not already done
+        EnsureDropMethodInstantiated(vecType);
+
+        // Now look for the drop method - try trait impl name first (Vec<u8>_Drop_drop),
+        // then regular method name (Vec_u8_drop)
+        var typeName = vecType.CacheKey ?? vecType.StructName;
+        var dropMethodName = $"{typeName}_Drop_drop";
+        var dropMethod = _module.Functions.FirstOrDefault(f => f.Name == dropMethodName);
+
+        if (dropMethod == null)
+        {
+            // Try the regular method name (mangled: Vec<u8> -> Vec_u8)
+            dropMethodName = $"{typeName.Replace("<", "_").Replace(">", "_").TrimEnd('_')}_drop";
+            dropMethod = _module.Functions.FirstOrDefault(f => f.Name == dropMethodName);
+        }
+
+        if (dropMethod == null)
+        {
+            // Vec doesn't have drop instantiated - this shouldn't happen but handle gracefully
+            return;
+        }
+
+        // Use IrMemberAccess to load the 'vec' field into a temp variable
+        var vecTempName = $"%t{_tempCounter++}";
+        var memberAccess = new IrMemberAccess(vecTempName, stringValue, "vec", vecField.Type, vecField.Offset);
+        _currentBlock!.AddInstruction(memberAccess);
+
+        // Create a variable reference to the loaded vec field
+        var vecVarRef = new IrVariable(vecTempName, vecField.Type);
+
+        // Create a mutable borrow of the vec for calling drop(&mut self)
+        var vecMutBorrow = new IrBorrowValue(vecVarRef, new IrMutReferenceType(vecField.Type), isMutable: true);
+
+        // Call Vec_u8_drop(&mut string.vec)
+        var dropCall = new IrCall(dropMethodName, IrVoidType.Instance, null);
+        dropCall.Arguments.Add(vecMutBorrow);
+        _currentBlock!.AddInstruction(dropCall);
     }
 
     private List<InterpolationSegment> ParseInterpolatedString(string content)

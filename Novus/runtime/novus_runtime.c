@@ -158,6 +158,65 @@ void __novus_assert_failed(const char* file, int32_t line, int32_t col, const ch
     display_error_requester(AO_Assert);
 }
 
+// DOS inline functions for try_failed
+// Output() - LVO -60, returns file handle in d0
+int32_t __dos_output(__reg("a6") void* dosBase) = "\tjsr\t-60(a6)";
+// Write(file, buffer, length) - LVO -48, file in d1, buffer in d2, length in d3
+int32_t __dos_write(__reg("a6") void* dosBase, __reg("d1") int32_t file, __reg("d2") const char* buffer, __reg("d3") int32_t length) = "\tjsr\t-48(a6)";
+
+/**
+ * Try operator error handler - prints error and returns
+ * Called when ? operator fails in a function returning i32 (like main).
+ * Prints "Error: TypeName::VariantName\n" to the console.
+ *
+ * @param type_name The error type name (e.g., "AudioError")
+ * @param tag The enum variant tag (0, 1, 2, ...)
+ * @param variant_names Comma-separated variant names (e.g., "Ok,Err,Other")
+ */
+void __novus_try_failed(const char* type_name, int32_t tag, const char* variant_names)
+{
+    struct Library *dosBase;
+    char msg[128];
+    char* ptr = msg;
+    const char* variant = variant_names;
+    int current_tag = 0;
+    int32_t len;
+    int32_t fh;
+
+    // Find the variant name by counting commas
+    while (current_tag < tag && *variant) {
+        if (*variant == ',') {
+            current_tag++;
+        }
+        variant++;
+    }
+
+    // Build: "Error: TypeName::VariantName\n"
+    ptr = strcpy_helper(ptr, "Error: ");
+    ptr = strcpy_helper(ptr, type_name);
+    ptr = strcpy_helper(ptr, "::");
+
+    // Copy variant name until comma or end
+    while (*variant && *variant != ',') {
+        *ptr++ = *variant++;
+    }
+    *ptr++ = '\n';
+    *ptr = '\0';
+
+    // Calculate length
+    len = (int32_t)(ptr - msg);
+
+    // Print to stdout using DOS Write
+    dosBase = OpenLibrary("dos.library", 0L);
+    if (dosBase != NULL) {
+        fh = __dos_output(dosBase);
+        if (fh != 0) {
+            __dos_write(dosBase, fh, msg, len);
+        }
+        CloseLibrary(dosBase);
+    }
+}
+
 /**
  * Panic handler - displays error using EasyRequest and halts execution
  * This is for unrecoverable runtime errors (never elided, even in release)

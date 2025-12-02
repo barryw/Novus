@@ -3233,8 +3233,41 @@ __mt_SongEnd:
 	ds.b	1
 	endc	; !MINIMAL
 
-	ifne	ENABLE_VUMETER
+; Always export __mt_VUMeter so ptplayer_helpers.c can link
+; When ENABLE_VUMETER=0, this byte is never written to but exists for linking
 	xdef	__mt_VUMeter
 __mt_VUMeter:
 	ds.b	1
-	endc	;ENABLE_VUMETER
+
+	section	"CODE",code
+
+; ============================================================================
+; Song position and length accessors for Novus
+; These are defined here so they have access to the offset symbols
+; ============================================================================
+
+	xdef	___novus_ptplayer_get_song_pos
+	xdef	___novus_ptplayer_get_song_length
+
+; uint8_t __novus_ptplayer_get_song_pos(void)
+; Returns the current song position (0-127)
+___novus_ptplayer_get_song_pos:
+	lea	mt_data,a4		; Use absolute addressing (not PC-relative)
+	moveq	#0,d0
+	move.b	mt_SongPos(a4),d0
+	rts
+
+; uint8_t __novus_ptplayer_get_song_length(void)
+; Returns the song length from the MOD file (0-128)
+; Song length is stored at offset 950 in the MOD file
+___novus_ptplayer_get_song_length:
+	lea	mt_data,a4		; Use absolute addressing (not PC-relative)
+	move.l	mt_mod(a4),a0		; Get module pointer
+	move.l	a0,d0
+	beq.s	.no_mod
+	moveq	#0,d0
+	move.b	950(a0),d0		; Song length at offset 950 in MOD
+	rts
+.no_mod:
+	moveq	#0,d0
+	rts

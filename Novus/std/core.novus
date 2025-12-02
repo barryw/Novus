@@ -42,10 +42,10 @@ impl<T> Option<T> {
         }
     }
 
-    pub fn unwrap_or(self, default: T) -> T {
+    pub fn unwrap_or(self, default_val: T) -> T {
         match self {
             Some(val) => return val,
-            None => return default
+            None => return default_val
         }
     }
 }
@@ -72,10 +72,10 @@ impl<T, E> Result<T, E> {
         }
     }
 
-    pub fn unwrap_or(self, default: T) -> T {
+    pub fn unwrap_or(self, default_val: T) -> T {
         match self {
             Ok(val) => return val,
-            Err(_) => return default
+            Err(_) => return default_val
         }
     }
 }

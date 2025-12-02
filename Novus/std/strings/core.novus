@@ -482,6 +482,21 @@ impl String {
     }
 }
 
+// NOTE: String intentionally does NOT implement Drop!
+//
+// This is because of a compiler bug where defer cleanup runs BEFORE
+// the return value is copied out when returning a String from a function.
+// If String had Drop, the defer would free the Vec memory, then copy
+// the zeroed struct to the caller, causing data loss or double-free.
+//
+// Instead, String cleanup is handled by:
+// 1. The f-string codegen explicitly drops temporary Strings after use
+// 2. Users can call string.vec.drop() manually if needed
+// 3. When the compiler's defer/return ordering is fixed, we can add Drop back
+//
+// The Vec<u8> inside String DOES implement Drop, so if you bind a String
+// to a local variable (not returned), it will be cleaned up via the Vec's Drop.
+
 // ============================================================================
 // Fixed-Size String Types (Stack-Allocated)
 // ============================================================================
@@ -694,8 +709,9 @@ impl BStr {
         let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(total_bytes, MEMF_PUBLIC)
 
         match block_opt {
-            Some(block) => {
-                let ptr: *u8 = block.ptr()
+            Some(mut block) => {
+                // Take ownership of the raw pointer so MemoryBlock's Drop won't free it
+                let (ptr, _size) = block.into_raw()
 
                 // Set length byte
                 ptr[0] = (u8)s.len()

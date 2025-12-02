@@ -298,8 +298,18 @@ extern fn __novus_mt_samplevol(sample_num: u16, volume: u8)
 // Helper functions to access ptplayer variables
 // These are linked from ptplayer_helpers.c
 extern fn __novus_ptplayer_set_enable(value: u8)
+extern fn __novus_ptplayer_get_enable() -> u8
 extern fn __novus_ptplayer_get_e8_trigger() -> u8
 extern fn __novus_ptplayer_get_music_channels() -> u8
+extern fn __novus_ptplayer_get_song_end() -> u8
+extern fn __novus_ptplayer_set_song_end(value: u8)
+extern fn __novus_ptplayer_get_vumeter() -> u8
+extern fn __novus_ptplayer_peek_vumeter() -> u8
+extern fn __novus_ptplayer_get_song_pos() -> u8
+extern fn __novus_ptplayer_get_song_length() -> u8
+
+// Helper to call a function pointer stored as u32 address
+extern fn __novus_call_u8_callback(func_addr: u32, arg: u8)
 
 // Get the CPU's Vector Base Register (VBR)
 // On 68000 this returns 0, on 68010+ it returns the actual VBR value.
@@ -310,6 +320,10 @@ fn set_mt_enable(value: u8) {
     __novus_ptplayer_set_enable(value)
 }
 
+fn get_mt_enable() -> u8 {
+    return __novus_ptplayer_get_enable()
+}
+
 fn get_mt_e8_trigger() -> u8 {
     return __novus_ptplayer_get_e8_trigger()
 }
@@ -318,9 +332,58 @@ fn get_mt_music_channels() -> u8 {
     return __novus_ptplayer_get_music_channels()
 }
 
+fn get_mt_song_end() -> u8 {
+    return __novus_ptplayer_get_song_end()
+}
+
+fn set_mt_song_end(value: u8) {
+    __novus_ptplayer_set_song_end(value)
+}
+
+fn get_mt_vumeter() -> u8 {
+    return __novus_ptplayer_get_vumeter()
+}
+
+fn peek_mt_vumeter() -> u8 {
+    return __novus_ptplayer_peek_vumeter()
+}
+
 // ============================================================================
 // MOD Player Handle
 // ============================================================================
+
+/// Callback configuration for MOD playback
+///
+/// Use this struct to configure callbacks when starting playback.
+/// Pass function pointers cast to u32, or 0 to disable a callback.
+///
+/// # Example
+/// ```novus
+/// fn on_e8(value: u8) { /* handle sync */ }
+/// fn on_end(status: u8) { /* handle song end */ }
+///
+/// let config = PlayConfig {
+///     on_e8_trigger: (u32)on_e8,
+///     on_song_end: (u32)on_end,
+/// }
+/// player.play_with_config(&config)
+/// ```
+pub struct PlayConfig {
+    /// Called when E8x sync command triggers (value 0-15)
+    on_e8_trigger: u32,
+    /// Called when song ends or loops (bit 7 = finished, bits 0-6 = loop count)
+    on_song_end: u32,
+}
+
+impl PlayConfig {
+    /// Create a config with no callbacks
+    pub fn none() -> PlayConfig {
+        return PlayConfig {
+            on_e8_trigger: 0,
+            on_song_end: 0,
+        }
+    }
+}
 
 /// RAII wrapper for ptplayer
 ///
@@ -353,6 +416,7 @@ fn get_mt_music_channels() -> u8 {
 ///
 /// // Player automatically cleaned up on drop
 /// ```
+
 pub struct ModPlayer {
     is_playing: bool,
     cia_installed: bool,
@@ -360,6 +424,17 @@ pub struct ModPlayer {
     // Chip RAM buffer allocated by init_asset() - must be freed on drop
     chip_buffer: *u8,
     chip_buffer_size: u32,
+    // Callback state tracking
+    last_e8_value: u8,
+    last_song_end: u8,
+    // Optional callbacks (null = disabled)
+    // Stored as u32 addresses - use __novus_call_u8_callback helper to invoke
+    // - on_e8_trigger: called when E8x command is triggered (value 0-15)
+    // - on_vumeter: called when channels have new notes (bitmask bits 0-3)
+    // - on_song_end: called when song ends/loops (bit 7 = finished, bits 0-6 = loop count)
+    on_e8_trigger: u32,
+    on_vumeter: u32,
+    on_song_end: u32,
 }
 
 impl ModPlayer {
@@ -392,6 +467,11 @@ impl ModPlayer {
             pal_mode: pal,
             chip_buffer: (*u8)0,
             chip_buffer_size: 0,
+            last_e8_value: 0,
+            last_song_end: 0,
+            on_e8_trigger: 0,
+            on_vumeter: 0,
+            on_song_end: 0,
         })
     }
 
@@ -487,6 +567,71 @@ impl ModPlayer {
     pub fn play(&mut self) {
         set_mt_enable(1)
         self.is_playing = true
+    }
+
+    /// Start music playback with callbacks
+    ///
+    /// A cleaner alternative to setting callbacks separately.
+    /// Callbacks are invoked when you call `tick()` in your main loop.
+    ///
+    /// # Example
+    /// ```novus
+    /// fn on_sync(value: u8) { flash_screen() }
+    /// fn on_end(status: u8) { song_finished = true }
+    ///
+    /// player.play_with_config(&PlayConfig {
+    ///     on_e8_trigger: (u32)on_sync,
+    ///     on_song_end: (u32)on_end,
+    /// })
+    ///
+    /// while !song_finished {
+    ///     WaitTOF()
+    ///     player.tick()  // Fires callbacks if events occurred
+    /// }
+    /// ```
+    pub fn play_with_config(&mut self, config: &PlayConfig) {
+        self.on_e8_trigger = config.on_e8_trigger
+        self.on_song_end = config.on_song_end
+        self.reset_callback_state()
+        set_mt_enable(1)
+        self.is_playing = true
+    }
+
+    /// Check for events and fire callbacks
+    ///
+    /// Call this once per frame in your main loop. It checks ptplayer's
+    /// internal state and fires any registered callbacks when values change.
+    ///
+    /// This is the idiomatic way to handle music events on Amiga - polling
+    /// from your main loop rather than interrupt-driven callbacks.
+    ///
+    /// # Example
+    /// ```novus
+    /// while game_running {
+    ///     WaitTOF()
+    ///     player.tick()  // Check for music events
+    ///     update_game()
+    ///     render_frame()
+    /// }
+    /// ```
+    pub fn tick(&mut self) {
+        // Check E8 trigger
+        if self.on_e8_trigger != 0 {
+            let current_e8 = get_mt_e8_trigger()
+            if current_e8 != self.last_e8_value {
+                self.last_e8_value = current_e8
+                __novus_call_u8_callback(self.on_e8_trigger, current_e8)
+            }
+        }
+
+        // Check song end
+        if self.on_song_end != 0 {
+            let current_song_end = get_mt_song_end()
+            if current_song_end != self.last_song_end {
+                self.last_song_end = current_song_end
+                __novus_call_u8_callback(self.on_song_end, current_song_end)
+            }
+        }
     }
 
     /// Pause music playback
@@ -634,10 +779,74 @@ impl ModPlayer {
 
     /// Get the last E8 trigger value
     ///
-    /// The E8 command in ProTracker sets a trigger value that can
-    /// be read by the program. Useful for syncing visuals to music.
+    /// The E8 command (E8x where x is 0-F) in ProTracker sets a sync marker
+    /// that can be read by the program. Trackers can place these at specific
+    /// points in the song for visual synchronization.
+    ///
+    /// The value persists until the next E8 command. Reset to 0 on init.
     pub fn get_e8_trigger(&self) -> u8 {
         return get_mt_e8_trigger()
+    }
+
+    /// Check if the song has ended or looped
+    ///
+    /// Returns a non-zero value when the song reaches its end:
+    /// - Bit 7 set: Song will stop (mt_Enable cleared)
+    /// - Bits 0-6: Number of times the song has looped
+    ///
+    /// Reset to 0 on init.
+    pub fn get_song_end(&self) -> u8 {
+        return get_mt_song_end()
+    }
+
+    /// Check if song has finished playing
+    ///
+    /// Returns true when ptplayer has stopped (mt_Enable == 0).
+    /// This happens when:
+    /// - `stop()` was called
+    /// - Single-play mode was enabled and the song reached its end
+    ///
+    /// Note: In looping mode, this only returns true after `stop()`.
+    pub fn is_finished(&self) -> bool {
+        // Check if ptplayer has stopped (mt_Enable == 0)
+        // When in single-play mode, ptplayer clears mt_Enable when song ends
+        return get_mt_enable() == 0
+    }
+
+    /// Enable single-play mode (song stops at end instead of looping)
+    ///
+    /// When enabled, the song will stop automatically when it reaches the end
+    /// instead of looping. You can check `is_finished()` to detect this.
+    ///
+    /// This must be called before `play()` or `play_with_config()`.
+    pub fn set_single_play(&mut self, enabled: bool) {
+        if enabled {
+            // Setting mt_SongEnd to $FF (-1) makes ptplayer stop when song ends
+            set_mt_song_end($FF)
+        } else {
+            // Setting to 0 enables normal looping behavior
+            set_mt_song_end(0)
+        }
+    }
+
+    /// Get VU meter trigger and clear it
+    ///
+    /// Returns a bitmask indicating which channels started playing new notes
+    /// since the last call. Bit 0 = channel 0, bit 1 = channel 1, etc.
+    ///
+    /// The value is cleared after reading. Use `peek_vumeter()` to read
+    /// without clearing.
+    ///
+    /// Useful for visual effects synced to the beat.
+    pub fn get_vumeter(&self) -> u8 {
+        return get_mt_vumeter()
+    }
+
+    /// Peek at VU meter without clearing
+    ///
+    /// Same as `get_vumeter()` but doesn't clear the value.
+    pub fn peek_vumeter(&self) -> u8 {
+        return peek_mt_vumeter()
     }
 
     /// Get the number of channels dedicated to music
@@ -645,16 +854,176 @@ impl ModPlayer {
         return get_mt_music_channels()
     }
 
-    /// Manually tick the music (for custom timing)
+    /// Get current song position (0-127)
     ///
-    /// Normally the CIA interrupt calls this automatically.
-    /// Use this if you want to sync music to your own timing source.
-    pub fn tick(&self) {
+    /// This is the index into the pattern order table.
+    pub fn song_position(&self) -> u8 {
+        return __novus_ptplayer_get_song_pos()
+    }
+
+    /// Get total song length (number of positions)
+    ///
+    /// Returns the song length from the MOD file (1-128).
+    pub fn song_length(&self) -> u8 {
+        return __novus_ptplayer_get_song_length()
+    }
+
+    /// Get song progress as a percentage (0-100)
+    pub fn progress(&self) -> u8 {
+        let len = self.song_length()
+        if len == 0 {
+            return 0
+        }
+        let pos = self.song_position()
+        return (u8)(((u32)pos * 100) / (u32)len)
+    }
+
+    /// Manually tick the music engine (for custom timing)
+    ///
+    /// Normally the CIA interrupt calls the music engine automatically.
+    /// Use this only if you want to sync music to your own timing source
+    /// instead of using the CIA interrupt.
+    ///
+    /// Note: This is different from `tick()` which checks for events and
+    /// fires callbacks. This method directly drives the music playback.
+    pub fn tick_music(&self) {
         let custom = (*u8)CUSTOM_BASE
 
         unsafe {
             __novus_mt_music(custom)
         }
+    }
+
+    // ========================================================================
+    // Callback Configuration
+    // ========================================================================
+
+    /// Set callback for E8 sync trigger events
+    ///
+    /// The callback is invoked by `poll()` whenever the E8 trigger value
+    /// changes. The E8x command in ProTracker allows trackers to embed
+    /// sync markers (0-15) that your code can react to.
+    ///
+    /// Pass a null pointer to disable the callback.
+    ///
+    /// # Example
+    /// ```novus
+    /// fn on_sync(trigger: u8) {
+    ///     match trigger {
+    ///         1 => flash_screen(),
+    ///         2 => spawn_enemy(),
+    ///         _ => {}
+    ///     }
+    /// }
+    ///
+    /// player.set_on_e8_trigger(&on_sync)
+    /// ```
+    pub fn set_on_e8_trigger(&mut self, callback: u32) {
+        self.on_e8_trigger = callback
+    }
+
+    /// Set callback for VU meter events
+    ///
+    /// The callback is invoked by `poll()` whenever any channel starts
+    /// playing a new note. The parameter is a bitmask where bit N indicates
+    /// channel N triggered (bits 0-3 for channels 0-3).
+    ///
+    /// Pass a null pointer to disable the callback.
+    ///
+    /// # Example
+    /// ```novus
+    /// fn on_vu(channels: u8) {
+    ///     if (channels & 1) != 0 { flash_channel_0() }
+    ///     if (channels & 2) != 0 { flash_channel_1() }
+    /// }
+    ///
+    /// player.set_on_vumeter(&on_vu)
+    /// ```
+    pub fn set_on_vumeter(&mut self, callback: u32) {
+        self.on_vumeter = callback
+    }
+
+    /// Set callback for song end/loop events
+    ///
+    /// The callback is invoked by `poll()` when the song_end value changes:
+    /// - Bit 7 set: Song has finished (mt_Enable cleared)
+    /// - Bits 0-6: Loop count
+    ///
+    /// Pass a null pointer to disable the callback.
+    ///
+    /// # Example
+    /// ```novus
+    /// fn on_song_end(status: u8) {
+    ///     if (status & $80) != 0 {
+    ///         // Song finished, play next track
+    ///         load_next_song()
+    ///     } else {
+    ///         // Song looped
+    ///         let loop_count = status & $7F
+    ///         write("Loop %d\n", (i32)loop_count)
+    ///     }
+    /// }
+    ///
+    /// player.set_on_song_end(&on_song_end)
+    /// ```
+    pub fn set_on_song_end(&mut self, callback: u32) {
+        self.on_song_end = callback
+    }
+
+    /// Poll for events and fire callbacks
+    ///
+    /// Call this regularly (e.g., once per frame in your game loop) to
+    /// check for ptplayer events and invoke any registered callbacks.
+    ///
+    /// This is a polling-based approach which is more Amiga-idiomatic
+    /// than interrupt-driven callbacks, giving you control over when
+    /// events are processed.
+    ///
+    /// # Example
+    /// ```novus
+    /// // In your game loop:
+    /// loop {
+    ///     player.poll()  // Check for music events
+    ///     update_game()
+    ///     render_frame()
+    ///     wait_vblank()
+    /// }
+    /// ```
+    pub fn poll(&mut self) {
+        // Check E8 trigger
+        if self.on_e8_trigger != 0 {
+            let current_e8 = get_mt_e8_trigger()
+            if current_e8 != self.last_e8_value {
+                self.last_e8_value = current_e8
+                __novus_call_u8_callback(self.on_e8_trigger, current_e8)
+            }
+        }
+
+        // Check VU meter (always fires if non-zero since it auto-clears)
+        if self.on_vumeter != 0 {
+            let vu = get_mt_vumeter()  // This clears the value
+            if vu != 0 {
+                __novus_call_u8_callback(self.on_vumeter, vu)
+            }
+        }
+
+        // Check song end
+        if self.on_song_end != 0 {
+            let current_song_end = get_mt_song_end()
+            if current_song_end != self.last_song_end {
+                self.last_song_end = current_song_end
+                __novus_call_u8_callback(self.on_song_end, current_song_end)
+            }
+        }
+    }
+
+    /// Clear callback state
+    ///
+    /// Resets the internal state tracking for callbacks. Call this after
+    /// loading a new song to avoid spurious callbacks from stale state.
+    pub fn reset_callback_state(&mut self) {
+        self.last_e8_value = 0
+        self.last_song_end = 0
     }
 }
 

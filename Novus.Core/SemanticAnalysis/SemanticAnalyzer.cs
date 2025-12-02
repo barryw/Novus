@@ -988,6 +988,55 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var name = context.IDENTIFIER().GetText();
         var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
 
+        // Check for mut keyword early (used in multiple paths)
+        var isMutable = false;
+        for (int i = 0; i < Math.Min(5, context.ChildCount); i++)
+        {
+            if (context.GetChild(i)?.GetText() == "mut")
+            {
+                isMutable = true;
+                break;
+            }
+        }
+
+        // Parse attributes to check for special type-altering attributes
+        var attributes = ParseAttributes(context.attribute());
+
+        // Check for @mod attribute with chip = false, which produces a ModAsset struct
+        var modAttr = attributes.Get(KnownAttributes.Mod);
+        if (modAttr != null)
+        {
+            // Check if chip = false (defaults to true)
+            var useChipRam = true;
+            if (modAttr.NamedArgs.TryGetValue("chip", out var chipArg) && chipArg is bool chipBool)
+            {
+                useChipRam = chipBool;
+            }
+
+            if (!useChipRam)
+            {
+                // @mod with chip=false produces a ModAsset struct
+                // Look up ModAsset from imports, or create a placeholder struct type
+                IrType? modAssetType = _symbols.LookupStruct("ModAsset");
+                if (modAssetType == null)
+                {
+                    // Create a placeholder struct with the expected layout
+                    var fields = new List<IrStructField>
+                    {
+                        new IrStructField("data", new IrPointerType(IrIntType.U8)),
+                        new IrStructField("size", IrIntType.U32)
+                    };
+                    modAssetType = new IrStructType("ModAsset", fields);
+                }
+
+                if (!_globalVariables.ContainsKey(name))
+                {
+                    _globalVariables[name] = new VariableSymbol(name, modAssetType, IsMutable: isMutable, location, Id: _nextVariableId++);
+                }
+                return;
+            }
+        }
+
         // Type annotation is optional - if not provided, type will be inferred from initializer
         IrType type;
         if (context.type() != null)
@@ -1035,17 +1084,6 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 // For complex expressions, use a placeholder type
                 // The actual type will be determined during IR building
                 type = IrVoidType.Instance;
-            }
-        }
-
-        // Check for mut keyword
-        var isMutable = false;
-        for (int i = 0; i < Math.Min(5, context.ChildCount); i++)
-        {
-            if (context.GetChild(i)?.GetText() == "mut")
-            {
-                isMutable = true;
-                break;
             }
         }
 
@@ -3547,6 +3585,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         // Check if cast is valid
         // Allow: numeric -> numeric, bool -> numeric, numeric -> bool, pointer -> integer, integer -> pointer, pointer -> pointer, &T -> *T
+        // Also allow: fn(...) -> numeric (function pointer to address), numeric -> fn(...) (address to function pointer)
         bool isValidCast = (IsNumericType(targetType) && IsNumericType(exprType)) ||
                            (IsNumericType(targetType) && exprType is IrBoolType) ||  // bool -> numeric
                            (targetType is IrBoolType && IsNumericType(exprType)) ||  // numeric -> bool
@@ -3554,7 +3593,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                            (targetType is IrPointerType && IsNumericType(exprType)) ||
                            (targetType is IrPointerType && exprType is IrPointerType) ||
                            (targetType is IrPointerType && exprType is IrReferenceType) ||
-                           (targetType is IrPointerType && exprType is IrMutReferenceType);
+                           (targetType is IrPointerType && exprType is IrMutReferenceType) ||
+                           (IsNumericType(targetType) && exprType is IrFunctionPointerType) ||  // fn(...) -> u32
+                           (targetType is IrFunctionPointerType && IsNumericType(exprType));    // u32 -> fn(...)
 
         if (!isValidCast)
         {

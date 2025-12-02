@@ -1,0 +1,62 @@
+// MOD Player Single-Play Test
+// Plays a MOD file once and exits when finished
+
+from std::core import Result
+from std::audio::ptplayer import ModPlayer, ModAsset
+from std::audio::errors import AudioError
+from std::hardware::chipset import DISPLAY, DisplayType
+from std::io::file import write
+from std::os::timer import AsyncTimer, Duration, WaitResult, TimerError
+
+// Embed MOD in fast RAM
+@mod("GSLINGER.MOD", chip = false)
+static music: [u8] = []
+
+pub fn main() -> i32 {
+    let is_pal = DISPLAY() == DisplayType::PAL
+
+    write("MOD Player Test\n")
+    write("===============\n\n")
+
+    let mut player = ModPlayer::new(is_pal)?
+    player.init_asset(&music, 0)?
+
+    write("Playing: GSLINGER.MOD\n")
+    write("Press Ctrl-C to stop...\n\n")
+
+    player.set_single_play(true)
+    player.play()
+
+    let mut timer = AsyncTimer::new()?
+    let mut seconds: u32 = 0
+    let mut user_stopped = false
+
+    while !player.is_finished() {
+        match timer.wait_or_break(Duration::secs(1)) {
+            WaitResult::Timer => {
+                seconds++
+                let mins = seconds / 60u32
+                let secs = seconds % 60u32
+                let pct = player.progress()
+
+                write("Time: %ld:%02ld  Pos: %ld/%ld (%ld%%)\r",
+                    mins, secs,
+                    (u32)player.song_position(), (u32)player.song_length(),
+                    (u32)pct)
+            },
+            WaitResult::Break => {
+                user_stopped = true
+                break
+            },
+            WaitResult::TimerAndBreak => {
+                user_stopped = true
+                break
+            },
+        }
+    }
+
+    player.stop()
+    write(user_stopped ? "\nStopped by user.\n" : "\nSong finished.\n")
+
+    return 0
+}

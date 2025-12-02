@@ -598,7 +598,14 @@ public class CCodeGenerator
             sb.AppendLine("// ============================================================================");
             sb.AppendLine();
 
-            foreach (var enumType in typeRegistry.EnumTypes.OrderBy(e => e.Name))
+            // Sort enum types in dependency order: emit leaf types first, then types that depend on them
+            // This handles cases like AppError { Audio(AudioError), Timer(TimerError) } where
+            // AudioError and TimerError must be defined before AppError
+            var concreteEnums = typeRegistry.EnumTypes
+                .Where(e => codegen.IsConcreteEnum(e))
+                .ToHashSet();
+            var sortedEnumTypes = codegen.TopologicalSortEnumTypes(concreteEnums);
+            foreach (var enumType in sortedEnumTypes)
             {
                 codegen.EmitEnumTypeToBuilder(sb, enumType);
             }
@@ -629,6 +636,11 @@ public class CCodeGenerator
         // Division by zero check
         sb.AppendLine("// Division by zero check - displays error if divisor is zero");
         sb.AppendLine("void __novus_div_check(int32_t divisor, const char* file, int32_t line);");
+        sb.AppendLine();
+
+        // Try operator error handler (for ? in i32-returning functions like main)
+        sb.AppendLine("// Try operator error handler - prints error when ? fails in i32-returning functions");
+        sb.AppendLine("void __novus_try_failed(const char* type_name, int32_t tag, const char* variant_names);");
         sb.AppendLine();
 
         // Memory functions
@@ -2238,6 +2250,55 @@ public class CCodeGenerator
     {
         var called = new Dictionary<string, (IrType ReturnType, List<IrValue> Arguments)>();
 
+        // Helper to recursively scan a value for function addresses (handles casts, borrows, etc.)
+        void ScanValueForFuncAddrs(IrValue value)
+        {
+            switch (value)
+            {
+                case IrFunctionAddress funcAddr:
+                    var funcObj = _module.Functions.FirstOrDefault(f => f.Name == funcAddr.FunctionName);
+                    if (funcObj != null && !called.ContainsKey(funcAddr.FunctionName))
+                    {
+                        called[funcAddr.FunctionName] = (funcObj.ReturnType, new List<IrValue>());
+                    }
+                    else if (funcAddr.Type is IrFunctionPointerType fpType && !called.ContainsKey(funcAddr.FunctionName))
+                    {
+                        // Use type info from the IrFunctionAddress itself
+                        called[funcAddr.FunctionName] = (fpType.ReturnType, new List<IrValue>());
+                    }
+                    break;
+
+                case IrFunctionRef funcRef:
+                    if (!called.ContainsKey(funcRef.Function.Name))
+                    {
+                        called[funcRef.Function.Name] = (funcRef.Function.ReturnType, new List<IrValue>());
+                    }
+                    break;
+
+                case IrCastValue castValue:
+                    ScanValueForFuncAddrs(castValue.Value);
+                    break;
+
+                case IrBorrowValue borrowValue:
+                    ScanValueForFuncAddrs(borrowValue.BorrowedValue);
+                    break;
+
+                case IrDereferenceValue derefValue:
+                    ScanValueForFuncAddrs(derefValue.PointerValue);
+                    break;
+
+                case IrStructLiteral structLit:
+                    foreach (var fieldValue in structLit.FieldValues.Values)
+                        ScanValueForFuncAddrs(fieldValue);
+                    break;
+
+                case IrArrayLiteral arrayLit:
+                    foreach (var element in arrayLit.Elements)
+                        ScanValueForFuncAddrs(element);
+                    break;
+            }
+        }
+
         // Check function parameters for function pointer types
         foreach (var param in function.Parameters)
         {
@@ -2268,24 +2329,10 @@ public class CCodeGenerator
                         called[call.FunctionName] = (call.ReturnType, call.Arguments);
                     }
 
-                    // Also check for function pointers used as arguments
+                    // Scan arguments for function addresses (including casts)
                     foreach (var arg in call.Arguments)
                     {
-                        if (arg is IrFunctionAddress funcAddr)
-                        {
-                            var funcObj = _module.Functions.FirstOrDefault(f => f.Name == funcAddr.FunctionName);
-                            if (funcObj != null && !called.ContainsKey(funcAddr.FunctionName))
-                            {
-                                called[funcAddr.FunctionName] = (funcObj.ReturnType, new List<IrValue>());
-                            }
-                        }
-                        else if (arg is IrFunctionRef funcRef)
-                        {
-                            if (!called.ContainsKey(funcRef.Function.Name))
-                            {
-                                called[funcRef.Function.Name] = (funcRef.Function.ReturnType, new List<IrValue>());
-                            }
-                        }
+                        ScanValueForFuncAddrs(arg);
                     }
                 }
                 else if (instruction is IrIndirectCall indirectCall)
@@ -2298,62 +2345,32 @@ public class CCodeGenerator
                             called[funcAddr.FunctionName] = (indirectCall.ReturnType, indirectCall.Arguments);
                         }
                     }
+                    // Scan the function pointer and arguments
+                    ScanValueForFuncAddrs(indirectCall.FunctionPointer);
+                    foreach (var arg in indirectCall.Arguments)
+                    {
+                        ScanValueForFuncAddrs(arg);
+                    }
                 }
                 else if (instruction is IrLocalDecl localDecl)
                 {
-                    // Check if local variable is initialized with a function address
-                    if (localDecl.InitialValue is IrFunctionAddress funcAddr)
+                    // Scan initial value for function addresses (including casts)
+                    if (localDecl.InitialValue != null)
                     {
-                        var funcObj = _module.Functions.FirstOrDefault(f => f.Name == funcAddr.FunctionName);
-                        if (funcObj != null && !called.ContainsKey(funcAddr.FunctionName))
-                        {
-                            called[funcAddr.FunctionName] = (funcObj.ReturnType, new List<IrValue>());
-                        }
-                    }
-                    else if (localDecl.InitialValue is IrFunctionRef funcRef)
-                    {
-                        if (!called.ContainsKey(funcRef.Function.Name))
-                        {
-                            called[funcRef.Function.Name] = (funcRef.Function.ReturnType, new List<IrValue>());
-                        }
+                        ScanValueForFuncAddrs(localDecl.InitialValue);
                     }
                 }
                 else if (instruction is IrStore store)
                 {
-                    // Check if storing a function address to a variable
-                    if (store.Value is IrFunctionAddress funcAddr)
-                    {
-                        var funcObj = _module.Functions.FirstOrDefault(f => f.Name == funcAddr.FunctionName);
-                        if (funcObj != null && !called.ContainsKey(funcAddr.FunctionName))
-                        {
-                            called[funcAddr.FunctionName] = (funcObj.ReturnType, new List<IrValue>());
-                        }
-                    }
-                    else if (store.Value is IrFunctionRef funcRef)
-                    {
-                        if (!called.ContainsKey(funcRef.Function.Name))
-                        {
-                            called[funcRef.Function.Name] = (funcRef.Function.ReturnType, new List<IrValue>());
-                        }
-                    }
+                    // Scan stored value for function addresses (including casts)
+                    ScanValueForFuncAddrs(store.Value);
                 }
                 else if (instruction is IrReturn returnInst)
                 {
-                    // Check if returning a function pointer
-                    if (returnInst.Value is IrFunctionAddress funcAddr)
+                    // Scan return value for function addresses
+                    if (returnInst.Value != null)
                     {
-                        var funcObj = _module.Functions.FirstOrDefault(f => f.Name == funcAddr.FunctionName);
-                        if (funcObj != null && !called.ContainsKey(funcAddr.FunctionName))
-                        {
-                            called[funcAddr.FunctionName] = (funcObj.ReturnType, new List<IrValue>());
-                        }
-                    }
-                    else if (returnInst.Value is IrFunctionRef funcRef)
-                    {
-                        if (!called.ContainsKey(funcRef.Function.Name))
-                        {
-                            called[funcRef.Function.Name] = (funcRef.Function.ReturnType, new List<IrValue>());
-                        }
+                        ScanValueForFuncAddrs(returnInst.Value);
                     }
                 }
             }
@@ -3215,6 +3232,56 @@ public class CCodeGenerator
             _module.Functions.Where(f => f.IsExtern).Select(f => f.Name)
         );
 
+        // Helper to scan a value for function addresses (used when functions are cast to integers)
+        void ScanValueForFunctionAddresses(IrValue value)
+        {
+            switch (value)
+            {
+                case IrFunctionAddress funcAddr:
+                    // Function address used (possibly cast to integer) - need declaration
+                    if (!definedFunctionNames.Contains(funcAddr.FunctionName) &&
+                        !externFunctionNames.Contains(funcAddr.FunctionName) &&
+                        !crossModuleCalls.ContainsKey(funcAddr.FunctionName))
+                    {
+                        // Get the function's signature from the module
+                        var funcObj = _module.Functions.FirstOrDefault(f => f.Name == funcAddr.FunctionName);
+                        if (funcObj != null)
+                        {
+                            var paramTypes = funcObj.Parameters.Select(p => p.Type).ToList();
+                            crossModuleCalls[funcAddr.FunctionName] = (funcObj.ReturnType, paramTypes);
+                        }
+                        else if (funcAddr.Type is IrFunctionPointerType fpType)
+                        {
+                            // Use the type information from the IrFunctionAddress itself
+                            crossModuleCalls[funcAddr.FunctionName] = (fpType.ReturnType, fpType.ParameterTypes);
+                        }
+                    }
+                    break;
+
+                case IrCastValue castValue:
+                    ScanValueForFunctionAddresses(castValue.Value);
+                    break;
+
+                case IrBorrowValue borrowValue:
+                    ScanValueForFunctionAddresses(borrowValue.BorrowedValue);
+                    break;
+
+                case IrDereferenceValue derefValue:
+                    ScanValueForFunctionAddresses(derefValue.PointerValue);
+                    break;
+
+                case IrStructLiteral structLit:
+                    foreach (var fieldValue in structLit.FieldValues.Values)
+                        ScanValueForFunctionAddresses(fieldValue);
+                    break;
+
+                case IrArrayLiteral arrayLit:
+                    foreach (var element in arrayLit.Elements)
+                        ScanValueForFunctionAddresses(element);
+                    break;
+            }
+        }
+
         // Helper to scan a block for cross-module calls (handles nested defer blocks)
         void ScanBlockForCalls(IrBasicBlock block)
         {
@@ -3231,6 +3298,9 @@ public class CCodeGenerator
                         var paramTypes = call.Arguments.Select(arg => arg.Type).ToList();
                         crossModuleCalls[call.FunctionName] = (call.ReturnType, paramTypes);
                     }
+                    // Also scan arguments for function addresses
+                    foreach (var arg in call.Arguments)
+                        ScanValueForFunctionAddresses(arg);
                 }
                 else if (instruction is IrIndirectCall indirectCall)
                 {
@@ -3247,11 +3317,32 @@ public class CCodeGenerator
                             crossModuleCalls[funcAddr.FunctionName] = (indirectCall.ReturnType, paramTypes);
                         }
                     }
+                    // Also scan the function pointer value and arguments for function addresses
+                    ScanValueForFunctionAddresses(indirectCall.FunctionPointer);
+                    foreach (var arg in indirectCall.Arguments)
+                        ScanValueForFunctionAddresses(arg);
                 }
                 else if (instruction is IrDefer defer)
                 {
                     // Recursively scan the deferred block
                     ScanBlockForCalls(defer.DeferredBlock);
+                }
+                else if (instruction is IrStore store)
+                {
+                    // Scan stored values for function addresses
+                    ScanValueForFunctionAddresses(store.Value);
+                }
+                else if (instruction is IrLocalDecl localDecl)
+                {
+                    // Scan initial values for function addresses
+                    if (localDecl.InitialValue != null)
+                        ScanValueForFunctionAddresses(localDecl.InitialValue);
+                }
+                else if (instruction is IrReturn returnInst)
+                {
+                    // Scan return values for function addresses
+                    if (returnInst.Value != null)
+                        ScanValueForFunctionAddresses(returnInst.Value);
                 }
             }
         }
@@ -4009,6 +4100,92 @@ public class CCodeGenerator
             default:
                 _output.AppendLine($"    // TODO: {instruction.GetType().Name}");
                 break;
+        }
+    }
+
+    /// <summary>
+    /// Deactivate defer blocks for variables that are being moved into a return value.
+    /// This prevents use-after-free bugs where Drop is called on a resource that has been moved.
+    ///
+    /// Defer blocks are named: autoclean_{varName}_{counter}
+    /// We extract the variable name and match it against variables in the return value.
+    /// </summary>
+    private void DeactivateDefersForMovedVariables(IrValue returnValue)
+    {
+        if (_currentEmittingFunction == null || _currentEmittingFunction.DeferredBlocks.Count == 0)
+            return;
+
+        // Collect all variable names used in the return value
+        var movedVariables = new HashSet<string>();
+        CollectMovedVariablesFromValue(returnValue, movedVariables);
+
+        if (movedVariables.Count == 0)
+            return;
+
+        // Check each defer block to see if it's for a moved variable
+        for (int i = 0; i < _currentEmittingFunction.DeferredBlocks.Count; i++)
+        {
+            var deferBlock = _currentEmittingFunction.DeferredBlocks[i];
+            var deferIndex = i + 1;
+
+            // Skip if this defer block isn't active
+            if (!_activatedDeferBlocks.Contains(deferIndex))
+                continue;
+
+            // Defer blocks for RAII cleanup are named: autoclean_{varName}_{counter}
+            // Extract the variable name from the label
+            if (deferBlock.Label.StartsWith("autoclean_"))
+            {
+                // Remove "autoclean_" prefix
+                var remainder = deferBlock.Label.Substring("autoclean_".Length);
+
+                // Find the last underscore followed by digits (the counter)
+                int lastUnderscore = remainder.LastIndexOf('_');
+                if (lastUnderscore > 0)
+                {
+                    var varName = remainder.Substring(0, lastUnderscore);
+
+                    // Check if this variable is being moved
+                    if (movedVariables.Contains(varName))
+                    {
+                        // Deactivate this defer block - the variable is being moved, not dropped
+                        _output.AppendLine($"    _defer_{deferIndex}_active = false;");
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Recursively collect variable names from a value that might be struct/enum literals.
+    /// These are the variables being "moved" into the return value.
+    /// </summary>
+    private void CollectMovedVariablesFromValue(IrValue value, HashSet<string> movedVariables)
+    {
+        switch (value)
+        {
+            case IrVariable variable:
+                // Direct variable use - this is a move
+                movedVariables.Add(variable.Name);
+                break;
+
+            case IrStructLiteral structLit:
+                // Recursively check all field values
+                foreach (var kvp in structLit.FieldValues)
+                {
+                    CollectMovedVariablesFromValue(kvp.Value, movedVariables);
+                }
+                break;
+
+            case IrEnumValue enumValue:
+                // Check associated values
+                foreach (var assocValue in enumValue.AssociatedValues)
+                {
+                    CollectMovedVariablesFromValue(assocValue, movedVariables);
+                }
+                break;
+
+            // Other value types (literals, function calls, etc.) don't involve moving variables
         }
     }
 
@@ -4839,6 +5016,19 @@ public class CCodeGenerator
 
     private void EmitReturn(IrReturn returnInst)
     {
+        // CRITICAL FIX: Before emitting deferred cleanup, deactivate defer blocks for
+        // any variables that are being MOVED into the return value. This prevents
+        // use-after-free bugs where Drop is called on a resource that has been moved.
+        //
+        // When we return a struct containing a Drop type (e.g., Result::Ok(Interval { timer: timer })),
+        // the 'timer' variable's ownership is transferred to the caller. Its defer block
+        // (which would call timer.drop()) must NOT execute, or we'd free resources that
+        // the caller still owns.
+        if (_currentEmittingFunction != null && returnInst.Value != null)
+        {
+            DeactivateDefersForMovedVariables(returnInst.Value);
+        }
+
         // Emit deferred cleanup before returning
         if (_currentEmittingFunction != null)
         {

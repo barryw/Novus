@@ -48,3 +48,25 @@ pub fn wait_for_key() {
     let mut buf: [u8; 1] = [0]
     Read(input_handle, &buf[0], 1)
 }
+
+/// Check if a key has been pressed (non-blocking)
+///
+/// Returns true if a key is available, false otherwise.
+/// Does NOT consume the key - call read_key() to get it.
+pub fn key_pressed() -> bool {
+    let input_handle = Input()
+    // WaitForChar with timeout 0 returns immediately
+    // Returns non-zero if character is available
+    return WaitForChar(input_handle, 0) != 0
+}
+
+/// Read a single key (blocking)
+///
+/// Waits for and returns the next key pressed.
+pub fn read_key() -> u8 {
+    let input_handle = Input()
+    WaitForChar(input_handle, -1)
+    let mut buf: [u8; 1] = [0]
+    Read(input_handle, &buf[0], 1)
+    return buf[0]
+}

@@ -26,6 +26,8 @@
 extern unsigned char _mt_Enable;
 extern unsigned char _mt_E8Trigger;
 extern unsigned char _mt_MusicChannels;
+extern unsigned char _mt_SongEnd;
+extern unsigned char _mt_VUMeter;
 
 /* Variable access functions */
 
@@ -48,3 +50,39 @@ unsigned char __novus_ptplayer_get_music_channels(void) {
 void __novus_ptplayer_set_music_channels(unsigned char value) {
     _mt_MusicChannels = value;
 }
+
+unsigned char __novus_ptplayer_get_song_end(void) {
+    return _mt_SongEnd;
+}
+
+void __novus_ptplayer_set_song_end(unsigned char value) {
+    _mt_SongEnd = value;
+}
+
+unsigned char __novus_ptplayer_get_vumeter(void) {
+    unsigned char val = _mt_VUMeter;
+    _mt_VUMeter = 0;  /* Clear after reading (as per ptplayer docs) */
+    return val;
+}
+
+unsigned char __novus_ptplayer_peek_vumeter(void) {
+    return _mt_VUMeter;  /* Read without clearing */
+}
+
+/* Callback invoker - calls a function pointer with a u8 argument
+ * This allows Novus code to call function pointers stored as u32 addresses
+ */
+void __novus_call_u8_callback(uint32_t func_addr, unsigned char arg) {
+    if (func_addr != 0) {
+        /* Cast address to function pointer and call */
+        typedef void (*callback_fn)(unsigned char);
+        callback_fn fn = (callback_fn)func_addr;
+        fn(arg);
+    }
+}
+
+/* Song position and length are accessed via assembly stubs in ptplayer_stubs.asm
+ * because calculating offsets from C is error-prone with all the conditional assembly.
+ *
+ * These are declared in ptplayer_stubs.asm and access ptplayer's internal state directly.
+ */
