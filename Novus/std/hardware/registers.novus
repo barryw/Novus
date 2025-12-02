@@ -150,6 +150,20 @@ pub const INTREQ: u32 = $09C   // Interrupt request bits (clear or set)
 pub const INTREQR: u32 = $01E  // Interrupt request bits (read)
 
 //
+// Audio/Disk Control
+//
+
+pub const ADKCON: u32 = $09E   // Audio/disk control write (clear or set)
+pub const ADKCONR: u32 = $010  // Audio/disk control read
+
+//
+// System Status
+//
+
+pub const VPOSR: u32 = $004    // Vertical beam position (and target ID)
+pub const VHPOSR: u32 = $006   // Vertical/horizontal beam position
+
+//
 // Helper Functions
 //
 

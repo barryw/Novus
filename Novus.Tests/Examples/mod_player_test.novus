@@ -1,0 +1,181 @@
+// Simple MOD Player Test - debug version with diagnostics
+from std::core import Result
+from std::audio::ptplayer import ModPlayer
+from std::audio::errors import AudioError
+from std::hardware::chipset import DISPLAY, DisplayType
+from std::ffi::dos import Delay, PutStr, Output, Write, Input, WaitForChar, Read
+
+// External debug helper to read mt_Enable value
+extern fn __novus_ptplayer_get_enable() -> u8
+
+// External debug helper to read VBR
+extern fn __novus_get_vbr() -> *u8
+
+// Debug: read AttnFlags directly from ExecBase
+extern fn __novus_debug_get_attn_flags() -> u16
+
+// Wait for a keypress from the console
+fn wait_for_key() {
+    let input_handle = Input()
+    // Wait indefinitely for input (-1 = wait forever)
+    WaitForChar(input_handle, -1)
+    // Read and discard the character
+    let mut buf: [u8; 1] = [0]
+    Read(input_handle, &buf[0], 1)
+}
+
+// Embed the MOD file at compile time - automatically placed in chip RAM
+@mod("GSLINGER.MOD")
+static music_data: [u8] = []
+
+fn print_hex(value: u32) {
+    let out = Output()
+    let hex_chars: [u8; 16] = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 65, 66, 67, 68, 69, 70]
+    let mut buf: [u8; 10] = [48, 120, 48, 48, 48, 48, 48, 48, 48, 48]
+
+    let mut v = value
+    let mut i = 9
+    while i >= 2 {
+        let nibble = (v & $F)
+        buf[i] = hex_chars[nibble]
+        v = v >> 4
+        i = i - 1
+    }
+    Write(out, &buf[0], 10)
+}
+
+fn print_num(value: i32) {
+    let out = Output()
+    let mut buf: [u8; 12] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let mut v = value
+    let mut i = 10
+
+    if v == 0 {
+        buf[0] = 48  // '0'
+        Write(out, &buf[0], 1)
+        return
+    }
+
+    let negative = v < 0
+    if negative {
+        v = -v
+    }
+
+    while v > 0 && i > 0 {
+        let digit = (v % 10)
+        buf[i] = (u8)(48 + digit)  // '0' + digit
+        v = v / 10
+        i = i - 1
+    }
+
+    if negative {
+        buf[i] = 45  // '-'
+        i = i - 1
+    }
+
+    let len = 10 - i
+    Write(out, &buf[i + 1], len)
+}
+
+pub fn main() -> i32 {
+    PutStr("MOD Player Test\n")
+
+    // Detect PAL/NTSC from hardware
+    let is_pal = DISPLAY() == DisplayType::PAL
+    PutStr("Display: ")
+    if is_pal {
+        PutStr("PAL\n")
+    } else {
+        PutStr("NTSC\n")
+    }
+
+    // Show music data address
+    PutStr("Music data at: ")
+    let ptr = &music_data[0]
+    let addr = (*u32)ptr
+    print_hex((u32)addr)
+    PutStr("\n")
+
+    // Show first 4 bytes (should be module name)
+    PutStr("First 4 bytes: ")
+    print_hex((u32)music_data[0])
+    PutStr(" ")
+    print_hex((u32)music_data[1])
+    PutStr(" ")
+    print_hex((u32)music_data[2])
+    PutStr(" ")
+    print_hex((u32)music_data[3])
+    PutStr("\n")
+
+    // Show AttnFlags
+    PutStr("AttnFlags: ")
+    let attn = __novus_debug_get_attn_flags()
+    print_hex((u32)attn)
+    PutStr("\n")
+
+    // Show VBR value
+    PutStr("VBR value: ")
+    let vbr = __novus_get_vbr()
+    print_hex((u32)vbr)
+    PutStr("\n")
+
+    // Create the MOD player
+    PutStr("Creating MOD player...\n")
+    let player_result = ModPlayer::new(is_pal)
+
+    match player_result {
+        Result::Ok(mut player) => {
+            PutStr("CIA interrupt installed OK\n")
+
+            // Check mt_Enable before init
+            PutStr("mt_Enable before init: ")
+            let enable_val = __novus_ptplayer_get_enable()
+            print_num((i32)enable_val)
+            PutStr("\n")
+
+            // Initialize the module for playback
+            PutStr("Initializing module...\n")
+            let init_result = player.init(&music_data[0], 0)
+            match init_result {
+                Result::Ok(_) => {
+                    PutStr("Module initialized OK\n")
+
+                    // Check mt_Enable after init
+                    PutStr("mt_Enable after init: ")
+                    let enable_val2 = __novus_ptplayer_get_enable()
+                    print_num((i32)enable_val2)
+                    PutStr("\n")
+
+                    // Start playback!
+                    PutStr("Starting playback...\n")
+                    player.play()
+
+                    // Check mt_Enable after play
+                    PutStr("mt_Enable after play: ")
+                    let enable_val3 = __novus_ptplayer_get_enable()
+                    print_num((i32)enable_val3)
+                    PutStr("\n")
+
+                    PutStr("Press any key to stop...\n")
+
+                    // Wait for keypress
+                    wait_for_key()
+
+                    // Stop playback
+                    PutStr("Stopping playback...\n")
+                    player.stop()
+                    PutStr("Done!\n")
+                    return 0  // Success
+                },
+                Result::Err(_) => {
+                    PutStr("ERROR: Failed to initialize module\n")
+                    return 2
+                }
+            }
+        },
+        Result::Err(_) => {
+            PutStr("ERROR: Failed to create player\n")
+            return 1
+        }
+    }
+}

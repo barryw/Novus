@@ -1,0 +1,516 @@
+// ptplayer - ProTracker MOD Player Wrapper
+// Module: std::audio::ptplayer
+//
+// High-level wrapper around ptplayer by Frank Wille.
+// ptplayer is a popular, battle-tested MOD player for the Amiga.
+//
+// This module requires linking with the ptplayer.o object file.
+// The MOD data must be in chip RAM for DMA playback.
+//
+// # Quick Start
+// ```novus
+// from std::audio::ptplayer import ModPlayer
+//
+// // Load a MOD file (must be in chip RAM)
+// @mod("music.mod")
+// static music_data = []
+//
+// // Initialize and play
+// let mut player = ModPlayer::new(true)?  // true = PAL, false = NTSC
+// player.init(&music_data, 0)?            // Start at position 0
+// player.play()
+//
+// // ... game loop ...
+//
+// // Stop and cleanup (automatic on drop)
+// ```
+//
+// # Sound Effects
+// ptplayer supports playing sound effects alongside the music.
+// You can specify which channels are dedicated to music vs SFX.
+//
+// ```novus
+// // Reserve channels 2 and 3 for music only
+// player.set_music_mask($0C)?  // bits 2,3 = channels 2,3
+//
+// // Play a sound effect
+// let sfx = SfxStructure::new(&sample_data, sample_len, period, volume, 0, 1)
+// player.play_sfx(&sfx)?
+// ```
+
+from std::core import Option, Result, Drop
+from std::ffi::amiga_consts import DMAF_SETCLR, DMAF_MASTER, DMAF_AUD0, DMAF_AUD1, DMAF_AUD2, DMAF_AUD3
+from std::hardware::registers import CUSTOM_BASE
+from std::audio::errors import AudioError
+
+// ============================================================================
+// Sound Effect Structure
+// ============================================================================
+
+/// Structure for playing sound effects through ptplayer
+///
+/// This matches the SfxStructure expected by _mt_playfx:
+/// - sfx_ptr: Pointer to sample data (in chip RAM)
+/// - sfx_len: Sample length in words
+/// - sfx_per: Sample period (playback speed)
+/// - sfx_vol: Sample volume (0-64)
+/// - sfx_cha: Preferred channel (0-3, or -1 for any)
+/// - sfx_pri: Priority (higher wins when channels conflict)
+#[packed]
+pub struct SfxStructure {
+    sfx_ptr: *u8,    // Pointer to sample in chip RAM
+    sfx_len: u16,    // Length in words
+    sfx_per: u16,    // Period (124-65535)
+    sfx_vol: u16,    // Volume (0-64)
+    sfx_cha: i8,     // Channel (-1 = any, 0-3 = specific)
+    sfx_pri: i8,     // Priority (higher = more important)
+}
+
+impl SfxStructure {
+    /// Create a new sound effect structure
+    ///
+    /// # Arguments
+    /// * `data` - Pointer to sample data (must be in chip RAM, < $200000)
+    /// * `length_words` - Sample length in words
+    /// * `period` - Playback period (124-65535)
+    /// * `volume` - Volume (0-64)
+    /// * `channel` - Preferred channel (-1 = any available, 0-3 = specific)
+    /// * `priority` - Priority level for channel allocation (higher wins)
+    ///
+    /// # Returns
+    /// * `Ok(SfxStructure)` - Valid sound effect structure
+    /// * `Err(AudioError::NullSampleData)` - data is null
+    /// * `Err(AudioError::SampleNotChipRam)` - data not in chip RAM
+    /// * `Err(AudioError::InvalidPeriod)` - period < 124
+    /// * `Err(AudioError::InvalidVolume)` - volume > 64
+    pub fn new(data: *u8, length_words: u16, period: u16, volume: u16, channel: i8, priority: i8) -> Result<SfxStructure, AudioError> {
+        // Validate sample pointer
+        if !data {
+            return Result::Err(AudioError::NullSampleData)
+        }
+
+        // Verify pointer is in chip RAM range (first 2MB)
+        let addr = (u32)data
+        if addr >= $00200000 {
+            return Result::Err(AudioError::SampleNotChipRam)
+        }
+
+        // Validate period (Paula minimum is 124 to avoid DMA conflicts)
+        if period < 124 {
+            return Result::Err(AudioError::InvalidPeriod)
+        }
+
+        // Validate volume (Paula max is 64)
+        if volume > 64 {
+            return Result::Err(AudioError::InvalidVolume)
+        }
+
+        return Result::Ok(SfxStructure {
+            sfx_ptr: data,
+            sfx_len: length_words,
+            sfx_per: period,
+            sfx_vol: volume,
+            sfx_cha: channel,
+            sfx_pri: priority,
+        })
+    }
+
+    /// Create from an AudioSample
+    ///
+    /// Convenience method to create an SfxStructure from a compiled audio sample.
+    /// Uses PAL period by default.
+    ///
+    /// # Note
+    /// This function does minimal validation since AudioSample is assumed to
+    /// be generated correctly by the @audio compiler attribute.
+    pub fn from_sample(sample: &AudioSample, channel: i8, priority: i8) -> Result<SfxStructure, AudioError> {
+        // AudioSample should already be validated, but check the pointer
+        if !sample.data {
+            return Result::Err(AudioError::NullSampleData)
+        }
+
+        return Result::Ok(SfxStructure {
+            sfx_ptr: sample.data,
+            sfx_len: sample.length_words,
+            sfx_per: sample.period_pal,
+            sfx_vol: 64,
+            sfx_cha: channel,
+            sfx_pri: priority,
+        })
+    }
+}
+
+// ============================================================================
+// Audio Sample (matches @audio generated struct)
+// ============================================================================
+
+/// Audio sample metadata (generated by @audio attribute)
+///
+/// This struct matches the layout of samples generated by the @audio
+/// compile-time attribute.
+pub struct AudioSample {
+    data: *u8,           // Pointer to sample data (in chip RAM)
+    length_bytes: u32,   // Length in bytes
+    length_words: u16,   // Length in words
+    sample_rate: u32,    // Original sample rate
+    period_pal: u16,     // Period for PAL systems
+    period_ntsc: u16,    // Period for NTSC systems
+}
+
+// ============================================================================
+// External ptplayer Functions (C wrappers from ptplayer_helpers.c)
+// ============================================================================
+
+// These are C-callable wrapper functions that forward to ptplayer's
+// register-based assembly functions. The wrappers handle moving
+// parameters from the C stack to the correct registers (a6, a0, a1, d0).
+
+/// Install CIA-B interrupt for music playback
+extern fn __novus_mt_install_cia(custom: *u8, vector_base: *u8, pal_flag: u8)
+
+/// Remove CIA-B interrupt
+extern fn __novus_mt_remove_cia(custom: *u8)
+
+/// Initialize a module for playback
+extern fn __novus_mt_init(custom: *u8, module: *u8, samples: *u8, song_pos: u8)
+
+/// Stop all playback
+extern fn __novus_mt_end(custom: *u8)
+
+/// Manual music tick (called by CIA interrupt normally)
+extern fn __novus_mt_music(custom: *u8)
+
+/// Play a sound effect
+/// Returns: channel status pointer or NULL
+extern fn __novus_mt_playfx(custom: *u8, sfx: *SfxStructure) -> *u8
+
+/// Play a looped sound effect
+extern fn __novus_mt_loopfx(custom: *u8, sfx: *SfxStructure)
+
+/// Stop a sound effect
+extern fn __novus_mt_stopfx(custom: *u8, channel: u8)
+
+/// Set music channel mask
+extern fn __novus_mt_musicmask(custom: *u8, mask: u8)
+
+/// Set master volume
+extern fn __novus_mt_mastervol(custom: *u8, volume: u16)
+
+/// Set sample volume
+extern fn __novus_mt_samplevol(sample_num: u16, volume: u8)
+
+// Helper functions to access ptplayer variables
+// These are linked from ptplayer_helpers.c
+extern fn __novus_ptplayer_set_enable(value: u8)
+extern fn __novus_ptplayer_get_e8_trigger() -> u8
+extern fn __novus_ptplayer_get_music_channels() -> u8
+
+// Get the CPU's Vector Base Register (VBR)
+// On 68000 this returns 0, on 68010+ it returns the actual VBR value.
+// ptplayer needs this for proper interrupt vector handling.
+extern fn __novus_get_vbr() -> *u8
+
+fn set_mt_enable(value: u8) {
+    __novus_ptplayer_set_enable(value)
+}
+
+fn get_mt_e8_trigger() -> u8 {
+    return __novus_ptplayer_get_e8_trigger()
+}
+
+fn get_mt_music_channels() -> u8 {
+    return __novus_ptplayer_get_music_channels()
+}
+
+// ============================================================================
+// MOD Player Handle
+// ============================================================================
+
+/// RAII wrapper for ptplayer
+///
+/// Manages the complete lifecycle of MOD playback:
+/// - Installs CIA interrupt on creation
+/// - Provides methods for playback control
+/// - Removes CIA interrupt on drop
+///
+/// # Safety
+///
+/// This module directly accesses Paula hardware. Only one ModPlayer
+/// instance should exist at a time. Using ModPlayer alongside
+/// std::audio::paula or std::audio::device will cause conflicts.
+///
+/// # Example
+/// ```novus
+/// // Create player for PAL system
+/// let mut player = ModPlayer::new(true)?
+///
+/// // Load and play a module
+/// player.init(&mod_data, 0)?
+/// player.play()
+///
+/// // Adjust volume
+/// player.set_master_volume(48)?
+///
+/// // Play a sound effect on channel 0
+/// let sfx = SfxStructure::new(&sfx_data, 512, 322, 64, 0, 10)
+/// player.play_sfx(&sfx)?
+///
+/// // Player automatically cleaned up on drop
+/// ```
+pub struct ModPlayer {
+    is_playing: bool,
+    cia_installed: bool,
+    pal_mode: bool,
+}
+
+impl ModPlayer {
+    /// Create a new MOD player
+    ///
+    /// Installs the CIA-B interrupt handler for music timing.
+    ///
+    /// # Arguments
+    /// * `pal` - True for PAL timing (50Hz), false for NTSC (60Hz)
+    ///
+    /// # Returns
+    /// * `Ok(ModPlayer)` - Player ready for use
+    /// * `Err(AudioError::CiaInstallFailed)` - Failed to install interrupt
+    pub fn new(pal: bool) -> Result<ModPlayer, AudioError> {
+        let custom = (*u8)CUSTOM_BASE
+        let pal_flag: u8 = pal ? 1 : 0
+
+        // Get the CPU's Vector Base Register
+        // On 68000 this is 0, on 68010+ it may be relocated
+        let vbr = __novus_get_vbr()
+
+        unsafe {
+            // Install CIA interrupt with proper vector base
+            __novus_mt_install_cia(custom, vbr, pal_flag)
+        }
+
+        return Result::Ok(ModPlayer {
+            is_playing: false,
+            cia_installed: true,
+            pal_mode: pal,
+        })
+    }
+
+    /// Initialize a module for playback
+    ///
+    /// Loads a ProTracker module and prepares it for playback.
+    /// Does not start playback - call play() after init().
+    ///
+    /// # Arguments
+    /// * `module_data` - Pointer to MOD file data (must be in chip RAM)
+    /// * `start_position` - Song position to start from (usually 0)
+    ///
+    /// # Returns
+    /// * `Ok(())` - Module initialized
+    /// * `Err(AudioError::InvalidModuleData)` - Module data is invalid
+    pub fn init(&mut self, module_data: *u8, start_position: u8) -> Result<(), AudioError> {
+        if (u32)module_data == 0 {
+            return Result::Err(AudioError::InvalidModuleData)
+        }
+
+        let custom = (*u8)CUSTOM_BASE
+
+        unsafe {
+            // Initialize with NULL samples pointer (samples are in the MOD file)
+            __novus_mt_init(custom, module_data, (*u8)0, start_position)
+        }
+
+        return Result::Ok(())
+    }
+
+    /// Start music playback
+    ///
+    /// Enables the CIA interrupt to call the replayer.
+    pub fn play(&mut self) {
+        set_mt_enable(1)
+        self.is_playing = true
+    }
+
+    /// Pause music playback
+    ///
+    /// Disables the CIA interrupt. Music resumes from current position
+    /// when play() is called again.
+    pub fn pause(&mut self) {
+        set_mt_enable(0)
+        self.is_playing = false
+    }
+
+    /// Stop music playback completely
+    ///
+    /// Stops all sound output and resets the player state.
+    pub fn stop(&mut self) {
+        let custom = (*u8)CUSTOM_BASE
+
+        unsafe {
+            __novus_mt_end(custom)
+        }
+        self.is_playing = false
+    }
+
+    /// Check if music is currently playing
+    pub fn is_playing(&self) -> bool {
+        return self.is_playing
+    }
+
+    /// Set master volume for all music channels
+    ///
+    /// # Arguments
+    /// * `volume` - Master volume (0-64)
+    pub fn set_master_volume(&self, volume: u16) -> Result<(), AudioError> {
+        if volume > 64 {
+            return Result::Err(AudioError::InvalidVolume)
+        }
+
+        let custom = (*u8)CUSTOM_BASE
+
+        unsafe {
+            __novus_mt_mastervol(custom, volume)
+        }
+
+        return Result::Ok(())
+    }
+
+    /// Set which channels are reserved for music only
+    ///
+    /// Channels not in the mask can be used for sound effects.
+    /// Bit 0 = channel 0, bit 1 = channel 1, etc.
+    ///
+    /// # Arguments
+    /// * `mask` - Channel bitmask (0-15)
+    ///
+    /// # Example
+    /// ```novus
+    /// // Reserve channels 2 and 3 for music, allow SFX on 0 and 1
+    /// player.set_music_mask($0C)?
+    /// ```
+    pub fn set_music_mask(&self, mask: u8) -> Result<(), AudioError> {
+        if mask > 15 {
+            return Result::Err(AudioError::InvalidChannelMask)
+        }
+
+        let custom = (*u8)CUSTOM_BASE
+
+        unsafe {
+            __novus_mt_musicmask(custom, mask)
+        }
+
+        return Result::Ok(())
+    }
+
+    /// Play a sound effect
+    ///
+    /// Plays a one-shot sound effect. If all channels are busy,
+    /// the effect with lowest priority is replaced.
+    ///
+    /// # Arguments
+    /// * `sfx` - Sound effect structure
+    ///
+    /// # Returns
+    /// Pointer to channel status, or null if no channel available
+    pub fn play_sfx(&self, sfx: &SfxStructure) -> *u8 {
+        let custom = (*u8)CUSTOM_BASE
+
+        unsafe {
+            return __novus_mt_playfx(custom, sfx)
+        }
+    }
+
+    /// Play a looped sound effect
+    ///
+    /// The sound effect will loop until explicitly stopped.
+    ///
+    /// # Arguments
+    /// * `sfx` - Sound effect structure (channel field determines which channel)
+    pub fn play_looped_sfx(&self, sfx: &SfxStructure) {
+        let custom = (*u8)CUSTOM_BASE
+
+        unsafe {
+            __novus_mt_loopfx(custom, sfx)
+        }
+    }
+
+    /// Stop a sound effect on a specific channel
+    ///
+    /// # Arguments
+    /// * `channel` - Channel number (0-3)
+    pub fn stop_sfx(&self, channel: u8) -> Result<(), AudioError> {
+        if channel > 3 {
+            return Result::Err(AudioError::InvalidChannelMask)
+        }
+
+        let custom = (*u8)CUSTOM_BASE
+
+        unsafe {
+            __novus_mt_stopfx(custom, channel)
+        }
+
+        return Result::Ok(())
+    }
+
+    /// Set volume for a specific sample in the module
+    ///
+    /// Allows runtime adjustment of individual sample volumes.
+    ///
+    /// # Arguments
+    /// * `sample_num` - Sample number in the module (1-31)
+    /// * `volume` - New volume (0-64)
+    pub fn set_sample_volume(&self, sample_num: u16, volume: u8) -> Result<(), AudioError> {
+        if sample_num == 0 || sample_num > 31 {
+            return Result::Err(AudioError::InvalidSampleNumber)
+        }
+        if volume > 64 {
+            return Result::Err(AudioError::InvalidVolume)
+        }
+
+        unsafe {
+            __novus_mt_samplevol(sample_num, volume)
+        }
+
+        return Result::Ok(())
+    }
+
+    /// Get the last E8 trigger value
+    ///
+    /// The E8 command in ProTracker sets a trigger value that can
+    /// be read by the program. Useful for syncing visuals to music.
+    pub fn get_e8_trigger(&self) -> u8 {
+        return get_mt_e8_trigger()
+    }
+
+    /// Get the number of channels dedicated to music
+    pub fn get_music_channel_count(&self) -> u8 {
+        return get_mt_music_channels()
+    }
+
+    /// Manually tick the music (for custom timing)
+    ///
+    /// Normally the CIA interrupt calls this automatically.
+    /// Use this if you want to sync music to your own timing source.
+    pub fn tick(&self) {
+        let custom = (*u8)CUSTOM_BASE
+
+        unsafe {
+            __novus_mt_music(custom)
+        }
+    }
+}
+
+impl Drop for ModPlayer {
+    fn drop(&mut self) {
+        // Stop any playing music
+        self.stop()
+
+        // Remove CIA interrupt
+        if self.cia_installed {
+            let custom = (*u8)CUSTOM_BASE
+
+            unsafe {
+                __novus_mt_remove_cia(custom)
+            }
+            self.cia_installed = false
+        }
+    }
+}

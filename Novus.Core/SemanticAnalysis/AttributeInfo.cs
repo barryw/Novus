@@ -206,6 +206,14 @@ public static class KnownAttributes
     // Diagnostic attributes
     public const string Suppress = "suppress";
 
+    // Audio asset attributes
+    public const string Audio = "audio";         // Compile-time audio conversion: @audio("file.wav", sample_rate: 11025)
+    public const string AudioRaw = "audio_raw";  // Raw PCM include: @audio_raw("file.raw", sample_rate: 8000)
+    public const string Mod = "mod";             // ProTracker module include: @mod("music.mod")
+
+    // Memory section attributes
+    public const string ChipRam = "chip_ram";    // Force static into chip RAM
+
     /// <summary>
     /// All known attribute names for validation
     /// </summary>
@@ -220,7 +228,9 @@ public static class KnownAttributes
         Target, Cfg,
         Export,
         ExternType,
-        Suppress
+        Suppress,
+        Audio, AudioRaw, Mod,
+        ChipRam
     };
 
     /// <summary>

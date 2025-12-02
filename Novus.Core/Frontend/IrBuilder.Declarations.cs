@@ -161,6 +161,36 @@ public partial class IrBuilder
     {
         var name = context.IDENTIFIER().GetText();
 
+        // Parse attributes first - may affect how we process this static
+        var attributes = ParseAttributesSimple(context.attribute());
+
+        // Check for audio-related attributes
+        var audioAttr = attributes.Get(SemanticAnalysis.KnownAttributes.Audio);
+        var audioRawAttr = attributes.Get(SemanticAnalysis.KnownAttributes.AudioRaw);
+        var modAttr = attributes.Get(SemanticAnalysis.KnownAttributes.Mod);
+        var chipRamAttr = attributes.Get(SemanticAnalysis.KnownAttributes.ChipRam);
+
+        // Handle @audio attribute - compile-time audio conversion
+        if (audioAttr != null)
+        {
+            RegisterStaticAudio(name, audioAttr, context);
+            return;
+        }
+
+        // Handle @audio_raw attribute - raw PCM include
+        if (audioRawAttr != null)
+        {
+            RegisterStaticAudioRaw(name, audioRawAttr, context);
+            return;
+        }
+
+        // Handle @mod attribute - MOD file include
+        if (modAttr != null)
+        {
+            RegisterStaticMod(name, modAttr, context);
+            return;
+        }
+
         // Reject explicit array type annotations - they are redundant and not allowed
         if (RejectArrayTypeAnnotation(context.type(), name, context))
         {
@@ -199,9 +229,388 @@ public partial class IrBuilder
                 type = initialValue.Type;
             }
 
-            var staticVar = new IrStaticVariable(name, type, visibility, isMutable, initialValue);
+            // Check for @chip_ram attribute to force memory section
+            var section = chipRamAttr != null ? MemorySection.Chip : MemorySection.Default;
+
+            var staticVar = new IrStaticVariable(name, type, visibility, isMutable, initialValue, section);
             _module.StaticVariables.Add(staticVar);
         }
+    }
+
+    /// <summary>
+    /// Register a static audio sample with compile-time conversion.
+    /// Handles @audio("file.wav", sample_rate: 11025, normalize: true) attribute.
+    /// </summary>
+    private void RegisterStaticAudio(string name, SemanticAnalysis.AttributeInfo audioAttr, NovusParser.StaticDeclarationContext context)
+    {
+        var (visibility, _, _) = AstModifierHelper.ParseModifiers(context, 5);
+
+        // Get the file path from the first positional argument
+        if (audioAttr.PositionalArgs.Count == 0)
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidAttribute,
+                "@audio attribute requires a file path as the first argument",
+                errorLocation
+            );
+            return;
+        }
+
+        var filePath = audioAttr.PositionalArgs[0]?.ToString();
+        if (string.IsNullOrEmpty(filePath))
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidAttribute,
+                "@audio attribute requires a non-empty file path",
+                errorLocation
+            );
+            return;
+        }
+
+        // Resolve path relative to input file
+        var resolvedPath = ResolveAssetPath(filePath);
+        if (!System.IO.File.Exists(resolvedPath))
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.FileNotFound,
+                $"Audio file not found: {resolvedPath}",
+                errorLocation
+            );
+            return;
+        }
+
+        // Build conversion options from attribute arguments
+        var options = new Audio.AudioConverter.ConversionOptions();
+
+        if (audioAttr.GetInt("sample_rate") is int targetRate)
+        {
+            options.TargetSampleRate = targetRate;
+        }
+
+        if (audioAttr.GetBool("normalize") is bool normalize)
+        {
+            options.Normalize = normalize;
+        }
+
+        if (audioAttr.GetBool("trim_silence") is bool trimSilence)
+        {
+            options.TrimSilence = trimSilence;
+        }
+
+        if (audioAttr.GetString("channel") is string channel)
+        {
+            options.ChannelMode = channel;
+        }
+
+        // Perform the audio conversion
+        Audio.AudioConverter.ConversionResult? result;
+        try
+        {
+            result = Audio.AudioConverter.ConvertFile(resolvedPath, options);
+        }
+        catch (Exception ex)
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.FileReadError,
+                $"Failed to convert audio file '{resolvedPath}': {ex.Message}",
+                errorLocation
+            );
+            return;
+        }
+
+        if (result == null)
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.FileReadError,
+                $"Audio conversion returned no data for '{resolvedPath}'",
+                errorLocation
+            );
+            return;
+        }
+
+        // Create static byte array for sample data
+        var dataName = $"{name}_data";
+        CreateStaticAudioData(dataName, result.Data, visibility);
+
+        // Create the AudioSample struct with metadata
+        CreateStaticAudioSample(name, dataName, result, visibility);
+    }
+
+    /// <summary>
+    /// Register a static audio sample from raw PCM data.
+    /// Handles @audio_raw("file.raw", sample_rate: 8000) attribute.
+    /// </summary>
+    private void RegisterStaticAudioRaw(string name, SemanticAnalysis.AttributeInfo audioRawAttr, NovusParser.StaticDeclarationContext context)
+    {
+        var (visibility, _, _) = AstModifierHelper.ParseModifiers(context, 5);
+
+        // Get the file path from the first positional argument
+        if (audioRawAttr.PositionalArgs.Count == 0)
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidAttribute,
+                "@audio_raw attribute requires a file path as the first argument",
+                errorLocation
+            );
+            return;
+        }
+
+        var filePath = audioRawAttr.PositionalArgs[0]?.ToString();
+        if (string.IsNullOrEmpty(filePath))
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidAttribute,
+                "@audio_raw attribute requires a non-empty file path",
+                errorLocation
+            );
+            return;
+        }
+
+        // Resolve path relative to input file
+        var resolvedPath = ResolveAssetPath(filePath);
+        if (!System.IO.File.Exists(resolvedPath))
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.FileNotFound,
+                $"Raw audio file not found: {resolvedPath}",
+                errorLocation
+            );
+            return;
+        }
+
+        // Read raw PCM data
+        byte[] data;
+        try
+        {
+            data = System.IO.File.ReadAllBytes(resolvedPath);
+        }
+        catch (Exception ex)
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.FileReadError,
+                $"Failed to read raw audio file '{resolvedPath}': {ex.Message}",
+                errorLocation
+            );
+            return;
+        }
+
+        // Get sample rate from attribute (required for raw files)
+        var sampleRate = audioRawAttr.GetInt("sample_rate") ?? 8000;
+
+        // Pad to even length
+        if (data.Length % 2 != 0)
+        {
+            var paddedData = new byte[data.Length + 1];
+            Array.Copy(data, paddedData, data.Length);
+            data = paddedData;
+        }
+
+        // Create conversion result with the raw data
+        var result = new Audio.AudioConverter.ConversionResult
+        {
+            Data = data,
+            OriginalSampleRate = sampleRate,
+            FinalSampleRate = sampleRate
+        };
+
+        // Create static byte array for sample data
+        var dataName = $"{name}_data";
+        CreateStaticAudioData(dataName, result.Data, visibility);
+
+        // Create the AudioSample struct with metadata
+        CreateStaticAudioSample(name, dataName, result, visibility);
+    }
+
+    /// <summary>
+    /// Register a static MOD file include.
+    /// Handles @mod("music.mod") attribute.
+    /// </summary>
+    private void RegisterStaticMod(string name, SemanticAnalysis.AttributeInfo modAttr, NovusParser.StaticDeclarationContext context)
+    {
+        var (visibility, _, _) = AstModifierHelper.ParseModifiers(context, 5);
+
+        // Get the file path from the first positional argument
+        if (modAttr.PositionalArgs.Count == 0)
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidAttribute,
+                "@mod attribute requires a file path as the first argument",
+                errorLocation
+            );
+            return;
+        }
+
+        var filePath = modAttr.PositionalArgs[0]?.ToString();
+        if (string.IsNullOrEmpty(filePath))
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidAttribute,
+                "@mod attribute requires a non-empty file path",
+                errorLocation
+            );
+            return;
+        }
+
+        // Resolve path relative to input file
+        var resolvedPath = ResolveAssetPath(filePath);
+        if (!System.IO.File.Exists(resolvedPath))
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.FileNotFound,
+                $"MOD file not found: {resolvedPath}",
+                errorLocation
+            );
+            return;
+        }
+
+        // Read MOD file data
+        byte[] data;
+        try
+        {
+            data = System.IO.File.ReadAllBytes(resolvedPath);
+        }
+        catch (Exception ex)
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.FileReadError,
+                $"Failed to read MOD file '{resolvedPath}': {ex.Message}",
+                errorLocation
+            );
+            return;
+        }
+
+        // Pad to even length if needed
+        if (data.Length % 2 != 0)
+        {
+            var paddedData = new byte[data.Length + 1];
+            Array.Copy(data, paddedData, data.Length);
+            data = paddedData;
+        }
+
+        // Create static byte array for MOD data (must be in chip RAM for ptplayer)
+        var arrayType = new IrArrayType(IrIntType.U8, data.Length);
+        var arrayLiteral = new IrArrayLiteral(arrayType);
+        foreach (var b in data)
+        {
+            arrayLiteral.Elements.Add(new IrConstant(b, IrIntType.U8));
+        }
+
+        var staticVar = new IrStaticVariable(name, arrayType, visibility, false, arrayLiteral, MemorySection.Chip);
+        _module.StaticVariables.Add(staticVar);
+    }
+
+    /// <summary>
+    /// Create a static byte array for audio sample data in chip RAM.
+    /// </summary>
+    private void CreateStaticAudioData(string name, byte[] data, Visibility visibility)
+    {
+        var arrayType = new IrArrayType(IrIntType.U8, data.Length);
+        var arrayLiteral = new IrArrayLiteral(arrayType);
+        foreach (var b in data)
+        {
+            arrayLiteral.Elements.Add(new IrConstant(b, IrIntType.U8));
+        }
+
+        var staticVar = new IrStaticVariable(name, arrayType, visibility, false, arrayLiteral, MemorySection.Chip);
+        _module.StaticVariables.Add(staticVar);
+    }
+
+    /// <summary>
+    /// Create a static AudioSample struct with metadata about the converted audio.
+    /// </summary>
+    private void CreateStaticAudioSample(string name, string dataName, Audio.AudioConverter.ConversionResult result, Visibility visibility)
+    {
+        // Look up or create AudioSample struct type
+        // The struct should match std::audio::paula::SampleHandle layout:
+        // - data: *u8 (pointer to sample data)
+        // - length_bytes: u32
+        // - length_words: u16
+        // - sample_rate: u32
+        // - period_pal: u16
+        // - period_ntsc: u16
+
+        // For now, create a simple struct value that the code generator can handle
+        // We'll generate a struct literal that references the data array
+
+        // Create a struct literal value
+        var sampleStruct = _symbols.LookupStruct("AudioSample");
+        if (sampleStruct == null)
+        {
+            // AudioSample struct not imported - create a compatible anonymous struct type
+            // This allows the audio attribute to work even without importing std::audio
+            var fields = new List<IrStructField>
+            {
+                new IrStructField("data", new IrPointerType(IrIntType.U8)),
+                new IrStructField("length_bytes", IrIntType.U32),
+                new IrStructField("length_words", IrIntType.U16),
+                new IrStructField("sample_rate", IrIntType.U32),
+                new IrStructField("period_pal", IrIntType.U16),
+                new IrStructField("period_ntsc", IrIntType.U16)
+            };
+            sampleStruct = new IrStructType($"__AudioSample_{name}", fields);
+            _module.Structs.Add(sampleStruct);
+        }
+
+        // Build field values dictionary
+        // data: pointer to the static array we created
+        // Use IrGlobalVariable to reference the static data array
+        var dataArrayType = new IrArrayType(IrIntType.U8, result.Data.Length);
+        var dataArrayRef = new IrGlobalVariable(dataName, dataArrayType);
+        var dataPtr = new IrCastValue(dataArrayRef, dataArrayType, new IrPointerType(IrIntType.U8));
+
+        var fieldValues = new Dictionary<string, IrValue>
+        {
+            { "data", dataPtr },
+            { "length_bytes", new IrConstant(result.Data.Length, IrIntType.U32) },
+            { "length_words", new IrConstant((result.Data.Length + 1) / 2, IrIntType.U16) },
+            { "sample_rate", new IrConstant(result.FinalSampleRate, IrIntType.U32) },
+            { "period_pal", new IrConstant(result.PeriodPal, IrIntType.U16) },
+            { "period_ntsc", new IrConstant(result.PeriodNtsc, IrIntType.U16) }
+        };
+
+        // Create the struct literal with field values
+        var structLiteral = new IrStructLiteral(sampleStruct, fieldValues);
+
+        var staticVar = new IrStaticVariable(name, sampleStruct, visibility, false, structLiteral, MemorySection.Default);
+        _module.StaticVariables.Add(staticVar);
+    }
+
+    /// <summary>
+    /// Resolve an asset path relative to the input file being compiled.
+    /// </summary>
+    private string ResolveAssetPath(string assetPath)
+    {
+        // If the path is absolute, use it directly
+        if (System.IO.Path.IsPathRooted(assetPath))
+        {
+            return assetPath;
+        }
+
+        // Resolve relative to the input file's directory
+        if (_inputFilePath != null)
+        {
+            var inputDir = System.IO.Path.GetDirectoryName(_inputFilePath);
+            if (!string.IsNullOrEmpty(inputDir))
+            {
+                return System.IO.Path.Combine(inputDir, assetPath);
+            }
+        }
+
+        // Fall back to current directory
+        return assetPath;
     }
 
     private void RegisterExternalVariable(NovusParser.GlobalVariableDeclarationContext context)

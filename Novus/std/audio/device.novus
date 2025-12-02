@@ -1,0 +1,438 @@
+// Audio Device API
+// Module: std::audio::device
+//
+// OS-friendly audio playback using AmigaOS audio.device.
+// Properly allocates channels through the operating system, allowing
+// coexistence with other applications (Workbench, music players, etc.).
+//
+// Use this instead of std::audio::paula when:
+// - Running as a Workbench application
+// - Need to play sounds without disturbing other programs
+// - Want automatic channel allocation based on priority
+// - Building tools or utilities (not games/demos)
+//
+// For games and demos that take over the system, use std::audio::paula
+// for lower overhead and direct hardware control.
+//
+// # Quick Start
+// ```novus
+// from std::audio::device import AudioDeviceHandle, ChannelPreference
+// from std::audio::paula import SampleHandle
+//
+// // Request any available channel with default priority
+// let audio = AudioDeviceHandle::open_any(0)?
+//
+// // Play a sound effect
+// audio.play(&sample, 322, 64, 1)?  // period, volume, 1 cycle
+//
+// // Device automatically closed on drop
+// ```
+
+from std::core import Option, Result, Drop
+from std::ffi::exec import OpenDevice, CloseDevice, DoIO, SendIO, WaitIO, AbortIO
+from std::ffi::exec import CreateIORequest, DeleteIORequest, CreateMsgPort, DeleteMsgPort
+from std::ffi::amiga_structs import IOAudio, IORequest, MsgPort, Message
+from std::ffi::amiga_consts import ADCMD_FREE, ADCMD_PERVOL, CMD_WRITE, CMD_STOP, CMD_START
+from std::ffi::amiga_consts import ADIOF_PERVOL
+from std::ffi::amiga_consts import ADIOERR_NOALLOCATION, ADIOERR_ALLOCFAILED, ADIOERR_CHANNELSTOLEN
+from std::audio::paula import SampleHandle
+from std::audio::errors import AudioError
+from std::hardware::paula import PAULA_MAX_VOLUME, is_valid_period, is_valid_volume
+
+// ============================================================================
+// Channel Preference
+// ============================================================================
+
+/// Specify which channels to request from audio.device
+///
+/// audio.device will allocate channels based on availability and priority.
+/// If your requested channels are busy with higher-priority sounds,
+/// allocation will fail or you'll get different channels.
+pub enum ChannelPreference {
+    /// Any single available channel (most flexible)
+    Any,
+    /// A specific channel by number (0-3)
+    Specific(u8),
+    /// A left speaker channel (0 or 3)
+    Left,
+    /// A right speaker channel (1 or 2)
+    Right,
+    /// A stereo pair (one left + one right)
+    Stereo,
+    /// All four channels (for mixing or exclusive access)
+    All,
+}
+
+impl ChannelPreference {
+    /// Convert preference to channel allocation mask
+    ///
+    /// The mask is a bitmap where bit N = channel N.
+    /// audio.device uses this to determine acceptable channels.
+    fn to_mask(&self) -> u8 {
+        match *self {
+            ChannelPreference::Any => return $0F,        // Any of 0,1,2,3
+            ChannelPreference::Specific(ch) => return 1 << (ch & 3),
+            ChannelPreference::Left => return $09,       // Channels 0 or 3
+            ChannelPreference::Right => return $06,      // Channels 1 or 2
+            ChannelPreference::Stereo => return $0F,     // Need left + right
+            ChannelPreference::All => return $0F,        // All channels
+        }
+    }
+
+    /// Get the number of channels requested
+    fn channel_count(&self) -> u8 {
+        match *self {
+            ChannelPreference::Any => return 1,
+            ChannelPreference::Specific(_) => return 1,
+            ChannelPreference::Left => return 1,
+            ChannelPreference::Right => return 1,
+            ChannelPreference::Stereo => return 2,
+            ChannelPreference::All => return 4,
+        }
+    }
+}
+
+// ============================================================================
+// Audio Device Handle
+// ============================================================================
+
+/// RAII wrapper for audio.device
+///
+/// Manages the complete lifecycle of an audio.device connection:
+/// - Message port for I/O completion notifications
+/// - IOAudio request structure
+/// - Device open/close
+/// - Channel allocation/deallocation
+///
+/// Channels are automatically released when the handle is dropped.
+///
+/// # Priority
+///
+/// The priority parameter (-128 to 127) determines who wins when multiple
+/// programs want the same channel:
+/// - Higher priority can steal channels from lower priority
+/// - -128: Lowest priority (background sounds)
+/// - 0: Normal priority (most applications)
+/// - 127: Highest priority (system alerts)
+///
+/// If your channel is stolen, any pending I/O will fail with
+/// ADIOERR_CHANNELSTOLEN.
+///
+/// # Example
+/// ```novus
+/// // Request any channel at normal priority
+/// let audio = AudioDeviceHandle::open_any(0)?
+///
+/// // Or request specific configuration
+/// let stereo = AudioDeviceHandle::open(ChannelPreference::Stereo, 10)?
+///
+/// // Play a sound
+/// audio.play(&sample, 322, 64, 1)?
+///
+/// // Channels released when handle drops
+/// ```
+pub struct AudioDeviceHandle {
+    io_audio: *IOAudio,      // IORequest for audio commands
+    port: *MsgPort,          // Message port for I/O completion
+    allocated_channels: u8,  // Bitmask of channels we own
+    alloc_key: i16,          // Allocation key from audio.device
+}
+
+impl AudioDeviceHandle {
+    /// Open audio.device and allocate channels
+    ///
+    /// # Arguments
+    /// * `preference` - Which channels to request
+    /// * `priority` - Allocation priority (-128 to 127)
+    ///
+    /// # Returns
+    /// * `Ok(AudioDeviceHandle)` - Device opened, channels allocated
+    /// * `Err(AudioError::NoAllocation)` - No channels available
+    /// * `Err(AudioError::AllocFailed)` - Allocation failed
+    /// * `Err(...)` - Other errors
+    ///
+    /// # Example
+    /// ```novus
+    /// // Request left channel with high priority
+    /// let audio = AudioDeviceHandle::open(ChannelPreference::Left, 50)?
+    /// ```
+    pub fn open(preference: ChannelPreference, priority: i8) -> Result<AudioDeviceHandle, AudioError> {
+        // Create message port for I/O replies
+        let port = CreateMsgPort()
+        if (u32)port == 0 {
+            return Result::Err(AudioError::NoMsgPort)
+        }
+
+        // Create IORequest (must be IOAudio size)
+        let req = CreateIORequest(port, @sizeof(IOAudio))
+        if (u32)req == 0 {
+            DeleteMsgPort(port)
+            return Result::Err(AudioError::NoIORequest)
+        }
+
+        let io_audio = (*IOAudio)req
+
+        // Set up channel allocation request
+        // The allocation array lists acceptable channel combinations
+        let channel_mask = preference.to_mask()
+        var alloc_map: [u8; 4] = [channel_mask, 0, 0, 0]
+
+        // Set up the IOAudio for allocation
+        io_audio.ioa_Request.io_Message.mn_ReplyPort = port
+        io_audio.ioa_Request.io_Message.mn_Node.ln_Pri = priority
+        io_audio.ioa_Data = &alloc_map[0]
+        io_audio.ioa_Length = (u32)preference.channel_count()
+
+        // Open device - this performs the allocation
+        unsafe {
+            let req_addr = &io_audio.ioa_Request
+            let ioreq = (*IORequest)req_addr
+            let error = OpenDevice("audio.device", 0, ioreq, 0)
+
+            if error != 0 {
+                DeleteIORequest(req)
+                DeleteMsgPort(port)
+
+                // Map error code to our error type
+                if error == -10 {
+                    return Result::Err(AudioError::NoAllocation)
+                }
+                if error == -11 {
+                    return Result::Err(AudioError::AllocFailed)
+                }
+                return Result::Err(AudioError::DeviceOpenFailed)
+            }
+        }
+
+        // Extract allocation results
+        let alloc_key = io_audio.ioa_AllocKey
+        // io_Unit contains the allocated channel mask
+        let allocated = (u8)((u32)io_audio.ioa_Request.io_Unit & $FF)
+
+        return Result::Ok(AudioDeviceHandle {
+            io_audio: io_audio,
+            port: port,
+            allocated_channels: allocated,
+            alloc_key: alloc_key,
+        })
+    }
+
+    /// Open and request any available channel
+    ///
+    /// Convenience method for the most common case.
+    ///
+    /// # Arguments
+    /// * `priority` - Allocation priority (-128 to 127)
+    pub fn open_any(priority: i8) -> Result<AudioDeviceHandle, AudioError> {
+        return AudioDeviceHandle::open(ChannelPreference::Any, priority)
+    }
+
+    /// Open and request a specific channel
+    ///
+    /// # Arguments
+    /// * `channel` - Channel number (0-3)
+    /// * `priority` - Allocation priority (-128 to 127)
+    pub fn open_channel(channel: u8, priority: i8) -> Result<AudioDeviceHandle, AudioError> {
+        if channel > 3 {
+            return Result::Err(AudioError::InvalidChannel)
+        }
+        return AudioDeviceHandle::open(ChannelPreference::Specific(channel), priority)
+    }
+
+    /// Open and request a stereo pair (left + right channels)
+    ///
+    /// # Arguments
+    /// * `priority` - Allocation priority (-128 to 127)
+    pub fn open_stereo(priority: i8) -> Result<AudioDeviceHandle, AudioError> {
+        return AudioDeviceHandle::open(ChannelPreference::Stereo, priority)
+    }
+
+    /// Play a sample on our allocated channel(s)
+    ///
+    /// This is a blocking call - it waits until the sound finishes.
+    /// For non-blocking playback, use play_async().
+    ///
+    /// # Arguments
+    /// * `sample` - Sample data (must be in chip RAM)
+    /// * `period` - Playback period (124-65535, lower = higher pitch)
+    /// * `volume` - Volume (0-64)
+    /// * `cycles` - Number of times to play (0 = infinite loop)
+    ///
+    /// # Returns
+    /// * `Ok(())` - Playback completed
+    /// * `Err(AudioError::DeviceIOError)` - I/O failed
+    /// * `Err(AudioError::ChannelStolen)` - Channel was stolen
+    pub fn play(&self, sample: &SampleHandle, period: u16, volume: u16, cycles: u16) -> Result<(), AudioError> {
+        if !is_valid_period(period) {
+            return Result::Err(AudioError::InvalidPeriod)
+        }
+        if !is_valid_volume(volume) {
+            return Result::Err(AudioError::InvalidVolume)
+        }
+
+        // Set up the IOAudio for CMD_WRITE
+        self.io_audio.ioa_Request.io_Command = CMD_WRITE
+        self.io_audio.ioa_Request.io_Flags = ADIOF_PERVOL
+        self.io_audio.ioa_Data = sample.ptr()
+        self.io_audio.ioa_Length = sample.bytes()
+        self.io_audio.ioa_Period = period
+        self.io_audio.ioa_Volume = volume
+        self.io_audio.ioa_Cycles = cycles
+
+        let req_addr = &self.io_audio.ioa_Request
+        let ioreq = (*IORequest)req_addr
+        let error = DoIO(ioreq)
+
+        if error != 0 {
+            if error == ADIOERR_CHANNELSTOLEN {
+                return Result::Err(AudioError::ChannelStolen)
+            }
+            return Result::Err(AudioError::DeviceIOError(error))
+        }
+
+        return Result::Ok(())
+    }
+
+    /// Play a sample at its native sample rate
+    ///
+    /// Uses the pre-calculated period from the sample's metadata.
+    ///
+    /// # Arguments
+    /// * `sample` - Sample to play
+    /// * `volume` - Volume (0-64)
+    /// * `cycles` - Number of times to play (0 = infinite)
+    /// * `pal` - True for PAL, false for NTSC
+    pub fn play_native(&self, sample: &SampleHandle, volume: u16, cycles: u16, pal: bool) -> Result<(), AudioError> {
+        var period: u16 = sample.period_pal()
+        if !pal {
+            period = sample.period_ntsc()
+        }
+        return self.play(sample, period, volume, cycles)
+    }
+
+    /// Change period and volume without starting new playback
+    ///
+    /// Use this to modify currently playing sounds.
+    ///
+    /// # Arguments
+    /// * `period` - New period (124-65535)
+    /// * `volume` - New volume (0-64)
+    pub fn set_period_volume(&self, period: u16, volume: u16) -> Result<(), AudioError> {
+        if !is_valid_period(period) {
+            return Result::Err(AudioError::InvalidPeriod)
+        }
+        if !is_valid_volume(volume) {
+            return Result::Err(AudioError::InvalidVolume)
+        }
+
+        self.io_audio.ioa_Request.io_Command = ADCMD_PERVOL
+        self.io_audio.ioa_Period = period
+        self.io_audio.ioa_Volume = volume
+
+        let req_addr = &self.io_audio.ioa_Request
+        let ioreq = (*IORequest)req_addr
+        let error = DoIO(ioreq)
+
+        if error != 0 {
+            return Result::Err(AudioError::DeviceIOError(error))
+        }
+
+        return Result::Ok(())
+    }
+
+    /// Stop playback on our channel(s)
+    ///
+    /// Immediately stops any playing sound. The channel remains allocated.
+    pub fn stop(&self) -> Result<(), AudioError> {
+        self.io_audio.ioa_Request.io_Command = CMD_STOP
+
+        let req_addr = &self.io_audio.ioa_Request
+        let ioreq = (*IORequest)req_addr
+        let error = DoIO(ioreq)
+
+        if error != 0 {
+            return Result::Err(AudioError::DeviceIOError(error))
+        }
+
+        return Result::Ok(())
+    }
+
+    /// Resume playback after stop
+    ///
+    /// Continues from where the sound was stopped.
+    pub fn start(&self) -> Result<(), AudioError> {
+        self.io_audio.ioa_Request.io_Command = CMD_START
+
+        let req_addr = &self.io_audio.ioa_Request
+        let ioreq = (*IORequest)req_addr
+        let error = DoIO(ioreq)
+
+        if error != 0 {
+            return Result::Err(AudioError::DeviceIOError(error))
+        }
+
+        return Result::Ok(())
+    }
+
+    /// Get the bitmask of allocated channels
+    ///
+    /// Bit N = 1 means channel N is allocated to us.
+    pub fn channels(&self) -> u8 {
+        return self.allocated_channels
+    }
+
+    /// Check if we have a specific channel
+    ///
+    /// # Arguments
+    /// * `channel` - Channel number (0-3)
+    pub fn has_channel(&self, channel: u8) -> bool {
+        if channel > 3 {
+            return false
+        }
+        return (self.allocated_channels & (1 << channel)) != 0
+    }
+
+    /// Get the number of channels we have allocated
+    pub fn channel_count(&self) -> u8 {
+        var count: u8 = 0
+        var mask = self.allocated_channels
+        while mask != 0 {
+            count = count + (mask & 1)
+            mask = mask >> 1
+        }
+        return count
+    }
+
+    /// Get our allocation key
+    ///
+    /// This is used internally by audio.device to track ownership.
+    pub fn alloc_key(&self) -> i16 {
+        return self.alloc_key
+    }
+}
+
+impl Drop for AudioDeviceHandle {
+    fn drop(&mut self) {
+        if let io = self.io_audio {
+            unsafe {
+                // Free our channel allocation
+                io.ioa_Request.io_Command = ADCMD_FREE
+                let req_addr = &io.ioa_Request
+                let ioreq = (*IORequest)req_addr
+                let _ = DoIO(ioreq)
+
+                // Close device
+                CloseDevice(ioreq)
+
+                // Free IORequest
+                DeleteIORequest((*u8)io)
+            }
+            self.io_audio = (*IOAudio)0
+        }
+
+        if let port = self.port {
+            DeleteMsgPort(port)
+            self.port = (*MsgPort)0
+        }
+    }
+}

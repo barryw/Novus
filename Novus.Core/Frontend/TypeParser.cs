@@ -566,15 +566,24 @@ public class TypeParser
     /// </summary>
     public bool ContainsGenericTypes(IrType type)
     {
+        return ContainsGenericTypesInternal(type, new HashSet<IrType>(ReferenceEqualityComparer.Instance));
+    }
+
+    private bool ContainsGenericTypesInternal(IrType type, HashSet<IrType> visited)
+    {
+        // Prevent infinite recursion for recursive types (e.g., Node with *Node fields)
+        if (!visited.Add(type))
+            return false;
+
         return type switch
         {
             IrGenericType => true,
-            IrPointerType ptrType => ContainsGenericTypes(ptrType.PointeeType),
-            IrReferenceType refType => ContainsGenericTypes(refType.PointeeType),
-            IrMutReferenceType mutRefType => ContainsGenericTypes(mutRefType.PointeeType),
-            IrArrayType arrayType => ContainsGenericTypes(arrayType.ElementType),
-            IrStructType structType => structType.Fields.Any(f => ContainsGenericTypes(f.Type)),
-            IrEnumType enumType => enumType.Variants.Any(v => v.AssociatedData.Any(ContainsGenericTypes)),
+            IrPointerType ptrType => ContainsGenericTypesInternal(ptrType.PointeeType, visited),
+            IrReferenceType refType => ContainsGenericTypesInternal(refType.PointeeType, visited),
+            IrMutReferenceType mutRefType => ContainsGenericTypesInternal(mutRefType.PointeeType, visited),
+            IrArrayType arrayType => ContainsGenericTypesInternal(arrayType.ElementType, visited),
+            IrStructType structType => structType.Fields.Any(f => ContainsGenericTypesInternal(f.Type, visited)),
+            IrEnumType enumType => enumType.Variants.Any(v => v.AssociatedData.Any(d => ContainsGenericTypesInternal(d, visited))),
             _ => false
         };
     }

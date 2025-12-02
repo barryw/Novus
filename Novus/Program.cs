@@ -1590,6 +1590,118 @@ class Program
                 objectFiles.AddRange(options.AdditionalLibraries);
             }
 
+            // Detect and add vendor library dependencies
+            // Check if ptplayer (MOD player) is being used
+            var usesPtplayer = processed.Any(p => p.Contains("ptplayer")) ||
+                               mainIR.ImportedModules.Any(m => m.Contains("ptplayer"));
+            if (usesPtplayer)
+            {
+                // Look for vendor files - check multiple possible locations
+                // compilerDir is bin/Debug/net8.0/ so we need to find the repo root
+                string? vendorDir = null;
+
+                // First try: alongside the compiler binary (for installed compiler)
+                var candidateDir = Path.Combine(compilerDir, "vendor", "ptplayer");
+                if (Directory.Exists(candidateDir))
+                {
+                    vendorDir = candidateDir;
+                }
+                else
+                {
+                    // Try development paths - go up from bin/Debug/net8.0 to repo root
+                    // bin/Debug/net8.0 -> bin/Debug -> bin -> Novus -> Novus (repo root)
+                    var dir = compilerDir;
+                    for (int i = 0; i < 5 && dir != null; i++)
+                    {
+                        dir = Path.GetDirectoryName(dir);
+                        if (dir != null)
+                        {
+                            candidateDir = Path.Combine(dir, "vendor", "ptplayer");
+                            if (Directory.Exists(candidateDir))
+                            {
+                                vendorDir = candidateDir;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                vendorDir ??= Path.Combine(compilerDir, "vendor", "ptplayer");
+
+                var ptplayerAsm = Path.Combine(vendorDir, "ptplayer.asm");
+                var ptplayerStubsAsm = Path.Combine(vendorDir, "ptplayer_stubs.asm");
+                var ptplayerHelpersC = Path.Combine(vendorDir, "ptplayer_helpers.c");
+                var ptplayerObj = Path.Combine(vendorDir, "ptplayer.o");
+                var ptplayerStubsObj = Path.Combine(vendorDir, "ptplayer_stubs.o");
+                var ptplayerHelpersObj = Path.Combine(vendorDir, "ptplayer_helpers.o");
+
+                // Auto-build ptplayer object files if source is newer or objects don't exist
+                async Task<bool> BuildPtplayerIfNeeded()
+                {
+                    var needsBuild = new List<(string src, string obj, string type)>();
+
+                    // Check each source file
+                    if (File.Exists(ptplayerAsm))
+                    {
+                        if (!File.Exists(ptplayerObj) || File.GetLastWriteTime(ptplayerAsm) > File.GetLastWriteTime(ptplayerObj))
+                            needsBuild.Add((ptplayerAsm, ptplayerObj, "asm"));
+                    }
+                    if (File.Exists(ptplayerStubsAsm))
+                    {
+                        if (!File.Exists(ptplayerStubsObj) || File.GetLastWriteTime(ptplayerStubsAsm) > File.GetLastWriteTime(ptplayerStubsObj))
+                            needsBuild.Add((ptplayerStubsAsm, ptplayerStubsObj, "asm"));
+                    }
+                    if (File.Exists(ptplayerHelpersC))
+                    {
+                        if (!File.Exists(ptplayerHelpersObj) || File.GetLastWriteTime(ptplayerHelpersC) > File.GetLastWriteTime(ptplayerHelpersObj))
+                            needsBuild.Add((ptplayerHelpersC, ptplayerHelpersObj, "c"));
+                    }
+
+                    if (needsBuild.Count > 0)
+                    {
+                        Console.WriteLine($"  → Building {needsBuild.Count} ptplayer object file(s)...");
+                        foreach (var (src, obj, type) in needsBuild)
+                        {
+                            bool success;
+                            if (type == "asm")
+                            {
+                                success = await toolchain.AssembleFile(src, obj);
+                            }
+                            else
+                            {
+                                success = await toolchain.CompileCFile(src, obj, options.BuildMode);
+                            }
+                            if (!success)
+                            {
+                                Console.WriteLine($"    ✗ Failed to build {Path.GetFileName(obj)}");
+                                return false;
+                            }
+                            Console.WriteLine($"    → {Path.GetFileName(obj)}");
+                        }
+                    }
+                    return true;
+                }
+
+                if (!await BuildPtplayerIfNeeded())
+                {
+                    Console.WriteLine("  ⚠ Warning: Failed to build ptplayer objects");
+                }
+                else if (File.Exists(ptplayerObj) && File.Exists(ptplayerStubsObj) && File.Exists(ptplayerHelpersObj))
+                {
+                    Console.WriteLine("  → Detected ptplayer usage - adding MOD player library");
+                    objectFiles.Add(ptplayerObj);
+                    objectFiles.Add(ptplayerStubsObj);
+                    objectFiles.Add(ptplayerHelpersObj);
+                }
+                else
+                {
+                    Console.WriteLine("  ⚠ Warning: ptplayer used but vendor/ptplayer source files not found");
+                    Console.WriteLine($"    Expected: {ptplayerAsm}");
+                    Console.WriteLine($"    Expected: {ptplayerStubsAsm}");
+                    Console.WriteLine($"    Expected: {ptplayerHelpersC}");
+                }
+            }
+
             // Step 2: Link all object files with dead code elimination
             // Use the full output filename (with extension) for the final binary
             var exeFile = options.OutputFile;

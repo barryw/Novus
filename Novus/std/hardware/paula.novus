@@ -1,0 +1,404 @@
+// Paula Audio Hardware Registers
+// Module: std::hardware::paula
+//
+// Direct hardware register access for Paula audio chip.
+// Use this for games and demos that take over the system.
+//
+// For OS-friendly applications, use std::audio::device instead.
+//
+// Paula is the Amiga's 4-channel 8-bit PCM audio chip.
+// Each channel can play signed 8-bit samples from chip RAM.
+//
+// Stereo assignment is fixed in hardware:
+// - Channels 0 and 3 -> LEFT speaker
+// - Channels 1 and 2 -> RIGHT speaker
+
+from std::core import Option
+from std::hardware::registers import CUSTOM_BASE
+
+// ============================================================================
+// Audio Channel Register Offsets (from CUSTOM_BASE = $DFF000)
+// ============================================================================
+
+// Channel 0 registers (left speaker)
+pub const AUD0LCH: u32 = $0A0   // Location pointer high word (bits 16-20)
+pub const AUD0LCL: u32 = $0A2   // Location pointer low word (bits 0-15)
+pub const AUD0LEN: u32 = $0A4   // Length in words (1-65535)
+pub const AUD0PER: u32 = $0A6   // Period - sample rate divisor (124-65535)
+pub const AUD0VOL: u32 = $0A8   // Volume (0-64)
+pub const AUD0DAT: u32 = $0AA   // Data register (write triggers DMA reload)
+
+// Channel 1 registers (right speaker) - +$10 from channel 0
+pub const AUD1LCH: u32 = $0B0
+pub const AUD1LCL: u32 = $0B2
+pub const AUD1LEN: u32 = $0B4
+pub const AUD1PER: u32 = $0B6
+pub const AUD1VOL: u32 = $0B8
+pub const AUD1DAT: u32 = $0BA
+
+// Channel 2 registers (right speaker) - +$20 from channel 0
+pub const AUD2LCH: u32 = $0C0
+pub const AUD2LCL: u32 = $0C2
+pub const AUD2LEN: u32 = $0C4
+pub const AUD2PER: u32 = $0C6
+pub const AUD2VOL: u32 = $0C8
+pub const AUD2DAT: u32 = $0CA
+
+// Channel 3 registers (left speaker) - +$30 from channel 0
+pub const AUD3LCH: u32 = $0D0
+pub const AUD3LCL: u32 = $0D2
+pub const AUD3LEN: u32 = $0D4
+pub const AUD3PER: u32 = $0D6
+pub const AUD3VOL: u32 = $0D8
+pub const AUD3DAT: u32 = $0DA
+
+// ADKCON register (audio/disk control)
+pub const ADKCON: u32 = $09E
+
+// ============================================================================
+// Paula Clock Frequencies
+// ============================================================================
+
+/// PAL Paula clock frequency (Hz)
+/// This is the base frequency for calculating sample periods.
+/// Period = PAULA_PAL_CLOCK / desired_sample_rate
+pub const PAULA_PAL_CLOCK: u32 = 3546895
+
+/// NTSC Paula clock frequency (Hz)
+/// Slightly higher than PAL, so same period = slightly higher pitch
+pub const PAULA_NTSC_CLOCK: u32 = 3579545
+
+// ============================================================================
+// Hardware Limits
+// ============================================================================
+
+/// Minimum valid period value
+/// Lower periods = higher sample rates
+/// Period 124 gives ~28.6 kHz on PAL (near maximum DMA bandwidth)
+/// Values below 124 cause DMA conflicts and audio corruption
+pub const PAULA_MIN_PERIOD: u16 = 124
+
+/// Maximum valid period value
+/// Period 65535 gives ~54 Hz (extremely low, rarely used)
+pub const PAULA_MAX_PERIOD: u16 = 65535
+
+/// Maximum volume level
+/// Paula uses 6-bit volume (0-64, not 0-63)
+/// Volume 64 is actually max, not an overflow
+pub const PAULA_MAX_VOLUME: u16 = 64
+
+/// Maximum sample length in words
+/// Each sample is 2 bytes (word), so max is 128KB per channel
+pub const PAULA_MAX_LENGTH_WORDS: u16 = 65535
+
+/// Maximum sample length in bytes
+pub const PAULA_MAX_LENGTH_BYTES: u32 = 131070
+
+// ============================================================================
+// Common Period Values (Pre-calculated)
+// ============================================================================
+
+// PAL periods for common sample rates
+pub const PERIOD_8000_PAL: u16 = 443     // 8000 Hz (telephone quality)
+pub const PERIOD_11025_PAL: u16 = 322    // 11025 Hz (quarter CD rate)
+pub const PERIOD_16000_PAL: u16 = 222    // 16000 Hz
+pub const PERIOD_22050_PAL: u16 = 161    // 22050 Hz (half CD rate)
+pub const PERIOD_28000_PAL: u16 = 127    // ~28 kHz (near max quality)
+
+// NTSC periods for common sample rates
+pub const PERIOD_8000_NTSC: u16 = 447
+pub const PERIOD_11025_NTSC: u16 = 325
+pub const PERIOD_16000_NTSC: u16 = 224
+pub const PERIOD_22050_NTSC: u16 = 162
+pub const PERIOD_28000_NTSC: u16 = 128
+
+// Musical note periods (based on PAL, middle octave, A4 = 440Hz)
+// These assume samples are recorded at a specific base rate
+// For samples recorded at 8363 Hz (standard MOD rate):
+pub const PERIOD_C4: u16 = 428   // C-4 (261.63 Hz)
+pub const PERIOD_D4: u16 = 381   // D-4 (293.66 Hz)
+pub const PERIOD_E4: u16 = 340   // E-4 (329.63 Hz)
+pub const PERIOD_F4: u16 = 320   // F-4 (349.23 Hz)
+pub const PERIOD_G4: u16 = 286   // G-4 (392.00 Hz)
+pub const PERIOD_A4: u16 = 254   // A-4 (440.00 Hz)
+pub const PERIOD_B4: u16 = 227   // B-4 (493.88 Hz)
+pub const PERIOD_C5: u16 = 214   // C-5 (523.25 Hz)
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Calculate period value from sample rate (Hz)
+///
+/// The period determines how fast samples are played.
+/// Lower period = higher sample rate = higher pitch.
+///
+/// Formula: period = clock_frequency / sample_rate
+///
+/// # Arguments
+/// * `sample_rate` - Desired sample rate in Hz (e.g., 11025, 22050)
+/// * `pal` - True for PAL system (50Hz), false for NTSC (60Hz)
+///
+/// # Returns
+/// Period value, or None if sample rate would result in invalid period
+///
+/// # Example
+/// ```novus
+/// // Calculate period for 11025 Hz on PAL
+/// match period_from_hz(11025, true) {
+///     Option::Some(period) => channel.set_period(period),
+///     Option::None => { /* rate too high or low */ }
+/// }
+/// ```
+pub fn period_from_hz(sample_rate: u32, pal: bool) -> Option<u16> {
+    if sample_rate == 0 {
+        return Option::None
+    }
+
+    var clock: u32 = PAULA_PAL_CLOCK
+    if !pal {
+        clock = PAULA_NTSC_CLOCK
+    }
+    let period = clock / sample_rate
+
+    if period < (u32)PAULA_MIN_PERIOD {
+        return Option::None  // Sample rate too high for Paula
+    }
+    if period > (u32)PAULA_MAX_PERIOD {
+        return Option::None  // Sample rate too low
+    }
+
+    return Option::Some((u16)period)
+}
+
+/// Calculate sample rate (Hz) from period value
+///
+/// Inverse of period_from_hz().
+///
+/// # Arguments
+/// * `period` - Paula period value (124-65535)
+/// * `pal` - True for PAL, false for NTSC
+///
+/// # Returns
+/// Sample rate in Hz
+///
+/// # Example
+/// ```novus
+/// let rate = hz_from_period(322, true)  // Returns ~11025
+/// ```
+pub fn hz_from_period(period: u16, pal: bool) -> u32 {
+    if period == 0 {
+        return 0
+    }
+    var clock: u32 = PAULA_PAL_CLOCK
+    if !pal {
+        clock = PAULA_NTSC_CLOCK
+    }
+    return clock / (u32)period
+}
+
+/// Calculate period for a specific musical note
+///
+/// Given a base sample rate and desired frequency, calculate the period.
+///
+/// # Arguments
+/// * `base_rate` - Sample rate the audio was recorded at (e.g., 8363 for MOD)
+/// * `target_hz` - Desired playback frequency in Hz
+/// * `pal` - True for PAL, false for NTSC
+///
+/// # Returns
+/// Period value, or None if out of range
+pub fn period_for_note(base_rate: u32, target_hz: u32, pal: bool) -> Option<u16> {
+    if target_hz == 0 || base_rate == 0 {
+        return Option::None
+    }
+
+    var clock: u32 = PAULA_PAL_CLOCK
+    if !pal {
+        clock = PAULA_NTSC_CLOCK
+    }
+
+    // period = (clock * base_rate) / (target_hz * base_rate)
+    //        = clock / target_hz when playing at target pitch
+    // But we need to account for the original sample rate
+    let period = (clock * base_rate) / (target_hz * base_rate / (u32)PERIOD_C4)
+
+    if period < (u32)PAULA_MIN_PERIOD || period > (u32)PAULA_MAX_PERIOD {
+        return Option::None
+    }
+
+    return Option::Some((u16)period)
+}
+
+// ============================================================================
+// Stereo Channel Assignment
+// ============================================================================
+
+/// Stereo speaker assignment (hardware-fixed)
+pub enum StereoChannel {
+    Left,   // Channels 0 and 3
+    Right,  // Channels 1 and 2
+}
+
+/// Get the stereo speaker assignment for a channel
+///
+/// Paula has fixed stereo routing that cannot be changed:
+/// - Channels 0 and 3 output to LEFT speaker
+/// - Channels 1 and 2 output to RIGHT speaker
+///
+/// # Arguments
+/// * `channel` - Channel number (0-3)
+///
+/// # Returns
+/// StereoChannel::Left or StereoChannel::Right
+///
+/// # Example
+/// ```novus
+/// // To play stereo audio, use channels 0+1 or 2+3
+/// let left_channel = 0   // StereoChannel::Left
+/// let right_channel = 1  // StereoChannel::Right
+/// ```
+pub fn channel_stereo(channel: u8) -> StereoChannel {
+    match channel {
+        0 => return StereoChannel::Left,
+        1 => return StereoChannel::Right,
+        2 => return StereoChannel::Right,
+        3 => return StereoChannel::Left,
+        _ => return StereoChannel::Left,  // Invalid channel, default to left
+    }
+}
+
+/// Check if a channel outputs to the left speaker
+pub fn is_left_channel(channel: u8) -> bool {
+    return channel == 0 || channel == 3
+}
+
+/// Check if a channel outputs to the right speaker
+pub fn is_right_channel(channel: u8) -> bool {
+    return channel == 1 || channel == 2
+}
+
+// ============================================================================
+// Register Address Calculation
+// ============================================================================
+
+/// Get the base register offset for a channel (0-3)
+///
+/// Each channel's registers are at AUD0 base + (channel * $10)
+///
+/// # Arguments
+/// * `channel` - Channel number (0-3)
+///
+/// # Returns
+/// Register offset from CUSTOM_BASE
+pub fn channel_base_offset(channel: u8) -> u32 {
+    return AUD0LCH + ((u32)(channel & 3) * $10)
+}
+
+/// Get the location high register for a channel
+pub fn channel_lch_offset(channel: u8) -> u32 {
+    return channel_base_offset(channel)
+}
+
+/// Get the location low register for a channel
+pub fn channel_lcl_offset(channel: u8) -> u32 {
+    return channel_base_offset(channel) + 2
+}
+
+/// Get the length register for a channel
+pub fn channel_len_offset(channel: u8) -> u32 {
+    return channel_base_offset(channel) + 4
+}
+
+/// Get the period register for a channel
+pub fn channel_per_offset(channel: u8) -> u32 {
+    return channel_base_offset(channel) + 6
+}
+
+/// Get the volume register for a channel
+pub fn channel_vol_offset(channel: u8) -> u32 {
+    return channel_base_offset(channel) + 8
+}
+
+/// Get the data register for a channel
+pub fn channel_dat_offset(channel: u8) -> u32 {
+    return channel_base_offset(channel) + 10
+}
+
+// ============================================================================
+// DMA and Interrupt Bit Calculation
+// ============================================================================
+
+/// Get the DMA enable bit for a channel (0-3)
+///
+/// Used with DMACON register to enable/disable audio DMA.
+///
+/// # Arguments
+/// * `channel` - Channel number (0-3)
+///
+/// # Returns
+/// DMA bit mask (DMAF_AUD0, DMAF_AUD1, DMAF_AUD2, or DMAF_AUD3)
+///
+/// # Example
+/// ```novus
+/// // Enable DMA for channel 0
+/// let dmacon = (*u16)(CUSTOM_BASE + DMACON)
+/// *dmacon = DMAF_SETCLR | DMAF_MASTER | channel_dma_bit(0)
+/// ```
+pub fn channel_dma_bit(channel: u8) -> u16 {
+    return 1 << (channel & 3)
+}
+
+/// Get the interrupt bit for a channel (0-3)
+///
+/// Used with INTENA/INTREQ registers for audio interrupts.
+/// Audio interrupts fire when a sample buffer finishes playing.
+///
+/// # Arguments
+/// * `channel` - Channel number (0-3)
+///
+/// # Returns
+/// Interrupt bit mask (INTF_AUD0, INTF_AUD1, INTF_AUD2, or INTF_AUD3)
+pub fn channel_int_bit(channel: u8) -> u16 {
+    return $0080 << (channel & 3)
+}
+
+// ============================================================================
+// Validation Functions
+// ============================================================================
+
+/// Check if a period value is valid for Paula
+///
+/// Valid periods are 124-65535. Values below 124 cause DMA conflicts.
+pub fn is_valid_period(period: u16) -> bool {
+    return period >= PAULA_MIN_PERIOD
+}
+
+/// Check if a volume value is valid for Paula
+///
+/// Valid volumes are 0-64 (not 0-63).
+pub fn is_valid_volume(volume: u16) -> bool {
+    return volume <= PAULA_MAX_VOLUME
+}
+
+/// Check if a channel number is valid
+///
+/// Valid channels are 0-3.
+pub fn is_valid_channel(channel: u8) -> bool {
+    return channel <= 3
+}
+
+/// Check if a sample length (in words) is valid
+///
+/// Valid lengths are 1-65535 words (2-131070 bytes).
+/// A length of 0 is invalid and causes undefined behavior.
+pub fn is_valid_length_words(length: u16) -> bool {
+    return length > 0
+}
+
+/// Check if a sample length (in bytes) is valid
+///
+/// Valid lengths are 2-131070 bytes, must be even (word-aligned).
+pub fn is_valid_length_bytes(length: u32) -> bool {
+    return length >= 2 && length <= PAULA_MAX_LENGTH_BYTES && (length & 1) == 0
+}

@@ -2112,3 +2112,36 @@ pub struct Layer_Info {
     LayerInfo_extra: *u8,       // Private
 }
 
+// ============================================================================
+// Audio Structures (from devices/audio.h and hardware/custom.h)
+// ============================================================================
+
+/// Paula audio channel hardware registers (from hardware/custom.h)
+///
+/// Each of Paula's 4 audio channels has this register layout.
+/// Channels are at offsets $0A0, $0B0, $0C0, $0D0 from custom base ($DFF000).
+pub struct AudChannel {
+    ac_ptr: *u16,      // Pointer to waveform data (word-aligned, chip RAM)
+    ac_len: u16,       // Length in words (1-65535)
+    ac_per: u16,       // Period - sample rate divisor (124-65535)
+    ac_vol: u16,       // Volume (0-64)
+    ac_dat: u16,       // Sample pair (hardware use only, read-only)
+    ac_pad0: u16,      // Unused padding
+    ac_pad1: u16,      // Unused padding
+}
+
+/// IORequest for audio.device (from devices/audio.h)
+///
+/// Used for OS-friendly audio playback through audio.device.
+/// Extends IORequest with audio-specific fields.
+pub struct IOAudio {
+    ioa_Request: IORequest,
+    ioa_AllocKey: i16,     // Allocation key returned by ADCMD_ALLOCATE
+    ioa_Data: *u8,         // Pointer to sample data (chip RAM)
+    ioa_Length: u32,       // Length in bytes
+    ioa_Period: u16,       // Sample period (124-65535)
+    ioa_Volume: u16,       // Volume (0-64)
+    ioa_Cycles: u16,       // Number of times to play (0 = infinite loop)
+    ioa_WriteMsg: Message, // Secondary message port for finished notification
+}
+

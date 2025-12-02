@@ -2940,3 +2940,170 @@ pub const NP_Synchronous: u32 = $800003FF    // Wait for process to exit
 pub const NP_ExitCode: u32 = $80000400       // Pointer to store exit code
 pub const NP_ExitData: u32 = $80000401       // Pointer to store exit data
 
+// =============================================================================
+// Audio Device Constants (from devices/audio.h)
+// =============================================================================
+
+/// Number of hardware audio channels
+pub const ADHARD_CHANNELS: u32 = 4
+
+/// Allocation priority range
+pub const ADALLOC_MINPREC: i8 = -128
+pub const ADALLOC_MAXPREC: i8 = 127
+
+/// Audio device commands (CMD_NONSTD = 9)
+pub const ADCMD_FREE: u16 = 9         // Free allocated channels
+pub const ADCMD_SETPREC: u16 = 10     // Set allocation precedence
+pub const ADCMD_FINISH: u16 = 11      // Finish current sound immediately
+pub const ADCMD_PERVOL: u16 = 12      // Set period and volume only
+pub const ADCMD_LOCK: u16 = 13        // Lock channel for exclusive use
+pub const ADCMD_WAITCYCLE: u16 = 14   // Wait for cycle completion
+pub const ADCMD_ALLOCATE: u16 = 32    // Allocate channels
+
+/// IOAudio flag bits
+pub const ADIOB_PERVOL: u8 = 4        // Set period/volume with CMD_WRITE
+pub const ADIOB_SYNCCYCLE: u8 = 5     // Sync to cycle boundary
+pub const ADIOB_NOWAIT: u8 = 6        // Don't wait for channel
+pub const ADIOB_WRITEMESSAGE: u8 = 7  // Reply when sound finishes
+
+/// IOAudio flag masks
+pub const ADIOF_PERVOL: u8 = 16       // 1 << 4
+pub const ADIOF_SYNCCYCLE: u8 = 32    // 1 << 5
+pub const ADIOF_NOWAIT: u8 = 64       // 1 << 6
+pub const ADIOF_WRITEMESSAGE: u8 = 128 // 1 << 7
+
+/// IOAudio error codes
+pub const ADIOERR_NOALLOCATION: i8 = -10   // No channels allocated
+pub const ADIOERR_ALLOCFAILED: i8 = -11    // Allocation failed
+pub const ADIOERR_CHANNELSTOLEN: i8 = -12  // Channel stolen by higher priority
+
+// =============================================================================
+// DMA Control Bits (from hardware/dmabits.h)
+// =============================================================================
+
+/// DMA control write flags
+pub const DMAF_SETCLR: u16 = $8000   // Set/clear control bit
+pub const DMAF_AUDIO: u16 = $000F    // All 4 audio channels mask
+pub const DMAF_AUD0: u16 = $0001     // Audio channel 0
+pub const DMAF_AUD1: u16 = $0002     // Audio channel 1
+pub const DMAF_AUD2: u16 = $0004     // Audio channel 2
+pub const DMAF_AUD3: u16 = $0008     // Audio channel 3
+pub const DMAF_DISK: u16 = $0010     // Disk DMA
+pub const DMAF_SPRITE: u16 = $0020   // Sprite DMA
+pub const DMAF_BLITTER: u16 = $0040  // Blitter DMA
+pub const DMAF_COPPER: u16 = $0080   // Copper DMA
+pub const DMAF_RASTER: u16 = $0100   // Bitplane DMA
+pub const DMAF_MASTER: u16 = $0200   // Master DMA enable
+pub const DMAF_BLITHOG: u16 = $0400  // Blitter priority (hog mode)
+pub const DMAF_ALL: u16 = $01FF      // All DMA channels
+
+/// DMA control bit positions
+pub const DMAB_SETCLR: u8 = 15
+pub const DMAB_AUD0: u8 = 0
+pub const DMAB_AUD1: u8 = 1
+pub const DMAB_AUD2: u8 = 2
+pub const DMAB_AUD3: u8 = 3
+pub const DMAB_DISK: u8 = 4
+pub const DMAB_SPRITE: u8 = 5
+pub const DMAB_BLITTER: u8 = 6
+pub const DMAB_COPPER: u8 = 7
+pub const DMAB_RASTER: u8 = 8
+pub const DMAB_MASTER: u8 = 9
+pub const DMAB_BLITHOG: u8 = 10
+
+/// DMA control read flags
+pub const DMAF_BLTDONE: u16 = $4000   // Blitter done
+pub const DMAF_BLTNZERO: u16 = $2000  // Blitter zero flag
+pub const DMAB_BLTDONE: u8 = 14
+pub const DMAB_BLTNZERO: u8 = 13
+
+// =============================================================================
+// Interrupt Bits (from hardware/intbits.h)
+// =============================================================================
+
+/// Interrupt enable/request bit positions
+pub const INTB_SETCLR: u8 = 15    // Set/clear control bit
+pub const INTB_INTEN: u8 = 14     // Master interrupt enable
+pub const INTB_EXTER: u8 = 13     // External interrupt
+pub const INTB_DSKSYNC: u8 = 12   // Disk sync interrupt
+pub const INTB_RBF: u8 = 11       // Serial receive buffer full
+pub const INTB_AUD3: u8 = 10      // Audio channel 3 block finished
+pub const INTB_AUD2: u8 = 9       // Audio channel 2 block finished
+pub const INTB_AUD1: u8 = 8       // Audio channel 1 block finished
+pub const INTB_AUD0: u8 = 7       // Audio channel 0 block finished
+pub const INTB_BLIT: u8 = 6       // Blitter finished
+pub const INTB_VERTB: u8 = 5      // Vertical blank
+pub const INTB_COPER: u8 = 4      // Copper interrupt
+pub const INTB_PORTS: u8 = 3      // I/O ports and timers
+pub const INTB_SOFTINT: u8 = 2    // Software interrupt
+pub const INTB_DSKBLK: u8 = 1     // Disk block done
+pub const INTB_TBE: u8 = 0        // Serial transmit buffer empty
+
+/// Interrupt enable/request flag masks
+pub const INTF_SETCLR: u16 = $8000
+pub const INTF_INTEN: u16 = $4000
+pub const INTF_EXTER: u16 = $2000
+pub const INTF_DSKSYNC: u16 = $1000
+pub const INTF_RBF: u16 = $0800
+pub const INTF_AUD3: u16 = $0400
+pub const INTF_AUD2: u16 = $0200
+pub const INTF_AUD1: u16 = $0100
+pub const INTF_AUD0: u16 = $0080
+pub const INTF_BLIT: u16 = $0040
+pub const INTF_VERTB: u16 = $0020
+pub const INTF_COPER: u16 = $0010
+pub const INTF_PORTS: u16 = $0008
+pub const INTF_SOFTINT: u16 = $0004
+pub const INTF_DSKBLK: u16 = $0002
+pub const INTF_TBE: u16 = $0001
+
+// =============================================================================
+// ADKCON Bits - Audio/Disk Control (from hardware/adkbits.h)
+// =============================================================================
+
+/// ADKCON bit positions
+pub const ADKB_SETCLR: u8 = 15    // Set/clear control bit
+pub const ADKB_PRECOMP1: u8 = 14  // Disk precompensation bit 1
+pub const ADKB_PRECOMP0: u8 = 13  // Disk precompensation bit 0
+pub const ADKB_MFMPREC: u8 = 12   // MFM precompensation
+pub const ADKB_UARTBRK: u8 = 11   // Force UART break
+pub const ADKB_WORDSYNC: u8 = 10  // Enable disk sync matching
+pub const ADKB_MSBSYNC: u8 = 9    // Sync on MSB (GCR only)
+pub const ADKB_FAST: u8 = 8       // Fast disk mode
+
+/// Audio modulation control bits
+pub const ADKB_USE3PN: u8 = 7     // Channel 3 modulates period of next
+pub const ADKB_USE2P3: u8 = 6     // Channel 2 modulates period of 3
+pub const ADKB_USE1P2: u8 = 5     // Channel 1 modulates period of 2
+pub const ADKB_USE0P1: u8 = 4     // Channel 0 modulates period of 1
+pub const ADKB_USE3VN: u8 = 3     // Channel 3 modulates volume of next
+pub const ADKB_USE2V3: u8 = 2     // Channel 2 modulates volume of 3
+pub const ADKB_USE1V2: u8 = 1     // Channel 1 modulates volume of 2
+pub const ADKB_USE0V1: u8 = 0     // Channel 0 modulates volume of 1
+
+/// ADKCON flag masks
+pub const ADKF_SETCLR: u16 = $8000
+pub const ADKF_PRECOMP1: u16 = $4000
+pub const ADKF_PRECOMP0: u16 = $2000
+pub const ADKF_MFMPREC: u16 = $1000
+pub const ADKF_UARTBRK: u16 = $0800
+pub const ADKF_WORDSYNC: u16 = $0400
+pub const ADKF_MSBSYNC: u16 = $0200
+pub const ADKF_FAST: u16 = $0100
+
+/// Audio modulation flag masks
+pub const ADKF_USE3PN: u16 = $0080
+pub const ADKF_USE2P3: u16 = $0040
+pub const ADKF_USE1P2: u16 = $0020
+pub const ADKF_USE0P1: u16 = $0010
+pub const ADKF_USE3VN: u16 = $0008
+pub const ADKF_USE2V3: u16 = $0004
+pub const ADKF_USE1V2: u16 = $0002
+pub const ADKF_USE0V1: u16 = $0001
+
+/// Disk precompensation values
+pub const ADKF_PRE000NS: u16 = $0000                         // 0 ns
+pub const ADKF_PRE140NS: u16 = $2000                         // 140 ns (PRECOMP0)
+pub const ADKF_PRE280NS: u16 = $4000                         // 280 ns (PRECOMP1)
+pub const ADKF_PRE560NS: u16 = $6000                         // 560 ns (both)
+

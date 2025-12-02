@@ -140,4 +140,16 @@ public static class ErrorCodes
     public const string CannotGenerateDropCall = "E3402";
     public const string SizeofTypeUnknown = "E3403";
     public const string StructArrayInitializerInvalid = "E3404";
+
+    // ========================================================================
+    // E35XX: Attribute Errors
+    // ========================================================================
+    public const string InvalidAttribute = "E3500";
+    public const string UnknownAttribute = "E3501";
+
+    // ========================================================================
+    // E36XX: File/Resource Errors
+    // ========================================================================
+    public const string FileNotFound = "E3600";
+    public const string FileReadError = "E3601";
 }

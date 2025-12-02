@@ -156,6 +156,13 @@ public class VbccToolchain
             args.Insert(2, "-M");   // Generate map file
         }
 
+        // CRITICAL: Set MEMF_CHIP flag on DATA_C section so AmigaOS loader
+        // allocates it in chip RAM. Paula DMA can only access chip RAM,
+        // so embedded audio/graphics assets MUST be in chip RAM to play.
+        // Value 2 = MEMF_CHIP (from exec/memory.h)
+        args.Add("-hunkattr");
+        args.Add("DATA_C=2");
+
         // Add linker flags (library-specific behavior)
         args.Add("-x");  // Discard local symbols
 
@@ -177,6 +184,8 @@ public class VbccToolchain
             // Dead code elimination with section merging to avoid duplicate symbol errors
             // -sc merges all code sections, -sd merges all data/bss sections
             // This allows linking duplicate monomorphized functions from stdlib
+            // NOTE: DATA_C sections are properly typed as DATA (via data_c directive fix in FixChipRamSectionDirectives)
+            // so they won't be merged with CODE sections by -sc
             args.Add("-sc");      // Merge all code sections (required to link duplicate symbols)
             args.Add("-sd");      // Merge all data/bss sections
             args.Add("-gc-all");  // Dead code elimination
@@ -309,6 +318,11 @@ public class VbccToolchain
             // Step 2: Post-process assembly to inject debug labels
             await InjectDebugLabelsIntoAssembly(asmFile);
 
+            // Step 2b: Fix chip RAM section directives
+            // VBCC outputs 'section "DATA_C"' which vasm interprets as CODE type by default.
+            // We need to change it to 'data_c' directive which properly sets DATA type + MEMF_CHIP.
+            await FixChipRamSectionDirectives(asmFile);
+
             // Step 3: Assemble to object file
             return await Assemble(asmFile, objFile, cpu, false);
         }
@@ -348,12 +362,13 @@ public class VbccToolchain
         if (!File.Exists(cFile))
             return;
 
-        // Step 1: Parse C file to build mapping of C line number → debug info
+        // Step 1: Parse C file to build list of debug markers with their C line numbers
         // Format: /* DBG: __dbg_funcname_N = filename:line */
         var dbgPattern = new System.Text.RegularExpressions.Regex(
             @"/\*\s*DBG:\s*(__dbg_\w+)\s*=\s*(\S+):(\d+)\s*\*/");
 
-        var lineToDebugInfo = new Dictionary<int, (string LabelName, string FileName, int NovusLine)>();
+        // List of (cLineNumber, labelName, fileName, novusLine) sorted by C line number
+        var debugMarkers = new List<(int CLine, string LabelName, string FileName, int NovusLine)>();
         var cLines = await File.ReadAllLinesAsync(cFile);
 
         for (int i = 0; i < cLines.Length; i++)
@@ -365,41 +380,65 @@ public class VbccToolchain
                 var fileName = match.Groups[2].Value;
                 var novusLine = int.Parse(match.Groups[3].Value);
 
-                // The DBG comment is on line i+1 (1-indexed), but the actual code is on the NEXT line
-                // So we map the C line AFTER the comment to this debug info
-                lineToDebugInfo[i + 2] = (labelName, fileName, novusLine);
+                // The DBG comment is on line i+1 (1-indexed)
+                // We want to inject the label at the first debug directive AT OR AFTER this line
+                debugMarkers.Add((i + 1, labelName, fileName, novusLine));
             }
         }
 
-        if (lineToDebugInfo.Count == 0)
+        if (debugMarkers.Count == 0)
             return; // No debug markers to process
 
         // Step 2: Parse assembly and inject labels at "debug N" directives
+        // For each debug marker, inject it at the first debug directive with line >= marker's line
         var asmLines = await File.ReadAllLinesAsync(asmFile);
         var output = new StringBuilder();
         var labelCount = 0;
-        var debugPattern = new System.Text.RegularExpressions.Regex(@"^\s*debug\s+(\d+)");
-        var injectedLines = new HashSet<int>(); // Track which C lines we've already injected labels for
+        var debugDirectivePattern = new System.Text.RegularExpressions.Regex(@"^\s*debug\s+(\d+)");
+        var injectedLabels = new HashSet<string>(); // Track which labels we've already injected
+        var markerIndex = 0; // Current marker we're trying to inject
 
         foreach (var line in asmLines)
         {
-            var match = debugPattern.Match(line);
-            if (match.Success)
+            var match = debugDirectivePattern.Match(line);
+            if (match.Success && markerIndex < debugMarkers.Count)
             {
-                var cLineNum = int.Parse(match.Groups[1].Value);
+                var debugLineNum = int.Parse(match.Groups[1].Value);
 
-                // Check if we have debug info for this C line and haven't injected it yet
-                if (lineToDebugInfo.TryGetValue(cLineNum, out var info) && !injectedLines.Contains(cLineNum))
+                // Inject all markers that should appear at or before this debug directive
+                while (markerIndex < debugMarkers.Count && debugMarkers[markerIndex].CLine <= debugLineNum)
                 {
-                    // Emit the label as a global symbol so it appears in the symbol table
-                    output.AppendLine($"\txdef\t_{info.LabelName}");
-                    output.AppendLine($"_{info.LabelName}:");
-                    output.AppendLine($"; Source: {info.FileName}:{info.NovusLine}");
-                    labelCount++;
-                    injectedLines.Add(cLineNum);
+                    var marker = debugMarkers[markerIndex];
+                    if (!injectedLabels.Contains(marker.LabelName))
+                    {
+                        // Emit the label as a global symbol so it appears in the symbol table
+                        output.AppendLine($"\txdef\t_{marker.LabelName}");
+                        output.AppendLine($"_{marker.LabelName}:");
+                        output.AppendLine($"; Source: {marker.FileName}:{marker.NovusLine}");
+                        labelCount++;
+                        injectedLabels.Add(marker.LabelName);
+                    }
+                    markerIndex++;
                 }
             }
             output.AppendLine(line);
+        }
+
+        // Handle any remaining markers that didn't find a debug directive
+        // This can happen if the marker is after all debug directives
+        while (markerIndex < debugMarkers.Count)
+        {
+            var marker = debugMarkers[markerIndex];
+            if (!injectedLabels.Contains(marker.LabelName))
+            {
+                // Append at the end (before any trailing sections)
+                output.AppendLine($"\txdef\t_{marker.LabelName}");
+                output.AppendLine($"_{marker.LabelName}:");
+                output.AppendLine($"; Source: {marker.FileName}:{marker.NovusLine}");
+                labelCount++;
+                injectedLabels.Add(marker.LabelName);
+            }
+            markerIndex++;
         }
 
         if (labelCount > 0)
@@ -408,6 +447,62 @@ public class VbccToolchain
         }
 
         await File.WriteAllTextAsync(asmFile, output.ToString());
+    }
+
+    /// <summary>
+    /// Fix chip RAM section directives in VBCC-generated assembly.
+    ///
+    /// Problem: VBCC outputs 'section "DATA_C"' for __section("DATA_C") attribute,
+    /// but vasm's Motorola syntax treats this as a generic section that defaults to CODE type.
+    ///
+    /// Solution: Replace 'section "DATA_C"' with the dedicated 'data_c' directive,
+    /// which vasm recognizes as DATA type with MEMF_CHIP attribute (value 2).
+    /// </summary>
+    private async Task FixChipRamSectionDirectives(string asmFile)
+    {
+        if (!File.Exists(asmFile))
+            return;
+
+        var content = await File.ReadAllTextAsync(asmFile);
+        var modified = false;
+
+        // Replace section "DATA_C" with data_c directive
+        // Also handle variations with different whitespace/casing
+        if (content.Contains("section\t\"DATA_C\"") || content.Contains("section \"DATA_C\""))
+        {
+            content = content.Replace("section\t\"DATA_C\"", "data_c");
+            content = content.Replace("section \"DATA_C\"", "data_c");
+            modified = true;
+        }
+
+        // Also handle DATA_F for fast RAM if needed
+        if (content.Contains("section\t\"DATA_F\"") || content.Contains("section \"DATA_F\""))
+        {
+            content = content.Replace("section\t\"DATA_F\"", "data_f");
+            content = content.Replace("section \"DATA_F\"", "data_f");
+            modified = true;
+        }
+
+        // Handle CODE_C for chip RAM code (rare but possible)
+        if (content.Contains("section\t\"CODE_C\"") || content.Contains("section \"CODE_C\""))
+        {
+            content = content.Replace("section\t\"CODE_C\"", "code_c");
+            content = content.Replace("section \"CODE_C\"", "code_c");
+            modified = true;
+        }
+
+        // Handle BSS_C for chip RAM BSS
+        if (content.Contains("section\t\"BSS_C\"") || content.Contains("section \"BSS_C\""))
+        {
+            content = content.Replace("section\t\"BSS_C\"", "bss_c");
+            content = content.Replace("section \"BSS_C\"", "bss_c");
+            modified = true;
+        }
+
+        if (modified)
+        {
+            await File.WriteAllTextAsync(asmFile, content);
+        }
     }
 
     /// <summary>
@@ -993,5 +1088,41 @@ public class VbccToolchain
     {
         // Quote if contains space or shell metacharacters
         return (arg.Contains(' ') || arg.Contains('<') || arg.Contains('>')) ? $"\"{arg}\"" : arg;
+    }
+
+    /// <summary>
+    /// Assemble a single .asm file to .o object file
+    /// Convenience method for building vendor libraries like ptplayer
+    /// </summary>
+    public async Task<bool> AssembleFile(string asmFile, string objFile, string cpu = "68020")
+    {
+        return await Assemble(asmFile, objFile, cpu, false);
+    }
+
+    /// <summary>
+    /// Compile a single C file to .o object file using vc
+    /// Convenience method for building vendor libraries like ptplayer
+    /// </summary>
+    public async Task<bool> CompileCFile(string cFile, string objFile, BuildMode buildMode = BuildMode.Debug)
+    {
+        var vcPath = Path.Combine(_vbccPath, "bin", "vc");
+
+        var args = new List<string>
+        {
+            "+aos68k",          // Target AmigaOS 2.0+ (68020+)
+            "-c99",             // Enable C99 standard
+            "-O2",              // Optimization level
+            "-c",               // Compile only, don't link
+            "-o", objFile,      // Output file
+            cFile               // Input file
+        };
+
+        // Debug symbols only in debug mode
+        if (buildMode == BuildMode.Debug)
+        {
+            args.Insert(3, "-g");
+        }
+
+        return await RunTool(vcPath, args);
     }
 }

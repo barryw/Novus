@@ -81,6 +81,13 @@ public class CCodeGenerator
     // Counter for unique debug label generation within a function
     private int _debugLabelCounter = 0;
 
+    // VBCC WORKAROUND: Track comparison expressions that can be inlined into conditional branches.
+    // VBCC has a bug where it can move stack cleanup instructions between a comparison result
+    // store and the subsequent conditional branch, clobbering the condition flags.
+    // By inlining the comparison directly into the if() statement, we avoid this issue.
+    // Maps result variable name -> inline comparison expression (e.g., "_slot_bool_0" -> "_slot_i32_s_0 == 0")
+    private Dictionary<string, string> _inlineableComparisons = new();
+
     /// <summary>
     /// Determines if a function is a monomorphized trait implementation.
     /// These functions need special handling to avoid duplicate symbol errors when
@@ -806,15 +813,6 @@ public class CCodeGenerator
     /// </summary>
     public string GenerateFunctionFile(IrFunction function)
     {
-        // Skip functions that use BStr type directly (BStr itself is not exported in the types header)
-        // This is fine because BStr is typically only used internally and not by user code
-        var functionNameLower = function.Name.ToLower();
-        if (functionNameLower.Contains("bstr::"))
-        {
-            Console.WriteLine($"WARNING: Skipping function file '{function.Name}' (uses BStr type not in shared header)");
-            return $"// SKIPPED: Function '{function.Name}' uses BStr which is not exported\n";
-        }
-
         // Check if function has unresolved types - skip it entirely
         if (HasUnresolvedTypes(function))
         {
@@ -1533,10 +1531,13 @@ public class CCodeGenerator
         var constKeyword = !staticVar.IsMutable ? "const" : "";
 
         // Memory section attribute for VBCC
-        // __chip forces data into chip RAM (required for DMA: Copper, Blitter, audio, sprites)
+        // For chip RAM (required for DMA: Copper, Blitter, audio, sprites), we need to use
+        // __section("DATA_C") to create a proper MEMF_CHIP hunk. The __chip attribute doesn't
+        // work correctly in VBCC - it just puts data in CODE section without chip flag.
+        // DATA_C suffix creates a hunk with HUNKF_CHIP flag set.
         var sectionAttr = staticVar.Section switch
         {
-            MemorySection.Chip => "__chip ",
+            MemorySection.Chip => "__section(\"DATA_C\") ",
             MemorySection.Fast => "", // VBCC default is any memory, no specific attribute for fast-only
             _ => ""
         };
@@ -1607,7 +1608,16 @@ public class CCodeGenerator
         _currentEmittingStruct = structName;  // For error messages
 
         sb.AppendLine($"// Struct: {structType.Name}");
+
+        // Check for #[packed] attribute
+        var isPacked = structType.Attributes?.Has("packed") ?? false;
+
         // Use named struct instead of anonymous to allow self-references
+        // VBCC uses #pragma pack(1) for packed structs (not __attribute__)
+        if (isPacked)
+        {
+            sb.AppendLine($"#pragma pack(1)");
+        }
         sb.AppendLine($"struct {structName} {{");
 
         foreach (var field in structType.Fields)
@@ -1627,6 +1637,10 @@ public class CCodeGenerator
         }
 
         sb.AppendLine($"}};");
+        if (isPacked)
+        {
+            sb.AppendLine($"#pragma pack()");
+        }
         sb.AppendLine();
 
         _currentEmittingStruct = null;  // Clear after emitting
@@ -3488,6 +3502,7 @@ public class CCodeGenerator
         _deferEmissionCounter = 0;  // Reset defer emission counter for unique labels
         _indexAccessInfo.Clear();
         _activatedDeferBlocks.Clear();
+        _inlineableComparisons.Clear();  // VBCC workaround: reset comparison tracking
 
         // Track which parameters were converted to pointers in the C signature
         _pointerConvertedParameters.Clear();
@@ -4434,6 +4449,20 @@ public class CCodeGenerator
         else
         {
             var op = GetBinaryOperator(binaryOp.Operation);
+
+            // VBCC WORKAROUND: Track comparison operations so they can be inlined into
+            // conditional branches. This prevents VBCC from inserting stack cleanup
+            // instructions between the comparison and the branch, which clobbers flags.
+            bool isComparisonOp = binaryOp.Operation is IrBinaryOp.OpKind.Eq or IrBinaryOp.OpKind.Ne
+                or IrBinaryOp.OpKind.Lt or IrBinaryOp.OpKind.Le
+                or IrBinaryOp.OpKind.Gt or IrBinaryOp.OpKind.Ge;
+
+            if (isComparisonOp)
+            {
+                // Store the comparison expression for potential inlining
+                _inlineableComparisons[resultName] = $"{left} {op} {right}";
+            }
+
             if (alreadyDeclared)
             {
                 _output.AppendLine($"    {resultName} = {left} {op} {right};");
@@ -4738,7 +4767,24 @@ public class CCodeGenerator
 
     private void EmitConditionalBranch(IrConditionalBranch condBranch)
     {
-        var condition = EmitValue(condBranch.Condition);
+        var conditionVar = EmitValue(condBranch.Condition);
+
+        // VBCC WORKAROUND: If this condition is a comparison that we tracked,
+        // inline the comparison expression directly into the if() statement.
+        // This prevents VBCC from inserting stack cleanup instructions between
+        // the comparison and the branch, which clobbers the condition flags.
+        string condition;
+        if (_inlineableComparisons.TryGetValue(conditionVar, out var inlinedExpr))
+        {
+            condition = inlinedExpr;
+            // Remove from tracking so it's not reused (comparisons should be single-use)
+            _inlineableComparisons.Remove(conditionVar);
+        }
+        else
+        {
+            condition = conditionVar;
+        }
+
         // Append suffix to target labels to match defer block emission
         var trueTarget = condBranch.TrueTarget + _labelSuffix;
         _output.AppendLine($"    if ({condition}) goto {trueTarget};");

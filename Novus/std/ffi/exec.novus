@@ -8,6 +8,11 @@
 // NOTE: Memory flags should be imported from std::ffi::amiga_consts
 // Example: from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR, MEMF_PUBLIC
 
+from std::ffi::amiga_structs import Library, Resident, Interrupt, MemHeader, MemList
+from std::ffi::amiga_structs import List, MinList, Node, Task, MsgPort, Message
+from std::ffi::amiga_structs import Device, IORequest, SignalSemaphore
+from std::ffi::amiga_structs import StackSwapStruct
+
 // ============================================================================
 // Library Functions
 // ============================================================================
@@ -88,8 +93,8 @@ extern pub fn OpenResource(resName: *u8) -> *u8
 extern pub fn RawDoFmt(formatString: *u8, dataStream: *u8, putChProc: *u8, putChData: *u8) -> *u8
 extern pub fn GetCC() -> u32
 extern pub fn TypeOfMem(address: *u8) -> u32
-extern pub fn Procure(sigSem: *SignalSemaphore, bidMsg: *SemaphoreMessage) -> u32
-extern pub fn Vacate(sigSem: *SignalSemaphore, bidMsg: *SemaphoreMessage)
+extern pub fn Procure(sigSem: *SignalSemaphore, bidMsg: *u8) -> u32
+extern pub fn Vacate(sigSem: *SignalSemaphore, bidMsg: *u8)
 extern pub fn OpenLibrary(libName: *u8, version: u32) -> *Library
 extern pub fn InitSemaphore(sigSem: *SignalSemaphore)
 extern pub fn ObtainSemaphore(sigSem: *SignalSemaphore)
@@ -136,13 +141,13 @@ extern pub fn AddMemHandler(memhand: *Interrupt)
 extern pub fn RemMemHandler(memhand: *Interrupt)
 extern pub fn ObtainQuickVector(interruptCode: *u8) -> u32
 extern pub fn NewMinList(minlist: *MinList)
-extern pub fn AVL_AddNode(root: *AVLNode, node: *AVLNode, func: *u8) -> *AVLNode
-extern pub fn AVL_RemNodeByAddress(root: *AVLNode, node: *AVLNode) -> *AVLNode
-extern pub fn AVL_RemNodeByKey(root: *AVLNode, key: *u8, func: *u8) -> *AVLNode
-extern pub fn AVL_FindNode(root: *AVLNode, key: *u8, func: *u8) -> *AVLNode
-extern pub fn AVL_FindPrevNodeByAddress(node: *AVLNode) -> *AVLNode
-extern pub fn AVL_FindPrevNodeByKey(root: *AVLNode, key: *u8, func: *u8) -> *AVLNode
-extern pub fn AVL_FindNextNodeByAddress(node: *AVLNode) -> *AVLNode
-extern pub fn AVL_FindNextNodeByKey(root: *AVLNode, key: *u8, func: *u8) -> *AVLNode
-extern pub fn AVL_FindFirstNode(root: *AVLNode) -> *AVLNode
-extern pub fn AVL_FindLastNode(root: *AVLNode) -> *AVLNode
+extern pub fn AVL_AddNode(root: *u8, node: *u8, func: *u8) -> *u8
+extern pub fn AVL_RemNodeByAddress(root: *u8, node: *u8) -> *u8
+extern pub fn AVL_RemNodeByKey(root: *u8, key: *u8, func: *u8) -> *u8
+extern pub fn AVL_FindNode(root: *u8, key: *u8, func: *u8) -> *u8
+extern pub fn AVL_FindPrevNodeByAddress(node: *u8) -> *u8
+extern pub fn AVL_FindPrevNodeByKey(root: *u8, key: *u8, func: *u8) -> *u8
+extern pub fn AVL_FindNextNodeByAddress(node: *u8) -> *u8
+extern pub fn AVL_FindNextNodeByKey(root: *u8, key: *u8, func: *u8) -> *u8
+extern pub fn AVL_FindFirstNode(root: *u8) -> *u8
+extern pub fn AVL_FindLastNode(root: *u8) -> *u8

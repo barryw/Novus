@@ -1,0 +1,878 @@
+// Paula Audio API
+// Module: std::audio::paula
+//
+// High-level RAII-based API for Paula audio playback.
+// Provides safe wrappers around hardware registers with automatic cleanup.
+//
+// This module directly accesses Paula hardware registers. Use it for:
+// - Games that take over the system
+// - Demos with custom audio
+// - Applications that need precise audio control
+//
+// For OS-friendly applications that coexist with Workbench and other
+// programs, use std::audio::device instead.
+//
+// # Quick Start
+// ```novus
+// from std::audio::paula import AudioChannel, SampleHandle, PlaybackMode
+//
+// // Load sample into chip RAM
+// let sample = SampleHandle::from_data(raw_pcm_data, length)?
+//
+// // Acquire a channel and play
+// let mut channel = AudioChannel::acquire(0)?
+// channel.set_volume(64)?
+// channel.play(&sample, PlaybackMode::OneShot)
+//
+// // Wait for sound to finish...
+// delay(Duration::secs(1))
+//
+// // Channel automatically stops and releases on drop
+// ```
+
+from std::core import Option, Result, Drop
+from std::ffi::exec import AllocVec, FreeVec, CopyMem
+from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR, DMAF_SETCLR, DMAF_MASTER
+from std::hardware::registers import CUSTOM_BASE, DMACON, INTREQ, ADKCON, VPOSR
+from std::hardware::paula import period_from_hz, hz_from_period, channel_base_offset, channel_dma_bit, channel_int_bit, is_valid_period, is_valid_volume, is_valid_channel, PAULA_MAX_VOLUME, PAULA_MIN_PERIOD, PAULA_MAX_PERIOD, PAULA_MAX_LENGTH_WORDS, PAULA_MAX_LENGTH_BYTES, PAULA_PAL_CLOCK, PAULA_NTSC_CLOCK, PERIOD_11025_PAL, PERIOD_11025_NTSC, AUD0LCH
+from std::audio::errors import AudioError
+
+// ============================================================================
+// Playback Mode
+// ============================================================================
+
+/// Playback mode hint (currently informational only)
+///
+/// NOTE: Paula hardware always loops samples automatically. True one-shot
+/// playback requires audio interrupt handling which is not yet implemented.
+/// For now, use stop() or the sample's duration_ms() to end playback manually.
+///
+/// This enum exists for future compatibility when interrupt-based one-shot
+/// mode is implemented.
+pub enum PlaybackMode {
+    /// Hint: play once then stop (not yet implemented - loops until stop())
+    OneShot,
+    /// Loop continuously until stop() is called
+    Loop,
+}
+
+// ============================================================================
+// Sample Handle
+// ============================================================================
+
+/// RAII wrapper for audio sample data in chip RAM
+///
+/// Paula requires sample data to be in chip RAM (the lower 2MB that the
+/// custom chips can access via DMA). This handle manages the lifecycle:
+/// - Allocates chip RAM on creation
+/// - Copies sample data (source can be in any memory type)
+/// - Frees chip RAM automatically on drop
+///
+/// Sample format: Signed 8-bit PCM (-128 to +127)
+/// This is the only format Paula supports.
+///
+/// # Example
+/// ```novus
+/// // Load from raw PCM data
+/// let sample = SampleHandle::from_data(my_pcm_data, 2048)?
+///
+/// // Play the sample
+/// let mut channel = AudioChannel::acquire(0)?
+/// channel.play(&sample, PlaybackMode::OneShot)
+///
+/// // Sample memory automatically freed when handle goes out of scope
+/// ```
+pub struct SampleHandle {
+    data: *u8,            // Pointer to sample data in chip RAM
+    length_bytes: u32,    // Length in bytes
+    length_words: u16,    // Length in words (for hardware register)
+    sample_rate: u32,     // Original sample rate in Hz (0 if unknown)
+    period_pal: u16,      // Pre-calculated period for PAL playback
+    period_ntsc: u16,     // Pre-calculated period for NTSC playback
+    owns_data: bool,      // True if we allocated data and should free on drop
+}
+
+impl SampleHandle {
+    /// Create a sample handle from raw PCM data
+    ///
+    /// The data is copied to newly allocated chip RAM. The source data
+    /// can be in any memory type (chip, fast, or stack).
+    ///
+    /// Sample format must be signed 8-bit PCM. This is the only format
+    /// Paula hardware supports.
+    ///
+    /// # Arguments
+    /// * `data` - Pointer to signed 8-bit PCM sample data
+    /// * `length_bytes` - Length in bytes (will be rounded up to even)
+    ///
+    /// # Returns
+    /// * `Ok(SampleHandle)` - Sample loaded into chip RAM
+    /// * `Err(AudioError::SampleTooLong)` - Exceeds 128KB limit
+    /// * `Err(AudioError::SampleTooShort)` - Less than 2 bytes
+    /// * `Err(AudioError::AllocationFailed)` - Out of chip RAM
+    ///
+    /// # Example
+    /// ```novus
+    /// let sample = SampleHandle::from_data(pcm_bytes, 4096)?
+    /// ```
+    pub fn from_data(data: *u8, length_bytes: u32) -> Result<SampleHandle, AudioError> {
+        // Validate length
+        if length_bytes < 2 {
+            return Result::Err(AudioError::SampleTooShort)
+        }
+        if length_bytes > PAULA_MAX_LENGTH_BYTES {
+            return Result::Err(AudioError::SampleTooLong)
+        }
+
+        // Round up to word boundary (Paula reads words, not bytes)
+        // Clear the low bit to make even: (x + 1) & ~1
+        let padded_length = (length_bytes + 1) & ~(u32)1
+        let length_words = (u16)(padded_length / 2)
+
+        unsafe {
+            // Allocate chip RAM (required for Paula DMA)
+            let chip_mem = AllocVec(padded_length, MEMF_CHIP | MEMF_CLEAR)
+            if !chip_mem {
+                return Result::Err(AudioError::AllocationFailed)
+            }
+
+            // Copy sample data to chip RAM
+            CopyMem(data, chip_mem, length_bytes)
+
+            return Result::Ok(SampleHandle {
+                data: chip_mem,
+                length_bytes: length_bytes,
+                length_words: length_words,
+                sample_rate: 0,              // Unknown
+                period_pal: PERIOD_11025_PAL,   // Default to 11025 Hz
+                period_ntsc: PERIOD_11025_NTSC,
+                owns_data: true,             // We allocated this memory
+            })
+        }
+    }
+
+    /// Create a sample handle with known sample rate
+    ///
+    /// Like from_data(), but also records the original sample rate.
+    /// This allows automatic period calculation for correct playback pitch.
+    ///
+    /// # Arguments
+    /// * `data` - Pointer to signed 8-bit PCM sample data
+    /// * `length_bytes` - Length in bytes
+    /// * `sample_rate` - Original sample rate in Hz (e.g., 11025, 22050)
+    ///
+    /// # Example
+    /// ```novus
+    /// // Sample recorded at 22050 Hz
+    /// let sample = SampleHandle::from_data_with_rate(pcm, 8192, 22050)?
+    ///
+    /// // Play at original rate
+    /// channel.play_native(&sample, PlaybackMode::OneShot, true)
+    /// ```
+    pub fn from_data_with_rate(data: *u8, length_bytes: u32, sample_rate: u32) -> Result<SampleHandle, AudioError> {
+        var handle = SampleHandle::from_data(data, length_bytes)?
+        handle.sample_rate = sample_rate
+
+        // Pre-calculate periods for both PAL and NTSC
+        // Use unwrap_or to keep default if calculation fails
+        handle.period_pal = period_from_hz(sample_rate, true).unwrap_or(handle.period_pal)
+        handle.period_ntsc = period_from_hz(sample_rate, false).unwrap_or(handle.period_ntsc)
+
+        return Result::Ok(handle)
+    }
+
+    /// Create a sample handle that references existing chip RAM data
+    ///
+    /// Use this when sample data is already in chip RAM (e.g., loaded from
+    /// disk directly to chip RAM, or compile-time embedded via @audio).
+    ///
+    /// WARNING: This does NOT copy data or allocate memory. The caller is
+    /// responsible for ensuring the data remains valid and is properly freed.
+    /// The Drop implementation will NOT free this memory.
+    ///
+    /// # Arguments
+    /// * `chip_ptr` - Pointer to sample data already in chip RAM
+    /// * `length_bytes` - Length in bytes
+    /// * `sample_rate` - Sample rate in Hz (use 0 if unknown)
+    ///
+    /// # Safety
+    /// The pointer must point to valid chip RAM that outlives the handle.
+    pub fn from_chip_ram(chip_ptr: *u8, length_bytes: u32, sample_rate: u32) -> Result<SampleHandle, AudioError> {
+        if length_bytes < 2 {
+            return Result::Err(AudioError::SampleTooShort)
+        }
+        if length_bytes > PAULA_MAX_LENGTH_BYTES {
+            return Result::Err(AudioError::SampleTooLong)
+        }
+
+        // Check alignment (Paula requires word-aligned addresses)
+        if ((u32)chip_ptr & 1) != 0 {
+            return Result::Err(AudioError::SampleMisaligned)
+        }
+
+        // Verify pointer is in chip RAM range (first 2MB: $000000-$1FFFFF)
+        // Paula DMA can only access this memory region
+        let addr = (u32)chip_ptr
+        if addr >= $00200000 {
+            return Result::Err(AudioError::SampleNotChipRam)
+        }
+
+        let length_words = (u16)((length_bytes + 1) / 2)
+
+        var handle = SampleHandle {
+            data: chip_ptr,
+            length_bytes: length_bytes,
+            length_words: length_words,
+            sample_rate: sample_rate,
+            period_pal: PERIOD_11025_PAL,
+            period_ntsc: PERIOD_11025_NTSC,
+            owns_data: false,            // We don't own this memory - caller must manage it
+        }
+
+        // Calculate periods if sample rate known
+        if sample_rate > 0 {
+            handle.period_pal = period_from_hz(sample_rate, true).unwrap_or(handle.period_pal)
+            handle.period_ntsc = period_from_hz(sample_rate, false).unwrap_or(handle.period_ntsc)
+        }
+
+        return Result::Ok(handle)
+    }
+
+    /// Get pointer to sample data in chip RAM
+    ///
+    /// This is used internally to set up Paula registers.
+    pub fn ptr(&self) -> *u8 {
+        return self.data
+    }
+
+    /// Get length in words (for AUDxLEN register)
+    ///
+    /// Paula's length register counts words, not bytes.
+    pub fn words(&self) -> u16 {
+        return self.length_words
+    }
+
+    /// Get length in bytes
+    pub fn bytes(&self) -> u32 {
+        return self.length_bytes
+    }
+
+    /// Get the original sample rate (0 if unknown)
+    pub fn sample_rate(&self) -> u32 {
+        return self.sample_rate
+    }
+
+    /// Get the PAL period for this sample's native rate
+    ///
+    /// Use this period to play the sample at its original pitch on PAL systems.
+    pub fn period_pal(&self) -> u16 {
+        return self.period_pal
+    }
+
+    /// Get the NTSC period for this sample's native rate
+    ///
+    /// Use this period to play the sample at its original pitch on NTSC systems.
+    pub fn period_ntsc(&self) -> u16 {
+        return self.period_ntsc
+    }
+
+    /// Calculate playback duration in milliseconds
+    ///
+    /// # Arguments
+    /// * `pal` - True for PAL timing, false for NTSC
+    ///
+    /// # Returns
+    /// Duration in milliseconds at the sample's native rate
+    @suppress("W0001", "Integer arithmetic is safe here")
+    pub fn duration_ms(&self, pal: bool) -> u32 {
+        var rate: u32 = self.sample_rate
+        if rate == 0 {
+            // Calculate from period
+            var period: u16 = self.period_pal
+            if !pal {
+                period = self.period_ntsc
+            }
+            rate = hz_from_period(period, pal)
+        }
+
+        if rate == 0 {
+            return 0
+        }
+
+        // duration_ms = (length_bytes * 1000) / sample_rate
+        return (self.length_bytes * 1000) / rate
+    }
+}
+
+impl Drop for SampleHandle {
+    fn drop(&mut self) {
+        // Only free if we own the memory (allocated via from_data/from_data_with_rate)
+        // from_chip_ram() sets owns_data=false since caller manages that memory
+        if self.owns_data && (u32)self.data != 0 {
+            unsafe {
+                FreeVec(self.data)
+                self.data = null
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Audio Channel
+// ============================================================================
+
+/// RAII handle for a Paula audio channel
+///
+/// Directly controls one of Paula's 4 hardware audio channels.
+/// Automatically stops playback when dropped.
+///
+/// Stereo assignment is fixed in hardware:
+/// - Channels 0 and 3 -> LEFT speaker
+/// - Channels 1 and 2 -> RIGHT speaker
+///
+/// # Example
+/// ```novus
+/// // Acquire channel 0 (left speaker)
+/// let mut ch = AudioChannel::acquire(0)?
+///
+/// // Configure playback
+/// ch.set_volume(64)?        // Max volume
+/// ch.set_period(322)?       // ~11 kHz on PAL
+///
+/// // Start playing
+/// ch.play(&sample, PlaybackMode::Loop)
+///
+/// // Change volume while playing
+/// ch.set_volume(32)?        // Half volume
+///
+/// // Stop when done
+/// ch.stop()
+///
+/// // Or just let it drop - channel stops automatically
+/// ```
+pub struct AudioChannel {
+    channel: u8,       // Channel number (0-3)
+    period: u16,       // Current period setting
+    volume: u16,       // Current volume setting
+    active: bool,      // Is DMA enabled for this channel?
+}
+
+impl AudioChannel {
+    /// Acquire a hardware audio channel
+    ///
+    /// This directly takes control of the specified Paula channel.
+    /// Does NOT go through audio.device, so it won't cooperate with
+    /// other applications.
+    ///
+    /// For OS-friendly audio, use std::audio::device instead.
+    ///
+    /// # Arguments
+    /// * `channel` - Channel number (0-3)
+    ///   - 0: Left speaker
+    ///   - 1: Right speaker
+    ///   - 2: Right speaker
+    ///   - 3: Left speaker
+    ///
+    /// # Returns
+    /// * `Ok(AudioChannel)` - Channel acquired
+    /// * `Err(AudioError::InvalidChannel)` - Channel number > 3
+    ///
+    /// # Example
+    /// ```novus
+    /// // Acquire left channel
+    /// let left = AudioChannel::acquire(0)?
+    ///
+    /// // Acquire right channel
+    /// let right = AudioChannel::acquire(1)?
+    /// ```
+    pub fn acquire(channel: u8) -> Result<AudioChannel, AudioError> {
+        if !is_valid_channel(channel) {
+            return Result::Err(AudioError::InvalidChannel)
+        }
+
+        return Result::Ok(AudioChannel {
+            channel: channel,
+            period: PERIOD_11025_PAL,  // Default ~11 kHz
+            volume: PAULA_MAX_VOLUME,  // Default max volume
+            active: false,
+        })
+    }
+
+    /// Get the channel number (0-3)
+    pub fn channel_num(&self) -> u8 {
+        return self.channel
+    }
+
+    /// Set the playback period (lower = higher pitch)
+    ///
+    /// The period determines how fast samples are played.
+    /// Paula's DMA fetches one sample per (period) clock cycles.
+    ///
+    /// Valid range: 124-65535
+    /// - 124: ~28.6 kHz (highest quality, near DMA bandwidth limit)
+    /// - 322: ~11 kHz (good quality, lower CPU/DMA load)
+    /// - 428: ~8.3 kHz (ProTracker standard)
+    ///
+    /// # Arguments
+    /// * `period` - Period value (124-65535)
+    ///
+    /// # Returns
+    /// * `Ok(())` - Period updated
+    /// * `Err(AudioError::InvalidPeriod)` - Period < 124
+    pub fn set_period(&mut self, period: u16) -> Result<(), AudioError> {
+        if !is_valid_period(period) {
+            return Result::Err(AudioError::InvalidPeriod)
+        }
+
+        self.period = period
+
+        if self.active {
+            self.write_period()
+        }
+
+        return Result::Ok(())
+    }
+
+    /// Set sample rate in Hz (convenience method)
+    ///
+    /// Automatically calculates the correct period value.
+    ///
+    /// # Arguments
+    /// * `hz` - Sample rate in Hz (e.g., 8000, 11025, 22050)
+    /// * `pal` - True for PAL system (50Hz), false for NTSC (60Hz)
+    ///
+    /// # Returns
+    /// * `Ok(())` - Sample rate set
+    /// * `Err(AudioError::InvalidSampleRate)` - Rate out of valid range
+    ///
+    /// # Example
+    /// ```novus
+    /// // Set to 22050 Hz on PAL
+    /// channel.set_sample_rate(22050, true)?
+    /// ```
+    pub fn set_sample_rate(&mut self, hz: u32, pal: bool) -> Result<(), AudioError> {
+        match period_from_hz(hz, pal) {
+            Option::Some(period) => {
+                self.period = period
+                if self.active {
+                    self.write_period()
+                }
+                return Result::Ok(())
+            },
+            Option::None => {
+                return Result::Err(AudioError::InvalidSampleRate)
+            },
+        }
+    }
+
+    /// Set sample rate with auto-detected PAL/NTSC
+    ///
+    /// Automatically detects whether the system is PAL or NTSC
+    /// and calculates the appropriate period.
+    ///
+    /// # Arguments
+    /// * `hz` - Sample rate in Hz
+    ///
+    /// # Example
+    /// ```novus
+    /// // Auto-detect system and set rate
+    /// channel.set_sample_rate_auto(22050)?
+    /// ```
+    pub fn set_sample_rate_auto(&mut self, hz: u32) -> Result<(), AudioError> {
+        return self.set_sample_rate(hz, is_pal_system())
+    }
+
+    /// Get the current period setting
+    pub fn get_period(&self) -> u16 {
+        return self.period
+    }
+
+    /// Set volume (0-64)
+    ///
+    /// Paula uses 6-bit volume with 65 levels (0-64, not 0-63).
+    /// - 0: Silent
+    /// - 64: Maximum volume
+    ///
+    /// Volume changes take effect immediately if playing.
+    ///
+    /// # Arguments
+    /// * `volume` - Volume level (0-64)
+    ///
+    /// # Returns
+    /// * `Ok(())` - Volume updated
+    /// * `Err(AudioError::InvalidVolume)` - Volume > 64
+    pub fn set_volume(&mut self, volume: u16) -> Result<(), AudioError> {
+        if !is_valid_volume(volume) {
+            return Result::Err(AudioError::InvalidVolume)
+        }
+
+        self.volume = volume
+
+        if self.active {
+            self.write_volume()
+        }
+
+        return Result::Ok(())
+    }
+
+    /// Get the current volume setting (0-64)
+    pub fn get_volume(&self) -> u16 {
+        return self.volume
+    }
+
+    /// Check if the channel is currently playing
+    pub fn is_playing(&self) -> bool {
+        return self.active
+    }
+
+    /// Play a sample
+    ///
+    /// Starts playback immediately using the current period and volume.
+    /// If already playing, stops the previous sample first to avoid DMA glitches.
+    ///
+    /// # Arguments
+    /// * `sample` - Sample to play (must remain valid during playback!)
+    /// * `mode` - Currently ignored; Paula always loops until stop() is called
+    ///
+    /// # Returns
+    /// * `Ok(())` - Playback started
+    /// * `Err(AudioError::SampleMisaligned)` - Sample pointer not word-aligned
+    ///
+    /// # Note
+    /// Paula hardware always loops samples. To play once, calculate the
+    /// sample duration and call stop() after that time, or use audio interrupts.
+    ///
+    /// # Example
+    /// ```novus
+    /// channel.play(&explosion_sound, PlaybackMode::Loop)?
+    /// delay(Duration::millis(explosion_sound.duration_ms(true)))
+    /// channel.stop()
+    /// ```
+    pub fn play(&mut self, sample: &SampleHandle, mode: PlaybackMode) -> Result<(), AudioError> {
+        // Validate sample pointer is word-aligned
+        let addr = (u32)sample.ptr()
+        if (addr & 1) != 0 {
+            return Result::Err(AudioError::SampleMisaligned)
+        }
+
+        unsafe {
+            // If already playing, stop DMA first to avoid glitches
+            if self.active {
+                let dma_bit = channel_dma_bit(self.channel)
+                let dmacon = (*u16)(CUSTOM_BASE + DMACON)
+                *dmacon = dma_bit  // Clear DMA (no SETCLR)
+            }
+
+            let base = channel_base_offset(self.channel)
+
+            // Write sample pointer (high word first - critical for Paula!)
+            let lch = (*u16)(CUSTOM_BASE + base)
+            let lcl = (*u16)(CUSTOM_BASE + base + 2)
+            *lch = (u16)(addr >> 16)
+            *lcl = (u16)(addr & $FFFF)
+
+            // Write length in words
+            let len_reg = (*u16)(CUSTOM_BASE + base + 4)
+            *len_reg = sample.words()
+
+            // Write period and volume
+            self.write_period()
+            self.write_volume()
+
+            // Enable audio DMA for this channel
+            // DMAF_SETCLR = set bits (not clear)
+            // DMAF_MASTER = master DMA enable
+            // channel_dma_bit = this channel's DMA bit
+            let dma_bit = channel_dma_bit(self.channel)
+            let dmacon = (*u16)(CUSTOM_BASE + DMACON)
+            *dmacon = DMAF_SETCLR | DMAF_MASTER | dma_bit
+
+            self.active = true
+        }
+
+        return Result::Ok(())
+    }
+
+    /// Play a sample at its native sample rate
+    ///
+    /// Uses the pre-calculated period from the sample's metadata.
+    /// This ensures correct pitch for samples with known sample rates.
+    ///
+    /// # Arguments
+    /// * `sample` - Sample to play
+    /// * `mode` - Currently ignored; Paula always loops until stop() is called
+    /// * `pal` - True for PAL, false for NTSC
+    ///
+    /// # Example
+    /// ```novus
+    /// // Sample recorded at 22050 Hz - play at correct pitch
+    /// channel.play_native(&sample, PlaybackMode::Loop, true)?
+    /// ```
+    pub fn play_native(&mut self, sample: &SampleHandle, mode: PlaybackMode, pal: bool) -> Result<(), AudioError> {
+        if pal {
+            self.period = sample.period_pal()
+        } else {
+            self.period = sample.period_ntsc()
+        }
+        return self.play(sample, mode)
+    }
+
+    /// Play a sample at its native rate with auto-detected PAL/NTSC
+    ///
+    /// Like play_native(), but automatically detects PAL/NTSC.
+    ///
+    /// # Example
+    /// ```novus
+    /// // Play at correct pitch for current system
+    /// channel.play_native_auto(&sample, PlaybackMode::Loop)?
+    /// ```
+    pub fn play_native_auto(&mut self, sample: &SampleHandle, mode: PlaybackMode) -> Result<(), AudioError> {
+        return self.play_native(sample, mode, is_pal_system())
+    }
+
+    /// Stop playback
+    ///
+    /// Disables audio DMA for this channel, clears any pending audio
+    /// interrupt, and sets volume to 0 to prevent residual noise.
+    pub fn stop(&mut self) {
+        if self.active {
+            unsafe {
+                // Disable DMA for this channel (no SETCLR = clear bit)
+                let dma_bit = channel_dma_bit(self.channel)
+                let dmacon = (*u16)(CUSTOM_BASE + DMACON)
+                *dmacon = dma_bit
+
+                // Clear any pending audio interrupt for this channel
+                // This prevents spurious interrupts after stopping
+                let int_bit = channel_int_bit(self.channel)
+                let intreq = (*u16)(CUSTOM_BASE + INTREQ)
+                *intreq = int_bit
+
+                // Set volume to 0 to prevent noise
+                self.volume = 0
+                self.write_volume()
+            }
+            self.active = false
+        }
+    }
+
+    /// Fade volume to a target level over time
+    ///
+    /// This is a simple linear fade that blocks until complete.
+    /// For non-blocking fades, implement your own using a timer.
+    ///
+    /// # Arguments
+    /// * `target` - Target volume (0-64)
+    /// * `steps` - Number of intermediate steps
+    /// * `delay_fn` - Function to call for each step delay
+    ///
+    /// # Example
+    /// ```novus
+    /// // Fade out over 10 steps
+    /// channel.fade_to(0, 10, || delay(Duration::millis(50)))
+    /// ```
+    pub fn fade_to(&mut self, target: u16, steps: u32, delay_fn: fn()) {
+        if steps == 0 {
+            let _ = self.set_volume(target)
+            return
+        }
+
+        let start = self.volume
+        var i: u32 = 0
+
+        while i < steps {
+            // Linear interpolation
+            let progress = ((i + 1) * 100) / steps
+            var new_vol: u16 = 0
+            if target > start {
+                new_vol = start + (((target - start) * (u16)progress) / 100)
+            } else {
+                new_vol = start - (((start - target) * (u16)progress) / 100)
+            }
+
+            let _ = self.set_volume(new_vol)
+            delay_fn()
+            i++
+        }
+
+        let _ = self.set_volume(target)
+    }
+
+    // Internal: write period to hardware register
+    fn write_period(&self) {
+        unsafe {
+            let base = channel_base_offset(self.channel)
+            let reg = (*u16)(CUSTOM_BASE + base + 6)
+            *reg = self.period
+        }
+    }
+
+    // Internal: write volume to hardware register
+    fn write_volume(&self) {
+        unsafe {
+            let base = channel_base_offset(self.channel)
+            let reg = (*u16)(CUSTOM_BASE + base + 8)
+            *reg = self.volume
+        }
+    }
+}
+
+impl Drop for AudioChannel {
+    fn drop(&mut self) {
+        // Always stop playback when the handle is dropped
+        // This prevents orphaned DMA that could play garbage
+        self.stop()
+    }
+}
+
+// ============================================================================
+// Convenience Functions
+// ============================================================================
+
+/// Play a one-shot sound effect on any available channel
+///
+/// This is a quick helper for simple sound effects. It:
+/// 1. Acquires the specified channel
+/// 2. Plays the sample once
+/// 3. Returns the channel handle (drop it when done)
+///
+/// # Arguments
+/// * `channel` - Channel number (0-3)
+/// * `sample` - Sample to play
+/// * `pal` - True for PAL, false for NTSC
+///
+/// # Returns
+/// AudioChannel handle - keep it alive until sound finishes!
+///
+/// # Example
+/// ```novus
+/// // Play explosion sound
+/// let handle = play_sound(0, &explosion, true)?
+/// delay(explosion.duration_ms(true))
+/// // handle dropped, channel stops
+/// ```
+pub fn play_sound(channel: u8, sample: &SampleHandle, pal: bool) -> Result<AudioChannel, AudioError> {
+    var ch = AudioChannel::acquire(channel)?
+    ch.play_native(sample, PlaybackMode::Loop, pal)?
+    return Result::Ok(ch)
+}
+
+/// Stop all audio channels
+///
+/// Immediately silences all 4 Paula channels by disabling their DMA
+/// and clearing any pending audio interrupts. Useful for cleanup or emergency mute.
+pub fn stop_all_channels() {
+    unsafe {
+        // Disable DMA for all audio channels (no SETCLR = clear bits)
+        let dmacon = (*u16)(CUSTOM_BASE + DMACON)
+        *dmacon = $000F  // DMAF_AUD0 | AUD1 | AUD2 | AUD3
+
+        // Clear all pending audio interrupts
+        // INTF_AUD0=$0080, AUD1=$0100, AUD2=$0200, AUD3=$0400 -> $0780
+        let intreq = (*u16)(CUSTOM_BASE + INTREQ)
+        *intreq = $0780
+
+        // Set all volumes to 0
+        var ch: u8 = 0
+        while ch < 4 {
+            let base = channel_base_offset(ch)
+            let vol_reg = (*u16)(CUSTOM_BASE + base + 8)
+            *vol_reg = 0
+            ch++
+        }
+    }
+}
+
+// ============================================================================
+// System Detection
+// ============================================================================
+
+/// Detect if the system is PAL or NTSC
+///
+/// Reads the VPOSR register to determine the video standard.
+/// This affects audio timing calculations since PAL and NTSC
+/// have different clock frequencies.
+///
+/// # Returns
+/// - `true` for PAL systems (50Hz, European)
+/// - `false` for NTSC systems (60Hz, American/Japanese)
+///
+/// # Example
+/// ```novus
+/// let period = if is_pal_system() {
+///     sample.period_pal()
+/// } else {
+///     sample.period_ntsc()
+/// }
+/// ```
+pub fn is_pal_system() -> bool {
+    unsafe {
+        // VPOSR bit 12 (LOF - Long Frame) indicates video system:
+        // PAL has 312/313 lines per field, NTSC has 262/263
+        // However, the reliable method is to check the Agnus ID in bits 8-14
+        // Bit 12 of VPOSR: 0 = PAL, 1 = NTSC (when checking during vertical blank)
+        // More reliable: Check if we're on a PAL Agnus
+        // For simplicity, we check the current frame type bit
+        let vposr = (*u16)(CUSTOM_BASE + VPOSR)
+        let value = *vposr
+
+        // Bit 15 (LOF - Long Frame) alternates each field
+        // For PAL: long frame = 313 lines, short = 312
+        // For NTSC: long frame = 263 lines, short = 262
+        // We can't reliably detect from this alone, so we check Agnus ID
+
+        // Bits 8-14 contain Agnus/Alice ID
+        // PAL Agnus IDs have bit 12 = 0
+        // NTSC Agnus IDs have bit 12 = 1
+        return (value & $1000) == 0
+    }
+}
+
+// ============================================================================
+// Audio System Initialization
+// ============================================================================
+
+/// Initialize the Paula audio system
+///
+/// This should be called before using direct Paula audio.
+/// Sets up ADKCON to disable audio modulation (standard playback mode).
+///
+/// # Note
+/// This is only needed for direct Paula access. The audio.device
+/// and ptplayer handle their own initialization.
+///
+/// # Example
+/// ```novus
+/// init_audio()
+/// let mut channel = AudioChannel::acquire(0)?
+/// ```
+pub fn init_audio() {
+    unsafe {
+        // Clear audio modulation bits in ADKCON
+        // This ensures standard (non-modulated) audio playback
+        // Bits 0-3: USE0-USE3 (period modulation, should be 0)
+        // Bits 4-7: USE0V-USE3V (volume modulation, should be 0)
+        let adkcon = (*u16)(CUSTOM_BASE + ADKCON)
+        *adkcon = $00FF  // Clear all audio modulation bits (no SETCLR)
+    }
+}
+
+/// Initialize audio and return a channel ready to play
+///
+/// Convenience function that initializes the audio system and acquires a channel.
+///
+/// # Arguments
+/// * `channel` - Channel number (0-3)
+///
+/// # Returns
+/// Configured AudioChannel ready for playback
+///
+/// # Example
+/// ```novus
+/// let mut ch = init_channel(0)?
+/// ch.play(&sample, PlaybackMode::Loop)?
+/// ```
+pub fn init_channel(channel: u8) -> Result<AudioChannel, AudioError> {
+    init_audio()
+    return AudioChannel::acquire(channel)
+}

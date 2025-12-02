@@ -1,0 +1,59 @@
+// MOD Player Demo - Plays a ProTracker module using ptplayer
+//
+// This example demonstrates playing a MOD file on the Amiga using ptplayer.
+// The MOD data is embedded at compile time using the @mod attribute,
+// which automatically places it in chip RAM.
+//
+// Note: This requires an actual Amiga or accurate emulator to run.
+// Press Ctrl+C to stop playback.
+
+from std::core import Result
+from std::audio::ptplayer import ModPlayer
+from std::audio::errors import AudioError
+from std::hardware::chipset import DISPLAY, DisplayType
+from std::ffi::graphics import WaitTOF
+
+// Embed the MOD file at compile time - automatically placed in chip RAM
+@mod("GSLINGER.MOD")
+static music_data: [u8] = []
+
+pub fn main() -> i32 {
+    // Detect PAL/NTSC from hardware
+    let is_pal = DISPLAY() == DisplayType::PAL
+
+    // Create the MOD player
+    let player_result = ModPlayer::new(is_pal)
+
+    match player_result {
+        Result::Ok(mut player) => {
+            // Initialize the module for playback
+            let init_result = player.init(&music_data[0], 0)
+            match init_result {
+                Result::Ok(_) => {
+                    // Start playback!
+                    player.play()
+
+                    // Play for 30 seconds (50 frames/sec on PAL, 60 on NTSC)
+                    let frames_per_second: u32 = is_pal ? 50 : 60
+                    let total_frames: u32 = frames_per_second * 30
+
+                    var frame: u32 = 0
+                    while frame < total_frames {
+                        WaitTOF()  // Wait for vertical blank
+                        frame++
+                    }
+
+                    // Stop playback (also happens automatically when player is dropped)
+                    player.stop()
+                    return 0  // Success
+                },
+                Result::Err(_) => {
+                    return 2  // Failed to initialize module
+                }
+            }
+        },
+        Result::Err(_) => {
+            return 1  // Failed to create player (CIA install failed)
+        }
+    }
+}

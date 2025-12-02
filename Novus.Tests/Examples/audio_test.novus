@@ -1,0 +1,158 @@
+// Audio System Test
+//
+// This example demonstrates the Paula audio system:
+// 1. Compile-time audio conversion with @audio attribute
+// 2. Direct Paula hardware access
+// 3. SampleHandle for chip RAM management
+//
+// Note: This is a compilation test. Running requires an Amiga or emulator.
+
+from std::core import Result
+from std::hardware::paula import period_from_hz, hz_from_period, PAULA_PAL_CLOCK, PAULA_NTSC_CLOCK
+from std::hardware::paula import PAULA_MAX_VOLUME, PAULA_MIN_PERIOD, PAULA_MAX_PERIOD
+from std::hardware::paula import PERIOD_11025_PAL, PERIOD_11025_NTSC
+from std::hardware::paula import is_valid_period, is_valid_volume, is_valid_channel, channel_dma_bit
+
+// Test compile-time constants
+fn test_paula_constants() -> i32 {
+    // Check clock frequencies
+    if PAULA_PAL_CLOCK != 3546895 {
+        return 1
+    }
+    if PAULA_NTSC_CLOCK != 3579545 {
+        return 2
+    }
+
+    // Check limits
+    if PAULA_MAX_VOLUME != 64 {
+        return 3
+    }
+    if PAULA_MIN_PERIOD != 124 {
+        return 4
+    }
+    if PAULA_MAX_PERIOD != 65535 {
+        return 5
+    }
+
+    return 0
+}
+
+// Test period calculation
+fn test_period_calculation() -> i32 {
+    // 11025 Hz should give period ~322 for PAL
+    let period_opt = period_from_hz(11025, true)
+    match period_opt {
+        Option::None => return 1,
+        Option::Some(p) => {
+            if p < 300 || p > 350 {
+                return 2
+            }
+        }
+    }
+
+    // Reverse calculation should give back ~11025
+    let hz = hz_from_period(322, true)
+    if hz < 10000 || hz > 12000 {
+        return 3
+    }
+
+    return 0
+}
+
+// Test validation functions
+fn test_validation() -> i32 {
+    // Valid periods
+    if !is_valid_period(124) {
+        return 1
+    }
+    if !is_valid_period(322) {
+        return 2
+    }
+    if !is_valid_period(65535) {
+        return 3
+    }
+
+    // Invalid periods
+    if is_valid_period(123) {
+        return 4
+    }
+    if is_valid_period(0) {
+        return 5
+    }
+
+    // Valid volumes
+    if !is_valid_volume(0) {
+        return 6
+    }
+    if !is_valid_volume(64) {
+        return 7
+    }
+
+    // Invalid volumes
+    if is_valid_volume(65) {
+        return 8
+    }
+
+    // Valid channels
+    if !is_valid_channel(0) {
+        return 9
+    }
+    if !is_valid_channel(3) {
+        return 10
+    }
+
+    // Invalid channels
+    if is_valid_channel(4) {
+        return 11
+    }
+
+    return 0
+}
+
+// Test DMA bit calculation
+fn test_dma_bits() -> i32 {
+    // Channel 0 should be bit 0
+    if channel_dma_bit(0) != $0001 {
+        return 1
+    }
+    // Channel 1 should be bit 1
+    if channel_dma_bit(1) != $0002 {
+        return 2
+    }
+    // Channel 2 should be bit 2
+    if channel_dma_bit(2) != $0004 {
+        return 3
+    }
+    // Channel 3 should be bit 3
+    if channel_dma_bit(3) != $0008 {
+        return 4
+    }
+
+    return 0
+}
+
+// Main test function
+pub fn main() -> i32 {
+    var result = test_paula_constants()
+    if result != 0 {
+        return 100 + result
+    }
+
+    result = test_period_calculation()
+    if result != 0 {
+        return 200 + result
+    }
+
+    result = test_validation()
+    if result != 0 {
+        return 300 + result
+    }
+
+    result = test_dma_bits()
+    if result != 0 {
+        return 400 + result
+    }
+
+    // All tests passed
+    return 0
+}

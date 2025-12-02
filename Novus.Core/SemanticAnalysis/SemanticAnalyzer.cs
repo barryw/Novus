@@ -1320,18 +1320,16 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
 
             // Validate that the trait exists
+            // If the trait isn't in scope (e.g., when processing imports and the trait wasn't imported),
+            // we simply skip this impl block. This is not an error - the trait impl just isn't needed
+            // when the trait itself isn't being used.
             if (!_symbols.HasTrait(traitName))
             {
-                var location = SourceLocationHelper.FromToken(context.traitTypeName.IDENTIFIER(0).Symbol, _filePath, _sourceLines);
-                _diagnostics.ReportError(
-                    "E0032",
-                    $"trait '{traitName}' not found",
-                    location,
-                    helpTexts: new List<string>
-                    {
-                        $"ensure the trait '{traitName}' is defined or imported"
-                    }
-                );
+                // Clear generic params and return - no error for unimported traits
+                foreach (var paramName in genericParams)
+                {
+                    _genericParams.Remove(paramName);
+                }
                 return;
             }
 

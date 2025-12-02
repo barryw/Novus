@@ -1,0 +1,93 @@
+// ptplayer Test - MOD Player Integration
+//
+// This example tests the ptplayer MOD player library integration.
+// When compiled, the compiler should automatically detect ptplayer usage
+// and link the vendor/ptplayer/*.o files.
+//
+// Note: This is a compilation test. Running requires an Amiga with a MOD file.
+
+from std::core import Result
+from std::audio::ptplayer import ModPlayer, SfxStructure
+from std::audio::errors import AudioError
+
+// Test that we can create types from ptplayer
+fn test_sfx_structure() -> i32 {
+    // Create a test SfxStructure with a fake chip RAM address
+    // In real code, this would be actual sample data in chip RAM
+    let fake_chip_ptr = (*u8)$1000  // Low address simulating chip RAM
+
+    let sfx_result = SfxStructure::new(
+        fake_chip_ptr,  // Fake chip RAM pointer for test
+        100,            // length in words
+        322,            // period for ~11kHz
+        64,             // max volume
+        -1,             // any channel
+        10              // priority
+    )
+
+    // Verify creation succeeded
+    match sfx_result {
+        Result::Ok(sfx) => {
+            // Structure created successfully
+            return 0
+        },
+        Result::Err(e) => {
+            // Should not happen with valid inputs
+            return 1
+        }
+    }
+}
+
+// Test that validation catches invalid inputs
+fn test_sfx_validation() -> i32 {
+    // Test 1: Null pointer should fail
+    let null_result = SfxStructure::new(
+        (*u8)0,  // null pointer
+        100, 322, 64, -1, 10
+    )
+    match null_result {
+        Result::Ok(_) => { return 10 },  // Should have failed!
+        Result::Err(AudioError::NullSampleData) => { },  // Expected
+        Result::Err(_) => { return 11 }  // Wrong error
+    }
+
+    // Test 2: Invalid period (too low) should fail
+    let period_result = SfxStructure::new(
+        (*u8)$1000,  // valid address
+        100, 50, 64, -1, 10  // period 50 < 124
+    )
+    match period_result {
+        Result::Ok(_) => { return 20 },  // Should have failed!
+        Result::Err(AudioError::InvalidPeriod) => { },  // Expected
+        Result::Err(_) => { return 21 }  // Wrong error
+    }
+
+    // Test 3: Invalid volume should fail
+    let vol_result = SfxStructure::new(
+        (*u8)$1000,
+        100, 322, 100, -1, 10  // volume 100 > 64
+    )
+    match vol_result {
+        Result::Ok(_) => { return 30 },  // Should have failed!
+        Result::Err(AudioError::InvalidVolume) => { },  // Expected
+        Result::Err(_) => { return 31 }  // Wrong error
+    }
+
+    return 0
+}
+
+// Main test function
+pub fn main() -> i32 {
+    let result = test_sfx_structure()
+    if result != 0 {
+        return 100 + result
+    }
+
+    let validation_result = test_sfx_validation()
+    if validation_result != 0 {
+        return 200 + validation_result
+    }
+
+    // All tests passed
+    return 0
+}
