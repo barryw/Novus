@@ -1411,6 +1411,33 @@ public class CCodeGenerator
             sb.AppendLine();
         }
 
+        // Collect struct types used by static variables that need to be defined in the statics file
+        // These are typically structs created by @mod or @audio attributes
+        var staticStructTypes = new HashSet<IrStructType>();
+        foreach (var staticVar in _module.StaticVariables)
+        {
+            if (staticVar.Type is IrStructType structType)
+            {
+                // Emit struct types that are used by static variables
+                // The module.Structs list includes both local and imported-for-statics structs
+                if (_module.Structs.Any(s => s.StructName == structType.StructName))
+                {
+                    staticStructTypes.Add(structType);
+                }
+            }
+        }
+
+        // Emit struct typedefs for static variables
+        if (staticStructTypes.Count > 0)
+        {
+            sb.AppendLine("// Struct types for static variables");
+            foreach (var structType in staticStructTypes)
+            {
+                EmitStructTypeToBuilder(sb, structType);
+            }
+            sb.AppendLine();
+        }
+
         // Emit all module static variables with their definitions
         sb.AppendLine("// Module static variables");
         foreach (var staticVar in _module.StaticVariables)
@@ -1543,21 +1570,30 @@ public class CCodeGenerator
             _ => ""
         };
 
-        // Generate initial value
-        var initialValue = EmitValue(staticVar.InitialValue);
-
         // Emit the declaration with initialization
         var keywordStr = !string.IsNullOrEmpty(constKeyword) ? constKeyword + " " : "";
 
         // Special handling for arrays - use array syntax instead of pointer syntax
         if (staticVar.Type is IrArrayType arrayType)
         {
+            var initialValue = EmitValue(staticVar.InitialValue);
             var elementType = GetCType(arrayType.ElementType);
             var size = arrayType.Length;
             sb.AppendLine($"{sectionAttr}{keywordStr}{elementType} {staticVar.Name}[{size}] = {initialValue};");
         }
+        // VBCC FIX: For struct literals, use designated initializer syntax WITHOUT the type cast
+        // VBCC doesn't support compound literal syntax `(Type){ ... }` for static initialization
+        else if (staticVar.InitialValue is IrStructLiteral structLit)
+        {
+            var cType = GetCType(staticVar.Type);
+            var fields = structLit.FieldValues
+                .Select(kvp => $".{kvp.Key} = {EmitValue(kvp.Value)}")
+                .ToList();
+            sb.AppendLine($"{sectionAttr}{keywordStr}{cType} {staticVar.Name} = {{ {string.Join(", ", fields)} }};");
+        }
         else
         {
+            var initialValue = EmitValue(staticVar.InitialValue);
             var cType = GetCType(staticVar.Type);
             sb.AppendLine($"{sectionAttr}{keywordStr}{cType} {staticVar.Name} = {initialValue};");
         }
@@ -1608,6 +1644,10 @@ public class CCodeGenerator
         var structName = MangleName(structType);
         _currentEmittingStruct = structName;  // For error messages
 
+        // Add header guard to prevent redefinition (matches pattern used for enums)
+        var guardName = $"NOVUS_TYPE_{structName.ToUpper()}_DEFINED";
+        sb.AppendLine($"#ifndef {guardName}");
+        sb.AppendLine($"#define {guardName}");
         sb.AppendLine($"// Struct: {structType.Name}");
 
         // Check for #[packed] attribute
@@ -1642,6 +1682,7 @@ public class CCodeGenerator
         {
             sb.AppendLine($"#pragma pack()");
         }
+        sb.AppendLine($"#endif // {guardName}");
         sb.AppendLine();
 
         _currentEmittingStruct = null;  // Clear after emitting

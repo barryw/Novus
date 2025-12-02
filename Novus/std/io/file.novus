@@ -1,7 +1,7 @@
 // io.novus - High-level I/O for Amiga DOS
 // Namespace: std::io
 
-from std::ffi::dos import VPrintf
+from std::ffi::dos import VPrintf, Input, WaitForChar, Read
 
 // Printf-style formatted output using AmigaOS VPrintf
 // Format string uses AmigaOS RawDoFmt syntax:
@@ -35,4 +35,16 @@ pub fn write_array(format: *u8, args: *i32) -> i32 {
         result = VPrintf(format, args)
     }
     return result
+}
+
+/// Wait for a keypress from the console
+///
+/// Blocks until the user presses a key, then discards it.
+/// Useful for "press any key to continue" prompts.
+pub fn wait_for_key() {
+    let input_handle = Input()
+    WaitForChar(input_handle, -1)
+    // Read and discard the character
+    let mut buf: [u8; 1] = [0]
+    Read(input_handle, &buf[0], 1)
 }

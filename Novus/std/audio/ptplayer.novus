@@ -40,6 +40,7 @@
 
 from std::core import Option, Result, Drop
 from std::ffi::amiga_consts import DMAF_SETCLR, DMAF_MASTER, DMAF_AUD0, DMAF_AUD1, DMAF_AUD2, DMAF_AUD3
+from std::ffi::exec import FreeMem
 from std::hardware::registers import CUSTOM_BASE
 from std::audio::errors import AudioError
 from std::memory::chip import ChipAsset, Priority, ensure_chip_ram, is_chip_ram, ChipCacheError
@@ -356,6 +357,9 @@ pub struct ModPlayer {
     is_playing: bool,
     cia_installed: bool,
     pal_mode: bool,
+    // Chip RAM buffer allocated by init_asset() - must be freed on drop
+    chip_buffer: *u8,
+    chip_buffer_size: u32,
 }
 
 impl ModPlayer {
@@ -386,6 +390,8 @@ impl ModPlayer {
             is_playing: false,
             cia_installed: true,
             pal_mode: pal,
+            chip_buffer: (*u8)0,
+            chip_buffer_size: 0,
         })
     }
 
@@ -442,10 +448,31 @@ impl ModPlayer {
     /// player.init_asset(&music, 0)?
     /// ```
     pub fn init_asset(&mut self, asset: &ModAsset, start_position: u8) -> Result<(), AudioError> {
-        // Get chip RAM pointer (automatically copies if needed)
-        let result = asset.as_chip_ptr()
+        // Free any previously allocated chip buffer
+        if self.chip_buffer {
+            unsafe {
+                FreeMem(self.chip_buffer, self.chip_buffer_size)
+            }
+            self.chip_buffer = (*u8)0
+            self.chip_buffer_size = 0
+        }
+
+        // Check if data is already in chip RAM
+        let data_ptr = asset.data
+        let data_size = asset.size
+
+        if is_chip_ram(data_ptr) {
+            // Already in chip RAM, use directly (no allocation needed)
+            return self.init(data_ptr, start_position)
+        }
+
+        // Need to copy to chip RAM
+        let result = ensure_chip_ram(data_ptr, data_size, Priority::Normal)
         match result {
             Result::Ok(chip_ptr) => {
+                // Track this allocation for cleanup
+                self.chip_buffer = chip_ptr
+                self.chip_buffer_size = data_size
                 return self.init(chip_ptr, start_position)
             },
             Result::Err(_) => {
@@ -644,6 +671,15 @@ impl Drop for ModPlayer {
                 __novus_mt_remove_cia(custom)
             }
             self.cia_installed = false
+        }
+
+        // Free any chip RAM we allocated for the MOD
+        if self.chip_buffer {
+            unsafe {
+                FreeMem(self.chip_buffer, self.chip_buffer_size)
+            }
+            self.chip_buffer = (*u8)0
+            self.chip_buffer_size = 0
         }
     }
 }
