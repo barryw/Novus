@@ -1,0 +1,168 @@
+// Chip RAM Management
+// Module: std::memory::chip
+//
+// Provides basic management of chip RAM for DMA-dependent assets.
+// Simplified version for initial implementation.
+
+from std::core import Result, Option, Drop
+from std::ffi::exec import AllocMem, FreeMem, CopyMem, TypeOfMem
+from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR
+
+// ============================================================================
+// Priority for cache eviction
+// ============================================================================
+
+/// Priority hint for cache eviction decisions
+pub enum Priority {
+    /// Evict first - large assets used infrequently
+    Low,
+    /// Default priority
+    Normal,
+    /// Evict last - small assets or frequently used
+    High,
+}
+
+// ============================================================================
+// ChipAsset Trait
+// ============================================================================
+
+/// Trait for assets that require chip RAM for DMA operations
+///
+/// Implement this trait for any asset type that needs to be accessible
+/// by Amiga custom chips (Paula, Blitter, Copper, etc.).
+pub trait ChipAsset {
+    /// Pointer to the asset data (may be in fast or chip RAM)
+    fn data_ptr(&self) -> *u8
+
+    /// Size of the asset data in bytes
+    fn data_size(&self) -> u32
+
+    /// Priority hint for cache eviction
+    fn cache_priority(&self) -> Priority
+}
+
+// ============================================================================
+// ChipBuffer - Low-level chip RAM allocation
+// ============================================================================
+
+/// A manually-managed block of chip RAM
+///
+/// Use this for fine-grained control over chip RAM allocation.
+/// The memory is automatically freed when the ChipBuffer is dropped.
+pub struct ChipBuffer {
+    ptr: *u8,
+    size: u32,
+}
+
+impl ChipBuffer {
+    /// Allocate a block of chip RAM
+    pub fn alloc(size: u32) -> Option<ChipBuffer> {
+        if size == 0 {
+            return Option::None
+        }
+
+        unsafe {
+            let ptr = (*u8)AllocMem(size, MEMF_CHIP | MEMF_CLEAR)
+            if !ptr {
+                return Option::None
+            }
+
+            return Option::Some(ChipBuffer {
+                ptr: ptr,
+                size: size,
+            })
+        }
+    }
+
+    /// Copy data from a source buffer into this chip buffer
+    pub fn copy_from(&mut self, src: *u8, len: u32) {
+        if len > self.size {
+            return
+        }
+        unsafe {
+            CopyMem(src, self.ptr, len)
+        }
+    }
+
+    /// Get the raw pointer for DMA operations
+    pub fn as_ptr(&self) -> *u8 {
+        return self.ptr
+    }
+
+    /// Get the size of this buffer
+    pub fn size(&self) -> u32 {
+        return self.size
+    }
+}
+
+impl Drop for ChipBuffer {
+    fn drop(&mut self) {
+        if self.ptr {
+            unsafe {
+                FreeMem(self.ptr, self.size)
+            }
+            self.ptr = (*u8)0
+            self.size = 0
+        }
+    }
+}
+
+// ============================================================================
+// Memory type detection
+// ============================================================================
+
+/// Check if a pointer is in chip RAM
+pub fn is_chip_ram(ptr: *u8) -> bool {
+    if !ptr {
+        return false
+    }
+    unsafe {
+        let mem_type = TypeOfMem(ptr)
+        return (mem_type & MEMF_CHIP) != 0
+    }
+}
+
+// ============================================================================
+// Cache errors
+// ============================================================================
+
+pub enum ChipCacheError {
+    /// Cache not initialized - call ChipCache::init() first
+    NotInitialized,
+    /// Cache already initialized
+    AlreadyInitialized,
+    /// Not enough chip RAM even after eviction
+    OutOfMemory,
+    /// Asset too large for cache budget
+    AssetTooLarge,
+}
+
+// ============================================================================
+// Simplified chip RAM copy function
+// ============================================================================
+
+/// Copy data to chip RAM if needed
+///
+/// If the data is already in chip RAM, returns the pointer directly.
+/// Otherwise, allocates chip RAM and copies the data.
+///
+/// Note: The caller is responsible for managing the allocated memory.
+/// This simplified version does not implement caching or eviction.
+pub fn ensure_chip_ram(ptr: *u8, size: u32, priority: Priority) -> Result<*u8, ChipCacheError> {
+    // Already in chip RAM? Return as-is
+    if is_chip_ram(ptr) {
+        return Result::Ok(ptr)
+    }
+
+    // Allocate chip RAM
+    unsafe {
+        let chip_ptr = (*u8)AllocMem(size, MEMF_CHIP)
+        if !chip_ptr {
+            return Result::Err(ChipCacheError::OutOfMemory)
+        }
+
+        // Copy data
+        CopyMem(ptr, chip_ptr, size)
+        return Result::Ok(chip_ptr)
+    }
+}

@@ -500,7 +500,17 @@ public partial class IrBuilder
             data = paddedData;
         }
 
-        // Create static byte array for MOD data (must be in chip RAM for ptplayer)
+        // Check for chip = false parameter (defaults to true for backwards compatibility)
+        // When chip = false, asset goes to fast RAM and must use ChipCache for DMA
+        var useChipRam = true;
+        if (modAttr.NamedArgs.TryGetValue("chip", out var chipArg) && chipArg is bool chipBool)
+        {
+            useChipRam = chipBool;
+        }
+
+        var section = useChipRam ? MemorySection.Chip : MemorySection.Default;
+
+        // Create static byte array for MOD data
         var arrayType = new IrArrayType(IrIntType.U8, data.Length);
         var arrayLiteral = new IrArrayLiteral(arrayType);
         foreach (var b in data)
@@ -508,7 +518,7 @@ public partial class IrBuilder
             arrayLiteral.Elements.Add(new IrConstant(b, IrIntType.U8));
         }
 
-        var staticVar = new IrStaticVariable(name, arrayType, visibility, false, arrayLiteral, MemorySection.Chip);
+        var staticVar = new IrStaticVariable(name, arrayType, visibility, false, arrayLiteral, section);
         _module.StaticVariables.Add(staticVar);
     }
 

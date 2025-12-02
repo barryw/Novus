@@ -1103,6 +1103,7 @@ public class CCodeGenerator
         _activatedDeferBlocks.Clear();
         _indexAccessInfo.Clear();
         _fieldAccessChainInfo.Clear();
+        _inlineableComparisons.Clear();  // VBCC workaround: reset comparison tracking
 
         // Reset debug line tracking for this function
         _lastEmittedDebugLine = -1;

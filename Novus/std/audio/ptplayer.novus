@@ -42,6 +42,7 @@ from std::core import Option, Result, Drop
 from std::ffi::amiga_consts import DMAF_SETCLR, DMAF_MASTER, DMAF_AUD0, DMAF_AUD1, DMAF_AUD2, DMAF_AUD3
 from std::hardware::registers import CUSTOM_BASE
 from std::audio::errors import AudioError
+from std::memory::chip import ChipAsset, Priority, ensure_chip_ram, is_chip_ram, ChipCacheError
 
 // ============================================================================
 // Sound Effect Structure
@@ -155,6 +156,100 @@ pub struct AudioSample {
     sample_rate: u32,    // Original sample rate
     period_pal: u16,     // Period for PAL systems
     period_ntsc: u16,    // Period for NTSC systems
+}
+
+impl ChipAsset for AudioSample {
+    fn data_ptr(&self) -> *u8 {
+        return self.data
+    }
+
+    fn data_size(&self) -> u32 {
+        return self.length_bytes
+    }
+
+    fn cache_priority(&self) -> Priority {
+        // Audio samples are usually smaller and used frequently
+        return Priority::High
+    }
+}
+
+// ============================================================================
+// MOD Asset (for chip RAM management)
+// ============================================================================
+
+/// Wrapper for MOD file data that supports automatic chip RAM management
+///
+/// Use this struct with the @mod attribute when you want to store
+/// MOD files in fast RAM and have them automatically copied to chip
+/// RAM when needed:
+///
+/// ```novus
+/// // Store in fast RAM, copy to chip when playing
+/// @mod("music.mod", chip = false)
+/// static music: ModAsset = []
+///
+/// // Initialize chip cache at startup
+/// ChipCache::init(512 * 1024)?
+///
+/// // ModPlayer::init() automatically handles chip RAM
+/// player.init(&music, 0)?
+/// ```
+///
+/// Or store directly in chip RAM (traditional approach):
+/// ```novus
+/// @mod("music.mod")  // chip = true is default
+/// static music: [u8] = []
+/// ```
+pub struct ModAsset {
+    /// Pointer to the MOD data
+    data: *u8,
+    /// Size of the MOD data in bytes
+    size: u32,
+}
+
+impl ModAsset {
+    /// Create a ModAsset from a raw pointer and size
+    ///
+    /// This is typically used to wrap @mod data stored in fast RAM
+    /// when chip = false attribute is used.
+    ///
+    /// # Example
+    /// ```novus
+    /// @mod("music.mod", chip = false)
+    /// static music_data: [u8] = []
+    ///
+    /// // Create ModAsset wrapper
+    /// let asset = ModAsset::new(&music_data[0], @sizeof(music_data))
+    /// ```
+    pub fn new(data: *u8, size: u32) -> ModAsset {
+        return ModAsset {
+            data: data,
+            size: size,
+        }
+    }
+
+    /// Get a chip RAM pointer for this asset
+    ///
+    /// If already in chip RAM, returns the data pointer directly.
+    /// Otherwise, uses the ChipCache to get a chip RAM copy.
+    pub fn as_chip_ptr(&self) -> Result<*u8, ChipCacheError> {
+        return ensure_chip_ram(self.data, self.size, Priority::Normal)
+    }
+}
+
+impl ChipAsset for ModAsset {
+    fn data_ptr(&self) -> *u8 {
+        return self.data
+    }
+
+    fn data_size(&self) -> u32 {
+        return self.size
+    }
+
+    fn cache_priority(&self) -> Priority {
+        // MOD files are typically large and stay loaded during playback
+        return Priority::Normal
+    }
 }
 
 // ============================================================================
@@ -294,7 +389,7 @@ impl ModPlayer {
         })
     }
 
-    /// Initialize a module for playback
+    /// Initialize a module for playback from raw pointer
     ///
     /// Loads a ProTracker module and prepares it for playback.
     /// Does not start playback - call play() after init().
@@ -306,6 +401,9 @@ impl ModPlayer {
     /// # Returns
     /// * `Ok(())` - Module initialized
     /// * `Err(AudioError::InvalidModuleData)` - Module data is invalid
+    ///
+    /// # Note
+    /// For automatic chip RAM management, use `init_asset()` instead.
     pub fn init(&mut self, module_data: *u8, start_position: u8) -> Result<(), AudioError> {
         if (u32)module_data == 0 {
             return Result::Err(AudioError::InvalidModuleData)
@@ -319,6 +417,41 @@ impl ModPlayer {
         }
 
         return Result::Ok(())
+    }
+
+    /// Initialize a module for playback from ModAsset
+    ///
+    /// Automatically handles chip RAM management. If the asset is in
+    /// fast RAM, it will be copied to chip RAM using the ChipCache.
+    ///
+    /// # Arguments
+    /// * `asset` - ModAsset containing the MOD file data
+    /// * `start_position` - Song position to start from (usually 0)
+    ///
+    /// # Returns
+    /// * `Ok(())` - Module initialized
+    /// * `Err(AudioError::InvalidModuleData)` - Module data is invalid
+    /// * `Err(AudioError::ChipCacheError)` - Failed to copy to chip RAM
+    ///
+    /// # Example
+    /// ```novus
+    /// @mod("music.mod", chip = false)
+    /// static music: ModAsset = []
+    ///
+    /// ChipCache::init(512 * 1024)?
+    /// player.init_asset(&music, 0)?
+    /// ```
+    pub fn init_asset(&mut self, asset: &ModAsset, start_position: u8) -> Result<(), AudioError> {
+        // Get chip RAM pointer (automatically copies if needed)
+        let result = asset.as_chip_ptr()
+        match result {
+            Result::Ok(chip_ptr) => {
+                return self.init(chip_ptr, start_position)
+            },
+            Result::Err(_) => {
+                return Result::Err(AudioError::ChipCacheError)
+            }
+        }
     }
 
     /// Start music playback

@@ -109,6 +109,9 @@ pub enum AudioError {
 
     /// Module data is null or invalid
     InvalidModuleData,
+
+    /// Failed to copy asset to chip RAM (cache not initialized or out of memory)
+    ChipCacheError,
 }
 
 // ============================================================================
