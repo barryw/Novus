@@ -307,9 +307,9 @@ public class CCodeGenerator
         sb.AppendLine("typedef unsigned long long uint64_t;");
         sb.AppendLine("#endif");
         sb.AppendLine();
-        sb.AppendLine("// Boolean type - no C library dependency");
+        sb.AppendLine("// Boolean type - 1 byte to match Novus semantics (not C99's int-based bool)");
         sb.AppendLine("#ifndef __STDBOOL_H");
-        sb.AppendLine("typedef int bool;");
+        sb.AppendLine("typedef uint8_t bool;");
         sb.AppendLine("#define true 1");
         sb.AppendLine("#define false 0");
         sb.AppendLine("#endif");
@@ -996,9 +996,9 @@ public class CCodeGenerator
                     // Handle extern functions
                     if (funcObj.IsExtern)
                     {
-                        // Skip AmigaOS library functions - they're provided by proto headers
-                        // AmigaOS functions typically start with uppercase (e.g., AllocMem, OpenWindow)
-                        // Runtime functions start with __, lowercase, or are variadic (like write)
+                        // AmigaOS library functions (WaitTOF, AllocMem, etc.) are provided by proto headers
+                        // which define macros that expand to inline library calls through the library base.
+                        // We skip these because the proto headers already handle them.
                         bool isAmigaOSFunction = funcName.Length > 0 &&
                                                  char.IsUpper(funcName[0]) &&
                                                  !funcName.StartsWith("__") &&
@@ -1006,6 +1006,7 @@ public class CCodeGenerator
 
                         if (isAmigaOSFunction)
                         {
+                            // Proto headers define these as macros - no extern declaration needed
                             continue;
                         }
 
@@ -2867,9 +2868,9 @@ public class CCodeGenerator
         sb.AppendLine("typedef unsigned long long uint64_t;");
         sb.AppendLine("#endif");
         sb.AppendLine();
-        sb.AppendLine("// Boolean type - no C library dependency");
+        sb.AppendLine("// Boolean type - 1 byte to match Novus semantics (not C99's int-based bool)");
         sb.AppendLine("#ifndef __STDBOOL_H");
-        sb.AppendLine("typedef int bool;");
+        sb.AppendLine("typedef uint8_t bool;");
         sb.AppendLine("#define true 1");
         sb.AppendLine("#define false 0");
         sb.AppendLine("#endif");
@@ -5001,7 +5002,18 @@ public class CCodeGenerator
         }
         else
         {
-            condition = conditionVar;
+            // VBCC WORKAROUND: When the condition is not an inlined comparison (e.g., a bool
+            // variable or function return value), VBCC can generate incorrect code. It may
+            // insert stack cleanup instructions between storing the result and the branch,
+            // which clobbers the condition flags. For example:
+            //   move.l d0,(-28,a5)    ; Store result (sets Z flag correctly)
+            //   addq.w #4,a7          ; Clean up stack (CLOBBERS Z flag!)
+            //   bne label             ; Uses wrong Z flag from stack cleanup!
+            //
+            // By casting to int32_t and comparing against 0, we force VBCC to emit a proper
+            // test/comparison instruction right before the branch. The cast prevents VBCC
+            // from optimizing away the comparison for bool values.
+            condition = $"(int32_t){conditionVar} != (int32_t)0";
         }
 
         // Append suffix to target labels to match defer block emission

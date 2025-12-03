@@ -31,11 +31,12 @@
 // ```
 
 from std::core import Option, Result, Drop
-from std::ffi::exec import AllocVec, FreeVec, CopyMem
+from std::ffi::exec import AllocVec, FreeVec, CopyMem, FreeMem
 from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR, DMAF_SETCLR, DMAF_MASTER
 from std::hardware::registers import CUSTOM_BASE, DMACON, INTREQ, ADKCON, VPOSR
 from std::hardware::paula import period_from_hz, hz_from_period, channel_base_offset, channel_dma_bit, channel_int_bit, is_valid_period, is_valid_volume, is_valid_channel, PAULA_MAX_VOLUME, PAULA_MIN_PERIOD, PAULA_MAX_PERIOD, PAULA_MAX_LENGTH_WORDS, PAULA_MAX_LENGTH_BYTES, PAULA_PAL_CLOCK, PAULA_NTSC_CLOCK, PERIOD_11025_PAL, PERIOD_11025_NTSC, AUD0LCH
 from std::audio::errors import AudioError
+from std::memory::chip import ensure_chip_ram, is_chip_ram, ChipCacheError, Priority
 
 // ============================================================================
 // Playback Mode
@@ -355,6 +356,9 @@ pub struct AudioChannel {
     period: u16,       // Current period setting
     volume: u16,       // Current volume setting
     active: bool,      // Is DMA enabled for this channel?
+    // Chip RAM buffer allocated by play_asset() - freed on drop
+    chip_buffer: *u8,
+    chip_buffer_size: u32,
 }
 
 impl AudioChannel {
@@ -395,6 +399,8 @@ impl AudioChannel {
             period: PERIOD_11025_PAL,  // Default ~11 kHz
             volume: PAULA_MAX_VOLUME,  // Default max volume
             active: false,
+            chip_buffer: (*u8)0,
+            chip_buffer_size: 0,
         })
     }
 
@@ -630,6 +636,161 @@ impl AudioChannel {
         return self.play_native(sample, mode, is_pal_system())
     }
 
+    /// Play raw audio data directly
+    ///
+    /// Low-level method that plays audio from any chip RAM pointer.
+    /// Use this when you have raw audio data that isn't wrapped in a SampleHandle.
+    ///
+    /// # Arguments
+    /// * `chip_ptr` - Pointer to audio data (MUST be in chip RAM!)
+    /// * `length_words` - Length in words (bytes / 2)
+    /// * `period` - Paula period (lower = faster playback)
+    /// * `mode` - Playback mode
+    ///
+    /// # Safety
+    /// The pointer MUST be in chip RAM (address < $200000) and word-aligned.
+    /// The caller must ensure the data remains valid during playback.
+    pub fn play_raw(&mut self, chip_ptr: *u8, length_words: u16, period: u16, mode: PlaybackMode) -> Result<(), AudioError> {
+        let addr = (u32)chip_ptr
+
+        // Validate chip RAM range
+        if addr >= $00200000 {
+            return Result::Err(AudioError::SampleNotChipRam)
+        }
+
+        // Validate word alignment
+        if (addr & 1) != 0 {
+            return Result::Err(AudioError::SampleMisaligned)
+        }
+
+        // Validate period
+        if !is_valid_period(period) {
+            return Result::Err(AudioError::InvalidPeriod)
+        }
+
+        self.period = period
+
+        unsafe {
+            // If already playing, stop DMA first to avoid glitches
+            if self.active {
+                let dma_bit = channel_dma_bit(self.channel)
+                let dmacon = (*u16)(CUSTOM_BASE + DMACON)
+                *dmacon = dma_bit  // Clear DMA (no SETCLR)
+            }
+
+            let base = channel_base_offset(self.channel)
+
+            // Write sample pointer (high word first - critical for Paula!)
+            let lch = (*u16)(CUSTOM_BASE + base)
+            let lcl = (*u16)(CUSTOM_BASE + base + 2)
+            *lch = (u16)(addr >> 16)
+            *lcl = (u16)(addr & $FFFF)
+
+            // Write length in words
+            let len_reg = (*u16)(CUSTOM_BASE + base + 4)
+            *len_reg = length_words
+
+            // Write period and volume
+            self.write_period()
+            self.write_volume()
+
+            // Enable audio DMA for this channel
+            let dma_bit = channel_dma_bit(self.channel)
+            let dmacon = (*u16)(CUSTOM_BASE + DMACON)
+            *dmacon = DMAF_SETCLR | DMAF_MASTER | dma_bit
+
+            self.active = true
+        }
+
+        return Result::Ok(())
+    }
+
+    /// Play an AudioAsset with automatic chip RAM management
+    ///
+    /// This is the recommended way to play audio from an AudioAsset.
+    /// If the asset data is in fast RAM, it will be automatically copied
+    /// to chip RAM. The chip RAM copy is freed when the channel is dropped.
+    ///
+    /// # Arguments
+    /// * `data` - Pointer to audio data (can be in fast or chip RAM)
+    /// * `size` - Size in bytes
+    /// * `period` - Paula period for playback rate
+    /// * `mode` - Playback mode (currently informational only)
+    ///
+    /// # Returns
+    /// * `Ok(())` - Playback started
+    /// * `Err(AudioError::AllocationFailed)` - Could not allocate chip RAM
+    ///
+    /// # Example
+    /// ```novus
+    /// @audio("sound.wav", chip = false)
+    /// static sound: AudioAsset = []
+    ///
+    /// let mut channel = AudioChannel::acquire(0)?
+    /// let period = is_pal_system() ? sound.period_pal : sound.period_ntsc
+    /// channel.play_asset(sound.data, sound.size, period, PlaybackMode::OneShot)?
+    /// // Chip RAM is freed automatically when channel is dropped
+    /// ```
+    pub fn play_asset(&mut self, data: *u8, size: u32, period: u16, mode: PlaybackMode) -> Result<(), AudioError> {
+        // Free any previous chip buffer
+        if self.chip_buffer {
+            unsafe {
+                FreeMem(self.chip_buffer, self.chip_buffer_size)
+            }
+            self.chip_buffer = (*u8)0
+            self.chip_buffer_size = 0
+        }
+
+        // Get chip RAM pointer (copies if needed)
+        let chip_result = ensure_chip_ram(data, size, Priority::High)
+        match chip_result {
+            Result::Ok(chip_ptr) => {
+                // Track the allocation if we made a copy
+                if !is_chip_ram(data) {
+                    self.chip_buffer = chip_ptr
+                    self.chip_buffer_size = size
+                }
+
+                // Calculate length in words
+                let length_words = (u16)((size + 1) / 2)
+
+                // Play the sample
+                return self.play_raw(chip_ptr, length_words, period, mode)
+            },
+            Result::Err(_) => {
+                return Result::Err(AudioError::AllocationFailed)
+            }
+        }
+    }
+
+    /// Play an AudioAsset at its native sample rate
+    ///
+    /// Convenience method that uses the asset's pre-calculated period.
+    ///
+    /// # Arguments
+    /// * `data` - Pointer to audio data
+    /// * `size` - Size in bytes
+    /// * `period_pal` - PAL period from asset
+    /// * `period_ntsc` - NTSC period from asset
+    /// * `mode` - Playback mode
+    ///
+    /// # Example
+    /// ```novus
+    /// @audio("sound.wav", chip = false)
+    /// static sound: AudioAsset = []
+    ///
+    /// let mut channel = AudioChannel::acquire(0)?
+    /// channel.play_asset_native(
+    ///     sound.data, sound.size,
+    ///     sound.period_pal, sound.period_ntsc,
+    ///     PlaybackMode::OneShot
+    /// )?
+    /// ```
+    pub fn play_asset_native(&mut self, data: *u8, size: u32, period_pal: u16, period_ntsc: u16, mode: PlaybackMode) -> Result<(), AudioError> {
+        let period = is_pal_system() ? period_pal : period_ntsc
+        return self.play_asset(data, size, period, mode)
+    }
+
     /// Stop playback
     ///
     /// Disables audio DMA for this channel, clears any pending audio
@@ -722,6 +883,15 @@ impl Drop for AudioChannel {
         // Always stop playback when the handle is dropped
         // This prevents orphaned DMA that could play garbage
         self.stop()
+
+        // Free any chip RAM we allocated for play_asset()
+        if self.chip_buffer {
+            unsafe {
+                FreeMem(self.chip_buffer, self.chip_buffer_size)
+            }
+            self.chip_buffer = (*u8)0
+            self.chip_buffer_size = 0
+        }
     }
 }
 

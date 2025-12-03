@@ -140,6 +140,26 @@ impl SfxStructure {
             sfx_pri: priority,
         })
     }
+
+    /// Create from an AudioSample with explicit PAL/NTSC selection
+    ///
+    /// Like from_sample(), but allows choosing the period for PAL or NTSC.
+    pub fn from_sample_native(sample: &AudioSample, channel: i8, priority: i8, pal: bool) -> Result<SfxStructure, AudioError> {
+        if !sample.data {
+            return Result::Err(AudioError::NullSampleData)
+        }
+
+        let period = pal ? sample.period_pal : sample.period_ntsc
+
+        return Result::Ok(SfxStructure {
+            sfx_ptr: sample.data,
+            sfx_len: sample.length_words,
+            sfx_per: period,
+            sfx_vol: 64,
+            sfx_cha: channel,
+            sfx_pri: priority,
+        })
+    }
 }
 
 // ============================================================================
@@ -250,6 +270,119 @@ impl ChipAsset for ModAsset {
     fn cache_priority(&self) -> Priority {
         // MOD files are typically large and stay loaded during playback
         return Priority::Normal
+    }
+}
+
+// ============================================================================
+// Audio Asset (for chip RAM management of WAV/sample data)
+// ============================================================================
+
+/// Wrapper for audio sample data that supports automatic chip RAM management
+///
+/// Use this struct with the @audio attribute when you want to store
+/// audio samples in fast RAM and have them automatically copied to chip
+/// RAM when needed for playback:
+///
+/// ```novus
+/// // Store in fast RAM, copy to chip when playing
+/// @audio("sound.wav", chip = false)
+/// static explosion: AudioAsset = []
+///
+/// // Play using AudioChannel with automatic chip RAM management
+/// let mut channel = AudioChannel::acquire(0)?
+/// channel.play_asset(&explosion, PlaybackMode::OneShot)?
+/// ```
+///
+/// Or store directly in chip RAM (traditional approach, default):
+/// ```novus
+/// @audio("sound.wav")  // chip = true is default
+/// static explosion: AudioSample = []
+/// ```
+///
+/// AudioAsset includes sample rate and period metadata for correct playback
+/// at the original sample rate on both PAL and NTSC systems.
+pub struct AudioAsset {
+    /// Pointer to the audio data (in fast or chip RAM)
+    data: *u8,
+    /// Size of the audio data in bytes
+    size: u32,
+    /// Original sample rate in Hz
+    sample_rate: u32,
+    /// Pre-calculated period for PAL systems
+    period_pal: u16,
+    /// Pre-calculated period for NTSC systems
+    period_ntsc: u16,
+}
+
+impl AudioAsset {
+    /// Create an AudioAsset from raw data and metadata
+    ///
+    /// This is typically used to wrap @audio data stored in fast RAM
+    /// when chip = false attribute is used.
+    pub fn new(data: *u8, size: u32, sample_rate: u32, period_pal: u16, period_ntsc: u16) -> AudioAsset {
+        return AudioAsset {
+            data: data,
+            size: size,
+            sample_rate: sample_rate,
+            period_pal: period_pal,
+            period_ntsc: period_ntsc,
+        }
+    }
+
+    /// Get a chip RAM pointer for this asset
+    ///
+    /// If already in chip RAM, returns the data pointer directly.
+    /// Otherwise, allocates chip RAM and copies the data.
+    ///
+    /// Note: Caller is responsible for freeing the allocated memory if
+    /// it was not already in chip RAM.
+    pub fn as_chip_ptr(&self) -> Result<*u8, ChipCacheError> {
+        return ensure_chip_ram(self.data, self.size, Priority::High)
+    }
+
+    /// Get the sample rate
+    pub fn sample_rate(&self) -> u32 {
+        return self.sample_rate
+    }
+
+    /// Get the PAL period for native playback rate
+    pub fn period_pal(&self) -> u16 {
+        return self.period_pal
+    }
+
+    /// Get the NTSC period for native playback rate
+    pub fn period_ntsc(&self) -> u16 {
+        return self.period_ntsc
+    }
+
+    /// Get the size in bytes
+    pub fn size(&self) -> u32 {
+        return self.size
+    }
+
+    /// Get the length in words (for Paula register)
+    pub fn length_words(&self) -> u16 {
+        return (u16)((self.size + 1) / 2)
+    }
+
+    /// Get the raw data pointer (may be in fast RAM)
+    pub fn data_ptr(&self) -> *u8 {
+        return self.data
+    }
+}
+
+impl ChipAsset for AudioAsset {
+    fn data_ptr(&self) -> *u8 {
+        return self.data
+    }
+
+    fn data_size(&self) -> u32 {
+        return self.size
+    }
+
+    fn cache_priority(&self) -> Priority {
+        // Audio samples are typically small and frequently used
+        return Priority::High
     }
 }
 

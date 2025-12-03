@@ -44,8 +44,11 @@ public partial class IrBuilder
         var arguments = new List<IrValue>();
         if (context.argumentList() != null)
         {
-            // Check if this is an enum constructor - if so, we can use expected types for arguments
+            // Determine expected argument types from the callee's signature
+            // This is critical for monomorphizing generic types like Option::None
             List<IrType>? expectedArgTypes = null;
+
+            // Check if this is an enum constructor - if so, we can use expected types for arguments
             if (funcExpr is IrEnumConstructor tempEnumCtor &&
                 _expectedType is IrEnumType expectedEnumType &&
                 expectedEnumType.EnumName == (tempEnumCtor.Type as IrEnumType)?.EnumName)
@@ -57,6 +60,14 @@ public partial class IrBuilder
                 {
                     expectedArgTypes = expectedVariant.AssociatedData;
                 }
+            }
+            // For regular function calls, use the function's parameter types
+            else if (funcExpr is IrFunctionRef funcRefForArgs)
+            {
+                expectedArgTypes = funcRefForArgs.Function.Parameters
+                    .Where(p => !p.IsVariadic)
+                    .Select(p => p.Type)
+                    .ToList();
             }
 
             int argIdx = 0;
@@ -4944,7 +4955,13 @@ public partial class IrBuilder
 
     public override object? VisitMemberAccessExpr([NotNull] NovusParser.MemberAccessExprContext context)
     {
+        // Clear expected type when visiting base expression - the expected type is for the
+        // whole member access result, not the base. This prevents e.g. "string".ptr from
+        // returning *u8 when we need the Str struct to access .ptr on it.
+        var savedExpectedType = _expectedType;
+        _expectedType = null;
         var baseExpr = (IrValue?)Visit(context.expression());
+        _expectedType = savedExpectedType;
         if (baseExpr == null)
         {
             var errorLocation = GetLocation(context);

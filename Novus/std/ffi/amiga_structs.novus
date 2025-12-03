@@ -2138,7 +2138,7 @@ pub struct IOAudio {
     ioa_Request: IORequest,
     ioa_AllocKey: i16,     // Allocation key returned by ADCMD_ALLOCATE
     ioa_Data: *u8,         // Pointer to sample data (chip RAM)
-    ioa_Length: u32,       // Length in bytes
+    ioa_Length: u32,       // Length in BYTES (not words!)
     ioa_Period: u16,       // Sample period (124-65535)
     ioa_Volume: u16,       // Volume (0-64)
     ioa_Cycles: u16,       // Number of times to play (0 = infinite loop)

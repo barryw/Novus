@@ -247,16 +247,18 @@ public class VbccToolchain
 
             // Always link with C runtime library (provides startup, exit, etc.)
             args.Add("-lvc");
+
+            // Add amiga.lib for system library wrappers (BeginIO, DoIO, etc.)
+            // This is in the same vbcc lib directory
+            args.Add("-lamiga");
         }
 
-        // Add standard Amiga libraries path and link with -lamiga -lauto
-        // -lamiga: Provides Amiga system library stubs
+        // Add standard Amiga libraries path and link with -lauto if NDK lib exists
         // -lauto: Provides automatic library base opening/closing
         var libPath = Path.Combine(_ndkPath, "lib");
         if (Directory.Exists(libPath))
         {
             args.Add($"-L{libPath}");
-            args.Add("-lamiga");
             args.Add("-lauto");
         }
 

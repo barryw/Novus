@@ -669,6 +669,10 @@ class Program
             string outputDir;
             if (string.IsNullOrEmpty(outputFileDir) || outputFileDir == Directory.GetCurrentDirectory())
             {
+                // CRITICAL: Clean up stale novus-build directories from previous compilations
+                // These can cause linker to pick up old object files with different static data
+                CleanupStaleBuildDirectories();
+
                 // Output is in current directory - use /tmp/novus-build-{pid} for intermediate files
                 outputDir = Path.Combine(Path.GetTempPath(), $"novus-build-{Environment.ProcessId}");
                 Directory.CreateDirectory(outputDir);
@@ -988,7 +992,7 @@ class Program
             if (!isLibrary && !isDevice)
             {
                 // Only executables need startup code and library initialization
-                var coreFiles = new[] { "novus_startup", "library_bases", "dos_init", "graphics_init" };
+                var coreFiles = new[] { "novus_startup", "library_bases", "dos_init", "graphics_init", "debug_gfxbase" };
                 foreach (var coreFile in coreFiles)
                 {
                     var coreSource = Path.Combine(compilerDir, "stubs", $"{coreFile}.s");
@@ -1737,6 +1741,75 @@ class Program
             Console.WriteLine($"\nError: {ex.Message}");
             Console.WriteLine(ex.StackTrace);
             return 1;
+        }
+    }
+
+    /// <summary>
+    /// Clean up stale novus-build directories from previous compilations.
+    /// This prevents the linker from accidentally picking up old object files
+    /// with different static data (e.g., embedded MOD files from other builds).
+    /// </summary>
+    private static void CleanupStaleBuildDirectories()
+    {
+        try
+        {
+            var tempPath = Path.GetTempPath();
+            var currentPid = Environment.ProcessId;
+            var currentBuildDir = $"novus-build-{currentPid}";
+
+            // Find all novus-build-* directories
+            var buildDirs = Directory.GetDirectories(tempPath, "novus-build-*");
+            var deletedCount = 0;
+
+            foreach (var dir in buildDirs)
+            {
+                var dirName = Path.GetFileName(dir);
+
+                // Don't delete our own build directory
+                if (dirName == currentBuildDir)
+                    continue;
+
+                // Extract PID from directory name
+                if (dirName.StartsWith("novus-build-") &&
+                    int.TryParse(dirName.Substring("novus-build-".Length), out var pid))
+                {
+                    // Check if the process is still running
+                    bool processRunning = false;
+                    try
+                    {
+                        var process = System.Diagnostics.Process.GetProcessById(pid);
+                        processRunning = !process.HasExited;
+                    }
+                    catch
+                    {
+                        // Process doesn't exist - safe to delete
+                        processRunning = false;
+                    }
+
+                    if (!processRunning)
+                    {
+                        try
+                        {
+                            Directory.Delete(dir, recursive: true);
+                            deletedCount++;
+                        }
+                        catch
+                        {
+                            // Best effort - might be locked by another process
+                        }
+                    }
+                }
+            }
+
+            // Only print if we actually cleaned something
+            if (deletedCount > 0)
+            {
+                Console.WriteLine($"  ✓ Cleaned {deletedCount} stale build director{(deletedCount == 1 ? "y" : "ies")}");
+            }
+        }
+        catch
+        {
+            // Best effort cleanup - don't fail the build if cleanup fails
         }
     }
 

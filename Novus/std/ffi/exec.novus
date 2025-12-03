@@ -84,6 +84,7 @@ extern pub fn OpenDevice(devName: *u8, unit: u32, ioRequest: *IORequest, flags: 
 extern pub fn CloseDevice(consuming ioRequest: *IORequest)
 extern pub fn DoIO(ioRequest: *IORequest) -> i8
 extern pub fn SendIO(ioRequest: *IORequest)
+extern pub fn BeginIO(ioRequest: *IORequest)
 extern pub fn CheckIO(ioRequest: *IORequest) -> *IORequest
 extern pub fn WaitIO(ioRequest: *IORequest) -> i8
 extern pub fn AbortIO(ioRequest: *IORequest)

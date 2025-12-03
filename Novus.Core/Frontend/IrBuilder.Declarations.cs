@@ -333,12 +333,30 @@ public partial class IrBuilder
             return;
         }
 
-        // Create static byte array for sample data
-        var dataName = $"{name}_data";
-        CreateStaticAudioData(dataName, result.Data, visibility);
+        // Check for chip = false parameter (defaults to true for direct chip RAM placement)
+        // When chip = false, sample data goes to fast RAM and must be copied to chip RAM at runtime
+        var useChipRam = true;
+        if (audioAttr.NamedArgs.TryGetValue("chip", out var chipArg) && chipArg is bool chipBool)
+        {
+            useChipRam = chipBool;
+        }
 
-        // Create the AudioSample struct with metadata
-        CreateStaticAudioSample(name, dataName, result, visibility);
+        var section = useChipRam ? MemorySection.Chip : MemorySection.Default;
+
+        // Create static byte array for sample data (chip or fast RAM)
+        var dataName = useChipRam ? $"{name}_data" : $"{name}_data";
+        CreateStaticAudioData(dataName, result.Data, visibility, section);
+
+        if (useChipRam)
+        {
+            // Create the AudioSample struct with metadata (data in chip RAM)
+            CreateStaticAudioSample(name, dataName, result, visibility);
+        }
+        else
+        {
+            // Create an AudioAsset struct for automatic chip RAM management
+            CreateStaticAudioAsset(name, dataName, result, visibility);
+        }
     }
 
     /// <summary>
@@ -579,9 +597,13 @@ public partial class IrBuilder
     }
 
     /// <summary>
-    /// Create a static byte array for audio sample data in chip RAM.
+    /// Create a static byte array for audio sample data.
     /// </summary>
-    private void CreateStaticAudioData(string name, byte[] data, Visibility visibility)
+    /// <param name="name">Name of the static variable</param>
+    /// <param name="data">Binary audio data</param>
+    /// <param name="visibility">Visibility modifier</param>
+    /// <param name="section">Memory section (Chip for DMA access, Default for fast RAM)</param>
+    private void CreateStaticAudioData(string name, byte[] data, Visibility visibility, MemorySection section = MemorySection.Chip)
     {
         var arrayType = new IrArrayType(IrIntType.U8, data.Length);
         var arrayLiteral = new IrArrayLiteral(arrayType);
@@ -590,7 +612,7 @@ public partial class IrBuilder
             arrayLiteral.Elements.Add(new IrConstant(b, IrIntType.U8));
         }
 
-        var staticVar = new IrStaticVariable(name, arrayType, visibility, false, arrayLiteral, MemorySection.Chip);
+        var staticVar = new IrStaticVariable(name, arrayType, visibility, false, arrayLiteral, section);
         _module.StaticVariables.Add(staticVar);
     }
 
@@ -652,6 +674,65 @@ public partial class IrBuilder
 
         var staticVar = new IrStaticVariable(name, sampleStruct, visibility, false, structLiteral, MemorySection.Default);
         _module.StaticVariables.Add(staticVar);
+    }
+
+    /// <summary>
+    /// Create a static AudioAsset struct for audio data in fast RAM.
+    /// AudioAsset includes all metadata needed for automatic chip RAM management.
+    /// Similar to ModAsset but includes sample rate and period information.
+    /// </summary>
+    private void CreateStaticAudioAsset(string name, string dataName, Audio.AudioConverter.ConversionResult result, Visibility visibility)
+    {
+        // AudioAsset struct layout (matches std::audio::ptplayer::AudioAsset):
+        // - data: *u8 (pointer to the data array in fast RAM)
+        // - size: u32 (size in bytes)
+        // - sample_rate: u32 (original sample rate)
+        // - period_pal: u16 (pre-calculated period for PAL)
+        // - period_ntsc: u16 (pre-calculated period for NTSC)
+
+        // Try to look up the real AudioAsset struct from imports
+        var audioAssetStruct = _symbols.LookupStruct("AudioAsset");
+        if (audioAssetStruct == null)
+        {
+            // AudioAsset not imported - create an anonymous struct type with the same layout
+            var fields = new List<IrStructField>
+            {
+                new IrStructField("data", new IrPointerType(IrIntType.U8)),
+                new IrStructField("size", IrIntType.U32),
+                new IrStructField("sample_rate", IrIntType.U32),
+                new IrStructField("period_pal", IrIntType.U16),
+                new IrStructField("period_ntsc", IrIntType.U16)
+            };
+            audioAssetStruct = new IrStructType("AudioAsset", fields);
+        }
+        // Always add to module structs so code generator can emit the typedef
+        // The code generator will check if it's already defined before emitting
+        if (!_module.Structs.Any(s => s.StructName == audioAssetStruct.StructName))
+        {
+            _module.Structs.Add(audioAssetStruct);
+        }
+
+        // Build field values dictionary
+        // data: pointer to the static array we created
+        // Use IrGlobalVariable to reference the static data array
+        var dataArrayType = new IrArrayType(IrIntType.U8, result.Data.Length);
+        var dataArrayRef = new IrGlobalVariable(dataName, dataArrayType);
+        var dataPtr = new IrCastValue(dataArrayRef, dataArrayType, new IrPointerType(IrIntType.U8));
+
+        var fieldValues = new Dictionary<string, IrValue>
+        {
+            { "data", dataPtr },
+            { "size", new IrConstant((uint)result.Data.Length, IrIntType.U32) },
+            { "sample_rate", new IrConstant((uint)result.FinalSampleRate, IrIntType.U32) },
+            { "period_pal", new IrConstant((ushort)result.PeriodPal, IrIntType.U16) },
+            { "period_ntsc", new IrConstant((ushort)result.PeriodNtsc, IrIntType.U16) }
+        };
+
+        // Create the struct literal with field values
+        var structLiteral = new IrStructLiteral(audioAssetStruct, fieldValues);
+
+        var assetVar = new IrStaticVariable(name, audioAssetStruct, visibility, false, structLiteral, MemorySection.Default);
+        _module.StaticVariables.Add(assetVar);
     }
 
     /// <summary>

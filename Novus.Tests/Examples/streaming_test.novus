@@ -1,0 +1,114 @@
+// Streaming Audio Test
+// Demonstrates playing long audio files that exceed Paula's 128KB limit
+//
+// Uses AudioStreamer for seamless triple-buffered playback
+
+from std::core import Result
+from std::audio::ptplayer import AudioAsset
+from std::audio::streaming import AudioStreamer
+from std::audio::errors import AudioError
+from std::memory::chip import is_chip_ram
+from std::io::file import write
+from std::hardware::chipset import DISPLAY, DisplayType
+from std::ffi::graphics import WaitTOF
+
+// ============================================================================
+// Long audio file stored in fast RAM
+// ============================================================================
+
+// This file is ~31 seconds at 44.1kHz stereo - way too big for chip RAM!
+// The compiler converts it to 11kHz mono 8-bit (~340KB)
+// AudioStreamer handles playback via triple-buffering
+@audio("invention.wav", chip = false, sample_rate = 11025)
+static music: AudioAsset = []
+
+// ============================================================================
+// Main
+// ============================================================================
+
+pub fn main() -> i32 {
+    write("Streaming Audio Test\n")
+    write("====================\n\n")
+
+    let is_pal = DISPLAY() == DisplayType::PAL
+    write("Display: %s\n", is_pal ? "PAL" : "NTSC")
+
+    // Show audio info
+    write("\nAudio Asset Info:\n")
+    write("  Size: %ld bytes (%ld KB)\n", music.size, music.size / 1024)
+    write("  Sample rate: %ld Hz\n", music.sample_rate)
+    write("  In chip RAM: %s\n", is_chip_ram(music.data) ? "yes" : "no")
+
+    let duration_secs = music.size / music.sample_rate
+    write("  Duration: ~%ld seconds\n\n", duration_secs)
+
+    // Get the correct period for PAL/NTSC
+    let period = is_pal ? music.period_pal : music.period_ntsc
+
+    // Create the streamer - use any available channel
+    write("Creating AudioStreamer...\n")
+    let streamer_result = AudioStreamer::new(music.data, music.size, period, music.sample_rate)
+
+    match streamer_result {
+        Result::Ok(mut streamer) => {
+            write("Allocated channel: %d\n", (i32)streamer.channel())
+
+            // Debug: Check total_size immediately after creation
+            write("DEBUG: total_size immediately after creation = %lu\n", streamer.total_size())
+            write("DEBUG: music.size = %lu\n", music.size)
+
+            // Start playing (no loop)
+            let play_result = streamer.play(false)
+            match play_result {
+                Result::Ok(_) => {
+                    // Main loop - tick the streamer regularly
+                    var frame_count: u32 = 0
+                    while streamer.is_playing() {
+                        // Tick the streamer to refill buffers as needed
+                        let tick_result = streamer.tick()
+                        match tick_result {
+                            Result::Ok(_) => {},
+                            Result::Err(_) => {
+                                write("\nTick error!\n")
+                                break
+                            }
+                        }
+
+                        // Show progress every frame on same line
+                        let progress = streamer.progress()
+                        let pos = streamer.position()
+                        write("\rFrame %4lu: %3lu%% pos=%lu/%lu   ",
+                              frame_count, progress, pos, streamer.total_size())
+                        frame_count++
+
+                        // Wait for next vertical blank
+                        WaitTOF()
+                    }
+
+                    write("\n\nPlayback finished!\n")
+                },
+                Result::Err(_) => {
+                    write("ERROR: Failed to start playback\n")
+                    return 2
+                }
+            }
+
+            // Streamer cleans up automatically on drop
+        },
+        Result::Err(err) => {
+            match err {
+                AudioError::AllocationFailed => write("ERROR: Could not allocate chip RAM buffers\n"),
+                AudioError::InvalidChannel => write("ERROR: Invalid channel\n"),
+                AudioError::NoAllocation => write("ERROR: No audio channels available\n"),
+                AudioError::NoMsgPort => write("ERROR: Could not create message port\n"),
+                AudioError::NoIORequest => write("ERROR: Could not create I/O request\n"),
+                AudioError::DeviceOpenFailed => write("ERROR: Could not open audio.device\n"),
+                _ => write("ERROR: Failed to create streamer\n")
+            }
+            return 1
+        }
+    }
+
+    write("\nDone!\n")
+    return 0
+}
