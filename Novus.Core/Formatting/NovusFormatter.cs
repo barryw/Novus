@@ -877,6 +877,41 @@ public class NovusFormatter : NovusBaseVisitor<object?>
         return null;
     }
 
+    public override object? VisitTraitMethodDeclaration(NovusParser.TraitMethodDeclarationContext context)
+    {
+        EmitHiddenTokensBefore(context);
+        Write("fn ");
+        Write(context.IDENTIFIER().GetText());
+
+        if (context.genericParams() != null)
+        {
+            Visit(context.genericParams());
+        }
+
+        Write("(");
+        if (context.parameterList() != null)
+        {
+            Visit(context.parameterList());
+        }
+        Write(")");
+
+        if (context.type() != null)
+        {
+            Write(" -> ");
+            Visit(context.type());
+        }
+
+        // Handle optional body (default implementation)
+        if (context.block() != null)
+        {
+            Write(" ");
+            Visit(context.block());
+        }
+
+        WriteLine();
+        return null;
+    }
+
     public override object? VisitFunctionSignature(NovusParser.FunctionSignatureContext context)
     {
         EmitHiddenTokensBefore(context);

@@ -1,0 +1,522 @@
+// Streamable Assets
+// Module: std::memory::streamable
+//
+// Provides traits and utilities for streaming large assets through chip RAM.
+// Assets that are too large to fit in chip RAM can implement Streamable to
+// be played/displayed via buffered streaming.
+
+from std::core import Result, Option, Drop
+from std::ffi::exec import AllocMem, FreeMem, CopyMem, CacheClearU
+from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR
+from std::memory::chip import Priority, ChipCacheError
+
+// ============================================================================
+// Streamable Trait
+// ============================================================================
+
+/// Trait for assets that can be streamed through chip RAM buffers.
+///
+/// Implement this trait for any asset type that is too large to fit entirely
+/// in chip RAM and needs to be processed in chunks (audio, video, large images).
+///
+/// # Buffer Strategy
+/// Streamers typically use double or triple buffering:
+/// - Double (2 buffers): One plays/displays while the other refills
+/// - Triple (3 buffers): Extra buffer eliminates timing pressure
+///
+/// # Example Implementation
+/// ```novus
+/// impl Streamable for LargeAudioAsset {
+///     fn stream_data(&self) -> *u8 { self.data }
+///     fn stream_size(&self) -> u32 { self.size }
+///     fn suggested_buffer_size(&self) -> u32 { 16384 }  // 16KB
+///     fn suggested_buffer_count(&self) -> u8 { 3 }      // Triple-buffered
+/// }
+/// ```
+pub trait Streamable {
+    /// Get pointer to the source data
+    ///
+    /// This can point to either chip RAM or fast RAM. Streamers will copy
+    /// chunks to chip RAM buffers as needed.
+    fn stream_data(&self) -> *u8
+
+    /// Get total size of the stream in bytes
+    fn stream_size(&self) -> u32
+
+    /// Suggested buffer size for this asset type
+    ///
+    /// Default: 16KB (good balance for audio)
+    /// Override for different asset types:
+    /// - Small samples: 4KB
+    /// - Video frames: frame size
+    /// - Large audio: 16KB-32KB
+    fn suggested_buffer_size(&self) -> u32 {
+        return 16384
+    }
+
+    /// Suggested number of buffers for this asset type
+    ///
+    /// Default: 3 (triple-buffered for gapless playback)
+    /// Override based on needs:
+    /// - Audio: 3 (gapless, tolerates some jitter)
+    /// - Video: 2 (double-buffered, frame-sync)
+    fn suggested_buffer_count(&self) -> u8 {
+        return 3
+    }
+}
+
+// ============================================================================
+// Stream Buffer - A single chip RAM buffer for streaming
+// ============================================================================
+
+/// A single streaming buffer in chip RAM
+///
+/// Managed by StreamBufferSet for coordinated streaming operations.
+pub struct StreamBuffer {
+    chip_ptr: *u8,          // Pointer to chip RAM buffer
+    size: u32,              // Allocated size
+    filled: u32,            // How much valid data is in the buffer
+    source_offset: u32,     // Offset in source this buffer represents
+}
+
+impl StreamBuffer {
+    fn new() -> StreamBuffer {
+        return StreamBuffer {
+            chip_ptr: (*u8)0,
+            size: 0,
+            filled: 0,
+            source_offset: 0,
+        }
+    }
+
+    /// Check if buffer is allocated
+    pub fn is_allocated(&self) -> bool {
+        return self.chip_ptr != (*u8)0
+    }
+
+    /// Get chip RAM pointer
+    pub fn ptr(&self) -> *u8 {
+        return self.chip_ptr
+    }
+
+    /// Get filled size
+    pub fn filled(&self) -> u32 {
+        return self.filled
+    }
+
+    /// Get source offset this buffer represents
+    pub fn offset(&self) -> u32 {
+        return self.source_offset
+    }
+}
+
+// ============================================================================
+// Stream Buffer Set - Manages multiple buffers for streaming
+// ============================================================================
+
+/// Maximum number of streaming buffers
+const MAX_STREAM_BUFFERS: u32 = 4
+
+/// A set of chip RAM buffers for streaming operations
+///
+/// Provides allocation and management of multiple streaming buffers.
+/// Use this when you need low-level control over buffering, or use
+/// the higher-level ChipStream for common streaming patterns.
+pub struct StreamBufferSet {
+    buffers: [StreamBuffer; 4],
+    buffer_count: u8,
+    buffer_size: u32,
+}
+
+impl StreamBufferSet {
+    /// Create a new buffer set (not yet allocated)
+    pub fn new() -> StreamBufferSet {
+        return StreamBufferSet {
+            buffers: [StreamBuffer::new(); 4],
+            buffer_count: 0,
+            buffer_size: 0,
+        }
+    }
+
+    /// Allocate buffers in chip RAM
+    ///
+    /// # Arguments
+    /// * `count` - Number of buffers (1-4)
+    /// * `size` - Size of each buffer in bytes
+    ///
+    /// # Returns
+    /// * `Ok(())` on success
+    /// * `Err` if allocation fails (will free any partially allocated buffers)
+    pub fn allocate(&mut self, count: u8, size: u32) -> Result<(), ChipCacheError> {
+        if count == 0 || count > 4 {
+            return Result::Err(ChipCacheError::OutOfMemory)
+        }
+
+        // Ensure even size for Paula/DMA alignment
+        var actual_size = size
+        if (actual_size & 1) != 0 {
+            actual_size = actual_size + 1
+        }
+
+        self.buffer_count = count
+        self.buffer_size = actual_size
+
+        var i: u8 = 0
+        while i < count {
+            unsafe {
+                let ptr = (*u8)AllocMem(actual_size, MEMF_CHIP | MEMF_CLEAR)
+                if !ptr {
+                    // Allocation failed - free any already allocated
+                    self.free()
+                    return Result::Err(ChipCacheError::OutOfMemory)
+                }
+                self.buffers[(u32)i].chip_ptr = ptr
+                self.buffers[(u32)i].size = actual_size
+                self.buffers[(u32)i].filled = 0
+                self.buffers[(u32)i].source_offset = 0
+            }
+            i = i + 1
+        }
+
+        return Result::Ok(())
+    }
+
+    /// Free all allocated buffers
+    pub fn free(&mut self) {
+        var i: u8 = 0
+        while i < self.buffer_count {
+            let buf = &mut self.buffers[(u32)i]
+            if buf.chip_ptr {
+                unsafe {
+                    FreeMem(buf.chip_ptr, buf.size)
+                }
+                buf.chip_ptr = (*u8)0
+                buf.size = 0
+            }
+            i = i + 1
+        }
+        self.buffer_count = 0
+        self.buffer_size = 0
+    }
+
+    /// Get number of allocated buffers
+    pub fn count(&self) -> u8 {
+        return self.buffer_count
+    }
+
+    /// Get buffer size
+    pub fn size(&self) -> u32 {
+        return self.buffer_size
+    }
+
+    /// Get a buffer by index (0-based)
+    pub fn get(&self, idx: u8) -> Option<&StreamBuffer> {
+        if idx >= self.buffer_count {
+            return Option::None
+        }
+        return Option::Some(&self.buffers[(u32)idx])
+    }
+
+    /// Get a mutable buffer by index
+    pub fn get_mut(&mut self, idx: u8) -> Option<&mut StreamBuffer> {
+        if idx >= self.buffer_count {
+            return Option::None
+        }
+        return Option::Some(&mut self.buffers[(u32)idx])
+    }
+
+    /// Fill a buffer from a source
+    ///
+    /// Copies data from source to the buffer, starting at source_offset.
+    /// Updates the buffer's filled and source_offset fields.
+    ///
+    /// # Arguments
+    /// * `idx` - Buffer index
+    /// * `source` - Source data pointer
+    /// * `source_size` - Total source size (for bounds checking)
+    /// * `offset` - Offset in source to start copying from
+    ///
+    /// # Returns
+    /// * `Ok(bytes_copied)` - Number of bytes copied
+    /// * `Err` if buffer index invalid or source exhausted
+    pub fn fill(&mut self, idx: u8, source: *u8, source_size: u32, offset: u32) -> Result<u32, ChipCacheError> {
+        if idx >= self.buffer_count {
+            return Result::Err(ChipCacheError::OutOfMemory)  // Invalid index
+        }
+
+        if offset >= source_size {
+            return Result::Err(ChipCacheError::OutOfMemory)  // No more data
+        }
+
+        let buf = &mut self.buffers[(u32)idx]
+        let remaining = source_size - offset
+
+        // Calculate how much to copy
+        var copy_size = self.buffer_size
+        if copy_size > remaining {
+            copy_size = remaining
+        }
+
+        // Ensure even size for DMA
+        if (copy_size & 1) != 0 {
+            copy_size = copy_size - 1
+        }
+
+        unsafe {
+            let src = source + offset
+            CopyMem(src, buf.chip_ptr, copy_size)
+        }
+
+        buf.filled = copy_size
+        buf.source_offset = offset
+
+        // If we copied less than buffer size, pad with zeros
+        if copy_size < self.buffer_size {
+            unsafe {
+                var i = copy_size
+                while i < self.buffer_size {
+                    let ptr = buf.chip_ptr + i
+                    *ptr = 0
+                    i = i + 1
+                }
+            }
+        }
+
+        // Automatically flush CPU cache for 68040/060 DMA safety
+        // This ensures DMA hardware sees the correct data
+        CacheClearU()
+
+        return Result::Ok(copy_size)
+    }
+
+    /// Flush CPU caches after filling buffers
+    ///
+    /// Note: This is now called automatically by fill().
+    /// This method is kept for explicit cache flushing after batch operations
+    /// or when using lower-level buffer manipulation.
+    pub fn flush_cache(&self) {
+        CacheClearU()
+    }
+}
+
+impl Drop for StreamBufferSet {
+    fn drop(&mut self) {
+        self.free()
+    }
+}
+
+// ============================================================================
+// ChipStream - High-level streaming helper
+// ============================================================================
+
+/// High-level streaming helper for Streamable assets
+///
+/// Manages buffer allocation, filling, and position tracking for
+/// assets that implement the Streamable trait.
+///
+/// # Usage
+/// ```novus
+/// let stream = ChipStream::new(&my_asset)?
+/// stream.fill_next()?  // Fill first buffer
+/// let buffer = stream.current_buffer()  // Get chip RAM pointer
+/// // ... use buffer for DMA/playback ...
+/// stream.advance()?  // Move to next buffer, refill previous
+/// ```
+pub struct ChipStream {
+    buffers: StreamBufferSet,
+    source_ptr: *u8,
+    source_size: u32,
+    current_idx: u8,        // Current buffer for playback (0, 1, or 2)
+    fill_offset: u32,       // Next offset to fill from source
+    play_offset: u32,       // How much has been played (buffer granularity)
+    looping: bool,
+}
+
+impl ChipStream {
+    /// Create a new ChipStream from streamable parameters
+    ///
+    /// Allocates chip RAM buffers based on the provided buffer parameters.
+    /// Use with Streamable assets by passing their stream_data(), stream_size(),
+    /// suggested_buffer_count(), and suggested_buffer_size() values.
+    ///
+    /// # Example
+    /// ```novus
+    /// let stream = ChipStream::from_asset(
+    ///     asset.stream_data(),
+    ///     asset.stream_size(),
+    ///     asset.suggested_buffer_count(),
+    ///     asset.suggested_buffer_size()
+    /// )?
+    /// ```
+    pub fn from_asset(source: *u8, size: u32, buffer_count: u8, buffer_size: u32) -> Result<ChipStream, ChipCacheError> {
+        return ChipStream::new(source, size, buffer_count, buffer_size)
+    }
+
+    /// Create a ChipStream with explicit parameters
+    ///
+    /// # Arguments
+    /// * `source` - Pointer to source data (can be fast RAM)
+    /// * `size` - Total size in bytes
+    /// * `buffer_count` - Number of buffers (2-4)
+    /// * `buffer_size` - Size per buffer
+    pub fn new(source: *u8, size: u32, buffer_count: u8, buffer_size: u32) -> Result<ChipStream, ChipCacheError> {
+        var buffers = StreamBufferSet::new()
+        buffers.allocate(buffer_count, buffer_size)?
+
+        return Result::Ok(ChipStream {
+            buffers: buffers,
+            source_ptr: source,
+            source_size: size,
+            current_idx: 0,
+            fill_offset: 0,
+            play_offset: 0,
+            looping: false,
+        })
+    }
+
+    /// Set whether to loop when reaching end
+    pub fn set_looping(&mut self, looping: bool) {
+        self.looping = looping
+    }
+
+    /// Check if looping is enabled
+    pub fn is_looping(&self) -> bool {
+        return self.looping
+    }
+
+    /// Reset stream to beginning
+    pub fn reset(&mut self) {
+        self.current_idx = 0
+        self.fill_offset = 0
+        self.play_offset = 0
+    }
+
+    /// Fill all buffers initially
+    ///
+    /// Call this before starting playback to prime all buffers.
+    pub fn fill_all(&mut self) -> Result<(), ChipCacheError> {
+        var i: u8 = 0
+        while i < self.buffers.count() {
+            self.fill_buffer(i)?
+            i = i + 1
+        }
+        self.buffers.flush_cache()
+        return Result::Ok(())
+    }
+
+    /// Fill a specific buffer
+    fn fill_buffer(&mut self, idx: u8) -> Result<u32, ChipCacheError> {
+        if self.fill_offset >= self.source_size {
+            if self.looping {
+                self.fill_offset = 0
+            } else {
+                return Result::Err(ChipCacheError::OutOfMemory)  // No more data
+            }
+        }
+
+        let bytes_copied = self.buffers.fill(idx, self.source_ptr, self.source_size, self.fill_offset)?
+        self.fill_offset = self.fill_offset + bytes_copied
+        return Result::Ok(bytes_copied)
+    }
+
+    /// Get chip RAM pointer to current buffer
+    pub fn current_buffer(&self) -> *u8 {
+        match self.buffers.get(self.current_idx) {
+            Option::Some(buf) => buf.ptr(),
+            Option::None => (*u8)0,
+        }
+    }
+
+    /// Get current buffer size (filled amount)
+    pub fn current_buffer_filled(&self) -> u32 {
+        match self.buffers.get(self.current_idx) {
+            Option::Some(buf) => buf.filled(),
+            Option::None => 0,
+        }
+    }
+
+    /// Get buffer size (allocated size per buffer)
+    pub fn buffer_size(&self) -> u32 {
+        return self.buffers.size()
+    }
+
+    /// Get number of buffers
+    pub fn buffer_count(&self) -> u8 {
+        return self.buffers.count()
+    }
+
+    /// Advance to next buffer and refill the one just played
+    ///
+    /// Call this when the current buffer finishes playing.
+    /// Returns Ok(true) if more data available, Ok(false) if stream ended.
+    pub fn advance(&mut self) -> Result<bool, ChipCacheError> {
+        // Track played position
+        let buf_filled = self.current_buffer_filled()
+        self.play_offset = self.play_offset + buf_filled
+
+        // Remember which buffer needs refilling
+        let refill_idx = self.current_idx
+
+        // Move to next buffer
+        self.current_idx = (self.current_idx + 1) % self.buffers.count()
+
+        // Refill the buffer that just finished
+        let fill_result = self.fill_buffer(refill_idx)
+        match fill_result {
+            Result::Ok(_) => {
+                self.buffers.flush_cache()
+                return Result::Ok(true)
+            },
+            Result::Err(_) => {
+                // No more data to fill
+                if self.looping {
+                    // This shouldn't happen if looping is enabled
+                    return Result::Ok(true)
+                }
+                // Check if all buffers have been played
+                if self.play_offset >= self.source_size {
+                    return Result::Ok(false)  // Stream ended
+                }
+                return Result::Ok(true)  // Still draining buffers
+            }
+        }
+    }
+
+    /// Check if stream has reached the end
+    ///
+    /// Returns true when all data has been played (not just filled).
+    pub fn is_finished(&self) -> bool {
+        return !self.looping && self.play_offset >= self.source_size
+    }
+
+    /// Get current playback position in bytes
+    pub fn position(&self) -> u32 {
+        return self.play_offset
+    }
+
+    /// Get total stream size in bytes
+    pub fn total_size(&self) -> u32 {
+        return self.source_size
+    }
+
+    /// Get progress percentage (0-100)
+    pub fn progress(&self) -> u32 {
+        if self.source_size == 0 {
+            return 100
+        }
+        return (self.play_offset * 100) / self.source_size
+    }
+
+    /// Get source data pointer
+    pub fn source_ptr(&self) -> *u8 {
+        return self.source_ptr
+    }
+
+    /// Get a specific buffer (for hardware that needs all buffer pointers)
+    pub fn get_buffer(&self, idx: u8) -> Option<*u8> {
+        match self.buffers.get(idx) {
+            Option::Some(buf) => Option::Some(buf.ptr()),
+            Option::None => Option::None,
+        }
+    }
+}

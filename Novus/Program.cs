@@ -489,14 +489,15 @@ class Program
         Console.WriteLine($"FPU Mode: {options.Fpu}");
         Console.WriteLine("==================================\n");
 
-        // Compute safety level from command-line options
-        var safetyLevel = options.GetSafetyLevel();
-
-        // Set build mode from --release flag
+        // Set build mode from --release flag FIRST (before computing safety level)
+        // Safety level defaults depend on build mode, so this must come first!
         if (options.Release)
         {
             options.BuildMode = BuildMode.Release;
         }
+
+        // Compute safety level from command-line options (uses build mode for default)
+        var safetyLevel = options.GetSafetyLevel();
 
         try
         {
@@ -957,13 +958,31 @@ class Program
                 cFiles.Add(debugSymbolsCFile);
             }
 
-            // Add Novus runtime library (novus_runtime.c - contains assert handler with EasyRequest)
-            var runtimeCFile = Path.Combine(compilerDir, "runtime", "novus_runtime.c");
-            if (File.Exists(runtimeCFile))
+            // Add Novus runtime library (split into separate files for better DCE)
+            // The linker can eliminate entire unused .o files, so splitting the runtime
+            // into logical groups allows programs that don't use (e.g.) MMU protection
+            // to avoid linking that code entirely.
+            var runtimeDir = Path.Combine(compilerDir, "runtime");
+            var runtimeFiles = new[]
             {
-                cFiles.Add(runtimeCFile);
-                Console.WriteLine($"  → novus_runtime.c (assert handler)");
+                "runtime_core.c",      // Core: memset, memcpy, strlen, error display
+                "runtime_errors.c",    // Assert, panic, bounds check, div check
+                "runtime_hwdetect.c",  // CPU, FPU, chipset detection
+                "runtime_fmt.c",       // Integer to string conversions
+                "runtime_semaphore.c", // Semaphore wrappers
+                "runtime_mmu.c",       // MMU detection and null page protection
+                "runtime_memtrack.c",  // Memory tracking for debugging
+            };
+
+            foreach (var runtimeFile in runtimeFiles)
+            {
+                var runtimeCFile = Path.Combine(runtimeDir, runtimeFile);
+                if (File.Exists(runtimeCFile))
+                {
+                    cFiles.Add(runtimeCFile);
+                }
             }
+            Console.WriteLine($"  → {runtimeFiles.Length} runtime modules (split for DCE)");
 
             // Handle emit-only mode (just generate C files and stop)
             if (options.EmitAsmOnly)
@@ -1009,9 +1028,9 @@ class Program
                 }
             }
 
-            // Assemble runtime library files (needed for all project types)
-            var runtimeFiles = new[] { "novus_io" };
-            foreach (var runtimeFile in runtimeFiles)
+            // Assemble runtime library assembly files (needed for all project types)
+            var runtimeAsmFiles = new[] { "novus_io" };
+            foreach (var runtimeFile in runtimeAsmFiles)
             {
                 var runtimeSource = Path.Combine(compilerDir, "..", "..", "..", "runtime", $"{runtimeFile}.s");
                 if (File.Exists(runtimeSource))

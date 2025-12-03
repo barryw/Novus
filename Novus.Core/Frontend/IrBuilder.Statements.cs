@@ -58,8 +58,18 @@ public partial class IrBuilder
         // Create entry block
         _currentBlock = function.CreateBasicBlock("entry");
 
+        // Set expected type for implicit returns (so match expressions know their result type)
+        var savedExpectedType = _expectedType;
+        if (returnType is not IrVoidType)
+        {
+            _expectedType = returnType;
+        }
+
         // Visit function body
         var blockResult = Visit(context.block());
+
+        // Restore previous expected type
+        _expectedType = savedExpectedType;
 
         // If function has non-void return type and block produced a value, add implicit return
         if (returnType is not IrVoidType && blockResult is IrValue lastValue)
@@ -807,7 +817,7 @@ public partial class IrBuilder
             }
 
             // Start with the base variable
-            IrVariable baseVar;
+            IrValue baseVar;
             if (_localVariables.ContainsKey(name))
             {
                 baseVar = new IrVariable(name, _localVariables[name].Type);
@@ -819,13 +829,31 @@ public partial class IrBuilder
             }
             else
             {
-                errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
-                _diagnostics.ReportError(
-                    ErrorCodes.UndefinedVariable,
-                    $"Undefined variable: {name}",
-                    errorLocation
-                );
-                return null;
+                // Check for static variables
+                var staticVar = _module.StaticVariables.FirstOrDefault(sv => sv.Name == name);
+                if (staticVar != null)
+                {
+                    baseVar = new IrGlobalVariable(name, staticVar.Type);
+                }
+                else
+                {
+                    // Check for external variables
+                    var externVar = _module.ExternalVariables.FirstOrDefault(ev => ev.Name == name);
+                    if (externVar != null)
+                    {
+                        baseVar = new IrGlobalVariable(name, externVar.Type);
+                    }
+                    else
+                    {
+                        errorLocation = GetLocation(context);
+                        _diagnostics.ReportError(
+                            ErrorCodes.UndefinedVariable,
+                            $"Undefined variable: {name}",
+                            errorLocation
+                        );
+                        return null;
+                    }
+                }
             }
 
             // For single member access (e.g., self.value = expr)

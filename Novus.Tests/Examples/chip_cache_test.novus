@@ -1,0 +1,203 @@
+// Chip Cache Test
+// Demonstrates the chip RAM cache system with priority-based eviction
+
+from std::core import Result, Option
+from std::memory::chip import Priority, ChipCacheError, is_chip_ram
+from std::memory::chip_cache import ChipCache, CacheStats, cache_asset
+from std::memory::chip_pool import ChipPool, PoolStats
+from std::ffi::exec import AvailMem
+from std::ffi::amiga_consts import MEMF_CHIP, MEMF_LARGEST
+from std::io::file import write
+
+// ============================================================================
+// Test data - some assets stored in fast RAM
+// ============================================================================
+
+// Small sample - should use pooled allocation
+static small_asset: [u8; 2048] = [0; 2048]
+
+// Medium sample - uses medium pool
+static medium_asset: [u8; 6144] = [0; 6144]
+
+// Large sample - uses large pool
+static large_asset: [u8; 12288] = [0; 12288]
+
+// ============================================================================
+// Helper to print stats
+// ============================================================================
+
+fn print_cache_stats() {
+    let stats = ChipCache::stats()
+    write("\n=== Cache Statistics ===\n")
+    write("  Entries: %lu (pinned: %lu)\n", stats.entries, stats.pinned_entries)
+    write("  Cached: %lu bytes (pinned: %lu bytes)\n", stats.total_cached, stats.pinned_bytes)
+    write("  Chip available: %lu bytes (largest: %lu bytes)\n", stats.chip_available, stats.chip_largest)
+    write("  Hits: %lu, Misses: %lu, Evictions: %lu\n", stats.cache_hits, stats.cache_misses, stats.evictions)
+}
+
+fn print_pool_stats() {
+    let stats = ChipPool::stats()
+    write("\n=== Pool Statistics ===\n")
+    write("  Small (4KB): %lu allocs, %lu bytes\n", stats.small_count, stats.small_bytes)
+    write("  Medium (8KB): %lu allocs, %lu bytes\n", stats.medium_count, stats.medium_bytes)
+    write("  Large (16KB): %lu allocs, %lu bytes\n", stats.large_count, stats.large_bytes)
+    write("  Huge (32KB): %lu allocs, %lu bytes\n", stats.huge_count, stats.huge_bytes)
+    write("  Total: %lu allocs, %lu bytes\n", stats.total_count(), stats.total_bytes())
+    write("  Chip available: %lu bytes (largest: %lu)\n", stats.chip_available, stats.chip_largest)
+}
+
+// ============================================================================
+// Main
+// ============================================================================
+
+pub fn main() -> i32 {
+    write("Chip Cache Test\n")
+    write("===============\n\n")
+
+    // Show initial chip RAM state
+    let initial_chip = AvailMem(MEMF_CHIP)
+    write("Initial chip RAM available: %lu bytes\n", initial_chip)
+
+    // Initialize the cache (happens automatically on first use, but explicit is fine)
+    ChipCache::init()
+    write("\nCache initialized.\n")
+
+    print_cache_stats()
+    print_pool_stats()
+
+    // Test 1: Cache a small asset (Low priority)
+    write("\n--- Test 1: Cache small asset (Low priority) ---\n")
+    let small_ptr: *u8 = (*u8)&small_asset[0]
+    write("Small asset at: $%08lx\n", (u32)small_ptr)
+    write("Is chip RAM: %s\n", is_chip_ram(small_ptr) ? "yes" : "no")
+
+    match ChipCache::get(1, small_ptr, 2048, Priority::Low, "small_asset") {
+        Result::Ok(chip_ptr) => {
+            write("Cached at: $%08lx\n", (u32)chip_ptr)
+            write("Is chip RAM: %s\n", is_chip_ram(chip_ptr) ? "yes" : "no")
+        },
+        Result::Err(_) => {
+            write("ERROR: Failed to cache small asset\n")
+            return 1
+        }
+    }
+
+    print_cache_stats()
+
+    // Test 2: Cache same asset again (should be cache hit)
+    write("\n--- Test 2: Get same asset (should be hit) ---\n")
+    match ChipCache::get(1, small_ptr, 2048, Priority::Low, "small_asset") {
+        Result::Ok(chip_ptr) => {
+            write("Got from cache: $%08lx\n", (u32)chip_ptr)
+        },
+        Result::Err(_) => {
+            write("ERROR: Cache lookup failed\n")
+            return 1
+        }
+    }
+    print_cache_stats()
+
+    // Test 3: Cache medium asset (Normal priority)
+    write("\n--- Test 3: Cache medium asset (Normal priority) ---\n")
+    let medium_ptr: *u8 = (*u8)&medium_asset[0]
+    match ChipCache::get(2, medium_ptr, 6144, Priority::Normal, "medium_asset") {
+        Result::Ok(chip_ptr) => {
+            write("Medium asset cached at: $%08lx\n", (u32)chip_ptr)
+        },
+        Result::Err(_) => {
+            write("ERROR: Failed to cache medium asset\n")
+            return 1
+        }
+    }
+
+    print_cache_stats()
+    print_pool_stats()
+
+    // Test 4: Cache large asset (High priority, pinned)
+    write("\n--- Test 4: Cache large asset (High priority) ---\n")
+    let large_ptr: *u8 = (*u8)&large_asset[0]
+    match ChipCache::get(3, large_ptr, 12288, Priority::High, "large_asset") {
+        Result::Ok(chip_ptr) => {
+            write("Large asset cached at: $%08lx\n", (u32)chip_ptr)
+
+            // Pin it to protect from eviction
+            ChipCache::pin(3)
+            write("Pinned large asset.\n")
+        },
+        Result::Err(_) => {
+            write("ERROR: Failed to cache large asset\n")
+            return 1
+        }
+    }
+
+    print_cache_stats()
+
+    // Test 5: Manually evict small asset
+    write("\n--- Test 5: Evict small asset ---\n")
+    if ChipCache::evict(1) {
+        write("Small asset evicted successfully.\n")
+    } else {
+        write("Failed to evict small asset (was it pinned?)\n")
+    }
+
+    print_cache_stats()
+
+    // Test 6: Try to evict pinned asset (should fail)
+    write("\n--- Test 6: Try to evict pinned large asset ---\n")
+    if ChipCache::evict(3) {
+        write("Large asset evicted (unexpected!)\n")
+    } else {
+        write("Cannot evict pinned asset (correct behavior).\n")
+    }
+
+    // Test 7: Unpin and evict
+    write("\n--- Test 7: Unpin and evict large asset ---\n")
+    ChipCache::unpin(3)
+    write("Unpinned large asset.\n")
+
+    if ChipCache::evict(3) {
+        write("Large asset evicted successfully.\n")
+    } else {
+        write("Failed to evict large asset.\n")
+    }
+
+    print_cache_stats()
+    print_pool_stats()
+
+    // Test 8: Clear all unpinned
+    write("\n--- Test 8: Clear all unpinned assets ---\n")
+    // First re-cache the small and large assets
+    ChipCache::get(1, small_ptr, 2048, Priority::Low, "small_asset")
+    ChipCache::get(3, large_ptr, 12288, Priority::High, "large_asset")
+    write("Re-cached small and large assets.\n")
+
+    // Pin the medium one
+    ChipCache::pin(2)
+    write("Pinned medium asset.\n")
+
+    print_cache_stats()
+
+    // Clear unpinned
+    ChipCache::clear_unpinned()
+    write("Cleared all unpinned assets.\n")
+
+    print_cache_stats()
+
+    // Cleanup
+    write("\n--- Cleanup ---\n")
+    ChipCache::shutdown()
+    write("Cache shutdown complete.\n")
+
+    let final_chip = AvailMem(MEMF_CHIP)
+    write("\nFinal chip RAM available: %lu bytes\n", final_chip)
+
+    if final_chip >= initial_chip {
+        write("All chip RAM freed successfully!\n")
+    } else {
+        write("WARNING: Some chip RAM may not have been freed.\n")
+        write("  Difference: %lu bytes\n", initial_chip - final_chip)
+    }
+
+    write("\nTest complete.\n")
+    return 0
+}

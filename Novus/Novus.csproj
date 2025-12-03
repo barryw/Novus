@@ -38,6 +38,9 @@
         <None Include="runtime/**/*.c">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </None>
+        <None Include="runtime/**/*.h">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
         <None Include="runtime/**/*.s">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </None>

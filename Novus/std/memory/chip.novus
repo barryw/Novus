@@ -5,8 +5,12 @@
 // Simplified version for initial implementation.
 
 from std::core import Result, Option, Drop
-from std::ffi::exec import AllocMem, FreeMem, CopyMem, TypeOfMem
+from std::ffi::exec import AllocMem, FreeMem, CopyMem, TypeOfMem, Forbid, Permit, CacheClearU
 from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR
+
+// Cache control flags for CacheClearE
+// Note: We use CacheClearU() instead of CacheClearE() for simplicity and safety.
+// CacheClearU() flushes all caches and works correctly on all 68k CPUs.
 
 // ============================================================================
 // Priority for cache eviction
@@ -135,6 +139,30 @@ pub enum ChipCacheError {
     OutOfMemory,
     /// Asset too large for cache budget
     AssetTooLarge,
+    /// Cannot allocate - all cached assets are pinned
+    AllAssetsPinned,
+}
+
+// ============================================================================
+// Chip RAM copy with cache flush
+// ============================================================================
+
+/// Copy data to chip RAM and flush CPU cache
+///
+/// This is the safe way to copy data to chip RAM on 68040/68060 systems.
+/// After copying, all CPU caches are flushed to ensure DMA hardware sees
+/// the correct data.
+///
+/// Use this when copying data that will be read by custom chips (Paula,
+/// Blitter, Copper, etc.).
+pub fn copy_to_chip(dst: *u8, src: *u8, size: u32) {
+    unsafe {
+        CopyMem(src, dst, size)
+        // Flush all CPU caches - critical for 68040/68060
+        // CacheClearU() is simpler and safer than CacheClearE()
+        // Safe to call on 68000/020/030 (just returns)
+        CacheClearU()
+    }
 }
 
 // ============================================================================
@@ -161,8 +189,8 @@ pub fn ensure_chip_ram(ptr: *u8, size: u32, priority: Priority) -> Result<*u8, C
             return Result::Err(ChipCacheError::OutOfMemory)
         }
 
-        // Copy data
-        CopyMem(ptr, chip_ptr, size)
+        // Copy data and flush cache
+        copy_to_chip(chip_ptr, ptr, size)
         return Result::Ok(chip_ptr)
     }
 }

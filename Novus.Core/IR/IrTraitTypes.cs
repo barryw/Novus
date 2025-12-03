@@ -41,7 +41,7 @@ public class IrTrait
 
 /// <summary>
 /// Represents a method signature within a trait definition
-/// This is just the signature - no body/implementation
+/// May optionally have a default implementation
 /// </summary>
 public class IrTraitMethod
 {
@@ -50,12 +50,32 @@ public class IrTraitMethod
     public IrType ReturnType { get; set; }
     public List<string> GenericParameters { get; }  // Method-level generic parameters
 
+    /// <summary>
+    /// The default implementation function, if one was provided in the trait definition.
+    /// Null means this method must be implemented by any type implementing the trait.
+    /// </summary>
+    public IrFunction? DefaultImplementation { get; set; }
+
+    /// <summary>
+    /// The AST context for the default implementation body (for deferred parsing).
+    /// Stored during initial parsing, processed during semantic analysis when needed.
+    /// </summary>
+    public object? DefaultBodyContext { get; set; }
+
+    /// <summary>
+    /// Indicates whether this trait method has a default implementation.
+    /// If true, implementing types can skip implementing this method.
+    /// </summary>
+    public bool HasDefaultImplementation => DefaultBodyContext != null || DefaultImplementation != null;
+
     public IrTraitMethod(string name, List<IrParameter> parameters, IrType returnType, List<string>? genericParams = null)
     {
         Name = name;
         Parameters = parameters;
         ReturnType = returnType;
         GenericParameters = genericParams ?? new List<string>();
+        DefaultImplementation = null;
+        DefaultBodyContext = null;
     }
 
     public string Signature

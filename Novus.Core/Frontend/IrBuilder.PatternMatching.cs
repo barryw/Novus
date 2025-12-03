@@ -189,8 +189,11 @@ public partial class IrBuilder
         // Declare match result variable if arms produce values
         if (armsProduceValues)
         {
-            // Use expected type if available (e.g., from function return type)
-            matchResultType = _expectedType ?? _currentFunction?.ReturnType;
+            // Use expected type if available (e.g., from type annotation on let binding)
+            // Do NOT fall back to function return type - that would cause nested matches
+            // in non-return contexts to incorrectly use the function's return type.
+            // If no expected type, we'll infer the type from the first arm (lines 500-512, 526-537).
+            matchResultType = _expectedType;
 
             if (matchResultType != null && matchResultType is not IrVoidType)
             {
@@ -507,6 +510,24 @@ public partial class IrBuilder
                     _currentFunction!.LocalVariables.Add(matchResultVar);
                     _localVariables[matchResultVarName] = matchResultVar;
 
+                    // CRITICAL: Emit an IrLocalDecl instruction so LivenessAnalysis sees the correct type.
+                    // Without this, the slot type is inferred from the first IrStore, which could have
+                    // a different type if the value is wrapped or converted.
+                    IrValue defaultValue;
+                    if (matchResultType is IrIntType intType)
+                    {
+                        defaultValue = new IrConstant(0, intType);
+                    }
+                    else if (matchResultType is IrBoolType)
+                    {
+                        defaultValue = new IrBoolConstant(false);
+                    }
+                    else
+                    {
+                        defaultValue = new IrConstant(0, matchResultType);
+                    }
+                    _currentBlock!.AddInstruction(new IrLocalDecl(matchResultVarName, matchResultType, true, defaultValue));
+
                     // Now that we know the type, set it as expected type for subsequent arms
                     _expectedType = matchResultType;
                 }
@@ -532,6 +553,24 @@ public partial class IrBuilder
                     var matchResultVar = new IrLocalVariable(matchResultVarName, matchResultType, true);
                     _currentFunction!.LocalVariables.Add(matchResultVar);
                     _localVariables[matchResultVarName] = matchResultVar;
+
+                    // CRITICAL: Emit an IrLocalDecl instruction so LivenessAnalysis sees the correct type.
+                    // Without this, the slot type is inferred from the first IrStore, which could have
+                    // a different type if the value is wrapped or converted.
+                    IrValue defaultValue;
+                    if (matchResultType is IrIntType intType)
+                    {
+                        defaultValue = new IrConstant(0, intType);
+                    }
+                    else if (matchResultType is IrBoolType)
+                    {
+                        defaultValue = new IrBoolConstant(false);
+                    }
+                    else
+                    {
+                        defaultValue = new IrConstant(0, matchResultType);
+                    }
+                    _currentBlock!.AddInstruction(new IrLocalDecl(matchResultVarName, matchResultType, true, defaultValue));
 
                     // Now that we know the type, set it as expected type for subsequent arms
                     _expectedType = matchResultType;

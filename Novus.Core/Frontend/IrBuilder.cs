@@ -426,11 +426,8 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
             RegisterConstant(constContext);
         }
 
-        // Pass 1.5: Register all static variables
-        foreach (var staticContext in context.staticDeclaration())
-        {
-            RegisterStatic(staticContext);
-        }
+        // NOTE: Static variables are registered later (Pass 3.1) after struct types are defined,
+        // because static initializers may contain struct literals that need type resolution.
 
         // Pass 2: Register all enum types using two-pass approach
         // Pass 2a: Register stub enum types for ALL enums in the module
@@ -486,6 +483,13 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
         foreach (var structContext in context.structDeclaration())
         {
             RegisterStruct(structContext);
+        }
+
+        // Pass 3.1: Register all static variables (after struct types are registered)
+        // Static initializers may contain struct literals that require type resolution
+        foreach (var staticContext in context.staticDeclaration())
+        {
+            RegisterStatic(staticContext);
         }
 
         // Pass 3.25: Register all trait types
@@ -807,8 +811,18 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
                     _localVariables[param.Name] = new IrLocalVariable(param.Name, param.Type, isMutable: false);
                 }
 
+                // Set expected type for implicit returns (so match expressions know their result type)
+                var savedExpectedType = _expectedType;
+                if (_currentFunction.ReturnType is not IrVoidType)
+                {
+                    _expectedType = _currentFunction.ReturnType;
+                }
+
                 // Visit method body
                 var lastValue = Visit(funcDecl.block()) as IrValue;
+
+                // Restore previous expected type
+                _expectedType = savedExpectedType;
 
                 // Add implicit return if block doesn't already have a terminator
                 AddImplicitReturn(lastValue);

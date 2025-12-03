@@ -1424,27 +1424,24 @@ public class CCodeGenerator
             sb.AppendLine();
         }
 
-        // Collect struct types used by static variables that need to be defined in the statics file
-        // These are typically structs created by @mod or @audio attributes
+        // Collect struct types used by static variables that need to be defined in the statics file.
+        // We must recursively collect ALL struct types (including nested field types) and emit
+        // them in topological order (dependencies first).
         var staticStructTypes = new HashSet<IrStructType>();
+        var visitedStructs = new HashSet<string>();
         foreach (var staticVar in _module.StaticVariables)
         {
-            if (staticVar.Type is IrStructType structType)
-            {
-                // Emit struct types that are used by static variables
-                // The module.Structs list includes both local and imported-for-statics structs
-                if (_module.Structs.Any(s => s.StructName == structType.StructName))
-                {
-                    staticStructTypes.Add(structType);
-                }
-            }
+            CollectStructDependenciesRecursively(staticVar.Type, staticStructTypes, visitedStructs);
         }
 
+        // Topologically sort struct types so dependencies come before dependents
+        var sortedStructTypes = TopologicalSortStructTypes(staticStructTypes);
+
         // Emit struct typedefs for static variables
-        if (staticStructTypes.Count > 0)
+        if (sortedStructTypes.Count > 0)
         {
             sb.AppendLine("// Struct types for static variables");
-            foreach (var structType in staticStructTypes)
+            foreach (var structType in sortedStructTypes)
             {
                 EmitStructTypeToBuilder(sb, structType);
             }
@@ -1599,10 +1596,9 @@ public class CCodeGenerator
         else if (staticVar.InitialValue is IrStructLiteral structLit)
         {
             var cType = GetCType(staticVar.Type);
-            var fields = structLit.FieldValues
-                .Select(kvp => $".{kvp.Key} = {EmitValue(kvp.Value)}")
-                .ToList();
-            sb.AppendLine($"{sectionAttr}{keywordStr}{cType} {staticVar.Name} = {{ {string.Join(", ", fields)} }};");
+            // Use EmitStructLiteralForInitializer which omits the type cast
+            var initValue = EmitStructLiteralForInitializer(structLit);
+            sb.AppendLine($"{sectionAttr}{keywordStr}{cType} {staticVar.Name} = {initValue};");
         }
         else
         {
@@ -1695,6 +1691,8 @@ public class CCodeGenerator
         {
             sb.AppendLine($"#pragma pack()");
         }
+        // Add typedef so we can use SizePool instead of struct SizePool
+        sb.AppendLine($"typedef struct {structName} {structName};");
         sb.AppendLine($"#endif // {guardName}");
         sb.AppendLine();
 
@@ -1988,6 +1986,62 @@ public class CCodeGenerator
     }
 
     /// <summary>
+    /// Recursively collect all struct types that a type depends on, including nested field types.
+    /// This is used for static variable definitions where we need all struct dependencies to be
+    /// defined before the struct that uses them.
+    /// </summary>
+    private void CollectStructDependenciesRecursively(IrType type, HashSet<IrStructType> structTypes, HashSet<string> visitedStructs)
+    {
+        switch (type)
+        {
+            case IrStructType structType:
+                // Use CacheKey if available (for monomorphized types), otherwise StructName
+                var key = structType.CacheKey ?? structType.StructName;
+                if (visitedStructs.Contains(key))
+                    return;
+                visitedStructs.Add(key);
+
+                // First, recursively collect all field dependencies (before adding this struct)
+                foreach (var field in structType.Fields)
+                {
+                    CollectStructDependenciesRecursively(field.Type, structTypes, visitedStructs);
+                }
+
+                // Then add this struct (so dependencies are added before dependents)
+                structTypes.Add(structType);
+                break;
+
+            case IrArrayType arrayType:
+                CollectStructDependenciesRecursively(arrayType.ElementType, structTypes, visitedStructs);
+                break;
+
+            case IrTupleType tupleType:
+                foreach (var elementType in tupleType.ElementTypes)
+                {
+                    CollectStructDependenciesRecursively(elementType, structTypes, visitedStructs);
+                }
+                break;
+
+            case IrEnumType enumType:
+                // Check enum variant payloads for struct types
+                foreach (var variant in enumType.Variants)
+                {
+                    if (variant.HasAssociatedData && variant.AssociatedData != null)
+                    {
+                        foreach (var dataType in variant.AssociatedData)
+                        {
+                            CollectStructDependenciesRecursively(dataType, structTypes, visitedStructs);
+                        }
+                    }
+                }
+                break;
+
+            // Pointer types don't need the full struct definition, just forward declaration
+            // so we don't recurse into them
+        }
+    }
+
+    /// <summary>
     /// Recursively collect all tuple types referenced by a given type.
     /// This is used to emit tuple type definitions before struct definitions that use them.
     /// </summary>
@@ -2144,6 +2198,12 @@ public class CCodeGenerator
         var visited = new HashSet<IrEnumType>();
         var visiting = new HashSet<IrEnumType>();
 
+        // Helper to get enum name (handles generic instantiations)
+        string GetEnumName(IrEnumType et) => et.CacheKey ?? MangleName(et);
+
+        // Build a name-to-type map for efficient lookup
+        var enumByName = enumTypes.ToDictionary(e => GetEnumName(e), e => e);
+
         // DFS visit function
         void Visit(IrEnumType enumType)
         {
@@ -2164,9 +2224,14 @@ public class CCodeGenerator
                     foreach (var dataType in variant.AssociatedData)
                     {
                         // Find enum types in the associated data
-                        if (dataType is IrEnumType dependentEnum && enumTypes.Contains(dependentEnum))
+                        if (dataType is IrEnumType dependentEnum)
                         {
-                            Visit(dependentEnum);
+                            var dependentName = GetEnumName(dependentEnum);
+                            // Look up the enum by name instead of reference equality
+                            if (enumByName.TryGetValue(dependentName, out var actualEnum))
+                            {
+                                Visit(actualEnum);
+                            }
                         }
                     }
                 }
@@ -2218,8 +2283,16 @@ public class CCodeGenerator
             // Visit all struct dependencies first (structs used in fields)
             foreach (var field in structType.Fields)
             {
-                // Find struct types in the field type
-                if (field.Type is IrStructType dependentStruct)
+                // Find struct types in the field type (including nested in arrays)
+                var fieldType = field.Type;
+
+                // Unwrap array types to find the element type
+                while (fieldType is IrArrayType arrayType)
+                {
+                    fieldType = arrayType.ElementType;
+                }
+
+                if (fieldType is IrStructType dependentStruct)
                 {
                     var dependentName = GetStructName(dependentStruct);
                     // Look up the struct by name instead of reference equality
@@ -6074,6 +6147,111 @@ public class CCodeGenerator
         return $"({typeName}){{ {string.Join(", ", fields)} }}";
     }
 
+    /// <summary>
+    /// Emit struct literal for initializer context (static variables, field initializers).
+    /// VBCC doesn't support compound literals `(Type){ ... }` in initializers, so we
+    /// emit just `{ .field = value }` without the type cast.
+    /// </summary>
+    internal string EmitStructLiteralForInitializer(IrStructLiteral structLit)
+    {
+        var structType = structLit.Type as IrStructType;
+        if (structType == null)
+            throw new InvalidOperationException("StructLiteral must have IrStructType");
+
+        var fields = structLit.FieldValues
+            .Select(kvp => $".{kvp.Key} = {EmitValueForInitializer(kvp.Value)}")
+            .ToList();
+
+        return $"{{ {string.Join(", ", fields)} }}";
+    }
+
+    /// <summary>
+    /// Emit value for initializer context. For struct/array literals, omits the type cast.
+    /// </summary>
+    internal string EmitValueForInitializer(IrValue value)
+    {
+        return value switch
+        {
+            IrStructLiteral structLit => EmitStructLiteralForInitializer(structLit),
+            IrArrayLiteral arrayLit => EmitArrayLiteralForInitializer(arrayLit),
+            _ => EmitValue(value)  // Other values are emitted normally
+        };
+    }
+
+    /// <summary>
+    /// Emit array literal for initializer context. VBCC doesn't support compound literals.
+    /// Optimizes zero-filled arrays to {0} for smaller binaries.
+    /// </summary>
+    internal string EmitArrayLiteralForInitializer(IrArrayLiteral arrayLit)
+    {
+        // OPTIMIZATION: If all elements are zero-equivalent, emit {0} instead of listing every element
+        // C99 guarantees {0} initializes entire array to zero, producing much smaller .c files
+        // and faster compilation for large arrays
+        if (IsAllZeroArray(arrayLit))
+        {
+            return "{0}";
+        }
+
+        var elements = arrayLit.Elements
+            .Select(elem => EmitValueForInitializer(elem))
+            .ToList();
+
+        return $"{{ {string.Join(", ", elements)} }}";
+    }
+
+    /// <summary>
+    /// Check if an array literal consists entirely of zero values.
+    /// Works recursively for nested arrays and structs.
+    /// </summary>
+    private bool IsAllZeroArray(IrArrayLiteral arrayLit)
+    {
+        foreach (var elem in arrayLit.Elements)
+        {
+            if (!IsZeroValue(elem))
+                return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Check if a value is zero-equivalent (can be omitted in {0} initialization).
+    /// </summary>
+    private bool IsZeroValue(IrValue value)
+    {
+        return value switch
+        {
+            // Integer zero (any bit width) or null pointer (stored as 0L)
+            IrConstant constant => constant.Value == 0,
+
+            // Float zero
+            IrFloatConstant floatConst => floatConst.Value == 0.0,
+
+            // Bool false
+            IrBoolConstant boolConst => !boolConst.Value,
+
+            // Nested array - all elements must be zero
+            IrArrayLiteral nestedArray => IsAllZeroArray(nestedArray),
+
+            // Struct literal - all fields must be zero
+            IrStructLiteral structLit => IsAllZeroStruct(structLit),
+
+            _ => false
+        };
+    }
+
+    /// <summary>
+    /// Check if a struct literal has all zero-valued fields.
+    /// </summary>
+    private bool IsAllZeroStruct(IrStructLiteral structLit)
+    {
+        foreach (var fieldValue in structLit.FieldValues.Values)
+        {
+            if (!IsZeroValue(fieldValue))
+                return false;
+        }
+        return true;
+    }
+
     internal string EmitTupleLiteral(IrTupleLiteral tupleLit)
     {
         var tupleType = tupleLit.Type as IrTupleType;
@@ -6103,6 +6281,12 @@ public class CCodeGenerator
         var arrayType = arrayLit.Type as IrArrayType;
         if (arrayType == null)
             throw new InvalidOperationException("ArrayLiteral must have IrArrayType");
+
+        // OPTIMIZATION: If all elements are zero-equivalent, emit {0}
+        if (IsAllZeroArray(arrayLit))
+        {
+            return "{0}";
+        }
 
         var elements = arrayLit.Elements
             .Select(elem => EmitValue(elem))

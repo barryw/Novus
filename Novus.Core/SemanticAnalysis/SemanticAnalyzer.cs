@@ -539,18 +539,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
-        // CRITICAL: Register ALL pub struct PLACEHOLDERS from the module FIRST
+        // CRITICAL: Register ALL struct PLACEHOLDERS from the module FIRST (including private ones)
         // This allows mutually recursive struct definitions (e.g., VSprite -> Bob -> AnimComp -> AnimOb)
+        // Private structs must also be registered because public structs may have fields of private types
         // Must happen before filling in fields or enum variants
         foreach (var structDecl in moduleContext.structDeclaration())
         {
             var structName = structDecl.IDENTIFIER().GetText();
-
-            // Skip private structs
-            if (!ModuleImportHelper.IsPub(structDecl))
-            {
-                continue;
-            }
 
             // Skip if this struct has already been imported (transitive dependencies)
             if (_symbols.HasStruct(structName))
@@ -563,15 +558,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         // Pass 2: Fill in struct fields now that all struct names are known
+        // We must fill in ALL structs (including private ones) because public structs
+        // may have fields of private types, and we need the full type information
         foreach (var structDecl in moduleContext.structDeclaration())
         {
             var structName = structDecl.IDENTIFIER().GetText();
-
-            // Skip private structs
-            if (!ModuleImportHelper.IsPub(structDecl))
-            {
-                continue;
-            }
+            var isPub = ModuleImportHelper.IsPub(structDecl);
 
             // Check if this struct exists and needs field filling
             var existingStruct = _symbols.LookupStruct(structName);
@@ -583,8 +575,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             // Skip if already fully registered (has fields) - from transitive imports
             if (existingStruct.Fields.Count > 0)
             {
-                // Mark as imported if it was explicitly requested
-                if (namesToImport.Contains(structName))
+                // Mark as imported if it was explicitly requested (only for public structs)
+                if (isPub && namesToImport.Contains(structName))
                 {
                     _importedNames[structName] = moduleNamespace;
                 }
@@ -594,8 +586,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             // Fill in the struct fields (placeholder has empty fields)
             FillStructFields(structDecl);
 
-            // Mark as imported if it was explicitly requested
-            if (namesToImport.Contains(structName))
+            // Mark as imported if it was explicitly requested (only for public structs)
+            if (isPub && namesToImport.Contains(structName))
             {
                 _importedNames[structName] = moduleNamespace;
             }
@@ -1925,21 +1917,22 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             }
         }
 
-        // Parse trait method signatures
+        // Parse trait method signatures (and optional default implementations)
         var methods = new List<IrTraitMethod>();
 
         foreach (var itemCtx in context.traitItem())
         {
-            var funcSig = itemCtx.functionSignature();
-            if (funcSig != null)
+            // After grammar change, we use traitMethodDeclaration instead of functionSignature
+            var methodDecl = itemCtx.traitMethodDeclaration();
+            if (methodDecl != null)
             {
-                var methodName = funcSig.IDENTIFIER().GetText();
+                var methodName = methodDecl.IDENTIFIER().GetText();
 
                 // Parse method generic parameters (if any)
                 var methodGenericParams = new List<string>();
-                if (funcSig.genericParams() != null)
+                if (methodDecl.genericParams() != null)
                 {
-                    foreach (var paramId in funcSig.genericParams().IDENTIFIER())
+                    foreach (var paramId in methodDecl.genericParams().IDENTIFIER())
                     {
                         var paramName = paramId.GetText();
                         methodGenericParams.Add(paramName);
@@ -1949,9 +1942,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
                 // Parse parameters
                 var parameters = new List<IrParameter>();
-                if (funcSig.parameterList() != null)
+                if (methodDecl.parameterList() != null)
                 {
-                    var paramList = funcSig.parameterList();
+                    var paramList = methodDecl.parameterList();
 
                     foreach (var paramCtx in paramList.parameter())
                     {
@@ -1972,12 +1965,21 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
                 // Parse return type
                 IrType returnType = IrVoidType.Instance;
-                if (funcSig.type() != null)
+                if (methodDecl.type() != null)
                 {
-                    returnType = ParseType(funcSig.type());
+                    returnType = ParseType(methodDecl.type());
                 }
 
-                methods.Add(new IrTraitMethod(methodName, parameters, returnType, methodGenericParams.Count > 0 ? methodGenericParams : null));
+                var traitMethod = new IrTraitMethod(methodName, parameters, returnType, methodGenericParams.Count > 0 ? methodGenericParams : null);
+
+                // Check if there's a default implementation (body block)
+                if (methodDecl.block() != null)
+                {
+                    // Store the AST context for the default implementation body
+                    traitMethod.DefaultBodyContext = methodDecl.block();
+                }
+
+                methods.Add(traitMethod);
 
                 // Clear method-level generic params
                 foreach (var param in methodGenericParams)

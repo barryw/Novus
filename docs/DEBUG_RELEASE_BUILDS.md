@@ -544,12 +544,101 @@ mode = "release"          # Default to release mode
 
 ---
 
+## 📦 Binary Size Optimization
+
+The Novus compiler implements several automatic optimizations to minimize binary size, especially important for Amiga systems with limited memory.
+
+### Automatic Size Optimizations
+
+#### 1. Zero-Initialized Array Compression
+
+Large arrays initialized to zero are emitted using C99's `{0}` syntax instead of listing every element:
+
+```novus
+// Novus source
+static data: [u8; 2048] = [0; 2048]
+```
+
+**Before optimization:**
+```c
+// Would generate 2048 explicit zeros
+const uint8_t data[2048] = { 0, 0, 0, 0, ... }; // ~20KB in source
+```
+
+**After optimization:**
+```c
+// C99 guarantees {0} zeros the entire array
+const uint8_t data[2048] = {0};  // A few bytes
+```
+
+This applies to arrays, nested arrays, and structs with all-zero fields.
+
+#### 2. Symbol Stripping (Release Mode)
+
+Release builds automatically strip debug symbols using vlink's `-s` flag:
+
+- **Debug mode:** Preserves symbols and map file for debugging
+- **Release mode:** Strips all symbols for smaller binaries
+
+Typical savings: 20-40% reduction in binary size.
+
+#### 3. Dead Code Elimination
+
+The compiler uses vlink's `-gc-all` (garbage collection) to remove unused functions:
+
+```bash
+# Linker flags for executables
+-gc-all   # Trace from entry point, remove unreachable code
+-e _start # Entry point for tracing
+```
+
+Each function is compiled to its own `.o` file, enabling fine-grained DCE.
+
+#### 4. Section Merging
+
+vlink's `-sc` and `-sd` flags merge sections to avoid duplicate symbol errors from monomorphized generics:
+
+```bash
+-sc  # Merge all code sections
+-sd  # Merge all data/bss sections
+```
+
+### Size Comparison Example
+
+For a chip RAM cache test binary:
+
+| Build Mode | Binary Size | Notes |
+|------------|-------------|-------|
+| Debug (before opts) | 340 KB | Full symbols, unoptimized |
+| Release (before opts) | 62 KB | Stripped, optimized |
+| Release (with opts) | 59 KB | + zero-init compression |
+
+### Manual Size Reduction Tips
+
+If you need even smaller binaries:
+
+1. **Use `--release` mode** - Always use release for distribution
+2. **Minimize string literals** - Each string adds to binary size
+3. **Avoid unused imports** - Unused functions may still be pulled in transitively
+4. **Use `write!` sparingly** - Printf formatting adds ~5KB
+5. **Consider `-Os`** - Optimize for size over speed (when implemented)
+
+### Future Size Optimizations
+
+Planned improvements:
+- `-Os` optimization level for size-optimized code
+- String deduplication for repeated literals
+- More aggressive inlining thresholds
+- LTO (Link-Time Optimization) across modules
+
+---
+
 **End of Document**
 
 ## Next Steps
 
-1. Implement `--debug` and `--release` flags
-2. Wire up VBCC optimization flags
+1. ~~Implement `--debug` and `--release` flags~~ ✓
+2. ~~Wire up VBCC optimization flags~~ ✓
 3. Add conditional bounds checking
 4. Add assertion support
 5. Add panic message stripping

@@ -107,7 +107,12 @@ traitDeclaration
     ;
 
 traitItem
-    : functionSignature
+    : traitMethodDeclaration
+    ;
+
+// Trait method: can be just a signature (required to implement) or have a body (default implementation)
+traitMethodDeclaration
+    : KW_FN IDENTIFIER genericParams? '(' parameterList? ')' ('->' type)? block? NEWLINE*
     ;
 
 functionSignature

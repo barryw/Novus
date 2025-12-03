@@ -155,6 +155,11 @@ public class VbccToolchain
             args.Insert(1, "-g");   // Preserve debug symbols
             args.Insert(2, "-M");   // Generate map file
         }
+        else
+        {
+            // Release mode: strip symbols for smaller binaries
+            args.Insert(1, "-s");   // Strip all symbols
+        }
 
         // CRITICAL: Set MEMF_CHIP flag on DATA_C section so AmigaOS loader
         // allocates it in chip RAM. Paula DMA can only access chip RAM,
@@ -283,13 +288,32 @@ public class VbccToolchain
         string objFile,
         string cpu = "68020",
         int optimization = 0,
-        BuildMode buildMode = BuildMode.Debug)
+        BuildMode buildMode = BuildMode.Debug,
+        IEnumerable<string>? extraIncludePaths = null)
     {
         var vcPath = Path.Combine(_vbccPath, "bin", "vc");
 
         // Determine optimization level based on build mode
         // Note: Using O=0 for release to test if optimization is the issue
         var optLevel = 0;
+
+        // Build include path arguments
+        var includeArgs = new List<string>();
+        if (extraIncludePaths != null)
+        {
+            foreach (var path in extraIncludePaths)
+            {
+                includeArgs.Add($"-I{path}");
+            }
+        }
+
+        // Auto-detect runtime files and add their directory to include path
+        // This allows split runtime files to include their shared header
+        var cFileDir = Path.GetDirectoryName(cFile);
+        if (cFileDir != null && cFileDir.EndsWith(Path.DirectorySeparatorChar + "runtime"))
+        {
+            includeArgs.Add($"-I{cFileDir}");
+        }
 
         // In debug mode, we use a two-step compile: C -> asm (with post-processing) -> object
         // This allows us to inject debug labels that VBCC's direct C->obj path doesn't support
@@ -308,8 +332,9 @@ public class VbccToolchain
                 "-use-framepointer", // CRITICAL: Force frame pointer (A6) for all functions
                 "-S",               // Generate assembly output
                 "-o", asmFile,      // Output assembly file
-                cFile               // Input C file
             };
+            asmArgs.AddRange(includeArgs);
+            asmArgs.Add(cFile);     // Input C file
 
             if (!await RunTool(vcPath, asmArgs))
             {
@@ -339,8 +364,9 @@ public class VbccToolchain
             "-use-framepointer", // CRITICAL: Force frame pointer (A6) for all functions to fix stack offset bugs
             "-c",               // Compile only, don't link
             "-o", objFile,      // Output object file
-            cFile               // Input C file
         };
+        args.AddRange(includeArgs);
+        args.Add(cFile);        // Input C file
 
         // Don't print here - caller will show progress
         return await RunTool(vcPath, args);

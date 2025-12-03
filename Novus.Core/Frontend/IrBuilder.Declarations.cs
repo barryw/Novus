@@ -969,20 +969,21 @@ public partial class IrBuilder
         // Handle generic parameters if present
         var genericParams = ParseGenericParameters(context.genericParams(), registerInSymbolTable: true);
 
-        // Parse trait method signatures
+        // Parse trait method signatures (and optional default implementations)
         var methods = new List<IrTraitMethod>();
         foreach (var itemCtx in context.traitItem())
         {
-            var funcSig = itemCtx.functionSignature();
-            if (funcSig != null)
+            // After grammar change, we now use traitMethodDeclaration() instead of functionSignature()
+            var methodDecl = itemCtx.traitMethodDeclaration();
+            if (methodDecl != null)
             {
-                var methodName = funcSig.IDENTIFIER().GetText();
+                var methodName = methodDecl.IDENTIFIER().GetText();
 
                 // Parse method generic parameters (if any)
                 var methodGenericParams = new List<string>();
-                if (funcSig.genericParams() != null)
+                if (methodDecl.genericParams() != null)
                 {
-                    foreach (var paramId in funcSig.genericParams().IDENTIFIER())
+                    foreach (var paramId in methodDecl.genericParams().IDENTIFIER())
                     {
                         var paramName = paramId.GetText();
                         methodGenericParams.Add(paramName);
@@ -992,9 +993,9 @@ public partial class IrBuilder
 
                 // Parse parameters
                 var parameters = new List<IrParameter>();
-                if (funcSig.parameterList() != null)
+                if (methodDecl.parameterList() != null)
                 {
-                    var paramList = funcSig.parameterList();
+                    var paramList = methodDecl.parameterList();
 
                     // Handle self parameter
                     if (paramList.selfParameter() != null)
@@ -1028,9 +1029,19 @@ public partial class IrBuilder
                 }
 
                 // Parse return type
-                var returnType = ParseReturnType(funcSig.type());
+                var returnType = ParseReturnType(methodDecl.type());
 
-                methods.Add(new IrTraitMethod(methodName, parameters, returnType, methodGenericParams.Count > 0 ? methodGenericParams : null));
+                var traitMethod = new IrTraitMethod(methodName, parameters, returnType, methodGenericParams.Count > 0 ? methodGenericParams : null);
+
+                // Check if there's a default implementation (body block)
+                if (methodDecl.block() != null)
+                {
+                    // Store the AST context for the default implementation body
+                    // This will be processed later during semantic analysis when needed
+                    traitMethod.DefaultBodyContext = methodDecl.block();
+                }
+
+                methods.Add(traitMethod);
 
                 // Clear method-level generic params
                 // Note: For traits, we don't need to clear individual params, just the whole set
