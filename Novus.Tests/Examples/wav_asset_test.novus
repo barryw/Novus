@@ -1,0 +1,136 @@
+// WAV Asset Test
+// Demonstrates loading WAV files with chip = false option
+// for storing audio in fast RAM with automatic chip RAM copy on playback
+//
+// This shows how to use @audio with chip = false for memory efficiency
+
+from std::core import Result
+from std::audio::ptplayer import AudioAsset, AudioSample
+from std::audio::paula import AudioChannel, PlaybackMode, is_pal_system
+from std::audio::errors import AudioError
+from std::memory::chip import is_chip_ram
+from std::io::file import write, wait_for_key
+from std::hardware::chipset import DISPLAY, DisplayType
+
+// ============================================================================
+// Test 1: Audio stored in fast RAM using AudioAsset
+// ============================================================================
+
+// Embed WAV file in fast RAM (chip = false)
+// The data will be copied to chip RAM at runtime when played
+@audio("beep.wav", chip = false)
+static beep_fast: AudioAsset = []
+
+// ============================================================================
+// Test 2: Audio stored directly in chip RAM using AudioSample (default)
+// ============================================================================
+
+// Embed WAV file directly in chip RAM (chip = true is default)
+// No runtime copy needed, but uses precious chip RAM at load time
+@audio("beep.wav")
+static beep_chip: AudioSample = []
+
+// ============================================================================
+// Main test function
+// ============================================================================
+
+pub fn main() -> i32 {
+    write("WAV Asset Test\n")
+    write("==============\n\n")
+
+    let is_pal = DISPLAY() == DisplayType::PAL
+    write("Display: %s\n\n", is_pal ? "PAL" : "NTSC")
+
+    // Test 1: Fast RAM AudioAsset
+    write("Test 1: AudioAsset (fast RAM)\n")
+    write("  Data pointer: 0x%lx\n", (u32)beep_fast.data)
+    write("  Size: %ld bytes\n", beep_fast.size)
+    write("  Sample rate: %ld Hz\n", beep_fast.sample_rate)
+    write("  Period (PAL): %d\n", (i32)beep_fast.period_pal)
+    write("  Period (NTSC): %d\n", (i32)beep_fast.period_ntsc)
+    write("  In chip RAM: %s\n\n", is_chip_ram(beep_fast.data) ? "yes" : "no")
+
+    // Test 2: Chip RAM AudioSample
+    write("Test 2: AudioSample (chip RAM)\n")
+    write("  Data pointer: 0x%lx\n", (u32)beep_chip.data)
+    write("  Size: %ld bytes\n", beep_chip.length_bytes)
+    write("  Sample rate: %ld Hz\n", beep_chip.sample_rate)
+    write("  Period (PAL): %d\n", (i32)beep_chip.period_pal)
+    write("  Period (NTSC): %d\n", (i32)beep_chip.period_ntsc)
+    write("  In chip RAM: %s\n\n", is_chip_ram(beep_chip.data) ? "yes" : "no")
+
+    // Play the chip RAM sample directly (no copy needed)
+    write("Playing chip RAM sample...\n")
+    let ch_result = AudioChannel::acquire(0)
+    match ch_result {
+        Result::Ok(mut channel) => {
+            channel.set_volume(64)
+
+            // Get the correct period for the current system
+            let period = is_pal ? beep_chip.period_pal : beep_chip.period_ntsc
+
+            // Play using play_raw (data is already in chip RAM)
+            let play_result = channel.play_raw(
+                beep_chip.data,
+                beep_chip.length_words,
+                period,
+                PlaybackMode::OneShot
+            )
+
+            match play_result {
+                Result::Ok(_) => {
+                    write("Press any key to continue...\n")
+                    wait_for_key()
+                    channel.stop()
+                },
+                Result::Err(err) => {
+                    write("ERROR: Failed to play sample\n")
+                    return 2
+                }
+            }
+        },
+        Result::Err(_) => {
+            write("ERROR: Failed to acquire channel\n")
+            return 1
+        }
+    }
+
+    // Play the fast RAM sample using play_asset_native (automatic chip RAM management!)
+    write("\nPlaying fast RAM sample (automatic chip RAM copy)...\n")
+    let ch2_result = AudioChannel::acquire(0)
+    match ch2_result {
+        Result::Ok(mut channel) => {
+            channel.set_volume(64)
+
+            // Use play_asset_native - handles chip RAM automatically!
+            // No manual FreeMem needed - cleaned up when channel is dropped
+            let play_result = channel.play_asset_native(
+                beep_fast.data,
+                beep_fast.size,
+                beep_fast.period_pal,
+                beep_fast.period_ntsc,
+                PlaybackMode::OneShot
+            )
+
+            match play_result {
+                Result::Ok(_) => {
+                    write("Press any key to stop...\n")
+                    wait_for_key()
+                    channel.stop()
+                    // Chip RAM is freed automatically when channel is dropped!
+                },
+                Result::Err(_) => {
+                    write("ERROR: Failed to play sample\n")
+                    return 3
+                }
+            }
+        },
+        Result::Err(_) => {
+            write("ERROR: Failed to acquire channel\n")
+            return 1
+        }
+    }
+
+    write("\nDone!\n")
+    return 0
+}
