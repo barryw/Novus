@@ -56,6 +56,19 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public IReadOnlyList<UnsafeBlockInfo> UnsafeBlocks => _unsafeBlocks;
 
+    /// <summary>
+    /// Parsed metadata from an impl block declaration.
+    /// Used to consolidate duplicate parsing logic between RegisterImpl and AnalyzeImplBlock.
+    /// </summary>
+    private record struct ImplBlockInfo(
+        List<string> GenericParams,
+        bool IsTraitImpl,
+        string? TraitName,
+        List<IrType> TraitTypeArgs,
+        string ImplTypeName,
+        bool ParseError
+    );
+
     // Move tracking for memory safety - uses unique variable ID to handle shadowing correctly
     private readonly Dictionary<int, MoveInfo> _movedVariables = new();
     private int _nextVariableId = 1;  // Counter for generating unique variable IDs
@@ -1312,7 +1325,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
     }
 
-    private void RegisterImpl(NovusParser.ImplDeclarationContext context)
+    /// <summary>
+    /// Extract metadata from an impl block declaration.
+    /// This consolidates duplicate parsing logic between RegisterImpl and AnalyzeImplBlock.
+    /// Also adds generic parameters to the _genericParams scope.
+    /// </summary>
+    private ImplBlockInfo ParseImplBlockInfo(NovusParser.ImplDeclarationContext context)
     {
         // Handle generic parameters if present (e.g., impl<T> Vec<T>)
         var genericParams = new List<string>();
@@ -1322,8 +1340,6 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             {
                 var paramName = paramId.GetText();
                 genericParams.Add(paramName);
-
-                // Add to generic param scope for method parsing
                 _genericParams[paramName] = new IrGenericType(paramName);
             }
         }
@@ -1331,15 +1347,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Determine if this is a trait impl or inherent impl
         bool isTraitImpl = context.KW_FOR() != null;
         string? traitName = null;
-        List<IrType> traitTypeArgs = new();
-
-        // Extract implementing type name
+        var traitTypeArgs = new List<IrType>();
         string implTypeName;
 
         if (isTraitImpl)
         {
             // Format: impl [<GenericParams>] TraitName<TraitArgs> for TargetType
-            // traitTypeName is the trait being implemented
             traitName = context.traitTypeName.IDENTIFIER(0).GetText();
 
             // Parse trait type arguments if present (e.g., Iterator<i32>)
@@ -1352,31 +1365,15 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 }
             }
 
-            // Validate that the trait exists
-            // If the trait isn't in scope (e.g., when processing imports and the trait wasn't imported),
-            // we simply skip this impl block. This is not an error - the trait impl just isn't needed
-            // when the trait itself isn't being used.
-            if (!_symbols.HasTrait(traitName))
-            {
-                // Clear generic params and return - no error for unimported traits
-                foreach (var paramName in genericParams)
-                {
-                    _genericParams.Remove(paramName);
-                }
-                return;
-            }
-
             // implTargetType is the type receiving the implementation
             var targetTypeCtx = context.implTargetType();
 
             if (targetTypeCtx is NovusParser.PrimitiveImplTargetContext primitiveCtx)
             {
-                // impl Trait for i32, bool, etc.
                 implTypeName = primitiveCtx.primitiveTypeName().GetText().ToLowerInvariant();
             }
             else if (targetTypeCtx is NovusParser.NamedImplTargetContext namedCtx)
             {
-                // impl Trait for MyType
                 implTypeName = namedCtx.typeName().IDENTIFIER(0).GetText();
             }
             else
@@ -1386,33 +1383,60 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                     $"Unknown impl target type",
                     SourceLocationHelper.FromToken(context.KW_IMPL().Symbol, _filePath, _sourceLines)
                 );
-                return;
+                return new ImplBlockInfo(genericParams, isTraitImpl, traitName, traitTypeArgs, "", ParseError: true);
             }
         }
         else
         {
             // Format: impl [<GenericParams>] TargetType
-            // targetTypeName is the type receiving inherent methods
             implTypeName = context.targetTypeName.IDENTIFIER(0).GetText();
         }
 
-        if (isTraitImpl)
+        return new ImplBlockInfo(genericParams, isTraitImpl, traitName, traitTypeArgs, implTypeName, ParseError: false);
+    }
+
+    /// <summary>
+    /// Clear generic params from scope (typically called after processing an impl block).
+    /// </summary>
+    private void ClearImplGenericParams(List<string> genericParams)
+    {
+        foreach (var paramName in genericParams)
+        {
+            _genericParams.Remove(paramName);
+        }
+    }
+
+    private void RegisterImpl(NovusParser.ImplDeclarationContext context)
+    {
+        var info = ParseImplBlockInfo(context);
+        if (info.ParseError)
+        {
+            ClearImplGenericParams(info.GenericParams);
+            return;
+        }
+
+        // For trait impls, validate that the trait exists
+        if (info.IsTraitImpl && !_symbols.HasTrait(info.TraitName!))
+        {
+            // Clear generic params and return - no error for unimported traits
+            ClearImplGenericParams(info.GenericParams);
+            return;
+        }
+
+        if (info.IsTraitImpl)
         {
             // Store trait implementation for constraint checking
-            // Create a unique key for this trait impl
-            // Format: "TypeName::TraitName<Arg1,Arg2,...>"
-            var traitArgsStr = traitTypeArgs.Count > 0
-                ? $"<{string.Join(",", traitTypeArgs.Select(t => GetTypeCacheKey(t)))}>"
+            var traitArgsStr = info.TraitTypeArgs.Count > 0
+                ? $"<{string.Join(",", info.TraitTypeArgs.Select(t => GetTypeCacheKey(t)))}>"
                 : "";
-            var implKey = $"{implTypeName}::{traitName}{traitArgsStr}";
+            var implKey = $"{info.ImplTypeName}::{info.TraitName}{traitArgsStr}";
 
-            // Store the trait impl info
             var implLocation = SourceLocationHelper.FromToken(context.KW_IMPL().Symbol, _filePath, _sourceLines);
             _traitImpls[implKey] = new TraitImplInfo(
-                implTypeName,
-                traitName!, // traitName is guaranteed non-null when isTraitImpl is true
-                traitTypeArgs,
-                genericParams,
+                info.ImplTypeName,
+                info.TraitName!,
+                info.TraitTypeArgs,
+                info.GenericParams,
                 implLocation
             );
         }
@@ -1422,15 +1446,12 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         {
             if (item.functionDeclaration() != null)
             {
-                RegisterImplMethod(item.functionDeclaration(), context, implTypeName, genericParams, traitName, traitTypeArgs);
+                RegisterImplMethod(item.functionDeclaration(), context, info.ImplTypeName, info.GenericParams, info.TraitName, info.TraitTypeArgs);
             }
         }
 
         // Clear generic params from scope after impl registration
-        foreach (var paramName in genericParams)
-        {
-            _genericParams.Remove(paramName);
-        }
+        ClearImplGenericParams(info.GenericParams);
     }
 
     private void RegisterImplMethod(NovusParser.FunctionDeclarationContext context, NovusParser.ImplDeclarationContext implContext, string implTypeName, List<string> genericParams, string? traitName = null, List<IrType>? traitTypeArgs = null)
@@ -2012,77 +2033,18 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     private void AnalyzeImplBlock(NovusParser.ImplDeclarationContext context)
     {
-        // Restore generic parameters to scope for method body analysis
-        var genericParams = new List<string>();
-        if (context.genericParams() != null)
+        var info = ParseImplBlockInfo(context);
+        if (info.ParseError)
         {
-            foreach (var paramId in context.genericParams().IDENTIFIER())
-            {
-                var paramName = paramId.GetText();
-                genericParams.Add(paramName);
-                _genericParams[paramName] = new IrGenericType(paramName);
-            }
+            ClearImplGenericParams(info.GenericParams);
+            return;
         }
 
         // Parse the where clause for this impl block (if any)
         var implWhereClause = ParseWhereClause(context.whereClause());
 
-        // Determine if this is a trait impl or inherent impl
-        bool isTraitImpl = context.KW_FOR() != null;
-        string? traitName = null;
-        List<IrType> traitTypeArgs = new();
-
-        // Extract implementing type name
-        string implTypeName;
-
-        if (isTraitImpl)
-        {
-            // Format: impl [<GenericParams>] TraitName<TraitArgs> for TargetType
-            // traitTypeName is the trait being implemented
-            traitName = context.traitTypeName.IDENTIFIER(0).GetText();
-
-            // Parse trait type arguments if present (e.g., Iterator<i32>)
-            if (context.traitTypeArgs != null)
-            {
-                var typeList = context.traitTypeArgs.typeList();
-                foreach (var typeCtx in typeList.type())
-                {
-                    traitTypeArgs.Add(ParseType(typeCtx));
-                }
-            }
-
-            // implTargetType is the type receiving the implementation
-            var targetTypeCtx = context.implTargetType();
-
-            if (targetTypeCtx is NovusParser.PrimitiveImplTargetContext primitiveCtx)
-            {
-                // impl Trait for i32, bool, etc.
-                implTypeName = primitiveCtx.primitiveTypeName().GetText().ToLowerInvariant();
-            }
-            else if (targetTypeCtx is NovusParser.NamedImplTargetContext namedCtx)
-            {
-                // impl Trait for MyType
-                implTypeName = namedCtx.typeName().IDENTIFIER(0).GetText();
-            }
-            else
-            {
-                _diagnostics.ReportError(
-                    "E0001",
-                    $"Unknown impl target type",
-                    SourceLocationHelper.FromToken(context.KW_IMPL().Symbol, _filePath, _sourceLines)
-                );
-                return;
-            }
-        }
-        else
-        {
-            // Format: impl [<GenericParams>] TargetType
-            // targetTypeName is the type receiving inherent methods
-            implTypeName = context.targetTypeName.IDENTIFIER(0).GetText();
-        }
-
         // Look up the struct type to get its where clause constraints
-        var structType = _symbols.LookupStruct(implTypeName);
+        var structType = _symbols.LookupStruct(info.ImplTypeName);
         IrWhereClause? combinedWhereClause = null;
 
         if (structType?.WhereClause != null && implWhereClause != null)
@@ -2107,7 +2069,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         {
             if (item.functionDeclaration() != null)
             {
-                AnalyzeImplMethod(item.functionDeclaration(), implTypeName, traitName, traitTypeArgs);
+                AnalyzeImplMethod(item.functionDeclaration(), info.ImplTypeName, info.TraitName, info.TraitTypeArgs);
             }
         }
 
@@ -2115,10 +2077,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         _currentStructWhereClause = savedStructWhereClause;
 
         // Clear generic params after analysis
-        foreach (var paramName in genericParams)
-        {
-            _genericParams.Remove(paramName);
-        }
+        ClearImplGenericParams(info.GenericParams);
     }
 
     private void AnalyzeImplMethod(NovusParser.FunctionDeclarationContext context, string implTypeName, string? traitName = null, List<IrType>? traitTypeArgs = null)

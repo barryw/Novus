@@ -208,7 +208,7 @@ public partial class IrBuilder
         // (trait impl convention: {Type}_{Trait}_{method})
         // For monomorphized types like Vec<bool>, this would be Vec<bool>_Drop_drop
         var dropMethodName = $"{typeName}_Drop_drop";
-        var dropMethod = _module.Functions.FirstOrDefault(f => f.Name == dropMethodName);
+        var dropMethod = _module.GetFunction(dropMethodName);
         if (dropMethod == null)
         {
             // This should never happen if EnsureDropMethodInstantiated was called first

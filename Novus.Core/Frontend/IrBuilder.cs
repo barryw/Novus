@@ -44,7 +44,12 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
     // Unified symbol table for types, functions, and constants
     private readonly SymbolTable _symbols = new();
 
-    // TODO: Migrate these to SymbolTable when we standardize on GenericTemplate format
+    // Generic templates are stored here rather than in SymbolTable because:
+    // 1. They capture ANTLR parse contexts (NovusParser.FunctionDeclarationContext) which are frontend-specific
+    // 2. They capture the constants dictionary at template creation time for proper scoping
+    // 3. SymbolTable is meant for resolved types/symbols, not parse-time templates
+    // Future consideration: Create a GenericTemplateRegistry abstraction if needed for multi-module support
+    //
     // Store generic method templates for later instantiation
     // Key: "TypeName::methodName", Value: (genericParams, context, constants)
     // The constants dictionary captures the constants visible when the template was created
@@ -85,7 +90,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
 
     // Diagnostic reporting
     private readonly DiagnosticBag _diagnostics = new();
-    private readonly List<string> _sourceLines = new();
+    private string[] _sourceLines = Array.Empty<string>();
 
     // Statement-level source location tracking for debug symbols
     // Set at the start of each statement and propagated to IR instructions
@@ -156,28 +161,9 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
             bool hasGenericTypeArgs = type.TypeArguments != null &&
                                       type.TypeArguments.Any(arg => arg is IrGenericType);
 
-            if (type.StructName == "KeyValue")
-            {
-                Console.WriteLine($"[IrBuilder] FinalizeMonomorphizedStruct called with KeyValue: CacheKey={type.CacheKey}, TypeArgs={type.TypeArguments?.Count ?? 0}");
-                if (type.TypeArguments != null)
-                {
-                    foreach (var arg in type.TypeArguments)
-                    {
-                        Console.WriteLine($"  TypeArg: {arg.Name} (is generic: {arg is IrGenericType})");
-                    }
-                }
-                // Print stack trace to find caller
-                Console.WriteLine($"  Stack trace:\n{Environment.StackTrace}");
-            }
-
             if (type.GenericParameters.Count == 0 && !hasGenericTypeArgs && !_builder._module.Structs.Contains(type))
             {
-                Console.WriteLine($"[IrBuilder] Adding monomorphized struct to module: {type.StructName} CacheKey={type.CacheKey}");
                 _builder._module.Structs.Add(type);
-            }
-            else
-            {
-                Console.WriteLine($"[IrBuilder] NOT adding struct: {type.StructName} CacheKey={type.CacheKey} (GenericParams={type.GenericParameters.Count}, HasGenericTypeArgs={hasGenericTypeArgs}, AlreadyInModule={_builder._module.Structs.Contains(type)})");
             }
         }
 
@@ -259,8 +245,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
     /// </summary>
     public void SetSourceLines(string[] lines)
     {
-        _sourceLines.Clear();
-        _sourceLines.AddRange(lines);
+        _sourceLines = lines;
     }
 
     /// <summary>
@@ -280,7 +265,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
     /// <returns>A SourceLocation object for error reporting</returns>
     private SourceLocation GetLocation(Antlr4.Runtime.ParserRuleContext context)
     {
-        return SourceLocationHelper.FromContext(context, _inputFilePath ?? "<unknown>", _sourceLines.ToArray());
+        return SourceLocationHelper.FromContext(context, _inputFilePath ?? "<unknown>", _sourceLines);
     }
 
     /// <summary>
@@ -697,7 +682,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
                 continue;
             }
 
-            _currentFunction = _module.Functions.FirstOrDefault(f => f.Name == funcName);
+            _currentFunction = _module.GetFunction(funcName);
             if (_currentFunction == null)
             {
                 var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
@@ -796,7 +781,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
                     mangledName = $"{typeName}::{methodName}";
                 }
 
-                _currentFunction = _module.Functions.FirstOrDefault(f => f.Name == mangledName);
+                _currentFunction = _module.GetFunction(mangledName);
                 if (_currentFunction == null)
                 {
                     var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");

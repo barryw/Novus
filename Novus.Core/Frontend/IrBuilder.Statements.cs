@@ -157,12 +157,6 @@ public partial class IrBuilder
         var name = identifierNode?.GetText() ?? "_";
         var isThrowaway = name == "_";
 
-        // Reject explicit array type annotations - they are redundant and not allowed
-        if (RejectArrayTypeAnnotation(context.type(), name, context))
-        {
-            return null;
-        }
-
         // Parse type annotation if present (before evaluating the expression)
         IrType? annotatedType = null;
         if (context.type() != null)
@@ -2035,14 +2029,14 @@ public partial class IrBuilder
         lenMethodName = _module.FindTraitMethod(typeName, "len");
         if (lenMethodName != null)
         {
-            lenMethod = _module.Functions.FirstOrDefault(f => f.Name == lenMethodName);
+            lenMethod = _module.GetFunction(lenMethodName);
         }
 
         // If no trait method found, fall back to regular methods for backward compatibility
         if (lenMethod == null)
         {
             lenMethodName = $"{typeName}::len";
-            lenMethod = _module.Functions.FirstOrDefault(f => f.Name == lenMethodName);
+            lenMethod = _module.GetFunction(lenMethodName);
 
             // If method not found, try to instantiate it for monomorphized structs
             if (lenMethod == null && collectionType is IrStructType collectionStruct && collectionStruct.CacheKey != null)
@@ -2121,14 +2115,14 @@ public partial class IrBuilder
         getMethodName = _module.FindTraitMethod(typeName, "get");
         if (getMethodName != null)
         {
-            getMethod = _module.Functions.FirstOrDefault(f => f.Name == getMethodName);
+            getMethod = _module.GetFunction(getMethodName);
         }
 
         // If no trait method found, fall back to regular methods for backward compatibility
         if (getMethod == null)
         {
             getMethodName = $"{typeName}::get";
-            getMethod = _module.Functions.FirstOrDefault(f => f.Name == getMethodName);
+            getMethod = _module.GetFunction(getMethodName);
 
             // If method not found, try to instantiate it for monomorphized structs
             if (getMethod == null && collectionType is IrStructType collectionStruct2 && collectionStruct2.CacheKey != null)

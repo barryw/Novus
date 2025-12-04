@@ -47,49 +47,23 @@ public partial class IrBuilder
     {
         if (selfParam == null) return;
 
-        var isMutable = selfParam.KW_MUT() != null;
-        var isBorrowed = selfParam.GetChild(0).GetText() == "&";
+        // Resolve type name to IrType
+        IrType? implType = _symbols.LookupStruct(typeName)
+                        ?? _symbols.LookupEnum(typeName)
+                        ?? MapPrimitiveTypeName(typeName);
 
-        // Determine self type - look up the implementing type (struct, enum, or primitive)
-        IrType? implType = null;
-        var foundStruct = _symbols.LookupStruct(typeName);
-        var foundEnum = _symbols.LookupEnum(typeName);
-
-        if (foundStruct != null)
+        if (implType == null)
         {
-            implType = foundStruct;
-        }
-        else if (foundEnum != null)
-        {
-            implType = foundEnum;
-        }
-        else
-        {
-            // Try primitive types
-            implType = MapPrimitiveTypeName(typeName);
-
-            if (implType == null)
-            {
-                var errorLocation = selfParam != null
-                    ? GetLocation(selfParam)
-                    : new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
-                _diagnostics.ReportError(
-                    ErrorCodes.TypeNotFound,
-                    $"Type '{typeName}' not found for impl block",
-                    errorLocation
-                );
-                return;
-            }
+            _diagnostics.ReportError(
+                ErrorCodes.TypeNotFound,
+                $"Type '{typeName}' not found for impl block",
+                GetLocation(selfParam)
+            );
+            return;
         }
 
-        IrType selfType = implType;
-        if (isBorrowed)
-        {
-            // Use pointer types for borrowed self parameters (& in Novus produces *T, not &T)
-            selfType = _typeInterner.GetPointerType(selfType);
-        }
-
-        function.Parameters.Add(new IrParameter("self", selfType));
+        // Delegate to the IrType overload
+        ParseSelfParameter(selfParam, function, implType);
     }
 
     /// <summary>
@@ -100,7 +74,6 @@ public partial class IrBuilder
     {
         if (selfParam == null) return;
 
-        var isMutable = selfParam.KW_MUT() != null;
         var isBorrowed = selfParam.GetChild(0).GetText() == "&";
 
         IrType selfType = implementingType;
@@ -116,12 +89,6 @@ public partial class IrBuilder
     private void RegisterConstant(NovusParser.ConstDeclarationContext context)
     {
         var name = context.IDENTIFIER().GetText();
-
-        // Reject explicit array type annotations - they are redundant and not allowed
-        if (RejectArrayTypeAnnotation(context.type(), name, context))
-        {
-            return;
-        }
 
         // Check for pub/internal keywords
         var (visibility, _, _) = AstModifierHelper.ParseModifiers(context, 3);
@@ -188,12 +155,6 @@ public partial class IrBuilder
         if (modAttr != null)
         {
             RegisterStaticMod(name, modAttr, context);
-            return;
-        }
-
-        // Reject explicit array type annotations - they are redundant and not allowed
-        if (RejectArrayTypeAnnotation(context.type(), name, context))
-        {
             return;
         }
 

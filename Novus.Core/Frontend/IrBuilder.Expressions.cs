@@ -442,7 +442,7 @@ public partial class IrBuilder
                     {
                         // For String, call the as_ptr() method
                         var asPtrMethodName = "String::as_ptr";
-                        var asPtrMethod = _module.Functions.FirstOrDefault(f => f.Name == asPtrMethodName);
+                        var asPtrMethod = _module.GetFunction(asPtrMethodName);
 
                         if (asPtrMethod == null)
                         {
@@ -861,7 +861,7 @@ public partial class IrBuilder
                     {
                         // For String, call the as_ptr() method
                         var asPtrMethodName = "String::as_ptr";
-                        var asPtrMethod = _module.Functions.FirstOrDefault(f => f.Name == asPtrMethodName);
+                        var asPtrMethod = _module.GetFunction(asPtrMethodName);
 
                         if (asPtrMethod == null)
                         {
@@ -1026,7 +1026,7 @@ public partial class IrBuilder
         }
 
         // Look up the function in the module to get its return type
-        var function = _module.Functions.FirstOrDefault(f => f.Name == functionName);
+        var function = _module.GetFunction(functionName);
         if (function == null)
         {
             var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
@@ -1180,7 +1180,7 @@ public partial class IrBuilder
                 {
                     // For String, call the as_ptr() method
                     var asPtrMethodName = "String::as_ptr";
-                    var asPtrMethod = _module.Functions.FirstOrDefault(f => f.Name == asPtrMethodName);
+                    var asPtrMethod = _module.GetFunction(asPtrMethodName);
 
                     if (asPtrMethod == null)
                     {
@@ -1745,7 +1745,7 @@ public partial class IrBuilder
         var mangledMethodName = $"{typeName}::{methodName}";
 
         // Look up the method
-        var method = _module.Functions.FirstOrDefault(f => f.Name == mangledMethodName);
+        var method = _module.GetFunction(mangledMethodName);
 
         // If method not found, try to instantiate it for monomorphized structs or enums
         if (method == null)
@@ -2056,7 +2056,7 @@ public partial class IrBuilder
             var name = exprContext.GetText();
 
             // Check if it's a function (for function pointers)
-            var function = _module.Functions.FirstOrDefault(f => f.Name == name);
+            var function = _module.GetFunction(name);
             if (function != null)
             {
                 // Create function pointer type from function signature
@@ -3727,7 +3727,7 @@ public partial class IrBuilder
         // Call StackFormatter::new() to create the formatter
         // This returns StackFormatter directly (no Option wrapping - always succeeds!)
         var formatterNewMethodName = "StackFormatter::new";
-        var formatterNewMethod = _module.Functions.FirstOrDefault(f => f.Name == formatterNewMethodName);
+        var formatterNewMethod = _module.GetFunction(formatterNewMethodName);
         if (formatterNewMethod == null)
         {
             var errorLocation = GetLocation(context);
@@ -3775,7 +3775,7 @@ public partial class IrBuilder
             asStrMethodName = "StackFormatter::as_str";
         }
 
-        var asStrMethod = _module.Functions.FirstOrDefault(f => f.Name == asStrMethodName);
+        var asStrMethod = _module.GetFunction(asStrMethodName);
         if (asStrMethod == null)
         {
             var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
@@ -3901,7 +3901,7 @@ public partial class IrBuilder
                 return;
             }
 
-            var fmtMethod = _module.Functions.FirstOrDefault(f => f.Name == fmtMethodName);
+            var fmtMethod = _module.GetFunction(fmtMethodName);
             if (fmtMethod == null)
             {
                 var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
@@ -3942,7 +3942,7 @@ public partial class IrBuilder
         // Find write_str method for the specific formatter type
         var writeStrMethodName = $"{formatterTypeName}::write_str";
 
-        var writeStrMethod = _module.Functions.FirstOrDefault(f => f.Name == writeStrMethodName);
+        var writeStrMethod = _module.GetFunction(writeStrMethodName);
         if (writeStrMethod == null)
         {
             var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
@@ -4126,7 +4126,7 @@ public partial class IrBuilder
         // This bypasses the Display trait which expects Formatter, not StackFormatter
 
         var asStrMethodName = "String::as_str";
-        var asStrMethod = _module.Functions.FirstOrDefault(f => f.Name == asStrMethodName);
+        var asStrMethod = _module.GetFunction(asStrMethodName);
         if (asStrMethod == null)
         {
             var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
@@ -4196,13 +4196,13 @@ public partial class IrBuilder
         // then regular method name (Vec_u8_drop)
         var typeName = vecType.CacheKey ?? vecType.StructName;
         var dropMethodName = $"{typeName}_Drop_drop";
-        var dropMethod = _module.Functions.FirstOrDefault(f => f.Name == dropMethodName);
+        var dropMethod = _module.GetFunction(dropMethodName);
 
         if (dropMethod == null)
         {
             // Try the regular method name (mangled: Vec<u8> -> Vec_u8)
             dropMethodName = $"{typeName.Replace("<", "_").Replace(">", "_").TrimEnd('_')}_drop";
-            dropMethod = _module.Functions.FirstOrDefault(f => f.Name == dropMethodName);
+            dropMethod = _module.GetFunction(dropMethodName);
         }
 
         if (dropMethod == null)
@@ -4458,7 +4458,7 @@ public partial class IrBuilder
                 }
 
                 // Try to find the function in the module
-                var function = _module.Functions.FirstOrDefault(f => f.Name == mangledName);
+                var function = _module.GetFunction(mangledName);
                 if (function != null)
                 {
                     // Check if this is an associated function (no self parameter)
@@ -4528,7 +4528,7 @@ public partial class IrBuilder
         }
 
         // Check if it's a function name (for both calls and function pointers)
-        var funcRef = _module.Functions.FirstOrDefault(f => f.Name == name);
+        var funcRef = _module.GetFunction(name);
         if (funcRef != null)
         {
             // Return a function reference that can be called or used as a function pointer
@@ -5220,7 +5220,7 @@ public partial class IrBuilder
         }
 
         // Try to find the function in the module
-        var function = _module.Functions.FirstOrDefault(f => f.Name == mangledName);
+        var function = _module.GetFunction(mangledName);
         if (function != null)
         {
             // Check if this is an associated function (no self parameter)
@@ -5380,7 +5380,6 @@ public partial class IrBuilder
         {
             // Error: No destination specified - this will be caught by semantic analysis
             // For now, just return unit and don't generate any code
-            Console.WriteLine("Warning: Blitter DSL requires a 'dest' or 'destination' field");
             return new IrTupleLiteral(IrTupleType.Unit, new List<IrValue>());
         }
 

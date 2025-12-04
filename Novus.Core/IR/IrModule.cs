@@ -19,6 +19,13 @@ public enum Visibility
 public class IrModule
 {
     public List<IrFunction> Functions { get; } = new();
+
+    /// <summary>
+    /// O(1) function lookup by name. Maintained in sync with Functions list.
+    /// Use GetFunction() for lookups instead of Functions.FirstOrDefault().
+    /// </summary>
+    private readonly Dictionary<string, IrFunction> _functionLookup = new();
+
     public List<IrEnumType> Enums { get; } = new();
     public List<IrStructType> Structs { get; } = new();
     public List<IrTrait> Traits { get; } = new();
@@ -57,6 +64,26 @@ public class IrModule
     public void AddFunction(IrFunction function)
     {
         Functions.Add(function);
+        // Maintain lookup dictionary for O(1) access by name
+        // Use indexer to allow overwrites (function may be re-registered during monomorphization)
+        _functionLookup[function.Name] = function;
+    }
+
+    /// <summary>
+    /// Get a function by name with O(1) lookup.
+    /// Returns null if no function with the given name exists.
+    /// </summary>
+    public IrFunction? GetFunction(string name)
+    {
+        return _functionLookup.TryGetValue(name, out var func) ? func : null;
+    }
+
+    /// <summary>
+    /// Check if a function with the given name exists (O(1) lookup).
+    /// </summary>
+    public bool HasFunction(string name)
+    {
+        return _functionLookup.ContainsKey(name);
     }
 
     public void AddEnum(IrEnumType enumType)

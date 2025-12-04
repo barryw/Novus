@@ -820,7 +820,7 @@ public partial class IrBuilder
                 traitName,
                 traitTypeArgs ?? new List<IrType>()
             );
-            return _module.Functions.FirstOrDefault(f => f.Name == mangledName);
+            return _module.GetFunction(mangledName);
         }
 
         // Build type substitution map from monomorphized struct
@@ -1140,7 +1140,7 @@ public partial class IrBuilder
             // Already generated, look it up
             var cachedTypeArgKeys = genericParams.Select(p => GetTypeCacheKey(typeSubstitutions[p]));
             var cachedMangledName = $"{baseTypeName}::{methodName}_{string.Join("_", cachedTypeArgKeys.Select(k => k.Replace("<", "_").Replace(">", "_").Replace(",", "_").Replace("*", "ptr_")))}";
-            return _module.Functions.FirstOrDefault(f => f.Name == cachedMangledName);
+            return _module.GetFunction(cachedMangledName);
         }
 
         // Save current state
@@ -1191,7 +1191,7 @@ public partial class IrBuilder
         }
 
         // Check if function already exists in module (could be from import or previous instantiation)
-        var existingFunc = _module.Functions.FirstOrDefault(f => f.Name == mangledName);
+        var existingFunc = _module.GetFunction(mangledName);
         if (existingFunc != null)
         {
             // Already exists, return it
@@ -1423,7 +1423,7 @@ public partial class IrBuilder
         {
             // Already generated, look it up
             var existingMangledName = BuildGenericFunctionMangledName(functionName, typeSubstitutions);
-            return _module.Functions.FirstOrDefault(f => f.Name == existingMangledName);
+            return _module.GetFunction(existingMangledName);
         }
 
         // Save current constants and MERGE template constants with current module constants

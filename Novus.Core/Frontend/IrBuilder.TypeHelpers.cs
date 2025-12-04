@@ -586,19 +586,4 @@ public partial class IrBuilder
 
         return (typeName, implementingType);
     }
-
-    /// <summary>
-    /// Check if a type annotation is an array type.
-    /// Array type annotations are now allowed - they serve as expected type hints for type checking.
-    /// </summary>
-    /// <param name="typeContext">The type context from the parse tree (may be null)</param>
-    /// <param name="declarationName">The name of the variable/constant being declared</param>
-    /// <param name="errorContext">Context for error reporting</param>
-    /// <returns>Always returns false - array type annotations are allowed</returns>
-    private bool RejectArrayTypeAnnotation(NovusParser.TypeContext? typeContext, string declarationName, Antlr4.Runtime.ParserRuleContext errorContext)
-    {
-        // Array type annotations are now allowed.
-        // The annotated type will be parsed and used for type checking.
-        return false;
-    }
 }
