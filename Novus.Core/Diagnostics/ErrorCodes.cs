@@ -140,6 +140,7 @@ public static class ErrorCodes
     public const string CannotGenerateDropCall = "E3402";
     public const string SizeofTypeUnknown = "E3403";
     public const string StructArrayInitializerInvalid = "E3404";
+    public const string InternalCompilerError = "E3405";
 
     // ========================================================================
     // E35XX: Attribute Errors

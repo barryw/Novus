@@ -186,7 +186,7 @@ public partial class IrBuilder
             return;
         }
 
-        // Check if module has already been fully processed
+        // Check if module has already been fully processed (optimization to avoid redundant work)
         bool alreadyProcessed = _processedModules.Contains(moduleNamespace);
 
 
@@ -467,7 +467,15 @@ public partial class IrBuilder
             return; // Don't reprocess the entire module
         }
 
-        // Mark this module as being processed
+        // Check for circular imports before processing a new module
+        // Use the absolute file path for reliable cycle detection
+        if (!_circularImportDetector.EnterModule(modulePath))
+        {
+            // Circular dependency detected - error already reported by detector
+            return;
+        }
+
+        // Mark this module as being processed (for efficiency - avoid redundant re-processing)
         _processedModules.Add(moduleNamespace);
 
         // Check if this module has any pub (non-extern) functions that need compilation
@@ -481,8 +489,8 @@ public partial class IrBuilder
             _importedModulePaths.Add(modulePath);
         }
 
-        // Note: We need to process the module's imports to make constants available for generic templates
-        // This is safe because _processedModules prevents circular dependencies
+        // Process the module's imports to make constants available for generic templates
+        // CircularImportDetector tracks the import chain and will catch any cycles
         foreach (var importDecl in moduleContext.importDeclaration())
         {
             ProcessImport(importDecl);
@@ -760,6 +768,9 @@ public partial class IrBuilder
                 }
             }
         }
+
+        // Exit the module from the import chain now that processing is complete
+        _circularImportDetector.ExitModule();
     }
 
     /// <summary>
@@ -1237,76 +1248,11 @@ public partial class IrBuilder
         return function;
     }
 
-    private IrEnumType? MonomorphizeEnum(IrEnumType enumType, Dictionary<string, IrType> typeSubstitutions)
-    {
-        // Build cache key
-        var typeArgKeys = enumType.GenericParameters.Select(p =>
-        {
-            var key = typeSubstitutions.ContainsKey(p) ? GetTypeCacheKey(typeSubstitutions[p]) : p;
-            return key;
-        });
-        var cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
-
-        // Check cache
-        if (_symbols.LookupMonomorphizedEnum(cacheKey) != null)
-        {
-            return _symbols.LookupMonomorphizedEnum(cacheKey)!;
-        }
-
-        // Create monomorphized variants
-        var monomorphizedVariants = new List<IrEnumVariant>();
-        foreach (var variant in enumType.Variants)
-        {
-            var monomorphizedData = new List<IrType>();
-            foreach (var dataType in variant.AssociatedData)
-            {
-                monomorphizedData.Add(SubstituteType(dataType, typeSubstitutions));
-            }
-            monomorphizedVariants.Add(new IrEnumVariant(variant.Name, variant.Tag, monomorphizedData));
-        }
-
-        var monomorphizedEnum = new IrEnumType(enumType.EnumName, monomorphizedVariants, null, cacheKey);
-        _symbols.RegisterMonomorphizedEnum(cacheKey, monomorphizedEnum);
-
-        return monomorphizedEnum;
-    }
-
-    private IrType SubstituteType(IrType type, Dictionary<string, IrType> substitutions)
-    {
-        if (type is IrGenericType gt && substitutions.ContainsKey(gt.ParameterName))
-        {
-            return substitutions[gt.ParameterName];
-        }
-
-        if (type is IrPointerType ptrType)
-        {
-            var substitutedPointee = SubstituteType(ptrType.PointeeType, substitutions);
-            if (substitutedPointee != ptrType.PointeeType)
-            {
-                return _typeInterner.GetPointerType(substitutedPointee);
-            }
-            return ptrType;
-        }
-
-        if (type is IrEnumType enumType)
-        {
-            // If the enum has generic parameters, monomorphize it
-            if (enumType.GenericParameters.Count > 0)
-            {
-                // Check if any of the enum's generic parameters need substitution
-                bool needsSubstitution = enumType.GenericParameters.Any(p => substitutions.ContainsKey(p));
-                if (needsSubstitution)
-                {
-                    return MonomorphizeEnum(enumType, substitutions) ?? enumType;
-                }
-            }
-            // Already monomorphized or no generic parameters
-            return enumType;
-        }
-
-        // For other types, return as-is
-        return type;
-    }
+    // NOTE: MonomorphizeEnum and SubstituteType have been removed and consolidated into TypeParser.
+    // Use _typeParser.SubstituteGenericTypes() instead, which provides:
+    // - Full recursive type substitution for all type kinds (pointers, references, arrays, structs, enums)
+    // - Proper monomorphization with cache registration and finalization
+    // - Cycle detection for self-referential types
 
     /// <summary>
     /// Infer generic type arguments for a generic function from call site arguments

@@ -151,6 +151,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     public bool Analyze(NovusParser.CompilationUnitContext context)
     {
+        // Pass 0: Validate module-level attributes (e.g., #[stack_size(65536)])
+        ValidateModuleAttributes(context.moduleAttribute());
+
         // Pass 0a: Implicitly import all of core module (unless compiling core.novus itself)
         // Don't auto-import std::core when compiling core.novus to prevent circular dependencies
         // But DO import it for other std library modules since they need Option, Result, etc.
@@ -3035,7 +3038,16 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
         else
         {
-            throw new Exception("Assignment statement must have either IDENTIFIER or KW_SELF");
+            // Internal error - assignment statement AST is malformed
+            // Report diagnostic and continue with error recovery
+            var errorLocation = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                ErrorCodes.InternalCompilerError,
+                "Assignment statement must have either IDENTIFIER or KW_SELF (internal parser error)",
+                errorLocation
+            );
+            // Return early - can't continue analyzing this statement
+            return IrIntType.I32;
         }
 
         // Detect which kind of assignment this is
@@ -4693,6 +4705,37 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         return collection;
+    }
+
+    /// <summary>
+    /// Validate module-level attributes (e.g., #[stack_size(65536)])
+    /// These are processed by IrBuilder but need validation here for IDE diagnostics
+    /// </summary>
+    private void ValidateModuleAttributes(NovusParser.ModuleAttributeContext[]? attributeContexts)
+    {
+        if (attributeContexts == null || attributeContexts.Length == 0)
+            return;
+
+        foreach (var attrCtx in attributeContexts)
+        {
+            var attrName = attrCtx.IDENTIFIER().GetText();
+            var location = SourceLocationHelper.FromToken(attrCtx.IDENTIFIER().Symbol, _filePath, _sourceLines);
+
+            // Validate attribute name
+            if (!KnownAttributes.IsKnown(attrName))
+            {
+                _diagnostics.ReportWarning(
+                    "W2001",
+                    $"unknown module attribute '{attrName}'",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "This attribute is not recognized and will be ignored",
+                        $"Known module attributes: {KnownAttributes.StackSize}"
+                    }
+                );
+            }
+        }
     }
 
     /// <summary>
@@ -7817,6 +7860,18 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var segments = ParseInterpolatedStringSegments(content);
         foreach (var segment in segments)
         {
+            // Check for parsing errors from the segment parser
+            if (segment.HasError)
+            {
+                var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    ErrorCodes.UnmatchedBracesInFString,
+                    segment.ErrorMessage,
+                    location
+                );
+                continue;
+            }
+
             if (!segment.IsStringSegment)
             {
                 // Parse and visit the expression to validate it
@@ -7902,7 +7957,17 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
                 if (braceDepth != 0)
                 {
-                    throw new Exception("Mismatched braces in f-string");
+                    // Mismatched braces - return a special error segment instead of throwing
+                    // The caller can check for this and report the error with proper location
+                    segments.Add(new InterpolationSegment
+                    {
+                        IsStringSegment = false,
+                        Expression = "",
+                        HasError = true,
+                        ErrorMessage = "Mismatched braces in f-string"
+                    });
+                    // Skip to end of content to prevent further errors
+                    break;
                 }
 
                 var expression = content.Substring(expressionStart, i - expressionStart);
@@ -7929,6 +7994,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         public bool IsStringSegment { get; set; }
         public string StringContent { get; set; } = "";
         public string Expression { get; set; } = "";
+        // Error recovery fields - set when f-string parsing fails
+        public bool HasError { get; set; }
+        public string ErrorMessage { get; set; } = "";
     }
 
     public override IrType? VisitSizeofExpr([NotNull] NovusParser.SizeofExprContext context)
@@ -8683,7 +8751,14 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return operandType;
         }
 
-        throw new Exception($"Unknown unary operator: {op}");
+        // Unknown operator - report error and return operand type as fallback
+        var unknownOpLocation = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+        _diagnostics.ReportError(
+            ErrorCodes.UnknownOperator,
+            $"Unknown unary operator: {op}",
+            unknownOpLocation
+        );
+        return operandType ?? IrIntType.I32;
     }
 
     public override IrType? VisitPostIncrementExpr([NotNull] NovusParser.PostIncrementExprContext context)

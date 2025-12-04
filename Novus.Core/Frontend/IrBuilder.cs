@@ -68,7 +68,8 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
     private string? _inputFilePath = null; // Path to the file being compiled
     private readonly bool _skipAutoImports; // Skip auto-importing core module (for tests)
     private readonly List<string> _importedModulePaths = new(); // Track imported module file paths for linking
-    private readonly HashSet<string> _processedModules = new(); // Track which modules we've already processed for imports (prevent circular imports)
+    private readonly HashSet<string> _processedModules = new(); // Track which modules we've already fully processed (prevent re-processing)
+    private readonly CircularImportDetector _circularImportDetector; // Detect circular import dependencies
     private readonly TypeInterner _typeInterner = new(); // Type interning for efficient type equality
 
     // Track active type substitutions during generic method instantiation
@@ -89,6 +90,12 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
     // Statement-level source location tracking for debug symbols
     // Set at the start of each statement and propagated to IR instructions
     private SourceLocation? _currentStatementLocation = null;
+
+    // Track pending function attributes from moduleAttribute that should be applied to the next function.
+    // This handles the case where #[export] appears at module level before a function declaration.
+    // The grammar parses #[export] as a moduleAttribute when it appears before `pub fn`,
+    // so we need to forward these attributes to the appropriate function.
+    private readonly List<string> _pendingFunctionAttributes = new();
 
     /// <summary>
     /// Emit an instruction with the current statement's source location attached.
@@ -220,6 +227,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
     {
         _skipAutoImports = skipAutoImports;
         _typeParser = new TypeParser(new IrBuilderTypeContext(this));
+        _circularImportDetector = new CircularImportDetector(_diagnostics);
     }
 
     /// <summary>
@@ -532,11 +540,20 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
             var function = new IrFunction(name, returnType, visibility, isExtern);
             function.Location = GetLocation(funcContext);  // Store source location for debug info
 
-            // Check for #[export] attribute
+            // Check for #[export] attribute (from function's own attributes)
             var attributes = ParseAttributesSimple(funcContext.attribute());
             if (attributes.Has("export"))
             {
                 function.IsExported = true;
+            }
+
+            // Also check pending function attributes from moduleAttribute
+            // This handles the case where #[export] appears at module level before the function.
+            // The grammar parses #[export] as moduleAttribute when it appears before `pub fn`.
+            if (_pendingFunctionAttributes.Contains("export"))
+            {
+                function.IsExported = true;
+                _pendingFunctionAttributes.Remove("export");
             }
 
             // Parse parameters

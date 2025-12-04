@@ -3,10 +3,11 @@ grammar Novus;
 // Parser Rules
 
 compilationUnit
-    : NEWLINE* moduleAttribute* importDeclaration* reexportDeclaration* (constDeclaration | staticDeclaration | globalVariableDeclaration | structDeclaration | enumDeclaration | traitDeclaration | implDeclaration | functionDeclaration)* EOF
+    : NEWLINE* importDeclaration* reexportDeclaration* moduleAttribute* (constDeclaration | staticDeclaration | globalVariableDeclaration | structDeclaration | enumDeclaration | traitDeclaration | implDeclaration | functionDeclaration)* EOF
     ;
 
 // Module-level attributes apply to the entire compilation unit
+// These must come AFTER imports but BEFORE declarations
 // Examples: #[stack_size(65536)]
 moduleAttribute
     : '#' '[' IDENTIFIER ('(' attributeArgList? ')')? ']' NEWLINE*
@@ -151,10 +152,14 @@ implItem
     : functionDeclaration
     ;
 
+// Generic parameter declarations: <T, U>
 genericParams
     : LESS IDENTIFIER (',' IDENTIFIER)* GREATER
     ;
 
+// Generic type arguments: <i32, u8>
+// Used by TurboFishExpr (Vec::<i32>) and type instantiation (Vec<i32>)
+// Note: Nested generics (Vec<Option<i32>>) require AngleBracketTokenStream to split >> into > >
 genericTypeArgs
     : LESS typeList GREATER
     ;
@@ -347,6 +352,13 @@ expressionStatement
     : expression postfixCondition?
     ;
 
+// Expression rules - operator precedence is implicit in rule ordering
+// Note on turbofish syntax (Vec::<i32>::with_capacity):
+// - TurboFishExpr handles Type::<Args> - returns IrTurboFishType marker
+// - PathExpr handles expr::member - consumes TurboFishType when base is turbofish
+// - No grammar ambiguity: TurboFishExpr expects LESS after ::, PathExpr expects IDENTIFIER
+// - For Vec::<i32>::with_capacity(10), the parse tree is:
+//   CallExpr(PathExpr(TurboFishExpr(Vec, <i32>), with_capacity), (10))
 expression
     : primaryExpression                                     # PrimaryExpr
     | expression '::' genericTypeArgs                      # TurboFishExpr
