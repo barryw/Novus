@@ -1118,6 +1118,13 @@ public partial class IrBuilder
                     _diagnostics.ReportError(ErrorCodes.InvalidAttribute, "#[stack_size] requires a size argument, e.g., #[stack_size(65536)]", errorLocation);
                 }
             }
+            else if (attrName == "export")
+            {
+                // #[export] is a function attribute, not a module attribute.
+                // When it appears at module level (before any declaration), it means the user
+                // wants to export the next function. Store it as a pending attribute.
+                _pendingFunctionAttributes.Add(attrName);
+            }
             else
             {
                 // Unknown module-level attribute - warn

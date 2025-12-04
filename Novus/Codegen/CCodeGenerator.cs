@@ -242,18 +242,29 @@ public class CCodeGenerator
 
     /// <summary>
     /// Check if a type is or contains a monomorphized generic type (has a CacheKey).
+    /// Recursively checks all constituent types (arrays, tuples, pointers, etc.).
     /// </summary>
     private bool HasMonomorphizedType(IrType type)
     {
-        if (type is IrStructType structType && structType.CacheKey != null)
-            return true;
-        if (type is IrEnumType enumType && enumType.CacheKey != null)
-            return true;
-        if (type is IrPointerType ptrType)
-            return HasMonomorphizedType(ptrType.PointeeType);
-        if (type is IrReferenceType refType)
-            return HasMonomorphizedType(refType.PointeeType);
-        return false;
+        return type switch
+        {
+            // Direct monomorphized types
+            IrStructType structType when structType.CacheKey != null => true,
+            IrEnumType enumType when enumType.CacheKey != null => true,
+
+            // Recursive container types
+            IrPointerType ptrType => HasMonomorphizedType(ptrType.PointeeType),
+            IrReferenceType refType => HasMonomorphizedType(refType.PointeeType),
+            IrMutReferenceType mutRefType => HasMonomorphizedType(mutRefType.PointeeType),
+            IrArrayType arrayType => HasMonomorphizedType(arrayType.ElementType),
+            IrTupleType tupleType => tupleType.ElementTypes.Any(HasMonomorphizedType),
+            IrFunctionPointerType funcPtrType =>
+                (funcPtrType.ReturnType != null && HasMonomorphizedType(funcPtrType.ReturnType)) ||
+                funcPtrType.ParameterTypes.Any(HasMonomorphizedType),
+
+            // Non-generic types
+            _ => false
+        };
     }
 
     public CCodeGenerator(IrModule module, List<IrStringLiteral> stringLiterals, string cpuTarget, string fpuMode, BuildMode buildMode = BuildMode.Debug, SafetyLevel? safetyLevel = null, HashSet<string>? explicitEntryPoints = null, bool useSharedTypesHeader = false, string? projectVersion = null)

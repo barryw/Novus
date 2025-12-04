@@ -1077,7 +1077,8 @@ public class IrTupleType : IrType
 /// </summary>
 public class IrStructType : IrType
 {
-    // Thread-local stack to detect recursive type definitions
+    // Thread-local stack to detect recursive type definitions during size calculation.
+    // Each thread gets its own HashSet to avoid synchronization overhead.
     [ThreadStatic]
     private static HashSet<string>? _sizingStack;
 
@@ -1089,7 +1090,10 @@ public class IrStructType : IrType
     public Novus.SemanticAnalysis.AttributeCollection? Attributes { get; set; }  // Struct attributes (@library, @packed, etc.)
     public IrWhereClause? WhereClause { get; set; }  // Generic type constraints (e.g., where T: Sortable)
     public bool ImplementsDrop { get; set; }  // True if this type implements the Drop trait
-    private int? _cachedSize;
+
+    // Thread-safe cached size. Uses volatile read/write semantics.
+    // -1 means not computed yet, any other value is the computed size.
+    private volatile int _cachedSize = -1;
 
     public IrStructType(string structName, List<IrStructField> fields, List<string>? genericParams = null, string? cacheKey = null, Novus.SemanticAnalysis.AttributeCollection? attributes = null, IrWhereClause? whereClause = null, List<IrType>? typeArguments = null)
     {
@@ -1106,8 +1110,10 @@ public class IrStructType : IrType
     {
         get
         {
-            if (_cachedSize.HasValue)
-                return _cachedSize.Value;
+            // Fast path: return cached size if already computed
+            int cached = _cachedSize;
+            if (cached >= 0)
+                return cached;
 
             // Initialize thread-local stack if needed
             _sizingStack ??= new HashSet<string>();
@@ -1128,31 +1134,40 @@ public class IrStructType : IrType
 
             try
             {
-                // Calculate total size with alignment
+                // Calculate total size with 68000-compatible alignment.
+                // 68000 requires word alignment (2 bytes) for word and long accesses.
+                // Byte accesses can be at any address.
                 int size = 0;
                 foreach (var field in Fields)
                 {
-                    // Align field to its natural alignment (for now, use field size as alignment)
                     int fieldSize = field.Type.SizeInBytes;
-                int alignment = fieldSize switch
-                {
-                    1 => 1,  // byte-aligned
-                    2 => 2,  // word-aligned
-                    _ => 2   // word-aligned for everything else (68k prefers word alignment)
-                };
 
-                // Pad to alignment
-                if (size % alignment != 0)
-                    size += alignment - (size % alignment);
+                    // 68000 alignment rules:
+                    // - 1-byte fields: no alignment needed
+                    // - 2-byte fields (word): must be word-aligned (even address)
+                    // - 4+ byte fields (long, pointers, structs): must be word-aligned (even address)
+                    // Note: 68020+ can handle misaligned access but with performance penalty,
+                    // 68000 will bus error on misaligned word/long access.
+                    int alignment = fieldSize switch
+                    {
+                        1 => 1,  // byte-aligned (any address OK)
+                        _ => 2   // word-aligned for everything else (68k requirement)
+                    };
+
+                    // Pad to alignment
+                    if (size % alignment != 0)
+                        size += alignment - (size % alignment);
 
                     field.Offset = size;
                     size += fieldSize;
                 }
 
-                // Pad final struct size to word boundary (68k likes word-aligned structs)
+                // Pad final struct size to word boundary so arrays of structs are properly aligned
                 if (size % 2 != 0)
                     size++;
 
+                // Store computed size. Multiple threads may race here but they'll all
+                // compute the same value, so the race is benign.
                 _cachedSize = size;
                 return size;
             }

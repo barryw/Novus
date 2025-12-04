@@ -9,6 +9,8 @@ from std::memory::chip import Priority, ChipAsset, ChipCacheError
 from std::memory::chip_cache import ChipCache
 from std::memory::resource_bank import ResourceBank, BankBuilder, BankError, BankState, ChipBudget
 
+#[stack_size(65536)]
+
 // ============================================================================
 // Mock Asset Type
 // ============================================================================

@@ -991,8 +991,8 @@ public partial class IrBuilder
 
                         if (typeSubstitutions != null)
                         {
-                            // Monomorphize the enum with inferred type arguments
-                            var monomorphizedEnum = MonomorphizeEnum(enumType, typeSubstitutions);
+                            // Monomorphize the enum with inferred type arguments using the shared TypeParser
+                            var monomorphizedEnum = _typeParser.SubstituteGenericTypes(enumType, typeSubstitutions) as IrEnumType;
 
                             if (monomorphizedEnum != null)
                             {

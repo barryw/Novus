@@ -150,7 +150,10 @@ public class DocumentManager
         catch (Exception ex)
         {
             Console.Error.WriteLine($"[LSP] Semantic analysis failed: {ex.Message}");
-            // Continue with just parse diagnostics
+            // Report the semantic analysis failure as an error diagnostic
+            // This ensures HasErrors is true when the code is malformed
+            var unknownLocation = new SourceLocation(state.Uri, 1, 1, 0, "");
+            diagnostics.ReportError("E9999", $"Semantic analysis error: {ex.Message}", unknownLocation);
         }
 
         state.ParseTree = tree;
