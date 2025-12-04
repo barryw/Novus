@@ -1,0 +1,206 @@
+// Test: Dual CLI/Workbench Startup Support
+//
+// This program can be launched from either CLI or Workbench.
+//
+// CLI Example:
+//   workbench_startup_test file1.txt file2.txt
+//
+// Workbench Example:
+//   Double-click the icon, or shift-click multiple file icons
+//   then double-click the program icon.
+//
+// Expected behavior:
+//   - From CLI: Shows "Launched from CLI" and lists command-line arguments
+//   - From Workbench: Shows "Launched from Workbench" and lists WBArgs
+
+from std::args::args import is_workbench, get_workbench_startup, Args
+from std::io::file import print, println
+
+pub fn main() -> i32 {
+    if is_workbench() {
+        return workbench_main()
+    } else {
+        return cli_main()
+    }
+}
+
+fn cli_main() -> i32 {
+    println("=================================")
+    println("Launched from CLI (Shell)")
+    println("=================================")
+    println("")
+
+    // Parse command-line arguments
+    let args_result = Args::parse("FILES/M")
+    match args_result {
+        Ok(args) => {
+            // Get the FILES argument (multiple files)
+            let files_opt = args.get_multi("FILES")
+            match files_opt {
+                Some(files) => {
+                    print("Number of arguments: ")
+                    println_u32(files.len)
+                    println("")
+
+                    var i: u32 = 0
+                    while i < files.len {
+                        let file_opt = files.get(i)
+                        match file_opt {
+                            Some(file) => {
+                                print("  [")
+                                print_u32(i)
+                                print("] ")
+                                println(file.as_ptr())
+                            },
+                            None => {}
+                        }
+                        i++
+                    }
+                },
+                None => {
+                    println("No arguments provided")
+                    println("")
+                    println("Usage: workbench_startup_test file1 file2 ...")
+                }
+            }
+        },
+        Err(e) => {
+            print("Error parsing arguments: ")
+            println(e.message())
+            return 10
+        }
+    }
+
+    println("")
+    println("Test passed!")
+    return 0
+}
+
+fn workbench_main() -> i32 {
+    println("=================================")
+    println("Launched from Workbench")
+    println("=================================")
+    println("")
+
+    // Get Workbench startup message
+    let wb_opt = get_workbench_startup()
+    let wb = match wb_opt {
+        Some(w) => w,
+        None => {
+            println("ERROR: Failed to get Workbench startup message")
+            return 20
+        }
+    }
+
+    let num_args = wb.num_args()
+    print("Number of WBArgs: ")
+    println_u32(num_args)
+    println("")
+
+    // Iterate through all WBArgs
+    var i: u32 = 0
+    while i < num_args {
+        let arg_opt = wb.arg(i)
+        match arg_opt {
+            Some(arg) => {
+                print("  [")
+                print_u32(i)
+                print("] ")
+
+                // Get the filename
+                let name_opt = arg.name()
+                match name_opt {
+                    Some(name) => {
+                        print(name.as_ptr())
+                    },
+                    None => {
+                        print("(unnamed)")
+                    }
+                }
+
+                // Try to get full path
+                let path_result = arg.full_path()
+                match path_result {
+                    Ok(path) => {
+                        print(" -> Full path: ")
+                        println(path.as_ptr())
+                    },
+                    Err(_) => {
+                        println("")
+                    }
+                }
+            },
+            None => {}
+        }
+
+        i++
+    }
+
+    // Check for TOOLWINDOW
+    let tool_window = wb.tool_window()
+    match tool_window {
+        Some(tw) => {
+            print("TOOLWINDOW: ")
+            println(tw.as_ptr())
+        },
+        None => {
+            println("No TOOLWINDOW specified")
+        }
+    }
+
+    println("")
+    println("Test passed!")
+    return 0
+}
+
+// Helper functions for printing numbers
+fn println_u32(value: u32) {
+    var buf = [0u8; 12]
+    let len = u32_to_str(value, (*u8)&buf, 12)
+    buf[len] = $0A  // Newline
+    buf[len + 1] = 0
+    print((*u8)&buf)
+}
+
+fn print_u32(value: u32) {
+    var buf = [0u8; 12]
+    let len = u32_to_str(value, (*u8)&buf, 12)
+    buf[len] = 0
+    print((*u8)&buf)
+}
+
+// Simple u32 to string conversion
+fn u32_to_str(value: u32, buf: *u8, buf_size: u32) -> u32 {
+    if buf_size == 0 {
+        return 0
+    }
+
+    if value == 0 {
+        buf[0] = $30  // '0'
+        return 1
+    }
+
+    // Convert digits in reverse
+    var temp = [0u8; 12]
+    var len: u32 = 0
+
+    var n = value
+    while n > 0 {
+        temp[len] = (u8)($30 + (n % 10))
+        n = n / 10
+        len++
+    }
+
+    // Reverse into output buffer
+    if len >= buf_size {
+        len = buf_size - 1
+    }
+
+    var i: u32 = 0
+    while i < len {
+        buf[i] = temp[len - 1 - i]
+        i++
+    }
+
+    return len
+}

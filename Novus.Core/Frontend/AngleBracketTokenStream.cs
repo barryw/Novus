@@ -4,11 +4,16 @@ namespace Novus.Frontend;
 
 /// <summary>
 /// Custom token stream that handles the classic lexer ambiguity between
-/// shift operators (<<, >>) and nested generic type parameters.
+/// shift operators (&lt;&lt;, &gt;&gt;) and nested generic type parameters.
 ///
-/// When parsing nested generics like Vec<Option<T>>, the lexer tokenizes
-/// the closing >> as a single SHIFT_RIGHT token. This stream splits such
-/// tokens into two separate '>' tokens when they appear in generic contexts.
+/// When parsing nested generics like Vec&lt;Option&lt;T&gt;&gt;, the lexer tokenizes
+/// the closing &gt;&gt; as a single SHIFT_RIGHT token. This stream splits such
+/// tokens into two separate '&gt;' tokens when they appear in generic contexts.
+///
+/// This implementation uses a STATELESS approach: instead of tracking depth
+/// during parsing (which fails due to parser backtracking), it looks backward
+/// in the token stream to count unmatched angle brackets whenever it sees
+/// a potential &gt;&gt; to split.
 ///
 /// This is the same approach used by C++11, Rust, and modern Java compilers.
 /// </summary>
@@ -19,16 +24,26 @@ public class AngleBracketTokenStream : CommonTokenStream
     private readonly int TOKEN_GREATER;
     private readonly int TOKEN_LSHIFT;
     private readonly int TOKEN_RSHIFT;
+    private readonly int TOKEN_COLON;
+    private readonly int TOKEN_ARROW;
+    private readonly int TOKEN_COMMA;
+    private readonly int TOKEN_IDENTIFIER;
+    private readonly int TOKEN_DOUBLE_COLON;
+    private readonly int TOKEN_EQUALS;
+    private readonly int TOKEN_LBRACE;
+    private readonly int TOKEN_RBRACE;
+    private readonly int TOKEN_LPAREN;
+    private readonly int TOKEN_RPAREN;
+    private readonly int TOKEN_SEMI;
+    private readonly int TOKEN_NEWLINE;
 
-    private int _angleBracketDepth = 0;
     private readonly Queue<IToken> _splitTokenBuffer = new();
     private IToken? _lastSplitToken = null;
+    private int _lastSplitPosition = -1;
 
     public AngleBracketTokenStream(ITokenSource tokenSource) : base(tokenSource)
     {
         // Dynamically find token types from the lexer's vocabulary
-        // This ensures we always have the correct token types even when the grammar changes
-        // ITokenSource doesn't expose Vocabulary, but Lexer does
         var vocabulary = (tokenSource as Lexer)?.Vocabulary;
 
         if (vocabulary == null)
@@ -40,8 +55,18 @@ public class AngleBracketTokenStream : CommonTokenStream
         TOKEN_GREATER = FindTokenType(vocabulary, ">");
         TOKEN_LSHIFT = FindTokenType(vocabulary, "<<");
         TOKEN_RSHIFT = FindTokenType(vocabulary, ">>");
-
-        // Token types discovered from lexer vocabulary
+        TOKEN_COLON = FindTokenType(vocabulary, ":");
+        TOKEN_ARROW = FindTokenType(vocabulary, "->");
+        TOKEN_COMMA = FindTokenType(vocabulary, ",");
+        TOKEN_DOUBLE_COLON = FindTokenType(vocabulary, "::");
+        TOKEN_EQUALS = FindTokenType(vocabulary, "=");
+        TOKEN_LBRACE = FindTokenType(vocabulary, "{");
+        TOKEN_RBRACE = FindTokenType(vocabulary, "}");
+        TOKEN_LPAREN = FindTokenType(vocabulary, "(");
+        TOKEN_RPAREN = FindTokenType(vocabulary, ")");
+        TOKEN_SEMI = FindTokenType(vocabulary, ";");
+        TOKEN_IDENTIFIER = FindTokenTypeBySymbolicName(vocabulary, "IDENTIFIER");
+        TOKEN_NEWLINE = FindTokenTypeBySymbolicName(vocabulary, "NEWLINE");
 
         if (TOKEN_LESS == -1 || TOKEN_GREATER == -1 || TOKEN_LSHIFT == -1 || TOKEN_RSHIFT == -1)
         {
@@ -53,12 +78,23 @@ public class AngleBracketTokenStream : CommonTokenStream
 
     private static int FindTokenType(IVocabulary vocabulary, string literalName)
     {
-        // Search through all token types to find the one matching our literal
-        // We need to iterate a reasonable range since IVocabulary doesn't expose MaxTokenType
-        for (int i = 0; i < 200; i++)  // Should be enough for any reasonable grammar
+        for (int i = 0; i < 200; i++)
         {
             var literal = vocabulary.GetLiteralName(i);
             if (literal != null && literal == $"'{literalName}'")
+            {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static int FindTokenTypeBySymbolicName(IVocabulary vocabulary, string symbolicName)
+    {
+        for (int i = 0; i < 200; i++)
+        {
+            var name = vocabulary.GetSymbolicName(i);
+            if (name == symbolicName)
             {
                 return i;
             }
@@ -84,10 +120,14 @@ public class AngleBracketTokenStream : CommonTokenStream
         }
 
         // Check if we need to split >> or << tokens in generic context
-        // Only split if we haven't already split this token
-        if (ShouldSplitToken(token) && _lastSplitToken != token)
+        // Use position-based check to avoid re-splitting the same token during backtracking
+        int currentPosition = Index;
+
+        if (ShouldSplitToken(token) &&
+            !(_lastSplitToken == token || _lastSplitPosition == currentPosition))
         {
             _lastSplitToken = token;
+            _lastSplitPosition = currentPosition;
             SplitAndBufferToken(token);
             return _splitTokenBuffer.Peek();
         }
@@ -100,135 +140,134 @@ public class AngleBracketTokenStream : CommonTokenStream
         // If we have split tokens buffered, consume from buffer
         if (_splitTokenBuffer.Count > 0)
         {
-            var token = _splitTokenBuffer.Dequeue();
+            _splitTokenBuffer.Dequeue();
 
-            // Track angle brackets for split tokens
-            UpdateAngleBracketDepth(token);
-
-            // Don't call base.Consume() - we're consuming from our buffer
-            // The underlying token stream position stays the same
             if (_splitTokenBuffer.Count == 0)
             {
                 // All split tokens consumed, now consume the underlying token
-                _lastSplitToken = null;  // Reset so we can split future tokens
+                _lastSplitToken = null;
+                _lastSplitPosition = -1;
                 base.Consume();
             }
             return;
         }
 
-        // Get current token before consuming
-        var currentToken = base.LT(1);
-
-        // Consume from base stream
         base.Consume();
-
-        // Track angle bracket depth
-        UpdateAngleBracketDepth(currentToken);
     }
 
-    private IToken? _previousToken = null;
-    private bool _inTypeContext = false;
-
-    private void UpdateAngleBracketDepth(IToken token)
+    public override void Seek(int index)
     {
-        if (token.Type == TokenConstants.EOF)
+        // When the parser seeks/backtracks, clear our split token buffer
+        // The buffer is only valid for the current position
+        if (_splitTokenBuffer.Count > 0 && index != Index)
         {
-            return;
+            _splitTokenBuffer.Clear();
+            _lastSplitToken = null;
+            _lastSplitPosition = -1;
         }
-
-        var tokenType = token.Type;
-        var lexer = TokenSource as Lexer;
-        var vocab = lexer?.Vocabulary;
-
-        // Update type context state based on current token
-        if (_previousToken != null && vocab != null)
-        {
-            var prevLiteral = vocab.GetLiteralName(_previousToken.Type);
-            var prevSymbol = vocab.GetSymbolicName(_previousToken.Type);
-
-            // Enter type context after these tokens (NOT '<' by itself - that could be a comparison!)
-            // We enter type context after ':' (type annotation), '->' (return type), etc.
-            if (prevLiteral == "':'" || prevLiteral == "'->'" || prevLiteral == "'=>'")
-            {
-                _inTypeContext = true;
-            }
-            // Exit type context immediately after '=' because RHS is an expression, not a type
-            else if (prevLiteral == "'='")
-            {
-                _inTypeContext = false;
-            }
-            // Stay in type context while parsing type names (identifiers, ::, type keywords)
-            else if (_inTypeContext)
-            {
-                var currLiteral = vocab.GetLiteralName(tokenType);
-                var currSymbol = vocab.GetSymbolicName(tokenType);
-
-                // Type keywords keep us in type context
-                bool isTypeKeyword = currSymbol != null && (
-                    currSymbol.StartsWith("KW_U") || currSymbol.StartsWith("KW_I") ||
-                    currSymbol == "KW_BOOL" || currSymbol == "KW_F32" || currSymbol == "KW_F64" ||
-                    currSymbol == "KW_FIXED16" || currSymbol == "KW_FIXED32" ||
-                    currSymbol == "KW_SELF_TYPE" || currSymbol == "IDENTIFIER");
-
-                // Exit type context after certain tokens
-                bool shouldExitTypeContext = currLiteral == "'=>'" || currLiteral == "'{'" ||
-                    currLiteral == "';'" || currSymbol == "NEWLINE" ||
-                    currSymbol == "KW_WHERE" || currSymbol == "KW_IF" || currSymbol == "KW_WHILE";
-
-                if (shouldExitTypeContext)
-                {
-                    _inTypeContext = false;
-                    // Reset angle bracket depth when exiting type context at statement boundaries
-                    // This prevents incorrectly incremented depth from affecting subsequent statements
-                    if (currLiteral == "';'" || currSymbol == "NEWLINE")
-                    {
-                        _angleBracketDepth = 0;
-                    }
-                }
-            }
-        }
-
-        if (tokenType == TOKEN_LESS)
-        {
-            // Only increment depth if < appears in a type context
-            if (_inTypeContext)
-            {
-                _angleBracketDepth++;
-            }
-        }
-        else if (tokenType == TOKEN_GREATER && _angleBracketDepth > 0)
-        {
-            _angleBracketDepth--;
-
-            // Exit type context after closing all angle brackets
-            if (_angleBracketDepth == 0)
-            {
-                _inTypeContext = false;
-            }
-        }
-
-        _previousToken = token;
+        base.Seek(index);
     }
 
-    private string GetTokenName(IToken? token)
-    {
-        if (token == null) return "null";
-        var lexer = TokenSource as Lexer;
-        return lexer?.Vocabulary.GetSymbolicName(token.Type) ?? $"Type{token.Type}";
-    }
-
+    /// <summary>
+    /// Determines if the token should be split by looking backward in the token stream
+    /// to count unmatched angle brackets. This is a STATELESS approach that works
+    /// correctly even when the parser backtracks.
+    /// </summary>
     private bool ShouldSplitToken(IToken token)
     {
         var tokenType = token.Type;
 
-        // Only split >> and << when we're potentially in a generic context
-        // We're in a generic context if we have open angle brackets
-        if (_angleBracketDepth > 0)
+        // Only consider >> for splitting (not <<)
+        if (tokenType != TOKEN_RSHIFT)
         {
-            return tokenType == TOKEN_RSHIFT || tokenType == TOKEN_LSHIFT;
+            return false;
         }
 
-        return false;
+        // Look backward to count unmatched angle brackets
+        // We need at least 2 unmatched < to split >> into two >
+        int unmatchedLess = CountUnmatchedAngleBracketsLookingBack();
+
+        return unmatchedLess >= 2;
+    }
+
+    /// <summary>
+    /// Counts unmatched '&lt;' tokens by scanning backward from current position.
+    /// Stops at statement/expression boundaries to avoid counting across statements.
+    /// </summary>
+    private int CountUnmatchedAngleBracketsLookingBack()
+    {
+        int depth = 0;
+        bool inTypeContext = false;
+
+        // Start from the token just before the current position
+        // We need to look at already-consumed tokens
+        int pos = Index - 1;
+
+        // Scan backward looking for type context markers and angle brackets
+        while (pos >= 0)
+        {
+            var tok = Get(pos);
+            var tokType = tok.Type;
+
+            // Stop at statement boundaries
+            if (tokType == TOKEN_SEMI || tokType == TOKEN_LBRACE || tokType == TOKEN_RBRACE)
+            {
+                break;
+            }
+
+            // Stop at NEWLINE if we're not clearly in a type context
+            if (tokType == TOKEN_NEWLINE && depth == 0)
+            {
+                break;
+            }
+
+            if (tokType == TOKEN_GREATER)
+            {
+                // A > means we matched one level
+                depth--;
+            }
+            else if (tokType == TOKEN_LESS)
+            {
+                // A < opens one level - check if it's a type context
+                // Look at what preceded this <
+                int prevPos = pos - 1;
+                while (prevPos >= 0)
+                {
+                    var prevTok = Get(prevPos);
+                    if (prevTok.Type != TOKEN_NEWLINE)
+                    {
+                        break;
+                    }
+                    prevPos--;
+                }
+
+                if (prevPos >= 0)
+                {
+                    var prevTok = Get(prevPos);
+                    // < after identifier or :: is likely a generic type
+                    if (prevTok.Type == TOKEN_IDENTIFIER || prevTok.Type == TOKEN_DOUBLE_COLON)
+                    {
+                        depth++;
+                        inTypeContext = true;
+                    }
+                    // Otherwise it might be a comparison operator - don't count it
+                }
+            }
+            else if (tokType == TOKEN_COLON || tokType == TOKEN_ARROW)
+            {
+                // Type annotation or return type - definitely a type context
+                inTypeContext = true;
+            }
+            else if (tokType == TOKEN_EQUALS && !inTypeContext)
+            {
+                // Assignment - if we haven't seen type markers, stop
+                break;
+            }
+
+            pos--;
+        }
+
+        return depth;
     }
 
     private void SplitAndBufferToken(IToken token)

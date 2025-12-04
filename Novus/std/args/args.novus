@@ -718,9 +718,11 @@ impl WBArgument {
 ///
 /// Call this early in main() if is_workbench() returns true.
 ///
-/// IMPORTANT: The returned WorkbenchStartup will automatically reply
-/// to the startup message when it's dropped. This is REQUIRED by
-/// Workbench - if you don't reply, Workbench will hang!
+/// IMPORTANT: The WBStartup message is automatically retrieved by the runtime
+/// startup code and stored in a global variable. This function returns a wrapper
+/// that borrows that message. The message will be replied automatically by the
+/// runtime when the program exits. You do NOT need to (and should not) manually
+/// reply to the message.
 ///
 /// Example:
 /// ```novus
@@ -728,40 +730,29 @@ impl WBArgument {
 ///     if is_workbench() {
 ///         let wb = get_workbench_startup() or { return 20 }
 ///         // Use wb.num_args(), wb.arg(i), etc.
-///         // Message is replied when wb goes out of scope
+///         // Message is replied automatically on exit
 ///     } else {
 ///         // CLI launch - use Args::parse()
 ///     }
 ///     return 0
 /// }
 /// ```
+// Accessor for global _WBStartupMsg variable set by runtime startup
+// This variable is defined in library_bases.s and set by novus_startup.s
+// We use a stub function defined in C that simply returns the global's value
+extern fn __get_wb_startup_msg() -> *WBStartup
+
 pub fn get_workbench_startup() -> Option<WorkbenchStartup> {
-    // Get our process
-    let task = FindTask((*u8)0)
-    if (u32)task == 0 {
+    // Get the message pointer (already retrieved by startup code)
+    let wb_msg = __get_wb_startup_msg()
+    if (u32)wb_msg == 0 {
         return Option::None
     }
 
-    // Cast to Process
-    let process = (*Process)task
-
-    // Get our message port (pr_MsgPort)
-    let msg_port = &process.pr_MsgPort
-
-    // Wait for message (should already be there)
-    WaitPort(msg_port)
-
-    // Get the message
-    let msg = GetMsg(msg_port)
-    if (u32)msg == 0 {
-        return Option::None
-    }
-
-    // Cast to WBStartup
-    let wb_msg = (*WBStartup)msg
-
+    // Return wrapper - but DO NOT reply on drop!
+    // The runtime startup code handles replying when the program exits.
     return Option::Some(WorkbenchStartup {
         msg: wb_msg,
-        needs_reply: true,
+        needs_reply: false,  // Runtime handles reply, not us
     })
 }

@@ -3606,6 +3606,64 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return targetType;
     }
 
+    public override IrType? VisitAsCastExpr([NotNull] NovusParser.AsCastExprContext context)
+    {
+        var exprType = Visit(context.expression());
+        var targetType = ParseType(context.type());
+
+        if (exprType == null)
+            return targetType;
+
+        // Check if cast is valid (same rules as C-style cast)
+        // Allow: numeric -> numeric, bool -> numeric, numeric -> bool, pointer -> integer, integer -> pointer, pointer -> pointer, &T -> *T
+        // Also allow: fn(...) -> numeric (function pointer to address), numeric -> fn(...) (address to function pointer)
+        bool isValidCast = (IsNumericType(targetType) && IsNumericType(exprType)) ||
+                           (IsNumericType(targetType) && exprType is IrBoolType) ||  // bool -> numeric
+                           (targetType is IrBoolType && IsNumericType(exprType)) ||  // numeric -> bool
+                           (IsNumericType(targetType) && exprType is IrPointerType) ||
+                           (targetType is IrPointerType && IsNumericType(exprType)) ||
+                           (targetType is IrPointerType && exprType is IrPointerType) ||
+                           (targetType is IrPointerType && exprType is IrReferenceType) ||
+                           (targetType is IrPointerType && exprType is IrMutReferenceType) ||
+                           (IsNumericType(targetType) && exprType is IrFunctionPointerType) ||  // fn(...) -> u32
+                           (targetType is IrFunctionPointerType && IsNumericType(exprType));    // u32 -> fn(...)
+
+        if (!isValidCast)
+        {
+            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0006",
+                $"cannot cast from '{TypeToString(exprType)}' to '{TypeToString(targetType)}'",
+                location,
+                helpTexts: new List<string>
+                {
+                    "only numeric types and pointers can be cast"
+                }
+            );
+            return null;
+        }
+
+        // Warn about potentially lossy casts
+        if (IsLossyCast(exprType, targetType))
+        {
+            if (!_currentFunctionSuppressedWarnings.Contains("W0002"))
+            {
+                var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                _diagnostics.ReportWarning(
+                    "W0002",
+                    $"casting from '{TypeToString(exprType)}' to '{TypeToString(targetType)}' may lose precision",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "this cast may truncate the value"
+                    }
+                );
+            }
+        }
+
+        return targetType;
+    }
+
     public override IrType? VisitTryExpr([NotNull] NovusParser.TryExprContext context)
     {
         // The ? operator for Result propagation
@@ -9725,10 +9783,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         {
 
             // Handle generic instantiation (e.g., Vec<i32>)
-            if (context.typeList() != null)
+            if (context.genericTypeArgs()?.typeList() != null)
             {
                 var typeArgs = new List<IrType>();
-                foreach (var typeCtx in context.typeList().type())
+                foreach (var typeCtx in context.genericTypeArgs().typeList().type())
                 {
                     typeArgs.Add(ParseType(typeCtx));
                 }
@@ -9810,10 +9868,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         {
 
             // Handle generic instantiation (e.g., Option<i32>)
-            if (context.typeList() != null)
+            if (context.genericTypeArgs()?.typeList() != null)
             {
                 var typeArgs = new List<IrType>();
-                foreach (var typeCtx in context.typeList().type())
+                foreach (var typeCtx in context.genericTypeArgs().typeList().type())
                 {
                     typeArgs.Add(ParseType(typeCtx));
                 }

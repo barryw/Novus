@@ -1114,10 +1114,10 @@ public class NovusFormatter : NovusBaseVisitor<object?>
     public override object? VisitNamedType(NovusParser.NamedTypeContext context)
     {
         Visit(context.typeName());
-        if (context.typeList() != null)
+        if (context.genericTypeArgs() != null)
         {
             Write("<");
-            Visit(context.typeList());
+            Visit(context.genericTypeArgs().typeList());
             Write(">");
         }
         return null;
@@ -2169,6 +2169,14 @@ public class NovusFormatter : NovusBaseVisitor<object?>
         Visit(context.type());
         Write(")");
         Visit(context.expression());
+        return null;
+    }
+
+    public override object? VisitAsCastExpr(NovusParser.AsCastExprContext context)
+    {
+        Visit(context.expression());
+        Write(" as ");
+        Visit(context.type());
         return null;
     }
 

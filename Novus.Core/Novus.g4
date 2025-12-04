@@ -71,7 +71,7 @@ globalVariableDeclaration
     ;
 
 functionDeclaration
-    : attribute* KW_EXTERN? (KW_PUB | KW_INTERNAL)? KW_FN IDENTIFIER genericParams? '(' parameterList? ')' ('->' type)? whereClause? block? NEWLINE*
+    : attribute* KW_EXTERN? (KW_PUB | KW_INTERNAL)? KW_FN IDENTIFIER genericParams? '(' parameterList? ')' ('->' type)? whereClause? (block | ';')? NEWLINE*  // Allow `;` or block, both optional
     ;
 
 parameterList
@@ -81,7 +81,8 @@ parameterList
     ;
 
 parameter
-    : NEWLINE* KW_CONSUMING? IDENTIFIER ':' type NEWLINE*
+    : NEWLINE* KW_CONSUMING? IDENTIFIER ':' type NEWLINE*     // Normal parameter with type
+    | NEWLINE* KW_CONSUMING? IDENTIFIER NEWLINE*              // Error recovery: parameter without type annotation
     ;
 
 variadicParameter
@@ -98,15 +99,17 @@ structDeclaration
     ;
 
 structField
-    : IDENTIFIER ':' type ','? NEWLINE*
+    : IDENTIFIER ':' type ','? NEWLINE*           // Normal field with type
+    | IDENTIFIER ','? NEWLINE*                    // Error recovery: field without type annotation
     ;
 
 enumDeclaration
-    : attribute* (KW_PUB | KW_INTERNAL)? KW_ENUM IDENTIFIER genericParams? whereClause? '{' NEWLINE* enumVariant (',' NEWLINE* enumVariant)* ','? NEWLINE* '}' NEWLINE*
+    : attribute* (KW_PUB | KW_INTERNAL)? KW_ENUM IDENTIFIER genericParams? whereClause? '{' NEWLINE* (enumVariant (',' NEWLINE* enumVariant)* ','?)? NEWLINE* '}' NEWLINE*  // Allow empty enum for error recovery
     ;
 
 enumVariant
-    : IDENTIFIER ('(' typeList ')')?
+    : IDENTIFIER ('(' typeList ')')?              // Normal variant with optional payload
+    | IDENTIFIER '(' ')'                          // Error recovery: variant with empty parens (should be removed)
     ;
 
 traitDeclaration
@@ -119,7 +122,7 @@ traitItem
 
 // Trait method: can be just a signature (required to implement) or have a body (default implementation)
 traitMethodDeclaration
-    : KW_FN IDENTIFIER genericParams? '(' parameterList? ')' ('->' type)? block? NEWLINE*
+    : KW_FN IDENTIFIER genericParams? '(' parameterList? ')' ('->' type)? (block | ';')? NEWLINE*  // Allow `;` for incomplete declarations
     ;
 
 functionSignature
@@ -153,13 +156,14 @@ implItem
     ;
 
 // Generic parameter declarations: <T, U>
+// Note: Generic params never nest (can't have <T<U>>), so GREATER is always sufficient
 genericParams
     : LESS IDENTIFIER (',' IDENTIFIER)* GREATER
     ;
 
 // Generic type arguments: <i32, u8>
 // Used by TurboFishExpr (Vec::<i32>) and type instantiation (Vec<i32>)
-// Note: Nested generics (Vec<Option<i32>>) require AngleBracketTokenStream to split >> into > >
+// For nested generics like Vec<Option<T>>, AngleBracketTokenStream splits >> into two > tokens
 genericTypeArgs
     : LESS typeList GREATER
     ;
@@ -199,7 +203,7 @@ type
     | KW_F64                                                  # PrimitiveType
     | KW_FIXED16                                              # PrimitiveType
     | KW_FIXED32                                              # PrimitiveType
-    | typeName (LESS typeList GREATER)?                     # NamedType
+    | typeName genericTypeArgs?                              # NamedType
     ;
 
 typeName
@@ -300,7 +304,9 @@ returnStatement
     ;
 
 variableDeclaration
-    : (KW_LET | KW_VAR) KW_MUT? (IDENTIFIER | '_' | tuplePattern) (':' type)? '=' expression
+    : (KW_LET | KW_VAR) KW_MUT? (IDENTIFIER | '_' | tuplePattern) (':' type)? '=' expression       // Normal declaration
+    | (KW_LET | KW_VAR) KW_MUT? (IDENTIFIER | '_' | tuplePattern) ':' type                        // Error recovery: missing initializer
+    | (KW_LET | KW_VAR) KW_MUT? (IDENTIFIER | '_' | tuplePattern)                                 // Error recovery: missing type and initializer
     ;
 
 tuplePattern
@@ -376,6 +382,7 @@ expression
     | expression '?'                                       # TryExpr               // Result propagation with auto-conversion
     | expression DOTDOT expression                          # RangeExpr
     | expression DOTDOTEQ expression                       # RangeInclusiveExpr
+    | expression KW_AS type                                # AsCastExpr
     | '(' type ')' expression                              # CastExpr
     | '&' KW_MUT? expression                               # BorrowExpr
     | ('!' | '~' | '-') expression                         # UnaryExpr

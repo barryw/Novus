@@ -918,4 +918,184 @@ struct Vec<T> {
         Assert.Equal(0, parser.NumberOfSyntaxErrors);
         Assert.Single(tree.structDeclaration());
     }
+
+    // Error Recovery Tests
+
+    [Fact]
+    public void Parse_FunctionDeclarationWithSemicolon_Parsed()
+    {
+        // Test that function declarations with semicolon instead of block are parsed
+        // (for extern functions or incomplete IDE declarations)
+        var source = @"
+extern fn write(format: *u8, ...args) -> i32;
+
+fn complete_function() -> i32 {
+    return 42
+}";
+        var parser = CreateParser(source);
+        var tree = parser.compilationUnit();
+
+        // Parser should not crash and should parse both functions
+        Assert.NotNull(tree);
+        Assert.Equal(2, tree.functionDeclaration().Length);
+    }
+
+    [Fact]
+    public void Parse_ExternFunctionWithoutBody_Success()
+    {
+        var source = @"
+extern fn printf(format: *u8) -> i32
+extern fn malloc(size: u32) -> *u8
+";
+        var parser = CreateParser(source);
+        var tree = parser.compilationUnit();
+
+        // Should parse successfully since extern functions don't need bodies
+        Assert.Equal(0, parser.NumberOfSyntaxErrors);
+        Assert.Equal(2, tree.functionDeclaration().Length);
+    }
+
+    [Fact]
+    public void Parse_StructWithMissingFieldType_Parsed()
+    {
+        // Error recovery: struct field without type annotation
+        // Parser should recover and continue parsing
+        var source = @"
+struct TestStruct {
+    valid_field: i32,
+    missing_type_field,
+    another_valid: u32
+}";
+        var parser = CreateParser(source);
+        var tree = parser.compilationUnit();
+
+        // Parser should parse the struct despite the error
+        Assert.NotNull(tree);
+        Assert.Single(tree.structDeclaration());
+        var structDecl = tree.structDeclaration()[0];
+        // Should have all three fields (including the malformed one)
+        Assert.Equal(3, structDecl.structField().Length);
+    }
+
+    [Fact]
+    public void Parse_EmptyEnum_Parsed()
+    {
+        // Error recovery: enum with no variants
+        var source = @"
+enum EmptyEnum {
+}
+
+enum ValidEnum {
+    Variant1,
+    Variant2
+}";
+        var parser = CreateParser(source);
+        var tree = parser.compilationUnit();
+
+        // Parser should handle empty enum and continue
+        Assert.NotNull(tree);
+        Assert.Equal(2, tree.enumDeclaration().Length);
+    }
+
+    [Fact]
+    public void Parse_EnumWithEmptyParens_Parsed()
+    {
+        // Error recovery: enum variant with empty parens (should be omitted)
+        var source = @"
+enum TestEnum {
+    Variant1(),
+    Variant2(i32),
+    Variant3
+}";
+        var parser = CreateParser(source);
+        var tree = parser.compilationUnit();
+
+        // Parser should parse all variants
+        Assert.NotNull(tree);
+        Assert.Single(tree.enumDeclaration());
+        var enumDecl = tree.enumDeclaration()[0];
+        Assert.Equal(3, enumDecl.enumVariant().Length);
+    }
+
+    [Fact]
+    public void Parse_VariableDeclarationMissingInitializer_Parsed()
+    {
+        // Error recovery: variable with type but no initializer
+        var source = @"
+fn test() -> i32 {
+    let x: i32
+    let y = 42
+    return y
+}";
+        var parser = CreateParser(source);
+        var tree = parser.compilationUnit();
+
+        // Parser should parse the function and recover from missing initializer
+        Assert.NotNull(tree);
+        Assert.Single(tree.functionDeclaration());
+    }
+
+    [Fact]
+    public void Parse_ParameterWithoutType_Parsed()
+    {
+        // Error recovery: parameter without type annotation
+        var source = @"
+fn test(a, b: i32) -> i32 {
+    return b
+}";
+        var parser = CreateParser(source);
+        var tree = parser.compilationUnit();
+
+        // Parser should parse despite missing type on parameter 'a'
+        Assert.NotNull(tree);
+        Assert.Single(tree.functionDeclaration());
+        var func = tree.functionDeclaration()[0];
+        Assert.NotNull(func.parameterList());
+        Assert.Equal(2, func.parameterList().parameter().Length);
+    }
+
+    [Fact]
+    public void Parse_TraitMethodWithSemicolon_Parsed()
+    {
+        // Trait methods can have semicolon for signature-only declarations
+        var source = @"
+trait TestTrait {
+    fn required_method(x: i32) -> i32;
+    fn default_method(x: i32) -> i32 {
+        return x + 1
+    }
+}";
+        var parser = CreateParser(source);
+        var tree = parser.compilationUnit();
+
+        // Both method styles should parse correctly
+        Assert.NotNull(tree);
+        Assert.Single(tree.traitDeclaration());
+    }
+
+    [Fact]
+    public void Parse_MixedValidAndErrorRecovery_ContinuesParsing()
+    {
+        // Test that parser can recover from errors and continue parsing valid code
+        var source = @"
+struct ValidStruct {
+    field: i32
+}
+
+struct ErrorStruct {
+    bad_field,
+    good_field: u32
+}
+
+fn valid_function() -> i32 {
+    return 42
+}";
+        var parser = CreateParser(source);
+        var tree = parser.compilationUnit();
+
+        // Parser should recover and parse all declarations
+        Assert.NotNull(tree);
+        Assert.Equal(2, tree.structDeclaration().Length);
+        Assert.Single(tree.functionDeclaration());
+    }
 }

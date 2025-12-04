@@ -1,6 +1,7 @@
 using Novus.IR;
 using Novus.Parser;
 using Novus.SemanticAnalysis;
+using Novus.Frontend.Generics;
 
 namespace Novus.Frontend;
 
@@ -51,7 +52,7 @@ public interface ITypeParsingContext
 /// Shared type parsing logic for both IrBuilder and SemanticAnalyzer.
 /// Handles type contexts, generic instantiation, and monomorphization.
 /// </summary>
-public class TypeParser
+public class TypeParser : ITypeSubstitutionEngine
 {
     private readonly ITypeParsingContext _context;
 
@@ -157,7 +158,7 @@ public class TypeParser
         if (structType != null)
         {
             // Handle generic instantiation (e.g., Vec<i32>)
-            if (context.typeList() != null)
+            if (context.genericTypeArgs()?.typeList() != null)
             {
                 return MonomorphizeStruct(structType, context);
             }
@@ -170,7 +171,7 @@ public class TypeParser
         if (enumType != null)
         {
             // Handle generic instantiation (e.g., Option<i32>)
-            if (context.typeList() != null)
+            if (context.genericTypeArgs()?.typeList() != null)
             {
                 return MonomorphizeEnum(enumType, context);
             }
@@ -202,7 +203,7 @@ public class TypeParser
     {
         // First, create a preliminary cache key to check if we're already processing this type
         // This prevents infinite recursion when the struct's type arguments reference the struct itself
-        var typeArgNames = context.typeList()!.type().Select(t => t.GetText());
+        var typeArgNames = context.genericTypeArgs()!.typeList()!.type().Select(t => t.GetText());
         var preliminaryCacheKey = $"{structType.StructName}<{string.Join(",", typeArgNames)}>";
 
         // Check cache first - this catches already-completed monomorphizations
@@ -225,7 +226,7 @@ public class TypeParser
 
         // Now parse type arguments (this can recurse safely because we've cached the placeholder)
         var typeArgs = new List<IrType>();
-        foreach (var typeCtx in context.typeList()!.type())
+        foreach (var typeCtx in context.genericTypeArgs()!.typeList()!.type())
         {
             typeArgs.Add(ParseType(typeCtx));
         }
@@ -318,7 +319,7 @@ public class TypeParser
     {
         // First, create a preliminary cache key using raw text to check for cycles
         // This prevents infinite recursion when the enum's type arguments reference the enum itself
-        var rawTypeArgNames = context.typeList()!.type().Select(t => t.GetText());
+        var rawTypeArgNames = context.genericTypeArgs()!.typeList()!.type().Select(t => t.GetText());
         var rawPreliminaryCacheKey = $"{enumType.EnumName}<{string.Join(",", rawTypeArgNames)}>";
 
         // If we have type substitutions, compute the "true" cache key by substituting generic params
@@ -326,7 +327,7 @@ public class TypeParser
         string preliminaryCacheKey = rawPreliminaryCacheKey;
         if (_context.CurrentTypeSubstitutions != null && _context.CurrentTypeSubstitutions.Count > 0)
         {
-            var substitutedArgNames = context.typeList()!.type().Select(t => {
+            var substitutedArgNames = context.genericTypeArgs()!.typeList()!.type().Select(t => {
                 var rawText = t.GetText();
                 // Simple case: the type arg itself is a generic parameter (e.g., "K")
                 if (_context.CurrentTypeSubstitutions.TryGetValue(rawText, out var substitutedType))
@@ -376,7 +377,7 @@ public class TypeParser
 
         // Now parse type arguments (this can recurse safely because we've cached the placeholder)
         var typeArgs = new List<IrType>();
-        foreach (var typeCtx in context.typeList()!.type())
+        foreach (var typeCtx in context.genericTypeArgs()!.typeList()!.type())
         {
             typeArgs.Add(ParseType(typeCtx));
         }
@@ -1209,7 +1210,7 @@ public class TypeParser
     /// Get a cache key for a type (used for monomorphization caching)
     /// Handles nested generics properly
     /// </summary>
-    private string GetTypeCacheKey(IrType type)
+    public string GetTypeCacheKey(IrType type)
     {
         // Recursively build a cache key for a type, handling nested generics
         if (type is IrEnumType enumType)

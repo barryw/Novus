@@ -5,6 +5,7 @@ using Novus.Diagnostics;
 using Novus.IR;
 using Novus.Parser;
 using Novus.SemanticAnalysis;
+using Novus.Frontend.Generics;
 
 namespace Novus.Frontend;
 
@@ -70,6 +71,14 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
     // Track which generic functions have been instantiated with which types
     // Key: "functionName<ConcreteType1,ConcreteType2>" (e.g., "identity<i32>")
     private readonly HashSet<string> _instantiatedGenericFunctions = new();
+
+    // Generic instantiation subsystem - handles monomorphization of generic types and methods
+    // This encapsulates all the logic for:
+    // - Storing generic templates (methods and functions)
+    // - Tracking instantiated methods/functions (cache to avoid duplicates)
+    // - Type substitution and inference
+    // - Building instantiated function bodies
+    private readonly IGenericInstantiator _genericInstantiator;
 
     private IrType? _expectedType = null; // Expected type for bidirectional type checking
     public readonly List<IrStringLiteral> StringLiterals = new(); // Track all string literals for data section
@@ -167,7 +176,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
 
             if (type.GenericParameters.Count == 0 && !hasGenericTypeArgs && !_builder._module.Structs.Contains(type))
             {
-                _builder._module.Structs.Add(type);
+                _builder._module.AddStruct(type);
             }
         }
 
@@ -206,6 +215,127 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
     }
 
     /// <summary>
+    /// Nested class that implements IInstantiationContext for GenericInstantiator
+    /// </summary>
+    private class IrBuilderInstantiationContext : IInstantiationContext
+    {
+        private readonly IrBuilder _builder;
+
+        public IrBuilderInstantiationContext(IrBuilder builder)
+        {
+            _builder = builder;
+        }
+
+        // Type parsing
+        public IrType ParseType(NovusParser.TypeContext context) => _builder._typeParser.ParseType(context);
+        public IrType? ParseReturnType(NovusParser.TypeContext? context) =>
+            context != null ? _builder._typeParser.ParseType(context) : IrVoidType.Instance;
+
+        // Function building
+        public void ParseSelfParameter(
+            NovusParser.SelfParameterContext? context,
+            IrFunction function,
+            IrType implementingType)
+        {
+            _builder.ParseSelfParameter(context, function, implementingType);
+        }
+
+        public void ParseFunctionParameters(
+            NovusParser.FunctionDeclarationContext context,
+            IrFunction function)
+        {
+            _builder.ParseFunctionParameters(context, function);
+        }
+
+        public void ParseVariadicParameter(
+            NovusParser.ParameterListContext? paramList,
+            IrFunction function)
+        {
+            _builder.ParseVariadicParameter(paramList, function);
+        }
+
+        public void ParseVariadicParameter(
+            NovusParser.ParameterListContext? paramList,
+            List<IrParameter> parameters)
+        {
+            _builder.ParseVariadicParameter(paramList, parameters);
+        }
+
+        // Function body building
+        public object? VisitFunctionBody(NovusParser.BlockContext? blockContext)
+        {
+            return blockContext != null ? _builder.Visit(blockContext) : null;
+        }
+
+        // Module access
+        public IrModule Module => _builder._module;
+        public IrFunction? CurrentFunction
+        {
+            get => _builder._currentFunction;
+            set => _builder._currentFunction = value;
+        }
+        public IrBasicBlock? CurrentBlock
+        {
+            get => _builder._currentBlock;
+            set => _builder._currentBlock = value;
+        }
+        public Dictionary<string, IrLocalVariable> LocalVariables => _builder._localVariables;
+
+        // Symbol lookups
+        public IrStructType? LookupStruct(string name) => _builder._symbols.LookupStruct(name);
+        public IrEnumType? LookupEnum(string name) => _builder._symbols.LookupEnum(name);
+
+        // Generic parameter management
+        public void RegisterGenericParameter(string name, IrGenericType genericType) =>
+            _builder._symbols.RegisterGenericParameter(name, genericType);
+        public IrGenericType? LookupGenericParameter(string name) =>
+            _builder._symbols.LookupGenericParameter(name);
+        public void ClearGenericParameters() =>
+            _builder._symbols.ClearGenericParameters();
+
+        // Type substitution
+        public ITypeSubstitutionEngine SubstitutionEngine => _builder._typeParser;
+
+        // Name mangling
+        public string GenerateMethodMangledName(
+            string typeName,
+            string methodName,
+            bool isTraitImpl,
+            string? traitName,
+            List<IrType> traitTypeArgs)
+        {
+            return _builder.GenerateMethodMangledName(typeName, methodName, isTraitImpl, traitName, traitTypeArgs);
+        }
+
+        public string GetTypeCacheKey(IrType type) => _builder._typeParser.GetTypeCacheKey(type);
+
+        // State management
+        public Dictionary<string, IrType>? CurrentTypeSubstitutions
+        {
+            get => _builder._currentTypeSubstitutions;
+            set => _builder._currentTypeSubstitutions = value;
+        }
+        public IrType? CurrentSelfType
+        {
+            get => _builder._currentSelfType;
+            set => _builder._currentSelfType = value;
+        }
+
+        // Diagnostic reporting
+        public string? InputFilePath => _builder._inputFilePath;
+        public void ReportError(string errorCode, string message, SourceLocation location)
+        {
+            _builder._diagnostics.ReportError(errorCode, message, location);
+        }
+
+        // Constants management
+        public void RestoreConstantsFromTuples(Dictionary<string, (IrType Type, object Value)> constants)
+        {
+            _builder.RestoreConstantsFromTuples(constants);
+        }
+    }
+
+    /// <summary>
     /// Constructor for IrBuilder
     /// </summary>
     /// <summary>
@@ -213,11 +343,17 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
     /// </summary>
     public DiagnosticBag Diagnostics => _diagnostics;
 
+    /// <summary>
+    /// Public access to the IR module being built
+    /// </summary>
+    public IrModule Module => _module;
+
     public IrBuilder(bool skipAutoImports = false)
     {
         _skipAutoImports = skipAutoImports;
         _typeParser = new TypeParser(new IrBuilderTypeContext(this));
         _circularImportDetector = new CircularImportDetector(_diagnostics);
+        _genericInstantiator = new GenericInstantiatorImpl(new IrBuilderInstantiationContext(this));
     }
 
     /// <summary>
@@ -516,7 +652,8 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
             if (genericParams.Count > 0)
             {
                 var templateConstants = GetConstantsAsTuples();
-                _genericFunctionTemplates[name] = (genericParams, funcContext, templateConstants);
+                var template = new Generics.GenericTemplate(genericParams, funcContext, templateConstants);
+                _genericInstantiator.RegisterFunctionTemplate(name, template);
                 continue; // Don't add to _module.Functions yet
             }
 
@@ -681,7 +818,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
             var funcName = funcContext.IDENTIFIER().GetText();
 
             // Skip generic function templates - they'll be instantiated on-demand
-            if (_genericFunctionTemplates.ContainsKey(funcName))
+            if (_genericInstantiator.HasFunctionTemplate(funcName))
             {
                 continue;
             }
@@ -1020,9 +1157,9 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
             }
 
             // If it has generic arguments, extract from those too
-            if (namedCtx.typeList() != null)
+            if (namedCtx.genericTypeArgs()?.typeList() != null)
             {
-                foreach (var typeArg in namedCtx.typeList().type())
+                foreach (var typeArg in namedCtx.genericTypeArgs().typeList().type())
                 {
                     dependencies.UnionWith(ExtractTypeNameDependencies(typeArg));
                 }
