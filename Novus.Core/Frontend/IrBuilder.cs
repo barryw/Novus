@@ -404,6 +404,9 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
 
     public IrModule BuildModule(NovusParser.CompilationUnitContext context)
     {
+        // Process module-level attributes first (e.g., #[stack_size(65536)])
+        ProcessModuleAttributes(context.moduleAttribute());
+
         // Multi-pass approach to handle forward references:
         // Pass 0a: Implicitly import all of core module (unless testing or compiling a std library module)
         // Don't auto-import std::core when compiling std library modules to prevent circular dependencies

@@ -1,0 +1,235 @@
+// Resource Bank System Test
+//
+// Demonstrates the Resource Bank system for proactive chip RAM management.
+// Shows how to create banks, load/unload them, and share assets between banks.
+
+from std::core import Result, Option
+from std::strings::core import Str
+from std::memory::chip import Priority, ChipAsset, ChipCacheError
+from std::memory::chip_cache import ChipCache
+from std::memory::resource_bank import ResourceBank, BankBuilder, BankError, BankState, ChipBudget
+
+// ============================================================================
+// Mock Asset Type
+// ============================================================================
+
+/// A simple test asset that implements ChipAsset
+struct TestAsset {
+    data: [u8; 256],
+    id: u32,
+}
+
+impl TestAsset {
+    fn new(id: u32) -> TestAsset {
+        return TestAsset {
+            data: [0; 256],
+            id: id,
+        }
+    }
+
+    fn get_id(&self) -> u32 {
+        return self.id
+    }
+
+    fn get_ptr(&self) -> *u8 {
+        return (*u8)&self.data[0]
+    }
+
+    fn get_size(&self) -> u32 {
+        return 256
+    }
+
+    fn get_priority(&self) -> Priority {
+        return Priority::Normal
+    }
+}
+
+impl ChipAsset for TestAsset {
+    fn asset_id(&self) -> u32 {
+        return self.id
+    }
+
+    fn data_ptr(&self) -> *u8 {
+        return (*u8)&self.data[0]
+    }
+
+    fn data_size(&self) -> u32 {
+        return 256
+    }
+
+    fn cache_priority(&self) -> Priority {
+        return Priority::Normal
+    }
+}
+
+// ============================================================================
+// Main
+// ============================================================================
+
+fn main() -> i32 {
+    // Initialize the chip cache system
+    ChipCache::init()
+
+    // Create some test assets
+    let asset1 = TestAsset::new(1001)
+    let asset2 = TestAsset::new(1002)
+    let asset3 = TestAsset::new(1003)
+    let shared_asset = TestAsset::new(2000)  // Shared between banks
+
+    // =========================================================================
+    // Test 1: Create a simple bank with the builder
+    // =========================================================================
+
+    var level1_builder = ResourceBank::builder("level1")
+    // Use direct methods (not trait methods) to avoid trait dispatch issues
+    level1_builder.add_asset(asset1.get_id(), asset1.get_ptr(), asset1.get_size(), asset1.get_priority())
+    level1_builder.add_asset(asset2.get_id(), asset2.get_ptr(), asset2.get_size(), asset2.get_priority())
+    level1_builder.add_asset_named(shared_asset.get_id(), shared_asset.get_ptr(), shared_asset.get_size(), shared_asset.get_priority(), "shared_sfx")
+
+    let level1_result = level1_builder.build()
+    var level1 = match level1_result {
+        Result::Ok(b) => b,
+        Result::Err(_) => {
+            // Bank creation failed
+            return 1
+        }
+    }
+
+    // Check initial state
+    if level1.is_loaded() {
+        return 2  // Should not be loaded yet
+    }
+
+    if level1.entry_count() != 3 {
+        return 3  // Should have 3 entries
+    }
+
+    // =========================================================================
+    // Test 2: Create a second bank that shares an asset
+    // =========================================================================
+
+    var level2_builder = ResourceBank::builder("level2")
+    level2_builder.add_asset(asset3.get_id(), asset3.get_ptr(), asset3.get_size(), asset3.get_priority())
+    level2_builder.add_asset_named(shared_asset.get_id(), shared_asset.get_ptr(), shared_asset.get_size(), shared_asset.get_priority(), "shared_sfx")
+    level2_builder.persistent(false)
+
+    let level2_result = level2_builder.build()
+    var level2 = match level2_result {
+        Result::Ok(b) => b,
+        Result::Err(_) => {
+            return 4
+        }
+    }
+
+    if level2.entry_count() != 2 {
+        return 5
+    }
+
+    // =========================================================================
+    // Test 3: Load level1
+    // =========================================================================
+
+    let load1_result = level1.load()
+    match load1_result {
+        Result::Err(_) => return 6,
+        Result::Ok(_) => {}
+    }
+
+    if !level1.is_loaded() {
+        return 7
+    }
+
+    // Check pin count for shared asset (should be 1)
+    let pin1 = ChipCache::pin_count(shared_asset.get_id())
+    if pin1 != 1 {
+        return 8
+    }
+
+    // =========================================================================
+    // Test 4: Load level2 (shared asset gets double-pinned)
+    // =========================================================================
+
+    let load2_result = level2.load()
+    match load2_result {
+        Result::Err(_) => return 9,
+        Result::Ok(_) => {}
+    }
+
+    // Shared asset should now have pin_count = 2
+    let pin2 = ChipCache::pin_count(shared_asset.get_id())
+    if pin2 != 2 {
+        return 10
+    }
+
+    // =========================================================================
+    // Test 5: Unload level1 (shared asset stays pinned via level2)
+    // =========================================================================
+
+    level1.unload()
+
+    if level1.is_loaded() {
+        return 11  // Should be unloaded now
+    }
+
+    // Shared asset should still be pinned (pin_count = 1)
+    let pin3 = ChipCache::pin_count(shared_asset.get_id())
+    if pin3 != 1 {
+        return 12
+    }
+
+    // =========================================================================
+    // Test 6: Unload level2 (shared asset now unpinned)
+    // =========================================================================
+
+    level2.unload()
+
+    let pin4 = ChipCache::pin_count(shared_asset.get_id())
+    if pin4 != 0 {
+        return 13  // Should be fully unpinned
+    }
+
+    // =========================================================================
+    // Test 7: Budget planning
+    // =========================================================================
+
+    let budget = ChipBudget::typical(2 * 1024 * 1024)  // 2MB total
+
+    // Level bank should fit in budget
+    if !budget.level_will_fit(&level1) {
+        return 14
+    }
+
+    // =========================================================================
+    // Test 8: Get asset from loaded bank
+    // =========================================================================
+
+    // Reload level1 for get test
+    let _ = level1.load()
+
+    let ptr_result = level1.get_by_id(asset1.get_id())
+    match ptr_result {
+        Option::Some(ptr) => {
+            if ptr == (*u8)0 {
+                return 15
+            }
+        },
+        Option::None => return 16,
+    }
+
+    // Try to get non-existent asset
+    let ptr_bad = level1.get_by_id(9999)
+    match ptr_bad {
+        Option::Some(_) => return 17,  // Should not find it
+        Option::None => {}  // Expected
+    }
+
+    // =========================================================================
+    // All tests passed
+    // =========================================================================
+
+    // Cleanup
+    level1.unload()
+    ChipCache::shutdown()
+
+    return 0
+}

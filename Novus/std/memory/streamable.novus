@@ -6,9 +6,9 @@
 // be played/displayed via buffered streaming.
 
 from std::core import Result, Option, Drop
-from std::ffi::exec import AllocMem, FreeMem, CopyMem, CacheClearU
-from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR
+from std::ffi::exec import CopyMem, CacheClearU
 from std::memory::chip import Priority, ChipCacheError
+from std::memory::chip_pool import ChipPool
 
 // ============================================================================
 // Streamable Trait
@@ -163,18 +163,19 @@ impl StreamBufferSet {
 
         var i: u8 = 0
         while i < count {
-            unsafe {
-                let ptr = (*u8)AllocMem(actual_size, MEMF_CHIP | MEMF_CLEAR)
-                if !ptr {
+            let ptr_opt = ChipPool::alloc(actual_size)
+            let ptr: *u8 = match ptr_opt {
+                Option::Some(p) => p,
+                Option::None => {
                     // Allocation failed - free any already allocated
                     self.free()
                     return Result::Err(ChipCacheError::OutOfMemory)
                 }
-                self.buffers[(u32)i].chip_ptr = ptr
-                self.buffers[(u32)i].size = actual_size
-                self.buffers[(u32)i].filled = 0
-                self.buffers[(u32)i].source_offset = 0
             }
+            self.buffers[(u32)i].chip_ptr = ptr
+            self.buffers[(u32)i].size = actual_size
+            self.buffers[(u32)i].filled = 0
+            self.buffers[(u32)i].source_offset = 0
             i = i + 1
         }
 
@@ -187,9 +188,7 @@ impl StreamBufferSet {
         while i < self.buffer_count {
             let buf = &mut self.buffers[(u32)i]
             if buf.chip_ptr {
-                unsafe {
-                    FreeMem(buf.chip_ptr, buf.size)
-                }
+                let _ = ChipPool::free(buf.chip_ptr)
                 buf.chip_ptr = (*u8)0
                 buf.size = 0
             }

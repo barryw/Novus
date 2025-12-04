@@ -1026,6 +1026,36 @@ class Program
                         objectFiles.Add(coreObj);
                     }
                 }
+
+                // Generate per-program stack configuration based on #[stack_size(N)] attribute
+                // Uses the stack size from the main module (default 65536 if not specified)
+                var stackSize = mainIR.IrModule.StackSize;
+                var stackConfigSource = Path.Combine(outputDir, "stack_config.s");
+                var stackConfigAsm = $@"; Auto-generated stack configuration for this program
+; Stack size: {stackSize} bytes (from #[stack_size] attribute or default)
+	section	""__MERGED"",data
+
+	; AmigaOS $STACK: cookie - the loader scans the executable for this string
+	; and automatically allocates the specified stack size BEFORE running the program
+	xdef	___stack_cookie
+___stack_cookie:
+	dc.b	'$STACK:{stackSize}',0
+	even
+
+	; VBCC ___stack symbol - for compatibility with VBCC's startup code
+	xdef	___stack
+___stack:
+	dc.l	{stackSize}
+";
+                await File.WriteAllTextAsync(stackConfigSource, stackConfigAsm);
+
+                var stackConfigObj = Path.Combine(outputDir, "stack_config.o");
+                if (!await toolchain.Assemble(stackConfigSource, stackConfigObj, assemblyCpu, false))
+                {
+                    Console.WriteLine("Failed to assemble stack_config");
+                    return 1;
+                }
+                objectFiles.Add(stackConfigObj);
             }
 
             // Assemble runtime library assembly files (needed for all project types)

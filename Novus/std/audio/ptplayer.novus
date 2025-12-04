@@ -39,11 +39,13 @@
 // ```
 
 from std::core import Option, Result, Drop
+from std::strings::core import Str
 from std::ffi::amiga_consts import DMAF_SETCLR, DMAF_MASTER, DMAF_AUD0, DMAF_AUD1, DMAF_AUD2, DMAF_AUD3
 from std::ffi::exec import FreeMem
 from std::hardware::registers import CUSTOM_BASE
 from std::audio::errors import AudioError
-from std::memory::chip import ChipAsset, Priority, ensure_chip_ram, is_chip_ram, ChipCacheError
+from std::memory::chip import ChipAsset, Priority, is_chip_ram, ChipCacheError
+from std::memory::chip_cache import ChipCache
 
 // ============================================================================
 // Sound Effect Structure
@@ -180,6 +182,10 @@ pub struct AudioSample {
 }
 
 impl ChipAsset for AudioSample {
+    fn asset_id(&self) -> u32 {
+        return (u32)self.data
+    }
+
     fn data_ptr(&self) -> *u8 {
         return self.data
     }
@@ -253,12 +259,24 @@ impl ModAsset {
     ///
     /// If already in chip RAM, returns the data pointer directly.
     /// Otherwise, uses the ChipCache to get a chip RAM copy.
+    ///
+    /// NOTE: This method does NOT pin the asset. For DMA-safe playback,
+    /// use ModPlayer::init_asset() instead, which handles pinning.
     pub fn as_chip_ptr(&self) -> Result<*u8, ChipCacheError> {
-        return ensure_chip_ram(self.data, self.size, Priority::Normal)
+        if is_chip_ram(self.data) {
+            return Result::Ok(self.data)
+        }
+        // Use pointer as asset ID (unique per asset)
+        let asset_id = (u32)self.data
+        return ChipCache::get(asset_id, self.data, self.size, Priority::Normal, "MOD")
     }
 }
 
 impl ChipAsset for ModAsset {
+    fn asset_id(&self) -> u32 {
+        return (u32)self.data
+    }
+
     fn data_ptr(&self) -> *u8 {
         return self.data
     }
@@ -332,12 +350,17 @@ impl AudioAsset {
     /// Get a chip RAM pointer for this asset
     ///
     /// If already in chip RAM, returns the data pointer directly.
-    /// Otherwise, allocates chip RAM and copies the data.
+    /// Otherwise, uses the global ChipCache to allocate and copy.
     ///
-    /// Note: Caller is responsible for freeing the allocated memory if
-    /// it was not already in chip RAM.
+    /// Note: Uses pointer value as asset ID for cache tracking.
+    /// The cache manages memory lifetime.
     pub fn as_chip_ptr(&self) -> Result<*u8, ChipCacheError> {
-        return ensure_chip_ram(self.data, self.size, Priority::High)
+        if is_chip_ram(self.data) {
+            return Result::Ok(self.data)
+        }
+        // Use pointer value as asset ID for standalone cache lookups
+        let asset_id = (u32)self.data
+        return ChipCache::get(asset_id, self.data, self.size, Priority::High, "SFX")
     }
 
     /// Get the sample rate
@@ -372,6 +395,10 @@ impl AudioAsset {
 }
 
 impl ChipAsset for AudioAsset {
+    fn asset_id(&self) -> u32 {
+        return (u32)self.data
+    }
+
     fn data_ptr(&self) -> *u8 {
         return self.data
     }
@@ -554,9 +581,8 @@ pub struct ModPlayer {
     is_playing: bool,
     cia_installed: bool,
     pal_mode: bool,
-    // Chip RAM buffer allocated by init_asset() - must be freed on drop
-    chip_buffer: *u8,
-    chip_buffer_size: u32,
+    // ChipCache asset ID for the currently loaded MOD (0 if none)
+    cache_asset_id: u32,
     // Callback state tracking
     last_e8_value: u8,
     last_song_end: u8,
@@ -568,6 +594,18 @@ pub struct ModPlayer {
     on_e8_trigger: u32,
     on_vumeter: u32,
     on_song_end: u32,
+}
+
+// Global counter for generating unique asset IDs
+static mut g_next_asset_id: u32 = 1
+
+/// Generate a unique asset ID for ChipCache
+fn next_asset_id() -> u32 {
+    unsafe {
+        let id = g_next_asset_id
+        g_next_asset_id = g_next_asset_id + 1
+        return id
+    }
 }
 
 impl ModPlayer {
@@ -598,8 +636,7 @@ impl ModPlayer {
             is_playing: false,
             cia_installed: true,
             pal_mode: pal,
-            chip_buffer: (*u8)0,
-            chip_buffer_size: 0,
+            cache_asset_id: 0,
             last_e8_value: 0,
             last_song_end: 0,
             on_e8_trigger: 0,
@@ -641,7 +678,8 @@ impl ModPlayer {
     /// Initialize a module for playback from ModAsset
     ///
     /// Automatically handles chip RAM management. If the asset is in
-    /// fast RAM, it will be copied to chip RAM using the ChipCache.
+    /// fast RAM, it will be cached to chip RAM using the global ChipCache.
+    /// The asset is automatically pinned during playback to prevent eviction.
     ///
     /// # Arguments
     /// * `asset` - ModAsset containing the MOD file data
@@ -657,17 +695,15 @@ impl ModPlayer {
     /// @mod("music.mod", chip = false)
     /// static music: ModAsset = []
     ///
-    /// ChipCache::init(512 * 1024)?
     /// player.init_asset(&music, 0)?
+    /// player.play()  // Asset is pinned during playback
     /// ```
     pub fn init_asset(&mut self, asset: &ModAsset, start_position: u8) -> Result<(), AudioError> {
-        // Free any previously allocated chip buffer
-        if self.chip_buffer {
-            unsafe {
-                FreeMem(self.chip_buffer, self.chip_buffer_size)
-            }
-            self.chip_buffer = (*u8)0
-            self.chip_buffer_size = 0
+        // Unpin and release any previously cached asset
+        if self.cache_asset_id != 0 {
+            ChipCache::unpin(self.cache_asset_id)
+            ChipCache::evict(self.cache_asset_id)
+            self.cache_asset_id = 0
         }
 
         // Check if data is already in chip RAM
@@ -675,17 +711,18 @@ impl ModPlayer {
         let data_size = asset.size
 
         if is_chip_ram(data_ptr) {
-            // Already in chip RAM, use directly (no allocation needed)
+            // Already in chip RAM, use directly (no caching needed)
             return self.init(data_ptr, start_position)
         }
 
-        // Need to copy to chip RAM
-        let result = ensure_chip_ram(data_ptr, data_size, Priority::Normal)
+        // Generate a new asset ID and cache to chip RAM
+        let asset_id = next_asset_id()
+        let result = ChipCache::get(asset_id, data_ptr, data_size, Priority::Normal, "MOD")
         match result {
             Result::Ok(chip_ptr) => {
-                // Track this allocation for cleanup
-                self.chip_buffer = chip_ptr
-                self.chip_buffer_size = data_size
+                // Track asset ID for cleanup and pin it during playback
+                self.cache_asset_id = asset_id
+                ChipCache::pin(asset_id)
                 return self.init(chip_ptr, start_position)
             },
             Result::Err(_) => {
@@ -1175,13 +1212,12 @@ impl Drop for ModPlayer {
             self.cia_installed = false
         }
 
-        // Free any chip RAM we allocated for the MOD
-        if self.chip_buffer {
-            unsafe {
-                FreeMem(self.chip_buffer, self.chip_buffer_size)
-            }
-            self.chip_buffer = (*u8)0
-            self.chip_buffer_size = 0
+        // Unpin and evict any cached MOD data
+        // We evict on drop since the MOD is no longer needed
+        if self.cache_asset_id != 0 {
+            ChipCache::unpin(self.cache_asset_id)
+            ChipCache::evict(self.cache_asset_id)
+            self.cache_asset_id = 0
         }
     }
 }

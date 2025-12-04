@@ -1067,6 +1067,66 @@ public partial class IrBuilder
     }
 
     /// <summary>
+    /// Parse module-level attributes and apply them to the module
+    /// </summary>
+    private void ProcessModuleAttributes(NovusParser.ModuleAttributeContext[]? attributeContexts)
+    {
+        if (attributeContexts == null || attributeContexts.Length == 0)
+            return;
+
+        foreach (var attrCtx in attributeContexts)
+        {
+            var attrName = attrCtx.IDENTIFIER().GetText();
+            var errorLocation = new Novus.Diagnostics.SourceLocation(_inputFilePath ?? "<unknown>", attrCtx.Start.Line, attrCtx.Start.Column, 0, "");
+
+            if (attrName == Novus.SemanticAnalysis.KnownAttributes.StackSize)
+            {
+                // Parse #[stack_size(N)] attribute
+                if (attrCtx.attributeArgList() != null)
+                {
+                    var args = attrCtx.attributeArgList().attributeArg();
+                    if (args.Length > 0)
+                    {
+                        var exprText = args[0].expression().GetText();
+                        if (int.TryParse(exprText, out var stackSize))
+                        {
+                            if (stackSize < 4096)
+                            {
+                                _diagnostics.ReportError(ErrorCodes.InvalidAttribute, $"Stack size {stackSize} is too small (minimum 4096 bytes)", errorLocation);
+                            }
+                            else if (stackSize > 16 * 1024 * 1024) // 16MB max
+                            {
+                                _diagnostics.ReportError(ErrorCodes.InvalidAttribute, $"Stack size {stackSize} is too large (maximum 16MB)", errorLocation);
+                            }
+                            else
+                            {
+                                _module.StackSize = stackSize;
+                            }
+                        }
+                        else
+                        {
+                            _diagnostics.ReportError(ErrorCodes.InvalidAttribute, $"#[stack_size] expects an integer argument, got '{exprText}'", errorLocation);
+                        }
+                    }
+                    else
+                    {
+                        _diagnostics.ReportError(ErrorCodes.InvalidAttribute, "#[stack_size] requires a size argument, e.g., #[stack_size(65536)]", errorLocation);
+                    }
+                }
+                else
+                {
+                    _diagnostics.ReportError(ErrorCodes.InvalidAttribute, "#[stack_size] requires a size argument, e.g., #[stack_size(65536)]", errorLocation);
+                }
+            }
+            else
+            {
+                // Unknown module-level attribute - warn
+                _diagnostics.ReportWarning(ErrorCodes.UnknownAttribute, $"Unknown module-level attribute: {attrName}", errorLocation);
+            }
+        }
+    }
+
+    /// <summary>
     /// Simple attribute parser for IrBuilder (doesn't validate - just extracts)
     /// </summary>
     private Novus.SemanticAnalysis.AttributeCollection ParseAttributesSimple(NovusParser.AttributeContext[]? attributeContexts)

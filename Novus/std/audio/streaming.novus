@@ -38,14 +38,15 @@
 // ```
 
 from std::core import Result, Option, Drop
-from std::ffi::exec import AllocMem, FreeMem, CopyMem, CacheClearU
+from std::ffi::exec import CopyMem, CacheClearU
 from std::ffi::exec import CreateMsgPort, DeleteMsgPort, CreateIORequest, DeleteIORequest
 from std::ffi::exec import OpenDevice, CloseDevice, BeginIO, CheckIO, WaitIO, GetMsg
-from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR, MEMF_PUBLIC
+from std::ffi::amiga_consts import MEMF_PUBLIC
 from std::ffi::amiga_consts import CMD_WRITE, ADCMD_FREE, ADIOF_PERVOL, ADIOF_NOWAIT
 from std::ffi::amiga_structs import IOAudio, IORequest, MsgPort
 from std::audio::errors import AudioError
 from std::memory::chip import is_chip_ram
+from std::memory::chip_pool import ChipPool
 from std::hardware::chipset import DISPLAY, DisplayType
 
 // ============================================================================
@@ -322,49 +323,58 @@ impl AudioStreamer {
         io2.ioa_Request.io_Message.mn_ReplyPort = port
         io2.ioa_AllocKey = alloc_key
 
-        // Allocate chip RAM buffers
+        // Allocate chip RAM buffers using ChipPool for consistency
         unsafe {
-            let buf0 = (*u8)AllocMem(actual_size, MEMF_CHIP | MEMF_CLEAR)
-            if !buf0 {
-                // Close device and cleanup
-                io0.ioa_Request.io_Command = ADCMD_FREE
-                let cleanup_req_addr = &io0.ioa_Request
-                let cleanup_ioreq = (*IORequest)cleanup_req_addr
-                CloseDevice(cleanup_ioreq)
-                DeleteIORequest((*u8)io2)
-                DeleteIORequest((*u8)io1)
-                DeleteIORequest((*u8)io0)
-                DeleteMsgPort(port)
-                return Result::Err(AudioError::AllocationFailed)
+            let buf0_opt = ChipPool::alloc(actual_size)
+            let buf0: *u8 = match buf0_opt {
+                Option::Some(ptr) => ptr,
+                Option::None => {
+                    // Close device and cleanup
+                    io0.ioa_Request.io_Command = ADCMD_FREE
+                    let cleanup_req_addr = &io0.ioa_Request
+                    let cleanup_ioreq = (*IORequest)cleanup_req_addr
+                    CloseDevice(cleanup_ioreq)
+                    DeleteIORequest((*u8)io2)
+                    DeleteIORequest((*u8)io1)
+                    DeleteIORequest((*u8)io0)
+                    DeleteMsgPort(port)
+                    return Result::Err(AudioError::AllocationFailed)
+                }
             }
 
-            let buf1 = (*u8)AllocMem(actual_size, MEMF_CHIP | MEMF_CLEAR)
-            if !buf1 {
-                FreeMem(buf0, actual_size)
-                io0.ioa_Request.io_Command = ADCMD_FREE
-                let cleanup_req_addr2 = &io0.ioa_Request
-                let cleanup_ioreq2 = (*IORequest)cleanup_req_addr2
-                CloseDevice(cleanup_ioreq2)
-                DeleteIORequest((*u8)io2)
-                DeleteIORequest((*u8)io1)
-                DeleteIORequest((*u8)io0)
-                DeleteMsgPort(port)
-                return Result::Err(AudioError::AllocationFailed)
+            let buf1_opt = ChipPool::alloc(actual_size)
+            let buf1: *u8 = match buf1_opt {
+                Option::Some(ptr) => ptr,
+                Option::None => {
+                    let _ = ChipPool::free(buf0)
+                    io0.ioa_Request.io_Command = ADCMD_FREE
+                    let cleanup_req_addr2 = &io0.ioa_Request
+                    let cleanup_ioreq2 = (*IORequest)cleanup_req_addr2
+                    CloseDevice(cleanup_ioreq2)
+                    DeleteIORequest((*u8)io2)
+                    DeleteIORequest((*u8)io1)
+                    DeleteIORequest((*u8)io0)
+                    DeleteMsgPort(port)
+                    return Result::Err(AudioError::AllocationFailed)
+                }
             }
 
-            let buf2 = (*u8)AllocMem(actual_size, MEMF_CHIP | MEMF_CLEAR)
-            if !buf2 {
-                FreeMem(buf1, actual_size)
-                FreeMem(buf0, actual_size)
-                io0.ioa_Request.io_Command = ADCMD_FREE
-                let cleanup_req_addr3 = &io0.ioa_Request
-                let cleanup_ioreq3 = (*IORequest)cleanup_req_addr3
-                CloseDevice(cleanup_ioreq3)
-                DeleteIORequest((*u8)io2)
-                DeleteIORequest((*u8)io1)
-                DeleteIORequest((*u8)io0)
-                DeleteMsgPort(port)
-                return Result::Err(AudioError::AllocationFailed)
+            let buf2_opt = ChipPool::alloc(actual_size)
+            let buf2: *u8 = match buf2_opt {
+                Option::Some(ptr) => ptr,
+                Option::None => {
+                    let _ = ChipPool::free(buf1)
+                    let _ = ChipPool::free(buf0)
+                    io0.ioa_Request.io_Command = ADCMD_FREE
+                    let cleanup_req_addr3 = &io0.ioa_Request
+                    let cleanup_ioreq3 = (*IORequest)cleanup_req_addr3
+                    CloseDevice(cleanup_ioreq3)
+                    DeleteIORequest((*u8)io2)
+                    DeleteIORequest((*u8)io1)
+                    DeleteIORequest((*u8)io0)
+                    DeleteMsgPort(port)
+                    return Result::Err(AudioError::AllocationFailed)
+                }
             }
 
             // Detect PAL/NTSC for frame-based timing
@@ -715,15 +725,15 @@ impl Drop for AudioStreamer {
                 self.pending_count = self.pending_count - 1
             }
 
-            // Free chip RAM buffers
+            // Free chip RAM buffers (via ChipPool)
             if self.buffer_0 {
-                FreeMem(self.buffer_0, self.buffer_size)
+                let _ = ChipPool::free(self.buffer_0)
             }
             if self.buffer_1 {
-                FreeMem(self.buffer_1, self.buffer_size)
+                let _ = ChipPool::free(self.buffer_1)
             }
             if self.buffer_2 {
-                FreeMem(self.buffer_2, self.buffer_size)
+                let _ = ChipPool::free(self.buffer_2)
             }
 
             // Free channel and close device

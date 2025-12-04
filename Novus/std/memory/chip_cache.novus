@@ -25,7 +25,7 @@ struct CacheEntry {
     chip_ptr: *u8,              // Pointer to chip RAM copy
     size: u32,                  // Size in bytes
     priority: Priority,         // Eviction priority
-    pinned: bool,               // If true, cannot be evicted
+    pin_count: u32,             // Reference count for pinning (0 = can evict)
     last_access: u32,           // Frame number of last access (for LRU)
     pooled: bool,               // True if allocated from pool, false if direct
     debug_name: [u8; 32],       // Debug name for this asset
@@ -39,8 +39,8 @@ impl CacheEntry {
             source_ptr: (*u8)0,
             chip_ptr: (*u8)0,
             size: 0,
-            priority: Priority::Normal,
-            pinned: false,
+            priority: Priority::Low,  // Use Low (0) for default to enable all-zero optimization
+            pin_count: 0,
             last_access: 0,
             pooled: false,
             debug_name: [0; 32],
@@ -108,14 +108,15 @@ pub struct ChipCache {
 }
 
 // Global singleton
+// The compiler will automatically use {0} initialization for this large struct (VBCC workaround)
 static mut g_chip_cache: ChipCache = ChipCache {
     entries: [CacheEntry {
         asset_id: 0,
         source_ptr: (*u8)0,
         chip_ptr: (*u8)0,
         size: 0,
-        priority: Priority::Normal,
-        pinned: false,
+        priority: Priority::Low,
+        pin_count: 0,
         last_access: 0,
         pooled: false,
         debug_name: [0; 32],
@@ -229,17 +230,18 @@ impl ChipCache {
         }
     }
 
-    /// Pin an asset to prevent eviction
+    /// Pin an asset to prevent eviction (increments reference count)
     ///
     /// Call this before starting DMA operations on the asset.
-    /// The asset must be in the cache.
+    /// The asset must be in the cache. Each pin() call must be
+    /// balanced by an unpin() call.
     pub fn pin(asset_id: u32) {
         unsafe {
             Forbid()
             var i: u32 = 0
             while i < g_chip_cache.entry_count {
                 if g_chip_cache.entries[i].asset_id == asset_id {
-                    g_chip_cache.entries[i].pinned = true
+                    g_chip_cache.entries[i].pin_count = g_chip_cache.entries[i].pin_count + 1
                     Permit()
                     return
                 }
@@ -249,16 +251,19 @@ impl ChipCache {
         }
     }
 
-    /// Unpin an asset to allow eviction
+    /// Unpin an asset to allow eviction (decrements reference count)
     ///
     /// Call this after DMA operations are complete.
+    /// Only unpins when count reaches zero.
     pub fn unpin(asset_id: u32) {
         unsafe {
             Forbid()
             var i: u32 = 0
             while i < g_chip_cache.entry_count {
                 if g_chip_cache.entries[i].asset_id == asset_id {
-                    g_chip_cache.entries[i].pinned = false
+                    if g_chip_cache.entries[i].pin_count > 0 {
+                        g_chip_cache.entries[i].pin_count = g_chip_cache.entries[i].pin_count - 1
+                    }
                     Permit()
                     return
                 }
@@ -268,14 +273,14 @@ impl ChipCache {
         }
     }
 
-    /// Check if an asset is pinned
+    /// Check if an asset is pinned (pin_count > 0)
     pub fn is_pinned(asset_id: u32) -> bool {
         unsafe {
             Forbid()
             var i: u32 = 0
             while i < g_chip_cache.entry_count {
                 if g_chip_cache.entries[i].asset_id == asset_id {
-                    let result = g_chip_cache.entries[i].pinned
+                    let result = g_chip_cache.entries[i].pin_count > 0
                     Permit()
                     return result
                 }
@@ -283,6 +288,24 @@ impl ChipCache {
             }
             Permit()
             return false
+        }
+    }
+
+    /// Get the current pin count for an asset
+    pub fn pin_count(asset_id: u32) -> u32 {
+        unsafe {
+            Forbid()
+            var i: u32 = 0
+            while i < g_chip_cache.entry_count {
+                if g_chip_cache.entries[i].asset_id == asset_id {
+                    let result = g_chip_cache.entries[i].pin_count
+                    Permit()
+                    return result
+                }
+                i = i + 1
+            }
+            Permit()
+            return 0
         }
     }
 
@@ -295,7 +318,7 @@ impl ChipCache {
             var i: u32 = 0
             while i < g_chip_cache.entry_count {
                 if g_chip_cache.entries[i].asset_id == asset_id {
-                    if g_chip_cache.entries[i].pinned {
+                    if g_chip_cache.entries[i].pin_count > 0 {
                         Permit()
                         return false  // Can't evict pinned asset
                     }
@@ -311,7 +334,7 @@ impl ChipCache {
         }
     }
 
-    /// Evict all unpinned assets
+    /// Evict all unpinned assets (pin_count == 0)
     ///
     /// Useful for level transitions or scene changes.
     pub fn clear_unpinned() {
@@ -319,7 +342,7 @@ impl ChipCache {
             Forbid()
             var i: u32 = 0
             while i < g_chip_cache.entry_count {
-                if !g_chip_cache.entries[i].pinned && g_chip_cache.entries[i].is_valid() {
+                if g_chip_cache.entries[i].pin_count == 0 && g_chip_cache.entries[i].is_valid() {
                     ChipCache::free_entry(i)
                     ChipCache::remove_entry(i)
                     // Don't increment i - entries shifted down
@@ -343,7 +366,7 @@ impl ChipCache {
             while i < g_chip_cache.entry_count {
                 if g_chip_cache.entries[i].is_valid() {
                     total_cached = total_cached + g_chip_cache.entries[i].size
-                    if g_chip_cache.entries[i].pinned {
+                    if g_chip_cache.entries[i].pin_count > 0 {
                         pinned_entries = pinned_entries + 1
                         pinned_bytes = pinned_bytes + g_chip_cache.entries[i].size
                     }
@@ -457,7 +480,7 @@ impl ChipCache {
             var i: u32 = 0
             while i < g_chip_cache.entry_count {
                 let entry = &g_chip_cache.entries[i]
-                if entry.is_valid() && !entry.pinned {
+                if entry.is_valid() && entry.pin_count == 0 {
                     let pri = ChipCache::priority_value(entry.priority)
 
                     // Lower priority wins, or same priority + older access
@@ -505,7 +528,7 @@ impl ChipCache {
                 entry.chip_ptr = chip_ptr
                 entry.size = size
                 entry.priority = priority
-                entry.pinned = false
+                entry.pin_count = 0
                 entry.last_access = g_chip_cache.frame_counter
                 entry.pooled = pooled
                 entry.set_name(name)

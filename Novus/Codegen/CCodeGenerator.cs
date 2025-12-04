@@ -1596,9 +1596,28 @@ public class CCodeGenerator
         else if (staticVar.InitialValue is IrStructLiteral structLit)
         {
             var cType = GetCType(staticVar.Type);
-            // Use EmitStructLiteralForInitializer which omits the type cast
-            var initValue = EmitStructLiteralForInitializer(structLit);
-            sb.AppendLine($"{sectionAttr}{keywordStr}{cType} {staticVar.Name} = {initValue};");
+
+            // VBCC/68k OPTIMIZATION: If the struct is all-zero initialized, emit {0} instead of
+            // the full compound literal. This is critical for large structs (like ChipCache with
+            // 128 CacheEntry elements = ~8KB) because VBCC's linker can fail to properly place
+            // huge compound literals, resulting in the global being at address 0 (NULL).
+            // C99 guarantees {0} initializes the entire struct to zero, and the Amiga loader
+            // will properly zero BSS sections.
+            //
+            // VBCC BUG WORKAROUND: Also use {0} for very large structs (>4KB) regardless of content,
+            // because VBCC's code generator produces broken initialization code for massive literals.
+            // This can cause address errors (e.g., crash at address 0x6) on the Amiga.
+            var structSize = GetStructSizeEstimate(staticVar.Type);
+            if (IsAllZeroStruct(structLit) || structSize > 4096)
+            {
+                sb.AppendLine($"{sectionAttr}{keywordStr}{cType} {staticVar.Name} = {{0}};");
+            }
+            else
+            {
+                // Use EmitStructLiteralForInitializer which omits the type cast
+                var initValue = EmitStructLiteralForInitializer(structLit);
+                sb.AppendLine($"{sectionAttr}{keywordStr}{cType} {staticVar.Name} = {initValue};");
+            }
         }
         else
         {
@@ -1670,19 +1689,54 @@ public class CCodeGenerator
         }
         sb.AppendLine($"struct {structName} {{");
 
+        // Track current offset and max alignment for padding calculation
+        int currentOffset = 0;
+        int maxFieldAlignment = 1;
+
         foreach (var field in structType.Fields)
         {
+            int fieldSize;
+            int fieldAlign;
+
             // Special handling for array fields - need T[n] syntax, not T*
             if (field.Type is IrArrayType arrayType)
             {
                 var elementType = GetCType(arrayType.ElementType);
                 var size = arrayType.Length;
                 sb.AppendLine($"    {elementType} {field.Name}[{size}];");
+
+                // Calculate array size for padding tracking
+                var elemSize = CalculateTypeSize(arrayType.ElementType);
+                fieldSize = elemSize * size;
+                fieldAlign = Math.Min(elemSize, 2); // 68k uses 2-byte alignment
             }
             else
             {
                 var fieldType = GetCType(field.Type);
                 sb.AppendLine($"    {fieldType} {field.Name};");
+
+                fieldSize = CalculateTypeSize(field.Type);
+                fieldAlign = fieldSize >= 4 ? 2 : Math.Min(fieldSize, 2); // 68k uses 2-byte alignment
+            }
+
+            // Track offset with alignment
+            if (fieldAlign > 1 && currentOffset % fieldAlign != 0)
+            {
+                currentOffset += fieldAlign - (currentOffset % fieldAlign);
+            }
+            currentOffset += fieldSize;
+            maxFieldAlignment = Math.Max(maxFieldAlignment, fieldAlign);
+        }
+
+        // Add trailing padding for non-packed, non-NDK structs to ensure proper array alignment
+        // This is CRITICAL for 68k: when structs are used in arrays, each element must start
+        // at an address with proper alignment for the struct's largest field.
+        if (!isPacked && maxFieldAlignment > 1)
+        {
+            int paddingNeeded = (maxFieldAlignment - (currentOffset % maxFieldAlignment)) % maxFieldAlignment;
+            if (paddingNeeded > 0)
+            {
+                sb.AppendLine($"    uint8_t _pad[{paddingNeeded}];  // Padding for 68k array alignment");
             }
         }
 
@@ -4374,10 +4428,27 @@ public class CCodeGenerator
             // VBCC FIX: For struct literals, emit field-by-field assignment instead of compound literal
             if (localDecl.InitialValue is IrStructLiteral structLitAssign)
             {
+                var structTypeForFields = structLitAssign.Type as IrStructType;
                 foreach (var kvp in structLitAssign.FieldValues)
                 {
-                    var fieldValue = EmitValue(kvp.Value);
-                    _output.AppendLine($"    {varName}.{kvp.Key} = {fieldValue};");
+                    // VBCC FIX: Array fields cannot be assigned with brace initializers
+                    // Use memcpy from compound literal instead
+                    if (kvp.Value is IrArrayLiteral arrayFieldLitAssign)
+                    {
+                        // Get the ACTUAL field type from the struct definition, not the literal's type
+                        // This handles cases like [0; 32] where literal has [i32;32] but field is [u8;32]
+                        var actualFieldType = structTypeForFields?.GetField(kvp.Key)?.Type as IrArrayType;
+                        var arrayFieldType = actualFieldType ?? (arrayFieldLitAssign.Type as IrArrayType);
+                        var arrayElementType = GetCType(arrayFieldType!.ElementType);
+                        var arraySize = arrayFieldType.Length;
+                        var arrayInitValue = EmitValue(arrayFieldLitAssign);
+                        _output.AppendLine($"    __novus_memcpy((uint8_t*){varName}.{kvp.Key}, (uint8_t*)({arrayElementType}[{arraySize}]){arrayInitValue}, sizeof({varName}.{kvp.Key}));");
+                    }
+                    else
+                    {
+                        var fieldValue = EmitValue(kvp.Value);
+                        _output.AppendLine($"    {varName}.{kvp.Key} = {fieldValue};");
+                    }
                 }
             }
             // VBCC FIX: For enum literals with associated data, emit field-by-field assignment
@@ -4487,10 +4558,27 @@ public class CCodeGenerator
             {
                 var decl = GetCVariableDeclaration(localDecl.Type, varName);
                 _output.AppendLine($"    {decl};");
+                var structTypeDeclForFields = structLitDecl.Type as IrStructType;
                 foreach (var kvp in structLitDecl.FieldValues)
                 {
-                    var fieldValue = EmitValue(kvp.Value);
-                    _output.AppendLine($"    {varName}.{kvp.Key} = {fieldValue};");
+                    // VBCC FIX: Array fields cannot be assigned with brace initializers
+                    // Use memcpy from compound literal instead
+                    if (kvp.Value is IrArrayLiteral arrayFieldLitDecl)
+                    {
+                        // Get the ACTUAL field type from the struct definition, not the literal's type
+                        // This handles cases like [0; 32] where literal has [i32;32] but field is [u8;32]
+                        var actualFieldTypeDecl = structTypeDeclForFields?.GetField(kvp.Key)?.Type as IrArrayType;
+                        var arrayFieldTypeDecl = actualFieldTypeDecl ?? (arrayFieldLitDecl.Type as IrArrayType);
+                        var arrayElementTypeDecl = GetCType(arrayFieldTypeDecl!.ElementType);
+                        var arraySizeDecl = arrayFieldTypeDecl.Length;
+                        var arrayInitValueDecl = EmitValue(arrayFieldLitDecl);
+                        _output.AppendLine($"    __novus_memcpy((uint8_t*){varName}.{kvp.Key}, (uint8_t*)({arrayElementTypeDecl}[{arraySizeDecl}]){arrayInitValueDecl}, sizeof({varName}.{kvp.Key}));");
+                    }
+                    else
+                    {
+                        var fieldValue = EmitValue(kvp.Value);
+                        _output.AppendLine($"    {varName}.{kvp.Key} = {fieldValue};");
+                    }
                 }
             }
             // VBCC FIX: For enum literals with associated data, declare variable then assign tag and data
@@ -5969,7 +6057,28 @@ public class CCodeGenerator
             _output.AppendLine($"    }}");
         }
 
-        _output.AppendLine($"    {arrayValue}[{indexValue}] = {storeValue};");
+        // VBCC FIX: If the value being stored is a pointer-converted parameter (struct passed by pointer),
+        // we need to dereference it to get the actual struct value for the array store.
+        // Also applies to stores of struct values that need memcpy for VBCC compatibility.
+        var actualStoreValue = storeValue;
+        if (_pointerConvertedParameters.Contains(storeValue))
+        {
+            // The parameter is a pointer to a struct, we need to dereference it
+            actualStoreValue = $"*{storeValue}";
+        }
+
+        // For struct types, VBCC may have trouble with direct assignment.
+        // Use memcpy for struct-to-struct array element assignment.
+        if (indexStore.Value.Type is IrStructType valueStructType &&
+            TypeContainsHeapData(valueStructType))
+        {
+            var cType = GetCType(valueStructType);
+            _output.AppendLine($"    __novus_memcpy((uint8_t*)&{arrayValue}[{indexValue}], (uint8_t*)&{actualStoreValue}, sizeof({cType}));");
+        }
+        else
+        {
+            _output.AppendLine($"    {arrayValue}[{indexValue}] = {actualStoreValue};");
+        }
     }
 
     private void EmitIndexedFieldStore(IrIndexedFieldStore indexedFieldStore)
@@ -6229,6 +6338,9 @@ public class CCodeGenerator
             // Bool false
             IrBoolConstant boolConst => !boolConst.Value,
 
+            // Enum value - check if tag is 0 (e.g., Priority::Low = 0)
+            IrEnumValue enumValue => IsZeroEnumValue(enumValue),
+
             // Nested array - all elements must be zero
             IrArrayLiteral nestedArray => IsAllZeroArray(nestedArray),
 
@@ -6237,6 +6349,40 @@ public class CCodeGenerator
 
             _ => false
         };
+    }
+
+    /// <summary>
+    /// Check if an enum value is zero-equivalent.
+    /// For simple enums (no associated data), check if the tag is 0.
+    /// For enums with associated data, check if tag is 0 AND all associated values are zero.
+    /// </summary>
+    private bool IsZeroEnumValue(IrEnumValue enumValue)
+    {
+        var enumType = enumValue.Type as IrEnumType;
+        if (enumType == null)
+            return false;
+
+        // Find the variant
+        var variant = enumType.Variants.FirstOrDefault(v => v.Name == enumValue.VariantName);
+        if (variant == null)
+            return false;
+
+        // Check if tag is 0
+        if (variant.Tag != 0)
+            return false;
+
+        // If no associated data, it's zero
+        if (!variant.HasAssociatedData || enumValue.AssociatedValues.Count == 0)
+            return true;
+
+        // Check if all associated values are zero
+        foreach (var assocValue in enumValue.AssociatedValues)
+        {
+            if (!IsZeroValue(assocValue))
+                return false;
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -6250,6 +6396,30 @@ public class CCodeGenerator
                 return false;
         }
         return true;
+    }
+
+    /// <summary>
+    /// Estimate the size in bytes of a type for VBCC workaround decisions.
+    /// This is a conservative estimate used to detect very large structs that
+    /// VBCC cannot initialize properly.
+    /// </summary>
+    private int GetStructSizeEstimate(IrType type)
+    {
+        return type switch
+        {
+            IrBoolType => 1,
+            IrIntType intType => intType.BitWidth / 8,  // 8, 16, 32, or 64 bits
+            IrFloatType floatType => floatType.BitWidth / 8,  // 32 or 64 bits
+            IrFixedType fixedType => fixedType.BitWidth / 8,  // 16 or 32 bits
+            IrVoidType => 0,
+            IrPointerType => 4,  // 32-bit pointer on Amiga
+            IrReferenceType => 4,  // References are pointers
+            IrMutReferenceType => 4,  // Mut references are pointers
+            IrEnumType enumType => enumType.Variants.Any(v => v.HasAssociatedData) ? 8 : 4,  // Conservative estimate
+            IrArrayType arrayType => GetStructSizeEstimate(arrayType.ElementType) * arrayType.Length,
+            IrStructType structType => structType.Fields.Sum(f => GetStructSizeEstimate(f.Type)),
+            _ => 4  // Default conservative estimate
+        };
     }
 
     internal string EmitTupleLiteral(IrTupleLiteral tupleLit)

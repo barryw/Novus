@@ -47,6 +47,13 @@ public class IrModule
     /// </summary>
     public List<HirInstruction> HirInstructions { get; } = new();
 
+    /// <summary>
+    /// Program stack size in bytes. Set via #[stack_size(N)] attribute.
+    /// Default is 65536 (64KB). AmigaOS CLI default is only 4KB which is too small
+    /// for most Novus programs.
+    /// </summary>
+    public int StackSize { get; set; } = 65536;
+
     public void AddFunction(IrFunction function)
     {
         Functions.Add(function);

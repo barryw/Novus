@@ -193,9 +193,13 @@ public class VbccToolchain
             // so they won't be merged with CODE sections by -sc
             args.Add("-sc");      // Merge all code sections (required to link duplicate symbols)
             args.Add("-sd");      // Merge all data/bss sections
-            args.Add("-gc-all");  // Dead code elimination
-            args.Add("-e");       // Specify entry point for -gc-all to trace from
-            args.Add("_start");   // Entry point defined in novus_startup.s
+            args.Add("-gc-all");        // Dead code elimination
+            args.Add("-e");             // Specify entry point for -gc-all to trace from
+            args.Add("_start");         // Entry point defined in novus_startup.s
+            args.Add("-P");             // Protect VBCC stack symbol from stripping
+            args.Add("___stack");       // VBCC stack symbol (defined in novus_startup.s)
+            args.Add("-P");             // Protect AmigaOS $STACK: cookie from stripping
+            args.Add("___stack_cookie"); // AmigaOS $STACK: cookie string (defined in novus_startup.s)
         }
 
         // Add startup code first (must come before user object files)

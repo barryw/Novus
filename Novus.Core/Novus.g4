@@ -3,7 +3,13 @@ grammar Novus;
 // Parser Rules
 
 compilationUnit
-    : NEWLINE* importDeclaration* reexportDeclaration* (constDeclaration | staticDeclaration | globalVariableDeclaration | structDeclaration | enumDeclaration | traitDeclaration | implDeclaration | functionDeclaration)* EOF
+    : NEWLINE* moduleAttribute* importDeclaration* reexportDeclaration* (constDeclaration | staticDeclaration | globalVariableDeclaration | structDeclaration | enumDeclaration | traitDeclaration | implDeclaration | functionDeclaration)* EOF
+    ;
+
+// Module-level attributes apply to the entire compilation unit
+// Examples: #[stack_size(65536)]
+moduleAttribute
+    : '#' '[' IDENTIFIER ('(' attributeArgList? ')')? ']' NEWLINE*
     ;
 
 attribute

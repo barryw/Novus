@@ -214,6 +214,9 @@ public static class KnownAttributes
     // Memory section attributes
     public const string ChipRam = "chip_ram";    // Force static into chip RAM
 
+    // Module-level configuration attributes
+    public const string StackSize = "stack_size"; // Set program stack size: #[stack_size(65536)]
+
     /// <summary>
     /// All known attribute names for validation
     /// </summary>
@@ -230,7 +233,8 @@ public static class KnownAttributes
         ExternType,
         Suppress,
         Audio, AudioRaw, Mod,
-        ChipRam
+        ChipRam,
+        StackSize
     };
 
     /// <summary>

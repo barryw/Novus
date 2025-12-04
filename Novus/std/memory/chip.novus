@@ -1,10 +1,18 @@
 // Chip RAM Management
 // Module: std::memory::chip
 //
-// Provides basic management of chip RAM for DMA-dependent assets.
-// Simplified version for initial implementation.
+// Provides unified chip RAM management through the global ChipCache.
+// All chip RAM allocations for DMA assets should go through this module.
+//
+// The ChipCache provides:
+// - LRU eviction when chip RAM is low
+// - Priority-based eviction (Low evicted first)
+// - Pinning to protect assets during DMA operations
+// - Debug names for troubleshooting
+// - Pooled allocation to reduce fragmentation
 
 from std::core import Result, Option, Drop
+from std::strings::core import Str
 from std::ffi::exec import AllocMem, FreeMem, CopyMem, TypeOfMem, Forbid, Permit, CacheClearU
 from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR
 
@@ -35,6 +43,15 @@ pub enum Priority {
 /// Implement this trait for any asset type that needs to be accessible
 /// by Amiga custom chips (Paula, Blitter, Copper, etc.).
 pub trait ChipAsset {
+    /// Unique identifier for this asset instance
+    ///
+    /// Used by ResourceBank for reference-counted pinning. Each asset instance
+    /// must return a unique ID. Typically, this is the data pointer cast to u32,
+    /// but assets with complex ownership may generate unique IDs differently.
+    ///
+    /// The ID must be stable for the lifetime of the asset (same ID each call).
+    fn asset_id(&self) -> u32
+
     /// Pointer to the asset data (may be in fast or chip RAM)
     fn data_ptr(&self) -> *u8
 
