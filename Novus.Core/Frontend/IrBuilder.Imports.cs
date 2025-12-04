@@ -792,14 +792,8 @@ public partial class IrBuilder
         var (genericParams, funcDecl, templateConstants) = template;
 
 
-        // Save current constants and MERGE template constants with current module constants
-        // Current module constants take priority (they may include transitive imports)
-        var savedConstants = GetConstantsAsTuples();
-
-        // Start with template constants, then overlay current module constants
-        // TODO: This is inefficient - should use child scopes instead
-        RestoreConstantsFromTuples(templateConstants);
-        RestoreConstantsFromTuples(savedConstants);
+        // Use RAII scope for constants management (exception-safe)
+        using var constantsScope = new ConstantsScope(this, templateConstants);
 
         // Build instantiation key (e.g., "Vec<i32>::push" or "Vec<i32>::Drop::drop" for trait impls)
         var instantiationKey = isTraitImpl && traitName != null
@@ -913,25 +907,10 @@ public partial class IrBuilder
             }
         }
 
-        // Set up concrete types for substitution during parsing
-        var savedGenericParams = new Dictionary<string, IrGenericType>();
-        foreach (var paramName in genericParams)
-        {
-            if (_symbols.HasGenericParameter(paramName))
-            {
-                var genericParam = _symbols.LookupGenericParameter(paramName);
-                if (genericParam != null) savedGenericParams[paramName] = genericParam;
-            }
-            _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
-        }
-
-        // Set active type substitutions for the duration of this instantiation
-        var savedSubstitutions = _currentTypeSubstitutions;
-        _currentTypeSubstitutions = typeSubstitutions;
-
-        // Set Self type to the monomorphized struct for Self type resolution
-        var savedSelfType = _currentSelfType;
-        _currentSelfType = monomorphizedStruct;
+        // Use RAII scopes for state management (exception-safe)
+        using var genericParamsScope = new GenericParametersScope(this, genericParams);
+        using var typeSubstitutionScope = new TypeSubstitutionScope(this, typeSubstitutions);
+        using var selfTypeScope = new SelfTypeScope(this, monomorphizedStruct);
 
         // Create the function
         var returnType = ParseReturnType(funcDecl.type());
@@ -975,55 +954,26 @@ public partial class IrBuilder
 
         _module.AddFunction(function);
 
-        // Build the function body - save all state to avoid corrupting caller
-        var savedFunction = _currentFunction;
-        var savedBlock = _currentBlock;
-        var savedLocalVars = new Dictionary<string, IrLocalVariable>(_localVariables);
-
-        _currentFunction = function;
-        _localVariables.Clear();
-
-        // Add parameters to local variables
-        foreach (var param in function.Parameters)
+        // Use RAII scope for function body state (exception-safe)
+        using (var functionBodyScope = new FunctionBodyScope(this, function))
         {
-            _localVariables[param.Name] = new IrLocalVariable(param.Name, param.Type, false);
-        }
+            // Add parameters to local variables
+            foreach (var param in function.Parameters)
+            {
+                _localVariables[param.Name] = new IrLocalVariable(param.Name, param.Type, false);
+            }
 
-        // Create entry block
-        var entryBlock = new IrBasicBlock("entry");
-        function.BasicBlocks.Add(entryBlock);
-        _currentBlock = entryBlock;
+            // Create entry block
+            var entryBlock = new IrBasicBlock("entry");
+            function.BasicBlocks.Add(entryBlock);
+            _currentBlock = entryBlock;
 
-        // Visit the function body with type substitutions active
-        if (funcDecl.block() != null)
-        {
-            Visit(funcDecl.block());
-        }
-
-        // Restore all state
-        _currentFunction = savedFunction;
-        _currentBlock = savedBlock;
-        _localVariables.Clear();
-        foreach (var kvp in savedLocalVars)
-        {
-            _localVariables[kvp.Key] = kvp.Value;
-        }
-
-        // Restore type substitutions
-        _currentTypeSubstitutions = savedSubstitutions;
-
-        // Restore Self type
-        _currentSelfType = savedSelfType;
-
-        // Restore constants
-        // TODO: Implement proper scope save/restore in SymbolTable
-        RestoreConstantsFromTuples(savedConstants);
-
-        // Clear generic params
-        foreach (var paramName in typeSubstitutions.Keys)
-        {
-            _symbols.ClearGenericParameters();
-        }
+            // Visit the function body with type substitutions active
+            if (funcDecl.block() != null)
+            {
+                Visit(funcDecl.block());
+            }
+        } // FunctionBodyScope, SelfTypeScope, TypeSubstitutionScope, GenericParametersScope, ConstantsScope all disposed here
 
         // Mark as instantiated
         _instantiatedMethods.Add(instantiationKey);
@@ -1045,17 +995,8 @@ public partial class IrBuilder
 
         var (genericParams, funcDecl, templateConstants) = template;
 
-        // Register generic parameters temporarily so ParseType can find them
-        var savedGenericParams = new Dictionary<string, IrGenericType>();
-        foreach (var paramName in genericParams)
-        {
-            if (_symbols.HasGenericParameter(paramName))
-            {
-                var genericParam = _symbols.LookupGenericParameter(paramName);
-                if (genericParam != null) savedGenericParams[paramName] = genericParam;
-            }
-            _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
-        }
+        // Use RAII scope for generic parameters (exception-safe)
+        using var genericParamsScope = new GenericParametersScope(this, genericParams);
 
         // Infer type substitutions from arguments
         // First, parse the template to get parameter types
@@ -1066,11 +1007,12 @@ public partial class IrBuilder
             foreach (var paramCtx in paramList.parameter())
             {
                 var paramName = paramCtx.IDENTIFIER().GetText();
-                var savedSubstitutions = _currentTypeSubstitutions;
-                _currentTypeSubstitutions = null; // Parse without substitutions to get generic types
-                var paramType = ParseType(paramCtx.type());
-                _currentTypeSubstitutions = savedSubstitutions;
-                templateParams.Add(new IrParameter(paramName, paramType));
+                // Use temporary type substitution scope to parse without substitutions
+                using (var tempSubScope = new TypeSubstitutionScope(this, null))
+                {
+                    var paramType = ParseType(paramCtx.type());
+                    templateParams.Add(new IrParameter(paramName, paramType));
+                }
             }
 
             // Add variadic parameter if present (for template analysis)
@@ -1143,18 +1085,10 @@ public partial class IrBuilder
             return _module.GetFunction(cachedMangledName);
         }
 
-        // Save current state
-        var savedConstants = GetConstantsAsTuples();
-        RestoreConstantsFromTuples(templateConstants);
-        RestoreConstantsFromTuples(savedConstants);
-
-        // Generic params already registered from earlier - just set up type substitutions
-        var savedTypeSubstitutions = _currentTypeSubstitutions;
-        _currentTypeSubstitutions = typeSubstitutions;
-
-        // Set Self type to the monomorphized enum for Self type resolution
-        var savedSelfType = _currentSelfType;
-        _currentSelfType = enumType;
+        // Use RAII scopes for state management (exception-safe)
+        using var constantsScope = new ConstantsScope(this, templateConstants);
+        using var typeSubstitutionScope = new TypeSubstitutionScope(this, typeSubstitutions);
+        using var selfTypeScope = new SelfTypeScope(this, enumType);
 
         // Create the function manually (don't use Visit)
         var returnType = ParseReturnType(funcDecl.type());
@@ -1200,48 +1134,25 @@ public partial class IrBuilder
 
         _module.AddFunction(function);
 
-        // Build function body
-        var savedFunction = _currentFunction;
-        _currentFunction = function;
-        var entryBlock = new IrBasicBlock("entry");
-        function.BasicBlocks.Add(entryBlock);
-        var savedBlock = _currentBlock;
-        _currentBlock = entryBlock;
+        // Use RAII scope for function body state (exception-safe)
+        using (var functionBodyScope = new FunctionBodyScope(this, function))
+        {
+            var entryBlock = new IrBasicBlock("entry");
+            function.BasicBlocks.Add(entryBlock);
+            _currentBlock = entryBlock;
 
-        // Save and add parameters to local variables scope
-        var savedLocalVars = new Dictionary<string, IrLocalVariable>(_localVariables);
-        foreach (var param in function.Parameters)
-        {
-            _localVariables[param.Name] = new IrLocalVariable(param.Name, param.Type, false);
-        }
+            // Add parameters to local variables scope
+            foreach (var param in function.Parameters)
+            {
+                _localVariables[param.Name] = new IrLocalVariable(param.Name, param.Type, false);
+            }
 
-        // Visit the function body
-        if (funcDecl.block() != null)
-        {
-            Visit(funcDecl.block());
-        }
-
-        // Restore local variables
-        _localVariables.Clear();
-        foreach (var kvp in savedLocalVars)
-        {
-            _localVariables[kvp.Key] = kvp.Value;
-        }
-
-        // Restore state
-        _currentBlock = savedBlock;
-        _currentFunction = savedFunction;
-        _currentTypeSubstitutions = savedTypeSubstitutions;
-        _currentSelfType = savedSelfType;
-        RestoreConstantsFromTuples(savedConstants);
-        foreach (var paramName in typeSubstitutions.Keys)
-        {
-            _symbols.ClearGenericParameters();
-        }
-        foreach (var kvp in savedGenericParams)
-        {
-            _symbols.RegisterGenericParameter(kvp.Key, kvp.Value);
-        }
+            // Visit the function body
+            if (funcDecl.block() != null)
+            {
+                Visit(funcDecl.block());
+            }
+        } // All scopes disposed here (FunctionBodyScope, SelfTypeScope, TypeSubstitutionScope, ConstantsScope, GenericParametersScope)
 
         _instantiatedMethods.Add(instantiationKey);
 
@@ -1308,85 +1219,66 @@ public partial class IrBuilder
 
         var (genericParams, funcDecl, _) = template;
 
-        // Register generic parameters temporarily so we can parse the template
-        var savedGenericParams = new Dictionary<string, IrGenericType>();
-        foreach (var paramName in genericParams)
+        // Use RAII scope for generic parameters (exception-safe)
+        using var genericParamsScope = new GenericParametersScope(this, genericParams);
+
+        // Parse template parameters to get their generic types
+        var templateParams = new List<IrParameter>();
+        if (funcDecl.parameterList() != null)
         {
-            if (_symbols.HasGenericParameter(paramName))
+            var paramList = funcDecl.parameterList();
+
+            // Skip self parameter if present (it doesn't contribute to type inference for enum T)
+            var regularParams = paramList.parameter();
+
+            foreach (var paramCtx in regularParams)
             {
-                var genericParam = _symbols.LookupGenericParameter(paramName);
-                if (genericParam != null) savedGenericParams[paramName] = genericParam;
-            }
-            _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
-        }
-
-        try
-        {
-            // Parse template parameters to get their generic types
-            var templateParams = new List<IrParameter>();
-            if (funcDecl.parameterList() != null)
-            {
-                var paramList = funcDecl.parameterList();
-
-                // Skip self parameter if present (it doesn't contribute to type inference for enum T)
-                var regularParams = paramList.parameter();
-
-                foreach (var paramCtx in regularParams)
+                var paramName = paramCtx.IDENTIFIER().GetText();
+                // Use temporary type substitution scope to parse without substitutions
+                using (var tempSubScope = new TypeSubstitutionScope(this, null))
                 {
-                    var paramName = paramCtx.IDENTIFIER().GetText();
-                    var savedSubstitutions = _currentTypeSubstitutions;
-                    _currentTypeSubstitutions = null; // Parse without substitutions to get generic types
                     var paramType = ParseType(paramCtx.type());
-                    _currentTypeSubstitutions = savedSubstitutions;
                     templateParams.Add(new IrParameter(paramName, paramType));
                 }
             }
+        }
 
-            var typeSubstitutions = new Dictionary<string, IrType>();
+        var typeSubstitutions = new Dictionary<string, IrType>();
 
-            // Step 1: Infer from arguments if available
-            if (arguments.Count == templateParams.Count)
+        // Step 1: Infer from arguments if available
+        if (arguments.Count == templateParams.Count)
+        {
+            for (int i = 0; i < arguments.Count; i++)
             {
-                for (int i = 0; i < arguments.Count; i++)
-                {
-                    var argType = arguments[i].Type;
-                    var paramType = templateParams[i].Type;
-                    ExtractGenericTypeMapping(paramType, argType, typeSubstitutions);
-                }
+                var argType = arguments[i].Type;
+                var paramType = templateParams[i].Type;
+                ExtractGenericTypeMapping(paramType, argType, typeSubstitutions);
             }
+        }
 
-            // Step 2: Try to infer from expected return type if we still have unresolved generics
-            if (expectedReturnType != null && funcDecl.type() != null)
+        // Step 2: Try to infer from expected return type if we still have unresolved generics
+        if (expectedReturnType != null && funcDecl.type() != null)
+        {
+            // Use temporary type substitution scope to parse without substitutions
+            using (var tempSubScope = new TypeSubstitutionScope(this, null))
             {
-                var savedSubstitutions = _currentTypeSubstitutions;
-                _currentTypeSubstitutions = null; // Parse without substitutions
                 var templateReturnType = ParseType(funcDecl.type());
-                _currentTypeSubstitutions = savedSubstitutions;
-
                 // Extract type mappings from return type
                 ExtractGenericTypeMapping(templateReturnType, expectedReturnType, typeSubstitutions);
             }
-
-            // Verify all generic parameters from the enum were resolved
-            foreach (var genericParam in baseEnum.GenericParameters)
-            {
-                if (!typeSubstitutions.ContainsKey(genericParam))
-                {
-                    return null; // Could not infer all required type parameters
-                }
-            }
-
-            return typeSubstitutions;
         }
-        finally
+
+        // Verify all generic parameters from the enum were resolved
+        foreach (var genericParam in baseEnum.GenericParameters)
         {
-            // Restore generic parameters
-            _symbols.ClearGenericParameters();
-            foreach (var kvp in savedGenericParams)
+            if (!typeSubstitutions.ContainsKey(genericParam))
             {
-                _symbols.RegisterGenericParameter(kvp.Key, kvp.Value);
+                return null; // Could not infer all required type parameters
             }
         }
+
+        return typeSubstitutions;
+        // GenericParametersScope disposed here
     }
 
     /// <summary>
@@ -1426,28 +1318,10 @@ public partial class IrBuilder
             return _module.GetFunction(existingMangledName);
         }
 
-        // Save current constants and MERGE template constants with current module constants
-        var savedConstants = GetConstantsAsTuples();
-
-        // Start with template constants, then overlay current module constants
-        RestoreConstantsFromTuples(templateConstants);
-        RestoreConstantsFromTuples(savedConstants);
-
-        // Set up concrete types for substitution during parsing
-        var savedGenericParams = new Dictionary<string, IrGenericType>();
-        foreach (var paramName in genericParams)
-        {
-            if (_symbols.HasGenericParameter(paramName))
-            {
-                var genericParam = _symbols.LookupGenericParameter(paramName);
-                if (genericParam != null) savedGenericParams[paramName] = genericParam;
-            }
-            _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
-        }
-
-        // Set active type substitutions for the duration of this instantiation
-        var savedSubstitutions = _currentTypeSubstitutions;
-        _currentTypeSubstitutions = typeSubstitutions;
+        // Use RAII scopes for state management (exception-safe)
+        using var constantsScope = new ConstantsScope(this, templateConstants);
+        using var genericParamsScope = new GenericParametersScope(this, genericParams);
+        using var typeSubstitutionScope = new TypeSubstitutionScope(this, typeSubstitutions);
 
         // Create the function with substituted return type
         var returnType = ParseReturnType(funcDecl.type());
@@ -1486,53 +1360,26 @@ public partial class IrBuilder
 
         _module.AddFunction(function);
 
-        // Build the function body - save all state to avoid corrupting caller
-        var savedFunction = _currentFunction;
-        var savedBlock = _currentBlock;
-        var savedLocalVars = new Dictionary<string, IrLocalVariable>(_localVariables);
-
-        _currentFunction = function;
-        _localVariables.Clear();
-
-        // Add parameters to local variables
-        foreach (var param in function.Parameters)
+        // Use RAII scope for function body state (exception-safe)
+        using (var functionBodyScope = new FunctionBodyScope(this, function))
         {
-            _localVariables[param.Name] = new IrLocalVariable(param.Name, param.Type, false);
-        }
+            // Add parameters to local variables
+            foreach (var param in function.Parameters)
+            {
+                _localVariables[param.Name] = new IrLocalVariable(param.Name, param.Type, false);
+            }
 
-        // Create entry block
-        var entryBlock = new IrBasicBlock("entry");
-        function.BasicBlocks.Add(entryBlock);
-        _currentBlock = entryBlock;
+            // Create entry block
+            var entryBlock = new IrBasicBlock("entry");
+            function.BasicBlocks.Add(entryBlock);
+            _currentBlock = entryBlock;
 
-        // Visit the function body with type substitutions active
-        if (funcDecl.block() != null)
-        {
-            Visit(funcDecl.block());
-        }
-
-        // Restore all state
-        _currentFunction = savedFunction;
-        _currentBlock = savedBlock;
-        _localVariables.Clear();
-        foreach (var kvp in savedLocalVars)
-        {
-            _localVariables[kvp.Key] = kvp.Value;
-        }
-
-        // Restore type substitutions
-        _currentTypeSubstitutions = savedSubstitutions;
-
-        // Restore constants
-        // TODO: Implement proper scope save/restore in SymbolTable
-        RestoreConstantsFromTuples(savedConstants);
-
-        // Restore generic params
-        _symbols.ClearGenericParameters();
-        foreach (var kvp in savedGenericParams)
-        {
-            _symbols.RegisterGenericParameter(kvp.Key, kvp.Value);
-        }
+            // Visit the function body with type substitutions active
+            if (funcDecl.block() != null)
+            {
+                Visit(funcDecl.block());
+            }
+        } // All scopes disposed here (FunctionBodyScope, TypeSubstitutionScope, GenericParametersScope, ConstantsScope)
 
         // Mark as instantiated
         _instantiatedGenericFunctions.Add(instantiationKey);

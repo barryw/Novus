@@ -69,12 +69,12 @@ pub fn main() -> i32 {
     write("\n--- Test 1: Cache small asset (Low priority) ---\n")
     let small_ptr: *u8 = (*u8)&small_asset[0]
     write("Small asset at: $%08lx\n", (u32)small_ptr)
-    write("Is chip RAM: %s\n", is_chip_ram(small_ptr) ? "yes" : "no")
+    write("Is chip RAM: %s\n", if is_chip_ram(small_ptr) { "yes" } else { "no" })
 
     match ChipCache::get(1, small_ptr, 2048, Priority::Low, "small_asset") {
         Result::Ok(chip_ptr) => {
             write("Cached at: $%08lx\n", (u32)chip_ptr)
-            write("Is chip RAM: %s\n", is_chip_ram(chip_ptr) ? "yes" : "no")
+            write("Is chip RAM: %s\n", if is_chip_ram(chip_ptr) { "yes" } else { "no" })
         },
         Result::Err(_) => {
             write("ERROR: Failed to cache small asset\n")

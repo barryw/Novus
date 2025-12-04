@@ -2,6 +2,6 @@ from std::strings::core import Str
 
 pub fn main() -> i32 {
     let value = true
-    let s = value ? "true" : "false"
+    let s = if value { "true" } else { "false" }
     return 0
 }

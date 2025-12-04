@@ -39,7 +39,7 @@ pub fn main() -> i32 {
     write("==============\n\n")
 
     let is_pal = DISPLAY() == DisplayType::PAL
-    write("Display: %s\n\n", is_pal ? "PAL" : "NTSC")
+    write("Display: %s\n\n", if is_pal { "PAL" } else { "NTSC" })
 
     // Test 1: Fast RAM AudioAsset
     write("Test 1: AudioAsset (fast RAM)\n")
@@ -48,7 +48,7 @@ pub fn main() -> i32 {
     write("  Sample rate: %ld Hz\n", beep_fast.sample_rate)
     write("  Period (PAL): %d\n", (i32)beep_fast.period_pal)
     write("  Period (NTSC): %d\n", (i32)beep_fast.period_ntsc)
-    write("  In chip RAM: %s\n\n", is_chip_ram(beep_fast.data) ? "yes" : "no")
+    write("  In chip RAM: %s\n\n", if is_chip_ram(beep_fast.data) { "yes" } else { "no" })
 
     // Test 2: Chip RAM AudioSample
     write("Test 2: AudioSample (chip RAM)\n")
@@ -57,7 +57,7 @@ pub fn main() -> i32 {
     write("  Sample rate: %ld Hz\n", beep_chip.sample_rate)
     write("  Period (PAL): %d\n", (i32)beep_chip.period_pal)
     write("  Period (NTSC): %d\n", (i32)beep_chip.period_ntsc)
-    write("  In chip RAM: %s\n\n", is_chip_ram(beep_chip.data) ? "yes" : "no")
+    write("  In chip RAM: %s\n\n", if is_chip_ram(beep_chip.data) { "yes" } else { "no" })
 
     // Play the chip RAM sample directly (no copy needed)
     write("Playing chip RAM sample...\n")
@@ -67,7 +67,7 @@ pub fn main() -> i32 {
             channel.set_volume(64)
 
             // Get the correct period for the current system
-            let period = is_pal ? beep_chip.period_pal : beep_chip.period_ntsc
+            let period = if is_pal { beep_chip.period_pal } else { beep_chip.period_ntsc }
 
             // Play using play_raw (data is already in chip RAM)
             let play_result = channel.play_raw(

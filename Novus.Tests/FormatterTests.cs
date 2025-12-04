@@ -293,12 +293,12 @@ from std::core import Result";
     }
 
     [Fact]
-    public void Format_TernaryExpression_ProperSpacing()
+    public void Format_IfExpression_ProperSpacing()
     {
-        var source = "fn test(x: bool) -> i32 { return x?1:0 }";
+        var source = "fn test(x: bool) -> i32 { return if x{1}else{0} }";
         var result = Format(source);
 
-        Assert.Contains("x ? 1 : 0", result);
+        Assert.Contains("if x { 1 } else { 0 }", result);
     }
 
     [Fact]

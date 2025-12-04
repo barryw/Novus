@@ -802,7 +802,7 @@ impl AudioChannel {
     /// )?
     /// ```
     pub fn play_asset_native(&mut self, data: *u8, size: u32, period_pal: u16, period_ntsc: u16, mode: PlaybackMode) -> Result<(), AudioError> {
-        let period = is_pal_system() ? period_pal : period_ntsc
+        let period = if is_pal_system() { period_pal } else { period_ntsc }
         return self.play_asset(data, size, period, mode)
     }
 

@@ -2307,13 +2307,90 @@ public class NovusFormatter : NovusBaseVisitor<object?>
         return null;
     }
 
-    public override object? VisitTernaryExpr(NovusParser.TernaryExprContext context)
+    public override object? VisitIfExpr(NovusParser.IfExprContext context)
     {
-        Visit(context.expression(0));
-        Write(" ? ");
-        Visit(context.expression(1));
-        Write(" : ");
-        Visit(context.expression(2));
+        Write("if ");
+        Visit(context.expression());
+        Write(" ");
+        VisitBlockInline(context.block(0));
+        Write(" else ");
+        if (context.ifElseChain() != null)
+        {
+            Visit(context.ifElseChain());
+        }
+        else
+        {
+            VisitBlockInline(context.block(1));
+        }
         return null;
+    }
+
+    public override object? VisitIfElseChain(NovusParser.IfElseChainContext context)
+    {
+        Write("if ");
+        Visit(context.expression());
+        Write(" ");
+        VisitBlockInline(context.block(0));
+        Write(" else ");
+        if (context.ifElseChain() != null)
+        {
+            Visit(context.ifElseChain());
+        }
+        else
+        {
+            VisitBlockInline(context.block(1));
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Formats a block inline (on a single line) for if-expressions.
+    /// Format: { expr } or { stmt1; stmt2 }
+    /// </summary>
+    private void VisitBlockInline(NovusParser.BlockContext context)
+    {
+        Write("{ ");
+        var statements = context.statement();
+        for (int i = 0; i < statements.Length; i++)
+        {
+            if (i > 0) Write("; ");
+            VisitStatementInline(statements[i]);
+        }
+        Write(" }");
+    }
+
+    /// <summary>
+    /// Formats a statement inline (without trailing newline) for if-expression blocks.
+    /// </summary>
+    private void VisitStatementInline(NovusParser.StatementContext stmt)
+    {
+        // For expression statements, just visit the expression
+        if (stmt.expressionStatement() != null)
+        {
+            Visit(stmt.expressionStatement().expression());
+        }
+        else if (stmt.returnStatement() != null)
+        {
+            Write("return");
+            if (stmt.returnStatement().expression() != null)
+            {
+                Write(" ");
+                Visit(stmt.returnStatement().expression());
+            }
+        }
+        else if (stmt.breakStatement() != null)
+        {
+            Write("break");
+        }
+        else if (stmt.continueStatement() != null)
+        {
+            Write("continue");
+        }
+        else
+        {
+            // For other statement types, fall back to normal visit
+            // (this may include newlines but handles edge cases)
+            Visit(stmt);
+        }
     }
 }

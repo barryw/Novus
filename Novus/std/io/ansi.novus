@@ -150,8 +150,8 @@ pub fn clear_to_eos() -> Str {
 /// ```
 pub fn move_to(row: u32, col: u32) -> String {
     // Validate parameters
-    let r = row == 0 ? 1u32 : (row > 999 ? 999u32 : row)
-    let c = col == 0 ? 1u32 : (col > 999 ? 999u32 : col)
+    let r = if row == 0 { 1u32 } else if row > 999 { 999u32 } else { row }
+    let c = if col == 0 { 1u32 } else if col > 999 { 999u32 } else { col }
 
     // Build escape sequence: CSI row ; col H
     var result = String::new()
@@ -184,7 +184,7 @@ pub fn move_to(row: u32, col: u32) -> String {
 
 /// Move cursor up by n rows
 pub fn cursor_up(n: u32) -> String {
-    let count = n == 0 ? 1u32 : (n > 999 ? 999u32 : n)
+    let count = if n == 0 { 1u32 } else if n > 999 { 999u32 } else { n }
 
     var result = String::new()
     result.push_byte($9b)  // CSI
@@ -204,7 +204,7 @@ pub fn cursor_up(n: u32) -> String {
 
 /// Move cursor down by n rows
 pub fn cursor_down(n: u32) -> String {
-    let count = n == 0 ? 1u32 : (n > 999 ? 999u32 : n)
+    let count = if n == 0 { 1u32 } else if n > 999 { 999u32 } else { n }
 
     var result = String::new()
     result.push_byte($9b)  // CSI
@@ -224,7 +224,7 @@ pub fn cursor_down(n: u32) -> String {
 
 /// Move cursor right by n columns
 pub fn cursor_right(n: u32) -> String {
-    let count = n == 0 ? 1u32 : (n > 999 ? 999u32 : n)
+    let count = if n == 0 { 1u32 } else if n > 999 { 999u32 } else { n }
 
     var result = String::new()
     result.push_byte($9b)  // CSI
@@ -244,7 +244,7 @@ pub fn cursor_right(n: u32) -> String {
 
 /// Move cursor left by n columns
 pub fn cursor_left(n: u32) -> String {
-    let count = n == 0 ? 1u32 : (n > 999 ? 999u32 : n)
+    let count = if n == 0 { 1u32 } else if n > 999 { 999u32 } else { n }
 
     var result = String::new()
     result.push_byte($9b)  // CSI

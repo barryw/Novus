@@ -39,6 +39,16 @@ public partial class IrBuilder
         }
 
         var funcExpr = (IrValue?)Visit(context.expression());
+        if (funcExpr == null)
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Function expression is null or invalid",
+                errorLocation
+            );
+            return null;
+        }
 
         // Parse arguments
         var arguments = new List<IrValue>();
@@ -157,7 +167,7 @@ public partial class IrBuilder
             var typeSubstitutions = InferGenericFunctionTypes(template.GenericParams, templateParams, arguments);
             if (typeSubstitutions == null)
             {
-                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                var errorLocation = GetLocation(context);
                 _diagnostics.ReportError(
                     ErrorCodes.InvalidExpressionType,
                     $"Cannot infer type arguments for '{genericFuncName}'",
@@ -170,7 +180,7 @@ public partial class IrBuilder
             var instantiatedFunc = InstantiateGenericFunction(genericFuncName, typeSubstitutions);
             if (instantiatedFunc == null)
             {
-                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                var errorLocation = GetLocation(context);
                 _diagnostics.ReportError(
                     ErrorCodes.InvalidExpressionType,
                     $"Failed to instantiate '{genericFuncName}'",
@@ -205,7 +215,7 @@ public partial class IrBuilder
                 // User provided explicit type arguments
                 if (genericAssocFunc.ExplicitTypeArgs.Count != genericAssocFunc.GenericParameters.Count)
                 {
-                    var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    var errorLocation = GetLocation(context);
                     _diagnostics.ReportError(
                         ErrorCodes.InvalidExpressionType,
                         $"Wrong number of type arguments for '{genericAssocFunc.TypeName}::{genericAssocFunc.MethodName}': expected {genericAssocFunc.GenericParameters.Count}, got {genericAssocFunc.ExplicitTypeArgs.Count}",
@@ -218,7 +228,7 @@ public partial class IrBuilder
                 var baseStruct = _symbols.LookupStruct(genericAssocFunc.TypeName);
                 if (baseStruct == null)
                 {
-                    var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    var errorLocation = GetLocation(context);
                     _diagnostics.ReportError(ErrorCodes.StructNotFound, $"Struct '{genericAssocFunc.TypeName}' not found", errorLocation);
                     return null;
                 }
@@ -303,7 +313,7 @@ public partial class IrBuilder
 
             if (monomorphizedStruct == null)
             {
-                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                var errorLocation = GetLocation(context);
                 _diagnostics.ReportError(
                     ErrorCodes.InvalidExpressionType,
                     $"Could not infer generic type parameters for '{genericAssocFunc.TypeName}::{genericAssocFunc.MethodName}()'. Consider using turbo-fish syntax: {genericAssocFunc.TypeName}::<Type>::{genericAssocFunc.MethodName}",
@@ -316,7 +326,7 @@ public partial class IrBuilder
             var instantiatedFunc = InstantiateGenericMethod(monomorphizedStruct, genericAssocFunc.MethodName);
             if (instantiatedFunc == null)
             {
-                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                var errorLocation = GetLocation(context);
                 _diagnostics.ReportError(
                     ErrorCodes.InvalidExpressionType,
                     $"Failed to instantiate generic method '{genericAssocFunc.TypeName}::{genericAssocFunc.MethodName}'",
@@ -347,7 +357,7 @@ public partial class IrBuilder
             {
                 if (arguments.Count < funcRefNonVariadicCount)
                 {
-                    var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    var errorLocation = GetLocation(context);
                     _diagnostics.ReportError(
                         ErrorCodes.InvalidExpressionType,
                         $"Variadic function '{funcRef.Function.Name}' expects at least {funcRefNonVariadicCount} arguments, got {arguments.Count}",
@@ -360,7 +370,7 @@ public partial class IrBuilder
             {
                 if (arguments.Count != funcRef.Function.Parameters.Count)
                 {
-                    var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    var errorLocation = GetLocation(context);
                     _diagnostics.ReportError(
                         ErrorCodes.InvalidExpressionType,
                         $"Function '{funcRef.Function.Name}' expects {funcRef.Function.Parameters.Count} arguments, got {arguments.Count}",
@@ -406,7 +416,7 @@ public partial class IrBuilder
                         {
                             if (!strLiteral.FieldValues.TryGetValue("ptr", out var ptrValue))
                             {
-                                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                                var errorLocation = GetLocation(context);
                                 _diagnostics.ReportError(
                                     ErrorCodes.InvalidExpressionType,
                                     "Str struct literal must have a 'ptr' field",
@@ -422,7 +432,7 @@ public partial class IrBuilder
                             var ptrField = structType.GetField("ptr");
                             if (ptrField == null)
                             {
-                                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                                var errorLocation = GetLocation(context);
                                 _diagnostics.ReportError(
                                     ErrorCodes.InvalidExpressionType,
                                     "Str struct must have a 'ptr' field",
@@ -446,7 +456,7 @@ public partial class IrBuilder
 
                         if (asPtrMethod == null)
                         {
-                            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                            var errorLocation = GetLocation(context);
                             _diagnostics.ReportError(
                                 ErrorCodes.InvalidExpressionType,
                                 "String type must have as_ptr() method for automatic coercion to *u8",
@@ -594,7 +604,7 @@ public partial class IrBuilder
             var enumType = enumCtor.Type as IrEnumType;
             if (enumType == null)
             {
-                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                var errorLocation = GetLocation(context);
                 _diagnostics.ReportError(
                     ErrorCodes.InvalidExpressionType,
                     "Enum constructor must have enum type",
@@ -606,7 +616,7 @@ public partial class IrBuilder
             var variant = enumType.GetVariant(enumCtor.VariantName);
             if (variant == null)
             {
-                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                var errorLocation = GetLocation(context);
                 _diagnostics.ReportError(
                     ErrorCodes.EnumNotFound,
                     $"Variant '{enumCtor.VariantName}' not found in enum '{enumType.EnumName}'",
@@ -618,7 +628,7 @@ public partial class IrBuilder
             // Validate argument count
             if (arguments.Count != variant.AssociatedData.Count)
             {
-                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                var errorLocation = GetLocation(context);
                 _diagnostics.ReportError(
                     ErrorCodes.InvalidExpressionType,
                     $"Variant '{enumCtor.VariantName}' expects {variant.AssociatedData.Count} arguments, got {arguments.Count}",
@@ -797,7 +807,7 @@ public partial class IrBuilder
             // Indirect call through function pointer
             if (arguments.Count != fpType.ParameterTypes.Count)
             {
-                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                var errorLocation = GetLocation(context);
                 _diagnostics.ReportError(
                     ErrorCodes.InvalidExpressionType,
                     $"Function pointer expects {fpType.ParameterTypes.Count} arguments, got {arguments.Count}",
@@ -825,7 +835,7 @@ public partial class IrBuilder
                         {
                             if (!strLiteral.FieldValues.TryGetValue("ptr", out var ptrValue))
                             {
-                                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                                var errorLocation = GetLocation(context);
                                 _diagnostics.ReportError(
                                     ErrorCodes.InvalidExpressionType,
                                     "Str struct literal must have a 'ptr' field",
@@ -841,7 +851,7 @@ public partial class IrBuilder
                             var ptrField = structType.GetField("ptr");
                             if (ptrField == null)
                             {
-                                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                                var errorLocation = GetLocation(context);
                                 _diagnostics.ReportError(
                                     ErrorCodes.InvalidExpressionType,
                                     "Str struct must have a 'ptr' field",
@@ -865,7 +875,7 @@ public partial class IrBuilder
 
                         if (asPtrMethod == null)
                         {
-                            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                            var errorLocation = GetLocation(context);
                             _diagnostics.ReportError(
                                 ErrorCodes.InvalidExpressionType,
                                 "String type must have as_ptr() method for automatic coercion to *u8",
@@ -3449,10 +3459,11 @@ public partial class IrBuilder
         return new IrVariable(resultTemp, IrIntType.I32);
     }
 
-    public override object? VisitTernaryExpr([NotNull] NovusParser.TernaryExprContext context)
+    public override object? VisitIfExpr([NotNull] NovusParser.IfExprContext context)
     {
-        // Ternary operator: condition ? trueExpr : falseExpr
-        var condition = Visit(context.expression(0)) as IrValue;
+        // If expression: if condition { trueBlock } else { falseBlock }
+        // or: if condition { trueBlock } else if ...
+        var condition = Visit(context.expression()) as IrValue;
 
         // If condition had an error, bail out
         if (condition == null)
@@ -3460,14 +3471,14 @@ public partial class IrBuilder
             return null;
         }
 
-        var trueLabel = $"ternary_true_{_labelCounter}";
-        var falseLabel = $"ternary_false_{_labelCounter}";
-        var endLabel = $"ternary_end_{_labelCounter}";
+        var trueLabel = $"if_true_{_labelCounter}";
+        var falseLabel = $"if_false_{_labelCounter}";
+        var endLabel = $"if_end_{_labelCounter}";
         _labelCounter++;
 
         var resultTemp = $"%t{_tempCounter++}";
 
-        // Automatic pointer-to-bool coercion: ptr ? ... : ...
+        // Automatic pointer-to-bool coercion: if ptr { ... } else { ... }
         // Convert pointer to bool by comparing with null (ptr != 0)
         if (condition.Type is IrPointerType or IrReferenceType or IrMutReferenceType)
         {
@@ -3481,12 +3492,16 @@ public partial class IrBuilder
         // Branch based on condition
         _currentBlock!.AddInstruction(new IrConditionalBranch(condition, trueLabel, falseLabel));
 
-        // True branch - preserve expected type if already set from context
+        // True branch - evaluate the block and get its value
         _currentBlock!.AddInstruction(new IrLabel(trueLabel));
-        var trueValue = (IrValue)Visit(context.expression(1))!;
+        var trueValue = VisitBlockAsExpression(context.block(0));
+        if (trueValue == null)
+        {
+            return null;
+        }
         var resultType = trueValue.Type; // Get type from the true branch value
 
-        // Add to function's local variables for stack alerrorLocation
+        // Add to function's local variables for stack allocation
         var localVar = new IrLocalVariable(resultTemp, resultType, false);
         _currentFunction!.LocalVariables.Add(localVar);
 
@@ -3494,18 +3509,167 @@ public partial class IrBuilder
         _currentBlock!.AddInstruction(new IrBranch(endLabel));
 
         // False branch - set expected type for bidirectional type checking
-        // Use the type from the true branch to help resolve generic types in the false branch
         _currentBlock!.AddInstruction(new IrLabel(falseLabel));
         var savedExpectedType = _expectedType;
         _expectedType = resultType; // Use the type from the true branch
-        var falseValue = (IrValue)Visit(context.expression(2))!;
+
+        IrValue? falseValue;
+        if (context.ifElseChain() != null)
+        {
+            // else if chain - recurse
+            falseValue = Visit(context.ifElseChain()) as IrValue;
+        }
+        else
+        {
+            // Final else block
+            falseValue = VisitBlockAsExpression(context.block(1));
+        }
+
         _expectedType = savedExpectedType; // Restore previous expected type
+
+        if (falseValue == null)
+        {
+            return null;
+        }
+
         _currentBlock!.AddInstruction(new IrLocalDecl(resultTemp, resultType, false, falseValue));
 
         // End
         _currentBlock!.AddInstruction(new IrLabel(endLabel));
 
         return new IrVariable(resultTemp, resultType);
+    }
+
+    public override object? VisitIfElseChain([NotNull] NovusParser.IfElseChainContext context)
+    {
+        // else if chain: if condition { trueBlock } else { falseBlock }
+        // This is essentially the same as IfExpr
+        var condition = Visit(context.expression()) as IrValue;
+
+        // If condition had an error, bail out
+        if (condition == null)
+        {
+            return null;
+        }
+
+        var trueLabel = $"elif_true_{_labelCounter}";
+        var falseLabel = $"elif_false_{_labelCounter}";
+        var endLabel = $"elif_end_{_labelCounter}";
+        _labelCounter++;
+
+        var resultTemp = $"%t{_tempCounter++}";
+
+        // Automatic pointer-to-bool coercion
+        if (condition.Type is IrPointerType or IrReferenceType or IrMutReferenceType)
+        {
+            var ptrToBoolTemp = $"%t{_tempCounter++}";
+            var zeroValue = new IrConstant(0, IrIntType.U32);
+            var comparison = new IrBinaryOp(ptrToBoolTemp, IrBinaryOp.OpKind.Ne, condition, zeroValue, IrBoolType.Instance);
+            _currentBlock!.AddInstruction(comparison);
+            condition = new IrVariable(ptrToBoolTemp, IrBoolType.Instance);
+        }
+
+        // Branch based on condition
+        _currentBlock!.AddInstruction(new IrConditionalBranch(condition, trueLabel, falseLabel));
+
+        // True branch
+        _currentBlock!.AddInstruction(new IrLabel(trueLabel));
+        var trueValue = VisitBlockAsExpression(context.block(0));
+        if (trueValue == null)
+        {
+            return null;
+        }
+        var resultType = trueValue.Type;
+
+        // Add to function's local variables for stack allocation
+        var localVar = new IrLocalVariable(resultTemp, resultType, false);
+        _currentFunction!.LocalVariables.Add(localVar);
+
+        _currentBlock!.AddInstruction(new IrLocalDecl(resultTemp, resultType, false, trueValue));
+        _currentBlock!.AddInstruction(new IrBranch(endLabel));
+
+        // False branch
+        _currentBlock!.AddInstruction(new IrLabel(falseLabel));
+        var savedExpectedType = _expectedType;
+        _expectedType = resultType;
+
+        IrValue? falseValue;
+        if (context.ifElseChain() != null)
+        {
+            falseValue = Visit(context.ifElseChain()) as IrValue;
+        }
+        else
+        {
+            falseValue = VisitBlockAsExpression(context.block(1));
+        }
+
+        _expectedType = savedExpectedType;
+
+        if (falseValue == null)
+        {
+            return null;
+        }
+
+        _currentBlock!.AddInstruction(new IrLocalDecl(resultTemp, resultType, false, falseValue));
+
+        // End
+        _currentBlock!.AddInstruction(new IrLabel(endLabel));
+
+        return new IrVariable(resultTemp, resultType);
+    }
+
+    /// <summary>
+    /// Visit a block as an expression and return the value of the last expression.
+    /// If the block ends with an expression without semicolon, that's the value.
+    /// Otherwise, the block returns void/unit.
+    /// </summary>
+    private IrValue? VisitBlockAsExpression(NovusParser.BlockContext block)
+    {
+        // For if-expressions, the block should contain statements and end with an expression
+        // The last statement (if it's an expression statement without semicolon) is the value
+
+        // Visit all statements in the block
+        var statements = block.statement();
+        if (statements == null || statements.Length == 0)
+        {
+            // Empty block - return unit/void (use i32 0 as a placeholder)
+            return new IrConstant(0, IrIntType.I32);
+        }
+
+        // Visit all statements except the last
+        for (int i = 0; i < statements.Length - 1; i++)
+        {
+            Visit(statements[i]);
+        }
+
+        // The last statement should be an expression statement whose value is the block's value
+        var lastStmt = statements[statements.Length - 1];
+
+        // Check if it's an expression statement (no semicolon means it's the return value)
+        if (lastStmt.expressionStatement() != null)
+        {
+            var exprStmt = lastStmt.expressionStatement();
+            // In Novus, expression statements that return a value don't have a trailing semicolon
+            // For now, we'll just evaluate the expression and return its value
+            var value = Visit(exprStmt.expression()) as IrValue;
+            return value;
+        }
+        else if (lastStmt.returnStatement() != null)
+        {
+            // A return statement in an if-expression - evaluate and return the value
+            var retStmt = lastStmt.returnStatement();
+            if (retStmt.expression() != null)
+            {
+                return Visit(retStmt.expression()) as IrValue;
+            }
+            return new IrConstant(0, IrIntType.I32);
+        }
+        else
+        {
+            // Not an expression statement - visit it and return a default value
+            Visit(lastStmt);
+            return new IrConstant(0, IrIntType.I32);
+        }
     }
 
     public override object? VisitFloatLiteral([NotNull] NovusParser.FloatLiteralContext context)

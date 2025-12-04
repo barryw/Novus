@@ -153,11 +153,21 @@ public partial class IrBuilder
         {
             var deferBlock = scopeDefers[i];
 
+            // Check if this defer block has already been emitted (prevent double-free)
+            // A defer block can be registered at both function and scope level
+            if (_emittedDeferBlocks.Contains(deferBlock))
+            {
+                continue; // Skip already-emitted defer blocks
+            }
+
             // Emit all instructions in the defer block
             foreach (var instruction in deferBlock.Instructions)
             {
                 _currentBlock!.AddInstruction(instruction);
             }
+
+            // Mark as emitted to prevent double execution
+            _emittedDeferBlocks.Add(deferBlock);
 
             // Remove from function-level defer list (so it doesn't get emitted again at function exit)
             _currentFunction!.DeferredBlocks.Remove(deferBlock);
@@ -195,7 +205,8 @@ public partial class IrBuilder
         }
         else
         {
-            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            // TODO: Pass context parameter to get accurate source location
+            var errorLocation = _currentStatementLocation ?? new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
                 $"Cannot generate drop call for type '{type.Name}'",
@@ -213,7 +224,8 @@ public partial class IrBuilder
         {
             // This should never happen if EnsureDropMethodInstantiated was called first
             // If it does happen, it means there's a bug in the Drop detection logic
-            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            // TODO: Pass context parameter to get accurate source location
+            var errorLocation = _currentStatementLocation ?? new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
             _diagnostics.ReportError(
                 ErrorCodes.MethodNotFound,
                 $"Drop method '{dropMethodName}' not found (this should have been instantiated already)",

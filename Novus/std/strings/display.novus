@@ -157,13 +157,13 @@ impl Debug for u64 {
 // bool implementations
 impl Display for bool {
     fn fmt(&self, f: &mut Formatter) -> bool {
-        return f.write_str(*self ? "true" : "false")
+        return f.write_str(if *self { "true" } else { "false" })
     }
 }
 
 impl Debug for bool {
     fn fmt(&self, f: &mut Formatter) -> bool {
-        return f.write_str(*self ? "true" : "false")
+        return f.write_str(if *self { "true" } else { "false" })
     }
 }
 

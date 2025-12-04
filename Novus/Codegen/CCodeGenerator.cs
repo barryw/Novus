@@ -1183,21 +1183,14 @@ public class CCodeGenerator
             if (slotType is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
                 continue;
 
-            var decl = GetCVariableDeclaration(slotType, slotName);
-            var cType = GetCType(slotType);
-
             // CRITICAL FIX FOR 68K ALIGNMENT:
-            // Enums and structs MUST be initialized to force VBCC to align them properly
-            // VBCC FIX: Split declaration and memset onto separate lines for compatibility
-            if (slotType is IrEnumType || slotType is IrStructType)
-            {
-                targetBuilder.AppendLine($"    {decl};");
-                targetBuilder.AppendLine($"    __novus_memset(&{slotName}, 0, sizeof({cType}));");
-            }
-            else
-            {
-                targetBuilder.AppendLine($"    {decl};");
-            }
+            // Structs and enums MUST use {0} initializer to guarantee proper alignment on 68000.
+            // VBCC ensures 2-byte alignment for initialized structs/enums, preventing Guru Meditation.
+            var decl = (slotType is IrEnumType || slotType is IrStructType)
+                ? GetCVariableDeclaration(slotType, slotName, "= {0}")
+                : GetCVariableDeclaration(slotType, slotName);
+
+            targetBuilder.AppendLine($"    {decl};");
             _declaredVariables.Add(slotName);
         }
 
@@ -1311,23 +1304,14 @@ public class CCodeGenerator
             }
             else
             {
-                var decl = GetCVariableDeclaration(varType, varName);
-                var cType = GetCType(varType);
-
                 // CRITICAL FIX FOR 68K ALIGNMENT:
-                // Enums and structs MUST be initialized (even with garbage) to force VBCC
-                // to align them properly on the stack. Without this, VBCC may place them at
-                // odd addresses, causing guru meditation 81000005 (odd-address access error).
-                // VBCC FIX: Split declaration and memset onto separate lines for compatibility
-                if (varType is IrEnumType || varType is IrStructType)
-                {
-                    targetBuilder.AppendLine($"    {decl};");
-                    targetBuilder.AppendLine($"    __novus_memset(&{varName}, 0, sizeof({cType}));");
-                }
-                else
-                {
-                    targetBuilder.AppendLine($"    {decl};");
-                }
+                // Structs and enums MUST use {0} initializer to guarantee proper alignment on 68000.
+                // VBCC ensures 2-byte alignment for initialized structs/enums, preventing Guru Meditation.
+                var decl = (varType is IrEnumType || varType is IrStructType)
+                    ? GetCVariableDeclaration(varType, varName, "= {0}")
+                    : GetCVariableDeclaration(varType, varName);
+
+                targetBuilder.AppendLine($"    {decl};");
             }
             _declaredVariables.Add(varName);
         }
@@ -1338,20 +1322,13 @@ public class CCodeGenerator
         {
             if (!localDeclVars.ContainsKey(varName))
             {
-                var decl = GetCVariableDeclaration(varType, varName);
-                var cType = GetCType(varType);
+                // CRITICAL FIX FOR 68K ALIGNMENT:
+                // Structs and enums MUST use {0} initializer to guarantee proper alignment on 68000.
+                var decl = (varType is IrEnumType || varType is IrStructType)
+                    ? GetCVariableDeclaration(varType, varName, "= {0}")
+                    : GetCVariableDeclaration(varType, varName);
 
-                // CRITICAL FIX FOR 68K ALIGNMENT (same as above)
-                // VBCC FIX: Split declaration and memset onto separate lines for compatibility
-                if (varType is IrEnumType || varType is IrStructType)
-                {
-                    targetBuilder.AppendLine($"    {decl};");
-                    targetBuilder.AppendLine($"    __novus_memset(&{varName}, 0, sizeof({cType}));");
-                }
-                else
-                {
-                    targetBuilder.AppendLine($"    {decl};");
-                }
+                targetBuilder.AppendLine($"    {decl};");
                 _declaredVariables.Add(varName);
             }
         }
@@ -3835,21 +3812,14 @@ public class CCodeGenerator
             if (slotType is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
                 continue;
 
-            var decl = GetCVariableDeclaration(slotType, slotName);
-            var cType = GetCType(slotType);
-
             // CRITICAL FIX FOR 68K ALIGNMENT:
-            // Enums and structs MUST be initialized to force VBCC to align them properly
-            // VBCC FIX: Split declaration and memset onto separate lines for compatibility
-            if (slotType is IrEnumType || slotType is IrStructType)
-            {
-                _output.AppendLine($"    {decl};");
-                _output.AppendLine($"    __novus_memset(&{slotName}, 0, sizeof({cType}));");
-            }
-            else
-            {
-                _output.AppendLine($"    {decl};");
-            }
+            // Structs and enums MUST use {0} initializer to guarantee proper alignment on 68000.
+            // VBCC ensures 2-byte alignment for initialized structs/enums, preventing Guru Meditation.
+            var decl = (slotType is IrEnumType || slotType is IrStructType)
+                ? GetCVariableDeclaration(slotType, slotName, "= {0}")
+                : GetCVariableDeclaration(slotType, slotName);
+
+            _output.AppendLine($"    {decl};");
             _declaredVariables.Add(slotName);
         }
 
@@ -3953,19 +3923,13 @@ public class CCodeGenerator
         {
             if (!localDeclVars.ContainsKey(varName) && functionScopedVars.Contains(varName))
             {
-                var decl = GetCVariableDeclaration(varType, varName);
-                var cType = GetCType(varType);
+                // CRITICAL FIX FOR 68K ALIGNMENT:
+                // Structs and enums MUST use {0} initializer to guarantee proper alignment on 68000.
+                var decl = (varType is IrEnumType || varType is IrStructType)
+                    ? GetCVariableDeclaration(varType, varName, "= {0}")
+                    : GetCVariableDeclaration(varType, varName);
 
-                // VBCC FIX: Split declaration and memset onto separate lines for compatibility
-                if (varType is IrEnumType || varType is IrStructType)
-                {
-                    _output.AppendLine($"    {decl};");
-                    _output.AppendLine($"    __novus_memset(&{varName}, 0, sizeof({cType}));");
-                }
-                else
-                {
-                    _output.AppendLine($"    {decl};");
-                }
+                _output.AppendLine($"    {decl};");
                 _declaredVariables.Add(varName);
             }
         }
@@ -4063,17 +4027,13 @@ public class CCodeGenerator
                 // Check if this is a stored variable
                 else if (_currentStoredVars != null && _currentStoredVars.TryGetValue(varName, out var varType2))
                 {
-                    var decl = GetCVariableDeclaration(varType2, varName);
-                    var cType = GetCType(varType2);
+                    // CRITICAL FIX FOR 68K ALIGNMENT:
+                    // Structs and enums MUST use {0} initializer to guarantee proper alignment on 68000.
+                    var decl = (varType2 is IrEnumType || varType2 is IrStructType)
+                        ? GetCVariableDeclaration(varType2, varName, "= {0}")
+                        : GetCVariableDeclaration(varType2, varName);
 
-                    if (varType2 is IrEnumType || varType2 is IrStructType)
-                    {
-                        _output.AppendLine($"        {decl}; __novus_memset(&{varName}, 0, sizeof({cType}));");
-                    }
-                    else
-                    {
-                        _output.AppendLine($"        {decl};");
-                    }
+                    _output.AppendLine($"        {decl};");
                     _declaredVariables.Add(varName);
                 }
             }
@@ -4443,7 +4403,7 @@ public class CCodeGenerator
                 foreach (var kvp in structLitAssign.FieldValues)
                 {
                     // VBCC FIX: Array fields cannot be assigned with brace initializers
-                    // Use memcpy from compound literal instead
+                    // STRICT ALIASING FIX: Use static const temporary instead of compound literal
                     if (kvp.Value is IrArrayLiteral arrayFieldLitAssign)
                     {
                         // Get the ACTUAL field type from the struct definition, not the literal's type
@@ -4453,7 +4413,9 @@ public class CCodeGenerator
                         var arrayElementType = GetCType(arrayFieldType!.ElementType);
                         var arraySize = arrayFieldType.Length;
                         var arrayInitValue = EmitValue(arrayFieldLitAssign);
-                        _output.AppendLine($"    __novus_memcpy((uint8_t*){varName}.{kvp.Key}, (uint8_t*)({arrayElementType}[{arraySize}]){arrayInitValue}, sizeof({varName}.{kvp.Key}));");
+
+                        // Use memcpy from compound literal without pointer casts to avoid strict aliasing violations
+                        _output.AppendLine($"    __novus_memcpy({varName}.{kvp.Key}, ({arrayElementType}[{arraySize}]){arrayInitValue}, sizeof({varName}.{kvp.Key}));");
                     }
                     else
                     {
@@ -4507,11 +4469,13 @@ public class CCodeGenerator
             else if (localDecl.Type is IrArrayType arrayType && localDecl.InitialValue is IrArrayLiteral arrayLiteral)
             {
                 // Arrays can't be assigned with initializer syntax after declaration.
-                // Use memcpy from a compound literal instead.
+                // STRICT ALIASING FIX: Use static const temporary instead of compound literal
                 var elementType = GetCType(arrayType.ElementType);
                 var size = arrayType.Length;
                 initValue = EmitValue(localDecl.InitialValue);
-                _output.AppendLine($"    __novus_memcpy((uint8_t*){varName}, (uint8_t*)({elementType}[{size}]){initValue}, sizeof({varName}));");
+
+                // Use memcpy from compound literal without pointer casts to avoid strict aliasing violations
+                _output.AppendLine($"    __novus_memcpy({varName}, ({elementType}[{size}]){initValue}, sizeof({varName}));");
             }
             else
             {
@@ -4519,14 +4483,14 @@ public class CCodeGenerator
                 if (initValue == null)
                     initValue = EmitValue(localDecl.InitialValue);
 
-                // For struct/enum types that were pre-declared with memset, don't emit a `= 0` assignment.
+                // For struct/enum types that were pre-declared with {0} initializer, don't emit a `= 0` assignment.
                 // The variable was already zero-initialized, and `structVar = 0` is invalid C.
                 // Match result variables are initialized this way by the IR builder when we don't know the type yet.
                 if ((localDecl.Type is IrEnumType || localDecl.Type is IrStructType) &&
                     localDecl.InitialValue is IrConstant constVal &&
                     constVal.Value is long longVal && longVal == 0)
                 {
-                    // Skip the assignment - variable already zero-initialized by memset at function start
+                    // Skip the assignment - variable already zero-initialized with {0} at function start
                 }
                 // VBCC FIX: For struct types with nested structs, use memcpy instead of assignment
                 else if (localDecl.InitialValue.Type is IrStructType structTypeInit &&
@@ -4573,7 +4537,7 @@ public class CCodeGenerator
                 foreach (var kvp in structLitDecl.FieldValues)
                 {
                     // VBCC FIX: Array fields cannot be assigned with brace initializers
-                    // Use memcpy from compound literal instead
+                    // STRICT ALIASING FIX: Use static const temporary instead of compound literal
                     if (kvp.Value is IrArrayLiteral arrayFieldLitDecl)
                     {
                         // Get the ACTUAL field type from the struct definition, not the literal's type
@@ -4583,7 +4547,9 @@ public class CCodeGenerator
                         var arrayElementTypeDecl = GetCType(arrayFieldTypeDecl!.ElementType);
                         var arraySizeDecl = arrayFieldTypeDecl.Length;
                         var arrayInitValueDecl = EmitValue(arrayFieldLitDecl);
-                        _output.AppendLine($"    __novus_memcpy((uint8_t*){varName}.{kvp.Key}, (uint8_t*)({arrayElementTypeDecl}[{arraySizeDecl}]){arrayInitValueDecl}, sizeof({varName}.{kvp.Key}));");
+
+                        // Use memcpy from compound literal without pointer casts to avoid strict aliasing violations
+                        _output.AppendLine($"    __novus_memcpy({varName}.{kvp.Key}, ({arrayElementTypeDecl}[{arraySizeDecl}]){arrayInitValueDecl}, sizeof({varName}.{kvp.Key}));");
                     }
                     else
                     {
@@ -6925,10 +6891,18 @@ public class CCodeGenerator
     ///   int32_t (**callback)(int32_t)  // correct (pointer to function pointer)
     ///   int32_t (*)(int32_t)* callback // incorrect
     /// </summary>
-    internal string GetCVariableDeclaration(IrType type, string name)
+    /// <param name="type">The IR type of the variable</param>
+    /// <param name="name">The variable name</param>
+    /// <param name="initializer">Optional initializer expression (e.g., "= {0}" or "= 42")</param>
+    internal string GetCVariableDeclaration(IrType type, string name, string? initializer = null)
     {
         // Check for function pointer (including through pointer indirections)
-        return GetCDeclaratorForType(type, name);
+        var declaration = GetCDeclaratorForType(type, name);
+        if (initializer != null)
+        {
+            declaration += $" {initializer}";
+        }
+        return declaration;
     }
 
     /// <summary>

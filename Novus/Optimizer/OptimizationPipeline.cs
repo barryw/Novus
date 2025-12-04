@@ -62,6 +62,11 @@ public class OptimizationPipeline
                 {
                     Console.WriteLine($"    -> Modified");
                 }
+
+                // In DEBUG builds, validate IR after each pass to catch bugs early
+                #if DEBUG
+                ValidateModuleAfterPass(module, pass.Name);
+                #endif
             }
 
             // If no pass made changes, we've reached a fixpoint
@@ -73,6 +78,22 @@ public class OptimizationPipeline
                 }
                 break;
             }
+        }
+    }
+
+    /// <summary>
+    /// Validate IR after an optimization pass (DEBUG builds only)
+    /// </summary>
+    [System.Diagnostics.Conditional("DEBUG")]
+    private void ValidateModuleAfterPass(IrModule module, string passName)
+    {
+        var validator = new IrValidator();
+        var result = validator.Validate(module);
+        if (!result.IsValid)
+        {
+            var errors = string.Join("\n  ", result.Errors);
+            throw new InvalidOperationException(
+                $"IR validation failed after optimization pass '{passName}':\n  {errors}");
         }
     }
 

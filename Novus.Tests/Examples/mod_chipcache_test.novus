@@ -17,10 +17,10 @@ pub fn main() -> i32 {
     write("MOD Chip Cache Test\n\n")
 
     let is_pal = DISPLAY() == DisplayType::PAL
-    write("Display: %s\n", is_pal ? "PAL" : "NTSC")
+    write("Display: %s\n", if is_pal { "PAL" } else { "NTSC" })
     write("MOD data at: 0x%lx (%s)\n",
           (u32)music.data,
-          is_chip_ram(music.data) ? "chip RAM" : "fast RAM")
+          if is_chip_ram(music.data) { "chip RAM" } else { "fast RAM" })
     write("MOD size: %ld bytes\n\n", music.size)
 
     let player_result = ModPlayer::new(is_pal)

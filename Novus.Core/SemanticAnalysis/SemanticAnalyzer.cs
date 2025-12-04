@@ -8601,23 +8601,35 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         return IrBoolType.Instance;
     }
 
-    public override IrType? VisitTernaryExpr([NotNull] NovusParser.TernaryExprContext context)
+    public override IrType? VisitIfExpr([NotNull] NovusParser.IfExprContext context)
     {
-        // Visit all three expressions
-        var conditionType = Visit(context.expression(0));
-        var trueType = Visit(context.expression(1));
-        var falseType = Visit(context.expression(2));
+        // Visit condition and both branches
+        var conditionType = Visit(context.expression());
+
+        // Get the type from the true block
+        var trueType = VisitBlockAsExpressionType(context.block(0));
+
+        // Get the type from the else part
+        IrType? falseType;
+        if (context.ifElseChain() != null)
+        {
+            falseType = Visit(context.ifElseChain());
+        }
+        else
+        {
+            falseType = VisitBlockAsExpressionType(context.block(1));
+        }
 
         if (conditionType == null || trueType == null || falseType == null)
             return null;
 
         // Check that condition is boolean or numeric
-        if (!IsBoolOrNumericType(conditionType))
+        if (!IsBoolOrNumericType(conditionType) && !IsPointerType(conditionType))
         {
-            var location = SourceLocationHelper.FromContext(context.expression(0), _filePath, _sourceLines);
+            var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
             _diagnostics.ReportError(
                 "E0040",
-                $"ternary condition must be boolean or numeric type, found '{TypeToString(conditionType)}'",
+                $"if-expression condition must be boolean, numeric, or pointer type, found '{TypeToString(conditionType)}'",
                 location
             );
         }
@@ -8628,13 +8640,108 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
             _diagnostics.ReportError(
                 "E0041",
-                $"ternary branches have incompatible types: '{TypeToString(trueType)}' and '{TypeToString(falseType)}'",
+                $"if-expression branches have incompatible types: '{TypeToString(trueType)}' and '{TypeToString(falseType)}'",
                 location
             );
         }
 
         // Return the type of the true branch (they should be compatible)
         return trueType;
+    }
+
+    public override IrType? VisitIfElseChain([NotNull] NovusParser.IfElseChainContext context)
+    {
+        // Visit condition and both branches
+        var conditionType = Visit(context.expression());
+
+        // Get the type from the true block
+        var trueType = VisitBlockAsExpressionType(context.block(0));
+
+        // Get the type from the else part
+        IrType? falseType;
+        if (context.ifElseChain() != null)
+        {
+            falseType = Visit(context.ifElseChain());
+        }
+        else
+        {
+            falseType = VisitBlockAsExpressionType(context.block(1));
+        }
+
+        if (conditionType == null || trueType == null || falseType == null)
+            return null;
+
+        // Check that condition is boolean or numeric
+        if (!IsBoolOrNumericType(conditionType) && !IsPointerType(conditionType))
+        {
+            var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0040",
+                $"if-expression condition must be boolean, numeric, or pointer type, found '{TypeToString(conditionType)}'",
+                location
+            );
+        }
+
+        // Both branches must have compatible types
+        if (!TypesCompatible(trueType, falseType) && !TypesCompatible(falseType, trueType))
+        {
+            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0041",
+                $"if-expression branches have incompatible types: '{TypeToString(trueType)}' and '{TypeToString(falseType)}'",
+                location
+            );
+        }
+
+        // Return the type of the true branch (they should be compatible)
+        return trueType;
+    }
+
+    /// <summary>
+    /// Get the type of a block when used as an expression (the type of the last expression)
+    /// </summary>
+    private IrType? VisitBlockAsExpressionType(NovusParser.BlockContext block)
+    {
+        var statements = block.statement();
+        if (statements == null || statements.Length == 0)
+        {
+            // Empty block - return i32 as placeholder (could be unit/void in the future)
+            return IrIntType.I32;
+        }
+
+        // Visit all statements except the last (for their side effects and variable declarations)
+        for (int i = 0; i < statements.Length - 1; i++)
+        {
+            Visit(statements[i]);
+        }
+
+        // The last statement determines the block's type
+        var lastStmt = statements[statements.Length - 1];
+
+        if (lastStmt.expressionStatement() != null)
+        {
+            return Visit(lastStmt.expressionStatement().expression());
+        }
+        else if (lastStmt.returnStatement() != null)
+        {
+            var retStmt = lastStmt.returnStatement();
+            if (retStmt.expression() != null)
+            {
+                return Visit(retStmt.expression());
+            }
+            return IrVoidType.Instance;
+        }
+        else
+        {
+            // Other statement types - visit for side effects and return a default
+            Visit(lastStmt);
+            return IrIntType.I32;
+        }
+    }
+
+    private bool IsPointerType(IrType type)
+    {
+        return type is IrPointerType or IrReferenceType or IrMutReferenceType;
     }
 
     public override IrType? VisitDereferenceExpr([NotNull] NovusParser.DereferenceExprContext context)

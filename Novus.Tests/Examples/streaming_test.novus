@@ -31,19 +31,19 @@ pub fn main() -> i32 {
     write("====================\n\n")
 
     let is_pal = DISPLAY() == DisplayType::PAL
-    write("Display: %s\n", is_pal ? "PAL" : "NTSC")
+    write("Display: %s\n", if is_pal { "PAL" } else { "NTSC" })
 
     // Show audio info
     write("\nAudio Asset Info:\n")
     write("  Size: %ld bytes (%ld KB)\n", music.size, music.size / 1024)
     write("  Sample rate: %ld Hz\n", music.sample_rate)
-    write("  In chip RAM: %s\n", is_chip_ram(music.data) ? "yes" : "no")
+    write("  In chip RAM: %s\n", if is_chip_ram(music.data) { "yes" } else { "no" })
 
     let duration_secs = music.size / music.sample_rate
     write("  Duration: ~%ld seconds\n\n", duration_secs)
 
     // Get the correct period for PAL/NTSC
-    let period = is_pal ? music.period_pal : music.period_ntsc
+    let period = if is_pal { music.period_pal } else { music.period_ntsc }
 
     // Create the streamer - use any available channel
     write("Creating AudioStreamer...\n")

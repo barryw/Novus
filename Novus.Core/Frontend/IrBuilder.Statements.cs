@@ -26,6 +26,9 @@ public partial class IrBuilder
         _module.AddFunction(function);
         _currentFunction = function;
 
+        // Clear emitted defer blocks tracking for this new function
+        _emittedDeferBlocks.Clear();
+
         // Check for #[export] attribute
         var attributes = ParseAttributesSimple(context.attribute());
         if (attributes.Has("export"))
@@ -1741,9 +1744,19 @@ public partial class IrBuilder
             // Continue label (condition check)
             _currentBlock!.AddInstruction(new IrLabel(continueLabel));
             var condition = (IrValue?)Visit(whileCtx.expression());
+            if (condition == null)
+            {
+                var errorLocation = GetLocation(whileCtx);
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    "While condition expression is null or invalid",
+                    errorLocation
+                );
+                return null;
+            }
 
             // Automatic pointer-to-bool coercion
-            if (condition!.Type is IrPointerType or IrReferenceType or IrMutReferenceType)
+            if (condition.Type is IrPointerType or IrReferenceType or IrMutReferenceType)
             {
                 var ptrToBoolTemp = $"%t{_tempCounter++}";
                 var zeroValue = new IrConstant(0, IrIntType.U32);
@@ -1854,10 +1867,20 @@ public partial class IrBuilder
         // Condition label
         _currentBlock!.AddInstruction(new IrLabel(condLabel));
         var condition = (IrValue?)Visit(context.expression());
+        if (condition == null)
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "While condition expression is null or invalid",
+                errorLocation
+            );
+            return null;
+        }
 
         // Automatic pointer-to-bool coercion: while ptr { ... }
         // Convert pointer to bool by comparing with null (ptr != 0)
-        if (condition!.Type is IrPointerType or IrReferenceType or IrMutReferenceType)
+        if (condition.Type is IrPointerType or IrReferenceType or IrMutReferenceType)
         {
             var ptrToBoolTemp = $"%t{_tempCounter++}";
             var zeroValue = new IrConstant(0, IrIntType.U32);

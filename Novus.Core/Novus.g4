@@ -321,6 +321,11 @@ ifStatement
     : KW_IF ifCondition block (KW_ELSE (ifStatement | block))?
     ;
 
+// For if-expressions, we need a separate rule for else-if chains that requires else
+ifElseChain
+    : KW_IF expression block KW_ELSE (ifElseChain | block)
+    ;
+
 ifCondition
     : expression                                           # IfConditionExpression
     | KW_LET IDENTIFIER (':' type)? '=' expression        # IfConditionLet
@@ -387,7 +392,6 @@ expression
     | expression ('==' | '!=' | LESS | GREATER | '<=' | '>=') expression  # ComparisonExpr
     | expression '&&' expression                           # LogicalAndExpr
     | expression '||' expression                           # LogicalOrExpr
-    | <assoc=right> expression '?' expression ':' expression  # TernaryExpr
     ;
 
 argumentList
@@ -411,6 +415,7 @@ primaryExpression
     | typeName '{' NEWLINE* structFieldInit (',' NEWLINE* structFieldInit)* ','? NEWLINE* '}'  # StructLiteral
     | identifier                                   # IdentifierExpr
     | KW_MATCH expression '{' NEWLINE* matchArm (',' NEWLINE* matchArm)* ','? NEWLINE* '}'  # MatchExpr
+    | KW_IF expression block KW_ELSE (ifElseChain | block)  # IfExpr
     | KW_UNSAFE block                              # UnsafeExpr
     | copperList                                   # CopperExpr
     | blitterJob                                   # BlitterExpr

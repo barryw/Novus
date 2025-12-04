@@ -39,7 +39,7 @@ pub fn System(command: Str, tags_ptr: *TagItem, count: u32) -> Result<i32, DosEr
     let result = SystemTagList(command.as_cstr(), (*TagItem)tag_list.as_ptr())
 
     // SystemTagList returns -1 on error
-    return result == -1 ? Result::Err(DosError::Unknown) : Result::Ok(result)
+    return if result == -1 { Result::Err(DosError::Unknown) } else { Result::Ok(result) }
 }
 
 // ============================================================================
@@ -136,7 +136,7 @@ pub fn LoadSeg(file: Str, tags_ptr: *TagItem, count: u32) -> Result<i32, DosErro
     let seglist = NewLoadSeg(file.as_cstr(), (*TagItem)tag_list.as_ptr())
 
     // NewLoadSeg returns 0 on failure
-    return seglist == 0 ? Result::Err(DosError::Unknown) : Result::Ok(seglist)
+    return if seglist == 0 { Result::Err(DosError::Unknown) } else { Result::Ok(seglist) }
 }
 
 // ============================================================================
@@ -175,7 +175,7 @@ pub fn LoadSeg(file: Str, tags_ptr: *TagItem, count: u32) -> Result<i32, DosErro
 /// ```
 pub fn open_file(path: Str, mode: i32) -> Option<i32> {
     let fh = Open(path.as_cstr(), mode)
-    return fh == 0 ? Option::None : Option::Some(fh)
+    return if fh == 0 { Option::None } else { Option::Some(fh) }
 }
 
 /// Close a file handle
@@ -297,7 +297,7 @@ impl OwnedFileHandle {
     /// Returns Err on failure (use IoErr() for details).
     pub fn open(path: Str, mode: i32) -> Result<OwnedFileHandle, DosError> {
         let fh = Open(path.as_cstr(), mode)
-        return fh == 0 ? Result::Err(DosError::Unknown) : Result::Ok(OwnedFileHandle { fh: fh })
+        return if fh == 0 { Result::Err(DosError::Unknown) } else { Result::Ok(OwnedFileHandle { fh: fh }) }
     }
 
     /// Get the raw BPTR handle for FFI calls
@@ -390,7 +390,7 @@ impl DirLockHandle {
     /// Returns Err on failure (use IoErr() for details).
     pub fn lock(path: Str, lock_type: i32) -> Result<DirLockHandle, DosError> {
         let lock = Lock(path.as_cstr(), lock_type)
-        return lock == 0 ? Result::Err(DosError::Unknown) : Result::Ok(DirLockHandle { lock: lock })
+        return if lock == 0 { Result::Err(DosError::Unknown) } else { Result::Ok(DirLockHandle { lock: lock }) }
     }
 
     /// Get the raw BPTR lock for FFI calls

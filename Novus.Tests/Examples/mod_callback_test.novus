@@ -56,7 +56,7 @@ pub fn main() -> i32 {
     }
 
     player.stop()
-    write(user_stopped ? "\nStopped by user.\n" : "\nSong finished.\n")
+    write(if user_stopped { "\nStopped by user.\n" } else { "\nSong finished.\n" })
 
     return 0
 }

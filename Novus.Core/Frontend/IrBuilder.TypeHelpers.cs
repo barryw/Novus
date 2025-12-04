@@ -269,7 +269,8 @@ public partial class IrBuilder
         // Handle struct types (e.g., "Vec_i32" -> Vec<i32>)
         // For now, this is a simple implementation
         // TODO: Handle nested generics and more complex types
-        var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+        // TODO: Pass context parameter to get accurate source location
+        var errorLocation = _currentStatementLocation ?? new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
         _diagnostics.ReportError(
             ErrorCodes.InvalidExpressionType,
             $"Cannot parse complex mangled type name '{mangledName}' yet",
@@ -474,7 +475,8 @@ public partial class IrBuilder
             return "ptr_" + GetMangledTypeName(ptrType.PointeeType);
         }
 
-        var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+        // TODO: Pass context parameter to get accurate source location
+        var errorLocation = _currentStatementLocation ?? new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
         _diagnostics.ReportError(
             ErrorCodes.InvalidExpressionType,
             $"Cannot get mangled name for type '{type.Name}'",

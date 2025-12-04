@@ -71,7 +71,7 @@ impl Str {
     pub fn from_cstr(ptr: *u8) -> Option<Str> {
         // Check for null pointer by casting to u32
         let ptr_addr: u32 = (u32)ptr
-        return ptr_addr == 0u32 ? Option::None : Option::Some(Str { ptr: ptr, len: strlen(ptr) })
+        return if ptr_addr == 0u32 { Option::None } else { Option::Some(Str { ptr: ptr, len: strlen(ptr) }) }
     }
 
     /// Get the length of the string in bytes
@@ -92,7 +92,7 @@ impl Str {
     /// Get the byte at the given index
     /// Returns None if index is out of bounds
     pub fn get(&self, index: u32) -> Option<u8> {
-        return index >= self.len ? Option::None : Option::Some(self.ptr[index])
+        return if index >= self.len { Option::None } else { Option::Some(self.ptr[index]) }
     }
 
     /// Create a substring slice
@@ -390,7 +390,7 @@ impl String {
         // Create a new String and reserve capacity on its internal Vec
         var result = String::new()
         let success = result.vec.reserve(capacity)
-        return success ? Option::Some(result) : Option::None
+        return if success { Option::Some(result) } else { Option::None }
     }
 
     /// Create a String from a Str slice (allocates and copies)
@@ -1515,7 +1515,7 @@ impl StringBuilder {
 
     /// Append formatted boolean ("true" or "false")
     pub fn push_bool(&mut self, value: bool) -> bool {
-        let s = Str::from_raw(value ? "true" : "false", value ? 4u32 : 5u32)
+        let s = Str::from_raw(if value { "true" } else { "false" }, if value { 4u32 } else { 5u32 })
         return self.string.push_str(s)
     }
 
@@ -1661,7 +1661,7 @@ pub fn path_dirname(path: Str) -> Option<Str> {
 
     if found {
         // Include the separator for volume: (e.g., "SYS:")
-        let len: u32 = path.ptr[last_sep] == $3A ? last_sep + 1 : last_sep
+        let len: u32 = if path.ptr[last_sep] == $3A { last_sep + 1 } else { last_sep }
         if len > 0 {
             return Option::Some(Str { ptr: path.ptr, len: len })
         }

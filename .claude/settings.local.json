@@ -51,7 +51,10 @@
       "Bash($VASM -Fhunk -quiet -m68020 -o vendor/ptplayer/ptplayer.o vendor/ptplayer/ptplayer.asm:*)",
       "Bash($VASM:*)",
       "Bash($VC +aos68k -c99 -O2 -c -o vendor/ptplayer/ptplayer_helpers.o vendor/ptplayer/ptplayer_helpers.c:*)",
-      "WebFetch(domain:amigadev.elowar.com)"
+      "WebFetch(domain:amigadev.elowar.com)",
+      "Bash(git stash:*)",
+      "Bash(git checkout:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []

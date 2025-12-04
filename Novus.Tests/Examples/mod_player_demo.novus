@@ -34,7 +34,7 @@ pub fn main() -> i32 {
                     player.play()
 
                     // Play for 30 seconds (50 frames/sec on PAL, 60 on NTSC)
-                    let frames_per_second: u32 = is_pal ? 50 : 60
+                    let frames_per_second: u32 = if is_pal { 50 } else { 60 }
                     let total_frames: u32 = frames_per_second * 30
 
                     var frame: u32 = 0

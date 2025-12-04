@@ -151,7 +151,7 @@ impl SfxStructure {
             return Result::Err(AudioError::NullSampleData)
         }
 
-        let period = pal ? sample.period_pal : sample.period_ntsc
+        let period = if pal { sample.period_pal } else { sample.period_ntsc }
 
         return Result::Ok(SfxStructure {
             sfx_ptr: sample.data,
@@ -621,7 +621,7 @@ impl ModPlayer {
     /// * `Err(AudioError::CiaInstallFailed)` - Failed to install interrupt
     pub fn new(pal: bool) -> Result<ModPlayer, AudioError> {
         let custom = (*u8)CUSTOM_BASE
-        let pal_flag: u8 = pal ? 1 : 0
+        let pal_flag: u8 = if pal { 1 } else { 0 }
 
         // Get the CPU's Vector Base Register
         // On 68000 this is 0, on 68010+ it may be relocated

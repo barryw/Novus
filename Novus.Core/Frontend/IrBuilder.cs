@@ -25,6 +25,10 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
     // Each element in the stack represents a scope; the list contains defers registered in that scope
     private Stack<List<IrBasicBlock>> _scopeDeferStack = new();
 
+    // Track emitted defer blocks to prevent double-free bugs
+    // A defer block can be registered at both function and scope level, but should only be emitted once
+    private readonly HashSet<IrBasicBlock> _emittedDeferBlocks = new();
+
     // Drop tracking for automatic resource cleanup (RAII)
     // Each scope tracks which local variables need drop calls when the scope exits
     private readonly Stack<List<string>> _scopeDropStack = new(); // Stack of variable names per scope
@@ -644,7 +648,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
                 // _currentSelfType already contains the implementing type (set earlier)
                 if (_currentSelfType == null)
                 {
-                    var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    var errorLocation = GetLocation(implContext);
                     _diagnostics.ReportError(
                         ErrorCodes.TypeNotFound,
                         $"Type '{typeName}' not found for trait implementation",
@@ -685,7 +689,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
             _currentFunction = _module.GetFunction(funcName);
             if (_currentFunction == null)
             {
-                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                var errorLocation = GetLocation(funcContext);
                 _diagnostics.ReportError(
                     ErrorCodes.FunctionNotFound,
                     $"Function '{funcName}' not found in module. This indicates a compiler bug in an earlier pass.",
@@ -784,7 +788,7 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
                 _currentFunction = _module.GetFunction(mangledName);
                 if (_currentFunction == null)
                 {
-                    var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    var errorLocation = GetLocation(funcDecl);
                     _diagnostics.ReportError(
                         ErrorCodes.MethodNotFound,
                         $"Method '{mangledName}' not found in module. This indicates a compiler bug in an earlier pass.",

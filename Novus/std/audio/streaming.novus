@@ -573,7 +573,7 @@ impl AudioStreamer {
         // position = frames_elapsed * sample_rate / fps
         // To avoid overflow and maintain precision:
         // position = (frames_elapsed * sample_rate) / fps
-        let fps: u32 = self.is_pal ? 50 : 60
+        let fps: u32 = if self.is_pal { 50 } else { 60 }
         let pos = (self.frames_elapsed * self.sample_rate) / fps
 
         // Clamp to source size

@@ -7,6 +7,7 @@
 from std::core import Result, Option, Drop
 from std::strings::core import Str
 from std::ffi::exec import AllocMem, FreeMem, CopyMem, TypeOfMem, AvailMem, Forbid, Permit
+from std::ffi::graphics import WaitBlit
 from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR, MEMF_LARGEST
 from std::memory::chip import Priority, ChipAsset, ChipCacheError, is_chip_ram, copy_to_chip
 from std::memory::chip_pool import ChipPool, PoolSizeClass, POOL_HUGE_SIZE
@@ -543,6 +544,10 @@ impl ChipCache {
         unsafe {
             let entry = &mut g_chip_cache.entries[idx]
             if entry.chip_ptr {
+                // CRITICAL: Wait for any Blitter DMA to complete before freeing chip RAM
+                // The asset may have been used by the Blitter even if unpinned
+                WaitBlit()
+
                 if entry.pooled {
                     ChipPool::free(entry.chip_ptr)
                 } else {
