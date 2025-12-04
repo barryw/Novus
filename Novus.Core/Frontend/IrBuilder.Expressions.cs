@@ -177,7 +177,7 @@ public partial class IrBuilder
             }
 
             // Instantiate
-            var instantiatedFunc = InstantiateGenericFunction(genericFuncName, typeSubstitutions);
+            var instantiatedFunc = _genericInstantiator.InstantiateFunction(genericFuncName, typeSubstitutions);
             if (instantiatedFunc == null)
             {
                 var errorLocation = GetLocation(context);
@@ -323,7 +323,7 @@ public partial class IrBuilder
             }
 
             // Instantiate the generic method with the monomorphized struct
-            var instantiatedFunc = InstantiateGenericMethod(monomorphizedStruct, genericAssocFunc.MethodName);
+            var instantiatedFunc = _genericInstantiator.InstantiateStructMethod(monomorphizedStruct, genericAssocFunc.MethodName);
             if (instantiatedFunc == null)
             {
                 var errorLocation = GetLocation(context);
@@ -1007,7 +1007,7 @@ public partial class IrBuilder
                             if (monomorphizedEnum != null)
                             {
                                 // Now instantiate the method with the monomorphized enum
-                                var instantiatedFunc = InstantiateGenericEnumMethod(monomorphizedEnum, methodName, arguments);
+                                var instantiatedFunc = _genericInstantiator.InstantiateEnumMethod(monomorphizedEnum, methodName, arguments);
                                 if (instantiatedFunc != null)
                                 {
                                     functionName = instantiatedFunc.Name;
@@ -1363,7 +1363,7 @@ public partial class IrBuilder
         // Look up the method template for this generic type
         var templateKey = $"{partialType.GenericTypeName}::{methodName}";
 
-        if (!_genericMethodTemplates.TryGetValue(templateKey, out var template))
+        if (!_genericInstantiator.TryGetMethodTemplate(templateKey, out var template) || template == null)
         {
             // Method not found or not generic
             return null;
@@ -1842,7 +1842,7 @@ public partial class IrBuilder
 
             if (monomorphizedStruct != null)
             {
-                method = InstantiateGenericMethod(monomorphizedStruct, methodName);
+                method = _genericInstantiator.InstantiateStructMethod(monomorphizedStruct, methodName);
             }
             else if (monomorphizedEnum != null)
             {
@@ -1860,7 +1860,7 @@ public partial class IrBuilder
                     }
                 }
 
-                method = InstantiateGenericEnumMethod(monomorphizedEnum, methodName, methodArgs);
+                method = _genericInstantiator.InstantiateEnumMethod(monomorphizedEnum, methodName, methodArgs);
             }
         }
 
@@ -1901,7 +1901,7 @@ public partial class IrBuilder
 
                 // Instantiate the generic enum method with all arguments (including receiver)
                 // The method will infer generic type parameters from the argument types
-                method = InstantiateGenericEnumMethod(monomorphizedEnum, methodName, allArgs);
+                method = _genericInstantiator.InstantiateEnumMethod(monomorphizedEnum, methodName, allArgs);
             }
         }
 
@@ -2392,6 +2392,28 @@ public partial class IrBuilder
         // Create an explicit cast value
         // This preserves the cast operation for the code generator
         // Supports nested casts: (T1)(T2)expr becomes IrCastValue(IrCastValue(expr, T2), T1)
+        return new IrCastValue(value, value.Type, targetType);
+    }
+
+    public override object? VisitAsCastExpr([NotNull] NovusParser.AsCastExprContext context)
+    {
+        var value = Visit(context.expression()) as IrValue;
+        var targetType = ParseType(context.type());
+
+        // If child expression had an error, bail out
+        if (value == null)
+        {
+            return null;
+        }
+
+        // If it's already a constant, just change its type
+        if (value is IrConstant constant)
+        {
+            return new IrConstant(constant.Value, targetType);
+        }
+
+        // Create an explicit cast value
+        // Same semantics as C-style cast, just different syntax
         return new IrCastValue(value, value.Type, targetType);
     }
 
@@ -4612,7 +4634,7 @@ public partial class IrBuilder
                     if (structType.GenericParameters.Count > 0)
                     {
                         var templateKey = mangledName;
-                        if (_genericMethodTemplates.ContainsKey(templateKey))
+                        if (_genericInstantiator.HasMethodTemplate(templateKey))
                         {
                             // Return a special marker for generic associated function
                             // This will be instantiated later when we know the concrete types
@@ -5374,7 +5396,7 @@ public partial class IrBuilder
             if (structType.GenericParameters.Count > 0)
             {
                 var templateKey = mangledName;
-                if (_genericMethodTemplates.ContainsKey(templateKey))
+                if (_genericInstantiator.HasMethodTemplate(templateKey))
                 {
                     // Return a special marker for generic associated function
                     // This will be instantiated later when we know the concrete types

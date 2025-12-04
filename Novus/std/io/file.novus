@@ -70,3 +70,18 @@ pub fn read_key() -> u8 {
     Read(input_handle, &buf[0], 1)
     return buf[0]
 }
+
+/// Print a null-terminated C string to stdout
+///
+/// Simple wrapper around write() for printing strings without formatting.
+pub fn print(s: *u8) {
+    write(s)
+}
+
+/// Print a null-terminated C string to stdout with newline
+///
+/// Simple wrapper around write() for printing strings with newline.
+pub fn println(s: *u8) {
+    write(s)
+    write("\n")
+}

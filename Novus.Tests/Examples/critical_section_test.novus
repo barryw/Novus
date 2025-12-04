@@ -1,0 +1,135 @@
+// Example: Critical Sections
+//
+// Description:
+//   Demonstrates RAII guards for safe AmigaOS multi-tasking synchronization.
+//   Shows how CriticalSection (Forbid/Permit) protects shared data.
+//
+// Expected Output:
+//   Exit code: 0 (critical sections work correctly)
+
+from std::sync::critical import CriticalSection, InterruptSection
+
+// Simulate a shared data structure (in real code, this would be accessed by multiple tasks)
+static mut shared_counter: i32 = 0
+
+// Function that safely increments a shared counter
+fn safe_increment() -> i32 {
+    // Create RAII guard - Forbid() called automatically
+    let _guard = CriticalSection::enter()
+
+    // This section is protected from task switching
+    // No other task can run until _guard is dropped
+    let old_value = shared_counter
+    shared_counter = shared_counter + 1
+
+    // Permit() will be called automatically when _guard goes out of scope
+    return old_value
+}
+
+// Function that uses nested critical sections (safe - Exec maintains nest count)
+fn nested_critical_section() -> i32 {
+    let _guard1 = CriticalSection::enter()  // Forbid nest count = 0
+
+    let result = safe_increment()  // This calls Forbid again (nest = 1), then Permit (nest = 0)
+
+    // Still protected here - outer guard still active
+    shared_counter = shared_counter + 10
+
+    // Permit() called when _guard1 drops
+    return result
+}
+
+// Another function that uses critical section
+fn another_safe_increment() -> i32 {
+    let _guard = CriticalSection::enter()
+    shared_counter = shared_counter + 1
+    return shared_counter
+}
+
+// Simulate hardware register access (interrupt-disabled section)
+fn simulate_hardware_access() -> i32 {
+    // In real code, this would modify Paula audio registers, copper lists, etc.
+    let _guard = InterruptSection::enter()
+
+    // ALL interrupts disabled here - keep this EXTREMELY SHORT!
+    // Only do direct hardware register writes
+    let value = 4660  // 0x1234 in decimal - simulate hardware register write
+
+    // Enable() called automatically when _guard drops
+    return value
+}
+
+// Function using interrupt section for different hardware
+fn another_hardware_access() -> i32 {
+    let _guard = InterruptSection::enter()
+    // Simulate hardware setup
+    return 43981  // 0xABCD in decimal
+}
+
+pub fn main() -> i32 {
+    // Test 1: Basic critical section
+    shared_counter = 0
+    let v1 = safe_increment()  // Should return 0, counter becomes 1
+    if v1 != 0 {
+        return 1
+    }
+    if shared_counter != 1 {
+        return 2
+    }
+
+    // Test 2: Multiple increments
+    let v2 = safe_increment()  // Should return 1, counter becomes 2
+    if v2 != 1 {
+        return 3
+    }
+    if shared_counter != 2 {
+        return 4
+    }
+
+    // Test 3: Nested critical sections (should work - Exec maintains nest count)
+    shared_counter = 100
+    let v3 = nested_critical_section()  // Increments by 1, then by 10 -> 111
+    if v3 != 100 {
+        return 5
+    }
+    if shared_counter != 111 {
+        return 6
+    }
+
+    // Test 4: Another safe increment
+    shared_counter = 0
+    let v4 = another_safe_increment()  // Should return 1
+    if v4 != 1 {
+        return 7
+    }
+    if shared_counter != 1 {
+        return 8
+    }
+
+    // Test 5: Interrupt section (doesn't modify shared_counter, just returns a value)
+    let hw1 = simulate_hardware_access()
+    if hw1 != 4660 {  // 0x1234 in decimal
+        return 9
+    }
+
+    // Test 6: Another interrupt section
+    let hw2 = another_hardware_access()
+    if hw2 != 43981 {  // 0xABCD in decimal
+        return 10
+    }
+
+    // Test 7: Defer works correctly with critical sections
+    shared_counter = 200
+    defer {
+        // This defer should execute after return value is computed
+        let _guard_defer = CriticalSection::enter()
+        shared_counter = 0  // Reset counter in cleanup
+    }
+
+    let _guard_final = CriticalSection::enter()
+    shared_counter = 300
+    // Drop guard before return
+
+    // All tests passed!
+    return 0
+}

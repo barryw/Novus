@@ -1210,75 +1210,8 @@ public partial class IrBuilder
         List<IrValue> arguments,
         IrType? expectedReturnType)
     {
-        // Look up the method template to get parameter types
-        var templateKey = $"{baseEnum.EnumName}::{methodName}";
-        if (!_genericMethodTemplates.TryGetValue(templateKey, out var template))
-        {
-            return null; // No template found
-        }
-
-        var (genericParams, funcDecl, _) = template;
-
-        // Use RAII scope for generic parameters (exception-safe)
-        using var genericParamsScope = new GenericParametersScope(this, genericParams);
-
-        // Parse template parameters to get their generic types
-        var templateParams = new List<IrParameter>();
-        if (funcDecl.parameterList() != null)
-        {
-            var paramList = funcDecl.parameterList();
-
-            // Skip self parameter if present (it doesn't contribute to type inference for enum T)
-            var regularParams = paramList.parameter();
-
-            foreach (var paramCtx in regularParams)
-            {
-                var paramName = paramCtx.IDENTIFIER().GetText();
-                // Use temporary type substitution scope to parse without substitutions
-                using (var tempSubScope = new TypeSubstitutionScope(this, null))
-                {
-                    var paramType = ParseType(paramCtx.type());
-                    templateParams.Add(new IrParameter(paramName, paramType));
-                }
-            }
-        }
-
-        var typeSubstitutions = new Dictionary<string, IrType>();
-
-        // Step 1: Infer from arguments if available
-        if (arguments.Count == templateParams.Count)
-        {
-            for (int i = 0; i < arguments.Count; i++)
-            {
-                var argType = arguments[i].Type;
-                var paramType = templateParams[i].Type;
-                ExtractGenericTypeMapping(paramType, argType, typeSubstitutions);
-            }
-        }
-
-        // Step 2: Try to infer from expected return type if we still have unresolved generics
-        if (expectedReturnType != null && funcDecl.type() != null)
-        {
-            // Use temporary type substitution scope to parse without substitutions
-            using (var tempSubScope = new TypeSubstitutionScope(this, null))
-            {
-                var templateReturnType = ParseType(funcDecl.type());
-                // Extract type mappings from return type
-                ExtractGenericTypeMapping(templateReturnType, expectedReturnType, typeSubstitutions);
-            }
-        }
-
-        // Verify all generic parameters from the enum were resolved
-        foreach (var genericParam in baseEnum.GenericParameters)
-        {
-            if (!typeSubstitutions.ContainsKey(genericParam))
-            {
-                return null; // Could not infer all required type parameters
-            }
-        }
-
-        return typeSubstitutions;
-        // GenericParametersScope disposed here
+        // Delegate to the generic instantiator which has access to the correct template cache
+        return _genericInstantiator.InferEnumGenericTypes(baseEnum, methodName, arguments, expectedReturnType);
     }
 
     /// <summary>

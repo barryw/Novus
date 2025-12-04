@@ -33,3 +33,11 @@ _GadToolsBase:
 
 _GfxBase:
 	ds.l	1		; Reserve 1 longword for GfxBase
+
+; ============================================================================
+; Workbench Startup Support
+; ============================================================================
+	xdef	_WBStartupMsg	; WBStartup message pointer (NULL if CLI)
+
+_WBStartupMsg:
+	ds.l	1		; Reserve 1 longword for WBStartup message

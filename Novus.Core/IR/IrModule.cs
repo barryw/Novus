@@ -27,9 +27,37 @@ public class IrModule
     private readonly Dictionary<string, IrFunction> _functionLookup = new();
 
     public List<IrEnumType> Enums { get; } = new();
+
+    /// <summary>
+    /// O(1) enum lookup by name. Maintained in sync with Enums list.
+    /// Use GetEnum() for lookups instead of Enums.FirstOrDefault().
+    /// </summary>
+    private readonly Dictionary<string, IrEnumType> _enumLookup = new();
+
     public List<IrStructType> Structs { get; } = new();
+
+    /// <summary>
+    /// O(1) struct lookup by name. Maintained in sync with Structs list.
+    /// Use GetStruct() for lookups instead of Structs.FirstOrDefault().
+    /// </summary>
+    private readonly Dictionary<string, IrStructType> _structLookup = new();
+
     public List<IrTrait> Traits { get; } = new();
+
+    /// <summary>
+    /// O(1) trait lookup by name. Maintained in sync with Traits list.
+    /// Use GetTrait() for lookups instead of Traits.FirstOrDefault().
+    /// </summary>
+    private readonly Dictionary<string, IrTrait> _traitLookup = new();
+
     public List<IrTraitImpl> TraitImpls { get; } = new();
+
+    /// <summary>
+    /// O(1) trait implementation lookup by (trait name, type name) tuple.
+    /// Maintained in sync with TraitImpls list.
+    /// Use GetTraitImpl() for lookups instead of TraitImpls.FirstOrDefault().
+    /// </summary>
+    private readonly Dictionary<(string TraitName, string TypeName), IrTraitImpl> _traitImplLookup = new();
     public Dictionary<string, IrMonomorphizedType> MonomorphizedTypes { get; } = new();
 
     /// <summary>
@@ -89,26 +117,61 @@ public class IrModule
     public void AddEnum(IrEnumType enumType)
     {
         Enums.Add(enumType);
+        // Maintain lookup dictionary for O(1) access by name
+        // Use indexer to allow overwrites (enum may be re-registered during monomorphization)
+        _enumLookup[enumType.EnumName] = enumType;
     }
 
+    /// <summary>
+    /// Get an enum by name with O(1) lookup.
+    /// Returns null if no enum with the given name exists.
+    /// </summary>
     public IrEnumType? GetEnum(string name)
     {
-        return Enums.FirstOrDefault(e => e.EnumName == name);
+        return _enumLookup.TryGetValue(name, out var enumType) ? enumType : null;
+    }
+
+    public void AddStruct(IrStructType structType)
+    {
+        Structs.Add(structType);
+        // Maintain lookup dictionary for O(1) access by name
+        // Use indexer to allow overwrites (struct may be re-registered during monomorphization)
+        _structLookup[structType.StructName] = structType;
+    }
+
+    /// <summary>
+    /// Get a struct by name with O(1) lookup.
+    /// Returns null if no struct with the given name exists.
+    /// </summary>
+    public IrStructType? GetStruct(string name)
+    {
+        return _structLookup.TryGetValue(name, out var structType) ? structType : null;
     }
 
     public void AddTrait(IrTrait trait)
     {
         Traits.Add(trait);
+        // Maintain lookup dictionary for O(1) access by name
+        // Use indexer to allow overwrites (trait may be re-registered during monomorphization)
+        _traitLookup[trait.TraitName] = trait;
     }
 
+    /// <summary>
+    /// Get a trait by name with O(1) lookup.
+    /// Returns null if no trait with the given name exists.
+    /// </summary>
     public IrTrait? GetTrait(string name)
     {
-        return Traits.FirstOrDefault(t => t.TraitName == name);
+        return _traitLookup.TryGetValue(name, out var trait) ? trait : null;
     }
 
     public void AddTraitImpl(IrTraitImpl traitImpl)
     {
         TraitImpls.Add(traitImpl);
+
+        // Maintain lookup dictionary for O(1) access by (trait name, type name) composite key
+        // Use indexer to allow overwrites (trait impl may be re-registered during monomorphization)
+        _traitImplLookup[(traitImpl.TraitName, traitImpl.TypeName)] = traitImpl;
 
         // If this is a Drop implementation, mark the type as implementing Drop
         if (traitImpl.TraitName == "Drop" && traitImpl.ImplementingType is IrStructType structType)
@@ -117,9 +180,13 @@ public class IrModule
         }
     }
 
+    /// <summary>
+    /// Get a trait implementation by trait name and type name with O(1) lookup.
+    /// Returns null if no trait implementation with the given composite key exists.
+    /// </summary>
     public IrTraitImpl? GetTraitImpl(string traitName, string typeName)
     {
-        return TraitImpls.FirstOrDefault(ti => ti.TraitName == traitName && ti.TypeName == typeName);
+        return _traitImplLookup.TryGetValue((traitName, typeName), out var traitImpl) ? traitImpl : null;
     }
 
     /// <summary>
@@ -270,6 +337,7 @@ public class IrFunction
     public List<string> GenericParameters { get; } = new();  // Generic type parameters (e.g., ["T", "U"])
     public IrWhereClause? WhereClause { get; set; }  // Generic type constraints (e.g., where T: Sortable)
     public SourceLocation? Location { get; set; }  // Source location of function definition (for debug info)
+    public Novus.SemanticAnalysis.AttributeCollection? Attributes { get; set; }  // Function attributes (@inline, @noinline, @export, etc.)
 
     public IrFunction(string name, IrType returnType, Visibility visibility = Visibility.Private, bool isExtern = false, bool isVariadic = false)
     {
@@ -1161,6 +1229,9 @@ public class IrStructType : IrType
 
             try
             {
+                // Check if struct is packed (no automatic alignment padding)
+                bool isPacked = Attributes?.Has("packed") ?? false;
+
                 // Calculate total size with 68000-compatible alignment.
                 // 68000 requires word alignment (2 bytes) for word and long accesses.
                 // Byte accesses can be at any address.
@@ -1169,28 +1240,33 @@ public class IrStructType : IrType
                 {
                     int fieldSize = field.Type.SizeInBytes;
 
-                    // 68000 alignment rules:
-                    // - 1-byte fields: no alignment needed
-                    // - 2-byte fields (word): must be word-aligned (even address)
-                    // - 4+ byte fields (long, pointers, structs): must be word-aligned (even address)
-                    // Note: 68020+ can handle misaligned access but with performance penalty,
-                    // 68000 will bus error on misaligned word/long access.
-                    int alignment = fieldSize switch
+                    // For packed structs, fields are placed sequentially without padding
+                    if (!isPacked)
                     {
-                        1 => 1,  // byte-aligned (any address OK)
-                        _ => 2   // word-aligned for everything else (68k requirement)
-                    };
+                        // 68000 alignment rules:
+                        // - 1-byte fields: no alignment needed
+                        // - 2-byte fields (word): must be word-aligned (even address)
+                        // - 4+ byte fields (long, pointers, structs): must be word-aligned (even address)
+                        // Note: 68020+ can handle misaligned access but with performance penalty,
+                        // 68000 will bus error on misaligned word/long access.
+                        int alignment = fieldSize switch
+                        {
+                            1 => 1,  // byte-aligned (any address OK)
+                            _ => 2   // word-aligned for everything else (68k requirement)
+                        };
 
-                    // Pad to alignment
-                    if (size % alignment != 0)
-                        size += alignment - (size % alignment);
+                        // Pad to alignment
+                        if (size % alignment != 0)
+                            size += alignment - (size % alignment);
+                    }
 
                     field.Offset = size;
                     size += fieldSize;
                 }
 
                 // Pad final struct size to word boundary so arrays of structs are properly aligned
-                if (size % 2 != 0)
+                // (skip for packed structs)
+                if (!isPacked && size % 2 != 0)
                     size++;
 
                 // Store computed size. Multiple threads may race here but they'll all

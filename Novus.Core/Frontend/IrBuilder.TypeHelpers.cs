@@ -362,7 +362,7 @@ public partial class IrBuilder
                         {
                             // Register the monomorphized struct
                             monomorphizedSlice.CacheKey = cacheKey;
-                            _module.Structs.Add(monomorphizedSlice);
+                            _module.AddStruct(monomorphizedSlice);
                         }
                     }
 

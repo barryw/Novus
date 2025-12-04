@@ -382,6 +382,10 @@ public class CCodeGenerator
         sb.AppendLine("typedef struct collTable collTable;");
         sb.AppendLine("typedef struct RastPort RastPort;");
         sb.AppendLine("typedef struct DBufInfo DBufInfo;");
+        // DOS types that are commonly used in user code
+        sb.AppendLine("typedef struct RDArgs RDArgs;");
+        sb.AppendLine("typedef struct WBStartup WBStartup;");
+        sb.AppendLine("typedef struct Process Process;");
         sb.AppendLine();
         sb.AppendLine("// Sentinel value for \"unchanged\" pointer parameters (used by Amiga API)");
         sb.AppendLine("// Using explicit 32-bit constant to prevent VBCC from treating as 64-bit value");

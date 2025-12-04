@@ -162,7 +162,7 @@ public class IrVisitorTests
     public void VisitModule_WithStructs_VisitsStructs()
     {
         var module = new IrModule();
-        module.Structs.Add(new IrStructType("Point", new List<IrStructField>()));
+        module.AddStruct(new IrStructType("Point", new List<IrStructField>()));
 
         var visitor = new CountingVisitor();
         visitor.VisitModule(module, null);

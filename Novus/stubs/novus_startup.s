@@ -27,6 +27,7 @@
 	xref	_IntuitionBase		; From library_bases.s
 	xref	_GadToolsBase		; From library_bases.s
 	xref	_GfxBase		; From library_bases.s
+	xref	_WBStartupMsg		; From library_bases.s (WBStartup message)
 	xref	___dos_init		; From dos_init.s
 	xref	___dos_cleanup		; From dos_init.s
 	xref	___graphics_init	; From graphics_init.s
@@ -38,21 +39,98 @@
 	xdef	_start			; Entry point for executable
 
 _start:
-	; AmigaOS calls us with:
-	;   a0 = command line length (arglen)
-	;   a1 = pointer to command line (argptr)
-	;   d0 = length of command line
-	; We're not using these yet, but we should preserve them
+	; AmigaOS entry point - can be called from CLI or Workbench
+	; Detection strategy:
+	;   CLI:       d0 = 0 (no WBStartup message on port yet)
+	;   Workbench: d0 = 0, but pr_CLI field in Process is NULL
+	;
+	; We need to check our Process structure to determine launch type
 
 	; Initialize SysBase from absolute location 4
 	move.l	4.w,a6
 	move.l	a6,_SysBase
 
+	; Clear WBStartup message pointer (assume CLI)
+	clr.l	_WBStartupMsg
+
+	; Get our Process structure via FindTask(NULL)
+	suba.l	a1,a1			; NULL parameter
+	jsr	-294(a6)		; FindTask() - LVO -294
+	move.l	d0,a4			; Save Process pointer in a4
+
+	; Check pr_CLI field in Process structure
+	; Process struct layout:
+	;   +0:  pr_Task (76 bytes)
+	;   +76: pr_MsgPort (34 bytes)
+	;   +110: pr_Pad (2 bytes)
+	;   +112: pr_SegList (4 bytes)
+	;   +116: pr_StackSize (4 bytes)
+	;   +120: pr_GlobVec (4 bytes)
+	;   +124: pr_TaskNum (4 bytes)
+	;   +128: pr_StackBase (4 bytes)
+	;   +132: pr_Result2 (4 bytes)
+	;   +136: pr_CurrentDir (4 bytes)
+	;   +140: pr_CIS (4 bytes)
+	;   +144: pr_COS (4 bytes)
+	;   +148: pr_ConsoleTask (4 bytes)
+	;   +152: pr_FileSystemTask (4 bytes)
+	;   +156: pr_CLI (4 bytes) <- This is what we check
+	;
+	move.l	156(a4),d0		; Get pr_CLI field
+	bne.s	.cli_startup		; If non-zero, we're CLI
+
+	; Workbench startup - get WBStartup message
+	; The message is at our Process's message port (pr_MsgPort at offset 76)
+	lea	76(a4),a0		; a0 = &pr_MsgPort
+	movea.l	_SysBase,a6		; Get exec.library base
+	jsr	-384(a6)		; WaitPort() - LVO -384
+
+	lea	76(a4),a0		; a0 = &pr_MsgPort again
+	movea.l	_SysBase,a6		; Get exec.library base
+	jsr	-372(a6)		; GetMsg() - LVO -372
+
+	move.l	d0,_WBStartupMsg	; Save WBStartup message pointer
+	beq.w	.exit_no_msg		; If NULL, something went wrong (use word-sized branch)
+
+	; Set current directory to first WBArg's lock (the program icon's directory)
+	; WBStartup struct layout:
+	;   +0:  sm_Message (20 bytes)
+	;   +20: sm_Process (4 bytes)
+	;   +24: sm_Segment (4 bytes)
+	;   +28: sm_NumArgs (4 bytes)
+	;   +32: sm_ToolWindow (4 bytes)
+	;   +36: sm_ArgList (4 bytes) <- pointer to WBArg array
+	;
+	move.l	d0,a2			; a2 = WBStartup message
+	move.l	36(a2),a3		; a3 = ArgList pointer
+	move.l	(a3),d1			; d1 = first WBArg's wa_Lock
+	beq.s	.no_lock		; If lock is NULL, skip CurrentDir
+
+	; Call CurrentDir(lock)
+	movea.l	_DOSBase,a6		; Get dos.library base (need to open it first!)
+	; Actually, we need to open DOS first. Let's do that below.
+
+.no_lock:
+.cli_startup:
 	; Initialize DOS library (needed by runtime I/O functions)
 	jsr	___dos_init
 	tst.l	d0
-	beq.s	.exit_no_dos		; Exit if DOS library couldn't open
+	beq.w	.exit_no_dos		; Exit if DOS library couldn't open (use word-sized branch)
 
+	; If Workbench startup and we have a lock, set current directory
+	tst.l	_WBStartupMsg
+	beq.s	.skip_currentdir	; Skip if CLI
+
+	move.l	_WBStartupMsg,a2	; Get WBStartup message
+	move.l	36(a2),a3		; Get ArgList pointer
+	move.l	(a3),d1			; Get first WBArg's wa_Lock
+	beq.s	.skip_currentdir	; Skip if lock is NULL
+
+	; Call CurrentDir(lock)
+	movea.l	_DOSBase,a6		; Get dos.library base
+	jsr	-126(a6)		; CurrentDir() - LVO -126
+
+.skip_currentdir:
 	; Initialize Graphics library
 	jsr	___graphics_init
 	; Note: Don't fail if graphics.library doesn't open - not all programs need it
@@ -103,9 +181,19 @@ _start:
 	jsr	___dos_cleanup
 	move.l	(sp)+,d0		; Restore return code
 
+	; Reply to WBStartup message if we got one
+	tst.l	_WBStartupMsg
+	beq.s	.no_wb_reply		; Skip if CLI
+
+	movea.l	_SysBase,a6		; Get exec.library base
+	movea.l	_WBStartupMsg,a1	; Get WBStartup message
+	jsr	-378(a6)		; ReplyMsg() - LVO -378
+
+.no_wb_reply:
 .exit_no_dos:
+.exit_no_msg:
 	; Exit with return code from main (already in d0)
-	rts				; Return to CLI
+	rts				; Return to CLI/Workbench
 
 .intuition_name:
 	dc.b	'intuition.library',0

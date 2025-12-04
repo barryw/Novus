@@ -2064,7 +2064,7 @@ public partial class IrBuilder
             // If method not found, try to instantiate it for monomorphized structs
             if (lenMethod == null && collectionType is IrStructType collectionStruct && collectionStruct.CacheKey != null)
             {
-                lenMethod = InstantiateGenericMethod(collectionStruct, "len");
+                lenMethod = _genericInstantiator.InstantiateStructMethod(collectionStruct, "len");
                 if (lenMethod != null)
                 {
                     lenMethodName = lenMethod.Name;
@@ -2150,7 +2150,7 @@ public partial class IrBuilder
             // If method not found, try to instantiate it for monomorphized structs
             if (getMethod == null && collectionType is IrStructType collectionStruct2 && collectionStruct2.CacheKey != null)
             {
-                getMethod = InstantiateGenericMethod(collectionStruct2, "get");
+                getMethod = _genericInstantiator.InstantiateStructMethod(collectionStruct2, "get");
                 if (getMethod != null)
                 {
                     getMethodName = getMethod.Name;

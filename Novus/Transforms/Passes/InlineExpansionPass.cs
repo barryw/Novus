@@ -1,15 +1,24 @@
 using Novus.IR;
+using Novus.SemanticAnalysis;
 
 namespace Novus.Transforms.Passes;
 
 /// <summary>
 /// Inline expansion transformation pass
 /// Replaces calls to small functions with the function body
+///
+/// Inlining Strategy:
+/// 1. Functions with @inline attribute are ALWAYS inlined (forced inlining)
+/// 2. Functions with @noinline attribute are NEVER inlined
+/// 3. Small functions (&lt; 20 instructions) may be inlined heuristically
+/// 4. Recursive functions are never inlined
+/// 5. Functions with complex control flow (> 3 basic blocks) are not inlined
 /// </summary>
 public class InlineExpansionPass : TransformPassBase
 {
     private const int MaxInlineInstructions = 20; // Don't inline functions larger than this
     private const int MaxInlineDepth = 3; // Prevent excessive inlining
+    private const int MaxForcedInlineInstructions = 100; // Max size for @inline functions
 
     public override string Name => "Inline Expansion";
 
@@ -174,14 +183,54 @@ public class InlineExpansionPass : TransformPassBase
     /// </summary>
     internal bool IsInlinable(IrFunction function)
     {
-        // Don't inline entry points
+        // Check for @noinline attribute - never inline these
+        if (function.Attributes?.Has(KnownAttributes.NoInline) == true)
+        {
+            return false;
+        }
+
+        // Check for @inline attribute - force inlining (with size limit)
+        bool forceInline = function.Attributes?.Has(KnownAttributes.Inline) == true;
+
+        // Don't inline entry points (even with @inline)
         if (function.Name == "main")
+        {
+            return false;
+        }
+
+        // Don't inline extern functions (they're declarations)
+        if (function.IsExtern)
+        {
+            return false;
+        }
+
+        // Don't inline exported functions (they may be called externally)
+        if (function.IsExported || function.Visibility == Visibility.Public)
+        {
+            return false;
+        }
+
+        // Don't inline recursive functions (even with @inline)
+        if (IsRecursive(function))
         {
             return false;
         }
 
         // Count total instructions
         int instructionCount = function.BasicBlocks.Sum(bb => bb.Instructions.Count);
+
+        // For @inline functions, use a larger threshold
+        if (forceInline)
+        {
+            if (instructionCount > MaxForcedInlineInstructions)
+            {
+                return false;
+            }
+            // @inline functions can have more complex control flow
+            return true;
+        }
+
+        // Heuristic inlining: check size and complexity
         if (instructionCount > MaxInlineInstructions)
         {
             return false;
@@ -189,12 +238,6 @@ public class InlineExpansionPass : TransformPassBase
 
         // Don't inline functions with complex control flow (for now)
         if (function.BasicBlocks.Count > 3)
-        {
-            return false;
-        }
-
-        // Don't inline recursive functions
-        if (IsRecursive(function))
         {
             return false;
         }

@@ -59,7 +59,7 @@ public partial class IrBuilder
         // Use base type name for template lookup (e.g., "Vec" not "Vec<bool>")
         var templateKey = $"{baseTypeName}::drop";
 
-        if (_genericMethodTemplates.ContainsKey(templateKey))
+        if (_genericInstantiator.HasMethodTemplate(templateKey))
         {
             // Instantiate the generic drop() method as a trait impl
             try
@@ -69,7 +69,7 @@ public partial class IrBuilder
                 if (structType != null)
                 {
                     // Pass isTraitImpl=true and traitName="Drop" for proper mangling
-                    instantiatedFunc = InstantiateGenericMethod(
+                    instantiatedFunc = _genericInstantiator.InstantiateStructMethod(
                         structType,
                         "drop",
                         isTraitImpl: true,

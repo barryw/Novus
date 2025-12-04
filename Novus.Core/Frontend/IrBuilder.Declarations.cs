@@ -16,7 +16,8 @@ public partial class IrBuilder
         var templateKey = $"{typeName}::{methodName}";
         // Capture current constants dictionary (make a copy so imports don't affect templates)
         var templateConstants = GetConstantsAsTuples();
-        _genericMethodTemplates[templateKey] = (genericParams, funcDecl, templateConstants);
+        var template = new Generics.GenericTemplate(genericParams, funcDecl, templateConstants);
+        _genericInstantiator.RegisterMethodTemplate(templateKey, template);
     }
 
     /// <summary>
@@ -534,7 +535,7 @@ public partial class IrBuilder
         // The code generator will check if it's already defined before emitting
         if (!_module.Structs.Any(s => s.StructName == modAssetStruct.StructName))
         {
-            _module.Structs.Add(modAssetStruct);
+            _module.AddStruct(modAssetStruct);
         }
 
         // Build field values dictionary
@@ -610,7 +611,7 @@ public partial class IrBuilder
                 new IrStructField("period_ntsc", IrIntType.U16)
             };
             sampleStruct = new IrStructType($"__AudioSample_{name}", fields);
-            _module.Structs.Add(sampleStruct);
+            _module.AddStruct(sampleStruct);
         }
 
         // Build field values dictionary
@@ -670,7 +671,7 @@ public partial class IrBuilder
         // The code generator will check if it's already defined before emitting
         if (!_module.Structs.Any(s => s.StructName == audioAssetStruct.StructName))
         {
-            _module.Structs.Add(audioAssetStruct);
+            _module.AddStruct(audioAssetStruct);
         }
 
         // Build field values dictionary
@@ -911,12 +912,59 @@ public partial class IrBuilder
         if (genericParams.Count == 0)
         {
             _ = existingStruct.SizeInBytes;
+
+            // Validate packed struct field alignment after offsets are calculated
+            ValidatePackedStructAlignment(existingStruct, context);
         }
 
         // Add struct to the module (if not already added)
         if (!_module.Structs.Contains(existingStruct))
         {
-            _module.Structs.Add(existingStruct);
+            _module.AddStruct(existingStruct);
+        }
+    }
+
+    /// <summary>
+    /// Validates that packed struct fields won't cause address errors on 68000.
+    /// On 68000, accessing a 16-bit or 32-bit value at an odd address causes a bus error.
+    /// When structs are marked with #[packed], fields may be placed at misaligned offsets.
+    /// </summary>
+    private void ValidatePackedStructAlignment(IrStructType structType, NovusParser.StructDeclarationContext context)
+    {
+        // Only check packed structs
+        if (structType.Attributes?.Has("packed") != true)
+        {
+            return;
+        }
+
+        // Check each field for misalignment
+        foreach (var field in structType.Fields)
+        {
+            // For arrays, check the element type, not the array size
+            // An array of bytes can start at any offset, but an array of u16/u32 must be word-aligned
+            IrType typeToCheck = field.Type;
+            if (field.Type is IrArrayType arrayType)
+            {
+                typeToCheck = arrayType.ElementType;
+            }
+
+            var elementSize = typeToCheck.SizeInBytes;
+
+            // Fields larger than 1 byte (i16, i32, u16, u32, pointers, references, structs with alignment > 1)
+            // must be aligned to even addresses on 68000
+            if (elementSize > 1 && field.Offset % 2 != 0)
+            {
+                var fieldCtx = context.structField()
+                    .FirstOrDefault(f => f.IDENTIFIER().GetText() == field.Name);
+
+                _diagnostics.ReportError(
+                    ErrorCodes.PackedStructMisalignedField,
+                    $"Packed struct '{structType.StructName}' has misaligned field '{field.Name}' " +
+                    $"at offset {field.Offset}. This will cause an address error (bus error) on 68000. " +
+                    $"Fields with size > 1 byte must be at even offsets in packed structs.",
+                    fieldCtx != null ? GetLocation(fieldCtx) : GetLocation(context)
+                );
+            }
         }
     }
 

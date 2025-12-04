@@ -51,4 +51,10 @@ public class BuildOptions
 
     [Option("rebuild-stdlib-cache", Required = false, HelpText = "Rebuild stdlib and cache it for future use")]
     public bool RebuildStdlibCache { get; set; }
+
+    [Option("no-cache", Required = false, HelpText = "Disable incremental compilation cache (force full rebuild)")]
+    public bool NoCache { get; set; }
+
+    [Option("cache-stats", Required = false, HelpText = "Display cache hit/miss statistics after compilation")]
+    public bool CacheStats { get; set; }
 }

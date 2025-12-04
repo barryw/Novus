@@ -1,0 +1,93 @@
+// Simple test of BlitterGuard RAII pattern
+//
+// This example demonstrates the proper way to use the Amiga blitter
+// with ownership arbitration. The BlitterGuard ensures OwnBlitter()
+// is called before use and DisownBlitter() is called when done,
+// even in error paths.
+//
+// Compile: novus compile blitter_guard_simple.novus -o blitter_guard_simple
+// Run: Copy to Amiga and execute from CLI
+
+from std::ffi::exec import OpenLibrary, CloseLibrary
+from std::ffi::amiga_structs import Library
+from std::ffi::graphics import OwnBlitter, DisownBlitter, WaitBlit
+
+// Simplified BlitterGuard struct (normally from std::graphics::blitter)
+struct SimpleBlitterGuard {
+    acquired: bool,
+}
+
+impl SimpleBlitterGuard {
+    pub fn acquire() -> SimpleBlitterGuard {
+        OwnBlitter()
+        return SimpleBlitterGuard { acquired: true }
+    }
+
+    pub fn wait(&self) {
+        if self.acquired {
+            WaitBlit()
+        }
+    }
+}
+
+impl Drop for SimpleBlitterGuard {
+    fn drop(&mut self) {
+        if self.acquired {
+            WaitBlit()
+            DisownBlitter()
+            self.acquired = false
+        }
+    }
+}
+
+pub fn main() -> i32 {
+    // Open graphics.library
+    let gfx_base: *Library = unsafe { OpenLibrary("graphics.library", 39) }
+    if !gfx_base {
+        return 10
+    }
+
+    // Test 1: Basic usage - guard acquires and releases automatically
+    {
+        let guard = SimpleBlitterGuard::acquire()
+        // Blitter is now owned by this program
+        // Do blitter operations here...
+        guard.wait()  // Wait for completion
+        // Guard's Drop will call WaitBlit() and DisownBlitter()
+    }
+
+    // Test 2: Error handling - guard still releases on early return
+    let result = test_with_error()
+    if result != 0 {
+        unsafe { CloseLibrary(gfx_base) }
+        return result
+    }
+
+    // Test 3: Multiple sequential operations
+    {
+        let guard1 = SimpleBlitterGuard::acquire()
+        guard1.wait()
+        // guard1 releases here
+    }
+    {
+        let guard2 = SimpleBlitterGuard::acquire()
+        guard2.wait()
+        // guard2 releases here
+    }
+
+    unsafe { CloseLibrary(gfx_base) }
+    return 0
+}
+
+fn test_with_error() -> i32 {
+    let guard = SimpleBlitterGuard::acquire()
+
+    // Simulate error condition
+    if true {
+        // Even though we return early, the guard's Drop
+        // will still call DisownBlitter()
+        return 0
+    }
+
+    return 0
+}

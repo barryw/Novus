@@ -132,7 +132,8 @@ class Program
         string stdLibPath,
         CompilerOptions options,
         ModuleCache moduleCache,
-        CircularImportDetector? circularImportDetector = null)
+        CircularImportDetector? circularImportDetector = null,
+        CompilationCache? compilationCache = null)
     {
         // Check for circular imports if detector is provided
         if (circularImportDetector != null)
@@ -151,6 +152,39 @@ class Program
             {
                 Console.WriteLine($"Error: Module file not found: {inputFile}");
                 return null;
+            }
+
+            // Check compilation cache first (if enabled)
+            if (compilationCache != null)
+            {
+                var configHash = CompilationCache.ComputeConfigHash(
+                    options.Cpu,
+                    options.Fpu,
+                    options.OptimizationLevel,
+                    options.BuildMode == BuildMode.Release ? "release" : "debug");
+
+                var (cachedModule, cachedStringLiterals, cachedImports) =
+                    compilationCache.GetCachedIrModule(inputFile, configHash);
+
+                if (cachedModule != null && cachedStringLiterals != null && cachedImports != null)
+                {
+                    // Cache hit - return cached compilation result
+                    if (options.Verbose)
+                    {
+                        Console.WriteLine($"  [Cache hit - IR] {Path.GetFileName(inputFile)}");
+                    }
+
+                    var cachedModuleName = Path.GetFileNameWithoutExtension(inputFile);
+                    var cachedHasMain = cachedModule.Functions.Any(f => f.Name == "main" && !f.IsExtern);
+
+                    return new ModuleIR(
+                        inputFile,
+                        cachedModuleName,
+                        cachedModule,
+                        cachedStringLiterals,
+                        cachedImports,
+                        cachedHasMain);
+                }
             }
 
             var source = await File.ReadAllTextAsync(inputFile);
@@ -269,6 +303,25 @@ class Program
 
             var moduleName = Path.GetFileNameWithoutExtension(inputFile);
             var hasMain = module.Functions.Any(f => f.Name == "main" && !f.IsExtern);
+
+            // Cache the successful compilation result
+            if (compilationCache != null)
+            {
+                var configHash = CompilationCache.ComputeConfigHash(
+                    options.Cpu,
+                    options.Fpu,
+                    options.OptimizationLevel,
+                    options.BuildMode == BuildMode.Release ? "release" : "debug");
+
+                compilationCache.CacheCompilationResult(
+                    inputFile,
+                    compilationUnit,
+                    module,
+                    irBuilder.StringLiterals,
+                    irBuilder.GetImportedModules(),
+                    configHash,
+                    hadErrors: false);
+            }
 
             return new ModuleIR(
                 inputFile,
@@ -454,7 +507,7 @@ class Program
                 optimizer.Run(module);
             }
 
-            // Generate C code
+            // Generate code (C or M68k assembly based on --backend flag)
             // OPTIMIZATION: For std::error, only generate functions that are actually imported
             // This enables smart cross-module DCE without needing whole-program analysis
             HashSet<string>? explicitEntryPoints = null;
@@ -467,10 +520,23 @@ class Program
             }
 
             var safetyLevel = options.GetSafetyLevel();
-            var codegen = new CCodeGenerator(module, irBuilder.StringLiterals, options.Cpu, options.Fpu, options.BuildMode, safetyLevel, explicitEntryPoints, false, options.PackageVersion);
-            var cCode = codegen.Generate();
 
-            return (cCode, irBuilder.GetImportedModules());
+            // Select code generation backend based on --backend flag
+            string generatedCode;
+            if (options.Backend == "m68k")
+            {
+                // Direct M68k assembly code generation
+                var m68kCodegen = new Codegen.M68k.M68kCodeGenerator(module, irBuilder.StringLiterals, options.Cpu);
+                generatedCode = m68kCodegen.Generate();
+            }
+            else
+            {
+                // C code generation (default)
+                var cCodegen = new CCodeGenerator(module, irBuilder.StringLiterals, options.Cpu, options.Fpu, options.BuildMode, safetyLevel, explicitEntryPoints, false, options.PackageVersion);
+                generatedCode = cCodegen.Generate();
+            }
+
+            return (generatedCode, irBuilder.GetImportedModules());
         }
         finally
         {
@@ -523,6 +589,14 @@ class Program
             // Create module cache for performance
             var moduleCache = new ModuleCache();
 
+            // Create compilation cache for incremental compilation (unless --no-cache is specified)
+            CompilationCache? compilationCache = null;
+            if (!options.NoCache)
+            {
+                var projectRoot = Path.GetDirectoryName(Path.GetFullPath(options.InputFile)) ?? ".";
+                compilationCache = new CompilationCache(projectRoot, CODEGEN_VERSION);
+            }
+
             // Create diagnostic bag and circular import detector
             var diagnostics = new DiagnosticBag();
             var circularImportDetector = new CircularImportDetector(diagnostics);
@@ -537,7 +611,7 @@ class Program
             // ============================================================================
 
             // Compile the main file to IR
-            var mainIR = await CompileModuleToIR(options.InputFile, stdLibPath, options, moduleCache, circularImportDetector);
+            var mainIR = await CompileModuleToIR(options.InputFile, stdLibPath, options, moduleCache, circularImportDetector, compilationCache);
             if (mainIR == null)
             {
                 if (diagnostics.HasErrors)
@@ -576,7 +650,7 @@ class Program
                 var displayName = moduleDir == "std" ? $"std::{moduleName}" : moduleName;
                 Console.WriteLine($"  → {displayName}");
 
-                var moduleIR = await CompileModuleToIR(modulePath, stdLibPath, options, moduleCache, circularImportDetector);
+                var moduleIR = await CompileModuleToIR(modulePath, stdLibPath, options, moduleCache, circularImportDetector, compilationCache);
                 if (moduleIR == null)
                 {
                     if (diagnostics.HasErrors)
@@ -1777,6 +1851,25 @@ ___stack:
             if (success)
             {
                 Console.WriteLine($"\n✓ Successfully created: {Path.GetFileName(exeFile)}");
+
+                // Display cache statistics if requested
+                if (options.CacheStats && compilationCache != null)
+                {
+                    var (parseHits, parseMisses, irHits, irMisses, totalFiles) = compilationCache.GetStats();
+                    var totalAttempts = parseHits + parseMisses + irHits + irMisses;
+                    var totalHits = parseHits + irHits;
+
+                    if (totalAttempts > 0)
+                    {
+                        var hitRate = (double)totalHits / totalAttempts * 100.0;
+                        Console.WriteLine("\n=== Compilation Cache Statistics ===");
+                        Console.WriteLine($"Parse cache:  {parseHits} hits, {parseMisses} misses");
+                        Console.WriteLine($"IR cache:     {irHits} hits, {irMisses} misses");
+                        Console.WriteLine($"Overall:      {totalHits}/{totalAttempts} ({hitRate:F1}% hit rate)");
+                        Console.WriteLine($"Cached files: {totalFiles}");
+                    }
+                }
+
                 return 0;
             }
             else

@@ -133,4 +133,22 @@ public class CompilerOptions
     /// </summary>
     [Option("rebuild-stdlib-cache", Required = false, HelpText = "Rebuild stdlib and cache it for future use")]
     public bool RebuildStdlibCache { get; set; }
+
+    /// <summary>
+    /// Disable incremental compilation cache (force full rebuild)
+    /// </summary>
+    [Option("no-cache", Required = false, HelpText = "Disable incremental compilation cache (force full rebuild)")]
+    public bool NoCache { get; set; }
+
+    /// <summary>
+    /// Display cache hit/miss statistics after compilation
+    /// </summary>
+    [Option("cache-stats", Required = false, HelpText = "Display cache hit/miss statistics after compilation")]
+    public bool CacheStats { get; set; }
+
+    /// <summary>
+    /// Code generation backend: c (VBCC) or m68k (direct assembly)
+    /// </summary>
+    [Option("backend", Required = false, Default = "c", HelpText = "Code generation backend: c (VBCC) or m68k (direct assembly)")]
+    public string Backend { get; set; } = "c";
 }

@@ -81,6 +81,7 @@ public static class ErrorCodes
     public const string MissingStructField = "E2700";
     public const string UninitializedField = "E2701";
     public const string UnknownStructField = "E2702";
+    public const string PackedStructMisalignedField = "E2703";
 
     // ========================================================================
     // E28XX: Function/Method Call Errors

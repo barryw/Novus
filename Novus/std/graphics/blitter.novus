@@ -166,11 +166,97 @@ pub enum BlitOp {
 }
 
 // ============================================================================
-// BlitHandle - Async operation handle
+// BlitterGuard - RAII Blitter Ownership
+// ============================================================================
+
+/// RAII guard that ensures proper blitter ownership arbitration.
+///
+/// The Amiga blitter is a shared resource between user programs, the system,
+/// and the copper. Before using the blitter, you MUST acquire exclusive access
+/// by calling OwnBlitter(). This guard ensures the blitter is properly acquired
+/// on creation and released on drop, even in error paths.
+///
+/// # Important
+/// Always use BlitterGuard before any direct blitter hardware operations.
+/// Failure to do so can cause crashes when the system or copper attempts to
+/// use the blitter simultaneously.
+///
+/// # Example
+/// ```novus
+/// {
+///     let guard = BlitterGuard::acquire()
+///     // ... perform blitter operations ...
+///     // Blitter is automatically released when guard goes out of scope
+/// }
+/// ```
+///
+/// # Safety
+/// This guard calls WaitBlit() before releasing the blitter to ensure all
+/// operations complete before ownership is transferred back to the system.
+pub struct BlitterGuard {
+    acquired: bool,
+}
+
+impl BlitterGuard {
+    /// Acquire exclusive blitter ownership.
+    ///
+    /// This calls OwnBlitter() to gain exclusive access to the blitter hardware.
+    /// The blitter will be automatically released when this guard is dropped.
+    ///
+    /// # Returns
+    /// A BlitterGuard that will release the blitter on drop.
+    pub fn acquire() -> BlitterGuard {
+        OwnBlitter()
+        return BlitterGuard { acquired: true }
+    }
+
+    /// Wait for the blitter to complete any pending operations.
+    ///
+    /// This is a non-destructive wait - the guard remains valid and the
+    /// blitter remains owned by this guard.
+    pub fn wait(&self) {
+        if self.acquired {
+            WaitBlit()
+        }
+    }
+
+    /// Check if the blitter is currently busy (non-blocking).
+    ///
+    /// Returns true if the blitter is still processing, false if idle.
+    @suppress("W0001", "Hardware register access")
+    pub fn is_busy(&self) -> bool {
+        unsafe {
+            let dmaconr: *u16 = (*u16)(CUSTOM_BASE + $002)
+            let status: u16 = *dmaconr
+            return (status & $4000) != 0
+        }
+    }
+}
+
+impl Drop for BlitterGuard {
+    /// Automatically releases blitter ownership when guard goes out of scope.
+    ///
+    /// This waits for the blitter to complete (WaitBlit) and then releases
+    /// ownership (DisownBlitter), ensuring safe cleanup even in error paths.
+    fn drop(&mut self) {
+        if self.acquired {
+            WaitBlit()
+            DisownBlitter()
+            self.acquired = false
+        }
+    }
+}
+
+// ============================================================================
+// BlitHandle - Async operation handle (DEPRECATED - use BlitterGuard)
 // ============================================================================
 
 /// Handle for an in-progress blitter operation
 /// When dropped, waits for completion and releases the blitter
+///
+/// # Deprecated
+/// This type is deprecated in favor of BlitterGuard which provides clearer
+/// RAII semantics and better error handling. Use BlitterGuard::acquire() instead.
 pub struct BlitHandle {
     owns_blitter: bool,
 }
@@ -343,9 +429,9 @@ impl BlitterOps {
                 }
             }
 
-            // Acquire blitter
-            OwnBlitter()
-            WaitBlit()
+            // Acquire blitter with RAII guard
+            let guard = BlitterGuard::acquire()
+            guard.wait()
 
             // Set up control registers
             var con0: u16 = BLTCON0_SRCA | BLTCON0_DEST | (u16)minterm
@@ -404,15 +490,13 @@ impl BlitterOps {
 
                 // Validate chip RAM and alignment
                 if !is_chip_ram(src_ptr) || !is_chip_ram(dst_ptr) {
-                    DisownBlitter()
                     return Result::Err(BlitterError::NotChipRam)
                 }
                 if ((u32)src_ptr & 1) != 0 || ((u32)dst_ptr & 1) != 0 {
-                    DisownBlitter()
                     return Result::Err(BlitterError::InvalidAlignment)
                 }
 
-                WaitBlit()
+                guard.wait()
 
                 // Set registers
                 *con1_ptr = con1
@@ -436,10 +520,7 @@ impl BlitterOps {
                 plane = plane + 1
             }
 
-            // Wait and release
-            WaitBlit()
-            DisownBlitter()
-
+            // Blitter will be automatically released when guard goes out of scope
             dst.mark_blitter_pending()
         }
 
@@ -505,9 +586,9 @@ impl BlitterOps {
             let mask_mod: i16 = (i16)mask_bytes_per_row - (i16)(width_words * 2)
             let dst_mod: i16 = (i16)dst_bytes_per_row - (i16)(width_words * 2)
 
-            // Acquire blitter
-            OwnBlitter()
-            WaitBlit()
+            // Acquire blitter with RAII guard
+            let guard = BlitterGuard::acquire()
+            guard.wait()
 
             // Cookie cut: D = (A & B) | (~A & C)
             // A = mask, B = source, C = background
@@ -544,7 +625,6 @@ impl BlitterOps {
             let mask_ptr: *u8 = (*u8)((u32)mask_plane + mask_offset)
 
             if !is_chip_ram(mask_ptr) {
-                DisownBlitter()
                 return Result::Err(BlitterError::NotChipRam)
             }
 
@@ -559,15 +639,13 @@ impl BlitterOps {
 
                 // Validate chip RAM and alignment
                 if !is_chip_ram(src_ptr) || !is_chip_ram(dst_ptr) {
-                    DisownBlitter()
                     return Result::Err(BlitterError::NotChipRam)
                 }
                 if ((u32)src_ptr & 1) != 0 || ((u32)dst_ptr & 1) != 0 || ((u32)mask_ptr & 1) != 0 {
-                    DisownBlitter()
                     return Result::Err(BlitterError::InvalidAlignment)
                 }
 
-                WaitBlit()
+                guard.wait()
 
                 // Set registers
                 *con1_ptr = con1
@@ -589,10 +667,7 @@ impl BlitterOps {
                 plane = plane + 1
             }
 
-            // Wait and release
-            WaitBlit()
-            DisownBlitter()
-
+            // Blitter will be automatically released when guard goes out of scope
             dst.mark_blitter_pending()
         }
 
@@ -643,9 +718,9 @@ impl BlitterOps {
             // Calculate modulo
             let mod_val: i16 = (i16)bytes_per_row - (i16)(width_words * 2)
 
-            // Acquire blitter
-            OwnBlitter()
-            WaitBlit()
+            // Acquire blitter with RAII guard
+            let guard = BlitterGuard::acquire()
+            guard.wait()
 
             // For pattern fill, we use BLTADAT as a constant source
             // The key is to NOT enable SRCA DMA - just set BLTADAT and use minterm
@@ -680,15 +755,13 @@ impl BlitterOps {
 
                 // Validate chip RAM and alignment
                 if !is_chip_ram(dst_ptr) {
-                    DisownBlitter()
                     return Result::Err(BlitterError::NotChipRam)
                 }
                 if ((u32)dst_ptr & 1) != 0 {
-                    DisownBlitter()
                     return Result::Err(BlitterError::InvalidAlignment)
                 }
 
-                WaitBlit()
+                guard.wait()
 
                 *con1_ptr = con1
                 *con0_ptr = con0
@@ -701,10 +774,7 @@ impl BlitterOps {
                 plane = plane + 1
             }
 
-            // Wait and release
-            WaitBlit()
-            DisownBlitter()
-
+            // Blitter will be automatically released when guard goes out of scope
             dst.mark_blitter_pending()
         }
 
@@ -778,9 +848,9 @@ impl BlitterOps {
             // Calculate modulo
             let mod_val: i16 = (i16)bytes_per_row - (i16)(width_words * 2)
 
-            // Acquire blitter
-            OwnBlitter()
-            WaitBlit()
+            // Acquire blitter with RAII guard
+            let guard = BlitterGuard::acquire()
+            guard.wait()
 
             let con0: u16 = BLTCON0_DEST | (u16)MINTERM_COPY
             let con1: u16 = 0
@@ -808,9 +878,7 @@ impl BlitterOps {
             let size_ptr: *u16 = (*u16)(CUSTOM_BASE + BLTSIZE)
             *size_ptr = bltsize
 
-            WaitBlit()
-            DisownBlitter()
-
+            // Blitter will be automatically released when guard goes out of scope
             dst.mark_blitter_pending()
         }
 
@@ -917,8 +985,9 @@ impl BlitterOps {
             // Calculate starting bit position (15 = leftmost, 0 = rightmost)
             let start_bit: u16 = (u16)(15 - (x1 & 15))
 
-            OwnBlitter()
-            WaitBlit()
+            // Acquire blitter with RAII guard
+            let guard = BlitterGuard::acquire()
+            guard.wait()
 
             // Build BLTCON0 for line mode:
             // - ASH (bits 15-12): Starting bit position
@@ -1026,9 +1095,7 @@ impl BlitterOps {
             let size_ptr: *u16 = (*u16)(CUSTOM_BASE + BLTSIZE)
             *size_ptr = bltsize
 
-            WaitBlit()
-            DisownBlitter()
-
+            // Blitter will be automatically released when guard goes out of scope
             dst.mark_blitter_pending()
         }
 
@@ -1112,8 +1179,9 @@ impl BlitterOps {
                 lwm = $FFFF << shift
             }
 
-            OwnBlitter()
-            WaitBlit()
+            // Acquire blitter with RAII guard
+            let guard = BlitterGuard::acquire()
+            guard.wait()
 
             let con0_ptr: *u16 = (*u16)(CUSTOM_BASE + BLTCON0)
             let con1_ptr: *u16 = (*u16)(CUSTOM_BASE + BLTCON1)
@@ -1139,15 +1207,13 @@ impl BlitterOps {
                 let dst_ptr: *u8 = (*u8)((u32)dst_plane + dst_offset)
 
                 if !is_chip_ram(src_ptr) || !is_chip_ram(dst_ptr) {
-                    DisownBlitter()
                     return Result::Err(BlitterError::NotChipRam)
                 }
                 if ((u32)src_ptr & 1) != 0 || ((u32)dst_ptr & 1) != 0 {
-                    DisownBlitter()
                     return Result::Err(BlitterError::InvalidAlignment)
                 }
 
-                WaitBlit()
+                guard.wait()
 
                 *con1_ptr = con1
                 *con0_ptr = con0
@@ -1163,9 +1229,7 @@ impl BlitterOps {
                 plane = plane + 1
             }
 
-            WaitBlit()
-            DisownBlitter()
-
+            // Blitter will be automatically released when guard goes out of scope
             dst.mark_blitter_pending()
         }
 
@@ -1204,8 +1268,9 @@ impl BlitterOps {
             let offset: u32 = ((u32)y * (u32)bytes_per_row) + ((u32)x_word * 2)
             let mod_val: i16 = (i16)bytes_per_row - (i16)(width_words * 2)
 
-            OwnBlitter()
-            WaitBlit()
+            // Acquire blitter with RAII guard
+            let guard = BlitterGuard::acquire()
+            guard.wait()
 
             // For invert: read C, apply NOT, write to D
             // Minterm $0F = ~A but we want ~C, so use $55 (NOT C)
@@ -1241,15 +1306,13 @@ impl BlitterOps {
                 let dst_ptr: *u8 = (*u8)((u32)dst_plane + offset)
 
                 if !is_chip_ram(dst_ptr) {
-                    DisownBlitter()
                     return Result::Err(BlitterError::NotChipRam)
                 }
                 if ((u32)dst_ptr & 1) != 0 {
-                    DisownBlitter()
                     return Result::Err(BlitterError::InvalidAlignment)
                 }
 
-                WaitBlit()
+                guard.wait()
 
                 *con1_ptr = con1
                 *con0_ptr = con0
@@ -1263,9 +1326,7 @@ impl BlitterOps {
                 plane = plane + 1
             }
 
-            WaitBlit()
-            DisownBlitter()
-
+            // Blitter will be automatically released when guard goes out of scope
             dst.mark_blitter_pending()
         }
 

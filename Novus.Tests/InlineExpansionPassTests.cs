@@ -40,7 +40,7 @@ public class InlineExpansionPassTests
     public void InlineExpansionPass_SimpleFunction_NoChanges()
     {
         var source = @"
-pub fn simple(x: i32) -> i32 {
+fn simple(x: i32) -> i32 {
     return x + 1
 }";
 
@@ -57,15 +57,15 @@ pub fn simple(x: i32) -> i32 {
     public void InlineExpansionPass_MultipleFunctions_Inlines()
     {
         var source = @"
-pub fn add(a: i32, b: i32) -> i32 {
+fn add(a: i32, b: i32) -> i32 {
     return a + b
 }
 
-pub fn mul(a: i32, b: i32) -> i32 {
+fn mul(a: i32, b: i32) -> i32 {
     return a * b
 }
 
-pub fn compute(x: i32) -> i32 {
+fn compute(x: i32) -> i32 {
     var sum: i32 = add(x, 1)
     return mul(sum, 2)
 }";
@@ -83,7 +83,7 @@ pub fn compute(x: i32) -> i32 {
     public void InlineExpansionPass_RecursiveFunction_NoChanges()
     {
         var source = @"
-pub fn factorial(n: i32) -> i32 {
+fn factorial(n: i32) -> i32 {
     if n <= 1 {
         return 1
     }
@@ -102,11 +102,11 @@ pub fn factorial(n: i32) -> i32 {
     public void InlineExpansionPass_SmallFunction_Inlines()
     {
         var source = @"
-pub fn increment(x: i32) -> i32 {
+fn increment(x: i32) -> i32 {
     return x + 1
 }
 
-pub fn use_increment(y: i32) -> i32 {
+fn use_increment(y: i32) -> i32 {
     return increment(y)
 }";
 
@@ -123,7 +123,7 @@ pub fn use_increment(y: i32) -> i32 {
     public void InlineExpansionPass_LargeFunction_NoChanges()
     {
         var source = @"
-pub fn large_function(x: i32) -> i32 {
+fn large_function(x: i32) -> i32 {
     var a: i32 = x + 1
     var b: i32 = a * 2
     var c: i32 = b - 3
@@ -149,7 +149,7 @@ pub fn large_function(x: i32) -> i32 {
     public void InlineExpansionPass_MainFunction_NoChanges()
     {
         var source = @"
-pub fn main() -> i32 {
+fn main() -> i32 {
     return 0
 }";
 
@@ -165,15 +165,15 @@ pub fn main() -> i32 {
     public void InlineExpansionPass_NestedCalls_Inlines()
     {
         var source = @"
-pub fn add(a: i32, b: i32) -> i32 {
+fn add(a: i32, b: i32) -> i32 {
     return a + b
 }
 
-pub fn double(x: i32) -> i32 {
+fn double(x: i32) -> i32 {
     return add(x, x)
 }
 
-pub fn quadruple(x: i32) -> i32 {
+fn quadruple(x: i32) -> i32 {
     return double(double(x))
 }";
 
@@ -190,14 +190,14 @@ pub fn quadruple(x: i32) -> i32 {
     public void InlineExpansionPass_MutualRecursion_Inlines()
     {
         var source = @"
-pub fn is_even(n: i32) -> bool {
+fn is_even(n: i32) -> bool {
     if n == 0 {
         return true
     }
     return is_odd(n - 1)
 }
 
-pub fn is_odd(n: i32) -> bool {
+fn is_odd(n: i32) -> bool {
     if n == 0 {
         return false
     }
@@ -218,7 +218,7 @@ pub fn is_odd(n: i32) -> bool {
     public void InlineExpansionPass_ComplexControlFlow_NoChanges()
     {
         var source = @"
-pub fn complex(x: i32, y: i32) -> i32 {
+fn complex(x: i32, y: i32) -> i32 {
     if x > 0 {
         if y > 0 {
             return x + y
@@ -243,7 +243,7 @@ pub fn complex(x: i32, y: i32) -> i32 {
     public void InlineExpansionPass_LoopFunction_NoChanges()
     {
         var source = @"
-pub fn sum_to_n(n: i32) -> i32 {
+fn sum_to_n(n: i32) -> i32 {
     var sum: i32 = 0
     var i: i32 = 0
     while i <= n {
@@ -270,11 +270,11 @@ pub struct Point {
     y: i32,
 }
 
-pub fn make_point(x: i32, y: i32) -> Point {
+fn make_point(x: i32, y: i32) -> Point {
     return Point { x: x, y: y }
 }
 
-pub fn use_point() -> Point {
+fn use_point() -> Point {
     return make_point(1, 2)
 }";
 
@@ -296,11 +296,11 @@ pub enum Status {
     Inactive,
 }
 
-pub fn get_active() -> Status {
+fn get_active() -> Status {
     return Status::Active
 }
 
-pub fn check_status() -> Status {
+fn check_status() -> Status {
     return get_active()
 }";
 
@@ -327,7 +327,7 @@ pub fn check_status() -> Status {
     public void IsInlinable_MainFunction_ReturnsFalse()
     {
         var source = @"
-pub fn main() -> i32 {
+fn main() -> i32 {
     return 0
 }";
         var module = BuildIR(source);
@@ -343,7 +343,7 @@ pub fn main() -> i32 {
     public void IsInlinable_SmallSimpleFunction_ReturnsTrue()
     {
         var source = @"
-pub fn add(a: i32, b: i32) -> i32 {
+fn add(a: i32, b: i32) -> i32 {
     return a + b
 }";
         var module = BuildIR(source);
@@ -359,7 +359,7 @@ pub fn add(a: i32, b: i32) -> i32 {
     public void IsInlinable_TwoInstructions_ReturnsTrue()
     {
         var source = @"
-pub fn increment(x: i32) -> i32 {
+fn increment(x: i32) -> i32 {
     return x + 1
 }";
         var module = BuildIR(source);
@@ -375,7 +375,7 @@ pub fn increment(x: i32) -> i32 {
     public void IsInlinable_LargeFunction_ReturnsFalse()
     {
         var source = @"
-pub fn large_function(x: i32) -> i32 {
+fn large_function(x: i32) -> i32 {
     var a: i32 = x + 1
     var b: i32 = a * 2
     var c: i32 = b - 3
@@ -412,7 +412,7 @@ pub fn large_function(x: i32) -> i32 {
     public void IsInlinable_ComplexControlFlow_ReturnsTrue()
     {
         var source = @"
-pub fn complex(x: i32, y: i32, z: i32) -> i32 {
+fn complex(x: i32, y: i32, z: i32) -> i32 {
     if x > 0 {
         if y > 0 {
             if z > 0 {
@@ -438,7 +438,7 @@ pub fn complex(x: i32, y: i32, z: i32) -> i32 {
     public void IsInlinable_SimpleIf_ReturnsTrue()
     {
         var source = @"
-pub fn max(a: i32, b: i32) -> i32 {
+fn max(a: i32, b: i32) -> i32 {
     if a > b {
         return a
     }
@@ -458,7 +458,7 @@ pub fn max(a: i32, b: i32) -> i32 {
     public void IsInlinable_RecursiveFunction_ReturnsFalse()
     {
         var source = @"
-pub fn factorial(n: i32) -> i32 {
+fn factorial(n: i32) -> i32 {
     if n <= 1 {
         return 1
     }
@@ -477,7 +477,7 @@ pub fn factorial(n: i32) -> i32 {
     public void IsInlinable_FunctionWithLoop_ReturnsTrue()
     {
         var source = @"
-pub fn sum_to_n(n: i32) -> i32 {
+fn sum_to_n(n: i32) -> i32 {
     var sum: i32 = 0
     var i: i32 = 0
     while i <= n {
@@ -504,7 +504,7 @@ pub fn sum_to_n(n: i32) -> i32 {
     public void IsRecursive_NonRecursiveFunction_ReturnsFalse()
     {
         var source = @"
-pub fn add(a: i32, b: i32) -> i32 {
+fn add(a: i32, b: i32) -> i32 {
     return a + b
 }";
         var module = BuildIR(source);
@@ -520,7 +520,7 @@ pub fn add(a: i32, b: i32) -> i32 {
     public void IsRecursive_DirectRecursion_ReturnsTrue()
     {
         var source = @"
-pub fn factorial(n: i32) -> i32 {
+fn factorial(n: i32) -> i32 {
     if n <= 1 {
         return 1
     }
@@ -539,7 +539,7 @@ pub fn factorial(n: i32) -> i32 {
     public void IsRecursive_TailRecursion_ReturnsTrue()
     {
         var source = @"
-pub fn countdown(n: i32) -> i32 {
+fn countdown(n: i32) -> i32 {
     if n <= 0 {
         return 0
     }
@@ -558,7 +558,7 @@ pub fn countdown(n: i32) -> i32 {
     public void IsRecursive_MultipleRecursiveCalls_ReturnsTrue()
     {
         var source = @"
-pub fn fibonacci(n: i32) -> i32 {
+fn fibonacci(n: i32) -> i32 {
     if n <= 1 {
         return n
     }
@@ -577,11 +577,11 @@ pub fn fibonacci(n: i32) -> i32 {
     public void IsRecursive_CallsOtherFunction_ReturnsFalse()
     {
         var source = @"
-pub fn add(a: i32, b: i32) -> i32 {
+fn add(a: i32, b: i32) -> i32 {
     return a + b
 }
 
-pub fn compute(x: i32) -> i32 {
+fn compute(x: i32) -> i32 {
     return add(x, 1)
 }";
         var module = BuildIR(source);
@@ -597,7 +597,7 @@ pub fn compute(x: i32) -> i32 {
     public void IsRecursive_NoFunctionCalls_ReturnsFalse()
     {
         var source = @"
-pub fn square(x: i32) -> i32 {
+fn square(x: i32) -> i32 {
     return x * x
 }";
         var module = BuildIR(source);
@@ -613,7 +613,7 @@ pub fn square(x: i32) -> i32 {
     public void IsRecursive_ComplexRecursion_ReturnsTrue()
     {
         var source = @"
-pub fn ackermann(m: i32, n: i32) -> i32 {
+fn ackermann(m: i32, n: i32) -> i32 {
     if m == 0 {
         return n + 1
     }
