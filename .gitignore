@@ -53,3 +53,9 @@ vendor/vbcc/bin/
 vendor/vbcc/**/*.o
 vendor/vbcc/**/*.a
 vendor/vbcc/bin/.build_complete
+
+# Novus compilation cache
+.novus-cache/
+
+# Linker map files
+*.map
