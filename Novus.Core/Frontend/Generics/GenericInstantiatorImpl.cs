@@ -347,6 +347,11 @@ public class GenericInstantiatorImpl : IGenericInstantiator
             // Build function body
             var savedFunction = _context.CurrentFunction;
             var savedBlock = _context.CurrentBlock;
+            // CRITICAL: Save and restore local variables to avoid corrupting the outer function's state
+            // When monomorphizing an enum method (e.g. Option::is_some) called from another method (e.g. HashMap::insert),
+            // we must not overwrite the outer method's local variables (especially 'self')
+            var savedLocalVariables = new Dictionary<string, IrLocalVariable>(_context.LocalVariables);
+            _context.LocalVariables.Clear();
             _context.CurrentFunction = function;
 
             try
@@ -371,6 +376,12 @@ public class GenericInstantiatorImpl : IGenericInstantiator
             {
                 _context.CurrentFunction = savedFunction;
                 _context.CurrentBlock = savedBlock;
+                // Restore local variables from outer function
+                _context.LocalVariables.Clear();
+                foreach (var kvp in savedLocalVariables)
+                {
+                    _context.LocalVariables[kvp.Key] = kvp.Value;
+                }
             }
 
             _cache.MarkMethodInstantiated(instantiationKey);

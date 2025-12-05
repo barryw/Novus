@@ -23,6 +23,8 @@ public partial class CompilationCache
     private readonly ConcurrentDictionary<string, FileState> _fileStates = new();
     private readonly ConcurrentDictionary<string, CachedParseResult> _parseTrees = new();
     private readonly ConcurrentDictionary<string, CachedIrModule> _compiledModules = new();
+    private readonly List<Task> _pendingSaves = new();
+    private readonly object _pendingSavesLock = new();
 
     // Statistics
     private int _parseHits = 0;
@@ -260,7 +262,44 @@ public partial class CompilationCache
         };
 
         // Persist to disk (asynchronously to avoid blocking compilation)
-        _ = Task.Run(() => SaveFileState(fullPath, fileState));
+        var saveTask = Task.Run(() => SaveFileState(fullPath, fileState));
+        lock (_pendingSavesLock)
+        {
+            // Remove completed tasks to prevent unbounded growth
+            _pendingSaves.RemoveAll(t => t.IsCompleted);
+            _pendingSaves.Add(saveTask);
+        }
+    }
+
+    /// <summary>
+    /// Wait for all pending save operations to complete.
+    /// Useful for testing or ensuring persistence before process exit.
+    /// </summary>
+    public async Task FlushAsync()
+    {
+        Task[] tasksToWait;
+        lock (_pendingSavesLock)
+        {
+            tasksToWait = _pendingSaves.ToArray();
+        }
+
+        if (tasksToWait.Length > 0)
+        {
+            await Task.WhenAll(tasksToWait);
+        }
+
+        lock (_pendingSavesLock)
+        {
+            _pendingSaves.RemoveAll(t => t.IsCompleted);
+        }
+    }
+
+    /// <summary>
+    /// Synchronously wait for all pending save operations to complete.
+    /// </summary>
+    public void Flush()
+    {
+        FlushAsync().GetAwaiter().GetResult();
     }
 
     /// <summary>

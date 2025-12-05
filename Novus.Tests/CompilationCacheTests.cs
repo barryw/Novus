@@ -325,8 +325,8 @@ public class CompilationCacheTests : IDisposable
             configHash,
             hadErrors: false);
 
-        // Give async save time to complete
-        System.Threading.Thread.Sleep(500);
+        // Wait for async save to complete (uses proper synchronization instead of sleep)
+        _cache.Flush();
 
         // Create new cache instance (simulates new compiler invocation)
         var cache2 = new CompilationCache(_testCacheDir, TestCompilerVersion);

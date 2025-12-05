@@ -40,10 +40,8 @@ public class ExampleCompilationTests
             .Where(name => !name.StartsWith("blitter_", StringComparison.OrdinalIgnoreCase))
             // Exclude examples with known compiler bugs (tracked as TODOs):
             // - WBStartup: C code generation forward declaration issues
-            // - HashMap: Option type member access in generic contexts
             .Where(name => !name.StartsWith("workbench_startup", StringComparison.OrdinalIgnoreCase))
             .Where(name => name != "test_amiga_abi")
-            .Where(name => name != "hashmap_test")
             .OrderBy(name => name)
             .Select(name => new object[] { name });
 
