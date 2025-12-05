@@ -7,7 +7,6 @@ from std::core import Result
 from std::audio::ptplayer import AudioAsset
 from std::audio::streaming import AudioStreamer
 from std::audio::errors import AudioError
-from std::memory::chip import is_chip_ram
 from std::io::file import write
 from std::hardware::chipset import DISPLAY, DisplayType
 from std::ffi::graphics import WaitTOF
@@ -27,43 +26,18 @@ static music: AudioAsset = []
 // ============================================================================
 
 pub fn main() -> i32 {
-    write("Streaming Audio Test (STEREO)\n")
-    write("=============================\n\n")
+    write("Streaming Audio Test\n")
 
     let is_pal = DISPLAY() == DisplayType::PAL
-    write("Display: %s\n", if is_pal { "PAL" } else { "NTSC" })
-
-    // Show audio info
-    write("\nAudio Asset Info:\n")
-    write("  Size: %ld bytes (%ld KB)\n", music.size, music.size / 1024)
-    write("  Sample rate: %ld Hz\n", music.sample_rate)
-    write("  In chip RAM: %s\n", if is_chip_ram(music.data) { "yes" } else { "no" })
-
-    let duration_secs = music.size / music.sample_rate
-    write("  Duration: ~%ld seconds\n\n", duration_secs)
 
     // Get the correct period for PAL/NTSC
     let period = if is_pal { music.period_pal } else { music.period_ntsc }
 
     // Create the streamer in STEREO mode (one left + one right channel)
-    write("Creating STEREO AudioStreamer...\n")
     let streamer_result = AudioStreamer::new_stereo(music.data, music.size, period, music.sample_rate)
 
     match streamer_result {
         Result::Ok(mut streamer) => {
-            // Debug the raw channel mask value directly from streamer
-            // NOTE: Must use %lx (not %x) for 32-bit values on AmigaOS VPrintf!
-            write("DEBUG: streamer.channels_raw() = $%02lx\n", (i32)streamer.channels_raw())
-            // Get pointer to call methods that don't auto-deref
-            let sptr = &streamer
-            write("DEBUG: left_mask() = $%02lx\n", (i32)sptr.left_mask())
-            write("DEBUG: right_mask() = $%02lx\n", (i32)sptr.right_mask())
-            write("DEBUG: streamer.is_stereo() = %s\n", if streamer.is_stereo() { "true" } else { "false" })
-            write("Allocated channels: %ld + %ld (stereo)\n", (i32)streamer.channel(), (i32)streamer.channel2())
-
-            // Debug: Check total_size immediately after creation
-            write("DEBUG: total_size immediately after creation = %lu\n", streamer.total_size())
-            write("DEBUG: music.size = %lu\n", music.size)
 
             // Start playing (no loop)
             let play_result = streamer.play(false)
@@ -82,18 +56,18 @@ pub fn main() -> i32 {
                             }
                         }
 
-                        // Show progress every frame on same line
-                        let progress = streamer.progress()
-                        let pos = streamer.position()
-                        write("\rFrame %4lu: %3lu%% pos=%lu/%lu   ",
-                              frame_count, progress, pos, streamer.total_size())
+                        // Show progress every 50 frames
+                        if frame_count % 50 == 0 {
+                            let progress = streamer.progress()
+                            write("\r%3lu%%", progress)
+                        }
                         frame_count++
 
                         // Wait for next vertical blank
                         WaitTOF()
                     }
 
-                    write("\n\nPlayback finished!\n")
+                    write("\nDone\n")
                 },
                 Result::Err(_) => {
                     write("ERROR: Failed to start playback\n")
@@ -117,6 +91,5 @@ pub fn main() -> i32 {
         }
     }
 
-    write("\nDone!\n")
     return 0
 }

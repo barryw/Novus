@@ -649,4 +649,68 @@ public class CCodeGeneratorHelperTests
     }
 
     #endregion
+
+    #region EmitIntegerConstant Tests
+
+    [Fact]
+    public void EmitIntegerConstant_PointerTypedConstant_AddsCast()
+    {
+        // When a constant has pointer type, it should be cast
+        var gen = CreateGenerator();
+        var ptrType = new IrPointerType(new IrIntType(8, false));  // *u8
+        var constant = new IrConstant(100, ptrType);
+
+        var result = gen.EmitIntegerConstant(constant);
+        Assert.Equal("(uint8_t*)100", result);
+    }
+
+    [Fact]
+    public void EmitIntegerConstant_PointerTypedConstant_NegativeOne_UsesNullPtrSentinel()
+    {
+        // -1 as pointer should use NULL_PTR_SENTINEL for VBCC compatibility
+        var gen = CreateGenerator();
+        var ptrType = new IrPointerType(new IrIntType(8, false));
+        var constant = new IrConstant(-1, ptrType);
+
+        var result = gen.EmitIntegerConstant(constant);
+        Assert.Equal("(uint8_t*)NULL_PTR_SENTINEL", result);
+    }
+
+    [Fact]
+    public void EmitIntegerConstant_ZeroValue_ReturnsJustZero()
+    {
+        // Zero should be emitted as plain "0" for C's implicit null conversion
+        var gen = CreateGenerator();
+        var i32Type = new IrIntType(32, true);
+        var constant = new IrConstant(0, i32Type);
+
+        var result = gen.EmitIntegerConstant(constant);
+        Assert.Equal("0", result);
+    }
+
+    [Fact]
+    public void EmitIntegerConstant_I32Value_AddsCast()
+    {
+        // 32-bit signed integers should have explicit cast for VBCC
+        var gen = CreateGenerator();
+        var i32Type = new IrIntType(32, true);
+        var constant = new IrConstant(42, i32Type);
+
+        var result = gen.EmitIntegerConstant(constant);
+        Assert.Equal("(int32_t)42", result);
+    }
+
+    [Fact]
+    public void EmitIntegerConstant_U32Value_AddsCastAndSuffix()
+    {
+        // 32-bit unsigned integers should have cast and U suffix
+        var gen = CreateGenerator();
+        var u32Type = new IrIntType(32, false);
+        var constant = new IrConstant(42, u32Type);
+
+        var result = gen.EmitIntegerConstant(constant);
+        Assert.Equal("(uint32_t)42U", result);
+    }
+
+    #endregion
 }

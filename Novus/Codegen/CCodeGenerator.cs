@@ -11,7 +11,14 @@ namespace Novus.Codegen;
 /// Generates C99 code from Novus IR that can be compiled with VBCC.
 /// Target: AmigaOS 2.0+ (68020+) using +aos68k -c99
 /// </summary>
-public class CCodeGenerator
+/// <remarks>
+/// This class is split into multiple partial class files for maintainability:
+/// - CCodeGenerator.cs - Main class with constructor and entry points
+/// - CCodeGenerator.Types.cs - Type emission (structs, enums, tuples)
+/// - CCodeGenerator.Instructions.cs - IR instruction emission
+/// - CCodeGenerator.Helpers.cs - Utility/helper methods
+/// </remarks>
+public partial class CCodeGenerator
 {
     private readonly IrModule _module;
     private readonly List<IrStringLiteral> _stringLiterals;
@@ -80,6 +87,10 @@ public class CCodeGenerator
     private int _lastEmittedDebugLine = -1;
     // Counter for unique debug label generation within a function
     private int _debugLabelCounter = 0;
+
+    // Track last emitted #line directive to avoid duplicates
+    private int _lastLineDirectiveLine = -1;
+    private string? _lastLineDirectiveFile = null;
 
     // VBCC WORKAROUND: Track comparison expressions that can be inlined into conditional branches.
     // VBCC has a bug where it can move stack cleanup instructions between a comparison result
@@ -1185,6 +1196,9 @@ public class CCodeGenerator
         // Reset debug line tracking for this function
         _lastEmittedDebugLine = -1;
         _debugLabelCounter = 0;
+        // Reset #line directive tracking for this function
+        _lastLineDirectiveLine = -1;
+        _lastLineDirectiveFile = null;
 
         // Track which parameters were converted to pointers in the C signature
         _pointerConvertedParameters.Clear();
@@ -3827,6 +3841,9 @@ public class CCodeGenerator
         // Reset debug line tracking for this function
         _lastEmittedDebugLine = -1;
         _debugLabelCounter = 0;
+        // Reset #line directive tracking for this function
+        _lastLineDirectiveLine = -1;
+        _lastLineDirectiveFile = null;
 
         // Run liveness analysis for variable slot reuse
         var livenessAnalysis = new LivenessAnalysis(function);
@@ -4110,6 +4127,40 @@ public class CCodeGenerator
     }
 
     /// <summary>
+    /// Emit a #line directive if the instruction has a location that differs from the last emitted directive.
+    /// This makes compiler error messages reference the original Novus source file and line.
+    /// Only emitted in Debug builds to help with debugging generated C code.
+    /// </summary>
+    private void MaybeEmitLineDirective(IrInstruction instruction)
+    {
+        // Only emit #line directives in debug builds
+        if (_buildMode != BuildMode.Debug)
+            return;
+
+        // Skip if no location info
+        if (instruction.Location == null)
+            return;
+
+        var loc = instruction.Location;
+
+        // Skip if same file and line as last directive (avoid redundant directives)
+        if (loc.Line == _lastLineDirectiveLine && loc.FilePath == _lastLineDirectiveFile)
+            return;
+
+        // Skip IrLabel instructions - they're not real statements
+        if (instruction is IrLabel)
+            return;
+
+        _lastLineDirectiveLine = loc.Line;
+        _lastLineDirectiveFile = loc.FilePath;
+
+        // Emit #line directive: #line linenum "filename"
+        // The filename must be escaped for C string literal (quotes, backslashes)
+        var escapedPath = loc.FilePath.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        _output.AppendLine($"#line {loc.Line} \"{escapedPath}\"");
+    }
+
+    /// <summary>
     /// Emit a debug line marker if the instruction has a location that differs from the last emitted line.
     /// This creates an addressable label in the generated code that the runtime can map back to source.
     /// Only emitted when building with SafetyLevel.Paranoid (--safety-level 3).
@@ -4152,6 +4203,9 @@ public class CCodeGenerator
 
     private void EmitInstruction(IrInstruction instruction)
     {
+        // Emit #line directive for better error messages in debug builds
+        MaybeEmitLineDirective(instruction);
+
         // Emit debug line marker before the instruction if location changed
         MaybeEmitDebugLineMarker(instruction);
 
@@ -4552,7 +4606,15 @@ public class CCodeGenerator
                 {
                     var cType = GetCType(localDecl.Type);
                     var initType = GetCType(localDecl.InitialValue.Type);
-                    if (initType != cType)
+
+                    // SAFETY: Always add explicit cast when assigning integer constants to pointer types
+                    var needsCast = initType != cType;
+                    if (!needsCast && localDecl.Type is IrPointerType && localDecl.InitialValue is IrConstant)
+                    {
+                        needsCast = true;
+                    }
+
+                    if (needsCast)
                     {
                         _output.AppendLine($"    {varName} = ({cType}){initValue};");
                     }
@@ -4657,7 +4719,19 @@ public class CCodeGenerator
                 var decl = GetCVariableDeclaration(localDecl.Type, varName);
                 var cType = GetCType(localDecl.Type);
                 var initType = GetCType(localDecl.InitialValue.Type);
-                if (initType != cType)
+
+                // SAFETY: Always add explicit cast when assigning integer constants to pointer types
+                // This handles edge cases where the IR has coerced the type but the emitted value
+                // is still just an integer literal without a cast
+                var needsCast = initType != cType;
+                if (!needsCast && localDecl.Type is IrPointerType && localDecl.InitialValue is IrConstant constVal)
+                {
+                    // Integer constant assigned to pointer - ensure cast is present
+                    // (EmitIntegerConstant should handle this, but be defensive)
+                    needsCast = true;
+                }
+
+                if (needsCast)
                 {
                     _output.AppendLine($"    {decl} = ({cType}){initValue};");
                 }

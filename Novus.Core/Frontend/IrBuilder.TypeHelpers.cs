@@ -501,6 +501,98 @@ public partial class IrBuilder
         };
     }
 
+    #region Safe Symbol Lookup Helpers
+
+    /// <summary>
+    /// Safely lookup an enum type, throwing a descriptive exception if not found.
+    /// Use this instead of LookupEnum()! pattern to avoid cryptic NullReferenceExceptions.
+    /// </summary>
+    /// <remarks>
+    /// This method should be called only when the enum is known to exist (e.g., after HasEnum check).
+    /// The exception is a CompilerBugException because reaching this with a non-existent enum
+    /// indicates a bug in the compiler's internal logic, not a user error.
+    /// </remarks>
+    private IrEnumType RequireEnum(string typeName, Antlr4.Runtime.ParserRuleContext? context = null)
+    {
+        var enumType = _symbols.LookupEnum(typeName);
+        if (enumType == null)
+        {
+            throw new CompilerBugException(
+                $"Expected enum '{typeName}' to exist but lookup returned null. " +
+                "This indicates HasEnum/LookupEnum inconsistency or a race condition.",
+                "RequireEnum",
+                _inputFilePath,
+                context?.Start?.Line
+            );
+        }
+        return enumType;
+    }
+
+    /// <summary>
+    /// Safely lookup a struct type, throwing a descriptive exception if not found.
+    /// Use this instead of LookupStruct()! pattern to avoid cryptic NullReferenceExceptions.
+    /// </summary>
+    /// <remarks>
+    /// This method should be called only when the struct is known to exist (e.g., after HasStruct check).
+    /// The exception is a CompilerBugException because reaching this with a non-existent struct
+    /// indicates a bug in the compiler's internal logic, not a user error.
+    /// </remarks>
+    private IrStructType RequireStruct(string typeName, Antlr4.Runtime.ParserRuleContext? context = null)
+    {
+        var structType = _symbols.LookupStruct(typeName);
+        if (structType == null)
+        {
+            throw new CompilerBugException(
+                $"Expected struct '{typeName}' to exist but lookup returned null. " +
+                "This indicates HasStruct/LookupStruct inconsistency or a race condition.",
+                "RequireStruct",
+                _inputFilePath,
+                context?.Start?.Line
+            );
+        }
+        return structType;
+    }
+
+    /// <summary>
+    /// Safely lookup a monomorphized enum type, throwing a descriptive exception if not found.
+    /// Use this instead of LookupMonomorphizedEnum()! pattern.
+    /// </summary>
+    private IrEnumType RequireMonomorphizedEnum(string cacheKey, Antlr4.Runtime.ParserRuleContext? context = null)
+    {
+        var enumType = _symbols.LookupMonomorphizedEnum(cacheKey);
+        if (enumType == null)
+        {
+            throw new CompilerBugException(
+                $"Expected monomorphized enum with cache key '{cacheKey}' to exist but lookup returned null.",
+                "RequireMonomorphizedEnum",
+                _inputFilePath,
+                context?.Start?.Line
+            );
+        }
+        return enumType;
+    }
+
+    /// <summary>
+    /// Safely lookup a monomorphized struct type, throwing a descriptive exception if not found.
+    /// Use this instead of LookupMonomorphizedStruct()! pattern.
+    /// </summary>
+    private IrStructType RequireMonomorphizedStruct(string cacheKey, Antlr4.Runtime.ParserRuleContext? context = null)
+    {
+        var structType = _symbols.LookupMonomorphizedStruct(cacheKey);
+        if (structType == null)
+        {
+            throw new CompilerBugException(
+                $"Expected monomorphized struct with cache key '{cacheKey}' to exist but lookup returned null.",
+                "RequireMonomorphizedStruct",
+                _inputFilePath,
+                context?.Start?.Line
+            );
+        }
+        return structType;
+    }
+
+    #endregion
+
     /// <summary>
     /// Parse an impl target type (either primitive or named) and return the type name and implementing type.
     /// This helper consolidates the repeated impl target type parsing logic that appears 5+ times across

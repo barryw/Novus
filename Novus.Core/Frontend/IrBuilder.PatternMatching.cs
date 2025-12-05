@@ -112,7 +112,7 @@ public partial class IrBuilder
             if (_symbols.HasEnum(genericType.ParameterName))
             {
                 isEnumMatch = true;
-                enumTypeForValidation = _symbols.LookupEnum(genericType.ParameterName)!;
+                enumTypeForValidation = RequireEnum(genericType.ParameterName);
             }
         }
 

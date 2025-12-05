@@ -114,16 +114,7 @@ class Program
         return 0;
     }
 
-    /// <summary>
-    /// Module IR compilation result (before C code generation)
-    /// </summary>
-    record ModuleIR(
-        string ModulePath,
-        string ModuleName,
-        IrModule IrModule,
-        List<IrStringLiteral> StringLiterals,
-        List<string> ImportedModules,
-        bool HasMain);
+    // ModuleIR is now defined in Novus.Compilation.ModuleIR
 
     /// <summary>
     /// Compile a single Novus module to IR (without generating C code yet).
@@ -613,6 +604,14 @@ class Program
         Console.WriteLine($"Target: {options.Cpu.ToUpper()}");
         Console.WriteLine($"FPU Mode: {options.Fpu}");
         Console.WriteLine("==================================\n");
+
+        // EXPERIMENTAL WARNING: M68k backend is not production-ready
+        if (options.Backend == "m68k")
+        {
+            Console.WriteLine("⚠ EXPERIMENTAL: The M68k direct assembly backend is experimental.");
+            Console.WriteLine("  It may produce incorrect code or fail to compile valid programs.");
+            Console.WriteLine("  The default 'c' backend (via VBCC) is recommended for production use.\n");
+        }
 
         // Set build mode from --release flag FIRST (before computing safety level)
         // Safety level defaults depend on build mode, so this must come first!
@@ -1638,9 +1637,10 @@ ___stack:
                 if (!cFileName.EndsWith("_statics") && cFileToSource.TryGetValue(cFile, out var sourceInfo))
                 {
                     var (sourcePath, cFileHash) = sourceInfo;
-                    // Cache key must match the format used when caching: codegen version + C file hash + header + CPU + optlevel
+                    // Cache key must match the format used when caching: codegen version + C file hash + header + CPU + FPU + buildmode + optlevel
                     // We use C file hash (not source hash) to detect compiler codegen changes
-                    var cacheKey = $"v{CODEGEN_VERSION}_{cFileHash}_{typesHeaderHash.Substring(0, 8)}_{assemblyCpu}_O{options.OptimizationLevel}_{cFileName}.o";
+                    // CRITICAL: Include FPU mode and build mode to prevent incorrect cache hits
+                    var cacheKey = $"v{CODEGEN_VERSION}_{cFileHash}_{typesHeaderHash.Substring(0, 8)}_{assemblyCpu}_{options.Fpu}_{buildModeStr}_O{options.OptimizationLevel}_{cFileName}.o";
                     var cachedObjFile = Path.Combine(userCacheDir, cacheKey);
                     var cachedMetaFile = cachedObjFile + ".meta";
 
@@ -1725,10 +1725,11 @@ ___stack:
                         if (!cFileNameNoExt.EndsWith("_statics") && cFileToSource.TryGetValue(cFile, out var sourceInfo))
                         {
                             var (sourcePath, cFileHash) = sourceInfo;
-                            // Cache key includes: codegen version + C file hash + types header hash + CPU + optimization level
+                            // Cache key includes: codegen version + C file hash + types header hash + CPU + FPU + buildmode + optimization level
                             // We use C file hash (not source hash) to detect compiler codegen changes
                             // This ensures cache invalidation when any of these change
-                            var cacheKey = $"v{CODEGEN_VERSION}_{cFileHash}_{typesHeaderHash.Substring(0, 8)}_{assemblyCpu}_O{options.OptimizationLevel}_{cFileNameNoExt}.o";
+                            // CRITICAL: Include FPU mode and build mode to prevent incorrect cache hits
+                            var cacheKey = $"v{CODEGEN_VERSION}_{cFileHash}_{typesHeaderHash.Substring(0, 8)}_{assemblyCpu}_{options.Fpu}_{buildModeStr}_O{options.OptimizationLevel}_{cFileNameNoExt}.o";
                             var cachedObjFile = Path.Combine(userCacheDir, cacheKey);
                             cacheInfo = (objFile, cachedObjFile);
                         }

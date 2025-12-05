@@ -11,10 +11,20 @@ namespace Novus.Tests;
 
 public class DebugTagsNovus
 {
+    private static string GetProjectRoot()
+    {
+        var currentDir = Directory.GetCurrentDirectory();
+        while (currentDir != null && !File.Exists(Path.Combine(currentDir, "Novus.sln")))
+        {
+            currentDir = Directory.GetParent(currentDir)?.FullName;
+        }
+        return currentDir ?? throw new InvalidOperationException("Could not find project root");
+    }
+
     [Fact]
     public void Debug_TagsNovus()
     {
-        var stdPath = "/Users/barry/RiderProjects/Novus/Novus/std";
+        var stdPath = Path.Combine(GetProjectRoot(), "Novus", "std");
         var fullPath = Path.Combine(stdPath, "error", "tags.novus");
 
         // Skip if the file doesn't exist (developer debug file)

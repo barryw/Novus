@@ -582,7 +582,7 @@ public static class StdlibBuildCommand
                 bool isTracked = manifest.Modules.Values.Any(m =>
                     m.SourceFile == fileName ||
                     m.SourceFile == relativePath ||
-                    m.SourceFile.Replace("\\", "/") == relativePath.Replace("\\", "/"));
+                    PathUtility.NormalizeForStorage(m.SourceFile) == PathUtility.NormalizeForStorage(relativePath));
 
                 if (!isTracked)
                 {
@@ -656,11 +656,12 @@ public static class StdlibBuildCommand
             var hash = ComputeFileHash(modulePath);
 
             // Use a unique key that includes path to handle files with same name in different dirs
-            var uniqueKey = relativePath.Replace("\\", "/").Replace("/", "_").Replace(".novus", "");
+            var normalizedPath = PathUtility.NormalizeForStorage(relativePath);
+            var uniqueKey = normalizedPath.Replace("/", "_").Replace(".novus", "");
 
             manifest.Modules[uniqueKey] = new StdlibModuleInfo
             {
-                SourceFile = relativePath.Replace("\\", "/"),  // Normalize path separators
+                SourceFile = normalizedPath,  // Normalize path separators
                 OutputFile = $"{moduleBaseName}_*.o",  // Wildcard for function-level files
                 Hash = hash
             };
@@ -674,7 +675,7 @@ public static class StdlibBuildCommand
             foreach (var sourceFile in allStdlibFiles)
             {
                 var relativePath = Path.GetRelativePath(stdlibRootDir, sourceFile);
-                var normalizedPath = relativePath.Replace("\\", "/");
+                var normalizedPath = PathUtility.NormalizeForStorage(relativePath);
                 var uniqueKey = normalizedPath.Replace("/", "_").Replace(".novus", "");
 
                 // Only add if not already tracked

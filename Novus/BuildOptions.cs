@@ -25,10 +25,10 @@ public class BuildOptions
     [Option("emit-asm", Required = false, HelpText = "Emit assembly only, don't assemble/link")]
     public bool EmitAsmOnly { get; set; }
 
-    [Option("vbcc-path", Required = false, HelpText = "Path to VBCC installation (default: /Users/barry/amiga-cc/vbcc)")]
+    [Option("vbcc-path", Required = false, HelpText = "Path to VBCC installation (default: auto-detect from VBCC env var or common locations)")]
     public string? VbccPath { get; set; }
 
-    [Option("ndk-path", Required = false, HelpText = "Path to NDK installation (default: /Users/barry/amiga-cc/NDK3.9)")]
+    [Option("ndk-path", Required = false, HelpText = "Path to NDK installation (default: auto-detect from NDK_PATH env var or common locations)")]
     public string? NdkPath { get; set; }
 
     [Option('v', "verbose", Required = false, HelpText = "Verbose output")]

@@ -9,7 +9,29 @@ namespace Novus.LanguageServer.Tests;
 /// </summary>
 public class DocumentManagerTests
 {
-    private const string TestStdLibPath = "/Users/barry/RiderProjects/Novus/Novus/std";
+    private static string GetTestStdLibPath()
+    {
+        // Try to find the project root and use the actual std path
+        var stdPath = Novus.PathUtility.FindStdLibPath();
+        if (stdPath != null)
+            return stdPath;
+
+        // Fallback: walk up from current directory to find Novus.sln
+        var currentDir = Directory.GetCurrentDirectory();
+        while (currentDir != null && !File.Exists(Path.Combine(currentDir, "Novus.sln")))
+        {
+            currentDir = Directory.GetParent(currentDir)?.FullName;
+        }
+        if (currentDir != null)
+        {
+            return Path.Combine(currentDir, "Novus", "std");
+        }
+
+        // Final fallback - tests will fail with clear error message
+        return Path.Combine(AppContext.BaseDirectory, "std");
+    }
+
+    private static readonly string TestStdLibPath = GetTestStdLibPath();
 
     [Fact]
     public void Open_ValidDocument_CreatesDocumentState()

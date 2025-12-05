@@ -239,9 +239,10 @@ public partial class IrBuilder
                 var cacheKey = $"{baseStruct.StructName}<{string.Join(",", typeArgKeys)}>";
 
                 // Check cache first
-                if (_symbols.LookupMonomorphizedStruct(cacheKey) != null)
+                var cachedStruct = _symbols.LookupMonomorphizedStruct(cacheKey);
+                if (cachedStruct != null)
                 {
-                    monomorphizedStruct = _symbols.LookupMonomorphizedStruct(cacheKey)!;
+                    monomorphizedStruct = cachedStruct;
                 }
                 else
                 {
@@ -711,9 +712,10 @@ public partial class IrBuilder
                     var cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
 
                     // Check cache first
-                    if (_symbols.LookupMonomorphizedEnum(cacheKey) != null)
+                    var cachedEnum = _symbols.LookupMonomorphizedEnum(cacheKey);
+                    if (cachedEnum != null)
                     {
-                        finalEnumType = _symbols.LookupMonomorphizedEnum(cacheKey)!;
+                        finalEnumType = cachedEnum;
                     }
                     else
                     {
@@ -993,7 +995,7 @@ public partial class IrBuilder
                 // Check if it's an enum type
                 if (_symbols.HasEnum(typeName))
                 {
-                    var enumType = _symbols.LookupEnum(typeName)!;
+                    var enumType = RequireEnum(typeName);
                     if (enumType.GenericParameters.Count > 0)
                     {
                         // Need to infer type arguments and monomorphize the enum before instantiation
@@ -4842,7 +4844,7 @@ public partial class IrBuilder
                 // Try enum variant first
                 if (_symbols.HasEnum(typeName))
                 {
-                    var enumType = _symbols.LookupEnum(typeName)!;
+                    var enumType = RequireEnum(typeName);
                     var variant = enumType.GetVariant(memberName);
 
                     if (variant != null)
@@ -4877,7 +4879,7 @@ public partial class IrBuilder
                 // Check if this is a generic type - look in generic method templates
                 if (_symbols.HasStruct(typeName))
                 {
-                    var structType = _symbols.LookupStruct(typeName)!;
+                    var structType = RequireStruct(typeName);
 
                     // If the struct is generic, check generic method templates
                     if (structType.GenericParameters.Count > 0)
@@ -4951,15 +4953,15 @@ public partial class IrBuilder
         // These are declared in system.novus as extern vars
         if (name == "CPU" && _symbols.HasEnum("SystemCPU"))
         {
-            return new IrVariable(name, _symbols.LookupEnum("SystemCPU")!);
+            return new IrVariable(name, RequireEnum("SystemCPU"));
         }
         if (name == "FPU" && _symbols.HasEnum("SystemFPU"))
         {
-            return new IrVariable(name, _symbols.LookupEnum("SystemFPU")!);
+            return new IrVariable(name, RequireEnum("SystemFPU"));
         }
         if (name == "Chipset" && _symbols.HasEnum("SystemChipset"))
         {
-            return new IrVariable(name, _symbols.LookupEnum("SystemChipset")!);
+            return new IrVariable(name, RequireEnum("SystemChipset"));
         }
 
         // Check if it's a function name (for both calls and function pointers)
@@ -5173,9 +5175,10 @@ public partial class IrBuilder
                     var cacheKey = $"{baseStructType.StructName}<{string.Join(",", typeArgKeys)}>";
 
                     // Check cache first
-                    if (_symbols.LookupMonomorphizedStruct(cacheKey) != null)
+                    var cachedStruct = _symbols.LookupMonomorphizedStruct(cacheKey);
+                    if (cachedStruct != null)
                     {
-                        structType = _symbols.LookupMonomorphizedStruct(cacheKey)!;
+                        structType = cachedStruct;
                     }
                     else
                     {
@@ -5330,9 +5333,10 @@ public partial class IrBuilder
             var cacheKey = $"{baseStructType.StructName}<{string.Join(",", typeArgKeys)}>";
 
             // Check cache first
-            if (_symbols.LookupMonomorphizedStruct(cacheKey) != null)
+            var cachedVec = _symbols.LookupMonomorphizedStruct(cacheKey);
+            if (cachedVec != null)
             {
-                vecType = _symbols.LookupMonomorphizedStruct(cacheKey)!;
+                vecType = cachedVec;
             }
             else
             {
@@ -5599,7 +5603,7 @@ public partial class IrBuilder
         // Try enum variant first
         if (_symbols.HasEnum(typeName))
         {
-            var enumType = _symbols.LookupEnum(typeName)!;
+            var enumType = RequireEnum(typeName);
             var variant = enumType.GetVariant(memberName);
 
             if (variant == null)
@@ -5639,7 +5643,7 @@ public partial class IrBuilder
         // Check if this is a generic type - look in generic method templates
         if (_symbols.HasStruct(typeName))
         {
-            var structType = _symbols.LookupStruct(typeName)!;
+            var structType = RequireStruct(typeName);
 
             // If the struct is generic, check generic method templates
             if (structType.GenericParameters.Count > 0)

@@ -629,8 +629,8 @@ public static class BuildCommand
         foreach (var cFile in cFiles)
         {
             // Skip files in build output directories
-            if (!cFile.Contains("/target/") && !cFile.Contains("\\target\\") &&
-                !cFile.Contains("/build/") && !cFile.Contains("\\build\\"))
+            if (!PathUtility.ContainsDirectory(cFile, "target") &&
+                !PathUtility.ContainsDirectory(cFile, "build"))
             {
                 additionalCFiles.Add(cFile);
             }
@@ -674,7 +674,7 @@ public static class BuildCommand
         foreach (var asmFile in asmFiles)
         {
             // Skip files in build output directories
-            if (!asmFile.Contains("/target/") && !asmFile.Contains("\\target\\"))
+            if (!PathUtility.ContainsDirectory(asmFile, "target"))
             {
                 var normalizedPath = Path.GetFullPath(asmFile);
                 // Only add if not already in the list from project.toml

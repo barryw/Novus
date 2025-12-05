@@ -28,10 +28,10 @@ public class CompilationTests : IClassFixture<StdlibCacheFixture>
         Assert.True(File.Exists(inputFile), $"Input file not found: {inputFile}");
 
         // Verify VBCC is available
-        var vbccPath = Environment.GetEnvironmentVariable("VBCC_PATH")
-                      ?? "/Users/barry/amiga-cc/vbcc/bin/vc";
+        var vbccDir = Novus.PathUtility.GetVbccPath();
+        var vbccPath = Path.Combine(vbccDir, "bin", "vc");
         Assert.True(File.Exists(vbccPath),
-            $"VBCC toolchain not found at {vbccPath}. Set VBCC_PATH environment variable or install VBCC.");
+            $"VBCC toolchain not found at {vbccPath}. Set VBCC environment variable or install VBCC.");
 
         // Run the compiler
         var compilerPath = Path.Combine(projectRoot, "Novus", "bin", "Debug", "net9.0", "Novus.dll");

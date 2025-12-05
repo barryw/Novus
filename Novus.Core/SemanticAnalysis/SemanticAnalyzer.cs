@@ -70,46 +70,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         bool ParseError
     );
 
-    // Move tracking for memory safety - uses unique variable ID to handle shadowing correctly
-    private readonly Dictionary<int, MoveInfo> _movedVariables = new();
+    // Borrow checker for move tracking and memory safety
+    private readonly Dictionary<int, DropInfo> _dropInfo = new();  // VariableId -> DropInfo
+    private readonly BorrowChecker _borrowChecker;
     private int _nextVariableId = 1;  // Counter for generating unique variable IDs
-
-    private class MoveInfo
-    {
-        public string VariableName { get; init; } = "";
-        public int VariableId { get; init; }
-        public SourceLocation MoveLocation { get; init; } = null!;
-        public string Reason { get; init; } = "";
-
-        /// <summary>
-        /// Tracks which fields of a struct have been moved.
-        /// - null means the entire value was moved
-        /// - empty set means the variable exists but no fields moved yet
-        /// - non-empty set lists the specific fields that have been moved
-        /// </summary>
-        public HashSet<string>? MovedFields { get; set; }
-    }
 
     // Drop tracking for automatic resource cleanup (RAII)
     private readonly Stack<ScopeDropInfo> _dropScopes = new();
-    private readonly Dictionary<int, DropInfo> _dropInfo = new();  // VariableId -> DropInfo
-
-    // Control flow sensitivity for move tracking
-    private readonly Stack<ControlFlowContext> _controlFlowStack = new();
-
-    private class ControlFlowContext
-    {
-        public ControlFlowKind Kind { get; init; }
-        public Dictionary<int, MoveInfo> MovesInBranch { get; init; } = new();
-    }
-
-    private enum ControlFlowKind
-    {
-        If,
-        MatchArm,
-        While,
-        Block
-    }
 
     // Generic type parameters in scope (for generic enum/struct definitions)
     private readonly Dictionary<string, IrGenericType> _genericParams = new();
@@ -118,9 +85,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     // and avoid duplication. Use _symbols.RegisterMonomorphized*() and _symbols.LookupMonomorphized*()
     // instead of maintaining separate caches here.
 
-    // Track trait implementations: key = "TypeName::TraitName<TypeArg1,TypeArg2,...>"
-    // This allows us to check if a type implements a trait during constraint validation
-    private readonly Dictionary<string, TraitImplInfo> _traitImpls = new();
+    // Trait resolver for checking trait implementations and generic constraints
+    private readonly TraitResolver _traitResolver;
 
     // Expected type for bidirectional type checking (flows down from context)
     private IrType? _expectedType = null;
@@ -161,6 +127,14 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         _stdLibPath = stdLibPath;
         SourceText = sourceCode;
         _typeParser = new TypeParser(new SemanticAnalyzerTypeContext(this));
+        _traitResolver = new TraitResolver(_symbols)
+        {
+            GetTypeCacheKeyFn = GetTypeCacheKey
+        };
+        _borrowChecker = new BorrowChecker(_dropInfo)
+        {
+            TypeImplementsTraitFn = (type, trait, typeArgs) => _traitResolver.TypeImplementsTrait(type, trait, typeArgs)
+        };
     }
 
     public bool Analyze(NovusParser.CompilationUnitContext context)
@@ -1399,13 +1373,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         if (info.IsTraitImpl)
         {
             // Store trait implementation for constraint checking
-            var traitArgsStr = info.TraitTypeArgs.Count > 0
-                ? $"<{string.Join(",", info.TraitTypeArgs.Select(t => GetTypeCacheKey(t)))}>"
-                : "";
-            var implKey = $"{info.ImplTypeName}::{info.TraitName}{traitArgsStr}";
-
             var implLocation = SourceLocationHelper.FromToken(context.KW_IMPL().Symbol, _filePath, _sourceLines);
-            _traitImpls[implKey] = new TraitImplInfo(
+            _traitResolver.RegisterTraitImpl(
                 info.ImplTypeName,
                 info.TraitName!,
                 info.TraitTypeArgs,
@@ -2015,7 +1984,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         _currentFunction = _functions[mangledName];
         _variables.Clear();
-        _movedVariables.Clear(); // Reset move tracking for new method
+        _borrowChecker.Reset(); // Reset move tracking for new method
 
         // Parse @suppress attributes to track which warnings to suppress
         _currentFunctionSuppressedWarnings.Clear();
@@ -2072,7 +2041,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var name = context.IDENTIFIER().GetText();
         _currentFunction = _functions[name];
         _variables.Clear();
-        _movedVariables.Clear(); // Reset move tracking for new function
+        _borrowChecker.Reset(); // Reset move tracking for new function
         _dropScopes.Clear(); // Reset drop tracking for new function
         _dropInfo.Clear();
 
@@ -3856,13 +3825,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         // Conservative: any move in loop body makes variable moved
         foreach (var (varId, moveInfo) in loopMoves)
         {
-            _movedVariables[varId] = new MoveInfo
+            _borrowChecker.RecordLoopMove(varId, new MoveInfo
             {
                 VariableId = varId,
                 VariableName = moveInfo.VariableName,
                 MoveLocation = moveInfo.MoveLocation,
                 Reason = $"value moved in loop body: {moveInfo.Reason}"
-            };
+            });
         }
 
         return null;
@@ -3992,7 +3961,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         string typeName = GetBaseTypeName(collectionType);
 
         // Search through all trait impls to find Iterable<T> for this type
-        foreach (var kvp in _traitImpls)
+        foreach (var kvp in _traitResolver.GetAllImpls())
         {
             var implInfo = kvp.Value;
 
@@ -8064,12 +8033,11 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         // Check for use-after-move before any other processing
         // Only check simple identifiers (not qualified names like Result::Ok)
-        if (!name.Contains("::") && _variables.TryGetValue(name, out var variable) && _movedVariables.ContainsKey(variable.Id))
+        if (!name.Contains("::") && _variables.TryGetValue(name, out var variable) && _borrowChecker.IsFullyMoved(variable.Id))
         {
-            var moveInfo = _movedVariables[variable.Id];
+            var moveInfo = _borrowChecker.GetMoveInfo(variable.Id)!;
 
-            // Only report error if the entire value was moved (not partial move)
-            if (moveInfo.MovedFields == null)
+            // Report error since entire value was moved (not partial move)
             {
                 var useLocation = SourceLocationHelper.FromToken(context.identifier().Start, _filePath, _sourceLines);
 
@@ -8282,7 +8250,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         var baseVarName = ExtractVariableName(context.expression());
         if (baseVarName != null && _variables.TryGetValue(baseVarName, out var baseVar))
         {
-            if (_movedVariables.TryGetValue(baseVar.Id, out var moveInfo))
+            var moveInfo = _borrowChecker.GetMoveInfo(baseVar.Id);
+            if (moveInfo != null)
             {
                 // Check if the entire struct was moved
                 if (moveInfo.MovedFields == null)
@@ -10394,8 +10363,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return false;
 
         // Check if type implements the trait
-        string implKey = $"{typeName}::{traitName}";
-        return _traitImpls.ContainsKey(implKey);
+        return _traitResolver.HasTraitImpl(typeName, traitName);
     }
 
     /// <summary>
@@ -10426,7 +10394,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
         // Search for Index trait implementation
         // The key format is "TypeName::Index" (without type args in the key)
-        foreach (var kvp in _traitImpls)
+        foreach (var kvp in _traitResolver.GetAllImpls())
         {
             var implInfo = kvp.Value;
             if (implInfo.TypeName == typeName && implInfo.TraitName == "Index")
@@ -10463,7 +10431,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return null;
 
         // Search for IndexMut trait implementation
-        foreach (var kvp in _traitImpls)
+        foreach (var kvp in _traitResolver.GetAllImpls())
         {
             var implInfo = kvp.Value;
             if (implInfo.TypeName == typeName && implInfo.TraitName == "IndexMut")
@@ -10529,45 +10497,10 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         };
     }
 
-    // Control flow tracking methods for move analysis
-    private void EnterBranch(ControlFlowKind kind)
-    {
-        _controlFlowStack.Push(new ControlFlowContext
-        {
-            Kind = kind,
-            MovesInBranch = new Dictionary<int, MoveInfo>()
-        });
-    }
-
-    private Dictionary<int, MoveInfo> ExitBranch()
-    {
-        if (_controlFlowStack.Count == 0)
-        {
-            return new Dictionary<int, MoveInfo>();
-        }
-        return _controlFlowStack.Pop().MovesInBranch;
-    }
-
-    private void RecordMove(int variableId, MoveInfo moveInfo)
-    {
-        if (_controlFlowStack.Count > 0)
-        {
-            // Inside a branch - track in branch context
-            var context = _controlFlowStack.Peek();
-            context.MovesInBranch[variableId] = moveInfo;
-        }
-        else
-        {
-            // Top level - directly mark as moved
-            _movedVariables[variableId] = moveInfo;
-        }
-
-        // Also mark in drop info so we don't call drop on moved values
-        if (_dropInfo.TryGetValue(variableId, out var dropInfo))
-        {
-            dropInfo.WasMoved = true;
-        }
-    }
+    // Control flow tracking methods for move analysis - delegate to BorrowChecker
+    private void EnterBranch(ControlFlowKind kind) => _borrowChecker.EnterBranch(kind);
+    private Dictionary<int, MoveInfo> ExitBranch() => _borrowChecker.ExitBranch();
+    private void RecordMove(int variableId, MoveInfo moveInfo) => _borrowChecker.RecordMove(variableId, moveInfo);
 
     /// <summary>
     /// Records that a specific field of a struct has been moved.
@@ -10575,89 +10508,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     /// </summary>
     private void RecordFieldMove(int variableId, string variableName, string fieldName,
                                  SourceLocation moveLocation, string reason)
-    {
-        var targetDict = _controlFlowStack.Count > 0
-            ? _controlFlowStack.Peek().MovesInBranch
-            : _movedVariables;
-
-        if (targetDict.TryGetValue(variableId, out var existing))
-        {
-            // Variable already has move tracking
-            if (existing.MovedFields == null)
-            {
-                // Whole struct already moved - this is a use-after-move error
-                // Will be caught by CheckVariableNotMoved
-                return;
-            }
-
-            // Add this field to the set of moved fields
-            existing.MovedFields.Add(fieldName);
-        }
-        else
-        {
-            // First field move for this variable
-            targetDict[variableId] = new MoveInfo
-            {
-                VariableName = variableName,
-                VariableId = variableId,
-                MoveLocation = moveLocation,
-                Reason = reason,
-                MovedFields = new HashSet<string> { fieldName }
-            };
-        }
-
-        // Also track in drop info for partial moves
-        if (_dropInfo.TryGetValue(variableId, out var dropInfo))
-        {
-            // Initialize MovedFields set if null
-            dropInfo.MovedFields ??= new HashSet<string>();
-            dropInfo.MovedFields.Add(fieldName);
-        }
-    }
+        => _borrowChecker.RecordFieldMove(variableId, variableName, fieldName, moveLocation, reason);
 
     private void MergeBranchMoves(params Dictionary<int, MoveInfo>?[] branchMoves)
-    {
-        foreach (var moves in branchMoves)
-        {
-            if (moves == null) continue;
-
-            foreach (var (varId, moveInfo) in moves)
-            {
-                if (!_movedVariables.ContainsKey(varId))
-                {
-                    _movedVariables[varId] = new MoveInfo
-                    {
-                        VariableId = varId,
-                        VariableName = moveInfo.VariableName,
-                        MoveLocation = moveInfo.MoveLocation,
-                        Reason = $"value moved in conditional branch: {moveInfo.Reason}",
-                        MovedFields = moveInfo.MovedFields != null ? new HashSet<string>(moveInfo.MovedFields) : null
-                    };
-                }
-            }
-        }
-    }
+        => _borrowChecker.MergeBranchMoves(branchMoves);
 
     private void MergeBranchMoves(List<Dictionary<int, MoveInfo>> branchMoves)
-    {
-        foreach (var moves in branchMoves)
-        {
-            foreach (var (varId, moveInfo) in moves)
-            {
-                if (!_movedVariables.ContainsKey(varId))
-                {
-                    _movedVariables[varId] = new MoveInfo
-                    {
-                        VariableId = varId,
-                        VariableName = moveInfo.VariableName,
-                        MoveLocation = moveInfo.MoveLocation,
-                        Reason = $"value moved in conditional branch: {moveInfo.Reason}",
-                        MovedFields = moveInfo.MovedFields != null ? new HashSet<string>(moveInfo.MovedFields) : null
-                    };
-                }
-            }
-        }
-    }
+        => _borrowChecker.MergeBranchMoves(branchMoves);
 
     /// <summary>
     /// Emit drop calls for all variables in the given scope that need dropping.
@@ -10706,47 +10563,9 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
 
     /// <summary>
     /// Determines if a type implements Copy semantics (can be copied instead of moved).
-    /// Primitive types like i32, u32, bool, etc. are always Copy.
-    /// Pointer types are Copy (copying a pointer doesn't move the pointed-to data).
-    /// Structs and enums can implement the Copy trait to enable copying.
+    /// Delegates to BorrowChecker.
     /// </summary>
-    private bool IsCopyType(IrType type)
-    {
-        // Primitives are always Copy
-        if (type is IrIntType or IrBoolType)
-            return true;
-
-        // Pointers are Copy (copying the pointer value, not the pointed-to data)
-        if (type is IrPointerType)
-            return true;
-
-        // Function pointers are Copy
-        if (type is IrFunctionPointerType)
-            return true;
-
-        // Check if struct implements Copy trait
-        if (type is IrStructType structType)
-        {
-            return TypeImplementsTrait(structType, "Copy", new List<IrType>());
-        }
-
-        // Check if enum implements Copy trait
-        if (type is IrEnumType enumType)
-        {
-            return TypeImplementsTrait(enumType, "Copy", new List<IrType>());
-        }
-
-        // Arrays are non-Copy (contain elements that may need individual handling)
-        if (type is IrArrayType)
-            return false;
-
-        // References are Copy (like pointers, just copying the reference)
-        if (type is IrReferenceType)
-            return true;
-
-        // Default to non-Copy for safety
-        return false;
-    }
+    private bool IsCopyType(IrType type) => _borrowChecker.IsCopyType(type);
 
     private bool IsMixedSignedness(IrType left, IrType right)
     {
@@ -10962,64 +10781,11 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     }
 
     /// <summary>
-    /// Check if a type implements a specific trait
+    /// Check if a type implements a specific trait.
+    /// Delegates to TraitResolver.
     /// </summary>
     private bool TypeImplementsTrait(IrType type, string traitName, List<IrType> traitTypeArgs)
-    {
-        // Validate that the trait exists
-        if (!_symbols.HasTrait(traitName))
-        {
-            return false; // Unknown trait
-        }
-
-        // Extract the base type name from the IR type
-        string typeName = GetBaseTypeName(type);
-
-        // Build the lookup key for this specific trait impl
-        // Format: "TypeName::TraitName<Arg1,Arg2,...>"
-        var traitArgsStr = traitTypeArgs.Count > 0
-            ? $"<{string.Join(",", traitTypeArgs.Select(t => GetTypeCacheKey(t)))}>"
-            : "";
-        var implKey = $"{typeName}::{traitName}{traitArgsStr}";
-
-        // Check if we have an exact match for this trait impl
-        if (_traitImpls.ContainsKey(implKey))
-        {
-            return true;
-        }
-
-        // For generic impls, we need to check if there's a generic impl that could satisfy this
-        // Example: impl<T> Iterator<T> for Vec<T> should match Vec<i32> with Iterator<i32>
-        foreach (var kvp in _traitImpls)
-        {
-            var implInfo = kvp.Value;
-
-            // Check if this is the right trait
-            if (implInfo.TraitName != traitName)
-                continue;
-
-            // Check if the type names match
-            if (implInfo.TypeName != typeName)
-                continue;
-
-            // If the impl has generic parameters, we need to check if the trait type args
-            // can be unified with the constraint's trait type args
-            if (implInfo.ImplGenericParams.Count > 0)
-            {
-                // Generic impl exists - assume it can be monomorphized to satisfy this constraint
-                // Full unification would require more complex type checking
-                return true;
-            }
-
-            // Check if trait type arguments match exactly
-            if (TraitTypeArgsMatch(implInfo.TraitTypeArgs, traitTypeArgs))
-            {
-                return true;
-            }
-        }
-
-        return false; // No impl found
-    }
+        => _traitResolver.TypeImplementsTrait(type, traitName, traitTypeArgs);
 
     /// <summary>
     /// Extract the base type name from an IR type
@@ -11037,25 +10803,6 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             IrBoolType => "bool",
             _ => type.Name
         };
-    }
-
-    /// <summary>
-    /// Check if two lists of trait type arguments match
-    /// </summary>
-    private bool TraitTypeArgsMatch(List<IrType> args1, List<IrType> args2)
-    {
-        if (args1.Count != args2.Count)
-            return false;
-
-        for (int i = 0; i < args1.Count; i++)
-        {
-            // For now, do simple cache key comparison
-            // A more sophisticated implementation would need full type unification
-            if (GetTypeCacheKey(args1[i]) != GetTypeCacheKey(args2[i]))
-                return false;
-        }
-
-        return true;
     }
 
     /// <summary>
@@ -11104,32 +10851,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     /// <param name="targetType">The type being converted to</param>
     /// <returns>True if From<SourceType> is implemented for targetType</returns>
     private bool CanConvertViaFromTrait(IrType sourceType, IrType targetType)
-    {
-        // Get the base type names (handle generics)
-        var sourceTypeName = GetBaseTypeName(sourceType);
-        var targetTypeName = GetBaseTypeName(targetType);
-
-        // Build the trait name: "From<SourceType>"
-        var fromTraitName = $"From<{sourceTypeName}>";
-
-        // Look for an impl From<SourceType> for TargetType
-        foreach (var (key, implInfo) in _traitImpls)
-        {
-            if (implInfo.TypeName == targetTypeName &&
-                implInfo.TraitName == "From" &&
-                implInfo.TraitTypeArgs.Count == 1)
-            {
-                // Check if the trait type arg matches the source type
-                var traitArg = implInfo.TraitTypeArgs[0];
-                if (TypesCompatible(traitArg, sourceType))
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
+        => _traitResolver.CanConvertViaFromTrait(sourceType, targetType);
 
     /// <summary>
     /// ITypeParsingContext implementation for SemanticAnalyzer.
@@ -11252,16 +10974,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         };
     }
 
-    /// <summary>
-    /// Helper record to store trait implementation information for constraint checking
-    /// </summary>
-    private record TraitImplInfo(
-        string TypeName,              // The type implementing the trait (e.g., "Vec", "Counter")
-        string TraitName,             // Trait being implemented (e.g., "Iterator")
-        List<IrType> TraitTypeArgs,   // Type args for the trait (e.g., [i32] for Iterator<i32>)
-        List<string> ImplGenericParams, // Generic params on the impl block itself
-        SourceLocation Location       // Where the impl was declared
-    );
+    // TraitImplInfo is now defined in TraitResolver.cs
 
     /// <summary>
     /// Attempts to evaluate a compile-time integer literal from an expression context.
@@ -11448,22 +11161,7 @@ public record VariableSymbol(
     int Id = 0  // Unique ID to distinguish shadowed variables
 );
 
-// Drop tracking - tracks which variables need automatic drop calls when they go out of scope
-internal class DropInfo
-{
-    public required int VariableId { get; init; }
-    public required string VariableName { get; init; }
-    public required IrType VariableType { get; init; }
-    public required SourceLocation DeclLocation { get; init; }
-    public bool WasMoved { get; set; }  // Don't drop if moved
-    public HashSet<string>? MovedFields { get; set; }  // For partial moves
-}
-
-// Tracks variables that need dropping per scope
-internal class ScopeDropInfo
-{
-    public List<DropInfo> VariablesToDrop { get; } = new();
-}
+// DropInfo and ScopeDropInfo are now defined in BorrowChecker.cs
 
 public record ConstantSymbol(
     string Name,

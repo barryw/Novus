@@ -147,9 +147,9 @@ public class CompilerOptions
     public bool CacheStats { get; set; }
 
     /// <summary>
-    /// Code generation backend: c (VBCC) or m68k (direct assembly)
+    /// Code generation backend: c (VBCC) or m68k (direct assembly - EXPERIMENTAL)
     /// </summary>
-    [Option("backend", Required = false, Default = "c", HelpText = "Code generation backend: c (VBCC) or m68k (direct assembly)")]
+    [Option("backend", Required = false, Default = "c", HelpText = "Code generation backend: c (VBCC) or m68k (EXPERIMENTAL: direct assembly)")]
     public string Backend { get; set; } = "c";
 
     /// <summary>

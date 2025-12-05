@@ -1474,10 +1474,6 @@ impl AudioStreamer {
         let buffer = self.get_buffer(idx)
         let io_left = self.get_io(idx)
 
-        // Debug: Print the io_Unit value to see what channels we're playing to
-        let unit_val_l = (u32)io_left.ioa_Request.io_Unit
-        write("DEBUG play: buffer %ld, left io_Unit=$%02lx\n", (i32)idx, unit_val_l)
-
         // Setup left channel IORequest
         self.setup_io_for_playback(io_left, buffer)
 
@@ -1488,9 +1484,6 @@ impl AudioStreamer {
         let io_right = self.get_io_right(idx)
         if (u32)io_right != 0 {
             // STEREO: Send to both channels
-            let unit_val_r = (u32)io_right.ioa_Request.io_Unit
-            write("DEBUG play: buffer %ld, right io_Unit=$%02lx\n", (i32)idx, unit_val_r)
-
             // Setup right channel IORequest (same buffer - mono audio to both)
             self.setup_io_for_playback(io_right, buffer)
 

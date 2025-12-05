@@ -15,27 +15,12 @@ class Program
         var compilerDir = AppContext.BaseDirectory;
 
         // Try to find the std library in multiple locations
-        string? stdLibPath = null;
-        var possibleStdPaths = new[]
-        {
-            Path.Combine(compilerDir, "std"), // Same directory as LSP
-            Path.Combine(compilerDir, "..", "..", "..", "..", "Novus", "std"), // Relative to LSP bin/Debug/net9.0
-            "/Users/barry/RiderProjects/Novus/Novus/std" // Absolute path (development)
-        };
+        var stdLibPath = Novus.PathUtility.FindStdLibPath(compilerDir);
 
-        foreach (var path in possibleStdPaths)
-        {
-            var normalizedPath = Path.GetFullPath(path);
-            if (Directory.Exists(normalizedPath))
-            {
-                stdLibPath = normalizedPath;
-                break;
-            }
-        }
-
+        // Fallback to std subdirectory if not found
         if (stdLibPath == null)
         {
-            stdLibPath = Path.Combine(compilerDir, "std"); // Fallback
+            stdLibPath = Path.Combine(compilerDir, "std");
         }
 
         var server = await OmniSharp.Extensions.LanguageServer.Server.LanguageServer.From(options =>
