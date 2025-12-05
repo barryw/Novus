@@ -6,9 +6,13 @@ namespace Novus.Tests;
 /// <summary>
 /// Tests that ensure generated code assembles and links successfully
 /// These are critical smoke tests to catch codegen regressions
+///
+/// NOTE: These tests use --use-stdlib-cache which is thread-safe because:
+/// 1. The stdlib cache is pre-built before tests run (via StdlibCacheFixture)
+/// 2. Each test writes to a unique output file in /tmp
+/// 3. Cache reads are idempotent
 /// </summary>
-[Collection("StdlibCache")]
-public class CompilationTests
+public class CompilationTests : IClassFixture<StdlibCacheFixture>
 {
     [Theory]
     [InlineData("02_arithmetic")]

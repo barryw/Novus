@@ -6,10 +6,35 @@ namespace Novus.Tests;
 /// <summary>
 /// Integration tests that ensure ALL example files compile successfully.
 /// These tests catch regressions as the grammar and compiler evolve.
+///
+/// Strategy for fast tests:
+/// - Most examples use --emit-asm to test parsing/IR/codegen without VBCC
+/// - A representative subset uses full VBCC compilation (marked with FullCompilation trait)
+///
+/// NOTE: These tests use --use-stdlib-cache which is thread-safe because:
+/// 1. The stdlib cache is pre-built before tests run (via StdlibCacheFixture)
+/// 2. Each test writes to a unique output file in /tmp
+/// 3. Cache reads are idempotent
 /// </summary>
-[Collection("StdlibCache")]
-public class ExampleCompilationTests
+public class ExampleCompilationTests : IClassFixture<StdlibCacheFixture>
 {
+    // Examples that get full VBCC compilation (representative subset for linking tests)
+    private static readonly HashSet<string> FullCompilationExamples = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "01_hello_world",           // Basic smoke test
+        "02_arithmetic",            // Math operations
+        "03_variables",             // Variable handling
+        "05_functions",             // Function calling conventions
+        "07_pointers",              // Pointer operations
+        "12_control_flow",          // Control flow
+        "15_structs",               // Struct layout
+        "19_enums",                 // Enum handling
+        "20_generics",              // Generic monomorphization
+        "38_amiga_library_calls",   // Amiga FFI
+        "mem_block_demo",           // Memory management
+        "operator_overload_test",   // Trait-based operators
+    };
+
     private static string GetProjectRoot()
     {
         var currentDir = Directory.GetCurrentDirectory();
@@ -23,12 +48,12 @@ public class ExampleCompilationTests
     /// <summary>
     /// Gets all .novus files from Examples directory, excluding error test cases
     /// </summary>
-    public static IEnumerable<object[]> GetExampleFiles()
+    private static IEnumerable<string> GetAllExampleNames()
     {
         var projectRoot = GetProjectRoot();
         var examplesDir = Path.Combine(projectRoot, "Novus.Tests", "Examples");
-        
-        var allFiles = Directory.GetFiles(examplesDir, "*.novus")
+
+        return Directory.GetFiles(examplesDir, "*.novus")
             .Select(f => Path.GetFileNameWithoutExtension(f))
             .Where(name => !string.IsNullOrEmpty(name))
             // Exclude error test cases (these are expected to fail)
@@ -42,26 +67,108 @@ public class ExampleCompilationTests
             // - WBStartup: C code generation forward declaration issues
             .Where(name => !name.StartsWith("workbench_startup", StringComparison.OrdinalIgnoreCase))
             .Where(name => name != "test_amiga_abi")
-            .OrderBy(name => name)
-            .Select(name => new object[] { name });
-
-        return allFiles;
+            .OrderBy(name => name);
     }
 
+    /// <summary>
+    /// Gets all example files for ASM-only compilation tests (fast)
+    /// </summary>
+    public static IEnumerable<object[]> GetExampleFilesForAsmTest()
+    {
+        return GetAllExampleNames()
+            .Where(name => !FullCompilationExamples.Contains(name))
+            .Select(name => new object[] { name });
+    }
+
+    /// <summary>
+    /// Gets representative examples for full VBCC compilation tests (slower)
+    /// </summary>
+    public static IEnumerable<object[]> GetExampleFilesForFullCompilation()
+    {
+        return GetAllExampleNames()
+            .Where(name => FullCompilationExamples.Contains(name))
+            .Select(name => new object[] { name });
+    }
+
+    /// <summary>
+    /// Fast test: verify parsing, semantic analysis, IR generation, and C codegen.
+    /// Uses --emit-asm to skip VBCC assembler/linker for speed.
+    /// </summary>
     [Theory]
-    [MemberData(nameof(GetExampleFiles))]
-    public async Task Example_ShouldCompileSuccessfully(string exampleName)
+    [MemberData(nameof(GetExampleFilesForAsmTest))]
+    public async Task Example_ShouldGenerateAssembly(string exampleName)
     {
         var projectRoot = GetProjectRoot();
         var inputFile = Path.Combine(projectRoot, "Novus.Tests", "Examples", $"{exampleName}.novus");
-        var outputFile = Path.Combine(Path.GetTempPath(), $"test_{exampleName}");
+        var outputFile = Path.Combine(Path.GetTempPath(), $"test_asm_{exampleName}");
 
         // Verify input file exists
         Assert.True(File.Exists(inputFile), $"Input file not found: {inputFile}");
 
-        // Run the compiler
+        // Run the compiler with --emit-asm (skip VBCC)
         var compilerPath = Path.Combine(projectRoot, "Novus", "bin", "Debug", "net9.0", "Novus.dll");
-        Assert.True(File.Exists(compilerPath), 
+        Assert.True(File.Exists(compilerPath),
+            $"Compiler not found at {compilerPath}. Build the project first.");
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "dotnet",
+            Arguments = $"\"{compilerPath}\" \"{inputFile}\" -o \"{outputFile}\" --use-stdlib-cache --emit-asm",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        using var process = Process.Start(startInfo);
+        Assert.NotNull(process);
+
+        // Read output asynchronously to avoid deadlock when buffer fills
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+
+        var exited = process.WaitForExit(timeout: TimeSpan.FromSeconds(60));
+
+        // If process didn't exit within timeout, kill it and fail the test
+        if (!exited)
+        {
+            process.Kill();
+            Assert.Fail($"Example '{exampleName}' ASM generation timed out after 60 seconds.");
+        }
+
+        var stdout = await stdoutTask;
+        var stderr = await stderrTask;
+
+        // Check that code generation succeeded
+        // With --emit-asm, success is indicated by exit code 0 and "C files and header written" message
+        var success = process.ExitCode == 0 && stdout.Contains("C files and header written");
+
+        Assert.True(success,
+            $"Example '{exampleName}' failed to generate assembly.\n" +
+            $"Exit code: {process.ExitCode}\n" +
+            $"Output:\n{stdout}\n" +
+            $"Errors:\n{stderr}");
+    }
+
+    /// <summary>
+    /// Full compilation test: verify complete pipeline including VBCC assembler/linker.
+    /// Runs on a representative subset of examples to catch linking issues.
+    /// </summary>
+    [Theory]
+    [Trait("Category", "FullCompilation")]
+    [MemberData(nameof(GetExampleFilesForFullCompilation))]
+    public async Task Example_ShouldCompileAndLink(string exampleName)
+    {
+        var projectRoot = GetProjectRoot();
+        var inputFile = Path.Combine(projectRoot, "Novus.Tests", "Examples", $"{exampleName}.novus");
+        var outputFile = Path.Combine(Path.GetTempPath(), $"test_full_{exampleName}");
+
+        // Verify input file exists
+        Assert.True(File.Exists(inputFile), $"Input file not found: {inputFile}");
+
+        // Run the compiler (full compilation)
+        var compilerPath = Path.Combine(projectRoot, "Novus", "bin", "Debug", "net9.0", "Novus.dll");
+        Assert.True(File.Exists(compilerPath),
             $"Compiler not found at {compilerPath}. Build the project first.");
 
         var startInfo = new ProcessStartInfo
