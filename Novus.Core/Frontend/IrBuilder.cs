@@ -908,19 +908,9 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
 
                 var methodName = funcDecl.IDENTIFIER().GetText();
 
-                // Use correct mangling for trait impls vs inherent impls
-                string mangledName;
-                if (isTraitImpl && traitName != null)
-                {
-                    var typeArgsSuffix = traitTypeArgs.Count > 0
-                        ? "_" + string.Join("_", traitTypeArgs.Select(t => t.Name.Replace("::", "_")))
-                        : "";
-                    mangledName = $"{typeName}_{traitName}{typeArgsSuffix}_{methodName}";
-                }
-                else
-                {
-                    mangledName = $"{typeName}::{methodName}";
-                }
+                // Use centralized name mangling for trait impls vs inherent impls
+                var mangledName = Generics.InstantiationKeyBuilder.BuildMethodMangledName(
+                    typeName!, methodName, isTraitImpl, traitName, traitTypeArgs);
 
                 _currentFunction = _module.GetFunction(mangledName);
                 if (_currentFunction == null)

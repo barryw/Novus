@@ -3,6 +3,7 @@ using Antlr4.Runtime.Misc;
 using Antlr4.Runtime.Tree;
 using Novus.Diagnostics;
 using Novus.Frontend;
+using Novus.Frontend.Generics;
 using Novus.IR;
 using Novus.Parser;
 
@@ -7311,7 +7312,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         // Look up the method using the mangled name: Type::method
-        var mangledMethodName = $"{typeName}::{methodName}";
+        var mangledMethodName = InstantiationKeyBuilder.BuildInherentMethodName(typeName, methodName);
 
         if (!_functions.ContainsKey(mangledMethodName))
         {

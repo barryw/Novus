@@ -1,4 +1,5 @@
 using Novus.Diagnostics;
+using Novus.Frontend.Generics;
 using Novus.IR;
 using Novus.Parser;
 using Novus.SemanticAnalysis;
@@ -22,22 +23,11 @@ public partial class IrBuilder
 
     /// <summary>
     /// Generate a mangled name for a method.
-    /// Trait impls: Type_Trait_TypeArg1_TypeArg2_method (e.g., Counter_Iterator_i32_next)
-    /// Inherent impls: Type::method
+    /// Delegates to the centralized InstantiationKeyBuilder utility.
     /// </summary>
     private string GenerateMethodMangledName(string typeName, string methodName, bool isTraitImpl, string? traitName, List<IrType> traitTypeArgs)
     {
-        if (isTraitImpl && traitName != null)
-        {
-            var typeArgsSuffix = traitTypeArgs.Count > 0
-                ? "_" + string.Join("_", traitTypeArgs.Select(t => t.Name.Replace("::", "_")))
-                : "";
-            return $"{typeName}_{traitName}{typeArgsSuffix}_{methodName}";
-        }
-        else
-        {
-            return $"{typeName}::{methodName}";
-        }
+        return InstantiationKeyBuilder.BuildMethodMangledName(typeName, methodName, isTraitImpl, traitName, traitTypeArgs);
     }
 
     /// <summary>

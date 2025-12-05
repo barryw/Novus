@@ -343,4 +343,36 @@ public static class InstantiationKeyBuilder
              .Replace("*", "ptr_"));
         return $"{enumName}::{methodName}_{string.Join("_", sanitizedKeys)}";
     }
+
+    /// <summary>
+    /// Build a mangled name for a method (trait impl or inherent impl).
+    /// This is the single source of truth for method name mangling.
+    /// - Trait impls: Type_Trait_TypeArg1_TypeArg2_method (e.g., Counter_Iterator_i32_next)
+    /// - Inherent impls: Type::method (e.g., Vec::push)
+    /// </summary>
+    public static string BuildMethodMangledName(
+        string typeName,
+        string methodName,
+        bool isTraitImpl = false,
+        string? traitName = null,
+        IReadOnlyList<IrType>? traitTypeArgs = null)
+    {
+        if (isTraitImpl && traitName != null)
+        {
+            var typeArgsSuffix = traitTypeArgs != null && traitTypeArgs.Count > 0
+                ? "_" + string.Join("_", traitTypeArgs.Select(t => t.Name.Replace("::", "_")))
+                : "";
+            return $"{typeName}_{traitName}{typeArgsSuffix}_{methodName}";
+        }
+        return $"{typeName}::{methodName}";
+    }
+
+    /// <summary>
+    /// Build a mangled name for an inherent impl method.
+    /// Convenience overload for the common case.
+    /// </summary>
+    public static string BuildInherentMethodName(string typeName, string methodName)
+    {
+        return $"{typeName}::{methodName}";
+    }
 }

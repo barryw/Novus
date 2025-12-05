@@ -1752,7 +1752,7 @@ public partial class IrBuilder
         // Build the mangled function name: Type::method
         // Note: For monomorphized generic types, we'll try Type::method first,
         // then fall back to instantiation if needed
-        var mangledMethodName = $"{typeName}::{methodName}";
+        var mangledMethodName = Generics.InstantiationKeyBuilder.BuildInherentMethodName(typeName, methodName);
 
         // Look up the method
         var method = _module.GetFunction(mangledMethodName);
@@ -5385,7 +5385,7 @@ public partial class IrBuilder
         }
 
         // Try associated function (struct method without self parameter)
-        var mangledName = $"{typeName}::{memberName}";
+        var mangledName = Generics.InstantiationKeyBuilder.BuildInherentMethodName(typeName, memberName);
 
         // Check if this is a generic type - look in generic method templates
         if (_symbols.HasStruct(typeName))
