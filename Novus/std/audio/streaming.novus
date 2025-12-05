@@ -1109,9 +1109,8 @@ impl AudioStreamer {
             } else if (u32)msg == (u32)self.io_audio_2 {
                 buf_idx = 2
                 is_left = true
-            }
-            // Check RIGHT channel IORequests
-            else if (u32)msg == (u32)self.io_audio_0_r {
+            } else if (u32)msg == (u32)self.io_audio_0_r {
+                // Check RIGHT channel IORequests
                 buf_idx = 0
                 is_left = false
             } else if (u32)msg == (u32)self.io_audio_1_r {
@@ -1125,13 +1124,21 @@ impl AudioStreamer {
             if buf_idx >= 0 {
                 // Mark this channel as done for this buffer
                 if is_left {
-                    if buf_idx == 0 { self.buf0_left_done = true }
-                    else if buf_idx == 1 { self.buf1_left_done = true }
-                    else { self.buf2_left_done = true }
+                    if buf_idx == 0 {
+                        self.buf0_left_done = true
+                    } else if buf_idx == 1 {
+                        self.buf1_left_done = true
+                    } else {
+                        self.buf2_left_done = true
+                    }
                 } else {
-                    if buf_idx == 0 { self.buf0_right_done = true }
-                    else if buf_idx == 1 { self.buf1_right_done = true }
-                    else { self.buf2_right_done = true }
+                    if buf_idx == 0 {
+                        self.buf0_right_done = true
+                    } else if buf_idx == 1 {
+                        self.buf1_right_done = true
+                    } else {
+                        self.buf2_right_done = true
+                    }
                 }
 
                 // Check if this buffer is fully complete (both channels done, or mono)

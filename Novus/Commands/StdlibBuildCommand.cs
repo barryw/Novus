@@ -51,7 +51,8 @@ public static class StdlibBuildCommand
     /// <summary>
     /// Build stdlib for all CPU targets and build modes
     /// </summary>
-    public static async Task<int> BuildAll(string? vbccPath = null, string? ndkPath = null, bool verbose = false)
+    /// <param name="codegenVersion">Compiler codegen version for cache invalidation</param>
+    public static async Task<int> BuildAll(string? vbccPath = null, string? ndkPath = null, bool verbose = false, int codegenVersion = 0)
     {
         Console.WriteLine("Building standard library for all targets...\n");
 
@@ -65,7 +66,7 @@ public static class StdlibBuildCommand
                 var buildMode = modeStr == "release" ? BuildMode.Release : BuildMode.Debug;
                 Console.WriteLine($"Building stdlib for {cpu}/{modeStr}...");
 
-                var result = await BuildForTarget(cpu, buildMode, vbccPath, ndkPath, verbose);
+                var result = await BuildForTarget(cpu, buildMode, vbccPath, ndkPath, verbose, codegenVersion);
                 if (result == 0)
                 {
                     Console.WriteLine($"  ✓ {cpu}/{modeStr} completed\n");
@@ -89,12 +90,14 @@ public static class StdlibBuildCommand
     /// <summary>
     /// Build stdlib for a specific CPU target and build mode
     /// </summary>
+    /// <param name="codegenVersion">Compiler codegen version for cache invalidation</param>
     public static async Task<int> BuildForTarget(
         string cpu,
         BuildMode buildMode,
         string? vbccPath = null,
         string? ndkPath = null,
-        bool verbose = false)
+        bool verbose = false,
+        int codegenVersion = 0)
     {
         // Validate CPU
         if (!ValidCpuTargets.Contains(cpu))
@@ -161,6 +164,7 @@ public static class StdlibBuildCommand
             Cpu = cpu,
             BuildMode = buildModeStr,
             Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            CodegenVersion = codegenVersion,  // CRITICAL: Track compiler version for cache invalidation
             Modules = new Dictionary<string, StdlibModuleInfo>()
         };
 

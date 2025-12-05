@@ -89,7 +89,8 @@ class Program
                     mode,
                     options.VbccPath,
                     options.NdkPath,
-                    options.Verbose);
+                    options.Verbose,
+                    CODEGEN_VERSION);
 
                 if (result == 0)
                 {
