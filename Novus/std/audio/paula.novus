@@ -33,7 +33,11 @@
 from std::core import Option, Result, Drop
 from std::strings::core import Str
 from std::ffi::exec import AllocVec, FreeVec, CopyMem, FreeMem
+from std::ffi::exec import CreateMsgPort, DeleteMsgPort, CreateIORequest, DeleteIORequest
+from std::ffi::exec import OpenDevice, CloseDevice, DoIO, BeginIO, AbortIO, WaitIO
 from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR, DMAF_SETCLR, DMAF_MASTER
+from std::ffi::amiga_consts import ADCMD_FREE, CMD_WRITE, ADIOF_PERVOL
+from std::ffi::amiga_structs import IOAudio, IORequest, MsgPort
 from std::hardware::registers import CUSTOM_BASE, DMACON, INTREQ, ADKCON, VPOSR
 from std::hardware::paula import period_from_hz, hz_from_period, channel_base_offset, channel_dma_bit, channel_int_bit, is_valid_period, is_valid_volume, is_valid_channel, PAULA_MAX_VOLUME, PAULA_MIN_PERIOD, PAULA_MAX_PERIOD, PAULA_MAX_LENGTH_WORDS, PAULA_MAX_LENGTH_BYTES, PAULA_PAL_CLOCK, PAULA_NTSC_CLOCK, PERIOD_11025_PAL, PERIOD_11025_NTSC, AUD0LCH
 from std::audio::errors import AudioError
@@ -42,6 +46,7 @@ from std::memory::chip_cache import ChipCache
 
 // Global counter for generating unique asset IDs for audio samples
 static mut g_audio_next_asset_id: u32 = $10000  // Start high to avoid collision with MOD IDs
+
 
 /// Generate a unique asset ID for ChipCache
 fn next_audio_asset_id() -> u32 {
@@ -1058,4 +1063,631 @@ pub fn init_audio() {
 pub fn init_channel(channel: u8) -> Result<AudioChannel, AudioError> {
     init_audio()
     return AudioChannel::acquire(channel)
+}
+
+// ============================================================================
+// Channel Mask - Flexible Channel Selection
+// ============================================================================
+
+/// Bitmask for selecting any combination of Paula's 4 audio channels
+///
+/// Paula has 4 channels with fixed stereo assignment:
+/// - Channel 0: LEFT
+/// - Channel 1: RIGHT
+/// - Channel 2: RIGHT
+/// - Channel 3: LEFT
+///
+/// ChannelMask lets you specify any combination of channels for playback.
+/// Use the builder methods to construct masks, or create directly from a u8.
+///
+/// # Examples
+/// ```novus
+/// // Single channel
+/// let ch0 = ChannelMask::channel(0)
+///
+/// // Stereo (one left + one right)
+/// let stereo = ChannelMask::stereo()
+///
+/// // Custom combination
+/// let custom = ChannelMask::channel(0).with(2).with(3)
+///
+/// // All channels
+/// let all = ChannelMask::all()
+/// ```
+pub struct ChannelMask {
+    mask: u8,  // Bits 0-3 correspond to channels 0-3
+}
+
+impl ChannelMask {
+    /// Create an empty mask (no channels)
+    pub fn none() -> ChannelMask {
+        return ChannelMask { mask: 0 }
+    }
+
+    /// Create a mask for all 4 channels
+    pub fn all() -> ChannelMask {
+        return ChannelMask { mask: $0F }
+    }
+
+    /// Create a mask for a single channel (0-3)
+    ///
+    /// Returns an empty mask if channel > 3
+    pub fn channel(ch: u8) -> ChannelMask {
+        if ch > 3 {
+            return ChannelMask { mask: 0 }
+        }
+        return ChannelMask { mask: 1 << ch }
+    }
+
+    /// Create a mask for left channels only (0 and 3)
+    pub fn left() -> ChannelMask {
+        return ChannelMask { mask: $09 }  // 0b1001
+    }
+
+    /// Create a mask for right channels only (1 and 2)
+    pub fn right() -> ChannelMask {
+        return ChannelMask { mask: $06 }  // 0b0110
+    }
+
+    /// Create a mask for stereo playback (channel 0 left + channel 1 right)
+    ///
+    /// This requests one left channel and one right channel.
+    /// The actual channels allocated depend on availability.
+    pub fn stereo() -> ChannelMask {
+        return ChannelMask { mask: $03 }  // 0b0011 - channels 0 and 1
+    }
+
+    /// Create a mask from a raw u8 value
+    ///
+    /// Only the lower 4 bits are used.
+    pub fn from_raw(mask: u8) -> ChannelMask {
+        return ChannelMask { mask: mask & $0F }
+    }
+
+    /// Add a channel to this mask
+    ///
+    /// Returns a new mask with the additional channel.
+    pub fn with(&self, ch: u8) -> ChannelMask {
+        if ch > 3 {
+            return ChannelMask { mask: self.mask }
+        }
+        return ChannelMask { mask: self.mask | (1 << ch) }
+    }
+
+    /// Remove a channel from this mask
+    pub fn without(&self, ch: u8) -> ChannelMask {
+        if ch > 3 {
+            return ChannelMask { mask: self.mask }
+        }
+        return ChannelMask { mask: self.mask & ~(1 << ch) }
+    }
+
+    /// Check if a channel is in this mask
+    pub fn has(&self, ch: u8) -> bool {
+        if ch > 3 {
+            return false
+        }
+        return (self.mask & (1 << ch)) != 0
+    }
+
+    /// Get the raw mask value
+    pub fn raw(&self) -> u8 {
+        return self.mask
+    }
+
+    /// Count how many channels are in this mask
+    pub fn count(&self) -> u8 {
+        var c: u8 = 0
+        var m = self.mask
+        while m != 0 {
+            c = c + (m & 1)
+            m = m >> 1
+        }
+        return c
+    }
+
+    /// Check if the mask is empty (no channels)
+    pub fn is_empty(&self) -> bool {
+        return self.mask == 0
+    }
+
+    /// Check if this mask has any left channel (0 or 3)
+    pub fn has_left(&self) -> bool {
+        return (self.mask & $09) != 0
+    }
+
+    /// Check if this mask has any right channel (1 or 2)
+    pub fn has_right(&self) -> bool {
+        return (self.mask & $06) != 0
+    }
+
+    /// Check if this mask has both left and right (stereo capable)
+    pub fn is_stereo(&self) -> bool {
+        return self.has_left() && self.has_right()
+    }
+
+    /// Get the first (lowest numbered) channel in this mask
+    ///
+    /// Returns Option::None if mask is empty
+    pub fn first(&self) -> Option<u8> {
+        if (self.mask & 1) != 0 { return Option::Some(0) }
+        if (self.mask & 2) != 0 { return Option::Some(1) }
+        if (self.mask & 4) != 0 { return Option::Some(2) }
+        if (self.mask & 8) != 0 { return Option::Some(3) }
+        return Option::None
+    }
+}
+
+// ============================================================================
+// Multi-Channel Playback
+// ============================================================================
+
+/// Play audio on multiple channels simultaneously with OS-friendly allocation
+///
+/// MultiChannel combines the best of both worlds:
+/// - Uses audio.device for proper channel allocation (good OS citizen)
+/// - Uses direct Paula hardware for low-latency playback
+///
+/// This is ideal for:
+/// - Stereo sound effects (same sample on left + right channels)
+/// - Multi-channel audio mixing
+/// - Any scenario where you need to play on multiple channels at once
+///
+/// # Example - Stereo playback
+/// ```novus
+/// // Allocate stereo channels (one left, one right)
+/// let mut audio = MultiChannel::acquire_stereo(0)?
+///
+/// // Play sample on both channels
+/// audio.play(&explosion, PlaybackMode::OneShot)?
+///
+/// // Adjust volume on all channels
+/// audio.set_volume(48)?
+///
+/// // Or per-channel volume for panning
+/// audio.set_channel_volume(0, 64)?  // Full left
+/// audio.set_channel_volume(1, 32)?  // Half right
+/// ```
+///
+/// # Example - Custom channel selection
+/// ```novus
+/// // Play on channels 0, 2, and 3
+/// let mask = ChannelMask::channel(0).with(2).with(3)
+/// let mut audio = MultiChannel::acquire(mask, 0)?
+/// audio.play(&sample, PlaybackMode::Loop)?
+/// ```
+pub struct MultiChannel {
+    // audio.device resources for allocation
+    io_audio: *IOAudio,
+    port: *MsgPort,
+    alloc_key: i16,
+
+    // Which channels we actually got allocated
+    allocated_mask: ChannelMask,
+
+    // Per-channel state (indexed by channel number 0-3)
+    periods: [u16; 4],
+    volumes: [u16; 4],
+
+    // Playback state
+    active: bool,
+}
+
+impl MultiChannel {
+    /// Acquire channels matching the given mask through audio.device
+    ///
+    /// The OS will allocate available channels. If the exact channels aren't
+    /// available, you may get different ones that satisfy the request.
+    ///
+    /// # Arguments
+    /// * `mask` - Which channels to request
+    /// * `priority` - Allocation priority (-128 to 127, 0 = normal)
+    ///
+    /// # Returns
+    /// * `Ok(MultiChannel)` - Channels allocated, ready to play
+    /// * `Err(AudioError::NoAllocation)` - Requested channels not available
+    pub fn acquire(mask: ChannelMask, priority: i8) -> Result<MultiChannel, AudioError> {
+        if mask.is_empty() {
+            return Result::Err(AudioError::InvalidChannel)
+        }
+
+        // Create message port for I/O replies
+        let port = CreateMsgPort()
+        if (u32)port == 0 {
+            return Result::Err(AudioError::NoMsgPort)
+        }
+
+        // Create IORequest
+        let req = CreateIORequest(port, @sizeof(IOAudio))
+        if (u32)req == 0 {
+            DeleteMsgPort(port)
+            return Result::Err(AudioError::NoIORequest)
+        }
+
+        let io_audio = (*IOAudio)req
+
+        // Build allocation map based on requested mask
+        // The allocation array is a list of acceptable channel combinations (bitmasks).
+        // audio.device tries each entry in order until it finds available channels.
+        // ioa_Length = number of channels we WANT (not the array size!)
+        var alloc_map: [u8; 8] = [0, 0, 0, 0, 0, 0, 0, 0]
+        var num_channels: u32 = 0
+
+        let channel_count = mask.count()
+
+        if channel_count == 4 {
+            // All 4 channels - only one option
+            alloc_map[0] = $0F
+            num_channels = 4
+        } else if channel_count == 2 && mask.has_left() && mask.has_right() {
+            // Stereo pair - provide multiple fallback combinations
+            // Each entry is a bitmask of channels that satisfy "one left + one right"
+            alloc_map[0] = $03  // channels 0+1 (preferred: left 0, right 1)
+            alloc_map[1] = $05  // channels 0+2 (left 0, right 2)
+            alloc_map[2] = $0A  // channels 1+3 (right 1, left 3)
+            alloc_map[3] = $0C  // channels 2+3 (right 2, left 3)
+            num_channels = 2
+        } else if channel_count == 1 {
+            // Single channel
+            if mask.raw() == $0F {
+                // "Any" channel - let audio.device pick
+                alloc_map[0] = $01  // Try channel 0 first
+                alloc_map[1] = $02  // Then channel 1
+                alloc_map[2] = $04  // Then channel 2
+                alloc_map[3] = $08  // Then channel 3
+            } else {
+                // Specific channel requested
+                alloc_map[0] = mask.raw()
+            }
+            num_channels = 1
+        } else {
+            // Custom multi-channel request - use mask directly
+            alloc_map[0] = mask.raw()
+            num_channels = channel_count
+        }
+
+        // Set up the IOAudio for allocation
+        io_audio.ioa_Request.io_Message.mn_ReplyPort = port
+        io_audio.ioa_Request.io_Message.mn_Node.ln_Pri = priority
+        io_audio.ioa_Data = &alloc_map[0]
+        io_audio.ioa_Length = num_channels  // Number of channels we want
+
+        // Open device - this performs the allocation
+        unsafe {
+            let req_addr = &io_audio.ioa_Request
+            let ioreq = (*IORequest)req_addr
+            let error = OpenDevice("audio.device", 0, ioreq, 0)
+
+            if error != 0 {
+                DeleteIORequest(req)
+                DeleteMsgPort(port)
+
+                if error == -10 {
+                    return Result::Err(AudioError::NoAllocation)
+                }
+                if error == -11 {
+                    return Result::Err(AudioError::AllocFailed)
+                }
+                return Result::Err(AudioError::DeviceOpenFailed)
+            }
+        }
+
+        // Extract allocation results
+        // io_Unit contains a bitmask of the actually allocated channels
+        let alloc_key = io_audio.ioa_AllocKey
+        let allocated = (u8)((u32)io_audio.ioa_Request.io_Unit & $FF)
+
+        return Result::Ok(MultiChannel {
+            io_audio: io_audio,
+            port: port,
+            alloc_key: alloc_key,
+            allocated_mask: ChannelMask::from_raw(allocated),
+            periods: [PERIOD_11025_PAL, PERIOD_11025_PAL, PERIOD_11025_PAL, PERIOD_11025_PAL],
+            volumes: [PAULA_MAX_VOLUME, PAULA_MAX_VOLUME, PAULA_MAX_VOLUME, PAULA_MAX_VOLUME],
+            active: false,
+        })
+    }
+
+    /// Acquire any single available channel
+    ///
+    /// The OS will pick the first available channel.
+    ///
+    /// # Arguments
+    /// * `priority` - Allocation priority (-128 to 127)
+    pub fn acquire_any(priority: i8) -> Result<MultiChannel, AudioError> {
+        // Request any of the 4 channels - OS will pick one
+        return MultiChannel::acquire(ChannelMask::all(), priority)
+    }
+
+    /// Acquire a stereo pair (one left + one right channel)
+    ///
+    /// The OS will allocate one channel from the left side (0 or 3)
+    /// and one from the right side (1 or 2).
+    ///
+    /// # Arguments
+    /// * `priority` - Allocation priority (-128 to 127)
+    pub fn acquire_stereo(priority: i8) -> Result<MultiChannel, AudioError> {
+        return MultiChannel::acquire(ChannelMask::stereo(), priority)
+    }
+
+    /// Acquire a specific channel by number
+    ///
+    /// # Arguments
+    /// * `channel` - Channel number (0-3)
+    /// * `priority` - Allocation priority (-128 to 127)
+    pub fn acquire_channel(channel: u8, priority: i8) -> Result<MultiChannel, AudioError> {
+        if channel > 3 {
+            return Result::Err(AudioError::InvalidChannel)
+        }
+        return MultiChannel::acquire(ChannelMask::channel(channel), priority)
+    }
+
+    /// Get the mask of actually allocated channels
+    pub fn channels(&self) -> ChannelMask {
+        return self.allocated_mask
+    }
+
+    /// Get the number of allocated channels
+    pub fn channel_count(&self) -> u8 {
+        return self.allocated_mask.count()
+    }
+
+    /// Check if we have stereo (at least one left and one right)
+    pub fn is_stereo(&self) -> bool {
+        return self.allocated_mask.is_stereo()
+    }
+
+    /// Set volume for all allocated channels (0-64)
+    ///
+    /// This is the common case - same volume on all channels.
+    /// Note: Volume changes take effect on the next play() call.
+    pub fn set_volume(&mut self, volume: u16) -> Result<(), AudioError> {
+        if !is_valid_volume(volume) {
+            return Result::Err(AudioError::InvalidVolume)
+        }
+
+        var ch: u8 = 0
+        while ch < 4 {
+            if self.allocated_mask.has(ch) {
+                self.volumes[ch] = volume
+            }
+            ch++
+        }
+        return Result::Ok(())
+    }
+
+    /// Set volume for a specific channel (0-64)
+    ///
+    /// Use this for stereo panning or per-channel control.
+    /// Note: Volume changes take effect on the next play() call.
+    ///
+    /// # Arguments
+    /// * `channel` - Channel number (0-3)
+    /// * `volume` - Volume level (0-64)
+    pub fn set_channel_volume(&mut self, channel: u8, volume: u16) -> Result<(), AudioError> {
+        if channel > 3 {
+            return Result::Err(AudioError::InvalidChannel)
+        }
+        if !self.allocated_mask.has(channel) {
+            return Result::Err(AudioError::InvalidChannel)
+        }
+        if !is_valid_volume(volume) {
+            return Result::Err(AudioError::InvalidVolume)
+        }
+
+        self.volumes[channel] = volume
+        return Result::Ok(())
+    }
+
+    /// Get volume for a specific channel
+    pub fn get_channel_volume(&self, channel: u8) -> u16 {
+        if channel > 3 {
+            return 0
+        }
+        return self.volumes[channel]
+    }
+
+    /// Set period for all allocated channels
+    ///
+    /// Note: Period changes take effect on the next play() call.
+    pub fn set_period(&mut self, period: u16) -> Result<(), AudioError> {
+        if !is_valid_period(period) {
+            return Result::Err(AudioError::InvalidPeriod)
+        }
+
+        var ch: u8 = 0
+        while ch < 4 {
+            if self.allocated_mask.has(ch) {
+                self.periods[ch] = period
+            }
+            ch++
+        }
+        return Result::Ok(())
+    }
+
+    /// Set sample rate for all channels (converts to period)
+    pub fn set_sample_rate(&mut self, hz: u32, pal: bool) -> Result<(), AudioError> {
+        match period_from_hz(hz, pal) {
+            Option::Some(period) => {
+                return self.set_period(period)
+            },
+            Option::None => {
+                return Result::Err(AudioError::InvalidSampleRate)
+            },
+        }
+    }
+
+    /// Play a sample on all allocated channels simultaneously
+    ///
+    /// The sample is played on every channel we have allocated using audio.device.
+    /// All channels use the same sample data but can have different volumes.
+    pub fn play(&mut self, sample: &SampleHandle, mode: PlaybackMode) -> Result<(), AudioError> {
+        let addr = (u32)sample.ptr()
+        if (addr & 1) != 0 {
+            return Result::Err(AudioError::SampleMisaligned)
+        }
+
+        // Stop any currently playing audio first
+        if self.active {
+            self.stop()
+        }
+
+        // Use audio.device CMD_WRITE for proper system integration
+        // With ADIOF_PERVOL, we can set period and volume per-write
+        let io = self.io_audio
+
+        // Calculate average volume for all channels (audio.device uses one volume for multi-channel)
+        var total_vol: u32 = 0
+        var ch_count: u32 = 0
+        var ch: u8 = 0
+        while ch < 4 {
+            if self.allocated_mask.has(ch) {
+                total_vol = total_vol + (u32)self.volumes[ch]
+                ch_count = ch_count + 1
+            }
+            ch++
+        }
+        let avg_vol = if ch_count > 0 { (u16)(total_vol / ch_count) } else { 64 }
+
+        // Use the first channel's period (they should all be the same)
+        var period: u16 = PERIOD_11025_PAL
+        match self.allocated_mask.first() {
+            Option::Some(first_ch) => {
+                period = self.periods[first_ch]
+            },
+            Option::None => {}
+        }
+
+        // Set up the IORequest for CMD_WRITE
+        io.ioa_Request.io_Command = CMD_WRITE
+        io.ioa_Request.io_Flags = ADIOF_PERVOL  // Per-write period/volume
+        io.ioa_Data = sample.ptr()
+        io.ioa_Length = sample.bytes()
+        io.ioa_Period = period
+        io.ioa_Volume = avg_vol
+        io.ioa_Cycles = if mode == PlaybackMode::Loop { 0 } else { 1 }
+
+        unsafe {
+            let req_addr = &io.ioa_Request
+            let ioreq = (*IORequest)req_addr
+            BeginIO(ioreq)
+        }
+
+        self.active = true
+        return Result::Ok(())
+    }
+
+    /// Play a sample at its native sample rate
+    pub fn play_native(&mut self, sample: &SampleHandle, mode: PlaybackMode, pal: bool) -> Result<(), AudioError> {
+        let period = if pal { sample.period_pal() } else { sample.period_ntsc() }
+        self.set_period(period)?
+        return self.play(sample, mode)
+    }
+
+    /// Play raw audio data from chip RAM
+    pub fn play_raw(&mut self, chip_ptr: *u8, length_bytes: u32, period: u16, mode: PlaybackMode) -> Result<(), AudioError> {
+        let addr = (u32)chip_ptr
+
+        if addr >= $00200000 {
+            return Result::Err(AudioError::SampleNotChipRam)
+        }
+        if (addr & 1) != 0 {
+            return Result::Err(AudioError::SampleMisaligned)
+        }
+        if !is_valid_period(period) {
+            return Result::Err(AudioError::InvalidPeriod)
+        }
+
+        // Stop any currently playing audio first
+        if self.active {
+            self.stop()
+        }
+
+        // Store period for all channels
+        var ch: u8 = 0
+        while ch < 4 {
+            if self.allocated_mask.has(ch) {
+                self.periods[ch] = period
+            }
+            ch++
+        }
+
+        // Calculate average volume
+        var total_vol: u32 = 0
+        var ch_count: u32 = 0
+        var ch2: u8 = 0
+        while ch2 < 4 {
+            if self.allocated_mask.has(ch2) {
+                total_vol = total_vol + (u32)self.volumes[ch2]
+                ch_count = ch_count + 1
+            }
+            ch2++
+        }
+        let avg_vol = if ch_count > 0 { (u16)(total_vol / ch_count) } else { 64 }
+
+        // Use audio.device CMD_WRITE
+        let io = self.io_audio
+        io.ioa_Request.io_Command = CMD_WRITE
+        io.ioa_Request.io_Flags = ADIOF_PERVOL
+        io.ioa_Data = chip_ptr
+        io.ioa_Length = length_bytes
+        io.ioa_Period = period
+        io.ioa_Volume = avg_vol
+        io.ioa_Cycles = if mode == PlaybackMode::Loop { 0 } else { 1 }
+
+        unsafe {
+            let req_addr = &io.ioa_Request
+            let ioreq = (*IORequest)req_addr
+            BeginIO(ioreq)
+        }
+
+        self.active = true
+        return Result::Ok(())
+    }
+
+    /// Stop playback on all channels
+    pub fn stop(&mut self) {
+        if self.active {
+            // Abort any pending I/O using audio.device
+            let io = self.io_audio
+            unsafe {
+                let req_addr = &io.ioa_Request
+                let ioreq = (*IORequest)req_addr
+                AbortIO(ioreq)
+                WaitIO(ioreq)
+            }
+            self.active = false
+        }
+    }
+
+    /// Check if currently playing
+    pub fn is_playing(&self) -> bool {
+        return self.active
+    }
+}
+
+impl Drop for MultiChannel {
+    fn drop(&mut self) {
+        // Stop any active playback
+        self.stop()
+
+        // Free channels and close device
+        if let io = self.io_audio {
+            unsafe {
+                io.ioa_Request.io_Command = ADCMD_FREE
+                let req_addr = &io.ioa_Request
+                let ioreq = (*IORequest)req_addr
+                let _ = DoIO(ioreq)
+
+                CloseDevice(ioreq)
+                DeleteIORequest((*u8)io)
+            }
+            self.io_audio = (*IOAudio)0
+        }
+
+        if let port = self.port {
+            DeleteMsgPort(port)
+            self.port = (*MsgPort)0
+        }
+    }
 }
