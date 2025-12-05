@@ -343,11 +343,165 @@ public static class StdlibBuildCommand
     }
 
     /// <summary>
+    /// Compute SHA256 hash of the compiler DLL itself.
+    /// This ensures ANY change to the compiler (not just codegen version) invalidates caches.
+    /// </summary>
+    public static string ComputeCompilerHash()
+    {
+        // For single-file deployments, Assembly.Location returns empty string
+        // Use AppContext.BaseDirectory to find the executable
+        var compilerDir = AppContext.BaseDirectory;
+
+        // Try to find the Novus.dll in the compiler directory
+        var novusDllPath = Path.Combine(compilerDir, "Novus.dll");
+        if (File.Exists(novusDllPath))
+        {
+            return ComputeFileHash(novusDllPath);
+        }
+
+        // Try to find the executable itself (single-file deployment)
+        var exeName = Environment.ProcessPath;
+        if (!string.IsNullOrEmpty(exeName) && File.Exists(exeName))
+        {
+            return ComputeFileHash(exeName);
+        }
+
+        // Fallback: use assembly version + timestamp of compiler directory
+        var version = typeof(StdlibBuildCommand).Assembly.GetName().Version;
+        try
+        {
+            var compilerDirInfo = new DirectoryInfo(compilerDir);
+            var timestamp = compilerDirInfo.LastWriteTimeUtc.Ticks;
+            return $"version-{version}-{timestamp}";
+        }
+        catch
+        {
+            return $"version-{version}";
+        }
+    }
+
+    /// <summary>
+    /// Get the path to the project source tree stdlib directory (if in dev build)
+    /// Returns null if not in a dev build
+    /// </summary>
+    public static string? GetProjectSourceTreePath(string compilerDir)
+    {
+        var projectStdlibDir = Path.Combine(compilerDir, "..", "..", "..", "..", "Novus", "std");
+        projectStdlibDir = Path.GetFullPath(projectStdlibDir);
+        return Directory.Exists(projectStdlibDir) ? projectStdlibDir : null;
+    }
+
+    /// <summary>
+    /// Validate that bin/std/ is in sync with project source tree.
+    /// Returns list of files that are stale (source is newer than bin copy).
+    /// </summary>
+    public static List<string> FindStaleSourceCopies(string compilerDir)
+    {
+        var staleFiles = new List<string>();
+        var projectStdlibDir = GetProjectSourceTreePath(compilerDir);
+
+        if (projectStdlibDir == null)
+        {
+            // Not a dev build - no source tree to compare against
+            return staleFiles;
+        }
+
+        var binStdlibDir = Path.Combine(compilerDir, "std");
+        if (!Directory.Exists(binStdlibDir))
+        {
+            return staleFiles;
+        }
+
+        // Compare all .novus files
+        var sourceFiles = Directory.GetFiles(projectStdlibDir, "*.novus", SearchOption.AllDirectories);
+        foreach (var sourceFile in sourceFiles)
+        {
+            var relativePath = Path.GetRelativePath(projectStdlibDir, sourceFile);
+            var binFile = Path.Combine(binStdlibDir, relativePath);
+
+            if (File.Exists(binFile))
+            {
+                var sourceTime = File.GetLastWriteTimeUtc(sourceFile);
+                var binTime = File.GetLastWriteTimeUtc(binFile);
+
+                // Check if source is newer than bin copy
+                if (sourceTime > binTime)
+                {
+                    staleFiles.Add(relativePath);
+                }
+                else
+                {
+                    // Also compare hashes to catch same-timestamp edits
+                    var sourceHash = ComputeFileHash(sourceFile);
+                    var binHash = ComputeFileHash(binFile);
+                    if (sourceHash != binHash)
+                    {
+                        staleFiles.Add(relativePath);
+                    }
+                }
+            }
+        }
+
+        return staleFiles;
+    }
+
+    /// <summary>
+    /// Force refresh of bin/std/ from project source tree.
+    /// Called when stale copies are detected.
+    /// </summary>
+    public static int RefreshBinStdlib(string compilerDir, bool verbose = false)
+    {
+        var projectStdlibDir = GetProjectSourceTreePath(compilerDir);
+        if (projectStdlibDir == null)
+        {
+            return 0; // Not a dev build
+        }
+
+        var binStdlibDir = Path.Combine(compilerDir, "std");
+        Directory.CreateDirectory(binStdlibDir);
+
+        int copiedCount = 0;
+        var sourceFiles = Directory.GetFiles(projectStdlibDir, "*.novus", SearchOption.AllDirectories);
+        foreach (var sourceFile in sourceFiles)
+        {
+            var relativePath = Path.GetRelativePath(projectStdlibDir, sourceFile);
+            var binFile = Path.Combine(binStdlibDir, relativePath);
+
+            // Ensure target directory exists
+            var targetDir = Path.GetDirectoryName(binFile);
+            if (targetDir != null)
+            {
+                Directory.CreateDirectory(targetDir);
+            }
+
+            File.Copy(sourceFile, binFile, overwrite: true);
+            copiedCount++;
+        }
+
+        if (verbose && copiedCount > 0)
+        {
+            Console.WriteLine($"  Refreshed {copiedCount} stdlib source files in bin/");
+        }
+
+        return copiedCount;
+    }
+
+    /// <summary>
     /// Check if stdlib needs rebuilding for a specific target
     /// Also checks nested directories (e.g., ffi/) for changes and compiler version
     /// </summary>
     public static bool NeedsRebuild(string compilerDir, string cpu, BuildMode buildMode, int codegenVersion)
     {
+        return NeedsRebuild(compilerDir, cpu, buildMode, codegenVersion, out _);
+    }
+
+    /// <summary>
+    /// Check if stdlib needs rebuilding for a specific target (with reason)
+    /// Also checks nested directories (e.g., ffi/) for changes and compiler version
+    /// </summary>
+    public static bool NeedsRebuild(string compilerDir, string cpu, BuildMode buildMode, int codegenVersion, out string? reason)
+    {
+        reason = null;
         var buildModeStr = buildMode == BuildMode.Release ? "release" : "debug";
         var stdlibDir = Path.Combine(compilerDir, "stdlib", cpu, buildModeStr);
         var manifestPath = Path.Combine(stdlibDir, "manifest.json");
@@ -355,6 +509,7 @@ public static class StdlibBuildCommand
         // If manifest doesn't exist, needs rebuild
         if (!File.Exists(manifestPath))
         {
+            reason = "manifest.json not found";
             return true;
         }
 
@@ -365,6 +520,7 @@ public static class StdlibBuildCommand
             var manifest = JsonSerializer.Deserialize(manifestJson, StdlibManifestJsonContext.Default.StdlibManifest);
             if (manifest == null)
             {
+                reason = "manifest.json could not be parsed";
                 return true;
             }
 
@@ -372,6 +528,16 @@ public static class StdlibBuildCommand
             // If codegen changed, stdlib must be rebuilt even if source files unchanged
             if (manifest.CodegenVersion != codegenVersion)
             {
+                reason = $"codegen version changed ({manifest.CodegenVersion} → {codegenVersion})";
+                return true;
+            }
+
+            // CRITICAL: Check compiler DLL hash
+            // This catches ANY compiler change, not just codegen version bumps
+            var currentCompilerHash = ComputeCompilerHash();
+            if (!string.IsNullOrEmpty(manifest.CompilerHash) && manifest.CompilerHash != currentCompilerHash)
+            {
+                reason = "compiler binary changed (DLL hash mismatch)";
                 return true;
             }
 
@@ -390,13 +556,15 @@ public static class StdlibBuildCommand
                 var sourceFile = Path.Combine(stdlibSourceDir, moduleInfo.SourceFile);
                 if (!File.Exists(sourceFile))
                 {
-                    return true;  // Source file missing
+                    reason = $"source file missing: {moduleInfo.SourceFile}";
+                    return true;
                 }
 
                 var currentHash = ComputeFileHash(sourceFile);
                 if (currentHash != moduleInfo.Hash)
                 {
-                    return true;  // Source file changed
+                    reason = $"source file changed: {moduleInfo.SourceFile}";
+                    return true;
                 }
             }
 
@@ -419,14 +587,16 @@ public static class StdlibBuildCommand
                 if (!isTracked)
                 {
                     // File exists but not tracked in manifest - manifest is stale
+                    reason = $"new untracked file: {relativePath}";
                     return true;
                 }
             }
 
             return false;  // All files match
         }
-        catch
+        catch (Exception ex)
         {
+            reason = $"error reading manifest: {ex.Message}";
             return true;  // Error reading manifest, rebuild to be safe
         }
     }
@@ -451,6 +621,7 @@ public static class StdlibBuildCommand
             BuildMode = buildModeStr,
             Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             CodegenVersion = codegenVersion,
+            CompilerHash = ComputeCompilerHash(),  // Track compiler binary for cache invalidation
             Modules = new Dictionary<string, StdlibModuleInfo>()
         };
 
@@ -539,6 +710,7 @@ public class StdlibManifest
     public string BuildMode { get; set; } = "";
     public long Timestamp { get; set; }
     public int CodegenVersion { get; set; }  // Compiler codegen version - invalidates cache on breaking changes
+    public string CompilerHash { get; set; } = "";  // SHA256 of compiler DLL - invalidates on ANY compiler change
     public Dictionary<string, StdlibModuleInfo> Modules { get; set; } = new();
 }
 

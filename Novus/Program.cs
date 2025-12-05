@@ -40,7 +40,7 @@ class Program
 
     static async Task<int> Main(string[] args)
     {
-        return await CommandLine.Parser.Default.ParseArguments<CompilerOptions, BuildOptions, GenerateStubsOptions, NewCommandOptions, StdlibBuildOptions, FmtOptions>(args)
+        return await CommandLine.Parser.Default.ParseArguments<CompilerOptions, BuildOptions, GenerateStubsOptions, NewCommandOptions, StdlibBuildOptions, FmtOptions, CleanOptions>(args)
             .MapResult(
                 (CompilerOptions options) => RunCompiler(options),
                 (BuildOptions options) => RunBuild(options),
@@ -48,6 +48,7 @@ class Program
                 (NewCommandOptions options) => Task.FromResult(Commands.NewCommand.Run(options)),
                 (StdlibBuildOptions options) => RunStdlibBuild(options),
                 (FmtOptions options) => Task.FromResult(Commands.FmtCommand.Run(options)),
+                (CleanOptions options) => Task.FromResult(Commands.CleanCommand.Run(options)),
                 errors => Task.FromResult(1)
             );
     }
@@ -623,6 +624,30 @@ class Program
         // Compute safety level from command-line options (uses build mode for default)
         var safetyLevel = options.GetSafetyLevel();
 
+        // ============================================================================
+        // STALE ARTIFACT DETECTION - Prevent bugs from stale stdlib sources
+        // ============================================================================
+        var compilerDir = AppContext.BaseDirectory;
+        var staleFiles = Commands.StdlibBuildCommand.FindStaleSourceCopies(compilerDir);
+        if (staleFiles.Count > 0)
+        {
+            Console.WriteLine($"⚠ WARNING: {staleFiles.Count} stdlib source file(s) in bin/ are STALE!");
+            Console.WriteLine("  The project source tree has newer versions.");
+            if (options.Verbose)
+            {
+                foreach (var file in staleFiles.Take(5))
+                {
+                    Console.WriteLine($"    - {file}");
+                }
+                if (staleFiles.Count > 5)
+                {
+                    Console.WriteLine($"    ... and {staleFiles.Count - 5} more");
+                }
+            }
+            Console.WriteLine("  Auto-refreshing from project source tree...\n");
+            Commands.StdlibBuildCommand.RefreshBinStdlib(compilerDir, options.Verbose);
+        }
+
         try
         {
             // Read source file
@@ -640,8 +665,7 @@ class Program
                 Console.WriteLine();
             }
 
-            // Find standard library path
-            var compilerDir = AppContext.BaseDirectory;
+            // Find standard library path (compilerDir already defined above)
             var stdLibPath = Path.Combine(compilerDir, "std");
 
             // Create module cache for performance
@@ -1310,16 +1334,18 @@ ___stack:
             // Use --rebuild-stdlib-cache to rebuild and cache for future use
             bool forceRebuildAndCache = options.RebuildStdlibCache;
             bool useCache = options.UseStdlibCache && !forceRebuildAndCache;
+            string? cacheInvalidReason = null;
             bool needsRebuild = forceRebuildAndCache
                 || !useCache
                 || !Directory.Exists(stdlibPrecompiledDir)
-                || Commands.StdlibBuildCommand.NeedsRebuild(compilerDir, assemblyCpu, options.BuildMode, CODEGEN_VERSION);
+                || Commands.StdlibBuildCommand.NeedsRebuild(compilerDir, assemblyCpu, options.BuildMode, CODEGEN_VERSION, out cacheInvalidReason);
 
             // CRITICAL FIX: If stdlib cache is stale, delete ALL cached .o files
             // This prevents using stale object files with old constant values
             if (needsRebuild && Directory.Exists(stdlibPrecompiledDir))
             {
-                Console.WriteLine($"\n⚠ Stdlib cache invalidated - source files have changed");
+                var reason = cacheInvalidReason ?? (forceRebuildAndCache ? "forced rebuild" : "cache not used by default");
+                Console.WriteLine($"\n⚠ Stdlib cache invalidated: {reason}");
                 Console.WriteLine($"  Clearing cached stdlib objects for {assemblyCpu}/{buildModeStr}...");
                 try
                 {
