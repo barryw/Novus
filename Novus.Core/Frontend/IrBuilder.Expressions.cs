@@ -2145,6 +2145,13 @@ public partial class IrBuilder
             return new IrVariable(tempName, ptrType.PointeeType);
         }
 
+        // Check if the type implements Index<I, T> trait
+        var indexResult = EmitIndexTraitCall(baseExpr, indexExpr, context);
+        if (indexResult != null)
+        {
+            return indexResult;
+        }
+
         var errorLocation = GetLocation(context);
         _diagnostics.ReportError(
             ErrorCodes.InvalidExpressionType,
@@ -2277,6 +2284,221 @@ public partial class IrBuilder
         return arrayLiteral;
     }
 
+    // ========================================================================
+    // Operator Overloading Helpers
+    // ========================================================================
+
+    /// <summary>
+    /// Determine if a binary operation should use a trait method instead of built-in operator.
+    /// Returns true for struct/enum types that implement the corresponding operator trait.
+    /// </summary>
+    private bool ShouldUseTraitOperator(IrType type, string operatorSymbol, out string traitName, out string methodName)
+    {
+        traitName = "";
+        methodName = "";
+
+        // Primitives always use built-in operators
+        if (type is IrIntType || type is IrFloatType || type is IrFixedType ||
+            type is IrBoolType || type is IrPointerType || type is IrReferenceType || type is IrMutReferenceType)
+        {
+            return false;
+        }
+
+        // Map operator symbol to trait and method names
+        (traitName, methodName) = operatorSymbol switch
+        {
+            "+" => ("Add", "add"),
+            "-" => ("Sub", "sub"),
+            "*" => ("Mul", "mul"),
+            "/" => ("Div", "div"),
+            "%" => ("Rem", "rem"),
+            "==" or "!=" => ("Eq", "eq"),
+            "<" => ("PartialOrd", "lt"),
+            "<=" => ("PartialOrd", "le"),
+            ">" => ("PartialOrd", "gt"),
+            ">=" => ("PartialOrd", "ge"),
+            _ => ("", "")
+        };
+
+        if (string.IsNullOrEmpty(traitName))
+            return false;
+
+        // Get the type name for trait lookup
+        string typeName = GetTypeNameForOperator(type);
+        if (string.IsNullOrEmpty(typeName))
+            return false;
+
+        // Check if the type has a trait method implementation
+        var mangledMethodName = _module.FindTraitMethod(typeName, methodName);
+        return mangledMethodName != null;
+    }
+
+    /// <summary>
+    /// Get the type name for operator trait lookup.
+    /// </summary>
+    private string GetTypeNameForOperator(IrType type)
+    {
+        return type switch
+        {
+            IrStructType st => st.StructName,
+            IrEnumType et => et.EnumName,
+            _ => type.Name
+        };
+    }
+
+    /// <summary>
+    /// Emit a trait method call for a binary operator.
+    /// </summary>
+    /// <param name="left">Left operand</param>
+    /// <param name="right">Right operand</param>
+    /// <param name="methodName">The trait method name (e.g., "add", "eq")</param>
+    /// <param name="context">Parser context for error reporting</param>
+    /// <param name="negateResult">If true, negate the boolean result (for != operator)</param>
+    /// <returns>The result value, or null on error</returns>
+    private IrValue? EmitTraitOperatorCall(IrValue left, IrValue right, string methodName, ParserRuleContext context, bool negateResult = false)
+    {
+        // Get the type name for trait lookup
+        string typeName = GetTypeNameForOperator(left.Type);
+
+        // Find the mangled method name
+        var mangledMethodName = _module.FindTraitMethod(typeName, methodName);
+        if (mangledMethodName == null)
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.MethodNotFound,
+                $"No implementation of operator trait method '{methodName}' found for type '{typeName}'",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Find the method in the module
+        var method = _module.GetFunction(mangledMethodName);
+        if (method == null)
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.MethodNotFound,
+                $"Method '{mangledMethodName}' not found in module",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Build arguments: borrow left (&self), borrow right (&Self)
+        // Trait operator methods take &self and &Self (references)
+        var leftBorrowed = new IrBorrowValue(left, _typeInterner.GetReferenceType(left.Type), false);
+        var rightBorrowed = new IrBorrowValue(right, _typeInterner.GetReferenceType(right.Type), false);
+
+        // Create the call
+        var returnType = method.ReturnType;
+        var resultName = $"%t{_tempCounter++}";
+        var call = new IrCall(mangledMethodName, returnType, resultName);
+        call.Location = GetLocation(context);
+        call.Arguments.Add(leftBorrowed);
+        call.Arguments.Add(rightBorrowed);
+        _currentBlock!.AddInstruction(call);
+
+        var result = new IrVariable(resultName, returnType);
+
+        // For != operator, negate the result of Eq::eq
+        if (negateResult)
+        {
+            // Logical NOT: result XOR 1 flips the boolean
+            var negatedResultName = $"%t{_tempCounter++}";
+            var negateOp = new IrBinaryOp(negatedResultName, IrBinaryOp.OpKind.Xor, result, new IrConstant(1, new IrIntType(32, false)), IrBoolType.Instance);
+            _currentBlock!.AddInstruction(negateOp);
+            return new IrVariable(negatedResultName, IrBoolType.Instance);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Emit a call to Index::index(&amp;self, idx) trait method.
+    /// Returns the result value, or null if no Index implementation is found.
+    /// </summary>
+    private IrValue? EmitIndexTraitCall(IrValue baseExpr, IrValue indexExpr, ParserRuleContext context)
+    {
+        // Get the type name for trait lookup
+        string typeName = GetTypeNameForOperator(baseExpr.Type);
+
+        // Find the Index::index mangled method name
+        // The naming convention is TypeName_Index_index for generic trait impls
+        var mangledMethodName = _module.FindTraitMethod(typeName, "index");
+        if (mangledMethodName == null)
+        {
+            // No Index implementation found
+            return null;
+        }
+
+        // Find the method in the module
+        var method = _module.GetFunction(mangledMethodName);
+        if (method == null)
+        {
+            return null;
+        }
+
+        // Build arguments: borrow base (&self), index value
+        // Index::index takes &self and idx (the index)
+        var baseBorrowed = new IrBorrowValue(baseExpr, _typeInterner.GetReferenceType(baseExpr.Type), false);
+
+        // Create the call
+        var returnType = method.ReturnType;
+        var resultName = $"%t{_tempCounter++}";
+        var call = new IrCall(mangledMethodName, returnType, resultName);
+        call.Location = GetLocation(context);
+        call.Arguments.Add(baseBorrowed);
+        call.Arguments.Add(indexExpr);
+        _currentBlock!.AddInstruction(call);
+
+        return new IrVariable(resultName, returnType);
+    }
+
+    /// <summary>
+    /// Emit a call to IndexMut::index_set(&amp;mut self, idx, value) trait method.
+    /// Returns true if successful, false if no IndexMut implementation is found.
+    /// </summary>
+    private bool EmitIndexMutTraitCall(IrValue baseExpr, IrValue indexExpr, IrValue valueExpr, ParserRuleContext context)
+    {
+        // Get the type name for trait lookup
+        string typeName = GetTypeNameForOperator(baseExpr.Type);
+
+        // Find the IndexMut::index_set mangled method name
+        var mangledMethodName = _module.FindTraitMethod(typeName, "index_set");
+        if (mangledMethodName == null)
+        {
+            // No IndexMut implementation found
+            return false;
+        }
+
+        // Find the method in the module
+        var method = _module.GetFunction(mangledMethodName);
+        if (method == null)
+        {
+            return false;
+        }
+
+        // Build arguments: borrow base (&mut self), index value, value to set
+        // IndexMut::index_set takes &mut self, idx, and value
+        var baseBorrowed = new IrBorrowValue(baseExpr, _typeInterner.GetMutReferenceType(baseExpr.Type), true);
+
+        // Create the call (index_set returns void)
+        var call = new IrCall(mangledMethodName, IrVoidType.Instance, null);
+        call.Location = GetLocation(context);
+        call.Arguments.Add(baseBorrowed);
+        call.Arguments.Add(indexExpr);
+        call.Arguments.Add(valueExpr);
+        _currentBlock!.AddInstruction(call);
+
+        return true;
+    }
+
+    // ========================================================================
+    // Binary Expression Visitors
+    // ========================================================================
+
     public override object? VisitAdditiveExpr([NotNull] NovusParser.AdditiveExprContext context)
     {
         var left = Visit(context.expression(0)) as IrValue;
@@ -2288,7 +2510,16 @@ public partial class IrBuilder
             return null;
         }
 
-        var op = context.GetChild(1).GetText() == "+" ? IrBinaryOp.OpKind.Add : IrBinaryOp.OpKind.Sub;
+        var opSymbol = context.GetChild(1).GetText();
+
+        // Check if this should use a trait-based operator
+        if (ShouldUseTraitOperator(left.Type, opSymbol, out _, out var methodName))
+        {
+            return EmitTraitOperatorCall(left, right, methodName, context);
+        }
+
+        // Built-in operator for primitives
+        var op = opSymbol == "+" ? IrBinaryOp.OpKind.Add : IrBinaryOp.OpKind.Sub;
 
         var tempName = $"%t{_tempCounter++}";
         var binOp = new IrBinaryOp(tempName, op, left, right, left.Type);
@@ -2429,6 +2660,14 @@ public partial class IrBuilder
         }
 
         var opText = context.GetChild(1).GetText();
+
+        // Check if this should use a trait-based operator
+        if (ShouldUseTraitOperator(left.Type, opText, out _, out var methodName))
+        {
+            return EmitTraitOperatorCall(left, right, methodName, context);
+        }
+
+        // Built-in operator for primitives
         var op = opText switch
         {
             "*" => IrBinaryOp.OpKind.Mul,
@@ -2456,6 +2695,16 @@ public partial class IrBuilder
         }
 
         var opText = context.GetChild(1).GetText();
+
+        // Check if this should use a trait-based operator
+        if (ShouldUseTraitOperator(left.Type, opText, out _, out var methodName))
+        {
+            // For != operator, use eq() and negate the result
+            bool negateResult = opText == "!=";
+            return EmitTraitOperatorCall(left, right, methodName, context, negateResult);
+        }
+
+        // Built-in operator for primitives
         var op = opText switch
         {
             "==" => IrBinaryOp.OpKind.Eq,

@@ -938,10 +938,28 @@ public partial class IrBuilder
                     return null;
                 }
 
-                // Generate index store instruction
-                var indexStore = new IrIndexStore(baseVar, indexExpr, value);
-                _currentBlock!.AddInstruction(indexStore);
+                // Check if this is a pointer or array (built-in indexing)
+                if (baseVar.Type is IrPointerType || baseVar.Type is IrArrayType)
+                {
+                    // Generate index store instruction
+                    var indexStore = new IrIndexStore(baseVar, indexExpr, value);
+                    _currentBlock!.AddInstruction(indexStore);
+                    return null;
+                }
 
+                // Try IndexMut trait for custom types
+                if (EmitIndexMutTraitCall(baseVar, indexExpr, value, context))
+                {
+                    return null;
+                }
+
+                // No built-in indexing and no IndexMut impl
+                errorLocation = GetLocation(context);
+                _diagnostics.ReportError(
+                    ErrorCodes.CannotIndexType,
+                    $"Cannot index into type '{baseVar.Type.Name}' for assignment - type does not implement IndexMut",
+                    errorLocation
+                );
                 return null;
             }
 

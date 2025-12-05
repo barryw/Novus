@@ -3248,18 +3248,45 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return new IrIntType(32, false);
         }
 
-        // Check that both operands are numeric types
-        if (!IsNumericType(leftType))
+        // Check if left operand supports the operator (either built-in or via trait)
+        if (!TypeSupportsOperator(leftType, op, out var traitName, out _))
         {
             var location = SourceLocationHelper.FromContext(context.expression(0), _filePath, _sourceLines);
+            string traitHint = op == "+" ? "Add" : "Sub";
             _diagnostics.ReportError(
                 "E0004",
-                $"cannot apply operator '{op}' to non-numeric type '{TypeToString(leftType)}'",
-                location
+                $"cannot apply operator '{op}' to type '{TypeToString(leftType)}' - type does not implement {traitHint}",
+                location,
+                helpTexts: new List<string>
+                {
+                    $"implement the {traitHint} trait for '{TypeToString(leftType)}' to enable this operator"
+                }
             );
             return null;
         }
 
+        // For trait-based operators, both operands must have the same type
+        if (traitName != null)
+        {
+            if (TypeToString(leftType) != TypeToString(rightType))
+            {
+                var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0004",
+                    $"mismatched types in operator '{op}': '{TypeToString(leftType)}' and '{TypeToString(rightType)}'",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "both operands must have the same type for trait-based operators"
+                    }
+                );
+                return null;
+            }
+            // Trait-based operators return Self (same type)
+            return leftType;
+        }
+
+        // For built-in numeric operators, check right operand
         if (!IsNumericType(rightType))
         {
             var location = SourceLocationHelper.FromContext(context.expression(1), _filePath, _sourceLines);
@@ -3393,19 +3420,59 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         if (leftType == null || rightType == null)
             return null;
 
-        if (!IsNumericType(leftType) || !IsNumericType(rightType))
+        var op = context.GetChild(1).GetText();
+
+        // Check if left operand supports the operator (either built-in or via trait)
+        if (!TypeSupportsOperator(leftType, op, out var traitName, out _))
         {
-            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            var location = SourceLocationHelper.FromContext(context.expression(0), _filePath, _sourceLines);
+            string traitHint = op switch { "*" => "Mul", "/" => "Div", "%" => "Rem", _ => "operator" };
             _diagnostics.ReportError(
                 "E0004",
-                $"cannot apply operator '{context.GetChild(1).GetText()}' to non-numeric types",
+                $"cannot apply operator '{op}' to type '{TypeToString(leftType)}' - type does not implement {traitHint}",
+                location,
+                helpTexts: new List<string>
+                {
+                    $"implement the {traitHint} trait for '{TypeToString(leftType)}' to enable this operator"
+                }
+            );
+            return null;
+        }
+
+        // For trait-based operators, both operands must have the same type
+        if (traitName != null)
+        {
+            if (TypeToString(leftType) != TypeToString(rightType))
+            {
+                var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0004",
+                    $"mismatched types in operator '{op}': '{TypeToString(leftType)}' and '{TypeToString(rightType)}'",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "both operands must have the same type for trait-based operators"
+                    }
+                );
+                return null;
+            }
+            // Trait-based operators return Self (same type)
+            return leftType;
+        }
+
+        // For built-in numeric operators, check right operand
+        if (!IsNumericType(rightType))
+        {
+            var location = SourceLocationHelper.FromContext(context.expression(1), _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0004",
+                $"cannot apply operator '{op}' to non-numeric type '{TypeToString(rightType)}'",
                 location
             );
             return null;
         }
 
         // Check for division by zero or modulo by zero (if right is a constant 0)
-        var op = context.GetChild(1).GetText();
         if ((op == "/" || op == "%") && context.expression(1) is NovusParser.PrimaryExprContext primaryExpr)
         {
             var intLiteral = primaryExpr.primaryExpression() as NovusParser.IntegerLiteralContext;
@@ -8316,6 +8383,14 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
         else
         {
+            // Check if the type implements the Index trait
+            var indexReturnType = TypeSupportsIndexOperator(baseType, indexType);
+            if (indexReturnType != null)
+            {
+                // Type implements Index<I, T> - return the T type
+                return indexReturnType;
+            }
+
             var location = SourceLocationHelper.FromContext(context.expression(0), _filePath, _sourceLines);
             _diagnostics.ReportError(
                 "E0024",
@@ -8323,7 +8398,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 location,
                 helpTexts: new List<string>
                 {
-                    "indexing is only valid on pointers, arrays, and slices"
+                    "indexing is only valid on pointers, arrays, slices, or types implementing Index<I, T>"
                 }
             );
             return null;
@@ -8461,18 +8536,44 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return IrBoolType.Instance;
         }
 
-        // Check that both operands are numeric types
-        if (!IsNumericType(leftType))
+        // Check if left operand supports the comparison operator (either built-in or via trait)
+        if (!TypeSupportsOperator(leftType, op, out var traitName, out _))
         {
             var location = SourceLocationHelper.FromContext(context.expression(0), _filePath, _sourceLines);
+            string traitHint = (op == "==" || op == "!=") ? "Eq" : "PartialOrd";
             _diagnostics.ReportError(
                 "E0004",
-                $"cannot compare non-numeric type '{TypeToString(leftType)}'",
-                location
+                $"cannot apply operator '{op}' to type '{TypeToString(leftType)}' - type does not implement {traitHint}",
+                location,
+                helpTexts: new List<string>
+                {
+                    $"implement the {traitHint} trait for '{TypeToString(leftType)}' to enable this operator"
+                }
             );
             return IrBoolType.Instance;
         }
 
+        // For trait-based operators, both operands must have the same type
+        if (traitName != null)
+        {
+            if (TypeToString(leftType) != TypeToString(rightType))
+            {
+                var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0004",
+                    $"mismatched types in operator '{op}': '{TypeToString(leftType)}' and '{TypeToString(rightType)}'",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "both operands must have the same type for trait-based comparison operators"
+                    }
+                );
+            }
+            // Trait-based comparison operators always return bool
+            return IrBoolType.Instance;
+        }
+
+        // For built-in numeric comparisons, check right operand
         if (!IsNumericType(rightType))
         {
             var location = SourceLocationHelper.FromContext(context.expression(1), _filePath, _sourceLines);
@@ -10240,6 +10341,150 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     private bool IsBoolOrNumericOrPointerType(IrType type)
     {
         return type is IrBoolType || IsNumericType(type) || type is IrPointerType || type is IrReferenceType || type is IrMutReferenceType;
+    }
+
+    /// <summary>
+    /// Check if a type supports a binary operator, either through built-in support
+    /// (for primitive types) or through trait implementation (for struct/enum types).
+    /// </summary>
+    /// <param name="type">The type to check</param>
+    /// <param name="operatorSymbol">The operator symbol (e.g., "+", "-", "==", "&lt;")</param>
+    /// <param name="traitName">Output: the trait name if trait-based, null otherwise</param>
+    /// <param name="methodName">Output: the method name if trait-based, null otherwise</param>
+    /// <returns>True if the type supports the operator</returns>
+    private bool TypeSupportsOperator(IrType type, string operatorSymbol, out string? traitName, out string? methodName)
+    {
+        traitName = null;
+        methodName = null;
+
+        // Primitive numeric types use built-in operators for arithmetic and comparison
+        if (IsNumericType(type))
+            return true;
+
+        // Bool uses built-in operators for == and !=
+        if (type is IrBoolType && (operatorSymbol == "==" || operatorSymbol == "!="))
+            return true;
+
+        // Pointers use built-in operators for arithmetic and comparison
+        if (type is IrPointerType)
+            return true;
+
+        // Map operator symbol to trait and method names
+        (traitName, methodName) = operatorSymbol switch
+        {
+            "+" => ("Add", "add"),
+            "-" => ("Sub", "sub"),
+            "*" => ("Mul", "mul"),
+            "/" => ("Div", "div"),
+            "%" => ("Rem", "rem"),
+            "==" or "!=" => ("Eq", "eq"),
+            "<" => ("PartialOrd", "lt"),
+            "<=" => ("PartialOrd", "le"),
+            ">" => ("PartialOrd", "gt"),
+            ">=" => ("PartialOrd", "ge"),
+            _ => (null, null)
+        };
+
+        if (traitName == null)
+            return false;
+
+        // Get the base type name for trait lookup
+        string typeName = GetBaseTypeNameForTraitLookup(type);
+        if (string.IsNullOrEmpty(typeName))
+            return false;
+
+        // Check if type implements the trait
+        string implKey = $"{typeName}::{traitName}";
+        return _traitImpls.ContainsKey(implKey);
+    }
+
+    /// <summary>
+    /// Get the base type name for trait implementation lookup.
+    /// Handles struct types, enum types, and generic types.
+    /// </summary>
+    private string GetBaseTypeNameForTraitLookup(IrType type)
+    {
+        return type switch
+        {
+            IrStructType st => st.StructName,
+            IrEnumType et => et.EnumName,
+            _ => type.Name
+        };
+    }
+
+    /// <summary>
+    /// Check if a type supports the index operator via Index trait implementation.
+    /// Returns the return type (T in Index&lt;I, T&gt;) if the type implements Index,
+    /// or null if no implementation is found.
+    /// </summary>
+    private IrType? TypeSupportsIndexOperator(IrType baseType, IrType indexType)
+    {
+        // Get the base type name for trait lookup
+        string typeName = GetBaseTypeNameForTraitLookup(baseType);
+        if (string.IsNullOrEmpty(typeName))
+            return null;
+
+        // Search for Index trait implementation
+        // The key format is "TypeName::Index" (without type args in the key)
+        foreach (var kvp in _traitImpls)
+        {
+            var implInfo = kvp.Value;
+            if (implInfo.TypeName == typeName && implInfo.TraitName == "Index")
+            {
+                // Found Index impl - check if the index type matches
+                // TraitTypeArgs should be [I, T] where I is index type and T is return type
+                if (implInfo.TraitTypeArgs.Count >= 2)
+                {
+                    var expectedIndexType = implInfo.TraitTypeArgs[0];
+                    var returnType = implInfo.TraitTypeArgs[1];
+
+                    // Check if the index type is compatible
+                    if (TypeToString(indexType) == TypeToString(expectedIndexType))
+                    {
+                        return returnType;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Check if a type supports the index mutation operator via IndexMut trait implementation.
+    /// Returns the value type (T in IndexMut&lt;I, T&gt;) if the type implements IndexMut,
+    /// or null if no implementation is found.
+    /// </summary>
+    private IrType? TypeSupportsIndexMutOperator(IrType baseType, IrType indexType)
+    {
+        // Get the base type name for trait lookup
+        string typeName = GetBaseTypeNameForTraitLookup(baseType);
+        if (string.IsNullOrEmpty(typeName))
+            return null;
+
+        // Search for IndexMut trait implementation
+        foreach (var kvp in _traitImpls)
+        {
+            var implInfo = kvp.Value;
+            if (implInfo.TypeName == typeName && implInfo.TraitName == "IndexMut")
+            {
+                // Found IndexMut impl - check if the index type matches
+                // TraitTypeArgs should be [I, T] where I is index type and T is value type
+                if (implInfo.TraitTypeArgs.Count >= 2)
+                {
+                    var expectedIndexType = implInfo.TraitTypeArgs[0];
+                    var valueType = implInfo.TraitTypeArgs[1];
+
+                    // Check if the index type is compatible
+                    if (TypeToString(indexType) == TypeToString(expectedIndexType))
+                    {
+                        return valueType;
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

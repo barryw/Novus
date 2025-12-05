@@ -330,6 +330,100 @@ pub trait Eq {
 }
 
 // ============================================================================
+// Operator Traits - For operator overloading
+// ============================================================================
+
+// Add - enables the + operator for custom types
+//
+// Example implementation:
+// ```novus
+// impl Add for Point {
+//     fn add(&self, other: &Point) -> Point {
+//         return Point { x: self.x + other.x, y: self.y + other.y }
+//     }
+// }
+// ```
+pub trait Add {
+    fn add(&self, other: &Self) -> Self
+}
+
+// Sub - enables the - operator for custom types
+pub trait Sub {
+    fn sub(&self, other: &Self) -> Self
+}
+
+// Mul - enables the * operator for custom types
+pub trait Mul {
+    fn mul(&self, other: &Self) -> Self
+}
+
+// Div - enables the / operator for custom types
+pub trait Div {
+    fn div(&self, other: &Self) -> Self
+}
+
+// Rem - enables the % operator for custom types (remainder/modulo)
+pub trait Rem {
+    fn rem(&self, other: &Self) -> Self
+}
+
+// Neg - enables unary - operator for custom types
+pub trait Neg {
+    fn neg(&self) -> Self
+}
+
+// PartialOrd - enables comparison operators (<, <=, >, >=) for custom types
+// Note: == and != use the existing Eq trait
+//
+// Example implementation:
+// ```novus
+// impl PartialOrd for Version {
+//     fn lt(&self, other: &Version) -> bool {
+//         if self.major < other.major { return true }
+//         if self.major > other.major { return false }
+//         return self.minor < other.minor
+//     }
+//     fn le(&self, other: &Version) -> bool { return self.lt(other) || self.eq(other) }
+//     fn gt(&self, other: &Version) -> bool { return other.lt(self) }
+//     fn ge(&self, other: &Version) -> bool { return other.le(self) }
+// }
+// ```
+pub trait PartialOrd {
+    fn lt(&self, other: &Self) -> bool
+    fn le(&self, other: &Self) -> bool
+    fn gt(&self, other: &Self) -> bool
+    fn ge(&self, other: &Self) -> bool
+}
+
+// Index - enables the [] operator for read access on custom types
+//
+// Example implementation:
+// ```novus
+// impl Index<u32, i32> for MyArray {
+//     fn index(&self, idx: u32) -> i32 {
+//         return self.data[idx]
+//     }
+// }
+// ```
+pub trait Index<I, T> {
+    fn index(&self, idx: I) -> T
+}
+
+// IndexMut - enables the [] operator for write access on custom types
+//
+// Example implementation:
+// ```novus
+// impl IndexMut<u32, i32> for MyArray {
+//     fn index_set(&mut self, idx: u32, value: i32) {
+//         self.data[idx] = value
+//     }
+// }
+// ```
+pub trait IndexMut<I, T> {
+    fn index_set(&mut self, idx: I, value: T)
+}
+
+// ============================================================================
 // Hash implementations for primitive types
 // ============================================================================
 
