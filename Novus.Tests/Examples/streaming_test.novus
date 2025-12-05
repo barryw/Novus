@@ -1,7 +1,7 @@
 // Streaming Audio Test
 // Demonstrates playing long audio files that exceed Paula's 128KB limit
 //
-// Uses AudioStreamer for seamless triple-buffered playback
+// Uses AudioStreamer for seamless triple-buffered STEREO playback
 
 from std::core import Result
 from std::audio::ptplayer import AudioAsset
@@ -18,7 +18,7 @@ from std::ffi::graphics import WaitTOF
 
 // This file is ~31 seconds at 44.1kHz stereo - way too big for chip RAM!
 // The compiler converts it to 11kHz mono 8-bit (~340KB)
-// AudioStreamer handles playback via triple-buffering
+// AudioStreamer handles playback via triple-buffering in STEREO
 @audio("invention.wav", chip = false, sample_rate = 11025)
 static music: AudioAsset = []
 
@@ -27,8 +27,8 @@ static music: AudioAsset = []
 // ============================================================================
 
 pub fn main() -> i32 {
-    write("Streaming Audio Test\n")
-    write("====================\n\n")
+    write("Streaming Audio Test (STEREO)\n")
+    write("=============================\n\n")
 
     let is_pal = DISPLAY() == DisplayType::PAL
     write("Display: %s\n", if is_pal { "PAL" } else { "NTSC" })
@@ -45,13 +45,21 @@ pub fn main() -> i32 {
     // Get the correct period for PAL/NTSC
     let period = if is_pal { music.period_pal } else { music.period_ntsc }
 
-    // Create the streamer - use any available channel
-    write("Creating AudioStreamer...\n")
-    let streamer_result = AudioStreamer::new(music.data, music.size, period, music.sample_rate)
+    // Create the streamer in STEREO mode (one left + one right channel)
+    write("Creating STEREO AudioStreamer...\n")
+    let streamer_result = AudioStreamer::new_stereo(music.data, music.size, period, music.sample_rate)
 
     match streamer_result {
         Result::Ok(mut streamer) => {
-            write("Allocated channel: %d\n", (i32)streamer.channel())
+            // Debug the raw channel mask value directly from streamer
+            // NOTE: Must use %lx (not %x) for 32-bit values on AmigaOS VPrintf!
+            write("DEBUG: streamer.channels_raw() = $%02lx\n", (i32)streamer.channels_raw())
+            // Get pointer to call methods that don't auto-deref
+            let sptr = &streamer
+            write("DEBUG: left_mask() = $%02lx\n", (i32)sptr.left_mask())
+            write("DEBUG: right_mask() = $%02lx\n", (i32)sptr.right_mask())
+            write("DEBUG: streamer.is_stereo() = %s\n", if streamer.is_stereo() { "true" } else { "false" })
+            write("Allocated channels: %ld + %ld (stereo)\n", (i32)streamer.channel(), (i32)streamer.channel2())
 
             // Debug: Check total_size immediately after creation
             write("DEBUG: total_size immediately after creation = %lu\n", streamer.total_size())

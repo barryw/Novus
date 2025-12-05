@@ -45,9 +45,11 @@ from std::ffi::amiga_consts import MEMF_PUBLIC
 from std::ffi::amiga_consts import CMD_WRITE, ADCMD_FREE, ADIOF_PERVOL, ADIOF_NOWAIT
 from std::ffi::amiga_structs import IOAudio, IORequest, MsgPort
 from std::audio::errors import AudioError
+from std::audio::paula import ChannelMask
 from std::memory::chip import is_chip_ram
 from std::memory::chip_pool import ChipPool
 from std::hardware::chipset import DISPLAY, DisplayType
+from std::io::file import write
 
 // ============================================================================
 // Constants
@@ -94,10 +96,17 @@ const NUM_BUFFERS: u32 = 3
 /// }
 /// ```
 pub struct AudioStreamer {
-    // Audio.device resources (all pointers - 4 bytes each, naturally aligned)
-    io_audio_0: *IOAudio,    // IORequest for buffer 0
-    io_audio_1: *IOAudio,    // IORequest for buffer 1
-    io_audio_2: *IOAudio,    // IORequest for buffer 2
+    // Audio.device resources - LEFT channel (or mono)
+    // (all pointers - 4 bytes each, naturally aligned)
+    io_audio_0: *IOAudio,    // IORequest for buffer 0, left/mono channel
+    io_audio_1: *IOAudio,    // IORequest for buffer 1, left/mono channel
+    io_audio_2: *IOAudio,    // IORequest for buffer 2, left/mono channel
+
+    // Audio.device resources - RIGHT channel (stereo only)
+    io_audio_0_r: *IOAudio,  // IORequest for buffer 0, right channel
+    io_audio_1_r: *IOAudio,  // IORequest for buffer 1, right channel
+    io_audio_2_r: *IOAudio,  // IORequest for buffer 2, right channel
+
     port: *MsgPort,          // Message port for I/O completion
 
     // Triple buffers in chip RAM (all pointers - 4 bytes each)
@@ -121,16 +130,407 @@ pub struct AudioStreamer {
     period: u16,
     volume: u16,
 
+    // Channel selection using unified ChannelMask
+    channels: ChannelMask,   // Which channels we have allocated (1 for mono, 2 for stereo)
+
+    // Individual channel masks for CMD_WRITE (derived from channels)
+    left_channel_mask: u8,   // Single channel bit for left (e.g., $01 for channel 0)
+    right_channel_mask: u8,  // Single channel bit for right (e.g., $02 for channel 1)
+
     // 8-bit values grouped together at the end
-    channel: u8,
-    pending_count: u8,       // How many buffers are currently queued (0-3)
+    pending_count: u8,       // How many buffers are currently queued (0-3 for mono, 0-6 for stereo)
     is_pal: bool,            // PAL (50Hz) or NTSC (60Hz)
     is_playing: bool,
     loop_playback: bool,
     reached_end: bool,
+
+    // Per-buffer completion tracking for stereo
+    // For stereo, we need BOTH left and right to complete before refilling
+    // These flags track if left channel has completed for each buffer
+    buf0_left_done: bool,
+    buf1_left_done: bool,
+    buf2_left_done: bool,
+    // These flags track if right channel has completed for each buffer
+    buf0_right_done: bool,
+    buf1_right_done: bool,
+    buf2_right_done: bool,
 }
 
 impl AudioStreamer {
+    // ========================================================================
+    // Private helper functions to reduce register pressure in with_stereo_options
+    // ========================================================================
+
+    /// Helper: Clamp buffer size to valid range and ensure word alignment
+    fn clamp_buffer_size(buffer_size: u32) -> u32 {
+        var actual = buffer_size
+        if actual < MIN_BUFFER_SIZE {
+            actual = MIN_BUFFER_SIZE
+        }
+        if actual > MAX_BUFFER_SIZE {
+            actual = MAX_BUFFER_SIZE
+        }
+        // Ensure even size (Paula requires word alignment)
+        if (actual & 1) != 0 {
+            actual = actual - 1
+        }
+        return actual
+    }
+
+    /// Helper: Create message port (step 1 of IORequest creation)
+    fn create_msg_port() -> Result<*MsgPort, AudioError> {
+        let port = CreateMsgPort()
+        if (u32)port == 0 {
+            return Result::Err(AudioError::NoMsgPort)
+        }
+        return Result::Ok(port)
+    }
+
+    /// Helper: Create three IORequests for triple-buffering (mono or one side of stereo)
+    fn create_io_requests(port: *MsgPort, io0_out: **IOAudio, io1_out: **IOAudio, io2_out: **IOAudio) -> Result<(), AudioError> {
+        let req0 = CreateIORequest(port, @sizeof(IOAudio))
+        if (u32)req0 == 0 {
+            return Result::Err(AudioError::NoIORequest)
+        }
+
+        let req1 = CreateIORequest(port, @sizeof(IOAudio))
+        if (u32)req1 == 0 {
+            DeleteIORequest(req0)
+            return Result::Err(AudioError::NoIORequest)
+        }
+
+        let req2 = CreateIORequest(port, @sizeof(IOAudio))
+        if (u32)req2 == 0 {
+            DeleteIORequest(req1)
+            DeleteIORequest(req0)
+            return Result::Err(AudioError::NoIORequest)
+        }
+
+        unsafe {
+            *io0_out = (*IOAudio)req0
+            *io1_out = (*IOAudio)req1
+            *io2_out = (*IOAudio)req2
+        }
+        return Result::Ok(())
+    }
+
+    /// Helper: Create six IORequests for stereo triple-buffering (3 left + 3 right)
+    fn create_stereo_io_requests(
+        port: *MsgPort,
+        io0_l_out: **IOAudio, io1_l_out: **IOAudio, io2_l_out: **IOAudio,
+        io0_r_out: **IOAudio, io1_r_out: **IOAudio, io2_r_out: **IOAudio
+    ) -> Result<(), AudioError> {
+        // Create left channel IORequests
+        let req0_l = CreateIORequest(port, @sizeof(IOAudio))
+        if (u32)req0_l == 0 {
+            return Result::Err(AudioError::NoIORequest)
+        }
+
+        let req1_l = CreateIORequest(port, @sizeof(IOAudio))
+        if (u32)req1_l == 0 {
+            DeleteIORequest(req0_l)
+            return Result::Err(AudioError::NoIORequest)
+        }
+
+        let req2_l = CreateIORequest(port, @sizeof(IOAudio))
+        if (u32)req2_l == 0 {
+            DeleteIORequest(req1_l)
+            DeleteIORequest(req0_l)
+            return Result::Err(AudioError::NoIORequest)
+        }
+
+        // Create right channel IORequests
+        let req0_r = CreateIORequest(port, @sizeof(IOAudio))
+        if (u32)req0_r == 0 {
+            DeleteIORequest(req2_l)
+            DeleteIORequest(req1_l)
+            DeleteIORequest(req0_l)
+            return Result::Err(AudioError::NoIORequest)
+        }
+
+        let req1_r = CreateIORequest(port, @sizeof(IOAudio))
+        if (u32)req1_r == 0 {
+            DeleteIORequest(req0_r)
+            DeleteIORequest(req2_l)
+            DeleteIORequest(req1_l)
+            DeleteIORequest(req0_l)
+            return Result::Err(AudioError::NoIORequest)
+        }
+
+        let req2_r = CreateIORequest(port, @sizeof(IOAudio))
+        if (u32)req2_r == 0 {
+            DeleteIORequest(req1_r)
+            DeleteIORequest(req0_r)
+            DeleteIORequest(req2_l)
+            DeleteIORequest(req1_l)
+            DeleteIORequest(req0_l)
+            return Result::Err(AudioError::NoIORequest)
+        }
+
+        unsafe {
+            *io0_l_out = (*IOAudio)req0_l
+            *io1_l_out = (*IOAudio)req1_l
+            *io2_l_out = (*IOAudio)req2_l
+            *io0_r_out = (*IOAudio)req0_r
+            *io1_r_out = (*IOAudio)req1_r
+            *io2_r_out = (*IOAudio)req2_r
+        }
+        return Result::Ok(())
+    }
+
+    /// Helper: Allocate stereo channels via audio.device
+    fn allocate_stereo_channels(io0: *IOAudio, port: *MsgPort) -> Result<(), AudioError> {
+        // Set up STEREO channel allocation
+        // Provide multiple stereo pair combinations for audio.device to try
+        var alloc_map: [u8; 4] = [$03, $05, $0A, $0C]
+        // $03 = channels 0+1, $05 = channels 0+2, $0A = channels 1+3, $0C = channels 2+3
+
+        io0.ioa_Request.io_Message.mn_ReplyPort = port
+        io0.ioa_Request.io_Message.mn_Node.ln_Pri = 0
+        io0.ioa_Data = &alloc_map[0]
+        io0.ioa_Length = 2  // We want 2 channels
+
+        unsafe {
+            let req_addr = &io0.ioa_Request
+            let ioreq = (*IORequest)req_addr
+            let error = OpenDevice("audio.device", 0, ioreq, 0)
+
+            if error != 0 {
+                if error == -10 {
+                    return Result::Err(AudioError::NoAllocation)
+                }
+                if error == -11 {
+                    return Result::Err(AudioError::AllocFailed)
+                }
+                return Result::Err(AudioError::DeviceOpenFailed)
+            }
+        }
+        return Result::Ok(())
+    }
+
+    /// Helper: Setup IORequests with allocated stereo unit
+    /// Returns the unit mask as u32 (VBCC has u8 return bugs)
+    fn setup_stereo_io_units(io0: *IOAudio, io1: *IOAudio, io2: *IOAudio, port: *MsgPort, alloc_key: i16) -> u32 {
+        // Extract the unit mask from io_Unit (pointer contains channel bitmask)
+        let unit_ptr = (u32)io0.ioa_Request.io_Unit
+        let stereo_unit = (*Unit)unit_ptr
+
+        io0.ioa_Request.io_Unit = stereo_unit
+
+        // Copy device info to second IORequest
+        io1.ioa_Request.io_Device = io0.ioa_Request.io_Device
+        io1.ioa_Request.io_Unit = stereo_unit
+        io1.ioa_Request.io_Message.mn_ReplyPort = port
+        io1.ioa_AllocKey = alloc_key
+
+        // Copy device info to third IORequest
+        io2.ioa_Request.io_Device = io0.ioa_Request.io_Device
+        io2.ioa_Request.io_Unit = stereo_unit
+        io2.ioa_Request.io_Message.mn_ReplyPort = port
+        io2.ioa_AllocKey = alloc_key
+
+        // Return as u32 to avoid VBCC u8 return value bugs
+        return unit_ptr
+    }
+
+    /// Helper: Setup all 6 IORequests for stereo triple-buffering
+    /// Each IORequest is set to a SINGLE channel (left or right)
+    /// Returns: (stereo_mask, left_mask, right_mask) packed as u32
+    ///          bits 0-7: stereo mask (both channels), bits 8-15: left, bits 16-23: right
+    fn setup_all_stereo_io_units(
+        io0_l: *IOAudio, io1_l: *IOAudio, io2_l: *IOAudio,
+        io0_r: *IOAudio, io1_r: *IOAudio, io2_r: *IOAudio,
+        port: *MsgPort, alloc_key: i16
+    ) -> u32 {
+        // Extract the stereo unit mask from io_Unit (contains BOTH channel bits)
+        let stereo_mask = (u8)(u32)io0_l.ioa_Request.io_Unit
+        let device = io0_l.ioa_Request.io_Device
+
+        // Split stereo mask into left and right channel bits
+        // Paula channels: 0 and 3 are LEFT, 1 and 2 are RIGHT
+        // Stereo pairs: 0+1 ($03), 0+2 ($05), 1+3 ($0A), 2+3 ($0C)
+        var left_mask: u8 = 0
+        var right_mask: u8 = 0
+
+        // Channel 0 (bit 0) = LEFT
+        if (stereo_mask & $01) != 0 {
+            left_mask = $01
+        }
+        // Channel 1 (bit 1) = RIGHT
+        if (stereo_mask & $02) != 0 {
+            right_mask = $02
+        }
+        // Channel 2 (bit 2) = RIGHT
+        if (stereo_mask & $04) != 0 {
+            if right_mask == 0 {
+                right_mask = $04
+            } else {
+                left_mask = $04  // If right already assigned, this is left (e.g., pair 2+3)
+            }
+        }
+        // Channel 3 (bit 3) = LEFT
+        if (stereo_mask & $08) != 0 {
+            if left_mask == 0 {
+                left_mask = $08
+            } else {
+                right_mask = $08  // If left already assigned, this is right (e.g., pair 1+3)
+            }
+        }
+
+        // Actually, let's be more precise about Paula's channel mapping:
+        // Channels 0,3 output to LEFT speaker, channels 1,2 output to RIGHT speaker
+        // So from stereo_mask, find one LEFT channel and one RIGHT channel
+        left_mask = 0
+        right_mask = 0
+
+        // Find a left channel (0 or 3)
+        if (stereo_mask & $01) != 0 {
+            left_mask = $01  // Channel 0
+        } else if (stereo_mask & $08) != 0 {
+            left_mask = $08  // Channel 3
+        }
+
+        // Find a right channel (1 or 2)
+        if (stereo_mask & $02) != 0 {
+            right_mask = $02  // Channel 1
+        } else if (stereo_mask & $04) != 0 {
+            right_mask = $04  // Channel 2
+        }
+
+        let left_unit = (*Unit)(u32)left_mask
+        let right_unit = (*Unit)(u32)right_mask
+
+        // Setup LEFT channel IORequests (io0_l, io1_l, io2_l)
+        io0_l.ioa_Request.io_Unit = left_unit
+        // Device already set from OpenDevice
+
+        io1_l.ioa_Request.io_Device = device
+        io1_l.ioa_Request.io_Unit = left_unit
+        io1_l.ioa_Request.io_Message.mn_ReplyPort = port
+        io1_l.ioa_AllocKey = alloc_key
+
+        io2_l.ioa_Request.io_Device = device
+        io2_l.ioa_Request.io_Unit = left_unit
+        io2_l.ioa_Request.io_Message.mn_ReplyPort = port
+        io2_l.ioa_AllocKey = alloc_key
+
+        // Setup RIGHT channel IORequests (io0_r, io1_r, io2_r)
+        io0_r.ioa_Request.io_Device = device
+        io0_r.ioa_Request.io_Unit = right_unit
+        io0_r.ioa_Request.io_Message.mn_ReplyPort = port
+        io0_r.ioa_AllocKey = alloc_key
+
+        io1_r.ioa_Request.io_Device = device
+        io1_r.ioa_Request.io_Unit = right_unit
+        io1_r.ioa_Request.io_Message.mn_ReplyPort = port
+        io1_r.ioa_AllocKey = alloc_key
+
+        io2_r.ioa_Request.io_Device = device
+        io2_r.ioa_Request.io_Unit = right_unit
+        io2_r.ioa_Request.io_Message.mn_ReplyPort = port
+        io2_r.ioa_AllocKey = alloc_key
+
+        // Pack return value: stereo_mask | (left_mask << 8) | (right_mask << 16)
+        return (u32)stereo_mask | ((u32)left_mask << 8) | ((u32)right_mask << 16)
+    }
+
+    /// Helper: Allocate three chip RAM buffers for triple-buffering
+    fn allocate_triple_buffers(size: u32, buf0_out: **u8, buf1_out: **u8, buf2_out: **u8) -> Result<(), AudioError> {
+        unsafe {
+            let buf0_opt = ChipPool::alloc(size)
+            let buf0 = match buf0_opt {
+                Option::Some(ptr) => ptr,
+                Option::None => return Result::Err(AudioError::AllocationFailed)
+            }
+
+            let buf1_opt = ChipPool::alloc(size)
+            let buf1 = match buf1_opt {
+                Option::Some(ptr) => ptr,
+                Option::None => {
+                    let _ = ChipPool::free(buf0)
+                    return Result::Err(AudioError::AllocationFailed)
+                }
+            }
+
+            let buf2_opt = ChipPool::alloc(size)
+            let buf2 = match buf2_opt {
+                Option::Some(ptr) => ptr,
+                Option::None => {
+                    let _ = ChipPool::free(buf1)
+                    let _ = ChipPool::free(buf0)
+                    return Result::Err(AudioError::AllocationFailed)
+                }
+            }
+
+            *buf0_out = buf0
+            *buf1_out = buf1
+            *buf2_out = buf2
+            return Result::Ok(())
+        }
+    }
+
+    /// Helper: Build the final AudioStreamer struct for stereo playback
+    /// packed_masks: stereo_mask | (left_mask << 8) | (right_mask << 16)
+    fn build_stereo_streamer(
+        io0_l: *IOAudio, io1_l: *IOAudio, io2_l: *IOAudio,
+        io0_r: *IOAudio, io1_r: *IOAudio, io2_r: *IOAudio,
+        port: *MsgPort, alloc_key: i16, packed_masks: u32,
+        buf0: *u8, buf1: *u8, buf2: *u8, actual_size: u32,
+        source: *u8, source_size: u32, period: u16, sample_rate: u32
+    ) -> Result<AudioStreamer, AudioError> {
+        // Detect PAL/NTSC for frame-based timing
+        let is_pal = DISPLAY() == DisplayType::PAL
+
+        // Unpack the masks
+        let stereo_mask = (u8)(packed_masks & $FF)
+        let left_mask = (u8)((packed_masks >> 8) & $FF)
+        let right_mask = (u8)((packed_masks >> 16) & $FF)
+
+        // Build ChannelMask directly - no function calls between assignment and use
+        var channels: ChannelMask = ChannelMask { mask: stereo_mask }
+
+        return Result::Ok(AudioStreamer {
+            io_audio_0: io0_l,
+            io_audio_1: io1_l,
+            io_audio_2: io2_l,
+            io_audio_0_r: io0_r,
+            io_audio_1_r: io1_r,
+            io_audio_2_r: io2_r,
+            port: port,
+            alloc_key: alloc_key,
+            channels: channels,
+            left_channel_mask: left_mask,
+            right_channel_mask: right_mask,
+            period: period,
+            volume: 64,
+            buffer_0: buf0,
+            buffer_1: buf1,
+            buffer_2: buf2,
+            buffer_size: actual_size,
+            pending_count: 0,
+            source_ptr: source,
+            source_size: source_size,
+            source_offset: 0,
+            played_bytes: 0,
+            sample_rate: sample_rate,
+            frames_elapsed: 0,
+            is_pal: is_pal,
+            is_playing: false,
+            loop_playback: false,
+            reached_end: false,
+            buf0_left_done: false,
+            buf1_left_done: false,
+            buf2_left_done: false,
+            buf0_right_done: false,
+            buf1_right_done: false,
+            buf2_right_done: false,
+        })
+    }
+
+    // ========================================================================
+    // Public API
+    // ========================================================================
+
     /// Create a new audio streamer using any available channel
     ///
     /// # Arguments
@@ -145,6 +545,63 @@ impl AudioStreamer {
     /// * `Err(AudioError::AllocationFailed)` - Could not allocate chip RAM
     pub fn new(source: *u8, source_size: u32, period: u16, sample_rate: u32) -> Result<AudioStreamer, AudioError> {
         return AudioStreamer::with_options(source, source_size, period, sample_rate, Option::None, DEFAULT_BUFFER_SIZE)
+    }
+
+    /// Create a mono streamer with custom buffer size
+    ///
+    /// # Arguments
+    /// * `source` - Pointer to audio data (can be in fast RAM)
+    /// * `source_size` - Total size of audio in bytes
+    /// * `period` - Paula period for playback rate
+    /// * `sample_rate` - Sample rate in Hz (for progress calculation)
+    /// * `buffer_size` - Size of each buffer in bytes (4KB - 64KB, will be clamped)
+    ///
+    /// # Buffer Size Guidelines
+    /// - Smaller buffers (4-8KB): Lower latency, more CPU overhead
+    /// - Default (16KB): Good balance for most uses
+    /// - Larger buffers (32-64KB): Less CPU overhead, higher latency, more chip RAM
+    pub fn new_with_buffer(source: *u8, source_size: u32, period: u16, sample_rate: u32, buffer_size: u32) -> Result<AudioStreamer, AudioError> {
+        return AudioStreamer::with_options(source, source_size, period, sample_rate, Option::None, buffer_size)
+    }
+
+    /// Create a stereo audio streamer (one left + one right channel)
+    ///
+    /// Plays the same audio data on both a left and right channel for
+    /// stereo output. The OS will allocate any available stereo pair.
+    /// Uses the default buffer size (16KB per buffer, 48KB total chip RAM).
+    ///
+    /// # Arguments
+    /// * `source` - Pointer to audio data (can be in fast RAM)
+    /// * `source_size` - Total size of audio in bytes
+    /// * `period` - Paula period for playback rate
+    /// * `sample_rate` - Sample rate in Hz (for progress calculation)
+    ///
+    /// # Returns
+    /// * `Ok(AudioStreamer)` - Ready to play in stereo
+    /// * `Err(AudioError::NoAllocation)` - No stereo pair available
+    pub fn new_stereo(source: *u8, source_size: u32, period: u16, sample_rate: u32) -> Result<AudioStreamer, AudioError> {
+        return AudioStreamer::with_stereo_options(source, source_size, period, sample_rate, DEFAULT_BUFFER_SIZE)
+    }
+
+    /// Create a stereo audio streamer with custom buffer size
+    ///
+    /// # Arguments
+    /// * `source` - Pointer to audio data (can be in fast RAM)
+    /// * `source_size` - Total size of audio in bytes
+    /// * `period` - Paula period for playback rate
+    /// * `sample_rate` - Sample rate in Hz (for progress calculation)
+    /// * `buffer_size` - Size of each buffer in bytes (4KB - 64KB, will be clamped)
+    ///
+    /// # Buffer Size Guidelines
+    /// - Smaller buffers (4-8KB): Lower latency, more CPU overhead
+    /// - Default (16KB): Good balance for most uses
+    /// - Larger buffers (32-64KB): Less CPU overhead, higher latency, more chip RAM
+    ///
+    /// # Memory Usage
+    /// Total chip RAM = 3 × buffer_size (triple-buffering)
+    /// Example: 32KB buffers = 96KB chip RAM
+    pub fn new_stereo_with_buffer(source: *u8, source_size: u32, period: u16, sample_rate: u32, buffer_size: u32) -> Result<AudioStreamer, AudioError> {
+        return AudioStreamer::with_stereo_options(source, source_size, period, sample_rate, buffer_size)
     }
 
     /// Create a streamer requesting a specific channel
@@ -165,6 +622,75 @@ impl AudioStreamer {
             return Result::Err(AudioError::InvalidChannel)
         }
         return AudioStreamer::with_options(source, source_size, period, sample_rate, Option::Some(channel), DEFAULT_BUFFER_SIZE)
+    }
+
+    /// Create a streamer with a specific channel mask
+    ///
+    /// This is the most flexible constructor - it accepts a ChannelMask allowing
+    /// you to request any combination of channels. Use this when you need the
+    /// same channel selection API as paula.novus MultiChannel.
+    ///
+    /// # Arguments
+    /// * `mask` - ChannelMask specifying which channels to allocate
+    /// * `source` - Pointer to audio data (can be in fast RAM)
+    /// * `source_size` - Total size of audio in bytes
+    /// * `period` - Paula period for playback rate
+    /// * `sample_rate` - Sample rate in Hz (for progress calculation)
+    ///
+    /// # Returns
+    /// * `Ok(AudioStreamer)` - Ready to play
+    /// * `Err(AudioError::NoAllocation)` - Requested channels not available
+    ///
+    /// # Example
+    /// ```novus
+    /// // Request stereo playback (same as new_stereo)
+    /// let streamer = AudioStreamer::new_with_channels(
+    ///     ChannelMask::stereo(), data, size, period, rate
+    /// )?
+    ///
+    /// // Request specific channels
+    /// let custom = AudioStreamer::new_with_channels(
+    ///     ChannelMask::channel(0).with(3), data, size, period, rate
+    /// )?
+    /// ```
+    pub fn new_with_channels(mask: ChannelMask, source: *u8, source_size: u32, period: u16, sample_rate: u32) -> Result<AudioStreamer, AudioError> {
+        return AudioStreamer::with_channels_options(mask, source, source_size, period, sample_rate, DEFAULT_BUFFER_SIZE)
+    }
+
+    /// Create a streamer with a specific channel mask and custom buffer size
+    ///
+    /// # Arguments
+    /// * `mask` - ChannelMask specifying which channels to allocate
+    /// * `source` - Pointer to audio data
+    /// * `source_size` - Total size of audio
+    /// * `period` - Paula period
+    /// * `sample_rate` - Sample rate in Hz (for progress calculation)
+    /// * `buffer_size` - Size per buffer (4KB - 64KB)
+    pub fn with_channels_options(mask: ChannelMask, source: *u8, source_size: u32, period: u16, sample_rate: u32, buffer_size: u32) -> Result<AudioStreamer, AudioError> {
+        if mask.is_empty() {
+            return Result::Err(AudioError::InvalidChannel)
+        }
+
+        // For single-channel masks, delegate to the original with_options
+        if mask.count() == 1 {
+            match mask.first() {
+                Option::Some(ch) => {
+                    return AudioStreamer::with_options(source, source_size, period, sample_rate, Option::Some(ch), buffer_size)
+                },
+                Option::None => {
+                    return Result::Err(AudioError::InvalidChannel)
+                }
+            }
+        }
+
+        // For stereo (or multi-channel), use the stereo allocation path
+        if mask.is_stereo() {
+            return AudioStreamer::with_stereo_options(source, source_size, period, sample_rate, buffer_size)
+        }
+
+        // For other multi-channel combinations, use generic allocation
+        // For now, only stereo is fully supported
+        return Result::Err(AudioError::InvalidChannel)
     }
 
     /// Create a streamer with custom buffer size
@@ -384,9 +910,14 @@ impl AudioStreamer {
                 io_audio_0: io0,
                 io_audio_1: io1,
                 io_audio_2: io2,
+                io_audio_0_r: null,  // No right channel for mono
+                io_audio_1_r: null,
+                io_audio_2_r: null,
                 port: port,
                 alloc_key: alloc_key,
-                channel: allocated_channel,
+                channels: ChannelMask::channel(allocated_channel),
+                left_channel_mask: channel_bit,  // The allocated channel
+                right_channel_mask: 0,           // No right channel for mono
                 period: period,
                 volume: 64,
                 buffer_0: buf0,
@@ -404,8 +935,107 @@ impl AudioStreamer {
                 is_playing: false,
                 loop_playback: false,
                 reached_end: false,
+                buf0_left_done: false,
+                buf1_left_done: false,
+                buf2_left_done: false,
+                buf0_right_done: false,
+                buf1_right_done: false,
+                buf2_right_done: false,
             })
         }
+    }
+
+    /// Create a stereo streamer with custom buffer size
+    ///
+    /// # Arguments
+    /// * `source` - Pointer to audio data
+    /// * `source_size` - Total size of audio
+    /// * `period` - Paula period
+    /// * `sample_rate` - Sample rate in Hz (for progress calculation)
+    /// * `buffer_size` - Size per buffer (4KB - 64KB)
+    pub fn with_stereo_options(source: *u8, source_size: u32, period: u16, sample_rate: u32, buffer_size: u32) -> Result<AudioStreamer, AudioError> {
+        // Step 1: Validate and clamp buffer size
+        let actual_size = AudioStreamer::clamp_buffer_size(buffer_size)
+
+        // Step 2: Create message port
+        let port = match AudioStreamer::create_msg_port() {
+            Result::Ok(p) => p,
+            Result::Err(e) => return Result::Err(e)
+        }
+
+        // Step 3: Create 6 IORequests (3 for left, 3 for right)
+        var io0_l: *IOAudio = null
+        var io1_l: *IOAudio = null
+        var io2_l: *IOAudio = null
+        var io0_r: *IOAudio = null
+        var io1_r: *IOAudio = null
+        var io2_r: *IOAudio = null
+        match AudioStreamer::create_stereo_io_requests(port, &io0_l, &io1_l, &io2_l, &io0_r, &io1_r, &io2_r) {
+            Result::Ok(_) => {},
+            Result::Err(e) => {
+                DeleteMsgPort(port)
+                return Result::Err(e)
+            }
+        }
+
+        // Step 4: Allocate stereo channels via audio.device (using first left IORequest)
+        match AudioStreamer::allocate_stereo_channels(io0_l, port) {
+            Result::Ok(_) => {},
+            Result::Err(e) => {
+                unsafe {
+                    DeleteIORequest((*u8)io2_r)
+                    DeleteIORequest((*u8)io1_r)
+                    DeleteIORequest((*u8)io0_r)
+                    DeleteIORequest((*u8)io2_l)
+                    DeleteIORequest((*u8)io1_l)
+                    DeleteIORequest((*u8)io0_l)
+                    DeleteMsgPort(port)
+                }
+                return Result::Err(e)
+            }
+        }
+
+        // Step 5: Setup all 6 IORequests with individual channel assignments
+        let alloc_key = io0_l.ioa_AllocKey
+        // Returns packed: stereo_mask | (left_mask << 8) | (right_mask << 16)
+        let packed_masks = AudioStreamer::setup_all_stereo_io_units(
+            io0_l, io1_l, io2_l,
+            io0_r, io1_r, io2_r,
+            port, alloc_key
+        )
+
+        // Step 6: Allocate chip RAM buffers
+        var buf0: *u8 = null
+        var buf1: *u8 = null
+        var buf2: *u8 = null
+        match AudioStreamer::allocate_triple_buffers(actual_size, &buf0, &buf1, &buf2) {
+            Result::Ok(_) => {},
+            Result::Err(e) => {
+                unsafe {
+                    io0_l.ioa_Request.io_Command = ADCMD_FREE
+                    let cleanup_req_addr = &io0_l.ioa_Request
+                    let cleanup_ioreq = (*IORequest)cleanup_req_addr
+                    CloseDevice(cleanup_ioreq)
+                    DeleteIORequest((*u8)io2_r)
+                    DeleteIORequest((*u8)io1_r)
+                    DeleteIORequest((*u8)io0_r)
+                    DeleteIORequest((*u8)io2_l)
+                    DeleteIORequest((*u8)io1_l)
+                    DeleteIORequest((*u8)io0_l)
+                    DeleteMsgPort(port)
+                }
+                return Result::Err(e)
+            }
+        }
+
+        // Step 7: Build the final AudioStreamer with all 6 IORequests
+        return AudioStreamer::build_stereo_streamer(
+            io0_l, io1_l, io2_l,
+            io0_r, io1_r, io2_r,
+            port, alloc_key, packed_masks,
+            buf0, buf1, buf2, actual_size,
+            source, source_size, period, sample_rate
+        )
     }
 
     /// Start streaming playback
@@ -419,6 +1049,14 @@ impl AudioStreamer {
         self.source_offset = 0
         self.played_bytes = 0
         self.frames_elapsed = 0
+
+        // Reset stereo completion tracking flags
+        self.buf0_left_done = false
+        self.buf1_left_done = false
+        self.buf2_left_done = false
+        self.buf0_right_done = false
+        self.buf1_right_done = false
+        self.buf2_right_done = false
 
         // Fill all three buffers
         self.fill_buffer(0)?
@@ -449,61 +1087,126 @@ impl AudioStreamer {
             return Result::Ok(())
         }
 
-        // Check if a buffer finished (message arrived)
-        let msg = GetMsg(self.port)
-        if (u32)msg != 0 {
+        let is_stereo = self.right_channel_mask != 0
+
+        // Process ALL pending messages (there may be multiple)
+        var msg = GetMsg(self.port)
+        while (u32)msg != 0 {
             // A buffer just finished playing
-            // The message tells us which IORequest completed
-            // We need to refill that buffer and re-queue it
             self.pending_count = self.pending_count - 1
 
-            // Update played bytes (one buffer's worth just played)
-            self.played_bytes = self.played_bytes + self.buffer_size
-            if self.played_bytes > self.source_size {
-                self.played_bytes = self.source_size
-            }
+            // Identify which buffer and which channel (left or right) finished
+            var buf_idx: i8 = -1
+            var is_left: bool = false
 
-            // Check if we've reached the end (no more pending buffers)
-            if self.reached_end && !self.loop_playback {
-                if self.pending_count == 0 {
-                    self.stop()
-                }
-                return Result::Ok(())
-            }
-
-            // Identify which buffer finished by comparing message address
-            var finished_idx: u8 = 0
+            // Check LEFT channel IORequests
             if (u32)msg == (u32)self.io_audio_0 {
-                finished_idx = 0
+                buf_idx = 0
+                is_left = true
             } else if (u32)msg == (u32)self.io_audio_1 {
-                finished_idx = 1
-            } else {
-                finished_idx = 2
+                buf_idx = 1
+                is_left = true
+            } else if (u32)msg == (u32)self.io_audio_2 {
+                buf_idx = 2
+                is_left = true
+            }
+            // Check RIGHT channel IORequests
+            else if (u32)msg == (u32)self.io_audio_0_r {
+                buf_idx = 0
+                is_left = false
+            } else if (u32)msg == (u32)self.io_audio_1_r {
+                buf_idx = 1
+                is_left = false
+            } else if (u32)msg == (u32)self.io_audio_2_r {
+                buf_idx = 2
+                is_left = false
             }
 
-            // Refill the buffer that just finished
-            let fill_result = self.fill_buffer(finished_idx)
-            match fill_result {
-                Result::Ok(_) => {
-                    // Flush cache for 68040/060
-                    CacheClearU()
-                    // Re-queue this buffer for playback
-                    self.start_buffer_playback(finished_idx)?
-                },
-                Result::Err(_) => {
-                    // Reached end of data
-                    if !self.loop_playback {
-                        self.reached_end = true
-                        // Don't re-queue - let remaining buffers drain
+            if buf_idx >= 0 {
+                // Mark this channel as done for this buffer
+                if is_left {
+                    if buf_idx == 0 { self.buf0_left_done = true }
+                    else if buf_idx == 1 { self.buf1_left_done = true }
+                    else { self.buf2_left_done = true }
+                } else {
+                    if buf_idx == 0 { self.buf0_right_done = true }
+                    else if buf_idx == 1 { self.buf1_right_done = true }
+                    else { self.buf2_right_done = true }
+                }
+
+                // Check if this buffer is fully complete (both channels done, or mono)
+                let idx = (u8)buf_idx
+                var buffer_complete = false
+
+                if is_stereo {
+                    // For stereo, BOTH channels must be done
+                    if idx == 0 {
+                        buffer_complete = self.buf0_left_done && self.buf0_right_done
+                    } else if idx == 1 {
+                        buffer_complete = self.buf1_left_done && self.buf1_right_done
                     } else {
-                        // Loop: reset offset and refill
-                        self.source_offset = 0
-                        self.fill_buffer(finished_idx)?
-                        CacheClearU()
-                        self.start_buffer_playback(finished_idx)?
+                        buffer_complete = self.buf2_left_done && self.buf2_right_done
+                    }
+                } else {
+                    // For mono, left channel done = buffer complete
+                    buffer_complete = is_left
+                }
+
+                if buffer_complete {
+                    // Reset completion flags for this buffer
+                    if idx == 0 {
+                        self.buf0_left_done = false
+                        self.buf0_right_done = false
+                    } else if idx == 1 {
+                        self.buf1_left_done = false
+                        self.buf1_right_done = false
+                    } else {
+                        self.buf2_left_done = false
+                        self.buf2_right_done = false
+                    }
+
+                    // Update played bytes (only once per buffer)
+                    self.played_bytes = self.played_bytes + self.buffer_size
+                    if self.played_bytes > self.source_size {
+                        self.played_bytes = self.source_size
+                    }
+
+                    // Check if we've reached the end (no more pending buffers)
+                    if self.reached_end && !self.loop_playback {
+                        if self.pending_count == 0 {
+                            self.stop()
+                        }
+                        // Don't refill, just let remaining buffers drain
+                    } else {
+                        // Refill the buffer that just finished
+                        let fill_result = self.fill_buffer(idx)
+                        match fill_result {
+                            Result::Ok(_) => {
+                                // Flush cache for 68040/060
+                                CacheClearU()
+                                // Re-queue this buffer for playback
+                                self.start_buffer_playback(idx)?
+                            },
+                            Result::Err(_) => {
+                                // Reached end of data
+                                if !self.loop_playback {
+                                    self.reached_end = true
+                                    // Don't re-queue - let remaining buffers drain
+                                } else {
+                                    // Loop: reset offset and refill
+                                    self.source_offset = 0
+                                    self.fill_buffer(idx)?
+                                    CacheClearU()
+                                    self.start_buffer_playback(idx)?
+                                }
+                            }
+                        }
                     }
                 }
             }
+
+            // Get next message (if any)
+            msg = GetMsg(self.port)
         }
 
         // Increment frame counter (for time-based position calculation)
@@ -529,12 +1232,63 @@ impl AudioStreamer {
         return self.is_playing
     }
 
-    /// Get the allocated channel number (0-3)
+    /// Get the allocated channel mask
     ///
-    /// This returns the actual channel that was allocated, which may differ
+    /// Returns the ChannelMask of all allocated channels, allowing you to
+    /// query which channels are being used for playback.
+    pub fn channels(&self) -> ChannelMask {
+        return self.channels
+    }
+
+    /// Get the first allocated channel number (0-3)
+    ///
+    /// This returns the first channel that was allocated, which may differ
     /// from the requested channel if `new()` was used (any available channel).
+    /// For stereo playback, use `channel2()` to get the second channel.
     pub fn channel(&self) -> u8 {
-        return self.channel
+        match self.channels.first() {
+            Option::Some(ch) => return ch,
+            Option::None => return 0
+        }
+    }
+
+    /// Get the second allocated channel for stereo playback (0-3)
+    ///
+    /// Returns 0 for mono playback.
+    /// For stereo, this returns the second channel of the stereo pair.
+    pub fn channel2(&self) -> u8 {
+        // Find the second channel in the mask
+        let first = self.channel()
+        var ch: u8 = 0
+        while ch < 4 {
+            if self.channels.has(ch) && ch != first {
+                return ch
+            }
+            ch++
+        }
+        return 0  // No second channel (mono)
+    }
+
+    /// Check if this streamer is playing in stereo
+    ///
+    /// Returns true if we have allocated channels from both left and right sides.
+    pub fn is_stereo(&self) -> bool {
+        return self.channels.is_stereo()
+    }
+
+    /// Get the raw channel mask value (for debugging)
+    pub fn channels_raw(&self) -> u8 {
+        return self.channels.mask
+    }
+
+    /// Get the left channel mask (for debugging)
+    pub fn left_mask(&self) -> u8 {
+        return self.left_channel_mask
+    }
+
+    /// Get the right channel mask (for debugging)
+    pub fn right_mask(&self) -> u8 {
+        return self.right_channel_mask
     }
 
     /// Set volume (0-64)
@@ -676,7 +1430,7 @@ impl AudioStreamer {
         return self.buffer_2
     }
 
-    /// Get IOAudio by index
+    /// Get IOAudio by index (left channel / mono)
     fn get_io(&self, idx: u8) -> *IOAudio {
         if idx == 0 {
             return self.io_audio_0
@@ -686,11 +1440,18 @@ impl AudioStreamer {
         return self.io_audio_2
     }
 
-    /// Start async playback of a buffer
-    fn start_buffer_playback(&mut self, idx: u8) -> Result<(), AudioError> {
-        let buffer = self.get_buffer(idx)
-        let io = self.get_io(idx)
+    /// Get right channel IOAudio by index (stereo only, null for mono)
+    fn get_io_right(&self, idx: u8) -> *IOAudio {
+        if idx == 0 {
+            return self.io_audio_0_r
+        } else if idx == 1 {
+            return self.io_audio_1_r
+        }
+        return self.io_audio_2_r
+    }
 
+    /// Setup an IORequest for playback (helper to reduce duplication)
+    fn setup_io_for_playback(&self, io: *IOAudio, buffer: *u8) {
         io.ioa_Request.io_Command = CMD_WRITE
         io.ioa_Request.io_Flags = ADIOF_PERVOL | ADIOF_NOWAIT
         io.ioa_Data = buffer
@@ -698,16 +1459,54 @@ impl AudioStreamer {
         io.ioa_Period = self.period
         io.ioa_Volume = self.volume
         io.ioa_Cycles = 1  // Play once, then signal completion
+    }
 
-        let req_addr = &io.ioa_Request
-        let ioreq = (*IORequest)req_addr
+    /// Start async playback of a buffer
+    /// For stereo mode, sends CMD_WRITE to both left and right channels
+    fn start_buffer_playback(&mut self, idx: u8) -> Result<(), AudioError> {
+        let buffer = self.get_buffer(idx)
+        let io_left = self.get_io(idx)
+
+        // Debug: Print the io_Unit value to see what channels we're playing to
+        let unit_val_l = (u32)io_left.ioa_Request.io_Unit
+        write("DEBUG play: buffer %ld, left io_Unit=$%02lx\n", (i32)idx, unit_val_l)
+
+        // Setup left channel IORequest
+        self.setup_io_for_playback(io_left, buffer)
 
         // Flush cache before DMA - critical for 68040/060!
-        // The IORequest struct must be in main RAM, not just cache
         CacheClearU()
-        BeginIO(ioreq)
 
-        self.pending_count = self.pending_count + 1
+        // Check if this is stereo playback
+        let io_right = self.get_io_right(idx)
+        if (u32)io_right != 0 {
+            // STEREO: Send to both channels
+            let unit_val_r = (u32)io_right.ioa_Request.io_Unit
+            write("DEBUG play: buffer %ld, right io_Unit=$%02lx\n", (i32)idx, unit_val_r)
+
+            // Setup right channel IORequest (same buffer - mono audio to both)
+            self.setup_io_for_playback(io_right, buffer)
+
+            // Send both using BeginIO (async)
+            // They'll play the same data through left and right speakers
+            let req_addr_l = &io_left.ioa_Request
+            let req_addr_r = &io_right.ioa_Request
+            let ioreq_l = (*IORequest)req_addr_l
+            let ioreq_r = (*IORequest)req_addr_r
+
+            BeginIO(ioreq_l)
+            BeginIO(ioreq_r)
+
+            // Track both pending requests
+            self.pending_count = self.pending_count + 2
+        } else {
+            // MONO: Send to single channel only
+            let req_addr = &io_left.ioa_Request
+            let ioreq = (*IORequest)req_addr
+            BeginIO(ioreq)
+            self.pending_count = self.pending_count + 1
+        }
+
         return Result::Ok(())
     }
 }
@@ -719,7 +1518,7 @@ impl Drop for AudioStreamer {
 
         unsafe {
             // Wait for any pending I/O to complete
-            // With triple-buffering, we may have up to 3 pending requests
+            // With stereo triple-buffering, we may have up to 6 pending requests
             while self.pending_count > 0 {
                 let _ = GetMsg(self.port)
                 self.pending_count = self.pending_count - 1
@@ -752,6 +1551,19 @@ impl Drop for AudioStreamer {
 
             if self.io_audio_2 {
                 DeleteIORequest((*u8)self.io_audio_2)
+            }
+
+            // Free right channel IORequests (stereo only)
+            if self.io_audio_0_r {
+                DeleteIORequest((*u8)self.io_audio_0_r)
+            }
+
+            if self.io_audio_1_r {
+                DeleteIORequest((*u8)self.io_audio_1_r)
+            }
+
+            if self.io_audio_2_r {
+                DeleteIORequest((*u8)self.io_audio_2_r)
             }
 
             if self.port {
