@@ -537,16 +537,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             // Register a stub enum type with no variants yet
             // This makes the type name resolvable during variant parsing and trait impl type arg parsing
             // Parse generic parameters for stub so type checking works correctly
-            List<string>? genericParams = null;
-            if (enumDecl.genericParams() != null)
-            {
-                genericParams = new List<string>();
-                foreach (var paramId in enumDecl.genericParams().IDENTIFIER())
-                {
-                    genericParams.Add(paramId.GetText());
-                }
-            }
-            var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), genericParams);
+            var genericParams = AstParsingHelpers.ParseGenericParameters(enumDecl.genericParams());
+            var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), genericParams.Count > 0 ? genericParams : null);
             _symbols.RegisterEnum(enumName, stubEnum);
 
             // Track stubs that aren't in the import list so we can remove them later
@@ -1262,18 +1254,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         // Handle generic parameters if present (e.g., fn identity<T>(x: T) -> T)
-        var genericParams = new List<string>();
-        if (context.genericParams() != null)
-        {
-            foreach (var paramId in context.genericParams().IDENTIFIER())
-            {
-                var paramName = paramId.GetText();
-                genericParams.Add(paramName);
-
-                // Add to generic param scope for parameter/return type parsing
-                _genericParams[paramName] = new IrGenericType(paramName);
-            }
-        }
+        var genericParams = AstParsingHelpers.ParseGenericParameters(context.genericParams(), _genericParams);
 
         // Set flag to skip type validation for extern functions (FFI types may not be imported)
         if (isExtern)
@@ -1334,16 +1315,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     private ImplBlockInfo ParseImplBlockInfo(NovusParser.ImplDeclarationContext context)
     {
         // Handle generic parameters if present (e.g., impl<T> Vec<T>)
-        var genericParams = new List<string>();
-        if (context.genericParams() != null)
-        {
-            foreach (var paramId in context.genericParams().IDENTIFIER())
-            {
-                var paramName = paramId.GetText();
-                genericParams.Add(paramName);
-                _genericParams[paramName] = new IrGenericType(paramName);
-            }
-        }
+        var genericParams = AstParsingHelpers.ParseGenericParameters(context.genericParams(), _genericParams);
 
         // Determine if this is a trait impl or inherent impl
         bool isTraitImpl = context.KW_FOR() != null;
@@ -1621,21 +1593,13 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         // Handle generic parameters if present
-        var genericParams = new List<string>();
-        if (context.genericParams() != null)
-        {
-            foreach (var paramId in context.genericParams().IDENTIFIER())
-            {
-                var paramName = paramId.GetText();
-                genericParams.Add(paramName);
-            }
-        }
+        var genericParams = AstParsingHelpers.ParseGenericParameters(context.genericParams());
 
         // Parse where clause (can be done without fields)
         var whereClause = ParseWhereClause(context.whereClause());
 
         // Register placeholder struct type - fields will be filled in by FillStructFields
-        var placeholderStruct = new IrStructType(name, new List<IrStructField>(), genericParams, null, attributes, whereClause);
+        var placeholderStruct = new IrStructType(name, new List<IrStructField>(), genericParams.Count > 0 ? genericParams : null, null, attributes, whereClause);
         _symbols.RegisterStruct(name, placeholderStruct, location);
     }
 
@@ -1665,16 +1629,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return; // Should never happen if HasStruct returned true
         }
 
-        // Handle generic parameters if present
-        if (context.genericParams() != null)
-        {
-            foreach (var paramId in context.genericParams().IDENTIFIER())
-            {
-                var paramName = paramId.GetText();
-                // Add to generic param scope for field parsing
-                _genericParams[paramName] = new IrGenericType(paramName);
-            }
-        }
+        // Handle generic parameters if present - add to scope for field parsing
+        AstParsingHelpers.ParseGenericParameters(context.genericParams(), _genericParams);
 
         // Parse struct fields and add them to the EXISTING placeholder
         // (now all struct names are known, including those defined later)
@@ -1686,14 +1642,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         // Clear generic params from scope after struct registration
-        if (context.genericParams() != null)
-        {
-            foreach (var paramId in context.genericParams().IDENTIFIER())
-            {
-                var paramName = paramId.GetText();
-                _genericParams.Remove(paramName);
-            }
-        }
+        AstParsingHelpers.ClearGenericParameters(context.genericParams(), _genericParams);
 
         // Force offset calculation by accessing SizeInBytes (only for non-generic structs)
         // The placeholder already has its GenericParameters set from RegisterStructPlaceholder
@@ -1735,19 +1684,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             // Otherwise, this is a stub being replaced - continue
         }
 
-        // Handle generic parameters if present
-        var genericParams = new List<string>();
-        if (context.genericParams() != null)
-        {
-            foreach (var paramId in context.genericParams().IDENTIFIER())
-            {
-                var paramName = paramId.GetText();
-                genericParams.Add(paramName);
-
-                // Add to generic param scope for variant parsing
-                _genericParams[paramName] = new IrGenericType(paramName);
-            }
-        }
+        // Handle generic parameters if present - add to scope for variant parsing
+        var genericParams = AstParsingHelpers.ParseGenericParameters(context.genericParams(), _genericParams);
 
         // Parse enum variants
         var variants = new List<IrEnumVariant>();
@@ -1813,15 +1751,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         // Handle generic parameters if present
-        var genericParams = new List<string>();
-        if (context.genericParams() != null)
-        {
-            foreach (var paramId in context.genericParams().IDENTIFIER())
-            {
-                var paramName = paramId.GetText();
-                genericParams.Add(paramName);
-            }
-        }
+        var genericParams = AstParsingHelpers.ParseGenericParameters(context.genericParams());
 
         // Parse attributes
         var attributes = ParseAttributes(context.attribute());
@@ -1859,17 +1789,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return;
         }
 
-        // Handle generic parameters if present
-        if (context.genericParams() != null)
-        {
-            foreach (var paramId in context.genericParams().IDENTIFIER())
-            {
-                var paramName = paramId.GetText();
-
-                // Add to generic param scope for variant parsing
-                _genericParams[paramName] = new IrGenericType(paramName);
-            }
-        }
+        // Handle generic parameters if present - add to scope for variant parsing
+        AstParsingHelpers.ParseGenericParameters(context.genericParams(), _genericParams);
 
         // Parse enum variants and add to the stub's Variants list in-place
         int tag = 0;
@@ -1928,19 +1849,8 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             return;
         }
 
-        // Handle generic parameters if present
-        var genericParams = new List<string>();
-        if (context.genericParams() != null)
-        {
-            foreach (var paramId in context.genericParams().IDENTIFIER())
-            {
-                var paramName = paramId.GetText();
-                genericParams.Add(paramName);
-
-                // Add to generic param scope for method signature parsing
-                _genericParams[paramName] = new IrGenericType(paramName);
-            }
-        }
+        // Handle generic parameters if present - add to scope for method signature parsing
+        var genericParams = AstParsingHelpers.ParseGenericParameters(context.genericParams(), _genericParams);
 
         // Parse trait method signatures (and optional default implementations)
         var methods = new List<IrTraitMethod>();
@@ -1954,16 +1864,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
                 var methodName = methodDecl.IDENTIFIER().GetText();
 
                 // Parse method generic parameters (if any)
-                var methodGenericParams = new List<string>();
-                if (methodDecl.genericParams() != null)
-                {
-                    foreach (var paramId in methodDecl.genericParams().IDENTIFIER())
-                    {
-                        var paramName = paramId.GetText();
-                        methodGenericParams.Add(paramName);
-                        _genericParams[paramName] = new IrGenericType(paramName);
-                    }
-                }
+                var methodGenericParams = AstParsingHelpers.ParseGenericParameters(methodDecl.genericParams(), _genericParams);
 
                 // Parse parameters
                 var parameters = new List<IrParameter>();
@@ -2218,16 +2119,7 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         }
 
         // Restore generic parameters to scope for function body analysis
-        var genericParams = new List<string>();
-        if (context.genericParams() != null)
-        {
-            foreach (var paramId in context.genericParams().IDENTIFIER())
-            {
-                var paramName = paramId.GetText();
-                genericParams.Add(paramName);
-                _genericParams[paramName] = new IrGenericType(paramName);
-            }
-        }
+        var genericParams = AstParsingHelpers.ParseGenericParameters(context.genericParams(), _genericParams);
 
         // Add parameters to symbol table (parameters are immutable)
         foreach (var param in _currentFunction.Parameters)

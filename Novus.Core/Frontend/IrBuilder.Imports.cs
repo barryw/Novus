@@ -81,16 +81,8 @@ public partial class IrBuilder
                     if (!_symbols.HasEnum(symbolName))
                     {
                         // Parse generic parameters for stub so type checking works correctly
-                        List<string>? genericParams = null;
-                        if (enumDecl.genericParams() != null)
-                        {
-                            genericParams = new List<string>();
-                            foreach (var paramId in enumDecl.genericParams().IDENTIFIER())
-                            {
-                                genericParams.Add(paramId.GetText());
-                            }
-                        }
-                        var stubEnum = new IrEnumType(symbolName, new List<IrEnumVariant>(), genericParams);
+                        var genericParams = AstParsingHelpers.ParseGenericParameters(enumDecl.genericParams());
+                        var stubEnum = new IrEnumType(symbolName, new List<IrEnumVariant>(), genericParams.Count > 0 ? genericParams : null);
                         _symbols.RegisterEnum(symbolName, stubEnum);
                     }
                 }
@@ -104,15 +96,8 @@ public partial class IrBuilder
                     // RegisterStruct will handle placeholder registration and self-referential types
                     if (!_symbols.HasStruct(symbolName))
                     {
-                        List<string> genericParams = new List<string>();
-                        if (structDecl.genericParams() != null)
-                        {
-                            foreach (var paramId in structDecl.genericParams().IDENTIFIER())
-                            {
-                                genericParams.Add(paramId.GetText());
-                            }
-                        }
-                        var placeholderStruct = new IrStructType(symbolName, new List<IrStructField>(), genericParams, null, null);
+                        var genericParams = AstParsingHelpers.ParseGenericParameters(structDecl.genericParams());
+                        var placeholderStruct = new IrStructType(symbolName, new List<IrStructField>(), genericParams.Count > 0 ? genericParams : null, null, null);
                         _symbols.RegisterStruct(symbolName, placeholderStruct);
                     }
                 }
@@ -571,16 +556,7 @@ public partial class IrBuilder
         foreach (var implDecl in moduleContext.implDeclaration())
         {
             // Handle generic parameters if present (e.g., impl<T> Vec<T>)
-            var genericParams = new List<string>();
-            if (implDecl.genericParams() != null)
-            {
-                foreach (var paramId in implDecl.genericParams().IDENTIFIER())
-                {
-                    var paramName = paramId.GetText();
-                    genericParams.Add(paramName);
-                    _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
-                }
-            }
+            var genericParams = AstParsingHelpers.ParseGenericParameters(implDecl.genericParams(), _symbols, registerInSymbolTable: true);
 
             // Determine if this is a trait impl or inherent impl
             bool isTraitImpl = implDecl.KW_FOR() != null;
@@ -1338,19 +1314,11 @@ public partial class IrBuilder
             }
 
             // Parse generic parameters for stub so type checking works correctly
-            List<string>? genericParams = null;
-            if (enumDecl.genericParams() != null)
-            {
-                genericParams = new List<string>();
-                foreach (var paramId in enumDecl.genericParams().IDENTIFIER())
-                {
-                    genericParams.Add(paramId.GetText());
-                }
-            }
+            var genericParams = AstParsingHelpers.ParseGenericParameters(enumDecl.genericParams());
 
             // Register the stub enum in symbol table (but NOT in module.Enums yet)
             // The stub will be filled in later only if it's in the import list
-            var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), genericParams);
+            var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), genericParams.Count > 0 ? genericParams : null);
             _symbols.RegisterEnum(enumName, stubEnum);
         }
     }
@@ -1437,18 +1405,11 @@ public partial class IrBuilder
             }
 
             // Parse generic parameters for placeholder so type checking works correctly
-            List<string> genericParams = new List<string>();
-            if (structDecl.genericParams() != null)
-            {
-                foreach (var paramId in structDecl.genericParams().IDENTIFIER())
-                {
-                    genericParams.Add(paramId.GetText());
-                }
-            }
+            var genericParams = AstParsingHelpers.ParseGenericParameters(structDecl.genericParams());
 
             // Register placeholder struct in symbol table (but NOT in module.Structs yet)
             // The struct will be filled in later only if it's in the import list
-            var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), genericParams, null, null);
+            var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), genericParams.Count > 0 ? genericParams : null, null, null);
             _symbols.RegisterStruct(structName, placeholderStruct);
         }
     }
@@ -1463,16 +1424,8 @@ public partial class IrBuilder
                 if (!_symbols.HasStruct(structName))
                 {
                     // Parse generic parameters for placeholder so type checking works correctly
-                    List<string> genericParams = new List<string>();
-                    if (structDecl.genericParams() != null)
-                    {
-                        foreach (var paramId in structDecl.genericParams().IDENTIFIER())
-                        {
-                            genericParams.Add(paramId.GetText());
-                        }
-                    }
-
-                    var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), genericParams, null, null);
+                    var genericParams = AstParsingHelpers.ParseGenericParameters(structDecl.genericParams());
+                    var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), genericParams.Count > 0 ? genericParams : null, null, null);
                     _symbols.RegisterStruct(structName, placeholderStruct);
                 }
             }

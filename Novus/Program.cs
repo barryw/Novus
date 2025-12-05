@@ -498,8 +498,65 @@ class Program
             }
 
             // Run optimization passes
-            if (options.OptimizationLevel > 0)
+            if (options.PgoGenerate)
             {
+                // PGO instrumentation mode - add profiling counters
+                var instrumentationPipeline = Novus.Optimizer.OptimizationPipeline.CreateInstrumentationPipeline(options.Verbose);
+                instrumentationPipeline.Run(module);
+
+                if (options.Verbose)
+                {
+                    var instrPass = instrumentationPipeline.GetPass<Novus.Optimizer.Passes.InstrumentationPass>();
+                    if (instrPass != null)
+                    {
+                        Console.WriteLine($"Instrumented: {instrPass.InstrumentationData.FunctionCounters.Count} functions, " +
+                                          $"{instrPass.InstrumentationData.BranchCounters.Count} branches, " +
+                                          $"{instrPass.InstrumentationData.LoopCounters.Count} loops");
+                    }
+                }
+            }
+            else if (!string.IsNullOrEmpty(options.PgoUse))
+            {
+                // PGO-guided optimization mode - use profile data
+                Novus.Optimizer.ProfileData? profileData = null;
+                try
+                {
+                    profileData = Novus.Optimizer.ProfileData.Load(options.PgoUse);
+                    if (options.Verbose)
+                    {
+                        Console.WriteLine($"Loaded profile data from {options.PgoUse}");
+                        Console.WriteLine($"  Run count: {profileData.RunCount}");
+                        Console.WriteLine($"  Functions profiled: {profileData.Functions.Count}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Warning: Failed to load profile data from {options.PgoUse}: {ex.Message}");
+                    Console.Error.WriteLine("Falling back to standard optimization pipeline.");
+                }
+
+                if (profileData != null)
+                {
+                    var pgoPipeline = Novus.Optimizer.OptimizationPipeline.CreatePgoPipeline(
+                        options.OptimizationLevel,
+                        profileData,
+                        options.Verbose
+                    );
+                    pgoPipeline.Run(module);
+                }
+                else if (options.OptimizationLevel > 0)
+                {
+                    // Fallback to standard pipeline if profile load failed
+                    var optimizer = Novus.Optimizer.OptimizationPipeline.CreatePipeline(
+                        options.OptimizationLevel,
+                        options.Verbose
+                    );
+                    optimizer.Run(module);
+                }
+            }
+            else if (options.OptimizationLevel > 0)
+            {
+                // Standard optimization pipeline
                 var optimizer = Novus.Optimizer.OptimizationPipeline.CreatePipeline(
                     options.OptimizationLevel,
                     options.Verbose

@@ -436,6 +436,11 @@ public abstract class IrInstruction
     /// Source location where this instruction originated (for debug/error messages)
     /// </summary>
     public SourceLocation? Location { get; set; }
+
+    /// <summary>
+    /// Optional metadata for optimization passes (PGO hints, etc.)
+    /// </summary>
+    public Dictionary<string, object>? Metadata { get; set; }
 }
 
 /// <summary>

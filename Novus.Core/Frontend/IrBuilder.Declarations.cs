@@ -784,16 +784,7 @@ public partial class IrBuilder
         var name = context.IDENTIFIER().GetText();
 
         // Handle generic parameters if present (need them in scope for variant type parsing)
-        var genericParams = new List<string>();
-        if (context.genericParams() != null)
-        {
-            foreach (var paramId in context.genericParams().IDENTIFIER())
-            {
-                var paramName = paramId.GetText();
-                genericParams.Add(paramName);
-                _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
-            }
-        }
+        var genericParams = AstParsingHelpers.ParseGenericParameters(context.genericParams(), _symbols, registerInSymbolTable: true);
 
         // Parse enum variants
         var variants = new List<IrEnumVariant>();
@@ -848,18 +839,7 @@ public partial class IrBuilder
         var attributes = ParseAttributesSimple(context.attribute());
 
         // Handle generic parameters if present
-        var genericParams = new List<string>();
-        if (context.genericParams() != null)
-        {
-            foreach (var paramId in context.genericParams().IDENTIFIER())
-            {
-                var paramName = paramId.GetText();
-                genericParams.Add(paramName);
-
-                // Add to generic param scope for field parsing
-                _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
-            }
-        }
+        var genericParams = AstParsingHelpers.ParseGenericParameters(context.genericParams(), _symbols, registerInSymbolTable: true);
 
         // Register placeholder struct FIRST to allow self-referential types
         // (but only if not already registered as a stub in Pass 2a.5)
@@ -979,16 +959,7 @@ public partial class IrBuilder
                 var methodName = methodDecl.IDENTIFIER().GetText();
 
                 // Parse method generic parameters (if any)
-                var methodGenericParams = new List<string>();
-                if (methodDecl.genericParams() != null)
-                {
-                    foreach (var paramId in methodDecl.genericParams().IDENTIFIER())
-                    {
-                        var paramName = paramId.GetText();
-                        methodGenericParams.Add(paramName);
-                        _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
-                    }
-                }
+                var methodGenericParams = AstParsingHelpers.ParseGenericParameters(methodDecl.genericParams(), _symbols, registerInSymbolTable: true);
 
                 // Parse parameters
                 var parameters = new List<IrParameter>();

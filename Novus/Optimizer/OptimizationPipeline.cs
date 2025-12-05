@@ -150,6 +150,75 @@ public class OptimizationPipeline
 
         return pipeline;
     }
+
+    /// <summary>
+    /// Create a pipeline for generating instrumented code (--pgo-generate)
+    /// </summary>
+    public static OptimizationPipeline CreateInstrumentationPipeline(bool verbose = false)
+    {
+        var pipeline = new OptimizationPipeline(maxIterations: 1, verbose: verbose);
+
+        // Only add instrumentation - no other optimizations
+        // We want the profile data to reflect the original code structure
+        pipeline.AddPass(new Passes.InstrumentationPass());
+
+        return pipeline;
+    }
+
+    /// <summary>
+    /// Create a PGO-guided optimization pipeline (--pgo-use)
+    /// </summary>
+    public static OptimizationPipeline CreatePgoPipeline(int level, ProfileData profile, bool verbose = false)
+    {
+        var pipeline = new OptimizationPipeline(maxIterations: 10, verbose: verbose);
+
+        // Run PGO passes first to add metadata
+        pipeline.AddPass(new Passes.ProfileGuidedBranchOptimizationPass { Profile = profile });
+        pipeline.AddPass(new Passes.ProfileGuidedInliningPass { Profile = profile });
+        pipeline.AddPass(new Passes.ProfileGuidedLoopOptimizationPass { Profile = profile });
+
+        // Then run standard optimization passes based on level
+        switch (level)
+        {
+            case 0:
+                // Still apply PGO metadata even at O0
+                break;
+
+            case 1:
+                pipeline.AddPass(new Passes.ConstantFoldingPass());
+                pipeline.AddPass(new Passes.AlgebraicSimplificationPass());
+                pipeline.AddPass(new Passes.DeadCodeEliminationPass());
+                break;
+
+            case 2:
+                pipeline.AddPass(new Passes.ConstantFoldingPass());
+                pipeline.AddPass(new Passes.AlgebraicSimplificationPass());
+                pipeline.AddPass(new Passes.ConstantPropagationPass());
+                pipeline.AddPass(new Passes.ResultOptimizationPass());
+                pipeline.AddPass(new Passes.CFGDeadCodeEliminationPass());
+                pipeline.AddPass(new Passes.CopyPropagationPass());
+                break;
+
+            case 3:
+                // PGO-guided inlining already added above
+                pipeline.AddPass(new Passes.FunctionInliningPass());
+                pipeline.AddPass(new Passes.ConstantFoldingPass());
+                pipeline.AddPass(new Passes.AlgebraicSimplificationPass());
+                pipeline.AddPass(new Passes.ConstantPropagationPass());
+                pipeline.AddPass(new Passes.ResultOptimizationPass());
+                pipeline.AddPass(new Passes.CFGDeadCodeEliminationPass());
+                pipeline.AddPass(new Passes.CopyPropagationPass());
+                pipeline.AddPass(new Passes.CommonSubexpressionEliminationPass());
+                pipeline.AddPass(new Passes.StrengthReductionPass());
+                pipeline.AddPass(new Passes.LoopInvariantCodeMotionPass());
+                // PGO code layout should be near the end
+                pipeline.AddPass(new Passes.ProfileGuidedCodeLayoutPass { Profile = profile });
+                pipeline.AddPass(new Passes.DeadFunctionEliminationPass());
+                break;
+        }
+
+        return pipeline;
+    }
 }
 
 /// <summary>

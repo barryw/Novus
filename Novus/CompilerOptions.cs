@@ -151,4 +151,16 @@ public class CompilerOptions
     /// </summary>
     [Option("backend", Required = false, Default = "c", HelpText = "Code generation backend: c (VBCC) or m68k (direct assembly)")]
     public string Backend { get; set; } = "c";
+
+    /// <summary>
+    /// Generate instrumented code for profile collection
+    /// </summary>
+    [Option("pgo-generate", Required = false, HelpText = "Generate instrumented code for profile collection")]
+    public bool PgoGenerate { get; set; }
+
+    /// <summary>
+    /// Use profile data for guided optimization
+    /// </summary>
+    [Option("pgo-use", Required = false, HelpText = "Path to profile data file (.pgo) for profile-guided optimization")]
+    public string? PgoUse { get; set; }
 }
