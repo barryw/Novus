@@ -5314,6 +5314,16 @@ public class CCodeGenerator
                                                     _output.AppendLine($"    __out->data.{enumValue.VariantName}._{i}.{kvp.Key}.{structField.Name} = {srcVarName}->{structField.Name};");
                                                 }
                                             }
+                                            // VBCC FIX: Array fields cannot be assigned with brace initializers
+                                            else if (kvp.Value is IrArrayLiteral arrayFieldLit)
+                                            {
+                                                // Use memcpy from compound literal to copy array data
+                                                var arrayFieldType = arrayFieldLit.Type as IrArrayType;
+                                                var arrayElementType = GetCType(arrayFieldType!.ElementType);
+                                                var arraySize = arrayFieldType.Length;
+                                                var arrayInitValue = EmitValue(arrayFieldLit);
+                                                _output.AppendLine($"    __novus_memcpy(__out->data.{enumValue.VariantName}._{i}.{kvp.Key}, ({arrayElementType}[{arraySize}]){arrayInitValue}, sizeof(__out->data.{enumValue.VariantName}._{i}.{kvp.Key}));");
+                                            }
                                             else
                                             {
                                                 // Normal field assignment
