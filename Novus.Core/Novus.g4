@@ -363,13 +363,29 @@ expressionStatement
     : expression postfixCondition?
     ;
 
-// Expression rules - operator precedence is implicit in rule ordering
+// Expression rules - operator precedence is implicit in rule ordering (earlier = higher precedence)
 // Note on turbofish syntax (Vec::<i32>::with_capacity):
 // - TurboFishExpr handles Type::<Args> - returns IrTurboFishType marker
 // - PathExpr handles expr::member - consumes TurboFishType when base is turbofish
 // - No grammar ambiguity: TurboFishExpr expects LESS after ::, PathExpr expects IDENTIFIER
 // - For Vec::<i32>::with_capacity(10), the parse tree is:
 //   CallExpr(PathExpr(TurboFishExpr(Vec, <i32>), with_capacity), (10))
+//
+// Precedence table (highest to lowest):
+// 1. Primary, turbofish, path, member access, calls, indexing, postfix ++/--
+// 2. Try operator (?)
+// 3. Cast operators (as, (type))
+// 4. Unary operators (!, ~, -, *, &, prefix ++/--)
+// 5. Multiplicative (*, /, %)
+// 6. Additive (+, -)
+// 7. Shift (<<, >>)
+// 8. Bitwise AND (&)
+// 9. Bitwise XOR (^)
+// 10. Bitwise OR (|)
+// 11. Range (.., ..=)
+// 12. Comparison (==, !=, <, >, <=, >=)
+// 13. Logical AND (&&)
+// 14. Logical OR (||)
 expression
     : primaryExpression                                     # PrimaryExpr
     | expression '::' genericTypeArgs                      # TurboFishExpr
@@ -377,11 +393,9 @@ expression
     | expression '.' IDENTIFIER                            # MemberAccessExpr
     | expression '(' argumentList? ')'                     # CallExpr
     | expression '[' expression ']'                        # IndexExpr
-    | expression '++' # PostIncrementExpr
+    | expression '++'                                      # PostIncrementExpr
     | expression '--'                                      # PostDecrementExpr
     | expression '?'                                       # TryExpr               // Result propagation with auto-conversion
-    | expression DOTDOT expression                          # RangeExpr
-    | expression DOTDOTEQ expression                       # RangeInclusiveExpr
     | expression KW_AS type                                # AsCastExpr
     | '(' type ')' expression                              # CastExpr
     | '&' KW_MUT? expression                               # BorrowExpr
@@ -390,12 +404,14 @@ expression
     | '--' expression                                      # PreDecrementExpr
     | '*' expression                                       # DereferenceExpr
     | expression ('*' | '/' | '%') expression              # MultiplicativeExpr
-    | expression ('+' | '-') expression                     # AdditiveExpr
+    | expression ('+' | '-') expression                    # AdditiveExpr
     | expression LSHIFT expression                         # ShiftExpr
     | expression RSHIFT expression                         # ShiftExpr
     | expression '&' expression                            # BitwiseAndExpr
     | expression '^' expression                            # BitwiseXorExpr
     | expression '|' expression                            # BitwiseOrExpr
+    | expression DOTDOT expression                         # RangeExpr             // Range has lower precedence than bitwise ops
+    | expression DOTDOTEQ expression                       # RangeInclusiveExpr    // So 0..10 + 5 parses as 0..(10+5)
     | expression ('==' | '!=' | LESS | GREATER | '<=' | '>=') expression  # ComparisonExpr
     | expression '&&' expression                           # LogicalAndExpr
     | expression '||' expression                           # LogicalOrExpr

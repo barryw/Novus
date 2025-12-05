@@ -88,6 +88,53 @@ public class CCodeGenerator
     // Maps result variable name -> inline comparison expression (e.g., "_slot_bool_0" -> "_slot_i32_s_0 == 0")
     private Dictionary<string, string> _inlineableComparisons = new();
 
+    // Threshold for element-by-element array initialization vs memcpy
+    // Arrays smaller than this use element-by-element assignment (safer on 68k)
+    // Arrays larger use memcpy from a static const temporary (better performance)
+    private const int MaxElementByElementArraySize = 16;
+
+    /// <summary>
+    /// Emit safe array copy that avoids compound literal alignment issues on 68k.
+    /// For small arrays: emits element-by-element assignments.
+    /// For large arrays: emits memcpy (the array initializer in the source is already aligned).
+    /// </summary>
+    /// <param name="destExpr">Destination array expression (e.g., "varName.fieldName")</param>
+    /// <param name="arrayLiteral">The array literal to copy from</param>
+    /// <param name="arrayType">The array type</param>
+    private void EmitSafeArrayCopy(string destExpr, IrArrayLiteral arrayLiteral, IrArrayType arrayType)
+    {
+        var elementType = GetCType(arrayType.ElementType);
+        var size = arrayType.Length;
+
+        // Check if all elements are zero - use memset for efficiency
+        if (IsAllZeroArray(arrayLiteral))
+        {
+            _output.AppendLine($"    __novus_memset({destExpr}, 0, sizeof({destExpr}));");
+            return;
+        }
+
+        // For small arrays, emit element-by-element assignment
+        // This avoids compound literal alignment issues on 68k
+        if (size <= MaxElementByElementArraySize)
+        {
+            for (int i = 0; i < arrayLiteral.Elements.Count; i++)
+            {
+                var elemValue = EmitValue(arrayLiteral.Elements[i]);
+                _output.AppendLine($"    {destExpr}[{i}] = {elemValue};");
+            }
+            return;
+        }
+
+        // For larger arrays, use memcpy with sizeof to copy from a properly-declared source
+        // The brace initializer is used in a context where VBCC will properly align it
+        // We use a local static const array which VBCC places in .rodata with proper alignment
+        var initValue = EmitArrayLiteralForInitializer(arrayLiteral);
+        _output.AppendLine($"    {{");
+        _output.AppendLine($"        static const {elementType} __init[{size}] = {initValue};");
+        _output.AppendLine($"        __novus_memcpy((uint8_t*){destExpr}, (const uint8_t*)__init, sizeof({destExpr}));");
+        _output.AppendLine($"    }}");
+    }
+
     /// <summary>
     /// Determines if a function is a monomorphized trait implementation.
     /// These functions need special handling to avoid duplicate symbol errors when
@@ -319,10 +366,12 @@ public class CCodeGenerator
         sb.AppendLine("#endif");
         sb.AppendLine();
         sb.AppendLine("// Boolean type - 1 byte to match Novus semantics (not C99's int-based bool)");
-        sb.AppendLine("#ifndef __STDBOOL_H");
+        sb.AppendLine("// Use unique guard to avoid conflicts with system headers (VBCC may use different stdbool guard)");
+        sb.AppendLine("#ifndef __NOVUS_BOOL_DEFINED");
+        sb.AppendLine("#define __NOVUS_BOOL_DEFINED");
         sb.AppendLine("typedef uint8_t bool;");
-        sb.AppendLine("#define true 1");
-        sb.AppendLine("#define false 0");
+        sb.AppendLine("#define true ((bool)1)");
+        sb.AppendLine("#define false ((bool)0)");
         sb.AppendLine("#endif");
         sb.AppendLine();
         sb.AppendLine("#include <exec/nodes.h>");
@@ -1187,12 +1236,13 @@ public class CCodeGenerator
             if (slotType is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
                 continue;
 
-            // CRITICAL FIX FOR 68K ALIGNMENT:
-            // Structs and enums MUST use {0} initializer to guarantee proper alignment on 68000.
-            // VBCC ensures 2-byte alignment for initialized structs/enums, preventing Guru Meditation.
+            // DEFENSE IN DEPTH: Zero-initialize ALL slot variables.
+            // 1. Structs/enums MUST use {0} for 68k alignment (VBCC ensures 2-byte alignment for initialized data)
+            // 2. Primitives should also be zero-initialized as defense against liveness analysis bugs
+            // This prevents UB from uninitialized variable access if control flow analysis is incorrect.
             var decl = (slotType is IrEnumType || slotType is IrStructType)
                 ? GetCVariableDeclaration(slotType, slotName, "= {0}")
-                : GetCVariableDeclaration(slotType, slotName);
+                : GetCVariableDeclaration(slotType, slotName, "= 0");
 
             targetBuilder.AppendLine($"    {decl};");
             _declaredVariables.Add(slotName);
@@ -2988,10 +3038,12 @@ public class CCodeGenerator
         sb.AppendLine("#endif");
         sb.AppendLine();
         sb.AppendLine("// Boolean type - 1 byte to match Novus semantics (not C99's int-based bool)");
-        sb.AppendLine("#ifndef __STDBOOL_H");
+        sb.AppendLine("// Use unique guard to avoid conflicts with system headers (VBCC may use different stdbool guard)");
+        sb.AppendLine("#ifndef __NOVUS_BOOL_DEFINED");
+        sb.AppendLine("#define __NOVUS_BOOL_DEFINED");
         sb.AppendLine("typedef uint8_t bool;");
-        sb.AppendLine("#define true 1");
-        sb.AppendLine("#define false 0");
+        sb.AppendLine("#define true ((bool)1)");
+        sb.AppendLine("#define false ((bool)0)");
         sb.AppendLine("#endif");
     }
 
@@ -3816,12 +3868,13 @@ public class CCodeGenerator
             if (slotType is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
                 continue;
 
-            // CRITICAL FIX FOR 68K ALIGNMENT:
-            // Structs and enums MUST use {0} initializer to guarantee proper alignment on 68000.
-            // VBCC ensures 2-byte alignment for initialized structs/enums, preventing Guru Meditation.
+            // DEFENSE IN DEPTH: Zero-initialize ALL slot variables.
+            // 1. Structs/enums MUST use {0} for 68k alignment (VBCC ensures 2-byte alignment for initialized data)
+            // 2. Primitives should also be zero-initialized as defense against liveness analysis bugs
+            // This prevents UB from uninitialized variable access if control flow analysis is incorrect.
             var decl = (slotType is IrEnumType || slotType is IrStructType)
                 ? GetCVariableDeclaration(slotType, slotName, "= {0}")
-                : GetCVariableDeclaration(slotType, slotName);
+                : GetCVariableDeclaration(slotType, slotName, "= 0");
 
             _output.AppendLine($"    {decl};");
             _declaredVariables.Add(slotName);
@@ -4414,12 +4467,9 @@ public class CCodeGenerator
                         // This handles cases like [0; 32] where literal has [i32;32] but field is [u8;32]
                         var actualFieldType = structTypeForFields?.GetField(kvp.Key)?.Type as IrArrayType;
                         var arrayFieldType = actualFieldType ?? (arrayFieldLitAssign.Type as IrArrayType);
-                        var arrayElementType = GetCType(arrayFieldType!.ElementType);
-                        var arraySize = arrayFieldType.Length;
-                        var arrayInitValue = EmitValue(arrayFieldLitAssign);
 
-                        // Use memcpy from compound literal without pointer casts to avoid strict aliasing violations
-                        _output.AppendLine($"    __novus_memcpy({varName}.{kvp.Key}, ({arrayElementType}[{arraySize}]){arrayInitValue}, sizeof({varName}.{kvp.Key}));");
+                        // VBCC 68K FIX: Use safe array copy to avoid compound literal alignment issues
+                        EmitSafeArrayCopy($"{varName}.{kvp.Key}", arrayFieldLitAssign, arrayFieldType!);
                     }
                     else
                     {
@@ -4473,13 +4523,8 @@ public class CCodeGenerator
             else if (localDecl.Type is IrArrayType arrayType && localDecl.InitialValue is IrArrayLiteral arrayLiteral)
             {
                 // Arrays can't be assigned with initializer syntax after declaration.
-                // STRICT ALIASING FIX: Use static const temporary instead of compound literal
-                var elementType = GetCType(arrayType.ElementType);
-                var size = arrayType.Length;
-                initValue = EmitValue(localDecl.InitialValue);
-
-                // Use memcpy from compound literal without pointer casts to avoid strict aliasing violations
-                _output.AppendLine($"    __novus_memcpy({varName}, ({elementType}[{size}]){initValue}, sizeof({varName}));");
+                // VBCC 68K FIX: Use safe array copy to avoid compound literal alignment issues
+                EmitSafeArrayCopy(varName, arrayLiteral, arrayType);
             }
             else
             {
@@ -4548,12 +4593,9 @@ public class CCodeGenerator
                         // This handles cases like [0; 32] where literal has [i32;32] but field is [u8;32]
                         var actualFieldTypeDecl = structTypeDeclForFields?.GetField(kvp.Key)?.Type as IrArrayType;
                         var arrayFieldTypeDecl = actualFieldTypeDecl ?? (arrayFieldLitDecl.Type as IrArrayType);
-                        var arrayElementTypeDecl = GetCType(arrayFieldTypeDecl!.ElementType);
-                        var arraySizeDecl = arrayFieldTypeDecl.Length;
-                        var arrayInitValueDecl = EmitValue(arrayFieldLitDecl);
 
-                        // Use memcpy from compound literal without pointer casts to avoid strict aliasing violations
-                        _output.AppendLine($"    __novus_memcpy({varName}.{kvp.Key}, ({arrayElementTypeDecl}[{arraySizeDecl}]){arrayInitValueDecl}, sizeof({varName}.{kvp.Key}));");
+                        // VBCC 68K FIX: Use safe array copy to avoid compound literal alignment issues
+                        EmitSafeArrayCopy($"{varName}.{kvp.Key}", arrayFieldLitDecl, arrayFieldTypeDecl!);
                     }
                     else
                     {
@@ -5317,12 +5359,9 @@ public class CCodeGenerator
                                             // VBCC FIX: Array fields cannot be assigned with brace initializers
                                             else if (kvp.Value is IrArrayLiteral arrayFieldLit)
                                             {
-                                                // Use memcpy from compound literal to copy array data
+                                                // VBCC 68K FIX: Use safe array copy to avoid compound literal alignment issues
                                                 var arrayFieldType = arrayFieldLit.Type as IrArrayType;
-                                                var arrayElementType = GetCType(arrayFieldType!.ElementType);
-                                                var arraySize = arrayFieldType.Length;
-                                                var arrayInitValue = EmitValue(arrayFieldLit);
-                                                _output.AppendLine($"    __novus_memcpy(__out->data.{enumValue.VariantName}._{i}.{kvp.Key}, ({arrayElementType}[{arraySize}]){arrayInitValue}, sizeof(__out->data.{enumValue.VariantName}._{i}.{kvp.Key}));");
+                                                EmitSafeArrayCopy($"__out->data.{enumValue.VariantName}._{i}.{kvp.Key}", arrayFieldLit, arrayFieldType!);
                                             }
                                             else
                                             {
@@ -5570,7 +5609,7 @@ public class CCodeGenerator
         {
             _output.AppendLine($"    default:");
             _output.AppendLine($"        // Invalid enum tag - this should never happen in safe code");
-            _output.AppendLine($"        abort();");
+            _output.AppendLine($"        __novus_panic(\"Invalid enum tag in match expression\", __FILE__, __LINE__, 0);");
         }
 
         _output.AppendLine("    }");
@@ -6592,7 +6631,7 @@ public class CCodeGenerator
     /// <summary>
     /// Calculate the size of a type in bytes for 68k architecture.
     /// Uses 2-byte alignment for fields > 1 byte (typical 68k ABI).
-    /// Returns 0 if the size cannot be determined.
+    /// Returns 0 if the size cannot be determined or would overflow.
     /// </summary>
     private int CalculateTypeSize(IrType type)
     {
@@ -6603,11 +6642,32 @@ public class CCodeGenerator
             IrPointerType => 4,
             IrFloatType ft => ft.BitWidth / 8,
             IrFixedType fxt => fxt.BitWidth / 8,
-            IrArrayType at => CalculateTypeSize(at.ElementType) * at.Length,
+            IrArrayType at => CalculateArrayTypeSize(at),
             IrStructType st => CalculateStructSize(st),
             IrEnumType et => CalculateEnumSize(et),
             _ => 0 // Unknown type, fallback to sizeof()
         };
+    }
+
+    /// <summary>
+    /// Calculate array type size with overflow protection.
+    /// Returns 0 if element size is unknown or multiplication would overflow.
+    /// </summary>
+    private int CalculateArrayTypeSize(IrArrayType arrayType)
+    {
+        var elemSize = CalculateTypeSize(arrayType.ElementType);
+        if (elemSize == 0) return 0; // Unknown element type
+
+        // Check for multiplication overflow
+        // For 32-bit int: max safe multiplication is when both operands < 46341 (sqrt(int.MaxValue))
+        // More precisely: check if elemSize * length would overflow
+        if (arrayType.Length > 0 && elemSize > int.MaxValue / arrayType.Length)
+        {
+            // Overflow would occur - return 0 to fall back to sizeof()
+            return 0;
+        }
+
+        return elemSize * arrayType.Length;
     }
 
     /// <summary>

@@ -103,14 +103,19 @@ void* __novus_tracked_alloc(uint32_t size, uint32_t flags, const char* file, int
     record->actual_size = actual_size;
     record->file = file;
     record->line = line;
-    record->sequence = _alloc_sequence++;
     record->freed = 0;
     record->free_file = NULL;
     record->free_line = 0;
+
+    // THREAD SAFETY: Protect linked list modification with Forbid/Permit
+    // This prevents race conditions when multiple tasks allocate concurrently.
+    // Forbid() disables task switching, ensuring atomic list update.
+    Forbid();
+    record->sequence = _alloc_sequence++;
     record->next = _alloc_list_head;
     _alloc_list_head = record;
-
     _total_allocated += size;
+    Permit();
 
     return user_ptr;
 }
@@ -126,12 +131,18 @@ void* __novus_tracked_alloc(uint32_t size, uint32_t flags, const char* file, int
  */
 void __novus_tracked_free(void* ptr, uint32_t size, const char* file, int32_t line)
 {
+    AllocationRecord* record;
+
     if (ptr == NULL) {
         return;  // Freeing NULL is a no-op
     }
 
+    // THREAD SAFETY: Protect linked list traversal and modification with Forbid/Permit
+    // This prevents race conditions when multiple tasks free concurrently.
+    Forbid();
+
     // Search for allocation record
-    AllocationRecord* record = _alloc_list_head;
+    record = _alloc_list_head;
 
     while (record != NULL) {
         if (record->ptr == ptr) {
@@ -165,6 +176,7 @@ void __novus_tracked_free(void* ptr, uint32_t size, const char* file, int32_t li
                 msg = strcpy_helper(msg, ":");
                 msg = strcpy_helper(msg, free_line_str);
 
+                Permit();  // Release before displaying error dialog
                 display_error_requester(AO_DoubleFree);
                 return;  // Don't actually free - it's already freed
             }
@@ -203,7 +215,9 @@ void __novus_tracked_free(void* ptr, uint32_t size, const char* file, int32_t li
                     ov_msg = strcpy_helper(ov_msg, ":");
                     ov_msg = strcpy_helper(ov_msg, ov_line_str);
 
+                    Permit();  // Release before displaying error dialog
                     display_error_requester(AO_BufferOverflow);
+                    Forbid();  // Re-acquire for remaining list modification
                     // Continue to free the memory anyway
                 }
             }
@@ -232,6 +246,7 @@ void __novus_tracked_free(void* ptr, uint32_t size, const char* file, int32_t li
             // With MMU (future): Mark pages as MAPP_INVALID for immediate detection
 
             // DON'T free: FreeMem(record->actual_ptr, record->actual_size);
+            Permit();  // Release task switching before returning
             return;
         }
         record = record->next;
@@ -240,6 +255,7 @@ void __novus_tracked_free(void* ptr, uint32_t size, const char* file, int32_t li
     // Pointer not found in tracking list - wasn't allocated via tracked_alloc
     // This could be corruption or a pointer allocated before tracking started
     // Just free it normally to avoid a leak
+    Permit();  // Release task switching before freeing
     FreeMem(ptr, size);
 }
 
@@ -414,8 +430,16 @@ static void __report_uaf(AllocationRecord* record, void* access_ptr, const char*
  */
 void __novus_check_ptr_access(void* ptr, const char* file, int32_t line)
 {
-    AllocationRecord* record = __check_uaf(ptr);
+    AllocationRecord* record;
+
+    // THREAD SAFETY: Protect linked list traversal
+    Forbid();
+    record = __check_uaf(ptr);
+    Permit();
+
     if (record != NULL) {
+        // Note: record pointer is still valid because we don't free records
+        // until program exit (for UAF detection strategy)
         __report_uaf(record, ptr, file, line);
     }
 }
