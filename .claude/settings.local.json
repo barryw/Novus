@@ -28,7 +28,8 @@
       "Bash(find:*)",
       "Bash(dotnet run:*)",
       "Bash(cat:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []

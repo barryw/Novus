@@ -197,9 +197,10 @@ DisplayType __detect_display(void)
         return DisplayType_PAL;
     }
 
-    // Check DisplayFlags - bit 5 (0x20) = DISPLAYPAL
-    // From graphics/gfxbase.h: DISPLAYPAL = 0x0020
-    if (GfxBase->DisplayFlags & 0x0020) {
+    // Check DisplayFlags - bit 2 (0x04) = PAL
+    // From graphics/gfxbase.h: PAL = (1<<2) = 0x0004, NTSC = (1<<0) = 0x0001
+    // Note: Both bits can be set (PAL mode on NTSC hardware), so check PAL first
+    if (GfxBase->DisplayFlags & 0x0004) {
         result = DisplayType_PAL;
     } else {
         result = DisplayType_NTSC;
