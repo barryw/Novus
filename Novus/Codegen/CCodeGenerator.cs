@@ -92,11 +92,40 @@ public partial class CCodeGenerator
     private int _lastLineDirectiveLine = -1;
     private string? _lastLineDirectiveFile = null;
 
-    // VBCC WORKAROUND: Track comparison expressions that can be inlined into conditional branches.
-    // VBCC has a bug where it can move stack cleanup instructions between a comparison result
-    // store and the subsequent conditional branch, clobbering the condition flags.
-    // By inlining the comparison directly into the if() statement, we avoid this issue.
-    // Maps result variable name -> inline comparison expression (e.g., "_slot_bool_0" -> "_slot_i32_s_0 == 0")
+    /// <summary>
+    /// VBCC WORKAROUND: Track comparison expressions that can be inlined into conditional branches.
+    ///
+    /// AFFECTED VERSIONS: VBCC 0.9h and earlier (tested with vbcc 0.9h, AmigaOS target)
+    ///
+    /// PROBLEM: VBCC's optimizer can move stack cleanup instructions between a comparison
+    /// result store and the subsequent conditional branch, clobbering the CPU condition flags.
+    ///
+    /// Example of problematic generated code:
+    /// <code>
+    ///   cmp.l d0,d1        ; Compare values
+    ///   seq d2             ; Store condition result (equal) in d2
+    ///   addq.l #4,sp       ; Stack cleanup INSERTED HERE - clobbers condition flags!
+    ///   tst.b d2           ; Test d2 (but flags already wrong)
+    ///   beq .L1            ; Branch uses clobbered flags
+    /// </code>
+    ///
+    /// SOLUTION: Instead of storing the comparison result to a variable and then testing it,
+    /// we inline the comparison expression directly into the if() statement:
+    /// <code>
+    ///   if (a == b) { ... }     // Inlined - no intermediate storage
+    /// </code>
+    /// Instead of:
+    /// <code>
+    ///   bool cond = a == b;     // Comparison stored
+    ///   if (cond) { ... }       // Tested later - VBCC may insert stack ops between
+    /// </code>
+    ///
+    /// This dictionary maps result variable names to their comparison expressions,
+    /// e.g., "_slot_bool_0" -> "_slot_i32_s_0 == 0"
+    ///
+    /// The dictionary is cleared at the start of each function (see EmitFunction and
+    /// EmitFunctionToBuilder) to prevent stale entries from leaking between functions.
+    /// </summary>
     private Dictionary<string, string> _inlineableComparisons = new();
 
     // Threshold for element-by-element array initialization vs memcpy

@@ -199,4 +199,144 @@ public class M68kCodeGeneratorTests
             Assert.Contains($"CPU {target}", asm);
         }
     }
+
+    /// <summary>
+    /// Test that the generated assembly header properly documents
+    /// the calling convention, including A5 frame pointer and A6 library base usage.
+    /// </summary>
+    [Fact]
+    public void TestCallingConventionDocumentation()
+    {
+        var module = new IrModule();
+        var function = new IrFunction("test", IrVoidType.Instance, Visibility.Public);
+        var entryBlock = function.CreateBasicBlock("entry");
+        entryBlock.AddInstruction(new IrReturn(null));
+        module.AddFunction(function);
+
+        var codegen = new M68kCodeGenerator(module, new List<IrStringLiteral>(), "68020");
+        var asm = codegen.Generate();
+
+        // Verify calling convention documentation is present
+        Assert.Contains("CALLING CONVENTION", asm);
+
+        // Verify register usage documentation
+        Assert.Contains("D0-D1", asm);      // Volatile registers
+        Assert.Contains("D2-D7", asm);      // Preserved registers
+        Assert.Contains("A0-A1", asm);      // Volatile address registers
+        Assert.Contains("A5", asm);         // Frame pointer
+        Assert.Contains("Frame Pointer", asm);
+
+        // Verify A6 documentation (AmigaOS library base)
+        Assert.Contains("A6", asm);
+        Assert.Contains("library base", asm.ToLower());
+        Assert.Contains("AmigaOS", asm);
+
+        // Verify stack frame documentation
+        Assert.Contains("Stack Frame", asm);
+        Assert.Contains("LINK", asm);
+    }
+
+    /// <summary>
+    /// Test that A6 is properly documented as preserved and reserved for AmigaOS.
+    /// This is critical for correct library calls.
+    /// </summary>
+    [Fact]
+    public void TestA6LibraryBaseDocumentation()
+    {
+        var module = new IrModule();
+        var function = new IrFunction("test", IrVoidType.Instance, Visibility.Public);
+        var entryBlock = function.CreateBasicBlock("entry");
+        entryBlock.AddInstruction(new IrReturn(null));
+        module.AddFunction(function);
+
+        var codegen = new M68kCodeGenerator(module, new List<IrStringLiteral>(), "68020");
+        var asm = codegen.Generate();
+
+        // Verify that the documentation explains A6's role
+        Assert.Contains("A6", asm);
+
+        // Should mention that A6 is for library calls
+        Assert.Contains("library", asm.ToLower());
+
+        // Should mention preservation across calls
+        Assert.Contains("Preserved", asm);
+
+        // Should mention FFI or library base context
+        Assert.Contains("AmigaOS", asm);
+    }
+
+    /// <summary>
+    /// Test that 64-bit arithmetic operations throw M68k64BitNotSupportedException.
+    /// The 68000 family doesn't have native 64-bit arithmetic.
+    /// </summary>
+    [Fact]
+    public void Test64BitArithmeticThrowsException()
+    {
+        var module = new IrModule();
+        var function = new IrFunction("test_64bit", IrIntType.I64, Visibility.Public);
+
+        var paramA = new IrParameter("a", IrIntType.I64);
+        var paramB = new IrParameter("b", IrIntType.I64);
+        function.Parameters.Add(paramA);
+        function.Parameters.Add(paramB);
+
+        var entryBlock = function.CreateBasicBlock("entry");
+
+        // 64-bit addition: a + b
+        var varA = new IrVariable("a", IrIntType.I64);
+        var varB = new IrVariable("b", IrIntType.I64);
+        var addOp = new IrBinaryOp("result", IrBinaryOp.OpKind.Add, varA, varB, IrIntType.I64);
+        entryBlock.AddInstruction(addOp);
+
+        var result = new IrVariable("result", IrIntType.I64);
+        entryBlock.AddInstruction(new IrReturn(result));
+
+        module.AddFunction(function);
+
+        // Generate M68k assembly - should throw for 64-bit ops
+        var codegen = new M68kCodeGenerator(module, new List<IrStringLiteral>(), "68000");
+
+        var ex = Assert.Throws<M68k64BitNotSupportedException>(() => codegen.Generate());
+
+        // Verify exception contains helpful information
+        Assert.Contains("64-bit", ex.Message);
+        Assert.Contains("68000", ex.Message);
+        Assert.Equal("add", ex.Operation);
+        Assert.Equal("68000", ex.CpuTarget);
+    }
+
+    /// <summary>
+    /// Test that 32-bit arithmetic works fine (regression test).
+    /// </summary>
+    [Fact]
+    public void Test32BitArithmeticWorks()
+    {
+        var module = new IrModule();
+        var function = new IrFunction("add32", IrIntType.I32, Visibility.Public);
+
+        var paramA = new IrParameter("a", IrIntType.I32);
+        var paramB = new IrParameter("b", IrIntType.I32);
+        function.Parameters.Add(paramA);
+        function.Parameters.Add(paramB);
+
+        var entryBlock = function.CreateBasicBlock("entry");
+
+        var varA = new IrVariable("a", IrIntType.I32);
+        var varB = new IrVariable("b", IrIntType.I32);
+        var addOp = new IrBinaryOp("result", IrBinaryOp.OpKind.Add, varA, varB, IrIntType.I32);
+        entryBlock.AddInstruction(addOp);
+
+        var result = new IrVariable("result", IrIntType.I32);
+        entryBlock.AddInstruction(new IrReturn(result));
+
+        module.AddFunction(function);
+
+        // This should NOT throw - 32-bit is fine
+        var codegen = new M68kCodeGenerator(module, new List<IrStringLiteral>(), "68000");
+        var asm = codegen.Generate();
+
+        // Verify it generated something reasonable
+        Assert.Contains("add32:", asm);
+        Assert.Contains("add.l", asm);
+    }
 }

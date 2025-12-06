@@ -52,6 +52,52 @@ public interface ITypeParsingContext
 /// Shared type parsing logic for both IrBuilder and SemanticAnalyzer.
 /// Handles type contexts, generic instantiation, and monomorphization.
 /// </summary>
+/// <summary>
+/// Result type for type parsing operations.
+/// Allows callers to handle errors without exceptions.
+/// </summary>
+public readonly struct TypeParseResult
+{
+    public IrType? Type { get; }
+    public string? Error { get; }
+    public bool IsSuccess => Error == null;
+
+    private TypeParseResult(IrType? type, string? error)
+    {
+        Type = type;
+        Error = error;
+    }
+
+    public static TypeParseResult Ok(IrType type) => new(type, null);
+    public static TypeParseResult Err(string error) => new(null, error);
+
+    /// <summary>
+    /// Get the type or throw if error.
+    /// </summary>
+    public IrType Unwrap()
+    {
+        if (Error != null)
+            throw new TypeParseException(Error);
+        return Type!;
+    }
+
+    /// <summary>
+    /// Get the type or return a default value if error.
+    /// </summary>
+    public IrType UnwrapOr(IrType defaultValue)
+    {
+        return IsSuccess ? Type! : defaultValue;
+    }
+}
+
+/// <summary>
+/// Exception thrown when type parsing fails.
+/// </summary>
+public class TypeParseException : Exception
+{
+    public TypeParseException(string message) : base(message) { }
+}
+
 public class TypeParser : ITypeSubstitutionEngine
 {
     private readonly ITypeParsingContext _context;
@@ -62,24 +108,61 @@ public class TypeParser : ITypeSubstitutionEngine
     }
 
     /// <summary>
-    /// Main entry point: parse any type context
+    /// Report an error using the context's error reporter or throw an exception.
+    /// </summary>
+    private void ReportError(string message)
+    {
+        if (_context.ErrorReporter != null)
+        {
+            _context.ErrorReporter(message);
+        }
+        else
+        {
+            throw new TypeParseException(message);
+        }
+    }
+
+    /// <summary>
+    /// Main entry point: parse any type context.
+    /// Throws TypeParseException on error, or reports via ErrorReporter if configured.
     /// </summary>
     public IrType ParseType(NovusParser.TypeContext context)
     {
-        return context switch
+        return TryParseType(context).Unwrap();
+    }
+
+    /// <summary>
+    /// Try to parse a type, returning a Result instead of throwing.
+    /// Use this when you want to handle errors without exceptions.
+    /// </summary>
+    public TypeParseResult TryParseType(NovusParser.TypeContext context)
+    {
+        try
         {
-            NovusParser.ReferenceTypeContext refCtx => ParseReferenceType(refCtx),
-            NovusParser.PointerTypeContext ptrCtx => ParsePointerType(ptrCtx),
-            NovusParser.ArrayTypeWithSizeContext arrayWithSizeCtx => ParseArrayTypeWithSize(arrayWithSizeCtx),
-            NovusParser.ArrayTypeInferredContext arrayInferredCtx => ParseArrayTypeInferred(arrayInferredCtx),
-            NovusParser.UnitTypeContext _ => IrTupleType.Unit,
-            NovusParser.TupleTypeContext tupleCtx => ParseTupleType(tupleCtx),
-            NovusParser.FunctionPointerTypeContext fpCtx => ParseFunctionPointerType(fpCtx),
-            NovusParser.SelfTypeContext selfCtx => ResolveSelfType(),
-            NovusParser.PrimitiveTypeContext primCtx => ParsePrimitiveType(primCtx),
-            NovusParser.NamedTypeContext namedCtx => ParseNamedType(namedCtx),
-            _ => throw new Exception($"Unknown type context: {context.GetType().Name}")
-        };
+            var type = context switch
+            {
+                NovusParser.ReferenceTypeContext refCtx => ParseReferenceType(refCtx),
+                NovusParser.PointerTypeContext ptrCtx => ParsePointerType(ptrCtx),
+                NovusParser.ArrayTypeWithSizeContext arrayWithSizeCtx => ParseArrayTypeWithSize(arrayWithSizeCtx),
+                NovusParser.ArrayTypeInferredContext arrayInferredCtx => ParseArrayTypeInferred(arrayInferredCtx),
+                NovusParser.UnitTypeContext _ => IrTupleType.Unit,
+                NovusParser.TupleTypeContext tupleCtx => ParseTupleType(tupleCtx),
+                NovusParser.FunctionPointerTypeContext fpCtx => ParseFunctionPointerType(fpCtx),
+                NovusParser.SelfTypeContext selfCtx => ResolveSelfType(),
+                NovusParser.PrimitiveTypeContext primCtx => ParsePrimitiveType(primCtx),
+                NovusParser.NamedTypeContext namedCtx => ParseNamedType(namedCtx),
+                _ => throw new TypeParseException($"Unknown type context: {context.GetType().Name}")
+            };
+            return TypeParseResult.Ok(type);
+        }
+        catch (TypeParseException ex)
+        {
+            return TypeParseResult.Err(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            return TypeParseResult.Err($"Internal error parsing type: {ex.Message}");
+        }
     }
 
     /// <summary>

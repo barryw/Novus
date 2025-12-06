@@ -96,13 +96,45 @@ public class M68kCodeGenerator
         sb.AppendLine(";");
         sb.AppendLine($"; Target CPU: {_cpuTarget}");
         sb.AppendLine(";");
-        sb.AppendLine("; Calling Convention (Amiga ABI):");
-        sb.AppendLine(";   Parameters: Stack (right-to-left push)");
-        sb.AppendLine(";   Return:     D0 (D1 for 64-bit)");
-        sb.AppendLine(";   Preserved:  D2-D7, A2-A6");
-        sb.AppendLine(";   Volatile:   D0-D1, A0-A1");
-        sb.AppendLine(";   FP:         A5");
-        sb.AppendLine(";   SP:         A7");
+        sb.AppendLine("; =============================================================================");
+        sb.AppendLine("; CALLING CONVENTION (Novus Application ABI)");
+        sb.AppendLine("; =============================================================================");
+        sb.AppendLine(";");
+        sb.AppendLine("; This is the convention for Novus APPLICATION code (internal functions).");
+        sb.AppendLine("; AmigaOS library calls use A6 for library base - see note below.");
+        sb.AppendLine(";");
+        sb.AppendLine("; Register Usage:");
+        sb.AppendLine(";   D0-D1     : Volatile (caller-saved). Return values in D0 (D1 for 64-bit)");
+        sb.AppendLine(";   D2-D7     : Preserved (callee-saved). Free for local use if saved.");
+        sb.AppendLine(";   A0-A1     : Volatile (caller-saved). Used for address parameters.");
+        sb.AppendLine(";   A2-A4     : Preserved (callee-saved). Free for local use if saved.");
+        sb.AppendLine(";   A5        : Frame Pointer (FP). Points to local stack frame.");
+        sb.AppendLine(";   A6        : Preserved. Reserved for AmigaOS library base in library calls.");
+        sb.AppendLine(";   A7 (SP)   : Stack Pointer. Always points to top of stack.");
+        sb.AppendLine(";");
+        sb.AppendLine("; Parameter Passing:");
+        sb.AppendLine(";   Arguments pushed right-to-left onto stack.");
+        sb.AppendLine(";   Caller cleans up stack after call returns.");
+        sb.AppendLine(";");
+        sb.AppendLine("; Stack Frame (created by LINK A5,#-framesize):");
+        sb.AppendLine(";   [A5+8]    : First argument (if any)");
+        sb.AppendLine(";   [A5+4]    : Return address");
+        sb.AppendLine(";   [A5]      : Saved A5 (old frame pointer)");
+        sb.AppendLine(";   [A5-4]    : First local variable");
+        sb.AppendLine(";   ...       : More locals");
+        sb.AppendLine(";   [SP]      : Top of stack (after LINK)");
+        sb.AppendLine(";");
+        sb.AppendLine("; IMPORTANT: A6 and AmigaOS Library Calls");
+        sb.AppendLine("; -----------------------------------------");
+        sb.AppendLine("; AmigaOS uses A6 to hold the library base pointer for all library calls.");
+        sb.AppendLine("; When calling an AmigaOS function (e.g., OpenLibrary, AllocMem):");
+        sb.AppendLine(";   1. Load library base into A6: move.l _SysBase,a6");
+        sb.AppendLine(";   2. Call via negative offset: jsr LVO_OpenLibrary(a6)");
+        sb.AppendLine(";");
+        sb.AppendLine("; Novus-generated code PRESERVES A6 across function calls.");
+        sb.AppendLine("; FFI wrappers save/restore A6 when transitioning to AmigaOS.");
+        sb.AppendLine(";");
+        sb.AppendLine("; =============================================================================");
         sb.AppendLine();
 
         // CPU target directive
@@ -195,7 +227,7 @@ public class M68kCodeGenerator
         var allocator = new RegisterAllocator(function);
         allocator.AllocateRegisters();
 
-        var selector = new InstructionSelector(allocator, _output);
+        var selector = new InstructionSelector(allocator, _output, _cpuTarget);
 
         // Emit function prologue
         EmitPrologue(function, allocator);

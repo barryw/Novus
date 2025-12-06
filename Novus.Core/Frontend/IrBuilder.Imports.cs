@@ -681,10 +681,10 @@ public partial class IrBuilder
                     fullTraitName = $"{traitName}<{string.Join(", ", traitTypeArgs.Select(t => t.Name))}>";
                 }
 
-                // Create IrTraitImpl and add to module
+                // Create IrTraitImpl and add to module using AddTraitImpl to maintain indices
                 // For generic impls, this is a template that will be instantiated later
                 var traitImpl = new IrTraitImpl(fullTraitName, traitTypeArgs, typeName!, implementingType, genericParams);
-                _module.TraitImpls.Add(traitImpl);
+                _module.AddTraitImpl(traitImpl);
             }
 
             // Clear generic params and Self type from scope after impl registration

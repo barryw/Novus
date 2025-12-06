@@ -723,4 +723,68 @@ pub fn increment_counter() -> u32 {
         // The correct code should have "INITIALIZED = true;" not "INITIALIZED = 0;" followed by "true"
         Assert.Contains("INITIALIZED = true", code);
     }
+
+    /// <summary>
+    /// Test for VBCC comparison inlining workaround.
+    /// VBCC has a bug where it can move stack cleanup between comparison and branch,
+    /// clobbering condition flags. We work around this by inlining comparisons into if().
+    /// See CCodeGenerator._inlineableComparisons for full documentation.
+    /// </summary>
+    [Fact]
+    public void CCodeGen_VbccWorkaround_ComparisonsAreInlinedIntoConditionals()
+    {
+        var source = @"
+pub fn compare_and_branch(a: i32, b: i32) -> i32 {
+    if a == b {
+        return 1
+    }
+    if a < b {
+        return -1
+    }
+    return 0
+}";
+
+        var module = BuildIR(source);
+        var code = GenerateCCode(module);
+
+        // The comparison should be inlined into the if() statement
+        // We should see: if (a == b) or if (_slot... == _slot...)
+        // We should NOT see: bool cond = a == b; if (cond)
+
+        // Check that if statements contain comparison operators directly
+        Assert.Matches(@"if\s*\([^)]*==", code);  // if (...==...)
+        Assert.Matches(@"if\s*\([^)]*<", code);   // if (...<...)
+    }
+
+    /// <summary>
+    /// Test that comparison inlining state is properly reset between functions.
+    /// This verifies that _inlineableComparisons.Clear() is called in EmitFunction.
+    /// </summary>
+    [Fact]
+    public void CCodeGen_VbccWorkaround_ComparisonStateResetBetweenFunctions()
+    {
+        var source = @"
+pub fn first_func(x: i32) -> bool {
+    return x > 0
+}
+
+pub fn second_func(y: i32) -> bool {
+    if y > 0 {
+        return true
+    }
+    return false
+}";
+
+        var module = BuildIR(source);
+        var code = GenerateCCode(module);
+
+        // Both functions should generate valid code
+        // If state leaked between functions, the second function might
+        // try to reference comparison variables from the first function
+        Assert.Contains("first_func", code);
+        Assert.Contains("second_func", code);
+
+        // The second function should have its comparison inlined
+        Assert.Matches(@"if\s*\([^)]*>", code);
+    }
 }

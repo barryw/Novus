@@ -8,7 +8,7 @@
 // - But we can use it in a function returning Result<T, NovusError>
 // - The ? operator automatically calls From<IntuitionError>::convert()
 
-from std::core import Result
+from std::core import Result, From
 from std::error::errors import NovusError, IntuitionError, GraphicsError
 from std::ui::window import WindowHandle
 

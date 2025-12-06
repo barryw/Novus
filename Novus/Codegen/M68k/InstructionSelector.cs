@@ -4,22 +4,60 @@ using Novus.IR;
 namespace Novus.Codegen.M68k;
 
 /// <summary>
+/// Exception thrown when attempting to use 64-bit operations on a CPU that doesn't support them.
+/// </summary>
+public class M68k64BitNotSupportedException : NotSupportedException
+{
+    public string CpuTarget { get; }
+    public string Operation { get; }
+    public string TypeName { get; }
+
+    public M68k64BitNotSupportedException(string cpuTarget, string operation, string typeName)
+        : base($"64-bit {operation} for type '{typeName}' is not supported on {cpuTarget}. " +
+               $"The 68000/68010/68020/68030/68040/68060 processors do not have native 64-bit arithmetic. " +
+               $"Consider using i32/u32 types or implementing software 64-bit routines.")
+    {
+        CpuTarget = cpuTarget;
+        Operation = operation;
+        TypeName = typeName;
+    }
+}
+
+/// <summary>
 /// Selects 68k instructions for IR operations.
 /// Handles instruction selection and operand sizing (byte/word/long).
+///
+/// 64-bit Type Support:
+/// ====================
+/// The 68000 family does NOT have native 64-bit arithmetic instructions.
+/// - 68000/68010: Only 16x16->32 multiply, 32/16->16 divide
+/// - 68020+: 32x32->64 multiply, 64/32->32 divide (partial support)
+///
+/// For full 64-bit arithmetic (i64/u64), software routines are required:
+/// - __muldi3: 64-bit multiply
+/// - __divdi3/__udivdi3: Signed/unsigned 64-bit divide
+/// - __moddi3/__umoddi3: Signed/unsigned 64-bit modulo
+///
+/// These routines must be provided by the runtime library or linked from libgcc.
+/// Until implemented, 64-bit operations will throw M68k64BitNotSupportedException.
 /// </summary>
 public class InstructionSelector
 {
     private readonly RegisterAllocator _allocator;
     private readonly StringBuilder _output;
+    private readonly string _cpuTarget;
 
-    public InstructionSelector(RegisterAllocator allocator, StringBuilder output)
+    public InstructionSelector(RegisterAllocator allocator, StringBuilder output, string cpuTarget = "68020")
     {
         _allocator = allocator;
         _output = output;
+        _cpuTarget = cpuTarget;
     }
 
     /// <summary>
     /// Get the size suffix for a type (.b, .w, .l)
+    /// Note: 64-bit types (8 bytes) return ".l" but operations on them
+    /// require special handling with register pairs or software routines.
     /// </summary>
     public static string GetSizeSuffix(IrType type)
     {
@@ -29,9 +67,27 @@ public class InstructionSelector
             1 => ".b",      // byte
             2 => ".w",      // word
             4 => ".l",      // long
+            8 => ".l",      // 64-bit: use .l but operations need special handling
             _ => ".l"       // default to long for larger types
         };
     }
+
+    /// <summary>
+    /// Check if a type is 64-bit (i64 or u64) and throw if 64-bit ops aren't supported.
+    /// </summary>
+    private void Check64BitSupport(IrType type, string operation)
+    {
+        if (type.SizeInBytes == 8)
+        {
+            throw new M68k64BitNotSupportedException(_cpuTarget, operation, type.Name);
+        }
+    }
+
+    /// <summary>
+    /// Check if a type is 64-bit and emit a warning comment if so.
+    /// Returns true if the type is 64-bit.
+    /// </summary>
+    private bool Is64BitType(IrType type) => type.SizeInBytes == 8;
 
     /// <summary>
     /// Emit a binary operation
@@ -39,6 +95,54 @@ public class InstructionSelector
     public void EmitBinaryOp(IrBinaryOp op, string resultVar)
     {
         string suffix = GetSizeSuffix(op.Type);
+
+        // Check for unsupported 64-bit operations
+        // 64-bit arithmetic requires software routines not yet implemented
+        if (Is64BitType(op.Type))
+        {
+            switch (op.Operation)
+            {
+                case IrBinaryOp.OpKind.Add:
+                case IrBinaryOp.OpKind.Sub:
+                    // These could be implemented with ADDX/SUBX but require register pairs
+                    // For now, emit a TODO comment and throw
+                    _output.AppendLine($"    ; ERROR: 64-bit {op.Operation} requires software implementation");
+                    _output.AppendLine($"    ; Use D0:D1 register pair and ADDX/SUBX instructions");
+                    Check64BitSupport(op.Type, op.Operation.ToString().ToLower());
+                    break;
+
+                case IrBinaryOp.OpKind.Mul:
+                case IrBinaryOp.OpKind.Div:
+                case IrBinaryOp.OpKind.Mod:
+                    Check64BitSupport(op.Type, op.Operation.ToString().ToLower());
+                    break;
+
+                case IrBinaryOp.OpKind.Shl:
+                case IrBinaryOp.OpKind.Shr:
+                    // 64-bit shifts require multiple instructions
+                    Check64BitSupport(op.Type, op.Operation.ToString().ToLower());
+                    break;
+
+                case IrBinaryOp.OpKind.And:
+                case IrBinaryOp.OpKind.Or:
+                case IrBinaryOp.OpKind.Xor:
+                    // These CAN be implemented with two 32-bit operations
+                    // For now we still error but leave room for future implementation
+                    _output.AppendLine($"    ; 64-bit logical op could use D0:D1 pair");
+                    Check64BitSupport(op.Type, op.Operation.ToString().ToLower());
+                    break;
+
+                case IrBinaryOp.OpKind.Eq:
+                case IrBinaryOp.OpKind.Ne:
+                case IrBinaryOp.OpKind.Lt:
+                case IrBinaryOp.OpKind.Le:
+                case IrBinaryOp.OpKind.Gt:
+                case IrBinaryOp.OpKind.Ge:
+                    // 64-bit comparisons need to compare both halves
+                    Check64BitSupport(op.Type, "comparison");
+                    break;
+            }
+        }
 
         // Load left operand to D0
         EmitLoadValue(op.Left, M68kRegister.D0, op.Type);

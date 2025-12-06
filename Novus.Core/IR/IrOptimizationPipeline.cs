@@ -49,8 +49,13 @@ public class IrOptimizationPipeline
         // Track if we're in SSA form
         bool inSSA = false;
 
-        // Convert to SSA if requested and not already in SSA
-        if (_options.UseSSA && !inSSA)
+        // SSA Conversion Policy:
+        // - O1: Optional (controlled by _options.UseSSA)
+        // - O2+: Default ON (SSA enables better optimizations like CSE, copy propagation)
+        // - Can be explicitly disabled via _options.UseSSA = false even at O2+
+        bool shouldUseSSA = _level >= OptimizationLevel.O2 || _options.UseSSA;
+
+        if (shouldUseSSA && !inSSA)
         {
             if (_options.Verbose)
                 Console.WriteLine("Converting to SSA form...");

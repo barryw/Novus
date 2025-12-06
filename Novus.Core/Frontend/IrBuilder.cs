@@ -119,13 +119,46 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
     /// Emit an instruction with the current statement's source location attached.
     /// This enables statement-level debug symbols for precise crash location reporting.
     /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown if called outside of a function body (when _currentBlock is null).
+    /// </exception>
     private void Emit(IrInstruction instruction)
     {
         if (_currentStatementLocation != null)
         {
             instruction.Location = _currentStatementLocation;
         }
-        _currentBlock!.AddInstruction(instruction);
+        GetCurrentBlock().AddInstruction(instruction);
+    }
+
+    /// <summary>
+    /// Gets the current basic block, throwing a clear error if not inside a function body.
+    /// Use this instead of _currentBlock! to get better error messages.
+    /// </summary>
+    private IrBasicBlock GetCurrentBlock()
+    {
+        if (_currentBlock == null)
+        {
+            throw new InvalidOperationException(
+                "IR emission attempted outside of a function body. " +
+                "Ensure you're inside a function declaration before emitting instructions.");
+        }
+        return _currentBlock;
+    }
+
+    /// <summary>
+    /// Gets the current function, throwing a clear error if not inside a function.
+    /// Use this instead of _currentFunction! to get better error messages.
+    /// </summary>
+    private IrFunction GetCurrentFunction()
+    {
+        if (_currentFunction == null)
+        {
+            throw new InvalidOperationException(
+                "Operation attempted outside of a function. " +
+                "Ensure you're inside a function declaration.");
+        }
+        return _currentFunction;
     }
 
     /// <summary>
@@ -804,10 +837,10 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
                     fullTraitName = $"{traitName}<{string.Join(", ", traitTypeArgs.Select(t => t.Name))}>";
                 }
 
-                // Create IrTraitImpl and add to module
+                // Create IrTraitImpl and add to module using AddTraitImpl to maintain indices
                 // For generic impls, this is a template that will be instantiated later
                 var traitImpl = new IrTraitImpl(fullTraitName, traitTypeArgs, typeName, _currentSelfType, genericParams);
-                _module.TraitImpls.Add(traitImpl);
+                _module.AddTraitImpl(traitImpl);
             }
 
             // Clear generic parameters and Self type after processing impl block

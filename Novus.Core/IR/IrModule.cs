@@ -50,14 +50,31 @@ public class IrModule
     /// </summary>
     private readonly Dictionary<string, IrTrait> _traitLookup = new();
 
-    public List<IrTraitImpl> TraitImpls { get; } = new();
+    /// <summary>
+    /// Private backing list for trait implementations. Use AddTraitImpl() to add.
+    /// </summary>
+    private readonly List<IrTraitImpl> _traitImpls = new();
+
+    /// <summary>
+    /// Read-only view of trait implementations.
+    /// To add implementations, use AddTraitImpl() which maintains all lookup indices.
+    /// </summary>
+    public IReadOnlyList<IrTraitImpl> TraitImpls => _traitImpls;
 
     /// <summary>
     /// O(1) trait implementation lookup by (trait name, type name) tuple.
-    /// Maintained in sync with TraitImpls list.
-    /// Use GetTraitImpl() for lookups instead of TraitImpls.FirstOrDefault().
+    /// Maintained in sync with TraitImpls list via AddTraitImpl().
+    /// Use GetTraitImpl() for lookups instead of iterating TraitImpls.
     /// </summary>
     private readonly Dictionary<(string TraitName, string TypeName), IrTraitImpl> _traitImplLookup = new();
+
+    /// <summary>
+    /// O(1) trait implementations lookup by type name.
+    /// Returns all trait implementations for a given type without iterating the full list.
+    /// Used by FindTraitMethod and FindGenericTraitMethod for efficient lookups.
+    /// </summary>
+    private readonly Dictionary<string, List<IrTraitImpl>> _traitImplsByType = new();
+
     public Dictionary<string, IrMonomorphizedType> MonomorphizedTypes { get; } = new();
 
     /// <summary>
@@ -167,11 +184,23 @@ public class IrModule
 
     public void AddTraitImpl(IrTraitImpl traitImpl)
     {
-        TraitImpls.Add(traitImpl);
+        _traitImpls.Add(traitImpl);
 
         // Maintain lookup dictionary for O(1) access by (trait name, type name) composite key
         // Use indexer to allow overwrites (trait impl may be re-registered during monomorphization)
         _traitImplLookup[(traitImpl.TraitName, traitImpl.TypeName)] = traitImpl;
+
+        // Maintain secondary index by type name for FindTraitMethod lookups
+        if (!_traitImplsByType.TryGetValue(traitImpl.TypeName, out var implList))
+        {
+            implList = new List<IrTraitImpl>();
+            _traitImplsByType[traitImpl.TypeName] = implList;
+        }
+        // Avoid duplicates (may be re-registered during monomorphization)
+        if (!implList.Contains(traitImpl))
+        {
+            implList.Add(traitImpl);
+        }
 
         // If this is a Drop implementation, mark the type as implementing Drop
         if (traitImpl.TraitName == "Drop" && traitImpl.ImplementingType is IrStructType structType)
@@ -190,13 +219,27 @@ public class IrModule
     }
 
     /// <summary>
+    /// Get all trait implementations for a given type name.
+    /// Returns empty enumerable if no implementations exist.
+    /// Uses O(1) dictionary lookup instead of filtering the full list.
+    /// </summary>
+    public IEnumerable<IrTraitImpl> GetTraitImplsForType(string typeName)
+    {
+        if (_traitImplsByType.TryGetValue(typeName, out var implList))
+        {
+            return implList;
+        }
+        return Enumerable.Empty<IrTraitImpl>();
+    }
+
+    /// <summary>
     /// Find trait implementation for a type that has a specific method
     /// Returns the mangled method name if found
     /// </summary>
     public string? FindTraitMethod(string typeName, string methodName)
     {
-        // Look through all trait implementations for this type
-        foreach (var traitImpl in TraitImpls.Where(ti => ti.TypeName == typeName))
+        // Use indexed lookup - O(1) to get the list, then O(k) where k = impls for this type
+        foreach (var traitImpl in GetTraitImplsForType(typeName))
         {
             // Extract base trait name from potentially generic trait name
             // e.g., "From<DosError>" -> "From"
@@ -227,8 +270,8 @@ public class IrModule
     /// </summary>
     public string? FindGenericTraitMethod(string typeName, string traitBaseName, string traitParam, string methodName)
     {
-        // Look through all trait implementations for this type
-        foreach (var traitImpl in TraitImpls.Where(ti => ti.TypeName == typeName))
+        // Use indexed lookup - O(1) to get the list, then O(k) where k = impls for this type
+        foreach (var traitImpl in GetTraitImplsForType(typeName))
         {
             // Extract base trait name from potentially generic trait name
             // e.g., "From<DosError>" -> "From"
@@ -280,11 +323,13 @@ public class IrModule
     }
 
     /// <summary>
-    /// Check if a type implements the Drop trait
+    /// Check if a type implements the Drop trait.
+    /// Uses O(1) lookup via _traitImplLookup.
     /// </summary>
     public bool TypeImplementsDrop(string typeName)
     {
-        return TraitImpls.Any(ti => ti.TraitName == "Drop" && ti.TypeName == typeName);
+        // O(1) lookup using composite key
+        return GetTraitImpl("Drop", typeName) != null;
     }
 
     /// <summary>
