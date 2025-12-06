@@ -1,0 +1,152 @@
+// std::test - Test framework for Novus
+//
+// This module provides test assertion functions and result tracking for the Novus test framework.
+// Tests are marked with @test attribute and use expect! / expect_eq! style assertions.
+//
+// Unlike assert!(), expect!() records failures and continues execution so all tests run.
+
+from std::io::file import write
+
+// ============================================================================
+// External Runtime Functions (for should_panic tests)
+// ============================================================================
+
+// These functions are implemented in runtime_errors.c
+// They control test mode for catching panics in @test(should_panic) tests
+
+extern fn __novus_test_set_mode(enabled: i32)
+extern fn __novus_test_reset_panic()
+extern fn __novus_test_did_panic() -> i32
+extern fn __novus_test_get_panic_message() -> *u8
+
+// ============================================================================
+// Test Result Tracking
+// ============================================================================
+
+// Global mutable state for test results (accessed by generated test runner)
+static mut __test_failures: u32 = 0
+static mut __test_current_name: *u8 = null
+
+// Called by generated test runner before each test
+pub fn __test_begin(name: *u8) {
+    __test_current_name = name
+}
+
+// Called by generated test runner to get failure count
+pub fn __test_get_failures() -> u32 {
+    return __test_failures
+}
+
+// Reset failure count (called at start of test run)
+pub fn __test_reset() {
+    __test_failures = 0
+}
+
+// ============================================================================
+// Test Assertions
+// ============================================================================
+
+/// Expect a condition to be true. Records failure but continues execution.
+/// Use this instead of assert!() in tests to see all failures.
+pub fn expect(condition: bool, message: *u8) {
+    if !condition {
+        __test_failures++
+        write("  FAIL: %s\n", message)
+    }
+}
+
+/// Expect a condition to be true, with formatted message.
+pub fn expect_true(condition: bool) {
+    if !condition {
+        __test_failures++
+        write("  FAIL: expected true, got false\n")
+    }
+}
+
+/// Expect a condition to be false.
+pub fn expect_false(condition: bool) {
+    if condition {
+        __test_failures++
+        write("  FAIL: expected false, got true\n")
+    }
+}
+
+/// Expect two i32 values to be equal.
+pub fn expect_eq_i32(actual: i32, expected: i32, message: *u8) {
+    if actual != expected {
+        __test_failures++
+        write("  FAIL: %s - expected %d, got %d\n", message, expected, actual)
+    }
+}
+
+/// Expect two u32 values to be equal.
+pub fn expect_eq_u32(actual: u32, expected: u32, message: *u8) {
+    if actual != expected {
+        __test_failures++
+        write("  FAIL: %s - expected %lu, got %lu\n", message, expected, actual)
+    }
+}
+
+/// Expect two i16 values to be equal.
+pub fn expect_eq_i16(actual: i16, expected: i16, message: *u8) {
+    if actual != expected {
+        __test_failures++
+        write("  FAIL: %s - expected %d, got %d\n", message, (expected as i32), (actual as i32))
+    }
+}
+
+/// Expect two u16 values to be equal.
+pub fn expect_eq_u16(actual: u16, expected: u16, message: *u8) {
+    if actual != expected {
+        __test_failures++
+        write("  FAIL: %s - expected %u, got %u\n", message, (expected as u32), (actual as u32))
+    }
+}
+
+/// Expect two i8 values to be equal.
+pub fn expect_eq_i8(actual: i8, expected: i8, message: *u8) {
+    if actual != expected {
+        __test_failures++
+        write("  FAIL: %s - expected %d, got %d\n", message, (expected as i32), (actual as i32))
+    }
+}
+
+/// Expect two u8 values to be equal.
+pub fn expect_eq_u8(actual: u8, expected: u8, message: *u8) {
+    if actual != expected {
+        __test_failures++
+        write("  FAIL: %s - expected %u, got %u\n", message, (expected as u32), (actual as u32))
+    }
+}
+
+/// Expect two bool values to be equal.
+pub fn expect_eq_bool(actual: bool, expected: bool, message: *u8) {
+    if actual != expected {
+        __test_failures++
+        let exp_str = if expected { "true" } else { "false" }
+        let act_str = if actual { "true" } else { "false" }
+        write("  FAIL: %s - expected %s, got %s\n", message, exp_str, act_str)
+    }
+}
+
+/// Expect a pointer to be null.
+pub fn expect_null(ptr: *u8, message: *u8) {
+    if ptr != null {
+        __test_failures++
+        write("  FAIL: %s - expected null, got 0x%08lx\n", message, (ptr as u32))
+    }
+}
+
+/// Expect a pointer to be non-null.
+pub fn expect_not_null(ptr: *u8, message: *u8) {
+    if ptr == null {
+        __test_failures++
+        write("  FAIL: %s - expected non-null, got null\n", message)
+    }
+}
+
+/// Unconditionally fail a test with a message.
+pub fn fail(message: *u8) {
+    __test_failures++
+    write("  FAIL: %s\n", message)
+}

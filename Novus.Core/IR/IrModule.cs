@@ -317,6 +317,27 @@ public class IrModule
         // Only struct types can implement Drop (primitives, pointers, etc. don't need cleanup)
         return false;
     }
+
+    /// <summary>
+    /// Get all functions marked with @test attribute for test runner generation
+    /// </summary>
+    public IReadOnlyList<IrFunction> GetTestFunctions()
+    {
+        return Functions.Where(f =>
+            f.Attributes?.Has(SemanticAnalysis.KnownAttributes.Test) == true
+        ).ToList();
+    }
+
+    /// <summary>
+    /// Get all functions marked with @bench or @benchmark attribute for benchmark runner generation
+    /// </summary>
+    public IReadOnlyList<IrFunction> GetBenchmarkFunctions()
+    {
+        return Functions.Where(f =>
+            f.Attributes?.Has(SemanticAnalysis.KnownAttributes.Bench) == true ||
+            f.Attributes?.Has(SemanticAnalysis.KnownAttributes.Benchmark) == true
+        ).ToList();
+    }
 }
 
 /// <summary>

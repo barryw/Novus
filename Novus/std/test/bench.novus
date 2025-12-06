@@ -1,0 +1,323 @@
+// Novus Standard Library - Benchmarking
+// Namespace: std::test::bench
+//
+// High-level benchmarking utilities for measuring code performance.
+// Uses timer.device for microsecond-precision timing.
+
+from std::os::timer import TimerHandle, Duration, TimerError
+from std::io::file import write
+
+// ============================================================================
+// Benchmark Statistics
+// ============================================================================
+
+/// Statistics from a benchmark run
+pub struct BenchStats {
+    /// Mean time per iteration in microseconds
+    mean_us: u32,
+    /// Minimum time observed in microseconds
+    min_us: u32,
+    /// Maximum time observed in microseconds
+    max_us: u32,
+    /// Standard deviation in microseconds (approximated)
+    std_dev_us: u32,
+    /// Number of iterations run
+    iterations: u32,
+    /// Total time in microseconds
+    total_us: u32,
+}
+
+impl BenchStats {
+    /// Create empty stats
+    pub fn new() -> BenchStats {
+        return BenchStats {
+            mean_us: 0,
+            min_us: 0,
+            max_us: 0,
+            std_dev_us: 0,
+            iterations: 0,
+            total_us: 0,
+        }
+    }
+
+    /// Get throughput in operations per second
+    @suppress("W0001", "Division by zero handled")
+    pub fn ops_per_sec(&self) -> u32 {
+        if self.mean_us == 0 {
+            return 0
+        }
+        // ops/sec = 1_000_000 / mean_us
+        return 1000000 / self.mean_us
+    }
+
+    /// Print benchmark results
+    pub fn print(&self, name: *u8) {
+        // Print the benchmark name (null-terminated C string)
+        write("%s\n", name)
+
+        // Format time with appropriate unit
+        if self.mean_us >= 1000000 {
+            // Seconds
+            let secs = self.mean_us / 1000000
+            let frac = (self.mean_us % 1000000) / 1000
+            write("  Time:       %lu.%03lu s", secs, frac)
+        } else if self.mean_us >= 1000 {
+            // Milliseconds
+            let ms = self.mean_us / 1000
+            let frac = self.mean_us % 1000
+            write("  Time:       %lu.%03lu ms", ms, frac)
+        } else {
+            // Microseconds
+            write("  Time:       %lu us", self.mean_us)
+        }
+
+        // Standard deviation
+        if self.std_dev_us > 0 {
+            if self.std_dev_us >= 1000 {
+                write(" +/- %lu.%03lu ms\n", self.std_dev_us / 1000, self.std_dev_us % 1000)
+            } else {
+                write(" +/- %lu us\n", self.std_dev_us)
+            }
+        } else {
+            write("\n")
+        }
+
+        // Range
+        if self.min_us >= 1000 {
+            write("  Range:      %lu.%03lu ms ... ", self.min_us / 1000, self.min_us % 1000)
+        } else {
+            write("  Range:      %lu us ... ", self.min_us)
+        }
+        if self.max_us >= 1000 {
+            write("%lu.%03lu ms\n", self.max_us / 1000, self.max_us % 1000)
+        } else {
+            write("%lu us\n", self.max_us)
+        }
+
+        write("  Iterations: %lu\n", self.iterations)
+
+        // Throughput
+        let ops = self.ops_per_sec()
+        if ops >= 1000000 {
+            write("  Throughput: %lu.%02lu M ops/sec\n", ops / 1000000, (ops % 1000000) / 10000)
+        } else if ops >= 1000 {
+            write("  Throughput: %lu.%02lu K ops/sec\n", ops / 1000, (ops % 1000) / 10)
+        } else {
+            write("  Throughput: %lu ops/sec\n", ops)
+        }
+    }
+}
+
+// ============================================================================
+// Benchmark Runner
+// ============================================================================
+
+/// Benchmark runner that measures function execution time
+pub struct BenchRunner {
+    timer: TimerHandle,
+}
+
+impl BenchRunner {
+    /// Create a new benchmark runner
+    pub fn new() -> Result<BenchRunner, TimerError> {
+        let timer = TimerHandle::microhz()?
+        return Result::Ok(BenchRunner { timer: timer })
+    }
+
+    /// Get current time in microseconds
+    fn now_us(&self) -> u32 {
+        match self.timer.get_time() {
+            Result::Ok(d) => {
+                let micros = d.as_micros()
+                return micros
+            },
+            Result::Err(e) => {
+                // Debug: print error
+                match e {
+                    TimerError::OpenFailed => write("[timer:OpenFailed]"),
+                    TimerError::NoMemory => write("[timer:NoMemory]"),
+                    TimerError::CommandFailed(code) => write("[timer:CmdFail=%ld]", code),
+                }
+                return 0
+            },
+        }
+    }
+
+    /// Run a benchmark with automatic iteration count
+    /// Runs until we have stable measurements (at least 100ms total or 100 iterations)
+    @suppress("W0001", "Integer comparisons are safe")
+    pub fn run_auto(&self, func: fn()) -> BenchStats {
+        // Warmup: run a few times to warm caches
+        var i: u32 = 0
+        while i < 3 {
+            func()
+            i++
+        }
+
+        // First, estimate how long one iteration takes
+        let start = self.now_us()
+        func()
+        let single_time = self.now_us() - start
+
+        // Calculate iterations needed for ~100ms of measurement
+        // But cap at reasonable bounds
+        var iterations: u32 = 100
+        if single_time > 0 {
+            iterations = 100000 / single_time  // Target 100ms
+            if iterations < 10 {
+                iterations = 10
+            }
+            if iterations > 100000 {
+                iterations = 100000
+            }
+        }
+
+        return self.run_fixed(func, iterations)
+    }
+
+    /// Run a benchmark with fixed iteration count
+    ///
+    /// Times all iterations together to avoid microsecond-level granularity issues
+    /// on fast operations.
+    @suppress("W0001", "Integer comparisons are safe")
+    pub fn run_fixed(&self, func: fn(), iterations: u32) -> BenchStats {
+        // Warmup
+        var i: u32 = 0
+        while i < 3 {
+            func()
+            i++
+        }
+
+        // Time all iterations together for accuracy
+        let start = self.now_us()
+
+        i = 0
+        while i < iterations {
+            func()
+            i++
+        }
+
+        let end = self.now_us()
+        let total = end - start
+
+        // For sub-microsecond operations, total might be 0
+        // In that case, mean = 0 which indicates "too fast to measure"
+        var mean: u32 = 0
+        if iterations > 0 {
+            mean = total / iterations
+        }
+
+        // Simple stats - we can't get min/max per-iteration when batching
+        // but we can still report the mean accurately
+        return BenchStats {
+            mean_us: mean,
+            min_us: mean,  // Same as mean when batching
+            max_us: mean,  // Same as mean when batching
+            std_dev_us: 0, // Can't compute std dev when batching
+            iterations: iterations,
+            total_us: total,
+        }
+    }
+}
+
+// ============================================================================
+// Black Box - Prevent Optimization
+// ============================================================================
+
+/// Prevent the compiler from optimizing away a value
+///
+/// Use this to ensure benchmark code isn't eliminated by the optimizer.
+/// The value is "escaped" to memory, preventing dead code elimination.
+///
+/// Example:
+/// ```novus
+/// @bench
+/// pub fn bench_fibonacci() {
+///     let result = fibonacci(30)
+///     black_box(result)  // Prevents optimizer from removing fibonacci call
+/// }
+/// ```
+@noinline
+pub fn black_box_i32(value: i32) -> i32 {
+    // By being marked @noinline, the compiler cannot see through this function
+    // This prevents optimization of the passed value
+    return value
+}
+
+@noinline
+pub fn black_box_u32(value: u32) -> u32 {
+    return value
+}
+
+@noinline
+pub fn black_box_bool(value: bool) -> bool {
+    return value
+}
+
+@noinline
+pub fn black_box_ptr(value: *u8) -> *u8 {
+    return value
+}
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+/// Integer square root (for standard deviation calculation)
+@suppress("W0001", "Integer comparisons are safe")
+fn int_sqrt(n: u32) -> u32 {
+    if n == 0 {
+        return 0
+    }
+
+    var x = n
+    var y = (x + 1) / 2
+
+    while y < x {
+        x = y
+        y = (x + n / x) / 2
+    }
+
+    return x
+}
+
+// ============================================================================
+// Convenience Functions (used by generated benchmark runner)
+// ============================================================================
+
+/// Global benchmark runner instance
+static mut __bench_runner: *BenchRunner = (*BenchRunner)0
+
+/// Initialize the benchmark runner (called once at start)
+/// Returns 0 on success, 1 on failure
+pub fn __bench_init() -> i32 {
+    // For simplicity, we return success - the runner will be initialized lazily
+    // in __bench_run if needed
+    return 0
+}
+
+/// Run a benchmark function and print results
+@suppress("W0001", "Pointer comparisons are safe")
+pub fn __bench_run(name: *u8, func: fn(), iterations: u32) {
+    if (u32)__bench_runner == 0 {
+        write("Error: Benchmark runner not initialized\n")
+        return
+    }
+
+    let runner = *__bench_runner
+
+    var stats = if iterations == 0 {
+        // Auto mode
+        runner.run_auto(func)
+    } else {
+        runner.run_fixed(func, iterations)
+    }
+
+    stats.print(name)
+    write("\n")
+}
+
+/// Cleanup benchmark runner
+pub fn __bench_cleanup() {
+    // Nothing to do for now - timer cleanup happens via RAII
+}

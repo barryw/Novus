@@ -79,6 +79,12 @@ public record AttributeInfo
     public bool HasArg(string argName) => NamedArgs.ContainsKey(argName);
 
     /// <summary>
+    /// Check if a bare identifier exists as a positional argument (e.g., @test(should_panic))
+    /// </summary>
+    public bool HasFlag(string flagName) =>
+        NamedArgs.ContainsKey(flagName) || PositionalArgs.Any(p => p is string s && s == flagName);
+
+    /// <summary>
     /// Get positional argument at index, or default if not present
     /// </summary>
     public T? GetPositionalArg<T>(int index)
@@ -177,8 +183,8 @@ public static class KnownAttributes
 
     // Testing attributes
     public const string Test = "test";
-    public const string Benchmark = "benchmark";
-    public const string Ignore = "ignore";
+    public const string Bench = "bench";        // Short form
+    public const string Benchmark = "benchmark"; // Long form (alias for bench)
 
     // Documentation attributes
     public const string Deprecated = "deprecated";
@@ -224,7 +230,7 @@ public static class KnownAttributes
     {
         Library, LibFunc, LibOpen, LibClose, LibExpunge, LibInit,
         Inline, NoInline, Packed, Align,
-        Test, Benchmark, Ignore,
+        Test, Bench, Benchmark,
         Deprecated, Since, Experimental,
         Unsafe, ThreadSafe, SingleThreaded,
         Cold, Hot, Const,

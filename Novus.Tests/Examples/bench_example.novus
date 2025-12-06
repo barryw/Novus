@@ -1,0 +1,123 @@
+// Benchmark examples for Novus
+// Run with: novus bench bench_example.novus
+
+from std::test::bench import black_box_i32, black_box_u32
+
+// ============================================================================
+// Simple Benchmarks
+// ============================================================================
+
+/// Benchmark basic arithmetic operations
+@bench("Basic arithmetic")
+pub fn bench_arithmetic() {
+    var sum: i32 = 0
+    var i: i32 = 0
+    while i < 100 {
+        sum = sum + i
+        i++
+    }
+    let _ = black_box_i32(sum)
+}
+
+/// Benchmark function call overhead
+@bench
+pub fn bench_function_calls() {
+    let x = add_numbers(10, 20)
+    let _ = black_box_i32(x)
+}
+
+fn add_numbers(a: i32, b: i32) -> i32 {
+    return a + b
+}
+
+/// Benchmark with fixed iteration count
+@bench(iterations = 10000)
+pub fn bench_loop_fixed() {
+    var x: i32 = 0
+    var i: i32 = 0
+    while i < 10 {
+        x = x + i * 2
+        i++
+    }
+    let _ = black_box_i32(x)
+}
+
+// ============================================================================
+// Fibonacci Benchmark
+// ============================================================================
+
+/// Classic Fibonacci benchmark - recursive
+@bench("Recursive Fibonacci(15)")
+pub fn bench_fibonacci_recursive() {
+    let result = fib_recursive(15)
+    let _ = black_box_i32(result)
+}
+
+fn fib_recursive(n: i32) -> i32 {
+    if n <= 1 {
+        return n
+    }
+    return fib_recursive(n - 1) + fib_recursive(n - 2)
+}
+
+/// Fibonacci benchmark - iterative (much faster)
+@bench("Iterative Fibonacci(30)")
+pub fn bench_fibonacci_iterative() {
+    let result = fib_iterative(30)
+    let _ = black_box_i32(result)
+}
+
+fn fib_iterative(n: i32) -> i32 {
+    if n <= 1 {
+        return n
+    }
+    var prev: i32 = 0
+    var curr: i32 = 1
+    var i: i32 = 2
+    while i <= n {
+        let next = prev + curr
+        prev = curr
+        curr = next
+        i++
+    }
+    return curr
+}
+
+// ============================================================================
+// Array Operations
+// ============================================================================
+
+/// Benchmark array access
+@bench("Array sum")
+pub fn bench_array_sum() {
+    let arr: [i32; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    var sum: i32 = 0
+    var i: i32 = 0
+    while i < 10 {
+        sum = sum + arr[i]
+        i++
+    }
+    let _ = black_box_i32(sum)
+}
+
+// ============================================================================
+// Bit Manipulation
+// ============================================================================
+
+/// Benchmark bit counting (popcount)
+@bench("Bit count")
+pub fn bench_popcount() {
+    // Using a smaller value that fits in i32: 0x12345678 = 305419896
+    let result = popcount((u32)305419896)
+    let _ = black_box_u32(result)
+}
+
+fn popcount(n: u32) -> u32 {
+    var value = n
+    var count: u32 = 0
+    while value != 0 {
+        count = count + (value & 1)
+        value = value >> 1
+    }
+    return count
+}

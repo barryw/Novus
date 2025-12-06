@@ -3,6 +3,29 @@
 
 #include "novus_runtime.h"
 
+// Test mode globals for should_panic tests
+int32_t __novus_test_mode = 0;
+int32_t __novus_test_panic_occurred = 0;
+const char* __novus_test_panic_message = NULL;
+
+// Test mode control functions
+void __novus_test_set_mode(int32_t enabled) {
+    __novus_test_mode = enabled;
+}
+
+void __novus_test_reset_panic(void) {
+    __novus_test_panic_occurred = 0;
+    __novus_test_panic_message = NULL;
+}
+
+int32_t __novus_test_did_panic(void) {
+    return __novus_test_panic_occurred;
+}
+
+const char* __novus_test_get_panic_message(void) {
+    return __novus_test_panic_message;
+}
+
 // DOS inline functions for try_failed
 // Output() - LVO -60, returns file handle in d0
 int32_t __dos_output(__reg("a6") void* dosBase) = "\tjsr\t-60(a6)";
@@ -12,6 +35,8 @@ int32_t __dos_write(__reg("a6") void* dosBase, __reg("d1") int32_t file, __reg("
 /**
  * Assert failure handler - displays error using EasyRequest
  *
+ * In test mode (for @test(should_panic)), sets flags instead of showing dialog.
+ *
  * @param file Source file where assertion failed
  * @param line Line number
  * @param col Column number
@@ -19,6 +44,13 @@ int32_t __dos_write(__reg("a6") void* dosBase, __reg("d1") int32_t file, __reg("
  */
 void __novus_assert_failed(const char* file, int32_t line, int32_t col, const char* message)
 {
+    // In test mode, record the panic and return without showing dialog
+    if (__novus_test_mode) {
+        __novus_test_panic_occurred = 1;
+        __novus_test_panic_message = message;
+        return;
+    }
+
     char line_str[12];
     char col_str[12];
     char* ptr = error_buffer;
@@ -100,6 +132,8 @@ void __novus_try_failed(const char* type_name, int32_t tag, const char* variant_
  * Panic handler - displays error using EasyRequest and halts execution
  * This is for unrecoverable runtime errors (never elided, even in release)
  *
+ * In test mode (for @test(should_panic)), sets flags instead of showing dialog.
+ *
  * @param message Error message to display
  * @param file Source file where panic occurred
  * @param line Line number
@@ -107,6 +141,13 @@ void __novus_try_failed(const char* type_name, int32_t tag, const char* variant_
  */
 void __novus_panic(const char* message, const char* file, int32_t line, int32_t col)
 {
+    // In test mode, record the panic and return without showing dialog
+    if (__novus_test_mode) {
+        __novus_test_panic_occurred = 1;
+        __novus_test_panic_message = message;
+        return;
+    }
+
     char line_str[12];
     char col_str[12];
     char* ptr = error_buffer;
@@ -135,6 +176,8 @@ void __novus_panic(const char* message, const char* file, int32_t line, int32_t 
  * Note: The actual bounds check is inlined in generated code; this function is only
  * called when the check has already failed.
  *
+ * In test mode (for @test(should_panic)), sets flags instead of showing dialog.
+ *
  * @param index Array index that was out of bounds
  * @param length Array length
  * @param file Source file where access occurred
@@ -142,6 +185,13 @@ void __novus_panic(const char* message, const char* file, int32_t line, int32_t 
  */
 void __novus_bounds_check_failed(int32_t index, int32_t length, const char* file, int32_t line)
 {
+    // In test mode, record the panic and return without showing dialog
+    if (__novus_test_mode) {
+        __novus_test_panic_occurred = 1;
+        __novus_test_panic_message = "Array index out of bounds";
+        return;
+    }
+
     // This function is only called when (uint32_t)index >= (uint32_t)length
     // The comparison has already been done in the generated code
     char index_str[12];
@@ -173,6 +223,8 @@ void __novus_bounds_check_failed(int32_t index, int32_t length, const char* file
  * Division by zero check - panics if divisor is zero
  * Used for runtime division checks when safety level >= Basic
  *
+ * In test mode (for @test(should_panic)), sets flags instead of showing dialog.
+ *
  * @param divisor The divisor value
  * @param file Source file where division occurred
  * @param line Line number
@@ -180,6 +232,13 @@ void __novus_bounds_check_failed(int32_t index, int32_t length, const char* file
 void __novus_div_check(int32_t divisor, const char* file, int32_t line)
 {
     if (divisor == 0) {
+        // In test mode, record the panic and return without showing dialog
+        if (__novus_test_mode) {
+            __novus_test_panic_occurred = 1;
+            __novus_test_panic_message = "Division by zero";
+            return;
+        }
+
         char line_str[12];
         char* ptr = error_buffer;
 

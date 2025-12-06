@@ -253,10 +253,14 @@ pub fn test_addition() {
     assert_eq(1 + 1, 2)
 }
 
-@test
-@ignore  // Skip this test
+@test(skip = "Not ready yet")
 pub fn test_broken() {
-    // Not ready yet
+    // Skipped test
+}
+
+@test("Verify sorting performance")
+pub fn test_sort_perf() {
+    // Test with description
 }
 
 @benchmark

@@ -666,8 +666,11 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
             var function = new IrFunction(name, returnType, visibility, isExtern);
             function.Location = GetLocation(funcContext);  // Store source location for debug info
 
-            // Check for #[export] attribute (from function's own attributes)
+            // Parse and store function attributes (for @test, @export, etc.)
             var attributes = ParseAttributesSimple(funcContext.attribute());
+            function.Attributes = attributes;
+
+            // Check for #[export] attribute (from function's own attributes)
             if (attributes.Has("export"))
             {
                 function.IsExported = true;

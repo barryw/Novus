@@ -51,4 +51,16 @@ char* strcpy_helper(char* dest, const char* src);
 void int_to_str(char* buf, int32_t num);
 void display_error_requester(uint32_t alert_code);
 
+// Test mode support for should_panic tests
+// When test mode is enabled, __novus_panic() sets flags instead of showing dialog
+extern int32_t __novus_test_mode;
+extern int32_t __novus_test_panic_occurred;
+extern const char* __novus_test_panic_message;
+
+// Test mode control functions (called from Novus test code)
+void __novus_test_set_mode(int32_t enabled);
+void __novus_test_reset_panic(void);
+int32_t __novus_test_did_panic(void);
+const char* __novus_test_get_panic_message(void);
+
 #endif // NOVUS_RUNTIME_H

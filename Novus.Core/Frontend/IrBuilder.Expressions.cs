@@ -1989,13 +1989,37 @@ public partial class IrBuilder
         // Add user-provided arguments
         if (callCtx.argumentList() != null)
         {
+            // Build expected types list from method parameters (skip first, that's the receiver)
+            var paramTypes = method.Parameters.Skip(1)
+                .Where(p => !p.IsVariadic)
+                .Select(p => p.Type)
+                .ToList();
+
+            int argIdx = 0;
             foreach (var argCtx in callCtx.argumentList().expression())
             {
+                // Set expected type for this argument if available
+                // This enables implicit coercions like string literal -> *u8
+                var savedExpectedType = _expectedType;
+                if (argIdx < paramTypes.Count)
+                {
+                    _expectedType = paramTypes[argIdx];
+                }
+                else
+                {
+                    _expectedType = null;
+                }
+
                 var argValue = (IrValue?)Visit(argCtx);
+
+                // Restore expected type
+                _expectedType = savedExpectedType;
+
                 if (argValue != null)
                 {
                     arguments.Add(argValue);
                 }
+                argIdx++;
             }
         }
 
@@ -2028,7 +2052,7 @@ public partial class IrBuilder
             }
         }
 
-        // Note: Str -> *u8 coercion is already handled in VisitCallExpr
+        // Note: String literal -> *u8 coercion is handled by setting _expectedType above
 
         // Create the call instruction
         // Use the actual function name from the method (e.g., "Vec_push" for monomorphized generics)

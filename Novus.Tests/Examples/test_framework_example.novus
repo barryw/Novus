@@ -1,0 +1,55 @@
+// Example test file demonstrating the @test attribute
+// Run with: novus test test_framework_example.novus
+
+from std::test::test import expect, expect_true, expect_false, expect_eq_i32, fail
+
+// Basic math test
+@test
+pub fn test_addition() {
+    expect_eq_i32(1 + 1, 2, "basic addition")
+    expect_eq_i32(5 + 3, 8, "larger addition")
+}
+
+// Test with description
+@test("Verify multiplication works correctly")
+pub fn test_multiplication() {
+    expect_eq_i32(3 * 4, 12, "3 x 4")
+    expect_eq_i32(0 * 100, 0, "zero multiplication")
+}
+
+// Boolean tests
+@test
+pub fn test_booleans() {
+    expect_true(true)
+    expect_false(false)
+    expect_true(5 > 3)
+    expect_false(3 > 5)
+}
+
+// This test is skipped - won't run
+@test(skip = "Not implemented yet")
+pub fn test_not_implemented_yet() {
+    fail("This test is not implemented yet")
+}
+
+// Test that expects a panic to occur
+@test(should_panic)
+pub fn test_assert_failure() {
+    // This will panic and the test should pass
+    assert!(false, "intentional panic")
+}
+
+// Test that expects a panic but doesn't get one - should fail
+// Uncomment to see failure output:
+// @test(should_panic)
+// pub fn test_should_panic_but_doesnt() {
+//     // This doesn't panic, so test should fail
+//     let x = 1 + 1
+// }
+
+// Test that intentionally fails (for demo purposes)
+// Uncomment to see failure output:
+// @test
+// pub fn test_intentional_failure() {
+//     expect_eq_i32(1, 2, "intentional failure")
+// }
