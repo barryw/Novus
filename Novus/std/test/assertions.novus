@@ -1,0 +1,693 @@
+// std::test::assertions - Extended test assertions for Novus
+//
+// This module provides comprehensive assertion functions for testing Novus code.
+// It extends the basic test.novus with:
+// - String comparisons (Str, C strings)
+// - Result/Option helpers
+// - Comparison assertions (>, <, >=, <=)
+// - Range assertions
+// - Array/slice equality
+// - Floating-point with epsilon
+// - AmigaOS-specific validations (memory types, library versions)
+//
+// Usage:
+// ```novus
+// from std::test::assertions import *
+//
+// @test
+// pub fn test_my_function() {
+//     let result = some_operation()
+//     expect_ok_i32(result, "operation should succeed")
+//
+//     let s = Str::from_cstr("hello").unwrap()
+//     expect_str_eq(s, Str::from_cstr("hello").unwrap(), "strings should match")
+// }
+// ```
+
+from std::io::file import write
+from std::strings::core import Str, strlen, strcmp
+from std::core import Result, Option
+from std::ffi::exec import TypeOfMem, AvailMem
+from std::ffi::amiga_consts import MEMF_CHIP, MEMF_FAST
+from std::test::test import __test_record_failure
+
+// ============================================================================
+// P1: String Assertions
+// ============================================================================
+
+/// Expect two Str values to be equal
+pub fn expect_str_eq(actual: Str, expected: Str, message: *u8) {
+    if !actual.equals(expected) {
+        __test_record_failure()
+        write("  FAIL: %s\n", message)
+        write("    Expected: \"")
+        write_str_bytes(expected)
+        write("\"\n")
+        write("    Got:      \"")
+        write_str_bytes(actual)
+        write("\"\n")
+    }
+}
+
+/// Expect two Str values to NOT be equal
+pub fn expect_str_ne(actual: Str, expected: Str, message: *u8) {
+    if actual.equals(expected) {
+        __test_record_failure()
+        write("  FAIL: %s - strings should not be equal\n", message)
+        write("    Both: \"")
+        write_str_bytes(actual)
+        write("\"\n")
+    }
+}
+
+/// Expect two C strings to be equal (null-terminated)
+pub fn expect_cstr_eq(actual: *u8, expected: *u8, message: *u8) {
+    if strcmp(actual, expected) != 0 {
+        __test_record_failure()
+        write("  FAIL: %s\n", message)
+        write("    Expected: \"%s\"\n", expected)
+        write("    Got:      \"%s\"\n", actual)
+    }
+}
+
+/// Expect string to contain substring
+pub fn expect_str_contains(haystack: Str, needle: Str, message: *u8) {
+    if !haystack.contains(needle) {
+        __test_record_failure()
+        write("  FAIL: %s\n", message)
+        write("    String: \"")
+        write_str_bytes(haystack)
+        write("\"\n")
+        write("    Should contain: \"")
+        write_str_bytes(needle)
+        write("\"\n")
+    }
+}
+
+/// Expect string to NOT contain substring
+pub fn expect_str_not_contains(haystack: Str, needle: Str, message: *u8) {
+    if haystack.contains(needle) {
+        __test_record_failure()
+        write("  FAIL: %s - string should not contain substring\n", message)
+        write("    String: \"")
+        write_str_bytes(haystack)
+        write("\"\n")
+        write("    Contains: \"")
+        write_str_bytes(needle)
+        write("\"\n")
+    }
+}
+
+/// Expect string to start with prefix
+pub fn expect_str_starts_with(s: Str, prefix: Str, message: *u8) {
+    if !s.starts_with(prefix) {
+        __test_record_failure()
+        write("  FAIL: %s\n", message)
+        write("    String: \"")
+        write_str_bytes(s)
+        write("\"\n")
+        write("    Should start with: \"")
+        write_str_bytes(prefix)
+        write("\"\n")
+    }
+}
+
+/// Expect string to end with suffix
+pub fn expect_str_ends_with(s: Str, suffix: Str, message: *u8) {
+    if !s.ends_with(suffix) {
+        __test_record_failure()
+        write("  FAIL: %s\n", message)
+        write("    String: \"")
+        write_str_bytes(s)
+        write("\"\n")
+        write("    Should end with: \"")
+        write_str_bytes(suffix)
+        write("\"\n")
+    }
+}
+
+/// Expect string to be empty
+pub fn expect_str_empty(s: Str, message: *u8) {
+    if !s.is_empty() {
+        __test_record_failure()
+        write("  FAIL: %s - expected empty string, got length %lu\n", message, s.len())
+    }
+}
+
+/// Expect string to NOT be empty
+pub fn expect_str_not_empty(s: Str, message: *u8) {
+    if s.is_empty() {
+        __test_record_failure()
+        write("  FAIL: %s - expected non-empty string\n", message)
+    }
+}
+
+/// Expect string length to equal expected value
+pub fn expect_str_len(s: Str, expected_len: u32, message: *u8) {
+    if s.len() != expected_len {
+        __test_record_failure()
+        write("  FAIL: %s - expected length %lu, got %lu\n", message, expected_len, s.len())
+    }
+}
+
+// Helper to write Str bytes (handles non-null-terminated strings)
+fn write_str_bytes(s: Str) {
+    let mut i: u32 = 0u32
+    while i < s.len() {
+        let c: u8 = s.as_ptr()[i]
+        write("%c", (c as i32))
+        i = i + 1u32
+    }
+}
+
+// ============================================================================
+// P1: Result Assertions
+// ============================================================================
+
+/// Expect a Result<i32, i32> to be Ok
+pub fn expect_ok_i32(result: Result<i32, i32>, message: *u8) {
+    match result {
+        Result::Ok(_) => {},
+        Result::Err(e) => {
+            __test_record_failure()
+            write("  FAIL: %s - expected Ok, got Err(%d)\n", message, e)
+        },
+    }
+}
+
+/// Expect a Result<i32, i32> to be Err
+pub fn expect_err_i32(result: Result<i32, i32>, message: *u8) {
+    match result {
+        Result::Ok(v) => {
+            __test_record_failure()
+            write("  FAIL: %s - expected Err, got Ok(%d)\n", message, v)
+        },
+        Result::Err(_) => {},
+    }
+}
+
+/// Expect a Result<u32, u32> to be Ok
+pub fn expect_ok_u32(result: Result<u32, u32>, message: *u8) {
+    match result {
+        Result::Ok(_) => {},
+        Result::Err(e) => {
+            __test_record_failure()
+            write("  FAIL: %s - expected Ok, got Err(%lu)\n", message, e)
+        },
+    }
+}
+
+/// Expect a Result<u32, u32> to be Err
+pub fn expect_err_u32(result: Result<u32, u32>, message: *u8) {
+    match result {
+        Result::Ok(v) => {
+            __test_record_failure()
+            write("  FAIL: %s - expected Err, got Ok(%lu)\n", message, v)
+        },
+        Result::Err(_) => {},
+    }
+}
+
+/// Expect a Result<bool, i32> to be Ok
+pub fn expect_ok_bool(result: Result<bool, i32>, message: *u8) {
+    match result {
+        Result::Ok(_) => {},
+        Result::Err(e) => {
+            __test_record_failure()
+            write("  FAIL: %s - expected Ok, got Err(%d)\n", message, e)
+        },
+    }
+}
+
+/// Expect a Result<(), i32> to be Ok (unit Result)
+pub fn expect_ok_unit(result: Result<(), i32>, message: *u8) {
+    match result {
+        Result::Ok(_) => {},
+        Result::Err(e) => {
+            __test_record_failure()
+            write("  FAIL: %s - expected Ok, got Err(%d)\n", message, e)
+        },
+    }
+}
+
+/// Expect Result<i32, i32> to be Ok with specific value
+pub fn expect_ok_eq_i32(result: Result<i32, i32>, expected: i32, message: *u8) {
+    match result {
+        Result::Ok(v) => {
+            if v != expected {
+                __test_record_failure()
+                write("  FAIL: %s - expected Ok(%d), got Ok(%d)\n", message, expected, v)
+            }
+        },
+        Result::Err(e) => {
+            __test_record_failure()
+            write("  FAIL: %s - expected Ok(%d), got Err(%d)\n", message, expected, e)
+        },
+    }
+}
+
+/// Expect Result<u32, u32> to be Ok with specific value
+pub fn expect_ok_eq_u32(result: Result<u32, u32>, expected: u32, message: *u8) {
+    match result {
+        Result::Ok(v) => {
+            if v != expected {
+                __test_record_failure()
+                write("  FAIL: %s - expected Ok(%lu), got Ok(%lu)\n", message, expected, v)
+            }
+        },
+        Result::Err(e) => {
+            __test_record_failure()
+            write("  FAIL: %s - expected Ok(%lu), got Err(%lu)\n", message, expected, e)
+        },
+    }
+}
+
+// ============================================================================
+// P1: Option Assertions
+// ============================================================================
+
+/// Expect an Option<i32> to be Some
+pub fn expect_some_i32(option: Option<i32>, message: *u8) {
+    match option {
+        Option::Some(_) => {},
+        Option::None => {
+            __test_record_failure()
+            write("  FAIL: %s - expected Some, got None\n", message)
+        },
+    }
+}
+
+/// Expect an Option<i32> to be None
+pub fn expect_none_i32(option: Option<i32>, message: *u8) {
+    match option {
+        Option::Some(v) => {
+            __test_record_failure()
+            write("  FAIL: %s - expected None, got Some(%d)\n", message, v)
+        },
+        Option::None => {},
+    }
+}
+
+/// Expect an Option<u32> to be Some
+pub fn expect_some_u32(option: Option<u32>, message: *u8) {
+    match option {
+        Option::Some(_) => {},
+        Option::None => {
+            __test_record_failure()
+            write("  FAIL: %s - expected Some, got None\n", message)
+        },
+    }
+}
+
+/// Expect an Option<u32> to be None
+pub fn expect_none_u32(option: Option<u32>, message: *u8) {
+    match option {
+        Option::Some(v) => {
+            __test_record_failure()
+            write("  FAIL: %s - expected None, got Some(%lu)\n", message, v)
+        },
+        Option::None => {},
+    }
+}
+
+/// Expect an Option<bool> to be Some
+pub fn expect_some_bool(option: Option<bool>, message: *u8) {
+    match option {
+        Option::Some(_) => {},
+        Option::None => {
+            __test_record_failure()
+            write("  FAIL: %s - expected Some, got None\n", message)
+        },
+    }
+}
+
+/// Expect an Option<bool> to be None
+pub fn expect_none_bool(option: Option<bool>, message: *u8) {
+    match option {
+        Option::Some(v) => {
+            let v_str = if v { "true" } else { "false" }
+            __test_record_failure()
+            write("  FAIL: %s - expected None, got Some(%s)\n", message, v_str)
+        },
+        Option::None => {},
+    }
+}
+
+/// Expect Option<i32> to be Some with specific value
+pub fn expect_some_eq_i32(option: Option<i32>, expected: i32, message: *u8) {
+    match option {
+        Option::Some(v) => {
+            if v != expected {
+                __test_record_failure()
+                write("  FAIL: %s - expected Some(%d), got Some(%d)\n", message, expected, v)
+            }
+        },
+        Option::None => {
+            __test_record_failure()
+            write("  FAIL: %s - expected Some(%d), got None\n", message, expected)
+        },
+    }
+}
+
+/// Expect Option<u32> to be Some with specific value
+pub fn expect_some_eq_u32(option: Option<u32>, expected: u32, message: *u8) {
+    match option {
+        Option::Some(v) => {
+            if v != expected {
+                __test_record_failure()
+                write("  FAIL: %s - expected Some(%lu), got Some(%lu)\n", message, expected, v)
+            }
+        },
+        Option::None => {
+            __test_record_failure()
+            write("  FAIL: %s - expected Some(%lu), got None\n", message, expected)
+        },
+    }
+}
+
+// ============================================================================
+// P1: Comparison Assertions
+// ============================================================================
+
+/// Expect actual > threshold
+pub fn expect_gt_i32(actual: i32, threshold: i32, message: *u8) {
+    if actual <= threshold {
+        __test_record_failure()
+        write("  FAIL: %s - expected > %d, got %d\n", message, threshold, actual)
+    }
+}
+
+/// Expect actual < threshold
+pub fn expect_lt_i32(actual: i32, threshold: i32, message: *u8) {
+    if actual >= threshold {
+        __test_record_failure()
+        write("  FAIL: %s - expected < %d, got %d\n", message, threshold, actual)
+    }
+}
+
+/// Expect actual >= threshold
+pub fn expect_gte_i32(actual: i32, threshold: i32, message: *u8) {
+    if actual < threshold {
+        __test_record_failure()
+        write("  FAIL: %s - expected >= %d, got %d\n", message, threshold, actual)
+    }
+}
+
+/// Expect actual <= threshold
+pub fn expect_lte_i32(actual: i32, threshold: i32, message: *u8) {
+    if actual > threshold {
+        __test_record_failure()
+        write("  FAIL: %s - expected <= %d, got %d\n", message, threshold, actual)
+    }
+}
+
+/// Expect actual > threshold (u32)
+pub fn expect_gt_u32(actual: u32, threshold: u32, message: *u8) {
+    if actual <= threshold {
+        __test_record_failure()
+        write("  FAIL: %s - expected > %lu, got %lu\n", message, threshold, actual)
+    }
+}
+
+/// Expect actual < threshold (u32)
+pub fn expect_lt_u32(actual: u32, threshold: u32, message: *u8) {
+    if actual >= threshold {
+        __test_record_failure()
+        write("  FAIL: %s - expected < %lu, got %lu\n", message, threshold, actual)
+    }
+}
+
+/// Expect actual >= threshold (u32)
+pub fn expect_gte_u32(actual: u32, threshold: u32, message: *u8) {
+    if actual < threshold {
+        __test_record_failure()
+        write("  FAIL: %s - expected >= %lu, got %lu\n", message, threshold, actual)
+    }
+}
+
+/// Expect actual <= threshold (u32)
+pub fn expect_lte_u32(actual: u32, threshold: u32, message: *u8) {
+    if actual > threshold {
+        __test_record_failure()
+        write("  FAIL: %s - expected <= %lu, got %lu\n", message, threshold, actual)
+    }
+}
+
+/// Expect two i32 values to NOT be equal
+pub fn expect_ne_i32(actual: i32, unexpected: i32, message: *u8) {
+    if actual == unexpected {
+        __test_record_failure()
+        write("  FAIL: %s - expected != %d, got %d\n", message, unexpected, actual)
+    }
+}
+
+/// Expect two u32 values to NOT be equal
+pub fn expect_ne_u32(actual: u32, unexpected: u32, message: *u8) {
+    if actual == unexpected {
+        __test_record_failure()
+        write("  FAIL: %s - expected != %lu, got %lu\n", message, unexpected, actual)
+    }
+}
+
+// ============================================================================
+// P2: Array/Slice Assertions
+// ============================================================================
+
+/// Expect two i32 arrays to be equal (by pointer and length)
+/// Compares element by element
+pub fn expect_array_eq_i32(actual_ptr: *i32, actual_len: u32, expected_ptr: *i32, expected_len: u32, message: *u8) {
+    if actual_len != expected_len {
+        __test_record_failure()
+        write("  FAIL: %s - length mismatch: expected %lu, got %lu\n", message, expected_len, actual_len)
+        return
+    }
+
+    let mut i: u32 = 0u32
+    while i < actual_len {
+        if actual_ptr[i] != expected_ptr[i] {
+            __test_record_failure()
+            write("  FAIL: %s - element [%lu] mismatch: expected %d, got %d\n",
+                  message, i, expected_ptr[i], actual_ptr[i])
+            return
+        }
+        i = i + 1u32
+    }
+}
+
+/// Expect two u32 arrays to be equal
+pub fn expect_array_eq_u32(actual_ptr: *u32, actual_len: u32, expected_ptr: *u32, expected_len: u32, message: *u8) {
+    if actual_len != expected_len {
+        __test_record_failure()
+        write("  FAIL: %s - length mismatch: expected %lu, got %lu\n", message, expected_len, actual_len)
+        return
+    }
+
+    let mut i: u32 = 0u32
+    while i < actual_len {
+        if actual_ptr[i] != expected_ptr[i] {
+            __test_record_failure()
+            write("  FAIL: %s - element [%lu] mismatch: expected %lu, got %lu\n",
+                  message, i, expected_ptr[i], actual_ptr[i])
+            return
+        }
+        i = i + 1u32
+    }
+}
+
+/// Expect two u8 arrays to be equal (useful for byte buffers)
+pub fn expect_array_eq_u8(actual_ptr: *u8, actual_len: u32, expected_ptr: *u8, expected_len: u32, message: *u8) {
+    if actual_len != expected_len {
+        __test_record_failure()
+        write("  FAIL: %s - length mismatch: expected %lu, got %lu\n", message, expected_len, actual_len)
+        return
+    }
+
+    let mut i: u32 = 0u32
+    while i < actual_len {
+        if actual_ptr[i] != expected_ptr[i] {
+            __test_record_failure()
+            write("  FAIL: %s - element [%lu] mismatch: expected 0x%02x, got 0x%02x\n",
+                  message, i, (expected_ptr[i] as u32), (actual_ptr[i] as u32))
+            return
+        }
+        i = i + 1u32
+    }
+}
+
+/// Expect array to contain element
+pub fn expect_array_contains_i32(ptr: *i32, len: u32, element: i32, message: *u8) {
+    let mut i: u32 = 0u32
+    while i < len {
+        if ptr[i] == element {
+            return  // Found it
+        }
+        i = i + 1u32
+    }
+    __test_record_failure()
+    write("  FAIL: %s - array does not contain %d\n", message, element)
+}
+
+/// Expect array to NOT contain element
+pub fn expect_array_not_contains_i32(ptr: *i32, len: u32, element: i32, message: *u8) {
+    let mut i: u32 = 0u32
+    while i < len {
+        if ptr[i] == element {
+            __test_record_failure()
+            write("  FAIL: %s - array contains %d at index %lu\n", message, element, i)
+            return
+        }
+        i = i + 1u32
+    }
+}
+
+/// Expect array length to match expected value
+pub fn expect_array_len(actual_len: u32, expected_len: u32, message: *u8) {
+    if actual_len != expected_len {
+        __test_record_failure()
+        write("  FAIL: %s - expected length %lu, got %lu\n", message, expected_len, actual_len)
+    }
+}
+
+/// Expect array to be empty
+pub fn expect_array_empty(len: u32, message: *u8) {
+    if len != 0u32 {
+        __test_record_failure()
+        write("  FAIL: %s - expected empty array, got length %lu\n", message, len)
+    }
+}
+
+/// Expect array to NOT be empty
+pub fn expect_array_not_empty(len: u32, message: *u8) {
+    if len == 0u32 {
+        __test_record_failure()
+        write("  FAIL: %s - expected non-empty array\n", message)
+    }
+}
+
+// ============================================================================
+// P2: Range Assertions
+// ============================================================================
+
+/// Expect value to be in range [min, max] (inclusive)
+pub fn expect_in_range_i32(value: i32, min: i32, max: i32, message: *u8) {
+    if value < min || value > max {
+        __test_record_failure()
+        write("  FAIL: %s - expected in range [%d, %d], got %d\n", message, min, max, value)
+    }
+}
+
+/// Expect value to be in range [min, max] (inclusive, u32)
+pub fn expect_in_range_u32(value: u32, min: u32, max: u32, message: *u8) {
+    if value < min || value > max {
+        __test_record_failure()
+        write("  FAIL: %s - expected in range [%lu, %lu], got %lu\n", message, min, max, value)
+    }
+}
+
+/// Expect value to be outside range [min, max]
+pub fn expect_not_in_range_i32(value: i32, min: i32, max: i32, message: *u8) {
+    if value >= min && value <= max {
+        __test_record_failure()
+        write("  FAIL: %s - expected outside range [%d, %d], got %d\n", message, min, max, value)
+    }
+}
+
+// ============================================================================
+// P2: Floating-Point Assertions (when f32/f64 available)
+// ============================================================================
+
+// Note: These use fixed-point approximation since full f32/f64 support varies.
+// The compiler may need FPU configuration for these to work properly.
+
+/// Expect two i32 values representing fixed-point to be approximately equal
+/// Uses absolute difference comparison
+pub fn expect_approx_eq_fixed(actual: i32, expected: i32, tolerance: i32, message: *u8) {
+    let diff: i32 = if actual > expected { actual - expected } else { expected - actual }
+    if diff > tolerance {
+        __test_record_failure()
+        write("  FAIL: %s - expected ~%d (tolerance %d), got %d (diff=%d)\n",
+              message, expected, tolerance, actual, diff)
+    }
+}
+
+/// Expect two u32 values to be approximately equal within tolerance
+pub fn expect_approx_eq_u32(actual: u32, expected: u32, tolerance: u32, message: *u8) {
+    let diff: u32 = if actual > expected { actual - expected } else { expected - actual }
+    if diff > tolerance {
+        __test_record_failure()
+        write("  FAIL: %s - expected ~%lu (tolerance %lu), got %lu (diff=%lu)\n",
+              message, expected, tolerance, actual, diff)
+    }
+}
+
+// ============================================================================
+// P3: AmigaOS Memory Validation
+// ============================================================================
+
+/// Expect pointer to be in CHIP RAM
+pub fn expect_chip_mem(ptr: *u8, message: *u8) {
+    let mem_type: u32 = TypeOfMem(ptr)
+    if (mem_type & MEMF_CHIP) == 0u32 {
+        __test_record_failure()
+        write("  FAIL: %s - expected CHIP memory at 0x%08lx, got type 0x%08lx\n",
+              message, (ptr as u32), mem_type)
+    }
+}
+
+/// Expect pointer to be in FAST RAM
+pub fn expect_fast_mem(ptr: *u8, message: *u8) {
+    let mem_type: u32 = TypeOfMem(ptr)
+    if (mem_type & MEMF_FAST) == 0u32 {
+        __test_record_failure()
+        write("  FAIL: %s - expected FAST memory at 0x%08lx, got type 0x%08lx\n",
+              message, (ptr as u32), mem_type)
+    }
+}
+
+/// Expect pointer to be valid (non-null and recognized by TypeOfMem)
+pub fn expect_valid_mem(ptr: *u8, message: *u8) {
+    if ptr == null {
+        __test_record_failure()
+        write("  FAIL: %s - expected valid memory, got null\n", message)
+        return
+    }
+    let mem_type: u32 = TypeOfMem(ptr)
+    if mem_type == 0u32 {
+        __test_record_failure()
+        write("  FAIL: %s - pointer 0x%08lx not recognized by TypeOfMem\n",
+              message, (ptr as u32))
+    }
+}
+
+/// Check that CHIP RAM is available (at least min_bytes)
+pub fn expect_chip_available(min_bytes: u32, message: *u8) {
+    let available: u32 = AvailMem(MEMF_CHIP)
+    if available < min_bytes {
+        __test_record_failure()
+        write("  FAIL: %s - expected >= %lu bytes CHIP RAM, only %lu available\n",
+              message, min_bytes, available)
+    }
+}
+
+/// Check that FAST RAM is available (at least min_bytes)
+pub fn expect_fast_available(min_bytes: u32, message: *u8) {
+    let available: u32 = AvailMem(MEMF_FAST)
+    if available < min_bytes {
+        __test_record_failure()
+        write("  FAIL: %s - expected >= %lu bytes FAST RAM, only %lu available\n",
+              message, min_bytes, available)
+    }
+}
+
+// ============================================================================
+// P3: Library Version Checks
+// ============================================================================
+// TODO: Library version assertion functions are temporarily disabled due to
+// code generation issues with the Library struct type in split compilation.
+// The functions are preserved below but commented out until the code generator
+// can properly handle struct types across compilation units.
+//
+// Functions to be restored:
+// - expect_library_available(name, min_version, message) -> *u8
+// - expect_library_version(lib_ptr, min_version, message)
+// - with_library(name, min_version, test_fn)

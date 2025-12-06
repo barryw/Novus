@@ -48,6 +48,18 @@ impl<T> Option<T> {
             None => return default_val
         }
     }
+
+    /// Unwrap the value, panicking if None
+    /// Only use when you're certain the Option is Some
+    pub fn unwrap(self) -> T {
+        match self {
+            Some(val) => return val,
+            None => {
+                panic!("called Option::unwrap() on a None value")
+                // Control never reaches here, but compiler may need a return
+            }
+        }
+    }
 }
 
 // Result<T, E> - represents success or failure

@@ -150,3 +150,10 @@ pub fn fail(message: *u8) {
     __test_failures++
     write("  FAIL: %s\n", message)
 }
+
+/// Record a test failure (used by assertions module)
+/// This allows the assertions module to increment the failure counter
+/// without needing direct access to the static variable.
+pub fn __test_record_failure() {
+    __test_failures++
+}

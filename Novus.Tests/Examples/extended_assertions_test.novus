@@ -1,0 +1,252 @@
+// Test example demonstrating extended test assertions
+//
+// This file showcases the new assertion functions added to std::test::assertions:
+// - String assertions
+// - Result/Option assertions
+// - Comparison assertions
+// - Array assertions
+// - Range assertions
+// - AmigaOS-specific assertions (memory types, library versions)
+//
+// Run with: novus test extended_assertions_test.novus
+
+from std::core import Result, Option
+from std::strings::core import Str
+from std::test::test import expect, expect_eq_i32, expect_eq_u32, expect_true, expect_false
+from std::test::assertions import expect_str_eq, expect_str_ne, expect_cstr_eq, expect_str_contains, expect_str_not_contains, expect_str_starts_with, expect_str_ends_with, expect_str_empty, expect_str_not_empty, expect_str_len, expect_ok_i32, expect_err_i32, expect_ok_eq_i32, expect_ok_u32, expect_err_u32, expect_ok_eq_u32, expect_ok_bool, expect_ok_unit, expect_some_i32, expect_none_i32, expect_some_eq_i32, expect_some_u32, expect_none_u32, expect_some_eq_u32, expect_some_bool, expect_none_bool, expect_gt_i32, expect_lt_i32, expect_gte_i32, expect_lte_i32, expect_gt_u32, expect_lt_u32, expect_gte_u32, expect_lte_u32, expect_ne_i32, expect_ne_u32, expect_array_eq_i32, expect_array_eq_u32, expect_array_eq_u8, expect_array_contains_i32, expect_array_not_contains_i32, expect_array_len, expect_array_empty, expect_array_not_empty, expect_in_range_i32, expect_in_range_u32, expect_not_in_range_i32, expect_approx_eq_fixed, expect_approx_eq_u32, expect_chip_mem, expect_fast_mem, expect_valid_mem, expect_chip_available, expect_fast_available
+from std::ffi::exec import AllocVec, FreeVec
+from std::ffi::amiga_consts import MEMF_CHIP, MEMF_FAST, MEMF_CLEAR, MEMF_PUBLIC
+
+// ============================================================================
+// String Assertion Tests
+// ============================================================================
+
+@test("String equality assertions")
+pub fn test_string_equality() {
+    let hello = Str::from_cstr("hello").unwrap()
+    let hello2 = Str::from_cstr("hello").unwrap()
+    let world = Str::from_cstr("world").unwrap()
+
+    expect_str_eq(hello, hello2, "identical strings should be equal")
+    expect_str_ne(hello, world, "different strings should not be equal")
+}
+
+@test("String content assertions")
+pub fn test_string_content() {
+    let greeting = Str::from_cstr("Hello, World!").unwrap()
+    let hello = Str::from_cstr("Hello").unwrap()
+    let world = Str::from_cstr("World").unwrap()
+    let exclaim = Str::from_cstr("!").unwrap()
+    let missing = Str::from_cstr("xyz").unwrap()
+
+    expect_str_contains(greeting, hello, "should contain 'Hello'")
+    expect_str_contains(greeting, world, "should contain 'World'")
+    expect_str_not_contains(greeting, missing, "should not contain 'xyz'")
+
+    expect_str_starts_with(greeting, hello, "should start with 'Hello'")
+    expect_str_ends_with(greeting, exclaim, "should end with '!'")
+}
+
+@test("String length assertions")
+pub fn test_string_length() {
+    let empty = Str::from_raw(null, 0u32)
+    let hello = Str::from_cstr("hello").unwrap()
+
+    expect_str_empty(empty, "empty string should be empty")
+    expect_str_not_empty(hello, "hello should not be empty")
+    expect_str_len(hello, 5u32, "hello should have length 5")
+}
+
+@test("C string comparison")
+pub fn test_cstr_comparison() {
+    expect_cstr_eq("hello", "hello", "C strings should be equal")
+}
+
+// ============================================================================
+// Result Assertion Tests
+// ============================================================================
+
+fn returns_ok_i32() -> Result<i32, i32> {
+    return Result::Ok(42)
+}
+
+fn returns_err_i32() -> Result<i32, i32> {
+    return Result::Err(-1)
+}
+
+fn returns_ok_unit() -> Result<(), i32> {
+    return Result::Ok(())
+}
+
+@test("Result Ok assertions")
+pub fn test_result_ok() {
+    let ok_result = returns_ok_i32()
+    expect_ok_i32(ok_result, "should be Ok")
+    expect_ok_eq_i32(returns_ok_i32(), 42, "should be Ok(42)")
+}
+
+@test("Result Err assertions")
+pub fn test_result_err() {
+    let err_result = returns_err_i32()
+    expect_err_i32(err_result, "should be Err")
+}
+
+@test("Result unit type")
+pub fn test_result_unit() {
+    let unit_result = returns_ok_unit()
+    expect_ok_unit(unit_result, "unit result should be Ok")
+}
+
+// ============================================================================
+// Option Assertion Tests
+// ============================================================================
+
+fn returns_some_i32() -> Option<i32> {
+    return Option::Some(100)
+}
+
+fn returns_none_i32() -> Option<i32> {
+    return Option::None
+}
+
+@test("Option Some assertions")
+pub fn test_option_some() {
+    let some_val = returns_some_i32()
+    expect_some_i32(some_val, "should be Some")
+    expect_some_eq_i32(returns_some_i32(), 100, "should be Some(100)")
+}
+
+@test("Option None assertions")
+pub fn test_option_none() {
+    let none_val = returns_none_i32()
+    expect_none_i32(none_val, "should be None")
+}
+
+// ============================================================================
+// Comparison Assertion Tests
+// ============================================================================
+
+@test("Greater than / less than assertions")
+pub fn test_comparisons() {
+    expect_gt_i32(10, 5, "10 > 5")
+    expect_lt_i32(5, 10, "5 < 10")
+    expect_gte_i32(10, 10, "10 >= 10")
+    expect_gte_i32(10, 5, "10 >= 5")
+    expect_lte_i32(5, 5, "5 <= 5")
+    expect_lte_i32(5, 10, "5 <= 10")
+}
+
+@test("Not equal assertions")
+pub fn test_not_equal() {
+    expect_ne_i32(5, 10, "5 != 10")
+    expect_ne_u32(100u32, 200u32, "100 != 200")
+}
+
+@test("Unsigned comparisons")
+pub fn test_unsigned_comparisons() {
+    expect_gt_u32(100u32, 50u32, "100 > 50")
+    expect_lt_u32(50u32, 100u32, "50 < 100")
+    expect_gte_u32(100u32, 100u32, "100 >= 100")
+    expect_lte_u32(50u32, 100u32, "50 <= 100")
+}
+
+// ============================================================================
+// Array Assertion Tests
+// ============================================================================
+
+@test("Array equality assertions")
+pub fn test_array_equality() {
+    let arr1: [i32; 5] = [1, 2, 3, 4, 5]
+    let arr2: [i32; 5] = [1, 2, 3, 4, 5]
+
+    expect_array_eq_i32(&arr1[0], 5u32, &arr2[0], 5u32, "arrays should be equal")
+}
+
+@test("Array contains assertions")
+pub fn test_array_contains() {
+    let arr: [i32; 5] = [10, 20, 30, 40, 50]
+
+    expect_array_contains_i32(&arr[0], 5u32, 30, "should contain 30")
+    expect_array_not_contains_i32(&arr[0], 5u32, 99, "should not contain 99")
+}
+
+@test("Array length assertions")
+pub fn test_array_length() {
+    let arr: [i32; 3] = [1, 2, 3]
+
+    expect_array_len(3u32, 3u32, "length should be 3")
+    expect_array_not_empty(3u32, "array should not be empty")
+    expect_array_empty(0u32, "empty array should be empty")
+}
+
+// ============================================================================
+// Range Assertion Tests
+// ============================================================================
+
+@test("Range assertions")
+pub fn test_ranges() {
+    expect_in_range_i32(5, 1, 10, "5 should be in [1, 10]")
+    expect_in_range_i32(1, 1, 10, "1 should be in [1, 10] (boundary)")
+    expect_in_range_i32(10, 1, 10, "10 should be in [1, 10] (boundary)")
+
+    expect_in_range_u32(50u32, 0u32, 100u32, "50 should be in [0, 100]")
+
+    expect_not_in_range_i32(0, 1, 10, "0 should not be in [1, 10]")
+    expect_not_in_range_i32(11, 1, 10, "11 should not be in [1, 10]")
+}
+
+@test("Approximate equality assertions")
+pub fn test_approximate() {
+    // Test fixed-point style approximate equality
+    expect_approx_eq_fixed(100, 102, 5, "100 ~= 102 with tolerance 5")
+    expect_approx_eq_u32(1000u32, 1005u32, 10u32, "1000 ~= 1005 with tolerance 10")
+}
+
+// ============================================================================
+// AmigaOS Memory Assertion Tests
+// ============================================================================
+
+@test("CHIP memory allocation")
+pub fn test_chip_memory() {
+    let chip_ptr = AllocVec(256u32, MEMF_CHIP | MEMF_CLEAR)
+    if chip_ptr != null {
+        expect_chip_mem(chip_ptr, "allocated memory should be CHIP RAM")
+        expect_valid_mem(chip_ptr, "memory should be valid")
+        FreeVec(chip_ptr)
+    }
+}
+
+@test("FAST memory allocation")
+pub fn test_fast_memory() {
+    let fast_ptr = AllocVec(256u32, MEMF_FAST | MEMF_CLEAR | MEMF_PUBLIC)
+    if fast_ptr != null {
+        // Note: On systems without FAST RAM, this may fail
+        // The assertion will gracefully report the failure
+        expect_fast_mem(fast_ptr, "allocated memory should be FAST RAM")
+        expect_valid_mem(fast_ptr, "memory should be valid")
+        FreeVec(fast_ptr)
+    }
+}
+
+@test("Memory availability checks")
+pub fn test_memory_availability() {
+    // Check that at least 1KB of CHIP RAM is available
+    expect_chip_available(1024u32, "should have at least 1KB CHIP RAM")
+}
+
+// ============================================================================
+// AmigaOS Library Assertion Tests
+// ============================================================================
+// NOTE: Library version assertion tests are temporarily disabled due to
+// code generation issues with the Library struct type.
+// See std::test::assertions for more details.
+
+// ============================================================================
+// Main Function (for standalone execution)
+// ============================================================================
+
+pub fn main() -> i32 {
+    // When run with 'novus test', the test runner handles execution.
+    // This main is for standalone compilation testing.
+    return 0
+}
