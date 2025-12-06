@@ -13,12 +13,16 @@
 
 from std::core import Result, Option, Drop
 from std::strings::core import Str
-from std::ffi::exec import AllocMem, FreeMem, CopyMem, TypeOfMem, Forbid, Permit, CacheClearE
+from std::ffi::exec import AllocMem, FreeMem, CopyMem, TypeOfMem, Forbid, Permit, CacheClearE, CachePreDMA, CachePostDMA
 from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR
 
 // Cache control flags for CacheClearE (exec.library/CacheClearE)
 const CACRF_ClearI: u32 = $0008  // Instruction cache
 const CACRF_ClearD: u32 = $0002  // Data cache
+
+// DMA cache flags for CachePreDMA/CachePostDMA
+const DMA_ReadFromRAM: u32 = 0   // DMA will read from RAM (e.g., blitter source)
+const DMA_Continue: u32 = 2      // DMA not complete, more transfers coming
 
 // ============================================================================
 // Priority for cache eviction
@@ -96,12 +100,17 @@ impl ChipBuffer {
     }
 
     /// Copy data from a source buffer into this chip buffer
+    ///
+    /// Flushes the CPU data cache after copying to ensure DMA hardware
+    /// sees the correct data on 68040/68060 systems.
     pub fn copy_from(&mut self, src: *u8, len: u32) {
         if len > self.size {
             return
         }
         unsafe {
             CopyMem(src, self.ptr, len)
+            // Flush data cache - critical for 68040/68060 DMA operations
+            CacheClearE(self.ptr, len, CACRF_ClearD)
         }
     }
 
@@ -211,3 +220,103 @@ pub fn ensure_chip_ram(ptr: *u8, size: u32, priority: Priority) -> Result<*u8, C
         return Result::Ok(chip_ptr)
     }
 }
+
+// ============================================================================
+// DMA Cache Management (68040/68060)
+// ============================================================================
+
+/// Prepare a memory region for DMA read operations
+///
+/// Call this BEFORE starting a DMA operation where the custom chips will
+/// READ from the specified memory region (e.g., Blitter source, audio sample).
+///
+/// On 68040/68060, this flushes the data cache for the region to ensure
+/// the DMA hardware sees any CPU-modified data. It returns a physical
+/// address that may be different from the virtual address on systems with
+/// MMU-based virtual memory.
+///
+/// On 68000/020/030, this is a no-op that returns the input pointer.
+///
+/// Example (Blitter copy):
+///   let src_dma = prepare_for_dma_read(source_ptr, blit_size)
+///   blitter_copy(dst_dma, src_dma, blit_size)
+///   complete_dma_read(source_ptr, blit_size)
+pub fn prepare_for_dma_read(ptr: *u8, size: u32) -> *u8 {
+    unsafe {
+        // CachePreDMA returns the physical address (may differ on MMU systems)
+        // For DMA reads, flags = 0 (DMA_ReadFromRAM)
+        // The size parameter is passed by reference
+        let mut actual_size: u32 = size
+        return CachePreDMA(ptr, (&mut actual_size) as *u8, DMA_ReadFromRAM)
+    }
+}
+
+/// Complete a DMA read operation
+///
+/// Call this AFTER the DMA operation completes where custom chips were
+/// READING from the specified memory region.
+///
+/// On 68040/68060, this performs any necessary cache management after
+/// the DMA transfer (typically nothing for read operations).
+///
+/// On 68000/020/030, this is a no-op.
+pub fn complete_dma_read(ptr: *u8, size: u32) {
+    unsafe {
+        let mut actual_size: u32 = size
+        CachePostDMA(ptr, (&mut actual_size) as *u8, DMA_ReadFromRAM)
+    }
+}
+
+/// Prepare a memory region for DMA write operations
+///
+/// Call this BEFORE starting a DMA operation where the custom chips will
+/// WRITE to the specified memory region (e.g., Blitter destination).
+///
+/// On 68040/68060, this invalidates the data cache for the region so the
+/// CPU doesn't have stale cached copies of the data that DMA will overwrite.
+///
+/// On 68000/020/030, this is a no-op that returns the input pointer.
+///
+/// Example (Blitter fill):
+///   let dst_dma = prepare_for_dma_write(dest_ptr, fill_size)
+///   blitter_fill(dst_dma, fill_size)
+///   complete_dma_write(dest_ptr, fill_size)
+pub fn prepare_for_dma_write(ptr: *u8, size: u32) -> *u8 {
+    unsafe {
+        // For DMA writes, we need to invalidate the cache
+        // CachePreDMA with flags = 0 handles this
+        let mut actual_size: u32 = size
+        return CachePreDMA(ptr, (&mut actual_size) as *u8, DMA_ReadFromRAM)
+    }
+}
+
+/// Complete a DMA write operation
+///
+/// Call this AFTER the DMA operation completes where custom chips were
+/// WRITING to the specified memory region.
+///
+/// On 68040/68060, this invalidates any cached copies of the memory region
+/// so the CPU will read fresh data written by DMA.
+///
+/// On 68000/020/030, this is a no-op.
+pub fn complete_dma_write(ptr: *u8, size: u32) {
+    unsafe {
+        let mut actual_size: u32 = size
+        CachePostDMA(ptr, (&mut actual_size) as *u8, DMA_ReadFromRAM)
+    }
+}
+
+/// Helper macro pattern for DMA-safe blitter operations
+///
+/// This combines cache management with a blitter operation:
+/// 1. Prepare source and destination regions
+/// 2. Perform the DMA operation (user code)
+/// 3. Complete the DMA operation
+///
+/// Usage:
+///   with_dma_region(src, dst, size, || {
+///       blitter_copy(...)
+///   })
+///
+/// Note: Currently implemented as separate functions since Novus doesn't
+/// have closure support yet. Use prepare/complete pairs manually.

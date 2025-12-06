@@ -360,6 +360,12 @@ public class IrFunction
     public SourceLocation? Location { get; set; }  // Source location of function definition (for debug info)
     public Novus.SemanticAnalysis.AttributeCollection? Attributes { get; set; }  // Function attributes (@inline, @noinline, @export, etc.)
 
+    /// <summary>
+    /// Cached control flow graph. Lazily built on first access via GetCFG().
+    /// Call InvalidateCFG() after modifying basic blocks or control flow.
+    /// </summary>
+    private ControlFlowGraph? _cachedCfg;
+
     public IrFunction(string name, IrType returnType, Visibility visibility = Visibility.Private, bool isExtern = false, bool isVariadic = false)
     {
         Name = name;
@@ -376,7 +382,30 @@ public class IrFunction
     {
         var block = new IrBasicBlock(label);
         BasicBlocks.Add(block);
+        InvalidateCFG(); // New block invalidates cached CFG
         return block;
+    }
+
+    /// <summary>
+    /// Get the control flow graph for this function.
+    /// The CFG is lazily built on first access and cached for subsequent calls.
+    /// </summary>
+    public ControlFlowGraph GetCFG()
+    {
+        if (_cachedCfg == null)
+        {
+            _cachedCfg = new ControlFlowGraph(this);
+        }
+        return _cachedCfg;
+    }
+
+    /// <summary>
+    /// Invalidate the cached CFG. Must be called after any modifications to
+    /// basic blocks or control flow instructions (branches, returns, etc.).
+    /// </summary>
+    public void InvalidateCFG()
+    {
+        _cachedCfg = null;
     }
 }
 

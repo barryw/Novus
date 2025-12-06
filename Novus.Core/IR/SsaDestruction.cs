@@ -34,22 +34,27 @@ public class SsaDestruction
     /// </summary>
     public void DestructSsa()
     {
+        // Build CFG once for the entire function (uses caching)
+        var cfg = _function.GetCFG();
+
         foreach (var block in _function.BasicBlocks)
         {
             if (block.PhiFunctions.Count == 0)
                 continue;
 
-            EliminatePhisInBlock(block);
+            EliminatePhisInBlock(block, cfg);
         }
+
+        // Invalidate CFG since we modified instructions in predecessor blocks
+        _function.InvalidateCFG();
     }
 
     /// <summary>
     /// Eliminate all phi functions in a block by inserting copies in predecessor blocks
     /// </summary>
-    private void EliminatePhisInBlock(IrBasicBlock block)
+    private void EliminatePhisInBlock(IrBasicBlock block, ControlFlowGraph cfg)
     {
-        // Build CFG to find predecessors
-        var cfg = new ControlFlowGraph(_function);
+        // Use cached CFG to find predecessors
         var blockNode = cfg.Nodes.FirstOrDefault(n => n.Block == block);
         if (blockNode == null)
             return;
