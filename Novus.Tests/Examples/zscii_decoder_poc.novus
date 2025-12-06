@@ -288,7 +288,7 @@ pub fn decode_zstring(data: *u8, data_len: u32, output: *u8, output_max: u32) ->
 /// Encode a lowercase ASCII string to Z-string format
 /// This is a simplified encoder for testing purposes only
 fn encode_simple(text: *u8, text_len: u32, output: *u8, output_max: u32) -> u32 {
-    var zchars: [u8; 64] = [0u8; 64]
+    var zchars = [0u8; 64]
     var zchar_count: u32 = 0u32
 
     // Convert ASCII to Z-characters
@@ -397,7 +397,7 @@ pub fn main() -> i32 {
     // Word 1: 0 | 13<<10 | 10<<5 | 17 = 0x3551 (no end bit)
     // Word 2: 1 | 17<<10 | 20<<5 | 5 = 0xC685 (end bit set)
     let hello_encoded: [u8; 4] = [$35, $51, $C6, $85]
-    var hello_decoded: [u8; 16] = [0u8; 16]
+    var hello_decoded = [0u8; 16]
 
     let hello_len: u32 = decode_zstring(&hello_encoded[0], 4u32, &hello_decoded[0], 16u32)
 
@@ -418,7 +418,7 @@ pub fn main() -> i32 {
     // Word 1: 0 | 4<<10 | 13<<5 | 10 = 0x11AA
     // Word 2: 1 | 17<<10 | 17<<5 | 20 = 0xC634 (end bit set)
     let Hello_encoded: [u8; 4] = [$11, $AA, $C6, $34]
-    var Hello_decoded: [u8; 16] = [0u8; 16]
+    var Hello_decoded = [0u8; 16]
 
     let Hello_len: u32 = decode_zstring(&Hello_encoded[0], 4u32, &Hello_decoded[0], 16u32)
 
@@ -440,7 +440,7 @@ pub fn main() -> i32 {
     // Word 2: 0 | 25<<10 | 13<<5 | 10 = 0x65AA
     // Word 3: 1 | 23<<10 | 10<<5 | 5 = 0xDD45 (end bit set)
     let space_encoded: [u8; 6] = [$35, $C0, $65, $AA, $DD, $45]
-    var space_decoded: [u8; 16] = [0u8; 16]
+    var space_decoded = [0u8; 16]
 
     let space_len: u32 = decode_zstring(&space_encoded[0], 6u32, &space_decoded[0], 16u32)
 
@@ -459,15 +459,15 @@ pub fn main() -> i32 {
     if space_decoded[7] != CH_A + 4u8 { return 28 }   // 'e'
 
     // Test 4: Roundtrip test using our encoder/decoder - "test"
-    var test_str: [u8; 5] = [0u8; 5]
+    var test_str = [0u8; 5]
     test_str[0] = CH_A + 19u8  // 't'
     test_str[1] = CH_A + 4u8   // 'e'
     test_str[2] = CH_A + 18u8  // 's'
     test_str[3] = CH_A + 19u8  // 't'
     test_str[4] = 0u8
 
-    var encoded: [u8; 16] = [0u8; 16]
-    var decoded: [u8; 16] = [0u8; 16]
+    var encoded = [0u8; 16]
+    var decoded = [0u8; 16]
 
     let enc_len: u32 = encode_simple(&test_str[0], 4u32, &encoded[0], 16u32)
     let dec_len: u32 = decode_zstring(&encoded[0], enc_len, &decoded[0], 16u32)
@@ -481,7 +481,7 @@ pub fn main() -> i32 {
     }
 
     // Test 5: Roundtrip with mixed case - "Hello"
-    var mixed_str: [u8; 6] = [0u8; 6]
+    var mixed_str = [0u8; 6]
     mixed_str[0] = CH_A_UP + 7u8   // 'H'
     mixed_str[1] = CH_A + 4u8      // 'e'
     mixed_str[2] = CH_A + 11u8     // 'l'
@@ -489,8 +489,8 @@ pub fn main() -> i32 {
     mixed_str[4] = CH_A + 14u8     // 'o'
     mixed_str[5] = 0u8
 
-    var mixed_encoded: [u8; 16] = [0u8; 16]
-    var mixed_decoded: [u8; 16] = [0u8; 16]
+    var mixed_encoded = [0u8; 16]
+    var mixed_decoded = [0u8; 16]
 
     let mixed_enc_len: u32 = encode_simple(&mixed_str[0], 5u32, &mixed_encoded[0], 16u32)
     let mixed_dec_len: u32 = decode_zstring(&mixed_encoded[0], mixed_enc_len, &mixed_decoded[0], 16u32)
@@ -504,7 +504,7 @@ pub fn main() -> i32 {
     }
 
     // Test 6: Roundtrip with space - "a b c"
-    var spaced_str: [u8; 6] = [0u8; 6]
+    var spaced_str = [0u8; 6]
     spaced_str[0] = CH_A           // 'a'
     spaced_str[1] = CH_SPACE       // ' '
     spaced_str[2] = CH_A + 1u8     // 'b'
@@ -512,8 +512,8 @@ pub fn main() -> i32 {
     spaced_str[4] = CH_A + 2u8     // 'c'
     spaced_str[5] = 0u8
 
-    var spaced_encoded: [u8; 16] = [0u8; 16]
-    var spaced_decoded: [u8; 16] = [0u8; 16]
+    var spaced_encoded = [0u8; 16]
+    var spaced_decoded = [0u8; 16]
 
     let spaced_enc_len: u32 = encode_simple(&spaced_str[0], 5u32, &spaced_encoded[0], 16u32)
     let spaced_dec_len: u32 = decode_zstring(&spaced_encoded[0], spaced_enc_len, &spaced_decoded[0], 16u32)
@@ -527,7 +527,7 @@ pub fn main() -> i32 {
     }
 
     // Test 7: Roundtrip with punctuation - "hi!?."
-    var punct_str: [u8; 6] = [0u8; 6]
+    var punct_str = [0u8; 6]
     punct_str[0] = CH_A + 7u8      // 'h'
     punct_str[1] = CH_A + 8u8      // 'i'
     punct_str[2] = CH_EXCLAIM      // '!'
@@ -535,8 +535,8 @@ pub fn main() -> i32 {
     punct_str[4] = CH_DOT          // '.'
     punct_str[5] = 0u8
 
-    var punct_encoded: [u8; 32] = [0u8; 32]
-    var punct_decoded: [u8; 16] = [0u8; 16]
+    var punct_encoded = [0u8; 32]
+    var punct_decoded = [0u8; 16]
 
     let punct_enc_len: u32 = encode_simple(&punct_str[0], 5u32, &punct_encoded[0], 32u32)
     let punct_dec_len: u32 = decode_zstring(&punct_encoded[0], punct_enc_len, &punct_decoded[0], 16u32)
@@ -550,15 +550,15 @@ pub fn main() -> i32 {
     }
 
     // Test 8: Roundtrip with digits - "a123"
-    var digit_str: [u8; 5] = [0u8; 5]
+    var digit_str = [0u8; 5]
     digit_str[0] = CH_A            // 'a'
     digit_str[1] = CH_0 + 1u8      // '1'
     digit_str[2] = CH_0 + 2u8      // '2'
     digit_str[3] = CH_0 + 3u8      // '3'
     digit_str[4] = 0u8
 
-    var digit_encoded: [u8; 32] = [0u8; 32]
-    var digit_decoded: [u8; 16] = [0u8; 16]
+    var digit_encoded = [0u8; 32]
+    var digit_decoded = [0u8; 16]
 
     let digit_enc_len: u32 = encode_simple(&digit_str[0], 4u32, &digit_encoded[0], 32u32)
     let digit_dec_len: u32 = decode_zstring(&digit_encoded[0], digit_enc_len, &digit_decoded[0], 16u32)

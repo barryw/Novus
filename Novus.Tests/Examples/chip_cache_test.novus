@@ -14,13 +14,13 @@ from std::io::file import write
 // ============================================================================
 
 // Small sample - should use pooled allocation
-static small_asset: [u8; 2048] = [0; 2048]
+static small_asset = [0u8; 2048]
 
 // Medium sample - uses medium pool
-static medium_asset: [u8; 6144] = [0; 6144]
+static medium_asset = [0u8; 6144]
 
 // Large sample - uses large pool
-static large_asset: [u8; 12288] = [0; 12288]
+static large_asset = [0u8; 12288]
 
 // ============================================================================
 // Helper to print stats

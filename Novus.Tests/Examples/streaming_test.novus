@@ -29,6 +29,7 @@ pub fn main() -> i32 {
     write("Streaming Audio Test\n")
 
     let is_pal = DISPLAY() == DisplayType::PAL
+    write("Display: %s\n", if is_pal { "PAL" } else { "NTSC" })
 
     // Get the correct period for PAL/NTSC
     let period = if is_pal { music.period_pal } else { music.period_ntsc }
