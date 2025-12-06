@@ -38,6 +38,71 @@ class Program
     // v4: Added debug label injection via assembly post-processing in debug builds
     private const int CODEGEN_VERSION = 4;
 
+    /// <summary>
+    /// Build preprocessor constants dictionary based on compiler options.
+    /// Used for conditional compilation with #if/#elif/#else/#endif directives.
+    /// </summary>
+    private static Dictionary<string, bool> GetPreprocessorConstants(CompilerOptions options)
+    {
+        // Determine effective CPU for "auto" mode
+        var cpu = options.Cpu == "auto" ? "68020" : options.Cpu;
+
+        // CPU hierarchy: 68000 < 68010 < 68020 < 68030 < 68040 < 68060
+        var cpuLevel = cpu switch
+        {
+            "68000" => 0,
+            "68010" => 1,
+            "68020" => 2,
+            "68030" => 3,
+            "68040" => 4,
+            "68060" => 5,
+            _ => 2 // default to 68020
+        };
+
+        return new Dictionary<string, bool>
+        {
+            ["DEBUG"] = options.BuildMode == BuildMode.Debug,
+            ["RELEASE"] = options.BuildMode == BuildMode.Release,
+
+            // Exact CPU target constants
+            ["M68000"] = cpu == "68000",
+            ["M68010"] = cpu == "68010",
+            ["M68020"] = cpu == "68020",
+            ["M68030"] = cpu == "68030",
+            ["M68040"] = cpu == "68040",
+            ["M68060"] = cpu == "68060",
+
+            // "At least" CPU constants - true if target CPU is this level or higher
+            // Useful for: #if M68020_PLUS to use 68020+ instructions like BFFFO, MULS.L
+            ["M68000_PLUS"] = cpuLevel >= 0, // Always true (all targets are at least 68000)
+            ["M68010_PLUS"] = cpuLevel >= 1, // 68010, 68020, 68030, 68040, 68060
+            ["M68020_PLUS"] = cpuLevel >= 2, // 68020, 68030, 68040, 68060
+            ["M68030_PLUS"] = cpuLevel >= 3, // 68030, 68040, 68060
+            ["M68040_PLUS"] = cpuLevel >= 4, // 68040, 68060
+            ["M68060_PLUS"] = cpuLevel >= 5, // 68060 only
+
+            // FPU target constants
+            ["FPU_NONE"] = options.Fpu == "none" || options.Fpu == "soft",
+            ["FPU_SOFT"] = options.Fpu == "soft",
+            ["FPU_68881"] = options.Fpu == "68881",
+            ["FPU_68882"] = options.Fpu == "68882",
+            ["FPU_68040"] = options.Fpu == "68040" || (cpu == "68040" && options.Fpu != "none" && options.Fpu != "soft"),
+            ["FPU_68060"] = options.Fpu == "68060" || (cpu == "68060" && options.Fpu != "none" && options.Fpu != "soft"),
+
+            // "Has FPU" - true if any hardware FPU is available
+            ["HAS_FPU"] = options.Fpu != "none" && options.Fpu != "soft" && options.Fpu != "auto",
+
+            // Chipset target constants
+            ["OCS"] = options.Chipset == "OCS",
+            ["ECS"] = options.Chipset == "ECS",
+            ["AGA"] = options.Chipset == "AGA",
+
+            // "At least" chipset constants
+            ["ECS_PLUS"] = options.Chipset == "ECS" || options.Chipset == "AGA",
+            ["AGA_PLUS"] = options.Chipset == "AGA"
+        };
+    }
+
     static async Task<int> Main(string[] args)
     {
         return await CommandLine.Parser.Default.ParseArguments<CompilerOptions, BuildOptions, GenerateStubsOptions, NewCommandOptions, StdlibBuildOptions, FmtOptions, CleanOptions, TestOptions, BenchOptions>(args)
@@ -199,31 +264,7 @@ class Program
             var diagnostics = new DiagnosticBag();
 
             // Run preprocessor
-            var preprocessorConstants = new Dictionary<string, bool>
-            {
-                ["DEBUG"] = options.BuildMode == BuildMode.Debug,
-                ["RELEASE"] = options.BuildMode == BuildMode.Release,
-
-                // CPU target constants
-                ["M68000"] = options.Cpu == "68000",
-                ["M68010"] = options.Cpu == "68010",
-                ["M68020"] = options.Cpu == "68020" || options.Cpu == "auto", // auto defaults to 68020
-                ["M68030"] = options.Cpu == "68030",
-                ["M68040"] = options.Cpu == "68040",
-                ["M68060"] = options.Cpu == "68060",
-
-                // FPU target constants
-                ["FPU_NONE"] = options.Fpu == "none",
-                ["FPU_68881"] = options.Fpu == "68881",
-                ["FPU_68882"] = options.Fpu == "68882",
-                ["FPU_68040"] = options.Fpu == "68040" || (options.Cpu == "68040" && options.Fpu != "none"),
-                ["FPU_68060"] = options.Fpu == "68060" || (options.Cpu == "68060" && options.Fpu != "none"),
-
-                // Chipset target constants
-                ["OCS"] = options.Chipset == "OCS",
-                ["ECS"] = options.Chipset == "ECS",
-                ["AGA"] = options.Chipset == "AGA"
-            };
+            var preprocessorConstants = GetPreprocessorConstants(options);
             var preprocessor = new Preprocessing.Preprocessor(preprocessorConstants, diagnostics, inputFile);
             source = preprocessor.Process(source);
 
@@ -383,31 +424,7 @@ class Program
             var diagnostics = new DiagnosticBag();
 
             // Run preprocessor
-            var preprocessorConstants = new Dictionary<string, bool>
-            {
-                ["DEBUG"] = options.BuildMode == BuildMode.Debug,
-                ["RELEASE"] = options.BuildMode == BuildMode.Release,
-
-                // CPU target constants
-                ["M68000"] = options.Cpu == "68000",
-                ["M68010"] = options.Cpu == "68010",
-                ["M68020"] = options.Cpu == "68020" || options.Cpu == "auto", // auto defaults to 68020
-                ["M68030"] = options.Cpu == "68030",
-                ["M68040"] = options.Cpu == "68040",
-                ["M68060"] = options.Cpu == "68060",
-
-                // FPU target constants
-                ["FPU_NONE"] = options.Fpu == "none",
-                ["FPU_68881"] = options.Fpu == "68881",
-                ["FPU_68882"] = options.Fpu == "68882",
-                ["FPU_68040"] = options.Fpu == "68040" || (options.Cpu == "68040" && options.Fpu != "none"),
-                ["FPU_68060"] = options.Fpu == "68060" || (options.Cpu == "68060" && options.Fpu != "none"),
-
-                // Chipset target constants
-                ["OCS"] = options.Chipset == "OCS",
-                ["ECS"] = options.Chipset == "ECS",
-                ["AGA"] = options.Chipset == "AGA"
-            };
+            var preprocessorConstants = GetPreprocessorConstants(options);
             var preprocessor = new Preprocessing.Preprocessor(preprocessorConstants, diagnostics, inputFile);
             source = preprocessor.Process(source);
 

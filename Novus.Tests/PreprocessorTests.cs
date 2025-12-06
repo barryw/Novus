@@ -390,7 +390,7 @@ let x = 2;
 
         Assert.Single(GetErrors(diagnostics));
         Assert.Contains("E9006", GetErrors(diagnostics)[0].Code);
-        Assert.Contains("#elif requires exactly one constant name", GetErrors(diagnostics)[0].Message);
+        Assert.Contains("#elif/#elsif requires exactly one constant name", GetErrors(diagnostics)[0].Message);
     }
 
     [Fact]

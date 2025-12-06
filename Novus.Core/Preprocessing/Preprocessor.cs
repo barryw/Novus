@@ -5,7 +5,7 @@ namespace Novus.Preprocessing;
 
 /// <summary>
 /// Simple preprocessor for conditional compilation.
-/// Handles #if, #elif, #else, #endif directives.
+/// Handles #if, #elif/#elsif, #else, #endif directives.
 /// </summary>
 public class Preprocessor
 {
@@ -173,9 +173,10 @@ public class Preprocessor
                 return new Directive { Type = DirectiveType.If, Constant = parts[1] };
 
             case "#elif":
+            case "#elsif": // alias for #elif (Ruby-style)
                 if (parts.Length != 2)
                 {
-                    ReportError("E9006", $"#elif requires exactly one constant name", lineNumber);
+                    ReportError("E9006", $"#elif/#elsif requires exactly one constant name", lineNumber);
                     return null;
                 }
                 return new Directive { Type = DirectiveType.Elif, Constant = parts[1] };
