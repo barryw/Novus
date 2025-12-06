@@ -13,11 +13,24 @@ namespace Novus.SemanticAnalysis;
 /// - Check if a type implements a specific trait
 /// - Validate generic constraints (where clauses)
 /// - Support From trait conversions
+///
+/// Performance optimizations:
+/// - Uses secondary indexes for O(1) trait/type lookups instead of O(n) scans
+/// - Index by trait name for fast "all impls of trait X"
+/// - Index by type name for fast "all traits implemented by type X"
 /// </summary>
 public class TraitResolver
 {
     private readonly Dictionary<string, TraitImplInfo> _traitImpls = new();
     private readonly SymbolTable _symbols;
+
+    // Secondary indexes for O(1) lookups
+    // trait name -> list of impl keys
+    private readonly Dictionary<string, List<string>> _implsByTrait = new();
+    // type name -> list of impl keys
+    private readonly Dictionary<string, List<string>> _implsByType = new();
+    // (type, trait) -> list of impl keys (for exact lookups)
+    private readonly Dictionary<(string type, string trait), List<string>> _implsByTypeAndTrait = new();
 
     /// <summary>
     /// Delegate to get cache key for a type (for complex type comparisons).
@@ -52,10 +65,37 @@ public class TraitResolver
             implGenericParams,
             location
         );
+
+        // Maintain secondary indexes for O(1) lookups
+        if (!_implsByTrait.TryGetValue(traitName, out var traitList))
+        {
+            traitList = new List<string>();
+            _implsByTrait[traitName] = traitList;
+        }
+        if (!traitList.Contains(implKey))
+            traitList.Add(implKey);
+
+        if (!_implsByType.TryGetValue(typeName, out var typeList))
+        {
+            typeList = new List<string>();
+            _implsByType[typeName] = typeList;
+        }
+        if (!typeList.Contains(implKey))
+            typeList.Add(implKey);
+
+        var typeTraitKey = (typeName, traitName);
+        if (!_implsByTypeAndTrait.TryGetValue(typeTraitKey, out var typeTraitList))
+        {
+            typeTraitList = new List<string>();
+            _implsByTypeAndTrait[typeTraitKey] = typeTraitList;
+        }
+        if (!typeTraitList.Contains(implKey))
+            typeTraitList.Add(implKey);
     }
 
     /// <summary>
     /// Check if a type implements a specific trait.
+    /// Uses indexed lookup for O(1) average case instead of O(n) full scan.
     /// </summary>
     public bool TypeImplementsTrait(IrType type, string traitName, List<IrType> traitTypeArgs)
     {
@@ -74,23 +114,23 @@ public class TraitResolver
             : "";
         var implKey = $"{typeName}::{traitName}{traitArgsStr}";
 
-        // Check if we have an exact match for this trait impl
+        // Check if we have an exact match for this trait impl (O(1))
         if (_traitImpls.ContainsKey(implKey))
         {
             return true;
         }
 
-        // For generic impls, we need to check if there's a generic impl that could satisfy this
-        foreach (var kvp in _traitImpls)
+        // Use indexed lookup to find potential matches (O(k) where k is impls for this type+trait)
+        var typeTraitKey = (typeName, traitName);
+        if (!_implsByTypeAndTrait.TryGetValue(typeTraitKey, out var implKeys))
         {
-            var implInfo = kvp.Value;
+            return false;
+        }
 
-            // Check if this is the right trait
-            if (implInfo.TraitName != traitName)
-                continue;
-
-            // Check if the type names match
-            if (implInfo.TypeName != typeName)
+        // Check only the relevant impls instead of scanning all
+        foreach (var key in implKeys)
+        {
+            if (!_traitImpls.TryGetValue(key, out var implInfo))
                 continue;
 
             // If the impl has generic parameters, we need to check if the trait type args
@@ -170,19 +210,23 @@ public class TraitResolver
 
     /// <summary>
     /// Checks if a From trait implementation exists for the target type.
+    /// Uses indexed lookup for O(1) average case.
     /// </summary>
     public bool CanConvertViaFromTrait(IrType sourceType, IrType targetType)
     {
         var sourceTypeName = GetBaseTypeName(sourceType);
         var targetTypeName = GetBaseTypeName(targetType);
 
-        // Check for From<SourceType> impl on targetType
-        foreach (var (key, implInfo) in _traitImpls)
+        // Use indexed lookup to find From impls on target type (O(k) where k is From impls on type)
+        var typeTraitKey = (targetTypeName, "From");
+        if (!_implsByTypeAndTrait.TryGetValue(typeTraitKey, out var implKeys))
         {
-            if (implInfo.TraitName != "From")
-                continue;
+            return false;
+        }
 
-            if (implInfo.TypeName != targetTypeName)
+        foreach (var key in implKeys)
+        {
+            if (!_traitImpls.TryGetValue(key, out var implInfo))
                 continue;
 
             // Check if this is From<sourceType>
@@ -199,19 +243,23 @@ public class TraitResolver
 
     /// <summary>
     /// Check if an Iterator impl exists for a type and get its Item type.
+    /// Uses indexed lookup for O(1) average case.
     /// </summary>
     public bool TryGetIteratorItemType(IrType type, out IrType? itemType)
     {
         itemType = null;
         var typeName = GetBaseTypeName(type);
 
-        foreach (var kvp in _traitImpls)
+        // Use indexed lookup to find Iterator impl on type
+        var typeTraitKey = (typeName, "Iterator");
+        if (!_implsByTypeAndTrait.TryGetValue(typeTraitKey, out var implKeys))
         {
-            var implInfo = kvp.Value;
-            if (implInfo.TraitName != "Iterator")
-                continue;
+            return false;
+        }
 
-            if (implInfo.TypeName != typeName)
+        foreach (var key in implKeys)
+        {
+            if (!_traitImpls.TryGetValue(key, out var implInfo))
                 continue;
 
             // Found Iterator impl - return the Item type (first trait type arg)
@@ -227,16 +275,13 @@ public class TraitResolver
 
     /// <summary>
     /// Check if any impl exists for a type with a specific trait (ignoring type args).
+    /// Uses indexed lookup for O(1) average case.
     /// </summary>
     public bool HasTraitImpl(string typeName, string traitName)
     {
-        foreach (var kvp in _traitImpls)
-        {
-            var implInfo = kvp.Value;
-            if (implInfo.TraitName == traitName && implInfo.TypeName == typeName)
-                return true;
-        }
-        return false;
+        // O(1) lookup using the composite index
+        var typeTraitKey = (typeName, traitName);
+        return _implsByTypeAndTrait.ContainsKey(typeTraitKey);
     }
 
     /// <summary>
@@ -247,7 +292,13 @@ public class TraitResolver
     /// <summary>
     /// Clear all registered trait impls (for testing or reset).
     /// </summary>
-    public void Clear() => _traitImpls.Clear();
+    public void Clear()
+    {
+        _traitImpls.Clear();
+        _implsByTrait.Clear();
+        _implsByType.Clear();
+        _implsByTypeAndTrait.Clear();
+    }
 
     #region Private Helpers
 

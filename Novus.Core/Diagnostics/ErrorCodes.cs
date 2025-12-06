@@ -154,4 +154,19 @@ public static class ErrorCodes
     // ========================================================================
     public const string FileNotFound = "E3600";
     public const string FileReadError = "E3601";
+
+    // ========================================================================
+    // E37XX: Hardware/DSL Errors (Copper, Blitter, Chipset)
+    // ========================================================================
+    public const string InvalidHardwareOperation = "E3700";
+    public const string CopperWaitOutOfRange = "E3701";
+    public const string CopperMoveToReadOnly = "E3702";
+    public const string CopperMoveToDangerous = "E3703";
+    public const string CopperWaitNotMonotonic = "E3704";
+    public const string BlitterSizeOutOfRange = "E3705";
+    public const string BlitterWidthNotAligned = "E3706";
+    public const string ColorIndexOutOfRange = "E3707";
+    public const string ColorValueOutOfRange = "E3708";
+    public const string SpriteWidthInvalid = "E3709";
+    public const string ChipsetFeatureUnavailable = "E3710";
 }

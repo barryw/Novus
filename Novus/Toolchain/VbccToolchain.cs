@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
+using Novus.Diagnostics;
 
 namespace Novus.Toolchain;
 

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using Novus.Diagnostics;
 using Novus.IR;
 
 namespace Novus.Codegen;
@@ -2265,7 +2266,7 @@ public partial class CCodeGenerator
         // Check if the enum itself has generic parameters
         if (enumType.GenericParameters.Count > 0)
         {
-            Console.WriteLine($"DEBUG IsConcreteEnum: {enumType.Name} has {enumType.GenericParameters.Count} generic parameters - NOT CONCRETE");
+            CompilerLogger.Debug(LogCategory.Generics, "IsConcreteEnum: {0} has {1} generic parameters - NOT CONCRETE", enumType.Name, enumType.GenericParameters.Count);
             return false;
         }
 
@@ -2284,7 +2285,7 @@ public partial class CCodeGenerator
                             IrEnumType et => $"enum {et.Name} (generic params: {et.GenericParameters.Count})",
                             _ => dataType.ToString()
                         };
-                        Console.WriteLine($"DEBUG IsConcreteEnum: {enumType.Name} variant {variant.Name} contains generic type {typeName} - NOT CONCRETE");
+                        CompilerLogger.Debug(LogCategory.Generics, "IsConcreteEnum: {0} variant {1} contains generic type {2} - NOT CONCRETE", enumType.Name, variant.Name, typeName);
                         return false;
                     }
                 }
@@ -2664,10 +2665,10 @@ public partial class CCodeGenerator
         }
 
         // Generate library boilerplate if @library attribute is present
-        Console.WriteLine($"DEBUG CCodeGenerator: libraryGen.IsLibrary = {libraryGen.IsLibrary}");
+        CompilerLogger.Debug(LogCategory.CodeGen, "CCodeGenerator: libraryGen.IsLibrary = {0}", libraryGen.IsLibrary);
         if (libraryGen.IsLibrary)
         {
-            Console.WriteLine("DEBUG: Generating library boilerplate...");
+            CompilerLogger.Debug(LogCategory.CodeGen, "Generating library boilerplate...");
             _output.AppendLine();
             _output.AppendLine(libraryGen.GenerateLibraryBaseStruct());
             _output.AppendLine(libraryGen.GenerateROMTag());
@@ -5115,10 +5116,12 @@ public partial class CCodeGenerator
         var cleanedCallName = call.FunctionName;
         if (call.FunctionName.Contains("make_tags"))
         {
-            Console.WriteLine($"DEBUG make_tags call: function={function?.Name ?? "null"}, FunctionName={call.FunctionName}, ReturnType={call.ReturnType}");
+            CompilerLogger.Debug(LogCategory.CodeGen, "make_tags call: function={0}, FunctionName={1}, ReturnType={2}",
+                function?.Name ?? "null", call.FunctionName, call.ReturnType);
             if (call.ReturnType is IrStructType st)
             {
-                Console.WriteLine($"  StructType: Name={st.Name}, StructName={st.StructName}, CacheKey={st.CacheKey}");
+                CompilerLogger.Debug(LogCategory.CodeGen, "  StructType: Name={0}, StructName={1}, CacheKey={2}",
+                    st.Name, st.StructName, st.CacheKey ?? "null");
             }
         }
         if (function == null && call.ReturnType is IrStructType retStructTypeCheck)

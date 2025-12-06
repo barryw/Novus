@@ -120,6 +120,33 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
     public IReadOnlyDictionary<string, string> DocComments => _docComments;
     public string SourceText { get; }  // Store source text for doc comment extraction
 
+    /// <summary>
+    /// Creates an AnalysisResult containing all data collected during semantic analysis.
+    /// This should be called after Analyze() completes and passed to IrBuilder.
+    /// </summary>
+    public AnalysisResult GetResult()
+    {
+        return new AnalysisResult(
+            success: !_diagnostics.HasErrors,
+            diagnostics: _diagnostics,
+            filePath: _filePath,
+            sourceCode: SourceText,
+            functions: _functions,
+            variables: _variables,
+            globalVariables: _globalVariables,
+            structs: _symbols.GetLocalStructs(),
+            enums: _symbols.GetLocalEnums(),
+            traits: _symbols.GetLocalTraits(),
+            constants: _symbols.GetLocalConstants(),
+            structLocations: _structLocations,
+            enumLocations: _enumLocations,
+            traitLocations: _traitLocations,
+            docComments: _docComments,
+            traitResolver: _traitResolver,
+            typeInterner: _typeInterner
+        );
+    }
+
     public SemanticAnalyzer(string filePath, string sourceCode, string stdLibPath)
     {
         _filePath = filePath;
@@ -136,6 +163,91 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             TypeImplementsTraitFn = (type, trait, typeArgs) => _traitResolver.TypeImplementsTrait(type, trait, typeArgs)
         };
     }
+
+    #region Scoped State Accessors
+
+    // These internal methods enable the AnalysisScopes classes to manage state
+
+    /// <summary>Current function being analyzed.</summary>
+    internal FunctionSymbol? CurrentFunction => _currentFunction;
+
+    /// <summary>Current where clause for struct/impl block being analyzed.</summary>
+    internal IrWhereClause? CurrentStructWhereClause => _currentStructWhereClause;
+
+    /// <summary>Expected type for bidirectional type checking.</summary>
+    internal IrType? ExpectedType => _expectedType;
+
+    /// <summary>Warnings suppressed for current function.</summary>
+    internal IReadOnlySet<string> CurrentFunctionSuppressedWarnings => _currentFunctionSuppressedWarnings;
+
+    /// <summary>Whether we're inside a loop.</summary>
+    internal bool IsInLoop => _loopDepth > 0;
+
+    /// <summary>Whether we're inside an unsafe block.</summary>
+    internal bool IsInUnsafe => _unsafeDepth > 0;
+
+    internal void SetCurrentFunction(FunctionSymbol? function) => _currentFunction = function;
+
+    internal void SetCurrentStructWhereClause(IrWhereClause? whereClause) => _currentStructWhereClause = whereClause;
+
+    internal void SetExpectedType(IrType? type) => _expectedType = type;
+
+    internal void ClearFunctionSuppressedWarnings() => _currentFunctionSuppressedWarnings.Clear();
+
+    internal void SetFunctionSuppressedWarnings(IEnumerable<string> warnings)
+    {
+        _currentFunctionSuppressedWarnings.Clear();
+        foreach (var w in warnings)
+            _currentFunctionSuppressedWarnings.Add(w);
+    }
+
+    internal void IncrementLoopDepth() => _loopDepth++;
+
+    internal void DecrementLoopDepth() => _loopDepth--;
+
+    internal void IncrementUnsafeDepth() => _unsafeDepth++;
+
+    internal void DecrementUnsafeDepth() => _unsafeDepth--;
+
+    internal void PushDropScope() => _dropScopes.Push(new ScopeDropInfo());
+
+    internal void PopDropScope()
+    {
+        if (_dropScopes.Count > 0)
+            _dropScopes.Pop();
+    }
+
+    /// <summary>
+    /// Creates a scoped context for function analysis.
+    /// </summary>
+    public FunctionAnalysisScope BeginFunctionAnalysis(FunctionSymbol function)
+        => new FunctionAnalysisScope(this, function);
+
+    /// <summary>
+    /// Creates a scoped context for loop analysis.
+    /// </summary>
+    public LoopAnalysisScope BeginLoopAnalysis()
+        => new LoopAnalysisScope(this);
+
+    /// <summary>
+    /// Creates a scoped context for unsafe block analysis.
+    /// </summary>
+    public UnsafeAnalysisScope BeginUnsafeAnalysis()
+        => new UnsafeAnalysisScope(this);
+
+    /// <summary>
+    /// Creates a scoped context for expected type.
+    /// </summary>
+    public ExpectedTypeScope BeginExpectedType(IrType? type)
+        => new ExpectedTypeScope(this, type);
+
+    /// <summary>
+    /// Creates a scoped context for struct where clause.
+    /// </summary>
+    public StructWhereClauseScope BeginStructWhereClause(IrWhereClause? whereClause)
+        => new StructWhereClauseScope(this, whereClause);
+
+    #endregion
 
     public bool Analyze(NovusParser.CompilationUnitContext context)
     {

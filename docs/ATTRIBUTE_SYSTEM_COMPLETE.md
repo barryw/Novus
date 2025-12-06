@@ -343,6 +343,36 @@ pub struct AlignedStruct {
 }
 ```
 
+### Program Configuration Attributes
+
+```novus
+// Set custom stack size (default is 64KB)
+#[stack_size(131072)]  // 128KB stack
+
+fn main() -> i32 {
+    // Programs with deep recursion or large stack allocations
+    // may need more stack space
+    return 0
+}
+```
+
+#### Stack Size Guidelines
+
+| Use Case | Recommended Size |
+|----------|-----------------|
+| Simple programs | 8KB - 16KB |
+| Typical applications | 32KB - 64KB (default: 64KB) |
+| Deep recursion | 128KB - 256KB |
+| Large stack arrays | Calculate: array_size + 32KB buffer |
+| Recursive data structures | 256KB+ |
+
+**Important Notes:**
+- AmigaOS CLI default stack is only 4KB, which is too small for most Novus programs
+- Novus sets a default of 64KB (65536 bytes) which works for typical applications
+- Stack overflow on 68k crashes without warning - when in doubt, use more stack
+- The stack size is embedded in the executable and respected by AmigaOS
+- Use `stack` command in AmigaOS CLI to check/change stack before running
+
 ## Testing
 
 Created test file with multiple attributes:

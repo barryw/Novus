@@ -103,6 +103,23 @@ public class IrModule
     /// Program stack size in bytes. Set via #[stack_size(N)] attribute.
     /// Default is 65536 (64KB). AmigaOS CLI default is only 4KB which is too small
     /// for most Novus programs.
+    ///
+    /// <para><b>Guidelines:</b></para>
+    /// <list type="bullet">
+    ///   <item>Simple programs: 8KB - 16KB</item>
+    ///   <item>Typical applications: 32KB - 64KB (default)</item>
+    ///   <item>Deep recursion: 128KB - 256KB</item>
+    ///   <item>Large stack arrays: Calculate array_size + 32KB buffer</item>
+    /// </list>
+    ///
+    /// <para><b>IMPORTANT:</b> Stack overflow on 68k crashes without warning.
+    /// When in doubt, use more stack. The size is embedded in the executable.</para>
+    ///
+    /// <para>Example:</para>
+    /// <code>
+    /// #[stack_size(131072)]  // 128KB stack
+    /// fn main() -> i32 { ... }
+    /// </code>
     /// </summary>
     public int StackSize { get; set; } = 65536;
 
@@ -2046,5 +2063,79 @@ public class IrBlitterOpData : IrValue
 
     public IrBlitterOpData() : base(IrTupleType.Unit)
     {
+    }
+}
+
+/// <summary>
+/// IR instruction for writing to Amiga custom chip hardware registers.
+/// Used by lowering passes to emit direct hardware register access.
+/// </summary>
+public class IrHardwareWrite : IrInstruction
+{
+    /// <summary>
+    /// Register address (absolute, e.g., 0xDFF040 for BLTCON0)
+    /// </summary>
+    public uint RegisterAddress { get; set; }
+
+    /// <summary>
+    /// Value to write (either constant or IrValue for runtime values)
+    /// </summary>
+    public IrValue Value { get; set; }
+
+    /// <summary>
+    /// Size of write operation in bytes (2 for word, 4 for long)
+    /// </summary>
+    public int WriteSize { get; set; } = 2;
+
+    /// <summary>
+    /// Whether this is a volatile write (always true for hardware)
+    /// </summary>
+    public bool IsVolatile { get; set; } = true;
+
+    public IrHardwareWrite(uint registerAddress, IrValue value, int writeSize = 2)
+    {
+        RegisterAddress = registerAddress;
+        Value = value;
+        WriteSize = writeSize;
+    }
+}
+
+/// <summary>
+/// IR instruction for reading from Amiga custom chip hardware registers.
+/// Used for polling hardware status (e.g., blitter busy bit).
+/// </summary>
+public class IrHardwareRead : IrInstruction
+{
+    /// <summary>
+    /// Variable name to store the read result
+    /// </summary>
+    public string ResultName { get; set; }
+
+    /// <summary>
+    /// Register address (absolute, e.g., 0xDFF002 for DMACONR)
+    /// </summary>
+    public uint RegisterAddress { get; set; }
+
+    /// <summary>
+    /// Size of read operation in bytes (2 for word, 4 for long)
+    /// </summary>
+    public int ReadSize { get; set; } = 2;
+
+    /// <summary>
+    /// Type of the result
+    /// </summary>
+    public IrType ResultType { get; set; }
+
+    /// <summary>
+    /// Whether this is a volatile read (always true for hardware)
+    /// </summary>
+    public bool IsVolatile { get; set; } = true;
+
+    public IrHardwareRead(string resultName, uint registerAddress, int readSize = 2)
+    {
+        ResultName = resultName;
+        RegisterAddress = registerAddress;
+        ReadSize = readSize;
+        ResultType = readSize == 4 ? IrIntType.U32 : IrIntType.U16;
     }
 }

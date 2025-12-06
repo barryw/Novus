@@ -369,9 +369,6 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
     }
 
     /// <summary>
-    /// Constructor for IrBuilder
-    /// </summary>
-    /// <summary>
     /// Public access to diagnostics collected during IR building
     /// </summary>
     public DiagnosticBag Diagnostics => _diagnostics;
@@ -381,12 +378,144 @@ public partial class IrBuilder : NovusBaseVisitor<object?>
     /// </summary>
     public IrModule Module => _module;
 
+    /// <summary>
+    /// Pre-computed analysis results from SemanticAnalyzer.
+    /// When set, IrBuilder will use these instead of re-computing type information.
+    /// This ensures type checking happens before IR building.
+    /// </summary>
+    private readonly AnalysisResult? _analysisResult;
+
+    // Dependency injection factories for interface implementations
+    private readonly Func<SymbolTable, Func<string, VariableSymbol?>?, ISymbolResolver>? _symbolResolverFactory;
+    private readonly Func<DiagnosticBag, ITypeChecker>? _typeCheckerFactory;
+    private readonly Func<IrFunction, IIrEmitter>? _emitterFactory;
+
+    // Lazily-created interface implementations
+    private ISymbolResolver? _symbolResolver;
+    private ITypeChecker? _typeChecker;
+
+    /// <summary>
+    /// Gets the symbol resolver for this builder.
+    /// Uses the injected factory or creates a default SymbolTableResolver.
+    /// </summary>
+    public ISymbolResolver SymbolResolver => _symbolResolver ??=
+        _symbolResolverFactory?.Invoke(_symbols, LookupLocalVariable) ??
+        new SymbolTableResolver(_symbols, LookupLocalVariable);
+
+    /// <summary>
+    /// Gets the type checker for this builder.
+    /// Uses the injected factory or creates a default DefaultTypeChecker.
+    /// </summary>
+    public ITypeChecker TypeChecker => _typeChecker ??=
+        _typeCheckerFactory?.Invoke(_diagnostics) ??
+        new DefaultTypeChecker(_diagnostics);
+
+    /// <summary>
+    /// Creates an IR emitter for the given function.
+    /// Uses the injected factory or creates a default DefaultIrEmitter.
+    /// </summary>
+    public IIrEmitter CreateEmitter(IrFunction function) =>
+        _emitterFactory?.Invoke(function) ?? new DefaultIrEmitter(function);
+
+    /// <summary>
+    /// Lookup a local variable by name in the current function scope.
+    /// Used by SymbolResolver to check local variables before globals.
+    /// </summary>
+    private VariableSymbol? LookupLocalVariable(string name)
+    {
+        if (_localVariables.TryGetValue(name, out var local))
+        {
+            // Convert IrLocalVariable to VariableSymbol for the resolver
+            return new VariableSymbol(
+                local.Name,
+                local.Type,
+                local.IsMutable,
+                _currentStatementLocation ?? new SourceLocation(_inputFilePath ?? "<unknown>", 0, 0, 0, ""));
+        }
+        return null;
+    }
+
     public IrBuilder(bool skipAutoImports = false)
     {
         _skipAutoImports = skipAutoImports;
         _typeParser = new TypeParser(new IrBuilderTypeContext(this));
         _circularImportDetector = new CircularImportDetector(_diagnostics);
         _genericInstantiator = new GenericInstantiatorImpl(new IrBuilderInstantiationContext(this));
+    }
+
+    /// <summary>
+    /// Creates an IrBuilder with the given configuration.
+    /// This constructor supports dependency injection for testability.
+    /// </summary>
+    /// <param name="config">Configuration with optional custom implementations</param>
+    public IrBuilder(IrBuilderConfiguration config)
+        : this(config.SkipAutoImports)
+    {
+        _symbolResolverFactory = config.SymbolResolverFactory;
+        _typeCheckerFactory = config.TypeCheckerFactory;
+        _emitterFactory = config.EmitterFactory;
+
+        if (config.StdLibPath != null)
+        {
+            _stdLibPath = config.StdLibPath;
+        }
+
+        if (config.InputFilePath != null)
+        {
+            _inputFilePath = config.InputFilePath;
+        }
+
+        if (config.SourceLines != null)
+        {
+            _sourceLines = config.SourceLines;
+        }
+
+        if (config.AnalysisResult != null)
+        {
+            _analysisResult = config.AnalysisResult;
+            PopulateFromAnalysisResult(config.AnalysisResult);
+        }
+    }
+
+    /// <summary>
+    /// Populates the symbol table from pre-computed analysis results.
+    /// </summary>
+    private void PopulateFromAnalysisResult(AnalysisResult analysisResult)
+    {
+        foreach (var (name, structType) in analysisResult.Structs)
+        {
+            var location = analysisResult.StructLocations.TryGetValue(name, out var loc) ? loc : null;
+            _symbols.RegisterStruct(name, structType, location);
+        }
+        foreach (var (name, enumType) in analysisResult.Enums)
+        {
+            var location = analysisResult.EnumLocations.TryGetValue(name, out var loc) ? loc : null;
+            _symbols.RegisterEnum(name, enumType, location);
+        }
+        foreach (var (name, trait) in analysisResult.Traits)
+        {
+            var location = analysisResult.TraitLocations.TryGetValue(name, out var loc) ? loc : null;
+            _symbols.RegisterTrait(name, trait, location);
+        }
+        foreach (var (name, constant) in analysisResult.Constants)
+        {
+            _symbols.RegisterConstant(name, constant.Type, constant.Value);
+        }
+    }
+
+    /// <summary>
+    /// Creates an IrBuilder initialized with pre-computed semantic analysis results.
+    /// This constructor enforces proper compiler phase ordering:
+    /// 1. SemanticAnalyzer.Analyze() runs first (type checking)
+    /// 2. IrBuilder.BuildModule() runs second (IR generation)
+    /// </summary>
+    /// <param name="analysisResult">Results from SemanticAnalyzer.GetResult()</param>
+    /// <param name="skipAutoImports">Skip auto-importing core module (for tests)</param>
+    public IrBuilder(AnalysisResult analysisResult, bool skipAutoImports = false)
+        : this(skipAutoImports)
+    {
+        _analysisResult = analysisResult;
+        PopulateFromAnalysisResult(analysisResult);
     }
 
     /// <summary>
