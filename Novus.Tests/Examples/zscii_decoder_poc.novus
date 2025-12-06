@@ -1,0 +1,576 @@
+// ZSCII Text Decoder - Proof of Concept
+//
+// Description:
+//   Demonstrates that Novus can decode Z-machine text (ZSCII).
+//   ZSCII uses 5-bit packed characters with shift states and alphabet tables.
+//
+//   Encoding:
+//   - Each word contains 3 Z-characters (5 bits each) + 1 end bit
+//   - Word format: [end:1][zchar1:5][zchar2:5][zchar3:5]
+//   - Z-char 0 = space
+//   - Z-chars 1-3 = abbreviations (not implemented in this POC)
+//   - Z-char 4 = shift to A1 (uppercase)
+//   - Z-char 5 = shift to A2 (punctuation)
+//   - Z-chars 6-31 = alphabet lookup
+//
+// Expected Output:
+//   Exit code: 0 (all decoding tests pass)
+
+from std::core import Option
+
+// ============================================================================
+// Z-Machine Alphabet Tables (V3+)
+// ============================================================================
+
+// Character code constants for clarity
+const CH_A: u8 = 97u8    // 'a'
+const CH_Z: u8 = 122u8   // 'z'
+const CH_A_UP: u8 = 65u8 // 'A'
+const CH_Z_UP: u8 = 90u8 // 'Z'
+const CH_0: u8 = 48u8    // '0'
+const CH_9: u8 = 57u8    // '9'
+const CH_SPACE: u8 = 32u8
+const CH_NEWLINE: u8 = 10u8
+const CH_DOT: u8 = 46u8
+const CH_COMMA: u8 = 44u8
+const CH_EXCLAIM: u8 = 33u8
+const CH_QUESTION: u8 = 63u8
+const CH_UNDERSCORE: u8 = 95u8
+const CH_HASH: u8 = 35u8
+const CH_QUOTE: u8 = 39u8
+const CH_DQUOTE: u8 = 34u8
+const CH_SLASH: u8 = 47u8
+const CH_BACKSLASH: u8 = 92u8
+const CH_MINUS: u8 = 45u8
+const CH_COLON: u8 = 58u8
+const CH_LPAREN: u8 = 40u8
+const CH_RPAREN: u8 = 41u8
+const CH_CARET: u8 = 94u8
+
+// A0: lowercase letters (default)
+// Z-chars 6-31 map to: a b c d e f g h i j k l m n o p q r s t u v w x y z
+fn get_a0_char(idx: u8) -> u8 {
+    // idx 0-25 maps to 'a'-'z'
+    return CH_A + idx
+}
+
+// A1: uppercase letters
+// Z-chars 6-31 map to: A B C D E F G H I J K L M N O P Q R S T U V W X Y Z
+fn get_a1_char(idx: u8) -> u8 {
+    // idx 0-25 maps to 'A'-'Z'
+    return CH_A_UP + idx
+}
+
+// A2: punctuation and digits
+// idx 0 = ^ (10-bit marker), 1 = newline, 2-11 = 0-9, 12+ = punctuation
+fn get_a2_char(idx: u8) -> u8 {
+    match idx {
+        0 => return CH_CARET,      // 10-bit literal marker
+        1 => return CH_NEWLINE,    // newline
+        2 => return CH_0,          // '0'
+        3 => return CH_0 + 1u8,    // '1'
+        4 => return CH_0 + 2u8,    // '2'
+        5 => return CH_0 + 3u8,    // '3'
+        6 => return CH_0 + 4u8,    // '4'
+        7 => return CH_0 + 5u8,    // '5'
+        8 => return CH_0 + 6u8,    // '6'
+        9 => return CH_0 + 7u8,    // '7'
+        10 => return CH_0 + 8u8,   // '8'
+        11 => return CH_0 + 9u8,   // '9'
+        12 => return CH_DOT,       // '.'
+        13 => return CH_COMMA,     // ','
+        14 => return CH_EXCLAIM,   // '!'
+        15 => return CH_QUESTION,  // '?'
+        16 => return CH_UNDERSCORE, // '_'
+        17 => return CH_HASH,      // '#'
+        18 => return CH_QUOTE,     // '\''
+        19 => return CH_DQUOTE,    // '"'
+        20 => return CH_SLASH,     // '/'
+        21 => return CH_BACKSLASH, // '\\'
+        22 => return CH_MINUS,     // '-'
+        23 => return CH_COLON,     // ':'
+        24 => return CH_LPAREN,    // '('
+        25 => return CH_RPAREN,    // ')'
+        _ => return CH_QUESTION    // fallback
+    }
+}
+
+// ============================================================================
+// Alphabet State
+// ============================================================================
+
+/// Current alphabet (shifts are temporary)
+pub enum Alphabet {
+    A0,  // lowercase (default)
+    A1,  // uppercase
+    A2,  // punctuation
+}
+
+// ============================================================================
+// ZSCII Decoder State
+// ============================================================================
+
+/// State machine for ZSCII decoding
+pub struct ZsciiDecoder {
+    current_alphabet: Alphabet,
+    shift_lock: bool,           // true if shift is permanent (not used in V3+)
+    in_10bit_mode: bool,        // waiting for 10-bit character
+    high_5bits: u8,             // first 5 bits of 10-bit char
+}
+
+impl ZsciiDecoder {
+    pub fn new() -> ZsciiDecoder {
+        return ZsciiDecoder {
+            current_alphabet: Alphabet::A0,
+            shift_lock: false,
+            in_10bit_mode: false,
+            high_5bits: 0u8,
+        }
+    }
+
+    /// Reset to initial state
+    pub fn reset(&mut self) {
+        self.current_alphabet = Alphabet::A0
+        self.shift_lock = false
+        self.in_10bit_mode = false
+        self.high_5bits = 0u8
+    }
+
+    /// Decode a single Z-character (5 bits)
+    /// Returns Some(ascii_char) if a character was produced, None otherwise
+    pub fn decode_zchar(&mut self, zchar: u8) -> Option<u8> {
+        // Handle 10-bit mode (literal ZSCII character)
+        if self.in_10bit_mode {
+            if self.high_5bits == 0u8 {
+                // First 5 bits of 10-bit character
+                self.high_5bits = zchar
+                return Option::None
+            } else {
+                // Second 5 bits - combine to form character
+                let full_char: u8 = (self.high_5bits << 5) | zchar
+                self.in_10bit_mode = false
+                self.high_5bits = 0u8
+                return Option::Some(full_char)
+            }
+        }
+
+        // Handle special Z-characters
+        match zchar {
+            0 => {
+                // Space
+                return Option::Some(CH_SPACE)
+            },
+            1 | 2 | 3 => {
+                // Abbreviations (not implemented)
+                // In a full implementation, these would look up abbreviation tables
+                return Option::None
+            },
+            4 => {
+                // Shift to A1 (temporary)
+                self.current_alphabet = Alphabet::A1
+                return Option::None
+            },
+            5 => {
+                // Shift to A2 (temporary)
+                self.current_alphabet = Alphabet::A2
+                return Option::None
+            },
+            _ => {
+                // Z-chars 6-31: look up in current alphabet
+                let index: u8 = zchar - 6u8
+
+                // Bounds check
+                if index >= 26u8 {
+                    return Option::None
+                }
+
+                let result: u8 = match self.current_alphabet {
+                    A0 => get_a0_char(index),
+                    A1 => get_a1_char(index),
+                    A2 => {
+                        // Special handling for A2
+                        if zchar == 6u8 {
+                            // Enter 10-bit mode
+                            self.in_10bit_mode = true
+                            self.high_5bits = 0u8
+                            // Reset alphabet before returning
+                            self.current_alphabet = Alphabet::A0
+                            return Option::None
+                        }
+                        get_a2_char(index)
+                    }
+                }
+
+                // Reset to A0 after producing a character (shift is temporary)
+                self.current_alphabet = Alphabet::A0
+
+                return Option::Some(result)
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Z-String Decoder
+// ============================================================================
+
+/// Decode a packed Z-string into a buffer
+/// Returns the number of characters written
+pub fn decode_zstring(data: *u8, data_len: u32, output: *u8, output_max: u32) -> u32 {
+    var decoder = ZsciiDecoder::new()
+    var out_pos: u32 = 0u32
+    var data_pos: u32 = 0u32
+
+    // Process words until we hit the end marker or run out of data
+    while data_pos + 1u32 < data_len {
+        // Read big-endian word
+        let high: u16 = (u16)data[data_pos]
+        let low: u16 = (u16)data[data_pos + 1u32]
+        let word: u16 = (high << 8) | low
+        data_pos += 2u32
+
+        // Check end bit (bit 15)
+        let is_end: bool = (word & $8000) != 0u16
+
+        // Extract 3 Z-characters (5 bits each)
+        let zchar1: u8 = (u8)((word >> 10) & $1F)
+        let zchar2: u8 = (u8)((word >> 5) & $1F)
+        let zchar3: u8 = (u8)(word & $1F)
+
+        // Decode each Z-character
+        match decoder.decode_zchar(zchar1) {
+            Some(ch) => {
+                if out_pos < output_max {
+                    output[out_pos] = ch
+                    out_pos++
+                }
+            },
+            None => {}
+        }
+
+        match decoder.decode_zchar(zchar2) {
+            Some(ch) => {
+                if out_pos < output_max {
+                    output[out_pos] = ch
+                    out_pos++
+                }
+            },
+            None => {}
+        }
+
+        match decoder.decode_zchar(zchar3) {
+            Some(ch) => {
+                if out_pos < output_max {
+                    output[out_pos] = ch
+                    out_pos++
+                }
+            },
+            None => {}
+        }
+
+        if is_end {
+            break
+        }
+    }
+
+    // Null-terminate if there's room
+    if out_pos < output_max {
+        output[out_pos] = 0u8
+    }
+
+    return out_pos
+}
+
+// ============================================================================
+// Helper: Encode a simple string to Z-string format for testing
+// ============================================================================
+
+/// Encode a lowercase ASCII string to Z-string format
+/// This is a simplified encoder for testing purposes only
+fn encode_simple(text: *u8, text_len: u32, output: *u8, output_max: u32) -> u32 {
+    var zchars: [u8; 64] = [0u8; 64]
+    var zchar_count: u32 = 0u32
+
+    // Convert ASCII to Z-characters
+    var i: u32 = 0u32
+    while i < text_len && zchar_count < 64u32 {
+        let ch: u8 = text[i]
+
+        if ch == CH_SPACE {
+            zchars[zchar_count] = 0u8  // space
+            zchar_count++
+        } else if ch >= CH_A && ch <= CH_Z {
+            zchars[zchar_count] = (ch - CH_A) + 6u8  // A0 alphabet
+            zchar_count++
+        } else if ch >= CH_A_UP && ch <= CH_Z_UP {
+            zchars[zchar_count] = 4u8  // shift to A1
+            zchar_count++
+            if zchar_count < 64u32 {
+                zchars[zchar_count] = (ch - CH_A_UP) + 6u8
+                zchar_count++
+            }
+        } else if ch == CH_DOT {
+            zchars[zchar_count] = 5u8  // shift to A2
+            zchar_count++
+            if zchar_count < 64u32 {
+                zchars[zchar_count] = 18u8  // '.' in A2 (index 12 + 6)
+                zchar_count++
+            }
+        } else if ch == CH_EXCLAIM {
+            zchars[zchar_count] = 5u8  // shift to A2
+            zchar_count++
+            if zchar_count < 64u32 {
+                zchars[zchar_count] = 20u8  // '!' in A2 (index 14 + 6)
+                zchar_count++
+            }
+        } else if ch == CH_QUESTION {
+            zchars[zchar_count] = 5u8  // shift to A2
+            zchar_count++
+            if zchar_count < 64u32 {
+                zchars[zchar_count] = 21u8  // '?' in A2 (index 15 + 6)
+                zchar_count++
+            }
+        } else if ch >= CH_0 && ch <= CH_9 {
+            zchars[zchar_count] = 5u8  // shift to A2
+            zchar_count++
+            if zchar_count < 64u32 {
+                zchars[zchar_count] = (ch - CH_0) + 8u8  // digits in A2 (index 2-11 + 6)
+                zchar_count++
+            }
+        }
+        // Other characters ignored for simplicity
+
+        i++
+    }
+
+    // Pad to multiple of 3 with Z-char 5 (shift to A2, effectively a no-op)
+    while zchar_count % 3u32 != 0u32 && zchar_count < 64u32 {
+        zchars[zchar_count] = 5u8
+        zchar_count++
+    }
+
+    // Pack Z-characters into words
+    var out_pos: u32 = 0u32
+    i = 0u32
+    while i < zchar_count && out_pos + 1u32 < output_max {
+        let zc1: u16 = (u16)zchars[i]
+        let zc2: u16 = if i + 1u32 < zchar_count { (u16)zchars[i + 1u32] } else { 5u16 }
+        let zc3: u16 = if i + 2u32 < zchar_count { (u16)zchars[i + 2u32] } else { 5u16 }
+
+        // Check if this is the last word
+        let is_last: bool = i + 3u32 >= zchar_count
+        let end_bit: u16 = if is_last { $8000 } else { 0u16 }
+
+        let word: u16 = end_bit | (zc1 << 10) | (zc2 << 5) | zc3
+
+        // Write big-endian
+        output[out_pos] = (u8)(word >> 8)
+        output[out_pos + 1u32] = (u8)(word & $FF)
+        out_pos += 2u32
+
+        i += 3u32
+    }
+
+    return out_pos
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+/// Compare two null-terminated strings
+fn str_equal(a: *u8, b: *u8) -> bool {
+    var i: u32 = 0u32
+    while a[i] != 0u8 && b[i] != 0u8 {
+        if a[i] != b[i] {
+            return false
+        }
+        i++
+    }
+    return a[i] == b[i]
+}
+
+pub fn main() -> i32 {
+    // Test 1: Decode "hello" (all lowercase)
+    // Encoding: h=13, e=10, l=17, l=17, o=20
+    // Z-chars: 13, 10, 17, 17, 20, 5 (padded)
+    // Word 1: 0 | 13<<10 | 10<<5 | 17 = 0x3551 (no end bit)
+    // Word 2: 1 | 17<<10 | 20<<5 | 5 = 0xC685 (end bit set)
+    let hello_encoded: [u8; 4] = [$35, $51, $C6, $85]
+    var hello_decoded: [u8; 16] = [0u8; 16]
+
+    let hello_len: u32 = decode_zstring(&hello_encoded[0], 4u32, &hello_decoded[0], 16u32)
+
+    if hello_len != 5u32 {
+        return 1  // Expected 5 characters
+    }
+
+    // Check "hello"
+    if hello_decoded[0] != CH_A + 7u8 { return 2 }   // 'h'
+    if hello_decoded[1] != CH_A + 4u8 { return 3 }   // 'e'
+    if hello_decoded[2] != CH_A + 11u8 { return 4 }  // 'l'
+    if hello_decoded[3] != CH_A + 11u8 { return 5 }  // 'l'
+    if hello_decoded[4] != CH_A + 14u8 { return 6 }  // 'o'
+
+    // Test 2: Decode "Hello" (mixed case)
+    // Encoding: shift(4), H=13, e=10, l=17, l=17, o=20
+    // Z-chars: 4, 13, 10, 17, 17, 20
+    // Word 1: 0 | 4<<10 | 13<<5 | 10 = 0x11AA
+    // Word 2: 1 | 17<<10 | 17<<5 | 20 = 0xC634 (end bit set)
+    let Hello_encoded: [u8; 4] = [$11, $AA, $C6, $34]
+    var Hello_decoded: [u8; 16] = [0u8; 16]
+
+    let Hello_len: u32 = decode_zstring(&Hello_encoded[0], 4u32, &Hello_decoded[0], 16u32)
+
+    if Hello_len != 5u32 {
+        return 10  // Expected 5 characters
+    }
+
+    // Check "Hello"
+    if Hello_decoded[0] != CH_A_UP + 7u8 { return 11 }  // 'H'
+    if Hello_decoded[1] != CH_A + 4u8 { return 12 }     // 'e'
+    if Hello_decoded[2] != CH_A + 11u8 { return 13 }    // 'l'
+    if Hello_decoded[3] != CH_A + 11u8 { return 14 }    // 'l'
+    if Hello_decoded[4] != CH_A + 14u8 { return 15 }    // 'o'
+
+    // Test 3: Decode with space
+    // "hi there" -> h=13, i=14, space=0, t=25, h=13, e=10, r=23, e=10
+    // Z-chars: 13, 14, 0, 25, 13, 10, 23, 10, 5 (padded)
+    // Word 1: 0 | 13<<10 | 14<<5 | 0 = 0x35C0
+    // Word 2: 0 | 25<<10 | 13<<5 | 10 = 0x65AA
+    // Word 3: 1 | 23<<10 | 10<<5 | 5 = 0xDD45 (end bit set)
+    let space_encoded: [u8; 6] = [$35, $C0, $65, $AA, $DD, $45]
+    var space_decoded: [u8; 16] = [0u8; 16]
+
+    let space_len: u32 = decode_zstring(&space_encoded[0], 6u32, &space_decoded[0], 16u32)
+
+    if space_len != 8u32 {
+        return 20  // Expected 8 characters
+    }
+
+    // Check "hi there"
+    if space_decoded[0] != CH_A + 7u8 { return 21 }   // 'h'
+    if space_decoded[1] != CH_A + 8u8 { return 22 }   // 'i'
+    if space_decoded[2] != CH_SPACE { return 23 }     // ' '
+    if space_decoded[3] != CH_A + 19u8 { return 24 }  // 't'
+    if space_decoded[4] != CH_A + 7u8 { return 25 }   // 'h'
+    if space_decoded[5] != CH_A + 4u8 { return 26 }   // 'e'
+    if space_decoded[6] != CH_A + 17u8 { return 27 }  // 'r'
+    if space_decoded[7] != CH_A + 4u8 { return 28 }   // 'e'
+
+    // Test 4: Roundtrip test using our encoder/decoder - "test"
+    var test_str: [u8; 5] = [0u8; 5]
+    test_str[0] = CH_A + 19u8  // 't'
+    test_str[1] = CH_A + 4u8   // 'e'
+    test_str[2] = CH_A + 18u8  // 's'
+    test_str[3] = CH_A + 19u8  // 't'
+    test_str[4] = 0u8
+
+    var encoded: [u8; 16] = [0u8; 16]
+    var decoded: [u8; 16] = [0u8; 16]
+
+    let enc_len: u32 = encode_simple(&test_str[0], 4u32, &encoded[0], 16u32)
+    let dec_len: u32 = decode_zstring(&encoded[0], enc_len, &decoded[0], 16u32)
+
+    if dec_len != 4u32 {
+        return 30  // Expected 4 characters
+    }
+
+    if !str_equal(&decoded[0], &test_str[0]) {
+        return 31  // Roundtrip failed
+    }
+
+    // Test 5: Roundtrip with mixed case - "Hello"
+    var mixed_str: [u8; 6] = [0u8; 6]
+    mixed_str[0] = CH_A_UP + 7u8   // 'H'
+    mixed_str[1] = CH_A + 4u8      // 'e'
+    mixed_str[2] = CH_A + 11u8     // 'l'
+    mixed_str[3] = CH_A + 11u8     // 'l'
+    mixed_str[4] = CH_A + 14u8     // 'o'
+    mixed_str[5] = 0u8
+
+    var mixed_encoded: [u8; 16] = [0u8; 16]
+    var mixed_decoded: [u8; 16] = [0u8; 16]
+
+    let mixed_enc_len: u32 = encode_simple(&mixed_str[0], 5u32, &mixed_encoded[0], 16u32)
+    let mixed_dec_len: u32 = decode_zstring(&mixed_encoded[0], mixed_enc_len, &mixed_decoded[0], 16u32)
+
+    if mixed_dec_len != 5u32 {
+        return 40  // Expected 5 characters
+    }
+
+    if !str_equal(&mixed_decoded[0], &mixed_str[0]) {
+        return 41  // Roundtrip failed for mixed case
+    }
+
+    // Test 6: Roundtrip with space - "a b c"
+    var spaced_str: [u8; 6] = [0u8; 6]
+    spaced_str[0] = CH_A           // 'a'
+    spaced_str[1] = CH_SPACE       // ' '
+    spaced_str[2] = CH_A + 1u8     // 'b'
+    spaced_str[3] = CH_SPACE       // ' '
+    spaced_str[4] = CH_A + 2u8     // 'c'
+    spaced_str[5] = 0u8
+
+    var spaced_encoded: [u8; 16] = [0u8; 16]
+    var spaced_decoded: [u8; 16] = [0u8; 16]
+
+    let spaced_enc_len: u32 = encode_simple(&spaced_str[0], 5u32, &spaced_encoded[0], 16u32)
+    let spaced_dec_len: u32 = decode_zstring(&spaced_encoded[0], spaced_enc_len, &spaced_decoded[0], 16u32)
+
+    if spaced_dec_len != 5u32 {
+        return 50  // Expected 5 characters
+    }
+
+    if !str_equal(&spaced_decoded[0], &spaced_str[0]) {
+        return 51  // Roundtrip failed for spaced string
+    }
+
+    // Test 7: Roundtrip with punctuation - "hi!?."
+    var punct_str: [u8; 6] = [0u8; 6]
+    punct_str[0] = CH_A + 7u8      // 'h'
+    punct_str[1] = CH_A + 8u8      // 'i'
+    punct_str[2] = CH_EXCLAIM      // '!'
+    punct_str[3] = CH_QUESTION     // '?'
+    punct_str[4] = CH_DOT          // '.'
+    punct_str[5] = 0u8
+
+    var punct_encoded: [u8; 32] = [0u8; 32]
+    var punct_decoded: [u8; 16] = [0u8; 16]
+
+    let punct_enc_len: u32 = encode_simple(&punct_str[0], 5u32, &punct_encoded[0], 32u32)
+    let punct_dec_len: u32 = decode_zstring(&punct_encoded[0], punct_enc_len, &punct_decoded[0], 16u32)
+
+    if punct_dec_len != 5u32 {
+        return 60  // Expected 5 characters
+    }
+
+    if !str_equal(&punct_decoded[0], &punct_str[0]) {
+        return 61  // Roundtrip failed for punctuation
+    }
+
+    // Test 8: Roundtrip with digits - "a123"
+    var digit_str: [u8; 5] = [0u8; 5]
+    digit_str[0] = CH_A            // 'a'
+    digit_str[1] = CH_0 + 1u8      // '1'
+    digit_str[2] = CH_0 + 2u8      // '2'
+    digit_str[3] = CH_0 + 3u8      // '3'
+    digit_str[4] = 0u8
+
+    var digit_encoded: [u8; 32] = [0u8; 32]
+    var digit_decoded: [u8; 16] = [0u8; 16]
+
+    let digit_enc_len: u32 = encode_simple(&digit_str[0], 4u32, &digit_encoded[0], 32u32)
+    let digit_dec_len: u32 = decode_zstring(&digit_encoded[0], digit_enc_len, &digit_decoded[0], 16u32)
+
+    if digit_dec_len != 4u32 {
+        return 70  // Expected 4 characters
+    }
+
+    if !str_equal(&digit_decoded[0], &digit_str[0]) {
+        return 71  // Roundtrip failed for digits
+    }
+
+    // All tests passed!
+    return 0
+}

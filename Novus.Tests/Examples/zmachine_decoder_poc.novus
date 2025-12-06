@@ -1,0 +1,582 @@
+// Z-Machine Instruction Decoder - Proof of Concept
+//
+// Description:
+//   Demonstrates that Novus has the core language features needed for a
+//   Z-machine interpreter. This decodes a few Z-machine instructions to
+//   verify:
+//   - Enum payloads for operand types
+//   - Match statements for opcode dispatch (compiles to jump tables on 68k)
+//   - Byte array memory access
+//   - Basic instruction decoding patterns
+//
+// Expected Output:
+//   Exit code: 0 (all instruction decoding tests pass)
+
+from std::core import Option
+
+// ============================================================================
+// Z-Machine Operand Types
+// ============================================================================
+
+/// Operand type as encoded in Z-machine instructions
+/// In short form: bit 4-5 of opcode determine operand type
+/// In variable form: operand type bytes follow the opcode
+pub enum OperandType {
+    Large,      // 2-byte constant (word)
+    Small,      // 1-byte constant
+    Variable,   // Variable reference (0-15 = local, 16+ = global)
+    Omitted,    // No operand present
+}
+
+/// Decoded operand with its value
+pub enum Operand {
+    LargeConstant(u16),
+    SmallConstant(u8),
+    VariableRef(u8),
+    None,
+}
+
+// ============================================================================
+// Z-Machine Instruction Forms
+// ============================================================================
+
+/// Z-machine instruction forms (determined by top 2 bits of opcode)
+pub enum InstructionForm {
+    Long,       // 2OP, two operands
+    Short,      // 0OP or 1OP
+    Extended,   // Extended opcodes (0xBE prefix, V5+)
+    Variable,   // VAR form, 0-4 operands
+}
+
+// ============================================================================
+// Decoded Instructions (subset for POC)
+// ============================================================================
+
+/// Decoded Z-machine instruction
+/// This represents a few common instructions to demonstrate the pattern
+pub enum Instruction {
+    // 2OP instructions
+    Je(Operand, Operand, u16),      // je a b ?label - jump if equal
+    Jl(Operand, Operand, u16),      // jl a b ?label - jump if less
+    Add(Operand, Operand, u8),      // add a b -> result
+    Sub(Operand, Operand, u8),      // sub a b -> result
+    Mul(Operand, Operand, u8),      // mul a b -> result
+    Div(Operand, Operand, u8),      // div a b -> result
+    Loadw(Operand, Operand, u8),    // loadw array word-index -> result
+    Storew(Operand, Operand, Operand), // storew array word-index value
+
+    // 1OP instructions
+    Jz(Operand, u16),               // jz a ?label - jump if zero
+    Inc(u8),                        // inc (variable) - increment variable
+    Dec(u8),                        // dec (variable) - decrement variable
+    Print_obj(Operand),             // print_obj obj - print object name
+
+    // 0OP instructions
+    Rtrue,                          // rtrue - return true (1)
+    Rfalse,                         // rfalse - return false (0)
+    Print,                          // print - print literal string
+    Newline,                        // new_line - print newline
+    Quit,                           // quit - quit interpreter
+
+    // Store/call instructions
+    Call(Operand, u8),              // call routine -> result (simplified)
+    Ret(Operand),                   // ret value - return from routine
+
+    // Unknown/unimplemented
+    Unknown(u8),
+}
+
+// ============================================================================
+// Z-Machine Memory Accessor
+// ============================================================================
+
+/// Simple Z-machine memory accessor
+/// In a real implementation, this would wrap the story file
+pub struct ZMemory {
+    data: *u8,
+    size: u32,
+    pc: u32,    // Program counter
+}
+
+impl ZMemory {
+    pub fn new(data: *u8, size: u32) -> ZMemory {
+        return ZMemory {
+            data: data,
+            size: size,
+            pc: 0u32,
+        }
+    }
+
+    /// Read a byte at the current PC and advance
+    pub fn read_byte(&mut self) -> u8 {
+        if self.pc >= self.size {
+            return 0u8
+        }
+        let b: u8 = self.data[self.pc]
+        self.pc++
+        return b
+    }
+
+    /// Read a word (big-endian) at the current PC and advance
+    pub fn read_word(&mut self) -> u16 {
+        let high: u16 = (u16)self.read_byte()
+        let low: u16 = (u16)self.read_byte()
+        return (high << 8) | low
+    }
+
+    /// Peek at byte without advancing PC
+    pub fn peek_byte(&self) -> u8 {
+        if self.pc >= self.size {
+            return 0u8
+        }
+        return self.data[self.pc]
+    }
+
+    /// Set the PC
+    pub fn set_pc(&mut self, addr: u32) {
+        self.pc = addr
+    }
+
+    /// Get current PC
+    pub fn get_pc(&self) -> u32 {
+        return self.pc
+    }
+}
+
+// ============================================================================
+// Instruction Decoder
+// ============================================================================
+
+/// Decode operand type from 2-bit field
+fn decode_operand_type(bits: u8) -> OperandType {
+    match bits {
+        0 => return OperandType::Large,
+        1 => return OperandType::Small,
+        2 => return OperandType::Variable,
+        _ => return OperandType::Omitted,
+    }
+}
+
+/// Read an operand based on its type
+fn read_operand(mem: &mut ZMemory, op_type: OperandType) -> Operand {
+    match op_type {
+        Large => {
+            let val: u16 = mem.read_word()
+            return Operand::LargeConstant(val)
+        },
+        Small => {
+            let val: u8 = mem.read_byte()
+            return Operand::SmallConstant(val)
+        },
+        Variable => {
+            let var_num: u8 = mem.read_byte()
+            return Operand::VariableRef(var_num)
+        },
+        Omitted => {
+            return Operand::None
+        }
+    }
+}
+
+/// Determine instruction form from opcode byte
+fn get_instruction_form(opcode: u8) -> InstructionForm {
+    // Top 2 bits determine form
+    let form_bits: u8 = opcode >> 6
+
+    match form_bits {
+        3 => {
+            // %11xxxxxx = Variable form
+            return InstructionForm::Variable
+        },
+        2 => {
+            // %10xxxxxx = Short form
+            return InstructionForm::Short
+        },
+        _ => {
+            // %00xxxxxx or %01xxxxxx = Long form
+            // (Extended form check would go here for 0xBE)
+            return InstructionForm::Long
+        }
+    }
+}
+
+/// Decode a branch offset from the instruction stream
+fn read_branch_offset(mem: &mut ZMemory) -> u16 {
+    let first: u8 = mem.read_byte()
+
+    // Bit 6 = polarity (1 = branch on true)
+    // Bit 7 = short form (1 = 1-byte offset in bits 0-5)
+
+    if (first & $40) != 0u8 {
+        // Short form: 6-bit unsigned offset
+        let offset: u16 = (u16)(first & $3F)
+        return offset
+    } else {
+        // Long form: 14-bit signed offset
+        let second: u8 = mem.read_byte()
+        let offset: u16 = (((u16)(first & $3F)) << 8) | (u16)second
+        return offset
+    }
+}
+
+/// Decode a 2OP instruction (Long form)
+fn decode_long_2op(mem: &mut ZMemory, opcode: u8) -> Instruction {
+    // In long form:
+    // Bit 6 = operand 1 type (0=small constant, 1=variable)
+    // Bit 5 = operand 2 type (0=small constant, 1=variable)
+    // Bits 0-4 = opcode number
+
+    let op1_type: OperandType = if (opcode & $40) != 0u8 {
+        OperandType::Variable
+    } else {
+        OperandType::Small
+    }
+
+    let op2_type: OperandType = if (opcode & $20) != 0u8 {
+        OperandType::Variable
+    } else {
+        OperandType::Small
+    }
+
+    let opnum: u8 = opcode & $1F
+    let op1: Operand = read_operand(mem, op1_type)
+    let op2: Operand = read_operand(mem, op2_type)
+
+    // Decode based on opcode number
+    match opnum {
+        1 => {
+            // je a b ?label
+            let branch: u16 = read_branch_offset(mem)
+            return Instruction::Je(op1, op2, branch)
+        },
+        2 => {
+            // jl a b ?label
+            let branch: u16 = read_branch_offset(mem)
+            return Instruction::Jl(op1, op2, branch)
+        },
+        $14 => {
+            // add a b -> result
+            let result: u8 = mem.read_byte()
+            return Instruction::Add(op1, op2, result)
+        },
+        $15 => {
+            // sub a b -> result
+            let result: u8 = mem.read_byte()
+            return Instruction::Sub(op1, op2, result)
+        },
+        $16 => {
+            // mul a b -> result
+            let result: u8 = mem.read_byte()
+            return Instruction::Mul(op1, op2, result)
+        },
+        $17 => {
+            // div a b -> result
+            let result: u8 = mem.read_byte()
+            return Instruction::Div(op1, op2, result)
+        },
+        $0F => {
+            // loadw array word-index -> result
+            let result: u8 = mem.read_byte()
+            return Instruction::Loadw(op1, op2, result)
+        },
+        _ => {
+            return Instruction::Unknown(opnum)
+        }
+    }
+}
+
+/// Decode a 1OP or 0OP instruction (Short form)
+fn decode_short_op(mem: &mut ZMemory, opcode: u8) -> Instruction {
+    // In short form:
+    // Bits 4-5 = operand type (3 = no operand = 0OP)
+    // Bits 0-3 = opcode number
+
+    let op_type_bits: u8 = (opcode >> 4) & $03
+    let opnum: u8 = opcode & $0F
+
+    if op_type_bits == 3 {
+        // 0OP instruction
+        match opnum {
+            0 => return Instruction::Rtrue,
+            1 => return Instruction::Rfalse,
+            2 => return Instruction::Print,
+            $0B => return Instruction::Newline,
+            $0A => return Instruction::Quit,
+            _ => return Instruction::Unknown(opnum)
+        }
+    } else {
+        // 1OP instruction
+        let op_type: OperandType = decode_operand_type(op_type_bits)
+        let operand: Operand = read_operand(mem, op_type)
+
+        match opnum {
+            0 => {
+                // jz a ?label
+                let branch: u16 = read_branch_offset(mem)
+                return Instruction::Jz(operand, branch)
+            },
+            5 => {
+                // inc (variable)
+                match operand {
+                    VariableRef(v) => return Instruction::Inc(v),
+                    _ => return Instruction::Unknown(opnum)
+                }
+            },
+            6 => {
+                // dec (variable)
+                match operand {
+                    VariableRef(v) => return Instruction::Dec(v),
+                    _ => return Instruction::Unknown(opnum)
+                }
+            },
+            $0A => {
+                // print_obj obj
+                return Instruction::Print_obj(operand)
+            },
+            $0B => {
+                // ret value
+                return Instruction::Ret(operand)
+            },
+            _ => return Instruction::Unknown(opnum)
+        }
+    }
+}
+
+/// Decode a single instruction from the memory stream
+pub fn decode_instruction(mem: &mut ZMemory) -> Instruction {
+    let opcode: u8 = mem.read_byte()
+    let form: InstructionForm = get_instruction_form(opcode)
+
+    match form {
+        Long => {
+            return decode_long_2op(mem, opcode)
+        },
+        Short => {
+            return decode_short_op(mem, opcode)
+        },
+        Variable => {
+            // Simplified: treat as unknown for this POC
+            return Instruction::Unknown(opcode)
+        },
+        Extended => {
+            // V5+ extended opcodes
+            return Instruction::Unknown(opcode)
+        }
+    }
+}
+
+// ============================================================================
+// Test Helpers
+// ============================================================================
+
+/// Get the opcode number from an instruction for verification
+fn get_instruction_kind(instr: &Instruction) -> u8 {
+    match *instr {
+        Je(_, _, _) => return 1u8,
+        Jl(_, _, _) => return 2u8,
+        Add(_, _, _) => return 3u8,
+        Sub(_, _, _) => return 4u8,
+        Mul(_, _, _) => return 5u8,
+        Div(_, _, _) => return 6u8,
+        Loadw(_, _, _) => return 7u8,
+        Storew(_, _, _) => return 8u8,
+        Jz(_, _) => return 9u8,
+        Inc(_) => return 10u8,
+        Dec(_) => return 11u8,
+        Print_obj(_) => return 12u8,
+        Rtrue => return 13u8,
+        Rfalse => return 14u8,
+        Print => return 15u8,
+        Newline => return 16u8,
+        Quit => return 17u8,
+        Call(_, _) => return 18u8,
+        Ret(_) => return 19u8,
+        Unknown(_) => return 0u8,
+    }
+}
+
+/// Check if an operand is a small constant with the expected value
+fn is_small_const(op: &Operand, expected: u8) -> bool {
+    match *op {
+        SmallConstant(val) => return val == expected,
+        _ => return false
+    }
+}
+
+/// Check if an operand is a variable reference with the expected number
+fn is_variable_ref(op: &Operand, expected: u8) -> bool {
+    match *op {
+        VariableRef(v) => return v == expected,
+        _ => return false
+    }
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+pub fn main() -> i32 {
+    // Test 1: Decode 'je 5 5 ?offset' (Long form)
+    // je is 2OP:1, with two small constants = 0x01 (long form, both small)
+    // Operand 1: 5
+    // Operand 2: 5
+    // Branch: short form, true polarity, offset 10 = 0x4A (0100_1010)
+    let test1_data: [u8; 5] = [$01, $05, $05, $4A, $00]
+    var mem1 = ZMemory::new(&test1_data[0], 4u32)
+    let instr1: Instruction = decode_instruction(&mut mem1)
+
+    if get_instruction_kind(&instr1) != 1u8 {
+        return 1  // Expected 'je' instruction
+    }
+
+    // Verify operands
+    match instr1 {
+        Je(op1, op2, branch) => {
+            if !is_small_const(&op1, 5u8) {
+                return 2  // op1 should be SmallConstant(5)
+            }
+            if !is_small_const(&op2, 5u8) {
+                return 3  // op2 should be SmallConstant(5)
+            }
+            if branch != 10u16 {
+                return 4  // Branch offset should be 10
+            }
+        },
+        _ => return 5  // Wrong instruction type
+    }
+
+    // Test 2: Decode 'add var3 10 -> var4' (Long form with variable)
+    // add is 2OP:$14, variable + small = 0x54 (0101_0100)
+    // Operand 1: variable 3
+    // Operand 2: 10
+    // Store: variable 4
+    let test2_data: [u8; 4] = [$54, $03, $0A, $04]
+    var mem2 = ZMemory::new(&test2_data[0], 4u32)
+    let instr2: Instruction = decode_instruction(&mut mem2)
+
+    if get_instruction_kind(&instr2) != 3u8 {
+        return 10  // Expected 'add' instruction
+    }
+
+    match instr2 {
+        Add(op1, op2, result_var) => {
+            if !is_variable_ref(&op1, 3u8) {
+                return 11  // op1 should be VariableRef(3)
+            }
+            if !is_small_const(&op2, 10u8) {
+                return 12  // op2 should be SmallConstant(10)
+            }
+            if result_var != 4u8 {
+                return 13  // Result should be stored in variable 4
+            }
+        },
+        _ => return 14
+    }
+
+    // Test 3: Decode 'rtrue' (0OP)
+    // rtrue is 0OP:0 = 0xB0 (1011_0000)
+    let test3_data: [u8; 1] = [$B0]
+    var mem3 = ZMemory::new(&test3_data[0], 1u32)
+    let instr3: Instruction = decode_instruction(&mut mem3)
+
+    if get_instruction_kind(&instr3) != 13u8 {
+        return 20  // Expected 'rtrue' instruction
+    }
+
+    // Test 4: Decode 'rfalse' (0OP)
+    // rfalse is 0OP:1 = 0xB1 (1011_0001)
+    let test4_data: [u8; 1] = [$B1]
+    var mem4 = ZMemory::new(&test4_data[0], 1u32)
+    let instr4: Instruction = decode_instruction(&mut mem4)
+
+    if get_instruction_kind(&instr4) != 14u8 {
+        return 21  // Expected 'rfalse' instruction
+    }
+
+    // Test 5: Decode 'jz var2 ?offset' (1OP, variable operand)
+    // jz is 1OP:0 with variable operand = 0xA0 (1010_0000)
+    // Operand: variable 2
+    // Branch: short form, offset 5 = 0x45
+    let test5_data: [u8; 3] = [$A0, $02, $45]
+    var mem5 = ZMemory::new(&test5_data[0], 3u32)
+    let instr5: Instruction = decode_instruction(&mut mem5)
+
+    if get_instruction_kind(&instr5) != 9u8 {
+        return 30  // Expected 'jz' instruction
+    }
+
+    match instr5 {
+        Jz(operand, branch) => {
+            if !is_variable_ref(&operand, 2u8) {
+                return 31  // Operand should be VariableRef(2)
+            }
+            if branch != 5u16 {
+                return 32  // Branch offset should be 5
+            }
+        },
+        _ => return 33
+    }
+
+    // Test 6: Decode 'inc var5' (1OP)
+    // inc is 1OP:5 with variable operand = 0xA5 (1010_0101)
+    // Operand: variable 5
+    let test6_data: [u8; 2] = [$A5, $05]
+    var mem6 = ZMemory::new(&test6_data[0], 2u32)
+    let instr6: Instruction = decode_instruction(&mut mem6)
+
+    if get_instruction_kind(&instr6) != 10u8 {
+        return 40  // Expected 'inc' instruction
+    }
+
+    match instr6 {
+        Inc(var_num) => {
+            if var_num != 5u8 {
+                return 41  // Variable should be 5
+            }
+        },
+        _ => return 42
+    }
+
+    // Test 7: Decode 'dec var7' (1OP)
+    // dec is 1OP:6 with variable operand = 0xA6 (1010_0110)
+    // Operand: variable 7
+    let test7_data: [u8; 2] = [$A6, $07]
+    var mem7 = ZMemory::new(&test7_data[0], 2u32)
+    let instr7: Instruction = decode_instruction(&mut mem7)
+
+    if get_instruction_kind(&instr7) != 11u8 {
+        return 50  // Expected 'dec' instruction
+    }
+
+    match instr7 {
+        Dec(var_num) => {
+            if var_num != 7u8 {
+                return 51  // Variable should be 7
+            }
+        },
+        _ => return 52
+    }
+
+    // Test 8: Decode 'ret 42' (1OP, small constant)
+    // ret is 1OP:$0B with small constant = 0x9B (1001_1011)
+    // Operand: 42
+    let test8_data: [u8; 2] = [$9B, $2A]
+    var mem8 = ZMemory::new(&test8_data[0], 2u32)
+    let instr8: Instruction = decode_instruction(&mut mem8)
+
+    if get_instruction_kind(&instr8) != 19u8 {
+        return 60  // Expected 'ret' instruction
+    }
+
+    match instr8 {
+        Ret(operand) => {
+            if !is_small_const(&operand, 42u8) {
+                return 61  // Operand should be SmallConstant(42)
+            }
+        },
+        _ => return 62
+    }
+
+    // All tests passed!
+    return 0
+}
