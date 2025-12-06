@@ -109,7 +109,7 @@ impl<T> Vec<T> {
                     let mut i: u32 = 0u32
                     while i < self.len {
                         new_ptr[i] = self.ptr[i]
-                        i = i + 1u32
+                        i++
                     }
 
                     // Free old memory if it exists
@@ -149,7 +149,7 @@ impl<T> Vec<T> {
 
         // Add the element
         self.ptr[self.len] = value
-        self.len = self.len + 1u32
+        self.len++
         return true
     }
 
@@ -159,7 +159,7 @@ impl<T> Vec<T> {
             return Option::None
         }
 
-        self.len = self.len - 1u32
+        self.len--
         let value: T = self.ptr[self.len]
         return Option::Some(value)
     }
@@ -232,7 +232,7 @@ impl<T> Vec<T> {
 
         // Insert the element
         self.ptr[index] = value
-        self.len = self.len + 1u32
+        self.len++
         return true
     }
 
@@ -263,7 +263,7 @@ impl<T> Vec<T> {
             i++
         }
 
-        self.len = self.len - 1u32
+        self.len--
         return Option::Some(value)
     }
 

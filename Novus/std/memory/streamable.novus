@@ -155,7 +155,7 @@ impl StreamBufferSet {
         // Ensure even size for Paula/DMA alignment
         var actual_size = size
         if (actual_size & 1) != 0 {
-            actual_size = actual_size + 1
+            actual_size++
         }
 
         self.buffer_count = count
@@ -176,7 +176,7 @@ impl StreamBufferSet {
             self.buffers[(u32)i].size = actual_size
             self.buffers[(u32)i].filled = 0
             self.buffers[(u32)i].source_offset = 0
-            i = i + 1
+            i++
         }
 
         return Result::Ok(())
@@ -192,7 +192,7 @@ impl StreamBufferSet {
                 buf.chip_ptr = (*u8)0
                 buf.size = 0
             }
-            i = i + 1
+            i++
         }
         self.buffer_count = 0
         self.buffer_size = 0
@@ -258,7 +258,7 @@ impl StreamBufferSet {
 
         // Ensure even size for DMA
         if (copy_size & 1) != 0 {
-            copy_size = copy_size - 1
+            copy_size--
         }
 
         unsafe {
@@ -276,7 +276,7 @@ impl StreamBufferSet {
                 while i < self.buffer_size {
                     let ptr = buf.chip_ptr + i
                     *ptr = 0
-                    i = i + 1
+                    i++
                 }
             }
         }
@@ -397,7 +397,7 @@ impl ChipStream {
         var i: u8 = 0
         while i < self.buffers.count() {
             self.fill_buffer(i)?
-            i = i + 1
+            i++
         }
         self.buffers.flush_cache()
         return Result::Ok(())

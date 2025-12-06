@@ -20,7 +20,7 @@ fn safe_increment() -> i32 {
     // This section is protected from task switching
     // No other task can run until _guard is dropped
     let old_value = shared_counter
-    shared_counter = shared_counter + 1
+    shared_counter++
 
     // Permit() will be called automatically when _guard goes out of scope
     return old_value
@@ -42,7 +42,7 @@ fn nested_critical_section() -> i32 {
 // Another function that uses critical section
 fn another_safe_increment() -> i32 {
     let _guard = CriticalSection::enter()
-    shared_counter = shared_counter + 1
+    shared_counter++
     return shared_counter
 }
 

@@ -106,7 +106,7 @@ impl SizePool {
 
         // Track the allocation
         self.allocs[self.alloc_count] = PoolAlloc { ptr: ptr, size: self.block_size }
-        self.alloc_count = self.alloc_count + 1
+        self.alloc_count++
         self.total_allocated = self.total_allocated + self.block_size
 
         return Option::Some(ptr)
@@ -130,15 +130,15 @@ impl SizePool {
                 var j = i
                 while j < self.alloc_count - 1 {
                     self.allocs[j] = self.allocs[j + 1]
-                    j = j + 1
+                    j++
                 }
                 self.allocs[self.alloc_count - 1] = PoolAlloc::new()
-                self.alloc_count = self.alloc_count - 1
+                self.alloc_count--
                 self.total_allocated = self.total_allocated - size
 
                 return true
             }
-            i = i + 1
+            i++
         }
 
         return false  // Not found in this pool

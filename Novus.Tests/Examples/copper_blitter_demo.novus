@@ -41,7 +41,7 @@ fn run_copper_for_frames(copper_list: *u16, frames: i32) {
         var count: i32 = 0
         while count < frames {
             WaitTOF()
-            count = count + 1
+            count++
         }
 
         // Restore system
@@ -140,7 +140,7 @@ pub fn demo_blitter_copy() -> i32 {
         while idx < half_size {
             let ptr: *u8 = (*u8)((u32)src + idx)
             *ptr = (u8)(idx & $FF)
-            idx = idx + 1
+            idx++
         }
 
         OwnBlitter()
@@ -165,7 +165,7 @@ pub fn demo_blitter_copy() -> i32 {
             let s: *u8 = (*u8)((u32)src + check_idx)
             let d: *u8 = (*u8)((u32)dst + check_idx)
             if *s != *d { success = false }
-            check_idx = check_idx + 1
+            check_idx++
         }
 
         FreeMem(dst, half_size)

@@ -40,7 +40,7 @@ pub fn main() -> i32 {
         var i: u32 = 0
         while i < 16 {
             byte_ptr[i] = (u8)i
-            i = i + 1
+            i++
         }
 
         // INTENTIONAL BUG: Write past the end of the buffer!

@@ -39,7 +39,7 @@ fn print_hex(value: u32) {
         let nibble = (v & $F)
         buf[i] = hex_chars[nibble]
         v = v >> 4
-        i = i - 1
+        i--
     }
     Write(out, &buf[0], 10)
 }
@@ -65,12 +65,12 @@ fn print_num(value: i32) {
         let digit = (v % 10)
         buf[i] = (u8)(48 + digit)  // '0' + digit
         v = v / 10
-        i = i - 1
+        i--
     }
 
     if negative {
         buf[i] = 45  // '-'
-        i = i - 1
+        i--
     }
 
     let len = 10 - i

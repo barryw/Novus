@@ -193,7 +193,7 @@ fn print_string(s: *u8) {
     var len: u32 = 0
     var ptr: *u8 = s
     while *ptr != 0 {
-        len = len + 1
+        len++
         ptr = (*u8)((u32)ptr + 1)
     }
 

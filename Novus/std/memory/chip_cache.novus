@@ -61,7 +61,7 @@ impl CacheEntry {
         }
         while i < max_len {
             self.debug_name[i] = name.as_ptr()[i]
-            i = i + 1
+            i++
         }
         self.debug_name_len = (u8)max_len
     }
@@ -146,7 +146,7 @@ impl ChipCache {
             var i: u32 = 0
             while i < MAX_CACHE_ENTRIES {
                 g_chip_cache.entries[i] = CacheEntry::new()
-                i = i + 1
+                i++
             }
 
             g_chip_cache.entry_count = 0
@@ -164,7 +164,7 @@ impl ChipCache {
     /// Tick the frame counter (call once per frame for LRU)
     pub fn tick() {
         unsafe {
-            g_chip_cache.frame_counter = g_chip_cache.frame_counter + 1
+            g_chip_cache.frame_counter++
         }
     }
 
@@ -196,16 +196,16 @@ impl ChipCache {
                 if g_chip_cache.entries[i].asset_id == asset_id && g_chip_cache.entries[i].is_valid() {
                     // Cache hit
                     g_chip_cache.entries[i].last_access = g_chip_cache.frame_counter
-                    g_chip_cache.cache_hits = g_chip_cache.cache_hits + 1
+                    g_chip_cache.cache_hits++
                     let result = g_chip_cache.entries[i].chip_ptr
                     Permit()
                     return Result::Ok(result)
                 }
-                i = i + 1
+                i++
             }
 
             // Cache miss - need to allocate
-            g_chip_cache.cache_misses = g_chip_cache.cache_misses + 1
+            g_chip_cache.cache_misses++
 
             // Try to allocate chip RAM (eviction happens inside Forbid)
             let alloc_result = ChipCache::allocate_chip_ram(size)
@@ -242,11 +242,11 @@ impl ChipCache {
             var i: u32 = 0
             while i < g_chip_cache.entry_count {
                 if g_chip_cache.entries[i].asset_id == asset_id {
-                    g_chip_cache.entries[i].pin_count = g_chip_cache.entries[i].pin_count + 1
+                    g_chip_cache.entries[i].pin_count++
                     Permit()
                     return
                 }
-                i = i + 1
+                i++
             }
             Permit()
         }
@@ -263,12 +263,12 @@ impl ChipCache {
             while i < g_chip_cache.entry_count {
                 if g_chip_cache.entries[i].asset_id == asset_id {
                     if g_chip_cache.entries[i].pin_count > 0 {
-                        g_chip_cache.entries[i].pin_count = g_chip_cache.entries[i].pin_count - 1
+                        g_chip_cache.entries[i].pin_count--
                     }
                     Permit()
                     return
                 }
-                i = i + 1
+                i++
             }
             Permit()
         }
@@ -285,7 +285,7 @@ impl ChipCache {
                     Permit()
                     return result
                 }
-                i = i + 1
+                i++
             }
             Permit()
             return false
@@ -303,7 +303,7 @@ impl ChipCache {
                     Permit()
                     return result
                 }
-                i = i + 1
+                i++
             }
             Permit()
             return 0
@@ -328,7 +328,7 @@ impl ChipCache {
                     Permit()
                     return true
                 }
-                i = i + 1
+                i++
             }
             Permit()
             return false
@@ -348,7 +348,7 @@ impl ChipCache {
                     ChipCache::remove_entry(i)
                     // Don't increment i - entries shifted down
                 } else {
-                    i = i + 1
+                    i++
                 }
             }
             Permit()
@@ -368,11 +368,11 @@ impl ChipCache {
                 if g_chip_cache.entries[i].is_valid() {
                     total_cached = total_cached + g_chip_cache.entries[i].size
                     if g_chip_cache.entries[i].pin_count > 0 {
-                        pinned_entries = pinned_entries + 1
+                        pinned_entries++
                         pinned_bytes = pinned_bytes + g_chip_cache.entries[i].size
                     }
                 }
-                i = i + 1
+                i++
             }
 
             let result = CacheStats {
@@ -399,7 +399,7 @@ impl ChipCache {
             var i: u32 = 0
             while i < g_chip_cache.entry_count {
                 ChipCache::free_entry(i)
-                i = i + 1
+                i++
             }
             g_chip_cache.entry_count = 0
             g_chip_cache.initialized = false
@@ -452,7 +452,7 @@ impl ChipCache {
                     // No more assets to evict
                     break
                 }
-                attempts = attempts + 1
+                attempts++
             }
 
             // If we have entries but couldn't evict any, all are pinned
@@ -491,7 +491,7 @@ impl ChipCache {
                         best_access = entry.last_access
                     }
                 }
-                i = i + 1
+                i++
             }
 
             if best_idx < 0 {
@@ -500,7 +500,7 @@ impl ChipCache {
 
             ChipCache::free_entry((u32)best_idx)
             ChipCache::remove_entry((u32)best_idx)
-            g_chip_cache.evictions = g_chip_cache.evictions + 1
+            g_chip_cache.evictions++
             return true
         }
     }
@@ -534,7 +534,7 @@ impl ChipCache {
                 entry.pooled = pooled
                 entry.set_name(name)
 
-                g_chip_cache.entry_count = g_chip_cache.entry_count + 1
+                g_chip_cache.entry_count++
             }
         }
     }
@@ -569,12 +569,12 @@ impl ChipCache {
             var i = idx
             while i < g_chip_cache.entry_count - 1 {
                 g_chip_cache.entries[i] = g_chip_cache.entries[i + 1]
-                i = i + 1
+                i++
             }
 
             // Clear last entry
             g_chip_cache.entries[g_chip_cache.entry_count - 1] = CacheEntry::new()
-            g_chip_cache.entry_count = g_chip_cache.entry_count - 1
+            g_chip_cache.entry_count--
         }
     }
 }

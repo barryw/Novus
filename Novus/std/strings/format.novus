@@ -39,7 +39,7 @@ impl StackFormatter {
             __novus_memcpy(dest, s.ptr, bytes_needed)
         }
 
-        self.len = self.len + bytes_needed
+        self.len++
         return true
     }
 

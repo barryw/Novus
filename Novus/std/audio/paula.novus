@@ -52,7 +52,7 @@ static mut g_audio_next_asset_id: u32 = $10000  // Start high to avoid collision
 fn next_audio_asset_id() -> u32 {
     unsafe {
         let id = g_audio_next_asset_id
-        g_audio_next_asset_id = g_audio_next_asset_id + 1
+        g_audio_next_asset_id++
         return id
     }
 }
@@ -1543,7 +1543,7 @@ impl MultiChannel {
         while ch < 4 {
             if self.allocated_mask.has(ch) {
                 total_vol = total_vol + (u32)self.volumes[ch]
-                ch_count = ch_count + 1
+                ch_count++
             }
             ch++
         }
@@ -1619,7 +1619,7 @@ impl MultiChannel {
         while ch2 < 4 {
             if self.allocated_mask.has(ch2) {
                 total_vol = total_vol + (u32)self.volumes[ch2]
-                ch_count = ch_count + 1
+                ch_count++
             }
             ch2++
         }

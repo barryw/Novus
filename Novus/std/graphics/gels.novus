@@ -355,13 +355,13 @@ impl GelsSystem {
 
     // Internal: increment active count (called by VSpriteHandle)
     pub fn inc_active(&mut self) {
-        self.active_count = self.active_count + 1u32
+        self.active_count++
     }
 
     // Internal: decrement active count (called by VSpriteHandle)
     pub fn dec_active(&mut self) {
         if self.active_count > 0u32 {
-            self.active_count = self.active_count - 1u32
+            self.active_count--
         }
     }
 }

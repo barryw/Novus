@@ -69,18 +69,18 @@ pub fn main() -> i32 {
             var j: i32 = 0
             while j < i {
                 unsafe { FreeMem(ptrs[j], 32) }
-                j = j + 1
+                j++
             }
             return 5  // Allocation failed during stress test
         }
-        i = i + 1
+        i++
     }
 
     // Clean up stress test
     i = 0
     while i < 5 {
         unsafe { FreeMem(ptrs[i], 32) }
-        i = i + 1
+        i++
     }
 
     return 0  // All tests passed

@@ -517,7 +517,7 @@ impl BlitterOps {
                 // Start blit
                 *size_ptr = bltsize
 
-                plane = plane + 1
+                plane++
             }
 
             // Blitter will be automatically released when guard goes out of scope
@@ -664,7 +664,7 @@ impl BlitterOps {
                 // Start blit
                 *size_ptr = bltsize
 
-                plane = plane + 1
+                plane++
             }
 
             // Blitter will be automatically released when guard goes out of scope
@@ -771,7 +771,7 @@ impl BlitterOps {
                 // Start fill
                 *size_ptr = bltsize
 
-                plane = plane + 1
+                plane++
             }
 
             // Blitter will be automatically released when guard goes out of scope
@@ -1226,7 +1226,7 @@ impl BlitterOps {
 
                 *size_ptr = bltsize
 
-                plane = plane + 1
+                plane++
             }
 
             // Blitter will be automatically released when guard goes out of scope
@@ -1323,7 +1323,7 @@ impl BlitterOps {
 
                 *size_ptr = bltsize
 
-                plane = plane + 1
+                plane++
             }
 
             // Blitter will be automatically released when guard goes out of scope

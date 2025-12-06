@@ -92,7 +92,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
                 let mut i: u32 = 0u32
                 while i < capacity {
                     entries[i].state = EntryState::Empty
-                    i = i + 1u32
+                    i++
                 }
 
                 // Take ownership of memory - HashMap will manage it directly
@@ -164,14 +164,14 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
                             self.entries[ti].state = EntryState::Occupied
                             self.entries[ti].key = key
                             self.entries[ti].value = value
-                            self.len = self.len + 1u32
-                            self.tombstones = self.tombstones - 1u32
+                            self.len++
+                            self.tombstones--
                         },
                         None => {
                             self.entries[index].state = EntryState::Occupied
                             self.entries[index].key = key
                             self.entries[index].value = value
-                            self.len = self.len + 1u32
+                            self.len++
                         }
                     }
                     return Option::None
@@ -194,7 +194,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
             }
 
             index = (index + 1u32) & mask
-            probes = probes + 1u32
+            probes++
         }
 
         // Table is full (shouldn't happen with proper resizing)
@@ -235,7 +235,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
             }
 
             index = (index + 1u32) & mask
-            probes = probes + 1u32
+            probes++
         }
 
         return Option::None
@@ -274,15 +274,15 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
                         // Found it - mark as tombstone
                         let value: V = self.entries[index].value
                         self.entries[index].state = EntryState::Tombstone
-                        self.len = self.len - 1u32
-                        self.tombstones = self.tombstones + 1u32
+                        self.len--
+                        self.tombstones++
                         return Option::Some(value)
                     }
                 }
             }
 
             index = (index + 1u32) & mask
-            probes = probes + 1u32
+            probes++
         }
 
         return Option::None
@@ -295,7 +295,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
         let mut i: u32 = 0u32
         while i < self.capacity {
             self.entries[i].state = EntryState::Empty
-            i = i + 1u32
+            i++
         }
         self.len = 0u32
         self.tombstones = 0u32
@@ -319,7 +319,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
                 let mut i: u32 = 0u32
                 while i < new_capacity {
                     new_entries[i].state = EntryState::Empty
-                    i = i + 1u32
+                    i++
                 }
 
                 // Re-insert all occupied entries
@@ -349,7 +349,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
                             // Skip empty and tombstone entries
                         }
                     }
-                    i = i + 1u32
+                    i++
                 }
 
                 // Free old entries
@@ -455,7 +455,7 @@ impl<K, V> HashMapIter<K, V> {
     pub fn next(&mut self) -> Option<KeyValue<K, V>> {
         while self.current < self.capacity {
             let idx: u32 = self.current
-            self.current = self.current + 1u32
+            self.current++
 
             match self.entries[idx].state {
                 Occupied => {
