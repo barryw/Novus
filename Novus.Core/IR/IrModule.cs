@@ -2139,3 +2139,268 @@ public class IrHardwareRead : IrInstruction
         ResultType = readSize == 4 ? IrIntType.U32 : IrIntType.U16;
     }
 }
+
+/// <summary>
+/// Represents a 68k CPU register for inline assembly.
+/// </summary>
+public enum M68kRegister
+{
+    // Data registers
+    D0, D1, D2, D3, D4, D5, D6, D7,
+    // Address registers
+    A0, A1, A2, A3, A4, A5, A6,
+    // Special - no register specified (use calling convention)
+    None
+}
+
+/// <summary>
+/// Represents an input parameter to an inline assembly block.
+/// </summary>
+public class IrAsmInput
+{
+    /// <summary>
+    /// Name of the parameter (used for %param substitution in asm)
+    /// </summary>
+    public string Name { get; set; }
+
+    /// <summary>
+    /// The value to pass as input (can be a variable reference, expression result, etc.)
+    /// </summary>
+    public IrValue Value { get; set; }
+
+    /// <summary>
+    /// The type of the input
+    /// </summary>
+    public IrType Type { get; set; }
+
+    /// <summary>
+    /// Optional explicit register binding (None = use calling convention inference)
+    /// </summary>
+    public M68kRegister Register { get; set; } = M68kRegister.None;
+
+    public IrAsmInput(string name, IrValue value, IrType type, M68kRegister register = M68kRegister.None)
+    {
+        Name = name;
+        Value = value;
+        Type = type;
+        Register = register;
+    }
+
+    /// <summary>
+    /// Get the register name as a string (e.g., "d0", "a1")
+    /// </summary>
+    public string GetRegisterName()
+    {
+        return Register switch
+        {
+            M68kRegister.D0 => "d0",
+            M68kRegister.D1 => "d1",
+            M68kRegister.D2 => "d2",
+            M68kRegister.D3 => "d3",
+            M68kRegister.D4 => "d4",
+            M68kRegister.D5 => "d5",
+            M68kRegister.D6 => "d6",
+            M68kRegister.D7 => "d7",
+            M68kRegister.A0 => "a0",
+            M68kRegister.A1 => "a1",
+            M68kRegister.A2 => "a2",
+            M68kRegister.A3 => "a3",
+            M68kRegister.A4 => "a4",
+            M68kRegister.A5 => "a5",
+            M68kRegister.A6 => "a6",
+            _ => ""
+        };
+    }
+}
+
+/// <summary>
+/// Represents an output value from an inline assembly block.
+/// </summary>
+public class IrAsmOutput
+{
+    /// <summary>
+    /// The type of the output value
+    /// </summary>
+    public IrType Type { get; set; }
+
+    /// <summary>
+    /// The register containing the output value
+    /// </summary>
+    public M68kRegister Register { get; set; }
+
+    public IrAsmOutput(IrType type, M68kRegister register)
+    {
+        Type = type;
+        Register = register;
+    }
+
+    /// <summary>
+    /// Get the register name as a string (e.g., "d0", "a1")
+    /// </summary>
+    public string GetRegisterName()
+    {
+        return Register switch
+        {
+            M68kRegister.D0 => "d0",
+            M68kRegister.D1 => "d1",
+            M68kRegister.D2 => "d2",
+            M68kRegister.D3 => "d3",
+            M68kRegister.D4 => "d4",
+            M68kRegister.D5 => "d5",
+            M68kRegister.D6 => "d6",
+            M68kRegister.D7 => "d7",
+            M68kRegister.A0 => "a0",
+            M68kRegister.A1 => "a1",
+            M68kRegister.A2 => "a2",
+            M68kRegister.A3 => "a3",
+            M68kRegister.A4 => "a4",
+            M68kRegister.A5 => "a5",
+            M68kRegister.A6 => "a6",
+            _ => "d0"  // Default to d0 for return values
+        };
+    }
+}
+
+/// <summary>
+/// IR instruction representing an inline assembly block.
+/// Inline assembly allows embedding 68k assembly instructions directly in Novus code
+/// with type-safe parameter binding and explicit register control.
+/// </summary>
+public class IrInlineAsm : IrInstruction
+{
+    /// <summary>
+    /// Input parameters to the assembly block
+    /// </summary>
+    public List<IrAsmInput> Inputs { get; set; } = new();
+
+    /// <summary>
+    /// Output values from the assembly block (empty for void return)
+    /// </summary>
+    public List<IrAsmOutput> Outputs { get; set; } = new();
+
+    /// <summary>
+    /// List of registers that are modified by the assembly but not used as outputs.
+    /// The compiler will save/restore callee-saved registers (d2-d7, a2-a6) in this list.
+    /// </summary>
+    public List<M68kRegister> Clobbers { get; set; } = new();
+
+    /// <summary>
+    /// Whether the assembly modifies memory (acts as a memory barrier)
+    /// </summary>
+    public bool ClobbersMemory { get; set; }
+
+    /// <summary>
+    /// Whether the assembly block is volatile (prevents reordering/elimination)
+    /// </summary>
+    public bool IsVolatile { get; set; }
+
+    /// <summary>
+    /// The raw assembly instructions (each string is one instruction line)
+    /// May contain %param placeholders that will be substituted with register names.
+    /// </summary>
+    public List<string> Instructions { get; set; } = new();
+
+    /// <summary>
+    /// Variable name to store the result (if single output), null if void or multi-output
+    /// </summary>
+    public string? ResultName { get; set; }
+
+    /// <summary>
+    /// Variable names for multi-value returns (e.g., tuple destructuring)
+    /// </summary>
+    public List<string>? MultiResultNames { get; set; }
+
+    public IrInlineAsm()
+    {
+    }
+
+    /// <summary>
+    /// Get the return type of this assembly block.
+    /// Returns void if no outputs, the single output type if one output,
+    /// or a tuple type if multiple outputs.
+    /// </summary>
+    public IrType GetReturnType()
+    {
+        if (Outputs.Count == 0)
+            return IrVoidType.Instance;
+        if (Outputs.Count == 1)
+            return Outputs[0].Type;
+        return new IrTupleType(Outputs.Select(o => o.Type).ToList());
+    }
+
+    /// <summary>
+    /// Get the set of callee-saved registers that need to be saved/restored.
+    /// Only returns registers from d2-d7 and a2-a6 that appear in the clobber list.
+    /// </summary>
+    public IEnumerable<M68kRegister> GetCalleeSavedClobbers()
+    {
+        var calleeSaved = new HashSet<M68kRegister>
+        {
+            M68kRegister.D2, M68kRegister.D3, M68kRegister.D4,
+            M68kRegister.D5, M68kRegister.D6, M68kRegister.D7,
+            M68kRegister.A2, M68kRegister.A3, M68kRegister.A4,
+            M68kRegister.A5, M68kRegister.A6
+        };
+        return Clobbers.Where(r => calleeSaved.Contains(r));
+    }
+
+    /// <summary>
+    /// Perform parameter substitution on an assembly instruction.
+    /// Replaces %param_name with the actual register name.
+    /// </summary>
+    public string SubstituteParameters(string instruction)
+    {
+        var result = instruction;
+        foreach (var input in Inputs)
+        {
+            var regName = input.GetRegisterName();
+            if (!string.IsNullOrEmpty(regName))
+            {
+                result = result.Replace($"%{input.Name}", regName);
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Parse a register name string to M68kRegister enum.
+    /// </summary>
+    public static M68kRegister ParseRegister(string name)
+    {
+        return name.ToLowerInvariant() switch
+        {
+            "d0" => M68kRegister.D0,
+            "d1" => M68kRegister.D1,
+            "d2" => M68kRegister.D2,
+            "d3" => M68kRegister.D3,
+            "d4" => M68kRegister.D4,
+            "d5" => M68kRegister.D5,
+            "d6" => M68kRegister.D6,
+            "d7" => M68kRegister.D7,
+            "a0" => M68kRegister.A0,
+            "a1" => M68kRegister.A1,
+            "a2" => M68kRegister.A2,
+            "a3" => M68kRegister.A3,
+            "a4" => M68kRegister.A4,
+            "a5" => M68kRegister.A5,
+            "a6" => M68kRegister.A6,
+            _ => M68kRegister.None
+        };
+    }
+
+    /// <summary>
+    /// Check if a register is a data register (d0-d7)
+    /// </summary>
+    public static bool IsDataRegister(M68kRegister reg)
+    {
+        return reg >= M68kRegister.D0 && reg <= M68kRegister.D7;
+    }
+
+    /// <summary>
+    /// Check if a register is an address register (a0-a6)
+    /// </summary>
+    public static bool IsAddressRegister(M68kRegister reg)
+    {
+        return reg >= M68kRegister.A0 && reg <= M68kRegister.A6;
+    }
+}

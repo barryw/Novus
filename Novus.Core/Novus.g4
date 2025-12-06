@@ -232,6 +232,7 @@ statement
     | deferStatement
     | assertStatement
     | panicStatement
+    | asmStatement
     | unsafeBlock
     | usingStatement
     | block
@@ -440,6 +441,7 @@ primaryExpression
     | KW_MATCH expression '{' NEWLINE* matchArm (',' NEWLINE* matchArm)* ','? NEWLINE* '}'  # MatchExpr
     | KW_IF expression block KW_ELSE (ifElseChain | block)  # IfExpr
     | KW_UNSAFE block                              # UnsafeExpr
+    | asmExpression                                # AsmExpr
     | copperList                                   # CopperExpr
     | blitterJob                                   # BlitterExpr
     | '(' ')'                                      # UnitLiteral
@@ -487,6 +489,70 @@ blitterField
     : IDENTIFIER ':' expression
     ;
 
+// Inline Assembly - hardware-level 68k assembly blocks
+// The 'unsafe' keyword is required to use inline assembly
+// Example: unsafe asm(x, y = 5 in d0) -> i32 in d0 volatile clobbers(d1, a0, memory) { "move.l d0,d1" }
+asmStatement
+    : KW_UNSAFE KW_ASM '(' asmInputList? ')' asmReturnSpec? asmVolatile? asmClobbers? asmBlock
+    ;
+
+// Inline assembly as an expression (for use in return statements)
+// Example: return unsafe asm() -> u32 in d0 { "move.l #42,d0" }
+asmExpression
+    : KW_UNSAFE KW_ASM '(' asmInputList? ')' asmReturnSpec? asmVolatile? asmClobbers? asmBlock
+    ;
+
+asmInputList
+    : asmInput (',' NEWLINE* asmInput)*
+    ;
+
+asmInput
+    : IDENTIFIER ('=' NEWLINE* expression)? asmRegisterBinding?
+    ;
+
+asmRegisterBinding
+    : KW_IN asmRegister
+    ;
+
+asmReturnSpec
+    : '->' type asmRegisterBinding?
+    | '->' '(' asmMultiReturn ')'
+    ;
+
+asmMultiReturn
+    : type KW_IN asmRegister (',' NEWLINE* type KW_IN asmRegister)+
+    ;
+
+asmVolatile
+    : KW_VOLATILE
+    ;
+
+asmClobbers
+    : KW_CLOBBERS '(' asmClobberList ')'
+    ;
+
+asmClobberList
+    : asmClobberItem (',' NEWLINE* asmClobberItem)*
+    ;
+
+asmClobberItem
+    : IDENTIFIER    // Semantic analyzer validates: d0-d7, a0-a6, or 'memory'
+    ;
+
+// Register names - contextual identifiers like copper operations
+// Matched as IDENTIFIER to avoid conflicts with variable names
+asmRegister
+    : IDENTIFIER    // Semantic analyzer validates: d0-d7, a0-a6
+    ;
+
+asmBlock
+    : '{' NEWLINE* asmInstruction* '}'
+    ;
+
+asmInstruction
+    : STRING_LITERAL NEWLINE*
+    ;
+
 // Lexer Rules
 
 // Keywords (must come before IDENTIFIER)
@@ -529,8 +595,15 @@ KW_SIZEOF    : 'sizeof';
 KW_CONSUMING : 'consuming';
 KW_COPPER    : 'copper';
 KW_BLITTER   : 'blitter';
+KW_ASM       : 'asm';
+KW_VOLATILE  : 'volatile';
+KW_CLOBBERS  : 'clobbers';
+// Note: 'memory' is NOT a reserved keyword - it's handled as a contextual identifier
+// in inline assembly clobber lists, similar to how registers (d0-d7, a0-a6) are handled.
+// This avoids breaking module paths like std::memory::block.
 // Note: wait, move, skip are NOT reserved keywords - they are handled as
 // contextual identifiers inside copper blocks to avoid breaking method names like .wait()
+// Register names (d0-d7, a0-a6) are also contextual identifiers handled in semantic analysis
 KW_TRUE     : 'true';
 KW_FALSE    : 'false';
 KW_NULL     : 'null';

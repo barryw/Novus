@@ -6009,4 +6009,29 @@ public partial class IrBuilder
                 return false;
         }
     }
+
+    /// <summary>
+    /// Visit an inline assembly expression wrapper (from primaryExpression).
+    /// Delegates to VisitAsmExpression.
+    /// </summary>
+    public override object? VisitAsmExpr([NotNull] NovusParser.AsmExprContext context)
+    {
+        return Visit(context.asmExpression());
+    }
+
+    /// <summary>
+    /// Visit the actual inline assembly expression.
+    /// Uses the shared ProcessInlineAssembly helper from IrBuilder.Statements.cs.
+    /// </summary>
+    public override object? VisitAsmExpression([NotNull] NovusParser.AsmExpressionContext context)
+    {
+        return ProcessInlineAssembly(
+            context.asmInputList(),
+            context.asmReturnSpec(),
+            context.asmVolatile(),
+            context.asmClobbers(),
+            context.asmBlock(),
+            GetLocation(context)
+        );
+    }
 }

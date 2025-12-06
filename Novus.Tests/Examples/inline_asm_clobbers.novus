@@ -1,0 +1,122 @@
+// Inline assembly with clobbers
+// Tests: register clobbers, memory clobbers, mixed clobbers
+
+// Function that clobbers d2 and d3
+pub fn compute_with_scratch(x: u32) -> u32 {
+    return unsafe asm(x in d0) -> u32 clobbers(d2, d3) {
+        "move.l d0,d2"
+        "move.l d0,d3"
+        "add.l d2,d3"
+        "add.l d3,d0"
+    }
+}
+
+// Function that clobbers multiple data registers
+pub fn sum_of_squares(a: u32, b: u32) -> u32 {
+    return unsafe asm(a in d0, b in d1) -> u32 clobbers(d2, d3, d4) {
+        "move.l d0,d2"
+        "mulu.w d2,d2"
+        "move.l d1,d3"
+        "mulu.w d3,d3"
+        "add.l d3,d2"
+        "move.l d2,d0"
+    }
+}
+
+// Function that clobbers address registers
+pub fn pointer_arithmetic(base: *u8, offset: u32) -> *u8 {
+    return unsafe asm(base in a0, offset in d0) -> *u8 in a0 clobbers(a1) {
+        "lea (a0,d0.l),a1"
+        "move.l a1,a0"
+    }
+}
+
+// Memory clobber - tells compiler memory may be modified
+pub fn memory_store_barrier() {
+    unsafe asm() volatile clobbers(memory) {
+        "nop"
+    }
+}
+
+// Memory clobber with actual memory write
+pub fn write_with_barrier(dest: *u32, value: u32) {
+    unsafe asm(dest in a0, value in d0) volatile clobbers(memory) {
+        "move.l d0,(a0)"
+    }
+}
+
+// Mixed register and memory clobbers
+pub fn complex_operation(src: *u32, dest: *u32, count: u32) {
+    unsafe asm(src in a0, dest in a1, count in d0) volatile clobbers(d1, d2, a2, memory) {
+        "subq.l #1,d0"
+        "bmi.s done"
+        "loop:"
+        "move.l (a0)+,d1"
+        "add.l d1,d1"
+        "move.l d1,(a1)+"
+        "dbra d0,loop"
+        "done:"
+    }
+}
+
+// Clobber all scratch registers (full register allocation stress test)
+pub fn use_all_scratch_regs(x: u32) -> u32 {
+    return unsafe asm(x in d0) -> u32 clobbers(d2, d3, d4, d5, d6, d7) {
+        "move.l d0,d2"
+        "move.l d0,d3"
+        "move.l d0,d4"
+        "move.l d0,d5"
+        "move.l d0,d6"
+        "move.l d0,d7"
+        "add.l d2,d0"
+        "add.l d3,d0"
+        "add.l d4,d0"
+        "add.l d5,d0"
+        "add.l d6,d0"
+        "add.l d7,d0"
+    }
+}
+
+// Clobber address registers
+pub fn use_address_regs(ptr: *u8, offset1: u32, offset2: u32) -> *u8 {
+    return unsafe asm(ptr in a0, offset1 in d0, offset2 in d1) -> *u8 in a0 clobbers(a2, a3) {
+        "lea (a0,d0.l),a2"
+        "lea (a2,d1.l),a3"
+        "move.l a3,a0"
+    }
+}
+
+pub fn main() -> i32 {
+    // Test scratch register usage
+    // compute_with_scratch: x + x + (x + x) = 3x
+    let result1 = compute_with_scratch(10u32)
+    assert!(result1 == 30u32, "compute_with_scratch(10) should be 30")
+
+    // sum_of_squares: 3*3 + 4*4 = 9 + 16 = 25
+    let result2 = sum_of_squares(3u32, 4u32)
+    assert!(result2 == 25u32, "sum_of_squares(3, 4) should be 25")
+
+    // Test memory barriers (just shouldn't crash)
+    memory_store_barrier()
+
+    // Test with actual memory - complex_operation doubles each value
+    var data = [1u32, 2u32, 3u32, 4u32]
+    var output = [0u32; 4]
+
+    let src = (*u32)&data[0]
+    let dest = (*u32)&output[0]
+
+    complex_operation(src, dest, 4u32)
+
+    // Verify the output values are doubled
+    assert!(output[0] == 2u32, "output[0] should be 2")
+    assert!(output[1] == 4u32, "output[1] should be 4")
+    assert!(output[2] == 6u32, "output[2] should be 6")
+    assert!(output[3] == 8u32, "output[3] should be 8")
+
+    // Test all scratch regs: x + 6*x = 7x
+    let seven_x = use_all_scratch_regs(10u32)
+    assert!(seven_x == 70u32, "use_all_scratch_regs(10) should be 70")
+
+    return 0
+}

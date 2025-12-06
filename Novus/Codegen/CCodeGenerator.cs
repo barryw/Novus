@@ -4337,6 +4337,10 @@ public partial class CCodeGenerator
                 }
                 break;
 
+            case IrInlineAsm inlineAsm:
+                EmitInlineAsm(inlineAsm);
+                break;
+
             default:
                 _output.AppendLine($"    // TODO: {instruction.GetType().Name}");
                 break;
@@ -5645,6 +5649,184 @@ public partial class CCodeGenerator
         // Return from function after error (emits proper return type)
         // Note: This code is unreachable after showing the error, but required for C semantics
         EmitErrorPathReturn(1);  // indent level 1
+    }
+
+    /// <summary>
+    /// Emit inline assembly for M68k/VBCC.
+    ///
+    /// VBCC uses "inline-assembly functions" which are function declarations followed by
+    /// '=' and a string constant. When called, no function call is generated - the string
+    /// is inserted directly into the assembly output.
+    ///
+    /// Example: double sin(__reg("fp0") double) = "\tfsin.x\tfp0\n";
+    ///
+    /// We generate:
+    /// 1. An inline-assembly function declaration with __reg() for register bindings
+    /// 2. A call to that function with our input values
+    /// 3. Capture the result (return value is in the designated output register)
+    /// </summary>
+    private void EmitInlineAsm(IrInlineAsm inlineAsm)
+    {
+        _output.AppendLine("    /* Inline assembly block */");
+
+        // Build the parameter list with __reg() specifiers
+        var paramList = new List<string>();
+        var argList = new List<string>();
+
+        foreach (var input in inlineAsm.Inputs)
+        {
+            var regName = input.GetRegisterName();
+            var cType = GetCType(input.Type);
+            var inputValue = EmitValue(input.Value);
+
+            if (!string.IsNullOrEmpty(regName))
+            {
+                paramList.Add($"__reg(\"{regName}\") {cType}");
+            }
+            else
+            {
+                paramList.Add(cType);
+            }
+            argList.Add($"({cType}){inputValue}");
+        }
+
+        // Determine return type and register
+        string returnType = "void";
+        string outputReg = "";
+        if (inlineAsm.Outputs.Count > 0)
+        {
+            var output = inlineAsm.Outputs[0];
+            returnType = GetCType(output.Type);
+            outputReg = output.GetRegisterName();
+        }
+
+        // Build the assembly string
+        var asmParts = new List<string>();
+
+        // Add clobber register saves (for callee-saved registers d2-d7, a2-a6)
+        var savedRegs = new List<string>();
+        foreach (var clobber in inlineAsm.Clobbers)
+        {
+            var regName = clobber.ToString().ToLower();
+            if (IsCalleeSavedRegister(clobber))
+            {
+                savedRegs.Add(regName);
+            }
+        }
+
+        if (savedRegs.Count > 0)
+        {
+            var regList = string.Join("/", savedRegs);
+            asmParts.Add($"\\tmovem.l {regList},-(sp)\\n");
+        }
+
+        // Add the user's assembly instructions
+        foreach (var instruction in inlineAsm.Instructions)
+        {
+            var substituted = inlineAsm.SubstituteParameters(instruction);
+            var escaped = substituted
+                .Replace("\\", "\\\\")
+                .Replace("\"", "\\\"");
+            asmParts.Add($"\\t{escaped}\\n");
+        }
+
+        // Restore saved registers
+        if (savedRegs.Count > 0)
+        {
+            var regList = string.Join("/", savedRegs);
+            asmParts.Add($"\\tmovem.l (sp)+,{regList}\\n");
+        }
+
+        var asmString = string.Join("", asmParts);
+        var paramString = string.Join(", ", paramList);
+        var argString = string.Join(", ", argList);
+
+        // Generate unique inline asm function name
+        var funcName = $"__novus_inline_asm_{_inlineAsmCounter++}";
+
+        // Generate the inline assembly function declaration
+        // For functions with outputs, we need __reg on return to ensure the result stays in the right register
+        if (!string.IsNullOrEmpty(outputReg))
+        {
+            _output.AppendLine($"    __reg(\"{outputReg}\") {returnType} {funcName}({paramString}) = \"{asmString}\";");
+        }
+        else
+        {
+            _output.AppendLine($"    {returnType} {funcName}({paramString}) = \"{asmString}\";");
+        }
+
+        // Call the inline assembly function and capture result
+        if (inlineAsm.Outputs.Count == 1 && inlineAsm.ResultName != null)
+        {
+            var resultName = SanitizeVariableName(inlineAsm.ResultName);
+            var output = inlineAsm.Outputs[0];
+            var cType = GetCType(output.Type);
+
+            // Declare result variable if needed
+            if (!_declaredVariables.Contains(resultName))
+            {
+                _output.AppendLine($"    {GetCVariableDeclaration(output.Type, resultName)};");
+                _declaredVariables.Add(resultName);
+            }
+
+            _output.AppendLine($"    {resultName} = {funcName}({argString});");
+        }
+        else if (inlineAsm.Outputs.Count > 1 && inlineAsm.MultiResultNames != null)
+        {
+            // Multi-register return - VBCC doesn't support this directly
+            // We'd need separate inline asm functions for each output
+            // For now, just call and get first result
+            var resultName = SanitizeVariableName(inlineAsm.MultiResultNames[0]);
+            var output = inlineAsm.Outputs[0];
+
+            if (!_declaredVariables.Contains(resultName))
+            {
+                _output.AppendLine($"    {GetCVariableDeclaration(output.Type, resultName)};");
+                _declaredVariables.Add(resultName);
+            }
+
+            _output.AppendLine($"    {resultName} = {funcName}({argString});");
+
+            // TODO: Handle additional outputs - would need separate asm functions
+        }
+        else if (argList.Count > 0 || inlineAsm.Instructions.Count > 0)
+        {
+            // Void return - just call the function
+            _output.AppendLine($"    {funcName}({argString});");
+        }
+        else if (inlineAsm.Instructions.Count > 0)
+        {
+            // No inputs - define and call with no args
+            _output.AppendLine($"    {funcName}();");
+        }
+
+        _output.AppendLine("    /* End inline assembly */");
+    }
+
+    private int _inlineAsmCounter = 0;
+
+    /// <summary>
+    /// Check if a register is callee-saved (needs to be preserved across function calls).
+    /// Caller-saved: d0, d1, a0, a1
+    /// Callee-saved: d2-d7, a2-a6
+    /// </summary>
+    private static bool IsCalleeSavedRegister(M68kRegister reg)
+    {
+        return reg switch
+        {
+            M68kRegister.D2 => true,
+            M68kRegister.D3 => true,
+            M68kRegister.D4 => true,
+            M68kRegister.D5 => true,
+            M68kRegister.D6 => true,
+            M68kRegister.D7 => true,
+            M68kRegister.A2 => true,
+            M68kRegister.A3 => true,
+            M68kRegister.A4 => true,
+            M68kRegister.A5 => true,
+            M68kRegister.A6 => true,
+            _ => false
+        };
     }
 
     private void EmitMatch(IrMatch match)

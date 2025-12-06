@@ -2725,4 +2725,279 @@ public partial class IrBuilder
 
         return null;
     }
+
+    /// <summary>
+    /// Visit inline assembly statement.
+    /// Parses the asm block syntax and emits an IrInlineAsm instruction.
+    /// </summary>
+    public override object? VisitAsmStatement([NotNull] NovusParser.AsmStatementContext context)
+    {
+        // Set current statement location for debug symbols
+        _currentStatementLocation = GetLocation(context);
+
+        return ProcessInlineAssembly(
+            context.asmInputList(),
+            context.asmReturnSpec(),
+            context.asmVolatile(),
+            context.asmClobbers(),
+            context.asmBlock(),
+            GetLocation(context)
+        );
+    }
+
+    /// <summary>
+    /// Shared helper for processing inline assembly (used by both statement and expression forms).
+    /// </summary>
+    private object? ProcessInlineAssembly(
+        NovusParser.AsmInputListContext? inputList,
+        NovusParser.AsmReturnSpecContext? returnSpec,
+        NovusParser.AsmVolatileContext? volatileSpec,
+        NovusParser.AsmClobbersContext? clobbersSpec,
+        NovusParser.AsmBlockContext asmBlock,
+        SourceLocation location)
+    {
+        var asmInst = new IrInlineAsm
+        {
+            Location = location
+        };
+
+        // Parse input parameters
+        if (inputList != null)
+        {
+            int dataRegIndex = 0;  // d0, d1
+            int addrRegIndex = 0;  // a0, a1
+
+            foreach (var input in inputList.asmInput())
+            {
+                var paramName = input.IDENTIFIER().GetText();
+
+                // Get the expression value (either the identifier itself or an assigned expression)
+                IrValue inputValue;
+                var expr = input.expression();
+                if (expr != null)
+                {
+                    // Expression provided: name = expression
+                    inputValue = (IrValue?)Visit(expr) ?? new IrConstant(0, IrIntType.I32);
+                }
+                else
+                {
+                    // Just the identifier - look up the variable
+                    inputValue = LookupVariable(paramName) ?? new IrConstant(0, IrIntType.I32);
+                }
+
+                var inputType = inputValue.Type ?? IrIntType.I32;
+
+                // Parse register binding if explicit
+                M68kRegister reg = M68kRegister.None;
+                var regBinding = input.asmRegisterBinding();
+                if (regBinding != null)
+                {
+                    var regName = regBinding.asmRegister().GetText();
+                    reg = IrInlineAsm.ParseRegister(regName);
+                }
+                else
+                {
+                    // Infer register from calling convention and type
+                    // Pointers go to address registers, data to data registers
+                    if (inputType is IrPointerType || inputType is IrReferenceType || inputType is IrMutReferenceType)
+                    {
+                        reg = addrRegIndex switch
+                        {
+                            0 => M68kRegister.A0,
+                            1 => M68kRegister.A1,
+                            _ => M68kRegister.None // Too many, will need explicit binding
+                        };
+                        addrRegIndex++;
+                    }
+                    else
+                    {
+                        reg = dataRegIndex switch
+                        {
+                            0 => M68kRegister.D0,
+                            1 => M68kRegister.D1,
+                            _ => M68kRegister.None // Too many, will need explicit binding
+                        };
+                        dataRegIndex++;
+                    }
+                }
+
+                asmInst.Inputs.Add(new IrAsmInput(paramName, inputValue, inputType, reg));
+            }
+        }
+
+        // Parse return specification
+        if (returnSpec != null)
+        {
+            var multiReturn = returnSpec.asmMultiReturn();
+            if (multiReturn != null)
+            {
+                // Multi-value return: -> (type in reg, type in reg)
+                var types = multiReturn.type();
+                var registers = multiReturn.asmRegister();
+                for (int i = 0; i < types.Length && i < registers.Length; i++)
+                {
+                    var returnType = ParseType(types[i]);
+                    var regName = registers[i].GetText();
+                    var reg = IrInlineAsm.ParseRegister(regName);
+                    asmInst.Outputs.Add(new IrAsmOutput(returnType, reg));
+                }
+            }
+            else
+            {
+                // Single return: -> type [in reg]
+                var returnType = ParseType(returnSpec.type());
+                M68kRegister reg = M68kRegister.D0; // Default return register
+
+                var regBinding = returnSpec.asmRegisterBinding();
+                if (regBinding != null)
+                {
+                    var regName = regBinding.asmRegister().GetText();
+                    reg = IrInlineAsm.ParseRegister(regName);
+                }
+
+                // Check for void type - no output in that case
+                if (returnType is not IrVoidType)
+                {
+                    asmInst.Outputs.Add(new IrAsmOutput(returnType, reg));
+                }
+            }
+        }
+
+        // Parse volatile flag
+        if (volatileSpec != null)
+        {
+            asmInst.IsVolatile = true;
+        }
+
+        // Parse clobbers
+        if (clobbersSpec != null)
+        {
+            foreach (var clobber in clobbersSpec.asmClobberList().asmClobberItem())
+            {
+                var clobberName = clobber.IDENTIFIER().GetText();
+                if (clobberName == "memory")
+                {
+                    asmInst.ClobbersMemory = true;
+                }
+                else
+                {
+                    var reg = IrInlineAsm.ParseRegister(clobberName);
+                    if (reg != M68kRegister.None)
+                    {
+                        asmInst.Clobbers.Add(reg);
+                    }
+                }
+            }
+        }
+
+        // Parse assembly instructions
+        foreach (var instruction in asmBlock.asmInstruction())
+        {
+            var instrText = instruction.STRING_LITERAL().GetText();
+            // Strip quotes from string literal
+            var instr = instrText.Substring(1, instrText.Length - 2);
+            // Unescape any escape sequences
+            instr = UnescapeString(instr);
+            asmInst.Instructions.Add(instr);
+        }
+
+        // Generate result variable name if needed
+        if (asmInst.Outputs.Count == 1)
+        {
+            asmInst.ResultName = $"%t{_tempCounter++}";
+        }
+        else if (asmInst.Outputs.Count > 1)
+        {
+            asmInst.MultiResultNames = new List<string>();
+            for (int i = 0; i < asmInst.Outputs.Count; i++)
+            {
+                asmInst.MultiResultNames.Add($"%t{_tempCounter++}");
+            }
+        }
+
+        // Emit the instruction
+        Emit(asmInst);
+
+        // Return the result value if any
+        if (asmInst.Outputs.Count == 1 && asmInst.ResultName != null)
+        {
+            return new IrVariable(asmInst.ResultName, asmInst.Outputs[0].Type);
+        }
+        else if (asmInst.Outputs.Count > 1 && asmInst.MultiResultNames != null)
+        {
+            var tupleElements = asmInst.Outputs.Zip(asmInst.MultiResultNames,
+                (output, name) => new IrVariable(name, output.Type) as IrValue).ToList();
+            var tupleElementTypes = asmInst.Outputs.Select(o => o.Type).ToList();
+            var tupleType = new IrTupleType(tupleElementTypes);
+            return new IrTupleLiteral(tupleType, tupleElements);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Helper to look up a variable by name and return an IrValue for it.
+    /// </summary>
+    private IrValue? LookupVariable(string name)
+    {
+        // First check local variables
+        var localVar = LookupLocalVariable(name);
+        if (localVar != null)
+        {
+            return new IrVariable(name, localVar.Type);
+        }
+
+        // Check function parameters
+        if (_currentFunction != null)
+        {
+            var param = _currentFunction.Parameters.FirstOrDefault(p => p.Name == name);
+            if (param != null)
+            {
+                return new IrVariable(name, param.Type);
+            }
+        }
+
+        // Check global/static variables
+        var globalVar = _module.StaticVariables.FirstOrDefault(s => s.Name == name);
+        if (globalVar != null)
+        {
+            return new IrGlobalVariable(name, globalVar.Type);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Unescape a string literal (handle \n, \t, etc.)
+    /// </summary>
+    private static string UnescapeString(string s)
+    {
+        if (!s.Contains('\\'))
+            return s;
+
+        var result = new System.Text.StringBuilder(s.Length);
+        for (int i = 0; i < s.Length; i++)
+        {
+            if (s[i] == '\\' && i + 1 < s.Length)
+            {
+                i++;
+                result.Append(s[i] switch
+                {
+                    'n' => '\n',
+                    't' => '\t',
+                    'r' => '\r',
+                    '0' => '\0',
+                    '\\' => '\\',
+                    '"' => '"',
+                    '\'' => '\'',
+                    _ => s[i]
+                });
+            }
+            else
+            {
+                result.Append(s[i]);
+            }
+        }
+        return result.ToString();
+    }
 }

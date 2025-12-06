@@ -1,0 +1,206 @@
+// Inline assembly for bit manipulation operations
+// Tests: bit instructions, shifts, rotates, bit fields
+
+// Count leading zeros (68020+)
+// Note: On 68000, this would need a software implementation
+pub fn count_leading_zeros_020(x: u32) -> u32 {
+    return unsafe asm(x in d0) -> u32 clobbers(d1) {
+        "moveq #32,d1"
+        "tst.l d0"
+        "beq.s done"
+        "bfffo d0{0:32},d1"
+        "done:"
+        "move.l d1,d0"
+    }
+}
+
+// Count trailing zeros
+pub fn count_trailing_zeros(x: u32) -> u32 {
+    return unsafe asm(x in d0) -> u32 clobbers(d1) {
+        "moveq #32,d1"
+        "tst.l d0"
+        "beq.s done"
+        "neg.l d0"
+        "and.l d0,d0"
+        "bfffo d0{0:32},d1"
+        "sub.l #31,d1"
+        "neg.l d1"
+        "done:"
+        "move.l d1,d0"
+    }
+}
+
+// Population count (count set bits)
+pub fn popcount(x: u32) -> u32 {
+    return unsafe asm(x in d0) -> u32 clobbers(d1, d2) {
+        "moveq #0,d1"
+        "tst.l d0"
+        "beq.s .done"
+        ".loop:"
+        "move.l d0,d2"
+        "subq.l #1,d2"
+        "and.l d2,d0"
+        "addq.l #1,d1"
+        "tst.l d0"
+        "bne.s .loop"
+        ".done:"
+        "move.l d1,d0"
+    }
+}
+
+// Reverse bits in a byte
+pub fn reverse_bits_8(x: u8) -> u8 {
+    return unsafe asm(x in d0) -> u8 clobbers(d1, d2) {
+        "and.l #$FF,d0"
+        "moveq #0,d1"
+        "moveq #7,d2"
+        "loop:"
+        "lsr.b #1,d0"
+        "roxl.b #1,d1"
+        "dbra d2,loop"
+        "move.b d1,d0"
+    }
+}
+
+// Rotate left 32-bit
+pub fn rotate_left(x: u32, n: u32) -> u32 {
+    return unsafe asm(x in d0, n in d1) -> u32 {
+        "and.l #31,d1"
+        "rol.l d1,d0"
+    }
+}
+
+// Rotate right 32-bit
+pub fn rotate_right(x: u32, n: u32) -> u32 {
+    return unsafe asm(x in d0, n in d1) -> u32 {
+        "and.l #31,d1"
+        "ror.l d1,d0"
+    }
+}
+
+// Test if a specific bit is set - returns 1 if set, 0 if not
+pub fn test_bit(x: u32, bit: u32) -> u32 {
+    return unsafe asm(x in d0, bit in d1) -> u32 clobbers(d2) {
+        "moveq #0,d2"
+        "btst d1,d0"
+        "beq.s not_set"
+        "moveq #1,d2"
+        "not_set:"
+        "move.l d2,d0"
+    }
+}
+
+// Set a specific bit
+pub fn set_bit(x: u32, bit: u32) -> u32 {
+    return unsafe asm(x in d0, bit in d1) -> u32 {
+        "bset d1,d0"
+    }
+}
+
+// Clear a specific bit
+pub fn clear_bit(x: u32, bit: u32) -> u32 {
+    return unsafe asm(x in d0, bit in d1) -> u32 {
+        "bclr d1,d0"
+    }
+}
+
+// Toggle a specific bit
+pub fn toggle_bit(x: u32, bit: u32) -> u32 {
+    return unsafe asm(x in d0, bit in d1) -> u32 {
+        "bchg d1,d0"
+    }
+}
+
+// Extract bit field (68020+)
+pub fn extract_bits(x: u32, offset: u32, width: u32) -> u32 {
+    return unsafe asm(x in d0, offset in d1, width in d2) -> u32 clobbers(d3) {
+        "lsl.l #5,d1"
+        "or.l d2,d1"
+        "bfextu d0{d1:d2},d3"
+        "move.l d3,d0"
+    }
+}
+
+// Swap nibbles in a byte
+pub fn swap_nibbles(x: u8) -> u8 {
+    return unsafe asm(x in d0) -> u8 {
+        "ror.b #4,d0"
+    }
+}
+
+// Sign extend byte to long
+pub fn sign_extend_byte(x: i8) -> i32 {
+    return unsafe asm(x in d0) -> i32 {
+        "ext.w d0"
+        "ext.l d0"
+    }
+}
+
+// Sign extend word to long
+pub fn sign_extend_word(x: i16) -> i32 {
+    return unsafe asm(x in d0) -> i32 {
+        "ext.l d0"
+    }
+}
+
+pub fn main() -> i32 {
+    // Test rotations
+    // rotate_left($12345678, 8) = $34567812
+    let rot_left = rotate_left($12345678u32, 8u32)
+    assert!(rot_left == $34567812u32, "rotate_left by 8 bits")
+
+    // rotate_right($12345678, 8) = $78123456
+    let rot_right = rotate_right($12345678u32, 8u32)
+    assert!(rot_right == $78123456u32, "rotate_right by 8 bits")
+
+    // Test bit operations
+    let with_bit_set = set_bit(0u32, 5u32)
+    assert!(with_bit_set == 32u32, "set_bit(0, 5) should be 32")
+
+    let with_bit_clear = clear_bit($FFFFFFFFu32, 5u32)
+    assert!(with_bit_clear == $FFFFFFDFu32, "clear_bit should clear bit 5")
+
+    let toggled = toggle_bit($AAAA5555u32, 0u32)
+    assert!(toggled == $AAAA5554u32, "toggle_bit should flip bit 0")
+
+    // Test bit testing (returns 1 or 0)
+    let bit_is_set = test_bit($80000000u32, 31u32)
+    assert!(bit_is_set == 1u32, "bit 31 should be set in $80000000")
+
+    let bit_not_set = test_bit($7FFFFFFFu32, 31u32)
+    assert!(bit_not_set == 0u32, "bit 31 should not be set in $7FFFFFFF")
+
+    // Test popcount
+    // $F0F0F0F0 has 4 bits set per byte * 4 bytes = 16 bits
+    let ones = popcount($F0F0F0F0u32)
+    assert!(ones == 16u32, "popcount($F0F0F0F0) should be 16")
+
+    // Test popcount edge cases
+    let zero_bits = popcount(0u32)
+    assert!(zero_bits == 0u32, "popcount(0) should be 0")
+
+    let all_bits = popcount($FFFFFFFFu32)
+    assert!(all_bits == 32u32, "popcount($FFFFFFFF) should be 32")
+
+    // Test byte reversal: $A5 = 10100101 -> 10100101 = $A5 (palindrome!)
+    // Let's use $F0 = 11110000 -> 00001111 = $0F
+    let reversed = reverse_bits_8($F0u8)
+    assert!(reversed == $0Fu8, "reverse_bits_8($F0) should be $0F")
+
+    // Test nibble swap: $12 -> $21
+    let swapped = swap_nibbles($12u8)
+    assert!(swapped == $21u8, "swap_nibbles($12) should be $21")
+
+    // Test sign extension
+    let extended_byte = sign_extend_byte(-5i8)
+    assert!(extended_byte == -5i32, "sign_extend_byte(-5) should be -5i32")
+
+    let extended_word = sign_extend_word(-1000i16)
+    assert!(extended_word == -1000i32, "sign_extend_word(-1000) should be -1000i32")
+
+    // Test positive values don't get sign extended incorrectly
+    let pos_byte = sign_extend_byte(127i8)
+    assert!(pos_byte == 127i32, "sign_extend_byte(127) should be 127i32")
+
+    return 0
+}

@@ -1,0 +1,117 @@
+// Inline assembly with pointers and memory operations
+// Tests: address registers, pointer inputs, memory access
+
+// Read a byte from memory
+pub fn peek_byte(addr: *u8) -> u8 {
+    return unsafe asm(addr in a0) -> u8 in d0 {
+        "move.b (a0),d0"
+        "and.l #$FF,d0"
+    }
+}
+
+// Read a word from memory
+pub fn peek_word(addr: *u16) -> u16 {
+    return unsafe asm(addr in a0) -> u16 in d0 {
+        "move.w (a0),d0"
+    }
+}
+
+// Read a long from memory
+pub fn peek_long(addr: *u32) -> u32 {
+    return unsafe asm(addr in a0) -> u32 in d0 {
+        "move.l (a0),d0"
+    }
+}
+
+// Write a byte to memory
+pub fn poke_byte(addr: *u8, value: u8) {
+    unsafe asm(addr in a0, value in d0) volatile {
+        "move.b d0,(a0)"
+    }
+}
+
+// Write a word to memory
+pub fn poke_word(addr: *u16, value: u16) {
+    unsafe asm(addr in a0, value in d0) volatile {
+        "move.w d0,(a0)"
+    }
+}
+
+// Write a long to memory
+pub fn poke_long(addr: *u32, value: u32) {
+    unsafe asm(addr in a0, value in d0) volatile {
+        "move.l d0,(a0)"
+    }
+}
+
+// Copy bytes from source to destination
+pub fn copy_byte(src: *u8, dest: *u8) {
+    unsafe asm(src in a0, dest in a1) volatile clobbers(d0) {
+        "move.b (a0),d0"
+        "move.b d0,(a1)"
+    }
+}
+
+// Copy a long with post-increment addressing
+pub fn copy_long_inc(src: *u32, dest: *u32) {
+    unsafe asm(src in a0, dest in a1) volatile clobbers(d0) {
+        "move.l (a0)+,d0"
+        "move.l d0,(a1)+"
+    }
+}
+
+// Fill memory with a byte value
+pub fn fill_byte(dest: *u8, value: u8, count: u32) {
+    unsafe asm(dest in a0, value in d0, count in d1) volatile clobbers(memory) {
+        "subq.l #1,d1"
+        "bmi.s done"
+        "loop: move.b d0,(a0)+"
+        "dbra d1,loop"
+        "done:"
+    }
+}
+
+// Clear memory (fill with zeros)
+pub fn clear_memory(dest: *u8, count: u32) {
+    unsafe asm(dest in a0, count in d1) volatile clobbers(d0, memory) {
+        "moveq #0,d0"
+        "subq.l #1,d1"
+        "bmi.s done"
+        "loop: move.b d0,(a0)+"
+        "dbra d1,loop"
+        "done:"
+    }
+}
+
+// Test pointer with inferred address register
+pub fn read_via_pointer(ptr: *u32) -> u32 {
+    return unsafe asm(ptr) -> u32 in d0 {
+        "move.l (a0),d0"
+    }
+}
+
+pub fn main() -> i32 {
+    // Create a test buffer on the stack (size inferred from initializer)
+    var buffer = [0u8; 16]
+
+    // Get pointer to buffer - use (*u8) C-style cast
+    let ptr = (*u8)&buffer[0]
+
+    // Test poke and peek
+    poke_byte(ptr, $42u8)
+    let val = peek_byte(ptr)
+    assert!(val == $42u8, "peek_byte should return poked value")
+
+    // Test word operations
+    let wptr = (*u16)ptr
+    poke_word(wptr, $1234u16)
+    let wval = peek_word(wptr)
+    assert!(wval == $1234u16, "peek_word should return poked value")
+
+    // Test clear
+    clear_memory(ptr, 16u32)
+    let cleared = peek_byte(ptr)
+    assert!(cleared == 0u8, "memory should be cleared to zero")
+
+    return 0
+}

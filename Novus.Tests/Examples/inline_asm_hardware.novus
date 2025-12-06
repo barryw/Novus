@@ -1,0 +1,149 @@
+// Inline assembly for Amiga hardware access
+// Tests: volatile for hardware, direct register access, timing-critical code
+
+// Custom chip base address
+const CUSTOM_BASE: u32 = $DFF000
+
+// Hardware register offsets
+const VPOSR: u32 = $004      // Vertical position (high bits)
+const VHPOSR: u32 = $006     // Vertical/horizontal position
+const COLOR00: u32 = $180    // Background color
+const INTENA: u32 = $09A     // Interrupt enable bits
+const INTREQ: u32 = $09C     // Interrupt request bits
+const DMACON: u32 = $096     // DMA control
+
+// Read the current vertical beam position
+pub fn read_vpos() -> u16 {
+    return unsafe asm() -> u16 in d0 volatile {
+        "move.w $DFF006,d0"
+        "and.w #$1FF,d0"
+    }
+}
+
+// Wait for a specific vertical position
+pub fn wait_vpos(line: u16) {
+    unsafe asm(line in d0) volatile clobbers(d1) {
+        "and.w #$1FF,d0"
+        "wait_loop:"
+        "move.w $DFF006,d1"
+        "and.w #$1FF,d1"
+        "cmp.w d0,d1"
+        "bne.s wait_loop"
+    }
+}
+
+// Set the background color
+pub fn set_background_color(color: u16) {
+    unsafe asm(color in d0) volatile {
+        "move.w d0,$DFF180"
+    }
+}
+
+// Flash the screen (rainbow effect for one frame)
+pub fn flash_screen() {
+    unsafe asm() volatile clobbers(d0, d1) {
+        "moveq #0,d1"
+        "flash_loop:"
+        "move.w $DFF006,d0"
+        "and.w #$1FF,d0"
+        "move.w d0,$DFF180"
+        "addq.w #1,d1"
+        "cmp.w #312,d1"
+        "blt.s flash_loop"
+    }
+}
+
+// Disable interrupts and return previous state
+pub fn disable_interrupts() -> u16 {
+    return unsafe asm() -> u16 in d0 volatile clobbers(memory) {
+        "move.w $DFF01C,d0"
+        "move.w #$7FFF,$DFF09A"
+    }
+}
+
+// Restore interrupts from saved state
+pub fn restore_interrupts(saved: u16) {
+    unsafe asm(saved in d0) volatile clobbers(memory) {
+        "or.w #$C000,d0"
+        "move.w d0,$DFF09A"
+    }
+}
+
+// Disable DMA
+pub fn disable_dma() -> u16 {
+    return unsafe asm() -> u16 in d0 volatile clobbers(memory) {
+        "move.w $DFF002,d0"
+        "move.w #$7FFF,$DFF096"
+    }
+}
+
+// Restore DMA from saved state
+pub fn restore_dma(saved: u16) {
+    unsafe asm(saved in d0) volatile clobbers(memory) {
+        "or.w #$8000,d0"
+        "move.w d0,$DFF096"
+    }
+}
+
+// Wait for blitter to finish
+pub fn wait_blit() {
+    unsafe asm() volatile {
+        "tst.w $DFF002"
+        "wait: btst #6,$DFF002"
+        "bne.s wait"
+    }
+}
+
+// Super fast memory copy using movem (for aligned 48-byte blocks)
+pub fn fast_copy_48(src: *u8, dest: *u8) {
+    unsafe asm(src in a0, dest in a1) volatile clobbers(d0, d1, d2, d3, d4, d5, d6, d7, a2, a3, a4, a5) {
+        "movem.l (a0)+,d0-d7/a2-a5"
+        "movem.l d0-d7/a2-a5,(a1)"
+    }
+}
+
+// Read CIA-A timer value (for timing)
+pub fn read_ciaa_timer() -> u16 {
+    return unsafe asm() -> u16 in d0 volatile {
+        "move.b $BFE401,d0"
+        "lsl.w #8,d0"
+        "move.b $BFE501,d0"
+    }
+}
+
+// Simple busy wait using the CIA timer
+pub fn delay_ticks(ticks: u16) {
+    unsafe asm(ticks in d0) volatile clobbers(d1) {
+        "move.b $BFE401,d1"
+        "lsl.w #8,d1"
+        "move.b $BFE501,d1"
+        "add.w d0,d1"
+        "wait: move.b $BFE401,d0"
+        "lsl.w #8,d0"
+        "move.b $BFE501,d0"
+        "cmp.w d1,d0"
+        "bcs.s wait"
+    }
+}
+
+pub fn main() -> i32 {
+    // Read vertical position
+    let vpos = read_vpos()
+
+    // Wait for a specific line
+    wait_vpos(100u16)
+
+    // Set background color
+    set_background_color($0F00u16)
+
+    // Do a critical section with interrupts disabled
+    let saved_ints = disable_interrupts()
+    // ... critical code here ...
+    set_background_color($000Fu16)
+    restore_interrupts(saved_ints)
+
+    // Read timer
+    let timer = read_ciaa_timer()
+
+    return 0
+}

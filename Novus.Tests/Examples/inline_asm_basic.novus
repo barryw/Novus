@@ -1,0 +1,91 @@
+// Basic inline assembly examples for 68k
+// Tests: simple asm blocks, inputs, outputs, volatile
+
+// Simple nop - no inputs or outputs
+pub fn nop_instruction() {
+    unsafe asm() {
+        "nop"
+    }
+}
+
+// Volatile nop - prevents optimization/reordering
+pub fn memory_barrier() {
+    unsafe asm() volatile {
+        "nop"
+    }
+}
+
+// Return a constant value from assembly
+pub fn get_magic_number() -> u32 {
+    return unsafe asm() -> u32 in d0 {
+        "moveq #42,d0"
+    }
+}
+
+// Double a value using assembly
+pub fn double_value(x: u32) -> u32 {
+    return unsafe asm(x in d0) -> u32 {
+        "add.l d0,d0"
+    }
+}
+
+// Add two values
+pub fn add_values(a: u32, b: u32) -> u32 {
+    return unsafe asm(a in d0, b in d1) -> u32 {
+        "add.l d1,d0"
+    }
+}
+
+// Swap bytes in a word (endian conversion for 16-bit)
+pub fn swap_bytes_16(value: u16) -> u16 {
+    return unsafe asm(value in d0) -> u16 {
+        "ror.w #8,d0"
+    }
+}
+
+// Full 32-bit byte swap (endian conversion)
+pub fn swap_bytes_32(value: u32) -> u32 {
+    return unsafe asm(value in d0) -> u32 {
+        "ror.w #8,d0"
+        "swap d0"
+        "ror.w #8,d0"
+    }
+}
+
+// Test with inferred registers (data type -> d0)
+pub fn increment(x: u32) -> u32 {
+    return unsafe asm(x) -> u32 {
+        "addq.l #1,d0"
+    }
+}
+
+// Main function to exercise all the above
+pub fn main() -> i32 {
+    // Test nop (just shouldn't crash)
+    nop_instruction()
+    memory_barrier()
+
+    // Test constant return
+    let magic = get_magic_number()
+    assert!(magic == 42u32, "get_magic_number should return 42")
+
+    // Test arithmetic
+    let doubled = double_value(21u32)
+    assert!(doubled == 42u32, "double_value(21) should be 42")
+
+    let sum = add_values(10u32, 32u32)
+    assert!(sum == 42u32, "add_values(10, 32) should be 42")
+
+    // Test byte swapping
+    let swapped16 = swap_bytes_16($1234u16)
+    assert!(swapped16 == $3412u16, "swap_bytes_16($1234) should be $3412")
+
+    let swapped32 = swap_bytes_32($12345678u32)
+    assert!(swapped32 == $78563412u32, "swap_bytes_32 should reverse all bytes")
+
+    // Test increment
+    let inc = increment(41u32)
+    assert!(inc == 42u32, "increment(41) should be 42")
+
+    return 0
+}

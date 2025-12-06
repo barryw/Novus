@@ -2716,6 +2716,27 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
         IrType varType;
         if (context.type() != null)
         {
+            // Check for redundant array size specification - this is error-prone
+            // E.g., var buffer: [u8; 16] = [0u8; 16] - the size appears twice
+            var typeCtx = context.type();
+            var exprCtx = context.expression();
+            if (typeCtx is NovusParser.ArrayTypeWithSizeContext &&
+                exprCtx is NovusParser.PrimaryExprContext primaryExpr &&
+                primaryExpr.primaryExpression() is NovusParser.ArrayRepeatLiteralContext)
+            {
+                _diagnostics.ReportError(
+                    "E0045",
+                    "redundant array size specification",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "the array size is specified both in the type annotation and the initializer",
+                        "remove the size from the type annotation: use '[T]' instead of '[T; N]'",
+                        "alternatively, omit the type annotation entirely and let the compiler infer it"
+                    }
+                );
+            }
+
             // Parse the type annotation (explicit array sizes are allowed and validated against initializer)
             varType = ParseType(context.type());
 
