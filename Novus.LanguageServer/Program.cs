@@ -38,6 +38,9 @@ class Program
                     var stdlibIndexer = new StdlibIndexer(stdLibPath);
                     var projectManager = new ProjectManager();
 
+                    // Link DocumentManager to ProjectManager for CPU config lookup
+                    docManager.SetProjectManager(projectManager);
+
                     // Index stdlib at startup for auto-import feature
                     stdlibIndexer.IndexStdlib();
 

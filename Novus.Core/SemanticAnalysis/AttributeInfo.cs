@@ -222,6 +222,7 @@ public static class KnownAttributes
 
     // Module-level configuration attributes
     public const string StackSize = "stack_size"; // Set program stack size: #[stack_size(65536)]
+    public const string Cpu = "cpu";               // Override target CPU: #[cpu("68020")] - emits warning if overriding project/CLI settings
 
     // Interrupt handling attributes
     public const string Interrupt = "interrupt";           // Mark function as interrupt handler
@@ -248,7 +249,7 @@ public static class KnownAttributes
         Suppress,
         Audio, AudioRaw, Mod,
         ChipRam,
-        StackSize,
+        StackSize, Cpu,
         Interrupt, InterruptSafe,
         Atomic, NoInterrupts
     };

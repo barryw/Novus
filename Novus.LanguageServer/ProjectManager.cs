@@ -104,6 +104,30 @@ public class ProjectManager
             var tomlTable = Toml.ToModel(state.Text);
             state.TomlModel = tomlTable;
             state.ParseError = null;
+
+            // Extract target_cpu from [build] section if present
+            if (tomlTable.TryGetValue("build", out var buildObj) && buildObj is TomlTable buildTable)
+            {
+                if (buildTable.TryGetValue("target_cpu", out var cpuObj) && cpuObj is string cpuValue)
+                {
+                    state.TargetCpu = cpuValue;
+                    Console.Error.WriteLine($"[LSP] Extracted target_cpu: {cpuValue} from {UriToFilePath(state.Uri)}");
+                }
+            }
+
+            // Also check [workspace.build] for workspace.toml files
+            if (tomlTable.TryGetValue("workspace", out var workspaceObj) && workspaceObj is TomlTable workspaceTable)
+            {
+                if (workspaceTable.TryGetValue("build", out var wsBuildObj) && wsBuildObj is TomlTable wsBuildTable)
+                {
+                    if (wsBuildTable.TryGetValue("target_cpu", out var cpuObj) && cpuObj is string cpuValue)
+                    {
+                        state.TargetCpu = cpuValue;
+                        Console.Error.WriteLine($"[LSP] Extracted workspace target_cpu: {cpuValue} from {UriToFilePath(state.Uri)}");
+                    }
+                }
+            }
+
             Console.Error.WriteLine($"[LSP] Successfully parsed TOML for {UriToFilePath(state.Uri)}");
         }
         catch (Exception ex)
@@ -112,6 +136,50 @@ public class ProjectManager
             state.TomlModel = null;
             Console.Error.WriteLine($"[LSP] Failed to parse TOML for {UriToFilePath(state.Uri)}: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Gets the target CPU from the project/workspace configuration.
+    /// Searches for the nearest project.toml or workspace.toml that specifies a target_cpu.
+    /// </summary>
+    /// <param name="documentUri">The URI of the document to find the project for</param>
+    /// <returns>The target CPU string (e.g., "68020"), or null if not specified</returns>
+    public string? GetTargetCpuForDocument(string documentUri)
+    {
+        // First try to find a project.toml in the same directory or parent directories
+        var documentPath = UriToFilePath(documentUri);
+        var directory = System.IO.Path.GetDirectoryName(documentPath);
+
+        while (!string.IsNullOrEmpty(directory))
+        {
+            // Check for project.toml
+            var projectTomlPath = System.IO.Path.Combine(directory, "project.toml");
+            var projectTomlUri = $"file://{projectTomlPath}";
+
+            foreach (var project in _projects.Values)
+            {
+                if (UriToFilePath(project.Uri) == projectTomlPath && project.TargetCpu != null)
+                {
+                    return project.TargetCpu;
+                }
+            }
+
+            // Check for workspace.toml
+            var workspaceTomlPath = System.IO.Path.Combine(directory, "workspace.toml");
+
+            foreach (var project in _projects.Values)
+            {
+                if (UriToFilePath(project.Uri) == workspaceTomlPath && project.TargetCpu != null)
+                {
+                    return project.TargetCpu;
+                }
+            }
+
+            // Move to parent directory
+            directory = System.IO.Path.GetDirectoryName(directory);
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -158,6 +226,13 @@ public class TomlProjectState
     /// Null if parsing succeeded.
     /// </summary>
     public string? ParseError { get; set; }
+
+    /// <summary>
+    /// Gets or sets the target CPU extracted from the [build] section.
+    /// Valid values: "68000", "68010", "68020", "68030", "68040", "68060", "68080", "auto"
+    /// Null if not specified.
+    /// </summary>
+    public string? TargetCpu { get; set; }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="TomlProjectState"/> class.

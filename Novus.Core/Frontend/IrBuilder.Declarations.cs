@@ -1088,6 +1088,40 @@ public partial class IrBuilder
                     _diagnostics.ReportError(ErrorCodes.InvalidAttribute, "#[stack_size] requires a size argument, e.g., #[stack_size(65536)]", errorLocation);
                 }
             }
+            else if (attrName == Novus.SemanticAnalysis.KnownAttributes.Cpu)
+            {
+                // Parse #[cpu("68020")] attribute
+                if (attrCtx.attributeArgList() != null)
+                {
+                    var args = attrCtx.attributeArgList().attributeArg();
+                    if (args.Length > 0)
+                    {
+                        var exprText = args[0].expression().GetText();
+                        // Remove quotes if present
+                        var cpuValue = exprText.Trim('"', '\'');
+
+                        var validCpus = new HashSet<string> { "68000", "68010", "68020", "68030", "68040", "68060", "68080" };
+                        if (validCpus.Contains(cpuValue))
+                        {
+                            _module.CpuOverride = cpuValue;
+                            // Emit warning that this overrides project/CLI settings
+                            _diagnostics.ReportWarning(ErrorCodes.AttributeOverride, $"#[cpu(\"{cpuValue}\")] overrides project and command-line CPU settings", errorLocation);
+                        }
+                        else
+                        {
+                            _diagnostics.ReportError(ErrorCodes.InvalidAttribute, $"Invalid CPU target '{cpuValue}'. Valid values are: 68000, 68010, 68020, 68030, 68040, 68060, 68080", errorLocation);
+                        }
+                    }
+                    else
+                    {
+                        _diagnostics.ReportError(ErrorCodes.InvalidAttribute, "#[cpu] requires a CPU target argument, e.g., #[cpu(\"68020\")]", errorLocation);
+                    }
+                }
+                else
+                {
+                    _diagnostics.ReportError(ErrorCodes.InvalidAttribute, "#[cpu] requires a CPU target argument, e.g., #[cpu(\"68020\")]", errorLocation);
+                }
+            }
             else if (attrName == "export")
             {
                 // #[export] is a function attribute, not a module attribute.

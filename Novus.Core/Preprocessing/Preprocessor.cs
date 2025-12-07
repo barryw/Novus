@@ -4,6 +4,29 @@ using Novus.Diagnostics;
 namespace Novus.Preprocessing;
 
 /// <summary>
+/// Represents a region of code that is inactive due to preprocessor conditionals.
+/// Used by the language server to gray out code that won't be compiled.
+/// </summary>
+public class InactiveRegion
+{
+    /// <summary>
+    /// The 1-based start line of the inactive region (inclusive).
+    /// </summary>
+    public int StartLine { get; set; }
+
+    /// <summary>
+    /// The 1-based end line of the inactive region (inclusive).
+    /// </summary>
+    public int EndLine { get; set; }
+
+    /// <summary>
+    /// The preprocessor constant that caused this region to be inactive.
+    /// For example, "M68040_PLUS" if the code is inside #if M68040_PLUS but targeting 68020.
+    /// </summary>
+    public string? Reason { get; set; }
+}
+
+/// <summary>
 /// Simple preprocessor for conditional compilation.
 /// Handles #if, #elif/#elsif, #else, #endif directives.
 /// </summary>
@@ -12,6 +35,13 @@ public class Preprocessor
     private readonly Dictionary<string, bool> _constants;
     private readonly DiagnosticBag _diagnostics;
     private readonly string _filePath;
+    private readonly List<InactiveRegion> _inactiveRegions = new();
+
+    /// <summary>
+    /// Gets the list of inactive code regions identified during preprocessing.
+    /// These are regions inside #if blocks where the condition evaluated to false.
+    /// </summary>
+    public IReadOnlyList<InactiveRegion> InactiveRegions => _inactiveRegions;
 
     public Preprocessor(Dictionary<string, bool> constants, DiagnosticBag diagnostics, string filePath)
     {
@@ -60,10 +90,14 @@ public class Preprocessor
                         bool conditionValue = EvaluateConstant(directive.Constant!, lineNumber);
 
                         // New state: active if parent was active AND condition is true
+                        bool ifActive = currentState.Active && conditionValue;
                         currentState = new IfState
                         {
-                            Active = currentState.Active && conditionValue,
-                            AnyBranchTaken = conditionValue
+                            Active = ifActive,
+                            AnyBranchTaken = conditionValue,
+                            // If this block is inactive, record the start line
+                            InactiveStartLine = ifActive ? 0 : lineNumber + 1,
+                            InactiveReason = ifActive ? null : directive.Constant
                         };
                         break;
 
@@ -73,6 +107,19 @@ public class Preprocessor
                             ReportError("E9001", $"#elif without matching #if", lineNumber);
                             output.AppendLine();
                             continue;
+                        }
+
+                        // Close any previous inactive region before starting a new one
+                        // Only add if there's actual content (startLine <= endLine)
+                        if (!currentState.Active && currentState.InactiveStartLine > 0 &&
+                            currentState.InactiveStartLine <= lineNumber - 1)
+                        {
+                            _inactiveRegions.Add(new InactiveRegion
+                            {
+                                StartLine = currentState.InactiveStartLine,
+                                EndLine = lineNumber - 1,
+                                Reason = currentState.InactiveReason
+                            });
                         }
 
                         // Evaluate the condition
@@ -87,7 +134,9 @@ public class Preprocessor
                         currentState = new IfState
                         {
                             Active = elifActive,
-                            AnyBranchTaken = currentState.AnyBranchTaken || elifActive
+                            AnyBranchTaken = currentState.AnyBranchTaken || elifActive,
+                            InactiveStartLine = elifActive ? 0 : lineNumber + 1,
+                            InactiveReason = elifActive ? null : directive.Constant
                         };
                         break;
 
@@ -99,14 +148,30 @@ public class Preprocessor
                             continue;
                         }
 
+                        // Close any previous inactive region before starting a new one
+                        // Only add if there's actual content (startLine <= endLine)
+                        if (!currentState.Active && currentState.InactiveStartLine > 0 &&
+                            currentState.InactiveStartLine <= lineNumber - 1)
+                        {
+                            _inactiveRegions.Add(new InactiveRegion
+                            {
+                                StartLine = currentState.InactiveStartLine,
+                                EndLine = lineNumber - 1,
+                                Reason = currentState.InactiveReason
+                            });
+                        }
+
                         // Parent state
                         var parentStateElse = stack.Peek();
 
                         // Active if: parent is active AND no previous branch was taken
+                        bool elseActive = parentStateElse.Active && !currentState.AnyBranchTaken;
                         currentState = new IfState
                         {
-                            Active = parentStateElse.Active && !currentState.AnyBranchTaken,
-                            AnyBranchTaken = true  // Else is always the last branch
+                            Active = elseActive,
+                            AnyBranchTaken = true,  // Else is always the last branch
+                            InactiveStartLine = elseActive ? 0 : lineNumber + 1,
+                            InactiveReason = elseActive ? null : "#else (previous branch taken)"
                         };
                         break;
 
@@ -116,6 +181,19 @@ public class Preprocessor
                             ReportError("E9003", $"#endif without matching #if", lineNumber);
                             output.AppendLine();
                             continue;
+                        }
+
+                        // Close any active inactive region
+                        // Only add if there's actual content (startLine <= endLine)
+                        if (!currentState.Active && currentState.InactiveStartLine > 0 &&
+                            currentState.InactiveStartLine <= lineNumber - 1)
+                        {
+                            _inactiveRegions.Add(new InactiveRegion
+                            {
+                                StartLine = currentState.InactiveStartLine,
+                                EndLine = lineNumber - 1,
+                                Reason = currentState.InactiveReason
+                            });
                         }
 
                         // Pop state
@@ -254,5 +332,16 @@ public class Preprocessor
         /// Used to determine if #else should be active
         /// </summary>
         public bool AnyBranchTaken { get; set; }
+
+        /// <summary>
+        /// The line where the current inactive region started (1-based).
+        /// Only set when Active is false.
+        /// </summary>
+        public int InactiveStartLine { get; set; }
+
+        /// <summary>
+        /// The preprocessor constant that caused this region to be inactive.
+        /// </summary>
+        public string? InactiveReason { get; set; }
     }
 }

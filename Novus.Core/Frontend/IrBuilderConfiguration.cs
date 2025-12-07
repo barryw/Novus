@@ -198,6 +198,96 @@ public class IrBuilderConfiguration
             ["M68030_PLUS"] = false,
             ["M68040_PLUS"] = false,
             ["M68060_PLUS"] = false,
+            ["M68080"] = false,  // Apollo Vampire FPGA (AMMX)
         };
+    }
+
+    /// <summary>
+    /// Creates preprocessor constants for a specific target CPU.
+    /// Sets the appropriate CPU-specific and hierarchy constants.
+    /// </summary>
+    /// <param name="targetCpu">CPU target: "68000", "68010", "68020", "68030", "68040", "68060", "68080", or "auto"</param>
+    /// <returns>Dictionary of preprocessor constants configured for the target CPU</returns>
+    public static Dictionary<string, bool> GetPreprocessorConstantsForCpu(string? targetCpu)
+    {
+        var constants = new Dictionary<string, bool>
+        {
+            // Build mode - default to debug
+            ["DEBUG"] = true,
+            ["RELEASE"] = false,
+
+            // Initialize all CPU flags to false
+            ["M68000"] = false,
+            ["M68010"] = false,
+            ["M68020"] = false,
+            ["M68030"] = false,
+            ["M68040"] = false,
+            ["M68060"] = false,
+            ["M68080"] = false,
+
+            // Hierarchy constants
+            ["M68010_PLUS"] = false,
+            ["M68020_PLUS"] = false,
+            ["M68030_PLUS"] = false,
+            ["M68040_PLUS"] = false,
+            ["M68060_PLUS"] = false,
+        };
+
+        // Set CPU-specific and hierarchy flags based on target
+        switch (targetCpu)
+        {
+            case "68000":
+                constants["M68000"] = true;
+                break;
+
+            case "68010":
+                constants["M68010"] = true;
+                constants["M68010_PLUS"] = true;
+                break;
+
+            case "68020":
+            case "auto":  // Default to 68020
+            case null:    // No CPU specified - use default
+                constants["M68020"] = true;
+                constants["M68010_PLUS"] = true;
+                constants["M68020_PLUS"] = true;
+                break;
+
+            case "68030":
+                constants["M68030"] = true;
+                constants["M68010_PLUS"] = true;
+                constants["M68020_PLUS"] = true;
+                constants["M68030_PLUS"] = true;
+                break;
+
+            case "68040":
+                constants["M68040"] = true;
+                constants["M68010_PLUS"] = true;
+                constants["M68020_PLUS"] = true;
+                constants["M68030_PLUS"] = true;
+                constants["M68040_PLUS"] = true;
+                break;
+
+            case "68060":
+                constants["M68060"] = true;
+                constants["M68010_PLUS"] = true;
+                constants["M68020_PLUS"] = true;
+                constants["M68030_PLUS"] = true;
+                constants["M68040_PLUS"] = true;
+                constants["M68060_PLUS"] = true;
+                break;
+
+            case "68080":
+                constants["M68080"] = true;
+                // 68080 (Apollo Vampire) is 68060-compatible plus AMMX
+                constants["M68010_PLUS"] = true;
+                constants["M68020_PLUS"] = true;
+                constants["M68030_PLUS"] = true;
+                constants["M68040_PLUS"] = true;
+                constants["M68060_PLUS"] = true;
+                break;
+        }
+
+        return constants;
     }
 }

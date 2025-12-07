@@ -142,6 +142,46 @@ public class TextDocumentHandler : TextDocumentSyncHandlerBase
             });
         }
 
+        // Add inactive code regions as "hint" diagnostics with the "unnecessary" tag
+        // This causes VS Code and other LSP clients to gray out the code
+        if (state.InactiveRegions != null && state.InactiveRegions.Count > 0)
+        {
+            Console.Error.WriteLine($"[LSP] Adding {state.InactiveRegions.Count} inactive region(s) as diagnostics");
+
+            foreach (var region in state.InactiveRegions)
+            {
+                // For each line in the inactive region, add a diagnostic
+                // We need to handle this line-by-line because the editor needs to know
+                // the full extent of the grayed-out text on each line
+                for (int lineNum = region.StartLine; lineNum <= region.EndLine; lineNum++)
+                {
+                    // Get the line text to determine the end column
+                    var lineText = GetLineText(state.Text, lineNum);
+                    if (string.IsNullOrEmpty(lineText))
+                        continue;
+
+                    // Convert from 1-based to 0-based
+                    int line = lineNum - 1;
+
+                    var range = new OmniSharp.Extensions.LanguageServer.Protocol.Models.Range(
+                        new Position(line, 0),
+                        new Position(line, lineText.TrimEnd().Length)
+                    );
+
+                    // The "Unnecessary" tag causes the text to be rendered with reduced opacity (grayed out)
+                    diagnostics.Add(new Diagnostic
+                    {
+                        Range = range,
+                        Severity = DiagnosticSeverity.Hint,
+                        Code = "inactive-code",
+                        Source = "novus-preprocessor",
+                        Message = $"Code is inactive (condition: {region.Reason ?? "false"})",
+                        Tags = new Container<DiagnosticTag>(DiagnosticTag.Unnecessary)
+                    });
+                }
+            }
+        }
+
         Console.Error.WriteLine($"[LSP] Calling PublishDiagnostics with URI: {uri}");
         _languageServer.TextDocument.PublishDiagnostics(new PublishDiagnosticsParams
         {
@@ -149,5 +189,16 @@ public class TextDocumentHandler : TextDocumentSyncHandlerBase
             Diagnostics = new Container<Diagnostic>(diagnostics)
         });
         Console.Error.WriteLine($"[LSP] PublishDiagnostics call completed");
+    }
+
+    /// <summary>
+    /// Gets the text of a specific line (1-based line number).
+    /// </summary>
+    private string GetLineText(string text, int lineNumber)
+    {
+        var lines = text.Split('\n');
+        if (lineNumber < 1 || lineNumber > lines.Length)
+            return "";
+        return lines[lineNumber - 1];
     }
 }

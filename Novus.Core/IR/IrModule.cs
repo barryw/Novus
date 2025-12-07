@@ -123,6 +123,30 @@ public class IrModule
     /// </summary>
     public int StackSize { get; set; } = 65536;
 
+    /// <summary>
+    /// Target CPU override set via #[cpu("68020")] attribute.
+    /// When set, this overrides both command-line and project.toml CPU settings.
+    /// A compile warning is emitted when this override is active.
+    ///
+    /// <para><b>Valid values:</b></para>
+    /// <list type="bullet">
+    ///   <item>68000 - Base 68000 (strictest compatibility)</item>
+    ///   <item>68010 - 68010 with minor improvements</item>
+    ///   <item>68020 - 68020+ (recommended default, 32-bit ops)</item>
+    ///   <item>68030 - 68030 (cache-aware)</item>
+    ///   <item>68040 - 68040 (avoids trappy ops)</item>
+    ///   <item>68060 - 68060 (strict op selection)</item>
+    ///   <item>68080 - Apollo Vampire FPGA (AMMX instructions)</item>
+    /// </list>
+    ///
+    /// <para>Example:</para>
+    /// <code>
+    /// #[cpu("68020")]  // Force 68020+ instructions
+    /// fn main() -> i32 { ... }
+    /// </code>
+    /// </summary>
+    public string? CpuOverride { get; set; }
+
     public void AddFunction(IrFunction function)
     {
         Functions.Add(function);

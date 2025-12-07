@@ -5,6 +5,7 @@ using Novus.Frontend;
 using Novus.Parser;
 using Novus.Preprocessing;
 using Novus.SemanticAnalysis;
+using InactiveRegion = Novus.Preprocessing.InactiveRegion;
 
 namespace Novus.LanguageServer;
 
@@ -21,7 +22,8 @@ public class DocumentManager
 {
     private readonly ConcurrentDictionary<string, DocumentState> _documents = new();
     private readonly string _stdLibPath;
-    private readonly Dictionary<string, bool> _preprocessorConstants;
+    private readonly Dictionary<string, bool> _defaultPreprocessorConstants;
+    private ProjectManager? _projectManager;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DocumentManager"/> class.
@@ -31,8 +33,38 @@ public class DocumentManager
     public DocumentManager(string stdLibPath)
     {
         _stdLibPath = stdLibPath;
-        _preprocessorConstants = IrBuilderConfiguration.GetDefaultPreprocessorConstants();
+        _defaultPreprocessorConstants = IrBuilderConfiguration.GetDefaultPreprocessorConstants();
         Console.Error.WriteLine($"[LSP] DocumentManager initialized with stdLibPath: {stdLibPath}");
+    }
+
+    /// <summary>
+    /// Sets the project manager for looking up project-specific configuration.
+    /// </summary>
+    /// <param name="projectManager">The project manager instance</param>
+    public void SetProjectManager(ProjectManager projectManager)
+    {
+        _projectManager = projectManager;
+        Console.Error.WriteLine($"[LSP] DocumentManager linked to ProjectManager");
+    }
+
+    /// <summary>
+    /// Gets the preprocessor constants for a document, considering project configuration.
+    /// If a project.toml or workspace.toml specifies a target_cpu, that will be used.
+    /// Otherwise, defaults to 68020.
+    /// </summary>
+    private Dictionary<string, bool> GetPreprocessorConstantsForDocument(string uri)
+    {
+        // Try to get target CPU from project configuration
+        var targetCpu = _projectManager?.GetTargetCpuForDocument(uri);
+
+        if (targetCpu != null)
+        {
+            Console.Error.WriteLine($"[LSP] Using target_cpu '{targetCpu}' from project config for {uri}");
+            return IrBuilderConfiguration.GetPreprocessorConstantsForCpu(targetCpu);
+        }
+
+        // Fall back to default (68020)
+        return _defaultPreprocessorConstants;
     }
 
     /// <summary>
@@ -107,12 +139,22 @@ public class DocumentManager
             ? Uri.UnescapeDataString(state.Uri.Substring("file://".Length))
             : state.Uri;
 
+        // Get preprocessor constants for this document (may come from project.toml)
+        var preprocessorConstants = GetPreprocessorConstantsForDocument(state.Uri);
+
         // Step 1: Run preprocessor to handle #if directives
         var sourceText = state.Text;
+        IReadOnlyList<InactiveRegion>? inactiveRegions = null;
         try
         {
-            var preprocessor = new Preprocessor(_preprocessorConstants, diagnostics, filePath);
+            var preprocessor = new Preprocessor(preprocessorConstants, diagnostics, filePath);
             sourceText = preprocessor.Process(sourceText);
+            inactiveRegions = preprocessor.InactiveRegions;
+
+            if (inactiveRegions.Count > 0)
+            {
+                Console.Error.WriteLine($"[LSP] Found {inactiveRegions.Count} inactive region(s) in {state.Uri}");
+            }
         }
         catch (Exception ex)
         {
@@ -135,7 +177,7 @@ public class DocumentManager
         // Run semantic analysis to catch type errors, etc.
         try
         {
-            var analyzer = new SemanticAnalyzer(filePath, sourceText, _stdLibPath, _preprocessorConstants);
+            var analyzer = new SemanticAnalyzer(filePath, sourceText, _stdLibPath, preprocessorConstants);
             analyzer.Analyze(tree);
 
             // Merge semantic analysis diagnostics
@@ -175,6 +217,7 @@ public class DocumentManager
 
         state.ParseTree = tree;
         state.Diagnostics = diagnostics;
+        state.InactiveRegions = inactiveRegions;
     }
 }
 
@@ -217,6 +260,14 @@ public class DocumentState
     /// Used for language server features like go-to-definition, hover, etc.
     /// </summary>
     public SemanticAnalyzer? SemanticAnalyzer { get; set; }
+
+    /// <summary>
+    /// Gets or sets the inactive code regions identified by the preprocessor.
+    /// These are regions inside #if blocks where the condition evaluated to false
+    /// based on the current preprocessor configuration (CPU target, etc.).
+    /// Used by the language server to gray out code that won't be compiled.
+    /// </summary>
+    public IReadOnlyList<InactiveRegion>? InactiveRegions { get; set; }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DocumentState"/> class.
