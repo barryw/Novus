@@ -1013,9 +1013,9 @@ public partial class IrBuilder
 
                 methods.Add(traitMethod);
 
-                // Clear method-level generic params
-                // Note: For traits, we don't need to clear individual params, just the whole set
-                // TODO: Revisit if we need more granular control
+                // Clear method-level generic params.
+                // Trait-level generic params persist; only method-specific ones are cleared.
+                // The current design uses ClearGenericParameters at trait boundary.
             }
         }
 

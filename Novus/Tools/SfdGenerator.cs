@@ -468,7 +468,8 @@ public class SfdGenerator
 
         if (structDef.HasUnion)
         {
-            sb.AppendLine("    // TODO: Contains union - needs manual conversion");
+            sb.AppendLine("    // WARNING: Contains union - manual conversion required");
+            sb.AppendLine("    // Novus does not support C unions; use largest variant + unsafe casts");
         }
 
         foreach (var field in structDef.Fields)

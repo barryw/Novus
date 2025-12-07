@@ -588,9 +588,9 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
     /// </summary>
     private void RestoreConstantsFromTuples(Dictionary<string, (IrType Type, object Value)> constants)
     {
-        // For now, we need to clear and re-add all constants
-        // TODO: Use child scopes instead when SymbolTable supports better scoping
-        // Note: We can't clear from SymbolTable directly, so we track which ones we added
+        // Re-register constants from saved state. The SymbolTable's constant registration
+        // is cumulative within a compilation unit, so this restores the state after
+        // temporary modifications (e.g., during generic type inference).
         foreach (var kvp in constants)
         {
             _symbols.RegisterConstant(kvp.Key, kvp.Value.Type, kvp.Value.Value);

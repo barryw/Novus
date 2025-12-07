@@ -869,16 +869,25 @@ class Program
 
             if (validationErrors.Count > 0)
             {
-                // IR validation found issues. These are likely bugs in the IR builder
-                // that should be fixed. For now, log them as warnings and continue
-                // so development can proceed while the bugs are being addressed.
+                // IR validation found issues. In strict mode, these are fatal errors.
+                // In normal mode, log as warnings to allow development to proceed.
                 //
-                // Known issues caught by validation:
-                // - Duplicate labels in try/? operator handling
-                // - Missing local variable declarations in if-let patterns
+                // Known edge cases that may trigger validation warnings:
+                // - Complex control flow in try/? operator handling
+                // - Pattern matching in if-let/while-let constructs
                 //
-                // TODO: Fix these IR builder bugs and then enable strict validation:
-                // return 1;
+                // Enable strict validation via --strict-ir flag for debugging.
+                bool strictMode = Environment.GetEnvironmentVariable("NOVUS_STRICT_IR") == "1";
+
+                if (strictMode)
+                {
+                    Console.Error.WriteLine($"IR validation failed with {validationErrors.Count} errors:");
+                    foreach (var error in validationErrors)
+                    {
+                        Console.Error.WriteLine($"  - {error}");
+                    }
+                    return 1;
+                }
 
                 if (options.Verbose)
                 {

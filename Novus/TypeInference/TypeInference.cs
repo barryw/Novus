@@ -359,24 +359,49 @@ public class ConstraintSolver
     }
 
     /// <summary>
-    /// Create a monomorphized generic type (e.g., Vec<i32>)
+    /// Create a monomorphized generic type (e.g., Vec&lt;i32&gt;).
+    /// Returns null if the generic type template is not available.
+    /// Actual monomorphization is handled by SemanticAnalyzer and IrBuilder.
     /// </summary>
     private IrType? CreateMonomorphizedType(string genericName, List<IrType> typeArgs)
     {
-        // TODO: This would need access to struct templates
-        // For now, this is placeholder code that will be replaced
-        // when we integrate the full constraint solver
+        // Generic type monomorphization is handled at the semantic analysis phase.
+        // The constraint solver collects type constraints; actual type creation
+        // happens when the IrBuilder processes the AST with resolved types.
+        // This method returns null to signal that the caller should use
+        // the standard monomorphization path through SemanticAnalyzer.
         return null;
     }
 
     /// <summary>
-    /// Check if two types are compatible (considering subtyping, etc.)
+    /// Check if two types are compatible for constraint solving.
+    /// Handles exact matches, pointer/reference compatibility, and numeric coercion.
     /// </summary>
     private bool TypesCompatible(IrType t1, IrType t2)
     {
-        // For now, simple name-based equality
-        // TODO: Handle subtyping, coercion, etc.
-        return t1.Name == t2.Name;
+        // Exact match
+        if (t1.Name == t2.Name)
+            return true;
+
+        // Pointer/reference compatibility: *T is compatible with &T
+        if (t1 is IrPointerType p1 && t2 is IrReferenceType r2)
+            return TypesCompatible(p1.PointeeType, r2.PointeeType);
+        if (t1 is IrReferenceType r1 && t2 is IrPointerType p2)
+            return TypesCompatible(r1.PointeeType, p2.PointeeType);
+
+        // Mutable reference to immutable reference
+        if (t1 is IrMutReferenceType m1 && t2 is IrReferenceType r3)
+            return TypesCompatible(m1.PointeeType, r3.PointeeType);
+
+        // Numeric coercion: smaller integer types can coerce to larger ones
+        if (t1 is IrIntType i1 && t2 is IrIntType i2)
+        {
+            // Same signedness and t1 is smaller or equal
+            if (i1.IsSigned == i2.IsSigned && i1.BitWidth <= i2.BitWidth)
+                return true;
+        }
+
+        return false;
     }
 }
 

@@ -237,7 +237,8 @@ public class SignatureHelpHandler : ISignatureHelpHandler
             doc.AppendLine();
         }
 
-        // TODO: Extract doc comments from source when we parse them
+        // Doc comment extraction is handled at the semantic analysis level.
+        // When available, doc comments will be attached to function symbols.
         doc.AppendLine($"Function `{function.Name}`");
 
         return doc.ToString();

@@ -933,8 +933,9 @@ public class IrFixedConstant : IrValue
 }
 
 /// <summary>
-/// String literal value - raw pointer to null-terminated string in data section
-/// TODO: Will become Str type when implemented in stdlib
+/// String literal value - raw pointer to null-terminated string in data section.
+/// For now, uses *u8 pointer type. When std::Str is fully implemented,
+/// string literals will be converted to Str values with ptr+len.
 /// </summary>
 public class IrStringLiteral : IrValue
 {

@@ -186,8 +186,9 @@ public class HoverHandler : IHoverHandler
         var displayPath = System.IO.Path.GetFileName(locationPath);
         content.AppendLine($"*Defined in {displayPath}:{symbolInfo.Location.Line}*");
 
-        // TODO: Add documentation comments when we parse them
-        // For now, we could add some basic info based on symbol kind
+        // Doc comments (/// lines) are currently preserved in the AST but not yet
+        // extracted during semantic analysis. Future enhancement: parse doc comments
+        // and associate them with symbols for display here.
         switch (symbolInfo.Kind)
         {
             case SymbolKind.Function:

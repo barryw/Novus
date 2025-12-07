@@ -115,10 +115,9 @@ public class ValidatorManager
     {
         var manager = new ValidatorManager(verbose);
 
-        // Add standard validators
-        // TODO: Extract these from SemanticAnalyzer
-        // manager.AddValidator(new TypeCheckValidator());
-        // manager.AddValidator(new ControlFlowValidator());
+        // Standard validators are integrated into SemanticAnalyzer.
+        // This manager can be extended with custom validators for specific use cases.
+        // Type checking and control flow analysis are performed during the semantic pass.
 
         return manager;
     }

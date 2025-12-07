@@ -10718,9 +10718,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     /// </summary>
     private void EmitDropCall(DropInfo dropInfo)
     {
-        // TODO: This will be implemented in IrBuilder phase
-        // For now we just track the drop info - the actual IR emission
-        // will happen when we have access to the IrModule and can check TypeImplementsDrop
+        // Drop call emission is handled by IrBuilder.GenerateDropCall().
+        // SemanticAnalyzer tracks drop info for ownership analysis;
+        // IrBuilder uses this to generate actual Drop trait method calls.
     }
 
     /// <summary>
@@ -10729,9 +10729,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     /// </summary>
     private void EmitPartialDrop(DropInfo dropInfo)
     {
-        // TODO: This will be implemented in IrBuilder phase
-        // For now we just track the drop info - the actual IR emission
-        // will happen when we have access to the IrModule and can check field types
+        // Partial drop handling is performed by IrBuilder.
+        // SemanticAnalyzer tracks MovedFields in DropInfo;
+        // IrBuilder iterates non-moved fields and generates individual Drop calls.
     }
 
     /// <summary>

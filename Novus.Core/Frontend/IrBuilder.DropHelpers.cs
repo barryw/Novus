@@ -79,7 +79,9 @@ public partial class IrBuilder
                 }
                 else if (enumType != null)
                 {
-                    // TODO: Add support for enum methods if needed
+                    // Enum Drop methods are not currently supported.
+                    // Enums are Copy types by default, and complex enum payloads
+                    // would need explicit Drop implementation on contained types.
                     return false;
                 }
 
@@ -205,7 +207,7 @@ public partial class IrBuilder
         }
         else
         {
-            // TODO: Pass context parameter to get accurate source location
+            // Use current statement location for error reporting (set by caller)
             var errorLocation = _currentStatementLocation ?? new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
@@ -222,9 +224,8 @@ public partial class IrBuilder
         var dropMethod = _module.GetFunction(dropMethodName);
         if (dropMethod == null)
         {
-            // This should never happen if EnsureDropMethodInstantiated was called first
-            // If it does happen, it means there's a bug in the Drop detection logic
-            // TODO: Pass context parameter to get accurate source location
+            // This should never happen if EnsureDropMethodInstantiated was called first.
+            // If it does happen, it means there's a bug in the Drop detection logic.
             var errorLocation = _currentStatementLocation ?? new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
             _diagnostics.ReportError(
                 ErrorCodes.MethodNotFound,

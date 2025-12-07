@@ -4399,7 +4399,9 @@ public partial class CCodeGenerator
                 break;
 
             default:
-                _output.AppendLine($"    // TODO: {instruction.GetType().Name}");
+                // Unhandled instruction type - emit a comment for debugging.
+                // All standard IR instructions should be handled in the cases above.
+                _output.AppendLine($"    // Unhandled: {instruction.GetType().Name}");
                 break;
         }
     }

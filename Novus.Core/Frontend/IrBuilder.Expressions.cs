@@ -2222,7 +2222,16 @@ public partial class IrBuilder
         var arrayLiteral = new IrArrayLiteral(arrayType);
         foreach (var elem in elements)
         {
-            // TODO: Check that all elements have compatible types
+            // Verify element type compatibility (semantic analyzer should have caught mismatches)
+            if (elem.Type != null && elementType != null && !TypesEqual(elementType, elem.Type))
+            {
+                var errorLocation = GetLocation(context);
+                _diagnostics.ReportError(
+                    ErrorCodes.TypeMismatch,
+                    $"Array element type mismatch: expected '{elementType.Name}', found '{elem.Type.Name}'",
+                    errorLocation
+                );
+            }
             arrayLiteral.Elements.Add(elem);
         }
 
