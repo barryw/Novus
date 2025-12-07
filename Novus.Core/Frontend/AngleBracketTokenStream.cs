@@ -60,8 +60,10 @@ public class AngleBracketTokenStream : CommonTokenStream
         TOKEN_COMMA = FindTokenType(vocabulary, ",");
         TOKEN_DOUBLE_COLON = FindTokenType(vocabulary, "::");
         TOKEN_EQUALS = FindTokenType(vocabulary, "=");
-        TOKEN_LBRACE = FindTokenType(vocabulary, "{");
-        TOKEN_RBRACE = FindTokenType(vocabulary, "}");
+        // LBRACE and RBRACE don't have literal names in the vocabulary (they're defined as named tokens)
+        // so we need to look them up by symbolic name
+        TOKEN_LBRACE = FindTokenTypeBySymbolicName(vocabulary, "LBRACE");
+        TOKEN_RBRACE = FindTokenTypeBySymbolicName(vocabulary, "RBRACE");
         TOKEN_LPAREN = FindTokenType(vocabulary, "(");
         TOKEN_RPAREN = FindTokenType(vocabulary, ")");
         TOKEN_SEMI = FindTokenType(vocabulary, ";");

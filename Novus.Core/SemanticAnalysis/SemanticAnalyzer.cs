@@ -13,7 +13,7 @@ namespace Novus.SemanticAnalysis;
 /// Performs semantic analysis on the parsed AST
 /// Reports errors and warnings with helpful messages
 /// </summary>
-public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
+public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 {
     private readonly DiagnosticBag _diagnostics = new();
     private readonly string _filePath;
@@ -2313,6 +2313,26 @@ public class SemanticAnalyzer : NovusBaseVisitor<IrType?>
             {
                 return true;
             }
+        }
+
+        // Check if the last statement is an asm statement with a return type (implicit return)
+        var lastStmt = statements[statements.Length - 1];
+        if (lastStmt.asmStatement() != null)
+        {
+            var asmStmt = lastStmt.asmStatement();
+            // If the asm statement has a return spec, it implicitly returns a value
+            if (asmStmt.asmReturnSpec() != null)
+            {
+                return true;
+            }
+        }
+
+        // Check if the last statement is an expression statement (implicit return)
+        if (lastStmt.expressionStatement() != null)
+        {
+            // Expression statements at the end of a block serve as implicit returns
+            // in functions with non-void return types
+            return true;
         }
 
         return false;

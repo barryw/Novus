@@ -169,4 +169,13 @@ public static class ErrorCodes
     public const string ColorValueOutOfRange = "E3708";
     public const string SpriteWidthInvalid = "E3709";
     public const string ChipsetFeatureUnavailable = "E3710";
+
+    // ========================================================================
+    // E38XX: Inline Assembly Errors
+    // ========================================================================
+    public const string AsmOffsetOfRequiresStruct = "E3800";
+    public const string AsmFieldNotFound = "E3801";
+    public const string AsmConstantNotFound = "E3802";
+    public const string AsmConstantNotInteger = "E3803";
+    public const string AsmUnrecognizedUseItem = "E3804";
 }

@@ -2154,6 +2154,118 @@ public enum M68kRegister
 }
 
 /// <summary>
+/// Kind of compile-time constant in an asm use() clause.
+/// </summary>
+public enum AsmUseKind
+{
+    /// <summary>sizeof(Type) - size of a type in bytes</summary>
+    SizeOf,
+    /// <summary>offsetof(Type, field) - byte offset of a field in a struct</summary>
+    OffsetOf,
+    /// <summary>alignof(Type) - alignment requirement of a type</summary>
+    AlignOf,
+    /// <summary>const CONSTANT - value of a compile-time constant</summary>
+    Constant
+}
+
+/// <summary>
+/// Represents a compile-time constant available in an inline assembly block via use() clause.
+/// The Novus compiler resolves these values at compile time and substitutes literal numbers
+/// into the assembly string. VBCC never sees symbolic names.
+/// </summary>
+public class IrAsmUseItem
+{
+    /// <summary>
+    /// Kind of use item (sizeof, offsetof, alignof, or constant)
+    /// </summary>
+    public AsmUseKind Kind { get; set; }
+
+    /// <summary>
+    /// Target type for sizeof/offsetof/alignof
+    /// </summary>
+    public IrType? TargetType { get; set; }
+
+    /// <summary>
+    /// Field name for offsetof
+    /// </summary>
+    public string? FieldName { get; set; }
+
+    /// <summary>
+    /// Constant name for const use items
+    /// </summary>
+    public string? ConstantName { get; set; }
+
+    /// <summary>
+    /// The resolved numeric value (computed at compile time)
+    /// </summary>
+    public long ResolvedValue { get; set; }
+
+    /// <summary>
+    /// The substitution pattern name used in the assembly body.
+    /// For sizeof(Player) -> "sizeof_Player"
+    /// For offsetof(Player, health) -> "offsetof_Player_health"
+    /// </summary>
+    public string SubstitutionName { get; set; } = "";
+
+    /// <summary>
+    /// Create a sizeof use item
+    /// </summary>
+    public static IrAsmUseItem SizeOf(IrType type, long size, string typeName)
+    {
+        return new IrAsmUseItem
+        {
+            Kind = AsmUseKind.SizeOf,
+            TargetType = type,
+            ResolvedValue = size,
+            SubstitutionName = $"sizeof_{typeName}"
+        };
+    }
+
+    /// <summary>
+    /// Create an offsetof use item
+    /// </summary>
+    public static IrAsmUseItem OffsetOf(IrType type, string fieldName, long offset, string typeName)
+    {
+        return new IrAsmUseItem
+        {
+            Kind = AsmUseKind.OffsetOf,
+            TargetType = type,
+            FieldName = fieldName,
+            ResolvedValue = offset,
+            SubstitutionName = $"offsetof_{typeName}_{fieldName}"
+        };
+    }
+
+    /// <summary>
+    /// Create an alignof use item
+    /// </summary>
+    public static IrAsmUseItem AlignOf(IrType type, long alignment, string typeName)
+    {
+        return new IrAsmUseItem
+        {
+            Kind = AsmUseKind.AlignOf,
+            TargetType = type,
+            ResolvedValue = alignment,
+            SubstitutionName = $"alignof_{typeName}"
+        };
+    }
+
+    /// <summary>
+    /// Create a constant use item
+    /// </summary>
+    public static IrAsmUseItem Const(string name, long value)
+    {
+        return new IrAsmUseItem
+        {
+            Kind = AsmUseKind.Constant,
+            ConstantName = name,
+            ResolvedValue = value,
+            SubstitutionName = name
+        };
+    }
+}
+
+/// <summary>
 /// Represents an input parameter to an inline assembly block.
 /// </summary>
 public class IrAsmInput
@@ -2177,6 +2289,29 @@ public class IrAsmInput
     /// Optional explicit register binding (None = use calling convention inference)
     /// </summary>
     public M68kRegister Register { get; set; } = M68kRegister.None;
+
+    /// <summary>
+    /// Whether this is an address-of binding (&amp;var in reg)
+    /// When true, the address of the variable is passed instead of its value.
+    /// </summary>
+    public bool IsAddressOf { get; set; }
+
+    /// <summary>
+    /// Whether this is a mutable binding (mut var in reg out reg)
+    /// When true, the variable can be modified by the assembly block.
+    /// </summary>
+    public bool IsMutable { get; set; }
+
+    /// <summary>
+    /// Output register for writeback (used with IsMutable)
+    /// After the asm block executes, the value in this register is written back to the variable.
+    /// </summary>
+    public M68kRegister? OutputRegister { get; set; }
+
+    /// <summary>
+    /// Variable name for writeback (for code generation)
+    /// </summary>
+    public string? WritebackVariable { get; set; }
 
     public IrAsmInput(string name, IrValue value, IrType type, M68kRegister register = M68kRegister.None)
     {
@@ -2285,6 +2420,12 @@ public class IrInlineAsm : IrInstruction
     public List<M68kRegister> Clobbers { get; set; } = new();
 
     /// <summary>
+    /// Compile-time constants available in the assembly body via use() clause.
+    /// Examples: sizeof(Type), offsetof(Type, field), alignof(Type), const CONSTANT
+    /// </summary>
+    public List<IrAsmUseItem> UseItems { get; set; } = new();
+
+    /// <summary>
     /// Whether the assembly modifies memory (acts as a memory barrier)
     /// </summary>
     public bool ClobbersMemory { get; set; }
@@ -2345,12 +2486,15 @@ public class IrInlineAsm : IrInstruction
     }
 
     /// <summary>
-    /// Perform parameter substitution on an assembly instruction.
+    /// Perform parameter and use item substitution on an assembly instruction.
     /// Replaces %param_name with the actual register name.
+    /// Replaces sizeof_Type, offsetof_Type_Field, etc. with their numeric values.
     /// </summary>
     public string SubstituteParameters(string instruction)
     {
         var result = instruction;
+
+        // Substitute input parameters (%param_name -> register)
         foreach (var input in Inputs)
         {
             var regName = input.GetRegisterName();
@@ -2359,6 +2503,19 @@ public class IrInlineAsm : IrInstruction
                 result = result.Replace($"%{input.Name}", regName);
             }
         }
+
+        // Substitute use items (sizeof_Type, offsetof_Type_Field, etc. -> numeric value)
+        foreach (var useItem in UseItems)
+        {
+            // Handle both immediate (#sizeof_X) and displacement (sizeof_X(a0)) forms
+            // For immediate: #sizeof_Player -> #44
+            // For displacement: offsetof_Player_position(a0) -> 4(a0)
+            result = result.Replace($"#{useItem.SubstitutionName}", $"#{useItem.ResolvedValue}");
+            result = result.Replace($"{useItem.SubstitutionName}(", $"{useItem.ResolvedValue}(");
+            // Also handle bare substitution (e.g., move.l sizeof_Player,d0)
+            result = result.Replace(useItem.SubstitutionName, useItem.ResolvedValue.ToString());
+        }
+
         return result;
     }
 

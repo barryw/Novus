@@ -13,7 +13,7 @@ namespace Novus.Frontend;
 /// Builds IR from the parsed AST using the visitor pattern.
 /// This class is split across multiple partial class files for maintainability.
 /// </summary>
-public partial class IrBuilder : NovusBaseVisitor<object?>
+public partial class IrBuilder : NovusParserBaseVisitor<object?>
 {
     private readonly IrModule _module = new();
     private IrFunction? _currentFunction;

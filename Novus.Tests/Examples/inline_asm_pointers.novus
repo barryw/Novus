@@ -4,89 +4,91 @@
 // Read a byte from memory
 pub fn peek_byte(addr: *u8) -> u8 {
     return unsafe asm(addr in a0) -> u8 in d0 {
-        "move.b (a0),d0"
-        "and.l #$FF,d0"
+        move.b (a0),d0
+        and.l #$FF,d0
     }
 }
 
 // Read a word from memory
 pub fn peek_word(addr: *u16) -> u16 {
     return unsafe asm(addr in a0) -> u16 in d0 {
-        "move.w (a0),d0"
+        move.w (a0),d0
     }
 }
 
 // Read a long from memory
 pub fn peek_long(addr: *u32) -> u32 {
     return unsafe asm(addr in a0) -> u32 in d0 {
-        "move.l (a0),d0"
+        move.l (a0),d0
     }
 }
 
 // Write a byte to memory
 pub fn poke_byte(addr: *u8, value: u8) {
     unsafe asm(addr in a0, value in d0) volatile {
-        "move.b d0,(a0)"
+        move.b d0,(a0)
     }
 }
 
 // Write a word to memory
 pub fn poke_word(addr: *u16, value: u16) {
     unsafe asm(addr in a0, value in d0) volatile {
-        "move.w d0,(a0)"
+        move.w d0,(a0)
     }
 }
 
 // Write a long to memory
 pub fn poke_long(addr: *u32, value: u32) {
     unsafe asm(addr in a0, value in d0) volatile {
-        "move.l d0,(a0)"
+        move.l d0,(a0)
     }
 }
 
 // Copy bytes from source to destination
 pub fn copy_byte(src: *u8, dest: *u8) {
     unsafe asm(src in a0, dest in a1) volatile clobbers(d0) {
-        "move.b (a0),d0"
-        "move.b d0,(a1)"
+        move.b (a0),d0
+        move.b d0,(a1)
     }
 }
 
 // Copy a long with post-increment addressing
 pub fn copy_long_inc(src: *u32, dest: *u32) {
     unsafe asm(src in a0, dest in a1) volatile clobbers(d0) {
-        "move.l (a0)+,d0"
-        "move.l d0,(a1)+"
+        move.l (a0)+,d0
+        move.l d0,(a1)+
     }
 }
 
 // Fill memory with a byte value
 pub fn fill_byte(dest: *u8, value: u8, count: u32) {
     unsafe asm(dest in a0, value in d0, count in d1) volatile clobbers(memory) {
-        "subq.l #1,d1"
-        "bmi.s done"
-        "loop: move.b d0,(a0)+"
-        "dbra d1,loop"
-        "done:"
+        subq.l #1,d1
+        bmi.s done
+        loop:
+        move.b d0,(a0)+
+        dbra d1,loop
+        done:
     }
 }
 
 // Clear memory (fill with zeros)
 pub fn clear_memory(dest: *u8, count: u32) {
     unsafe asm(dest in a0, count in d1) volatile clobbers(d0, memory) {
-        "moveq #0,d0"
-        "subq.l #1,d1"
-        "bmi.s done"
-        "loop: move.b d0,(a0)+"
-        "dbra d1,loop"
-        "done:"
+        moveq #0,d0
+        subq.l #1,d1
+        bmi.s done
+        loop:
+        move.b d0,(a0)+
+        dbra d1,loop
+        done:
     }
 }
 
 // Test pointer with inferred address register
 pub fn read_via_pointer(ptr: *u32) -> u32 {
     return unsafe asm(ptr) -> u32 in d0 {
-        "move.l (a0),d0"
+        move.l (a0),d0
     }
 }
 

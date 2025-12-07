@@ -5679,16 +5679,37 @@ public partial class CCodeGenerator
             var cType = GetCType(input.Type);
             var inputValue = EmitValue(input.Value);
 
-            if (!string.IsNullOrEmpty(regName))
+            if (input.IsAddressOf)
             {
-                paramList.Add($"__reg(\"{regName}\") {cType}");
+                // For &var bindings, we pass a pointer and use address-of operator
+                var ptrType = cType + "*";
+                if (!string.IsNullOrEmpty(regName))
+                {
+                    paramList.Add($"__reg(\"{regName}\") {ptrType}");
+                }
+                else
+                {
+                    paramList.Add(ptrType);
+                }
+                argList.Add($"&{inputValue}");
             }
             else
             {
-                paramList.Add(cType);
+                // Normal value binding
+                if (!string.IsNullOrEmpty(regName))
+                {
+                    paramList.Add($"__reg(\"{regName}\") {cType}");
+                }
+                else
+                {
+                    paramList.Add(cType);
+                }
+                argList.Add($"({cType}){inputValue}");
             }
-            argList.Add($"({cType}){inputValue}");
         }
+
+        // Check for mut...out writebacks early - we need this for return type determination
+        var writebackInputs = inlineAsm.Inputs.Where(i => i.IsMutable && i.OutputRegister.HasValue).ToList();
 
         // Determine return type and register
         string returnType = "void";
@@ -5698,6 +5719,13 @@ public partial class CCodeGenerator
             var output = inlineAsm.Outputs[0];
             returnType = GetCType(output.Type);
             outputReg = output.GetRegisterName();
+        }
+        else if (writebackInputs.Count > 0)
+        {
+            // No explicit output, but we have mut...out writeback - use that as return
+            var writebackInput = writebackInputs[0];
+            returnType = GetCType(writebackInput.Type);
+            outputReg = writebackInput.OutputRegister!.Value.ToString().ToLower();
         }
 
         // Build the assembly string
@@ -5770,6 +5798,16 @@ public partial class CCodeGenerator
             }
 
             _output.AppendLine($"    {resultName} = {funcName}({argString});");
+
+            // If the return register matches a writeback input, write back to the original variable
+            foreach (var writebackInput in writebackInputs)
+            {
+                if (writebackInput.OutputRegister == output.Register)
+                {
+                    var originalVar = EmitValue(writebackInput.Value);
+                    _output.AppendLine($"    {originalVar} = {resultName};");
+                }
+            }
         }
         else if (inlineAsm.Outputs.Count > 1 && inlineAsm.MultiResultNames != null)
         {
@@ -5788,6 +5826,20 @@ public partial class CCodeGenerator
             _output.AppendLine($"    {resultName} = {funcName}({argString});");
 
             // TODO: Handle additional outputs - would need separate asm functions
+        }
+        else if (writebackInputs.Count > 0)
+        {
+            // No explicit output, but we have mut...out writebacks
+            // The asm function needs to return the writeback value
+            // For simplicity, handle single writeback - VBCC only supports one return
+            var writebackInput = writebackInputs[0];
+            var writebackType = GetCType(writebackInput.Type);
+            var originalVar = EmitValue(writebackInput.Value);
+
+            // Generate a temp variable to capture the result
+            var tempVar = $"__asm_writeback_{_inlineAsmCounter - 1}";
+            _output.AppendLine($"    {writebackType} {tempVar} = {funcName}({argString});");
+            _output.AppendLine($"    {originalVar} = {tempVar};");
         }
         else if (argList.Count > 0 || inlineAsm.Instructions.Count > 0)
         {

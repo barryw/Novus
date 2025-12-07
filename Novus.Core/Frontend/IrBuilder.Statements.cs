@@ -2738,6 +2738,7 @@ public partial class IrBuilder
         return ProcessInlineAssembly(
             context.asmInputList(),
             context.asmReturnSpec(),
+            context.asmUseClause(),
             context.asmVolatile(),
             context.asmClobbers(),
             context.asmBlock(),
@@ -2751,6 +2752,7 @@ public partial class IrBuilder
     private object? ProcessInlineAssembly(
         NovusParser.AsmInputListContext? inputList,
         NovusParser.AsmReturnSpecContext? returnSpec,
+        NovusParser.AsmUseClauseContext? useClause,
         NovusParser.AsmVolatileContext? volatileSpec,
         NovusParser.AsmClobbersContext? clobbersSpec,
         NovusParser.AsmBlockContext asmBlock,
@@ -2771,6 +2773,12 @@ public partial class IrBuilder
             {
                 var paramName = input.IDENTIFIER().GetText();
 
+                // Check for address-of prefix (&)
+                bool isAddressOf = input.AMPERSAND() != null;
+
+                // Check for mutable binding (mut)
+                bool isMutable = input.KW_MUT() != null;
+
                 // Get the expression value (either the identifier itself or an assigned expression)
                 IrValue inputValue;
                 var expr = input.expression();
@@ -2787,6 +2795,13 @@ public partial class IrBuilder
 
                 var inputType = inputValue.Type ?? IrIntType.I32;
 
+                // For address-of, we need to treat pointers correctly
+                // The type we pass should be a pointer type (address registers)
+                bool useAddressRegister = isAddressOf ||
+                    inputType is IrPointerType ||
+                    inputType is IrReferenceType ||
+                    inputType is IrMutReferenceType;
+
                 // Parse register binding if explicit
                 M68kRegister reg = M68kRegister.None;
                 var regBinding = input.asmRegisterBinding();
@@ -2798,8 +2813,7 @@ public partial class IrBuilder
                 else
                 {
                     // Infer register from calling convention and type
-                    // Pointers go to address registers, data to data registers
-                    if (inputType is IrPointerType || inputType is IrReferenceType || inputType is IrMutReferenceType)
+                    if (useAddressRegister)
                     {
                         reg = addrRegIndex switch
                         {
@@ -2821,7 +2835,24 @@ public partial class IrBuilder
                     }
                 }
 
-                asmInst.Inputs.Add(new IrAsmInput(paramName, inputValue, inputType, reg));
+                // Parse output binding for writeback (out reg)
+                M68kRegister? outputReg = null;
+                var outputBinding = input.asmOutputBinding();
+                if (outputBinding != null)
+                {
+                    var outRegName = outputBinding.asmRegister().GetText();
+                    outputReg = IrInlineAsm.ParseRegister(outRegName);
+                }
+
+                var asmInput = new IrAsmInput(paramName, inputValue, inputType, reg)
+                {
+                    IsAddressOf = isAddressOf,
+                    IsMutable = isMutable,
+                    OutputRegister = outputReg,
+                    WritebackVariable = isMutable ? paramName : null
+                };
+
+                asmInst.Inputs.Add(asmInput);
             }
         }
 
@@ -2890,15 +2921,40 @@ public partial class IrBuilder
             }
         }
 
-        // Parse assembly instructions
+        // Parse use clause for compile-time constants
+        if (useClause != null)
+        {
+            foreach (var useItem in useClause.asmUseItem())
+            {
+                var irUseItem = ParseAsmUseItem(useItem, location);
+                if (irUseItem != null)
+                {
+                    asmInst.UseItems.Add(irUseItem);
+                }
+            }
+        }
+
+        // Parse assembly instructions - supports both raw and legacy quoted syntax
         foreach (var instruction in asmBlock.asmInstruction())
         {
-            var instrText = instruction.STRING_LITERAL().GetText();
-            // Strip quotes from string literal
-            var instr = instrText.Substring(1, instrText.Length - 2);
-            // Unescape any escape sequences
-            instr = UnescapeString(instr);
-            asmInst.Instructions.Add(instr);
+            // Handle legacy quoted string assembly instructions
+            if (instruction.STRING_LITERAL() != null)
+            {
+                var instructionText = instruction.STRING_LITERAL().GetText();
+                // Remove surrounding quotes
+                instructionText = instructionText.Substring(1, instructionText.Length - 2);
+                asmInst.Instructions.Add(instructionText);
+            }
+            // Handle raw assembly syntax
+            else if (instruction.asmMnemonic() != null || instruction.asmLabel() != null)
+            {
+                var instructionText = ReconstructAsmInstruction(instruction);
+                if (!string.IsNullOrWhiteSpace(instructionText))
+                {
+                    asmInst.Instructions.Add(instructionText);
+                }
+            }
+            // Skip empty lines (NEWLINEs)
         }
 
         // Generate result variable name if needed
@@ -2933,6 +2989,225 @@ public partial class IrBuilder
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Reconstructs an assembly instruction string from parsed ASM tokens.
+    /// This converts the structured AST back to a string for the code generator.
+    /// </summary>
+    private string ReconstructAsmInstruction(NovusParser.AsmInstructionContext instruction)
+    {
+        var parts = new List<string>();
+
+        // Handle label
+        if (instruction.asmLabel() != null)
+        {
+            parts.Add(instruction.asmLabel().GetText());
+        }
+
+        // Handle mnemonic
+        if (instruction.asmMnemonic() != null)
+        {
+            parts.Add(instruction.asmMnemonic().GetText());
+        }
+
+        // Handle operands
+        if (instruction.asmOperandList() != null)
+        {
+            var operands = instruction.asmOperandList().asmOperand();
+            if (operands.Length > 0)
+            {
+                var operandStrings = operands.Select(op => op.GetText()).ToArray();
+                parts.Add(string.Join(",", operandStrings));
+            }
+        }
+
+        // Join label and instruction with space, but mnemonic and operands with space
+        if (parts.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        // If we have a label + mnemonic + operands, format as "label: mnemonic operands"
+        // If we have just a mnemonic + operands, format as "mnemonic operands"
+        // If we have just a label, format as "label:"
+        if (instruction.asmLabel() != null && instruction.asmMnemonic() != null)
+        {
+            // label: mnemonic operands
+            var label = parts[0];
+            var rest = string.Join(" ", parts.Skip(1));
+            return $"{label} {rest}";
+        }
+        else if (instruction.asmMnemonic() != null)
+        {
+            // mnemonic operands (separated by space)
+            return string.Join(" ", parts);
+        }
+        else
+        {
+            // Just a label
+            return parts[0];
+        }
+    }
+
+    /// <summary>
+    /// Parses an asm use item and computes its value at compile time.
+    /// This handles sizeof(Type), offsetof(Type, field), alignof(Type), and const IDENTIFIER.
+    /// </summary>
+    private IrAsmUseItem? ParseAsmUseItem(NovusParser.AsmUseItemContext useItem, SourceLocation location)
+    {
+        // sizeof(Type)
+        if (useItem.KW_SIZEOF() != null)
+        {
+            var typeCtx = useItem.type();
+            var irType = ParseType(typeCtx);
+
+            // Get the type name for the substitution name
+            string typeName = GetTypeNameForSubstitution(irType);
+
+            // Compute the size at compile time
+            long size = irType.SizeInBytes;
+
+            return IrAsmUseItem.SizeOf(irType, size, typeName);
+        }
+
+        // offsetof(Type, field)
+        if (useItem.KW_OFFSETOF() != null)
+        {
+            var typeCtx = useItem.type();
+            var irType = ParseType(typeCtx);
+            var fieldName = useItem.IDENTIFIER().GetText();
+
+            // Get the type name for the substitution name
+            string typeName = GetTypeNameForSubstitution(irType);
+
+            // The type must be a struct to get field offset
+            if (irType is not IrStructType structType)
+            {
+                _diagnostics.ReportError(
+                    ErrorCodes.AsmOffsetOfRequiresStruct,
+                    $"offsetof requires a struct type, got '{irType}'",
+                    location);
+                return null;
+            }
+
+            // Find the field
+            var field = structType.Fields.FirstOrDefault(f => f.Name == fieldName);
+            if (field == null)
+            {
+                var availableFields = string.Join(", ", structType.Fields.Select(f => f.Name));
+                _diagnostics.ReportError(
+                    ErrorCodes.AsmFieldNotFound,
+                    $"struct '{structType.StructName}' has no field '{fieldName}'. Available fields: {availableFields}",
+                    location);
+                return null;
+            }
+
+            // Trigger size calculation which sets field offsets
+            _ = structType.SizeInBytes;
+
+            return IrAsmUseItem.OffsetOf(irType, fieldName, field.Offset, typeName);
+        }
+
+        // alignof(Type)
+        if (useItem.KW_ALIGNOF() != null)
+        {
+            var typeCtx = useItem.type();
+            var irType = ParseType(typeCtx);
+
+            // Get the type name for the substitution name
+            string typeName = GetTypeNameForSubstitution(irType);
+
+            // Compute alignment at compile time
+            // For 68k: bytes are 1-aligned, everything else is 2-aligned (word)
+            int alignment = irType.SizeInBytes == 1 ? 1 : 2;
+
+            return IrAsmUseItem.AlignOf(irType, alignment, typeName);
+        }
+
+        // const IDENTIFIER
+        if (useItem.KW_CONST() != null)
+        {
+            var constName = useItem.IDENTIFIER().GetText();
+
+            // Look up the constant value in the module
+            if (!_module.Constants.TryGetValue(constName, out var constDef))
+            {
+                _diagnostics.ReportError(
+                    ErrorCodes.AsmConstantNotFound,
+                    $"constant '{constName}' not found",
+                    location);
+                return null;
+            }
+
+            // Get the constant's value - must be an integer constant
+            if (constDef.Value is long longVal)
+            {
+                return IrAsmUseItem.Const(constName, longVal);
+            }
+            else if (constDef.Value is int intVal)
+            {
+                return IrAsmUseItem.Const(constName, intVal);
+            }
+            else if (constDef.Value is uint uintVal)
+            {
+                return IrAsmUseItem.Const(constName, uintVal);
+            }
+            else if (constDef.Value is ulong ulongVal)
+            {
+                return IrAsmUseItem.Const(constName, (long)ulongVal);
+            }
+            else if (constDef.Value is short shortVal)
+            {
+                return IrAsmUseItem.Const(constName, shortVal);
+            }
+            else if (constDef.Value is ushort ushortVal)
+            {
+                return IrAsmUseItem.Const(constName, ushortVal);
+            }
+            else if (constDef.Value is byte byteVal)
+            {
+                return IrAsmUseItem.Const(constName, byteVal);
+            }
+            else if (constDef.Value is sbyte sbyteVal)
+            {
+                return IrAsmUseItem.Const(constName, sbyteVal);
+            }
+            else
+            {
+                _diagnostics.ReportError(
+                    ErrorCodes.AsmConstantNotInteger,
+                    $"constant '{constName}' must be an integer constant for use in assembly",
+                    location);
+                return null;
+            }
+        }
+
+        _diagnostics.ReportError(
+            ErrorCodes.AsmUnrecognizedUseItem,
+            $"unrecognized use item in asm block",
+            location);
+        return null;
+    }
+
+    /// <summary>
+    /// Gets a simplified type name suitable for substitution in assembly.
+    /// Converts complex type names to C-friendly identifiers (e.g., "Player" from IrStructType).
+    /// </summary>
+    private static string GetTypeNameForSubstitution(IrType type)
+    {
+        return type switch
+        {
+            IrStructType structType => structType.StructName,
+            IrEnumType enumType => enumType.EnumName,
+            IrArrayType arrayType => $"{GetTypeNameForSubstitution(arrayType.ElementType)}_{arrayType.Length}",
+            IrPointerType ptrType => $"ptr_{GetTypeNameForSubstitution(ptrType.PointeeType)}",
+            IrIntType intType => intType.Name,
+            IrFloatType floatType => floatType.Name,
+            IrBoolType => "bool",
+            IrVoidType => "void",
+            _ => (type.Name ?? "unknown").Replace(" ", "_").Replace("<", "_").Replace(">", "_").Replace(",", "_")
+        };
     }
 
     /// <summary>

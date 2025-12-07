@@ -8,7 +8,7 @@ namespace Novus.SemanticAnalysis;
 /// Evaluates constant expressions at compile time.
 /// Supports: literals, identifiers, bitwise ops (|, &, ^, <<, >>, ~), unary minus
 /// </summary>
-public class ConstantExpressionEvaluator : NovusBaseVisitor<int?>
+public class ConstantExpressionEvaluator : NovusParserBaseVisitor<int?>
 {
     private readonly Dictionary<string, object> _constants;
     private readonly Action<string> _onError;

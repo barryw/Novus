@@ -6028,6 +6028,7 @@ public partial class IrBuilder
         return ProcessInlineAssembly(
             context.asmInputList(),
             context.asmReturnSpec(),
+            context.asmUseClause(),
             context.asmVolatile(),
             context.asmClobbers(),
             context.asmBlock(),

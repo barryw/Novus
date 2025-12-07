@@ -9,7 +9,7 @@ namespace Novus.Formatting;
 /// Formats Novus source code by traversing the AST and producing properly formatted output.
 /// Preserves comments by reading them from the hidden channel.
 /// </summary>
-public class NovusFormatter : NovusBaseVisitor<object?>
+public class NovusFormatter : NovusParserBaseVisitor<object?>
 {
     private readonly StringBuilder _output = new();
     private int _indentLevel = 0;

@@ -29,19 +29,19 @@ public class NovusErrorStrategy : DefaultErrorStrategy
             // Scenario: "someFunc." <EOF>
             // We're at EOF and expecting an identifier - create synthetic empty identifier
             // This allows the parser to recognize the member access expression
-            if (expecting.Contains(NovusParser.IDENTIFIER))
+            if (expecting.Contains(NovusLexer.IDENTIFIER))
             {
-                return CreateMissingToken(recognizer, NovusParser.IDENTIFIER, "");
+                return CreateMissingToken(recognizer, NovusLexer.IDENTIFIER, "");
             }
 
             // Scenario: Unclosed delimiters at EOF
             // Insert the missing closing delimiter to help parser recover
-            if (expecting.Contains(NovusParser.T__3)) // ')'
-                return CreateMissingToken(recognizer, NovusParser.T__3, ")");
-            if (expecting.Contains(NovusParser.T__5)) // '}'
-                return CreateMissingToken(recognizer, NovusParser.T__5, "}");
-            if (expecting.Contains(NovusParser.T__7)) // ']'
-                return CreateMissingToken(recognizer, NovusParser.T__7, "]");
+            if (expecting.Contains(NovusLexer.RPAREN))
+                return CreateMissingToken(recognizer, NovusLexer.RPAREN, ")");
+            if (expecting.Contains(NovusLexer.RBRACE))
+                return CreateMissingToken(recognizer, NovusLexer.RBRACE, "}");
+            if (expecting.Contains(NovusLexer.RBRACKET))
+                return CreateMissingToken(recognizer, NovusLexer.RBRACKET, "]");
         }
 
         // For non-EOF scenarios, use default recovery
@@ -69,38 +69,38 @@ public class NovusErrorStrategy : DefaultErrorStrategy
         var syncTokens = new HashSet<int>
         {
             // Statement/block boundaries
-            NovusParser.NEWLINE,
-            NovusParser.T__4,  // '{'
-            NovusParser.T__5,  // '}'
+            NovusLexer.NEWLINE,
+            NovusLexer.LBRACE,
+            NovusLexer.RBRACE,
 
             // Declaration keywords
-            NovusParser.KW_FN,
-            NovusParser.KW_STRUCT,
-            NovusParser.KW_ENUM,
-            NovusParser.KW_IMPL,
-            NovusParser.KW_TRAIT,
-            NovusParser.KW_CONST,
-            NovusParser.KW_STATIC,
-            NovusParser.KW_PUB,
+            NovusLexer.KW_FN,
+            NovusLexer.KW_STRUCT,
+            NovusLexer.KW_ENUM,
+            NovusLexer.KW_IMPL,
+            NovusLexer.KW_TRAIT,
+            NovusLexer.KW_CONST,
+            NovusLexer.KW_STATIC,
+            NovusLexer.KW_PUB,
 
             // Statement keywords
-            NovusParser.KW_LET,
-            NovusParser.KW_VAR,
-            NovusParser.KW_RETURN,
-            NovusParser.KW_IF,
-            NovusParser.KW_WHILE,
-            NovusParser.KW_FOR,
-            NovusParser.KW_MATCH,
-            NovusParser.KW_DEFER,
-            NovusParser.KW_BREAK,
+            NovusLexer.KW_LET,
+            NovusLexer.KW_VAR,
+            NovusLexer.KW_RETURN,
+            NovusLexer.KW_IF,
+            NovusLexer.KW_WHILE,
+            NovusLexer.KW_FOR,
+            NovusLexer.KW_MATCH,
+            NovusLexer.KW_DEFER,
+            NovusLexer.KW_BREAK,
 
             // Import/module keywords
-            NovusParser.KW_FROM,
-            NovusParser.KW_IMPORT,
-            NovusParser.KW_USE,
+            NovusLexer.KW_FROM,
+            NovusLexer.KW_IMPORT,
+            NovusLexer.KW_USE,
 
             // End of file
-            NovusParser.Eof
+            NovusLexer.Eof
         };
 
         // If we're at a sync token, don't consume it - we're already at a safe point

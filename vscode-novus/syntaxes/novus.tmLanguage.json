@@ -4,6 +4,7 @@
   "scopeName": "source.novus",
   "patterns": [
     { "include": "#comments" },
+    { "include": "#asm-block" },
     { "include": "#keywords" },
     { "include": "#strings" },
     { "include": "#numbers" },
@@ -24,19 +25,91 @@
         }
       ]
     },
+    "asm-block": {
+      "name": "meta.asm.block.novus",
+      "begin": "(unsafe)\\s+(asm)",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.unsafe.novus" },
+        "2": { "name": "keyword.control.asm.novus" }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": { "name": "punctuation.section.block.end.novus" }
+      },
+      "patterns": [
+        { "include": "#asm-comments" },
+        { "include": "#asm-labels" },
+        { "include": "#asm-mnemonics" },
+        { "include": "#asm-registers" },
+        { "include": "#asm-immediates" },
+        { "include": "#asm-hex" },
+        { "include": "#asm-bitfield" },
+        { "include": "#asm-keywords" },
+        { "include": "#strings" },
+        { "include": "#types" }
+      ]
+    },
+    "asm-comments": {
+      "patterns": [
+        {
+          "name": "comment.line.semicolon.asm.novus",
+          "match": ";.*$"
+        },
+        {
+          "name": "comment.line.double-slash.novus",
+          "match": "//.*$"
+        }
+      ]
+    },
+    "asm-labels": {
+      "name": "entity.name.label.asm.novus",
+      "match": "\\.?[a-zA-Z_][a-zA-Z0-9_]*:"
+    },
+    "asm-mnemonics": {
+      "name": "support.function.mnemonic.asm.novus",
+      "match": "(?i)\\b(move|movea|moveq|movem|movep|exg|swap|pea|lea|add|adda|addi|addq|addx|sub|suba|subi|subq|subx|muls|mulu|divs|divu|divsl|divul|neg|negx|clr|ext|extb|abcd|sbcd|nbcd|and|andi|or|ori|eor|eori|not|asl|asr|lsl|lsr|rol|ror|roxl|roxr|btst|bset|bclr|bchg|bfchg|bfclr|bfexts|bfextu|bfffo|bfins|bfset|bftst|tst|cmp|cmpa|cmpi|cmpm|chk|tas|bra|bsr|bcc|bcs|beq|bne|bge|bgt|ble|blt|bhi|bls|bmi|bpl|bvc|bvs|jmp|jsr|rts|rte|rtd|rtr|dbra|dbf|dbt|dbcc|dbcs|dbeq|dbne|dbge|dbgt|dble|dblt|dbhi|dbls|dbmi|dbpl|dbvc|dbvs|scc|scs|seq|sne|sge|sgt|sle|slt|shi|sls|smi|spl|svc|svs|st|sf|link|unlk|nop|reset|stop|trap|trapv|illegal|cas|pack|unpk|cinva|cinvl|cinvp|cpusha|cpushl|cpushp|fmove|fmovem|fadd|fsub|fmul|fdiv|fcmp|ftst|fabs|fneg|fsqrt)(\\.[bwlsBWLS])?\\b"
+    },
+    "asm-registers": {
+      "name": "entity.name.tag.register.asm.novus",
+      "match": "(?i)\\b([da][0-7]|sp|pc|sr|ccr|usp|vbr|fp[0-7]|fpcr|fpsr)\\b"
+    },
+    "asm-immediates": {
+      "name": "string.other.immediate.asm.novus",
+      "match": "#-?\\$[0-9A-Fa-f]+|#-?[0-9]+|#%[01]+"
+    },
+    "asm-hex": {
+      "name": "constant.numeric.hex.asm.novus",
+      "match": "\\$[0-9A-Fa-f]+"
+    },
+    "asm-bitfield": {
+      "name": "punctuation.definition.bitfield.asm.novus",
+      "match": "\\{[0-9dD]+:[0-9dD]+\\}"
+    },
+    "asm-keywords": {
+      "name": "keyword.other.asm.novus",
+      "match": "\\b(in|volatile|clobbers|memory)\\b"
+    },
     "keywords": {
       "patterns": [
         {
           "name": "keyword.control.novus",
-          "match": "\\b(if|else|while|for|match|return|break|defer|let|var|const|static|mut)\\b"
+          "match": "\\b(if|else|while|for|forever|match|return|break|continue|defer|let|var|const|static|mut|unless|using)\\b"
         },
         {
           "name": "keyword.other.novus",
-          "match": "\\b(fn|struct|enum|impl|trait|pub|from|import|use|as|unsafe|extern)\\b"
+          "match": "\\b(fn|struct|enum|impl|trait|pub|internal|from|import|use|as|unsafe|extern|where|asm|volatile|clobbers|sizeof|in|at)\\b"
         },
         {
           "name": "keyword.operator.novus",
           "match": "(\\+|\\-|\\*|/|%|==|!=|<|>|<=|>=|&&|\\|\\||!|&|\\||\\^|<<|>>)"
+        },
+        {
+          "name": "keyword.operator.arrow.novus",
+          "match": "->"
+        },
+        {
+          "name": "constant.language.novus",
+          "match": "\\b(true|false|null)\\b"
         }
       ]
     },
@@ -55,17 +128,21 @@
       "patterns": [
         {
           "name": "constant.numeric.hex.novus",
-          "match": "\\b0x[0-9a-fA-F]+\\b"
+          "match": "\\$[0-9a-fA-F]+[uUiI]?(8|16|32|64)?|0x[0-9a-fA-F]+\\b"
+        },
+        {
+          "name": "constant.numeric.binary.novus",
+          "match": "%[01]+[uUiI]?(8|16|32|64)?"
         },
         {
           "name": "constant.numeric.decimal.novus",
-          "match": "\\b[0-9]+(\\.[0-9]+)?\\b"
+          "match": "\\b[0-9]+(\\.[0-9]+)?([uUiI](8|16|32|64))?\\b"
         }
       ]
     },
     "types": {
       "name": "storage.type.novus",
-      "match": "\\b(i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|bool|str|Self)\\b"
+      "match": "\\b(i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|bool|str|Self|void)\\b"
     },
     "functions": {
       "name": "entity.name.function.novus",

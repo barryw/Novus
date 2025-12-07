@@ -13,7 +13,13 @@
     </ItemGroup>
 
     <ItemGroup>
-        <Antlr4 Include="Novus.g4">
+        <!-- Split grammar: lexer first, then parser that references lexer tokens -->
+        <Antlr4 Include="NovusLexer.g4">
+            <Package>Novus.Parser</Package>
+            <Listener>false</Listener>
+            <Visitor>false</Visitor>
+        </Antlr4>
+        <Antlr4 Include="NovusParser.g4">
             <Package>Novus.Parser</Package>
             <Listener>false</Listener>
             <Visitor>true</Visitor>
