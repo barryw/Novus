@@ -423,6 +423,34 @@ public class IrFunction
     public Novus.SemanticAnalysis.AttributeCollection? Attributes { get; set; }  // Function attributes (@inline, @noinline, @export, etc.)
 
     /// <summary>
+    /// Indicates this function is a monomorphized instance of a generic function.
+    /// Set to true when the function is created via generic instantiation.
+    /// Used by code generator to emit as 'static inline' to avoid duplicate symbols.
+    /// </summary>
+    public bool IsMonomorphized { get; set; }
+
+    /// <summary>
+    /// For monomorphized functions: the original generic function name before instantiation.
+    /// E.g., for "Vec_push_i32", this would be "Vec_push".
+    /// Null for non-monomorphized functions.
+    /// </summary>
+    public string? GenericSourceName { get; set; }
+
+    /// <summary>
+    /// For monomorphized functions: the type arguments used to instantiate this function.
+    /// E.g., for "Vec_push_i32", this would contain [IrIntType(i32)].
+    /// Empty for non-monomorphized functions.
+    /// </summary>
+    public List<IrType> MonomorphizationTypeArgs { get; } = new();
+
+    /// <summary>
+    /// Indicates this function is a trait method implementation for a monomorphized type.
+    /// E.g., Drop::drop for Vec<TagItem>.
+    /// These functions should be emitted as 'static inline' when used across modules.
+    /// </summary>
+    public bool IsMonomorphizedTraitMethod { get; set; }
+
+    /// <summary>
     /// Cached control flow graph. Lazily built on first access via GetCFG().
     /// Call InvalidateCFG() after modifying basic blocks or control flow.
     /// </summary>

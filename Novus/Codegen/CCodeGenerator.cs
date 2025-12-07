@@ -40,6 +40,16 @@ namespace Novus.Codegen;
 /// The remaining pointer casts in this generator are:
 /// - (void*) for generic pointer usage (standard C pattern)
 /// - AmigaOS-specific patterns (APTR, UBYTE* arithmetic) that are intentional
+///
+/// VBCC WORKAROUNDS:
+/// This generator includes workarounds for known VBCC optimizer issues. Each
+/// workaround is documented with:
+/// - WORKAROUND_ID: A unique identifier (e.g., VBCC_001)
+/// - AFFECTED_VERSIONS: VBCC versions where the issue exists
+/// - DESCRIPTION: What the bug causes
+/// - SOLUTION: How we work around it
+///
+/// See <see cref="VbccWorkarounds"/> for the registry of all workarounds.
 /// </remarks>
 public partial class CCodeGenerator
 {
@@ -264,17 +274,42 @@ public partial class CCodeGenerator
     /// Determines if a function is a monomorphized generic function.
     /// Monomorphized functions should be emitted as 'static inline' to avoid duplicate symbols.
     /// </summary>
+    /// <remarks>
+    /// This method uses a two-tier detection strategy:
+    /// 1. EXPLICIT FLAG (preferred): Check IrFunction.IsMonomorphized which is set during
+    ///    generic instantiation in the frontend. This is the most reliable method.
+    /// 2. HEURISTIC FALLBACK: For backward compatibility with IR that doesn't have the flag set,
+    ///    we fall back to type-based and name-based heuristics. These will be deprecated
+    ///    once all code paths set the explicit flag.
+    /// </remarks>
     internal bool IsMonomorphizedFunction(IrFunction function)
     {
-        // All monomorphized functions are created with Private visibility
-        if (function.Visibility != Visibility.Private)
-            return false;
-
         // Extern functions are never monomorphized
         if (function.IsExtern)
             return false;
 
-        // Best detection: Check if function parameters or return type have a CacheKey
+        // ============================================================================
+        // PRIMARY DETECTION: Explicit monomorphization flag (most reliable)
+        // ============================================================================
+        // This flag is set during generic instantiation and is authoritative.
+        if (function.IsMonomorphized)
+            return true;
+
+        // Also check the trait method flag
+        if (function.IsMonomorphizedTraitMethod)
+            return true;
+
+        // ============================================================================
+        // FALLBACK DETECTION: Heuristics for backward compatibility
+        // ============================================================================
+        // These heuristics exist for IR generated before explicit tracking was added.
+        // They should be removed once all code paths set IsMonomorphized correctly.
+
+        // All monomorphized functions are created with Private visibility
+        if (function.Visibility != Visibility.Private)
+            return false;
+
+        // Best heuristic: Check if function parameters or return type have a CacheKey
         // (indicating a monomorphized generic type)
         foreach (var param in function.Parameters)
         {
@@ -285,38 +320,23 @@ public partial class CCodeGenerator
         if (HasMonomorphizedType(function.ReturnType))
             return true;
 
-        // Check for naming patterns that indicate monomorphization:
-        // 1. Enum methods: "Type::method_typeArgs" (e.g., "Option::FromPointer_u8")
-        // 2. Struct methods: "Type_method" (e.g., "Vec_push")
-        // 3. Generic functions: "function_typeArgs" (e.g., "identity_i32")
-
+        // Naming pattern heuristics (least reliable, but catches edge cases)
         var name = function.Name;
 
         // Pattern 1: Contains :: which indicates enum method with type args
         if (name.Contains("::"))
         {
-            // Check if it has type args after the method name
-            // Format: Type::method_typeArgs
             var parts = name.Split("::");
             if (parts.Length == 2)
             {
                 var methodPart = parts[1];
                 // If method part contains underscore, it likely has type args
-                // This catches cases like "FromPointer_u8", "unwrap_u8"
-                return methodPart.Contains("_");
+                if (methodPart.Contains('_'))
+                    return true;
             }
         }
 
-        // Pattern 2: Struct method or generic function with type args
-        // These use underscore separator: "Vec_push", "identity_i32"
-        // We need to distinguish between:
-        //   - Regular functions with underscores: "my_function"
-        //   - Monomorphized functions: "Vec_push", "identity_i32"
-        //
-        // Heuristic: If the name has underscore and contains a known type suffix,
-        // it's likely monomorphized. Known type suffixes: i8, i16, i32, i64, u8, u16, u32, u64,
-        // bool, ptr_, String, etc.
-
+        // Pattern 2: Known type suffixes in name
         var knownTypeSuffixes = new[] {
             "_i8", "_i16", "_i32", "_i64",
             "_u8", "_u16", "_u32", "_u64",
@@ -330,9 +350,7 @@ public partial class CCodeGenerator
                 return true;
         }
 
-        // Pattern 3: Check if name contains struct/enum type names followed by underscore
-        // This catches "Vec_push", "Option_unwrap", etc.
-        // We can check against registered struct/enum types
+        // Pattern 3: Check if name starts with known generic type names
         foreach (var structType in _module.MonomorphizedTypes.Values)
         {
             var baseName = structType.BaseName;

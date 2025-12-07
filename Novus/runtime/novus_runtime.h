@@ -74,6 +74,30 @@ typedef unsigned long long uint64_t;
 #define AO_UseAfterFree   (0x00000009)
 #define AO_NullPointer    (0x0000000A)
 #define AO_StackOverflow  (0x0000000B)
+#define AO_InterruptPanic (0x0000000C)
+
+// ============================================================================
+// Interrupt Context Detection
+// ============================================================================
+// These functions check if we're in interrupt/exception context where it's
+// unsafe to call certain AmigaOS functions (Intuition, memory allocation, etc.)
+//
+// __novus_in_interrupt_context() returns non-zero if:
+//   - IDNestCnt >= 0 (inside Disable() context)
+//   - TDNestCnt >= 0 (inside Forbid() context) - optional, less strict
+//   - We're not running as a regular task (interrupt handler, exception)
+//
+// When in interrupt context, error handlers use Alert() instead of
+// EasyRequest() to avoid deadlocks and crashes.
+// ============================================================================
+
+// Check if currently in interrupt/exception context
+// Returns non-zero if it's unsafe to call Intuition functions
+int32_t __novus_in_interrupt_context(void);
+
+// Safe error display that works in any context
+// Uses Alert() in interrupt context, EasyRequest() otherwise
+void display_error_safe(uint32_t alert_code);
 
 // ============================================================================
 // Core Memory Functions
