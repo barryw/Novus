@@ -477,6 +477,7 @@ public partial class CCodeGenerator
         sb.AppendLine("typedef struct MenuItem MenuItem;");
         sb.AppendLine("typedef struct NewMenu NewMenu;");
         sb.AppendLine("typedef struct VisualInfo VisualInfo;");
+        sb.AppendLine("typedef struct EasyStruct EasyStruct;");
         sb.AppendLine("typedef struct timeval timeval;");
         sb.AppendLine("typedef struct timerequest timerequest;");
         sb.AppendLine("typedef struct EClockVal EClockVal;");
@@ -1354,6 +1355,10 @@ public partial class CCodeGenerator
                     if (IsMappedToSlot(localDecl.Name))
                         continue;
 
+                    // Skip void types - they have no runtime representation
+                    if (localDecl.Type is IrVoidType)
+                        continue;
+
                     // Skip unit type () variables - they have no runtime representation
                     if (localDecl.Type is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
                         continue;
@@ -1373,6 +1378,10 @@ public partial class CCodeGenerator
                 }
                 else if (instruction is IrStore store)
                 {
+                    // Skip void types - they have no runtime representation
+                    if (store.Value.Type is IrVoidType)
+                        continue;
+
                     // Skip if this variable is mapped to a slot (check ORIGINAL name since liveness uses original names)
                     if (IsMappedToSlot(store.VariableName))
                         continue;
@@ -6041,7 +6050,8 @@ public partial class CCodeGenerator
         var enumName = MangleName(enumType);
 
         // If this match is an expression (has a result), declare the result variable
-        if (match.ResultName != null && match.ResultType != null)
+        // Skip void types - they have no runtime representation and can't be assigned to
+        if (match.ResultName != null && match.ResultType != null && match.ResultType is not IrVoidType)
         {
             var resultVarName = SanitizeVariableName(match.ResultName);
 

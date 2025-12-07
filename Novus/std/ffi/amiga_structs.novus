@@ -941,6 +941,7 @@ pub struct PubScreenNode {
     psn_SigBit: u8,
 }
 
+#[extern_type]
 pub struct EasyStruct {
     es_StructSize: u32,
     es_Flags: u32,

@@ -374,6 +374,10 @@ public class LivenessAnalysis
 
         foreach (var interval in _intervals.Values)
         {
+            // Skip void types - they don't need slots (no runtime representation)
+            if (interval.Type is IrVoidType)
+                continue;
+
             var typeKey = GetTypeKey(interval.Type);
             if (!typeGroups.ContainsKey(typeKey))
             {

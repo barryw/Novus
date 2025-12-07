@@ -212,9 +212,7 @@ fn main() -> i32 {
 
     while should_retry && attempts < 3 {
         attempts = attempts + 1
-        write("  Attempt ")
-        write_i32(attempts)
-        write("...\n")
+        write(f"  Attempt {attempts}...\n")
 
         // Simulate failure on first two attempts
         if attempts < 3 {
@@ -261,20 +259,4 @@ fn main() -> i32 {
     info("All dialog types demonstrated successfully!")
 
     return 0
-}
-
-// Helper to write i32 values
-fn write_i32(n: i32) {
-    if n < 0 {
-        write("-")
-        write_i32(-n)
-        return
-    }
-    if n >= 10 {
-        write_i32(n / 10)
-    }
-    let digit = (n % 10) + 48  // ASCII '0' = 48
-    let mut buf: [u8; 2] = [0, 0]
-    buf[0] = digit as u8
-    write(&buf[0])
 }
