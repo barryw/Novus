@@ -1,0 +1,280 @@
+// Dialog Showcase - Demonstrates all std::ui::dialog functions
+// This example shows every dialog type available in the dialog module.
+//
+// Run this on an Amiga to see all the different dialog styles!
+
+from std::ui::dialog import alert, alert_with_button, alert_on
+from std::ui::dialog import confirm, confirm_with_buttons, confirm_on
+from std::ui::dialog import choice, choice_on, save_dialog
+from std::ui::dialog import retry_dialog, RetryChoice
+from std::ui::dialog import error, warning, info
+from std::ui::window import WindowHandle
+from std::io::file import write
+
+fn main() -> i32 {
+    write("=== Dialog Showcase ===\n\n")
+
+    // ========================================================================
+    // Part 1: Simple Alert Dialogs
+    // ========================================================================
+    write("--- Part 1: Simple Alerts ---\n")
+
+    // Basic alert with OK button
+    write("Showing basic alert...\n")
+    alert("Welcome", "Welcome to the Dialog Showcase!\n\nThis demo will show you all available dialog types.")
+
+    // Alert with custom button
+    write("Showing alert with custom button...\n")
+    alert_with_button("Custom Button", "This dialog has a custom button label.", "Got It!")
+
+    // ========================================================================
+    // Part 2: Convenience Alert Wrappers
+    // ========================================================================
+    write("\n--- Part 2: Convenience Wrappers ---\n")
+
+    // Error dialog (red icon on some systems)
+    write("Showing error dialog...\n")
+    error("This is an error message.\n\nSomething went wrong!")
+
+    // Warning dialog
+    write("Showing warning dialog...\n")
+    warning("This is a warning message.\n\nProceed with caution.")
+
+    // Info dialog
+    write("Showing info dialog...\n")
+    info("This is an informational message.\n\nEverything is fine.")
+
+    // ========================================================================
+    // Part 3: Confirmation Dialogs (Yes/No)
+    // ========================================================================
+    write("\n--- Part 3: Confirmation Dialogs ---\n")
+
+    // Basic Yes/No confirmation
+    write("Showing Yes/No confirmation...\n")
+    if confirm("Confirmation", "Do you like this dialog library?") {
+        write("  -> User clicked YES\n")
+        info("Thanks! Glad you like it!")
+    } else {
+        write("  -> User clicked NO\n")
+        info("That's okay, we'll keep improving!")
+    }
+
+    // Confirmation with custom button labels
+    write("Showing custom confirmation...\n")
+    if confirm_with_buttons("Delete File", "Are you sure you want to delete 'important.txt'?", "Delete|Cancel") {
+        write("  -> User chose DELETE\n")
+        info("File would be deleted (not really!)")
+    } else {
+        write("  -> User chose CANCEL\n")
+        info("Deletion cancelled.")
+    }
+
+    // Another custom confirmation
+    write("Showing another custom confirmation...\n")
+    if confirm_with_buttons("Overwrite", "File already exists. Overwrite?", "Overwrite|Keep Existing") {
+        write("  -> User chose OVERWRITE\n")
+    } else {
+        write("  -> User chose KEEP EXISTING\n")
+    }
+
+    // ========================================================================
+    // Part 4: Multi-Button Choice Dialogs
+    // ========================================================================
+    write("\n--- Part 4: Multi-Button Choices ---\n")
+
+    // Two-button choice
+    write("Showing 2-button choice...\n")
+    let two_choice = choice("File Format", "Select export format:", "PNG|Cancel")
+    match two_choice {
+        1 => {
+            write("  -> User chose PNG (button 1)\n")
+            info("Exporting as PNG...")
+        },
+        _ => {
+            write("  -> User cancelled (button 0)\n")
+        }
+    }
+
+    // Three-button choice
+    write("Showing 3-button choice...\n")
+    let three_choice = choice("Image Quality", "Select quality level:", "High|Medium|Cancel")
+    match three_choice {
+        1 => write("  -> User chose HIGH (button 1)\n"),
+        2 => write("  -> User chose MEDIUM (button 2)\n"),
+        _ => write("  -> User cancelled (button 0)\n"),
+    }
+
+    // Four-button choice
+    write("Showing 4-button choice...\n")
+    let four_choice = choice("Color Depth", "Select color depth:", "24-bit|16-bit|8-bit|Cancel")
+    match four_choice {
+        1 => write("  -> User chose 24-BIT (button 1)\n"),
+        2 => write("  -> User chose 16-BIT (button 2)\n"),
+        3 => write("  -> User chose 8-BIT (button 3)\n"),
+        _ => write("  -> User cancelled (button 0)\n"),
+    }
+
+    // ========================================================================
+    // Part 5: Save Dialog Pattern
+    // ========================================================================
+    write("\n--- Part 5: Save Dialog Pattern ---\n")
+
+    write("Showing save dialog...\n")
+    let save_choice = save_dialog("Unsaved Changes", "You have unsaved changes.\n\nSave before closing?")
+    match save_choice {
+        1 => {
+            write("  -> User chose SAVE (button 1)\n")
+            info("Saving document...")
+        },
+        2 => {
+            write("  -> User chose DON'T SAVE (button 2)\n")
+            info("Discarding changes...")
+        },
+        _ => {
+            write("  -> User chose CANCEL (button 0)\n")
+            info("Operation cancelled.")
+        }
+    }
+
+    // ========================================================================
+    // Part 6: Retry/Abort/Ignore Pattern
+    // ========================================================================
+    write("\n--- Part 6: Retry Dialog Pattern ---\n")
+
+    write("Showing retry dialog...\n")
+    let retry_choice = retry_dialog("Disk Error", "Cannot write to disk.\n\nThe disk may be full or write-protected.")
+    match retry_choice {
+        RetryChoice::Retry => {
+            write("  -> User chose RETRY\n")
+            info("Retrying operation...")
+        },
+        RetryChoice::Ignore => {
+            write("  -> User chose IGNORE\n")
+            info("Ignoring error, continuing...")
+        },
+        RetryChoice::Abort => {
+            write("  -> User chose ABORT\n")
+            info("Operation aborted.")
+        }
+    }
+
+    // ========================================================================
+    // Part 7: Window-Parented Dialogs
+    // ========================================================================
+    write("\n--- Part 7: Window-Parented Dialogs ---\n")
+
+    write("Creating a window for parented dialogs...\n")
+    let window_result = WindowHandle::simple("Dialog Parent Window", 400, 200)
+
+    match window_result {
+        Result::Ok(window) => {
+            write("Window created successfully.\n")
+
+            // Alert centered on window
+            write("Showing alert on window...\n")
+            alert_on(window.handle(), "Window Alert", "This dialog is centered on the parent window!")
+
+            // Confirm centered on window
+            write("Showing confirm on window...\n")
+            if confirm_on(window.handle(), "Window Confirm", "Did you notice this is centered on the window?") {
+                write("  -> User confirmed\n")
+            } else {
+                write("  -> User declined\n")
+            }
+
+            // Choice centered on window
+            write("Showing choice on window...\n")
+            let window_choice = choice_on(window.handle(), "Window Choice", "Pick a number:", "One|Two|Three|Cancel")
+            match window_choice {
+                1 => write("  -> User chose ONE\n"),
+                2 => write("  -> User chose TWO\n"),
+                3 => write("  -> User chose THREE\n"),
+                _ => write("  -> User cancelled\n"),
+            }
+
+            write("Closing parent window...\n")
+            // Window automatically closed by Drop
+        },
+        Result::Err(e) => {
+            write("Failed to create window - skipping parented dialog tests.\n")
+        }
+    }
+
+    // ========================================================================
+    // Part 8: Practical Use Cases
+    // ========================================================================
+    write("\n--- Part 8: Practical Use Cases ---\n")
+
+    // Simulated file operation with retry loop
+    write("Simulating file operation with retry loop...\n")
+    let mut attempts = 0
+    let mut should_retry = true
+
+    while should_retry && attempts < 3 {
+        attempts = attempts + 1
+        write("  Attempt ")
+        write_i32(attempts)
+        write("...\n")
+
+        // Simulate failure on first two attempts
+        if attempts < 3 {
+            let retry = retry_dialog("Write Failed", "Failed to write file.\n\nRetry the operation?")
+            match retry {
+                RetryChoice::Retry => {
+                    write("    -> Retrying...\n")
+                },
+                RetryChoice::Ignore => {
+                    write("    -> Ignoring error\n")
+                    should_retry = false
+                },
+                RetryChoice::Abort => {
+                    write("    -> Aborting\n")
+                    should_retry = false
+                }
+            }
+        } else {
+            write("    -> Success!\n")
+            should_retry = false
+            info("File saved successfully!")
+        }
+    }
+
+    // Application quit confirmation
+    write("\nSimulating application quit...\n")
+    let quit_choice = save_dialog("Quit Application", "You have unsaved work.\n\nSave before quitting?")
+    match quit_choice {
+        1 => {
+            write("  -> Saving and quitting...\n")
+        },
+        2 => {
+            write("  -> Quitting without saving...\n")
+        },
+        _ => {
+            write("  -> Quit cancelled\n")
+        }
+    }
+
+    // ========================================================================
+    // Done!
+    // ========================================================================
+    write("\n=== Dialog Showcase Complete! ===\n")
+    info("All dialog types demonstrated successfully!")
+
+    return 0
+}
+
+// Helper to write i32 values
+fn write_i32(n: i32) {
+    if n < 0 {
+        write("-")
+        write_i32(-n)
+        return
+    }
+    if n >= 10 {
+        write_i32(n / 10)
+    }
+    let digit = (n % 10) + 48  // ASCII '0' = 48
+    let mut buf: [u8; 2] = [0, 0]
+    buf[0] = digit as u8
+    write(&buf[0])
+}
