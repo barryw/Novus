@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
 using Antlr4.Runtime.Tree;
 using Novus.Diagnostics;
+using Novus.Frontend;
 using Novus.Parser;
+using Novus.Preprocessing;
 using Novus.SemanticAnalysis;
 
 namespace Novus.LanguageServer;
@@ -19,6 +21,7 @@ public class DocumentManager
 {
     private readonly ConcurrentDictionary<string, DocumentState> _documents = new();
     private readonly string _stdLibPath;
+    private readonly Dictionary<string, bool> _preprocessorConstants;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DocumentManager"/> class.
@@ -28,6 +31,7 @@ public class DocumentManager
     public DocumentManager(string stdLibPath)
     {
         _stdLibPath = stdLibPath;
+        _preprocessorConstants = IrBuilderConfiguration.GetDefaultPreprocessorConstants();
         Console.Error.WriteLine($"[LSP] DocumentManager initialized with stdLibPath: {stdLibPath}");
     }
 
@@ -98,9 +102,27 @@ public class DocumentManager
 
         Console.Error.WriteLine($"[LSP] Parsing document: {state.Uri}");
 
+        // Convert URI to file path (remove file:// prefix)
+        var filePath = state.Uri.StartsWith("file://")
+            ? Uri.UnescapeDataString(state.Uri.Substring("file://".Length))
+            : state.Uri;
+
+        // Step 1: Run preprocessor to handle #if directives
+        var sourceText = state.Text;
+        try
+        {
+            var preprocessor = new Preprocessor(_preprocessorConstants, diagnostics, filePath);
+            sourceText = preprocessor.Process(sourceText);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[LSP] Preprocessor failed: {ex.Message}");
+            // Continue with original text if preprocessor fails
+        }
+
         // Parse in LSP mode (error-tolerant)
         var parser = NovusParserFactory.CreateParser(
-            state.Text,
+            sourceText,
             diagnostics,
             state.Uri,
             NovusParserFactory.ParseMode.LanguageServer
@@ -113,12 +135,7 @@ public class DocumentManager
         // Run semantic analysis to catch type errors, etc.
         try
         {
-            // Convert URI to file path (remove file:// prefix)
-            var filePath = state.Uri.StartsWith("file://")
-                ? Uri.UnescapeDataString(state.Uri.Substring("file://".Length))
-                : state.Uri;
-
-            var analyzer = new SemanticAnalyzer(filePath, state.Text, _stdLibPath);
+            var analyzer = new SemanticAnalyzer(filePath, sourceText, _stdLibPath, _preprocessorConstants);
             analyzer.Analyze(tree);
 
             // Merge semantic analysis diagnostics

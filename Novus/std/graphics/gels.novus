@@ -33,7 +33,7 @@
 
 from std::core import Result, Option
 from std::error::errors import GraphicsError
-from std::memory::amiga import ChipMemHandle
+from std::memory::amiga import MemHandle
 from std::ffi::amiga_structs import VSprite, GelsInfo, collTable, RastPort, ViewPort, Bob, AnimOb, AnimComp
 from std::ffi::graphics import InitGels, SortGList, DrawGList, DoCollision, WaitBlit, AddVSprite, RemVSprite, AddBob, RemIBob, SetCollision, AddAnimOb, Animate, GetGBuffers, FreeGBuffers, InitGMasks
 from std::ffi::exec import AllocVec, FreeVec

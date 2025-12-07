@@ -86,6 +86,7 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
     private string? _inputFilePath = null; // Path to the file being compiled
     private readonly bool _skipAutoImports; // Skip auto-importing core module (for tests)
     private readonly List<string> _importedModulePaths = new(); // Track imported module file paths for linking
+    private Dictionary<string, bool>? _preprocessorConstants = null; // Preprocessor constants for imports
     private readonly HashSet<string> _processedModules = new(); // Track which modules we've already fully processed (prevent re-processing)
     private readonly CircularImportDetector _circularImportDetector; // Detect circular import dependencies
     private readonly TypeInterner _typeInterner = new(); // Type interning for efficient type equality
@@ -441,6 +442,8 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
         _typeParser = new TypeParser(new IrBuilderTypeContext(this));
         _circularImportDetector = new CircularImportDetector(_diagnostics);
         _genericInstantiator = new GenericInstantiatorImpl(new IrBuilderInstantiationContext(this));
+        // Use default preprocessor constants for imported modules
+        _preprocessorConstants = IrBuilderConfiguration.GetDefaultPreprocessorConstants();
     }
 
     /// <summary>
@@ -469,6 +472,10 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
         {
             _sourceLines = config.SourceLines;
         }
+
+        // Use provided preprocessor constants or defaults
+        _preprocessorConstants = config.PreprocessorConstants
+            ?? IrBuilderConfiguration.GetDefaultPreprocessorConstants();
 
         if (config.AnalysisResult != null)
         {

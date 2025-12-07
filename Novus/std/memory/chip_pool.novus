@@ -126,13 +126,14 @@ impl SizePool {
                 // Free the memory
                 FreePooled(self.pool_header, ptr, size)
 
-                // Remove from tracking by shifting
-                var j = i
-                while j < self.alloc_count - 1 {
-                    self.allocs[j] = self.allocs[j + 1]
-                    j++
+                // Remove from tracking by swap-with-last (O(1) instead of O(n) shifting)
+                // This is much faster for arrays with many elements
+                let last_idx = self.alloc_count - 1
+                if i != last_idx {
+                    // Swap with last element
+                    self.allocs[i] = self.allocs[last_idx]
                 }
-                self.allocs[self.alloc_count - 1] = PoolAlloc::new()
+                self.allocs[last_idx] = PoolAlloc::new()
                 self.alloc_count--
                 self.total_allocated = self.total_allocated - size
 
@@ -154,10 +155,12 @@ impl SizePool {
         }
     }
 
+    @inline
     fn in_use_count(&self) -> u32 {
         return self.alloc_count
     }
 
+    @inline
     fn bytes_allocated(&self) -> u32 {
         return self.total_allocated
     }
@@ -299,37 +302,28 @@ impl ChipPool {
 
         unsafe {
             Forbid()
+            defer { Permit() }
 
             if !g_chip_pool.initialized {
                 if !ChipPool::init() {
-                    Permit()
                     return Option::None
                 }
             }
 
             // Determine size class and allocate from appropriate pool
             if size <= POOL_SMALL_SIZE {
-                let result = g_chip_pool.small_pool.alloc()
-                Permit()
-                return result
+                return g_chip_pool.small_pool.alloc()
             }
             if size <= POOL_MEDIUM_SIZE {
-                let result = g_chip_pool.medium_pool.alloc()
-                Permit()
-                return result
+                return g_chip_pool.medium_pool.alloc()
             }
             if size <= POOL_LARGE_SIZE {
-                let result = g_chip_pool.large_pool.alloc()
-                Permit()
-                return result
+                return g_chip_pool.large_pool.alloc()
             }
             if size <= POOL_HUGE_SIZE {
-                let result = g_chip_pool.huge_pool.alloc()
-                Permit()
-                return result
+                return g_chip_pool.huge_pool.alloc()
             }
 
-            Permit()
             return Option::None
         }
     }
@@ -348,31 +342,26 @@ impl ChipPool {
 
         unsafe {
             Forbid()
+            defer { Permit() }
 
             if !g_chip_pool.initialized {
-                Permit()
                 return false
             }
 
             // Try each pool - order doesn't matter for correctness
             if g_chip_pool.small_pool.free(ptr) {
-                Permit()
                 return true
             }
             if g_chip_pool.medium_pool.free(ptr) {
-                Permit()
                 return true
             }
             if g_chip_pool.large_pool.free(ptr) {
-                Permit()
                 return true
             }
             if g_chip_pool.huge_pool.free(ptr) {
-                Permit()
                 return true
             }
 
-            Permit()
             return false
         }
     }
@@ -429,11 +418,13 @@ pub struct PoolStats {
 
 impl PoolStats {
     /// Total allocations across all pools
+    @inline
     pub fn total_count(&self) -> u32 {
         return self.small_count + self.medium_count + self.large_count + self.huge_count
     }
 
     /// Total bytes allocated across all pools
+    @inline
     pub fn total_bytes(&self) -> u32 {
         return self.small_bytes + self.medium_bytes + self.large_bytes + self.huge_bytes
     }

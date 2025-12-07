@@ -2,6 +2,7 @@ using Antlr4.Runtime;
 using Novus.Diagnostics;
 using Novus.Frontend;
 using Novus.Parser;
+using Novus.Preprocessing;
 using Novus.SemanticAnalysis;
 using Xunit;
 
@@ -56,6 +57,12 @@ public class LanguageServerIntegrationTests
         {
             var source = File.ReadAllText(fullPath);
 
+            // Step 0: Preprocess source (handle #if directives)
+            var preprocessorConstants = IrBuilderConfiguration.GetDefaultPreprocessorConstants();
+            var preprocessorDiagnostics = new DiagnosticBag();
+            var preprocessor = new Preprocessor(preprocessorConstants, preprocessorDiagnostics, fullPath);
+            source = preprocessor.Process(source);
+
             // Step 1: Parse (exactly like language server)
             var parseDiagnostics = new DiagnosticBag();
             var inputStream = new AntlrInputStream(source);
@@ -71,15 +78,16 @@ public class LanguageServerIntegrationTests
             var tree = parser.compilationUnit();
 
             // Step 2: Semantic Analysis (exactly like language server - DocumentManager.cs:121)
-            var analyzer = new SemanticAnalyzer(fullPath, source, stdPath);
+            var analyzer = new SemanticAnalyzer(fullPath, source, stdPath, preprocessorConstants);
             analyzer.Analyze(tree);
 
-            // Merge all diagnostics (parse + semantic)
+            // Merge all diagnostics (preprocessor + parse + semantic)
             var allDiagnostics = new List<Diagnostic>();
+            allDiagnostics.AddRange(preprocessorDiagnostics.Diagnostics);
             allDiagnostics.AddRange(parseDiagnostics.Diagnostics);
             allDiagnostics.AddRange(analyzer.Diagnostics.Diagnostics);
 
-            // Check for ANY errors (parse OR semantic)
+            // Check for ANY errors (preprocessor OR parse OR semantic)
             bool hasErrors = allDiagnostics.Any(d => d.IsError);
 
             return (hasErrors, allDiagnostics);

@@ -766,29 +766,27 @@ impl Drop for WindowHandle {
 ///
 /// This is an internal helper that extracts relevant fields from
 /// the IntuiMessage based on the IDCMP class.
+///
+/// OPTIMIZATION: Only extract fields that are needed for each event type.
+/// This avoids unnecessary memory reads on 68k where every access counts.
 fn parse_intui_message(msg: *IntuiMessage) -> WindowEvent {
+    // Always need the class to determine event type
     let class = unsafe { (*msg).Class }
-    let code = unsafe { (*msg).Code }
-    let qualifier = unsafe { (*msg).Qualifier }
-    let mouse_x = unsafe { (*msg).MouseX }
-    let mouse_y = unsafe { (*msg).MouseY }
-    let iaddress = unsafe { (u32)(*msg).IAddress }
 
+    // Match on class and only extract fields needed for each case
     return match class {
         IDCMP_CLOSEWINDOW => {
             WindowEvent::Close
         },
         IDCMP_NEWSIZE => {
-            // Get window dimensions from the IDCMPWindow field
+            // Only need IDCMPWindow for resize dimensions
             unsafe {
                 let win = (*msg).IDCMPWindow
                 WindowEvent::Resize((*win).Width, (*win).Height)
             }
         },
         IDCMP_REFRESHWINDOW => {
-            // Create a RefreshGuard which automatically handles BeginRefresh/EndRefresh
-            // The user receives the guard and can call guard.window() to render custom content
-            // EndRefresh is automatically called when the guard drops (RAII pattern)
+            // Only need IDCMPWindow for refresh guard
             unsafe {
                 let win = (*msg).IDCMPWindow
                 let guard = RefreshGuard::new(win)
@@ -796,18 +794,30 @@ fn parse_intui_message(msg: *IntuiMessage) -> WindowEvent {
             }
         },
         IDCMP_MOUSEMOVE => {
-            WindowEvent::MouseMove(mouse_x, mouse_y)
+            // Only need mouse coordinates
+            unsafe {
+                WindowEvent::MouseMove((*msg).MouseX, (*msg).MouseY)
+            }
         },
         IDCMP_MOUSEBUTTONS => {
-            // Code $68 = SELECTDOWN, $E8 = SELECTUP
-            let pressed = (code & $80) == 0
-            WindowEvent::MouseButton(mouse_x, mouse_y, pressed)
+            // Need code and mouse coordinates
+            unsafe {
+                let code = (*msg).Code
+                let pressed = (code & $80) == 0
+                WindowEvent::MouseButton((*msg).MouseX, (*msg).MouseY, pressed)
+            }
         },
         IDCMP_RAWKEY => {
-            WindowEvent::RawKey(code, qualifier)
+            // Need code and qualifier
+            unsafe {
+                WindowEvent::RawKey((*msg).Code, (*msg).Qualifier)
+            }
         },
         IDCMP_VANILLAKEY => {
-            WindowEvent::VanillaKey(code, qualifier)
+            // Need code and qualifier
+            unsafe {
+                WindowEvent::VanillaKey((*msg).Code, (*msg).Qualifier)
+            }
         },
         IDCMP_ACTIVEWINDOW => {
             WindowEvent::Activated
@@ -816,15 +826,22 @@ fn parse_intui_message(msg: *IntuiMessage) -> WindowEvent {
             WindowEvent::Deactivated
         },
         IDCMP_MENUPICK => {
-            WindowEvent::MenuPick(code)
+            // Only need code
+            unsafe {
+                WindowEvent::MenuPick((*msg).Code)
+            }
         },
         IDCMP_GADGETUP => {
-            // IAddress points to the Gadget that was released
-            WindowEvent::GadgetUp((u32)iaddress)
+            // Only need IAddress
+            unsafe {
+                WindowEvent::GadgetUp((u32)(*msg).IAddress)
+            }
         },
         IDCMP_GADGETDOWN => {
-            // IAddress points to the Gadget that was pressed
-            WindowEvent::GadgetDown((u32)iaddress)
+            // Only need IAddress
+            unsafe {
+                WindowEvent::GadgetDown((u32)(*msg).IAddress)
+            }
         },
         _ => {
             // Unknown/unhandled IDCMP event (including DELTAMOVE)

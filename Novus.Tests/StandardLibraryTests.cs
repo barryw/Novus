@@ -2,6 +2,7 @@ using Antlr4.Runtime;
 using Novus.Diagnostics;
 using Novus.Frontend;
 using Novus.Parser;
+using Novus.Preprocessing;
 using Novus.SemanticAnalysis;
 using Xunit;
 
@@ -58,6 +59,20 @@ public class StandardLibraryTests
         {
             var source = File.ReadAllText(fullPath);
 
+            // Preprocess first (handle #if directives)
+            var preprocessorConstants = IrBuilderConfiguration.GetDefaultPreprocessorConstants();
+            var preprocessorDiagnostics = new DiagnosticBag();
+            var preprocessor = new Preprocessor(preprocessorConstants, preprocessorDiagnostics, fullPath);
+            source = preprocessor.Process(source);
+
+            if (preprocessorDiagnostics.HasErrors)
+            {
+                var errorMessages = string.Join("\n", preprocessorDiagnostics.Diagnostics
+                    .Where(d => d.IsError)
+                    .Select(d => d.Message));
+                return (false, $"Preprocessor errors: {errorMessages}");
+            }
+
             // Parse
             var diagnostics = new DiagnosticBag();
             var inputStream = new AntlrInputStream(source);
@@ -83,7 +98,7 @@ public class StandardLibraryTests
             // Try semantic analysis (may fail due to missing imports, which is OK)
             try
             {
-                var semanticAnalyzer = new SemanticAnalyzer(fullPath, source, stdPath);
+                var semanticAnalyzer = new SemanticAnalyzer(fullPath, source, stdPath, preprocessorConstants);
                 semanticAnalyzer.Analyze(tree);
 
                 if (semanticAnalyzer.Diagnostics.HasErrors)

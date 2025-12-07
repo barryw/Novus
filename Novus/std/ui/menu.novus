@@ -104,6 +104,34 @@ pub struct GadToolsMenuBuilder {
 }
 
 impl GadToolsMenuBuilder {
+    /// Internal helper to allocate and copy a string label
+    /// Returns null-terminated C string pointer, or panics on failure
+    fn alloc_label(&mut self, label: Str) -> *u8 {
+        unsafe {
+            let len = label.len
+            let size = len + 1
+            let label_mem = AllocVec(size, MEMF_PUBLIC | MEMF_CLEAR)
+
+            if !label_mem {
+                panic!("Failed to allocate memory for menu label")
+            }
+
+            let src = label.ptr
+            CopyMem(src, label_mem, len)
+
+            // NULL-terminate for C interop
+            let label_bytes = (*u8)label_mem
+            label_bytes[len] = 0
+
+            let label_ptr = (*u8)label_mem
+
+            // Track this allocation for cleanup
+            self.track_label(label_ptr)
+
+            return label_ptr
+        }
+    }
+
     /// Create a new GadTools menu builder for the given screen
     pub fn new(screen: *Screen) -> GadToolsMenuBuilder {
         unsafe {
@@ -257,35 +285,13 @@ impl GadToolsMenuBuilder {
 
     /// Add a menu (returns a handle to add items to it)
     pub fn add_menu(&mut self, title: Str) -> MenuHandle {
-        unsafe {
-            // Allocate a copy of the string
-            let len = title.len
-            let size = len + 1
-            let label_mem = AllocVec(size, MEMF_PUBLIC | MEMF_CLEAR)
+        let label_ptr = self.alloc_label(title)
 
-            // Must succeed - if we can't allocate a few bytes for a menu label, we're in trouble
-            if !label_mem {
-                panic!("Failed to allocate memory for menu label")
-            }
+        // Add menu entry with individual fields to avoid struct alignment issues
+        self.push_entry_fields((u8)NM_TITLE, label_ptr, (*u8)0, 0, 0, (*u8)0)
 
-            let src = title.ptr
-            CopyMem(src, label_mem, len)
-
-            // NULL-terminate the string for C interop
-            let label_bytes = (*u8)label_mem
-            label_bytes[len] = 0
-
-            let label_ptr = (*u8)label_mem
-
-            // Track this allocation for cleanup
-            self.track_label(label_ptr)
-
-            // Add menu entry with individual fields to avoid struct alignment issues
-            self.push_entry_fields((u8)NM_TITLE, label_ptr, (*u8)0, 0, 0, (*u8)0)
-
-            return MenuHandle {
-                builder: self
-            }
+        return MenuHandle {
+            builder: self
         }
     }
 
@@ -443,26 +449,7 @@ impl MenuHandle {
     /// Add an item to this menu (returns a handle to add sub-items or modifiers)
     pub fn add_item(&mut self, label: Str) -> MenuItemHandle {
         unsafe {
-            // Allocate a copy of the string
-            let len = label.len
-            let size = len + 1
-            let label_mem = AllocVec(size, MEMF_PUBLIC | MEMF_CLEAR)
-
-            if !label_mem {
-                panic!("Failed to allocate memory for menu item label")
-            }
-
-            let src = label.ptr
-            CopyMem(src, label_mem, len)
-
-            // NULL-terminate the string for C interop
-            let label_bytes = (*u8)label_mem
-            label_bytes[len] = 0
-
-            let label_ptr = (*u8)label_mem
-
-            // Track this allocation for cleanup
-            (*self.builder).track_label(label_ptr)
+            let label_ptr = (*self.builder).alloc_label(label)
 
             // Add menu item with individual fields to avoid struct alignment issues
             (*self.builder).push_entry_fields((u8)NM_ITEM, label_ptr, (*u8)0, 0, 0, (*u8)0)
@@ -494,26 +481,7 @@ impl MenuItemHandle {
     /// Add a sub-item under this item
     pub fn add_sub_item(&mut self, label: Str) -> MenuItemHandle {
         unsafe {
-            // Allocate a copy of the string
-            let len = label.len
-            let size = len + 1
-            let label_mem = AllocVec(size, MEMF_PUBLIC | MEMF_CLEAR)
-
-            if !label_mem {
-                panic!("Failed to allocate memory for sub-item label")
-            }
-
-            let src = label.ptr
-            CopyMem(src, label_mem, len)
-
-            // NULL-terminate the string for C interop
-            let label_bytes = (*u8)label_mem
-            label_bytes[len] = 0
-
-            let label_ptr = (*u8)label_mem
-
-            // Track this allocation for cleanup
-            (*self.builder).track_label(label_ptr)
+            let label_ptr = (*self.builder).alloc_label(label)
 
             // Add sub-item with individual fields to avoid struct alignment issues
             (*self.builder).push_entry_fields((u8)NM_SUB, label_ptr, (*u8)0, 0, 0, (*u8)0)

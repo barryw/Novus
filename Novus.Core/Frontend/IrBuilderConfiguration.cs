@@ -83,6 +83,13 @@ public class IrBuilderConfiguration
     public string[]? SourceLines { get; set; }
 
     /// <summary>
+    /// Preprocessor constants for conditional compilation.
+    /// These are used when parsing imported modules to handle #if directives.
+    /// Default provides sensible values for tests (DEBUG=true, RELEASE=false, M68020_PLUS=true).
+    /// </summary>
+    public Dictionary<string, bool>? PreprocessorConstants { get; set; }
+
+    /// <summary>
     /// Creates a default configuration with all default implementations.
     /// </summary>
     public static IrBuilderConfiguration Default => new();
@@ -157,5 +164,40 @@ public class IrBuilderConfiguration
     {
         SourceLines = lines;
         return this;
+    }
+
+    public IrBuilderConfiguration WithPreprocessorConstants(Dictionary<string, bool> constants)
+    {
+        PreprocessorConstants = constants;
+        return this;
+    }
+
+    /// <summary>
+    /// Gets default preprocessor constants for tests and imports.
+    /// These provide sensible defaults when no explicit constants are provided.
+    /// </summary>
+    public static Dictionary<string, bool> GetDefaultPreprocessorConstants()
+    {
+        return new Dictionary<string, bool>
+        {
+            // Build mode - default to debug for tests
+            ["DEBUG"] = true,
+            ["RELEASE"] = false,
+
+            // CPU-specific constants - default to 68020 as recommended target
+            ["M68000"] = false,
+            ["M68010"] = false,
+            ["M68020"] = true,
+            ["M68030"] = false,
+            ["M68040"] = false,
+            ["M68060"] = false,
+
+            // CPU hierarchy constants - 68020+ is default
+            ["M68010_PLUS"] = true,
+            ["M68020_PLUS"] = true,
+            ["M68030_PLUS"] = false,
+            ["M68040_PLUS"] = false,
+            ["M68060_PLUS"] = false,
+        };
     }
 }

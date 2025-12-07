@@ -27,7 +27,7 @@ public partial class IrBuilder
     {
         // Parse the module ONCE (not per-symbol)
         string modulePath = ModuleImportHelper.ResolveModulePath(moduleNamespace, _stdLibPath);
-        var (moduleContext, syntaxErrors) = ModuleImportHelper.ParseModuleFile(modulePath);
+        var (moduleContext, syntaxErrors) = ModuleImportHelper.ParseModuleFile(modulePath, _preprocessorConstants);
 
         if (moduleContext == null || syntaxErrors > 0)
         {
@@ -156,7 +156,7 @@ public partial class IrBuilder
         string modulePath = ModuleImportHelper.ResolveModulePath(moduleNamespace, _stdLibPath);
 
         // Load and parse the module first to check if it needs compilation
-        var (moduleContext, syntaxErrors) = ModuleImportHelper.ParseModuleFile(modulePath);
+        var (moduleContext, syntaxErrors) = ModuleImportHelper.ParseModuleFile(modulePath, _preprocessorConstants);
 
         if (moduleContext == null || syntaxErrors > 0)
         {

@@ -28,6 +28,7 @@ impl<T> Option<T> {
         return Option::None
     }
 
+    @inline
     pub fn is_some(self) -> bool {
         match self {
             Some(_) => return true,
@@ -35,6 +36,7 @@ impl<T> Option<T> {
         }
     }
 
+    @inline
     pub fn is_none(self) -> bool {
         match self {
             Some(_) => return false,
@@ -42,6 +44,8 @@ impl<T> Option<T> {
         }
     }
 
+    /// Returns the contained value or a default
+    @inline
     pub fn unwrap_or(self, default_val: T) -> T {
         match self {
             Some(val) => return val,
@@ -60,6 +64,39 @@ impl<T> Option<T> {
             }
         }
     }
+
+    /// Returns the contained value or computes it from a closure/default expression
+    ///
+    /// This is useful when the default value is expensive to compute.
+    /// Since Novus doesn't have closures yet, this takes a default value directly.
+    /// TODO: When closures are available, this should take `fn() -> T`
+    @inline
+    pub fn unwrap_or_else(self, default_val: T) -> T {
+        // For now, identical to unwrap_or until we have closures
+        match self {
+            Some(val) => return val,
+            None => return default_val
+        }
+    }
+
+    /// Returns the option if it contains a value, otherwise returns optb
+    ///
+    /// Example:
+    /// ```novus
+    /// let x = Option::Some(2)
+    /// let y = Option::Some(100)
+    /// let result = x.or(y)  // Some(2)
+    ///
+    /// let x = Option::None
+    /// let result = x.or(y)  // Some(100)
+    /// ```
+    @inline
+    pub fn or(self, optb: Option<T>) -> Option<T> {
+        match self {
+            Some(v) => return Option::Some(v),
+            None => return optb
+        }
+    }
 }
 
 // Result<T, E> - represents success or failure
@@ -70,6 +107,7 @@ pub enum Result<T, E> {
 }
 
 impl<T, E> Result<T, E> {
+    @inline
     pub fn is_ok(self) -> bool {
         match self {
             Ok(_) => return true,
@@ -77,6 +115,7 @@ impl<T, E> Result<T, E> {
         }
     }
 
+    @inline
     pub fn is_err(self) -> bool {
         match self {
             Ok(_) => return false,
@@ -84,10 +123,87 @@ impl<T, E> Result<T, E> {
         }
     }
 
+    /// Returns the contained value or a default
+    @inline
     pub fn unwrap_or(self, default_val: T) -> T {
         match self {
             Ok(val) => return val,
             Err(_) => return default_val
+        }
+    }
+
+    /// Unwrap the value, panicking if Err
+    /// Only use when you're certain the Result is Ok
+    pub fn unwrap(self) -> T {
+        match self {
+            Ok(val) => return val,
+            Err(_) => {
+                panic!("called Result::unwrap() on an Err value")
+            }
+        }
+    }
+
+    /// Returns the contained error, panicking if Ok
+    /// Only use when you're certain the Result is Err
+    pub fn unwrap_err(self) -> E {
+        match self {
+            Ok(_) => {
+                panic!("called Result::unwrap_err() on an Ok value")
+            },
+            Err(e) => return e
+        }
+    }
+
+    /// Returns res if the result is Err, otherwise returns the Ok value of self
+    ///
+    /// Example:
+    /// ```novus
+    /// let x: Result<i32, MyError> = Result::Err(MyError::Error1)
+    /// let y: Result<i32, MyError> = Result::Ok(2)
+    /// let result = x.or(y)  // Ok(2)
+    /// ```
+    pub fn or(self, res: Result<T, E>) -> Result<T, E> {
+        match self {
+            Ok(v) => return Result::Ok(v),
+            Err(_) => return res
+        }
+    }
+
+    /// Converts from Result<T, E> to Option<T>
+    /// Converts Ok(v) to Some(v), Err(_) to None
+    ///
+    /// Example:
+    /// ```novus
+    /// let x: Result<i32, &str> = Result::Ok(2)
+    /// let opt = x.ok()  // Some(2)
+    ///
+    /// let y: Result<i32, &str> = Result::Err("oops")
+    /// let opt = y.ok()  // None
+    /// ```
+    @inline
+    pub fn ok(self) -> Option<T> {
+        match self {
+            Ok(v) => return Option::Some(v),
+            Err(_) => return Option::None
+        }
+    }
+
+    /// Converts from Result<T, E> to Option<E>
+    /// Converts Err(e) to Some(e), Ok(_) to None
+    ///
+    /// Example:
+    /// ```novus
+    /// let x: Result<i32, &str> = Result::Err("oops")
+    /// let opt = x.err()  // Some("oops")
+    ///
+    /// let y: Result<i32, &str> = Result::Ok(2)
+    /// let opt = y.err()  // None
+    /// ```
+    @inline
+    pub fn err(self) -> Option<E> {
+        match self {
+            Ok(_) => return Option::None,
+            Err(e) => return Option::Some(e)
         }
     }
 }

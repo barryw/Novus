@@ -30,6 +30,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     private IrWhereClause? _currentStructWhereClause; // Track where clause for current struct/impl block
     private int _loopDepth = 0; // Track loop nesting for break validation
     private readonly string _stdLibPath; // Path to standard library
+    private Dictionary<string, bool>? _preprocessorConstants; // Preprocessor constants for imports
 
     // Location tracking for types (LSP support)
     private readonly Dictionary<string, SourceLocation> _structLocations = new();
@@ -147,11 +148,14 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         );
     }
 
-    public SemanticAnalyzer(string filePath, string sourceCode, string stdLibPath)
+    public SemanticAnalyzer(string filePath, string sourceCode, string stdLibPath, Dictionary<string, bool>? preprocessorConstants = null)
     {
         _filePath = filePath;
         _sourceLines = sourceCode.Split('\n');
         _stdLibPath = stdLibPath;
+        // Use provided preprocessor constants or defaults
+        _preprocessorConstants = preprocessorConstants
+            ?? Frontend.IrBuilderConfiguration.GetDefaultPreprocessorConstants();
         SourceText = sourceCode;
         _typeParser = new TypeParser(new SemanticAnalyzerTypeContext(this));
         _traitResolver = new TraitResolver(_symbols)
@@ -368,7 +372,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         {
             // Parse the module to get the symbols
             string modulePath = ModuleImportHelper.ResolveModulePath(moduleNamespace, _stdLibPath);
-            var (moduleContext, syntaxErrors) = ModuleImportHelper.ParseModuleFile(modulePath);
+            var (moduleContext, syntaxErrors) = ModuleImportHelper.ParseModuleFile(modulePath, _preprocessorConstants);
 
             if (moduleContext == null || syntaxErrors > 0)
             {
@@ -429,7 +433,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         string modulePath = ModuleImportHelper.ResolveModulePath(moduleNamespace, _stdLibPath);
 
         // Load and parse the module
-        var (moduleContext, syntaxErrors) = ModuleImportHelper.ParseModuleFile(modulePath);
+        var (moduleContext, syntaxErrors) = ModuleImportHelper.ParseModuleFile(modulePath, _preprocessorConstants);
 
         if (moduleContext == null)
         {
@@ -4621,6 +4625,82 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         // Blitter job returns unit (no value)
+        return IrTupleType.Unit;
+    }
+
+    // ===========================
+    // Inline Assembly Expression
+    // ===========================
+
+    /// <summary>
+    /// Visit an inline assembly expression wrapper (from primaryExpression).
+    /// Delegates to VisitAsmExpression.
+    /// </summary>
+    public override IrType? VisitAsmExpr([NotNull] NovusParser.AsmExprContext context)
+    {
+        return Visit(context.asmExpression()) as IrType;
+    }
+
+    /// <summary>
+    /// Visit the actual inline assembly expression and return its type.
+    /// The type is determined by the asmReturnSpec (-> type in register).
+    /// </summary>
+    public override IrType? VisitAsmExpression([NotNull] NovusParser.AsmExpressionContext context)
+    {
+        // Inline assembly is inherently unsafe
+        // Note: The grammar already requires 'unsafe' keyword, so we don't need to check here
+
+        // Validate inputs if present
+        var inputList = context.asmInputList();
+        if (inputList != null)
+        {
+            foreach (var input in inputList.asmInput())
+            {
+                // Validate the expression for each input
+                var expr = input.expression();
+                if (expr != null)
+                {
+                    Visit(expr);
+                }
+            }
+        }
+
+        // Determine return type from asmReturnSpec
+        var returnSpec = context.asmReturnSpec();
+        if (returnSpec == null)
+        {
+            // No return spec means no value returned (unit type)
+            return IrTupleType.Unit;
+        }
+
+        // Check for single return type: -> type in register
+        var typeCtx = returnSpec.type();
+        if (typeCtx != null)
+        {
+            return ParseType(typeCtx);
+        }
+
+        // Check for multi-return: -> (type1 in reg1, type2 in reg2, ...)
+        var multiReturn = returnSpec.asmMultiReturn();
+        if (multiReturn != null)
+        {
+            // asmMultiReturn is: type KW_IN asmRegister (COMMA type KW_IN asmRegister)+
+            var returnTypes = new List<IrType>();
+            foreach (var typeCtx2 in multiReturn.type())
+            {
+                var itemType = ParseType(typeCtx2);
+                returnTypes.Add(itemType);
+            }
+
+            // Return a tuple type for multiple returns
+            if (returnTypes.Count == 1)
+            {
+                return returnTypes[0];
+            }
+            return new IrTupleType(returnTypes);
+        }
+
+        // Fallback to unit type
         return IrTupleType.Unit;
     }
 

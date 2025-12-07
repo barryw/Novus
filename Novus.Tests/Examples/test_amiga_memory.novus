@@ -1,11 +1,11 @@
 // Test Amiga memory allocation with RAII
 
 from std::core import Option
-from std::memory::amiga import ChipMemHandle, FastMemHandle
+from std::memory::amiga import MemHandle
 
 fn test_chip_memory() -> i32 {
     // Allocate chip memory
-    let mem_opt: Option<ChipMemHandle> = ChipMemHandle::new(1024)
+    let mem_opt: Option<MemHandle> = MemHandle::new_chip(1024)
 
     match mem_opt {
         Option::None => {
@@ -30,7 +30,7 @@ fn test_chip_memory() -> i32 {
 
 fn test_fast_memory() -> i32 {
     // Allocate fast memory
-    let mem_opt: Option<FastMemHandle> = FastMemHandle::new(2048)
+    let mem_opt: Option<MemHandle> = MemHandle::new_fast(2048)
 
     match mem_opt {
         Option::None => {
@@ -53,6 +53,31 @@ fn test_fast_memory() -> i32 {
     }
 }
 
+fn test_any_memory() -> i32 {
+    // Allocate any available memory
+    let mem_opt: Option<MemHandle> = MemHandle::new_any(512)
+
+    match mem_opt {
+        Option::None => {
+            return 1  // Allocation failed
+        },
+        Option::Some(mem) => {
+            // Verify allocation
+            if !mem.is_valid() {
+                return 2
+            }
+
+            let size: u32 = mem.size()
+            if size != 512 {
+                return 3
+            }
+
+            // mem will be automatically freed via Drop when it goes out of scope
+            return 0
+        }
+    }
+}
+
 pub fn main() -> i32 {
     let chip_result: i32 = test_chip_memory()
     if chip_result != 0 {
@@ -62,6 +87,11 @@ pub fn main() -> i32 {
     let fast_result: i32 = test_fast_memory()
     if fast_result != 0 {
         return fast_result + 10
+    }
+
+    let any_result: i32 = test_any_memory()
+    if any_result != 0 {
+        return any_result + 20
     }
 
     return 0

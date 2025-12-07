@@ -3,7 +3,7 @@
 // compiler support for complex pointer arithmetic
 
 from std::core import Option
-from std::memory::amiga import ChipMemHandle
+from std::memory::amiga import MemHandle
 
 // TODO: Implement pattern generation functions once pointer arithmetic
 // is better supported in the compiler. For now, this module provides
@@ -11,7 +11,7 @@ from std::memory::amiga import ChipMemHandle
 
 // Allocate chip memory for a solid color pattern
 // Returns memory handle that can be filled manually
-pub fn allocate_pattern(depth: u32, width: u32, height: u32) -> Option<ChipMemHandle> {
+pub fn allocate_pattern(depth: u32, width: u32, height: u32) -> Option<MemHandle> {
     let size: u32 = width * height * depth
-    return ChipMemHandle::new(size)
+    return MemHandle::new_chip(size)
 }

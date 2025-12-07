@@ -2,6 +2,7 @@ using Antlr4.Runtime;
 using Antlr4.Runtime.Tree;
 using Novus.Diagnostics;
 using Novus.Parser;
+using Novus.Preprocessing;
 
 namespace Novus.Frontend;
 
@@ -41,9 +42,14 @@ public static class ModuleImportHelper
     }
 
     /// <summary>
-    /// Parse a module file and return the compilation unit context
+    /// Parse a module file and return the compilation unit context.
+    /// If preprocessor constants are provided, the source is preprocessed before parsing.
     /// </summary>
-    public static (NovusParser.CompilationUnitContext? Context, int SyntaxErrors) ParseModuleFile(string modulePath)
+    /// <param name="modulePath">Path to the module file</param>
+    /// <param name="preprocessorConstants">Optional preprocessor constants for conditional compilation</param>
+    public static (NovusParser.CompilationUnitContext? Context, int SyntaxErrors) ParseModuleFile(
+        string modulePath,
+        Dictionary<string, bool>? preprocessorConstants = null)
     {
         if (!File.Exists(modulePath))
         {
@@ -52,6 +58,20 @@ public static class ModuleImportHelper
 
         var moduleSource = File.ReadAllText(modulePath);
         var diagnostics = new DiagnosticBag();
+
+        // Run preprocessor if constants are provided
+        if (preprocessorConstants != null)
+        {
+            var preprocessor = new Preprocessor(preprocessorConstants, diagnostics, modulePath);
+            moduleSource = preprocessor.Process(moduleSource);
+
+            // If preprocessor had errors, return early
+            if (diagnostics.ErrorCount > 0)
+            {
+                return (null, diagnostics.ErrorCount);
+            }
+        }
+
         var parser = NovusParserFactory.CreateParser(
             moduleSource,
             diagnostics,

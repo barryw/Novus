@@ -20,7 +20,7 @@
 from std::core import Result, Option
 from std::error::errors import GraphicsError
 from std::graphics::palette import Color
-from std::memory::amiga import ChipMemHandle
+from std::memory::amiga import MemHandle
 from std::ffi::amiga_structs import Custom
 from std::ffi::graphics import WaitTOF
 from std::ffi::exec import FreeVec
@@ -87,7 +87,7 @@ impl SpriteData {
 
         // Allocate CHIP RAM
         let size_bytes = len * 2u32
-        let chip_mem_opt = ChipMemHandle::new(size_bytes)
+        let chip_mem_opt = MemHandle::new_chip(size_bytes)
 
         match chip_mem_opt {
             Option::None => {
@@ -720,8 +720,8 @@ impl AttachedSpriteData {
         let plane01_size = size_per_plane * 2u32
         let plane23_size = size_per_plane * 2u32
 
-        let plane01_opt = ChipMemHandle::new(plane01_size)
-        let plane23_opt = ChipMemHandle::new(plane23_size)
+        let plane01_opt = MemHandle::new_chip(plane01_size)
+        let plane23_opt = MemHandle::new_chip(plane23_size)
 
         match plane01_opt {
             Option::None => return Result::Err(GraphicsError::BitMapAllocFailed),

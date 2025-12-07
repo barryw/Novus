@@ -1,0 +1,202 @@
+// Test for Str::equals() function
+// Exercises all code paths including 68020+ inline assembly optimizations
+//
+// Code paths tested:
+// 1. Different lengths (early exit)
+// 2. Short strings (< 8 bytes) - byte-by-byte fallback
+// 3. Long strings (>= 8 bytes) - 68020+ inline assembly:
+//    a. Word-aligned comparison (cmpm.l loop)
+//    b. Remaining bytes (cmpm.b loop) for len % 4 != 0
+// 4. Equal strings at various lengths
+// 5. Unequal strings with difference at start/middle/end
+//
+// Run with: novus test str_equals_test.novus
+
+from std::strings::core import Str
+from std::test::test import expect
+
+// ============================================================================
+// Different Length Tests (early exit path)
+// ============================================================================
+
+@test("Different lengths should not be equal")
+pub fn test_different_lengths() {
+    let s1: Str = "Hello"
+    let s2: Str = "Hi"
+    expect(!s1.equals(s2), "5-byte vs 2-byte strings")
+
+    let empty: Str = ""
+    let nonempty: Str = "x"
+    expect(!empty.equals(nonempty), "empty vs non-empty")
+}
+
+// ============================================================================
+// Empty String Tests (edge case)
+// ============================================================================
+
+@test("Empty strings should be equal")
+pub fn test_empty_strings() {
+    let empty1: Str = ""
+    let empty2: Str = ""
+    expect(empty1.equals(empty2), "two empty strings")
+}
+
+// ============================================================================
+// Short String Tests (< 8 bytes, byte-by-byte path)
+// ============================================================================
+
+@test("1-byte strings - equal")
+pub fn test_1_byte_equal() {
+    let a1: Str = "A"
+    let a2: Str = "A"
+    expect(a1.equals(a2), "single char equal")
+}
+
+@test("1-byte strings - not equal")
+pub fn test_1_byte_not_equal() {
+    let b1: Str = "A"
+    let b2: Str = "B"
+    expect(!b1.equals(b2), "single char different")
+}
+
+@test("4-byte strings - equal")
+pub fn test_4_byte_equal() {
+    let four1: Str = "test"
+    let four2: Str = "test"
+    expect(four1.equals(four2), "4-byte equal")
+}
+
+@test("4-byte strings - difference at end")
+pub fn test_4_byte_diff_end() {
+    let four3: Str = "test"
+    let four4: Str = "tesx"
+    expect(!four3.equals(four4), "4-byte diff at end")
+}
+
+@test("7-byte strings - equal (just under threshold)")
+pub fn test_7_byte_equal() {
+    let seven1: Str = "1234567"
+    let seven2: Str = "1234567"
+    expect(seven1.equals(seven2), "7-byte equal")
+}
+
+@test("7-byte strings - difference in middle")
+pub fn test_7_byte_diff_middle() {
+    let seven3: Str = "1234567"
+    let seven4: Str = "123X567"
+    expect(!seven3.equals(seven4), "7-byte diff in middle")
+}
+
+// ============================================================================
+// Long String Tests (>= 8 bytes, 68020+ inline asm path)
+// ============================================================================
+
+@test("8-byte strings - equal (2 longwords, no remainder)")
+pub fn test_8_byte_equal() {
+    let eight1: Str = "12345678"
+    let eight2: Str = "12345678"
+    expect(eight1.equals(eight2), "8-byte equal")
+}
+
+@test("8-byte strings - difference in first longword")
+pub fn test_8_byte_diff_first() {
+    let eight3: Str = "12345678"
+    let eight4: Str = "X2345678"
+    expect(!eight3.equals(eight4), "8-byte diff at start")
+}
+
+@test("8-byte strings - difference in second longword")
+pub fn test_8_byte_diff_second() {
+    let eight5: Str = "12345678"
+    let eight6: Str = "1234567X"
+    expect(!eight5.equals(eight6), "8-byte diff at end")
+}
+
+@test("9-byte strings - equal (2 longwords + 1 remainder)")
+pub fn test_9_byte_equal() {
+    let nine1: Str = "123456789"
+    let nine2: Str = "123456789"
+    expect(nine1.equals(nine2), "9-byte equal")
+}
+
+@test("9-byte strings - difference in remainder")
+pub fn test_9_byte_diff_remainder() {
+    let nine3: Str = "123456789"
+    let nine4: Str = "12345678X"
+    expect(!nine3.equals(nine4), "9-byte diff in remainder")
+}
+
+@test("10-byte strings - equal (2 longwords + 2 remainder)")
+pub fn test_10_byte_equal() {
+    let ten1: Str = "1234567890"
+    let ten2: Str = "1234567890"
+    expect(ten1.equals(ten2), "10-byte equal")
+}
+
+@test("11-byte strings - equal (2 longwords + 3 remainder)")
+pub fn test_11_byte_equal() {
+    let eleven1: Str = "12345678901"
+    let eleven2: Str = "12345678901"
+    expect(eleven1.equals(eleven2), "11-byte equal")
+}
+
+@test("11-byte strings - difference in last remainder byte")
+pub fn test_11_byte_diff_last() {
+    let eleven3: Str = "12345678901"
+    let eleven4: Str = "1234567890X"
+    expect(!eleven3.equals(eleven4), "11-byte diff in last remainder")
+}
+
+@test("12-byte strings - equal (3 longwords, no remainder)")
+pub fn test_12_byte_equal() {
+    let twelve1: Str = "123456789012"
+    let twelve2: Str = "123456789012"
+    expect(twelve1.equals(twelve2), "12-byte equal")
+}
+
+@test("16-byte strings - equal (4 longwords, tests loop)")
+pub fn test_16_byte_equal() {
+    let sixteen1: Str = "1234567890123456"
+    let sixteen2: Str = "1234567890123456"
+    expect(sixteen1.equals(sixteen2), "16-byte equal")
+}
+
+@test("16-byte strings - difference in third longword")
+pub fn test_16_byte_diff_middle() {
+    let sixteen3: Str = "1234567890123456"
+    let sixteen4: Str = "12345678X0123456"
+    expect(!sixteen3.equals(sixteen4), "16-byte diff in middle")
+}
+
+// ============================================================================
+// Longer String Tests (stress the loop)
+// ============================================================================
+
+@test("32-byte strings - equal (8 longwords)")
+pub fn test_32_byte_equal() {
+    let long1: Str = "12345678901234567890123456789012"
+    let long2: Str = "12345678901234567890123456789012"
+    expect(long1.equals(long2), "32-byte equal")
+}
+
+@test("33-byte strings - equal (8 longwords + 1 remainder)")
+pub fn test_33_byte_equal() {
+    let long3: Str = "123456789012345678901234567890123"
+    let long4: Str = "123456789012345678901234567890123"
+    expect(long3.equals(long4), "33-byte equal")
+}
+
+@test("33-byte strings - difference in remainder")
+pub fn test_33_byte_diff_remainder() {
+    let long5: Str = "123456789012345678901234567890123"
+    let long6: Str = "12345678901234567890123456789012X"
+    expect(!long5.equals(long6), "33-byte diff in remainder")
+}
+
+@test("35-byte strings - equal (8 longwords + 3 remainder)")
+pub fn test_35_byte_equal() {
+    let long7: Str = "12345678901234567890123456789012345"
+    let long8: Str = "12345678901234567890123456789012345"
+    expect(long7.equals(long8), "35-byte equal")
+}
+
