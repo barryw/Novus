@@ -3928,10 +3928,39 @@ public partial class CCodeGenerator
             returnType = "int";
         }
 
+        // Check for @interrupt attribute - use vbcc's __interrupt keyword
+        // This tells vbcc to save/restore ALL registers and use RTE instead of RTS
+        var isInterruptHandler = function.Attributes?.Has(Novus.SemanticAnalysis.KnownAttributes.Interrupt) ?? false;
+        var interruptPrefix = isInterruptHandler ? "__interrupt " : "";
+
         // Monomorphized trait implementations are generated in multiple modules.
         // Don't try to use inline/static - just let them be regular functions and
         // handle the duplicate symbols at the Program.cs level by generating them once.
-        _output.AppendLine($"{returnType} {funcName}({parameters}) {{");
+        _output.AppendLine($"{interruptPrefix}{returnType} {funcName}({parameters}) {{");
+
+        // Add comment for interrupt handlers explaining the calling convention
+        if (isInterruptHandler)
+        {
+            _output.AppendLine("    /* @interrupt: This function saves/restores ALL registers (d0-d7/a0-a6) */");
+            _output.AppendLine("    /* and returns via RTE instead of RTS. Do NOT call blocking functions! */");
+        }
+
+        // Check for @atomic attribute - wrap function body in Forbid/Permit
+        var isAtomic = function.Attributes?.Has(Novus.SemanticAnalysis.KnownAttributes.Atomic) ?? false;
+        if (isAtomic)
+        {
+            _output.AppendLine("    /* @atomic: Forbid task switching for this function */");
+            _output.AppendLine("    Forbid();");
+        }
+
+        // Check for @no_interrupts attribute - wrap function body in Disable/Enable
+        // WARNING: This is extremely dangerous and should be used sparingly!
+        var isNoInterrupts = function.Attributes?.Has(Novus.SemanticAnalysis.KnownAttributes.NoInterrupts) ?? false;
+        if (isNoInterrupts)
+        {
+            _output.AppendLine("    /* @no_interrupts: Disable ALL interrupts - KEEP SECTION SHORT! */");
+            _output.AppendLine("    Disable();");
+        }
 
         // In debug builds, emit stack overflow check at function entry
         // This checks if there's enough stack space before allocating locals
@@ -4126,6 +4155,20 @@ public partial class CCodeGenerator
         if (!allPathsReturn)
         {
             EmitDeferredCleanup(function, 1);
+
+            // Emit @no_interrupts cleanup (Enable) if attribute is present
+            // This must come AFTER deferred cleanup since defer might need interrupts
+            if (function.Attributes?.Has(Novus.SemanticAnalysis.KnownAttributes.NoInterrupts) ?? false)
+            {
+                _output.AppendLine("    Enable(); /* @no_interrupts cleanup */");
+            }
+
+            // Emit @atomic cleanup (Permit) if attribute is present
+            // This must come AFTER deferred cleanup and Enable since we want to restore task switching last
+            if (function.Attributes?.Has(Novus.SemanticAnalysis.KnownAttributes.Atomic) ?? false)
+            {
+                _output.AppendLine("    Permit(); /* @atomic cleanup */");
+            }
         }
 
         _output.AppendLine("}");
@@ -5017,6 +5060,37 @@ public partial class CCodeGenerator
                 _output.AppendLine($"    {cType} {resultName} = {expr};");
             }
         }
+        // Handle signed integer arithmetic with wrapping semantics to avoid undefined behavior.
+        // C99 signed integer overflow is UB, but Novus defines wrapping semantics.
+        // We cast to unsigned, perform the operation, then cast back to signed.
+        else if ((binaryOp.Operation == IrBinaryOp.OpKind.Add ||
+                  binaryOp.Operation == IrBinaryOp.OpKind.Sub ||
+                  binaryOp.Operation == IrBinaryOp.OpKind.Mul) &&
+                 binaryOp.Type is IrIntType intType && intType.IsSigned)
+        {
+            var op = GetBinaryOperator(binaryOp.Operation);
+            var unsignedType = intType.BitWidth switch
+            {
+                8 => "uint8_t",
+                16 => "uint16_t",
+                32 => "uint32_t",
+                64 => "uint64_t",
+                _ => cType // Fallback to signed if unexpected width
+            };
+
+            // Cast both operands to unsigned, perform operation, cast result back to signed
+            // This ensures defined wrapping behavior on overflow
+            var expr = $"({cType})(({unsignedType}){left} {op} ({unsignedType}){right})";
+
+            if (alreadyDeclared)
+            {
+                _output.AppendLine($"    {resultName} = {expr};");
+            }
+            else
+            {
+                _output.AppendLine($"    {cType} {resultName} = {expr};");
+            }
+        }
         else
         {
             var op = GetBinaryOperator(binaryOp.Operation);
@@ -5398,6 +5472,20 @@ public partial class CCodeGenerator
         if (_currentEmittingFunction != null)
         {
             EmitDeferredCleanup(_currentEmittingFunction, 1);
+        }
+
+        // Emit @no_interrupts cleanup (Enable) before returning if attribute is present
+        // This must come AFTER deferred cleanup since defer might need interrupts
+        if (_currentEmittingFunction?.Attributes?.Has(Novus.SemanticAnalysis.KnownAttributes.NoInterrupts) ?? false)
+        {
+            _output.AppendLine("    Enable(); /* @no_interrupts cleanup */");
+        }
+
+        // Emit @atomic cleanup (Permit) before returning if attribute is present
+        // This must come AFTER deferred cleanup and Enable
+        if (_currentEmittingFunction?.Attributes?.Has(Novus.SemanticAnalysis.KnownAttributes.Atomic) ?? false)
+        {
+            _output.AppendLine("    Permit(); /* @atomic cleanup */");
         }
 
         // Memory tracking: Emit cleanup and report before main() returns

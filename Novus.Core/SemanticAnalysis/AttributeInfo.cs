@@ -227,6 +227,10 @@ public static class KnownAttributes
     public const string Interrupt = "interrupt";           // Mark function as interrupt handler
     public const string InterruptSafe = "interrupt_safe";  // Mark function as safe to call from interrupts
 
+    // Synchronization attributes
+    public const string Atomic = "atomic";                 // Wrap function body in Forbid/Permit critical section
+    public const string NoInterrupts = "no_interrupts";    // Wrap function body in Disable/Enable (use sparingly!)
+
     /// <summary>
     /// All known attribute names for validation
     /// </summary>
@@ -245,7 +249,8 @@ public static class KnownAttributes
         Audio, AudioRaw, Mod,
         ChipRam,
         StackSize,
-        Interrupt, InterruptSafe
+        Interrupt, InterruptSafe,
+        Atomic, NoInterrupts
     };
 
     /// <summary>
