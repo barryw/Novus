@@ -3145,7 +3145,13 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 );
                 return null;
             }
-            // TODO: Validate lvalue suffix chain and types
+            // Lvalue suffix chain validation is complex and requires handling:
+            // - IrStructType (direct field access)
+            // - IrPointerType (auto-dereference for field access)
+            // - IrReferenceType (auto-dereference for field access)
+            // - IrArrayType and pointer indexing
+            // The existing code in IrBuilder handles this during code generation.
+            // For now, we just visit the value expression to check its type.
             var valueType = Visit(context.expression());
             return null;
         }
@@ -9490,13 +9496,27 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         var firstType = Visit(expressions[0]);
+        if (firstType == null)
+        {
+            return null;
+        }
+
+        int index = 1;
         foreach (var expr in expressions.Skip(1))
         {
             var exprType = Visit(expr);
-            // TODO: Check type compatibility
+            if (exprType != null && !TypesCompatible(firstType, exprType))
+            {
+                _diagnostics.ReportError(
+                    "E0029",
+                    $"array element type mismatch: expected '{TypeToString(firstType)}' (from first element), found '{TypeToString(exprType!)}'  at index {index}",
+                    SourceLocationHelper.FromContext(expr, _filePath, _sourceLines)
+                );
+            }
+            index++;
         }
 
-        return _typeInterner.GetArrayType(firstType!, expressions.Length);
+        return _typeInterner.GetArrayType(firstType, expressions.Length);
     }
 
     public override IrType? VisitArrayRepeatLiteral([NotNull] NovusParser.ArrayRepeatLiteralContext context)

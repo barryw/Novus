@@ -15,6 +15,25 @@ namespace Novus.Frontend;
 ///
 /// The table is designed to be flexible enough for both use cases while avoiding duplication.
 /// Scoping rules: child scopes shadow parent scope symbols of the same name.
+///
+/// SCOPING DESIGN NOTES:
+/// =====================
+/// - Module-level symbols (types, traits, functions, constants) are registered at the root scope
+/// - Local variables within functions are function-scoped in IrBuilder (flat _localVariables dictionary)
+/// - Block-level scoping within functions is NOT currently implemented
+/// - The CreateChildScope() method exists to support future block-level scoping if needed
+/// - Generic parameters use the scoping mechanism via RegisterGenericParameter/ClearGenericParameters
+///
+/// RATIONALE FOR FUNCTION-SCOPED LOCALS:
+/// - IR/C targets have function-scoped stack frames, not block-scoped
+/// - Block scoping is primarily a source-level semantic concern
+/// - Variable shadowing in nested blocks creates distinct IR variables with mangled names
+/// - This approach simplifies IR generation while maintaining correctness
+///
+/// FUTURE CONSIDERATIONS:
+/// If block-level variable scoping is needed (e.g., for better error messages about
+/// accessing variables outside their declaring block), implement it in SemanticAnalyzer
+/// using CreateChildScope() when entering blocks and restoring when exiting.
 /// </remarks>
 public class SymbolTable
 {

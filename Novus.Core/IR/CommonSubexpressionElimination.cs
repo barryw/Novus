@@ -214,11 +214,13 @@ public class CommonSubexpressionElimination
     {
         return instruction switch
         {
-            IrCall _ => true,              // Function calls may have side effects
-            // TODO: Add more invalidating instructions as they are implemented:
-            // - Field stores
-            // - Array stores
-            // - Pointer stores
+            IrCall _ => true,                  // Function calls may have side effects
+            IrStore _ => true,                 // Variable stores change memory
+            IrMemberStore _ => true,           // Field stores change memory
+            IrIndexStore _ => true,            // Array stores change memory
+            IrIndexedFieldStore _ => true,     // Indexed field stores change memory
+            IrDereferenceStore _ => true,      // Pointer stores change memory
+            IrHardwareWrite _ => true,         // Hardware writes have side effects
             _ => false
         };
     }

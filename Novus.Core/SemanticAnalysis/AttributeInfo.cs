@@ -223,6 +223,10 @@ public static class KnownAttributes
     // Module-level configuration attributes
     public const string StackSize = "stack_size"; // Set program stack size: #[stack_size(65536)]
 
+    // Interrupt handling attributes
+    public const string Interrupt = "interrupt";           // Mark function as interrupt handler
+    public const string InterruptSafe = "interrupt_safe";  // Mark function as safe to call from interrupts
+
     /// <summary>
     /// All known attribute names for validation
     /// </summary>
@@ -240,7 +244,8 @@ public static class KnownAttributes
         Suppress,
         Audio, AudioRaw, Mod,
         ChipRam,
-        StackSize
+        StackSize,
+        Interrupt, InterruptSafe
     };
 
     /// <summary>

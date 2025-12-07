@@ -697,6 +697,72 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
         _currentBlock!.AddInstruction(new IrLabel(endLabel));
     }
 
+    /// <summary>
+    /// Build IR from a parsed compilation unit using a multi-pass approach.
+    /// </summary>
+    /// <remarks>
+    /// COMPILATION PASS DEPENDENCIES AND ORDERING:
+    /// =============================================
+    ///
+    /// The passes are ordered to satisfy these dependencies:
+    ///
+    /// Pass 0a/0b: Imports
+    ///   - No dependencies. Sets up external symbols.
+    ///
+    /// Pass 1: Constants
+    ///   - Depends on: Imports (constants may reference imported types)
+    ///   - Must complete before: Enum variants (may use constants for discriminants)
+    ///
+    /// Pass 2a: Enum Stubs
+    ///   - Depends on: Nothing
+    ///   - Produces: Enum type names are resolvable (but no variants yet)
+    ///   - Reason: Allows forward references between enums
+    ///
+    /// Pass 2a.5: Struct Stubs
+    ///   - Depends on: Enum stubs (struct fields may reference enums)
+    ///   - Produces: Struct type names are resolvable (but no fields yet)
+    ///   - Reason: Enum variants may contain struct associated data
+    ///
+    /// Pass 2b: Enum Variants
+    ///   - Depends on: Enum stubs, Struct stubs, Constants
+    ///   - Produces: Complete enum types with variants and associated data
+    ///   - Reason: Variant associated data may be struct types
+    ///
+    /// Pass 3: Struct Fields
+    ///   - Depends on: Enum variants (fields may be enum types), Struct stubs (for self-references)
+    ///   - Produces: Complete struct types with field definitions
+    ///
+    /// Pass 3.1: Static Variables
+    ///   - Depends on: Struct fields (static initializers may be struct literals)
+    ///   - Reason: Static initializers need complete type information
+    ///
+    /// Pass 3.25: Trait Types
+    ///   - Depends on: Struct/enum types (trait bounds may reference them)
+    ///
+    /// Pass 3.5: External Variables
+    ///   - Depends on: All types registered
+    ///
+    /// Pass 4: Function Signatures
+    ///   - Depends on: All types, constants
+    ///   - Generic functions stored as templates (not instantiated yet)
+    ///
+    /// Pass 4.5: Impl Method Signatures
+    ///   - Depends on: Struct types, trait types, function signatures
+    ///   - Must store generic method templates for later instantiation
+    ///
+    /// Pass 5: Function Bodies
+    ///   - Depends on: All signatures, types, constants
+    ///   - May trigger generic instantiation
+    ///
+    /// Pass 6: Impl Method Bodies
+    ///   - Depends on: Function bodies (methods may call functions)
+    ///   - Only for non-generic impl blocks (generic ones instantiated on demand)
+    ///
+    /// CRITICAL INVARIANTS:
+    /// - Type names must be registered as stubs before being referenced
+    /// - Complete type information (fields/variants) needed before function bodies
+    /// - Generic templates stored in Pass 4/4.5, instantiated in Pass 5/6 on demand
+    /// </remarks>
     public IrModule BuildModule(NovusParser.CompilationUnitContext context)
     {
         // Process module-level attributes first (e.g., #[stack_size(65536)])

@@ -73,6 +73,7 @@ typedef unsigned long long uint64_t;
 #define AO_BufferOverflow (0x00000008)
 #define AO_UseAfterFree   (0x00000009)
 #define AO_NullPointer    (0x0000000A)
+#define AO_StackOverflow  (0x0000000B)
 
 // ============================================================================
 // Core Memory Functions
@@ -109,5 +110,35 @@ void __novus_test_set_mode(int32_t enabled);
 void __novus_test_reset_panic(void);
 int32_t __novus_test_did_panic(void);
 const char* __novus_test_get_panic_message(void);
+
+// ============================================================================
+// Stack Overflow Detection (Debug Builds Only)
+// ============================================================================
+// In debug builds, each function prologue checks if there's enough stack space
+// remaining before allocating its local variables. This catches stack overflow
+// before it corrupts memory.
+//
+// Usage in generated code:
+//   __novus_check_stack(local_size, __FILE__, __LINE__);
+//
+// The function checks:
+//   1. If stack pointer is approaching the stack limit
+//   2. If there's enough space for the requested local variables
+//
+// Stack limits are determined at startup from the AmigaOS CLI stack cookie
+// or the Task structure's stack bounds.
+// ============================================================================
+
+// Initialize stack bounds (called at program startup)
+void __novus_init_stack_bounds(void);
+
+// Check if stack has enough space for 'required_bytes' more
+// If not, displays error and aborts
+void __novus_check_stack(uint32_t required_bytes, const char* func_name, int32_t line);
+
+// Stack bound tracking (set during initialization)
+extern uint32_t __novus_stack_base;   // Top of stack (highest address)
+extern uint32_t __novus_stack_limit;  // Bottom of stack (lowest address)
+extern uint32_t __novus_stack_guard;  // Guard zone size (default 256 bytes)
 
 #endif // NOVUS_RUNTIME_H

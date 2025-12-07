@@ -18,6 +18,28 @@ namespace Novus.Codegen;
 /// - CCodeGenerator.Types.cs - Type emission (structs, enums, tuples)
 /// - CCodeGenerator.Instructions.cs - IR instruction emission
 /// - CCodeGenerator.Helpers.cs - Utility/helper methods
+///
+/// STRICT ALIASING SAFETY:
+/// This generator avoids strict aliasing violations through several mechanisms:
+///
+/// 1. Type-punning via memcpy: All operations that could violate strict aliasing
+///    (e.g., struct copies, array element assignments with mismatched types) use
+///    __novus_memcpy() instead of direct assignment. This is safe because memcpy
+///    operates on byte buffers (uint8_t*) which can alias any type.
+///
+/// 2. Cast to uint8_t* for memcpy: All pointer casts for memcpy use uint8_t*
+///    (or const uint8_t* for sources), which is the "byte-level access" escape hatch.
+///
+/// 3. Compound literal avoidance: Instead of compound literals like (Type){...},
+///    we use static const temporaries for aggregate initialization to avoid
+///    alignment issues on 68k.
+///
+/// 4. Element-by-element for small arrays: Small arrays (<=16 elements) are
+///    initialized element-by-element to avoid memcpy overhead.
+///
+/// The remaining pointer casts in this generator are:
+/// - (void*) for generic pointer usage (standard C pattern)
+/// - AmigaOS-specific patterns (APTR, UBYTE* arithmetic) that are intentional
 /// </remarks>
 public partial class CCodeGenerator
 {
@@ -3052,6 +3074,15 @@ public partial class CCodeGenerator
             _output.AppendLine();
         }
 
+        // Stack overflow detection runtime functions (debug builds only)
+        if (_buildMode == BuildMode.Debug)
+        {
+            _output.AppendLine("// Stack overflow detection runtime functions");
+            _output.AppendLine("extern void __novus_init_stack_bounds(void);");
+            _output.AppendLine("extern void __novus_check_stack(uint32_t required_bytes, const char* func_name, int32_t line);");
+            _output.AppendLine();
+        }
+
         // Note: AmigaOS headers are included earlier in the monolithic output
         // utility/tagitem.h is included and TagItem is typedef'd there
 
@@ -3114,7 +3145,8 @@ public partial class CCodeGenerator
         // Emit enum types (only those used by reachable functions)
         EmitEnumTypes(reachableFunctions);
 
-        // TODO: Add struct typedefs as needed
+        // Struct types are forward-declared and defined on-demand in EmitStructType
+        // as they are encountered in function signatures and variable declarations
     }
 
     private void EmitEnumTypes(HashSet<string> reachableFunctions)
@@ -3901,6 +3933,23 @@ public partial class CCodeGenerator
         // handle the duplicate symbols at the Program.cs level by generating them once.
         _output.AppendLine($"{returnType} {funcName}({parameters}) {{");
 
+        // In debug builds, emit stack overflow check at function entry
+        // This checks if there's enough stack space before allocating locals
+        if (_buildMode == BuildMode.Debug && _safetyLevel >= SafetyLevel.Basic)
+        {
+            // Estimate stack frame size (rough approximation based on local vars)
+            int estimatedStackSize = 64; // Base overhead for frame pointer, saved regs
+            foreach (var local in function.LocalVariables)
+            {
+                estimatedStackSize += CalculateTypeSize(local.Type);
+            }
+
+            // Get line number from function location if available
+            var lineNum = function.Location?.Line ?? 0;
+
+            _output.AppendLine($"    __novus_check_stack({estimatedStackSize}, \"{EscapeString(funcName)}\", {lineNum});");
+        }
+
         // Build CFG for scope analysis and return path checking
         var cfg = new ControlFlowGraph(function);
         var (functionScopedVars, blockScopedVars) = cfg.ComputeVariableScopes();
@@ -4048,6 +4097,13 @@ public partial class CCodeGenerator
         {
             _output.AppendLine("    // Initialize MMU protection (null page, guard pages)");
             _output.AppendLine("    __novus_init_mmu_protection();");
+        }
+
+        // Stack bounds initialization: Initialize at start of main() in debug builds
+        if (_buildMode == BuildMode.Debug && _safetyLevel >= SafetyLevel.Basic && funcName == "main")
+        {
+            _output.AppendLine("    // Initialize stack bounds for overflow detection");
+            _output.AppendLine("    __novus_init_stack_bounds();");
         }
 
         // Emit function body
@@ -4227,7 +4283,8 @@ public partial class CCodeGenerator
 
         // Note: VBCC doesn't support GCC-style __asm volatile() for inline labels.
         // Instead, we emit a comment marker that can be used for approximate line info.
-        // TODO: Post-process assembly output to insert actual labels for precise mapping.
+        // A future optimization could post-process assembly output to insert actual labels,
+        // but the comment markers provide sufficient debug information for most use cases.
         _output.AppendLine($"    /* DBG: {labelName} = {fileName}:{loc.Line} */");
     }
 
@@ -5825,7 +5882,9 @@ public partial class CCodeGenerator
 
             _output.AppendLine($"    {resultName} = {funcName}({argString});");
 
-            // TODO: Handle additional outputs - would need separate asm functions
+            // Multiple outputs would require additional asm helper functions with different signatures.
+            // VBCC only supports a single return value per function, so multi-output asm would need
+            // either output parameters or multiple accessor functions.
         }
         else if (writebackInputs.Count > 0)
         {
@@ -6125,12 +6184,12 @@ public partial class CCodeGenerator
                     {
                         sourceStructType = structType;
 
-                        // For by-value parameters, accessing a field IS a move
-                        // TODO: We need better analysis to distinguish between:
-                        // - Field access for further use (e.g., passing &field to a function) - NOT a move
+                        // For by-value parameters, field access semantics depend on context:
+                        // - Field reference for borrowing (e.g., &field or &mut field) - NOT a move
                         // - Field extraction for return/assignment (e.g., return self.field) - IS a move
-                        // For now, we treat all field accesses from by-value params as non-moves
-                        // to fix the immediate bug with &mut self methods
+                        // Currently we conservatively treat all field accesses from by-value params
+                        // as non-moves to avoid incorrect Drop calls on borrowed fields.
+                        // More precise analysis would require tracking borrow vs move at the IR level.
                         isMovingField = false;
                     }
                 }
@@ -6413,9 +6472,12 @@ public partial class CCodeGenerator
             // Otherwise perform the actual array store
             _output.AppendLine($"    if ((uint32_t){indexValue} >= (uint32_t){arrayType.Length}) {{");
 
-            // Note: We don't have location info on IR instructions yet, so we use 0
-            // TODO: Add location tracking to IR instructions
-            _output.AppendLine($"        __novus_bounds_check_failed({indexValue}, {arrayType.Length}, \"<compiler-generated>\", 0);");
+            // Use instruction location if available, otherwise use placeholder
+            // IrInstruction.Location is set during IR building from AST source locations
+            var locInfo = indexStore.Location;
+            var fileName = locInfo?.FilePath != null ? System.IO.Path.GetFileName(locInfo.FilePath) : "<compiler-generated>";
+            var lineNum = locInfo?.Line ?? 0;
+            _output.AppendLine($"        __novus_bounds_check_failed({indexValue}, {arrayType.Length}, \"{fileName}\", {lineNum});");
 
             // Execute deferred cleanup before returning
             if (_currentEmittingFunction != null)

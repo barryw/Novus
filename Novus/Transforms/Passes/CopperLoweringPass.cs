@@ -132,9 +132,21 @@ public class CopperLoweringPass : TransformPassBase
         }
         else if (!allConstant)
         {
-            // TODO: Generate runtime copper list building code
-            // For now, emit a warning comment in the output
-            Console.WriteLine($"Warning: Copper list contains non-constant values, runtime generation not yet implemented");
+            // Non-constant copper lists require runtime generation.
+            // For now, emit an error - future enhancement could support runtime building.
+            // The compiler will have already emitted a warning at the call site.
+            //
+            // Runtime copper list building would require:
+            // 1. Allocating chip RAM at runtime (via AllocMem with MEMF_CHIP)
+            // 2. Generating code to compute each word from the non-constant values
+            // 3. Storing the words at runtime
+            // 4. Managing deallocation (via defer or explicit free)
+            //
+            // This is a complex transformation that may be added in a future version.
+            throw new InvalidOperationException(
+                $"Copper list '{copperList.ResultName}' contains non-constant values. " +
+                "All copper list values (wait positions, register addresses, and values) must be compile-time constants. " +
+                "Use literal values or const declarations instead of variables.");
         }
     }
 

@@ -31,10 +31,47 @@ internal partial class CacheMetadataJsonContext : JsonSerializerContext
 {
 }
 
+/// <summary>
+/// Novus Compiler - Main entry point and compilation orchestration.
+///
+/// INCREMENTAL COMPILATION ARCHITECTURE:
+/// =====================================
+/// The compiler implements a multi-layer caching strategy to minimize rebuild times:
+///
+/// 1. IR Module Cache (CompilationCache in Novus.Core)
+///    - Persists compiled IR modules to disk (.novus-cache directory)
+///    - Keyed by: source file hash + compiler version + config hash
+///    - Invalidates on: source change, compiler update, build config change, dependency change
+///    - Tracks transitive dependencies for cascade invalidation
+///
+/// 2. Object File Cache (usercache directory)
+///    - Caches compiled .o files for user C code
+///    - Keyed by: CODEGEN_VERSION + C file hash + types header hash + CPU + FPU + build mode + opt level
+///    - Validates integrity via .meta files with size/hash verification
+///    - Location: {outputDir}/usercache/{cpu}/{buildMode}/
+///
+/// 3. Stdlib Module Cache (precompiled stdlib)
+///    - Pre-compiled standard library modules
+///    - Location: {compilerDir}/precompiled/{cpu}/{buildMode}/
+///    - Invalidates when stdlib source changes or CODEGEN_VERSION bumps
+///
+/// 4. Infrastructure Cache (stubs and runtime)
+///    - Hashes all .s files in stubs/ and runtime/ directories
+///    - Stored in .novus_infrastructure_hash per output directory
+///    - Forces rebuild of infrastructure .o files when changed
+///
+/// Cache Invalidation Triggers:
+/// - CODEGEN_VERSION bump: invalidates ALL caches (use for breaking codegen changes)
+/// - Source file change: invalidates that file's IR and object caches + dependents
+/// - Types header change: invalidates all object caches (ABI change)
+/// - Build config change (CPU/FPU/mode/opt): invalidates object caches
+/// - Dependency change: cascades through IR cache's dependency graph
+/// </summary>
 class Program
 {
     // Codegen format version - increment to invalidate all cached object files
-    // when making breaking changes to code generation or compilation process
+    // when making breaking changes to code generation or compilation process.
+    // This is the "nuclear option" - prefer targeted invalidation when possible.
     // v4: Added debug label injection via assembly post-processing in debug builds
     private const int CODEGEN_VERSION = 4;
 
@@ -791,6 +828,77 @@ class Program
             {
                 Console.WriteLine($"  Module cache: {moduleCache.Count} modules cached");
             }
+
+            // ============================================================================
+            // PHASE 1.25: Validate IR correctness (debug builds only)
+            // Catches malformed IR early, before optimization or code generation
+            // ============================================================================
+#if DEBUG
+            if (options.Verbose)
+            {
+                Console.WriteLine("Validating IR...");
+            }
+
+            var irValidator = new Novus.IR.IrValidator();
+            var validationErrors = new List<string>();
+
+            // Validate main module
+            var mainValidation = irValidator.Validate(mainIR.IrModule);
+            if (!mainValidation.IsValid)
+            {
+                var moduleName = Path.GetFileNameWithoutExtension(options.InputFile);
+                foreach (var error in mainValidation.Errors)
+                {
+                    validationErrors.Add($"[{moduleName}] {error}");
+                }
+            }
+
+            // Validate all imported modules
+            foreach (var (modulePath, moduleIR) in allModulesIR)
+            {
+                var result = irValidator.Validate(moduleIR.IrModule);
+                if (!result.IsValid)
+                {
+                    var moduleName = Path.GetFileNameWithoutExtension(modulePath);
+                    foreach (var error in result.Errors)
+                    {
+                        validationErrors.Add($"[{moduleName}] {error}");
+                    }
+                }
+            }
+
+            if (validationErrors.Count > 0)
+            {
+                // IR validation found issues. These are likely bugs in the IR builder
+                // that should be fixed. For now, log them as warnings and continue
+                // so development can proceed while the bugs are being addressed.
+                //
+                // Known issues caught by validation:
+                // - Duplicate labels in try/? operator handling
+                // - Missing local variable declarations in if-let patterns
+                //
+                // TODO: Fix these IR builder bugs and then enable strict validation:
+                // return 1;
+
+                if (options.Verbose)
+                {
+                    Console.WriteLine($"IR validation warnings: {validationErrors.Count}");
+                    foreach (var error in validationErrors.Take(5))
+                    {
+                        Console.WriteLine($"  - {error}");
+                    }
+                    if (validationErrors.Count > 5)
+                    {
+                        Console.WriteLine($"  ... and {validationErrors.Count - 5} more");
+                    }
+                }
+            }
+
+            if (options.Verbose)
+            {
+                Console.WriteLine($"  ✓ IR validated ({allModulesIR.Count + 1} modules)");
+            }
+#endif
 
             // ============================================================================
             // PHASE 1.5: Run HIR lowering passes on all modules

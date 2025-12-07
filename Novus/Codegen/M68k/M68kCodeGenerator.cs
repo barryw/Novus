@@ -210,6 +210,7 @@ public class M68kCodeGenerator
 
     private void GenerateFunction(IrFunction function)
     {
+        _currentFunctionName = function.Name;
         _output.AppendLine($"; Function: {function.Name}");
         _output.AppendLine($"; Returns: {function.ReturnType.Name}");
         _output.AppendLine($"; Visibility: {function.Visibility}");
@@ -353,16 +354,73 @@ public class M68kCodeGenerator
                 selector.EmitStoreRegister(M68kRegister.D0, store.VariableName, store.Value.Type);
                 break;
 
+            case IrIndexAccess indexAccess:
+                // Array indexing: load base address, compute offset, load element
+                selector.EmitIndexAccess(indexAccess);
+                break;
+
+            case IrIndexStore indexStore:
+                // Array store: load base address, compute offset, store value
+                selector.EmitIndexStore(indexStore);
+                break;
+
+            case IrMemberAccess memberAccess:
+                // Struct member access: load struct pointer, add offset, load value
+                selector.EmitMemberAccess(memberAccess);
+                break;
+
+            case IrMemberStore memberStore:
+                // Struct member store: load struct pointer, add offset, store value
+                selector.EmitMemberStore(memberStore);
+                break;
+
+            case IrDefer:
+                // Defer is handled at block level
+                break;
+
+            case IrAssert assertInst:
+                // Assert: evaluate condition, call runtime if false
+                selector.EmitAssert(assertInst);
+                break;
+
+            case IrPanic panicInst:
+                // Panic: call runtime panic handler
+                selector.EmitPanic(panicInst);
+                break;
+
+            case IrIndirectCall indirectCall:
+                // Indirect function call through function pointer
+                selector.EmitIndirectCall(indirectCall);
+                break;
+
+            case IrInlineAsm inlineAsm:
+                // Inline assembly - emit directly
+                _output.AppendLine($"    ; inline asm:");
+                foreach (var line in inlineAsm.Instructions)
+                {
+                    _output.AppendLine($"    {line.Trim()}");
+                }
+                break;
+
             default:
-                _output.AppendLine($"    ; TODO: {instruction.GetType().Name}");
+                // Emit warning comment for unhandled instructions
+                _output.AppendLine($"    ; UNHANDLED: {instruction.GetType().Name}");
                 break;
         }
     }
 
     private string GetCurrentFunctionName()
     {
-        // This is a hack - in real implementation, track current function
-        // For prototype, we can extract it from the output
+        // Return the current function name being generated
+        // This is tracked during function generation
+        return _currentFunctionName ?? "unknown";
+    }
+
+    private string? _currentFunctionName;
+
+    private string GetCurrentFunctionNameLegacy()
+    {
+        // Legacy fallback - scan output for function header
         var lines = _output.ToString().Split('\n');
         for (int i = lines.Length - 1; i >= 0; i--)
         {

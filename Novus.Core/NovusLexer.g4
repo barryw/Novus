@@ -58,6 +58,8 @@ KW_CLOBBERS  : 'clobbers';
 KW_TRUE     : 'true';
 KW_FALSE    : 'false';
 KW_NULL     : 'null';
+KW_PANIC    : 'panic';
+KW_ASSERT   : 'assert';
 
 // Primitive type keywords
 KW_U8       : 'u8';

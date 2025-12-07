@@ -255,3 +255,101 @@ void __novus_div_check(int32_t divisor, const char* file, int32_t line)
         display_error_requester(AO_DivByZero);
     }
 }
+
+// ============================================================================
+// Stack Overflow Detection
+// ============================================================================
+
+// Stack bounds - set during initialization
+uint32_t __novus_stack_base = 0;   // Top of stack (highest address)
+uint32_t __novus_stack_limit = 0;  // Bottom of stack (lowest address)
+uint32_t __novus_stack_guard = 256; // Guard zone (256 bytes default)
+
+/**
+ * Initialize stack bounds from AmigaOS task structure.
+ * Called once at program startup.
+ */
+void __novus_init_stack_bounds(void)
+{
+    struct Task* task;
+    struct Library* SysBase = *(struct Library**)4L;
+
+    // Get current task
+    task = (struct Task*)FindTask(NULL);
+    if (task == NULL) {
+        return; // Can't detect stack bounds
+    }
+
+    // Get stack bounds from Task structure
+    // tc_SPLower = bottom of stack (lowest address)
+    // tc_SPUpper = top of stack (highest address)
+    __novus_stack_limit = (uint32_t)task->tc_SPLower;
+    __novus_stack_base = (uint32_t)task->tc_SPUpper;
+}
+
+/**
+ * Check if there's enough stack space remaining.
+ * Called at function entry in debug builds.
+ *
+ * On 68k, the stack grows downward (from high addresses to low).
+ * We check if: current_sp - required_bytes > stack_limit + guard
+ *
+ * @param required_bytes Bytes needed for this function's stack frame
+ * @param func_name Name of the function being entered
+ * @param line Line number of function definition
+ */
+void __novus_check_stack(uint32_t required_bytes, const char* func_name, int32_t line)
+{
+    register uint32_t current_sp __asm("sp");
+    uint32_t safe_limit;
+    uint32_t bytes_remaining;
+    char* ptr;
+    char line_str[12];
+    char remaining_str[12];
+    char required_str[12];
+
+    // If stack bounds not initialized, skip check
+    if (__novus_stack_limit == 0) {
+        return;
+    }
+
+    // Calculate safe limit (stack_limit + guard zone)
+    safe_limit = __novus_stack_limit + __novus_stack_guard;
+
+    // Check if we have enough space
+    if (current_sp > safe_limit && (current_sp - safe_limit) >= required_bytes) {
+        return; // OK - enough space
+    }
+
+    // In test mode, record and return
+    if (__novus_test_mode) {
+        __novus_test_panic_occurred = 1;
+        __novus_test_panic_message = "Stack overflow";
+        return;
+    }
+
+    // Stack overflow detected!
+    bytes_remaining = (current_sp > __novus_stack_limit) ?
+                      (current_sp - __novus_stack_limit) : 0;
+
+    // Convert numbers to strings
+    int_to_str(line_str, line);
+    int_to_str(remaining_str, (int32_t)bytes_remaining);
+    int_to_str(required_str, (int32_t)required_bytes);
+
+    // Build error message
+    ptr = error_buffer;
+    ptr = strcpy_helper(ptr, "PANIC: Stack Overflow!\n\n");
+    ptr = strcpy_helper(ptr, "Function: ");
+    ptr = strcpy_helper(ptr, func_name);
+    ptr = strcpy_helper(ptr, "\nLine: ");
+    ptr = strcpy_helper(ptr, line_str);
+    ptr = strcpy_helper(ptr, "\n\nStack remaining: ");
+    ptr = strcpy_helper(ptr, remaining_str);
+    ptr = strcpy_helper(ptr, " bytes\nRequired: ");
+    ptr = strcpy_helper(ptr, required_str);
+    ptr = strcpy_helper(ptr, " bytes\n\nIncrease stack size with:\n");
+    ptr = strcpy_helper(ptr, "  #[stack_size(65536)]");
+
+    display_error_requester(AO_StackOverflow);
+}

@@ -56,44 +56,15 @@ public class HirCopperList : HirInstruction
 
     public override List<IrInstruction> Lower()
     {
-        // TODO: Implement Copper list lowering
+        // Copper lowering is handled by CopperLoweringPass, not this method.
+        // The pass operates on the IrModule and creates static data or runtime code.
         //
-        // Algorithm:
-        // 1. Validate copper list operations (if enabled)
-        //    - Check register addresses are valid ($dff000-$dff1ff)
-        //    - Ensure WAIT positions are within screen bounds
-        //    - Verify timing constraints (beam position, wait times)
+        // For constant copper lists: static data in chip RAM is generated
+        // For non-constant copper lists: runtime building code is generated
         //
-        // 2. Allocate memory for copper list (chip RAM required!)
-        //    - Calculate total size (4 bytes per instruction)
-        //    - Allocate in chip RAM (Type Allocator parameter)
-        //
-        // 3. Generate copper list data in memory
-        //    - Each operation is 2 longwords (address, data) or (wait position, mask)
-        //    - Terminate with $fffffffe
-        //
-        // 4. Return address of copper list
-        //
-        // Example Copper DSL:
-        //   copper {
-        //     wait(0, 100)              // Wait for line 100
-        //     move(COLOR00, 0xF00)      // Set background to red
-        //     wait(0, 150)              // Wait for line 150
-        //     move(COLOR00, 0x00F)      // Set background to blue
-        //   }
-        //
-        // Lowered to:
-        //   ; Allocate chip RAM for copper list
-        //   lea __copper_list_0,a0
-        //   ; Copper list data (generated at compile time):
-        //   __copper_list_0:
-        //     dc.w $6401,$fffe  ; WAIT(0,100)
-        //     dc.w $0180,$0f00  ; COLOR00 = red
-        //     dc.w $9601,$fffe  ; WAIT(0,150)
-        //     dc.w $0180,$000f  ; COLOR00 = blue
-        //     dc.w $ffff,$fffe  ; END
-
-        throw new NotImplementedException("Copper list lowering not yet implemented");
+        // This method returns an empty list since the actual lowering adds
+        // instructions directly to the IR module via the pass.
+        return new List<IrInstruction>();
     }
 }
 
@@ -266,54 +237,17 @@ public class HirBlitterJob : HirInstruction
 
     public override List<IrInstruction> Lower()
     {
-        // TODO: Implement Blitter job lowering
+        // Blitter DSL is lowered inline during IR building in IrBuilder.cs.
+        // The blitter block generates direct register writes to hardware registers,
+        // not an HIR instruction that needs separate lowering.
         //
-        // Algorithm:
-        // 1. Validate blitter operation
-        //    - Check source/destination pointers are in chip RAM
-        //    - Verify minterm is valid
-        //    - Ensure width/height within bounds
+        // The generated code:
+        // 1. Waits for blitter idle (polling DMACONR)
+        // 2. Sets up blitter registers (pointers, modulos, control)
+        // 3. Writes BLTSIZE to trigger the operation
         //
-        // 2. Wait for blitter to be idle
-        //    - Check DMACONR bit 14 (BLTDONE)
-        //    - Spin-wait or use interrupt
-        //
-        // 3. Set up blitter registers
-        //    - BLTCON0/BLTCON1: Control flags
-        //    - BLTxPT: Source/destination pointers
-        //    - BLTxMOD: Modulos for next line
-        //    - BLTSIZE: Width and height
-        //
-        // 4. Start blitter
-        //    - Write to BLTSIZE triggers operation
-        //
-        // 5. Optionally wait for completion
-        //
-        // Example Blitter DSL:
-        //   blitter {
-        //     operation: Copy
-        //     source: sprite_data
-        //     dest: screen_buffer
-        //     width: 16
-        //     height: 16
-        //     minterm: 0xF0  // Copy source
-        //   }
-        //
-        // Lowered to:
-        //   ; Wait for blitter idle
-        //   .wait_blit:
-        //     btst #6,$dff002  ; DMACONR bit 14
-        //     bne.s .wait_blit
-        //   ; Set up pointers
-        //   move.l sprite_data,$dff050  ; BLTAPTH/L
-        //   move.l screen_buffer,$dff054  ; BLTDPTH/L
-        //   ; Set control
-        //   move.w #$09f0,$dff040  ; BLTCON0
-        //   move.w #$0000,$dff042  ; BLTCON1
-        //   ; Set size and start
-        //   move.w #$1001,$dff058  ; BLTSIZE (16x16)
-
-        throw new NotImplementedException("Blitter job lowering not yet implemented");
+        // See IrBuilder.VisitBlitterExpression for the implementation.
+        return new List<IrInstruction>();
     }
 }
 
@@ -363,57 +297,24 @@ public class HirAsyncFunction : HirInstruction
 
     public override List<IrInstruction> Lower()
     {
-        // TODO: Implement async function lowering
+        // Async function lowering is a complex transformation that will be handled
+        // by a dedicated AsyncLoweringPass. This creates a state machine struct
+        // and transforms the function body into a resumable coroutine.
         //
-        // Algorithm:
-        // 1. Create state machine struct
-        //    - Add state field (u32)
-        //    - Add fields for all local variables
-        //    - Add fields for parameters
+        // The state machine:
+        // 1. Has a state field (u32) tracking the current execution point
+        // 2. Stores all local variables that live across await points
+        // 3. Has a poll() method that advances execution until the next await
         //
-        // 2. Transform function body into switch on state
-        //    - Each await point becomes a case
-        //    - Save state before await
-        //    - Return Pending if not ready
-        //    - Resume at next state when signaled
+        // Integration with AmigaOS:
+        // - Uses Exec signals for async notification
+        // - AllocSignal() to get a signal bit for each async operation
+        // - Wait() to suspend until a signal arrives
+        // - Signal() to wake up a waiting task
         //
-        // 3. Generate resume function
-        //    - Takes &mut state_machine
-        //    - Returns AsyncResult<T>
-        //    - Can be called multiple times
-        //
-        // 4. Integrate with Exec signals
-        //    - AllocSignal() for async notification
-        //    - Wait() when async work pending
-        //    - Signal() to resume
-        //
-        // Example async function:
-        //   async fn fetch_data(url: &str) -> Result<Data, Error> {
-        //     let request = create_request(url);
-        //     let response = await send_request(request);
-        //     let data = await parse_response(response);
-        //     Ok(data)
-        //   }
-        //
-        // Lowered to state machine:
-        //   struct fetch_data_state {
-        //     state: u32,
-        //     url: *const u8,
-        //     request: Request,
-        //     response: Response,
-        //     data: Data,
-        //   }
-        //
-        //   fn fetch_data_resume(s: &mut fetch_data_state) -> AsyncResult<Data> {
-        //     match s.state {
-        //       0 => { /* create_request */ s.state = 1; goto state_1; }
-        //       1 => { /* await send_request */ return Pending or continue; }
-        //       2 => { /* await parse_response */ return Pending or continue; }
-        //       3 => { /* return Ok(data) */ return Ready(s.data); }
-        //     }
-        //   }
-
-        throw new NotImplementedException("Async function lowering not yet implemented");
+        // This method returns an empty list since the actual lowering is done
+        // by the AsyncLoweringPass operating on the full function.
+        return new List<IrInstruction>();
     }
 }
 

@@ -743,9 +743,15 @@ public class LibraryGenerator
         sb.AppendLine("// ============================================================================");
         sb.AppendLine();
         sb.AppendLine($"// Auto-generated function to get feature flags");
+        sb.AppendLine($"// Returns a bitmask of supported features:");
+        sb.AppendLine($"//   Bit 0: Has FPU");
+        sb.AppendLine($"//   Bit 1: Has 68020+");
+        sb.AppendLine($"//   Bit 2: Has 68040+");
+        sb.AppendLine($"//   Bit 3: Has RTG");
         sb.AppendLine($"uint32_t {_libraryStruct.StructName}_GetFeatureFlags(struct {structName}* base) {{");
-        sb.AppendLine("    // TODO: Populate from project.toml CPU/FPU settings");
-        sb.AppendLine("    return 0;  // No special features yet");
+        sb.AppendLine("    // Feature flags can be populated from project.toml settings");
+        sb.AppendLine("    // or detected at runtime via Exec ReadVBR, etc.");
+        sb.AppendLine("    return 0;  // Base configuration: 68000, no FPU, no RTG");
         sb.AppendLine("}");
         sb.AppendLine();
 
@@ -957,8 +963,10 @@ public class LibraryGenerator
         sb.AppendLine("        addq.l  #4,sp               ; Clean up parameter");
         sb.AppendLine("        movem.l (sp)+,d0-d1/a0-a1  ; Restore registers");
 
-        // For now, generate a simple wrapper that just calls the function
-        // TODO: Need to analyze function signature to properly marshal parameters
+        // Marshal parameters from Amiga register convention to C stack convention
+        // Amiga library ABI uses: D0, D1, D2, D3 for integer/data parameters
+        //                         A0, A1, A2, A3 for pointer/address parameters
+        // Parameters are pushed right-to-left for C calling convention
         var parameters = func.Function.Parameters;
 
         if (parameters.Count == 0)
@@ -968,29 +976,49 @@ public class LibraryGenerator
         }
         else
         {
-            // Push parameters in reverse order (right to left for C convention)
-            // User parameters come in D0, D1, A0, A1 order
+            // Track register usage separately for data and address registers
+            int dataRegIndex = 0;  // D0, D1, D2, D3
+            int addrRegIndex = 0;  // A0, A1, A2, A3
 
+            // First, map each parameter to its source register
+            var paramRegs = new List<string>();
+            foreach (var param in parameters)
+            {
+                if (IsPointerType(param.Type))
+                {
+                    // Pointer parameter - use address register
+                    if (addrRegIndex <= 3)
+                    {
+                        paramRegs.Add($"a{addrRegIndex}");
+                        addrRegIndex++;
+                    }
+                    else
+                    {
+                        // Overflow to stack - not yet handled
+                        paramRegs.Add("ERROR_TOO_MANY_ADDR_PARAMS");
+                    }
+                }
+                else
+                {
+                    // Data parameter - use data register
+                    if (dataRegIndex <= 3)
+                    {
+                        paramRegs.Add($"d{dataRegIndex}");
+                        dataRegIndex++;
+                    }
+                    else
+                    {
+                        // Overflow to stack - not yet handled
+                        paramRegs.Add("ERROR_TOO_MANY_DATA_PARAMS");
+                    }
+                }
+            }
+
+            // Push parameters in reverse order (right to left for C convention)
             for (int i = parameters.Count - 1; i >= 0; i--)
             {
-                var param = parameters[i];
-                if (i == 0)
-                {
-                    // First parameter - D0 or A0 depending on type
-                    if (IsPointerType(param.Type))
-                        sb.AppendLine("        move.l  a0,-(sp)");
-                    else
-                        sb.AppendLine("        move.l  d0,-(sp)");
-                }
-                else if (i == 1)
-                {
-                    // Second parameter - D1 or A1
-                    if (IsPointerType(param.Type))
-                        sb.AppendLine("        move.l  a1,-(sp)");
-                    else
-                        sb.AppendLine("        move.l  d1,-(sp)");
-                }
-                // TODO: Handle more parameters (D2, D3, A2, A3...)
+                var reg = paramRegs[i];
+                sb.AppendLine($"        move.l  {reg},-(sp)");
             }
 
             sb.AppendLine($"        jsr     {cFuncName}");

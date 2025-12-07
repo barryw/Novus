@@ -440,6 +440,19 @@ public class IrFunction
     // Compatibility property for code that checks IsPublic
     public bool IsPublic => Visibility == Visibility.Public;
 
+    /// <summary>
+    /// Returns true if this function is marked as an interrupt handler (@interrupt).
+    /// Interrupt handlers have special constraints: they cannot call non-interrupt-safe functions.
+    /// </summary>
+    public bool IsInterruptHandler => Attributes?.Has(Novus.SemanticAnalysis.KnownAttributes.Interrupt) ?? false;
+
+    /// <summary>
+    /// Returns true if this function is marked as interrupt-safe (@interrupt_safe).
+    /// Interrupt-safe functions can be called from interrupt handlers.
+    /// Pure functions (no side effects, no allocations, no OS calls) are typically interrupt-safe.
+    /// </summary>
+    public bool IsInterruptSafe => Attributes?.Has(Novus.SemanticAnalysis.KnownAttributes.InterruptSafe) ?? false;
+
     public IrBasicBlock CreateBasicBlock(string label)
     {
         var block = new IrBasicBlock(label);

@@ -252,11 +252,11 @@ deferStatement
     ;
 
 assertStatement
-    : {TokenStream.LT(1).Text != "panic"}? IDENTIFIER BANG LPAREN expression (COMMA STRING_LITERAL)? RPAREN
+    : KW_ASSERT BANG LPAREN expression (COMMA STRING_LITERAL)? RPAREN
     ;
 
 panicStatement
-    : {TokenStream.LT(1).Text == "panic"}? IDENTIFIER BANG LPAREN STRING_LITERAL RPAREN
+    : KW_PANIC BANG LPAREN STRING_LITERAL RPAREN
     ;
 
 unsafeBlock

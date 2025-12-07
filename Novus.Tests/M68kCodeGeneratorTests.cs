@@ -266,11 +266,12 @@ public class M68kCodeGeneratorTests
     }
 
     /// <summary>
-    /// Test that 64-bit arithmetic operations throw M68k64BitNotSupportedException.
-    /// The 68000 family doesn't have native 64-bit arithmetic.
+    /// Test that 64-bit arithmetic operations generate soft-math runtime calls.
+    /// The 68000 family doesn't have native 64-bit arithmetic, so we use
+    /// runtime library functions (__adddi3, __subdi3, etc.) for 64-bit ops.
     /// </summary>
     [Fact]
-    public void Test64BitArithmeticThrowsException()
+    public void Test64BitArithmeticGeneratesSoftMath()
     {
         var module = new IrModule();
         var function = new IrFunction("test_64bit", IrIntType.I64, Visibility.Public);
@@ -293,16 +294,15 @@ public class M68kCodeGeneratorTests
 
         module.AddFunction(function);
 
-        // Generate M68k assembly - should throw for 64-bit ops
+        // Generate M68k assembly - should use soft-math library
         var codegen = new M68kCodeGenerator(module, new List<IrStringLiteral>(), "68000");
+        var asm = codegen.Generate();
 
-        var ex = Assert.Throws<M68k64BitNotSupportedException>(() => codegen.Generate());
+        // Should contain a call to the 64-bit addition runtime function
+        Assert.Contains("__adddi3", asm);
 
-        // Verify exception contains helpful information
-        Assert.Contains("64-bit", ex.Message);
-        Assert.Contains("68000", ex.Message);
-        Assert.Equal("add", ex.Operation);
-        Assert.Equal("68000", ex.CpuTarget);
+        // Should use JSR (jump subroutine) to call the soft-math function
+        Assert.Contains("jsr", asm.ToLower());
     }
 
     /// <summary>
