@@ -839,12 +839,18 @@ fn parse_intui_message(msg: *IntuiMessage) -> WindowEvent {
 //
 // Additional wrappers to add as needed:
 // - WindowBuilder API for ergonomic tag construction
-// - Convenience constructors (simple(), app_window(), borderless())
 // - NewObject / DisposeObject (BOOPSI objects)
 // - SetAttrs / SetGadgetAttrs
-// - EasyRequest (simple requester dialogs)
-// - BuildEasyRequest
+// - BuildEasyRequest (non-blocking requesters)
 // - DoGadgetMethod
 // - SetWindowPointer
 //
-// For now, users can call the FFI functions directly with manual tag arrays.
+// Already implemented:
+// - Convenience constructors: simple(), app_window(), borderless()
+// - EasyRequest dialogs: see std::ui::dialog module
+//   - alert(), confirm(), choice(), save_dialog()
+//   - error(), warning(), info() convenience wrappers
+//   - Window-parented variants: alert_on(), confirm_on(), choice_on()
+//   - retry_dialog() for Retry/Abort/Ignore pattern
+//
+// For advanced cases, call the FFI functions directly with manual tag arrays.

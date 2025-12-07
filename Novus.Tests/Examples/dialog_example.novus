@@ -1,0 +1,54 @@
+// Test example for std::ui::dialog module
+// Tests compilation of dialog functions
+
+from std::ui::dialog import alert, alert_with_button
+from std::ui::dialog import confirm, confirm_with_buttons
+from std::ui::dialog import choice, save_dialog
+from std::ui::dialog import retry_dialog, RetryChoice
+from std::ui::dialog import error, warning, info
+
+fn main() -> i32 {
+    // Simple alerts
+    alert("Test", "This is a test alert")
+    alert_with_button("Custom", "With custom button", "Got it!")
+
+    // Convenience wrappers
+    error("Something went wrong")
+    warning("Be careful!")
+    info("Operation completed")
+
+    // Confirmation dialogs
+    if confirm("Confirm", "Do you want to continue?") {
+        info("User confirmed")
+    }
+
+    if confirm_with_buttons("Delete", "Are you sure?", "Delete|Keep") {
+        info("User chose delete")
+    }
+
+    // Multi-button choice
+    let result = choice("Format", "Select output format:", "PNG|JPEG|Cancel")
+    match result {
+        1 => info("PNG selected"),
+        2 => info("JPEG selected"),
+        _ => info("Cancelled"),
+    }
+
+    // Save dialog pattern
+    let save_result = save_dialog("Quit", "Save changes before quitting?")
+    match save_result {
+        1 => info("Saving..."),
+        2 => info("Not saving"),
+        _ => info("Cancelled"),
+    }
+
+    // Retry pattern
+    let retry_result = retry_dialog("Error", "Operation failed. Retry?")
+    match retry_result {
+        RetryChoice::Retry => info("Retrying..."),
+        RetryChoice::Ignore => info("Ignoring error"),
+        RetryChoice::Abort => info("Aborting"),
+    }
+
+    return 0
+}
