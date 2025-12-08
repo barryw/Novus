@@ -1,0 +1,448 @@
+// Drawing primitives API for Amiga graphics
+// Module: std::graphics::draw
+//
+// Provides DrawContext - an ergonomic wrapper around AmigaOS graphics.library
+// drawing functions. DrawContext borrows a RastPort and provides methods for
+// drawing lines, rectangles, ellipses, and other primitives.
+//
+// Example:
+//   let ctx = DrawContext::from_window(window.handle())?
+//   ctx.pen(1)
+//   ctx.line(10, 10, 100, 50)
+//   ctx.rect_fill(Rect::from_pos_size(50, 50, 32, 32))
+//   ctx.circle(150, 100, 30)
+
+from std::core import Result, Option
+from std::error::errors import GraphicsError
+from std::graphics::shapes import Point, Rect, Ellipse
+from std::ffi::amiga_structs import RastPort, Window
+from std::ffi::graphics import Move, Draw, SetAPen, SetBPen, SetDrMd, GetAPen, GetBPen, GetDrMd
+from std::ffi::graphics import RectFill, EraseRect, WritePixel, ReadPixel, DrawEllipse, PolyDraw, SetRast
+
+// ============================================================================
+// Draw Mode Constants
+// ============================================================================
+
+/// Draw mode for graphics operations.
+/// These match AmigaOS graphics.library DrawMode values.
+pub enum DrawMode {
+    /// JAM1: Draw with foreground pen only (transparent background)
+    Jam1,
+    /// JAM2: Draw with foreground and background pens (opaque)
+    Jam2,
+    /// COMPLEMENT: XOR drawing (toggle pixels)
+    Complement,
+    /// INVERSVID: Inverted video (swap fg/bg for text)
+    InverseVid,
+}
+
+impl DrawMode {
+    /// Convert to AmigaOS draw mode value.
+    pub fn to_raw(&self) -> u8 {
+        match *self {
+            DrawMode::Jam1 => return 0,
+            DrawMode::Jam2 => return 1,
+            DrawMode::Complement => return 2,
+            DrawMode::InverseVid => return 4,
+        }
+    }
+
+    /// Create from AmigaOS draw mode value.
+    pub fn from_raw(value: u8) -> DrawMode {
+        match value & 7 {
+            0 => return DrawMode::Jam1,
+            1 => return DrawMode::Jam2,
+            2 => return DrawMode::Complement,
+            4 => return DrawMode::InverseVid,
+            _ => return DrawMode::Jam1,
+        }
+    }
+}
+
+// ============================================================================
+// DrawContext - Main Drawing API
+// ============================================================================
+
+/// Context for drawing operations on a RastPort.
+///
+/// DrawContext provides an ergonomic API for common drawing operations.
+/// It borrows a RastPort pointer and does NOT own it - the caller is
+/// responsible for ensuring the RastPort remains valid for the lifetime
+/// of the DrawContext.
+///
+/// Most operations cannot fail (SetAPen, Move, Draw just write to RastPort).
+/// Operations that can fail (WritePixel for clipped regions) return Result.
+pub struct DrawContext {
+    rp: *RastPort,
+}
+
+impl DrawContext {
+    /// Create a DrawContext from a RastPort pointer.
+    ///
+    /// The caller must ensure the RastPort remains valid for the lifetime
+    /// of this DrawContext. The DrawContext does NOT own the RastPort.
+    ///
+    /// Returns Err(GraphicsError::InvalidRastPort) if the pointer is null.
+    pub fn from_rastport(rp: *RastPort) -> Result<DrawContext, GraphicsError> {
+        if !rp {
+            return Result::Err(GraphicsError::InvalidRastPort)
+        }
+        return Result::Ok(DrawContext { rp: rp })
+    }
+
+    /// Create a DrawContext from a Window pointer.
+    ///
+    /// Uses the window's RastPort (Window->RPort). The caller must ensure
+    /// the Window remains open for the lifetime of this DrawContext.
+    ///
+    /// Returns Err(GraphicsError::InvalidRastPort) if the window or its
+    /// RastPort pointer is null.
+    pub fn from_window(window: *Window) -> Result<DrawContext, GraphicsError> {
+        if !window {
+            return Result::Err(GraphicsError::InvalidRastPort)
+        }
+        unsafe {
+            let rp: *RastPort = (*window).RPort
+            if !rp {
+                return Result::Err(GraphicsError::InvalidRastPort)
+            }
+            return Result::Ok(DrawContext { rp: rp })
+        }
+    }
+
+    /// Get the underlying RastPort pointer.
+    pub fn handle(&self) -> *RastPort {
+        return self.rp
+    }
+
+    // ========================================================================
+    // Pen and Mode Settings
+    // ========================================================================
+
+    /// Set the foreground (A) pen color index.
+    pub fn pen(&self, color_index: u8) {
+        SetAPen(self.rp, color_index)
+    }
+
+    /// Set the background (B) pen color index.
+    pub fn bg_pen(&self, color_index: u8) {
+        SetBPen(self.rp, color_index)
+    }
+
+    /// Set both foreground and background pens.
+    pub fn pens(&self, fg: u8, bg: u8) {
+        SetAPen(self.rp, fg)
+        SetBPen(self.rp, bg)
+    }
+
+    /// Set the draw mode.
+    pub fn mode(&self, mode: DrawMode) {
+        SetDrMd(self.rp, mode.to_raw())
+    }
+
+    /// Get the current foreground pen color index.
+    pub fn get_pen(&self) -> u8 {
+        let pen: u32 = GetAPen(self.rp)
+        return (u8)pen
+    }
+
+    /// Get the current background pen color index.
+    pub fn get_bg_pen(&self) -> u8 {
+        let pen: u32 = GetBPen(self.rp)
+        return (u8)pen
+    }
+
+    /// Get the current draw mode.
+    pub fn get_mode(&self) -> DrawMode {
+        let mode: u32 = GetDrMd(self.rp)
+        return DrawMode::from_raw((u8)mode)
+    }
+
+    // ========================================================================
+    // Cursor Position
+    // ========================================================================
+
+    /// Move the graphics cursor to (x, y) without drawing.
+    pub fn move_to(&self, x: i16, y: i16) {
+        Move(self.rp, x, y)
+    }
+
+    /// Move the graphics cursor to a Point without drawing.
+    pub fn move_to_point(&self, p: &Point) {
+        Move(self.rp, p.x, p.y)
+    }
+
+    /// Get the current cursor position.
+    pub fn cursor(&self) -> Point {
+        unsafe {
+            return Point {
+                x: (*self.rp).cp_x,
+                y: (*self.rp).cp_y
+            }
+        }
+    }
+
+    // ========================================================================
+    // Line Drawing
+    // ========================================================================
+
+    /// Draw a line from the current cursor position to (x, y).
+    /// The cursor is moved to (x, y) after drawing.
+    pub fn line_to(&self, x: i16, y: i16) {
+        Draw(self.rp, x, y)
+    }
+
+    /// Draw a line from the current cursor position to a Point.
+    /// The cursor is moved to the point after drawing.
+    pub fn line_to_point(&self, p: &Point) {
+        Draw(self.rp, p.x, p.y)
+    }
+
+    /// Draw a line from (x1, y1) to (x2, y2).
+    /// The cursor is moved to (x2, y2) after drawing.
+    pub fn line(&self, x1: i16, y1: i16, x2: i16, y2: i16) {
+        Move(self.rp, x1, y1)
+        Draw(self.rp, x2, y2)
+    }
+
+    /// Draw a line between two Points.
+    /// The cursor is moved to the 'to' point after drawing.
+    pub fn line_points(&self, start: &Point, end: &Point) {
+        Move(self.rp, start.x, start.y)
+        Draw(self.rp, end.x, end.y)
+    }
+
+    // ========================================================================
+    // Rectangle Operations
+    // ========================================================================
+
+    /// Fill a rectangle with the current foreground pen.
+    /// Coordinates are inclusive: pixels at both min and max are drawn.
+    pub fn fill_rect(&self, x_min: i16, y_min: i16, x_max: i16, y_max: i16) {
+        RectFill(self.rp, x_min, y_min, x_max, y_max)
+    }
+
+    /// Fill a Rect with the current foreground pen.
+    pub fn rect_fill(&self, rect: &Rect) {
+        RectFill(self.rp, rect.x_min, rect.y_min, rect.x_max, rect.y_max)
+    }
+
+    /// Draw a rectangle outline (unfilled) with the current foreground pen.
+    /// Uses four line segments.
+    pub fn rect_outline(&self, rect: &Rect) {
+        // Draw the four sides
+        Move(self.rp, rect.x_min, rect.y_min)
+        Draw(self.rp, rect.x_max, rect.y_min)  // Top
+        Draw(self.rp, rect.x_max, rect.y_max)  // Right
+        Draw(self.rp, rect.x_min, rect.y_max)  // Bottom
+        Draw(self.rp, rect.x_min, rect.y_min)  // Left (back to start)
+    }
+
+    /// Draw a rectangle outline with coordinates.
+    pub fn outline_rect(&self, x_min: i16, y_min: i16, x_max: i16, y_max: i16) {
+        Move(self.rp, x_min, y_min)
+        Draw(self.rp, x_max, y_min)
+        Draw(self.rp, x_max, y_max)
+        Draw(self.rp, x_min, y_max)
+        Draw(self.rp, x_min, y_min)
+    }
+
+    /// Erase a rectangle to the background color.
+    /// This is faster than RectFill with background pen for layers.
+    pub fn rect_erase(&self, rect: &Rect) {
+        EraseRect(self.rp, rect.x_min, rect.y_min, rect.x_max, rect.y_max)
+    }
+
+    /// Erase a rectangle with coordinates.
+    pub fn erase_rect(&self, x_min: i16, y_min: i16, x_max: i16, y_max: i16) {
+        EraseRect(self.rp, x_min, y_min, x_max, y_max)
+    }
+
+    // ========================================================================
+    // Ellipse/Circle Drawing
+    // ========================================================================
+
+    /// Draw an ellipse outline with the current foreground pen.
+    /// cx, cy: center coordinates
+    /// rx, ry: horizontal and vertical radii
+    pub fn ellipse(&self, cx: i16, cy: i16, rx: i16, ry: i16) {
+        DrawEllipse(self.rp, cx, cy, rx, ry)
+    }
+
+    /// Draw an Ellipse shape outline.
+    pub fn ellipse_shape(&self, e: &Ellipse) {
+        DrawEllipse(self.rp, e.center.x, e.center.y, e.radius_x, e.radius_y)
+    }
+
+    /// Draw a circle outline (ellipse with equal radii).
+    pub fn circle(&self, cx: i16, cy: i16, radius: i16) {
+        DrawEllipse(self.rp, cx, cy, radius, radius)
+    }
+
+    /// Draw a circle at a point.
+    pub fn circle_at(&self, center: &Point, radius: i16) {
+        DrawEllipse(self.rp, center.x, center.y, radius, radius)
+    }
+
+    // ========================================================================
+    // Pixel Operations
+    // ========================================================================
+
+    /// Write a single pixel at (x, y) with the current foreground pen.
+    /// Returns Ok(()) if the pixel was drawn, Err if clipped out.
+    pub fn pixel(&self, x: i16, y: i16) -> Result<(), GraphicsError> {
+        let result: i32 = WritePixel(self.rp, x, y)
+        if result == 0 {
+            return Result::Ok(())
+        }
+        // -1 means pixel was clipped (outside layer bounds)
+        return Result::Err(GraphicsError::InvalidRastPort)
+    }
+
+    /// Write a pixel at a Point.
+    pub fn pixel_at(&self, p: &Point) -> Result<(), GraphicsError> {
+        return self.pixel(p.x, p.y)
+    }
+
+    /// Read the color index of the pixel at (x, y).
+    /// Returns the pen number (color index) at that location.
+    /// Returns -1 if the coordinates are outside the bitmap.
+    pub fn get_pixel(&self, x: i16, y: i16) -> i32 {
+        let result: u32 = ReadPixel(self.rp, x, y)
+        return (i32)result
+    }
+
+    /// Read the pixel color at a Point.
+    pub fn get_pixel_at(&self, p: &Point) -> i32 {
+        return self.get_pixel(p.x, p.y)
+    }
+
+    // ========================================================================
+    // Clear Operations
+    // ========================================================================
+
+    /// Clear the entire RastPort to the specified color index.
+    pub fn clear(&self, color_index: u8) {
+        SetRast(self.rp, color_index)
+    }
+
+    /// Clear the entire RastPort to the current background pen.
+    pub fn clear_to_background(&self) {
+        let bg: u8 = self.get_bg_pen()
+        SetRast(self.rp, bg)
+    }
+
+    // ========================================================================
+    // Polyline Drawing
+    // ========================================================================
+
+    /// Draw a connected series of lines through multiple points.
+    ///
+    /// The points array should contain x,y pairs as consecutive i16 values
+    /// in the format: [x0, y0, x1, y1, x2, y2, ...].
+    /// count is the number of POINTS (not the array length).
+    ///
+    /// This moves to the first point and draws lines to each subsequent point.
+    pub fn polyline(&self, points: *i16, count: i16) {
+        if count < 2 || !points {
+            return
+        }
+        // PolyDraw takes a UBYTE* but it's actually reading WORDs (i16)
+        PolyDraw(self.rp, count, (*u8)points)
+    }
+
+    /// Draw a connected series of lines through an array of Points.
+    pub fn polyline_points(&self, points: *Point, count: i16) {
+        if count < 2 || !points {
+            return
+        }
+        // Point struct is {x: i16, y: i16} which matches the expected format
+        PolyDraw(self.rp, count, (*u8)points)
+    }
+
+    /// Draw a closed polygon (polyline that returns to start).
+    pub fn polygon(&self, points: *i16, count: i16) {
+        if count < 3 || !points {
+            return
+        }
+        // Draw the polyline
+        PolyDraw(self.rp, count, (*u8)points)
+        // Close it by drawing back to the first point
+        unsafe {
+            let first_x: i16 = *points
+            let first_y: i16 = *(points + 1)
+            Draw(self.rp, first_x, first_y)
+        }
+    }
+
+    // ========================================================================
+    // Convenience Shape Drawing
+    // ========================================================================
+
+    /// Draw a box (filled rectangle) at position with size.
+    pub fn box_fill(&self, x: i16, y: i16, width: i16, height: i16) {
+        RectFill(self.rp, x, y, x + width - 1, y + height - 1)
+    }
+
+    /// Draw a box outline at position with size.
+    pub fn box_outline(&self, x: i16, y: i16, width: i16, height: i16) {
+        let x_max: i16 = x + width - 1
+        let y_max: i16 = y + height - 1
+        Move(self.rp, x, y)
+        Draw(self.rp, x_max, y)
+        Draw(self.rp, x_max, y_max)
+        Draw(self.rp, x, y_max)
+        Draw(self.rp, x, y)
+    }
+
+    /// Draw a horizontal line.
+    pub fn hline(&self, x1: i16, x2: i16, y: i16) {
+        Move(self.rp, x1, y)
+        Draw(self.rp, x2, y)
+    }
+
+    /// Draw a vertical line.
+    pub fn vline(&self, x: i16, y1: i16, y2: i16) {
+        Move(self.rp, x, y1)
+        Draw(self.rp, x, y2)
+    }
+
+    /// Draw a cross/plus at a point (useful for debugging/markers).
+    pub fn cross(&self, x: i16, y: i16, size: i16) {
+        let half: i16 = size / 2
+        self.hline(x - half, x + half, y)
+        self.vline(x, y - half, y + half)
+    }
+
+    /// Draw an X at a point (useful for debugging/markers).
+    pub fn x_mark(&self, x: i16, y: i16, size: i16) {
+        let half: i16 = size / 2
+        self.line(x - half, y - half, x + half, y + half)
+        self.line(x - half, y + half, x + half, y - half)
+    }
+}
+
+// ============================================================================
+// Convenience Functions (Stateless)
+// ============================================================================
+
+/// Draw a line on a RastPort without creating a DrawContext.
+pub fn draw_line(rp: *RastPort, x1: i16, y1: i16, x2: i16, y2: i16) {
+    Move(rp, x1, y1)
+    Draw(rp, x2, y2)
+}
+
+/// Fill a rectangle on a RastPort without creating a DrawContext.
+pub fn fill_rect(rp: *RastPort, x_min: i16, y_min: i16, x_max: i16, y_max: i16) {
+    RectFill(rp, x_min, y_min, x_max, y_max)
+}
+
+/// Draw an ellipse on a RastPort without creating a DrawContext.
+pub fn draw_ellipse(rp: *RastPort, cx: i16, cy: i16, rx: i16, ry: i16) {
+    DrawEllipse(rp, cx, cy, rx, ry)
+}
+
+/// Draw a circle on a RastPort without creating a DrawContext.
+pub fn draw_circle(rp: *RastPort, cx: i16, cy: i16, radius: i16) {
+    DrawEllipse(rp, cx, cy, radius, radius)
+}

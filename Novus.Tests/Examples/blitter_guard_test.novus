@@ -17,7 +17,7 @@ from std::graphics::blitter import BlitterGuard, BlitterOps, BlitterError
 
 pub fn main() -> i32 {
     // Open graphics.library
-    let gfx_base: *Library = OpenLibrary("graphics.library", 39)
+    let gfx_base: *Library = unsafe { OpenLibrary("graphics.library", 39) }
     if !gfx_base {
         print_string("Failed to open graphics.library v39+\n")
         return 10
@@ -76,7 +76,7 @@ pub fn main() -> i32 {
 
     print_string("\nAll tests completed!\n")
 
-    CloseLibrary(gfx_base)
+    unsafe { CloseLibrary(gfx_base) }
     return 0
 }
 
@@ -105,7 +105,7 @@ fn test_blitter_operations() -> Result<(), BlitterError> {
 
     // Allocate source bitmap
     let src_size: u32 = (u32)bytes_per_row * (u32)height
-    let src_mem: *u8 = AllocVec(src_size, MEMF_CHIP | MEMF_CLEAR)
+    let src_mem: *u8 = unsafe { AllocVec(src_size, MEMF_CHIP | MEMF_CLEAR) }
     if !src_mem {
         return Result::Err(BlitterError::NotChipRam)
     }
@@ -117,13 +117,14 @@ fn test_blitter_operations() -> Result<(), BlitterError> {
         Rows: height,
         Flags: 0,
         Depth: depth,
+        pad: 0,
         Planes: [src_mem, null_ptr, null_ptr, null_ptr, null_ptr, null_ptr, null_ptr, null_ptr]
     }
 
     // Allocate destination bitmap
-    let dst_mem: *u8 = AllocVec(src_size, MEMF_CHIP | MEMF_CLEAR)
+    let dst_mem: *u8 = unsafe { AllocVec(src_size, MEMF_CHIP | MEMF_CLEAR) }
     if !dst_mem {
-        FreeVec(src_mem)
+        unsafe { FreeVec(src_mem) }
         return Result::Err(BlitterError::NotChipRam)
     }
 
@@ -132,6 +133,7 @@ fn test_blitter_operations() -> Result<(), BlitterError> {
         Rows: height,
         Flags: 0,
         Depth: depth,
+        pad: 0,
         Planes: [dst_mem, null_ptr, null_ptr, null_ptr, null_ptr, null_ptr, null_ptr, null_ptr]
     }
 
@@ -156,8 +158,8 @@ fn test_blitter_operations() -> Result<(), BlitterError> {
     print_string("  Guard released, blitter operation complete\n")
 
     // Cleanup
-    FreeVec(dst_mem)
-    FreeVec(src_mem)
+    unsafe { FreeVec(dst_mem) }
+    unsafe { FreeVec(src_mem) }
 
     return Result::Ok(())
 }

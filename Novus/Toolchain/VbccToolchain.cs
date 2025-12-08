@@ -123,6 +123,7 @@ public class VbccToolchain
             "-Fhunk",           // Amiga HUNK format
             $"-m{cpu}",         // CPU target (68000, 68020, etc.)
             "-quiet",           // Suppress unnecessary output
+            "-nowarn=62",       // Suppress "imported symbol not referenced" warnings
             "-o", objFile,      // Output file
             asmFile             // Input file
         };
@@ -147,14 +148,15 @@ public class VbccToolchain
         var args = new List<string>
         {
             "-bamigahunk",      // Amiga HUNK format
+            "-w",               // Suppress linker warnings (especially "imported symbol not referenced")
             "-o", outputFile    // Output executable
         };
 
         // Debug symbols and map file only in debug mode
+        // Note: vlink doesn't have -g flag - debug symbols are embedded by vasm/vc
         if (buildMode == BuildMode.Debug)
         {
-            args.Insert(1, "-g");   // Preserve debug symbols
-            args.Insert(2, "-M");   // Generate map file
+            args.Insert(1, "-M");   // Generate map file
         }
         else
         {

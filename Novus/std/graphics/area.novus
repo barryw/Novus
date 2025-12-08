@@ -1,0 +1,444 @@
+// Area fill context for filled polygons and ellipses
+// Module: std::graphics::area
+//
+// AmigaOS requires special setup for filled drawing operations:
+// - AreaInfo structure with vertex buffer
+// - TmpRas with temporary raster buffer (chip memory)
+// These must be attached to the RastPort before using AreaMove/AreaDraw/AreaEllipse/AreaEnd.
+//
+// AreaContext provides RAII management of these resources. When dropped, it detaches
+// from the RastPort and frees the allocated buffers.
+//
+// Example:
+//   let mut area = AreaContext::new(rp, 20)?  // Support up to 20 vertices
+//   area.begin(100, 100)?                      // Start polygon
+//   area.vertex(150, 50)?                      // Add vertices
+//   area.vertex(200, 100)?
+//   area.end_fill()?                           // Close and fill
+//
+//   // Filled ellipse
+//   area.ellipse_fill(150, 150, 50, 30)?
+
+from std::core import Result, Option, Drop
+from std::error::errors import GraphicsError
+from std::memory::amiga import MemHandle
+from std::graphics::shapes import Point, Ellipse
+from std::ffi::amiga_structs import RastPort, AreaInfo, TmpRas, BitMap, Window
+from std::ffi::graphics import AreaMove, AreaDraw, AreaEnd, AreaEllipse, InitArea, InitTmpRas, GetBitMapAttr
+from std::ffi::amiga_consts import BMA_WIDTH, BMA_HEIGHT
+
+// ============================================================================
+// AreaContext - RAII Area Fill Context
+// ============================================================================
+
+/// Context for filled polygon and ellipse operations.
+///
+/// AmigaOS requires AreaInfo and TmpRas structures to be attached to a RastPort
+/// before filled operations (AreaMove, AreaDraw, AreaEllipse, AreaEnd) can be used.
+/// AreaContext manages these resources with RAII - they are automatically freed
+/// when the context is dropped.
+///
+/// # Resource Requirements
+/// - Vector buffer: 5 bytes per vertex (max_vertices * 5)
+/// - Temp raster: Based on bitmap dimensions (RASSIZE calculation)
+/// Both buffers must be in chip memory.
+///
+/// # Usage Pattern
+/// ```novus
+/// let mut area = AreaContext::new(rp, 20)?
+/// area.begin(100, 100)?  // First vertex
+/// area.vertex(150, 50)?
+/// area.vertex(200, 100)?
+/// area.end_fill()?       // Close and fill the polygon
+/// ```
+///
+/// # Important
+/// Do NOT destroy the RastPort while an AreaContext is attached to it.
+/// Drop the AreaContext first.
+pub struct AreaContext {
+    rp: *RastPort,
+    area_info_mem: MemHandle,
+    tmp_ras_mem: MemHandle,
+    vector_buffer: MemHandle,
+    ras_buffer: MemHandle,
+    max_vertices: i16,
+    attached: bool,
+}
+
+impl AreaContext {
+    /// Create a new AreaContext from a Window's RastPort.
+    ///
+    /// This is the recommended constructor for window rendering. It uses the
+    /// window's actual dimensions to calculate the temp raster size.
+    ///
+    /// Parameters:
+    ///   window: The Window to use for filled operations
+    ///   max_vertices: Maximum number of vertices for polygons
+    ///
+    /// Returns Err(GraphicsError) if:
+    ///   - window is null
+    ///   - window has no RastPort
+    ///   - Memory allocation fails (chip memory required)
+    @suppress("W0001", "Memory calculations are safe")
+    pub fn from_window(window: *Window, max_vertices: i16) -> Result<AreaContext, GraphicsError> {
+        if !window {
+            return Result::Err(GraphicsError::InvalidRastPort)
+        }
+        if max_vertices < 3 {
+            return Result::Err(GraphicsError::InvalidRastPort)
+        }
+
+        unsafe {
+            let rp: *RastPort = (*window).RPort
+            if !rp {
+                return Result::Err(GraphicsError::InvalidRastPort)
+            }
+
+            // Get window dimensions directly from Window struct (safe and correct)
+            let width: u32 = (u32)(*window).Width
+            let height: u32 = (u32)(*window).Height
+
+            // Calculate temp raster size using RASSIZE formula
+            let words_per_row: u32 = (width + 15) / 16
+            let temp_ras_size: u32 = words_per_row * 2 * height
+
+            let vector_size: u32 = (u32)max_vertices * 5
+            return AreaContext::create_internal(rp, max_vertices, vector_size, temp_ras_size)
+        }
+    }
+
+    /// Create a new AreaContext from a BitMap's RastPort.
+    ///
+    /// This uses GetBitMapAttr() to safely query bitmap dimensions, which works
+    /// correctly with RTG and other non-standard bitmaps (AmigaOS 3.0+).
+    ///
+    /// Parameters:
+    ///   rp: The RastPort to use for filled operations
+    ///   max_vertices: Maximum number of vertices for polygons
+    ///
+    /// Returns Err(GraphicsError) if:
+    ///   - rp is null
+    ///   - rp has no bitmap
+    ///   - Memory allocation fails (chip memory required)
+    @suppress("W0001", "Memory calculations are safe")
+    pub fn from_bitmap(rp: *RastPort, max_vertices: i16) -> Result<AreaContext, GraphicsError> {
+        if !rp {
+            return Result::Err(GraphicsError::InvalidRastPort)
+        }
+        if max_vertices < 3 {
+            return Result::Err(GraphicsError::InvalidRastPort)
+        }
+
+        unsafe {
+            let bitmap: *BitMap = (*rp).BitMap
+            if !bitmap {
+                return Result::Err(GraphicsError::InvalidRastPort)
+            }
+
+            // Use GetBitMapAttr() - the safe, OS 3.0+ way to query bitmap dimensions
+            // This works correctly with RTG and other non-standard bitmaps
+            let width: u32 = GetBitMapAttr(bitmap, BMA_WIDTH)
+            let height: u32 = GetBitMapAttr(bitmap, BMA_HEIGHT)
+
+            // Calculate temp raster size using RASSIZE formula
+            let words_per_row: u32 = (width + 15) / 16
+            let temp_ras_size: u32 = words_per_row * 2 * height
+
+            let vector_size: u32 = (u32)max_vertices * 5
+            return AreaContext::create_internal(rp, max_vertices, vector_size, temp_ras_size)
+        }
+    }
+
+    /// Create a new AreaContext and attach it to a RastPort.
+    ///
+    /// DEPRECATED: Use from_window() or from_bitmap() instead for safer,
+    /// dimension-aware allocation.
+    ///
+    /// This version uses a fixed 640x400 temp raster size which may be too
+    /// small for large windows or too large for small ones.
+    ///
+    /// Parameters:
+    ///   rp: The RastPort to use for filled operations
+    ///   max_vertices: Maximum number of vertices for polygons
+    ///
+    /// Returns Err(GraphicsError) if:
+    ///   - rp is null
+    ///   - Memory allocation fails (chip memory required)
+    @suppress("W0001", "Memory calculations are safe")
+    pub fn new(rp: *RastPort, max_vertices: i16) -> Result<AreaContext, GraphicsError> {
+        if !rp {
+            return Result::Err(GraphicsError::InvalidRastPort)
+        }
+        if max_vertices < 3 {
+            return Result::Err(GraphicsError::InvalidRastPort)
+        }
+
+        // Use sensible defaults for temp raster (640x400 = 32000 bytes)
+        // WARNING: This may be too small for large windows or too large for small ones
+        // Use from_window() or from_bitmap() for dimension-aware allocation
+        let vector_size: u32 = (u32)max_vertices * 5
+        let temp_ras_size: u32 = 32000  // RASSIZE(640, 400)
+
+        return AreaContext::create_internal(rp, max_vertices, vector_size, temp_ras_size)
+    }
+
+    /// Create an AreaContext with a specific temp raster size.
+    @suppress("W0001", "Memory calculations are safe")
+    pub fn with_ras_size(rp: *RastPort, max_vertices: i16, temp_ras_size: u32) -> Result<AreaContext, GraphicsError> {
+        if !rp {
+            return Result::Err(GraphicsError::InvalidRastPort)
+        }
+        if max_vertices < 3 {
+            return Result::Err(GraphicsError::InvalidRastPort)
+        }
+
+        let vector_size: u32 = (u32)max_vertices * 5
+        return AreaContext::create_internal(rp, max_vertices, vector_size, temp_ras_size)
+    }
+
+    /// Internal creation function
+    /// Uses match expressions instead of is_none()/unwrap() to avoid struct-by-value
+    /// function calls which can cause issues with VBCC on 68k.
+    @suppress("W0001", "Memory operations are safe")
+    fn create_internal(rp: *RastPort, max_vertices: i16, vector_size: u32, temp_ras_size: u32) -> Result<AreaContext, GraphicsError> {
+        // Allocate AreaInfo struct in chip memory (24 bytes per NDK)
+        // AreaInfo: 4 ptrs (16 bytes) + 4 WORD fields (8 bytes) = 24 bytes
+        let area_info_mem: MemHandle = match MemHandle::new_chip(24) {
+            Option::Some(mem) => mem,
+            Option::None => {
+                return Result::Err(GraphicsError::BitMapAllocFailed)
+            }
+        }
+
+        // Allocate TmpRas struct in chip memory (8 bytes)
+        let tmp_ras_mem: MemHandle = match MemHandle::new_chip(8) {
+            Option::Some(mem) => mem,
+            Option::None => {
+                return Result::Err(GraphicsError::BitMapAllocFailed)
+            }
+        }
+
+        // Allocate vector buffer in chip memory
+        let vector_buffer: MemHandle = match MemHandle::new_chip(vector_size) {
+            Option::Some(mem) => mem,
+            Option::None => {
+                return Result::Err(GraphicsError::BitMapAllocFailed)
+            }
+        }
+
+        // Allocate temp raster buffer in chip memory
+        let ras_buffer: MemHandle = match MemHandle::new_chip(temp_ras_size) {
+            Option::Some(mem) => mem,
+            Option::None => {
+                return Result::Err(GraphicsError::BitMapAllocFailed)
+            }
+        }
+
+        // Initialize the structures
+        let area_info_ptr: *AreaInfo = (*AreaInfo)area_info_mem.ptr()
+        let tmp_ras_ptr: *TmpRas = (*TmpRas)tmp_ras_mem.ptr()
+
+        InitArea(area_info_ptr, vector_buffer.ptr(), max_vertices)
+        let _ = InitTmpRas(tmp_ras_ptr, ras_buffer.ptr(), (i32)temp_ras_size)
+
+        // Attach to RastPort
+        unsafe {
+            let rp_ref = rp
+            rp_ref.AreaInfo = area_info_mem.ptr()
+            rp_ref.TmpRas = tmp_ras_mem.ptr()
+        }
+
+        return Result::Ok(AreaContext {
+            rp: rp,
+            area_info_mem: area_info_mem,
+            tmp_ras_mem: tmp_ras_mem,
+            vector_buffer: vector_buffer,
+            ras_buffer: ras_buffer,
+            max_vertices: max_vertices,
+            attached: true
+        })
+    }
+
+    // ========================================================================
+    // Polygon Drawing
+    // ========================================================================
+
+    /// Begin a new filled polygon at (x, y).
+    pub fn begin(&mut self, x: i16, y: i16) -> Result<(), GraphicsError> {
+        if !self.attached {
+            return Result::Err(GraphicsError::InvalidRastPort)
+        }
+        let result: i32 = AreaMove(self.rp, x, y)
+        if result != 0 {
+            return Result::Err(GraphicsError::InvalidRastPort)
+        }
+        return Result::Ok(())
+    }
+
+    /// Begin a new polygon at a Point.
+    pub fn begin_at(&mut self, p: &Point) -> Result<(), GraphicsError> {
+        return self.begin(p.x, p.y)
+    }
+
+    /// Add a vertex to the current polygon.
+    pub fn vertex(&mut self, x: i16, y: i16) -> Result<(), GraphicsError> {
+        if !self.attached {
+            return Result::Err(GraphicsError::InvalidRastPort)
+        }
+        let result: i32 = AreaDraw(self.rp, x, y)
+        if result != 0 {
+            return Result::Err(GraphicsError::InvalidRastPort)
+        }
+        return Result::Ok(())
+    }
+
+    /// Add a vertex at a Point.
+    pub fn vertex_at(&mut self, p: &Point) -> Result<(), GraphicsError> {
+        return self.vertex(p.x, p.y)
+    }
+
+    /// Close and fill the current polygon.
+    pub fn end_fill(&mut self) -> Result<(), GraphicsError> {
+        if !self.attached {
+            return Result::Err(GraphicsError::InvalidRastPort)
+        }
+        let result: i32 = AreaEnd(self.rp)
+        if result != 0 {
+            return Result::Err(GraphicsError::InvalidRastPort)
+        }
+        return Result::Ok(())
+    }
+
+    // ========================================================================
+    // Filled Ellipse/Circle Drawing
+    // ========================================================================
+
+    /// Draw a filled ellipse.
+    pub fn ellipse_fill(&mut self, cx: i16, cy: i16, rx: i16, ry: i16) -> Result<(), GraphicsError> {
+        if !self.attached {
+            return Result::Err(GraphicsError::InvalidRastPort)
+        }
+        let result: i32 = AreaEllipse(self.rp, cx, cy, rx, ry)
+        if result != 0 {
+            return Result::Err(GraphicsError::InvalidRastPort)
+        }
+        let end_result: i32 = AreaEnd(self.rp)
+        if end_result != 0 {
+            return Result::Err(GraphicsError::InvalidRastPort)
+        }
+        return Result::Ok(())
+    }
+
+    /// Draw a filled ellipse from an Ellipse shape.
+    pub fn ellipse_shape_fill(&mut self, e: &Ellipse) -> Result<(), GraphicsError> {
+        return self.ellipse_fill(e.center.x, e.center.y, e.radius_x, e.radius_y)
+    }
+
+    /// Draw a filled circle.
+    pub fn circle_fill(&mut self, cx: i16, cy: i16, radius: i16) -> Result<(), GraphicsError> {
+        return self.ellipse_fill(cx, cy, radius, radius)
+    }
+
+    /// Draw a filled circle at a Point.
+    pub fn circle_fill_at(&mut self, center: &Point, radius: i16) -> Result<(), GraphicsError> {
+        return self.ellipse_fill(center.x, center.y, radius, radius)
+    }
+
+    // ========================================================================
+    // Query Methods
+    // ========================================================================
+
+    /// Get the maximum number of vertices this context supports.
+    pub fn max_vertices(&self) -> i16 {
+        return self.max_vertices
+    }
+
+    /// Check if the context is attached to a RastPort.
+    pub fn is_attached(&self) -> bool {
+        return self.attached
+    }
+
+    /// Get the RastPort this context is attached to.
+    pub fn handle(&self) -> *RastPort {
+        return self.rp
+    }
+
+    // ========================================================================
+    // Manual Detach
+    // ========================================================================
+
+    /// Detach from the RastPort without dropping.
+    pub fn detach(&mut self) {
+        if !self.attached {
+            return
+        }
+        if !self.rp {
+            return
+        }
+        unsafe {
+            let rp_ref = self.rp
+            rp_ref.AreaInfo = (*u8)0
+            rp_ref.TmpRas = (*u8)0
+        }
+        self.attached = false
+    }
+}
+
+impl Drop for AreaContext {
+    fn drop(&mut self) {
+        self.detach()
+    }
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Calculate the RASSIZE for a given width and height.
+@suppress("W0001", "Integer calculations are safe")
+pub fn ras_size(width: u16, height: u16) -> u32 {
+    let words_per_row: u32 = ((u32)width + 15) / 16
+    return words_per_row * 2 * (u32)height
+}
+
+/// Calculate the vector buffer size for a given vertex count.
+pub fn vector_buffer_size(max_vertices: i16) -> u32 {
+    return (u32)max_vertices * 5
+}
+
+// ============================================================================
+// Convenience Functions for Simple Fills
+// ============================================================================
+
+/// Draw a filled triangle.
+pub fn fill_triangle(rp: *RastPort, x1: i16, y1: i16, x2: i16, y2: i16, x3: i16, y3: i16) -> Result<(), GraphicsError> {
+    var area = AreaContext::new(rp, 4)?
+    area.begin(x1, y1)?
+    area.vertex(x2, y2)?
+    area.vertex(x3, y3)?
+    area.end_fill()?
+    return Result::Ok(())
+}
+
+/// Draw a filled quad (4-sided polygon).
+pub fn fill_quad(rp: *RastPort, x1: i16, y1: i16, x2: i16, y2: i16, x3: i16, y3: i16, x4: i16, y4: i16) -> Result<(), GraphicsError> {
+    var area = AreaContext::new(rp, 5)?
+    area.begin(x1, y1)?
+    area.vertex(x2, y2)?
+    area.vertex(x3, y3)?
+    area.vertex(x4, y4)?
+    area.end_fill()?
+    return Result::Ok(())
+}
+
+/// Draw a simple filled ellipse.
+pub fn fill_ellipse(rp: *RastPort, cx: i16, cy: i16, rx: i16, ry: i16) -> Result<(), GraphicsError> {
+    var area = AreaContext::new(rp, 4)?
+    area.ellipse_fill(cx, cy, rx, ry)?
+    return Result::Ok(())
+}
+
+/// Draw a simple filled circle.
+pub fn fill_circle(rp: *RastPort, cx: i16, cy: i16, radius: i16) -> Result<(), GraphicsError> {
+    return fill_ellipse(rp, cx, cy, radius, radius)
+}

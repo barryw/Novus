@@ -1,0 +1,288 @@
+// Graphics Drawing Primitives Example
+//
+// Demonstrates all functions in std::graphics::draw and std::graphics::shapes:
+// - DrawContext creation and usage
+// - Lines, rectangles, ellipses, circles
+// - Pen colors and draw modes
+// - Polylines and polygons
+// - Pixel operations
+// - Shape types: Point, Rect, Ellipse, Size
+
+from std::ui::window import WindowHandle, WindowEvent
+from std::graphics::draw import DrawContext, DrawMode
+from std::graphics::draw import draw_line, fill_rect, draw_ellipse, draw_circle
+from std::graphics::shapes import Point, Rect, Ellipse, Size
+from std::io::file import write
+
+pub fn main() -> i32 {
+    // Open a window for drawing
+    let result = WindowHandle::simple("Graphics Drawing Demo", 640, 400)
+
+    match result {
+        Result::Ok(window) => {
+            // Create drawing context from window
+            let ctx_result = DrawContext::from_window(window.handle())
+
+            match ctx_result {
+                Result::Ok(ctx) => {
+                    // Clear to background color
+                    ctx.clear(0)
+
+                    // ========================================================
+                    // Section 1: Basic Lines
+                    // ========================================================
+                    write("Drawing lines...\n")
+
+                    ctx.pen(1)  // Set foreground pen to color 1
+
+                    // Line from coordinates
+                    ctx.line(10, 10, 100, 10)
+
+                    // Line using move_to and line_to
+                    ctx.move_to(10, 20)
+                    ctx.line_to(100, 20)
+
+                    // Lines using Points
+                    let p1 = Point::new(10, 30)
+                    let p2 = Point::new(100, 30)
+                    ctx.line_points(&p1, &p2)
+
+                    // Horizontal and vertical lines
+                    ctx.hline(10, 100, 50)   // Horizontal line at y=50
+                    ctx.vline(110, 10, 50)   // Vertical line at x=110
+
+                    // ========================================================
+                    // Section 2: Rectangles
+                    // ========================================================
+                    write("Drawing rectangles...\n")
+
+                    ctx.pen(2)  // Color 2
+
+                    // Filled rectangle with coordinates
+                    ctx.fill_rect(130, 10, 180, 50)
+
+                    // Filled rectangle using Rect type
+                    let rect1 = Rect::new(190, 10, 240, 50)
+                    ctx.rect_fill(&rect1)
+
+                    // Rectangle from position and size
+                    let rect2 = Rect::from_pos_size(250, 10, 50, 40)
+                    ctx.rect_fill(&rect2)
+
+                    ctx.pen(3)  // Color 3
+
+                    // Rectangle outline
+                    let rect3 = Rect::new(310, 10, 360, 50)
+                    ctx.rect_outline(&rect3)
+
+                    // Box outline (position + size)
+                    ctx.box_outline(370, 10, 50, 40)
+
+                    // Box filled (position + size)
+                    ctx.pen(1)
+                    ctx.box_fill(430, 10, 50, 40)
+
+                    // ========================================================
+                    // Section 3: Circles and Ellipses
+                    // ========================================================
+                    write("Drawing circles and ellipses...\n")
+
+                    ctx.pen(2)
+
+                    // Simple circle
+                    ctx.circle(50, 100, 30)
+
+                    // Circle at Point
+                    let center = Point::new(130, 100)
+                    ctx.circle_at(&center, 30)
+
+                    // Ellipse (horizontal)
+                    ctx.ellipse(220, 100, 40, 20)
+
+                    // Ellipse using Ellipse type
+                    let ellipse1 = Ellipse::new(320, 100, 20, 35)
+                    ctx.ellipse_shape(&ellipse1)
+
+                    // Circle created via Ellipse type
+                    let circ = Ellipse::circle(420, 100, 25)
+                    ctx.ellipse_shape(&circ)
+
+                    // ========================================================
+                    // Section 4: Draw Modes
+                    // ========================================================
+                    write("Testing draw modes...\n")
+
+                    // Draw a background
+                    ctx.pen(1)
+                    ctx.fill_rect(10, 150, 150, 200)
+
+                    // JAM1 mode (transparent background)
+                    ctx.mode(DrawMode::Jam1)
+                    ctx.pen(2)
+                    ctx.fill_rect(20, 160, 70, 190)
+
+                    // COMPLEMENT mode (XOR)
+                    ctx.mode(DrawMode::Complement)
+                    ctx.fill_rect(60, 160, 110, 190)
+
+                    // Reset to JAM2 mode
+                    ctx.mode(DrawMode::Jam2)
+
+                    // ========================================================
+                    // Section 5: Markers and Debug Shapes
+                    // ========================================================
+                    write("Drawing markers...\n")
+
+                    ctx.pen(3)
+
+                    // Cross marker
+                    ctx.cross(200, 175, 20)
+
+                    // X marker
+                    ctx.x_mark(260, 175, 20)
+
+                    // ========================================================
+                    // Section 6: Polylines
+                    // ========================================================
+                    write("Drawing polylines...\n")
+
+                    ctx.pen(1)
+
+                    // Point array for polyline
+                    var points: [Point; 5] = [
+                        Point { x: 320, y: 150 },
+                        Point { x: 370, y: 150 },
+                        Point { x: 370, y: 200 },
+                        Point { x: 320, y: 200 },
+                        Point { x: 345, y: 175 }
+                    ]
+                    ctx.polyline_points(&points[0], 5)
+
+                    // ========================================================
+                    // Section 7: Shape Type Methods
+                    // ========================================================
+                    write("Testing shape methods...\n")
+
+                    // Point operations
+                    let origin = Point::zero()
+                    let offset_pt = origin.offset(10, 20)
+                    let p3 = Point::new(5, 5)
+                    let p4 = Point::new(3, 3)
+                    let added = p3.add(&p4)
+                    let subtracted = p3.sub(&p4)
+
+                    // Rect operations
+                    let test_rect = Rect::from_pos_size(0, 0, 100, 50)
+                    let w = test_rect.width()
+                    let h = test_rect.height()
+                    let rect_center = test_rect.center()
+                    let test_point = Point::new(50, 25)
+                    let contained = test_rect.contains(&test_point)
+
+                    // Rect intersection
+                    let r1 = Rect::new(0, 0, 50, 50)
+                    let r2 = Rect::new(25, 25, 75, 75)
+                    let intersects = r1.intersects(&r2)
+
+                    // Ellipse operations
+                    let e1 = Ellipse::new(100, 100, 40, 30)
+                    let is_circ = e1.is_circle()
+                    let bounds = e1.bounds()
+                    let dx = e1.diameter_x()
+                    let dy = e1.diameter_y()
+                    let scaled = e1.scale(2)
+
+                    // Size operations
+                    let size1 = Size::new(100, 50)
+                    let area = size1.area()
+                    let square = Size::square(32)
+                    let is_empty = Size::zero().is_empty()
+
+                    // ========================================================
+                    // Section 8: Pixel Operations
+                    // ========================================================
+                    write("Drawing pixels...\n")
+
+                    ctx.pen(3)
+
+                    // Draw individual pixels in a pattern
+                    var py: i16 = 220
+                    while py < 250 {
+                        var px: i16 = 10
+                        while px < 50 {
+                            if (px + py) % 3 == 0 {
+                                ctx.pixel(px, py)
+                            }
+                            px = px + 1
+                        }
+                        py = py + 1
+                    }
+
+                    // Read a pixel value
+                    let pixel_val = ctx.get_pixel(20, 230)
+
+                    // ========================================================
+                    // Section 9: Pen Queries
+                    // ========================================================
+                    write("Querying pen state...\n")
+
+                    ctx.pens(1, 2)  // Set fg=1, bg=2
+                    let fg = ctx.get_pen()
+                    let bg = ctx.get_bg_pen()
+                    let mode = ctx.get_mode()
+
+                    // ========================================================
+                    // Section 10: Cursor Operations
+                    // ========================================================
+                    write("Testing cursor...\n")
+
+                    ctx.move_to(100, 300)
+                    let cursor_pos = ctx.cursor()
+
+                    // Move to point
+                    let target = Point::new(200, 300)
+                    ctx.move_to_point(&target)
+
+                    // ========================================================
+                    // Section 11: Convenience Functions
+                    // ========================================================
+                    write("Using convenience functions...\n")
+
+                    // These work without creating a DrawContext
+                    let rp = ctx.handle()
+                    draw_line(rp, 500, 10, 550, 50)
+                    fill_rect(rp, 560, 10, 610, 50)
+                    draw_ellipse(rp, 530, 100, 40, 25)
+                    draw_circle(rp, 590, 100, 25)
+
+                    // ========================================================
+                    // Done - wait for close
+                    // ========================================================
+                    write("Drawing complete! Close window to exit.\n")
+
+                    window.activate()
+
+                    forever {
+                        let event = window.wait_event()
+                        match event {
+                            WindowEvent::Close => {
+                                break
+                            },
+                            _ => {}
+                        }
+                    }
+
+                    return 0
+                },
+                Result::Err(_) => {
+                    write("Failed to create DrawContext\n")
+                    return 20
+                }
+            }
+        },
+        Result::Err(_) => {
+            write("Failed to open window\n")
+            return 20
+        }
+    }
+}

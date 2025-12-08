@@ -90,6 +90,12 @@ public partial class CCodeGenerator
     // This allows reconstructing chains like self->timereq->tr_node from intermediate variables
     private Dictionary<string, (string baseExpr, string fieldName, string accessor)> _fieldAccessChainInfo = new();
 
+    // VBCC 68K FIX: Track struct member accesses that are ONLY used for address-of operations.
+    // When a struct field is only used to take its address (e.g., &(*screen).BitMap), we don't
+    // need to copy the struct value - we can just track the chain info and emit &(base->field)
+    // directly. This prevents illegal struct-by-value copies that cause Guru $80000004 on 68040.
+    private HashSet<string> _addressOnlyStructMemberAccess = new();
+
     // Counter for defer block emissions to ensure unique labels across multiple defer cleanup sites
     private int _deferEmissionCounter = 0;
 
@@ -124,6 +130,10 @@ public partial class CCodeGenerator
     // Track last emitted #line directive to avoid duplicates
     private int _lastLineDirectiveLine = -1;
     private string? _lastLineDirectiveFile = null;
+
+    // Dead label elimination: track which labels are actually targeted by branches
+    // Labels not in this set will be skipped during emission to avoid VBCC warning 148
+    private HashSet<string> _reachableLabels = new();
 
     /// <summary>
     /// VBCC WORKAROUND: Track comparison expressions that can be inlined into conditional branches.
@@ -192,8 +202,23 @@ public partial class CCodeGenerator
         {
             for (int i = 0; i < arrayLiteral.Elements.Count; i++)
             {
-                var elemValue = EmitValue(arrayLiteral.Elements[i]);
-                _output.AppendLine($"    {destExpr}[{i}] = {elemValue};");
+                var elem = arrayLiteral.Elements[i];
+
+                // VBCC 68K FIX: For struct literal elements, emit field-by-field assignment
+                // instead of compound literal which causes misalignment on 68040
+                if (elem is IrStructLiteral structLitElem)
+                {
+                    foreach (var kvp in structLitElem.FieldValues)
+                    {
+                        var fieldValue = EmitValue(kvp.Value);
+                        _output.AppendLine($"    {destExpr}[{i}].{kvp.Key} = {fieldValue};");
+                    }
+                }
+                else
+                {
+                    var elemValue = EmitValue(elem);
+                    _output.AppendLine($"    {destExpr}[{i}] = {elemValue};");
+                }
             }
             return;
         }
@@ -475,6 +500,9 @@ public partial class CCodeGenerator
         sb.AppendLine("#include <proto/gadtools.h>");
         sb.AppendLine("#include <devices/timer.h>");
         sb.AppendLine();
+        // IMPORTANT: These typedefs must include all structs from the NdkStructs static field.
+        // When adding a new NDK struct to NdkStructs, also add its typedef here.
+        // See NdkStructs field (~line 1955) for the canonical list.
         sb.AppendLine("// Typedefs for NDK structs (headers only define 'struct Foo', not 'Foo')");
         sb.AppendLine("typedef struct NewWindow NewWindow;");
         sb.AppendLine("typedef struct Window Window;");
@@ -488,9 +516,12 @@ public partial class CCodeGenerator
         sb.AppendLine("typedef struct BitMap BitMap;");
         sb.AppendLine("typedef struct ColorMap ColorMap;");
         sb.AppendLine("typedef struct TextFont TextFont;");
+        sb.AppendLine("typedef struct TextAttr TextAttr;");
+        sb.AppendLine("typedef struct TTextAttr TTextAttr;");
         sb.AppendLine("typedef struct Task Task;");
         sb.AppendLine("typedef struct Node Node;");
         sb.AppendLine("typedef struct List List;");
+        sb.AppendLine("typedef struct Library Library;");
         sb.AppendLine("typedef struct Menu Menu;");
         sb.AppendLine("typedef struct MenuItem MenuItem;");
         sb.AppendLine("typedef struct NewMenu NewMenu;");
@@ -513,6 +544,21 @@ public partial class CCodeGenerator
         sb.AppendLine("typedef struct collTable collTable;");
         sb.AppendLine("typedef struct RastPort RastPort;");
         sb.AppendLine("typedef struct DBufInfo DBufInfo;");
+        // Area fill types
+        sb.AppendLine("typedef struct AreaInfo AreaInfo;");
+        sb.AppendLine("typedef struct TmpRas TmpRas;");
+        sb.AppendLine("typedef struct Layer Layer;");
+        sb.AppendLine("typedef struct ClipRect ClipRect;");
+        sb.AppendLine("typedef struct Region Region;");
+        sb.AppendLine("typedef struct RegionRectangle RegionRectangle;");
+        // Copper list types
+        sb.AppendLine("typedef struct CopIns CopIns;");
+        sb.AppendLine("typedef struct CopList CopList;");
+        sb.AppendLine("typedef struct cprlist cprlist;");
+        sb.AppendLine("typedef struct copinit copinit;");
+        sb.AppendLine("typedef struct UCopList UCopList;");
+        sb.AppendLine("typedef struct RasInfo RasInfo;");
+        sb.AppendLine("typedef struct bltnode bltnode;");
         // DOS types that are commonly used in user code
         sb.AppendLine("typedef struct RDArgs RDArgs;");
         sb.AppendLine("typedef struct WBStartup WBStartup;");
@@ -545,83 +591,20 @@ public partial class CCodeGenerator
             var sortedStructs = codegen.TopologicalSortStructTypes(concreteStructs);
 
             // AmigaOS NDK structs: defined in std/ffi/amiga_structs.novus and std/ffi/*/
-            // These are provided by NDK headers, so we skip generating definitions
+            // These are provided by NDK headers, so we skip generating definitions.
+            // Uses the canonical NdkStructs static field as the single source of truth.
             // Primary method: Check for #[extern_type] attribute on struct
-            // Fallback: Hardcoded list of known NDK types (for backward compatibility)
-            // NOTE: This fallback list should be kept in sync with FFI definitions
-            var ndkStructs = new HashSet<string> {
-                // Core exec types
-                "Rectangle", "BitMap", "View", "ViewPort", "ColorMap", "UCopList",
-                "Node", "MinNode", "Library", "List", "MinList", "TagItem", "Hook",
-                "Task", "StackSwapStruct", "SignalSemaphore", "MsgPort", "Message",
-                "Device", "Unit", "ExtendedNode", "Custom", "SpriteDef", "DBufInfo",
-                "SimpleSprite",
-                // Graphics types
-                "TextAttr", "TTextAttr", "TextFont", "TextFontExtension",
-                "ColorFontColors", "ColorTextFont", "TextExtent", "Layer", "RastPort",
-                "AreaInfo", "TmpRas", "ClipRect", "Region", "RegionRectangle",
-                "CopIns", "CopList", "cprlist", "copinit", "RasInfo", "Layer_Info",
-                "ExtSprite", "MonitorSpec", "bltnode",
-                // Intuition types
-                "IBox", "DrawInfo", "Gadget", "Requester", "NewScreen", "Screen",
-                "Window", "IntuiMessage", "NewWindow", "GadgetInfo", "IntuiText",
-                // GadTools types
-                "NewMenu", "Menu", "MenuItem", "VisualInfo", "NewGadget",
-                // DOS types
-                "IORequest", "IOStdReq", "timeval", "EClockVal", "timerequest",
-                "DateStamp", "FileInfoBlock", "InfoData", "FileHandle", "DosPacket",
-                "StandardPacket", "ErrorString", "RootNode", "DosLibrary", "CliProcList",
-                "DosInfo", "Segment", "CommandLineInterface", "DeviceList", "DevInfo",
-                "DosList", "AssignList", "DevProc", "FileLock", "RecordLock", "AChain",
-                "AnchorPath", "LocalVar", "NotifyRequest", "NotifyMessage", "DateTime",
-                "ExAllData", "ExAllControl", "Process",
-                // Input types
-                "IEPointerPixel", "IEPointerTablet", "InputEvent",
-                // Intuition extended types
-                "PubScreenNode", "EasyStruct",
-                // Interrupt types
-                "Interrupt", "IntVector", "SoftIntList",
-                // BOOPSI types
-                "opSet", "opUpdate", "opGet", "opAddTail", "opMember",
-                // Rexx types
-                "NexxStr", "RexxArg", "RexxMsg", "RexxRsrc", "RexxTask", "SrcNode",
-                "RxsLib", "IoBuff", "RexxMsgPort",
-                // Misc types
-                "impFrameBox", "MemChunk", "MemHeader", "MemEntry", "MemList",
-                "CSource", "RDArgs", "OldDrawerData", "DrawerData", "DiskObject",
-                "FreeList", "WBArg", "AppMessage", "AppWindow", "AppWindowDropZone",
-                "AppIcon", "AppMenuItem", "AppMenu", "WBStartup",
-                // Clipboard types
-                "ClipboardUnitPartial", "IOClipReq", "SatisfyMsg", "ClipHookMsg",
-                // DRP types
-                "DRPSourceMsg",
-                // Parallel/Serial types
-                "IOPArray", "IOExtPar", "IOTArray", "IOExtSer",
-                // Expansion types
-                "ExpansionRom", "ExpansionControl", "DiagArea", "ConfigDev",
-                "CurrentBinding", "DosEnvec", "FileSysStartupMsg", "DeviceNode",
-                // Disk resource types
-                "DiscResourceUnit", "DiscResource",
-                // Resident types
-                "Resident", "CardHandle", "DeviceTData", "CardMemoryMap", "TP_AmigaXIP",
-                // Graphics extended types
-                "BitScaleArgs", "FontContents", "TFontContents", "FontContentsHeader",
-                "DiskFontHeader", "AvailFonts", "TAvailFonts", "AvailFontsHeader",
-                // Keymap types
-                "KeyMap", "KeyMapNode", "KeyMapResource",
-                // Glyph types
-                "PGX", "GlyphEngine", "GlyphMap", "GlyphWidthEntry"
-            };
+            // Fallback: Hardcoded NdkStructs list (for backward compatibility)
 
-            // Filter structs: skip those marked with #[extern_type] or in the fallback list
+            // Filter structs: skip those marked with #[extern_type] or in the NdkStructs list
             var userStructs = sortedStructs
                 .Where(s => {
                     // Primary check: #[extern_type] attribute
                     if (s.Attributes != null && s.Attributes.Has(Novus.SemanticAnalysis.KnownAttributes.ExternType))
                         return false;
 
-                    // Fallback check: hardcoded list
-                    return !ndkStructs.Contains(s.StructName);
+                    // Fallback check: canonical NdkStructs list
+                    return !NdkStructs.Contains(s.StructName);
                 })
                 .ToList();
 
@@ -805,6 +788,28 @@ public partial class CCodeGenerator
         sb.AppendLine("uint32_t u16_to_string(uint16_t value, uint8_t* buffer, uint32_t buffer_size);");
         sb.AppendLine("uint32_t u32_to_string(uint32_t value, uint8_t* buffer, uint32_t buffer_size);");
         sb.AppendLine("uint32_t u64_to_string(uint64_t value, uint8_t* buffer, uint32_t buffer_size);");
+        sb.AppendLine();
+
+        // Memory tracking and MMU protection functions (always declared, only linked when used)
+        sb.AppendLine("// Memory tracking runtime functions (linked when NOVUS_MEMORY_DEBUG is enabled)");
+        sb.AppendLine("extern void* __novus_tracked_alloc(uint32_t size, uint32_t flags, const char* file, int32_t line);");
+        sb.AppendLine("extern void __novus_tracked_free(void* ptr, uint32_t size, const char* file, int32_t line);");
+        sb.AppendLine("extern void __novus_memory_report(void);");
+        sb.AppendLine();
+        sb.AppendLine("// MMU protection runtime functions");
+        sb.AppendLine("extern void __novus_init_mmu_protection(void);");
+        sb.AppendLine("extern void __novus_cleanup_mmu_protection(void);");
+        sb.AppendLine();
+
+        // Stack overflow detection
+        sb.AppendLine("// Stack overflow detection runtime functions");
+        sb.AppendLine("extern void __novus_init_stack_bounds(void);");
+        sb.AppendLine("extern void __novus_check_stack(uint32_t required_bytes, const char* func_name, int32_t line);");
+        sb.AppendLine();
+
+        // Pointer access checking (paranoid mode)
+        sb.AppendLine("// Pointer access checking (paranoid mode)");
+        sb.AppendLine("extern void __novus_check_ptr_access(void* ptr, const char* file, int32_t line);");
         sb.AppendLine();
 
         sb.AppendLine("#endif // NOVUS_TYPES_H");
@@ -1156,6 +1161,13 @@ public partial class CCodeGenerator
                             continue;
                         }
 
+                        // Skip runtime functions already declared in novus_types.h
+                        // These have special signatures (e.g., const qualifiers) that differ from IR
+                        if (funcName is "__novus_memcpy" or "__novus_memset")
+                        {
+                            continue;
+                        }
+
                         // Emit declaration for runtime extern functions (write, strlen, etc.)
                         var returnTypeStr = GetCType(funcObj.ReturnType);
                         var parameters = GetParameterList(funcObj, false);
@@ -1262,6 +1274,7 @@ public partial class CCodeGenerator
         _activatedDeferBlocks.Clear();
         _indexAccessInfo.Clear();
         _fieldAccessChainInfo.Clear();
+        _addressOnlyStructMemberAccess.Clear();
         _inlineableComparisons.Clear();  // VBCC workaround: reset comparison tracking
 
         // Reset debug line tracking for this function
@@ -1286,6 +1299,15 @@ public partial class CCodeGenerator
         var (variableToSlot, slotTypes) = livenessAnalysis.Analyze();
         _variableToSlot = variableToSlot;
         _slotTypes = slotTypes;
+
+        // Pre-scan function for address-only struct member accesses (VBCC 68K fix)
+        // IMPORTANT: This must be called AFTER liveness analysis sets up _variableToSlot,
+        // so that SanitizeVariableName correctly maps IR names to slot names.
+        ScanForAddressOnlyStructMemberAccesses(function);
+
+        // Dead label elimination: collect all branch targets
+        // Labels not targeted by any branch will be skipped during emission (VBCC warning 148)
+        CollectReachableLabels(function);
 
         // VBCC FIX: For struct/enum returns on 68k, use output parameter pattern
         var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType;
@@ -1880,8 +1902,7 @@ public partial class CCodeGenerator
         {
             sb.AppendLine($"#pragma pack()");
         }
-        // Add typedef so we can use SizePool instead of struct SizePool
-        sb.AppendLine($"typedef struct {structName} {structName};");
+        // Note: typedef is already emitted as forward declaration, don't duplicate
         sb.AppendLine($"#endif // {guardName}");
         sb.AppendLine();
 
@@ -1984,18 +2005,84 @@ public partial class CCodeGenerator
     }
 
     /// <summary>
-    /// NDK struct types defined by AmigaOS headers - need forward declarations
+    /// CANONICAL LIST: NDK struct types defined by AmigaOS headers.
+    ///
+    /// This is the SINGLE SOURCE OF TRUTH for NDK struct names.
+    /// These structs are:
+    /// 1. Defined in AmigaOS SDK headers (not generated by Novus)
+    /// 2. Referenced in std/ffi/amiga_structs.novus with #[extern_type] attribute
+    /// 3. Used for forward declaration generation in novus_types.h
+    /// 4. Used to filter out structs from user code generation
+    ///
+    /// WHEN ADDING NEW NDK STRUCTS:
+    /// 1. Add the struct name to this list
+    /// 2. Add the typedef to EmitNdkTypedefs() method (~line 475)
+    /// 3. Define the struct in std/ffi/amiga_structs.novus with #[extern_type]
+    ///
+    /// See also: EmitNdkTypedefs() for the typedef emission that must be kept in sync.
     /// </summary>
     private static readonly HashSet<string> NdkStructs = new() {
+        // Core exec types
         "Rectangle", "BitMap", "View", "ViewPort", "ColorMap", "UCopList",
         "Node", "MinNode", "Library", "List", "MinList", "TagItem", "Hook",
         "Task", "StackSwapStruct", "SignalSemaphore", "MsgPort", "Message",
         "Device", "Unit", "ExtendedNode", "Custom", "SpriteDef", "DBufInfo",
         "SimpleSprite",
+        // Graphics types
         "TextAttr", "TTextAttr", "TextFont", "TextFontExtension",
         "ColorFontColors", "ColorTextFont", "TextExtent", "Layer", "RastPort",
+        "AreaInfo", "TmpRas", "ClipRect", "Region", "RegionRectangle",
+        "CopIns", "CopList", "cprlist", "copinit", "RasInfo", "Layer_Info",
+        "ExtSprite", "MonitorSpec", "bltnode",
+        // Intuition types
         "IBox", "DrawInfo", "Gadget", "Requester", "NewScreen", "Screen",
-        "Window", "IntuiMessage", "NewWindow", "GadgetInfo"
+        "Window", "IntuiMessage", "NewWindow", "GadgetInfo", "IntuiText",
+        // GadTools types
+        "NewMenu", "Menu", "MenuItem", "VisualInfo", "NewGadget",
+        // DOS types
+        "IORequest", "IOStdReq", "timeval", "EClockVal", "timerequest",
+        "DateStamp", "FileInfoBlock", "InfoData", "FileHandle", "DosPacket",
+        "StandardPacket", "ErrorString", "RootNode", "DosLibrary", "CliProcList",
+        "DosInfo", "Segment", "CommandLineInterface", "DeviceList", "DevInfo",
+        "DosList", "AssignList", "DevProc", "FileLock", "RecordLock", "AChain",
+        "AnchorPath", "LocalVar", "NotifyRequest", "NotifyMessage", "DateTime",
+        "ExAllData", "ExAllControl", "Process",
+        // Input types
+        "IEPointerPixel", "IEPointerTablet", "InputEvent",
+        // Intuition extended types
+        "PubScreenNode", "EasyStruct",
+        // Interrupt types
+        "Interrupt", "IntVector", "SoftIntList",
+        // BOOPSI types
+        "opSet", "opUpdate", "opGet", "opAddTail", "opMember",
+        // Rexx types
+        "NexxStr", "RexxArg", "RexxMsg", "RexxRsrc", "RexxTask", "SrcNode",
+        "RxsLib", "IoBuff", "RexxMsgPort",
+        // Misc types
+        "impFrameBox", "MemChunk", "MemHeader", "MemEntry", "MemList",
+        "CSource", "RDArgs", "OldDrawerData", "DrawerData", "DiskObject",
+        "FreeList", "WBArg", "AppMessage", "AppWindow", "AppWindowDropZone",
+        "AppIcon", "AppMenuItem", "AppMenu", "WBStartup",
+        // Clipboard types
+        "ClipboardUnitPartial", "IOClipReq", "SatisfyMsg", "ClipHookMsg",
+        // DRP types
+        "DRPSourceMsg",
+        // Parallel/Serial types
+        "IOPArray", "IOExtPar", "IOTArray", "IOExtSer",
+        // Expansion types
+        "ExpansionRom", "ExpansionControl", "DiagArea", "ConfigDev",
+        "CurrentBinding", "DosEnvec", "FileSysStartupMsg", "DeviceNode",
+        // Disk resource types
+        "DiscResourceUnit", "DiscResource",
+        // Resident types
+        "Resident", "CardHandle", "DeviceTData", "CardMemoryMap", "TP_AmigaXIP",
+        // Graphics extended types
+        "BitScaleArgs", "FontContents", "TFontContents", "FontContentsHeader",
+        "DiskFontHeader", "AvailFonts", "TAvailFonts", "AvailFontsHeader",
+        // Keymap types
+        "KeyMap", "KeyMapNode", "KeyMapResource",
+        // Glyph types
+        "PGX", "GlyphEngine", "GlyphMap", "GlyphWidthEntry"
     };
 
     /// <summary>
@@ -3926,6 +4013,7 @@ public partial class CCodeGenerator
         _currentEmittingFunction = function;
         _memberAccessInfo.Clear();
         _fieldAccessChainInfo.Clear();
+        _addressOnlyStructMemberAccess.Clear();
 
         // Reset debug line tracking for this function
         _lastEmittedDebugLine = -1;
@@ -3939,6 +4027,15 @@ public partial class CCodeGenerator
         var (variableToSlot, slotTypes) = livenessAnalysis.Analyze();
         _variableToSlot = variableToSlot;
         _slotTypes = slotTypes;
+
+        // Pre-scan function for address-only struct member accesses (VBCC 68K fix)
+        // IMPORTANT: This must be called AFTER liveness analysis sets up _variableToSlot,
+        // so that SanitizeVariableName correctly maps IR names to slot names.
+        ScanForAddressOnlyStructMemberAccesses(function);
+
+        // Dead label elimination: collect all branch targets
+        // Labels not targeted by any branch will be skipped during emission (VBCC warning 148)
+        CollectReachableLabels(function);
 
         // VBCC FIX: For struct/enum returns on 68k, use output parameter pattern
         var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType;
@@ -4523,6 +4620,12 @@ public partial class CCodeGenerator
                     {
                         // Deactivate this defer block - the variable is being moved, not dropped
                         _output.AppendLine($"    _defer_{deferIndex}_active = false;");
+
+                        // CRITICAL: Also remove from _activatedDeferBlocks so EmitDeferredCleanup
+                        // won't emit a dead-code check like "if (false) { ... }".
+                        // VBCC miscompiles this pattern (sets Z flag from stack operations instead
+                        // of testing the boolean variable), causing Guru 80000004 crashes.
+                        _activatedDeferBlocks.Remove(deferIndex);
                     }
                 }
             }
@@ -4719,8 +4822,30 @@ public partial class CCodeGenerator
                         {
                             for (int i = 0; i < enumValueAssign.AssociatedValues.Count; i++)
                             {
-                                var assocValue = EmitValue(enumValueAssign.AssociatedValues[i]);
-                                _output.AppendLine($"    {varName}.data.{enumValueAssign.VariantName}._{i} = {assocValue};");
+                                // VBCC_004: Compound literals cause misalignment on 68k - emit field-by-field for nested struct literals
+                                if (enumValueAssign.AssociatedValues[i] is IrStructLiteral nestedStructLit)
+                                {
+                                    foreach (var kvp in nestedStructLit.FieldValues)
+                                    {
+                                        var fieldValue = EmitValue(kvp.Value);
+                                        _output.AppendLine($"    {varName}.data.{enumValueAssign.VariantName}._{i}.{kvp.Key} = {fieldValue};");
+                                    }
+                                }
+                                else
+                                {
+                                    var assocValue = EmitValue(enumValueAssign.AssociatedValues[i]);
+                                    var assocValueType = enumValueAssign.AssociatedValues[i].Type;
+                                    // VBCC 68K FIX: Use memcpy for struct types to avoid illegal instruction on 68040
+                                    if (TypeRequiresMemcpy(assocValueType))
+                                    {
+                                        var cType = GetCType(assocValueType);
+                                        _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}.data.{enumValueAssign.VariantName}._{i}, (uint8_t*)&{assocValue}, sizeof({cType}));");
+                                    }
+                                    else
+                                    {
+                                        _output.AppendLine($"    {varName}.data.{enumValueAssign.VariantName}._{i} = {assocValue};");
+                                    }
+                                }
                             }
                         }
                         else
@@ -4758,9 +4883,9 @@ public partial class CCodeGenerator
                 {
                     // Skip the assignment - variable already zero-initialized with {0} at function start
                 }
-                // VBCC FIX: For struct types with nested structs, use memcpy instead of assignment
-                else if (localDecl.InitialValue.Type is IrStructType structTypeInit &&
-                         TypeContainsNestedStructs(structTypeInit))
+                // VBCC FIX: For complex types (nested structs OR enums with unions), use memcpy instead of assignment.
+                // VBCC generates illegal instructions on 68040 for struct-by-value copies of these types.
+                else if (TypeRequiresMemcpy(localDecl.InitialValue.Type))
                 {
                     var cType = GetCType(localDecl.Type);
                     _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}, (uint8_t*)&{initValue}, sizeof({cType}));");
@@ -4856,8 +4981,30 @@ public partial class CCodeGenerator
                         {
                             for (int i = 0; i < enumValueDecl.AssociatedValues.Count; i++)
                             {
-                                var assocValue = EmitValue(enumValueDecl.AssociatedValues[i]);
-                                _output.AppendLine($"    {varName}.data.{enumValueDecl.VariantName}._{i} = {assocValue};");
+                                // VBCC_004: Compound literals cause misalignment on 68k - emit field-by-field for nested struct literals
+                                if (enumValueDecl.AssociatedValues[i] is IrStructLiteral nestedStructLit)
+                                {
+                                    foreach (var kvp in nestedStructLit.FieldValues)
+                                    {
+                                        var fieldValue = EmitValue(kvp.Value);
+                                        _output.AppendLine($"    {varName}.data.{enumValueDecl.VariantName}._{i}.{kvp.Key} = {fieldValue};");
+                                    }
+                                }
+                                else
+                                {
+                                    var assocValue = EmitValue(enumValueDecl.AssociatedValues[i]);
+                                    var assocValueType = enumValueDecl.AssociatedValues[i].Type;
+                                    // VBCC 68K FIX: Use memcpy for struct types to avoid illegal instruction on 68040
+                                    if (TypeRequiresMemcpy(assocValueType))
+                                    {
+                                        var cType = GetCType(assocValueType);
+                                        _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}.data.{enumValueDecl.VariantName}._{i}, (uint8_t*)&{assocValue}, sizeof({cType}));");
+                                    }
+                                    else
+                                    {
+                                        _output.AppendLine($"    {varName}.data.{enumValueDecl.VariantName}._{i} = {assocValue};");
+                                    }
+                                }
                             }
                         }
                     }
@@ -4868,9 +5015,9 @@ public partial class CCodeGenerator
                     _output.AppendLine($"    {varName} = {initValue};");
                 }
             }
-            // VBCC FIX: For struct types with nested structs, declare then use memcpy for initialization
-            else if (localDecl.InitialValue.Type is IrStructType structTypeInitFirst &&
-                     TypeContainsNestedStructs(structTypeInitFirst))
+            // VBCC FIX: For complex types (nested structs OR enums with unions), declare then use memcpy for initialization.
+            // VBCC generates illegal instructions on 68040 for struct-by-value copies of these types.
+            else if (TypeRequiresMemcpy(localDecl.InitialValue.Type))
             {
                 var decl = GetCVariableDeclaration(localDecl.Type, varName);
                 var cType = GetCType(localDecl.Type);
@@ -4953,8 +5100,30 @@ public partial class CCodeGenerator
                     {
                         for (int i = 0; i < enumValue.AssociatedValues.Count; i++)
                         {
-                            var assocValue = EmitValue(enumValue.AssociatedValues[i]);
-                            _output.AppendLine($"    {varName}.data.{enumValue.VariantName}._{i} = {assocValue};");
+                            // VBCC_004: Compound literals cause misalignment on 68k - emit field-by-field for nested struct literals
+                            if (enumValue.AssociatedValues[i] is IrStructLiteral nestedStructLit)
+                            {
+                                foreach (var kvp in nestedStructLit.FieldValues)
+                                {
+                                    var fieldValue = EmitValue(kvp.Value);
+                                    _output.AppendLine($"    {varName}.data.{enumValue.VariantName}._{i}.{kvp.Key} = {fieldValue};");
+                                }
+                            }
+                            else
+                            {
+                                var assocValue = EmitValue(enumValue.AssociatedValues[i]);
+                                var assocValueType = enumValue.AssociatedValues[i].Type;
+                                // VBCC 68K FIX: Use memcpy for struct types to avoid illegal instruction on 68040
+                                if (TypeRequiresMemcpy(assocValueType))
+                                {
+                                    var cType = GetCType(assocValueType);
+                                    _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}.data.{enumValue.VariantName}._{i}, (uint8_t*)&{assocValue}, sizeof({cType}));");
+                                }
+                                else
+                                {
+                                    _output.AppendLine($"    {varName}.data.{enumValue.VariantName}._{i} = {assocValue};");
+                                }
+                            }
                         }
                     }
                     else
@@ -4970,18 +5139,19 @@ public partial class CCodeGenerator
 
         var value = EmitValue(store.Value);
 
-        // VBCC FIX: VBCC cannot compile struct-by-value assignment when the struct contains nested structs.
-        // For example: `SpriteData s = sprite->plane23;` fails when SpriteData contains a ChipMemHandle struct.
-        // The error is: "error 86: lvalue required for assignment"
-        // Solution: Use __novus_memcpy() for struct types that contain nested structs.
-        if (store.Value.Type is IrStructType structType && TypeContainsNestedStructs(structType))
+        // VBCC FIX: VBCC cannot compile struct-by-value assignment for complex types:
+        // - Structs containing nested structs (e.g., SpriteData with ChipMemHandle)
+        // - Enums with associated data (e.g., Result<T,E>, Option<T> - these become tagged unions)
+        // VBCC generates illegal instructions on 68040 for these types.
+        // Solution: Use __novus_memcpy() instead of direct assignment.
+        if (TypeRequiresMemcpy(store.Value.Type))
         {
             var cType = GetCType(store.Value.Type);
             _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}, (uint8_t*)&{value}, sizeof({cType}));");
         }
         else
         {
-            // For primitives, pointers, and simple structs, direct assignment works fine
+            // For primitives, pointers, and simple structs/enums, direct assignment works fine
             _output.AppendLine($"    {varName} = {value};");
         }
     }
@@ -5231,7 +5401,31 @@ public partial class CCodeGenerator
 
                     if (!isPointerConvertedParam)
                     {
-                        argValue = $"&{argValue}";
+                        // VBCC 68K FIX: If the argument is a struct literal, emit a temporary variable
+                        // with field-by-field assignment instead of using compound literal &(Struct){ ... }
+                        // which causes misalignment on 68040
+                        if (arg is IrStructLiteral structLitArg)
+                        {
+                            var tempVarName = $"_arg_tmp_{_tempCounter++}";
+                            var cStructType = GetCType(structType);
+
+                            // Declare the temporary variable
+                            _output.AppendLine($"    {cStructType} {tempVarName};");
+
+                            // Assign fields individually to avoid compound literal
+                            foreach (var kvp in structLitArg.FieldValues)
+                            {
+                                var fValue = EmitValue(kvp.Value);
+                                _output.AppendLine($"    {tempVarName}.{kvp.Key} = {fValue};");
+                            }
+
+                            // Use address of the temp variable
+                            argValue = $"&{tempVarName}";
+                        }
+                        else
+                        {
+                            argValue = $"&{argValue}";
+                        }
                     }
                 }
                 // If this is an extern FFI function and the parameter expects i32 but we have a pointer, cast it
@@ -5256,10 +5450,19 @@ public partial class CCodeGenerator
                     Console.WriteLine($"  Array element type: {arrayType.ElementType}");
                     Console.WriteLine($"  Array length: {arrayType.Length}");
 
-                    // Create a temporary slice struct: &((Slice_T){ .ptr = array, .len = N })
+                    // VBCC 68K FIX: Create a temporary slice struct with field-by-field assignment
+                    // instead of compound literal &((Slice_T){ ... }) which causes misalignment on 68040
                     var elementTypeName = GetCType(arrayType.ElementType);
                     var sliceTypeName = $"Slice_{SanitizeVariableName(elementTypeName)}";
-                    argValue = $"&(({sliceTypeName}){{ .ptr = {argValue}, .len = {arrayType.Length} }})";
+                    var tempSliceName = $"_slice_tmp_{_tempCounter++}";
+
+                    // Emit the temporary variable and field assignments
+                    _output.AppendLine($"    {sliceTypeName} {tempSliceName};");
+                    _output.AppendLine($"    {tempSliceName}.ptr = {argValue};");
+                    _output.AppendLine($"    {tempSliceName}.len = {arrayType.Length};");
+
+                    // Use address of the temp variable
+                    argValue = $"&{tempSliceName}";
 
                     Console.WriteLine($"  Generated slice type: {sliceTypeName}");
                     Console.WriteLine($"  Final argValue: {argValue}");
@@ -5407,6 +5610,14 @@ public partial class CCodeGenerator
 
     private void EmitLabel(IrLabel label)
     {
+        // Dead label elimination: skip labels that aren't targeted by any branch
+        // This prevents VBCC warning 148 (unused label) for unreachable labels
+        // like match_end_N when all match arms return/branch elsewhere
+        if (!_reachableLabels.Contains(label.Name))
+        {
+            return;
+        }
+
         // Append suffix to label name to make it unique across defer block emissions
         var labelName = label.Name + _labelSuffix;
 
@@ -5658,7 +5869,17 @@ public partial class CCodeGenerator
                                     else
                                     {
                                         var assocValue = EmitValue(enumValue.AssociatedValues[i]);
-                                        _output.AppendLine($"    __out->data.{enumValue.VariantName}._{i} = {assocValue};");
+                                        var assocValueType = enumValue.AssociatedValues[i].Type;
+                                        // VBCC 68K FIX: Use memcpy for struct types to avoid illegal instruction on 68040
+                                        if (TypeRequiresMemcpy(assocValueType))
+                                        {
+                                            var cType = GetCType(assocValueType);
+                                            _output.AppendLine($"    __novus_memcpy((uint8_t*)&__out->data.{enumValue.VariantName}._{i}, (uint8_t*)&{assocValue}, sizeof({cType}));");
+                                        }
+                                        else
+                                        {
+                                            _output.AppendLine($"    __out->data.{enumValue.VariantName}._{i} = {assocValue};");
+                                        }
                                     }
                                 }
                             }
@@ -5679,7 +5900,18 @@ public partial class CCodeGenerator
                 else
                 {
                     var value = EmitValue(returnInst.Value);
-                    _output.AppendLine($"    *__out = {value};");
+                    // VBCC 68K FIX: Use memcpy for complex types (enums with associated data, nested structs)
+                    // VBCC generates illegal instructions on 68040 for struct-by-value assignment of these types.
+                    // This handles cases like `return event;` where event is WindowEvent (enum with data).
+                    if (TypeRequiresMemcpy(returnInst.Value.Type))
+                    {
+                        var cType = GetCType(returnInst.Value.Type);
+                        _output.AppendLine($"    __novus_memcpy((uint8_t*)__out, (uint8_t*)&{value}, sizeof({cType}));");
+                    }
+                    else
+                    {
+                        _output.AppendLine($"    *__out = {value};");
+                    }
                 }
 
                 // CRITICAL FIX: If returning a field from a by-value parameter containing heap data,
@@ -5712,7 +5944,25 @@ public partial class CCodeGenerator
         }
         else
         {
-            _output.AppendLine("    return;");
+            // No return value provided - this happens after exhaustive match expressions
+            // where all arms return. The fallthrough path is never reached, but we still
+            // need to satisfy the compiler by providing a return value for non-void functions.
+            if (_currentEmittingFunction?.ReturnType is IrVoidType or null)
+            {
+                _output.AppendLine("    return;");
+            }
+            else if (_currentEmittingFunction?.ReturnType is IrStructType or IrEnumType)
+            {
+                // For struct/enum returns (which use __out parameter), just return;
+                _output.AppendLine("    return;");
+            }
+            else
+            {
+                // Non-void primitive/pointer return - provide a dummy zero value
+                // This path should never be reached at runtime (exhaustive matches)
+                var cType = GetCType(_currentEmittingFunction!.ReturnType);
+                _output.AppendLine($"    return ({cType})0; /* unreachable */");
+            }
         }
     }
 
@@ -5740,11 +5990,24 @@ public partial class CCodeGenerator
             // Void function: just return
             _output.AppendLine($"{indent}return;");
         }
-        else
+        else if (returnType is IrStructType or IrEnumType)
         {
-            // Non-void function: return zero-initialized value
+            // Struct/enum returns use __out parameter, so C function is void
+            // Just return without a value
+            _output.AppendLine($"{indent}return;");
+        }
+        else if (returnType is IrTupleType tupleType && tupleType.ElementTypes.Count > 0)
+        {
+            // Tuples return directly by value (NOT via __out parameter)
+            // Use compound literal initialization for proper struct initialization
             var cType = GetCType(returnType);
             _output.AppendLine($"{indent}return ({cType}){{0}};  // Zero-initialized after error");
+        }
+        else
+        {
+            // Non-void primitive/pointer function: return zero-initialized value
+            var cType = GetCType(returnType);
+            _output.AppendLine($"{indent}return ({cType})0;  // Zero-initialized after error");
         }
     }
 
@@ -6107,7 +6370,18 @@ public partial class CCodeGenerator
                     if (i < variant.AssociatedData.Count)
                     {
                         var decl = GetCVariableDeclaration(variant.AssociatedData[i], boundVar);
-                        _output.AppendLine($"        {decl} = {matchValue}.data.{variantPattern.VariantName}._{i};");
+                        var boundVarType = variant.AssociatedData[i];
+                        // VBCC 68K FIX: Use memcpy for struct types extracted from union to avoid illegal instruction on 68040
+                        if (TypeRequiresMemcpy(boundVarType))
+                        {
+                            var cType = GetCType(boundVarType);
+                            _output.AppendLine($"        {decl};");
+                            _output.AppendLine($"        __novus_memcpy((uint8_t*)&{boundVar}, (uint8_t*)&{matchValue}.data.{variantPattern.VariantName}._{i}, sizeof({cType}));");
+                        }
+                        else
+                        {
+                            _output.AppendLine($"        {decl} = {matchValue}.data.{variantPattern.VariantName}._{i};");
+                        }
                     }
                 }
 
@@ -6191,8 +6465,18 @@ public partial class CCodeGenerator
         // Check if variable was already declared (e.g., as a slot for variable reuse)
         var alreadyDeclared = _declaredVariables.Contains(resultName);
 
+        // VBCC 68K FIX: Use memcpy for struct types extracted from union to avoid illegal instruction on 68040
+        if (TypeRequiresMemcpy(extractData.DataType))
+        {
+            if (!alreadyDeclared)
+            {
+                _output.AppendLine($"    {dataType} {resultName};");
+                _declaredVariables.Add(resultName);
+            }
+            _output.AppendLine($"    __novus_memcpy((uint8_t*)&{resultName}, (uint8_t*)&{enumValue}.data.{extractData.VariantName}._{extractData.DataIndex}, sizeof({dataType}));");
+        }
         // Extract data from the specific variant
-        if (alreadyDeclared)
+        else if (alreadyDeclared)
         {
             _output.AppendLine($"    {resultName} = {enumValue}.data.{extractData.VariantName}._{extractData.DataIndex};");
         }
@@ -6313,35 +6597,46 @@ public partial class CCodeGenerator
                 }
             }
 
-            // VBCC FIX: VBCC cannot compile struct-by-value assignment when the struct contains nested structs.
-            // For example: `SpriteData s = sprite->plane23;` fails when SpriteData contains a ChipMemHandle struct.
-            // The error is: "error 86: lvalue required for assignment"
-            // Solution: Use __novus_memcpy() for struct types that contain nested structs.
-            bool useMemcpy = memberAccess.FieldType is IrStructType structFieldType && TypeContainsNestedStructs(structFieldType);
+            // VBCC 68K FIX: Skip struct copy if this member access result is ONLY used for address-of.
+            // When the result variable is only ever used in &variable context, we don't need to
+            // materialize the struct value at all - we just need the chain info for lvalue reconstruction.
+            // This prevents illegal instruction crashes (Guru $80000004) on 68040 when VBCC generates
+            // unsupported opcodes for large struct copies.
+            bool skipStructCopy = _addressOnlyStructMemberAccess.Contains(resultName);
 
-            if (useMemcpy)
+            if (!skipStructCopy)
             {
-                // For structs with nested structs, use memcpy
-                if (alreadyDeclared)
+                // VBCC FIX: VBCC cannot compile struct-by-value assignment for complex types:
+                // - Structs containing nested structs (e.g., SpriteData with ChipMemHandle)
+                // - Enums with associated data (e.g., Result<T,E>, Option<T> - these become tagged unions)
+                // VBCC generates illegal instructions on 68040 for these types.
+                // Solution: Use __novus_memcpy() instead of direct assignment.
+                bool useMemcpy = TypeRequiresMemcpy(memberAccess.FieldType);
+
+                if (useMemcpy)
                 {
-                    _output.AppendLine($"    __novus_memcpy((uint8_t*)&{resultName}, (uint8_t*)&({structValue}{accessor}{memberAccess.FieldName}), sizeof({fieldType}));");
+                    // For structs with nested structs, use memcpy
+                    if (alreadyDeclared)
+                    {
+                        _output.AppendLine($"    __novus_memcpy((uint8_t*)&{resultName}, (uint8_t*)&({structValue}{accessor}{memberAccess.FieldName}), sizeof({fieldType}));");
+                    }
+                    else
+                    {
+                        _output.AppendLine($"    {fieldType} {resultName};");
+                        _output.AppendLine($"    __novus_memcpy((uint8_t*)&{resultName}, (uint8_t*)&({structValue}{accessor}{memberAccess.FieldName}), sizeof({fieldType}));");
+                    }
                 }
                 else
                 {
-                    _output.AppendLine($"    {fieldType} {resultName};");
-                    _output.AppendLine($"    __novus_memcpy((uint8_t*)&{resultName}, (uint8_t*)&({structValue}{accessor}{memberAccess.FieldName}), sizeof({fieldType}));");
-                }
-            }
-            else
-            {
-                // For simple types and structs without nested structs, direct assignment works
-                if (alreadyDeclared)
-                {
-                    _output.AppendLine($"    {resultName} = {structValue}{accessor}{memberAccess.FieldName};");
-                }
-                else
-                {
-                    _output.AppendLine($"    {fieldType} {resultName} = {structValue}{accessor}{memberAccess.FieldName};");
+                    // For simple types and structs without nested structs, direct assignment works
+                    if (alreadyDeclared)
+                    {
+                        _output.AppendLine($"    {resultName} = {structValue}{accessor}{memberAccess.FieldName};");
+                    }
+                    else
+                    {
+                        _output.AppendLine($"    {fieldType} {resultName} = {structValue}{accessor}{memberAccess.FieldName};");
+                    }
                 }
             }
 
@@ -6453,6 +6748,222 @@ public partial class CCodeGenerator
     }
 
     /// <summary>
+    /// VBCC 68K FIX: Pre-scan a function to identify struct member accesses that are ONLY used
+    /// for address-of operations. When a struct field is only used to take its address
+    /// (e.g., &amp;(*screen).BitMap), we don't need to copy the struct value - we can just
+    /// track the chain info and emit &amp;(base->field) directly.
+    ///
+    /// This prevents illegal struct-by-value copies that cause Guru $80000004 on 68040
+    /// when VBCC generates unsupported instructions for large struct copies.
+    ///
+    /// The algorithm:
+    /// 1. Find all IrMemberAccess instructions that produce struct-typed results
+    /// 2. Track all uses of those result variables
+    /// 3. If all uses are IrBorrowValue (address-of) or IrCastValue wrapping IrBorrowValue,
+    ///    mark that member access as "address-only" - no copy needed
+    /// </summary>
+    private void ScanForAddressOnlyStructMemberAccesses(IrFunction function)
+    {
+        // Map from result variable name to the IrMemberAccess that produced it
+        var structMemberAccesses = new Dictionary<string, IrMemberAccess>();
+
+        // Map from variable name to count of non-address-of uses
+        var nonAddressUses = new Dictionary<string, int>();
+
+        // First pass: collect all struct-typed member accesses
+        foreach (var block in function.BasicBlocks)
+        {
+            foreach (var instruction in block.Instructions)
+            {
+                if (instruction is IrMemberAccess memberAccess &&
+                    memberAccess.FieldType is IrStructType &&
+                    !string.IsNullOrEmpty(memberAccess.ResultName))
+                {
+                    var resultName = SanitizeVariableName(memberAccess.ResultName);
+                    structMemberAccesses[resultName] = memberAccess;
+                    nonAddressUses[resultName] = 0;  // Start with zero non-address uses
+                }
+            }
+        }
+
+        if (structMemberAccesses.Count == 0)
+            return;  // No struct member accesses to analyze
+
+        // Second pass: scan for uses of those results
+        foreach (var block in function.BasicBlocks)
+        {
+            foreach (var instruction in block.Instructions)
+            {
+                ScanInstructionForStructMemberUses(instruction, structMemberAccesses, nonAddressUses);
+            }
+        }
+
+        // Mark all member accesses with zero non-address uses as "address-only"
+        foreach (var (varName, count) in nonAddressUses)
+        {
+            if (count == 0)
+            {
+                _addressOnlyStructMemberAccess.Add(varName);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Pre-scans a function to collect all labels that are actually targeted by branches.
+    /// Labels not in _reachableLabels will be skipped during emission to avoid VBCC warning 148
+    /// (unused label).
+    /// </summary>
+    private void CollectReachableLabels(IrFunction function)
+    {
+        _reachableLabels.Clear();
+
+        foreach (var block in function.BasicBlocks)
+        {
+            foreach (var instruction in block.Instructions)
+            {
+                switch (instruction)
+                {
+                    case IrBranch branch:
+                        _reachableLabels.Add(branch.Target);
+                        break;
+                    case IrConditionalBranch condBranch:
+                        _reachableLabels.Add(condBranch.TrueTarget);
+                        if (!string.IsNullOrEmpty(condBranch.FalseTarget))
+                        {
+                            _reachableLabels.Add(condBranch.FalseTarget);
+                        }
+                        break;
+                    case IrMatch match:
+                        // Match expressions generate switch statements that branch to arm labels
+                        foreach (var arm in match.Arms)
+                        {
+                            _reachableLabels.Add(arm.TargetLabel);
+                        }
+                        break;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Helper for ScanForAddressOnlyStructMemberAccesses - checks if an instruction uses
+    /// a struct member access result in a non-address-of context.
+    /// </summary>
+    private void ScanInstructionForStructMemberUses(
+        IrInstruction instruction,
+        Dictionary<string, IrMemberAccess> structMemberAccesses,
+        Dictionary<string, int> nonAddressUses)
+    {
+        // Check all values used by this instruction
+        void CheckValue(IrValue value, bool isAddressContext)
+        {
+            switch (value)
+            {
+                case IrVariable variable:
+                    var sanitizedName = SanitizeVariableName(variable.Name);
+                    if (structMemberAccesses.ContainsKey(sanitizedName) && !isAddressContext)
+                    {
+                        // Non-address use of a struct member access result
+                        nonAddressUses[sanitizedName]++;
+                    }
+                    break;
+
+                case IrBorrowValue borrowValue:
+                    // Address-of context - check the borrowed value with isAddressContext=true
+                    CheckValue(borrowValue.BorrowedValue, isAddressContext: true);
+                    break;
+
+                case IrCastValue castValue:
+                    // Casts that wrap borrows preserve the address context
+                    // (e.g., (*BitMap)&(screen->BitMap) - the cast doesn't materialize the struct)
+                    if (castValue.Value is IrBorrowValue)
+                    {
+                        CheckValue(castValue.Value, isAddressContext: true);
+                    }
+                    else
+                    {
+                        CheckValue(castValue.Value, isAddressContext: false);
+                    }
+                    break;
+
+                case IrDereferenceValue derefValue:
+                    CheckValue(derefValue.PointerValue, isAddressContext: false);
+                    break;
+
+                case IrStructLiteral structLit:
+                    foreach (var fieldValue in structLit.FieldValues.Values)
+                    {
+                        CheckValue(fieldValue, isAddressContext: false);
+                    }
+                    break;
+
+                case IrEnumValue enumValue:
+                    foreach (var assocValue in enumValue.AssociatedValues)
+                    {
+                        CheckValue(assocValue, isAddressContext: false);
+                    }
+                    break;
+            }
+        }
+
+        // Check values based on instruction type
+        switch (instruction)
+        {
+            case IrStore store:
+                CheckValue(store.Value, isAddressContext: false);
+                break;
+
+            case IrLocalDecl localDecl when localDecl.InitialValue != null:
+                CheckValue(localDecl.InitialValue, isAddressContext: false);
+                break;
+
+            case IrCall call:
+                foreach (var arg in call.Arguments)
+                {
+                    CheckValue(arg, isAddressContext: false);
+                }
+                break;
+
+            case IrReturn ret when ret.Value != null:
+                CheckValue(ret.Value, isAddressContext: false);
+                break;
+
+            case IrConditionalBranch condBranch:
+                CheckValue(condBranch.Condition, isAddressContext: false);
+                break;
+
+            case IrBinaryOp binOp:
+                CheckValue(binOp.Left, isAddressContext: false);
+                CheckValue(binOp.Right, isAddressContext: false);
+                break;
+
+            case IrMemberStore memberStore:
+                CheckValue(memberStore.Value, isAddressContext: false);
+                break;
+
+            case IrIndexStore indexStore:
+                CheckValue(indexStore.Value, isAddressContext: false);
+                CheckValue(indexStore.Index, isAddressContext: false);
+                break;
+
+            case IrDereferenceStore derefStore:
+                CheckValue(derefStore.Value, isAddressContext: false);
+                CheckValue(derefStore.Pointer, isAddressContext: false);
+                break;
+
+            case IrMemberAccess memberAccess:
+                // CRITICAL: The Struct operand of a member access is a non-address use!
+                // If we have (*screen).BitMap.Depth, then:
+                // 1. First MemberAccess: Struct=(*screen), Field=BitMap, Result=temp1
+                // 2. Second MemberAccess: Struct=temp1, Field=Depth, Result=temp2
+                // temp1 is used by the second MemberAccess as its Struct operand,
+                // so temp1 cannot be eliminated - we need its value to read Depth from it.
+                CheckValue(memberAccess.Struct, isAddressContext: false);
+                break;
+        }
+    }
+
+    /// <summary>
     /// Check if a variable name matches a module static variable.
     /// Used to prevent local variables from shadowing module statics.
     /// </summary>
@@ -6542,7 +7053,7 @@ public partial class CCodeGenerator
                 EmitDeferredCleanup(_currentEmittingFunction, 2); // indent level 2
             }
 
-            _output.AppendLine($"        return 0;  // Exit after bounds check failure");
+            EmitErrorPathReturn(2);  // Exit after bounds check failure
             _output.AppendLine($"    }} else {{");
             _output.AppendLine($"        {resultName} = {arrayValue}[{indexValue}];");
             _output.AppendLine($"    }}");
@@ -6603,7 +7114,7 @@ public partial class CCodeGenerator
                 EmitDeferredCleanup(_currentEmittingFunction, 2); // indent level 2
             }
 
-            _output.AppendLine($"        return 0;  // Exit after bounds check failure");
+            EmitErrorPathReturn(2);  // Exit after bounds check failure
             _output.AppendLine($"    }}");
         }
 
@@ -6625,6 +7136,16 @@ public partial class CCodeGenerator
             var cType = GetCType(valueStructType);
             _output.AppendLine($"    __novus_memcpy((uint8_t*)&{arrayValue}[{indexValue}], (uint8_t*)&{actualStoreValue}, sizeof({cType}));");
         }
+        // VBCC 68K FIX: When storing a struct literal into an array, emit field-by-field assignment
+        // instead of using compound literal array[i] = (Struct){ ... } which causes misalignment on 68040
+        else if (indexStore.Value is IrStructLiteral structLitStore)
+        {
+            foreach (var kvp in structLitStore.FieldValues)
+            {
+                var fValue = EmitValue(kvp.Value);
+                _output.AppendLine($"    {arrayValue}[{indexValue}].{kvp.Key} = {fValue};");
+            }
+        }
         else
         {
             _output.AppendLine($"    {arrayValue}[{indexValue}] = {actualStoreValue};");
@@ -6644,6 +7165,43 @@ public partial class CCodeGenerator
 
     private void EmitMemberStore(IrMemberStore memberStore)
     {
+        // VBCC_004: Compound literals cause misalignment on 68040 - emit field-by-field for struct literals
+        if (memberStore.Value is IrStructLiteral structLit)
+        {
+            // Determine the correct accessor (. or ->)
+            var litAccessor = GetStructAccessor(memberStore.Struct);
+
+            // If the struct is a dereference and we're using ->, emit just the pointer value
+            string litStructValue;
+            if (memberStore.Struct is IrDereferenceValue litDerefValue && litAccessor == "->")
+            {
+                litStructValue = EmitValue(litDerefValue.PointerValue);
+            }
+            else
+            {
+                litStructValue = EmitValue(memberStore.Struct);
+            }
+
+            // Handle field access chain reconstruction
+            if (memberStore.Struct is IrVariable litStructVar)
+            {
+                var sanitizedStructName = SanitizeVariableName(litStructVar.Name);
+                if (_fieldAccessChainInfo.ContainsKey(sanitizedStructName))
+                {
+                    litStructValue = ReconstructFieldAccessChain(litStructVar.Name);
+                    litAccessor = ".";
+                }
+            }
+
+            // Emit field-by-field assignments instead of compound literal
+            foreach (var kvp in structLit.FieldValues)
+            {
+                var fieldValue = EmitValue(kvp.Value);
+                _output.AppendLine($"    {litStructValue}{litAccessor}{memberStore.FieldName}.{kvp.Key} = {fieldValue};");
+            }
+            return;
+        }
+
         var storeValue = EmitValue(memberStore.Value);
 
         // Determine the correct accessor (. or ->)
@@ -6726,6 +7284,32 @@ public partial class CCodeGenerator
             {
                 var fullChain = ReconstructFieldAccessChain(fieldVar.Name);
                 return $"&({fullChain})";
+            }
+        }
+
+        // VBCC 68K FIX: When borrowing a struct literal, emit a temporary variable with field-by-field
+        // assignment instead of using compound literal &(Struct){ ... } which causes misalignment on 68040.
+        // This is critical for passing Str literals to functions like StackFormatter_write_str.
+        if (borrowValue.BorrowedValue is IrStructLiteral structLit)
+        {
+            var structType = structLit.Type as IrStructType;
+            if (structType != null)
+            {
+                var tempVarName = $"_borrow_tmp_{_tempCounter++}";
+                var cStructType = GetCType(structType);
+
+                // Declare the temporary variable
+                _output.AppendLine($"    {cStructType} {tempVarName};");
+
+                // Assign fields individually to avoid compound literal
+                foreach (var kvp in structLit.FieldValues)
+                {
+                    var fValue = EmitValue(kvp.Value);
+                    _output.AppendLine($"    {tempVarName}.{kvp.Key} = {fValue};");
+                }
+
+                // Return address of the temp variable
+                return $"&{tempVarName}";
             }
         }
 
@@ -7617,33 +8201,28 @@ public partial class CCodeGenerator
     }
 
     /// <summary>
-    /// Check if a struct type contains nested structs as fields.
-    /// VBCC cannot handle struct-by-value assignment when the struct contains nested structs.
-    /// For these cases, we must use __novus_memcpy() instead of direct assignment.
+    /// Check if a type requires memcpy instead of direct assignment for VBCC 68k.
+    /// VBCC generates illegal instructions on 68040 for struct-by-value assignment.
+    /// To be safe, we use memcpy for ALL struct and enum types, not just complex ones.
+    /// This is conservative but ensures correctness on all 68k CPUs.
     /// </summary>
-    private bool TypeContainsNestedStructs(IrType type)
+    private bool TypeRequiresMemcpy(IrType type)
     {
         switch (type)
         {
-            case IrStructType structType:
-                // Check if any field is itself a struct (nested struct)
-                foreach (var field in structType.Fields)
-                {
-                    if (field.Type is IrStructType)
-                    {
-                        return true;
-                    }
-                    // Also check recursively in case of deeply nested structs
-                    if (TypeContainsNestedStructs(field.Type))
-                    {
-                        return true;
-                    }
-                }
-                return false;
+            case IrStructType:
+                // ALL structs need memcpy - VBCC generates bad code even for simple structs
+                // when they're extracted from unions or passed around
+                return true;
+
+            case IrEnumType enumType:
+                // Enums with associated data become tagged unions in C.
+                // VBCC generates illegal instructions when copying these struct-by-value.
+                return enumType.Variants.Any(v => v.HasAssociatedData);
 
             case IrArrayType arrayType:
-                // Arrays might contain structs with nested structs
-                return TypeContainsNestedStructs(arrayType.ElementType);
+                // Arrays might contain structs
+                return TypeRequiresMemcpy(arrayType.ElementType);
 
             default:
                 // Primitives, pointers, etc. don't contain nested structs
@@ -7710,12 +8289,16 @@ public partial class CCodeGenerator
         // Generic names like "From<DosError>" become "From_DosError"
         // Multiple type parameters like "HashMap<u32, u32>" become "HashMap_u32_u32"
         // Reference types like "Option<&u32>" become "Option_ref_u32"
+        // Unit type like "Result<(), BlitterError>" becomes "Result_unit_BlitterError"
         return name.Replace("::", "_")
+                   .Replace("()", "unit")    // Handle unit type before removing parens
                    .Replace("<", "_")
                    .Replace(">", "")
                    .Replace(",", "_")
                    .Replace("&", "ref_")
                    .Replace("*", "ptr_")
+                   .Replace("(", "")         // Remove any remaining parens (e.g., from function types)
+                   .Replace(")", "")
                    .Replace(" ", "");
     }
 
@@ -7918,6 +8501,14 @@ public partial class CCodeGenerator
                    .Replace(" ", "");
     }
 
+    // Struct names that clash with AmigaOS NDK types - must be prefixed
+    // Only applies to Novus user-defined structs (those with fields), not FFI structs (no fields)
+    private static readonly HashSet<string> NdkClashingNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Point",      // graphics/gfx.h: typedef struct tPoint { WORD x,y; } Point;
+        "Rect",       // graphics/gfx.h: struct Rectangle (Rect is commonly used)
+    };
+
     internal string MangleName(IrStructType structType)
     {
         // Use CacheKey for monomorphized generics, otherwise use Name
@@ -7926,7 +8517,7 @@ public partial class CCodeGenerator
         // Sanitize for C identifier:
         // Vec<i32> -> Vec_i32
         // HashMap<String, i32> -> HashMap_String_i32
-        return name.Replace("::", "_")
+        var sanitized = name.Replace("::", "_")
                    .Replace("()", "unit")     // Handle unit type before removing parens
                    .Replace("<", "_")
                    .Replace(">", "")
@@ -7936,6 +8527,15 @@ public partial class CCodeGenerator
                    .Replace("(", "")          // Remove any remaining parens
                    .Replace(")", "")
                    .Replace(" ", "");
+
+        // Prefix with nv_ if it clashes with NDK type names
+        // Only for user-defined structs (those with fields), not FFI structs (opaque/no fields)
+        if (structType.Fields.Count > 0 && NdkClashingNames.Contains(sanitized))
+        {
+            return "nv_" + sanitized;
+        }
+
+        return sanitized;
     }
 
     /// <summary>

@@ -1,0 +1,304 @@
+// Font Showcase Example
+//
+// Demonstrates the std::graphics::font module:
+// - FontHandle RAII wrapper for fonts
+// - Opening fonts from ROM and disk
+// - Font metrics (height, width, baseline)
+// - Applying fonts to RastPorts
+// - Opening styled fonts (bold, italic)
+// - The font is automatically closed when dropped
+
+from std::ui::window import WindowHandle, WindowEvent
+from std::graphics::draw import DrawContext
+from std::graphics::font import FontHandle, FontMetrics
+from std::graphics::font import open_default_font, open_font
+from std::graphics::text import draw_text_at, text_width
+from std::graphics::text import font_height, font_baseline, font_width
+from std::io::file import write
+
+pub fn main() -> i32 {
+    let result = WindowHandle::simple("Font Showcase", 640, 400)
+
+    match result {
+        Result::Ok(window) => {
+            let ctx_result = DrawContext::from_window(window.handle())
+
+            match ctx_result {
+                Result::Ok(ctx) => {
+                    let rp = ctx.handle()
+                    ctx.clear(0)
+                    ctx.pen(1)
+
+                    // ========================================================
+                    // Section 1: Default System Font
+                    // ========================================================
+                    write("Opening default system font (topaz 8)...\n")
+
+                    let default_result = open_default_font()
+                    match default_result {
+                        Result::Ok(default_font) => {
+                            // Apply font to rastport
+                            default_font.apply_to(rp)
+
+                            // Draw with the default font
+                            draw_text_at(rp, 20, 30, "Default system font: topaz 8", 28)
+
+                            // Show font metrics from the handle
+                            let h = default_font.height()
+                            let w = default_font.width()
+                            let b = default_font.baseline()
+
+                            write("  Height: {h}, Width: {w}, Baseline: {b}\n")
+
+                            // Check if proportional
+                            if default_font.is_proportional() {
+                                draw_text_at(rp, 20, 50, "(proportional font)", 19)
+                            } else {
+                                draw_text_at(rp, 20, 50, "(fixed-width font)", 18)
+                            }
+
+                            // Get character range
+                            let lo = default_font.low_char()
+                            let hi = default_font.high_char()
+                            write("  Char range: {lo} - {hi}\n")
+
+                            // Font will be closed when default_font goes out of scope
+                        },
+                        Result::Err(_) => {
+                            write("Failed to open default font!\n")
+                            draw_text_at(rp, 20, 30, "ERROR: Could not open default font", 35)
+                        }
+                    }
+
+                    // ========================================================
+                    // Section 2: Opening Topaz 9 (larger size)
+                    // ========================================================
+                    write("\nOpening topaz 9...\n")
+
+                    let topaz9_result = FontHandle::open_rom("topaz.font", 9)
+                    match topaz9_result {
+                        Result::Ok(topaz9) => {
+                            topaz9.apply_to(rp)
+                            draw_text_at(rp, 20, 90, "Topaz 9 - slightly larger!", 26)
+
+                            let h = topaz9.height()
+                            write("  Topaz 9 height: {h}\n")
+                        },
+                        Result::Err(_) => {
+                            write("Failed to open topaz 9\n")
+                            draw_text_at(rp, 20, 90, "topaz 9 not available", 21)
+                        }
+                    }
+
+                    // ========================================================
+                    // Section 3: Font Metrics Structure
+                    // ========================================================
+                    write("\nExtracting font metrics...\n")
+
+                    let font_for_metrics = open_default_font()
+                    match font_for_metrics {
+                        Result::Ok(font) => {
+                            let metrics = FontMetrics::from_font(&font)
+
+                            // Use rastport metrics functions for current font
+                            font.apply_to(rp)
+
+                            draw_text_at(rp, 20, 130, "FontMetrics extracted from handle:", 35)
+
+                            let mh = metrics.height
+                            let mw = metrics.width
+                            let mb = metrics.baseline
+                            write("  Metrics - H:{mh} W:{mw} B:{mb}\n")
+                        },
+                        Result::Err(_) => {
+                            write("Could not open font for metrics test\n")
+                        }
+                    }
+
+                    // ========================================================
+                    // Section 4: Trying Disk Fonts
+                    // ========================================================
+                    write("\nTrying disk fonts...\n")
+
+                    // Try to open helvetica from disk
+                    let helvetica_result = FontHandle::open_disk("helvetica.font", 18)
+                    match helvetica_result {
+                        Result::Ok(helvetica) => {
+                            helvetica.apply_to(rp)
+                            draw_text_at(rp, 20, 170, "Helvetica 18 from disk!", 23)
+
+                            if helvetica.is_proportional() {
+                                draw_text_at(rp, 20, 190, "(proportional font)", 19)
+                            }
+                            write("  Helvetica opened successfully!\n")
+                        },
+                        Result::Err(_) => {
+                            // Fallback to system font
+                            let fallback = open_default_font()
+                            match fallback {
+                                Result::Ok(f) => {
+                                    f.apply_to(rp)
+                                },
+                                Result::Err(_) => {}
+                            }
+                            draw_text_at(rp, 20, 170, "helvetica.font not installed", 28)
+                            write("  Helvetica not available - try installing fonts\n")
+                        }
+                    }
+
+                    // ========================================================
+                    // Section 5: The open() Method (tries disk then ROM)
+                    // ========================================================
+                    write("\nUsing FontHandle::open() (disk fallback to ROM)...\n")
+
+                    // This will try disk first, then fall back to ROM
+                    let auto_result = FontHandle::open("topaz.font", 8)
+                    match auto_result {
+                        Result::Ok(auto_font) => {
+                            auto_font.apply_to(rp)
+                            draw_text_at(rp, 20, 230, "FontHandle::open() works!", 25)
+                            write("  open() method successful\n")
+                        },
+                        Result::Err(_) => {
+                            write("  open() failed unexpectedly\n")
+                        }
+                    }
+
+                    // ========================================================
+                    // Section 6: Different Font Sizes
+                    // ========================================================
+                    write("\nShowing different sizes...\n")
+
+                    // Reset to topaz 8
+                    let base = open_default_font()
+                    match base {
+                        Result::Ok(f) => {
+                            f.apply_to(rp)
+                        },
+                        Result::Err(_) => {}
+                    }
+                    draw_text_at(rp, 300, 30, "Size comparison:", 16)
+
+                    let mut y: i16 = 50
+
+                    // Topaz 8
+                    let t8 = FontHandle::open_rom("topaz.font", 8)
+                    match t8 {
+                        Result::Ok(f) => {
+                            f.apply_to(rp)
+                            draw_text_at(rp, 300, y, "Topaz 8", 7)
+                            y = y + (i16)f.height() + 2
+                        },
+                        Result::Err(_) => {}
+                    }
+
+                    // Topaz 9
+                    let t9 = FontHandle::open_rom("topaz.font", 9)
+                    match t9 {
+                        Result::Ok(f) => {
+                            f.apply_to(rp)
+                            draw_text_at(rp, 300, y, "Topaz 9", 7)
+                            y = y + (i16)f.height() + 2
+                        },
+                        Result::Err(_) => {}
+                    }
+
+                    // Topaz 11 (if available)
+                    let t11 = FontHandle::open_rom("topaz.font", 11)
+                    match t11 {
+                        Result::Ok(f) => {
+                            f.apply_to(rp)
+                            draw_text_at(rp, 300, y, "Topaz 11", 8)
+                            write("  Topaz 11 available\n")
+                        },
+                        Result::Err(_) => {
+                            write("  Topaz 11 not in ROM\n")
+                        }
+                    }
+
+                    // ========================================================
+                    // Section 7: Apply and Restore Previous Font
+                    // ========================================================
+                    write("\nTesting font save/restore...\n")
+
+                    // Get current font
+                    let current = open_default_font()
+                    match current {
+                        Result::Ok(f) => {
+                            f.apply_to(rp)
+
+                            // Draw with original
+                            draw_text_at(rp, 20, 290, "Original font", 13)
+
+                            // Apply a different font
+                            let temp = FontHandle::open_rom("topaz.font", 9)
+                            match temp {
+                                Result::Ok(t) => {
+                                    let _old = t.apply_to(rp)  // apply_to returns old font
+                                    draw_text_at(rp, 20, 305, "Temporary font (topaz 9)", 24)
+
+                                    // temp goes out of scope here and is closed
+                                    // But we need to restore the original font
+                                },
+                                Result::Err(_) => {}
+                            }
+
+                            // Restore original
+                            f.apply_to(rp)
+                            draw_text_at(rp, 20, 320, "Back to original", 16)
+                        },
+                        Result::Err(_) => {}
+                    }
+
+                    // ========================================================
+                    // Section 8: RAII Demonstration
+                    // ========================================================
+                    write("\nRAII cleanup demonstration...\n")
+
+                    // Reset to default for final section
+                    let final_font = open_default_font()
+                    match final_font {
+                        Result::Ok(f) => {
+                            f.apply_to(rp)
+                        },
+                        Result::Err(_) => {}
+                    }
+
+                    ctx.pen(2)
+                    draw_text_at(rp, 20, 360, "All fonts automatically closed via RAII!", 41)
+                    ctx.pen(1)
+
+                    write("  All FontHandles will be dropped when they go out of scope\n")
+                    write("  No manual CloseFont() calls needed!\n")
+
+                    // ========================================================
+                    // Done - wait for close
+                    // ========================================================
+                    write("\nFont showcase complete! Close window to exit.\n")
+
+                    window.activate()
+
+                    forever {
+                        let event = window.wait_event()
+                        match event {
+                            WindowEvent::Close => {
+                                break
+                            },
+                            _ => {}
+                        }
+                    }
+
+                    return 0
+                },
+                Result::Err(_) => {
+                    write("Failed to create DrawContext\n")
+                    return 20
+                }
+            }
+        },
+        Result::Err(_) => {
+            write("Failed to open window\n")
+            return 20
+        }
+    }
+}

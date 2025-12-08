@@ -1,0 +1,307 @@
+// Graphics Area Fill Example
+//
+// Demonstrates all functions in std::graphics::area:
+// - AreaContext for filled polygon and ellipse operations
+// - RAII management of AreaInfo and TmpRas resources
+// - Polygon drawing with begin/vertex/end_fill
+// - Filled ellipses and circles
+// - Convenience functions: fill_triangle, fill_quad, fill_ellipse, fill_circle
+// - Helper functions: ras_size, vector_buffer_size
+
+from std::ui::window import WindowHandle, WindowEvent
+from std::graphics::draw import DrawContext
+from std::graphics::shapes import Point, Ellipse
+from std::graphics::area import AreaContext, ras_size, vector_buffer_size
+from std::graphics::area import fill_triangle, fill_quad, fill_ellipse, fill_circle
+from std::io::file import write
+from std::memory::amiga import MemHandle
+
+pub fn main() -> i32 {
+    let result = WindowHandle::simple("Graphics Area Fill Demo", 640, 400)
+
+    match result {
+        Result::Ok(window) => {
+            let ctx_result = DrawContext::from_window(window.handle())
+
+            match ctx_result {
+                Result::Ok(ctx) => {
+                    let rp = ctx.handle()
+                    ctx.clear(0)
+
+                    // ========================================================
+                    // Section 1: Helper Functions
+                    // ========================================================
+                    write("Testing helper functions...\n")
+
+                    // Calculate temp raster size for 320x256 bitmap
+                    let ras_sz = ras_size(320, 256)
+                    write("Raster size for 320x256: {ras_sz} bytes\n")
+
+                    // Calculate vector buffer size for 20 vertices
+                    let vec_sz = vector_buffer_size(20)
+                    write("Vector buffer for 20 vertices: {vec_sz} bytes\n")
+
+                    // ========================================================
+                    // Test basic chip memory allocation
+                    // ========================================================
+                    write("Testing basic chip memory allocation...\n")
+                    let test_alloc = MemHandle::new_chip(24)
+                    match test_alloc {
+                        Option::Some(mem) => {
+                            write("  24 bytes: OK\n")
+                        },
+                        Option::None => {
+                            write("  24 bytes: FAILED\n")
+                        }
+                    }
+
+                    let test_alloc2 = MemHandle::new_chip(100)
+                    match test_alloc2 {
+                        Option::Some(mem) => {
+                            write("  100 bytes: OK\n")
+                        },
+                        Option::None => {
+                            write("  100 bytes: FAILED\n")
+                        }
+                    }
+
+                    let test_alloc3 = MemHandle::new_chip(32000)
+                    match test_alloc3 {
+                        Option::Some(mem) => {
+                            write("  32000 bytes: OK\n")
+                        },
+                        Option::None => {
+                            write("  32000 bytes: FAILED\n")
+                        }
+                    }
+
+                    // ========================================================
+                    // Section 2: AreaContext Creation
+                    // ========================================================
+                    write("Creating AreaContext...\n")
+
+                    // Use from_window() for dimension-aware allocation
+                    let area_result = AreaContext::from_window(window.handle(), 20)
+
+                    match area_result {
+                        Result::Ok(area) => {
+                            write("AreaContext created successfully\n")
+
+                            // Query methods
+                            let max_v = area.max_vertices()
+                            let attached = area.is_attached()
+                            let handle = area.handle()
+
+                            write("Max vertices: {max_v}\n")
+                            write("Is attached: {attached}\n")
+
+                            // ========================================================
+                            // Section 3: Simple Triangle
+                            // ========================================================
+                            write("Drawing filled triangle...\n")
+
+                            ctx.pen(1)
+
+                            // Triangle using begin/vertex/end_fill
+                            area.begin(50, 50)?
+                            area.vertex(100, 100)?
+                            area.vertex(25, 100)?
+                            area.end_fill()?
+
+                            // ========================================================
+                            // Section 4: Quadrilateral
+                            // ========================================================
+                            write("Drawing filled quad...\n")
+
+                            ctx.pen(2)
+
+                            // Diamond shape
+                            area.begin(200, 50)?
+                            area.vertex(250, 75)?
+                            area.vertex(200, 100)?
+                            area.vertex(150, 75)?
+                            area.end_fill()?
+
+                            // ========================================================
+                            // Section 5: Pentagon
+                            // ========================================================
+                            write("Drawing filled pentagon...\n")
+
+                            ctx.pen(3)
+
+                            // Pentagon (5 sides)
+                            area.begin(350, 50)?
+                            area.vertex(380, 70)?
+                            area.vertex(370, 100)?
+                            area.vertex(330, 100)?
+                            area.vertex(320, 70)?
+                            area.end_fill()?
+
+                            // ========================================================
+                            // Section 6: Polygon with Points
+                            // ========================================================
+                            write("Drawing polygon with Point structs...\n")
+
+                            ctx.pen(1)
+
+                            let p1 = Point::new(500, 50)
+                            let p2 = Point::new(550, 60)
+                            let p3 = Point::new(560, 100)
+                            let p4 = Point::new(490, 100)
+
+                            area.begin_at(&p1)?
+                            area.vertex_at(&p2)?
+                            area.vertex_at(&p3)?
+                            area.vertex_at(&p4)?
+                            area.end_fill()?
+
+                            // ========================================================
+                            // Section 7: Filled Ellipse
+                            // ========================================================
+                            write("Drawing filled ellipses...\n")
+
+                            ctx.pen(2)
+
+                            // Filled ellipse
+                            area.ellipse_fill(80, 180, 50, 30)?
+
+                            // ========================================================
+                            // Section 8: Filled Circle
+                            // ========================================================
+                            write("Drawing filled circles...\n")
+
+                            ctx.pen(3)
+
+                            // Filled circle
+                            area.circle_fill(220, 180, 40)?
+
+                            // Circle at Point
+                            let center = Point::new(350, 180)
+                            area.circle_fill_at(&center, 35)?
+
+                            // ========================================================
+                            // Section 9: Ellipse with Ellipse struct
+                            // ========================================================
+                            write("Drawing ellipse from Ellipse struct...\n")
+
+                            ctx.pen(1)
+
+                            let ellipse_shape = Ellipse::new(500, 180, 60, 25)
+                            area.ellipse_shape_fill(&ellipse_shape)?
+
+                            // ========================================================
+                            // Section 10: Multiple shapes in sequence
+                            // ========================================================
+                            write("Drawing multiple shapes...\n")
+
+                            // Series of small circles
+                            ctx.pen(2)
+
+                            var cx: i16 = 50
+                            while cx <= 550 {
+                                area.circle_fill(cx, 280, 15)?
+                                cx = cx + 70
+                            }
+
+                            // ========================================================
+                            // Section 11: Complex polygon
+                            // ========================================================
+                            write("Drawing complex polygon (star)...\n")
+
+                            ctx.pen(3)
+
+                            // 5-pointed star
+                            let star_cx: i16 = 100
+                            let star_cy: i16 = 350
+                            let outer_r: i16 = 40
+                            let inner_r: i16 = 15
+
+                            // Star points (approximated)
+                            area.begin(star_cx, star_cy - outer_r)?           // Top point
+                            area.vertex(star_cx + 10, star_cy - inner_r)?     // Inner right-top
+                            area.vertex(star_cx + outer_r, star_cy - 10)?     // Right point
+                            area.vertex(star_cx + 15, star_cy + 5)?           // Inner right-bottom
+                            area.vertex(star_cx + 25, star_cy + outer_r)?     // Bottom-right point
+                            area.vertex(star_cx, star_cy + inner_r)?          // Inner bottom
+                            area.vertex(star_cx - 25, star_cy + outer_r)?     // Bottom-left point
+                            area.vertex(star_cx - 15, star_cy + 5)?           // Inner left-bottom
+                            area.vertex(star_cx - outer_r, star_cy - 10)?     // Left point
+                            area.vertex(star_cx - 10, star_cy - inner_r)?     // Inner left-top
+                            area.end_fill()?
+
+                            // AreaContext will be cleaned up via Drop
+                            // (detaches from RastPort, frees buffers)
+                        },
+                        Result::Err(e) => {
+                            write("Failed to create AreaContext\n")
+                            return 20
+                        }
+                    }
+
+                    // ========================================================
+                    // Section 12: Convenience Functions (no AreaContext needed)
+                    // ========================================================
+                    write("Using convenience functions...\n")
+
+                    // These create temporary AreaContext internally
+                    ctx.pen(1)
+                    fill_triangle(rp, 250, 310, 300, 380, 200, 380)?
+
+                    ctx.pen(2)
+                    fill_quad(rp, 350, 310, 400, 330, 400, 380, 350, 360)?
+
+                    ctx.pen(3)
+                    fill_ellipse(rp, 500, 350, 50, 30)?
+
+                    ctx.pen(1)
+                    fill_circle(rp, 580, 350, 25)?
+
+                    // ========================================================
+                    // Section 13: AreaContext with custom raster size
+                    // ========================================================
+                    write("Testing with_ras_size...\n")
+
+                    // Create AreaContext with explicit temp raster size
+                    let custom_area_result = AreaContext::with_ras_size(rp, 10, 8000)
+                    match custom_area_result {
+                        Result::Ok(custom_area) => {
+                            ctx.pen(2)
+                            custom_area.circle_fill(620, 50, 15)?
+                            write("Custom AreaContext worked\n")
+                        },
+                        Result::Err(_) => {
+                            write("Custom AreaContext failed\n")
+                        }
+                    }
+
+                    // ========================================================
+                    // Done - wait for close
+                    // ========================================================
+                    write("Area fill complete! Close window to exit.\n")
+
+                    window.activate()
+
+                    forever {
+                        let event = window.wait_event()
+                        match event {
+                            WindowEvent::Close => {
+                                break
+                            },
+                            _ => {}
+                        }
+                    }
+
+                    return 0
+                },
+                Result::Err(_) => {
+                    write("Failed to create DrawContext\n")
+                    return 20
+                }
+            }
+        },
+        Result::Err(_) => {
+            write("Failed to open window\n")
+            return 20
+        }
+    }
+}

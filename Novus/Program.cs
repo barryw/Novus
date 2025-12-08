@@ -1038,7 +1038,7 @@ class Program
                     // Always write the C file (even if it's a stub that panics)
                     // This ensures linking succeeds even if the function isn't called
                     // Sanitize function name for use in C filenames (replace :: with _ to match MangleName, and remove < > , & * etc.)
-                    var sanitizedFunctionName = function.Name.Replace("::", "_").Replace("<", "_").Replace(">", "_").Replace(",", "_").Replace(" ", "").Replace("&", "ref_").Replace("*", "ptr_");
+                    var sanitizedFunctionName = function.Name.Replace("::", "_").Replace("()", "unit").Replace("<", "_").Replace(">", "_").Replace(",", "_").Replace(" ", "").Replace("&", "ref_").Replace("*", "ptr_").Replace("(", "").Replace(")", "");
                     var functionCFile = Path.Combine(outputDir, $"{baseName}_{sanitizedFunctionName}.c");
                     await File.WriteAllTextAsync(functionCFile, functionCCode);
                     cFiles.Add(functionCFile);
@@ -1198,7 +1198,7 @@ class Program
                     // Always write the C file (even if it's a stub that panics)
                     // This ensures linking succeeds even if the function isn't called
                     // Sanitize function name for use in C filenames (replace :: with _ to match MangleName, and remove < > , & * etc.)
-                    var sanitizedFunctionName = function.Name.Replace("::", "_").Replace("<", "_").Replace(">", "_").Replace(",", "_").Replace(" ", "").Replace("&", "ref_").Replace("*", "ptr_");
+                    var sanitizedFunctionName = function.Name.Replace("::", "_").Replace("()", "unit").Replace("<", "_").Replace(">", "_").Replace(",", "_").Replace(" ", "").Replace("&", "ref_").Replace("*", "ptr_").Replace("(", "").Replace(")", "");
                     var functionCFile = Path.Combine(outputDir, $"{moduleName}_{sanitizedFunctionName}.c");
                     await File.WriteAllTextAsync(functionCFile, functionCCode);
                     cFiles.Add(functionCFile);
@@ -1302,7 +1302,7 @@ class Program
             if (!isLibrary && !isDevice)
             {
                 // Only executables need startup code and library initialization
-                var coreFiles = new[] { "novus_startup", "library_bases", "dos_init", "graphics_init", "debug_gfxbase" };
+                var coreFiles = new[] { "novus_startup", "library_bases", "dos_init", "graphics_init", "diskfont_init", "debug_gfxbase" };
                 foreach (var coreFile in coreFiles)
                 {
                     var coreSource = Path.Combine(compilerDir, "stubs", $"{coreFile}.s");

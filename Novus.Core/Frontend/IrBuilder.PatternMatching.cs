@@ -405,6 +405,10 @@ public partial class IrBuilder
             // Variables declared in this arm will have their cleanup emitted before jumping to match_end
             PushDeferScope();
 
+            // Track pattern-bound variable names with Drop types for this arm
+            // We need this to detect when a variable is moved (used as match result) vs. dropped
+            var patternBoundDropVars = new HashSet<string>();
+
             // Extract associated data for variant patterns (enum matches only)
             if (isEnumMatch && pattern is NovusParser.VariantPatternContext variantPattern)
             {
@@ -458,6 +462,8 @@ public partial class IrBuilder
                             if (EnsureDropMethodInstantiated(dataType))
                             {
                                 InjectAutomaticDrop(bindingName, dataType);
+                                // Track this variable so we can detect moves later
+                                patternBoundDropVars.Add(bindingName);
                             }
                         }
                     }
@@ -579,26 +585,20 @@ public partial class IrBuilder
             else if (armCtx.returnStatement() != null)
             {
                 // Handle return statement in match arm
-                // IMPORTANT: Must emit scope cleanup BEFORE the return statement
-                // Inline emit the defer block instructions, but DON'T remove them from function defer list
-                // (EmitReturn in C code gen will handle function-level defers)
+                // DO NOT emit scope cleanup here - let the C code generator's EmitReturn handle it.
+                // EmitReturn has DeactivateDefersForMovedVariables logic that correctly detects
+                // when a pattern-bound variable is being returned (ownership transfer) vs. dropped.
+                //
+                // If we inline the defer block instructions here, we'd Drop variables BEFORE the
+                // return value is captured, causing use-after-free bugs when returning Drop types
+                // from match arms (e.g., `Some(val) => return val` would Drop val before returning it).
+                //
+                // The defer blocks are already registered at the function level via DeferredBlocks,
+                // so EmitReturn will process them correctly.
                 if (_scopeDeferStack.Count > 0)
                 {
-                    var scopeDefers = _scopeDeferStack.Peek(); // Peek, don't pop yet
-
-                    // Emit defers in LIFO order (last registered, first executed)
-                    for (int deferIdx = scopeDefers.Count - 1; deferIdx >= 0; deferIdx--)
-                    {
-                        var deferBlock = scopeDefers[deferIdx];
-
-                        // Emit all instructions in the defer block inline
-                        foreach (var instruction in deferBlock.Instructions)
-                        {
-                            _currentBlock!.AddInstruction(instruction);
-                        }
-                    }
-
-                    // Now pop the scope (without removing from function defer list)
+                    // Just pop the scope without emitting the defer blocks inline
+                    // The defer blocks remain in _currentFunction.DeferredBlocks for EmitReturn to handle
                     _scopeDeferStack.Pop();
                 }
 
@@ -610,6 +610,29 @@ public partial class IrBuilder
             if (armResult != null && matchResultType != null && matchResultVarName != null && !CurrentBlockHasTerminator())
             {
                 _currentBlock!.AddInstruction(new IrStore(matchResultVarName, armResult));
+            }
+
+            // Check if the arm result is a pattern-bound variable with Drop type being moved.
+            // If so, we should NOT drop it - ownership is being transferred to the match result.
+            // We need to remove its defer block from the scope before PopDeferScope() emits them.
+            if (armResult is IrVariable movedVar && patternBoundDropVars.Contains(movedVar.Name))
+            {
+                // Find and remove the defer block for this variable from the current scope
+                // The defer block label starts with "autoclean_{varName}_"
+                if (_scopeDeferStack.Count > 0)
+                {
+                    var currentScopeDefers = _scopeDeferStack.Peek();
+                    var deferToRemove = currentScopeDefers.FirstOrDefault(
+                        d => d.Label.StartsWith($"autoclean_{movedVar.Name}_"));
+                    if (deferToRemove != null)
+                    {
+                        currentScopeDefers.Remove(deferToRemove);
+                        // Also remove from function-level defers to prevent it being emitted elsewhere
+                        _currentFunction!.DeferredBlocks.Remove(deferToRemove);
+                        // Mark as emitted to prevent any other code path from emitting it
+                        _emittedDeferBlocks.Add(deferToRemove);
+                    }
+                }
             }
 
             // Pop defer scope and emit cleanup BEFORE jumping to match_end

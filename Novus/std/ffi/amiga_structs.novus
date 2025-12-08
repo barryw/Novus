@@ -2121,7 +2121,9 @@ pub struct Layer_Info {
 ///
 /// Each of Paula's 4 audio channels has this register layout.
 /// Channels are at offsets $0A0, $0B0, $0C0, $0D0 from custom base ($DFF000).
-pub struct AudChannel {
+///
+/// NOTE: Named NovusAudChannel to avoid conflict with NDK's AudChannel in hardware/custom.h
+pub struct NovusAudChannel {
     ac_ptr: *u16,      // Pointer to waveform data (word-aligned, chip RAM)
     ac_len: u16,       // Length in words (1-65535)
     ac_per: u16,       // Period - sample rate divisor (124-65535)

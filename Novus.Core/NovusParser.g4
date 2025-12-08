@@ -47,7 +47,14 @@ importDeclaration
     ;
 
 modulePath
-    : IDENTIFIER (COLONCOLON IDENTIFIER)*
+    : modulePathComponent (COLONCOLON modulePathComponent)*
+    ;
+
+// Module path components can be identifiers or certain keywords that are also valid module names
+modulePathComponent
+    : IDENTIFIER
+    | KW_COPPER      // std::graphics::copper
+    | KW_BLITTER     // std::graphics::blitter
     ;
 
 importList

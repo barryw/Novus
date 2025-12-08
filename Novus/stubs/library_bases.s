@@ -15,6 +15,7 @@
 	xdef	_IntuitionBase	; intuition.library base
 	xdef	_GadToolsBase	; gadtools.library base
 	xdef	_GfxBase	; graphics.library base
+	xdef	_DiskfontBase	; diskfont.library base
 
 ; ============================================================================
 ; Storage (initialized to 0 by loader)
@@ -33,6 +34,9 @@ _GadToolsBase:
 
 _GfxBase:
 	ds.l	1		; Reserve 1 longword for GfxBase
+
+_DiskfontBase:
+	ds.l	1		; Reserve 1 longword for DiskfontBase
 
 ; ============================================================================
 ; Workbench Startup Support

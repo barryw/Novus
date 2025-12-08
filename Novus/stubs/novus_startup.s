@@ -27,11 +27,14 @@
 	xref	_IntuitionBase		; From library_bases.s
 	xref	_GadToolsBase		; From library_bases.s
 	xref	_GfxBase		; From library_bases.s
+	xref	_DiskfontBase		; From library_bases.s
 	xref	_WBStartupMsg		; From library_bases.s (WBStartup message)
 	xref	___dos_init		; From dos_init.s
 	xref	___dos_cleanup		; From dos_init.s
 	xref	___graphics_init	; From graphics_init.s
 	xref	___graphics_cleanup	; From graphics_init.s
+	xref	___diskfont_init	; From diskfont_init.s
+	xref	___diskfont_cleanup	; From diskfont_init.s
 
 ; ============================================================================
 ; Entry Point
@@ -136,6 +139,11 @@ _start:
 	; Note: Don't fail if graphics.library doesn't open - not all programs need it
 	; The library stubs will handle NULL base pointers gracefully
 
+	; Initialize Diskfont library
+	jsr	___diskfont_init
+	; Note: Don't fail if diskfont.library doesn't open - not all programs need it
+	; The library stubs will handle NULL base pointers gracefully
+
 	; Open intuition.library v33
 	movea.l	_SysBase,a6		; Get exec.library base
 	lea	.intuition_name(pc),a1	; Library name
@@ -171,6 +179,11 @@ _start:
 	move.l	(sp)+,d0		; Restore return code
 
 .no_intuition:
+	; Clean up Diskfont library
+	move.l	d0,-(sp)		; Save return code
+	jsr	___diskfont_cleanup
+	move.l	(sp)+,d0		; Restore return code
+
 	; Clean up Graphics library
 	move.l	d0,-(sp)		; Save return code
 	jsr	___graphics_cleanup

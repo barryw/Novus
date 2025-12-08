@@ -330,11 +330,11 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
 
     public override object? VisitModulePath(NovusParser.ModulePathContext context)
     {
-        var identifiers = context.IDENTIFIER();
-        for (int i = 0; i < identifiers.Length; i++)
+        var components = context.modulePathComponent();
+        for (int i = 0; i < components.Length; i++)
         {
             if (i > 0) Write("::");
-            Write(identifiers[i].GetText());
+            Write(components[i].GetText());
         }
         return null;
     }

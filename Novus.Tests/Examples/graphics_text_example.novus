@@ -1,0 +1,239 @@
+// Graphics Text Rendering Example
+//
+// Demonstrates all functions in std::graphics::text:
+// - Basic text drawing with draw_text and draw_text_at
+// - Text measurement with text_width
+// - Font metrics: font_height, font_baseline, font_width
+// - Text styles: bold, italic, underlined
+// - Character drawing with draw_char and draw_char_at
+
+from std::ui::window import WindowHandle, WindowEvent
+from std::graphics::draw import DrawContext
+from std::graphics::shapes import Rect
+from std::graphics::text import draw_text, draw_text_at, text_width
+from std::graphics::text import font_height, font_baseline, font_width
+from std::graphics::text import set_text_style, get_text_style, reset_text_style
+from std::graphics::text import set_bold, set_italic, set_underline
+from std::graphics::text import draw_char, draw_char_at
+from std::graphics::text import set_font, get_font
+from std::graphics::text import STYLE_NORMAL, STYLE_BOLD, STYLE_ITALIC, STYLE_UNDERLINED
+from std::io::file import write
+
+pub fn main() -> i32 {
+    let result = WindowHandle::simple("Graphics Text Demo", 640, 400)
+
+    match result {
+        Result::Ok(window) => {
+            let ctx_result = DrawContext::from_window(window.handle())
+
+            match ctx_result {
+                Result::Ok(ctx) => {
+                    let rp = ctx.handle()
+                    ctx.clear(0)
+                    ctx.pen(1)
+
+                    // ========================================================
+                    // Section 1: Basic Text Drawing
+                    // ========================================================
+                    write("Basic text drawing...\n")
+
+                    // Text at specific position (y is baseline)
+                    draw_text_at(rp, 20, 30, "Hello, Amiga!", 13)
+
+                    // Multiple lines
+                    draw_text_at(rp, 20, 50, "Text at position (20,50)", 24)
+                    draw_text_at(rp, 20, 70, "Text at position (20,70)", 24)
+
+                    // ========================================================
+                    // Section 2: Text at Current Position
+                    // ========================================================
+                    write("Text at current cursor...\n")
+
+                    ctx.move_to(20, 100)
+                    draw_text(rp, "Drawn at cursor position", 24)
+
+                    // Cursor moves after text
+                    draw_text(rp, " - continues!", 13)
+
+                    // ========================================================
+                    // Section 3: Font Metrics
+                    // ========================================================
+                    write("Querying font metrics...\n")
+
+                    let height = font_height(rp)
+                    let baseline = font_baseline(rp)
+                    let char_width = font_width(rp)
+
+                    write("Font height: {height}\n")
+                    write("Font baseline: {baseline}\n")
+                    write("Font width: {char_width}\n")
+
+                    // Display metrics on screen
+                    draw_text_at(rp, 20, 130, "Font metrics displayed above", 28)
+
+                    // ========================================================
+                    // Section 4: Text Width Measurement
+                    // ========================================================
+                    write("Measuring text width...\n")
+
+                    let width = text_width(rp, "Measure Me!", 11)
+                    write("Text width in pixels: {width}\n")
+
+                    // Draw the text and a box around it
+                    draw_text_at(rp, 300, 30, "Measure Me!", 11)
+
+                    // Draw outline showing measured width
+                    let box_rect = Rect::new(
+                        299, 30 - (i16)baseline, 300 + width, 30 + (i16)height - (i16)baseline
+                    )
+                    ctx.rect_outline(&box_rect)
+
+                    // ========================================================
+                    // Section 5: Text Styles - Individual Functions
+                    // ========================================================
+                    write("Text styles...\n")
+
+                    // Normal text (default)
+                    draw_text_at(rp, 20, 170, "Normal Text", 11)
+
+                    // Bold text
+                    set_bold(rp, true)
+                    draw_text_at(rp, 20, 190, "Bold Text", 9)
+                    set_bold(rp, false)
+
+                    // Italic text
+                    set_italic(rp, true)
+                    draw_text_at(rp, 20, 210, "Italic Text", 11)
+                    set_italic(rp, false)
+
+                    // Underlined text
+                    set_underline(rp, true)
+                    draw_text_at(rp, 20, 230, "Underlined Text", 15)
+                    set_underline(rp, false)
+
+                    // ========================================================
+                    // Section 6: Text Styles - Combined
+                    // ========================================================
+                    write("Combined styles...\n")
+
+                    // Bold + Italic
+                    set_text_style(rp, STYLE_BOLD | STYLE_ITALIC)
+                    draw_text_at(rp, 20, 260, "Bold + Italic!", 14)
+
+                    // Bold + Underlined
+                    set_text_style(rp, STYLE_BOLD | STYLE_UNDERLINED)
+                    draw_text_at(rp, 20, 280, "Bold + Underlined", 17)
+
+                    // All styles
+                    set_text_style(rp, STYLE_BOLD | STYLE_ITALIC | STYLE_UNDERLINED)
+                    draw_text_at(rp, 20, 300, "All Styles", 10)
+
+                    // Reset
+                    reset_text_style(rp)
+
+                    // ========================================================
+                    // Section 7: Style Queries
+                    // ========================================================
+                    write("Style queries...\n")
+
+                    set_text_style(rp, STYLE_BOLD | STYLE_ITALIC)
+                    let current_style = get_text_style(rp)
+                    write("Current style flags: {current_style}\n")
+
+                    reset_text_style(rp)
+
+                    // ========================================================
+                    // Section 8: Character Drawing
+                    // ========================================================
+                    write("Character drawing...\n")
+
+                    // Single character at position
+                    draw_char_at(rp, 300, 100, 65)  // 'A'
+                    draw_char_at(rp, 310, 100, 66)  // 'B'
+                    draw_char_at(rp, 320, 100, 67)  // 'C'
+
+                    // Characters at cursor
+                    ctx.move_to(300, 120)
+                    draw_char(rp, 49)  // '1'
+                    draw_char(rp, 50)  // '2'
+                    draw_char(rp, 51)  // '3'
+
+                    // ========================================================
+                    // Section 9: Colored Text
+                    // ========================================================
+                    write("Colored text...\n")
+
+                    ctx.pen(2)
+                    draw_text_at(rp, 300, 150, "Color 2", 7)
+
+                    ctx.pen(3)
+                    draw_text_at(rp, 300, 170, "Color 3", 7)
+
+                    ctx.pen(1)
+
+                    // ========================================================
+                    // Section 10: Font Access
+                    // ========================================================
+                    write("Font access...\n")
+
+                    let current_font = get_font(rp)
+                    if current_font {
+                        write("Got current font pointer\n")
+                    }
+
+                    // Note: Changing fonts requires OpenFont() which needs
+                    // a TextAttr structure - complex to demonstrate here
+
+                    // ========================================================
+                    // Section 11: Right-aligned Text
+                    // ========================================================
+                    write("Right-aligned text demo...\n")
+
+                    let right_width = text_width(rp, "Right-aligned text", 18)
+
+                    // Right edge at x=600
+                    let right_x: i16 = 600 - right_width
+                    draw_text_at(rp, right_x, 200, "Right-aligned text", 18)
+
+                    // ========================================================
+                    // Section 12: Centered Text
+                    // ========================================================
+                    write("Centered text demo...\n")
+
+                    let center_width = text_width(rp, "Centered Text", 13)
+
+                    // Center on screen (640 wide)
+                    let center_x: i16 = (640 - center_width) / 2
+                    draw_text_at(rp, center_x, 350, "Centered Text", 13)
+
+                    // ========================================================
+                    // Done - wait for close
+                    // ========================================================
+                    write("Text rendering complete! Close window to exit.\n")
+
+                    window.activate()
+
+                    forever {
+                        let event = window.wait_event()
+                        match event {
+                            WindowEvent::Close => {
+                                break
+                            },
+                            _ => {}
+                        }
+                    }
+
+                    return 0
+                },
+                Result::Err(_) => {
+                    write("Failed to create DrawContext\n")
+                    return 20
+                }
+            }
+        },
+        Result::Err(_) => {
+            write("Failed to open window\n")
+            return 20
+        }
+    }
+}

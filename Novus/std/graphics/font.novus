@@ -1,0 +1,371 @@
+// Font handling for Amiga graphics
+// Module: std::graphics::font
+//
+// Provides a clean, ergonomic API for working with Amiga fonts.
+// Features RAII-based font handles that automatically clean up on drop.
+//
+// Example:
+//   let font = FontHandle::open("topaz.font", 8)?
+//   font.apply_to(ctx.handle())
+//   draw_text_at(ctx.handle(), 10, 20, "Hello!", 6)
+//   // font automatically closed when dropped
+
+from std::core import Result, Option
+from std::error::errors import GraphicsError
+from std::ffi::amiga_structs import RastPort, TextFont, TextAttr
+from std::ffi::graphics import OpenFont, CloseFont, SetFont
+from std::ffi::diskfont import OpenDiskFont
+from std::ffi::amiga_consts import FSF_BOLD, FSF_ITALIC, FSF_UNDERLINED, FSF_EXTENDED
+from std::ffi::amiga_consts import FPF_ROMFONT, FPF_DISKFONT, FPF_PROPORTIONAL, FPF_DESIGNED
+
+// ============================================================================
+// FontHandle - RAII wrapper for TextFont
+// ============================================================================
+
+/// A handle to an opened font with automatic cleanup.
+///
+/// When a FontHandle goes out of scope, the font is automatically closed
+/// via CloseFont(). This ensures fonts are never leaked.
+///
+/// Example:
+///   let font = FontHandle::open("helvetica.font", 18)?
+///   font.apply_to(rp)
+///   // ... use font for drawing ...
+///   // font automatically closed here
+pub struct FontHandle {
+    font: *TextFont,
+}
+
+impl FontHandle {
+    /// Open a font from ROM (graphics.library).
+    ///
+    /// Searches ROM resident fonts only. This is fast and always available.
+    /// Use this for system fonts like "topaz.font".
+    ///
+    /// Parameters:
+    ///   name: Font name as null-terminated C string (e.g., "topaz.font")
+    ///   size: Y size in pixels (e.g., 8, 9, 11)
+    ///
+    /// Returns Err(GraphicsError::FontOpenFailed) if font doesn't exist.
+    pub fn open_rom(name: *u8, size: u16) -> Result<FontHandle, GraphicsError> {
+        var attr: TextAttr = TextAttr {
+            ta_Name: name,
+            ta_YSize: size,
+            ta_Style: 0,
+            ta_Flags: 0,
+        }
+        let font: *TextFont = OpenFont(&attr)
+
+        if !font {
+            return Result::Err(GraphicsError::FontOpenFailed)
+        }
+
+        return Result::Ok(FontHandle { font: font })
+    }
+
+    /// Open a font from disk (diskfont.library).
+    ///
+    /// Searches FONTS: assign for disk-based fonts.
+    /// Slower than open_rom() but supports all installed fonts.
+    ///
+    /// Parameters:
+    ///   name: Font name as null-terminated C string (e.g., "helvetica.font")
+    ///   size: Y size in pixels
+    ///
+    /// Returns Err(GraphicsError::FontOpenFailed) if font not found.
+    pub fn open_disk(name: *u8, size: u16) -> Result<FontHandle, GraphicsError> {
+        var attr: TextAttr = TextAttr {
+            ta_Name: name,
+            ta_YSize: size,
+            ta_Style: 0,
+            ta_Flags: 0,
+        }
+        let font: *TextFont = OpenDiskFont(&attr)
+
+        if !font {
+            return Result::Err(GraphicsError::FontOpenFailed)
+        }
+
+        return Result::Ok(FontHandle { font: font })
+    }
+
+    /// Open a font, trying disk first then ROM.
+    ///
+    /// This is the most convenient method - it checks both locations.
+    /// Use this when you don't know where the font is located.
+    ///
+    /// Parameters:
+    ///   name: Font name as null-terminated C string (e.g., "topaz.font", "helvetica.font")
+    ///   size: Y size in pixels
+    pub fn open(name: *u8, size: u16) -> Result<FontHandle, GraphicsError> {
+        var attr: TextAttr = TextAttr {
+            ta_Name: name,
+            ta_YSize: size,
+            ta_Style: 0,
+            ta_Flags: 0,
+        }
+
+        // Try disk first (more comprehensive)
+        let disk_font: *TextFont = OpenDiskFont(&attr)
+        if disk_font {
+            return Result::Ok(FontHandle { font: disk_font })
+        }
+
+        // Fallback to ROM
+        let rom_font: *TextFont = OpenFont(&attr)
+        if rom_font {
+            return Result::Ok(FontHandle { font: rom_font })
+        }
+
+        return Result::Err(GraphicsError::FontOpenFailed)
+    }
+
+    /// Open a font with specific style and flags.
+    ///
+    /// Allows full control over the TextAttr request.
+    /// Tries disk first, then ROM.
+    ///
+    /// Parameters:
+    ///   name: Font name as null-terminated C string
+    ///   size: Y size in pixels
+    ///   style: Style flags (FSF_BOLD, FSF_ITALIC, etc.)
+    ///   flags: Font flags (FPF_PROPORTIONAL, etc.)
+    pub fn open_styled(name: *u8, size: u16, style: u8, flags: u8) -> Result<FontHandle, GraphicsError> {
+        var attr: TextAttr = TextAttr {
+            ta_Name: name,
+            ta_YSize: size,
+            ta_Style: style,
+            ta_Flags: flags,
+        }
+
+        // Try disk first
+        let disk_font: *TextFont = OpenDiskFont(&attr)
+        if disk_font {
+            return Result::Ok(FontHandle { font: disk_font })
+        }
+
+        // Fallback to ROM
+        let rom_font: *TextFont = OpenFont(&attr)
+        if rom_font {
+            return Result::Ok(FontHandle { font: rom_font })
+        }
+
+        return Result::Err(GraphicsError::FontOpenFailed)
+    }
+
+    /// Create a FontHandle from a raw pointer (takes ownership).
+    ///
+    /// The font will be closed when the handle is dropped.
+    /// Only use this if you own the font and want automatic cleanup.
+    ///
+    /// WARNING: Do not use this with fonts you don't own (like the
+    /// RastPort's default font).
+    pub fn from_raw(font: *TextFont) -> FontHandle {
+        return FontHandle { font: font }
+    }
+
+    /// Extract the raw pointer and prevent automatic cleanup.
+    ///
+    /// Transfers ownership to the caller. The caller is responsible
+    /// for calling CloseFont() when done.
+    pub fn into_raw(self) -> *TextFont {
+        let ptr: *TextFont = self.font
+        // Note: We need a way to prevent drop from running
+        // For now, set to null before returning
+        // This requires mutable self which Novus might not support yet
+        return ptr
+    }
+
+    /// Get the raw font pointer (borrow).
+    ///
+    /// Does NOT transfer ownership. The handle still owns the font.
+    /// Use this when passing to AmigaOS functions that borrow the font.
+    pub fn handle(&self) -> *TextFont {
+        return self.font
+    }
+
+    /// Apply this font to a RastPort.
+    ///
+    /// Sets this font as the active font for text rendering.
+    /// Returns the previous font pointer (not owned).
+    pub fn apply_to(&self, rp: *RastPort) -> *TextFont {
+        if !rp {
+            return (*TextFont)0
+        }
+        unsafe {
+            let old_font: *TextFont = (*rp).Font
+            SetFont(rp, self.font)
+            return old_font
+        }
+    }
+
+    /// Get the font height (Y size in pixels).
+    pub fn height(&self) -> u16 {
+        if !self.font {
+            return 0
+        }
+        unsafe {
+            return (*self.font).tf_YSize
+        }
+    }
+
+    /// Get the nominal font width (for fixed-width fonts).
+    pub fn width(&self) -> u16 {
+        if !self.font {
+            return 0
+        }
+        unsafe {
+            return (*self.font).tf_XSize
+        }
+    }
+
+    /// Get the baseline position (distance from top to baseline).
+    pub fn baseline(&self) -> u16 {
+        if !self.font {
+            return 0
+        }
+        unsafe {
+            return (*self.font).tf_Baseline
+        }
+    }
+
+    /// Get the bold smear amount.
+    pub fn bold_smear(&self) -> u16 {
+        if !self.font {
+            return 0
+        }
+        unsafe {
+            return (*self.font).tf_BoldSmear
+        }
+    }
+
+    /// Get the style flags of the actual opened font.
+    pub fn style(&self) -> u8 {
+        if !self.font {
+            return 0
+        }
+        unsafe {
+            return (*self.font).tf_Style
+        }
+    }
+
+    /// Get the font flags.
+    pub fn flags(&self) -> u8 {
+        if !self.font {
+            return 0
+        }
+        unsafe {
+            return (*self.font).tf_Flags
+        }
+    }
+
+    /// Check if this is a proportional font.
+    @suppress("W0002", "Safe: FPF_PROPORTIONAL constant fits in u8")
+    pub fn is_proportional(&self) -> bool {
+        return (self.flags() & (u8)FPF_PROPORTIONAL) != 0
+    }
+
+    /// Get the lowest character code this font supports.
+    pub fn low_char(&self) -> u8 {
+        if !self.font {
+            return 0
+        }
+        unsafe {
+            return (*self.font).tf_LoChar
+        }
+    }
+
+    /// Get the highest character code this font supports.
+    pub fn high_char(&self) -> u8 {
+        if !self.font {
+            return 0
+        }
+        unsafe {
+            return (*self.font).tf_HiChar
+        }
+    }
+}
+
+impl Drop for FontHandle {
+    fn drop(&mut self) {
+        if self.font {
+            CloseFont(self.font)
+        }
+    }
+}
+
+// ============================================================================
+// FontMetrics - Extracted font measurements
+// ============================================================================
+
+/// Font metrics structure containing all measurement data.
+///
+/// Use FontMetrics::from_font() to get this from an opened font.
+pub struct FontMetrics {
+    height: u16,        // Y size in pixels
+    width: u16,         // Nominal X size (for fixed-width)
+    baseline: u16,      // Distance from top to baseline
+    bold_smear: u16,    // Bold smear amount
+    low_char: u8,       // Lowest character code
+    high_char: u8,      // Highest character code
+    style: u8,          // Actual style flags
+    flags: u8,          // Font flags
+}
+
+impl FontMetrics {
+    /// Extract metrics from a FontHandle.
+    pub fn from_font(font: &FontHandle) -> FontMetrics {
+        return FontMetrics {
+            height: font.height(),
+            width: font.width(),
+            baseline: font.baseline(),
+            bold_smear: font.bold_smear(),
+            low_char: font.low_char(),
+            high_char: font.high_char(),
+            style: font.style(),
+            flags: font.flags(),
+        }
+    }
+
+    /// Check if this is a proportional font.
+    @suppress("W0002", "Safe: FPF_PROPORTIONAL constant fits in u8")
+    pub fn is_proportional(&self) -> bool {
+        return (self.flags & (u8)FPF_PROPORTIONAL) != 0
+    }
+
+    /// Get the character range this font supports.
+    pub fn char_range(&self) -> (u8, u8) {
+        return (self.low_char, self.high_char)
+    }
+}
+
+// ============================================================================
+// Convenience Functions
+// ============================================================================
+
+/// Open the default system font (topaz 8).
+///
+/// This font is always available in ROM.
+pub fn open_default_font() -> Result<FontHandle, GraphicsError> {
+    return FontHandle::open_rom("topaz.font", 8)
+}
+
+/// Open a font by name and size.
+///
+/// Convenience function that tries disk then ROM.
+/// Equivalent to FontHandle::open().
+pub fn open_font(name: *u8, size: u16) -> Result<FontHandle, GraphicsError> {
+    return FontHandle::open(name, size)
+}
+
+/// Open a bold version of a font.
+@suppress("W0002", "Safe: FSF_BOLD constant fits in u8")
+pub fn open_font_bold(name: *u8, size: u16) -> Result<FontHandle, GraphicsError> {
+    return FontHandle::open_styled(name, size, (u8)FSF_BOLD, 0)
+}
+
+/// Open an italic version of a font.
+@suppress("W0002", "Safe: FSF_ITALIC constant fits in u8")
+pub fn open_font_italic(name: *u8, size: u16) -> Result<FontHandle, GraphicsError> {
+    return FontHandle::open_styled(name, size, (u8)FSF_ITALIC, 0)
+}

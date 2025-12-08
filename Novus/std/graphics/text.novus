@@ -1,0 +1,292 @@
+// Text rendering helpers for Amiga graphics
+// Module: std::graphics::text
+//
+// Provides convenient functions for drawing text using graphics.library.
+// Text is rendered at the current cursor position using the RastPort's font.
+//
+// Example:
+//   let ctx = DrawContext::from_window(window)?
+//   ctx.move_to(10, 20)
+//   draw_text(ctx.handle(), "Hello, Amiga!", 13)
+//
+//   // Or with positioning
+//   draw_text_at(ctx.handle(), 10, 20, "Hello, Amiga!", 13)
+
+from std::core import Result, Option
+from std::error::errors import GraphicsError
+from std::ffi::amiga_structs import RastPort, TextFont, TextAttr, TextExtent
+from std::ffi::graphics import Move, Text, TextLength, SetFont, OpenFont, CloseFont
+from std::ffi::graphics import SetSoftStyle, AskSoftStyle
+
+// ============================================================================
+// Text Style Constants
+// ============================================================================
+
+/// Text style flags for SetSoftStyle.
+/// These can be combined with bitwise OR.
+
+/// Normal text (no style).
+pub const STYLE_NORMAL: u32 = 0
+
+/// Underlined text.
+pub const STYLE_UNDERLINED: u32 = 1
+
+/// Bold text (algorithmic emboldening).
+pub const STYLE_BOLD: u32 = 2
+
+/// Italic text (algorithmic slant).
+pub const STYLE_ITALIC: u32 = 4
+
+/// Extended width text.
+pub const STYLE_EXTENDED: u32 = 8
+
+
+// ============================================================================
+// Basic Text Drawing Functions
+// ============================================================================
+
+/// Draw text at the current cursor position.
+///
+/// Text is rendered using the RastPort's current font, foreground pen,
+/// and draw mode. The cursor is moved to the end of the text after drawing.
+///
+/// Parameters:
+///   rp: The RastPort to draw on
+///   text: Pointer to the text data
+///   len: Length of the text in characters
+///
+/// Returns the number of pixels wide the rendered text was.
+@suppress("W0001", "Text returns i32")
+pub fn draw_text(rp: *RastPort, text: *u8, len: u16) -> i32 {
+    if !rp {
+        return -1
+    }
+    if !text {
+        return -1
+    }
+    let result: i32 = Text(rp, text, len)
+    return result
+}
+
+/// Draw text at a specific position.
+///
+/// Moves to (x, y) first, then draws the text.
+/// Note: y is the BASELINE position, not the top of the text.
+///
+/// Parameters:
+///   rp: The RastPort to draw on
+///   x, y: Position to draw at (y is baseline)
+///   text: Pointer to the text data
+///   len: Length of the text in characters
+///
+/// Returns the number of pixels wide the rendered text was.
+@suppress("W0001", "Text returns i32")
+pub fn draw_text_at(rp: *RastPort, x: i16, y: i16, text: *u8, len: u16) -> i32 {
+    if !rp {
+        return -1
+    }
+    if !text {
+        return -1
+    }
+    Move(rp, x, y)
+    let result: i32 = Text(rp, text, len)
+    return result
+}
+
+// ============================================================================
+// Text Measurement Functions
+// ============================================================================
+
+/// Calculate the width in pixels of a text string.
+///
+/// Uses the RastPort's current font to calculate how many pixels
+/// wide the text would be if rendered.
+pub fn text_width(rp: *RastPort, text: *u8, len: u16) -> i16 {
+    if !rp {
+        return 0
+    }
+    if !text {
+        return 0
+    }
+    return TextLength(rp, text, len)
+}
+
+/// Get the height of the current font in the RastPort.
+pub fn font_height(rp: *RastPort) -> u16 {
+    if !rp {
+        return 0
+    }
+    unsafe {
+        let font: *TextFont = (*rp).Font
+        if !font {
+            return 8  // Default system font height
+        }
+        return (*font).tf_YSize
+    }
+}
+
+/// Get the baseline of the current font (distance from top to baseline).
+pub fn font_baseline(rp: *RastPort) -> u16 {
+    if !rp {
+        return 0
+    }
+    unsafe {
+        let font: *TextFont = (*rp).Font
+        if !font {
+            return 6  // Default system font baseline
+        }
+        return (*font).tf_Baseline
+    }
+}
+
+/// Get the nominal width of the current font (for fixed-width fonts).
+pub fn font_width(rp: *RastPort) -> u16 {
+    if !rp {
+        return 0
+    }
+    unsafe {
+        let font: *TextFont = (*rp).Font
+        if !font {
+            return 8  // Default system font width
+        }
+        return (*font).tf_XSize
+    }
+}
+
+// ============================================================================
+// Text Style Functions
+// ============================================================================
+
+/// Set the text rendering style.
+///
+/// Styles can be combined: STYLE_BOLD | STYLE_ITALIC
+///
+/// Returns the previous style flags.
+pub fn set_text_style(rp: *RastPort, style: u32) -> u32 {
+    if !rp {
+        return 0
+    }
+    // The enable mask determines which style bits can be changed
+    // $FFFF allows all styles to be changed
+    return SetSoftStyle(rp, style, $FFFF)
+}
+
+/// Get the current text style.
+pub fn get_text_style(rp: *RastPort) -> u32 {
+    if !rp {
+        return 0
+    }
+    return AskSoftStyle(rp)
+}
+
+/// Enable bold text.
+pub fn set_bold(rp: *RastPort, enabled: bool) {
+    if !rp {
+        return
+    }
+    let current: u32 = AskSoftStyle(rp)
+    if enabled {
+        SetSoftStyle(rp, current | STYLE_BOLD, $FFFF)
+    } else {
+        // Clear STYLE_BOLD bit: use XOR with STYLE_BOLD to clear it
+        let mask: u32 = current ^ (current & STYLE_BOLD)
+        SetSoftStyle(rp, mask, $FFFF)
+    }
+}
+
+/// Enable italic text.
+pub fn set_italic(rp: *RastPort, enabled: bool) {
+    if !rp {
+        return
+    }
+    let current: u32 = AskSoftStyle(rp)
+    if enabled {
+        SetSoftStyle(rp, current | STYLE_ITALIC, $FFFF)
+    } else {
+        // Clear STYLE_ITALIC bit
+        let mask: u32 = current ^ (current & STYLE_ITALIC)
+        SetSoftStyle(rp, mask, $FFFF)
+    }
+}
+
+/// Enable underlined text.
+pub fn set_underline(rp: *RastPort, enabled: bool) {
+    if !rp {
+        return
+    }
+    let current: u32 = AskSoftStyle(rp)
+    if enabled {
+        SetSoftStyle(rp, current | STYLE_UNDERLINED, $FFFF)
+    } else {
+        // Clear STYLE_UNDERLINED bit
+        let mask: u32 = current ^ (current & STYLE_UNDERLINED)
+        SetSoftStyle(rp, mask, $FFFF)
+    }
+}
+
+/// Reset all text styles to normal.
+pub fn reset_text_style(rp: *RastPort) {
+    set_text_style(rp, STYLE_NORMAL)
+}
+
+// ============================================================================
+// Font Functions
+// ============================================================================
+
+/// Change the font used by a RastPort.
+///
+/// The TextFont pointer must remain valid for as long as it's in use.
+/// Use OpenFont() to get a font, then set_font() to use it.
+/// Returns the previous font for restoration.
+pub fn set_font(rp: *RastPort, font: *TextFont) -> *TextFont {
+    if !rp {
+        return (*TextFont)0
+    }
+    if !font {
+        return (*TextFont)0
+    }
+    unsafe {
+        let old_font: *TextFont = (*rp).Font
+        SetFont(rp, font)
+        return old_font
+    }
+}
+
+/// Get the current font from a RastPort.
+pub fn get_font(rp: *RastPort) -> *TextFont {
+    if !rp {
+        return (*TextFont)0
+    }
+    unsafe {
+        return (*rp).Font
+    }
+}
+
+// ============================================================================
+// Convenience Drawing Functions
+// ============================================================================
+
+/// Draw a character at the current position.
+pub fn draw_char(rp: *RastPort, ch: u8) -> i32 {
+    if !rp {
+        return -1
+    }
+    var buf: [u8; 1] = [ch]
+    return Text(rp, &buf[0], 1)
+}
+
+/// Draw a character at a specific position.
+pub fn draw_char_at(rp: *RastPort, x: i16, y: i16, ch: u8) -> i32 {
+    if !rp {
+        return -1
+    }
+    Move(rp, x, y)
+    return draw_char(rp, ch)
+}
+
+// ============================================================================
+// Text Formatting Helpers
+// ============================================================================
+
+// Note: draw_int temporarily removed due to compiler IR builder issue
+// TODO: Re-add integer formatting functions once compiler bug is fixed

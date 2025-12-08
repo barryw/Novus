@@ -112,16 +112,26 @@ public class TypeRegistry
                 {
                     if (instruction is IrLocalDecl localDecl)
                     {
-                        if (localDecl.Type is IrEnumType enumDeclType && IsConcreteEnum(enumDeclType))
+                        // Unwrap pointer/reference types to find the underlying struct/enum type
+                        // This is needed when code uses pointers to structs (e.g., BufferedWindow*)
+                        var declType = localDecl.Type;
+                        if (declType is IrPointerType ptrDeclType)
+                            declType = ptrDeclType.PointeeType;
+                        else if (declType is IrReferenceType refDeclType)
+                            declType = refDeclType.PointeeType;
+                        else if (declType is IrMutReferenceType mutRefDeclType)
+                            declType = mutRefDeclType.PointeeType;
+
+                        if (declType is IrEnumType enumDeclType && IsConcreteEnum(enumDeclType))
                         {
                             AddOrUpdateEnumType(enumDeclType);
                         }
-                        else if (localDecl.Type is IrStructType structDeclType &&
+                        else if (declType is IrStructType structDeclType &&
                                  structDeclType.GenericParameters.Count == 0)
                         {
                             AddOrUpdateStructType(structDeclType);
                         }
-                        else if (localDecl.Type is IrTupleType tupleDeclType)
+                        else if (declType is IrTupleType tupleDeclType)
                         {
                             AddTupleType(tupleDeclType);
                         }
@@ -161,12 +171,16 @@ public class TypeRegistry
             // Check parameters for struct
             foreach (var param in function.Parameters)
             {
-                // Handle reference types (e.g., &self, &mut self)
+                // Handle reference types (e.g., &self, &mut self) and pointer types (e.g., *self)
+                // When methods are compiled, &self becomes a raw pointer in the C code,
+                // so we need the full struct definition to access fields via self->field
                 var paramType = param.Type;
                 if (paramType is IrReferenceType refType)
                     paramType = refType.PointeeType;
                 else if (paramType is IrMutReferenceType mutRefType)
                     paramType = mutRefType.PointeeType;
+                else if (paramType is IrPointerType ptrType)
+                    paramType = ptrType.PointeeType;
 
                 if (paramType is IrStructType structParam && structParam.GenericParameters.Count == 0)
                 {

@@ -1,0 +1,294 @@
+// Graphics Patterns Example
+//
+// Demonstrates all functions in std::graphics::patterns:
+// - Line patterns (dotted, dashed, custom)
+// - Fill patterns (checkerboard, horizontal lines, vertical lines, custom)
+// - Pattern builder for runtime pattern creation
+// - Pattern manipulation functions
+
+from std::ui::window import WindowHandle, WindowEvent
+from std::graphics::draw import DrawContext
+from std::graphics::shapes import Rect
+from std::graphics::patterns import LinePattern, FillPattern
+from std::graphics::patterns import set_line_pattern, get_line_pattern, clear_line_pattern
+from std::graphics::patterns import set_fill_pattern, clear_fill_pattern, has_fill_pattern
+from std::graphics::patterns import invert_line_pattern, rotate_line_pattern_left, rotate_line_pattern_right
+from std::graphics::patterns import LINE_SOLID, LINE_DOTTED, LINE_DASHED, LINE_LONG_DASH, LINE_DASH_DOT
+from std::graphics::patterns import CHECKERBOARD_ROW0, CHECKERBOARD_ROW1
+from std::io::file import write
+
+pub fn main() -> i32 {
+    let result = WindowHandle::simple("Graphics Patterns Demo", 640, 400)
+
+    match result {
+        Result::Ok(window) => {
+            let ctx_result = DrawContext::from_window(window.handle())
+
+            match ctx_result {
+                Result::Ok(ctx) => {
+                    let rp = ctx.handle()
+                    ctx.clear(0)
+
+                    // ========================================================
+                    // Section 1: Line Patterns - Constants
+                    // ========================================================
+                    write("Line patterns using constants...\n")
+
+                    ctx.pen(1)
+
+                    // Solid line (default)
+                    set_line_pattern(rp, LINE_SOLID)
+                    ctx.line(20, 20, 200, 20)
+
+                    // Dotted line
+                    set_line_pattern(rp, LINE_DOTTED)
+                    ctx.line(20, 35, 200, 35)
+
+                    // Dashed line
+                    set_line_pattern(rp, LINE_DASHED)
+                    ctx.line(20, 50, 200, 50)
+
+                    // Long dash
+                    set_line_pattern(rp, LINE_LONG_DASH)
+                    ctx.line(20, 65, 200, 65)
+
+                    // Dash-dot
+                    set_line_pattern(rp, LINE_DASH_DOT)
+                    ctx.line(20, 80, 200, 80)
+
+                    // ========================================================
+                    // Section 2: Line Patterns - Object API
+                    // ========================================================
+                    write("Line patterns using LinePattern struct...\n")
+
+                    // Using LinePattern methods
+                    let solid = LinePattern::solid()
+                    solid.apply(rp)
+                    ctx.line(220, 20, 400, 20)
+
+                    let dotted = LinePattern::dotted()
+                    dotted.apply(rp)
+                    ctx.line(220, 35, 400, 35)
+
+                    let dashed = LinePattern::dashed()
+                    dashed.apply(rp)
+                    ctx.line(220, 50, 400, 50)
+
+                    let long_dash = LinePattern::long_dash()
+                    long_dash.apply(rp)
+                    ctx.line(220, 65, 400, 65)
+
+                    let dash_dot = LinePattern::dash_dot()
+                    dash_dot.apply(rp)
+                    ctx.line(220, 80, 400, 80)
+
+                    // ========================================================
+                    // Section 3: Custom Line Patterns
+                    // ========================================================
+                    write("Custom line patterns...\n")
+
+                    // Custom pattern: 3 on, 1 off, 3 on, 1 off, etc.
+                    let custom1 = LinePattern::custom($EEE0)
+                    custom1.apply(rp)
+                    ctx.line(420, 20, 600, 20)
+
+                    // Custom pattern from raw value
+                    let custom2 = LinePattern::new($F0F0)
+                    custom2.apply(rp)
+                    ctx.line(420, 35, 600, 35)
+
+                    // Pattern manipulation
+                    let base_pattern: u16 = $FF00
+                    let inverted = invert_line_pattern(base_pattern)
+                    set_line_pattern(rp, inverted)
+                    ctx.line(420, 50, 600, 50)
+
+                    let rotated_left = rotate_line_pattern_left($F0F0, 2)
+                    set_line_pattern(rp, rotated_left)
+                    ctx.line(420, 65, 600, 65)
+
+                    let rotated_right = rotate_line_pattern_right($F0F0, 2)
+                    set_line_pattern(rp, rotated_right)
+                    ctx.line(420, 80, 600, 80)
+
+                    // ========================================================
+                    // Section 4: Query and Clear Line Pattern
+                    // ========================================================
+                    write("Querying line pattern state...\n")
+
+                    set_line_pattern(rp, LINE_DASHED)
+                    let current_pattern = get_line_pattern(rp)
+                    write("Current pattern: {current_pattern}\n")
+
+                    clear_line_pattern(rp)  // Back to solid
+
+                    // ========================================================
+                    // Section 5: Fill Patterns - Using FillPattern builder
+                    // ========================================================
+                    write("Fill patterns using FillPattern builder...\n")
+
+                    // Checkerboard pattern
+                    let checker_opt = FillPattern::checkerboard()
+                    match checker_opt {
+                        Option::Some(checker) => {
+                            checker.apply(rp)
+                            ctx.pen(1)
+                            ctx.fill_rect(20, 120, 100, 180)
+                        },
+                        Option::None => {
+                            write("Failed to create checkerboard pattern\n")
+                        }
+                    }
+
+                    // Horizontal lines pattern
+                    let hlines_opt = FillPattern::horizontal_lines()
+                    match hlines_opt {
+                        Option::Some(hlines) => {
+                            hlines.apply(rp)
+                            ctx.fill_rect(120, 120, 200, 180)
+                        },
+                        Option::None => {
+                            write("Failed to create horizontal lines pattern\n")
+                        }
+                    }
+
+                    // Vertical lines pattern
+                    let vlines_opt = FillPattern::vertical_lines()
+                    match vlines_opt {
+                        Option::Some(vlines) => {
+                            vlines.apply(rp)
+                            ctx.fill_rect(220, 120, 300, 180)
+                        },
+                        Option::None => {
+                            write("Failed to create vertical lines pattern\n")
+                        }
+                    }
+
+                    // ========================================================
+                    // Section 6: Custom Fill Patterns
+                    // ========================================================
+                    write("Custom fill patterns...\n")
+
+                    // Custom 2-word pattern (diagonal stripes)
+                    let diag_opt = FillPattern::new_2($8888, $4444)
+                    match diag_opt {
+                        Option::Some(diag) => {
+                            diag.apply(rp)
+                            ctx.fill_rect(320, 120, 400, 180)
+                        },
+                        Option::None => {
+                            write("Failed to create diagonal pattern\n")
+                        }
+                    }
+
+                    // Custom 4-word pattern (brick-like)
+                    let brick_opt = FillPattern::new_4($FFFF, $8080, $FFFF, $0808)
+                    match brick_opt {
+                        Option::Some(brick) => {
+                            brick.apply(rp)
+                            ctx.fill_rect(420, 120, 500, 180)
+                        },
+                        Option::None => {
+                            write("Failed to create brick pattern\n")
+                        }
+                    }
+
+                    // ========================================================
+                    // Section 7: Pattern State Query
+                    // ========================================================
+                    write("Checking fill pattern state...\n")
+
+                    // With pattern set
+                    let has_pattern = has_fill_pattern(rp)
+                    write("Has fill pattern: {has_pattern}\n")
+
+                    // Clear fill pattern
+                    clear_fill_pattern(rp)
+
+                    let has_pattern_after = has_fill_pattern(rp)
+                    write("Has fill pattern after clear: {has_pattern_after}\n")
+
+                    // ========================================================
+                    // Section 8: Solid fills after clearing
+                    // ========================================================
+                    write("Solid fills after clearing pattern...\n")
+
+                    ctx.pen(2)
+                    ctx.fill_rect(520, 120, 600, 180)  // Should be solid
+
+                    // ========================================================
+                    // Section 9: FillPattern metadata
+                    // ========================================================
+                    write("Testing FillPattern methods...\n")
+
+                    let test_pattern_opt = FillPattern::new_2($AAAA, $5555)
+                    match test_pattern_opt {
+                        Option::Some(test_pattern) => {
+                            // Get pattern metadata
+                            let ptr = test_pattern.ptr()
+                            let height_pow = test_pattern.height_power()
+                            write("Pattern height power: {height_pow}\n")
+                        },
+                        Option::None => {}
+                    }
+
+                    // ========================================================
+                    // Section 10: Combined line and fill patterns
+                    // ========================================================
+                    write("Combined patterns demo...\n")
+
+                    // Set both line and fill patterns
+                    let combo_dotted = LinePattern::dotted()
+                    combo_dotted.apply(rp)
+
+                    let combo_checker_opt = FillPattern::checkerboard()
+                    match combo_checker_opt {
+                        Option::Some(combo_checker) => {
+                            combo_checker.apply(rp)
+                            ctx.pen(3)
+
+                            // Draw filled rect with pattern
+                            ctx.fill_rect(20, 220, 100, 280)
+
+                            // Draw rectangle outline with dotted line
+                            ctx.pen(1)
+                            ctx.rect_outline(&Rect::new(20, 220, 100, 280))
+                        },
+                        Option::None => {}
+                    }
+
+                    // Reset all patterns
+                    clear_line_pattern(rp)
+                    clear_fill_pattern(rp)
+
+                    // ========================================================
+                    // Done - wait for close
+                    // ========================================================
+                    write("Patterns complete! Close window to exit.\n")
+
+                    window.activate()
+
+                    forever {
+                        let event = window.wait_event()
+                        match event {
+                            WindowEvent::Close => {
+                                break
+                            },
+                            _ => {}
+                        }
+                    }
+
+                    return 0
+                },
+                Result::Err(_) => {
+                    write("Failed to create DrawContext\n")
+                    return 20
+                }
+            }
+        },
+        Result::Err(_) => {
+            write("Failed to open window\n")
+            return 20
+        }
+    }
+}

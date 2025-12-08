@@ -1,16 +1,306 @@
-// Pattern generation utilities for Amiga graphics
-// NOTE: This module is currently a stub - full implementation pending
-// compiler support for complex pointer arithmetic
+// Pattern utilities for Amiga graphics
+// Module: std::graphics::patterns
+//
+// Provides line and fill pattern support for RastPort drawing operations.
+// AmigaOS uses 16-bit patterns for lines and multi-word patterns for area fills.
+//
+// Line patterns: A 16-bit value where each bit represents a pixel.
+//   - Bit 15 is the first pixel drawn, bit 0 is the 16th.
+//   - $FFFF = solid line, $AAAA = dotted, $F0F0 = dashed
+//
+// Fill patterns: Array of u16 words, height must be power of 2 (1, 2, 4, 8, 16).
+//   - Pattern is tiled across the filled area.
+//   - Set via RastPort.AreaPtrn and AreaPtSz fields.
 
 from std::core import Option
 from std::memory::amiga import MemHandle
+from std::ffi::amiga_structs import RastPort
 
-// TODO: Implement pattern generation functions once pointer arithmetic
-// is better supported in the compiler. For now, this module provides
-// the structure for future expansion.
+// ============================================================================
+// Line Pattern Types and Constants
+// ============================================================================
 
-// Allocate chip memory for a solid color pattern
-// Returns memory handle that can be filled manually
+/// A 16-bit line pattern for dotted/dashed lines.
+/// Each bit represents whether a pixel is drawn (1) or skipped (0).
+pub struct LinePattern {
+    pattern: u16,
+}
+
+impl LinePattern {
+    /// Create a line pattern from a raw 16-bit value.
+    pub fn new(pattern: u16) -> LinePattern {
+        return LinePattern { pattern: pattern }
+    }
+
+    /// Solid line (all pixels drawn).
+    pub fn solid() -> LinePattern {
+        return LinePattern { pattern: $FFFF }
+    }
+
+    /// Dotted line (alternating pixels).
+    pub fn dotted() -> LinePattern {
+        return LinePattern { pattern: $AAAA }
+    }
+
+    /// Short dashed line (4 on, 4 off).
+    pub fn dashed() -> LinePattern {
+        return LinePattern { pattern: $F0F0 }
+    }
+
+    /// Long dashed line (8 on, 8 off).
+    pub fn long_dash() -> LinePattern {
+        return LinePattern { pattern: $FF00 }
+    }
+
+    /// Dash-dot pattern (6 on, 2 off, 2 on, 2 off, 2 on, 2 off).
+    pub fn dash_dot() -> LinePattern {
+        return LinePattern { pattern: $FC48 }
+    }
+
+    /// Create a custom pattern from a value.
+    pub fn custom(pattern: u16) -> LinePattern {
+        return LinePattern { pattern: pattern }
+    }
+
+    /// Apply this pattern to a RastPort.
+    /// After calling this, all Draw() calls will use this pattern.
+    pub fn apply(&self, rp: *RastPort) {
+        set_line_pattern(rp, self.pattern)
+    }
+}
+
+// Pre-defined line pattern constants
+pub const LINE_SOLID: u16 = $FFFF
+pub const LINE_DOTTED: u16 = $AAAA
+pub const LINE_DASHED: u16 = $F0F0
+pub const LINE_LONG_DASH: u16 = $FF00
+pub const LINE_DASH_DOT: u16 = $FC48
+pub const LINE_SPARSE_DOT: u16 = $8888
+
+// ============================================================================
+// Fill Pattern Types and Constants
+// ============================================================================
+
+// Fill pattern data values (use FillPattern::checkerboard() etc. to create)
+// These constants document the raw pattern values
+
+/// Checkerboard pattern row values
+pub const CHECKERBOARD_ROW0: u16 = $AAAA
+pub const CHECKERBOARD_ROW1: u16 = $5555
+
+/// Gray 50% is same as checkerboard
+pub const GRAY_50_ROW0: u16 = $AAAA
+pub const GRAY_50_ROW1: u16 = $5555
+
+/// Horizontal lines pattern row values
+pub const HLINES_ROW0: u16 = $FFFF
+pub const HLINES_ROW1: u16 = $0000
+
+/// Vertical lines pattern row values
+pub const VLINES_ROW0: u16 = $AAAA
+pub const VLINES_ROW1: u16 = $AAAA
+
+// ============================================================================
+// Line Pattern Functions
+// ============================================================================
+
+/// Set the line pattern for a RastPort.
+/// The pattern is a 16-bit value where each bit represents a pixel.
+/// Use $FFFF for solid lines.
+pub fn set_line_pattern(rp: *RastPort, pattern: u16) {
+    if !rp {
+        return
+    }
+    unsafe {
+        let rp_ref = rp
+        rp_ref.LinePtrn = pattern
+        // Reset the pattern counter to start from bit 15
+        rp_ref.linpatcnt = 15
+    }
+}
+
+/// Get the current line pattern from a RastPort.
+pub fn get_line_pattern(rp: *RastPort) -> u16 {
+    if !rp {
+        return $FFFF
+    }
+    unsafe {
+        return (*rp).LinePtrn
+    }
+}
+
+/// Clear the line pattern (restore solid lines).
+pub fn clear_line_pattern(rp: *RastPort) {
+    set_line_pattern(rp, $FFFF)
+}
+
+// ============================================================================
+// Fill Pattern Functions
+// ============================================================================
+
+/// Set the fill pattern for a RastPort.
+///
+/// Parameters:
+///   rp: The RastPort to configure
+///   pattern: Pointer to the pattern data (array of u16)
+///   height_power: Log2 of the pattern height:
+///                 0 = 1 word, 1 = 2 words, 2 = 4 words, 3 = 8 words, 4 = 16 words
+///                 Use -1 or negative to disable pattern (solid fill)
+///
+/// The pattern memory must remain valid while the pattern is in use.
+/// Pattern data must be in chip memory for some operations.
+pub fn set_fill_pattern(rp: *RastPort, pattern: *u16, height_power: i8) {
+    if !rp {
+        return
+    }
+    unsafe {
+        let rp_ref = rp
+        rp_ref.AreaPtrn = pattern
+        rp_ref.AreaPtSz = height_power
+    }
+}
+
+/// Set a 2-word fill pattern (most common).
+pub fn set_fill_pattern_2(rp: *RastPort, pattern: *[u16; 2]) {
+    set_fill_pattern(rp, (*u16)pattern, 1)
+}
+
+/// Set a 4-word fill pattern.
+pub fn set_fill_pattern_4(rp: *RastPort, pattern: *[u16; 4]) {
+    set_fill_pattern(rp, (*u16)pattern, 2)
+}
+
+/// Clear the fill pattern (restore solid fills).
+pub fn clear_fill_pattern(rp: *RastPort) {
+    if !rp {
+        return
+    }
+    unsafe {
+        let rp_ref = rp
+        rp_ref.AreaPtrn = (*u16)0
+        rp_ref.AreaPtSz = 0
+    }
+}
+
+/// Check if a RastPort has a fill pattern set.
+pub fn has_fill_pattern(rp: *RastPort) -> bool {
+    if !rp {
+        return false
+    }
+    unsafe {
+        return (*rp).AreaPtrn != (*u16)0 && (*rp).AreaPtSz >= 0
+    }
+}
+
+// ============================================================================
+// Pattern Builder (for dynamic patterns)
+// ============================================================================
+
+/// Builder for creating custom fill patterns at runtime.
+/// Allocates pattern data in chip memory (required for some blitter operations).
+pub struct FillPattern {
+    data: MemHandle,
+    height_power: i8,
+}
+
+impl FillPattern {
+    /// Create a 2-word fill pattern.
+    pub fn new_2(row0: u16, row1: u16) -> Option<FillPattern> {
+        let handle_opt: Option<MemHandle> = MemHandle::new_chip(4)
+        if handle_opt.is_none() {
+            return Option::None
+        }
+        let handle: MemHandle = handle_opt.unwrap()
+        unsafe {
+            let base: u32 = (u32)handle.ptr()
+            let ptr0: *u16 = (*u16)base
+            let ptr1: *u16 = (*u16)(base + 2)
+            *ptr0 = row0
+            *ptr1 = row1
+        }
+        return Option::Some(FillPattern { data: handle, height_power: 1 })
+    }
+
+    /// Create a 4-word fill pattern.
+    pub fn new_4(row0: u16, row1: u16, row2: u16, row3: u16) -> Option<FillPattern> {
+        let handle_opt: Option<MemHandle> = MemHandle::new_chip(8)
+        if handle_opt.is_none() {
+            return Option::None
+        }
+        let handle: MemHandle = handle_opt.unwrap()
+        unsafe {
+            let base: u32 = (u32)handle.ptr()
+            let ptr0: *u16 = (*u16)base
+            let ptr1: *u16 = (*u16)(base + 2)
+            let ptr2: *u16 = (*u16)(base + 4)
+            let ptr3: *u16 = (*u16)(base + 6)
+            *ptr0 = row0
+            *ptr1 = row1
+            *ptr2 = row2
+            *ptr3 = row3
+        }
+        return Option::Some(FillPattern { data: handle, height_power: 2 })
+    }
+
+    /// Get the pattern data pointer.
+    pub fn ptr(&self) -> *u16 {
+        return (*u16)self.data.ptr()
+    }
+
+    /// Get the height power (log2 of height).
+    pub fn height_power(&self) -> i8 {
+        return self.height_power
+    }
+
+    /// Apply this pattern to a RastPort.
+    pub fn apply(&self, rp: *RastPort) {
+        set_fill_pattern(rp, self.ptr(), self.height_power)
+    }
+
+    /// Create a checkerboard pattern (50% gray).
+    pub fn checkerboard() -> Option<FillPattern> {
+        return FillPattern::new_2(CHECKERBOARD_ROW0, CHECKERBOARD_ROW1)
+    }
+
+    /// Create a horizontal lines pattern.
+    pub fn horizontal_lines() -> Option<FillPattern> {
+        return FillPattern::new_2(HLINES_ROW0, HLINES_ROW1)
+    }
+
+    /// Create a vertical lines pattern.
+    pub fn vertical_lines() -> Option<FillPattern> {
+        return FillPattern::new_2(VLINES_ROW0, VLINES_ROW1)
+    }
+}
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+/// Invert a line pattern (swap drawn/skipped pixels).
+pub fn invert_line_pattern(pattern: u16) -> u16 {
+    return pattern ^ $FFFF
+}
+
+/// Shift a line pattern left by n bits (rotate).
+pub fn rotate_line_pattern_left(pattern: u16, n: u8) -> u16 {
+    let shift: u8 = n & 15  // Modulo 16
+    return (pattern << shift) | (pattern >> (16 - shift))
+}
+
+/// Shift a line pattern right by n bits (rotate).
+pub fn rotate_line_pattern_right(pattern: u16, n: u8) -> u16 {
+    let shift: u8 = n & 15  // Modulo 16
+    return (pattern >> shift) | (pattern << (16 - shift))
+}
+
+// ============================================================================
+// Memory Allocation Helper (for chip RAM patterns)
+// ============================================================================
+
+/// Allocate chip memory for a pattern.
+/// Use this when you need pattern data in chip RAM (required for some operations).
+/// Returns None if allocation fails.
 pub fn allocate_pattern(depth: u32, width: u32, height: u32) -> Option<MemHandle> {
     let size: u32 = width * height * depth
     return MemHandle::new_chip(size)

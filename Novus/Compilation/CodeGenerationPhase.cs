@@ -140,12 +140,15 @@ public class CodeGenerationPhase : ICompilationPhase
             var functionCCode = codegen.GenerateFunctionFile(function);
             var sanitizedFunctionName = function.Name
                 .Replace("::", "_")
+                .Replace("()", "unit")  // Handle unit type before removing parens
                 .Replace("<", "_")
                 .Replace(">", "_")
                 .Replace(",", "_")
                 .Replace(" ", "")
                 .Replace("&", "ref_")
-                .Replace("*", "ptr_");
+                .Replace("*", "ptr_")
+                .Replace("(", "")       // Remove any remaining parens
+                .Replace(")", "");
             var functionCFile = Path.Combine(context.OutputDir, $"{moduleName}_{sanitizedFunctionName}.c");
             await File.WriteAllTextAsync(functionCFile, functionCCode);
             context.CFiles.Add(functionCFile);

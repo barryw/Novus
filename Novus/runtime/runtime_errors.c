@@ -260,6 +260,10 @@ void __novus_div_check(int32_t divisor, const char* file, int32_t line)
 // Stack Overflow Detection
 // ============================================================================
 
+// VBCC inline assembly function to get current stack pointer
+// Returns SP (A7) in D0, the return register for uint32_t
+uint32_t __get_stack_pointer(void) = "\tmove.l\tsp,d0";
+
 // Stack bounds - set during initialization
 uint32_t __novus_stack_base = 0;   // Top of stack (highest address)
 uint32_t __novus_stack_limit = 0;  // Bottom of stack (lowest address)
@@ -300,13 +304,16 @@ void __novus_init_stack_bounds(void)
  */
 void __novus_check_stack(uint32_t required_bytes, const char* func_name, int32_t line)
 {
-    register uint32_t current_sp __asm("sp");
+    uint32_t current_sp;
     uint32_t safe_limit;
     uint32_t bytes_remaining;
     char* ptr;
     char line_str[12];
     char remaining_str[12];
     char required_str[12];
+
+    // Get current stack pointer using VBCC inline assembly function
+    current_sp = __get_stack_pointer();
 
     // If stack bounds not initialized, skip check
     if (__novus_stack_limit == 0) {
