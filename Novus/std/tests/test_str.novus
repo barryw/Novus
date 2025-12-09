@@ -1,0 +1,613 @@
+// Standard Library Tests - Str Type
+// Tests for std::strings::core::Str (borrowed string slice)
+//
+// Run with: novus test Novus/std/tests/test_str.novus
+
+from std::strings::core import Str, StringError
+from std::test::test import expect, expect_true, expect_false, expect_eq_u32, expect_eq_i32
+
+// ============================================================================
+// Basic Properties Tests
+// ============================================================================
+
+@test("Str::len returns correct length")
+pub fn test_str_len() {
+    let empty: Str = ""
+    let hello: Str = "Hello"
+    let longer: Str = "Hello, World!"
+
+    expect_eq_u32(empty.len(), 0u32, "empty string length")
+    expect_eq_u32(hello.len(), 5u32, "hello length")
+    expect_eq_u32(longer.len(), 13u32, "longer string length")
+}
+
+@test("Str::is_empty returns true for empty strings")
+pub fn test_str_is_empty_true() {
+    let empty: Str = ""
+    expect_true(empty.is_empty(), "empty string is_empty")
+}
+
+@test("Str::is_empty returns false for non-empty strings")
+pub fn test_str_is_empty_false() {
+    let hello: Str = "Hello"
+    let single: Str = "x"
+
+    expect_false(hello.is_empty(), "hello is not empty")
+    expect_false(single.is_empty(), "single char is not empty")
+}
+
+// ============================================================================
+// Equality Tests
+// ============================================================================
+
+@test("Str::equals - identical strings are equal")
+pub fn test_str_equals_identical() {
+    let s1: Str = "Hello"
+    let s2: Str = "Hello"
+    expect_true(s1.equals(s2), "identical strings")
+}
+
+@test("Str::equals - empty strings are equal")
+pub fn test_str_equals_empty() {
+    let e1: Str = ""
+    let e2: Str = ""
+    expect_true(e1.equals(e2), "empty strings equal")
+}
+
+@test("Str::equals - different lengths are not equal")
+pub fn test_str_equals_diff_length() {
+    let s1: Str = "Hi"
+    let s2: Str = "Hello"
+    expect_false(s1.equals(s2), "different lengths not equal")
+}
+
+@test("Str::equals - different content not equal")
+pub fn test_str_equals_diff_content() {
+    let s1: Str = "Hello"
+    let s2: Str = "World"
+    expect_false(s1.equals(s2), "different content not equal")
+}
+
+@test("Str::equals - single char difference detected")
+pub fn test_str_equals_single_diff() {
+    let s1: Str = "Hello"
+    let s2: Str = "Hallo"
+    expect_false(s1.equals(s2), "single char difference")
+}
+
+// ============================================================================
+// Compare Tests (Lexicographic Ordering)
+// ============================================================================
+
+@test("Str::compare - equal strings return 0")
+pub fn test_str_compare_equal() {
+    let s1: Str = "Hello"
+    let s2: Str = "Hello"
+    expect_eq_i32(s1.compare(s2), 0, "equal strings compare to 0")
+}
+
+@test("Str::compare - less than returns negative")
+pub fn test_str_compare_less() {
+    let apple: Str = "Apple"
+    let banana: Str = "Banana"
+    expect_true(apple.compare(banana) < 0, "Apple < Banana")
+}
+
+@test("Str::compare - greater than returns positive")
+pub fn test_str_compare_greater() {
+    let zebra: Str = "Zebra"
+    let apple: Str = "Apple"
+    expect_true(zebra.compare(apple) > 0, "Zebra > Apple")
+}
+
+@test("Str::compare - shorter prefix is less")
+pub fn test_str_compare_prefix() {
+    let hello: Str = "Hello"
+    let hello_world: Str = "Hello, World"
+    expect_true(hello.compare(hello_world) < 0, "Hello < Hello, World")
+}
+
+@test("Str::compare - empty vs non-empty")
+pub fn test_str_compare_empty() {
+    let empty: Str = ""
+    let hello: Str = "Hello"
+    expect_true(empty.compare(hello) < 0, "empty < non-empty")
+    expect_true(hello.compare(empty) > 0, "non-empty > empty")
+}
+
+// ============================================================================
+// starts_with / ends_with Tests
+// ============================================================================
+
+@test("Str::starts_with - true for valid prefix")
+pub fn test_str_starts_with_true() {
+    let s: Str = "Hello, World!"
+    let prefix: Str = "Hello"
+    expect_true(s.starts_with(prefix), "starts with Hello")
+}
+
+@test("Str::starts_with - false for invalid prefix")
+pub fn test_str_starts_with_false() {
+    let s: Str = "Hello, World!"
+    let prefix: Str = "World"
+    expect_false(s.starts_with(prefix), "does not start with World")
+}
+
+@test("Str::starts_with - empty prefix always true")
+pub fn test_str_starts_with_empty() {
+    let s: Str = "Hello"
+    let empty: Str = ""
+    expect_true(s.starts_with(empty), "starts with empty")
+}
+
+@test("Str::starts_with - prefix longer than string")
+pub fn test_str_starts_with_longer() {
+    let s: Str = "Hi"
+    let prefix: Str = "Hello"
+    expect_false(s.starts_with(prefix), "prefix longer than string")
+}
+
+@test("Str::ends_with - true for valid suffix")
+pub fn test_str_ends_with_true() {
+    let s: Str = "Hello, World!"
+    let suffix: Str = "World!"
+    expect_true(s.ends_with(suffix), "ends with World!")
+}
+
+@test("Str::ends_with - false for invalid suffix")
+pub fn test_str_ends_with_false() {
+    let s: Str = "Hello, World!"
+    let suffix: Str = "Hello"
+    expect_false(s.ends_with(suffix), "does not end with Hello")
+}
+
+@test("Str::ends_with - empty suffix always true")
+pub fn test_str_ends_with_empty() {
+    let s: Str = "Hello"
+    let empty: Str = ""
+    expect_true(s.ends_with(empty), "ends with empty")
+}
+
+// ============================================================================
+// contains / find Tests
+// ============================================================================
+
+@test("Str::contains - true for substring")
+pub fn test_str_contains_true() {
+    let s: Str = "Hello, World!"
+    let needle: Str = "World"
+    expect_true(s.contains(needle), "contains World")
+}
+
+@test("Str::contains - false for non-substring")
+pub fn test_str_contains_false() {
+    let s: Str = "Hello, World!"
+    let needle: Str = "Foo"
+    expect_false(s.contains(needle), "does not contain Foo")
+}
+
+@test("Str::contains - empty needle always found")
+pub fn test_str_contains_empty() {
+    let s: Str = "Hello"
+    let empty: Str = ""
+    expect_true(s.contains(empty), "contains empty")
+}
+
+@test("Str::find - returns correct index")
+pub fn test_str_find_found() {
+    let s: Str = "Hello, World!"
+    let needle: Str = "World"
+
+    match s.find(needle) {
+        Some(idx) => expect_eq_u32(idx, 7u32, "World at index 7"),
+        None => expect(false, "should have found World")
+    }
+}
+
+@test("Str::find - returns None for not found")
+pub fn test_str_find_not_found() {
+    let s: Str = "Hello, World!"
+    let needle: Str = "Foo"
+
+    match s.find(needle) {
+        Some(_) => expect(false, "should not have found Foo"),
+        None => expect(true, "correctly returned None")
+    }
+}
+
+@test("Str::find - finds at beginning")
+pub fn test_str_find_beginning() {
+    let s: Str = "Hello, World!"
+    let needle: Str = "Hello"
+
+    match s.find(needle) {
+        Some(idx) => expect_eq_u32(idx, 0u32, "Hello at index 0"),
+        None => expect(false, "should have found Hello")
+    }
+}
+
+@test("Str::find - finds at end")
+pub fn test_str_find_end() {
+    let s: Str = "Hello, World!"
+    let needle: Str = "!"
+
+    match s.find(needle) {
+        Some(idx) => expect_eq_u32(idx, 12u32, "! at index 12"),
+        None => expect(false, "should have found !")
+    }
+}
+
+@test("Str::find_byte - finds byte")
+pub fn test_str_find_byte() {
+    let s: Str = "Hello, World!"
+
+    match s.find_byte($2C) {  // ','
+        Some(idx) => expect_eq_u32(idx, 5u32, "comma at index 5"),
+        None => expect(false, "should have found comma")
+    }
+}
+
+@test("Str::find_byte - returns None for not found")
+pub fn test_str_find_byte_not_found() {
+    let s: Str = "Hello"
+
+    match s.find_byte($2C) {  // ','
+        Some(_) => expect(false, "should not have found comma"),
+        None => expect(true, "correctly returned None")
+    }
+}
+
+@test("Str::rfind_byte - finds last occurrence")
+pub fn test_str_rfind_byte() {
+    let s: Str = "a/b/c/d"
+
+    match s.rfind_byte($2F) {  // '/'
+        Some(idx) => expect_eq_u32(idx, 5u32, "last slash at index 5"),
+        None => expect(false, "should have found slash")
+    }
+}
+
+// ============================================================================
+// Slicing Tests
+// ============================================================================
+
+@test("Str::slice - basic slice")
+pub fn test_str_slice_basic() {
+    let s: Str = "Hello, World!"
+
+    match s.slice(0u32, 5u32) {
+        Ok(sub) => {
+            let expected: Str = "Hello"
+            expect_true(sub.equals(expected), "slice 0..5 is Hello")
+        },
+        Err(_) => expect(false, "slice should not fail")
+    }
+}
+
+@test("Str::slice - middle slice")
+pub fn test_str_slice_middle() {
+    let s: Str = "Hello, World!"
+
+    match s.slice(7u32, 12u32) {
+        Ok(sub) => {
+            let expected: Str = "World"
+            expect_true(sub.equals(expected), "slice 7..12 is World")
+        },
+        Err(_) => expect(false, "slice should not fail")
+    }
+}
+
+@test("Str::slice - empty slice")
+pub fn test_str_slice_empty() {
+    let s: Str = "Hello"
+
+    match s.slice(2u32, 2u32) {
+        Ok(sub) => expect_true(sub.is_empty(), "slice 2..2 is empty"),
+        Err(_) => expect(false, "empty slice should not fail")
+    }
+}
+
+@test("Str::slice - out of bounds returns error")
+pub fn test_str_slice_oob() {
+    let s: Str = "Hello"
+
+    match s.slice(0u32, 100u32) {
+        Ok(_) => expect(false, "should have failed for out of bounds"),
+        Err(_) => expect(true, "correctly returned error")
+    }
+}
+
+@test("Str::slice - start > end returns error")
+pub fn test_str_slice_invalid_range() {
+    let s: Str = "Hello"
+
+    match s.slice(3u32, 1u32) {
+        Ok(_) => expect(false, "should have failed for start > end"),
+        Err(_) => expect(true, "correctly returned error")
+    }
+}
+
+@test("Str::slice_from - basic usage")
+pub fn test_str_slice_from() {
+    let s: Str = "Hello, World!"
+
+    match s.slice_from(7u32) {
+        Ok(sub) => {
+            let expected: Str = "World!"
+            expect_true(sub.equals(expected), "slice_from 7 is World!")
+        },
+        Err(_) => expect(false, "slice_from should not fail")
+    }
+}
+
+@test("Str::slice_to - basic usage")
+pub fn test_str_slice_to() {
+    let s: Str = "Hello, World!"
+
+    match s.slice_to(5u32) {
+        Ok(sub) => {
+            let expected: Str = "Hello"
+            expect_true(sub.equals(expected), "slice_to 5 is Hello")
+        },
+        Err(_) => expect(false, "slice_to should not fail")
+    }
+}
+
+// ============================================================================
+// Trim Tests
+// ============================================================================
+
+@test("Str::trim - removes leading and trailing spaces")
+pub fn test_str_trim_spaces() {
+    let s: Str = "  Hello  "
+    let trimmed = s.trim()
+    let expected: Str = "Hello"
+    expect_true(trimmed.equals(expected), "trimmed spaces")
+}
+
+@test("Str::trim - handles tabs and newlines")
+pub fn test_str_trim_whitespace() {
+    let s: Str = "\t\nHello\r\n"
+    let trimmed = s.trim()
+    let expected: Str = "Hello"
+    expect_true(trimmed.equals(expected), "trimmed whitespace")
+}
+
+@test("Str::trim - no change for no whitespace")
+pub fn test_str_trim_no_change() {
+    let s: Str = "Hello"
+    let trimmed = s.trim()
+    expect_true(trimmed.equals(s), "no whitespace to trim")
+}
+
+@test("Str::trim - all whitespace becomes empty")
+pub fn test_str_trim_all_whitespace() {
+    let s: Str = "   \t\n   "
+    let trimmed = s.trim()
+    expect_true(trimmed.is_empty(), "all whitespace becomes empty")
+}
+
+@test("Str::trim_start - only removes leading")
+pub fn test_str_trim_start() {
+    let s: Str = "  Hello  "
+    let trimmed = s.trim_start()
+    let expected: Str = "Hello  "
+    expect_true(trimmed.equals(expected), "only leading trimmed")
+}
+
+@test("Str::trim_end - only removes trailing")
+pub fn test_str_trim_end() {
+    let s: Str = "  Hello  "
+    let trimmed = s.trim_end()
+    let expected: Str = "  Hello"
+    expect_true(trimmed.equals(expected), "only trailing trimmed")
+}
+
+// ============================================================================
+// Split Iterator Tests
+// ============================================================================
+
+@test("Str::split - splits on delimiter")
+pub fn test_str_split_basic() {
+    let s: Str = "a/b/c"
+    var iter = s.split($2F)  // '/'
+
+    match iter.next() {
+        Some(part) => {
+            let expected: Str = "a"
+            expect_true(part.equals(expected), "first part is a")
+        },
+        None => expect(false, "should have first part")
+    }
+
+    match iter.next() {
+        Some(part) => {
+            let expected: Str = "b"
+            expect_true(part.equals(expected), "second part is b")
+        },
+        None => expect(false, "should have second part")
+    }
+
+    match iter.next() {
+        Some(part) => {
+            let expected: Str = "c"
+            expect_true(part.equals(expected), "third part is c")
+        },
+        None => expect(false, "should have third part")
+    }
+
+    match iter.next() {
+        Some(_) => expect(false, "should have no more parts"),
+        None => expect(true, "correctly exhausted")
+    }
+}
+
+@test("Str::split - no delimiter returns whole string")
+pub fn test_str_split_no_delimiter() {
+    let s: Str = "Hello"
+    var iter = s.split($2F)  // '/'
+
+    match iter.next() {
+        Some(part) => expect_true(part.equals(s), "whole string returned"),
+        None => expect(false, "should have one part")
+    }
+
+    match iter.next() {
+        Some(_) => expect(false, "should have no more parts"),
+        None => expect(true, "correctly exhausted")
+    }
+}
+
+@test("Str::split - empty parts handled")
+pub fn test_str_split_empty_parts() {
+    let s: Str = "a//b"
+    var iter = s.split($2F)  // '/'
+
+    match iter.next() {
+        Some(part) => {
+            let expected: Str = "a"
+            expect_true(part.equals(expected), "first part is a")
+        },
+        None => expect(false, "should have first part")
+    }
+
+    match iter.next() {
+        Some(part) => expect_true(part.is_empty(), "second part is empty"),
+        None => expect(false, "should have empty second part")
+    }
+
+    match iter.next() {
+        Some(part) => {
+            let expected: Str = "b"
+            expect_true(part.equals(expected), "third part is b")
+        },
+        None => expect(false, "should have third part")
+    }
+}
+
+// ============================================================================
+// Lines Iterator Tests
+// ============================================================================
+
+@test("Str::lines - splits on LF")
+pub fn test_str_lines_lf() {
+    let s: Str = "line1\nline2\nline3"
+    var iter = s.lines()
+
+    match iter.next() {
+        Some(line) => {
+            let expected: Str = "line1"
+            expect_true(line.equals(expected), "first line")
+        },
+        None => expect(false, "should have first line")
+    }
+
+    match iter.next() {
+        Some(line) => {
+            let expected: Str = "line2"
+            expect_true(line.equals(expected), "second line")
+        },
+        None => expect(false, "should have second line")
+    }
+
+    match iter.next() {
+        Some(line) => {
+            let expected: Str = "line3"
+            expect_true(line.equals(expected), "third line")
+        },
+        None => expect(false, "should have third line")
+    }
+
+    match iter.next() {
+        Some(_) => expect(false, "should have no more lines"),
+        None => expect(true, "correctly exhausted")
+    }
+}
+
+@test("Str::lines - handles CR")
+pub fn test_str_lines_cr() {
+    let s: Str = "line1\rline2"
+    var iter = s.lines()
+
+    match iter.next() {
+        Some(line) => {
+            let expected: Str = "line1"
+            expect_true(line.equals(expected), "first line")
+        },
+        None => expect(false, "should have first line")
+    }
+
+    match iter.next() {
+        Some(line) => {
+            let expected: Str = "line2"
+            expect_true(line.equals(expected), "second line")
+        },
+        None => expect(false, "should have second line")
+    }
+}
+
+@test("Str::lines - handles CRLF")
+pub fn test_str_lines_crlf() {
+    let s: Str = "line1\r\nline2"
+    var iter = s.lines()
+
+    match iter.next() {
+        Some(line) => {
+            let expected: Str = "line1"
+            expect_true(line.equals(expected), "first line")
+        },
+        None => expect(false, "should have first line")
+    }
+
+    match iter.next() {
+        Some(line) => {
+            let expected: Str = "line2"
+            expect_true(line.equals(expected), "second line")
+        },
+        None => expect(false, "should have second line")
+    }
+}
+
+// ============================================================================
+// Get (byte access) Tests
+// ============================================================================
+
+@test("Str::get - returns correct byte")
+pub fn test_str_get_valid() {
+    let s: Str = "Hello"
+
+    match s.get(0u32) {
+        Some(b) => expect_eq_u32((u32)b, $48u32, "first byte is H"),
+        None => expect(false, "should have returned byte")
+    }
+
+    match s.get(4u32) {
+        Some(b) => expect_eq_u32((u32)b, $6Fu32, "last byte is o"),
+        None => expect(false, "should have returned byte")
+    }
+}
+
+@test("Str::get - out of bounds returns None")
+pub fn test_str_get_oob() {
+    let s: Str = "Hello"
+
+    match s.get(5u32) {
+        Some(_) => expect(false, "should have returned None for out of bounds"),
+        None => expect(true, "correctly returned None")
+    }
+
+    match s.get(100u32) {
+        Some(_) => expect(false, "should have returned None for far out of bounds"),
+        None => expect(true, "correctly returned None")
+    }
+}
+
+@test("Str::get - empty string always returns None")
+pub fn test_str_get_empty() {
+    let s: Str = ""
+
+    match s.get(0u32) {
+        Some(_) => expect(false, "empty string should return None"),
+        None => expect(true, "correctly returned None")
+    }
+}

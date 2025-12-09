@@ -1,0 +1,254 @@
+// Test suite for std::strings::core String type (owned, heap-allocated string)
+// Tests the owned String type methods
+
+from std::strings::core import String, Str, StringError
+from std::test::test import expect, expect_true, expect_false, expect_eq_u32, expect_eq_bool
+
+// =============================================================================
+// String::new tests
+// =============================================================================
+
+@test("String::new creates empty string")
+pub fn test_string_new() {
+    var s = String::new()
+    expect_eq_u32(s.len(), 0u32, "new string has len 0")
+    expect_true(s.is_empty(), "new string is empty")
+    s.drop()
+}
+
+// =============================================================================
+// String::with_capacity tests
+// =============================================================================
+
+@test("String::with_capacity allocates requested capacity")
+pub fn test_string_with_capacity() {
+    let opt = String::with_capacity(100u32)
+    match opt {
+        Some(s) => {
+            var owned = s
+            expect_eq_u32(owned.len(), 0u32, "with_capacity string has len 0")
+            expect_true(owned.is_empty(), "with_capacity string is empty")
+            // Capacity should be at least what we requested
+            expect_true(owned.capacity() >= 100u32, "capacity >= 100")
+            owned.drop()
+        },
+        None => expect(false, "with_capacity should succeed")
+    }
+}
+
+@test("String::with_capacity(0) creates empty string")
+pub fn test_string_with_capacity_zero() {
+    let opt = String::with_capacity(0u32)
+    match opt {
+        Some(s) => {
+            var owned = s
+            expect_eq_u32(owned.len(), 0u32, "zero capacity string has len 0")
+            owned.drop()
+        },
+        None => expect(false, "with_capacity(0) should succeed")
+    }
+}
+
+// =============================================================================
+// String::new_from_str tests
+// =============================================================================
+
+@test("String::new_from_str copies string content")
+pub fn test_string_new_from_str() {
+    let original: Str = "Hello, World!"
+    let result = String::new_from_str(original)
+    match result {
+        Ok(s) => {
+            var owned = s
+            expect_eq_u32(owned.len(), 13u32, "copied string has correct len")
+            let converted = owned.as_str()
+            expect_true(converted.equals(original), "content matches original")
+            owned.drop()
+        },
+        Err(_) => expect(false, "new_from_str should succeed")
+    }
+}
+
+@test("String::new_from_str with empty string")
+pub fn test_string_new_from_str_empty() {
+    let original: Str = ""
+    let result = String::new_from_str(original)
+    match result {
+        Ok(s) => {
+            var owned = s
+            expect_eq_u32(owned.len(), 0u32, "empty string copy has len 0")
+            expect_true(owned.is_empty(), "empty string copy is empty")
+            owned.drop()
+        },
+        Err(_) => expect(false, "new_from_str empty should succeed")
+    }
+}
+
+// =============================================================================
+// String::push_str tests
+// =============================================================================
+
+@test("String::push_str appends content")
+pub fn test_string_push_str() {
+    var s = String::new()
+    let success1 = s.push_str("Hello")
+    expect_true(success1, "first push_str succeeds")
+    expect_eq_u32(s.len(), 5u32, "len after first push")
+
+    let success2 = s.push_str(", World!")
+    expect_true(success2, "second push_str succeeds")
+    expect_eq_u32(s.len(), 13u32, "len after second push")
+
+    let content = s.as_str()
+    let expected: Str = "Hello, World!"
+    expect_true(content.equals(expected), "content matches expected")
+    s.drop()
+}
+
+@test("String::push_str with empty string does nothing")
+pub fn test_string_push_str_empty() {
+    var s = String::new()
+    s.push_str("Hello")
+    let len_before = s.len()
+
+    let success = s.push_str("")
+    expect_true(success, "push empty string succeeds")
+    expect_eq_u32(s.len(), len_before, "len unchanged after empty push")
+    s.drop()
+}
+
+// =============================================================================
+// String::push_byte tests
+// =============================================================================
+
+@test("String::push_byte appends single byte")
+pub fn test_string_push_byte() {
+    var s = String::new()
+    s.push_byte(72u8)  // 'H'
+    s.push_byte(105u8) // 'i'
+
+    expect_eq_u32(s.len(), 2u32, "len is 2 after two pushes")
+    let content = s.as_str()
+    let expected: Str = "Hi"
+    expect_true(content.equals(expected), "content is 'Hi'")
+    s.drop()
+}
+
+// =============================================================================
+// String::clear tests
+// =============================================================================
+
+@test("String::clear empties the string")
+pub fn test_string_clear() {
+    var s = String::new()
+    s.push_str("Hello, World!")
+    expect_eq_u32(s.len(), 13u32, "len before clear")
+
+    s.clear()
+    expect_eq_u32(s.len(), 0u32, "len is 0 after clear")
+    expect_true(s.is_empty(), "is_empty after clear")
+    s.drop()
+}
+
+@test("String::clear on empty string is no-op")
+pub fn test_string_clear_empty() {
+    var s = String::new()
+    s.clear()
+    expect_eq_u32(s.len(), 0u32, "clear on empty has len 0")
+    expect_true(s.is_empty(), "clear on empty is still empty")
+    s.drop()
+}
+
+// =============================================================================
+// String::reserve tests
+// =============================================================================
+
+@test("String::reserve increases capacity")
+pub fn test_string_reserve() {
+    var s = String::new()
+    let initial_cap = s.capacity()
+
+    let success = s.reserve(1000u32)
+    expect_true(success, "reserve succeeds")
+    expect_true(s.capacity() >= initial_cap + 1000u32, "capacity increased by at least 1000")
+    s.drop()
+}
+
+// =============================================================================
+// String::as_str tests
+// =============================================================================
+
+@test("String::as_str returns correct slice")
+pub fn test_string_as_str() {
+    var s = String::new()
+    s.push_str("Test content")
+
+    let slice = s.as_str()
+    expect_eq_u32(slice.len(), 12u32, "slice has correct len")
+
+    let expected: Str = "Test content"
+    expect_true(slice.equals(expected), "slice content matches")
+    s.drop()
+}
+
+@test("String::as_str on empty string")
+pub fn test_string_as_str_empty() {
+    var s = String::new()
+    let slice = s.as_str()
+    expect_eq_u32(slice.len(), 0u32, "empty string slice has len 0")
+    expect_true(slice.is_empty(), "empty string slice is empty")
+    s.drop()
+}
+
+// =============================================================================
+// String capacity growth tests
+// =============================================================================
+
+@test("String grows capacity automatically")
+pub fn test_string_auto_growth() {
+    var s = String::new()
+
+    // Push enough data to trigger growth
+    var i: u32 = 0
+    while i < 100u32 {
+        s.push_byte(65u8)  // 'A'
+        i = i + 1u32
+    }
+
+    expect_eq_u32(s.len(), 100u32, "len is 100 after 100 pushes")
+    expect_true(s.capacity() >= 100u32, "capacity >= 100")
+    s.drop()
+}
+
+// =============================================================================
+// String::len and String::is_empty tests
+// =============================================================================
+
+@test("String::len tracks content length")
+pub fn test_string_len_tracking() {
+    var s = String::new()
+    expect_eq_u32(s.len(), 0u32, "initial len is 0")
+
+    s.push_str("abc")
+    expect_eq_u32(s.len(), 3u32, "len is 3 after 'abc'")
+
+    s.push_str("de")
+    expect_eq_u32(s.len(), 5u32, "len is 5 after 'de'")
+
+    s.clear()
+    expect_eq_u32(s.len(), 0u32, "len is 0 after clear")
+    s.drop()
+}
+
+@test("String::is_empty reflects content state")
+pub fn test_string_is_empty() {
+    var s = String::new()
+    expect_true(s.is_empty(), "new string is empty")
+
+    s.push_byte(65u8)
+    expect_false(s.is_empty(), "string with content not empty")
+
+    s.clear()
+    expect_true(s.is_empty(), "cleared string is empty")
+    s.drop()
+}

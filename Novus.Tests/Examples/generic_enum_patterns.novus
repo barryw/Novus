@@ -17,10 +17,10 @@ impl<T> Maybe<T> {
         }
     }
 
-    pub fn get_or(self, default: T) -> T {
+    pub fn get_or(self, fallback_value: T) -> T {
         match self {
             Just(val) => return val,
-            Nothing => return default
+            Nothing => return fallback_value
         }
     }
 }

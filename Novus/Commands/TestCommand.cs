@@ -73,9 +73,10 @@ public static class TestCommand
             else if (Directory.Exists(targetPath))
             {
                 // Directory - find all .novus files
+                // Exclude stdlib files EXCEPT for std/tests/ which contains stdlib unit tests
                 sourceFiles.AddRange(
                     Directory.EnumerateFiles(targetPath, "*.novus", SearchOption.AllDirectories)
-                        .Where(f => !f.Contains("/std/")) // Exclude stdlib
+                        .Where(f => !f.Contains("/std/") || f.Contains("/std/tests/"))
                 );
             }
             else
@@ -416,10 +417,10 @@ public static class TestCommand
                 sb.AppendLine($"    {testName}()");
                 sb.AppendLine($"    __novus_test_set_mode(0)");
                 sb.AppendLine($"    if __novus_test_did_panic() != 0 {{");
-                sb.AppendLine($"        write(\"PASS\\n\")");
+                sb.AppendLine($"        write(\"\\x9b1mPASS\\x9b0m\\n\")");  // Bold PASS, then reset
                 sb.AppendLine($"        passed++");
                 sb.AppendLine($"    }} else {{");
-                sb.AppendLine($"        write(\"FAIL (expected panic)\\n\")");
+                sb.AppendLine($"        write(\"\\x9b7mFAIL\\x9b0m (expected panic)\\n\")");  // Inverse FAIL, then reset
                 sb.AppendLine($"        failed++");
                 sb.AppendLine($"    }}");
                 sb.AppendLine($"    total++");
@@ -432,10 +433,10 @@ public static class TestCommand
                 sb.AppendLine($"    __test_begin(\"{testName}\")");
                 sb.AppendLine($"    {testName}()");
                 sb.AppendLine($"    if __test_get_failures() == 0 {{");
-                sb.AppendLine($"        write(\"PASS\\n\")");
+                sb.AppendLine($"        write(\"\\x9b1mPASS\\x9b0m\\n\")");  // Bold PASS, then reset
                 sb.AppendLine($"        passed++");
                 sb.AppendLine($"    }} else {{");
-                sb.AppendLine($"        write(\"FAIL\\n\")");
+                sb.AppendLine($"        write(\"\\x9b7mFAIL\\x9b0m\\n\")");  // Inverse FAIL, then reset
                 sb.AppendLine($"        failed++");
                 sb.AppendLine($"    }}");
                 sb.AppendLine($"    total++");
@@ -451,11 +452,11 @@ public static class TestCommand
         sb.AppendLine("    write(\"Total:   %lu\\n\", total)");
         sb.AppendLine();
         sb.AppendLine("    if failed > 0 {");
-        sb.AppendLine("        write(\"\\n*** TESTS FAILED ***\\n\")");
+        sb.AppendLine("        write(\"\\n\\x9b7m*** TESTS FAILED ***\\x9b0m\\n\")");  // Inverse for failed
         sb.AppendLine("        return 1");
         sb.AppendLine("    }");
         sb.AppendLine();
-        sb.AppendLine("    write(\"\\n*** ALL TESTS PASSED ***\\n\")");
+        sb.AppendLine("    write(\"\\n\\x9b1m*** ALL TESTS PASSED ***\\x9b0m\\n\")");  // Bold for passed
         sb.AppendLine("    return 0");
         sb.AppendLine("}");
 

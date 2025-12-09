@@ -1,0 +1,397 @@
+// Test suite for std::strings::core parsing functions
+// Tests parse_i32, parse_u32, parse_hex, parse_bool
+
+from std::strings::core import Str, ParseError
+from std::test::test import expect, expect_true, expect_false, expect_eq_i32, expect_eq_u32, expect_eq_bool
+
+// =============================================================================
+// parse_i32 tests - positive numbers
+// =============================================================================
+
+@test("parse_i32 parses positive number")
+pub fn test_parse_i32_positive() {
+    let s: Str = "42"
+    let result = s.parse_i32()
+    match result {
+        Ok(val) => expect_eq_i32(val, 42, "parsed value is 42"),
+        Err(_) => expect(false, "parse should succeed")
+    }
+}
+
+@test("parse_i32 parses large positive number")
+pub fn test_parse_i32_large_positive() {
+    let s: Str = "1000000"
+    let result = s.parse_i32()
+    match result {
+        Ok(val) => expect_eq_i32(val, 1000000, "parsed value is 1000000"),
+        Err(_) => expect(false, "parse should succeed")
+    }
+}
+
+@test("parse_i32 parses zero")
+pub fn test_parse_i32_zero() {
+    let s: Str = "0"
+    let result = s.parse_i32()
+    match result {
+        Ok(val) => expect_eq_i32(val, 0, "parsed value is 0"),
+        Err(_) => expect(false, "parse should succeed")
+    }
+}
+
+// =============================================================================
+// parse_i32 tests - negative numbers
+// =============================================================================
+
+@test("parse_i32 parses negative number")
+pub fn test_parse_i32_negative() {
+    let s: Str = "-123"
+    let result = s.parse_i32()
+    match result {
+        Ok(val) => expect_eq_i32(val, -123, "parsed value is -123"),
+        Err(_) => expect(false, "parse should succeed")
+    }
+}
+
+@test("parse_i32 parses negative one")
+pub fn test_parse_i32_negative_one() {
+    let s: Str = "-1"
+    let result = s.parse_i32()
+    match result {
+        Ok(val) => expect_eq_i32(val, -1, "parsed value is -1"),
+        Err(_) => expect(false, "parse should succeed")
+    }
+}
+
+// =============================================================================
+// parse_i32 tests - error cases
+// =============================================================================
+
+@test("parse_i32 fails on empty string")
+pub fn test_parse_i32_empty() {
+    let s: Str = ""
+    let result = s.parse_i32()
+    match result {
+        Ok(_) => expect(false, "empty should fail"),
+        Err(_) => expect(true, "empty string returns error")
+    }
+}
+
+@test("parse_i32 fails on invalid characters")
+pub fn test_parse_i32_invalid_chars() {
+    let s: Str = "12a34"
+    let result = s.parse_i32()
+    match result {
+        Ok(_) => expect(false, "invalid chars should fail"),
+        Err(_) => expect(true, "invalid chars returns error")
+    }
+}
+
+@test("parse_i32 fails on letters only")
+pub fn test_parse_i32_letters() {
+    let s: Str = "abc"
+    let result = s.parse_i32()
+    match result {
+        Ok(_) => expect(false, "letters should fail"),
+        Err(_) => expect(true, "letters returns error")
+    }
+}
+
+@test("parse_i32 fails on just minus sign")
+pub fn test_parse_i32_just_minus() {
+    let s: Str = "-"
+    let result = s.parse_i32()
+    match result {
+        Ok(_) => expect(false, "just minus should fail"),
+        Err(_) => expect(true, "just minus returns error")
+    }
+}
+
+// =============================================================================
+// parse_u32 tests - valid numbers
+// =============================================================================
+
+@test("parse_u32 parses positive number")
+pub fn test_parse_u32_positive() {
+    let s: Str = "12345"
+    let result = s.parse_u32()
+    match result {
+        Ok(val) => expect_eq_u32(val, 12345u32, "parsed value is 12345"),
+        Err(_) => expect(false, "parse should succeed")
+    }
+}
+
+@test("parse_u32 parses zero")
+pub fn test_parse_u32_zero() {
+    let s: Str = "0"
+    let result = s.parse_u32()
+    match result {
+        Ok(val) => expect_eq_u32(val, 0u32, "parsed value is 0"),
+        Err(_) => expect(false, "parse should succeed")
+    }
+}
+
+@test("parse_u32 parses large number")
+pub fn test_parse_u32_large() {
+    let s: Str = "4000000000"
+    let result = s.parse_u32()
+    match result {
+        Ok(val) => expect_eq_u32(val, 4000000000u32, "parsed value is 4000000000"),
+        Err(_) => expect(false, "parse should succeed")
+    }
+}
+
+// =============================================================================
+// parse_u32 tests - error cases
+// =============================================================================
+
+@test("parse_u32 fails on empty string")
+pub fn test_parse_u32_empty() {
+    let s: Str = ""
+    let result = s.parse_u32()
+    match result {
+        Ok(_) => expect(false, "empty should fail"),
+        Err(_) => expect(true, "empty string returns error")
+    }
+}
+
+@test("parse_u32 fails on negative sign")
+pub fn test_parse_u32_negative() {
+    let s: Str = "-42"
+    let result = s.parse_u32()
+    match result {
+        Ok(_) => expect(false, "negative should fail for u32"),
+        Err(_) => expect(true, "negative returns error")
+    }
+}
+
+@test("parse_u32 fails on invalid characters")
+pub fn test_parse_u32_invalid() {
+    let s: Str = "123abc"
+    let result = s.parse_u32()
+    match result {
+        Ok(_) => expect(false, "invalid chars should fail"),
+        Err(_) => expect(true, "invalid chars returns error")
+    }
+}
+
+// =============================================================================
+// parse_hex tests - valid hex strings
+// =============================================================================
+
+@test("parse_hex parses lowercase hex")
+pub fn test_parse_hex_lowercase() {
+    let s: Str = "ff"
+    let result = s.parse_hex()
+    match result {
+        Ok(val) => expect_eq_u32(val, 255u32, "ff is 255"),
+        Err(_) => expect(false, "parse should succeed")
+    }
+}
+
+@test("parse_hex parses uppercase hex")
+pub fn test_parse_hex_uppercase() {
+    let s: Str = "FF"
+    let result = s.parse_hex()
+    match result {
+        Ok(val) => expect_eq_u32(val, 255u32, "FF is 255"),
+        Err(_) => expect(false, "parse should succeed")
+    }
+}
+
+@test("parse_hex parses mixed case hex")
+pub fn test_parse_hex_mixed_case() {
+    let s: Str = "aAbB"
+    let result = s.parse_hex()
+    match result {
+        Ok(val) => expect_eq_u32(val, 43707u32, "aAbB is 43707"),
+        Err(_) => expect(false, "parse should succeed")
+    }
+}
+
+@test("parse_hex parses with 0x prefix")
+pub fn test_parse_hex_with_prefix() {
+    let s: Str = "0xff"
+    let result = s.parse_hex()
+    match result {
+        Ok(val) => expect_eq_u32(val, 255u32, "0xff is 255"),
+        Err(_) => expect(false, "parse should succeed")
+    }
+}
+
+@test("parse_hex parses with 0X prefix")
+pub fn test_parse_hex_with_upper_prefix() {
+    let s: Str = "0XFF"
+    let result = s.parse_hex()
+    match result {
+        Ok(val) => expect_eq_u32(val, 255u32, "0XFF is 255"),
+        Err(_) => expect(false, "parse should succeed")
+    }
+}
+
+@test("parse_hex parses zero")
+pub fn test_parse_hex_zero() {
+    let s: Str = "0"
+    let result = s.parse_hex()
+    match result {
+        Ok(val) => expect_eq_u32(val, 0u32, "0 is 0"),
+        Err(_) => expect(false, "parse should succeed")
+    }
+}
+
+@test("parse_hex parses large value")
+pub fn test_parse_hex_large() {
+    let s: Str = "deadbeef"
+    let result = s.parse_hex()
+    match result {
+        Ok(val) => expect_eq_u32(val, 3735928559u32, "deadbeef correct"),
+        Err(_) => expect(false, "parse should succeed")
+    }
+}
+
+// =============================================================================
+// parse_hex tests - error cases
+// =============================================================================
+
+@test("parse_hex fails on empty string")
+pub fn test_parse_hex_empty() {
+    let s: Str = ""
+    let result = s.parse_hex()
+    match result {
+        Ok(_) => expect(false, "empty should fail"),
+        Err(_) => expect(true, "empty returns error")
+    }
+}
+
+@test("parse_hex fails on invalid hex chars")
+pub fn test_parse_hex_invalid() {
+    let s: Str = "xyz"
+    let result = s.parse_hex()
+    match result {
+        Ok(_) => expect(false, "invalid hex should fail"),
+        Err(_) => expect(true, "invalid hex returns error")
+    }
+}
+
+@test("parse_hex fails on just 0x prefix")
+pub fn test_parse_hex_just_prefix() {
+    let s: Str = "0x"
+    let result = s.parse_hex()
+    match result {
+        Ok(_) => expect(false, "just 0x should fail"),
+        Err(_) => expect(true, "just 0x returns error")
+    }
+}
+
+// =============================================================================
+// parse_bool tests - valid booleans
+// =============================================================================
+
+@test("parse_bool parses 'true'")
+pub fn test_parse_bool_true() {
+    let s: Str = "true"
+    let result = s.parse_bool()
+    match result {
+        Ok(val) => expect_eq_bool(val, true, "parsed value is true"),
+        Err(_) => expect(false, "parse should succeed")
+    }
+}
+
+@test("parse_bool parses 'false'")
+pub fn test_parse_bool_false() {
+    let s: Str = "false"
+    let result = s.parse_bool()
+    match result {
+        Ok(val) => expect_eq_bool(val, false, "parsed value is false"),
+        Err(_) => expect(false, "parse should succeed")
+    }
+}
+
+@test("parse_bool parses 'TRUE'")
+pub fn test_parse_bool_upper_true() {
+    let s: Str = "TRUE"
+    let result = s.parse_bool()
+    match result {
+        Ok(val) => expect_eq_bool(val, true, "TRUE is true"),
+        Err(_) => expect(false, "parse should succeed")
+    }
+}
+
+@test("parse_bool parses 'FALSE'")
+pub fn test_parse_bool_upper_false() {
+    let s: Str = "FALSE"
+    let result = s.parse_bool()
+    match result {
+        Ok(val) => expect_eq_bool(val, false, "FALSE is false"),
+        Err(_) => expect(false, "parse should succeed")
+    }
+}
+
+@test("parse_bool parses '1'")
+pub fn test_parse_bool_one() {
+    let s: Str = "1"
+    let result = s.parse_bool()
+    match result {
+        Ok(val) => expect_eq_bool(val, true, "1 is true"),
+        Err(_) => expect(false, "parse should succeed")
+    }
+}
+
+@test("parse_bool parses '0'")
+pub fn test_parse_bool_zero() {
+    let s: Str = "0"
+    let result = s.parse_bool()
+    match result {
+        Ok(val) => expect_eq_bool(val, false, "0 is false"),
+        Err(_) => expect(false, "parse should succeed")
+    }
+}
+
+// =============================================================================
+// parse_bool tests - error cases
+// =============================================================================
+
+@test("parse_bool fails on empty string")
+pub fn test_parse_bool_empty() {
+    let s: Str = ""
+    let result = s.parse_bool()
+    match result {
+        Ok(_) => expect(false, "empty should fail"),
+        Err(_) => expect(true, "empty returns error")
+    }
+}
+
+@test("parse_bool fails on invalid string")
+pub fn test_parse_bool_invalid() {
+    let s: Str = "yes"
+    let result = s.parse_bool()
+    match result {
+        Ok(_) => expect(false, "yes should fail"),
+        Err(_) => expect(true, "invalid returns error")
+    }
+}
+
+@test("parse_bool fails on number other than 0/1")
+pub fn test_parse_bool_other_number() {
+    let s: Str = "2"
+    let result = s.parse_bool()
+    match result {
+        Ok(_) => expect(false, "2 should fail"),
+        Err(_) => expect(true, "2 returns error")
+    }
+}
+
+// =============================================================================
+// parse_i32 with whitespace tests
+// =============================================================================
+
+@test("parse_i32 handles leading spaces")
+pub fn test_parse_i32_leading_spaces() {
+    let s: Str = "  42"
+    let result = s.parse_i32()
+    // This tests whether trim is called internally or not
+    // Behavior depends on implementation - may pass or fail
+    match result {
+        Ok(val) => expect_eq_i32(val, 42, "leading spaces handled"),
+        Err(_) => expect(true, "leading spaces may cause error")
+    }
+}

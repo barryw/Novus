@@ -4879,6 +4879,16 @@ public partial class CCodeGenerator
                     {
                         var fieldValue = EmitValue(kvp.Value);
                         _output.AppendLine($"    {varName}.{kvp.Key} = {fieldValue};");
+
+                        // CRITICAL FIX: Move semantics for struct fields containing droppable content
+                        var fieldSourceIsLocalVar = kvp.Value is IrVariable;
+                        var fieldSourceIsSlot = fieldValue != null && fieldValue.StartsWith("_slot_");
+                        if ((fieldSourceIsLocalVar || fieldSourceIsSlot) && TypeContainsDroppableContent(kvp.Value.Type))
+                        {
+                            var fieldCType = GetCType(kvp.Value.Type);
+                            _output.AppendLine($"    /* Move semantics: zero source to prevent double-free */");
+                            _output.AppendLine($"    __novus_memset(&{fieldValue}, 0, sizeof({fieldCType}));");
+                        }
                     }
                 }
             }
@@ -4924,10 +4934,28 @@ public partial class CCodeGenerator
                                     {
                                         var cType = GetCType(assocValueType);
                                         _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}.data.{enumValueAssign.VariantName}._{i}, (uint8_t*)&{assocValue}, sizeof({cType}));");
+
+                                        // CRITICAL FIX: Move semantics when copying local variable into enum variant data.
+                                        // Zero the source to prevent deferred cleanup from double-freeing.
+                                        var sourceIsLocalVar = enumValueAssign.AssociatedValues[i] is IrVariable;
+                                        if (sourceIsLocalVar && TypeContainsDroppableContent(assocValueType))
+                                        {
+                                            _output.AppendLine($"    /* Move semantics: zero source to prevent double-free */");
+                                            _output.AppendLine($"    __novus_memset(&{assocValue}, 0, sizeof({cType}));");
+                                        }
                                     }
                                     else
                                     {
                                         _output.AppendLine($"    {varName}.data.{enumValueAssign.VariantName}._{i} = {assocValue};");
+
+                                        // CRITICAL FIX: Move semantics for direct assignment too
+                                        var sourceIsLocalVar = enumValueAssign.AssociatedValues[i] is IrVariable;
+                                        if (sourceIsLocalVar && TypeContainsDroppableContent(assocValueType))
+                                        {
+                                            var cType = GetCType(assocValueType);
+                                            _output.AppendLine($"    /* Move semantics: zero source to prevent double-free */");
+                                            _output.AppendLine($"    __novus_memset(&{assocValue}, 0, sizeof({cType}));");
+                                        }
                                     }
                                 }
                             }
@@ -4973,6 +5001,23 @@ public partial class CCodeGenerator
                 {
                     var cType = GetCType(localDecl.Type);
                     _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}, (uint8_t*)&{initValue}, sizeof({cType}));");
+
+                    // CRITICAL FIX: Implement move semantics when copying from ANY local variable.
+                    // When the source is a local variable (including slot variables and pattern-bound
+                    // variables like `block` from `Some(block) => { var b = block; ... }`) AND the
+                    // type contains Drop-able data, we must zero the source after copying to prevent
+                    // double-free. Both source and target would otherwise contain the same pointer,
+                    // and both would have Drop called when they go out of scope.
+                    //
+                    // We check if the InitialValue is an IrVariable (local variable reference) OR
+                    // if the emitted value looks like a slot variable (_slot_ prefix).
+                    var sourceIsLocalVar = localDecl.InitialValue is IrVariable;
+                    var sourceIsSlot = initValue != null && initValue.StartsWith("_slot_");
+                    if ((sourceIsLocalVar || sourceIsSlot) && TypeContainsDroppableContent(localDecl.Type))
+                    {
+                        _output.AppendLine($"    /* Move semantics: zero source to prevent double-free */");
+                        _output.AppendLine($"    __novus_memset(&{initValue}, 0, sizeof({cType}));");
+                    }
                 }
                 else
                 {
@@ -4993,6 +5038,17 @@ public partial class CCodeGenerator
                     else
                     {
                         _output.AppendLine($"    {varName} = {initValue};");
+                    }
+
+                    // CRITICAL FIX: Move semantics for direct assignment from local variables.
+                    // Same logic as the memcpy branch above - when copying from a local variable
+                    // that contains Drop-able content, zero the source to prevent double-free.
+                    var sourceIsLocalVar = localDecl.InitialValue is IrVariable;
+                    var sourceIsSlot = initValue != null && initValue.StartsWith("_slot_");
+                    if ((sourceIsLocalVar || sourceIsSlot) && TypeContainsDroppableContent(localDecl.Type))
+                    {
+                        _output.AppendLine($"    /* Move semantics: zero source to prevent double-free */");
+                        _output.AppendLine($"    __novus_memset(&{initValue}, 0, sizeof({cType}));");
                     }
                 }
             }
@@ -5035,6 +5091,16 @@ public partial class CCodeGenerator
                     {
                         var fieldValue = EmitValue(kvp.Value);
                         _output.AppendLine($"    {varName}.{kvp.Key} = {fieldValue};");
+
+                        // CRITICAL FIX: Move semantics for struct fields containing droppable content
+                        var fieldSourceIsLocalVar = kvp.Value is IrVariable;
+                        var fieldSourceIsSlot = fieldValue != null && fieldValue.StartsWith("_slot_");
+                        if ((fieldSourceIsLocalVar || fieldSourceIsSlot) && TypeContainsDroppableContent(kvp.Value.Type))
+                        {
+                            var fieldCType = GetCType(kvp.Value.Type);
+                            _output.AppendLine($"    /* Move semantics: zero source to prevent double-free */");
+                            _output.AppendLine($"    __novus_memset(&{fieldValue}, 0, sizeof({fieldCType}));");
+                        }
                     }
                 }
             }
@@ -5083,10 +5149,27 @@ public partial class CCodeGenerator
                                     {
                                         var cType = GetCType(assocValueType);
                                         _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}.data.{enumValueDecl.VariantName}._{i}, (uint8_t*)&{assocValue}, sizeof({cType}));");
+
+                                        // CRITICAL FIX: Move semantics when copying local variable into enum variant data.
+                                        var sourceIsLocalVar = enumValueDecl.AssociatedValues[i] is IrVariable;
+                                        if (sourceIsLocalVar && TypeContainsDroppableContent(assocValueType))
+                                        {
+                                            _output.AppendLine($"    /* Move semantics: zero source to prevent double-free */");
+                                            _output.AppendLine($"    __novus_memset(&{assocValue}, 0, sizeof({cType}));");
+                                        }
                                     }
                                     else
                                     {
                                         _output.AppendLine($"    {varName}.data.{enumValueDecl.VariantName}._{i} = {assocValue};");
+
+                                        // CRITICAL FIX: Move semantics for direct assignment too
+                                        var sourceIsLocalVar = enumValueDecl.AssociatedValues[i] is IrVariable;
+                                        if (sourceIsLocalVar && TypeContainsDroppableContent(assocValueType))
+                                        {
+                                            var cType = GetCType(assocValueType);
+                                            _output.AppendLine($"    /* Move semantics: zero source to prevent double-free */");
+                                            _output.AppendLine($"    __novus_memset(&{assocValue}, 0, sizeof({cType}));");
+                                        }
                                     }
                                 }
                             }
@@ -5107,6 +5190,15 @@ public partial class CCodeGenerator
                 var cType = GetCType(localDecl.Type);
                 _output.AppendLine($"    {decl};");
                 _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}, (uint8_t*)&{initValue}, sizeof({cType}));");
+
+                // CRITICAL FIX: Move semantics when copying from local variable
+                var sourceIsLocalVar = localDecl.InitialValue is IrVariable;
+                var sourceIsSlot = initValue != null && initValue.StartsWith("_slot_");
+                if ((sourceIsLocalVar || sourceIsSlot) && TypeContainsDroppableContent(localDecl.Type))
+                {
+                    _output.AppendLine($"    /* Move semantics: zero source to prevent double-free */");
+                    _output.AppendLine($"    __novus_memset(&{initValue}, 0, sizeof({cType}));");
+                }
             }
             else
             {
@@ -5133,6 +5225,15 @@ public partial class CCodeGenerator
                 {
                     _output.AppendLine($"    {decl} = {initValue};");
                 }
+
+                // CRITICAL FIX: Move semantics when copying from local variable (direct assignment)
+                var sourceIsLocalVar = localDecl.InitialValue is IrVariable;
+                var sourceIsSlot = initValue != null && initValue.StartsWith("_slot_");
+                if ((sourceIsLocalVar || sourceIsSlot) && TypeContainsDroppableContent(localDecl.Type))
+                {
+                    _output.AppendLine($"    /* Move semantics: zero source to prevent double-free */");
+                    _output.AppendLine($"    __novus_memset(&{initValue}, 0, sizeof({cType}));");
+                }
             }
             _declaredVariables.Add(varName);
         }
@@ -5156,6 +5257,16 @@ public partial class CCodeGenerator
             {
                 var fieldValue = EmitValue(kvp.Value);
                 _output.AppendLine($"    {varName}.{kvp.Key} = {fieldValue};");
+
+                // CRITICAL FIX: Move semantics for struct fields containing droppable content
+                var fieldSourceIsLocalVar = kvp.Value is IrVariable;
+                var fieldSourceIsSlot = fieldValue != null && fieldValue.StartsWith("_slot_");
+                if ((fieldSourceIsLocalVar || fieldSourceIsSlot) && TypeContainsDroppableContent(kvp.Value.Type))
+                {
+                    var fieldCType = GetCType(kvp.Value.Type);
+                    _output.AppendLine($"    /* Move semantics: zero source to prevent double-free */");
+                    _output.AppendLine($"    __novus_memset(&{fieldValue}, 0, sizeof({fieldCType}));");
+                }
             }
             return;
         }
@@ -5202,10 +5313,27 @@ public partial class CCodeGenerator
                                 {
                                     var cType = GetCType(assocValueType);
                                     _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}.data.{enumValue.VariantName}._{i}, (uint8_t*)&{assocValue}, sizeof({cType}));");
+
+                                    // CRITICAL FIX: Move semantics when copying local variable into enum variant data.
+                                    var sourceIsLocalVar = enumValue.AssociatedValues[i] is IrVariable;
+                                    if (sourceIsLocalVar && TypeContainsDroppableContent(assocValueType))
+                                    {
+                                        _output.AppendLine($"    /* Move semantics: zero source to prevent double-free */");
+                                        _output.AppendLine($"    __novus_memset(&{assocValue}, 0, sizeof({cType}));");
+                                    }
                                 }
                                 else
                                 {
                                     _output.AppendLine($"    {varName}.data.{enumValue.VariantName}._{i} = {assocValue};");
+
+                                    // CRITICAL FIX: Move semantics for direct assignment too
+                                    var sourceIsLocalVar = enumValue.AssociatedValues[i] is IrVariable;
+                                    if (sourceIsLocalVar && TypeContainsDroppableContent(assocValueType))
+                                    {
+                                        var cType = GetCType(assocValueType);
+                                        _output.AppendLine($"    /* Move semantics: zero source to prevent double-free */");
+                                        _output.AppendLine($"    __novus_memset(&{assocValue}, 0, sizeof({cType}));");
+                                    }
                                 }
                             }
                         }
@@ -5232,11 +5360,30 @@ public partial class CCodeGenerator
         {
             var cType = GetCType(store.Value.Type);
             _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}, (uint8_t*)&{value}, sizeof({cType}));");
+
+            // CRITICAL FIX: Move semantics when copying from local variable
+            var sourceIsLocalVar = store.Value is IrVariable;
+            var sourceIsSlot = value != null && value.StartsWith("_slot_");
+            if ((sourceIsLocalVar || sourceIsSlot) && TypeContainsDroppableContent(store.Value.Type))
+            {
+                _output.AppendLine($"    /* Move semantics: zero source to prevent double-free */");
+                _output.AppendLine($"    __novus_memset(&{value}, 0, sizeof({cType}));");
+            }
         }
         else
         {
             // For primitives, pointers, and simple structs/enums, direct assignment works fine
             _output.AppendLine($"    {varName} = {value};");
+
+            // CRITICAL FIX: Move semantics when copying from local variable (direct assignment)
+            var sourceIsLocalVar = store.Value is IrVariable;
+            var sourceIsSlot = value != null && value.StartsWith("_slot_");
+            if ((sourceIsLocalVar || sourceIsSlot) && TypeContainsDroppableContent(store.Value.Type))
+            {
+                var cType = GetCType(store.Value.Type);
+                _output.AppendLine($"    /* Move semantics: zero source to prevent double-free */");
+                _output.AppendLine($"    __novus_memset(&{value}, 0, sizeof({cType}));");
+            }
         }
     }
 
@@ -5859,6 +6006,17 @@ public partial class CCodeGenerator
                             {
                                 var fieldValue = EmitValue(kvp.Value);
                                 _output.AppendLine($"    __out->{kvp.Key} = {fieldValue};");
+
+                                // CRITICAL FIX: Move semantics for struct fields containing droppable content
+                                // When a struct literal's field is a local variable, zero it to prevent double-free
+                                var fieldSourceIsLocalVar = kvp.Value is IrVariable;
+                                var fieldSourceIsSlot = fieldValue != null && fieldValue.StartsWith("_slot_");
+                                if ((fieldSourceIsLocalVar || fieldSourceIsSlot) && TypeContainsDroppableContent(kvp.Value.Type))
+                                {
+                                    var fieldCType = GetCType(kvp.Value.Type);
+                                    _output.AppendLine($"    /* Move semantics: zero source to prevent double-free on return */");
+                                    _output.AppendLine($"    __novus_memset(&{fieldValue}, 0, sizeof({fieldCType}));");
+                                }
                             }
                         }
                     }
@@ -5923,6 +6081,16 @@ public partial class CCodeGenerator
                                                 // Normal field assignment
                                                 var fieldValue = EmitValue(kvp.Value);
                                                 _output.AppendLine($"    __out->data.{enumValue.VariantName}._{i}.{kvp.Key} = {fieldValue};");
+
+                                                // CRITICAL FIX: Move semantics for struct fields containing droppable content
+                                                var fieldSourceIsLocalVar = kvp.Value is IrVariable;
+                                                var fieldSourceIsSlot = fieldValue != null && fieldValue.StartsWith("_slot_");
+                                                if ((fieldSourceIsLocalVar || fieldSourceIsSlot) && TypeContainsDroppableContent(kvp.Value.Type))
+                                                {
+                                                    var fieldCType = GetCType(kvp.Value.Type);
+                                                    _output.AppendLine($"    /* Move semantics: zero source to prevent double-free on return */");
+                                                    _output.AppendLine($"    __novus_memset(&{fieldValue}, 0, sizeof({fieldCType}));");
+                                                }
                                             }
                                         }
                                     }
@@ -5935,10 +6103,28 @@ public partial class CCodeGenerator
                                         {
                                             var cType = GetCType(assocValueType);
                                             _output.AppendLine($"    __novus_memcpy((uint8_t*)&__out->data.{enumValue.VariantName}._{i}, (uint8_t*)&{assocValue}, sizeof({cType}));");
+
+                                            // CRITICAL FIX: Move semantics when copying into return value's enum variant data.
+                                            // Zero the source to prevent deferred cleanup from double-freeing.
+                                            var sourceIsLocalVar = enumValue.AssociatedValues[i] is IrVariable;
+                                            if (sourceIsLocalVar && TypeContainsDroppableContent(assocValueType))
+                                            {
+                                                _output.AppendLine($"    /* Move semantics: zero source to prevent double-free on return */");
+                                                _output.AppendLine($"    __novus_memset(&{assocValue}, 0, sizeof({cType}));");
+                                            }
                                         }
                                         else
                                         {
                                             _output.AppendLine($"    __out->data.{enumValue.VariantName}._{i} = {assocValue};");
+
+                                            // CRITICAL FIX: Move semantics for direct assignment too
+                                            var sourceIsLocalVar = enumValue.AssociatedValues[i] is IrVariable;
+                                            if (sourceIsLocalVar && TypeContainsDroppableContent(assocValueType))
+                                            {
+                                                var cType = GetCType(assocValueType);
+                                                _output.AppendLine($"    /* Move semantics: zero source to prevent double-free on return */");
+                                                _output.AppendLine($"    __novus_memset(&{assocValue}, 0, sizeof({cType}));");
+                                            }
                                         }
                                     }
                                 }
@@ -5967,10 +6153,28 @@ public partial class CCodeGenerator
                     {
                         var cType = GetCType(returnInst.Value.Type);
                         _output.AppendLine($"    __novus_memcpy((uint8_t*)__out, (uint8_t*)&{value}, sizeof({cType}));");
+
+                        // CRITICAL FIX: Move semantics when copying local variable to return value.
+                        // Zero the source to prevent deferred cleanup from double-freeing.
+                        var sourceIsLocalVar = returnInst.Value is IrVariable;
+                        if (sourceIsLocalVar && TypeContainsDroppableContent(returnInst.Value.Type))
+                        {
+                            _output.AppendLine($"    /* Move semantics: zero source to prevent double-free on return */");
+                            _output.AppendLine($"    __novus_memset(&{value}, 0, sizeof({cType}));");
+                        }
                     }
                     else
                     {
                         _output.AppendLine($"    *__out = {value};");
+
+                        // CRITICAL FIX: Move semantics for direct assignment too
+                        var sourceIsLocalVar = returnInst.Value is IrVariable;
+                        if (sourceIsLocalVar && TypeContainsDroppableContent(returnInst.Value.Type))
+                        {
+                            var cType = GetCType(returnInst.Value.Type);
+                            _output.AppendLine($"    /* Move semantics: zero source to prevent double-free on return */");
+                            _output.AppendLine($"    __novus_memset(&{value}, 0, sizeof({cType}));");
+                        }
                     }
                 }
 
@@ -6584,6 +6788,20 @@ public partial class CCodeGenerator
         else
         {
             _output.AppendLine($"    {dataType} {resultName} = {enumValue}.data.{extractData.VariantName}._{extractData.DataIndex};");
+        }
+
+        // CRITICAL FIX: After extracting data from an enum, zero out the source to prevent double-free.
+        // When extracting Drop-able types from Option/Result, the data is moved (not copied).
+        // We must invalidate the source enum so any subsequent Drop on the enum doesn't try
+        // to free the same memory that was moved to the extracted variable.
+        // We zero the source data using memset to ensure any pointers are nulled.
+        //
+        // IMPORTANT: Use TypeContainsDroppableContent (not TypeImplementsDrop) to catch types
+        // like StringBuilder that contain Drop-able content through nested fields (String -> Vec).
+        if (TypeContainsDroppableContent(extractData.DataType))
+        {
+            _output.AppendLine($"    /* Move semantics: zero source to prevent double-free */");
+            _output.AppendLine($"    __novus_memset(&{enumValue}.data.{extractData.VariantName}._{extractData.DataIndex}, 0, sizeof({dataType}));");
         }
     }
 
@@ -8305,6 +8523,45 @@ public partial class CCodeGenerator
 
             default:
                 // Primitives, enums without data, etc. don't contain heap data
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Check if a type contains Drop-able content (including nested in enums like Option/Result).
+    /// This is used to determine if move semantics (zeroing the source) is needed after copying.
+    /// </summary>
+    private bool TypeContainsDroppableContent(IrType type)
+    {
+        switch (type)
+        {
+            case IrStructType structType:
+                // Check if this struct type implements Drop
+                if (_module.TypeImplementsDrop(structType))
+                    return true;
+
+                // Check if any field contains Drop-able content
+                return structType.Fields.Any(f => TypeContainsDroppableContent(f.Type));
+
+            case IrEnumType enumType:
+                // For enums like Option<T> and Result<T,E>, check if any variant's
+                // associated data implements Drop or contains Drop-able content
+                foreach (var variant in enumType.Variants)
+                {
+                    foreach (var dataType in variant.AssociatedData)
+                    {
+                        if (TypeContainsDroppableContent(dataType))
+                            return true;
+                    }
+                }
+                return false;
+
+            case IrArrayType arrayType:
+                // Arrays might contain Drop-able elements
+                return TypeContainsDroppableContent(arrayType.ElementType);
+
+            default:
+                // Primitives, pointers, etc. don't need Drop
                 return false;
         }
     }

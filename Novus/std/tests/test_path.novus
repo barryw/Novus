@@ -1,0 +1,367 @@
+// Test suite for std::strings::core path manipulation functions
+// Tests AmigaDOS path handling: path_split, path_filename, path_dirname, path_is_absolute, path_join
+
+from std::strings::core import Str, String, StringError, PathComponents
+from std::strings::core import path_split, path_filename, path_dirname, path_is_absolute, path_join
+from std::test::test import expect, expect_true, expect_false, expect_eq_u32
+
+// =============================================================================
+// path_split tests - full paths
+// =============================================================================
+
+@test("path_split parses full path with volume")
+pub fn test_path_split_full() {
+    let path: Str = "Work:Projects/Novus/main.novus"
+    let parts = path_split(path)
+
+    // Check volume
+    match parts.volume {
+        Some(vol) => {
+            let expected: Str = "Work:"
+            expect_true(vol.equals(expected), "volume is 'Work:'")
+        },
+        None => expect(false, "volume should be present")
+    }
+
+    // Check directory
+    match parts.directory {
+        Some(dir) => {
+            let expected: Str = "Projects/Novus"
+            expect_true(dir.equals(expected), "directory is 'Projects/Novus'")
+        },
+        None => expect(false, "directory should be present")
+    }
+
+    // Check filename
+    match parts.filename {
+        Some(fname) => {
+            let expected: Str = "main.novus"
+            expect_true(fname.equals(expected), "filename is 'main.novus'")
+        },
+        None => expect(false, "filename should be present")
+    }
+}
+
+@test("path_split parses volume-only path")
+pub fn test_path_split_volume_only() {
+    let path: Str = "RAM:"
+    let parts = path_split(path)
+
+    match parts.volume {
+        Some(vol) => {
+            let expected: Str = "RAM:"
+            expect_true(vol.equals(expected), "volume is 'RAM:'")
+        },
+        None => expect(false, "volume should be present")
+    }
+
+    match parts.directory {
+        Some(_) => expect(false, "no directory expected"),
+        None => expect(true, "no directory")
+    }
+
+    match parts.filename {
+        Some(_) => expect(false, "no filename expected"),
+        None => expect(true, "no filename")
+    }
+}
+
+@test("path_split parses volume with file")
+pub fn test_path_split_volume_file() {
+    let path: Str = "SYS:Startup-Sequence"
+    let parts = path_split(path)
+
+    match parts.volume {
+        Some(vol) => {
+            let expected: Str = "SYS:"
+            expect_true(vol.equals(expected), "volume is 'SYS:'")
+        },
+        None => expect(false, "volume should be present")
+    }
+
+    match parts.directory {
+        Some(_) => expect(false, "no directory expected"),
+        None => expect(true, "no directory - file directly in volume")
+    }
+
+    match parts.filename {
+        Some(fname) => {
+            let expected: Str = "Startup-Sequence"
+            expect_true(fname.equals(expected), "filename is 'Startup-Sequence'")
+        },
+        None => expect(false, "filename should be present")
+    }
+}
+
+@test("path_split parses relative path")
+pub fn test_path_split_relative() {
+    let path: Str = "src/main.novus"
+    let parts = path_split(path)
+
+    match parts.volume {
+        Some(_) => expect(false, "no volume expected"),
+        None => expect(true, "no volume in relative path")
+    }
+
+    match parts.directory {
+        Some(dir) => {
+            let expected: Str = "src"
+            expect_true(dir.equals(expected), "directory is 'src'")
+        },
+        None => expect(false, "directory should be present")
+    }
+
+    match parts.filename {
+        Some(fname) => {
+            let expected: Str = "main.novus"
+            expect_true(fname.equals(expected), "filename is 'main.novus'")
+        },
+        None => expect(false, "filename should be present")
+    }
+}
+
+@test("path_split parses filename only")
+pub fn test_path_split_filename_only() {
+    let path: Str = "readme.txt"
+    let parts = path_split(path)
+
+    match parts.volume {
+        Some(_) => expect(false, "no volume expected"),
+        None => expect(true, "no volume")
+    }
+
+    match parts.directory {
+        Some(_) => expect(false, "no directory expected"),
+        None => expect(true, "no directory")
+    }
+
+    match parts.filename {
+        Some(fname) => {
+            let expected: Str = "readme.txt"
+            expect_true(fname.equals(expected), "filename is 'readme.txt'")
+        },
+        None => expect(false, "filename should be present")
+    }
+}
+
+@test("path_split handles empty string")
+pub fn test_path_split_empty() {
+    let path: Str = ""
+    let parts = path_split(path)
+
+    match parts.volume {
+        Some(_) => expect(false, "no volume expected"),
+        None => expect(true, "no volume")
+    }
+
+    match parts.directory {
+        Some(_) => expect(false, "no directory expected"),
+        None => expect(true, "no directory")
+    }
+
+    match parts.filename {
+        Some(_) => expect(false, "no filename expected"),
+        None => expect(true, "no filename")
+    }
+}
+
+// =============================================================================
+// path_filename tests
+// =============================================================================
+
+@test("path_filename extracts filename from full path")
+pub fn test_path_filename_full() {
+    let path: Str = "Work:Projects/file.txt"
+    match path_filename(path) {
+        Some(fname) => {
+            let expected: Str = "file.txt"
+            expect_true(fname.equals(expected), "filename is 'file.txt'")
+        },
+        None => expect(false, "filename should be extracted")
+    }
+}
+
+@test("path_filename extracts filename from relative path")
+pub fn test_path_filename_relative() {
+    let path: Str = "src/lib/module.novus"
+    match path_filename(path) {
+        Some(fname) => {
+            let expected: Str = "module.novus"
+            expect_true(fname.equals(expected), "filename is 'module.novus'")
+        },
+        None => expect(false, "filename should be extracted")
+    }
+}
+
+@test("path_filename returns filename when no path")
+pub fn test_path_filename_bare() {
+    let path: Str = "standalone.bin"
+    match path_filename(path) {
+        Some(fname) => {
+            let expected: Str = "standalone.bin"
+            expect_true(fname.equals(expected), "filename is 'standalone.bin'")
+        },
+        None => expect(false, "filename should be returned")
+    }
+}
+
+@test("path_filename returns None for volume only")
+pub fn test_path_filename_volume_only() {
+    let path: Str = "DH0:"
+    match path_filename(path) {
+        Some(_) => expect(false, "no filename expected for volume-only"),
+        None => expect(true, "no filename for volume-only")
+    }
+}
+
+// =============================================================================
+// path_dirname tests
+// =============================================================================
+
+@test("path_dirname extracts directory from full path")
+pub fn test_path_dirname_full() {
+    let path: Str = "Work:Projects/src/main.novus"
+    match path_dirname(path) {
+        Some(dir) => {
+            let expected: Str = "Work:Projects/src"
+            expect_true(dir.equals(expected), "dirname is 'Work:Projects/src'")
+        },
+        None => expect(false, "dirname should be extracted")
+    }
+}
+
+@test("path_dirname extracts directory from relative path")
+pub fn test_path_dirname_relative() {
+    let path: Str = "src/module.novus"
+    match path_dirname(path) {
+        Some(dir) => {
+            let expected: Str = "src"
+            expect_true(dir.equals(expected), "dirname is 'src'")
+        },
+        None => expect(false, "dirname should be extracted")
+    }
+}
+
+@test("path_dirname returns volume for volume/file")
+pub fn test_path_dirname_volume_file() {
+    let path: Str = "RAM:temp.txt"
+    match path_dirname(path) {
+        Some(dir) => {
+            let expected: Str = "RAM:"
+            expect_true(dir.equals(expected), "dirname is 'RAM:'")
+        },
+        None => expect(false, "dirname should be volume")
+    }
+}
+
+@test("path_dirname returns None for filename only")
+pub fn test_path_dirname_filename_only() {
+    let path: Str = "file.txt"
+    match path_dirname(path) {
+        Some(_) => expect(false, "no dirname for bare filename"),
+        None => expect(true, "no dirname expected")
+    }
+}
+
+// =============================================================================
+// path_is_absolute tests
+// =============================================================================
+
+@test("path_is_absolute returns true for volume paths")
+pub fn test_path_is_absolute_volume() {
+    let path: Str = "SYS:Startup-Sequence"
+    expect_true(path_is_absolute(path), "volume path is absolute")
+}
+
+@test("path_is_absolute returns true for volume only")
+pub fn test_path_is_absolute_volume_only() {
+    let path: Str = "RAM:"
+    expect_true(path_is_absolute(path), "volume-only is absolute")
+}
+
+@test("path_is_absolute returns false for relative path")
+pub fn test_path_is_absolute_relative() {
+    let path: Str = "src/main.novus"
+    expect_false(path_is_absolute(path), "relative path not absolute")
+}
+
+@test("path_is_absolute returns false for filename only")
+pub fn test_path_is_absolute_filename() {
+    let path: Str = "readme.txt"
+    expect_false(path_is_absolute(path), "filename not absolute")
+}
+
+@test("path_is_absolute returns false for empty")
+pub fn test_path_is_absolute_empty() {
+    let path: Str = ""
+    expect_false(path_is_absolute(path), "empty not absolute")
+}
+
+// =============================================================================
+// path_join tests
+// =============================================================================
+
+@test("path_join combines volume and filename")
+pub fn test_path_join_volume_file() {
+    let base: Str = "Work:"
+    let component: Str = "file.txt"
+    let result = path_join(base, component)
+    match result {
+        Ok(joined) => {
+            var s = joined
+            let expected: Str = "Work:file.txt"
+            expect_true(s.as_str().equals(expected), "joined is 'Work:file.txt'")
+            s.drop()
+        },
+        Err(_) => expect(false, "join should succeed")
+    }
+}
+
+@test("path_join combines path and filename")
+pub fn test_path_join_path_file() {
+    let base: Str = "Work:Projects"
+    let component: Str = "main.novus"
+    let result = path_join(base, component)
+    match result {
+        Ok(joined) => {
+            var s = joined
+            let expected: Str = "Work:Projects/main.novus"
+            expect_true(s.as_str().equals(expected), "joined is 'Work:Projects/main.novus'")
+            s.drop()
+        },
+        Err(_) => expect(false, "join should succeed")
+    }
+}
+
+@test("path_join handles trailing slash")
+pub fn test_path_join_trailing_slash() {
+    let base: Str = "Work:Projects/"
+    let component: Str = "file.txt"
+    let result = path_join(base, component)
+    match result {
+        Ok(joined) => {
+            var s = joined
+            // Should not double the slash
+            let expected: Str = "Work:Projects/file.txt"
+            expect_true(s.as_str().equals(expected), "no double slash")
+            s.drop()
+        },
+        Err(_) => expect(false, "join should succeed")
+    }
+}
+
+@test("path_join combines relative paths")
+pub fn test_path_join_relative() {
+    let base: Str = "src"
+    let component: Str = "module.novus"
+    let result = path_join(base, component)
+    match result {
+        Ok(joined) => {
+            var s = joined
+            let expected: Str = "src/module.novus"
+            expect_true(s.as_str().equals(expected), "joined is 'src/module.novus'")
+            s.drop()
+        },
+        Err(_) => expect(false, "join should succeed")
+    }
+}

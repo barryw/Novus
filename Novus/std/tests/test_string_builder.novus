@@ -1,0 +1,339 @@
+// Test suite for std::strings::core StringBuilder
+// Tests the StringBuilder type for efficient string construction
+
+from std::strings::core import StringBuilder, String, Str
+from std::test::test import expect, expect_true, expect_false, expect_eq_u32
+
+// =============================================================================
+// StringBuilder::new tests
+// =============================================================================
+
+@test("StringBuilder::new creates empty builder")
+pub fn test_sb_new() {
+    let opt = StringBuilder::new()
+    match opt {
+        Some(sb) => {
+            var builder = sb
+            expect_eq_u32(builder.len(), 0u32, "new builder has len 0")
+            expect_true(builder.is_empty(), "new builder is empty")
+            builder.drop()
+        },
+        None => expect(false, "StringBuilder::new should succeed")
+    }
+}
+
+// =============================================================================
+// StringBuilder::with_capacity tests
+// =============================================================================
+
+@test("StringBuilder::with_capacity allocates correctly")
+pub fn test_sb_with_capacity() {
+    let opt = StringBuilder::with_capacity(256u32)
+    match opt {
+        Some(sb) => {
+            var builder = sb
+            expect_eq_u32(builder.len(), 0u32, "with_capacity builder has len 0")
+            expect_true(builder.is_empty(), "with_capacity builder is empty")
+            builder.drop()
+        },
+        None => expect(false, "StringBuilder::with_capacity should succeed")
+    }
+}
+
+// =============================================================================
+// StringBuilder::push_str tests
+// =============================================================================
+
+@test("StringBuilder::push_str appends strings")
+pub fn test_sb_push_str() {
+    let opt = StringBuilder::new()
+    match opt {
+        Some(sb) => {
+            var builder = sb
+            builder.push_str("Hello")
+            expect_eq_u32(builder.len(), 5u32, "len after first push")
+
+            builder.push_str(", ")
+            builder.push_str("World!")
+            expect_eq_u32(builder.len(), 13u32, "len after all pushes")
+            builder.drop()
+        },
+        None => expect(false, "StringBuilder::new should succeed")
+    }
+}
+
+// =============================================================================
+// StringBuilder::push_byte tests
+// =============================================================================
+
+@test("StringBuilder::push_byte appends single bytes")
+pub fn test_sb_push_byte() {
+    let opt = StringBuilder::new()
+    match opt {
+        Some(sb) => {
+            var builder = sb
+            builder.push_byte(65u8)  // 'A'
+            builder.push_byte(66u8)  // 'B'
+            builder.push_byte(67u8)  // 'C'
+            expect_eq_u32(builder.len(), 3u32, "len after 3 bytes")
+            builder.drop()
+        },
+        None => expect(false, "StringBuilder::new should succeed")
+    }
+}
+
+// =============================================================================
+// StringBuilder::push_i32 tests
+// =============================================================================
+
+@test("StringBuilder::push_i32 formats positive numbers")
+pub fn test_sb_push_i32_positive() {
+    let opt = StringBuilder::new()
+    match opt {
+        Some(sb) => {
+            var builder = sb
+            builder.push_i32(42)
+            expect_eq_u32(builder.len(), 2u32, "len for '42'")
+            builder.drop()
+        },
+        None => expect(false, "StringBuilder::new should succeed")
+    }
+}
+
+@test("StringBuilder::push_i32 formats negative numbers")
+pub fn test_sb_push_i32_negative() {
+    let opt = StringBuilder::new()
+    match opt {
+        Some(sb) => {
+            var builder = sb
+            builder.push_i32(-123)
+            expect_eq_u32(builder.len(), 4u32, "len for '-123'")
+            builder.drop()
+        },
+        None => expect(false, "StringBuilder::new should succeed")
+    }
+}
+
+@test("StringBuilder::push_i32 formats zero")
+pub fn test_sb_push_i32_zero() {
+    let opt = StringBuilder::new()
+    match opt {
+        Some(sb) => {
+            var builder = sb
+            builder.push_i32(0)
+            expect_eq_u32(builder.len(), 1u32, "len for '0'")
+            builder.drop()
+        },
+        None => expect(false, "StringBuilder::new should succeed")
+    }
+}
+
+@test("StringBuilder::push_i32 formats large numbers")
+pub fn test_sb_push_i32_large() {
+    let opt = StringBuilder::new()
+    match opt {
+        Some(sb) => {
+            var builder = sb
+            builder.push_i32(1000000)
+            expect_eq_u32(builder.len(), 7u32, "len for '1000000'")
+            builder.drop()
+        },
+        None => expect(false, "StringBuilder::new should succeed")
+    }
+}
+
+// =============================================================================
+// StringBuilder::push_u32 tests
+// =============================================================================
+
+@test("StringBuilder::push_u32 formats unsigned numbers")
+pub fn test_sb_push_u32() {
+    let opt = StringBuilder::new()
+    match opt {
+        Some(sb) => {
+            var builder = sb
+            builder.push_u32(12345u32)
+            expect_eq_u32(builder.len(), 5u32, "len for '12345'")
+            builder.drop()
+        },
+        None => expect(false, "StringBuilder::new should succeed")
+    }
+}
+
+@test("StringBuilder::push_u32 formats zero")
+pub fn test_sb_push_u32_zero() {
+    let opt = StringBuilder::new()
+    match opt {
+        Some(sb) => {
+            var builder = sb
+            builder.push_u32(0u32)
+            expect_eq_u32(builder.len(), 1u32, "len for '0'")
+            builder.drop()
+        },
+        None => expect(false, "StringBuilder::new should succeed")
+    }
+}
+
+// =============================================================================
+// StringBuilder::push_hex tests
+// =============================================================================
+
+@test("StringBuilder::push_hex formats lowercase hex")
+pub fn test_sb_push_hex() {
+    let opt = StringBuilder::new()
+    match opt {
+        Some(sb) => {
+            var builder = sb
+            builder.push_hex(255u32)  // 0xff
+            // "ff" = 2 chars
+            expect_eq_u32(builder.len(), 2u32, "len for 'ff'")
+            builder.drop()
+        },
+        None => expect(false, "StringBuilder::new should succeed")
+    }
+}
+
+@test("StringBuilder::push_hex formats zero")
+pub fn test_sb_push_hex_zero() {
+    let opt = StringBuilder::new()
+    match opt {
+        Some(sb) => {
+            var builder = sb
+            builder.push_hex(0u32)
+            expect_eq_u32(builder.len(), 1u32, "len for '0'")
+            builder.drop()
+        },
+        None => expect(false, "StringBuilder::new should succeed")
+    }
+}
+
+@test("StringBuilder::push_hex formats large value")
+pub fn test_sb_push_hex_large() {
+    let opt = StringBuilder::new()
+    match opt {
+        Some(sb) => {
+            var builder = sb
+            builder.push_hex(65535u32)  // 0xffff
+            // "ffff" = 4 chars
+            expect_eq_u32(builder.len(), 4u32, "len for 'ffff'")
+            builder.drop()
+        },
+        None => expect(false, "StringBuilder::new should succeed")
+    }
+}
+
+// =============================================================================
+// StringBuilder::push_hex_upper tests
+// =============================================================================
+
+@test("StringBuilder::push_hex_upper formats uppercase hex")
+pub fn test_sb_push_hex_upper() {
+    let opt = StringBuilder::new()
+    match opt {
+        Some(sb) => {
+            var builder = sb
+            builder.push_hex_upper(255u32)  // 0xFF
+            // "FF" = 2 chars
+            expect_eq_u32(builder.len(), 2u32, "len for 'FF'")
+            builder.drop()
+        },
+        None => expect(false, "StringBuilder::new should succeed")
+    }
+}
+
+// =============================================================================
+// StringBuilder::push_bool tests
+// =============================================================================
+
+@test("StringBuilder::push_bool formats true")
+pub fn test_sb_push_bool_true() {
+    let opt = StringBuilder::new()
+    match opt {
+        Some(sb) => {
+            var builder = sb
+            builder.push_bool(true)
+            expect_eq_u32(builder.len(), 4u32, "len for 'true'")
+            builder.drop()
+        },
+        None => expect(false, "StringBuilder::new should succeed")
+    }
+}
+
+@test("StringBuilder::push_bool formats false")
+pub fn test_sb_push_bool_false() {
+    let opt = StringBuilder::new()
+    match opt {
+        Some(sb) => {
+            var builder = sb
+            builder.push_bool(false)
+            expect_eq_u32(builder.len(), 5u32, "len for 'false'")
+            builder.drop()
+        },
+        None => expect(false, "StringBuilder::new should succeed")
+    }
+}
+
+// =============================================================================
+// StringBuilder combined operations tests
+// =============================================================================
+
+@test("StringBuilder builds complex string")
+pub fn test_sb_complex_build() {
+    let opt = StringBuilder::new()
+    match opt {
+        Some(sb) => {
+            var builder = sb
+            builder.push_str("Count: ")
+            builder.push_i32(42)
+            builder.push_str(", Hex: 0x")
+            builder.push_hex(255u32)
+            builder.push_str(", Flag: ")
+            builder.push_bool(true)
+
+            // "Count: 42, Hex: 0xff, Flag: true"
+            // 7 + 2 + 9 + 2 + 8 + 4 = 32
+            expect_eq_u32(builder.len(), 32u32, "complex string len")
+            builder.drop()
+        },
+        None => expect(false, "StringBuilder::new should succeed")
+    }
+}
+
+// =============================================================================
+// StringBuilder::len and is_empty tests
+// =============================================================================
+
+@test("StringBuilder::len tracks content")
+pub fn test_sb_len() {
+    let opt = StringBuilder::new()
+    match opt {
+        Some(sb) => {
+            var builder = sb
+            expect_eq_u32(builder.len(), 0u32, "initial len is 0")
+
+            builder.push_str("abc")
+            expect_eq_u32(builder.len(), 3u32, "len after 'abc'")
+
+            builder.push_byte(100u8)
+            expect_eq_u32(builder.len(), 4u32, "len after byte")
+            builder.drop()
+        },
+        None => expect(false, "StringBuilder::new should succeed")
+    }
+}
+
+@test("StringBuilder::is_empty reflects state")
+pub fn test_sb_is_empty() {
+    let opt = StringBuilder::new()
+    match opt {
+        Some(sb) => {
+            var builder = sb
+            expect_true(builder.is_empty(), "new builder is empty")
+
+            builder.push_byte(65u8)
+            expect_false(builder.is_empty(), "builder with content not empty")
+            builder.drop()
+        },
+        None => expect(false, "StringBuilder::new should succeed")
+    }
+}

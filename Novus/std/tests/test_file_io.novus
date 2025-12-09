@@ -1,0 +1,804 @@
+// Test suite for std::ffi::dos file I/O operations
+// Tests Open, Close, Read, Write, Seek, DeleteFile, Rename, Lock, Examine, Info
+
+from std::ffi::dos import Open, Close, Read, Write, Seek, DeleteFile, Rename
+from std::ffi::dos import Lock, UnLock, Examine, Info, IoErr, CreateDir
+from std::ffi::amiga_consts import MODE_NEWFILE, MODE_OLDFILE, MODE_READWRITE
+from std::ffi::amiga_consts import OFFSET_BEGINNING, OFFSET_CURRENT, OFFSET_END
+from std::ffi::amiga_consts import SHARED_LOCK, EXCLUSIVE_LOCK
+from std::ffi::amiga_structs import FileInfoBlock, InfoData
+from std::memory::block import MemoryBlock
+from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
+from std::test::test import expect, expect_true, expect_false, expect_eq_i32, expect_eq_u32
+from std::strings::core import Str
+
+// =============================================================================
+// Open and Close tests
+// =============================================================================
+
+@test("Open with MODE_NEWFILE creates file")
+pub fn test_open_newfile() {
+    let path: Str = "RAM:novus_test_file.txt"
+
+    // Delete if exists from previous test
+    DeleteFile(path)
+
+    // Open for writing (creates new file)
+    let fh = Open(path, MODE_NEWFILE as i32)
+    expect_true(fh != 0, "Open MODE_NEWFILE returns valid handle")
+
+    if fh != 0 {
+        let result = Close(fh)
+        expect_true(result != 0, "Close succeeds")
+    }
+
+    // Clean up
+    DeleteFile(path)
+}
+
+@test("Open with MODE_OLDFILE opens existing file")
+pub fn test_open_oldfile() {
+    let path: Str = "RAM:novus_test_file.txt"
+
+    // Create file first
+    let fh_create = Open(path, MODE_NEWFILE as i32)
+    expect_true(fh_create != 0, "create file succeeds")
+    if fh_create != 0 {
+        Close(fh_create)
+    }
+
+    // Now open with MODE_OLDFILE
+    let fh = Open(path, MODE_OLDFILE as i32)
+    expect_true(fh != 0, "Open MODE_OLDFILE succeeds for existing file")
+
+    if fh != 0 {
+        Close(fh)
+    }
+
+    // Clean up
+    DeleteFile(path)
+}
+
+@test("Open with MODE_OLDFILE fails for nonexistent file")
+pub fn test_open_oldfile_nonexistent() {
+    let path: Str = "RAM:does_not_exist_12345.txt"
+
+    // Make sure file doesn't exist
+    DeleteFile(path)
+
+    let fh = Open(path, MODE_OLDFILE as i32)
+    expect_true(fh == 0, "Open MODE_OLDFILE fails for nonexistent file")
+
+    // No need to close if open failed
+}
+
+@test("Open with MODE_READWRITE opens for read/write")
+pub fn test_open_readwrite() {
+    let path: Str = "RAM:novus_test_file.txt"
+
+    // Delete if exists
+    DeleteFile(path)
+
+    // Open with MODE_READWRITE (creates if doesn't exist)
+    let fh = Open(path, MODE_READWRITE as i32)
+    expect_true(fh != 0, "Open MODE_READWRITE returns valid handle")
+
+    if fh != 0 {
+        Close(fh)
+    }
+
+    // Clean up
+    DeleteFile(path)
+}
+
+// =============================================================================
+// Write tests
+// =============================================================================
+
+@test("Write writes data to file")
+pub fn test_write_basic() {
+    let path: Str = "RAM:novus_test_file.txt"
+    DeleteFile(path)
+
+    let fh = Open(path, MODE_NEWFILE as i32)
+    expect_true(fh != 0, "file opened for writing")
+
+    if fh != 0 {
+        let data: Str = "Hello, Amiga!"
+        let bytes_written = Write(fh, data.as_ptr(), 13)
+        expect_eq_i32(bytes_written, 13, "wrote 13 bytes")
+        Close(fh)
+    }
+
+    DeleteFile(path)
+}
+
+@test("Write multiple times appends data")
+pub fn test_write_multiple() {
+    let path: Str = "RAM:novus_test_file.txt"
+    DeleteFile(path)
+
+    let fh = Open(path, MODE_NEWFILE as i32)
+    expect_true(fh != 0, "file opened")
+
+    if fh != 0 {
+        let data1: Str = "First"
+        let written1 = Write(fh, data1.as_ptr(), 5)
+        expect_eq_i32(written1, 5, "first write 5 bytes")
+
+        let data2: Str = "Second"
+        let written2 = Write(fh, data2.as_ptr(), 6)
+        expect_eq_i32(written2, 6, "second write 6 bytes")
+
+        Close(fh)
+    }
+
+    DeleteFile(path)
+}
+
+// =============================================================================
+// Read tests
+// =============================================================================
+
+@test("Read reads data from file")
+pub fn test_read_basic() {
+    let path: Str = "RAM:novus_test_file.txt"
+    DeleteFile(path)
+
+    // First write some data
+    let fh_write = Open(path, MODE_NEWFILE as i32)
+    if fh_write != 0 {
+        let data: Str = "Test data"
+        Write(fh_write, data.as_ptr(), 9)
+        Close(fh_write)
+    }
+
+    // Now read it back
+    let opt = MemoryBlock::alloc(64u32, MEMF_PUBLIC | MEMF_CLEAR)
+    match opt {
+        Some(block) => {
+            var b = block
+            let buffer = b.ptr()
+
+            let fh_read = Open(path, MODE_OLDFILE as i32)
+            expect_true(fh_read != 0, "file opened for reading")
+
+            if fh_read != 0 {
+                let bytes_read = Read(fh_read, buffer, 64)
+                expect_eq_i32(bytes_read, 9, "read 9 bytes")
+
+                // Verify content
+                expect_true(buffer[0] == 84u8, "first byte is 'T'")  // 'T'
+                expect_true(buffer[1] == 101u8, "second byte is 'e'") // 'e'
+                expect_true(buffer[2] == 115u8, "third byte is 's'")  // 's'
+                expect_true(buffer[3] == 116u8, "fourth byte is 't'") // 't'
+
+                Close(fh_read)
+            }
+
+            b.free()
+        },
+        None => expect(false, "buffer allocation should succeed")
+    }
+
+    DeleteFile(path)
+}
+
+@test("Read returns 0 at end of file")
+pub fn test_read_eof() {
+    let path: Str = "RAM:novus_test_file.txt"
+    DeleteFile(path)
+
+    // Write small amount of data
+    let fh_write = Open(path, MODE_NEWFILE as i32)
+    if fh_write != 0 {
+        let data: Str = "ABC"
+        Write(fh_write, data.as_ptr(), 3)
+        Close(fh_write)
+    }
+
+    let opt = MemoryBlock::alloc(64u32, MEMF_PUBLIC | MEMF_CLEAR)
+    match opt {
+        Some(block) => {
+            var b = block
+            let buffer = b.ptr()
+
+            let fh_read = Open(path, MODE_OLDFILE as i32)
+            if fh_read != 0 {
+                // First read gets data
+                let bytes1 = Read(fh_read, buffer, 64)
+                expect_eq_i32(bytes1, 3, "first read gets 3 bytes")
+
+                // Second read at EOF
+                let bytes2 = Read(fh_read, buffer, 64)
+                expect_eq_i32(bytes2, 0, "read at EOF returns 0")
+
+                Close(fh_read)
+            }
+
+            b.free()
+        },
+        None => expect(false, "buffer allocation should succeed")
+    }
+
+    DeleteFile(path)
+}
+
+// =============================================================================
+// Seek tests
+// =============================================================================
+
+@test("Seek OFFSET_BEGINNING moves to start")
+pub fn test_seek_beginning() {
+    let path: Str = "RAM:novus_test_file.txt"
+    DeleteFile(path)
+
+    // Write data
+    let fh_write = Open(path, MODE_NEWFILE as i32)
+    if fh_write != 0 {
+        let data: Str = "0123456789"
+        Write(fh_write, data.as_ptr(), 10)
+        Close(fh_write)
+    }
+
+    let opt = MemoryBlock::alloc(16u32, MEMF_PUBLIC | MEMF_CLEAR)
+    match opt {
+        Some(block) => {
+            var b = block
+            let buffer = b.ptr()
+
+            let fh = Open(path, MODE_OLDFILE as i32)
+            if fh != 0 {
+                // Read some bytes (moves position)
+                Read(fh, buffer, 5)
+
+                // Seek back to beginning
+                let old_pos = Seek(fh, 0, OFFSET_BEGINNING as i32)
+                // old_pos should be 5 (where we were)
+                expect_eq_i32(old_pos, 5, "Seek returns old position")
+
+                // Now read should get first bytes again
+                let bytes = Read(fh, buffer, 3)
+                expect_eq_i32(bytes, 3, "read after seek")
+                expect_true(buffer[0] == 48u8, "first byte is '0'") // '0'
+
+                Close(fh)
+            }
+
+            b.free()
+        },
+        None => expect(false, "buffer allocation should succeed")
+    }
+
+    DeleteFile(path)
+}
+
+@test("Seek OFFSET_CURRENT moves relative")
+pub fn test_seek_current() {
+    let path: Str = "RAM:novus_test_file.txt"
+    DeleteFile(path)
+
+    // Write data
+    let fh_write = Open(path, MODE_NEWFILE as i32)
+    if fh_write != 0 {
+        let data: Str = "ABCDEFGHIJ"
+        Write(fh_write, data.as_ptr(), 10)
+        Close(fh_write)
+    }
+
+    let opt = MemoryBlock::alloc(16u32, MEMF_PUBLIC | MEMF_CLEAR)
+    match opt {
+        Some(block) => {
+            var b = block
+            let buffer = b.ptr()
+
+            let fh = Open(path, MODE_OLDFILE as i32)
+            if fh != 0 {
+                // Move forward 5 bytes relative to current (start)
+                Seek(fh, 5, OFFSET_CURRENT as i32)
+
+                let bytes = Read(fh, buffer, 1)
+                expect_eq_i32(bytes, 1, "read 1 byte")
+                expect_true(buffer[0] == 70u8, "byte is 'F'") // 'F' is at position 5
+
+                Close(fh)
+            }
+
+            b.free()
+        },
+        None => expect(false, "buffer allocation should succeed")
+    }
+
+    DeleteFile(path)
+}
+
+@test("Seek OFFSET_END moves relative to end")
+pub fn test_seek_end() {
+    let path: Str = "RAM:novus_test_file.txt"
+    DeleteFile(path)
+
+    // Write data
+    let fh_write = Open(path, MODE_NEWFILE as i32)
+    if fh_write != 0 {
+        let data: Str = "ABCDEFGHIJ"
+        Write(fh_write, data.as_ptr(), 10)
+        Close(fh_write)
+    }
+
+    let opt = MemoryBlock::alloc(16u32, MEMF_PUBLIC | MEMF_CLEAR)
+    match opt {
+        Some(block) => {
+            var b = block
+            let buffer = b.ptr()
+
+            let fh = Open(path, MODE_OLDFILE as i32)
+            if fh != 0 {
+                // Move to 2 bytes before end
+                Seek(fh, -2, OFFSET_END as i32)
+
+                let bytes = Read(fh, buffer, 2)
+                expect_eq_i32(bytes, 2, "read 2 bytes")
+                expect_true(buffer[0] == 73u8, "first byte is 'I'")  // 'I'
+                expect_true(buffer[1] == 74u8, "second byte is 'J'") // 'J'
+
+                Close(fh)
+            }
+
+            b.free()
+        },
+        None => expect(false, "buffer allocation should succeed")
+    }
+
+    DeleteFile(path)
+}
+
+// =============================================================================
+// DeleteFile tests
+// =============================================================================
+
+@test("DeleteFile removes existing file")
+pub fn test_delete_existing() {
+    let path: Str = "RAM:novus_test_file.txt"
+
+    // Create file
+    let fh = Open(path, MODE_NEWFILE as i32)
+    if fh != 0 {
+        Close(fh)
+    }
+
+    // Delete it
+    let result = DeleteFile(path)
+    expect_true(result != 0, "DeleteFile succeeds for existing file")
+
+    // Verify it's gone
+    let fh2 = Open(path, MODE_OLDFILE as i32)
+    expect_true(fh2 == 0, "file no longer exists after delete")
+}
+
+@test("DeleteFile fails for nonexistent file")
+pub fn test_delete_nonexistent() {
+    let path: Str = "RAM:definitely_not_here_xyz.txt"
+
+    // Make sure it doesn't exist
+    DeleteFile(path)
+
+    // Try to delete again
+    let result = DeleteFile(path)
+    expect_true(result == 0, "DeleteFile fails for nonexistent file")
+}
+
+// =============================================================================
+// Rename tests
+// =============================================================================
+
+@test("Rename changes file name")
+pub fn test_rename_file() {
+    let path1: Str = "RAM:novus_test_file.txt"
+    let path2: Str = "RAM:novus_test_file2.txt"
+
+    // Clean up both paths
+    DeleteFile(path1)
+    DeleteFile(path2)
+
+    // Create file at path1
+    let fh = Open(path1, MODE_NEWFILE as i32)
+    if fh != 0 {
+        let data: Str = "content"
+        Write(fh, data.as_ptr(), 7)
+        Close(fh)
+    }
+
+    // Rename to path2
+    let result = Rename(path1, path2)
+    expect_true(result != 0, "Rename succeeds")
+
+    // Verify path1 is gone
+    let fh1 = Open(path1, MODE_OLDFILE as i32)
+    expect_true(fh1 == 0, "original path no longer exists")
+
+    // Verify path2 exists and has content
+    let opt = MemoryBlock::alloc(16u32, MEMF_PUBLIC | MEMF_CLEAR)
+    match opt {
+        Some(block) => {
+            var b = block
+            let buffer = b.ptr()
+
+            let fh2 = Open(path2, MODE_OLDFILE as i32)
+            expect_true(fh2 != 0, "new path exists")
+
+            if fh2 != 0 {
+                let bytes = Read(fh2, buffer, 16)
+                expect_eq_i32(bytes, 7, "content preserved after rename")
+                Close(fh2)
+            }
+
+            b.free()
+        },
+        None => expect(false, "buffer allocation should succeed")
+    }
+
+    // Clean up
+    DeleteFile(path2)
+}
+
+// =============================================================================
+// Lock and Examine tests
+// =============================================================================
+
+@test("Lock with SHARED_LOCK gets lock on file")
+pub fn test_lock_shared() {
+    let path: Str = "RAM:novus_test_file.txt"
+    DeleteFile(path)
+
+    // Create file
+    let fh = Open(path, MODE_NEWFILE as i32)
+    if fh != 0 {
+        let data: Str = "test"
+        Write(fh, data.as_ptr(), 4)
+        Close(fh)
+    }
+
+    // Get shared lock
+    let lock = Lock(path, SHARED_LOCK as i32)
+    expect_true(lock != 0, "Lock SHARED_LOCK succeeds")
+
+    if lock != 0 {
+        UnLock(lock)
+    }
+
+    DeleteFile(path)
+}
+
+@test("Lock with EXCLUSIVE_LOCK gets lock on file")
+pub fn test_lock_exclusive() {
+    let path: Str = "RAM:novus_test_file.txt"
+    DeleteFile(path)
+
+    // Create file
+    let fh = Open(path, MODE_NEWFILE as i32)
+    if fh != 0 {
+        let data: Str = "test"
+        Write(fh, data.as_ptr(), 4)
+        Close(fh)
+    }
+
+    // Get exclusive lock
+    let lock = Lock(path, EXCLUSIVE_LOCK as i32)
+    expect_true(lock != 0, "Lock EXCLUSIVE_LOCK succeeds")
+
+    if lock != 0 {
+        UnLock(lock)
+    }
+
+    DeleteFile(path)
+}
+
+@test("Lock fails for nonexistent file")
+pub fn test_lock_nonexistent() {
+    let path: Str = "RAM:no_file_here_abc.txt"
+    DeleteFile(path)
+
+    let lock = Lock(path, SHARED_LOCK as i32)
+    expect_true(lock == 0, "Lock fails for nonexistent file")
+}
+
+@test("Examine gets file info")
+pub fn test_examine_file() {
+    let path: Str = "RAM:novus_test_file.txt"
+    DeleteFile(path)
+
+    // Create file with known content
+    let fh = Open(path, MODE_NEWFILE as i32)
+    if fh != 0 {
+        let data: Str = "Hello World!"
+        Write(fh, data.as_ptr(), 12)
+        Close(fh)
+    }
+
+    // Allocate FileInfoBlock
+    let opt = MemoryBlock::alloc(260u32, MEMF_PUBLIC | MEMF_CLEAR)
+    match opt {
+        Some(block) => {
+            var b = block
+            let fib = b.ptr() as *FileInfoBlock
+
+            // Get lock and examine
+            let lock = Lock(path, SHARED_LOCK as i32)
+            expect_true(lock != 0, "got lock")
+
+            if lock != 0 {
+                let result = Examine(lock, fib)
+                expect_true(result != 0, "Examine succeeds")
+
+                // Check file size
+                expect_eq_i32(fib.fib_Size, 12, "file size is 12 bytes")
+
+                // fib_DirEntryType should be negative for files
+                expect_true(fib.fib_DirEntryType < 0, "DirEntryType < 0 for file")
+
+                UnLock(lock)
+            }
+
+            b.free()
+        },
+        None => expect(false, "FileInfoBlock allocation should succeed")
+    }
+
+    DeleteFile(path)
+}
+
+@test("Examine gets directory info")
+pub fn test_examine_directory() {
+    let path: Str = "RAM:"  // RAM: is always a directory
+
+    let opt = MemoryBlock::alloc(260u32, MEMF_PUBLIC | MEMF_CLEAR)
+    match opt {
+        Some(block) => {
+            var b = block
+            let fib = b.ptr() as *FileInfoBlock
+
+            let lock = Lock(path, SHARED_LOCK as i32)
+            expect_true(lock != 0, "got lock on RAM:")
+
+            if lock != 0 {
+                let result = Examine(lock, fib)
+                expect_true(result != 0, "Examine succeeds")
+
+                // fib_DirEntryType should be positive for directories
+                expect_true(fib.fib_DirEntryType > 0, "DirEntryType > 0 for directory")
+
+                UnLock(lock)
+            }
+
+            b.free()
+        },
+        None => expect(false, "FileInfoBlock allocation should succeed")
+    }
+}
+
+// =============================================================================
+// Info tests
+// =============================================================================
+
+@test("Info gets volume info")
+pub fn test_info_volume() {
+    let path: Str = "RAM:"
+
+    let opt = MemoryBlock::alloc(64u32, MEMF_PUBLIC | MEMF_CLEAR)
+    match opt {
+        Some(block) => {
+            var b = block
+            let info = b.ptr() as *InfoData
+
+            let lock = Lock(path, SHARED_LOCK as i32)
+            expect_true(lock != 0, "got lock on RAM:")
+
+            if lock != 0 {
+                let result = Info(lock, info)
+                expect_true(result != 0, "Info succeeds")
+
+                // Check basic fields are populated
+                expect_true(info.id_NumBlocks > 0, "id_NumBlocks > 0")
+                expect_true(info.id_BytesPerBlock > 0, "id_BytesPerBlock > 0")
+
+                UnLock(lock)
+            }
+
+            b.free()
+        },
+        None => expect(false, "InfoData allocation should succeed")
+    }
+}
+
+// =============================================================================
+// CreateDir tests
+// =============================================================================
+
+@test("CreateDir creates directory")
+pub fn test_createdir() {
+    let path: Str = "RAM:novus_test_dir"
+
+    // Make sure it doesn't exist
+    let existing_lock = Lock(path, SHARED_LOCK as i32)
+    if existing_lock != 0 {
+        UnLock(existing_lock)
+        DeleteFile(path)
+    }
+
+    // Create directory
+    let lock = CreateDir(path)
+    expect_true(lock != 0, "CreateDir returns lock")
+
+    if lock != 0 {
+        UnLock(lock)
+
+        // Verify it's a directory
+        let opt = MemoryBlock::alloc(260u32, MEMF_PUBLIC | MEMF_CLEAR)
+        match opt {
+            Some(block) => {
+                var b = block
+                let fib = b.ptr() as *FileInfoBlock
+
+                let check_lock = Lock(path, SHARED_LOCK as i32)
+                if check_lock != 0 {
+                    Examine(check_lock, fib)
+                    expect_true(fib.fib_DirEntryType > 0, "created item is directory")
+                    UnLock(check_lock)
+                }
+
+                b.free()
+            },
+            None => ()
+        }
+
+        // Clean up
+        DeleteFile(path)
+    }
+}
+
+// =============================================================================
+// IoErr tests
+// =============================================================================
+
+@test("IoErr returns error after failed operation")
+pub fn test_ioerr() {
+    let path: Str = "RAM:this_file_does_not_exist_zzz.txt"
+    DeleteFile(path)
+
+    // Try to open nonexistent file
+    let fh = Open(path, MODE_OLDFILE as i32)
+    expect_true(fh == 0, "open fails as expected")
+
+    // Check IoErr
+    let err = IoErr()
+    expect_true(err != 0, "IoErr returns non-zero after failed open")
+}
+
+// =============================================================================
+// Combined read/write test
+// =============================================================================
+
+@test("Write then read preserves data")
+pub fn test_write_read_roundtrip() {
+    let path: Str = "RAM:novus_test_file.txt"
+    DeleteFile(path)
+
+    // Test data: various byte values - write phase
+    let write_opt = MemoryBlock::alloc(256u32, MEMF_PUBLIC)
+    match write_opt {
+        Some(write_block) => {
+            var write_buf = write_block
+            let write_ptr = write_buf.ptr()
+
+            // Fill with test pattern
+            var i: u32 = 0
+            while i < 256u32 {
+                write_ptr[i] = i as u8
+                i = i + 1u32
+            }
+
+            // Write to file
+            let fh_write = Open(path, MODE_NEWFILE as i32)
+            expect_true(fh_write != 0, "file opened for writing")
+
+            if fh_write != 0 {
+                let written = Write(fh_write, write_ptr, 256)
+                expect_eq_i32(written, 256, "wrote 256 bytes")
+                Close(fh_write)
+            }
+
+            write_buf.free()
+
+            // Read back and verify - inside the same branch to avoid scope issue
+            let read_opt = MemoryBlock::alloc(256u32, MEMF_PUBLIC | MEMF_CLEAR)
+            match read_opt {
+                Some(read_block) => {
+                    var read_buf = read_block
+                    let read_ptr = read_buf.ptr()
+
+                    let fh_read = Open(path, MODE_OLDFILE as i32)
+                    expect_true(fh_read != 0, "file opened for reading")
+
+                    if fh_read != 0 {
+                        let bytes_read = Read(fh_read, read_ptr, 256)
+                        expect_eq_i32(bytes_read, 256, "read 256 bytes")
+
+                        // Verify pattern
+                        var all_match = true
+                        var j: u32 = 0
+                        while j < 256u32 {
+                            if read_ptr[j] != j as u8 {
+                                all_match = false
+                            }
+                            j = j + 1u32
+                        }
+                        expect_true(all_match, "all bytes match original pattern")
+
+                        Close(fh_read)
+                    }
+
+                    read_buf.free()
+                },
+                None => expect(false, "read buffer allocation should succeed")
+            }
+        },
+        None => expect(false, "write buffer allocation should succeed")
+    }
+
+    DeleteFile(path)
+}
+
+@test("Large file write and read")
+pub fn test_large_file() {
+    let path: Str = "RAM:novus_test_file.txt"
+    DeleteFile(path)
+
+    let size: u32 = 4096u32  // 4KB
+
+    let buf_opt = MemoryBlock::alloc(size, MEMF_PUBLIC)
+    match buf_opt {
+        Some(write_block) => {
+            var buf = write_block
+            let ptr = buf.ptr()
+
+            // Fill buffer
+            var i: u32 = 0
+            while i < size {
+                ptr[i] = (i & 255u32) as u8
+                i = i + 1u32
+            }
+
+            // Write
+            let fh_write = Open(path, MODE_NEWFILE as i32)
+            if fh_write != 0 {
+                let written = Write(fh_write, ptr, size as i32)
+                expect_eq_i32(written, size as i32, "wrote 4096 bytes")
+                Close(fh_write)
+            }
+
+            buf.free()
+
+            // Verify file size via Examine - nested to avoid scope issue
+            let fib_opt = MemoryBlock::alloc(260u32, MEMF_PUBLIC | MEMF_CLEAR)
+            match fib_opt {
+                Some(fib_block) => {
+                    var b = fib_block
+                    let fib = b.ptr() as *FileInfoBlock
+
+                    let lock = Lock(path, SHARED_LOCK as i32)
+                    if lock != 0 {
+                        Examine(lock, fib)
+                        expect_eq_i32(fib.fib_Size, size as i32, "file size is 4096")
+                        UnLock(lock)
+                    }
+
+                    b.free()
+                },
+                None => ()
+            }
+        },
+        None => expect(false, "buffer allocation should succeed")
+    }
+
+    DeleteFile(path)
+}

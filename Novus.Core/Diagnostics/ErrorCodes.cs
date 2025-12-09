@@ -7,6 +7,11 @@ namespace Novus.Diagnostics;
 public static class ErrorCodes
 {
     // ========================================================================
+    // E10XX: Lexical/Naming Errors (reserved words, invalid identifiers)
+    // ========================================================================
+    public const string CReservedKeyword = "E1001";
+
+    // ========================================================================
     // E20XX: Symbol Resolution Errors (types, variables, functions not found)
     // ========================================================================
     public const string TypeNotFound = "E2001";

@@ -554,8 +554,15 @@ impl String {
     pub fn as_ptr(&self) -> *u8 {
         return (*u8)self.vec.as_ptr()
     }
+
+    /// Manually free the string's memory
+    /// Call this when you need explicit cleanup (e.g., in tests)
+    pub fn drop(&mut self) {
+        self.vec.drop()
+    }
 }
 
+// Automatic cleanup for String (RAII)
 impl Drop for String {
     fn drop(&mut self) {
         self.vec.drop()
@@ -1046,9 +1053,17 @@ impl Str {
         return Result::Ok(result)
     }
 
-    /// Parse boolean ("true" or "false", case-insensitive)
+    /// Parse boolean ("true", "false", "1", "0" - case-insensitive for words)
     pub fn parse_bool(&self) -> Result<bool, ParseError> {
-        if self.len == 4 {
+        if self.len == 1 {
+            // Check for "1" or "0"
+            let c: u8 = self.ptr[0]
+            if c == $31 {  // '1' = 0x31
+                return Result::Ok(true)
+            } else if c == $30 {  // '0' = 0x30
+                return Result::Ok(false)
+            }
+        } else if self.len == 4 {
             // Check for "true" (case-insensitive)
             let c0: u8 = self.ptr[0]
             let c1: u8 = self.ptr[1]
@@ -1607,6 +1622,12 @@ impl StringBuilder {
     /// Build final String (consumes builder)
     pub fn build(consuming self) -> String {
         return self.string
+    }
+
+    /// Manually free the builder's memory
+    /// Call this when you need explicit cleanup (e.g., in tests)
+    pub fn drop(&mut self) {
+        self.string.drop()
     }
 }
 

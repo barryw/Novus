@@ -253,6 +253,64 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
     #endregion
 
+    #region Reserved Keyword Validation
+
+    /// <summary>
+    /// Validates that an identifier is not a reserved keyword (C or Novus).
+    /// Reports an error if the identifier conflicts with a reserved word.
+    /// </summary>
+    /// <param name="name">The identifier name to validate</param>
+    /// <param name="location">Source location for error reporting</param>
+    /// <param name="context">Context describing where the identifier is used (e.g., "variable", "function", "struct")</param>
+    /// <returns>True if the identifier is valid (not reserved), false if it's reserved</returns>
+    private bool ValidateNotReservedKeyword(string name, SourceLocation location, string context)
+    {
+        // Skip validation for underscore (throwaway binding)
+        if (name == "_")
+            return true;
+
+        // Check for C reserved keywords first (these cause VBCC compilation failures)
+        if (ReservedKeywords.IsCKeyword(name))
+        {
+            var suggestion = ReservedKeywords.GetSuggestedAlternative(name);
+            _diagnostics.ReportError(
+                ErrorCodes.CReservedKeyword,
+                $"'{name}' is a C reserved keyword and cannot be used as a {context} name",
+                location,
+                helpTexts: new List<string>
+                {
+                    $"'{name}' is reserved in C and will cause compilation errors when generating code",
+                    suggestion != null
+                        ? $"consider using '{suggestion}' instead"
+                        : $"consider using a different name like '{name}_' or '_{name}'"
+                }
+            );
+            return false;
+        }
+
+        // Note: Novus keywords are already caught by the parser/lexer - they can't be
+        // parsed as identifiers because they're lexed as keyword tokens (KW_*).
+        // This check is here for completeness and future-proofing.
+        if (ReservedKeywords.IsNovusKeyword(name))
+        {
+            _diagnostics.ReportError(
+                ErrorCodes.CReservedKeyword, // Reuse same error code for reserved keywords
+                $"'{name}' is a Novus reserved keyword and cannot be used as a {context} name",
+                location,
+                helpTexts: new List<string>
+                {
+                    $"'{name}' is a keyword in the Novus language",
+                    $"consider using a different name like '{name}_' or '_{name}'"
+                }
+            );
+            return false;
+        }
+
+        return true;
+    }
+
+    #endregion
+
     public bool Analyze(NovusParser.CompilationUnitContext context)
     {
         // Pass 0: Validate module-level attributes (e.g., #[stack_size(65536)])
@@ -896,6 +954,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         var name = context.IDENTIFIER().GetText();
         var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
 
+        // Check for reserved keywords
+        if (!ValidateNotReservedKeyword(name, location, "constant"))
+            return;
+
         // Check for duplicate constant names
         var existingConstant = _symbols.LookupConstant(name);
         if (existingConstant != null)
@@ -1084,6 +1146,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         var name = context.IDENTIFIER().GetText();
         var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
 
+        // Check for reserved keywords
+        if (!ValidateNotReservedKeyword(name, location, "static variable"))
+            return;
+
         // Check for mut keyword early (used in multiple paths)
         var isMutable = false;
         for (int i = 0; i < Math.Min(5, context.ChildCount); i++)
@@ -1261,6 +1327,11 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     {
         var name = context.IDENTIFIER().GetText();
         var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+
+        // Check for reserved keywords
+        if (!ValidateNotReservedKeyword(name, location, "global variable"))
+            return;
+
         var type = ParseType(context.type());
 
         // Global variables must always be extern (defined externally, e.g. in assembly)
@@ -1291,6 +1362,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     {
         var name = context.IDENTIFIER().GetText();
         var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+
+        // Check for reserved keywords
+        if (!ValidateNotReservedKeyword(name, location, "function"))
+            return;
 
         // Parse attributes
         var attributes = ParseAttributes(context.attribute());
@@ -1371,6 +1446,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 var paramType = ParseType(paramCtx.type());
                 var paramLocation = SourceLocationHelper.FromToken(paramCtx.IDENTIFIER().Symbol, _filePath, _sourceLines);
                 var isConsuming = paramCtx.KW_CONSUMING() != null;
+
+                // Validate parameter name is not a reserved keyword
+                ValidateNotReservedKeyword(paramName, paramLocation, "parameter");
+
                 parameters.Add(new ParameterSymbol(paramName, paramType, paramLocation, IsConsuming: isConsuming));
             }
 
@@ -1380,6 +1459,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 var variadicCtx = paramList.variadicParameter();
                 var variadicName = variadicCtx.IDENTIFIER().GetText();
                 var variadicLocation = SourceLocationHelper.FromToken(variadicCtx.IDENTIFIER().Symbol, _filePath, _sourceLines);
+
+                // Validate variadic parameter name is not a reserved keyword
+                ValidateNotReservedKeyword(variadicName, variadicLocation, "parameter");
+
                 // Variadic parameters have void* type for semantic analysis
                 var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
                 parameters.Add(new ParameterSymbol(variadicName, variadicType, variadicLocation, IsVariadic: true));
@@ -1625,6 +1708,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 var paramType = ParseType(paramCtx.type());
                 var paramLocation = SourceLocationHelper.FromToken(paramCtx.IDENTIFIER().Symbol, _filePath, _sourceLines);
                 var isConsuming = paramCtx.KW_CONSUMING() != null;
+
+                // Validate parameter name is not a reserved keyword
+                ValidateNotReservedKeyword(paramName, paramLocation, "parameter");
+
                 parameters.Add(new ParameterSymbol(paramName, paramType, paramLocation, IsConsuming: isConsuming));
             }
 
@@ -1634,6 +1721,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 var variadicCtx = paramList.variadicParameter();
                 var variadicName = variadicCtx.IDENTIFIER().GetText();
                 var variadicLocation = SourceLocationHelper.FromToken(variadicCtx.IDENTIFIER().Symbol, _filePath, _sourceLines);
+
+                // Validate variadic parameter name is not a reserved keyword
+                ValidateNotReservedKeyword(variadicName, variadicLocation, "parameter");
+
                 // Variadic parameters have void* type for semantic analysis
                 var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
                 parameters.Add(new ParameterSymbol(variadicName, variadicType, variadicLocation, IsVariadic: true));
@@ -1663,6 +1754,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     {
         var name = context.IDENTIFIER().GetText();
         var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+
+        // Check for reserved keywords
+        if (!ValidateNotReservedKeyword(name, location, "struct"))
+            return;
 
         // Parse attributes
         var attributes = ParseAttributes(context.attribute());
@@ -1825,6 +1920,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         var name = context.IDENTIFIER().GetText();
         var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
 
+        // Check for reserved keywords
+        if (!ValidateNotReservedKeyword(name, location, "enum"))
+            return;
+
         // Check for duplicate enum names
         if (_symbols.HasEnum(name))
         {
@@ -1921,6 +2020,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         var name = context.IDENTIFIER().GetText();
         var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
 
+        // Check for reserved keywords
+        if (!ValidateNotReservedKeyword(name, location, "trait"))
+            return;
+
         // Parse attributes
         var attributes = ParseAttributes(context.attribute());
 
@@ -1966,6 +2069,11 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     {
                         var paramName = paramCtx.IDENTIFIER().GetText();
                         var paramType = ParseType(paramCtx.type());
+                        var paramLocation = SourceLocationHelper.FromToken(paramCtx.IDENTIFIER().Symbol, _filePath, _sourceLines);
+
+                        // Validate parameter name is not a reserved keyword
+                        ValidateNotReservedKeyword(paramName, paramLocation, "parameter");
+
                         parameters.Add(new IrParameter(paramName, paramType));
                     }
 
@@ -1974,6 +2082,11 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     {
                         var variadicCtx = paramList.variadicParameter();
                         var variadicName = variadicCtx.IDENTIFIER().GetText();
+                        var variadicLocation = SourceLocationHelper.FromToken(variadicCtx.IDENTIFIER().Symbol, _filePath, _sourceLines);
+
+                        // Validate variadic parameter name is not a reserved keyword
+                        ValidateNotReservedKeyword(variadicName, variadicLocation, "parameter");
+
                         var variadicType = _typeInterner.GetPointerType(IrVoidType.Instance);
                         parameters.Add(new IrParameter(variadicName, variadicType, isVariadic: true));
                     }
@@ -2724,6 +2837,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         var location = identifierNode != null
             ? SourceLocationHelper.FromToken(identifierNode.Symbol, _filePath, _sourceLines)
             : SourceLocationHelper.FromToken(context.Start, _filePath, _sourceLines);
+
+        // Check for reserved keywords (skip for throwaway bindings)
+        if (!isThrowaway && !ValidateNotReservedKeyword(name, location, "variable"))
+            return null;
 
         // Skip duplicate check for throwaway bindings
         if (!isThrowaway && _variables.ContainsKey(name))
