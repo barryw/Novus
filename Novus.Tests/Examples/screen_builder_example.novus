@@ -1,0 +1,248 @@
+// Screen and Window Builder API Examples
+// Demonstrates the fluent APIs for creating screens and windows
+//
+// Run: novus compile screen_builder_example.novus -o screen_builder --safety-level 0 -O2
+
+from std::ui::screen import ScreenHandle, ScreenBuilder
+from std::ui::window import WindowHandle, WindowBuilder
+from std::ffi::dos import Delay
+from std::ffi::graphics import SetAPen, RectFill, Move, Text
+from std::ffi::amiga_consts import OSCAN_STANDARD
+
+pub fn main() -> i32 {
+    // =========================================================================
+    // Example 1: Simple convenience constructor (easiest way)
+    // =========================================================================
+    // ScreenHandle::lores() creates a standard 320x256 PAL screen
+    // The screen is automatically closed when it goes out of scope (RAII)
+
+    let result1 = ScreenHandle::lores("Simple Lores Screen", 4)  // 16 colors
+    match result1 {
+        Result::Ok(screen) => {
+            // Draw something on the screen
+            let rp = screen.rastport()
+            SetAPen(rp, 1)
+            RectFill(rp, 10, 20, 100, 80)
+
+            Delay(100)  // 2 seconds
+            // Screen automatically closes here
+        },
+        Result::Err(_) => {
+            return 1
+        }
+    }
+
+    // =========================================================================
+    // Example 2: ScreenBuilder fluent API (more control)
+    // =========================================================================
+    // Use ScreenBuilder when you need more options than convenience methods
+    // Note: Method chaining must be on the same line in Novus
+
+    let result2 = ScreenBuilder::new().title("Builder Demo").size(320, 256).depth(5).show_title(false).quiet(true).build()
+
+    match result2 {
+        Result::Ok(screen) => {
+            // Full-screen drawing without title bar interference
+            let rp = screen.rastport()
+
+            // Draw a gradient of colors
+            let mut y: i16 = 0
+            while y < 256 {
+                SetAPen(rp, (u32)(y / 8))  // Cycle through 32 colors
+                RectFill(rp, 0, y, 319, y + 7)
+                y = y + 8
+            }
+
+            Delay(100)
+        },
+        Result::Err(_) => {
+            return 2
+        }
+    }
+
+    // =========================================================================
+    // Example 3: Screen with window on it
+    // =========================================================================
+    // ScreenHandle integrates with WindowHandle for easy window creation
+
+    let result3 = ScreenHandle::custom("Game Screen", 320, 256, 5)
+    match result3 {
+        Result::Ok(screen) => {
+            // Open a standard window on our custom screen
+            let win_result = screen.open_window("Controls", 10, 20, 200, 100)
+
+            match win_result {
+                Result::Ok(window) => {
+                    // Draw in the window
+                    let win_rp = window.rastport()
+                    SetAPen(win_rp, 2)
+                    RectFill(win_rp, 5, 15, 190, 90)
+
+                    // Write some text
+                    SetAPen(win_rp, 1)
+                    Move(win_rp, 20, 50)
+                    Text(win_rp, "Hello Window!", 13)
+
+                    Delay(150)  // 3 seconds
+                    // Window closes automatically, then screen closes
+                },
+                Result::Err(_) => {
+                    return 3
+                }
+            }
+        },
+        Result::Err(_) => {
+            return 4
+        }
+    }
+
+    // =========================================================================
+    // Example 4: Backdrop window for full-screen drawing
+    // =========================================================================
+    // open_backdrop() creates a borderless window covering the whole screen
+    // Perfect for games and demos
+
+    let result4 = ScreenBuilder::new().title("Demo Screen").size(320, 256).depth(5).show_title(false).build()
+
+    match result4 {
+        Result::Ok(screen) => {
+            // Backdrop window - borderless, covers entire screen
+            let backdrop_result = screen.open_backdrop()
+
+            match backdrop_result {
+                Result::Ok(window) => {
+                    let rp = window.rastport()
+
+                    // Animate something
+                    let mut x: i16 = 0
+                    while x < 280 {
+                        // Clear previous
+                        SetAPen(rp, 0)
+                        RectFill(rp, x - 1, 100, x + 39, 140)
+
+                        // Draw box at new position
+                        SetAPen(rp, 15)
+                        RectFill(rp, x, 100, x + 40, 140)
+
+                        Delay(1)  // Small delay for animation
+                        x = x + 2
+                    }
+
+                    Delay(50)
+                },
+                Result::Err(_) => {
+                    return 5
+                }
+            }
+        },
+        Result::Err(_) => {
+            return 6
+        }
+    }
+
+    // =========================================================================
+    // Example 5: Hires screen
+    // =========================================================================
+
+    let result5 = ScreenHandle::hires("Workbench Clone", 2)  // 4 colors for hires
+    match result5 {
+        Result::Ok(screen) => {
+            let rp = screen.rastport()
+
+            // Draw something in hires
+            SetAPen(rp, 1)
+            RectFill(rp, 20, 20, 620, 30)
+
+            Move(rp, 250, 128)
+            Text(rp, "640x256 HiRes Mode", 18)
+
+            Delay(100)
+        },
+        Result::Err(_) => {
+            return 7
+        }
+    }
+
+    // =========================================================================
+    // Example 6: WindowBuilder on Workbench
+    // =========================================================================
+    // WindowBuilder creates windows with a fluent API
+    // Opens on Workbench by default
+
+    let result6 = WindowBuilder::new().title("Builder Window").position(100, 50).size(300, 150).close_gadget(true).drag_bar(true).depth_gadget(true).size_gadget(true).mouse_buttons(true).vanilla_keys(true).build()
+
+    match result6 {
+        Result::Ok(window) => {
+            let rp = window.rastport()
+            SetAPen(rp, 1)
+            Move(rp, 20, 50)
+            Text(rp, "WindowBuilder Demo!", 19)
+
+            Delay(100)
+            // Window auto-closes via RAII
+        },
+        Result::Err(_) => {
+            return 8
+        }
+    }
+
+    // =========================================================================
+    // Example 7: WindowBuilder on custom screen
+    // =========================================================================
+    // Use .screen() to open a window on a custom screen
+
+    let result7 = ScreenHandle::lores("Custom Screen", 4)
+    match result7 {
+        Result::Ok(screen) => {
+            // Use WindowBuilder with custom screen
+            let win_result = WindowBuilder::new().title("Custom Screen Window").position(20, 30).size(280, 180).screen(screen.handle()).close_gadget(true).drag_bar(true).depth_gadget(true).mouse_move(true).mouse_buttons(true).raw_keys(true).build()
+
+            match win_result {
+                Result::Ok(window) => {
+                    let rp = window.rastport()
+
+                    // Draw something
+                    SetAPen(rp, 3)
+                    RectFill(rp, 10, 20, 260, 160)
+
+                    SetAPen(rp, 1)
+                    Move(rp, 50, 90)
+                    Text(rp, "On Custom Screen!", 17)
+
+                    Delay(150)
+                },
+                Result::Err(_) => {
+                    return 9
+                }
+            }
+        },
+        Result::Err(_) => {
+            return 10
+        }
+    }
+
+    // =========================================================================
+    // Example 8: Minimal borderless window
+    // =========================================================================
+
+    let result8 = WindowBuilder::new().position(50, 100).size(200, 80).borderless(true).mouse_buttons(true).build()
+
+    match result8 {
+        Result::Ok(window) => {
+            let rp = window.rastport()
+            SetAPen(rp, 2)
+            RectFill(rp, 0, 0, 199, 79)
+
+            SetAPen(rp, 1)
+            Move(rp, 40, 45)
+            Text(rp, "Borderless!", 11)
+
+            Delay(100)
+        },
+        Result::Err(_) => {
+            return 11
+        }
+    }
+
+    return 0
+}

@@ -10,7 +10,7 @@ from std::os::tags import make_tags
 from std::strings::core import Str
 from std::strings::format import Display, Formatter
 from std::memory::slice import Slice
-from std::ffi::amiga_structs import TagItem, Window, Screen, NewWindow, NewScreen, IntuiMessage, Message, MsgPort
+from std::ffi::amiga_structs import TagItem, Window, Screen, NewWindow, NewScreen, IntuiMessage, Message, MsgPort, RastPort
 from std::ffi::intuition import OpenWindowTagList, OpenScreenTagList, CloseWindow, CloseScreen, BeginRefresh, EndRefresh, MoveWindow, SizeWindow, ChangeWindowBox, WindowLimits, ZipWindow, WindowToFront, WindowToBack, MoveWindowInFrontOf, ModifyIDCMP, SetWindowTitles, ActivateWindow, RefreshWindowFrame, SetMouseQueue, ClearMenuStrip
 from std::ffi::amiga_consts import TAG_DONE, IDCMP_*, WA_*, WFLG_*, FALSE, NULL
 from std::ffi::exec import GetMsg, ReplyMsg, WaitPort
@@ -332,6 +332,13 @@ impl WindowHandle {
     pub fn height(&self) -> i16 {
         unsafe {
             return (*self.window).Height
+        }
+    }
+
+    /// Get the window's RastPort for drawing operations
+    pub fn rastport(&self) -> *RastPort {
+        unsafe {
+            return (*self.window).RPort
         }
     }
 
@@ -851,11 +858,291 @@ fn parse_intui_message(msg: *IntuiMessage) -> WindowEvent {
 }
 
 // ============================================================================
+// WindowBuilder - Fluent API for window creation
+// ============================================================================
+
+/// Builder for creating windows with a fluent API
+///
+/// This provides a more ergonomic way to create windows than raw TagItem arrays.
+///
+/// # Example
+/// ```novus
+/// let window = WindowBuilder::new()
+///     .title("My Window")
+///     .position(50, 50)
+///     .size(300, 200)
+///     .close_gadget(true)
+///     .drag_bar(true)
+///     .depth_gadget(true)
+///     .build()?
+/// ```
+pub struct WindowBuilder {
+    left: i16,
+    top: i16,
+    width: i16,
+    height: i16,
+    min_width: i16,
+    min_height: i16,
+    max_width: i16,
+    max_height: i16,
+    title_ptr: *u8,
+    screen_ptr: *Screen,
+    flags: u32,
+    idcmp: u32,
+    borderless: bool,
+    backdrop: bool,
+    activate: bool,
+}
+
+impl WindowBuilder {
+    /// Create a new window builder with default settings
+    ///
+    /// Defaults:
+    /// - Position: 0, 0
+    /// - Size: 200x100
+    /// - Min size: 50x20
+    /// - Max size: unlimited (0 = no limit)
+    /// - Title: none
+    /// - Screen: Workbench (null)
+    /// - Flags: none
+    /// - IDCMP: CLOSEWINDOW
+    /// - Activate: true
+    pub fn new() -> WindowBuilder {
+        return WindowBuilder {
+            left: 0,
+            top: 0,
+            width: 200,
+            height: 100,
+            min_width: 50,
+            min_height: 20,
+            max_width: 0,
+            max_height: 0,
+            title_ptr: (*u8)0,
+            screen_ptr: (*Screen)0,
+            flags: 0,
+            idcmp: IDCMP_CLOSEWINDOW,
+            borderless: false,
+            backdrop: false,
+            activate: true,
+        }
+    }
+
+    /// Set the window title
+    ///
+    /// NOTE: The title string must remain valid for the lifetime of the window.
+    /// Use string literals or long-lived String allocations.
+    pub fn title(self, t: Str) -> WindowBuilder {
+        self.title_ptr = t.ptr
+        return self
+    }
+
+    /// Set window position
+    pub fn position(self, x: i16, y: i16) -> WindowBuilder {
+        self.left = x
+        self.top = y
+        return self
+    }
+
+    /// Set window size
+    pub fn size(self, w: i16, h: i16) -> WindowBuilder {
+        self.width = w
+        self.height = h
+        return self
+    }
+
+    /// Set minimum window size
+    pub fn min_size(self, w: i16, h: i16) -> WindowBuilder {
+        self.min_width = w
+        self.min_height = h
+        return self
+    }
+
+    /// Set maximum window size
+    pub fn max_size(self, w: i16, h: i16) -> WindowBuilder {
+        self.max_width = w
+        self.max_height = h
+        return self
+    }
+
+    /// Open window on a specific screen
+    ///
+    /// Pass a ScreenHandle's handle() method result to open on a custom screen.
+    /// If not set, window opens on Workbench.
+    pub fn screen(self, s: *Screen) -> WindowBuilder {
+        self.screen_ptr = s
+        return self
+    }
+
+    /// Add close gadget (X button)
+    pub fn close_gadget(self, enabled: bool) -> WindowBuilder {
+        if enabled {
+            self.flags = self.flags | WFLG_CLOSEGADGET
+        }
+        return self
+    }
+
+    /// Add drag bar for moving window
+    pub fn drag_bar(self, enabled: bool) -> WindowBuilder {
+        if enabled {
+            self.flags = self.flags | WFLG_DRAGBAR
+        }
+        return self
+    }
+
+    /// Add depth gadget for screen-to-front/back
+    pub fn depth_gadget(self, enabled: bool) -> WindowBuilder {
+        if enabled {
+            self.flags = self.flags | WFLG_DEPTHGADGET
+        }
+        return self
+    }
+
+    /// Add size gadget for resizing
+    pub fn size_gadget(self, enabled: bool) -> WindowBuilder {
+        if enabled {
+            self.flags = self.flags | WFLG_SIZEGADGET | WFLG_SIZEBRIGHT | WFLG_SIZEBBOTTOM
+        }
+        return self
+    }
+
+    /// Make window borderless
+    pub fn borderless(self, enabled: bool) -> WindowBuilder {
+        self.borderless = enabled
+        return self
+    }
+
+    /// Make window a backdrop (behind all other windows)
+    pub fn backdrop(self, enabled: bool) -> WindowBuilder {
+        self.backdrop = enabled
+        return self
+    }
+
+    /// Activate window on open
+    pub fn activate(self, enabled: bool) -> WindowBuilder {
+        self.activate = enabled
+        return self
+    }
+
+    /// Enable mouse move events
+    pub fn mouse_move(self, enabled: bool) -> WindowBuilder {
+        if enabled {
+            self.idcmp = self.idcmp | IDCMP_MOUSEMOVE
+        }
+        return self
+    }
+
+    /// Enable mouse button events
+    pub fn mouse_buttons(self, enabled: bool) -> WindowBuilder {
+        if enabled {
+            self.idcmp = self.idcmp | IDCMP_MOUSEBUTTONS
+        }
+        return self
+    }
+
+    /// Enable raw key events
+    pub fn raw_keys(self, enabled: bool) -> WindowBuilder {
+        if enabled {
+            self.idcmp = self.idcmp | IDCMP_RAWKEY
+        }
+        return self
+    }
+
+    /// Enable vanilla key events (translated keypresses)
+    pub fn vanilla_keys(self, enabled: bool) -> WindowBuilder {
+        if enabled {
+            self.idcmp = self.idcmp | IDCMP_VANILLAKEY
+        }
+        return self
+    }
+
+    /// Enable resize events
+    pub fn resize_events(self, enabled: bool) -> WindowBuilder {
+        if enabled {
+            self.idcmp = self.idcmp | IDCMP_NEWSIZE
+        }
+        return self
+    }
+
+    /// Enable refresh events (for GIMMEZEROZERO windows)
+    pub fn refresh_events(self, enabled: bool) -> WindowBuilder {
+        if enabled {
+            self.idcmp = self.idcmp | IDCMP_REFRESHWINDOW
+        }
+        return self
+    }
+
+    /// Enable menu pick events
+    pub fn menu_events(self, enabled: bool) -> WindowBuilder {
+        if enabled {
+            self.idcmp = self.idcmp | IDCMP_MENUPICK
+        }
+        return self
+    }
+
+    /// Enable gadget events
+    pub fn gadget_events(self, enabled: bool) -> WindowBuilder {
+        if enabled {
+            self.idcmp = self.idcmp | IDCMP_GADGETUP | IDCMP_GADGETDOWN
+        }
+        return self
+    }
+
+    /// Set raw IDCMP flags directly
+    pub fn idcmp(self, flags: u32) -> WindowBuilder {
+        self.idcmp = flags
+        return self
+    }
+
+    /// Build and open the window
+    ///
+    /// Returns Err if window fails to open.
+    @suppress("W0002", "Casting values to u32 for tags")
+    pub fn build(self) -> Result<WindowHandle, IntuitionError> {
+        // Compute final flags
+        let mut final_flags = self.flags
+
+        if self.borderless {
+            final_flags = final_flags | WFLG_BORDERLESS
+        }
+        if self.backdrop {
+            final_flags = final_flags | WFLG_BACKDROP
+        }
+        if self.activate {
+            final_flags = final_flags | WFLG_ACTIVATE
+        }
+
+        // Build tag array - up to 14 tags + TAG_DONE
+        let tags = [
+            TagItem { ti_Tag: WA_Left, ti_Data: (u32)self.left },
+            TagItem { ti_Tag: WA_Top, ti_Data: (u32)self.top },
+            TagItem { ti_Tag: WA_Width, ti_Data: (u32)self.width },
+            TagItem { ti_Tag: WA_Height, ti_Data: (u32)self.height },
+            TagItem { ti_Tag: WA_MinWidth, ti_Data: (u32)self.min_width },
+            TagItem { ti_Tag: WA_MinHeight, ti_Data: (u32)self.min_height },
+            TagItem { ti_Tag: WA_MaxWidth, ti_Data: if self.max_width > 0 { (u32)self.max_width } else { 65535 } },
+            TagItem { ti_Tag: WA_MaxHeight, ti_Data: if self.max_height > 0 { (u32)self.max_height } else { 65535 } },
+            TagItem { ti_Tag: WA_Title, ti_Data: (u32)self.title_ptr },
+            TagItem { ti_Tag: if self.screen_ptr { WA_CustomScreen } else { TAG_DONE }, ti_Data: (u32)self.screen_ptr },
+            TagItem { ti_Tag: WA_Flags, ti_Data: final_flags },
+            TagItem { ti_Tag: WA_IDCMP, ti_Data: self.idcmp },
+            TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+        ]
+
+        let window = OpenWindowTagList(null, &tags[0])
+
+        if let win = window {
+            return Result::Ok(WindowHandle { window: win })
+        }
+
+        return Result::Err(IntuitionError::WindowOpenFailed)
+    }
+}
+
+// ============================================================================
 // Future Additions
 // ============================================================================
 //
 // Additional wrappers to add as needed:
-// - WindowBuilder API for ergonomic tag construction
 // - NewObject / DisposeObject (BOOPSI objects)
 // - SetAttrs / SetGadgetAttrs
 // - BuildEasyRequest (non-blocking requesters)
@@ -863,6 +1150,7 @@ fn parse_intui_message(msg: *IntuiMessage) -> WindowEvent {
 // - SetWindowPointer
 //
 // Already implemented:
+// - WindowBuilder API for ergonomic tag construction
 // - Convenience constructors: simple(), app_window(), borderless()
 // - EasyRequest dialogs: see std::ui::dialog module
 //   - alert(), confirm(), choice(), save_dialog()
