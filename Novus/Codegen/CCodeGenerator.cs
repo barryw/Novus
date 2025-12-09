@@ -491,13 +491,17 @@ public partial class CCodeGenerator
         sb.AppendLine("#include <graphics/gfx.h>");
         sb.AppendLine("#include <graphics/text.h>");
         sb.AppendLine("#include <utility/tagitem.h>");
+        sb.AppendLine("#include <dos/dos.h>");
         sb.AppendLine();
-        sb.AppendLine("// AmigaOS proto headers for proper library calling conventions");
-        sb.AppendLine("#include <proto/exec.h>");
-        sb.AppendLine("#include <proto/dos.h>");
-        sb.AppendLine("#include <proto/intuition.h>");
-        sb.AppendLine("#include <proto/graphics.h>");
-        sb.AppendLine("#include <proto/gadtools.h>");
+        sb.AppendLine("// AmigaOS clib prototype headers - compiler-neutral function declarations");
+        sb.AppendLine("// Note: We use clib protos instead of proto/ headers because NDK3.9 proto");
+        sb.AppendLine("// headers use SAS/C pragmas which VBCC doesn't understand. Functions are");
+        sb.AppendLine("// linked via amiga.lib which provides the library stub glue code.");
+        sb.AppendLine("#include <clib/exec_protos.h>");
+        sb.AppendLine("#include <clib/dos_protos.h>");
+        sb.AppendLine("#include <clib/intuition_protos.h>");
+        sb.AppendLine("#include <clib/graphics_protos.h>");
+        sb.AppendLine("#include <clib/gadtools_protos.h>");
         sb.AppendLine("#include <devices/timer.h>");
         sb.AppendLine();
         // IMPORTANT: These typedefs must include all structs from the NdkStructs static field.
@@ -563,6 +567,8 @@ public partial class CCodeGenerator
         sb.AppendLine("typedef struct RDArgs RDArgs;");
         sb.AppendLine("typedef struct WBStartup WBStartup;");
         sb.AppendLine("typedef struct Process Process;");
+        sb.AppendLine("typedef struct FileInfoBlock FileInfoBlock;");
+        sb.AppendLine("typedef struct InfoData InfoData;");
         sb.AppendLine();
         sb.AppendLine("// Sentinel value for \"unchanged\" pointer parameters (used by Amiga API)");
         sb.AppendLine("// Using explicit 32-bit constant to prevent VBCC from treating as 64-bit value");
@@ -1089,6 +1095,38 @@ public partial class CCodeGenerator
             var concreteEnums = enumTypes.Where(e => IsConcreteEnum(e)).ToHashSet();
             if (concreteEnums.Any())
             {
+                // CRITICAL: Collect struct types used by enum payloads and emit them BEFORE enums
+                // Without this, Result<WindowHandle, Error> would reference WindowHandle but it wouldn't be defined.
+                // This mirrors the logic in GenerateSharedTypesHeader (lines 649-680).
+                var structsUsedByEnumPayloads = new HashSet<IrStructType>();
+                foreach (var enumType in concreteEnums)
+                {
+                    CollectStructTypesFromEnumPayloads(enumType, structsUsedByEnumPayloads);
+                }
+
+                // Filter out NDK structs and extern_type structs (already defined in headers)
+                var userStructsForEnums = structsUsedByEnumPayloads
+                    .Where(s => {
+                        // Skip structs marked with #[extern_type] attribute
+                        if (s.Attributes != null && s.Attributes.Has(Novus.SemanticAnalysis.KnownAttributes.ExternType))
+                            return false;
+                        // Skip NDK structs
+                        return !NdkStructs.Contains(s.StructName);
+                    })
+                    .ToList();
+
+                if (userStructsForEnums.Any())
+                {
+                    sb.AppendLine("// Struct types used by enum payloads (must be defined before enums)");
+                    // Topologically sort to handle struct dependencies
+                    var sortedStructs = TopologicalSortStructTypes(userStructsForEnums.ToHashSet());
+                    foreach (var structType in sortedStructs)
+                    {
+                        EmitStructTypeToBuilder(sb, structType);
+                    }
+                    sb.AppendLine();
+                }
+
                 sb.AppendLine("// Enum types used by this function");
                 // Sort enum types in dependency order: emit leaf types first, then types that depend on them
                 var sortedEnumTypes = TopologicalSortEnumTypes(concreteEnums);
@@ -1902,7 +1940,9 @@ public partial class CCodeGenerator
         {
             sb.AppendLine($"#pragma pack()");
         }
-        // Note: typedef is already emitted as forward declaration, don't duplicate
+        // Add typedef so we can use the struct name without "struct" prefix
+        // This is essential for per-function files where forward declarations aren't shared
+        sb.AppendLine($"typedef struct {structName} {structName};");
         sb.AppendLine($"#endif // {guardName}");
         sb.AppendLine();
 
@@ -4766,7 +4806,7 @@ public partial class CCodeGenerator
         var isEnumLiteral = localDecl.InitialValue is IrEnumValue;
 
         // Don't call EmitValue yet for struct/enum literals - we'll handle them specially
-        var initValue = (isStructLiteral || isEnumLiteral) ? null : EmitValue(localDecl.InitialValue);
+        var initValue = (isStructLiteral || isEnumLiteral) ? null : (localDecl.InitialValue != null ? EmitValue(localDecl.InitialValue) : null);
 
         // Check if this variable has already been declared in this function
         if (_declaredVariables.Contains(varName))
@@ -4871,7 +4911,7 @@ public partial class CCodeGenerator
             else
             {
                 // Compute initValue now if we haven't already
-                if (initValue == null)
+                if (initValue == null && localDecl.InitialValue != null)
                     initValue = EmitValue(localDecl.InitialValue);
 
                 // For struct/enum types that were pre-declared with {0} initializer, don't emit a `= 0` assignment.
@@ -4885,7 +4925,7 @@ public partial class CCodeGenerator
                 }
                 // VBCC FIX: For complex types (nested structs OR enums with unions), use memcpy instead of assignment.
                 // VBCC generates illegal instructions on 68040 for struct-by-value copies of these types.
-                else if (TypeRequiresMemcpy(localDecl.InitialValue.Type))
+                else if (localDecl.InitialValue != null && TypeRequiresMemcpy(localDecl.InitialValue.Type))
                 {
                     var cType = GetCType(localDecl.Type);
                     _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}, (uint8_t*)&{initValue}, sizeof({cType}));");
@@ -4893,7 +4933,7 @@ public partial class CCodeGenerator
                 else
                 {
                     var cType = GetCType(localDecl.Type);
-                    var initType = GetCType(localDecl.InitialValue.Type);
+                    var initType = GetCType(localDecl.InitialValue!.Type);
 
                     // SAFETY: Always add explicit cast when assigning integer constants to pointer types
                     var needsCast = initType != cType;
@@ -5017,7 +5057,7 @@ public partial class CCodeGenerator
             }
             // VBCC FIX: For complex types (nested structs OR enums with unions), declare then use memcpy for initialization.
             // VBCC generates illegal instructions on 68040 for struct-by-value copies of these types.
-            else if (TypeRequiresMemcpy(localDecl.InitialValue.Type))
+            else if (localDecl.InitialValue != null && TypeRequiresMemcpy(localDecl.InitialValue.Type))
             {
                 var decl = GetCVariableDeclaration(localDecl.Type, varName);
                 var cType = GetCType(localDecl.Type);
@@ -5028,7 +5068,7 @@ public partial class CCodeGenerator
             {
                 var decl = GetCVariableDeclaration(localDecl.Type, varName);
                 var cType = GetCType(localDecl.Type);
-                var initType = GetCType(localDecl.InitialValue.Type);
+                var initType = GetCType(localDecl.InitialValue!.Type);
 
                 // SAFETY: Always add explicit cast when assigning integer constants to pointer types
                 // This handles edge cases where the IR has coerced the type but the emitted value
@@ -5693,48 +5733,24 @@ public partial class CCodeGenerator
 
     private void EmitReturn(IrReturn returnInst)
     {
-        // CRITICAL FIX: Before emitting deferred cleanup, deactivate defer blocks for
-        // any variables that are being MOVED into the return value. This prevents
-        // use-after-free bugs where Drop is called on a resource that has been moved.
+        // CRITICAL FIX: The order of operations for return is:
+        // 1. Deactivate defers for moved variables
+        // 2. For struct/enum returns: COPY RETURN VALUE TO __out FIRST
+        // 3. THEN emit deferred cleanup (which may include Drop calls)
+        // 4. THEN emit @no_interrupts/@atomic cleanup
+        // 5. Finally, return
         //
-        // When we return a struct containing a Drop type (e.g., Result::Ok(Interval { timer: timer })),
-        // the 'timer' variable's ownership is transferred to the caller. Its defer block
-        // (which would call timer.drop()) must NOT execute, or we'd free resources that
-        // the caller still owns.
+        // This ensures that when returning a struct with heap data (like String),
+        // we copy the data to the output parameter BEFORE Drop frees it.
+
+        // Step 1: Deactivate defer blocks for variables being MOVED into the return value
+        // This prevents use-after-free when ownership is transferred to the caller.
         if (_currentEmittingFunction != null && returnInst.Value != null)
         {
             DeactivateDefersForMovedVariables(returnInst.Value);
         }
 
-        // Emit deferred cleanup before returning
-        if (_currentEmittingFunction != null)
-        {
-            EmitDeferredCleanup(_currentEmittingFunction, 1);
-        }
-
-        // Emit @no_interrupts cleanup (Enable) before returning if attribute is present
-        // This must come AFTER deferred cleanup since defer might need interrupts
-        if (_currentEmittingFunction?.Attributes?.Has(Novus.SemanticAnalysis.KnownAttributes.NoInterrupts) ?? false)
-        {
-            _output.AppendLine("    Enable(); /* @no_interrupts cleanup */");
-        }
-
-        // Emit @atomic cleanup (Permit) before returning if attribute is present
-        // This must come AFTER deferred cleanup and Enable
-        if (_currentEmittingFunction?.Attributes?.Has(Novus.SemanticAnalysis.KnownAttributes.Atomic) ?? false)
-        {
-            _output.AppendLine("    Permit(); /* @atomic cleanup */");
-        }
-
-        // Memory tracking: Emit cleanup and report before main() returns
-        if (_safetyLevel.EnableMemoryTracking() &&
-            _currentEmittingFunction != null &&
-            _currentEmittingFunction.Name == "main")
-        {
-            _output.AppendLine("    __novus_memory_report();");
-            _output.AppendLine("    __novus_cleanup_mmu_protection();");
-        }
-
+        // Step 2: For struct/enum returns, copy to __out BEFORE running deferred cleanup
         if (returnInst.Value != null)
         {
             // VBCC FIX: For struct/enum returns, write to output parameter instead of returning directly
@@ -5933,11 +5949,52 @@ public partial class CCodeGenerator
                         NullOutPointerFields(structValue, fieldName, fieldStructType, accessor);
                     }
                 }
+            }
+        }
 
+        // Step 3: NOW emit deferred cleanup AFTER return value has been copied
+        // This ensures Drop doesn't free memory we just copied to the caller
+        if (_currentEmittingFunction != null)
+        {
+            EmitDeferredCleanup(_currentEmittingFunction, 1);
+        }
+
+        // Step 4: Emit @no_interrupts cleanup (Enable) after deferred cleanup
+        // This must come AFTER deferred cleanup since defer might need interrupts
+        if (_currentEmittingFunction?.Attributes?.Has(Novus.SemanticAnalysis.KnownAttributes.NoInterrupts) ?? false)
+        {
+            _output.AppendLine("    Enable(); /* @no_interrupts cleanup */");
+        }
+
+        // Step 5: Emit @atomic cleanup (Permit) after Enable
+        if (_currentEmittingFunction?.Attributes?.Has(Novus.SemanticAnalysis.KnownAttributes.Atomic) ?? false)
+        {
+            _output.AppendLine("    Permit(); /* @atomic cleanup */");
+        }
+
+        // Memory tracking: Emit cleanup and report before main() returns
+        if (_safetyLevel.EnableMemoryTracking() &&
+            _currentEmittingFunction != null &&
+            _currentEmittingFunction.Name == "main")
+        {
+            _output.AppendLine("    __novus_memory_report();");
+            _output.AppendLine("    __novus_cleanup_mmu_protection();");
+        }
+
+        // Step 6: Finally, emit the actual return statement
+        if (returnInst.Value != null)
+        {
+            var isStructOrEnumReturn = _currentEmittingFunction != null &&
+                                      (_currentEmittingFunction.ReturnType is IrStructType or IrEnumType);
+
+            if (isStructOrEnumReturn)
+            {
+                // Struct/enum was already copied to __out above
                 _output.AppendLine("    return;");
             }
             else
             {
+                // Direct return for primitives/pointers
                 var value = EmitValue(returnInst.Value);
                 _output.AppendLine($"    return {value};");
             }
@@ -8618,7 +8675,10 @@ public partial class CCodeGenerator
 
             case IrLocalDecl localDecl:
                 // Collect from the initial value
-                CollectVariableReferencesFromValue(localDecl.InitialValue, variables);
+                if (localDecl.InitialValue != null)
+                {
+                    CollectVariableReferencesFromValue(localDecl.InitialValue, variables);
+                }
                 break;
 
             case IrBinaryOp binaryOp:

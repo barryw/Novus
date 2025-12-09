@@ -139,7 +139,7 @@ public class InlineExpansionPass : TransformPassBase
             var newName = $"%inline_{inlineCounter++}_{localDecl.Name}";
             renameMap[localDecl.Name] = newName;
 
-            var renamedValue = RenameValue(localDecl.InitialValue, renameMap);
+            var renamedValue = localDecl.InitialValue != null ? RenameValue(localDecl.InitialValue, renameMap) : null;
             return new IrLocalDecl(newName, localDecl.Type, localDecl.IsMutable, renamedValue);
         }
         else if (instruction is IrBinaryOp binOp)

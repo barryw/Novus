@@ -236,7 +236,10 @@ public class DeadCodeElimination
                 break;
 
             case IrLocalDecl decl:
-                CollectVariablesFromValue(decl.InitialValue, used);
+                if (decl.InitialValue != null)
+                {
+                    CollectVariablesFromValue(decl.InitialValue, used);
+                }
                 break;
 
             case IrIndexAccess indexAccess:

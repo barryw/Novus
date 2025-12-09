@@ -117,6 +117,11 @@ void __novus_memset(void* dest, int value, uint32_t n);
 void __novus_memcpy(uint8_t* dest, const uint8_t* src, uint32_t n);
 uint32_t strlen(const char* str);
 
+// Raw memory allocation (bypasses tracking)
+// Use for stdlib internals where tracking would interfere
+void* __novus_alloc_raw(uint32_t size, uint32_t flags);
+void __novus_free_raw(void* ptr, uint32_t size);
+
 // Error display (shared by error handlers)
 extern char error_buffer[512];
 char* strcpy_helper(char* dest, const char* src);

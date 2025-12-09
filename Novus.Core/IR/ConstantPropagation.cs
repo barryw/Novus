@@ -163,11 +163,14 @@ public class ConstantPropagation
         {
             case IrLocalDecl decl:
                 {
-                    var newValue = PropagateInValue(decl.InitialValue);
-                    if (newValue != decl.InitialValue)
+                    if (decl.InitialValue != null)
                     {
-                        decl.InitialValue = newValue;
-                        changed = true;
+                        var newValue = PropagateInValue(decl.InitialValue);
+                        if (newValue != decl.InitialValue)
+                        {
+                            decl.InitialValue = newValue;
+                            changed = true;
+                        }
                     }
                     break;
                 }

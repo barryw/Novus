@@ -181,7 +181,10 @@ public class LivenessAnalysis
         switch (instruction)
         {
             case IrLocalDecl localDecl:
-                RecordValueUses(localDecl.InitialValue);
+                if (localDecl.InitialValue != null)
+                {
+                    RecordValueUses(localDecl.InitialValue);
+                }
                 break;
 
             case IrStore store:

@@ -40,7 +40,10 @@ public class CopyPropagationPass : BasicBlockPassBase
             _localDecls.Add(localDecl.Name);
 
             // Rewrite the initial value
-            localDecl.InitialValue = RewriteValue(localDecl.InitialValue);
+            if (localDecl.InitialValue != null)
+            {
+                localDecl.InitialValue = RewriteValue(localDecl.InitialValue);
+            }
 
             // Check if this is a copy: let x = y
             if (localDecl.InitialValue is IrVariable sourceVar)

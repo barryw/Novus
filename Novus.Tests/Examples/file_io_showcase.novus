@@ -1,0 +1,181 @@
+// Novus File I/O API Showcase
+// Demonstrates the file I/O features in std::os::dos
+
+from std::core import Result
+from std::strings::core import Str
+from std::ffi::dos import PutStr
+from std::ffi::amiga_consts import MODE_OLDFILE, MODE_NEWFILE
+from std::error::errors import DosError
+from std::os::dos import OwnedFileHandle
+from std::os::dos import file_exists, delete_file, create_dir, file_info
+
+fn main() -> i32 {
+    PutStr("\n=== Novus File I/O Showcase ===\n\n")
+
+    // ========================================================================
+    // 1. Write a file using write_all() method
+    // ========================================================================
+    PutStr("1. Creating test file with write_all()...\n")
+
+    match create_test_file() {
+        Result::Ok(_) => {
+            PutStr("   SUCCESS: File created\n")
+        },
+        Result::Err(err) => {
+            PutStr("   ERROR: Failed to create file\n")
+            return 1
+        }
+    }
+
+    // ========================================================================
+    // 2. Check if file exists
+    // ========================================================================
+    PutStr("\n2. Checking if file exists...\n")
+
+    if file_exists("RAM:test_file.txt") {
+        PutStr("   SUCCESS: File exists\n")
+    } else {
+        PutStr("   ERROR: File does not exist\n")
+        return 1
+    }
+
+    // ========================================================================
+    // 3. Get file information
+    // ========================================================================
+    PutStr("\n3. Getting file info...\n")
+
+    match file_info("RAM:test_file.txt") {
+        Result::Ok(info) => {
+            PutStr("   SUCCESS: Got file info\n")
+            PutStr("   - Is file: ")
+            if info.is_file {
+                PutStr("Yes\n")
+            } else {
+                PutStr("No\n")
+            }
+            PutStr("   - Is directory: ")
+            if info.is_directory {
+                PutStr("Yes\n")
+            } else {
+                PutStr("No\n")
+            }
+        },
+        Result::Err(err) => {
+            PutStr("   ERROR: Failed to get file info\n")
+            return 1
+        }
+    }
+
+    // ========================================================================
+    // 4. Read file using read_all() method
+    // ========================================================================
+    PutStr("\n4. Reading file with read_all()...\n")
+
+    match read_with_read_all() {
+        Result::Ok(bytes_read) => {
+            PutStr("   SUCCESS: Read file\n")
+        },
+        Result::Err(err) => {
+            PutStr("   ERROR: Failed to read file\n")
+            return 1
+        }
+    }
+
+    // ========================================================================
+    // 5. Read file line by line
+    // ========================================================================
+    PutStr("\n5. Reading file line by line...\n")
+
+    match read_lines() {
+        Result::Ok(_) => {
+            PutStr("   SUCCESS: Read all lines\n")
+        },
+        Result::Err(err) => {
+            PutStr("   ERROR: Failed to read lines\n")
+            return 1
+        }
+    }
+
+    // ========================================================================
+    // 6. Create and test directory
+    // ========================================================================
+    PutStr("\n6. Creating directory...\n")
+
+    match create_dir("RAM:TestDir") {
+        Result::Ok(_) => {
+            PutStr("   SUCCESS: Created directory\n")
+        },
+        Result::Err(err) => {
+            PutStr("   ERROR: Failed to create directory\n")
+            return 1
+        }
+    }
+
+    // ========================================================================
+    // 7. Delete file
+    // ========================================================================
+    PutStr("\n7. Deleting test file...\n")
+
+    match delete_file("RAM:test_file.txt") {
+        Result::Ok(_) => {
+            PutStr("   SUCCESS: Deleted test_file.txt\n")
+        },
+        Result::Err(err) => {
+            PutStr("   ERROR: Failed to delete test_file.txt\n")
+            return 1
+        }
+    }
+
+    PutStr("\n=== All tests passed! ===\n\n")
+    return 0
+}
+
+// Helper function: Create test file with write_all()
+fn create_test_file() -> Result<(), DosError> {
+    let file = OwnedFileHandle::open("RAM:test_file.txt", (i32)MODE_NEWFILE)?
+
+    // Write some test data
+    file.write_all("Line 1: Hello, Amiga!\n", 22u32)?
+    file.write_all("Line 2: Testing File I/O\n", 25u32)?
+    file.write_all("Line 3: Novus is awesome!\n", 26u32)?
+
+    // File is automatically closed when it goes out of scope
+    return Result::Ok(())
+}
+
+// Helper function: Read file with read_all()
+fn read_with_read_all() -> Result<u32, DosError> {
+    let file = OwnedFileHandle::open("RAM:test_file.txt", (i32)MODE_OLDFILE)?
+
+    var buffer = [0u8; 1024]
+    let bytes_read = file.read_all((*u8)&buffer, 1024u32)?
+
+    return Result::Ok(bytes_read)
+}
+
+// Helper function: Read file line by line
+fn read_lines() -> Result<(), DosError> {
+    let file = OwnedFileHandle::open("RAM:test_file.txt", (i32)MODE_OLDFILE)?
+
+    var buffer = [0u8; 256]
+    var line_count: u32 = 0u32
+
+    // Read each line
+    while true {
+        let result = file.read_line((*u8)&buffer, 256u32)
+        match result {
+            Result::Ok(bytes) => {
+                if bytes == 0u32 {
+                    // EOF
+                    break
+                }
+                line_count = line_count + 1u32
+            },
+            Result::Err(e) => {
+                return Result::Err(e)
+            }
+        }
+    }
+
+    return Result::Ok(())
+}

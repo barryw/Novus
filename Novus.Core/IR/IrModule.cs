@@ -865,9 +865,13 @@ public class IrLocalDecl : IrInstruction
     public string Name { get; set; }
     public IrType Type { get; set; }
     public bool IsMutable { get; set; }
-    public IrValue InitialValue { get; set; }
+    /// <summary>
+    /// Initial value for the variable. Can be null for uninitialized declarations
+    /// like `var buf: [u8; 16]` where the array is stack-allocated but not initialized.
+    /// </summary>
+    public IrValue? InitialValue { get; set; }
 
-    public IrLocalDecl(string name, IrType type, bool isMutable, IrValue initialValue)
+    public IrLocalDecl(string name, IrType type, bool isMutable, IrValue? initialValue)
     {
         Name = name;
         Type = type;

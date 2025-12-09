@@ -307,7 +307,26 @@ public partial class IrBuilder
                 RegisterConstantsForImport(moduleContext, selectiveImports);
 
                 // Step 3: Register structs (with dependency expansion)
-                // First, expand selective imports to include struct dependencies
+                // CRITICAL FIX: Before expanding struct dependencies, we need to scan function signatures
+                // for struct dependencies. When importing a function like `file_info` which returns
+                // `Result<FileInfo, DosError>`, the FileInfo struct needs to have its fields filled in.
+                // First, extract struct dependencies from function signatures
+                var structDepsFromFunctions = ExtractStructDependenciesFromFunctions(moduleContext, selectiveImports);
+
+                // Merge function signature dependencies into selective imports
+                foreach (var dep in structDepsFromFunctions)
+                {
+                    selectiveImports.Add(dep);
+                }
+
+                // Also extract struct dependencies from impl methods (they may return structs)
+                var structDepsFromImpls = ExtractStructDependenciesFromImplMethods(moduleContext);
+                foreach (var dep in structDepsFromImpls)
+                {
+                    selectiveImports.Add(dep);
+                }
+
+                // Now expand selective imports to include struct field dependencies
                 var expandedStructImports = ExpandStructDependencies(moduleContext, selectiveImports);
 
                 // Step 4: Register placeholder structs
@@ -539,6 +558,21 @@ public partial class IrBuilder
         RegisterConstantsForImport(moduleContext, namesToImport);
 
         // Step 2c: Expand struct import list to include dependencies and fill in fields
+        // CRITICAL FIX: Before expanding struct dependencies, scan function signatures for struct dependencies
+        var funcStructDeps = ExtractStructDependenciesFromFunctions(moduleContext, namesToImport);
+        foreach (var dep in funcStructDeps)
+        {
+            namesToImport.Add(dep);
+        }
+
+        // Also extract struct dependencies from impl methods
+        var implStructDeps = ExtractStructDependenciesFromImplMethods(moduleContext);
+        foreach (var dep in implStructDeps)
+        {
+            namesToImport.Add(dep);
+        }
+
+        // Now expand struct dependencies to include field dependencies
         // When importing NewScreen, we also need to import TextAttr and BitMap that it references
         var expandedStructNames = ExpandStructDependencies(moduleContext, namesToImport);
 
@@ -1385,6 +1419,107 @@ public partial class IrBuilder
             }
         } while (addedNewDependencies);
         return expandedStructNames;
+    }
+
+    /// <summary>
+    /// Extract struct dependencies from function signatures (return types and parameters).
+    /// This ensures that when importing a function like `file_info() -> Result<FileInfo, DosError>`,
+    /// we also import the FileInfo struct and fill in its fields.
+    /// </summary>
+    private HashSet<string> ExtractStructDependenciesFromFunctions(
+        NovusParser.CompilationUnitContext moduleContext,
+        HashSet<string> functionsToImport)
+    {
+        var structDeps = new HashSet<string>();
+
+        foreach (var funcDecl in moduleContext.functionDeclaration())
+        {
+            var funcName = funcDecl.IDENTIFIER().GetText();
+
+            // Only scan functions that are being imported
+            if (!functionsToImport.Contains(funcName))
+            {
+                continue;
+            }
+
+            // Extract dependencies from return type
+            if (funcDecl.type() != null)
+            {
+                var returnTypeDeps = ExtractTypeNameDependencies(funcDecl.type());
+                foreach (var dep in returnTypeDeps)
+                {
+                    structDeps.Add(dep);
+                }
+            }
+
+            // Extract dependencies from parameters
+            if (funcDecl.parameterList() != null)
+            {
+                foreach (var paramCtx in funcDecl.parameterList().parameter())
+                {
+                    var paramTypeDeps = ExtractTypeNameDependencies(paramCtx.type());
+                    foreach (var dep in paramTypeDeps)
+                    {
+                        structDeps.Add(dep);
+                    }
+                }
+            }
+        }
+
+        return structDeps;
+    }
+
+    /// <summary>
+    /// Extract struct dependencies from impl method signatures (return types and parameters).
+    /// This ensures that when importing a type, all structs referenced by its methods are also imported.
+    /// </summary>
+    private HashSet<string> ExtractStructDependenciesFromImplMethods(NovusParser.CompilationUnitContext moduleContext)
+    {
+        var structDeps = new HashSet<string>();
+
+        foreach (var implDecl in moduleContext.implDeclaration())
+        {
+            foreach (var implItem in implDecl.implItem())
+            {
+                var funcDecl = implItem.functionDeclaration();
+                if (funcDecl == null) continue;
+
+                // Only scan pub methods (we only import pub methods)
+                var isPub = AstModifierHelper.HasModifier(funcDecl, "pub", 3);
+
+                // For trait impls, methods are implicitly public
+                bool isTraitImpl = implDecl.KW_FOR() != null;
+                if (!isPub && !isTraitImpl)
+                {
+                    continue;
+                }
+
+                // Extract dependencies from return type
+                if (funcDecl.type() != null)
+                {
+                    var returnTypeDeps = ExtractTypeNameDependencies(funcDecl.type());
+                    foreach (var dep in returnTypeDeps)
+                    {
+                        structDeps.Add(dep);
+                    }
+                }
+
+                // Extract dependencies from parameters
+                if (funcDecl.parameterList() != null)
+                {
+                    foreach (var paramCtx in funcDecl.parameterList().parameter())
+                    {
+                        var paramTypeDeps = ExtractTypeNameDependencies(paramCtx.type());
+                        foreach (var dep in paramTypeDeps)
+                        {
+                            structDeps.Add(dep);
+                        }
+                    }
+                }
+            }
+        }
+
+        return structDeps;
     }
 
     /// <summary>

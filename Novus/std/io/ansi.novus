@@ -14,7 +14,7 @@
 // write(f"{fg(Pen::Pen1)}{bold()}Error:{reset()} Failed\n")
 // ```
 
-from std::core import Option, Result
+from std::core import Option, Result, Drop
 from std::strings::core import Str, String
 from std::collections::vec import Vec
 from std::error::errors import DosError
@@ -367,6 +367,13 @@ pub fn clear(mode: ClearMode) -> String {
 /// ```
 pub struct Ansi {
     codes: Vec<u32>,
+}
+
+// Automatic cleanup for Ansi - frees the internal Vec when going out of scope
+impl Drop for Ansi {
+    fn drop(&mut self) {
+        self.codes.drop()
+    }
 }
 
 impl Ansi {

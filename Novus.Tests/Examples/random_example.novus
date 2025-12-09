@@ -1,0 +1,192 @@
+// Example: Random number generation
+//
+// Description:
+//   Tests the std::random module for pseudo-random number generation
+//
+// Expected Output:
+//   Exit code: 0 (all random tests pass)
+
+from std::random::core import Rng, shuffle_u32
+
+// External DOS function for printing
+extern fn PutStr(str: *u8)
+
+fn main() -> i32 {
+    // Test 1: Create RNG with seed
+    var rng = Rng::new(12345u32)
+
+    // Generate some random numbers
+    let val1 = rng.next_u32()
+    let val2 = rng.next_u16()
+    let val3 = rng.next_u8()
+
+    print("Random u32: ")
+    print_hex(val1)
+    print("\nRandom u16: ")
+    print_u32((u32)val2)
+    print("\nRandom u8: ")
+    print_u32((u32)val3)
+    print("\n")
+
+    // Test 2: Create RNG from time (hardware entropy)
+    var rng2 = Rng::from_time()
+    print("Time-seeded random: ")
+    print_hex(rng2.next_u32())
+    print("\n")
+
+    // Test 3: Range generation
+    print("Dice rolls: ")
+    var i: u32 = 0u32
+    while i < 10u32 {
+        let dice = rng.range_u32(1u32, 7u32)
+        print_u32(dice)
+        print(" ")
+        i = i + 1u32
+    }
+    print("\n")
+
+    // Test 4: Boolean generation (coin flips)
+    print("Coin flips: ")
+    i = 0u32
+    while i < 10u32 {
+        let flip = rng.next_bool()
+        if flip {
+            print("H ")
+        } else {
+            print("T ")
+        }
+        i = i + 1u32
+    }
+    print("\n")
+
+    // Test 5: Shuffle an array
+    var numbers: [u32; 10] = [1u32, 2u32, 3u32, 4u32, 5u32, 6u32, 7u32, 8u32, 9u32, 10u32]
+    print("Before shuffle: ")
+    i = 0u32
+    while i < 10u32 {
+        print_u32(numbers[i])
+        print(" ")
+        i = i + 1u32
+    }
+    print("\n")
+
+    shuffle_u32((*u32)&numbers, 10u32, &mut rng)
+
+    print("After shuffle:  ")
+    i = 0u32
+    while i < 10u32 {
+        print_u32(numbers[i])
+        print(" ")
+        i = i + 1u32
+    }
+    print("\n")
+
+    // Test 6: Fill bytes
+    var buffer = [0u8; 16]
+    rng.fill_bytes((*u8)&buffer, 16u32)
+    print("Random bytes: ")
+    i = 0u32
+    while i < 16u32 {
+        print_hex_byte(buffer[i])
+        print(" ")
+        i = i + 1u32
+    }
+    print("\n")
+
+    // Test 7: Signed range
+    print("Random i32 (-10 to 10): ")
+    i = 0u32
+    while i < 5u32 {
+        let val = rng.range_i32(-10, 11)
+        print_i32(val)
+        print(" ")
+        i = i + 1u32
+    }
+    print("\n")
+
+    // Test 8: Reproducibility - same seed = same sequence
+    var rng_a = Rng::new(42u32)
+    var rng_b = Rng::new(42u32)
+    print("Same seed test: ")
+    if rng_a.next_u32() == rng_b.next_u32() {
+        print("PASS (reproducible)\n")
+    } else {
+        print("FAIL\n")
+        return 1
+    }
+
+    print("\nAll random tests completed!\n")
+    return 0
+}
+
+// Helper: Print a null-terminated string
+fn print(s: *u8) {
+    PutStr(s)
+}
+
+// Helper: Print u32 as decimal
+fn print_u32(n: u32) {
+    if n == 0u32 {
+        print("0")
+        return
+    }
+
+    var buf = [0u8; 12]
+    var i: u32 = 11u32
+    var val = n
+
+    buf[11] = 0u8
+    while val > 0u32 {
+        i = i - 1u32
+        buf[i] = (u8)((val % 10u32) + 48u32)
+        val = val / 10u32
+    }
+
+    PutStr((*u8)&buf[i])
+}
+
+// Helper: Print i32 as decimal
+fn print_i32(n: i32) {
+    if n < 0 {
+        print("-")
+        print_u32((u32)(0 - n))
+    } else {
+        print_u32((u32)n)
+    }
+}
+
+// Helper: Print u32 as hex
+fn print_hex(n: u32) {
+    var buf = [0u8; 11]
+    buf[0] = 48u8  // '0'
+    buf[1] = 120u8 // 'x'
+
+    var i: u32 = 0u32
+    while i < 8u32 {
+        let nibble = (n >> ((7u32 - i) * 4u32)) & 15u32
+        buf[2u32 + i] = hex_digit(nibble)
+        i = i + 1u32
+    }
+    buf[10] = 0u8
+
+    PutStr((*u8)&buf)
+}
+
+// Helper: Print single byte as hex
+fn print_hex_byte(n: u8) {
+    var buf = [0u8; 3]
+    buf[0] = hex_digit(((u32)n >> 4u32) & 15u32)
+    buf[1] = hex_digit((u32)n & 15u32)
+    buf[2] = 0u8
+
+    PutStr((*u8)&buf)
+}
+
+// Helper: Convert nibble (0-15) to hex character
+fn hex_digit(nibble: u32) -> u8 {
+    if nibble < 10u32 {
+        return (u8)(nibble + 48u32)  // '0' = 48
+    } else {
+        return (u8)(nibble - 10u32 + 65u32)  // 'A' = 65
+    }
+}

@@ -264,7 +264,10 @@ public abstract class IrRewriter
     /// </summary>
     public virtual IrInstruction? RewriteLocalDecl(IrLocalDecl localDecl)
     {
-        localDecl.InitialValue = RewriteValue(localDecl.InitialValue);
+        if (localDecl.InitialValue != null)
+        {
+            localDecl.InitialValue = RewriteValue(localDecl.InitialValue);
+        }
         return localDecl;
     }
 

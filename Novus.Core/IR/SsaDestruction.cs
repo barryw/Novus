@@ -231,7 +231,10 @@ public class SsaDestruction
         {
             case IrLocalDecl decl:
                 decl.Name = RemoveVersion(decl.Name);
-                decl.InitialValue = RemoveSsaVersioningFromValue(decl.InitialValue);
+                if (decl.InitialValue != null)
+                {
+                    decl.InitialValue = RemoveSsaVersioningFromValue(decl.InitialValue);
+                }
                 break;
 
             case IrStore store:

@@ -174,6 +174,10 @@ public class VbccToolchain
         // Add linker flags (library-specific behavior)
         args.Add("-x");  // Discard local symbols
 
+        // CRITICAL: -nostdlib prevents vlink from auto-linking C library functions
+        // that expect VBCC's startup.o setup. We provide our own startup code.
+        args.Add("-nostdlib");
+
         if (isLibrary)
         {
             // For shared libraries: MUST keep relocations, no dead code elimination of wrappers
@@ -187,7 +191,7 @@ public class VbccToolchain
         {
             // For executables: standard static linking
             args.Add("-Bstatic");  // Static linking
-            args.Add("-Cvbcc");  // VBCC calling convention (also enables constructor/destructor support)
+            args.Add("-Cvbcc");  // VBCC calling convention
 
             // Dead code elimination with section merging to avoid duplicate symbol errors
             // -sc merges all code sections, -sd merges all data/bss sections
@@ -215,12 +219,9 @@ public class VbccToolchain
             }
             else
             {
-                // Fallback to kick13 if amigaos not found
-                startupObj = Path.Combine(_vbccPath, "targets", "m68k-kick13", "lib", "startup.o");
-                if (File.Exists(startupObj))
-                {
-                    args.Add(startupObj);
-                }
+                throw new InvalidOperationException(
+                    $"VBCC m68k-amigaos target not found. Expected: {startupObj}\n" +
+                    "Novus requires AmigaOS 3.0+ target. The kick13 (1.3) target is not supported.");
             }
         }
 
@@ -231,39 +232,37 @@ public class VbccToolchain
         var vbccLibPath = Path.Combine(_vbccPath, "targets", "m68k-amigaos", "lib");
         if (!Directory.Exists(vbccLibPath))
         {
-            // Fallback to kick13 if amigaos not found
-            vbccLibPath = Path.Combine(_vbccPath, "targets", "m68k-kick13", "lib");
+            throw new InvalidOperationException(
+                $"VBCC m68k-amigaos target library not found. Expected: {vbccLibPath}\n" +
+                "Novus requires AmigaOS 3.0+ target. The kick13 (1.3) target is not supported.");
         }
 
-        if (Directory.Exists(vbccLibPath))
+        args.Add($"-L{vbccLibPath}");
+
+        // Link appropriate math library based on FPU mode
+        if (fpuMode == "auto")
         {
-            args.Add($"-L{vbccLibPath}");
-
-            // Link appropriate math library based on FPU mode
-            if (fpuMode == "auto")
-            {
-                // Fat binary - needs both soft-float and hardware FPU libraries
-                args.Add("-lmsoft");  // Soft-float library
-                args.Add("-lm881");   // Hardware FPU library
-            }
-            else if (fpuMode == "soft")
-            {
-                // Software floating point only
-                args.Add("-lmsoft");
-            }
-            else if (fpuMode == "68881" || fpuMode == "68040")
-            {
-                // Hardware FPU library
-                args.Add("-lm881");
-            }
-
-            // Always link with C runtime library (provides startup, exit, etc.)
-            args.Add("-lvc");
-
-            // Add amiga.lib for system library wrappers (BeginIO, DoIO, etc.)
-            // This is in the same vbcc lib directory
-            args.Add("-lamiga");
+            // Fat binary - needs both soft-float and hardware FPU libraries
+            args.Add("-lmsoft");  // Soft-float library
+            args.Add("-lm881");   // Hardware FPU library
         }
+        else if (fpuMode == "soft")
+        {
+            // Software floating point only
+            args.Add("-lmsoft");
+        }
+        else if (fpuMode == "68881" || fpuMode == "68040")
+        {
+            // Hardware FPU library
+            args.Add("-lm881");
+        }
+
+        // Always link with C runtime library (provides startup, exit, etc.)
+        args.Add("-lvc");
+
+        // Add amiga.lib for system library wrappers (BeginIO, DoIO, etc.)
+        // This is in the same vbcc lib directory
+        args.Add("-lamiga");
 
         // Add standard Amiga libraries path and link with -lauto if NDK lib exists
         // -lauto: Provides automatic library base opening/closing

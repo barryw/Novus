@@ -1016,7 +1016,7 @@ _GadgetMouse:
 _GetDefaultPubScreen:
 	movea.l	4(sp),a0
 	movea.l	_IntuitionBase,a6
-	jsr	-588(a6)
+	jsr	-582(a6)
 	rts
 
 	section	_EasyRequestArgs_stub,code
@@ -1029,7 +1029,7 @@ _EasyRequestArgs:
 	movea.l	12(sp),a2
 	movea.l	16(sp),a3
 	movea.l	_IntuitionBase,a6
-	jsr	-594(a6)
+	jsr	-588(a6)
 	rts
 
 	section	_BuildEasyRequestArgs_stub,code
@@ -1042,7 +1042,7 @@ _BuildEasyRequestArgs:
 	move.l	12(sp),d0
 	movea.l	16(sp),a3
 	movea.l	_IntuitionBase,a6
-	jsr	-606(a6)
+	jsr	-594(a6)
 	rts
 
 	section	_SysReqHandler_stub,code
@@ -1054,7 +1054,7 @@ _SysReqHandler:
 	movea.l	8(sp),a1
 	move.l	12(sp),d0
 	movea.l	_IntuitionBase,a6
-	jsr	-618(a6)
+	jsr	-600(a6)
 	rts
 
 	section	_OpenWindowTagList_stub,code
@@ -1065,7 +1065,7 @@ _OpenWindowTagList:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_IntuitionBase,a6
-	jsr	-624(a6)
+	jsr	-606(a6)
 	rts
 
 	section	_OpenScreenTagList_stub,code
@@ -1076,7 +1076,7 @@ _OpenScreenTagList:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_IntuitionBase,a6
-	jsr	-636(a6)
+	jsr	-612(a6)
 	rts
 
 	section	_DrawImageState_stub,code
@@ -1091,7 +1091,7 @@ _DrawImageState:
 	move.l	20(sp),d2
 	movea.l	24(sp),a2
 	movea.l	_IntuitionBase,a6
-	jsr	-648(a6)
+	jsr	-618(a6)
 	rts
 
 	section	_PointInImage_stub,code
@@ -1102,7 +1102,7 @@ _PointInImage:
 	move.l	4(sp),d0
 	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
-	jsr	-654(a6)
+	jsr	-624(a6)
 	rts
 
 	section	_EraseImage_stub,code
@@ -1115,7 +1115,7 @@ _EraseImage:
 	move.l	12(sp),d0
 	move.l	16(sp),d1
 	movea.l	_IntuitionBase,a6
-	jsr	-660(a6)
+	jsr	-630(a6)
 	rts
 
 	section	_NewObjectA_stub,code
@@ -1127,7 +1127,7 @@ _NewObjectA:
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
 	movea.l	_IntuitionBase,a6
-	jsr	-666(a6)
+	jsr	-636(a6)
 	rts
 
 	section	_DisposeObject_stub,code
@@ -1137,7 +1137,7 @@ _NewObjectA:
 _DisposeObject:
 	movea.l	4(sp),a0
 	movea.l	_IntuitionBase,a6
-	jsr	-678(a6)
+	jsr	-642(a6)
 	rts
 
 	section	_SetAttrsA_stub,code
@@ -1148,7 +1148,7 @@ _SetAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_IntuitionBase,a6
-	jsr	-684(a6)
+	jsr	-648(a6)
 	rts
 
 	section	_GetAttr_stub,code
@@ -1160,7 +1160,7 @@ _GetAttr:
 	movea.l	8(sp),a0
 	movea.l	12(sp),a1
 	movea.l	_IntuitionBase,a6
-	jsr	-696(a6)
+	jsr	-654(a6)
 	rts
 
 	section	_SetGadgetAttrsA_stub,code
@@ -1173,7 +1173,7 @@ _SetGadgetAttrsA:
 	movea.l	12(sp),a2
 	movea.l	16(sp),a3
 	movea.l	_IntuitionBase,a6
-	jsr	-702(a6)
+	jsr	-660(a6)
 	rts
 
 	section	_NextObject_stub,code
@@ -1183,7 +1183,7 @@ _SetGadgetAttrsA:
 _NextObject:
 	movea.l	4(sp),a0
 	movea.l	_IntuitionBase,a6
-	jsr	-714(a6)
+	jsr	-666(a6)
 	rts
 
 	section	_MakeClass_stub,code
@@ -1197,7 +1197,7 @@ _MakeClass:
 	move.l	16(sp),d0
 	move.l	20(sp),d1
 	movea.l	_IntuitionBase,a6
-	jsr	-726(a6)
+	jsr	-678(a6)
 	rts
 
 	section	_AddClass_stub,code
@@ -1207,7 +1207,7 @@ _MakeClass:
 _AddClass:
 	movea.l	4(sp),a0
 	movea.l	_IntuitionBase,a6
-	jsr	-732(a6)
+	jsr	-684(a6)
 	rts
 
 	section	_GetScreenDrawInfo_stub,code
@@ -1217,7 +1217,7 @@ _AddClass:
 _GetScreenDrawInfo:
 	movea.l	4(sp),a0
 	movea.l	_IntuitionBase,a6
-	jsr	-738(a6)
+	jsr	-690(a6)
 	rts
 
 	section	_FreeScreenDrawInfo_stub,code
@@ -1228,7 +1228,7 @@ _FreeScreenDrawInfo:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_IntuitionBase,a6
-	jsr	-744(a6)
+	jsr	-696(a6)
 	rts
 
 	section	_ResetMenuStrip_stub,code
@@ -1239,7 +1239,7 @@ _ResetMenuStrip:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_IntuitionBase,a6
-	jsr	-750(a6)
+	jsr	-702(a6)
 	rts
 
 	section	_RemoveClass_stub,code
@@ -1249,7 +1249,7 @@ _ResetMenuStrip:
 _RemoveClass:
 	movea.l	4(sp),a0
 	movea.l	_IntuitionBase,a6
-	jsr	-756(a6)
+	jsr	-708(a6)
 	rts
 
 	section	_FreeClass_stub,code
@@ -1259,7 +1259,7 @@ _RemoveClass:
 _FreeClass:
 	movea.l	4(sp),a0
 	movea.l	_IntuitionBase,a6
-	jsr	-762(a6)
+	jsr	-714(a6)
 	rts
 
 	section	_AllocScreenBuffer_stub,code

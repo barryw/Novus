@@ -253,7 +253,10 @@ public abstract class IrVisitor<TResult, TContext>
     /// </summary>
     public virtual TResult VisitLocalDecl(IrLocalDecl localDecl, TContext context)
     {
-        VisitValue(localDecl.InitialValue, context);
+        if (localDecl.InitialValue != null)
+        {
+            VisitValue(localDecl.InitialValue, context);
+        }
         return default!;
     }
 

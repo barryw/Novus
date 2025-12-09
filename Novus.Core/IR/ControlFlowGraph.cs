@@ -390,7 +390,10 @@ public class ControlFlowGraph
                     }
 
                     // Also count uses in initial value
-                    CollectUsedVariables(localDecl.InitialValue, block.Label, usedIn);
+                    if (localDecl.InitialValue != null)
+                    {
+                        CollectUsedVariables(localDecl.InitialValue, block.Label, usedIn);
+                    }
                 }
                 else if (instruction is IrStore store)
                 {

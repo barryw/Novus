@@ -449,7 +449,10 @@ public class IrValidator
             AddError($"Local declaration {localDecl.Name} has null type");
         }
 
-        ValidateValue(localDecl.InitialValue);
+        if (localDecl.InitialValue != null)
+        {
+            ValidateValue(localDecl.InitialValue);
+        }
 
         // Variable should already be declared from function.LocalVariables
         if (!_declaredVariables.Contains(localDecl.Name))

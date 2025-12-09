@@ -392,7 +392,10 @@ public class SsaConstructor
                 }
                 break;
             case IrLocalDecl decl:
-                decl.InitialValue = RenameValue(decl.InitialValue);
+                if (decl.InitialValue != null)
+                {
+                    decl.InitialValue = RenameValue(decl.InitialValue);
+                }
                 break;
             case IrIndexAccess indexAccess:
                 indexAccess.Array = RenameValue(indexAccess.Array);

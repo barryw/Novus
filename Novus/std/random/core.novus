@@ -1,0 +1,445 @@
+// Novus Standard Library - Random Number Generation
+// Namespace: std::random
+//
+// Provides fast, high-quality pseudo-random number generation suitable for
+// games, simulations, and general-purpose use. NOT for cryptographic purposes.
+//
+// Uses xorshift32 algorithm which is:
+// - Fast on 68k (only shifts and XORs, no division/multiplication)
+// - Good statistical quality (passes most randomness tests)
+// - Reproducible (same seed gives same sequence)
+//
+// Example:
+// ```novus
+// from std::random import Rng
+//
+// let mut rng = Rng::from_time()  // Seed from system time
+// let dice = rng.range_u32(1, 7)  // Roll a d6
+// let coin = rng.bool()           // Flip a coin
+// ```
+
+from std::hardware::registers import CUSTOM_BASE, VHPOSR
+
+// ============================================================================
+// Rng - Random Number Generator
+// ============================================================================
+
+/// A fast xorshift-based random number generator
+///
+/// This generator produces good quality pseudo-random numbers suitable for
+/// games and simulations. The state is a 32-bit value that must be non-zero.
+///
+/// Example:
+/// ```novus
+/// let mut rng = Rng::new(12345)   // Create with specific seed
+/// let mut rng = Rng::from_time()  // Or auto-seed from system time
+///
+/// let n = rng.next_u32()          // Get a random u32
+/// let d = rng.range_u32(1, 7)     // Get 1-6 (dice roll)
+/// ```
+pub struct Rng {
+    state: u32,
+}
+
+impl Rng {
+    /// Create a new RNG with the given seed
+    ///
+    /// The seed must be non-zero. If zero is passed, it will be replaced with
+    /// a default value.
+    ///
+    /// Example:
+    /// ```novus
+    /// let mut rng = Rng::new(42)
+    /// ```
+    pub fn new(seed: u32) -> Rng {
+        // Ensure state is never zero (would produce all zeros)
+        let actual_seed = if seed == 0 { $2A55A5A5 } else { seed }
+        return Rng { state: actual_seed }
+    }
+
+    /// Create a new RNG seeded from hardware state
+    ///
+    /// Uses multiple entropy sources:
+    /// - VHPOSR register (beam position)
+    /// - CIA-A Timer A (microsecond counter)
+    ///
+    /// This provides reasonable unpredictability for games but is NOT
+    /// suitable for cryptographic purposes.
+    ///
+    /// Example:
+    /// ```novus
+    /// let mut rng = Rng::from_time()
+    /// ```
+    pub fn from_time() -> Rng {
+        // CIA-A base address: $BFE001 (odd bytes only, address bit 0 is A0)
+        // Timer A low byte at $BFE401, high byte at $BFE501
+        // These count down from the reload value at ~1.4MHz (NTSC) or ~1.4MHz (PAL)
+        // Much better entropy than just the beam position!
+        let ciaa_talo_ptr = (*u8)$BFE401
+        let ciaa_tahi_ptr = (*u8)$BFE501
+
+        // Read CIA timer values - these change very rapidly
+        let talo1: u32 = (u32)unsafe { *ciaa_talo_ptr }
+        let tahi1: u32 = (u32)unsafe { *ciaa_tahi_ptr }
+
+        // Read VHPOSR for additional entropy (beam position)
+        let vhpos_ptr = (*u16)(CUSTOM_BASE + VHPOSR)
+        let vhpos: u32 = (u32)unsafe { *vhpos_ptr }
+
+        // Read CIA again - the time between reads adds entropy
+        let talo2: u32 = (u32)unsafe { *ciaa_talo_ptr }
+        let tahi2: u32 = (u32)unsafe { *ciaa_tahi_ptr }
+
+        // Mix the entropy sources with a magic constant 0xDEADBEEF
+        // Build via shifts to avoid i32 overflow on large literals
+        // 0xDE=222, 0xAD=173, 0xBE=190, 0xEF=239
+        let magic = ((u32)222 << 24) | ((u32)173 << 16) | ((u32)190 << 8) | (u32)239
+
+        // Combine all sources: timer values in different positions
+        let timer1 = (tahi1 << 8) | talo1
+        let timer2 = (tahi2 << 8) | talo2
+        let seed = (timer1 << 16) ^ timer2 ^ (vhpos << 4) ^ magic
+
+        return Rng::new(seed)
+    }
+
+    /// Generate the next random u32 value
+    ///
+    /// Uses xorshift32 algorithm with shifts (13, 17, 5) which has good
+    /// statistical properties and is fast on 68k.
+    ///
+    /// Example:
+    /// ```novus
+    /// let value = rng.next_u32()
+    /// ```
+    pub fn next_u32(&mut self) -> u32 {
+        // xorshift32 algorithm
+        var x = self.state
+        x = x ^ (x << 13)
+        x = x ^ (x >> 17)
+        x = x ^ (x << 5)
+        self.state = x
+        return x
+    }
+
+    /// Generate a random u16 value (0 to 65535)
+    ///
+    /// Example:
+    /// ```novus
+    /// let value = rng.next_u16()
+    /// ```
+    pub fn next_u16(&mut self) -> u16 {
+        return (u16)(self.next_u32() >> 16)
+    }
+
+    /// Generate a random u8 value (0 to 255)
+    ///
+    /// Example:
+    /// ```novus
+    /// let value = rng.next_u8()
+    /// ```
+    pub fn next_u8(&mut self) -> u8 {
+        return (u8)(self.next_u32() >> 24)
+    }
+
+    /// Generate a random i32 value
+    ///
+    /// Example:
+    /// ```novus
+    /// let value = rng.next_i32()
+    /// ```
+    pub fn next_i32(&mut self) -> i32 {
+        return (i32)self.next_u32()
+    }
+
+    /// Generate a random boolean value
+    ///
+    /// Example:
+    /// ```novus
+    /// if rng.next_bool() {
+    ///     // 50% chance
+    /// }
+    /// ```
+    pub fn next_bool(&mut self) -> bool {
+        // Use high bit for best distribution
+        // 0x80000000 = 1 << 31
+        let high_bit: u32 = (u32)1 << 31
+        return (self.next_u32() & high_bit) != 0
+    }
+
+    /// Generate a random u32 in the range [min, max)
+    ///
+    /// The min value is inclusive, max is exclusive.
+    /// For example, range_u32(0, 10) returns 0-9.
+    ///
+    /// Uses rejection sampling to avoid modulo bias.
+    ///
+    /// Example:
+    /// ```novus
+    /// let dice = rng.range_u32(1, 7)  // Returns 1, 2, 3, 4, 5, or 6
+    /// let index = rng.range_u32(0, array.len())
+    /// ```
+    @suppress("W0002", "Arithmetic operations are safe within validated range")
+    pub fn range_u32(&mut self, min: u32, max: u32) -> u32 {
+        if min >= max {
+            return min
+        }
+
+        let range = max - min
+
+        // For ranges that are powers of 2, we can use simple masking
+        // This is a fast path for common cases like range(0, 256)
+        if (range & (range - 1)) == 0 {
+            // range is a power of 2
+            return min + (self.next_u32() & (range - 1))
+        }
+
+        // Use rejection sampling to avoid modulo bias
+        // Calculate the largest multiple of range that fits in u32
+        // Build 0xFFFFFFFF using shifts to avoid large literal issues
+        // 0xFF=255, (255 << 24) | (255 << 16) | (255 << 8) | 255
+        let max_u32: u32 = ((u32)255 << 24) | ((u32)255 << 16) | ((u32)255 << 8) | (u32)255
+        let limit = max_u32 - (max_u32 % range)
+
+        var value = self.next_u32()
+        while value >= limit {
+            value = self.next_u32()
+        }
+
+        return min + (value % range)
+    }
+
+    /// Generate a random i32 in the range [min, max)
+    ///
+    /// The min value is inclusive, max is exclusive.
+    ///
+    /// Example:
+    /// ```novus
+    /// let offset = rng.range_i32(-10, 11)  // Returns -10 to 10
+    /// ```
+    @suppress("W0002", "Casts are safe within validated range")
+    pub fn range_i32(&mut self, min: i32, max: i32) -> i32 {
+        if min >= max {
+            return min
+        }
+
+        let range = (u32)(max - min)
+        let offset = self.range_u32(0, range)
+        return min + (i32)offset
+    }
+
+    /// Fill a buffer with random bytes
+    ///
+    /// Efficiently fills a byte buffer with random data.
+    ///
+    /// Example:
+    /// ```novus
+    /// let buffer: [u8; 64]
+    /// rng.fill_bytes(&buffer, 64)
+    /// ```
+    pub fn fill_bytes(&mut self, buffer: *u8, len: u32) {
+        var i: u32 = 0
+
+        // Fill 4 bytes at a time while we can
+        while i + 4 <= len {
+            let value = self.next_u32()
+            buffer[i] = (u8)((value >> 24) & 255)
+            buffer[i + 1] = (u8)((value >> 16) & 255)
+            buffer[i + 2] = (u8)((value >> 8) & 255)
+            buffer[i + 3] = (u8)(value & 255)
+            i = i + 4
+        }
+
+        // Fill remaining bytes
+        if i < len {
+            let rem_value = self.next_u32()
+            var shift: u32 = 24
+            while i < len {
+                buffer[i] = (u8)((rem_value >> shift) & 255)
+                shift = shift - 8
+                i = i + 1
+            }
+        }
+    }
+
+    /// Generate a random index for shuffling (Fisher-Yates)
+    ///
+    /// Internal helper for shuffle operations.
+    /// Returns a value in [0, n)
+    fn random_index(&mut self, n: u32) -> u32 {
+        return self.range_u32(0, n)
+    }
+}
+
+// ============================================================================
+// Convenience Functions
+// ============================================================================
+
+/// Create a new RNG seeded from system time
+///
+/// Convenience function equivalent to Rng::from_time()
+///
+/// Example:
+/// ```novus
+/// let mut rng = random_rng()
+/// ```
+pub fn random_rng() -> Rng {
+    return Rng::from_time()
+}
+
+/// Generate a random u32 using a one-shot RNG
+///
+/// Creates a temporary RNG, generates one value, and returns it.
+/// For multiple random values, create an Rng instance instead.
+///
+/// Example:
+/// ```novus
+/// let value = random_u32()
+/// ```
+pub fn random_u32() -> u32 {
+    var rng = Rng::from_time()
+    return rng.next_u32()
+}
+
+/// Generate a random value in a range using a one-shot RNG
+///
+/// Creates a temporary RNG for a single range value.
+/// For multiple random values, create an Rng instance instead.
+///
+/// Example:
+/// ```novus
+/// let dice = random_range(1, 7)  // Roll a d6
+/// ```
+pub fn random_range(min: u32, max: u32) -> u32 {
+    var rng = Rng::from_time()
+    return rng.range_u32(min, max)
+}
+
+// ============================================================================
+// Shuffle Functions
+// ============================================================================
+
+/// Shuffle a u32 array in-place using Fisher-Yates algorithm
+///
+/// Produces a uniform random permutation of the array elements.
+///
+/// Example:
+/// ```novus
+/// let deck: [u32; 52]
+/// // ... initialize deck ...
+/// shuffle_u32(&deck, 52, &rng)
+/// ```
+pub fn shuffle_u32(arr: *u32, len: u32, rng: &mut Rng) {
+    if len <= 1 {
+        return
+    }
+
+    var i = len - 1
+    while i > 0 {
+        let j = rng.random_index(i + 1)
+
+        // Swap arr[i] and arr[j]
+        let tmp = arr[i]
+        arr[i] = arr[j]
+        arr[j] = tmp
+
+        i = i - 1
+    }
+}
+
+/// Shuffle a u8 array in-place using Fisher-Yates algorithm
+///
+/// Example:
+/// ```novus
+/// let bytes: [u8; 256]
+/// shuffle_u8(&bytes, 256, &rng)
+/// ```
+pub fn shuffle_u8(arr: *u8, len: u32, rng: &mut Rng) {
+    if len <= 1 {
+        return
+    }
+
+    var i = len - 1
+    while i > 0 {
+        let j = rng.random_index(i + 1)
+
+        // Swap arr[i] and arr[j]
+        let tmp = arr[i]
+        arr[i] = arr[j]
+        arr[j] = tmp
+
+        i = i - 1
+    }
+}
+
+/// Shuffle an i32 array in-place using Fisher-Yates algorithm
+///
+/// Example:
+/// ```novus
+/// let values: [i32; 100]
+/// shuffle_i32(&values, 100, &rng)
+/// ```
+pub fn shuffle_i32(arr: *i32, len: u32, rng: &mut Rng) {
+    if len <= 1 {
+        return
+    }
+
+    var i = len - 1
+    while i > 0 {
+        let j = rng.random_index(i + 1)
+
+        // Swap arr[i] and arr[j]
+        let tmp = arr[i]
+        arr[i] = arr[j]
+        arr[j] = tmp
+
+        i = i - 1
+    }
+}
+
+// ============================================================================
+// Selection Functions
+// ============================================================================
+
+/// Select a random element index from an array
+///
+/// Returns a random index in [0, len)
+///
+/// Example:
+/// ```novus
+/// let index = random_index(array_len, &rng)
+/// let selected = array[index]
+/// ```
+pub fn random_index(len: u32, rng: &mut Rng) -> u32 {
+    return rng.range_u32(0, len)
+}
+
+/// Pick a random u32 element from an array
+///
+/// Example:
+/// ```novus
+/// let colors = [0xFF0000, 0x00FF00, 0x0000FF]
+/// let random_color = pick_u32(&colors, 3, &rng)
+/// ```
+pub fn pick_u32(arr: *u32, len: u32, rng: &mut Rng) -> u32 {
+    if len == 0 {
+        return 0
+    }
+    let index = rng.range_u32(0, len)
+    return arr[index]
+}
+
+/// Pick a random u8 element from an array
+///
+/// Example:
+/// ```novus
+/// let options = [1, 2, 3, 4, 5, 6]
+/// let roll = pick_u8(&options, 6, &rng)
+/// ```
+pub fn pick_u8(arr: *u8, len: u32, rng: &mut Rng) -> u8 {
+    if len == 0 {
+        return 0
+    }
+    let index = rng.range_u32(0, len)
+    return arr[index]
+}

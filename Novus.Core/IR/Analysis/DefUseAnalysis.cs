@@ -222,7 +222,10 @@ public class DefUseAnalysis
                 break;
 
             case IrLocalDecl localDecl:
-                localDecl.InitialValue = ReplaceInValue(localDecl.InitialValue, oldName, newValue);
+                if (localDecl.InitialValue != null)
+                {
+                    localDecl.InitialValue = ReplaceInValue(localDecl.InitialValue, oldName, newValue);
+                }
                 break;
 
             case IrAssert assert:

@@ -529,8 +529,13 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     var structName = structDecl.IDENTIFIER().GetText();
                     if (selectiveImports.Contains(structName))
                     {
-                        if (!_symbols.HasStruct(structName))
+                        // Check if struct exists and has fields (fully registered)
+                        // This mirrors the enum logic above - a struct may exist as a
+                        // placeholder stub with empty Fields list
+                        var existingStruct = _symbols.LookupStruct(structName);
+                        if (existingStruct == null || existingStruct.Fields.Count == 0)
                         {
+                            // Struct doesn't exist or is a stub - register the full definition
                             RegisterStruct(structDecl);
                         }
                         _importedNames[structName] = moduleNamespace;
