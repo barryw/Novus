@@ -43,7 +43,23 @@ public class IrEnumType : IrType
                 int variantSize = 0;
                 foreach (var dataType in variant.AssociatedData)
                 {
-                    variantSize += dataType.SizeInBytes;
+                    int fieldSize = dataType.SizeInBytes;
+
+                    // 68000 alignment rules (same as struct fields):
+                    // - 1-byte fields: no alignment needed
+                    // - 2+ byte fields: must be word-aligned (even address)
+                    // This prevents Address Error (Guru Meditation 80000004) on 68000.
+                    int alignment = fieldSize switch
+                    {
+                        1 => 1,  // byte-aligned (any address OK)
+                        _ => 2   // word-aligned for everything else (68k requirement)
+                    };
+
+                    // Pad to alignment
+                    if (variantSize % alignment != 0)
+                        variantSize += alignment - (variantSize % alignment);
+
+                    variantSize += fieldSize;
                 }
                 if (variantSize > maxDataSize)
                     maxDataSize = variantSize;

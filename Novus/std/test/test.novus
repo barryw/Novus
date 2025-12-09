@@ -55,19 +55,19 @@ pub fn expect(condition: bool, message: *u8) {
     }
 }
 
-/// Expect a condition to be true, with formatted message.
-pub fn expect_true(condition: bool) {
+/// Expect a condition to be true.
+pub fn expect_true(condition: bool, message: *u8) {
     if !condition {
         __test_failures++
-        write("  FAIL: expected true, got false\n")
+        write("  FAIL: %s - expected true, got false\n", message)
     }
 }
 
 /// Expect a condition to be false.
-pub fn expect_false(condition: bool) {
+pub fn expect_false(condition: bool, message: *u8) {
     if condition {
         __test_failures++
-        write("  FAIL: expected false, got true\n")
+        write("  FAIL: %s - expected false, got true\n", message)
     }
 }
 

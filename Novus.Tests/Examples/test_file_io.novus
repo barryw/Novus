@@ -1,0 +1,118 @@
+// Test File I/O Operations
+// Run with: novus test test_file_io.novus
+//
+// Tests all major file I/O functions in std::os::dos
+
+from std::core import Result
+from std::test::test import expect, expect_true, expect_false, expect_eq_i32, expect_eq_u32
+from std::ffi::amiga_consts import MODE_OLDFILE, MODE_NEWFILE
+from std::error::errors import DosError
+from std::os::dos import OwnedFileHandle, file_exists, delete_file, file_info
+
+@test("Create and write to a new file")
+pub fn test_create_file() {
+    // Clean up any existing test file first
+    let _ = delete_file("RAM:novus_test_io.txt")
+
+    // Create the file
+    let file_result = OwnedFileHandle::open("RAM:novus_test_io.txt", (i32)MODE_NEWFILE)
+    expect(file_result.is_ok(), "File should open for writing")
+
+    match file_result {
+        Result::Ok(file) => {
+            // Write some content
+            let write_result = file.write_all("Line 1: Hello, Amiga!\n", 22u32)
+            expect(write_result.is_ok(), "First write should succeed")
+
+            let write_result2 = file.write_all("Line 2: Testing File I/O\n", 25u32)
+            expect(write_result2.is_ok(), "Second write should succeed")
+
+            let write_result3 = file.write_all("Line 3: Novus is awesome!\n", 26u32)
+            expect(write_result3.is_ok(), "Third write should succeed")
+        },
+        Result::Err(_) => {
+            // Already checked is_ok above
+        }
+    }
+}
+
+@test("Verify file_exists returns true for existing files")
+pub fn test_file_exists_true() {
+    // File should exist from previous test
+    let exists = file_exists("RAM:novus_test_io.txt")
+    expect(exists, "Test file should exist")
+}
+
+@test("Verify file_exists returns false for non-existent files")
+pub fn test_file_exists_false() {
+    let exists = file_exists("RAM:nonexistent_file_xyz.txt")
+    expect(!exists, "Non-existent file should return false")
+}
+
+@test("Get file info for existing file")
+pub fn test_file_info() {
+    let info_result = file_info("RAM:novus_test_io.txt")
+    expect(info_result.is_ok(), "file_info should succeed")
+
+    match info_result {
+        Result::Ok(info) => {
+            expect(info.is_file, "Should be a file")
+            expect(!info.is_directory, "Should not be a directory")
+            // File size should be 22 + 25 + 26 = 73 bytes
+            expect_eq_i32(info.size, 73, "File size check")
+        },
+        Result::Err(_) => {
+            // Already checked is_ok above
+        }
+    }
+}
+
+@test("Read file contents with read_all")
+pub fn test_read_file() {
+    let file_result = OwnedFileHandle::open("RAM:novus_test_io.txt", (i32)MODE_OLDFILE)
+    expect(file_result.is_ok(), "File should open for reading")
+
+    match file_result {
+        Result::Ok(file) => {
+            var buffer = [0u8; 1024]
+            let read_result = file.read_all((*u8)&buffer, 1024u32)
+            expect(read_result.is_ok(), "read_all should succeed")
+
+            match read_result {
+                Result::Ok(bytes_read) => {
+                    expect_eq_u32(bytes_read, 73u32, "Bytes read check")
+                },
+                Result::Err(_) => {}
+            }
+        },
+        Result::Err(_) => {}
+    }
+}
+
+@test("Delete test file")
+pub fn test_delete_file() {
+    let delete_result = delete_file("RAM:novus_test_io.txt")
+    expect(delete_result.is_ok(), "delete_file should succeed")
+
+    // Verify it's gone
+    let exists = file_exists("RAM:novus_test_io.txt")
+    expect(!exists, "File should not exist after deletion")
+}
+
+@test("Delete non-existent file returns error")
+pub fn test_delete_nonexistent() {
+    let delete_result = delete_file("RAM:nonexistent_file_xyz.txt")
+    expect(delete_result.is_err(), "Deleting non-existent should fail")
+}
+
+@test("Open non-existent file for reading fails")
+pub fn test_open_nonexistent() {
+    let file_result = OwnedFileHandle::open("RAM:nonexistent_file_xyz.txt", (i32)MODE_OLDFILE)
+    expect(file_result.is_err(), "Opening non-existent should fail")
+}
+
+@test("file_info on non-existent file returns error")
+pub fn test_file_info_nonexistent() {
+    let info_result = file_info("RAM:nonexistent_file_xyz.txt")
+    expect(info_result.is_err(), "file_info on non-existent should fail")
+}

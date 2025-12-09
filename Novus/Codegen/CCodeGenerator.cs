@@ -1723,11 +1723,8 @@ public partial class CCodeGenerator
 
                     if (!isUnitType)
                     {
-                        for (int i = 0; i < variant.AssociatedData.Count; i++)
-                        {
-                            var dataType = GetCType(variant.AssociatedData[i]);
-                            sb.AppendLine($"        {dataType} _{i};");
-                        }
+                        // Use aligned field emission to prevent Address Error on 68000
+                        EmitAlignedVariantFields(sb, variant.AssociatedData, "        ");
                     }
                     else
                     {
@@ -1887,6 +1884,7 @@ public partial class CCodeGenerator
         // Track current offset and max alignment for padding calculation
         int currentOffset = 0;
         int maxFieldAlignment = 1;
+        int paddingFieldIndex = 0;
 
         foreach (var field in structType.Fields)
         {
@@ -1896,29 +1894,40 @@ public partial class CCodeGenerator
             // Special handling for array fields - need T[n] syntax, not T*
             if (field.Type is IrArrayType arrayType)
             {
-                var elementType = GetCType(arrayType.ElementType);
-                var size = arrayType.Length;
-                sb.AppendLine($"    {elementType} {field.Name}[{size}];");
-
-                // Calculate array size for padding tracking
                 var elemSize = CalculateTypeSize(arrayType.ElementType);
-                fieldSize = elemSize * size;
+                fieldSize = elemSize * arrayType.Length;
                 fieldAlign = Math.Min(elemSize, 2); // 68k uses 2-byte alignment
+
+                // Add explicit padding before field if needed (for 68000 alignment)
+                if (!isPacked && fieldAlign > 1 && currentOffset % fieldAlign != 0)
+                {
+                    int paddingBytes = fieldAlign - (currentOffset % fieldAlign);
+                    sb.AppendLine($"    uint8_t _pad{paddingFieldIndex}[{paddingBytes}];  // alignment padding");
+                    currentOffset += paddingBytes;
+                    paddingFieldIndex++;
+                }
+
+                var elementType = GetCType(arrayType.ElementType);
+                sb.AppendLine($"    {elementType} {field.Name}[{arrayType.Length}];");
             }
             else
             {
-                var fieldType = GetCType(field.Type);
-                sb.AppendLine($"    {fieldType} {field.Name};");
-
                 fieldSize = CalculateTypeSize(field.Type);
                 fieldAlign = fieldSize >= 4 ? 2 : Math.Min(fieldSize, 2); // 68k uses 2-byte alignment
+
+                // Add explicit padding before field if needed (for 68000 alignment)
+                if (!isPacked && fieldAlign > 1 && currentOffset % fieldAlign != 0)
+                {
+                    int paddingBytes = fieldAlign - (currentOffset % fieldAlign);
+                    sb.AppendLine($"    uint8_t _pad{paddingFieldIndex}[{paddingBytes}];  // alignment padding");
+                    currentOffset += paddingBytes;
+                    paddingFieldIndex++;
+                }
+
+                var fieldType = GetCType(field.Type);
+                sb.AppendLine($"    {fieldType} {field.Name};");
             }
 
-            // Track offset with alignment
-            if (fieldAlign > 1 && currentOffset % fieldAlign != 0)
-            {
-                currentOffset += fieldAlign - (currentOffset % fieldAlign);
-            }
             currentOffset += fieldSize;
             maxFieldAlignment = Math.Max(maxFieldAlignment, fieldAlign);
         }
@@ -3458,11 +3467,8 @@ public partial class CCodeGenerator
 
                 if (!isUnitType)
                 {
-                    for (int i = 0; i < variant.AssociatedData.Count; i++)
-                    {
-                        var dataType = GetCType(variant.AssociatedData[i]);
-                        _output.AppendLine($"        {dataType} _{i};");
-                    }
+                    // Use aligned field emission to prevent Address Error on 68000
+                    EmitAlignedVariantFields(_output, variant.AssociatedData, "        ");
                 }
                 else
                 {
@@ -3483,6 +3489,44 @@ public partial class CCodeGenerator
         _output.AppendLine($"}} {enumName};");
         _output.AppendLine($"#endif // {guardName}");
         _output.AppendLine();
+    }
+
+    /// <summary>
+    /// Emit struct fields for an enum variant's associated data with proper 68k alignment padding.
+    /// 68000 requires word alignment (2-byte) for word and long accesses.
+    /// </summary>
+    private void EmitAlignedVariantFields(StringBuilder sb, List<IrType> associatedData, string indent)
+    {
+        int currentOffset = 0;
+        int paddingFieldIndex = 0;
+
+        for (int i = 0; i < associatedData.Count; i++)
+        {
+            var fieldType = associatedData[i];
+            int fieldSize = fieldType.SizeInBytes;
+            var dataType = GetCType(fieldType);
+
+            // 68000 alignment rules:
+            // - 1-byte fields: no alignment needed
+            // - 2+ byte fields: must be word-aligned (even address)
+            int alignment = fieldSize switch
+            {
+                1 => 1,
+                _ => 2
+            };
+
+            // Add padding if needed
+            if (currentOffset % alignment != 0)
+            {
+                int paddingBytes = alignment - (currentOffset % alignment);
+                sb.AppendLine($"{indent}uint8_t _pad{paddingFieldIndex}[{paddingBytes}];  // alignment padding");
+                currentOffset += paddingBytes;
+                paddingFieldIndex++;
+            }
+
+            sb.AppendLine($"{indent}{dataType} _{i};");
+            currentOffset += fieldSize;
+        }
     }
 
     private void EmitStringLiterals()
@@ -7752,6 +7796,14 @@ public partial class CCodeGenerator
                 {
                     // Signed i32: cast to ensure 32-bit
                     var i32Value = unchecked((int)constantValue);
+                    // Special case: INT32_MIN (-2147483648) cannot be written directly in C
+                    // because 2147483648 doesn't fit in int, so it becomes long/long long.
+                    // VBCC has a bug where even (-2147483647 - 1) gets optimized to a 64-bit
+                    // immediate. Use hexadecimal to force 32-bit representation.
+                    if (i32Value == int.MinValue)
+                    {
+                        return "(int32_t)0x80000000U";
+                    }
                     return $"(int32_t){i32Value}";
                 }
                 else

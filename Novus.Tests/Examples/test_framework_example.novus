@@ -20,10 +20,10 @@ pub fn test_multiplication() {
 // Boolean tests
 @test
 pub fn test_booleans() {
-    expect_true(true)
-    expect_false(false)
-    expect_true(5 > 3)
-    expect_false(3 > 5)
+    expect_true(true, "true is true")
+    expect_false(false, "false is false")
+    expect_true(5 > 3, "5 > 3")
+    expect_false(3 > 5, "3 is not > 5")
 }
 
 // This test is skipped - won't run
