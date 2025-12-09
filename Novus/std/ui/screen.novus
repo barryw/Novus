@@ -10,7 +10,7 @@ from std::strings::core import Str
 from std::memory::slice import Slice
 from std::ffi::amiga_structs import TagItem, Screen, RastPort, BitMap, ViewPort
 from std::ffi::intuition import OpenScreenTagList, CloseScreen, ScreenToFront, ScreenToBack, MoveScreen, ShowTitle, OpenWindowTagList
-from std::ffi::amiga_consts import TAG_DONE, SA_*, WA_*, WFLG_*, IDCMP_*, CUSTOMSCREEN, OSCAN_TEXT
+from std::ffi::amiga_consts import TAG_DONE, SA_*, WA_*, WFLG_*, IDCMP_*, CUSTOMSCREEN, OSCAN_TEXT, HIRES_KEY, LORESLACE_KEY, HIRESLACE_KEY
 from std::ui::window import WindowHandle, open_window
 
 // ============================================================================
@@ -186,7 +186,9 @@ impl ScreenHandle {
     @suppress("W0002", "Casting i16 to u32 for tags")
     pub fn open_backdrop(&self) -> Result<WindowHandle, IntuitionError> {
         let flags = WFLG_BORDERLESS | WFLG_BACKDROP | WFLG_ACTIVATE
-        let idcmp = IDCMP_RAWKEY | IDCMP_MOUSEBUTTONS | IDCMP_MOUSEMOVE
+        // Don't enable IDCMP_MOUSEMOVE by default - it floods the message port
+        // and can cause hangs if messages aren't processed
+        let idcmp = IDCMP_RAWKEY | IDCMP_MOUSEBUTTONS
 
         let tags = [
             TagItem { ti_Tag: WA_Left, ti_Data: 0 },
@@ -253,6 +255,7 @@ impl ScreenHandle {
             TagItem { ti_Tag: SA_Width, ti_Data: 640 },
             TagItem { ti_Tag: SA_Height, ti_Data: 256 },
             TagItem { ti_Tag: SA_Depth, ti_Data: (u32)depth },
+            TagItem { ti_Tag: SA_DisplayID, ti_Data: HIRES_KEY },
             TagItem { ti_Tag: SA_Title, ti_Data: (u32)title.ptr },
             TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
             TagItem { ti_Tag: SA_Overscan, ti_Data: OSCAN_TEXT },
@@ -282,6 +285,58 @@ impl ScreenHandle {
             TagItem { ti_Tag: SA_Depth, ti_Data: (u32)depth },
             TagItem { ti_Tag: SA_Title, ti_Data: (u32)title.ptr },
             TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
+            TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+        ]
+
+        return ScreenHandle::open(&tags)
+    }
+
+    /// Open a lores interlaced screen (320x512, PAL) or (320x400, NTSC)
+    ///
+    /// # Arguments
+    /// * `title` - Screen title
+    /// * `depth` - Number of bitplanes (1-5 for OCS/ECS, 1-8 for AGA)
+    ///
+    /// # Example
+    /// ```novus
+    /// let screen = ScreenHandle::lores_lace("Interlaced Demo", 5)?  // 32 colors
+    /// ```
+    @suppress("W0002", "Casting depth to u32 for tag")
+    pub fn lores_lace(title: Str, depth: i16) -> Result<ScreenHandle, IntuitionError> {
+        let tags = [
+            TagItem { ti_Tag: SA_Width, ti_Data: 320 },
+            TagItem { ti_Tag: SA_Height, ti_Data: 512 },
+            TagItem { ti_Tag: SA_Depth, ti_Data: (u32)depth },
+            TagItem { ti_Tag: SA_DisplayID, ti_Data: LORESLACE_KEY },
+            TagItem { ti_Tag: SA_Title, ti_Data: (u32)title.ptr },
+            TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
+            TagItem { ti_Tag: SA_Overscan, ti_Data: OSCAN_TEXT },
+            TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+        ]
+
+        return ScreenHandle::open(&tags)
+    }
+
+    /// Open a hires interlaced screen (640x512, PAL) or (640x400, NTSC)
+    ///
+    /// # Arguments
+    /// * `title` - Screen title
+    /// * `depth` - Number of bitplanes (1-4 for OCS/ECS hires, 1-8 for AGA)
+    ///
+    /// # Example
+    /// ```novus
+    /// let screen = ScreenHandle::hires_lace("HiRes Interlaced", 2)?  // 4 colors
+    /// ```
+    @suppress("W0002", "Casting depth to u32 for tag")
+    pub fn hires_lace(title: Str, depth: i16) -> Result<ScreenHandle, IntuitionError> {
+        let tags = [
+            TagItem { ti_Tag: SA_Width, ti_Data: 640 },
+            TagItem { ti_Tag: SA_Height, ti_Data: 512 },
+            TagItem { ti_Tag: SA_Depth, ti_Data: (u32)depth },
+            TagItem { ti_Tag: SA_DisplayID, ti_Data: HIRESLACE_KEY },
+            TagItem { ti_Tag: SA_Title, ti_Data: (u32)title.ptr },
+            TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
+            TagItem { ti_Tag: SA_Overscan, ti_Data: OSCAN_TEXT },
             TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
         ]
 
@@ -438,22 +493,17 @@ impl ScreenBuilder {
     /// Returns Err if screen fails to open.
     @suppress("W0002", "Casting values to u32 for tags")
     pub fn build(self) -> Result<ScreenHandle, IntuitionError> {
-        // Build tag array
-        // We need up to 12 tags + TAG_DONE
-        let mut tag_count: i32 = 0
-
+        // Build minimal tag array - only include non-default options
+        // This matches the working lores() pattern more closely
         let tags = [
             TagItem { ti_Tag: SA_Width, ti_Data: (u32)self.width },
             TagItem { ti_Tag: SA_Height, ti_Data: (u32)self.height },
             TagItem { ti_Tag: SA_Depth, ti_Data: (u32)self.depth },
-            TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
             TagItem { ti_Tag: SA_Title, ti_Data: (u32)self.title_ptr },
-            TagItem { ti_Tag: SA_Behind, ti_Data: if self.behind { 1 } else { 0 } },
-            TagItem { ti_Tag: SA_Quiet, ti_Data: if self.quiet { 1 } else { 0 } },
-            TagItem { ti_Tag: SA_ShowTitle, ti_Data: if self.show_title { 1 } else { 0 } },
-            TagItem { ti_Tag: SA_AutoScroll, ti_Data: if self.autoscroll { 1 } else { 0 } },
+            TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
             TagItem { ti_Tag: SA_Overscan, ti_Data: self.overscan },
-            TagItem { ti_Tag: if self.display_id != 0 { SA_DisplayID } else { TAG_DONE }, ti_Data: self.display_id },
+            TagItem { ti_Tag: SA_AutoScroll, ti_Data: if self.autoscroll { 1 } else { 0 } },
+            TagItem { ti_Tag: SA_ShowTitle, ti_Data: if self.show_title { 1 } else { 0 } },
             TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
         ]
 

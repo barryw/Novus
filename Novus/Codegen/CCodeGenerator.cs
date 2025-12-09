@@ -6158,13 +6158,24 @@ public partial class CCodeGenerator
                 else
                 {
                     var value = EmitValue(returnInst.Value);
+
+                    // BUG FIX: Check if the return value is a pointer-converted parameter.
+                    // Struct parameters containing heap data are passed as pointers (e.g., ScreenBuilder* self),
+                    // so when returning them via memcpy, we should NOT add & (they're already pointers).
+                    bool isPointerConvertedParam = returnInst.Value is IrVariable returnVariable &&
+                                                   _pointerConvertedParameters.Contains(returnVariable.Name);
+
                     // VBCC 68K FIX: Use memcpy for complex types (enums with associated data, nested structs)
                     // VBCC generates illegal instructions on 68040 for struct-by-value assignment of these types.
                     // This handles cases like `return event;` where event is WindowEvent (enum with data).
                     if (TypeRequiresMemcpy(returnInst.Value.Type))
                     {
                         var cType = GetCType(returnInst.Value.Type);
-                        _output.AppendLine($"    __novus_memcpy((uint8_t*)__out, (uint8_t*)&{value}, sizeof({cType}));");
+
+                        // For pointer-converted parameters, use the pointer directly (no &)
+                        // For local variables, take address with &
+                        var srcExpr = isPointerConvertedParam ? value : $"&{value}";
+                        _output.AppendLine($"    __novus_memcpy((uint8_t*)__out, (uint8_t*){srcExpr}, sizeof({cType}));");
 
                         // CRITICAL FIX: Move semantics when copying local variable to return value.
                         // Zero the source to prevent deferred cleanup from double-freeing.
@@ -6172,12 +6183,16 @@ public partial class CCodeGenerator
                         if (sourceIsLocalVar && TypeContainsDroppableContent(returnInst.Value.Type))
                         {
                             _output.AppendLine($"    /* Move semantics: zero source to prevent double-free on return */");
-                            _output.AppendLine($"    __novus_memset(&{value}, 0, sizeof({cType}));");
+                            // For pointer-converted params, dereference to get struct for memset
+                            var zeroTarget = isPointerConvertedParam ? value : $"&{value}";
+                            _output.AppendLine($"    __novus_memset({zeroTarget}, 0, sizeof({cType}));");
                         }
                     }
                     else
                     {
-                        _output.AppendLine($"    *__out = {value};");
+                        // For pointer-converted parameters, dereference to get the struct value
+                        var assignValue = isPointerConvertedParam ? $"*{value}" : value;
+                        _output.AppendLine($"    *__out = {assignValue};");
 
                         // CRITICAL FIX: Move semantics for direct assignment too
                         var sourceIsLocalVar = returnInst.Value is IrVariable;
@@ -6185,7 +6200,8 @@ public partial class CCodeGenerator
                         {
                             var cType = GetCType(returnInst.Value.Type);
                             _output.AppendLine($"    /* Move semantics: zero source to prevent double-free on return */");
-                            _output.AppendLine($"    __novus_memset(&{value}, 0, sizeof({cType}));");
+                            var zeroTarget = isPointerConvertedParam ? value : $"&{value}";
+                            _output.AppendLine($"    __novus_memset({zeroTarget}, 0, sizeof({cType}));");
                         }
                     }
                 }

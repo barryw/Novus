@@ -18,9 +18,9 @@ pub fn main() -> i32 {
 
     let result1 = ScreenHandle::lores("Simple Lores Screen", 4)  // 16 colors
     match result1 {
-        Result::Ok(screen) => {
+        Result::Ok(screen1) => {
             // Draw something on the screen
-            let rp = screen.rastport()
+            let rp = screen1.rastport()
             SetAPen(rp, 1)
             RectFill(rp, 10, 20, 100, 80)
 
@@ -38,12 +38,12 @@ pub fn main() -> i32 {
     // Use ScreenBuilder when you need more options than convenience methods
     // Note: Method chaining must be on the same line in Novus
 
-    let result2 = ScreenBuilder::new().title("Builder Demo").size(320, 256).depth(5).show_title(false).quiet(true).build()
+    let result2 = ScreenBuilder::new().title("Builder Demo").size(320, 256).depth(5).show_title(false).build()
 
     match result2 {
-        Result::Ok(screen) => {
+        Result::Ok(screen2) => {
             // Full-screen drawing without title bar interference
-            let rp = screen.rastport()
+            let rp = screen2.rastport()
 
             // Draw a gradient of colors
             let mut y: i16 = 0
@@ -61,35 +61,51 @@ pub fn main() -> i32 {
     }
 
     // =========================================================================
-    // Example 3: Screen with window on it
+    // Example 3: Hires screen
     // =========================================================================
-    // ScreenHandle integrates with WindowHandle for easy window creation
 
-    let result3 = ScreenHandle::custom("Game Screen", 320, 256, 5)
+    let result3 = ScreenHandle::hires("Workbench Clone", 2)  // 4 colors for hires
     match result3 {
-        Result::Ok(screen) => {
-            // Open a standard window on our custom screen
-            let win_result = screen.open_window("Controls", 10, 20, 200, 100)
+        Result::Ok(screen3) => {
+            let rp3 = screen3.rastport()
 
-            match win_result {
-                Result::Ok(window) => {
-                    // Draw in the window
-                    let win_rp = window.rastport()
-                    SetAPen(win_rp, 2)
-                    RectFill(win_rp, 5, 15, 190, 90)
+            // Draw something in hires
+            SetAPen(rp3, 1)
+            RectFill(rp3, 20, 20, 620, 30)
 
-                    // Write some text
-                    SetAPen(win_rp, 1)
-                    Move(win_rp, 20, 50)
-                    Text(win_rp, "Hello Window!", 13)
+            Move(rp3, 250, 128)
+            Text(rp3, "640x256 HiRes Mode", 18)
 
-                    Delay(150)  // 3 seconds
-                    // Window closes automatically, then screen closes
+            Delay(100)
+        },
+        Result::Err(_) => {
+            return 3
+        }
+    }
+
+    // =========================================================================
+    // Example 4: Screen with window
+    // =========================================================================
+
+    let result4 = ScreenHandle::lores("Screen With Window", 4)
+    match result4 {
+        Result::Ok(screen4) => {
+            // Open a window on this screen using WindowBuilder
+            let win_result4 = WindowBuilder::new().title("My Window").position(20, 20).size(200, 100).activate(true).screen(screen4.handle()).build()
+
+            match win_result4 {
+                Result::Ok(win4) => {
+                    let rp4 = win4.rastport()
+                    SetAPen(rp4, 2)
+                    RectFill(rp4, 5, 15, 190, 90)
+                    Delay(100)
+                    // Window closes automatically (RAII)
                 },
                 Result::Err(_) => {
-                    return 3
+                    return 4
                 }
             }
+            // Screen closes automatically after window
         },
         Result::Err(_) => {
             return 4
@@ -97,152 +113,47 @@ pub fn main() -> i32 {
     }
 
     // =========================================================================
-    // Example 4: Backdrop window for full-screen drawing
+    // Example 5: WindowBuilder on Workbench
     // =========================================================================
-    // open_backdrop() creates a borderless window covering the whole screen
-    // Perfect for games and demos
 
-    let result4 = ScreenBuilder::new().title("Demo Screen").size(320, 256).depth(5).show_title(false).build()
+    let win_result5 = WindowBuilder::new().title("WindowBuilder Demo").position(50, 50).size(300, 150).activate(true).build()
 
-    match result4 {
-        Result::Ok(screen) => {
-            // Backdrop window - borderless, covers entire screen
-            let backdrop_result = screen.open_backdrop()
+    match win_result5 {
+        Result::Ok(win5) => {
+            let rp5 = win5.rastport()
+            SetAPen(rp5, 1)
+            RectFill(rp5, 10, 20, 280, 130)
+            Delay(100)
+        },
+        Result::Err(_) => {
+            return 5
+        }
+    }
 
-            match backdrop_result {
-                Result::Ok(window) => {
-                    let rp = window.rastport()
+    // =========================================================================
+    // Example 6: Interlaced screen (320x512 lores interlace)
+    // =========================================================================
 
-                    // Animate something
-                    let mut x: i16 = 0
-                    while x < 280 {
-                        // Clear previous
-                        SetAPen(rp, 0)
-                        RectFill(rp, x - 1, 100, x + 39, 140)
+    let result6 = ScreenHandle::lores_lace("Interlace Demo", 4)
+    match result6 {
+        Result::Ok(screen6) => {
+            let rp6 = screen6.rastport()
 
-                        // Draw box at new position
-                        SetAPen(rp, 15)
-                        RectFill(rp, x, 100, x + 40, 140)
-
-                        Delay(1)  // Small delay for animation
-                        x = x + 2
-                    }
-
-                    Delay(50)
-                },
-                Result::Err(_) => {
-                    return 5
-                }
+            // Draw bars across the full 512 pixel height
+            let mut y6: i16 = 0
+            while y6 < 512 {
+                SetAPen(rp6, (u32)((y6 / 32) % 16))
+                RectFill(rp6, 0, y6, 319, y6 + 31)
+                y6 = y6 + 32
             }
+
+            Delay(100)
         },
         Result::Err(_) => {
             return 6
         }
     }
 
-    // =========================================================================
-    // Example 5: Hires screen
-    // =========================================================================
-
-    let result5 = ScreenHandle::hires("Workbench Clone", 2)  // 4 colors for hires
-    match result5 {
-        Result::Ok(screen) => {
-            let rp = screen.rastport()
-
-            // Draw something in hires
-            SetAPen(rp, 1)
-            RectFill(rp, 20, 20, 620, 30)
-
-            Move(rp, 250, 128)
-            Text(rp, "640x256 HiRes Mode", 18)
-
-            Delay(100)
-        },
-        Result::Err(_) => {
-            return 7
-        }
-    }
-
-    // =========================================================================
-    // Example 6: WindowBuilder on Workbench
-    // =========================================================================
-    // WindowBuilder creates windows with a fluent API
-    // Opens on Workbench by default
-
-    let result6 = WindowBuilder::new().title("Builder Window").position(100, 50).size(300, 150).close_gadget(true).drag_bar(true).depth_gadget(true).size_gadget(true).mouse_buttons(true).vanilla_keys(true).build()
-
-    match result6 {
-        Result::Ok(window) => {
-            let rp = window.rastport()
-            SetAPen(rp, 1)
-            Move(rp, 20, 50)
-            Text(rp, "WindowBuilder Demo!", 19)
-
-            Delay(100)
-            // Window auto-closes via RAII
-        },
-        Result::Err(_) => {
-            return 8
-        }
-    }
-
-    // =========================================================================
-    // Example 7: WindowBuilder on custom screen
-    // =========================================================================
-    // Use .screen() to open a window on a custom screen
-
-    let result7 = ScreenHandle::lores("Custom Screen", 4)
-    match result7 {
-        Result::Ok(screen) => {
-            // Use WindowBuilder with custom screen
-            let win_result = WindowBuilder::new().title("Custom Screen Window").position(20, 30).size(280, 180).screen(screen.handle()).close_gadget(true).drag_bar(true).depth_gadget(true).mouse_move(true).mouse_buttons(true).raw_keys(true).build()
-
-            match win_result {
-                Result::Ok(window) => {
-                    let rp = window.rastport()
-
-                    // Draw something
-                    SetAPen(rp, 3)
-                    RectFill(rp, 10, 20, 260, 160)
-
-                    SetAPen(rp, 1)
-                    Move(rp, 50, 90)
-                    Text(rp, "On Custom Screen!", 17)
-
-                    Delay(150)
-                },
-                Result::Err(_) => {
-                    return 9
-                }
-            }
-        },
-        Result::Err(_) => {
-            return 10
-        }
-    }
-
-    // =========================================================================
-    // Example 8: Minimal borderless window
-    // =========================================================================
-
-    let result8 = WindowBuilder::new().position(50, 100).size(200, 80).borderless(true).mouse_buttons(true).build()
-
-    match result8 {
-        Result::Ok(window) => {
-            let rp = window.rastport()
-            SetAPen(rp, 2)
-            RectFill(rp, 0, 0, 199, 79)
-
-            SetAPen(rp, 1)
-            Move(rp, 40, 45)
-            Text(rp, "Borderless!", 11)
-
-            Delay(100)
-        },
-        Result::Err(_) => {
-            return 11
-        }
-    }
-
+    // All examples completed successfully!
     return 0
 }

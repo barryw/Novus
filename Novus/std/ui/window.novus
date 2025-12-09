@@ -744,16 +744,17 @@ impl Drop for WindowHandle {
             // CRITICAL: Drain and reply to all pending IDCMP messages
             // before closing the window. Unreplied messages cause
             // system hangs and crashes.
-            let mut user_port: *MsgPort = (*MsgPort)0
-
             unsafe {
-                user_port = (*w).UserPort
-                forever {
-                    let msg = GetMsg(user_port)
-                    if !msg {
-                        break
+                let user_port = (*w).UserPort
+                // Only drain messages if window has a UserPort (IDCMP was set)
+                if let port = user_port {
+                    forever {
+                        let msg = GetMsg(port)
+                        if !msg {
+                            break
+                        }
+                        ReplyMsg(msg)
                     }
-                    ReplyMsg(msg)
                 }
 
                 // Clear menu strip if present (required by NDK before closing window)
@@ -1111,7 +1112,10 @@ impl WindowBuilder {
             final_flags = final_flags | WFLG_ACTIVATE
         }
 
-        // Build tag array - up to 14 tags + TAG_DONE
+        // Build tag array - custom screen is optional
+        // Use TAG_IGNORE (1) for disabled tags to keep array layout consistent
+        let screen_tag = if self.screen_ptr { WA_CustomScreen } else { 1 }  // TAG_IGNORE = 1
+
         let tags = [
             TagItem { ti_Tag: WA_Left, ti_Data: (u32)self.left },
             TagItem { ti_Tag: WA_Top, ti_Data: (u32)self.top },
@@ -1122,7 +1126,7 @@ impl WindowBuilder {
             TagItem { ti_Tag: WA_MaxWidth, ti_Data: if self.max_width > 0 { (u32)self.max_width } else { 65535 } },
             TagItem { ti_Tag: WA_MaxHeight, ti_Data: if self.max_height > 0 { (u32)self.max_height } else { 65535 } },
             TagItem { ti_Tag: WA_Title, ti_Data: (u32)self.title_ptr },
-            TagItem { ti_Tag: if self.screen_ptr { WA_CustomScreen } else { TAG_DONE }, ti_Data: (u32)self.screen_ptr },
+            TagItem { ti_Tag: screen_tag, ti_Data: (u32)self.screen_ptr },
             TagItem { ti_Tag: WA_Flags, ti_Data: final_flags },
             TagItem { ti_Tag: WA_IDCMP, ti_Data: self.idcmp },
             TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
