@@ -1,0 +1,21 @@
+// Test screen lifecycle using the new ScreenHandle RAII API
+// Demonstrates: ScreenHandle, ScreenBuilder, and window-on-screen creation
+
+from std::ui::screen import ScreenHandle, ScreenBuilder
+from std::ffi::dos import Delay
+
+pub fn main() -> i32 {
+    // Method 1: Simple convenience constructor
+    let result = ScreenHandle::lores("Novus Test Screen", 4)
+
+    match result {
+        Result::Ok(screen) => {
+            // Screen opened! Wait 3 seconds then RAII cleanup closes it
+            Delay(150)
+            return 0
+        },
+        Result::Err(err) => {
+            return 1
+        }
+    }
+}

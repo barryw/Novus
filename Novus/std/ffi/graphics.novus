@@ -52,7 +52,7 @@ extern pub fn MrgCop(view: *View) -> u32
 extern pub fn MakeVPort(view: *View, vp: *ViewPort) -> u32
 extern pub fn LoadView(view: *View)
 extern pub fn WaitBlit()
-extern pub fn SetRast(rp: *RastPort, pen: u8)
+extern pub fn SetRast(rp: *RastPort, pen: u32)
 extern pub fn Move(rp: *RastPort, x: i16, y: i16)
 extern pub fn Draw(rp: *RastPort, x: i16, y: i16)
 extern pub fn AreaMove(rp: *RastPort, x: i16, y: i16) -> i32
@@ -70,9 +70,9 @@ extern pub fn ReadPixel(rp: *RastPort, x: i16, y: i16) -> u32
 extern pub fn WritePixel(rp: *RastPort, x: i16, y: i16) -> i32
 extern pub fn Flood(rp: *RastPort, mode: u32, x: i16, y: i16) -> i16
 extern pub fn PolyDraw(rp: *RastPort, count: i16, polyTable: *u8)
-extern pub fn SetAPen(rp: *RastPort, pen: u8)
-extern pub fn SetBPen(rp: *RastPort, pen: u8)
-extern pub fn SetDrMd(rp: *RastPort, drawMode: u8)
+extern pub fn SetAPen(rp: *RastPort, pen: u32)
+extern pub fn SetBPen(rp: *RastPort, pen: u32)
+extern pub fn SetDrMd(rp: *RastPort, drawMode: u32)
 extern pub fn InitView(view: *View)
 extern pub fn CBump(copList: *UCopList)
 extern pub fn CMove(copList: *UCopList, destination: *u8, data: i16)

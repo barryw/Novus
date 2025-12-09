@@ -590,7 +590,7 @@ public partial class IrBuilder
         // Use IrMemberAccess to load the 'vec' field into a temp variable
         var vecTempName = $"%t{_tempCounter++}";
         var memberAccess = new IrMemberAccess(vecTempName, stringValue, "vec", vecField.Type, vecField.Offset);
-        _currentBlock!.AddInstruction(memberAccess);
+        Emit(memberAccess);
 
         // Create a variable reference to the loaded vec field
         var vecVarRef = new IrVariable(vecTempName, vecField.Type);

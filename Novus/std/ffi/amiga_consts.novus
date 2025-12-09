@@ -2773,17 +2773,63 @@ pub const WFLG_WINDOWREFRESH: u32 = $01000000
 pub const WFLG_WINDOWTICKED: u32 = $04000000
 
 // Window Attribute Tags for OpenWindowTagList
+// WA_Dummy = TAG_USER + 99 = $80000063
 pub const WA_Left: u32 = $80000064
 pub const WA_Top: u32 = $80000065
 pub const WA_Width: u32 = $80000066
 pub const WA_Height: u32 = $80000067
+pub const WA_DetailPen: u32 = $80000068
+pub const WA_BlockPen: u32 = $80000069
+pub const WA_IDCMP: u32 = $8000006A
+pub const WA_Flags: u32 = $8000006B
+pub const WA_Gadgets: u32 = $8000006C
+pub const WA_Checkmark: u32 = $8000006D
+pub const WA_Title: u32 = $8000006E
+pub const WA_ScreenTitle: u32 = $8000006F
+pub const WA_CustomScreen: u32 = $80000070
+pub const WA_SuperBitMap: u32 = $80000071
 pub const WA_MinWidth: u32 = $80000072
 pub const WA_MinHeight: u32 = $80000073
 pub const WA_MaxWidth: u32 = $80000074
 pub const WA_MaxHeight: u32 = $80000075
-pub const WA_Title: u32 = $8000006E
-pub const WA_Flags: u32 = $8000006B
-pub const WA_IDCMP: u32 = $8000006A
+pub const WA_InnerWidth: u32 = $80000076
+pub const WA_InnerHeight: u32 = $80000077
+pub const WA_PubScreenName: u32 = $80000078
+pub const WA_PubScreen: u32 = $80000079
+pub const WA_PubScreenFallBack: u32 = $8000007A
+pub const WA_WindowName: u32 = $8000007B
+pub const WA_Colors: u32 = $8000007C
+pub const WA_Zoom: u32 = $8000007D
+pub const WA_MouseQueue: u32 = $8000007E
+pub const WA_BackFill: u32 = $8000007F
+pub const WA_RptQueue: u32 = $80000080
+pub const WA_SizeGadget: u32 = $80000081
+pub const WA_DragBar: u32 = $80000082
+pub const WA_DepthGadget: u32 = $80000083
+pub const WA_CloseGadget: u32 = $80000084
+pub const WA_Backdrop: u32 = $80000085
+pub const WA_ReportMouse: u32 = $80000086
+pub const WA_NoCareRefresh: u32 = $80000087
+pub const WA_Borderless: u32 = $80000088
+pub const WA_Activate: u32 = $80000089
+pub const WA_RMBTrap: u32 = $8000008A
+pub const WA_WBenchWindow: u32 = $8000008B
+pub const WA_SimpleRefresh: u32 = $8000008C
+pub const WA_SmartRefresh: u32 = $8000008D
+pub const WA_SizeBRight: u32 = $8000008E
+pub const WA_SizeBBottom: u32 = $8000008F
+pub const WA_AutoAdjust: u32 = $80000090
+pub const WA_GimmeZeroZero: u32 = $80000091
+pub const WA_MenuHelp: u32 = $80000092
+pub const WA_NewLookMenus: u32 = $80000093
+pub const WA_AmigaKey: u32 = $80000094
+pub const WA_NotifyDepth: u32 = $80000095
+pub const WA_Pointer: u32 = $80000098
+pub const WA_BusyPointer: u32 = $80000099
+pub const WA_PointerDelay: u32 = $8000009A
+pub const WA_TabletMessages: u32 = $8000009B
+pub const WA_HelpGroup: u32 = $8000009C
+pub const WA_HelpGroupWindow: u32 = $8000009D
 
 // Window size limits - use WA_SIZE_UNLIMITED for no limit
 pub const WA_SIZE_UNLIMITED: u32 = (~(u32)0)  // 0xFFFFFFFF, max u32 value
@@ -3112,4 +3158,78 @@ pub const ADKF_PRE000NS: u16 = $0000                         // 0 ns
 pub const ADKF_PRE140NS: u16 = $2000                         // 140 ns (PRECOMP0)
 pub const ADKF_PRE280NS: u16 = $4000                         // 280 ns (PRECOMP1)
 pub const ADKF_PRE560NS: u16 = $6000                         // 560 ns (both)
+
+// ============================================================================
+// Screen Attributes (SA_*) - for OpenScreenTagList
+// ============================================================================
+// SA_Dummy = TAG_USER + 32 = $80000020
+
+// Screen position and dimensions
+pub const SA_Left: u32 = $80000021
+pub const SA_Top: u32 = $80000022
+pub const SA_Width: u32 = $80000023
+pub const SA_Height: u32 = $80000024
+pub const SA_Depth: u32 = $80000025
+
+// Pens and colors
+pub const SA_DetailPen: u32 = $80000026
+pub const SA_BlockPen: u32 = $80000027
+pub const SA_Title: u32 = $80000028
+pub const SA_Colors: u32 = $80000029
+pub const SA_ErrorCode: u32 = $8000002A
+
+// Font
+pub const SA_Font: u32 = $8000002B
+pub const SA_SysFont: u32 = $8000002C
+
+// Screen type and bitmap
+pub const SA_Type: u32 = $8000002D
+pub const SA_BitMap: u32 = $8000002E
+
+// Public screen
+pub const SA_PubName: u32 = $8000002F
+pub const SA_PubSig: u32 = $80000030
+pub const SA_PubTask: u32 = $80000031
+
+// Display mode
+pub const SA_DisplayID: u32 = $80000032
+pub const SA_DClip: u32 = $80000033
+pub const SA_Overscan: u32 = $80000034
+
+// Screen behavior
+pub const SA_Obsolete1: u32 = $80000035
+pub const SA_ShowTitle: u32 = $80000036
+pub const SA_Behind: u32 = $80000037
+pub const SA_Quiet: u32 = $80000038
+pub const SA_AutoScroll: u32 = $80000039
+
+// Palette and pens
+pub const SA_Pens: u32 = $8000003A
+pub const SA_FullPalette: u32 = $8000003B
+pub const SA_ColorMapEntries: u32 = $8000003C
+
+// Child screens (V39+)
+pub const SA_Parent: u32 = $8000003D
+pub const SA_Draggable: u32 = $8000003E
+pub const SA_Exclusive: u32 = $8000003F
+pub const SA_SharePens: u32 = $80000040
+pub const SA_BackFill: u32 = $80000041
+pub const SA_Interleaved: u32 = $80000042
+pub const SA_Colors32: u32 = $80000043
+pub const SA_VideoControl: u32 = $80000044
+pub const SA_FrontChild: u32 = $80000045
+pub const SA_BackChild: u32 = $80000046
+pub const SA_LikeWorkbench: u32 = $80000047
+pub const SA_Reserved: u32 = $80000048
+pub const SA_MinimizeISG: u32 = $80000049
+
+// Overscan types
+pub const OSCAN_TEXT: u32 = 1
+pub const OSCAN_STANDARD: u32 = 2
+pub const OSCAN_MAX: u32 = 3
+pub const OSCAN_VIDEO: u32 = 4
+
+// Standard screen size constants
+pub const STDSCREENWIDTH: u32 = 0
+pub const STDSCREENHEIGHT: u32 = 0
 

@@ -444,7 +444,7 @@ public partial class IrBuilder
                             var ptrTempName = $"%t{_tempCounter++}";
                             var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
                             var ptrFieldAccess = new IrMemberAccess(ptrTempName, argValue, "ptr", u8PtrType, ptrField.Offset);
-                            _currentBlock!.AddInstruction(ptrFieldAccess);
+                            Emit(ptrFieldAccess);
                             arguments[i] = new IrVariable(ptrTempName, u8PtrType);
                         }
                     }
@@ -864,7 +864,7 @@ public partial class IrBuilder
                             var ptrTempName = $"%t{_tempCounter++}";
                             var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
                             var ptrFieldAccess = new IrMemberAccess(ptrTempName, argValue, "ptr", u8PtrType, ptrField.Offset);
-                            _currentBlock!.AddInstruction(ptrFieldAccess);
+                            Emit(ptrFieldAccess);
                             arguments[i] = new IrVariable(ptrTempName, u8PtrType);
                         }
                     }
@@ -1183,7 +1183,7 @@ public partial class IrBuilder
                         var ptrTempName = $"%t{_tempCounter++}";
                         var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
                         var ptrFieldAccess = new IrMemberAccess(ptrTempName, argValue, "ptr", u8PtrType, ptrField.Offset);
-                        _currentBlock!.AddInstruction(ptrFieldAccess);
+                        Emit(ptrFieldAccess);
                         arguments[i] = new IrVariable(ptrTempName, u8PtrType);
                     }
                 }
@@ -1637,7 +1637,7 @@ public partial class IrBuilder
                         {
                             // Generate member access to the len field
                             var memberAccess = new IrMemberAccess(lenResultName, receiver, lenFieldName, lenField.Type, lenField.Offset);
-                            _currentBlock!.AddInstruction(memberAccess);
+                            Emit(memberAccess);
                             return new IrVariable(lenResultName, lenField.Type);
                         }
                     }
@@ -3370,7 +3370,7 @@ public partial class IrBuilder
                 return;
             }
 
-            _currentBlock!.AddInstruction(new IrMemberStore(actualBase, memberName, field.Offset, value));
+            Emit(new IrMemberStore(actualBase, memberName, field.Offset, value));
             return;
         }
 
@@ -3380,7 +3380,7 @@ public partial class IrBuilder
             var arrayExpr = (IrValue)Visit(indexCtx.expression(0))!;
             var indexExpr = (IrValue)Visit(indexCtx.expression(1))!;
 
-            _currentBlock!.AddInstruction(new IrIndexStore(arrayExpr, indexExpr, value));
+            Emit(new IrIndexStore(arrayExpr, indexExpr, value));
             return;
         }
 
@@ -3388,7 +3388,7 @@ public partial class IrBuilder
         if (exprContext is NovusParser.DereferenceExprContext derefCtx)
         {
             var ptrExpr = (IrValue)Visit(derefCtx.expression())!;
-            _currentBlock!.AddInstruction(new IrDereferenceStore(ptrExpr, value));
+            Emit(new IrDereferenceStore(ptrExpr, value));
             return;
         }
 
@@ -3402,7 +3402,7 @@ public partial class IrBuilder
             if (child is NovusParser.DereferenceExprContext derefChild)
             {
                 var ptrExpr = (IrValue)Visit(derefChild.expression())!;
-                _currentBlock!.AddInstruction(new IrDereferenceStore(ptrExpr, value));
+                Emit(new IrDereferenceStore(ptrExpr, value));
                 return;
             }
         }
@@ -3544,7 +3544,7 @@ public partial class IrBuilder
 
             // Load current value
             var loadTemp = $"%member_load_{_tempCounter++}";
-            _currentBlock!.AddInstruction(new IrMemberAccess(loadTemp, actualBase, memberName, field.Type, field.Offset));
+            Emit(new IrMemberAccess(loadTemp, actualBase, memberName, field.Type, field.Offset));
             var currentValue = new IrVariable(loadTemp, field.Type);
 
             // Increment/decrement
@@ -3552,10 +3552,10 @@ public partial class IrBuilder
             var op = isIncrement
                 ? new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Add, currentValue, new IrConstant(1, field.Type), field.Type)
                 : new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Sub, currentValue, new IrConstant(1, field.Type), field.Type);
-            _currentBlock.AddInstruction(op);
+            Emit(op);
 
             var newValue = new IrVariable(newValueTemp, field.Type);
-            _currentBlock.AddInstruction(new IrMemberStore(actualBase, memberName, field.Offset, newValue));
+            Emit(new IrMemberStore(actualBase, memberName, field.Offset, newValue));
             return newValue;
         }
 
@@ -3639,10 +3639,10 @@ public partial class IrBuilder
             var op = isIncrement
                 ? new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Add, currentValue, new IrConstant(1, pointeeType), pointeeType)
                 : new IrBinaryOp(newValueTemp, IrBinaryOp.OpKind.Sub, currentValue, new IrConstant(1, pointeeType), pointeeType);
-            _currentBlock!.AddInstruction(op);
+            Emit(op);
 
             var newValue = new IrVariable(newValueTemp, pointeeType);
-            _currentBlock.AddInstruction(new IrDereferenceStore(ptrExpr, newValue));
+            Emit(new IrDereferenceStore(ptrExpr, newValue));
             return newValue;
         }
 
@@ -4494,7 +4494,7 @@ public partial class IrBuilder
                     var ptrTempName = $"%t{_tempCounter++}";
                     var u8PtrType = _typeInterner.GetPointerType(IrIntType.U8);
                     var ptrFieldAccess = new IrMemberAccess(ptrTempName, fieldValue, "ptr", u8PtrType, ptrField.Offset);
-                    _currentBlock!.AddInstruction(ptrFieldAccess);
+                    Emit(ptrFieldAccess);
                     ptrValue = new IrVariable(ptrTempName, u8PtrType);
                 }
 
@@ -4874,7 +4874,7 @@ public partial class IrBuilder
         }
 
         var memberAccess = new IrMemberAccess(resultName, actualBase, memberName, fieldType, field.Offset);
-        _currentBlock!.AddInstruction(memberAccess);
+        Emit(memberAccess);
 
         return new IrVariable(resultName, fieldType);
     }

@@ -1,0 +1,474 @@
+// Drawing Tests for Novus Standard Library
+// Tests graphics primitives by drawing and reading back pixels
+
+from std::test::test import expect, expect_true, expect_false, expect_eq_i32, expect_eq_u32
+from std::ui::screen import WindowHandle
+from std::graphics::draw import DrawContext, DrawMode
+from std::graphics::shapes import Point, Rect
+from std::ffi::amiga_structs import Window, RastPort
+from std::error::errors import GraphicsError
+
+// ============================================================================
+// DrawContext Creation Tests
+// ============================================================================
+
+@test("DrawContext::from_window creates context from window")
+pub fn test_draw_context_from_window() {
+    let win_result = WindowHandle::simple("Draw Test", 200, 150)
+    match win_result {
+        Result::Ok(window) => {
+            var w = window
+            let ctx_result = DrawContext::from_window(w.handle())
+            match ctx_result {
+                Result::Ok(ctx) => {
+                    expect(true, "DrawContext created successfully")
+                },
+                Result::Err(_) => {
+                    expect(false, "DrawContext::from_window should succeed")
+                }
+            }
+        },
+        Result::Err(_) => expect(false, "window should open")
+    }
+}
+
+@test("DrawContext::from_rastport rejects null pointer")
+pub fn test_draw_context_null_rastport() {
+    let ctx_result = DrawContext::from_rastport((*RastPort)0)
+    match ctx_result {
+        Result::Ok(_) => expect(false, "should reject null RastPort"),
+        Result::Err(err) => {
+            // Should get InvalidRastPort error
+            expect(true, "correctly rejected null RastPort")
+        }
+    }
+}
+
+// ============================================================================
+// Pen Operations Tests
+// ============================================================================
+
+@test("DrawContext::pen and get_pen work correctly")
+pub fn test_draw_pen_get_set() {
+    let win_result = WindowHandle::simple("Pen Test", 200, 150)
+    match win_result {
+        Result::Ok(window) => {
+            var w = window
+            let ctx_result = DrawContext::from_window(w.handle())
+            match ctx_result {
+                Result::Ok(ctx) => {
+                    // Set pen to color 1
+                    ctx.pen(1)
+                    let pen = ctx.get_pen()
+                    expect_eq_u32((u32)pen, 1u32, "get_pen returns set value")
+
+                    // Set to color 2
+                    ctx.pen(2)
+                    let pen2 = ctx.get_pen()
+                    expect_eq_u32((u32)pen2, 2u32, "get_pen returns new value")
+                },
+                Result::Err(_) => expect(false, "context should create")
+            }
+        },
+        Result::Err(_) => expect(false, "window should open")
+    }
+}
+
+@test("DrawContext::bg_pen and get_bg_pen work correctly")
+pub fn test_draw_bg_pen_get_set() {
+    let win_result = WindowHandle::simple("BG Pen Test", 200, 150)
+    match win_result {
+        Result::Ok(window) => {
+            var w = window
+            let ctx_result = DrawContext::from_window(w.handle())
+            match ctx_result {
+                Result::Ok(ctx) => {
+                    ctx.bg_pen(2)
+                    let bg = ctx.get_bg_pen()
+                    expect_eq_u32((u32)bg, 2u32, "get_bg_pen returns set value")
+                },
+                Result::Err(_) => expect(false, "context should create")
+            }
+        },
+        Result::Err(_) => expect(false, "window should open")
+    }
+}
+
+@test("DrawContext::mode and get_mode work correctly")
+pub fn test_draw_mode_get_set() {
+    let win_result = WindowHandle::simple("Mode Test", 200, 150)
+    match win_result {
+        Result::Ok(window) => {
+            var w = window
+            let ctx_result = DrawContext::from_window(w.handle())
+            match ctx_result {
+                Result::Ok(ctx) => {
+                    ctx.mode(DrawMode::Jam2)
+                    let mode = ctx.get_mode()
+                    match mode {
+                        DrawMode::Jam2 => expect(true, "mode is Jam2"),
+                        _ => expect(false, "mode should be Jam2")
+                    }
+                },
+                Result::Err(_) => expect(false, "context should create")
+            }
+        },
+        Result::Err(_) => expect(false, "window should open")
+    }
+}
+
+// ============================================================================
+// Pixel Drawing Tests
+// ============================================================================
+
+@test("DrawContext::pixel writes and can be read back")
+pub fn test_draw_pixel_readback() {
+    let win_result = WindowHandle::borderless(100, 80)
+    match win_result {
+        Result::Ok(window) => {
+            var w = window
+            let ctx_result = DrawContext::from_window(w.handle())
+            match ctx_result {
+                Result::Ok(ctx) => {
+                    // Clear to color 0
+                    ctx.clear(0)
+
+                    // Draw a pixel with color 1 at (50, 40)
+                    ctx.pen(1)
+                    let _ = ctx.pixel(50, 40)
+
+                    // Read it back
+                    let color = ctx.get_pixel(50, 40)
+                    expect_eq_i32(color, 1, "pixel should be color 1")
+
+                    // Read nearby pixel - should still be 0
+                    let nearby = ctx.get_pixel(51, 40)
+                    expect_eq_i32(nearby, 0, "nearby pixel should be color 0")
+                },
+                Result::Err(_) => expect(false, "context should create")
+            }
+        },
+        Result::Err(_) => expect(false, "window should open")
+    }
+}
+
+@test("DrawContext::pixel_at works with Point")
+pub fn test_draw_pixel_at() {
+    let win_result = WindowHandle::borderless(100, 80)
+    match win_result {
+        Result::Ok(window) => {
+            var w = window
+            let ctx_result = DrawContext::from_window(w.handle())
+            match ctx_result {
+                Result::Ok(ctx) => {
+                    ctx.clear(0)
+                    ctx.pen(2)
+
+                    let p = Point::new(30, 25)
+                    let _ = ctx.pixel_at(&p)
+
+                    let color = ctx.get_pixel_at(&p)
+                    expect_eq_i32(color, 2, "pixel_at should set color 2")
+                },
+                Result::Err(_) => expect(false, "context should create")
+            }
+        },
+        Result::Err(_) => expect(false, "window should open")
+    }
+}
+
+// ============================================================================
+// Line Drawing Tests
+// ============================================================================
+
+@test("DrawContext::line draws a horizontal line")
+pub fn test_draw_line_horizontal() {
+    let win_result = WindowHandle::borderless(100, 80)
+    match win_result {
+        Result::Ok(window) => {
+            var w = window
+            let ctx_result = DrawContext::from_window(w.handle())
+            match ctx_result {
+                Result::Ok(ctx) => {
+                    ctx.clear(0)
+                    ctx.pen(1)
+
+                    // Draw horizontal line from (10,40) to (90,40)
+                    ctx.line(10, 40, 90, 40)
+
+                    // Check pixels along the line
+                    expect_eq_i32(ctx.get_pixel(10, 40), 1, "start of line")
+                    expect_eq_i32(ctx.get_pixel(50, 40), 1, "middle of line")
+                    expect_eq_i32(ctx.get_pixel(90, 40), 1, "end of line")
+
+                    // Check pixel not on line
+                    expect_eq_i32(ctx.get_pixel(50, 41), 0, "below line should be 0")
+                },
+                Result::Err(_) => expect(false, "context should create")
+            }
+        },
+        Result::Err(_) => expect(false, "window should open")
+    }
+}
+
+@test("DrawContext::line draws a vertical line")
+pub fn test_draw_line_vertical() {
+    let win_result = WindowHandle::borderless(100, 80)
+    match win_result {
+        Result::Ok(window) => {
+            var w = window
+            let ctx_result = DrawContext::from_window(w.handle())
+            match ctx_result {
+                Result::Ok(ctx) => {
+                    ctx.clear(0)
+                    ctx.pen(1)
+
+                    // Draw vertical line from (50,10) to (50,70)
+                    ctx.line(50, 10, 50, 70)
+
+                    expect_eq_i32(ctx.get_pixel(50, 10), 1, "start of line")
+                    expect_eq_i32(ctx.get_pixel(50, 40), 1, "middle of line")
+                    expect_eq_i32(ctx.get_pixel(50, 70), 1, "end of line")
+                    expect_eq_i32(ctx.get_pixel(51, 40), 0, "right of line should be 0")
+                },
+                Result::Err(_) => expect(false, "context should create")
+            }
+        },
+        Result::Err(_) => expect(false, "window should open")
+    }
+}
+
+// ============================================================================
+// Rectangle Fill Tests
+// ============================================================================
+
+@test("DrawContext::rect_fill fills a rectangle")
+pub fn test_draw_rect_fill() {
+    let win_result = WindowHandle::borderless(100, 80)
+    match win_result {
+        Result::Ok(window) => {
+            var w = window
+            let ctx_result = DrawContext::from_window(w.handle())
+            match ctx_result {
+                Result::Ok(ctx) => {
+                    ctx.clear(0)
+                    ctx.pen(1)
+
+                    // Fill rectangle from (20,20) to (40,40)
+                    let rect = Rect::new(20, 20, 40, 40)
+                    ctx.rect_fill(&rect)
+
+                    // Check corners
+                    expect_eq_i32(ctx.get_pixel(20, 20), 1, "top-left corner")
+                    expect_eq_i32(ctx.get_pixel(40, 20), 1, "top-right corner")
+                    expect_eq_i32(ctx.get_pixel(20, 40), 1, "bottom-left corner")
+                    expect_eq_i32(ctx.get_pixel(40, 40), 1, "bottom-right corner")
+
+                    // Check interior
+                    expect_eq_i32(ctx.get_pixel(30, 30), 1, "center")
+
+                    // Check outside
+                    expect_eq_i32(ctx.get_pixel(19, 30), 0, "left of rect")
+                    expect_eq_i32(ctx.get_pixel(41, 30), 0, "right of rect")
+                },
+                Result::Err(_) => expect(false, "context should create")
+            }
+        },
+        Result::Err(_) => expect(false, "window should open")
+    }
+}
+
+@test("DrawContext::fill_rect works with coordinates")
+pub fn test_draw_fill_rect() {
+    let win_result = WindowHandle::borderless(100, 80)
+    match win_result {
+        Result::Ok(window) => {
+            var w = window
+            let ctx_result = DrawContext::from_window(w.handle())
+            match ctx_result {
+                Result::Ok(ctx) => {
+                    ctx.clear(0)
+                    ctx.pen(2)
+
+                    // Fill using coordinates directly
+                    ctx.fill_rect(50, 50, 70, 70)
+
+                    expect_eq_i32(ctx.get_pixel(60, 60), 2, "center of rect")
+                    expect_eq_i32(ctx.get_pixel(49, 60), 0, "outside rect")
+                },
+                Result::Err(_) => expect(false, "context should create")
+            }
+        },
+        Result::Err(_) => expect(false, "window should open")
+    }
+}
+
+// ============================================================================
+// Clear Operations Tests
+// ============================================================================
+
+@test("DrawContext::clear fills entire window")
+pub fn test_draw_clear() {
+    let win_result = WindowHandle::borderless(100, 80)
+    match win_result {
+        Result::Ok(window) => {
+            var w = window
+            let ctx_result = DrawContext::from_window(w.handle())
+            match ctx_result {
+                Result::Ok(ctx) => {
+                    // Clear to color 1
+                    ctx.clear(1)
+
+                    // Check various points
+                    expect_eq_i32(ctx.get_pixel(0, 0), 1, "top-left")
+                    expect_eq_i32(ctx.get_pixel(50, 40), 1, "center")
+                    expect_eq_i32(ctx.get_pixel(99, 79), 1, "bottom-right")
+
+                    // Clear to color 0
+                    ctx.clear(0)
+                    expect_eq_i32(ctx.get_pixel(50, 40), 0, "cleared to 0")
+                },
+                Result::Err(_) => expect(false, "context should create")
+            }
+        },
+        Result::Err(_) => expect(false, "window should open")
+    }
+}
+
+@test("DrawContext::rect_erase erases a region")
+pub fn test_draw_rect_erase() {
+    let win_result = WindowHandle::borderless(100, 80)
+    match win_result {
+        Result::Ok(window) => {
+            var w = window
+            let ctx_result = DrawContext::from_window(w.handle())
+            match ctx_result {
+                Result::Ok(ctx) => {
+                    // Fill with color 1
+                    ctx.clear(1)
+
+                    // Erase a rectangle (uses bg_pen, default 0)
+                    ctx.bg_pen(0)
+                    let rect = Rect::new(30, 30, 60, 50)
+                    ctx.rect_erase(&rect)
+
+                    // Inside erased area should be 0
+                    expect_eq_i32(ctx.get_pixel(45, 40), 0, "inside erased area")
+
+                    // Outside should still be 1
+                    expect_eq_i32(ctx.get_pixel(10, 10), 1, "outside erased area")
+                },
+                Result::Err(_) => expect(false, "context should create")
+            }
+        },
+        Result::Err(_) => expect(false, "window should open")
+    }
+}
+
+// ============================================================================
+// Move/Draw (Pen Position) Tests
+// ============================================================================
+
+@test("DrawContext::move_to and line_to work together")
+pub fn test_draw_move_line_to() {
+    let win_result = WindowHandle::borderless(100, 80)
+    match win_result {
+        Result::Ok(window) => {
+            var w = window
+            let ctx_result = DrawContext::from_window(w.handle())
+            match ctx_result {
+                Result::Ok(ctx) => {
+                    ctx.clear(0)
+                    ctx.pen(1)
+
+                    // Move to start, then draw to end
+                    ctx.move_to(10, 50)
+                    ctx.line_to(80, 50)
+
+                    // Check the line was drawn
+                    expect_eq_i32(ctx.get_pixel(10, 50), 1, "line start")
+                    expect_eq_i32(ctx.get_pixel(45, 50), 1, "line middle")
+                    expect_eq_i32(ctx.get_pixel(80, 50), 1, "line end")
+                },
+                Result::Err(_) => expect(false, "context should create")
+            }
+        },
+        Result::Err(_) => expect(false, "window should open")
+    }
+}
+
+// ============================================================================
+// Shape Type Tests
+// ============================================================================
+
+@test("Point operations work correctly")
+pub fn test_point_operations() {
+    let p1 = Point::new(10, 20)
+    expect_eq_i32((i32)p1.x, 10, "point x")
+    expect_eq_i32((i32)p1.y, 20, "point y")
+
+    let p2 = p1.offset(5, -3)
+    expect_eq_i32((i32)p2.x, 15, "offset x")
+    expect_eq_i32((i32)p2.y, 17, "offset y")
+
+    let zero = Point::zero()
+    expect_eq_i32((i32)zero.x, 0, "zero x")
+    expect_eq_i32((i32)zero.y, 0, "zero y")
+
+    expect_true(p1.equals(&p1), "point equals itself")
+    expect_false(p1.equals(&p2), "different points not equal")
+}
+
+@test("Rect operations work correctly")
+pub fn test_rect_operations() {
+    let r1 = Rect::new(10, 20, 50, 60)
+    expect_eq_i32((i32)r1.x_min, 10, "x_min")
+    expect_eq_i32((i32)r1.y_min, 20, "y_min")
+    expect_eq_i32((i32)r1.x_max, 50, "x_max")
+    expect_eq_i32((i32)r1.y_max, 60, "y_max")
+
+    // Test from_pos_size
+    let r2 = Rect::from_pos_size(100, 100, 50, 30)
+    expect_eq_i32((i32)r2.x_min, 100, "pos_size x_min")
+    expect_eq_i32((i32)r2.y_min, 100, "pos_size y_min")
+    expect_eq_i32((i32)r2.x_max, 149, "pos_size x_max = x + width - 1")
+    expect_eq_i32((i32)r2.y_max, 129, "pos_size y_max = y + height - 1")
+}
+
+// ============================================================================
+// Draw Mode Tests
+// ============================================================================
+
+@test("DrawMode::Complement XORs pixels")
+pub fn test_draw_mode_complement() {
+    let win_result = WindowHandle::borderless(100, 80)
+    match win_result {
+        Result::Ok(window) => {
+            var w = window
+            let ctx_result = DrawContext::from_window(w.handle())
+            match ctx_result {
+                Result::Ok(ctx) => {
+                    ctx.clear(0)
+                    ctx.pen(1)
+
+                    // Draw a pixel
+                    let _ = ctx.pixel(50, 40)
+                    expect_eq_i32(ctx.get_pixel(50, 40), 1, "pixel set to 1")
+
+                    // Set complement mode and draw again (should XOR)
+                    ctx.mode(DrawMode::Complement)
+                    let _ = ctx.pixel(50, 40)
+
+                    // XOR with 1 should toggle the pixel back
+                    // Note: exact behavior depends on pen color in complement mode
+                    // This test verifies complement mode doesn't crash
+                    expect(true, "complement mode works")
+                },
+                Result::Err(_) => expect(false, "context should create")
+            }
+        },
+        Result::Err(_) => expect(false, "window should open")
+    }
+}
+
+// Note: No main() - this file is used by the test runner

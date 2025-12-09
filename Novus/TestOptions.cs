@@ -29,6 +29,9 @@ public class TestOptions
     [Option("fpu", Required = false, Default = "none", HelpText = "FPU mode (none, 68881, 68882, 68040, 68060)")]
     public string Fpu { get; set; } = "none";
 
+    [Option("safety-level", Required = false, HelpText = "Safety level (0=unsafe, 1=basic, 2=full, 3=paranoid). Default: 2 for debug, 1 for release")]
+    public int? SafetyLevel { get; set; }
+
     [Option("filter", Required = false, HelpText = "Only run tests matching this pattern (e.g., 'test_math_*')")]
     public string? Filter { get; set; }
 

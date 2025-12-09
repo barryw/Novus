@@ -183,7 +183,8 @@ public static class TestCommand
                     VbccPath = options.VbccPath,
                     NdkPath = options.NdkPath,
                     Verbose = options.Verbose,
-                    OptimizationLevel = options.Release ? 2 : 0
+                    OptimizationLevel = options.Release ? 2 : 0,
+                    SafetyLevelOption = options.SafetyLevel
                 };
 
                 var result = await Program.RunCompiler(compilerOptions);

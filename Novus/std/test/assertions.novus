@@ -170,7 +170,7 @@ pub fn expect_ok_i32(result: Result<i32, i32>, message: *u8) {
         Result::Ok(_) => {},
         Result::Err(e) => {
             __test_record_failure()
-            write("  FAIL: %s - expected Ok, got Err(%d)\n", message, e)
+            write("  FAIL: %s - expected Ok, got Err(%ld)\n", message, e)
         },
     }
 }
@@ -180,7 +180,7 @@ pub fn expect_err_i32(result: Result<i32, i32>, message: *u8) {
     match result {
         Result::Ok(v) => {
             __test_record_failure()
-            write("  FAIL: %s - expected Err, got Ok(%d)\n", message, v)
+            write("  FAIL: %s - expected Err, got Ok(%ld)\n", message, v)
         },
         Result::Err(_) => {},
     }
@@ -214,7 +214,7 @@ pub fn expect_ok_bool(result: Result<bool, i32>, message: *u8) {
         Result::Ok(_) => {},
         Result::Err(e) => {
             __test_record_failure()
-            write("  FAIL: %s - expected Ok, got Err(%d)\n", message, e)
+            write("  FAIL: %s - expected Ok, got Err(%ld)\n", message, e)
         },
     }
 }
@@ -225,7 +225,7 @@ pub fn expect_ok_unit(result: Result<(), i32>, message: *u8) {
         Result::Ok(_) => {},
         Result::Err(e) => {
             __test_record_failure()
-            write("  FAIL: %s - expected Ok, got Err(%d)\n", message, e)
+            write("  FAIL: %s - expected Ok, got Err(%ld)\n", message, e)
         },
     }
 }
@@ -236,12 +236,12 @@ pub fn expect_ok_eq_i32(result: Result<i32, i32>, expected: i32, message: *u8) {
         Result::Ok(v) => {
             if v != expected {
                 __test_record_failure()
-                write("  FAIL: %s - expected Ok(%d), got Ok(%d)\n", message, expected, v)
+                write("  FAIL: %s - expected Ok(%ld), got Ok(%ld)\n", message, expected, v)
             }
         },
         Result::Err(e) => {
             __test_record_failure()
-            write("  FAIL: %s - expected Ok(%d), got Err(%d)\n", message, expected, e)
+            write("  FAIL: %s - expected Ok(%ld), got Err(%ld)\n", message, expected, e)
         },
     }
 }
@@ -282,7 +282,7 @@ pub fn expect_none_i32(option: Option<i32>, message: *u8) {
     match option {
         Option::Some(v) => {
             __test_record_failure()
-            write("  FAIL: %s - expected None, got Some(%d)\n", message, v)
+            write("  FAIL: %s - expected None, got Some(%ld)\n", message, v)
         },
         Option::None => {},
     }
@@ -339,12 +339,12 @@ pub fn expect_some_eq_i32(option: Option<i32>, expected: i32, message: *u8) {
         Option::Some(v) => {
             if v != expected {
                 __test_record_failure()
-                write("  FAIL: %s - expected Some(%d), got Some(%d)\n", message, expected, v)
+                write("  FAIL: %s - expected Some(%ld), got Some(%ld)\n", message, expected, v)
             }
         },
         Option::None => {
             __test_record_failure()
-            write("  FAIL: %s - expected Some(%d), got None\n", message, expected)
+            write("  FAIL: %s - expected Some(%ld), got None\n", message, expected)
         },
     }
 }
@@ -373,7 +373,7 @@ pub fn expect_some_eq_u32(option: Option<u32>, expected: u32, message: *u8) {
 pub fn expect_gt_i32(actual: i32, threshold: i32, message: *u8) {
     if actual <= threshold {
         __test_record_failure()
-        write("  FAIL: %s - expected > %d, got %d\n", message, threshold, actual)
+        write("  FAIL: %s - expected > %ld, got %ld\n", message, threshold, actual)
     }
 }
 
@@ -381,7 +381,7 @@ pub fn expect_gt_i32(actual: i32, threshold: i32, message: *u8) {
 pub fn expect_lt_i32(actual: i32, threshold: i32, message: *u8) {
     if actual >= threshold {
         __test_record_failure()
-        write("  FAIL: %s - expected < %d, got %d\n", message, threshold, actual)
+        write("  FAIL: %s - expected < %ld, got %ld\n", message, threshold, actual)
     }
 }
 
@@ -389,7 +389,7 @@ pub fn expect_lt_i32(actual: i32, threshold: i32, message: *u8) {
 pub fn expect_gte_i32(actual: i32, threshold: i32, message: *u8) {
     if actual < threshold {
         __test_record_failure()
-        write("  FAIL: %s - expected >= %d, got %d\n", message, threshold, actual)
+        write("  FAIL: %s - expected >= %ld, got %ld\n", message, threshold, actual)
     }
 }
 
@@ -397,7 +397,7 @@ pub fn expect_gte_i32(actual: i32, threshold: i32, message: *u8) {
 pub fn expect_lte_i32(actual: i32, threshold: i32, message: *u8) {
     if actual > threshold {
         __test_record_failure()
-        write("  FAIL: %s - expected <= %d, got %d\n", message, threshold, actual)
+        write("  FAIL: %s - expected <= %ld, got %ld\n", message, threshold, actual)
     }
 }
 
@@ -437,7 +437,7 @@ pub fn expect_lte_u32(actual: u32, threshold: u32, message: *u8) {
 pub fn expect_ne_i32(actual: i32, unexpected: i32, message: *u8) {
     if actual == unexpected {
         __test_record_failure()
-        write("  FAIL: %s - expected != %d, got %d\n", message, unexpected, actual)
+        write("  FAIL: %s - expected != %ld, got %ld\n", message, unexpected, actual)
     }
 }
 
@@ -466,7 +466,7 @@ pub fn expect_array_eq_i32(actual_ptr: *i32, actual_len: u32, expected_ptr: *i32
     while i < actual_len {
         if actual_ptr[i] != expected_ptr[i] {
             __test_record_failure()
-            write("  FAIL: %s - element [%lu] mismatch: expected %d, got %d\n",
+            write("  FAIL: %s - element [%lu] mismatch: expected %ld, got %ld\n",
                   message, i, expected_ptr[i], actual_ptr[i])
             return
         }
@@ -524,7 +524,7 @@ pub fn expect_array_contains_i32(ptr: *i32, len: u32, element: i32, message: *u8
         i = i + 1u32
     }
     __test_record_failure()
-    write("  FAIL: %s - array does not contain %d\n", message, element)
+    write("  FAIL: %s - array does not contain %ld\n", message, element)
 }
 
 /// Expect array to NOT contain element
@@ -533,7 +533,7 @@ pub fn expect_array_not_contains_i32(ptr: *i32, len: u32, element: i32, message:
     while i < len {
         if ptr[i] == element {
             __test_record_failure()
-            write("  FAIL: %s - array contains %d at index %lu\n", message, element, i)
+            write("  FAIL: %s - array contains %ld at index %lu\n", message, element, i)
             return
         }
         i = i + 1u32
@@ -572,7 +572,7 @@ pub fn expect_array_not_empty(len: u32, message: *u8) {
 pub fn expect_in_range_i32(value: i32, min: i32, max: i32, message: *u8) {
     if value < min || value > max {
         __test_record_failure()
-        write("  FAIL: %s - expected in range [%d, %d], got %d\n", message, min, max, value)
+        write("  FAIL: %s - expected in range [%ld, %ld], got %ld\n", message, min, max, value)
     }
 }
 
@@ -588,7 +588,7 @@ pub fn expect_in_range_u32(value: u32, min: u32, max: u32, message: *u8) {
 pub fn expect_not_in_range_i32(value: i32, min: i32, max: i32, message: *u8) {
     if value >= min && value <= max {
         __test_record_failure()
-        write("  FAIL: %s - expected outside range [%d, %d], got %d\n", message, min, max, value)
+        write("  FAIL: %s - expected outside range [%ld, %ld], got %ld\n", message, min, max, value)
     }
 }
 
@@ -605,7 +605,7 @@ pub fn expect_approx_eq_fixed(actual: i32, expected: i32, tolerance: i32, messag
     let diff: i32 = if actual > expected { actual - expected } else { expected - actual }
     if diff > tolerance {
         __test_record_failure()
-        write("  FAIL: %s - expected ~%d (tolerance %d), got %d (diff=%d)\n",
+        write("  FAIL: %s - expected ~%ld (tolerance %ld), got %ld (diff=%ld)\n",
               message, expected, tolerance, actual, diff)
     }
 }

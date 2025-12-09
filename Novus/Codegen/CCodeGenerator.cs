@@ -773,6 +773,11 @@ public partial class CCodeGenerator
         sb.AppendLine("void __novus_div_check(int32_t divisor, const char* file, int32_t line);");
         sb.AppendLine();
 
+        // Null pointer check
+        sb.AppendLine("// Null pointer check - displays error if pointer is null before dereference");
+        sb.AppendLine("void __novus_null_pointer_error(const char* file, int32_t line);");
+        sb.AppendLine();
+
         // Try operator error handler (for ? in i32-returning functions like main)
         sb.AppendLine("// Try operator error handler - prints error when ? fails in i32-returning functions");
         sb.AppendLine("void __novus_try_failed(const char* type_name, int32_t tag, const char* variant_names);");
@@ -3882,6 +3887,13 @@ public partial class CCodeGenerator
             _output.AppendLine("void __novus_div_check(int32_t divisor, const char* file, int32_t line);");
         }
 
+        // Runtime null pointer check (implemented in runtime_mmu.c)
+        // Included when null pointer checking is enabled
+        if (_safetyLevel.EnableNullChecks())
+        {
+            _output.AppendLine("void __novus_null_pointer_error(const char* file, int32_t line);");
+        }
+
         _output.AppendLine();
     }
 
@@ -6884,6 +6896,27 @@ public partial class CCodeGenerator
                 structValue = EmitValue(memberAccess.Struct);
             }
 
+            // Emit null pointer check for pointer member access (using ->) if enabled
+            if (accessor == "->" && _safetyLevel.EnableNullChecks())
+            {
+                var locInfo = memberAccess.Location;
+                var filePath = locInfo?.FilePath != null ? System.IO.Path.GetFileName(locInfo.FilePath) : "<compiler-generated>";
+                var line = locInfo?.Line ?? 0;
+
+                _output.AppendLine($"    if ({structValue} == NULL) {{");
+                _output.AppendLine($"        __novus_null_pointer_error(\"{EscapeString(filePath)}\", {line});");
+
+                // Execute deferred cleanup before returning
+                if (_currentEmittingFunction != null)
+                {
+                    EmitDeferredCleanup(_currentEmittingFunction, 2); // indent level 2
+                }
+
+                // Return from function after error
+                EmitErrorPathReturn(2);  // indent level 2
+                _output.AppendLine($"    }}");
+            }
+
             var isMovingField = false;  // Only true when actually consuming/moving the field
             IrStructType? sourceStructType = null;
 
@@ -7512,6 +7545,27 @@ public partial class CCodeGenerator
                 }
             }
 
+            // Emit null pointer check for pointer member store (using ->) if enabled
+            if (litAccessor == "->" && _safetyLevel.EnableNullChecks())
+            {
+                var locInfo = memberStore.Location;
+                var filePath = locInfo?.FilePath != null ? System.IO.Path.GetFileName(locInfo.FilePath) : "<compiler-generated>";
+                var line = locInfo?.Line ?? 0;
+
+                _output.AppendLine($"    if ({litStructValue} == NULL) {{");
+                _output.AppendLine($"        __novus_null_pointer_error(\"{EscapeString(filePath)}\", {line});");
+
+                // Execute deferred cleanup before returning
+                if (_currentEmittingFunction != null)
+                {
+                    EmitDeferredCleanup(_currentEmittingFunction, 2); // indent level 2
+                }
+
+                // Return from function after error
+                EmitErrorPathReturn(2);  // indent level 2
+                _output.AppendLine($"    }}");
+            }
+
             // Emit field-by-field assignments instead of compound literal
             foreach (var kvp in structLit.FieldValues)
             {
@@ -7556,6 +7610,27 @@ public partial class CCodeGenerator
             }
         }
 
+        // Emit null pointer check for pointer member store (using ->) if enabled
+        if (accessor == "->" && _safetyLevel.EnableNullChecks())
+        {
+            var locInfo = memberStore.Location;
+            var filePath = locInfo?.FilePath != null ? System.IO.Path.GetFileName(locInfo.FilePath) : "<compiler-generated>";
+            var line = locInfo?.Line ?? 0;
+
+            _output.AppendLine($"    if ({structValue} == NULL) {{");
+            _output.AppendLine($"        __novus_null_pointer_error(\"{EscapeString(filePath)}\", {line});");
+
+            // Execute deferred cleanup before returning
+            if (_currentEmittingFunction != null)
+            {
+                EmitDeferredCleanup(_currentEmittingFunction, 2); // indent level 2
+            }
+
+            // Return from function after error
+            EmitErrorPathReturn(2);  // indent level 2
+            _output.AppendLine($"    }}");
+        }
+
         _output.AppendLine($"    {structValue}{accessor}{memberStore.FieldName} = {storeValue};");
     }
 
@@ -7563,6 +7638,27 @@ public partial class CCodeGenerator
     {
         var pointerValue = EmitValue(derefStore.Pointer);
         var storeValue = EmitValue(derefStore.Value);
+
+        // Emit null pointer check if enabled (safety level >= 2)
+        if (_safetyLevel.EnableNullChecks())
+        {
+            var locInfo = derefStore.Location;
+            var filePath = locInfo?.FilePath != null ? System.IO.Path.GetFileName(locInfo.FilePath) : "<compiler-generated>";
+            var line = locInfo?.Line ?? 0;
+
+            _output.AppendLine($"    if ({pointerValue} == NULL) {{");
+            _output.AppendLine($"        __novus_null_pointer_error(\"{EscapeString(filePath)}\", {line});");
+
+            // Execute deferred cleanup before returning
+            if (_currentEmittingFunction != null)
+            {
+                EmitDeferredCleanup(_currentEmittingFunction, 2); // indent level 2
+            }
+
+            // Return from function after error
+            EmitErrorPathReturn(2);  // indent level 2
+            _output.AppendLine($"    }}");
+        }
 
         _output.AppendLine($"    (*{pointerValue}) = {storeValue};");
     }

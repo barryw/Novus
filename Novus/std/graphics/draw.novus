@@ -121,23 +121,23 @@ impl DrawContext {
 
     /// Set the foreground (A) pen color index.
     pub fn pen(&self, color_index: u8) {
-        SetAPen(self.rp, color_index)
+        SetAPen(self.rp, (u32)color_index)
     }
 
     /// Set the background (B) pen color index.
     pub fn bg_pen(&self, color_index: u8) {
-        SetBPen(self.rp, color_index)
+        SetBPen(self.rp, (u32)color_index)
     }
 
     /// Set both foreground and background pens.
     pub fn pens(&self, fg: u8, bg: u8) {
-        SetAPen(self.rp, fg)
-        SetBPen(self.rp, bg)
+        SetAPen(self.rp, (u32)fg)
+        SetBPen(self.rp, (u32)bg)
     }
 
     /// Set the draw mode.
     pub fn mode(&self, mode: DrawMode) {
-        SetDrMd(self.rp, mode.to_raw())
+        SetDrMd(self.rp, (u32)mode.to_raw())
     }
 
     /// Get the current foreground pen color index.
@@ -323,13 +323,13 @@ impl DrawContext {
 
     /// Clear the entire RastPort to the specified color index.
     pub fn clear(&self, color_index: u8) {
-        SetRast(self.rp, color_index)
+        SetRast(self.rp, (u32)color_index)
     }
 
     /// Clear the entire RastPort to the current background pen.
     pub fn clear_to_background(&self) {
         let bg: u8 = self.get_bg_pen()
-        SetRast(self.rp, bg)
+        SetRast(self.rp, (u32)bg)
     }
 
     // ========================================================================

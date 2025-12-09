@@ -541,7 +541,7 @@ public partial class IrBuilder
                         // Load the intermediate field value
                         var tempName = $"_field_{memberName}_{_tempCounter++}";
                         var loadMember = new IrMemberAccess(tempName, actualBase, memberName, field.Type, field.Offset);
-                        _currentBlock!.AddInstruction(loadMember);
+                        Emit(loadMember);
                         currentLValue = new IrVariable(tempName, field.Type);
                     }
                     else if (suffix.GetChild(0).GetText() == "[")
@@ -650,18 +650,18 @@ public partial class IrBuilder
 
                     // Load current value
                     var loadTemp = $"%member_load_{_tempCounter++}";
-                    _currentBlock!.AddInstruction(new IrMemberAccess(loadTemp, actualBase, memberName, field.Type, field.Offset));
+                    Emit(new IrMemberAccess(loadTemp, actualBase, memberName, field.Type, field.Offset));
                     var currentValue = new IrVariable(loadTemp, field.Type);
 
                     // Increment/decrement
                     var newValueTemp = $"%t{_tempCounter++}";
                     var opKind = (op == "++" ? IrBinaryOp.OpKind.Add : IrBinaryOp.OpKind.Sub);
                     var binOp = new IrBinaryOp(newValueTemp, opKind, currentValue, new IrConstant(1, field.Type), field.Type);
-                    _currentBlock.AddInstruction(binOp);
+                    Emit(binOp);
 
                     // Store back
                     var newValue = new IrVariable(newValueTemp, field.Type);
-                    _currentBlock.AddInstruction(new IrMemberStore(actualBase, memberName, field.Offset, newValue));
+                    Emit(new IrMemberStore(actualBase, memberName, field.Offset, newValue));
 
                     return null;
                 }
@@ -917,7 +917,7 @@ public partial class IrBuilder
 
                 // Generate store to struct member (using actualBase which may be dereferenced)
                 var storeMember = new IrMemberStore(actualBase, memberName, fieldOffset, value);
-                _currentBlock!.AddInstruction(storeMember);
+                Emit(storeMember);
 
                 return null;
             }
@@ -1007,7 +1007,7 @@ public partial class IrBuilder
                             {
                                 var tempName = $"_field_{fieldName}_{_tempCounter++}";
                                 var loadMember = new IrMemberAccess(tempName, actualBase, fieldName, leadingField.Type, leadingField.Offset);
-                                _currentBlock!.AddInstruction(loadMember);
+                                Emit(loadMember);
                                 arrayBase = new IrVariable(tempName, leadingField.Type);
                             }
                         }
@@ -1163,7 +1163,7 @@ public partial class IrBuilder
                     {
                         // This is the final field - emit a store
                         var storeMember = new IrMemberStore(actualBase, memberName, field.Offset, value);
-                        _currentBlock!.AddInstruction(storeMember);
+                        Emit(storeMember);
                         return null;
                     }
                     else
@@ -1171,7 +1171,7 @@ public partial class IrBuilder
                         // This is an intermediate field - load it for the next suffix
                         var tempName = $"_field_{memberName}_{_tempCounter++}";
                         var loadMember = new IrMemberAccess(tempName, actualBase, memberName, field.Type, field.Offset);
-                        _currentBlock!.AddInstruction(loadMember);
+                        Emit(loadMember);
                         currentLValue = new IrVariable(tempName, field.Type);
                     }
                 }

@@ -75,7 +75,7 @@ pub fn expect_false(condition: bool, message: *u8) {
 pub fn expect_eq_i32(actual: i32, expected: i32, message: *u8) {
     if actual != expected {
         __test_failures++
-        write("  FAIL: %s - expected %d, got %d\n", message, expected, actual)
+        write("  FAIL: %s - expected %ld, got %ld\n", message, expected, actual)
     }
 }
 
@@ -91,7 +91,7 @@ pub fn expect_eq_u32(actual: u32, expected: u32, message: *u8) {
 pub fn expect_eq_i16(actual: i16, expected: i16, message: *u8) {
     if actual != expected {
         __test_failures++
-        write("  FAIL: %s - expected %d, got %d\n", message, (expected as i32), (actual as i32))
+        write("  FAIL: %s - expected %ld, got %ld\n", message, (expected as i32), (actual as i32))
     }
 }
 
@@ -99,7 +99,7 @@ pub fn expect_eq_i16(actual: i16, expected: i16, message: *u8) {
 pub fn expect_eq_u16(actual: u16, expected: u16, message: *u8) {
     if actual != expected {
         __test_failures++
-        write("  FAIL: %s - expected %u, got %u\n", message, (expected as u32), (actual as u32))
+        write("  FAIL: %s - expected %lu, got %lu\n", message, (expected as u32), (actual as u32))
     }
 }
 
@@ -107,7 +107,7 @@ pub fn expect_eq_u16(actual: u16, expected: u16, message: *u8) {
 pub fn expect_eq_i8(actual: i8, expected: i8, message: *u8) {
     if actual != expected {
         __test_failures++
-        write("  FAIL: %s - expected %d, got %d\n", message, (expected as i32), (actual as i32))
+        write("  FAIL: %s - expected %ld, got %ld\n", message, (expected as i32), (actual as i32))
     }
 }
 
@@ -115,7 +115,7 @@ pub fn expect_eq_i8(actual: i8, expected: i8, message: *u8) {
 pub fn expect_eq_u8(actual: u8, expected: u8, message: *u8) {
     if actual != expected {
         __test_failures++
-        write("  FAIL: %s - expected %u, got %u\n", message, (expected as u32), (actual as u32))
+        write("  FAIL: %s - expected %lu, got %lu\n", message, (expected as u32), (actual as u32))
     }
 }
 

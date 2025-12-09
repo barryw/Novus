@@ -1,0 +1,215 @@
+// Novus File I/O Debug - Step-by-step to find Address Error
+// Uses Delay() to pause after each step so we can see where the crash happens
+
+from std::core import Result
+from std::strings::core import Str
+from std::io::file import write
+from std::ffi::dos import Delay
+from std::ffi::amiga_consts import MODE_OLDFILE, MODE_NEWFILE
+from std::error::errors import DosError
+from std::os::dos import OwnedFileHandle
+from std::os::dos import file_exists, delete_file, create_dir, file_info
+
+fn wait() {
+    Delay(50)  // 1 second pause
+}
+
+fn main() -> i32 {
+    write("DEBUG: Starting...\n")
+    wait()
+
+    write("DEBUG: Step 1 - About to call create_test_file()\n")
+    wait()
+
+    let result1 = create_test_file()
+
+    write("DEBUG: Step 2 - create_test_file() returned\n")
+    wait()
+
+    match result1 {
+        Result::Ok(_) => {
+            write("DEBUG: Step 3 - File created OK\n")
+            wait()
+        },
+        Result::Err(err) => {
+            write("DEBUG: Step 3 - File creation FAILED\n")
+            wait()
+            return 1
+        }
+    }
+
+    write("DEBUG: Step 4 - About to call file_exists()\n")
+    wait()
+
+    let exists = file_exists("RAM:test_file.txt")
+
+    write("DEBUG: Step 5 - file_exists() returned\n")
+    wait()
+
+    if exists {
+        write("DEBUG: Step 6 - File exists\n")
+        wait()
+    } else {
+        write("DEBUG: Step 6 - File does NOT exist\n")
+        wait()
+        return 1
+    }
+
+    write("DEBUG: Step 7 - About to call file_info()\n")
+    wait()
+
+    let result2 = file_info("RAM:test_file.txt")
+
+    write("DEBUG: Step 8 - file_info() returned\n")
+    wait()
+
+    match result2 {
+        Result::Ok(info) => {
+            write("DEBUG: Step 9 - Got FileInfo struct\n")
+            wait()
+
+            write("DEBUG: Step 10 - About to access info.is_file\n")
+            wait()
+
+            if info.is_file {
+                write("DEBUG: Step 11 - is_file = true\n")
+            } else {
+                write("DEBUG: Step 11 - is_file = false\n")
+            }
+            wait()
+
+            write("DEBUG: Step 12 - About to access info.is_directory\n")
+            wait()
+
+            if info.is_directory {
+                write("DEBUG: Step 13 - is_directory = true\n")
+            } else {
+                write("DEBUG: Step 13 - is_directory = false\n")
+            }
+            wait()
+        },
+        Result::Err(err) => {
+            write("DEBUG: Step 9 - file_info() FAILED\n")
+            wait()
+            return 1
+        }
+    }
+
+    write("DEBUG: Step 14 - About to call read_with_read_all()\n")
+    wait()
+
+    let result3 = read_with_read_all()
+
+    write("DEBUG: Step 15 - read_with_read_all() returned\n")
+    wait()
+
+    match result3 {
+        Result::Ok(bytes_read) => {
+            write("DEBUG: Step 16 - Read OK\n")
+            wait()
+        },
+        Result::Err(err) => {
+            write("DEBUG: Step 16 - Read FAILED\n")
+            wait()
+            return 1
+        }
+    }
+
+    write("DEBUG: Step 17 - About to call delete_file()\n")
+    wait()
+
+    let result4 = delete_file("RAM:test_file.txt")
+
+    write("DEBUG: Step 18 - delete_file() returned\n")
+    wait()
+
+    match result4 {
+        Result::Ok(_) => {
+            write("DEBUG: Step 19 - Delete OK\n")
+            wait()
+        },
+        Result::Err(err) => {
+            write("DEBUG: Step 19 - Delete FAILED\n")
+            wait()
+            return 1
+        }
+    }
+
+    write("DEBUG: ALL DONE - No crash!\n")
+    return 0
+}
+
+// Helper function: Create test file with write_all()
+fn create_test_file() -> Result<(), DosError> {
+    write("  DEBUG: create_test_file - entering\n")
+    wait()
+
+    write("  DEBUG: create_test_file - about to open file\n")
+    wait()
+
+    let file = OwnedFileHandle::open("RAM:test_file.txt", (i32)MODE_NEWFILE)?
+
+    write("  DEBUG: create_test_file - file opened\n")
+    wait()
+
+    write("  DEBUG: create_test_file - about to write line 1\n")
+    wait()
+
+    file.write_all("Line 1: Hello, Amiga!\n", 22u32)?
+
+    write("  DEBUG: create_test_file - wrote line 1\n")
+    wait()
+
+    write("  DEBUG: create_test_file - about to write line 2\n")
+    wait()
+
+    file.write_all("Line 2: Testing File I/O\n", 25u32)?
+
+    write("  DEBUG: create_test_file - wrote line 2\n")
+    wait()
+
+    write("  DEBUG: create_test_file - about to write line 3\n")
+    wait()
+
+    file.write_all("Line 3: Novus is awesome!\n", 26u32)?
+
+    write("  DEBUG: create_test_file - wrote line 3\n")
+    wait()
+
+    write("  DEBUG: create_test_file - about to return (file will be closed)\n")
+    wait()
+
+    return Result::Ok(())
+}
+
+// Helper function: Read file with read_all()
+fn read_with_read_all() -> Result<u32, DosError> {
+    write("  DEBUG: read_with_read_all - entering\n")
+    wait()
+
+    write("  DEBUG: read_with_read_all - about to open file\n")
+    wait()
+
+    let file = OwnedFileHandle::open("RAM:test_file.txt", (i32)MODE_OLDFILE)?
+
+    write("  DEBUG: read_with_read_all - file opened\n")
+    wait()
+
+    var buffer = [0u8; 1024]
+
+    write("  DEBUG: read_with_read_all - buffer declared\n")
+    wait()
+
+    write("  DEBUG: read_with_read_all - about to call read_all()\n")
+    wait()
+
+    let bytes_read = file.read_all((*u8)&buffer, 1024u32)?
+
+    write("  DEBUG: read_with_read_all - read_all() returned\n")
+    wait()
+
+    write("  DEBUG: read_with_read_all - about to return\n")
+    wait()
+
+    return Result::Ok(bytes_read)
+}
