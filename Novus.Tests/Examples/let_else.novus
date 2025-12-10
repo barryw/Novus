@@ -1,0 +1,61 @@
+// Example: let...else pattern for refutable patterns
+// When a pattern might not match, use let...else to handle the failure case
+// The else block must diverge (return, panic, break, continue)
+
+// Define our own enum types for this example (Result/Option are in std::core)
+enum ParseResult {
+    Value(i32),
+    Error
+}
+
+enum MaybeValue {
+    Some(i32),
+    None
+}
+
+fn get_value() -> MaybeValue {
+    return MaybeValue::Some(42)
+}
+
+fn get_nothing() -> MaybeValue {
+    return MaybeValue::None
+}
+
+fn parse_input(valid: bool) -> ParseResult {
+    if valid {
+        return ParseResult::Value(100)
+    }
+    return ParseResult::Error
+}
+
+fn main() -> i32 {
+    // Basic let...else with enum
+    let MaybeValue::Some(value) = get_value() else {
+        // This block runs if pattern doesn't match
+        // Must diverge - here we return early
+        return 1
+    }
+    // value is now bound and can be used
+    if value != 42 {
+        return 2
+    }
+
+    // With ParseResult type
+    let ParseResult::Value(parsed) = parse_input(true) else {
+        return 3
+    }
+    if parsed != 100 {
+        return 4
+    }
+
+    // Handling the failure case
+    let ParseResult::Value(x) = parse_input(false) else {
+        // This executes because parse_input(false) returns Error
+        // We could log, return default, etc.
+        // For this test, we just continue with a known value
+        return 0  // Expected path - test passes
+    }
+
+    // This line is unreachable in this test
+    return 5
+}

@@ -1,0 +1,39 @@
+// Example: dbg!() macro for debugging
+// The dbg! macro prints the expression's location, text, and value to stdout
+// It also returns the value, so it can be used inline without changing behavior
+
+fn factorial(n: i32) -> i32 {
+    if n <= 1 {
+        return 1
+    }
+    // dbg! shows intermediate values during recursion
+    return n * dbg!(factorial(n - 1))
+}
+
+fn main() -> i32 {
+    // Basic usage - prints value with location info
+    let x = 42
+    dbg!(x)  // Output: [dbg_macro.novus:14:5] x = 42
+
+    // Works with expressions
+    let a = 10
+    let b = 20
+    dbg!(a + b)  // Output: [dbg_macro.novus:19:5] a + b = 30
+
+    // Can be used inline since it returns the value
+    let doubled = dbg!(x) * 2  // Prints x, then uses value in multiplication
+    dbg!(doubled)  // Output: [dbg_macro.novus:23:5] doubled = 84
+
+    // Works with different types
+    let flag = true
+    dbg!(flag)  // Output: [dbg_macro.novus:27:5] flag = true
+
+    let ptr: *u8 = null
+    dbg!(ptr)  // Output: [dbg_macro.novus:30:5] ptr = 0x00000000
+
+    // Useful for debugging calculations
+    let result = dbg!(factorial(5))  // Shows each recursive call
+    dbg!(result)  // Output: [dbg_macro.novus:34:5] result = 120
+
+    return 0
+}

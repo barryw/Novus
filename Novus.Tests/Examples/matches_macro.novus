@@ -1,0 +1,81 @@
+// Example: matches!() macro for pattern matching expressions
+// Returns true if the expression matches the pattern, false otherwise
+// Useful for conditionals without needing a full match expression
+
+enum Status {
+    Active,
+    Inactive,
+    Pending
+}
+
+enum ParseResult {
+    Ok(i32),
+    Err(i32)
+}
+
+enum MaybeValue {
+    Some(i32),
+    None
+}
+
+fn get_status() -> Status {
+    return Status::Active
+}
+
+fn get_result() -> ParseResult {
+    return ParseResult::Ok(42)
+}
+
+fn main() -> i32 {
+    let status = get_status()
+
+    // Basic matches! usage
+    if matches!(status, Status::Active) {
+        // This branch executes
+    } else {
+        return 1
+    }
+
+    // Negative case
+    if matches!(status, Status::Inactive) {
+        return 2  // Should not execute
+    }
+
+    // With ParseResult type
+    let result = get_result()
+    if matches!(result, ParseResult::Ok(_)) {
+        // Pattern matched - result is Ok variant
+    } else {
+        return 3
+    }
+
+    if matches!(result, ParseResult::Err(_)) {
+        return 4  // Should not execute - result is Ok, not Err
+    }
+
+    // With MaybeValue type
+    let opt: MaybeValue = MaybeValue::Some(10)
+    if !matches!(opt, MaybeValue::None) {
+        // opt is not None
+    } else {
+        return 5
+    }
+
+    // Useful in complex conditions
+    let items = [Status::Active, Status::Pending, Status::Inactive]
+    let mut active_count = 0
+
+    let mut i = 0
+    while i < 3 {
+        if matches!(items[i], Status::Active) {
+            active_count = active_count + 1
+        }
+        i = i + 1
+    }
+
+    if active_count != 1 {
+        return 6
+    }
+
+    return 0  // Success
+}

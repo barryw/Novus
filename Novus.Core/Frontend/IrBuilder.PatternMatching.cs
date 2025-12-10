@@ -699,9 +699,6 @@ public partial class IrBuilder
     /// <summary>
     /// Compile matches!(expr, pattern) to IR - evaluates to bool
     /// Lowers to: match expr { pattern => true, _ => false }
-    ///
-    /// TODO: This is a simplified implementation that only handles literal patterns.
-    /// Full pattern matching support will require generating pattern-matching IR.
     /// </summary>
     public override object? VisitMatchesExpr([NotNull] NovusParser.MatchesExprContext context)
     {
@@ -721,40 +718,108 @@ public partial class IrBuilder
         // Get the pattern
         var pattern = context.pattern();
 
-        // For now, implement simple pattern matching:
-        // - Wildcard patterns always match (return true)
-        // - Literal patterns do equality comparison
-        // - Other patterns are not yet supported (return false for now)
-
-        var patternText = pattern.GetText();
-
         // Check for wildcard pattern "_"
-        if (patternText == "_")
+        if (pattern is NovusParser.WildcardPatternContext)
         {
             return new IrBoolConstant(true);
         }
 
         // For simple identifier patterns (variable binding) - always matches
-        // A pattern that is just an identifier (not a type name) binds the value
-        if (!patternText.Contains("(") && !patternText.Contains("::") &&
-            !patternText.Contains("{") && patternText != "true" && patternText != "false")
+        if (pattern is NovusParser.IdentifierPatternContext)
         {
-            // This looks like a simple variable binding pattern
             return new IrBoolConstant(true);
         }
 
-        // For enum variant patterns like Some(_), Ok(_), etc.
-        // This requires checking the enum tag
-        // TODO: Implement full enum variant pattern matching
-        if (patternText.Contains("(") || patternText.Contains("::"))
+        // Handle enum variant patterns like Some(_), Ok(_), Status::Active
+        if (pattern is NovusParser.VariantPatternContext variantPattern)
         {
-            // For now, report a warning and return false
-            // Full implementation requires extracting the tag and comparing it
-            return new IrBoolConstant(false);
+            return CompileEnumVariantMatch(exprIr, variantPattern.variantName().GetText());
+        }
+
+        // Handle simple variant patterns like Status::Active (no parentheses)
+        if (pattern is NovusParser.SimpleVariantPatternContext simpleVariantPattern)
+        {
+            // Build the full name from identifiers
+            var identifiers = simpleVariantPattern.IDENTIFIER();
+            var fullName = string.Join("::", identifiers.Select(i => i.GetText()));
+            return CompileEnumVariantMatch(exprIr, fullName);
         }
 
         // For literal patterns (integers, booleans, etc.)
-        // TODO: Implement literal comparison
+        if (pattern is NovusParser.LiteralPatternContext literalPattern)
+        {
+            var literalText = literalPattern.INTEGER_LITERAL().GetText();
+            if (int.TryParse(literalText, out var literalValue))
+            {
+                var literalConstant = new IrConstant(literalValue, IrIntType.I32);
+                var compareResultName = $"%matches_cmp_{_tempCounter++}";
+                Emit(new IrBinaryOp(compareResultName, IrBinaryOp.OpKind.Eq, exprIr, literalConstant, IrBoolType.Instance));
+                return new IrVariable(compareResultName, IrBoolType.Instance);
+            }
+        }
+
+        if (pattern is NovusParser.BoolLiteralPatternContext boolPattern)
+        {
+            var boolValue = boolPattern.GetText() == "true";
+            var literalConstant = new IrBoolConstant(boolValue);
+            var compareResultName = $"%matches_cmp_{_tempCounter++}";
+            Emit(new IrBinaryOp(compareResultName, IrBinaryOp.OpKind.Eq, exprIr, literalConstant, IrBoolType.Instance));
+            return new IrVariable(compareResultName, IrBoolType.Instance);
+        }
+
+        // Fallback for unsupported patterns
+        return new IrBoolConstant(false);
+    }
+
+    /// <summary>
+    /// Helper to compile enum variant matching for matches!() macro.
+    /// Extracts the tag from the enum and compares it to the variant's tag.
+    /// </summary>
+    private IrValue CompileEnumVariantMatch(IrValue exprIr, string variantName)
+    {
+        // Get just the variant name (without enum type prefix)
+        var variantNameOnly = variantName.Contains("::") ? variantName.Split("::").Last() : variantName;
+
+        // For simple C-style enums (no associated data), compare directly
+        if (exprIr.Type is IrEnumType enumType)
+        {
+            // Find the variant
+            var variant = enumType.Variants.FirstOrDefault(v => v.Name == variantNameOnly);
+            if (variant != null)
+            {
+                // Extract the tag and compare
+                var tagResultName = $"%matches_tag_{_tempCounter++}";
+                Emit(new IrExtractTag(tagResultName, exprIr));
+                var tagValue = new IrVariable(tagResultName, IrIntType.I32);
+
+                var tagConstant = new IrConstant(variant.Tag, IrIntType.I32);
+                var compareResultName = $"%matches_cmp_{_tempCounter++}";
+                Emit(new IrBinaryOp(compareResultName, IrBinaryOp.OpKind.Eq, tagValue, tagConstant, IrBoolType.Instance));
+                return new IrVariable(compareResultName, IrBoolType.Instance);
+            }
+        }
+
+        // For simple C-style enums that are represented as ints
+        // Check if there's an enum in scope with this variant
+        var enumName = variantName.Contains("::") ? variantName.Substring(0, variantName.LastIndexOf("::")) : null;
+        if (enumName != null && _symbols.HasEnum(enumName))
+        {
+            var enumInfo = _symbols.LookupEnum(enumName);
+            if (enumInfo != null)
+            {
+                var variant = enumInfo.Variants.FirstOrDefault(v => v.Name == variantNameOnly);
+                if (variant != null)
+                {
+                    // For simple enums, compare the value directly against the tag constant
+                    var tagConstant = new IrConstant(variant.Tag, exprIr.Type);
+                    var compareResultName = $"%matches_cmp_{_tempCounter++}";
+                    Emit(new IrBinaryOp(compareResultName, IrBinaryOp.OpKind.Eq, exprIr, tagConstant, IrBoolType.Instance));
+                    return new IrVariable(compareResultName, IrBoolType.Instance);
+                }
+            }
+        }
+
+        // Fallback - couldn't resolve variant
         return new IrBoolConstant(false);
     }
 }
