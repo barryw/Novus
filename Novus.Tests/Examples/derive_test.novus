@@ -1,0 +1,50 @@
+// Test derive macro for Eq and Hash traits
+
+#[derive(Eq, Hash)]
+struct Point {
+    x: i32,
+    y: i32
+}
+
+#[derive(Eq, Hash)]
+struct Triple {
+    a: i32,
+    b: i32,
+    c: i32
+}
+
+// Test that derived eq works correctly
+fn test_point_eq() {
+    let p1 = Point { x: 10, y: 20 }
+    let p2 = Point { x: 10, y: 20 }
+    let p3 = Point { x: 10, y: 30 }
+
+    // Same points should be equal
+    assert!(p1.eq(&p2), "p1 should equal p2")
+
+    // Different points should not be equal
+    let not_eq = !p1.eq(&p3)
+    assert!(not_eq, "p1 should not equal p3")
+}
+
+fn test_point_hash() {
+    let p1 = Point { x: 10, y: 20 }
+    let p2 = Point { x: 10, y: 20 }
+    let p3 = Point { x: 10, y: 30 }
+
+    // Same points should have same hash
+    let h1 = p1.hash()
+    let h2 = p2.hash()
+
+    assert!(h1 == h2, "same points should have same hash")
+
+    // Different points should (usually) have different hash
+    let h3 = p3.hash()
+    // Note: hash collision is possible but unlikely for these values
+}
+
+fn main() -> i32 {
+    test_point_eq()
+    test_point_hash()
+    return 0
+}

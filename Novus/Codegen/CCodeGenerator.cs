@@ -1555,6 +1555,14 @@ public partial class CCodeGenerator
         // Emit all basic blocks
         foreach (var block in function.BasicBlocks)
         {
+            // Emit the block's label if it's a target of a branch (not just the entry block)
+            // This is needed for derived methods that generate multi-block control flow
+            if (block.Label != "entry" && _reachableLabels.Contains(block.Label))
+            {
+                var labelName = block.Label + _labelSuffix;
+                targetBuilder.AppendLine($"{labelName}:;");
+            }
+
             foreach (var instruction in block.Instructions)
             {
                 // We need to emit instructions to the target builder
@@ -4399,6 +4407,14 @@ public partial class CCodeGenerator
 
     private void EmitBasicBlock(IrBasicBlock block)
     {
+        // Emit the block's label if it's a target of a branch (not just the entry block)
+        // This is needed for derived methods that generate multi-block control flow
+        if (block.Label != "entry" && _reachableLabels.Contains(block.Label))
+        {
+            var labelName = block.Label + _labelSuffix;
+            _output.AppendLine($"{labelName}:;");
+        }
+
         // Check if this block has block-scoped variables that need to be declared
         HashSet<string>? blockVars = null;
         var hasBlockScopedVars = _currentBlockScopedVars != null &&

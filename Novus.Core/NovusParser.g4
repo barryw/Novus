@@ -21,11 +21,7 @@ using Novus.Frontend;
 // Parser Rules
 
 compilationUnit
-    : NEWLINE* importDeclaration* reexportDeclaration* moduleAttribute* (constDeclaration | staticDeclaration | globalVariableDeclaration | structDeclaration | enumDeclaration | traitDeclaration | implDeclaration | functionDeclaration)* EOF
-    ;
-
-moduleAttribute
-    : HASH LBRACKET IDENTIFIER (LPAREN attributeArgList? RPAREN)? RBRACKET NEWLINE*
+    : NEWLINE* importDeclaration* reexportDeclaration* (constDeclaration | staticDeclaration | globalVariableDeclaration | structDeclaration | enumDeclaration | traitDeclaration | implDeclaration | functionDeclaration)* EOF
     ;
 
 attribute

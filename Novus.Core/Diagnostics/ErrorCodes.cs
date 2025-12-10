@@ -154,6 +154,7 @@ public static class ErrorCodes
     public const string InvalidAttribute = "E3500";
     public const string UnknownAttribute = "E3501";
     public const string AttributeOverride = "W3502";  // Warning: attribute overrides project/CLI settings
+    public const string UnknownDeriveTrait = "E3503";  // Unknown trait in #[derive(...)]
 
     // ========================================================================
     // E36XX: File/Resource Errors

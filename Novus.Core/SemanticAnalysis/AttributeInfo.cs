@@ -232,6 +232,10 @@ public static class KnownAttributes
     public const string Atomic = "atomic";                 // Wrap function body in Forbid/Permit critical section
     public const string NoInterrupts = "no_interrupts";    // Wrap function body in Disable/Enable (use sparingly!)
 
+    // Derive macro attribute - auto-generates trait implementations
+    // Usage: #[derive(Eq, Hash)] or #[derive(Eq)] or #[derive(Hash)]
+    public const string Derive = "derive";
+
     /// <summary>
     /// All known attribute names for validation
     /// </summary>
@@ -251,7 +255,8 @@ public static class KnownAttributes
         ChipRam,
         StackSize, Cpu,
         Interrupt, InterruptSafe,
-        Atomic, NoInterrupts
+        Atomic, NoInterrupts,
+        Derive
     };
 
     /// <summary>

@@ -313,8 +313,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
     public bool Analyze(NovusParser.CompilationUnitContext context)
     {
-        // Pass 0: Validate module-level attributes (e.g., #[stack_size(65536)])
-        ValidateModuleAttributes(context.moduleAttribute());
+        // Module-level attributes (stack_size, cpu) are now handled when parsing declaration attributes
 
         // Pass 0a: Implicitly import all of core module (unless compiling core.novus itself)
         // Don't auto-import std::core when compiling core.novus to prevent circular dependencies
@@ -350,6 +349,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         foreach (var structDecl in context.structDeclaration())
         {
             FillStructFields(structDecl);
+            RegisterDerivedMethods(structDecl);
         }
 
         // Fourth pass: fill in enum variants (now all struct types are fully defined)
@@ -747,6 +747,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
             // Fill in the struct fields (placeholder has empty fields)
             FillStructFields(structDecl);
+            RegisterDerivedMethods(structDecl);
 
             // Mark as imported if it was explicitly requested (only for public structs)
             if (isPub && namesToImport.Contains(structName))
@@ -1744,6 +1745,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     {
         RegisterStructPlaceholder(context);
         FillStructFields(context);
+        RegisterDerivedMethods(context);
     }
 
     /// <summary>
@@ -1837,6 +1839,94 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         // No need to re-register - we mutated the existing placeholder in place
+    }
+
+    /// <summary>
+    /// Phase 3: Register synthetic methods for #[derive(...)] attributes.
+    /// This must happen after FillStructFields so the struct type is complete,
+    /// and must register FunctionSymbols so method lookup in semantic analysis works.
+    /// </summary>
+    private void RegisterDerivedMethods(NovusParser.StructDeclarationContext context)
+    {
+        var name = context.IDENTIFIER().GetText();
+        var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+
+        // Get the struct we just registered
+        var structType = _symbols.LookupStruct(name);
+        if (structType == null) return;
+
+        // Check for derive attribute
+        if (structType.Attributes == null) return;
+        var deriveAttr = structType.Attributes.Get(KnownAttributes.Derive);
+        if (deriveAttr == null) return;
+
+        // Skip generic structs - they're handled during monomorphization
+        if (structType.GenericParameters.Count > 0) return;
+
+        // Get the pointer type for self parameters
+        var selfPtrType = new IrPointerType(structType);
+
+        // Parse derive traits and register synthetic methods
+        foreach (var arg in deriveAttr.PositionalArgs)
+        {
+            if (arg is not string traitName) continue;
+
+            switch (traitName)
+            {
+                case "Eq":
+                    RegisterDerivedEq(name, selfPtrType, location);
+                    break;
+                case "Hash":
+                    RegisterDerivedHash(name, selfPtrType, location);
+                    break;
+                default:
+                    _diagnostics.ReportError(
+                        ErrorCodes.UnknownDeriveTrait,
+                        $"Unknown derive trait '{traitName}'. Supported traits: Eq, Hash",
+                        deriveAttr.Location
+                    );
+                    break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Register the eq(&self, other: &Self) -> bool method for #[derive(Eq)]
+    /// </summary>
+    private void RegisterDerivedEq(string typeName, IrPointerType selfPtrType, SourceLocation location)
+    {
+        var mangledName = $"{typeName}::eq";
+
+        // Don't register if already exists (user-defined impl takes precedence)
+        if (_functions.ContainsKey(mangledName)) return;
+
+        var boolType = IrBoolType.Instance;
+        var parameters = new List<ParameterSymbol>
+        {
+            new ParameterSymbol("self", selfPtrType, location),
+            new ParameterSymbol("other", selfPtrType, location)
+        };
+
+        _functions[mangledName] = new FunctionSymbol(mangledName, boolType, parameters, location);
+    }
+
+    /// <summary>
+    /// Register the hash(&self) -> u32 method for #[derive(Hash)]
+    /// </summary>
+    private void RegisterDerivedHash(string typeName, IrPointerType selfPtrType, SourceLocation location)
+    {
+        var mangledName = $"{typeName}::hash";
+
+        // Don't register if already exists (user-defined impl takes precedence)
+        if (_functions.ContainsKey(mangledName)) return;
+
+        var u32Type = IrIntType.U32;
+        var parameters = new List<ParameterSymbol>
+        {
+            new ParameterSymbol("self", selfPtrType, location)
+        };
+
+        _functions[mangledName] = new FunctionSymbol(mangledName, u32Type, parameters, location);
     }
 
     private void RegisterEnum(NovusParser.EnumDeclarationContext context)
@@ -5014,36 +5104,6 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         return collection;
     }
 
-    /// <summary>
-    /// Validate module-level attributes (e.g., #[stack_size(65536)])
-    /// These are processed by IrBuilder but need validation here for IDE diagnostics
-    /// </summary>
-    private void ValidateModuleAttributes(NovusParser.ModuleAttributeContext[]? attributeContexts)
-    {
-        if (attributeContexts == null || attributeContexts.Length == 0)
-            return;
-
-        foreach (var attrCtx in attributeContexts)
-        {
-            var attrName = attrCtx.IDENTIFIER().GetText();
-            var location = SourceLocationHelper.FromToken(attrCtx.IDENTIFIER().Symbol, _filePath, _sourceLines);
-
-            // Validate attribute name
-            if (!KnownAttributes.IsKnown(attrName))
-            {
-                _diagnostics.ReportWarning(
-                    "W2001",
-                    $"unknown module attribute '{attrName}'",
-                    location,
-                    helpTexts: new List<string>
-                    {
-                        "This attribute is not recognized and will be ignored",
-                        $"Known module attributes: {KnownAttributes.StackSize}"
-                    }
-                );
-            }
-        }
-    }
 
     /// <summary>
     /// Evaluate a constant expression for attribute arguments

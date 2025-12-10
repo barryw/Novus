@@ -110,10 +110,8 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
     // Set at the start of each statement and propagated to IR instructions
     private SourceLocation? _currentStatementLocation = null;
 
-    // Track pending function attributes from moduleAttribute that should be applied to the next function.
-    // This handles the case where #[export] appears at module level before a function declaration.
-    // The grammar parses #[export] as a moduleAttribute when it appears before `pub fn`,
-    // so we need to forward these attributes to the appropriate function.
+    // Track pending function attributes that should be applied to the next function.
+    // This handles edge cases where attributes might need to be forwarded between passes.
     private readonly List<string> _pendingFunctionAttributes = new();
 
     /// <summary>
@@ -772,8 +770,8 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
     /// </remarks>
     public IrModule BuildModule(NovusParser.CompilationUnitContext context)
     {
-        // Process module-level attributes first (e.g., #[stack_size(65536)])
-        ProcessModuleAttributes(context.moduleAttribute());
+        // Module-level attributes are now handled when parsing the first declaration's attributes
+        // The ProcessModuleAttributes is called from declaration processing
 
         // Multi-pass approach to handle forward references:
         // Pass 0a: Implicitly import all of core module (unless testing or compiling a std library module)
@@ -875,6 +873,12 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
             RegisterExternalVariable(externVarContext);
         }
 
+        // Pass 3.75: Expand #[derive(...)] attributes to generate trait implementations
+        // Must happen after struct registration (Pass 3) and trait registration (Pass 3.25)
+        // but before function signatures (Pass 4) so derived methods are available
+        var deriveExpander = new DeriveMacroExpander(_diagnostics, _typeInterner, _module, _symbols);
+        deriveExpander.ExpandDerives();
+
         // Pass 4: Collect all function signatures (including impl methods)
         foreach (var funcContext in context.functionDeclaration())
         {
@@ -902,7 +906,8 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
             function.Location = GetLocation(funcContext);  // Store source location for debug info
 
             // Parse and store function attributes (for @test, @export, etc.)
-            var attributes = ParseAttributesSimple(funcContext.attribute());
+            // Also filters out module-level attributes (stack_size, cpu) and applies them to the module
+            var attributes = ProcessAndFilterModuleAttributes(funcContext.attribute());
             function.Attributes = attributes;
 
             // Check for #[export] attribute (from function's own attributes)
@@ -911,9 +916,8 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
                 function.IsExported = true;
             }
 
-            // Also check pending function attributes from moduleAttribute
-            // This handles the case where #[export] appears at module level before the function.
-            // The grammar parses #[export] as moduleAttribute when it appears before `pub fn`.
+            // Also check pending function attributes
+            // This handles edge cases where attributes might need to be forwarded between passes.
             if (_pendingFunctionAttributes.Contains("export"))
             {
                 function.IsExported = true;

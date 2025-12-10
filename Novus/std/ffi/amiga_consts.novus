@@ -3222,14 +3222,3 @@ pub const SA_BackChild: u32 = $80000046
 pub const SA_LikeWorkbench: u32 = $80000047
 pub const SA_Reserved: u32 = $80000048
 pub const SA_MinimizeISG: u32 = $80000049
-
-// Overscan types
-pub const OSCAN_TEXT: u32 = 1
-pub const OSCAN_STANDARD: u32 = 2
-pub const OSCAN_MAX: u32 = 3
-pub const OSCAN_VIDEO: u32 = 4
-
-// Standard screen size constants
-pub const STDSCREENWIDTH: u32 = 0
-pub const STDSCREENHEIGHT: u32 = 0
-

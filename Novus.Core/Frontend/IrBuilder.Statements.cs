@@ -30,7 +30,8 @@ public partial class IrBuilder
         _emittedDeferBlocks.Clear();
 
         // Check for #[export] attribute
-        var attributes = ParseAttributesSimple(context.attribute());
+        // Also filters out module-level attributes (stack_size, cpu) and applies them to the module
+        var attributes = ProcessAndFilterModuleAttributes(context.attribute());
         if (attributes.Has("export"))
         {
             function.IsExported = true;

@@ -120,7 +120,8 @@ public partial class IrBuilder
         var name = context.IDENTIFIER().GetText();
 
         // Parse attributes first - may affect how we process this static
-        var attributes = ParseAttributesSimple(context.attribute());
+        // Also filters out module-level attributes (stack_size, cpu) and applies them to the module
+        var attributes = ProcessAndFilterModuleAttributes(context.attribute());
 
         // Check for audio-related attributes
         var audioAttr = attributes.Get(SemanticAnalysis.KnownAttributes.Audio);
@@ -836,7 +837,8 @@ public partial class IrBuilder
         var existingStruct = _symbols.LookupStruct(name);
 
         // Parse attributes (for @library and other struct attributes)
-        var attributes = ParseAttributesSimple(context.attribute());
+        // Also filters out module-level attributes (stack_size, cpu) and applies them to the module
+        var attributes = ProcessAndFilterModuleAttributes(context.attribute());
 
         // Handle generic parameters if present
         var genericParams = AstParsingHelpers.ParseGenericParameters(context.genericParams(), _symbols, registerInSymbolTable: true);
@@ -943,7 +945,8 @@ public partial class IrBuilder
         var name = context.IDENTIFIER().GetText();
 
         // Parse attributes
-        var attributes = ParseAttributesSimple(context.attribute());
+        // Also filters out module-level attributes (stack_size, cpu) and applies them to the module
+        var attributes = ProcessAndFilterModuleAttributes(context.attribute());
 
         // Handle generic parameters if present
         var genericParams = ParseGenericParameters(context.genericParams(), registerInSymbolTable: true);
@@ -1037,12 +1040,16 @@ public partial class IrBuilder
     }
 
     /// <summary>
-    /// Parse module-level attributes and apply them to the module
+    /// Process module-level attributes found on declarations.
+    /// Module attributes (stack_size, cpu) can appear as regular attributes on any declaration.
+    /// This method extracts them and applies them to the module.
+    /// Returns attributes that are NOT module-level (i.e., should be applied to the declaration).
     /// </summary>
-    private void ProcessModuleAttributes(NovusParser.ModuleAttributeContext[]? attributeContexts)
+    private Novus.SemanticAnalysis.AttributeCollection ProcessAndFilterModuleAttributes(NovusParser.AttributeContext[]? attributeContexts)
     {
+        var collection = new Novus.SemanticAnalysis.AttributeCollection();
         if (attributeContexts == null || attributeContexts.Length == 0)
-            return;
+            return collection;
 
         foreach (var attrCtx in attributeContexts)
         {
@@ -1051,7 +1058,7 @@ public partial class IrBuilder
 
             if (attrName == Novus.SemanticAnalysis.KnownAttributes.StackSize)
             {
-                // Parse #[stack_size(N)] attribute
+                // Parse #[stack_size(N)] attribute - module-level
                 if (attrCtx.attributeArgList() != null)
                 {
                     var args = attrCtx.attributeArgList().attributeArg();
@@ -1078,19 +1085,16 @@ public partial class IrBuilder
                             _diagnostics.ReportError(ErrorCodes.InvalidAttribute, $"#[stack_size] expects an integer argument, got '{exprText}'", errorLocation);
                         }
                     }
-                    else
-                    {
-                        _diagnostics.ReportError(ErrorCodes.InvalidAttribute, "#[stack_size] requires a size argument, e.g., #[stack_size(65536)]", errorLocation);
-                    }
                 }
                 else
                 {
                     _diagnostics.ReportError(ErrorCodes.InvalidAttribute, "#[stack_size] requires a size argument, e.g., #[stack_size(65536)]", errorLocation);
                 }
+                // Don't add to collection - it's module-level
             }
             else if (attrName == Novus.SemanticAnalysis.KnownAttributes.Cpu)
             {
-                // Parse #[cpu("68020")] attribute
+                // Parse #[cpu("68020")] attribute - module-level
                 if (attrCtx.attributeArgList() != null)
                 {
                     var args = attrCtx.attributeArgList().attributeArg();
@@ -1121,20 +1125,63 @@ public partial class IrBuilder
                 {
                     _diagnostics.ReportError(ErrorCodes.InvalidAttribute, "#[cpu] requires a CPU target argument, e.g., #[cpu(\"68020\")]", errorLocation);
                 }
-            }
-            else if (attrName == "export")
-            {
-                // #[export] is a function attribute, not a module attribute.
-                // When it appears at module level (before any declaration), it means the user
-                // wants to export the next function. Store it as a pending attribute.
-                _pendingFunctionAttributes.Add(attrName);
+                // Don't add to collection - it's module-level
             }
             else
             {
-                // Unknown module-level attribute - warn
-                _diagnostics.ReportWarning(ErrorCodes.UnknownAttribute, $"Unknown module-level attribute: {attrName}", errorLocation);
+                // Regular declaration attribute - add to collection
+                var attr = new Novus.SemanticAnalysis.AttributeInfo(attrName, errorLocation);
+
+                // Parse attribute arguments if present
+                if (attrCtx.attributeArgList() != null)
+                {
+                    foreach (var argCtx in attrCtx.attributeArgList().attributeArg())
+                    {
+                        var expr = argCtx.expression();
+                        var exprText = expr.GetText();
+
+                        // Simple value extraction
+                        object? value = null;
+                        if (int.TryParse(exprText, out var intValue))
+                        {
+                            value = intValue;
+                        }
+                        else if (exprText.StartsWith("\"") && exprText.EndsWith("\""))
+                        {
+                            value = exprText.Trim('"');
+                        }
+                        else if (exprText == "true")
+                        {
+                            value = true;
+                        }
+                        else if (exprText == "false")
+                        {
+                            value = false;
+                        }
+                        else
+                        {
+                            // Keep as string (e.g., identifiers like Eq, Hash)
+                            value = exprText;
+                        }
+
+                        // Check if this is a named argument
+                        if (argCtx.IDENTIFIER() != null)
+                        {
+                            var argName = argCtx.IDENTIFIER().GetText();
+                            attr.NamedArgs[argName] = value;
+                        }
+                        else
+                        {
+                            attr.PositionalArgs.Add(value);
+                        }
+                    }
+                }
+
+                collection.Add(attr);
             }
         }
+
+        return collection;
     }
 
     /// <summary>
