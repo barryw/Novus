@@ -4581,6 +4581,116 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         return null;
     }
 
+    /// <summary>
+    /// Handle let...else statement: let pattern = expr else { diverging block }
+    /// The else block must diverge (return, break, continue, or panic).
+    /// </summary>
+    public override IrType? VisitLetElseStatement([NotNull] NovusParser.LetElseStatementContext context)
+    {
+        var location = SourceLocationHelper.FromToken(context.Start, _filePath, _sourceLines);
+
+        // Type-check the expression
+        var exprType = Visit(context.expression());
+        if (exprType == null)
+        {
+            return null;
+        }
+
+        // Analyze the pattern to extract bindings
+        var pattern = context.pattern();
+
+        // For now, we support simple patterns that introduce bindings
+        // The bindings will be available after the let...else statement
+        AnalyzeLetElsePattern(pattern, exprType, location);
+
+        // Visit the else block - it must diverge
+        // TODO: Verify that the else block actually diverges
+        Visit(context.block());
+
+        return null;
+    }
+
+    /// <summary>
+    /// Analyze a pattern in let...else and register any bindings it introduces.
+    /// </summary>
+    private void AnalyzeLetElsePattern(NovusParser.PatternContext pattern, IrType exprType, SourceLocation location)
+    {
+        // Handle different pattern types
+        if (pattern is NovusParser.IdentifierPatternContext idPattern)
+        {
+            // Simple binding: let x = expr else { ... }
+            var name = idPattern.IDENTIFIER().GetText();
+            if (!_variables.ContainsKey(name))
+            {
+                _variables[name] = new VariableSymbol(name, exprType, false, location);
+            }
+        }
+        else if (pattern is NovusParser.MutIdentifierPatternContext mutIdPattern)
+        {
+            // Mutable binding: let mut x = expr else { ... }
+            var name = mutIdPattern.IDENTIFIER().GetText();
+            if (!_variables.ContainsKey(name))
+            {
+                _variables[name] = new VariableSymbol(name, exprType, true, location);
+            }
+        }
+        else if (pattern is NovusParser.VariantPatternContext variantPattern)
+        {
+            // Enum variant pattern: let Some(value) = expr else { ... }
+            // Extract bindings from the pattern
+            var patternList = variantPattern.patternList();
+            if (patternList != null)
+            {
+                // Get the inner types from the enum variant
+                var innerTypes = GetVariantInnerTypes(exprType, variantPattern.variantName());
+
+                var subPatterns = patternList.pattern();
+                for (int i = 0; i < subPatterns.Length; i++)
+                {
+                    var innerType = i < innerTypes.Count ? innerTypes[i] : exprType;
+                    AnalyzeLetElsePattern(subPatterns[i], innerType, location);
+                }
+            }
+        }
+        else if (pattern is NovusParser.WildcardPatternContext)
+        {
+            // Wildcard pattern: let _ = expr else { ... }
+            // No bindings introduced
+        }
+        // Other pattern types can be added as needed
+    }
+
+    /// <summary>
+    /// Get the inner types of an enum variant for pattern matching.
+    /// </summary>
+    private List<IrType> GetVariantInnerTypes(IrType enumType, NovusParser.VariantNameContext variantName)
+    {
+        var result = new List<IrType>();
+
+        // Handle Option<T>::Some(value) -> T
+        // Handle Result<T,E>::Ok(value) -> T
+        // Handle Result<T,E>::Err(e) -> E
+
+        if (enumType is IrEnumType irEnumType)
+        {
+            var variantStr = variantName.GetText();
+            var variantNameOnly = variantStr.Contains("::") ? variantStr.Split("::").Last() : variantStr;
+
+            // Find the variant in the enum
+            foreach (var variant in irEnumType.Variants)
+            {
+                if (variant.Name == variantNameOnly)
+                {
+                    // Return the associated data types of this variant
+                    result.AddRange(variant.AssociatedData);
+                    break;
+                }
+            }
+        }
+
+        return result;
+    }
+
     // Handle: unsafe { statements }
     public override IrType? VisitUnsafeBlock([NotNull] NovusParser.UnsafeBlockContext context)
     {
@@ -9922,24 +10032,53 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             }
         }
 
-        // Check that all fields are initialized
-        foreach (var field in structType.Fields)
+        // Check for struct update syntax (..base)
+        // The grammar now captures this: (COMMA NEWLINE* DOTDOT expression)?
+        var spreadExpr = context.expression();
+        IrType? spreadType = null;
+        if (spreadExpr != null)
         {
-            if (!initializedFields.Contains(field.Name))
+            // There's a spread expression (..base)
+            spreadType = Visit(spreadExpr);
+
+            if (spreadType != null && !TypesCompatible(structType, spreadType))
             {
-                var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                var location = SourceLocationHelper.FromContext(spreadExpr, _filePath, _sourceLines);
                 _diagnostics.ReportError(
-                    "E0026",
-                    $"field '{field.Name}' of struct '{structName}' is not initialized",
+                    "E0027",
+                    $"type mismatch in struct update: expected '{structType.Name}', got '{spreadType.Name}'",
                     location,
                     helpTexts: new List<string>
                     {
-                        $"all struct fields must be initialized",
-                        $"missing field: {field.Name}: {field.Type.Name}"
+                        $"the base expression must be of type '{structType.Name}'"
                     }
                 );
             }
         }
+
+        // Check that all fields are initialized (either explicitly or via spread)
+        if (spreadType == null)
+        {
+            // No spread - all fields must be explicitly initialized
+            foreach (var field in structType.Fields)
+            {
+                if (!initializedFields.Contains(field.Name))
+                {
+                    var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                    _diagnostics.ReportError(
+                        "E0026",
+                        $"field '{field.Name}' of struct '{structName}' is not initialized",
+                        location,
+                        helpTexts: new List<string>
+                        {
+                            $"all struct fields must be initialized",
+                            $"missing field: {field.Name}: {field.Type.Name}"
+                        }
+                    );
+                }
+            }
+        }
+        // With spread, missing fields are filled from the base expression
 
         return structType;
     }
@@ -11572,6 +11711,50 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         return null;
+    }
+
+    // ========================================
+    // Macro-like Expression Visitors
+    // ========================================
+
+    /// <summary>
+    /// Type-check matches!(expr, pattern) - evaluates to bool
+    /// </summary>
+    public override IrType? VisitMatchesExpr([NotNull] NovusParser.MatchesExprContext context)
+    {
+        // Analyze the expression being matched
+        var exprType = Visit(context.expression());
+        if (exprType == null)
+        {
+            return null; // Error already reported
+        }
+
+        // TODO: Validate the pattern against the expression type
+
+        // matches! always returns bool
+        return IrBoolType.Instance;
+    }
+
+    /// <summary>
+    /// Type-check dbg!(expr) - returns the same type as expr (passes through)
+    /// </summary>
+    public override IrType? VisitDbgExpr([NotNull] NovusParser.DbgExprContext context)
+    {
+        // Analyze the expression
+        var exprType = Visit(context.expression());
+
+        // dbg! returns the same type as the input expression (it's pass-through)
+        return exprType;
+    }
+
+    /// <summary>
+    /// Type-check unreachable!() - returns Never type (diverges)
+    /// </summary>
+    public override IrType? VisitUnreachableExpr([NotNull] NovusParser.UnreachableExprContext context)
+    {
+        // unreachable! diverges - it never returns
+        // Return IrNeverType which is the "never" type (!)
+        return IrNeverType.Instance;
     }
 }
 

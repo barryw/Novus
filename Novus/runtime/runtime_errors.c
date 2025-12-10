@@ -360,3 +360,182 @@ void __novus_check_stack(uint32_t required_bytes, const char* func_name, int32_t
 
     display_error_requester(AO_StackOverflow);
 }
+
+// ============================================================================
+// dbg!() Macro Support
+// ============================================================================
+// These functions print debug information to stdout for the dbg!() macro.
+// Format: [file:line:col] expr = value
+//
+// In debug builds, dbg!(expr) expands to:
+//   __novus_dbg_i32("source.novus:10:5", "my_var", my_var)
+// and returns the value unchanged.
+//
+// In release builds, dbg!(expr) should be a no-op (just returns expr).
+// ============================================================================
+
+/**
+ * Debug print for i32 values
+ * Prints: [file:line] expr = value\n
+ */
+void __novus_dbg_i32(const char* location, const char* expr, int32_t value)
+{
+    struct Library *dosBase;
+    char msg[256];
+    char value_str[12];
+    char* ptr = msg;
+    int32_t len;
+    int32_t fh;
+
+    int_to_str(value_str, value);
+
+    ptr = strcpy_helper(ptr, "[");
+    ptr = strcpy_helper(ptr, location);
+    ptr = strcpy_helper(ptr, "] ");
+    ptr = strcpy_helper(ptr, expr);
+    ptr = strcpy_helper(ptr, " = ");
+    ptr = strcpy_helper(ptr, value_str);
+    *ptr++ = '\n';
+    *ptr = '\0';
+
+    len = (int32_t)(ptr - msg);
+
+    dosBase = OpenLibrary("dos.library", 0L);
+    if (dosBase != NULL) {
+        fh = __dos_output(dosBase);
+        if (fh != 0) {
+            __dos_write(dosBase, fh, msg, len);
+        }
+        CloseLibrary(dosBase);
+    }
+}
+
+/**
+ * Debug print for u32 values
+ */
+void __novus_dbg_u32(const char* location, const char* expr, uint32_t value)
+{
+    // For now, just cast to i32 and print (works for values < 2^31)
+    __novus_dbg_i32(location, expr, (int32_t)value);
+}
+
+/**
+ * Debug print for bool values
+ */
+void __novus_dbg_bool(const char* location, const char* expr, int32_t value)
+{
+    struct Library *dosBase;
+    char msg[256];
+    char* ptr = msg;
+    int32_t len;
+    int32_t fh;
+
+    ptr = strcpy_helper(ptr, "[");
+    ptr = strcpy_helper(ptr, location);
+    ptr = strcpy_helper(ptr, "] ");
+    ptr = strcpy_helper(ptr, expr);
+    ptr = strcpy_helper(ptr, " = ");
+    ptr = strcpy_helper(ptr, value ? "true" : "false");
+    *ptr++ = '\n';
+    *ptr = '\0';
+
+    len = (int32_t)(ptr - msg);
+
+    dosBase = OpenLibrary("dos.library", 0L);
+    if (dosBase != NULL) {
+        fh = __dos_output(dosBase);
+        if (fh != 0) {
+            __dos_write(dosBase, fh, msg, len);
+        }
+        CloseLibrary(dosBase);
+    }
+}
+
+/**
+ * Debug print for pointer values (prints as hex)
+ */
+void __novus_dbg_ptr(const char* location, const char* expr, void* value)
+{
+    struct Library *dosBase;
+    char msg[256];
+    char hex_str[12];
+    char* ptr = msg;
+    int32_t len;
+    int32_t fh;
+    uint32_t addr = (uint32_t)value;
+    int i;
+
+    // Convert to hex string
+    hex_str[0] = '0';
+    hex_str[1] = 'x';
+    for (i = 0; i < 8; i++) {
+        int nibble = (addr >> (28 - i * 4)) & 0xF;
+        hex_str[2 + i] = nibble < 10 ? '0' + nibble : 'a' + (nibble - 10);
+    }
+    hex_str[10] = '\0';
+
+    ptr = strcpy_helper(ptr, "[");
+    ptr = strcpy_helper(ptr, location);
+    ptr = strcpy_helper(ptr, "] ");
+    ptr = strcpy_helper(ptr, expr);
+    ptr = strcpy_helper(ptr, " = ");
+    ptr = strcpy_helper(ptr, hex_str);
+    *ptr++ = '\n';
+    *ptr = '\0';
+
+    len = (int32_t)(ptr - msg);
+
+    dosBase = OpenLibrary("dos.library", 0L);
+    if (dosBase != NULL) {
+        fh = __dos_output(dosBase);
+        if (fh != 0) {
+            __dos_write(dosBase, fh, msg, len);
+        }
+        CloseLibrary(dosBase);
+    }
+}
+
+/**
+ * Debug print for string values (*u8)
+ */
+void __novus_dbg_str(const char* location, const char* expr, const char* value)
+{
+    struct Library *dosBase;
+    char msg[512];
+    char* ptr = msg;
+    int32_t len;
+    int32_t fh;
+
+    ptr = strcpy_helper(ptr, "[");
+    ptr = strcpy_helper(ptr, location);
+    ptr = strcpy_helper(ptr, "] ");
+    ptr = strcpy_helper(ptr, expr);
+    ptr = strcpy_helper(ptr, " = \"");
+    if (value != NULL) {
+        // Copy up to 200 chars to avoid buffer overflow
+        int count = 0;
+        while (*value && count < 200) {
+            *ptr++ = *value++;
+            count++;
+        }
+        if (*value) {
+            ptr = strcpy_helper(ptr, "...");
+        }
+    } else {
+        ptr = strcpy_helper(ptr, "(null)");
+    }
+    *ptr++ = '"';
+    *ptr++ = '\n';
+    *ptr = '\0';
+
+    len = (int32_t)(ptr - msg);
+
+    dosBase = OpenLibrary("dos.library", 0L);
+    if (dosBase != NULL) {
+        fh = __dos_output(dosBase);
+        if (fh != 0) {
+            __dos_write(dosBase, fh, msg, len);
+        }
+        CloseLibrary(dosBase);
+    }
+}

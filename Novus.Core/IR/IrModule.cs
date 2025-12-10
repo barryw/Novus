@@ -1137,6 +1137,29 @@ public class IrVoidType : IrType
     public override string Name => "void";
 }
 
+/// <summary>
+/// The "never" type (!) - represents computations that never complete.
+/// Used for functions that panic, infinite loops, or unreachable code.
+/// </summary>
+public class IrNeverType : IrType
+{
+    public static readonly IrNeverType Instance = new();
+
+    private IrNeverType() { }
+
+    public override int SizeInBytes => 0;  // Never types have no size
+    public override string Name => "!";    // Rust convention for never type
+}
+
+/// <summary>
+/// A value of never type - represents a diverging computation.
+/// This is used to type-check unreachable!() and similar constructs.
+/// </summary>
+public class IrNever : IrValue
+{
+    public IrNever() : base(IrNeverType.Instance) { }
+}
+
 public class IrArrayType : IrType
 {
     public IrType ElementType { get; }

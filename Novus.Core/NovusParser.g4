@@ -224,6 +224,7 @@ block
 
 statement
     : returnStatement
+    | letElseStatement
     | variableDeclaration
     | assignmentStatement
     | ifStatement
@@ -241,6 +242,10 @@ statement
     | usingStatement
     | block
     | expressionStatement
+    ;
+
+letElseStatement
+    : KW_LET pattern EQ expression KW_ELSE block
     ;
 
 labeledLoop
@@ -416,7 +421,7 @@ primaryExpression
     | MINUS? BINARY_LITERAL                        # BinaryLiteral
     | MINUS? HEX_LITERAL                           # HexLiteral
     | typeName LBRACE NEWLINE* arrayLiteralInit NEWLINE* RBRACE  # StructArrayInit
-    | typeName LBRACE NEWLINE* structFieldInit (COMMA NEWLINE* structFieldInit)* COMMA? NEWLINE* RBRACE  # StructLiteral
+    | typeName LBRACE NEWLINE* structFieldInit (COMMA NEWLINE* structFieldInit)* (COMMA NEWLINE* DOTDOT expression)? COMMA? NEWLINE* RBRACE  # StructLiteral
     | identifier                                   # IdentifierExpr
     | KW_MATCH expression LBRACE NEWLINE* matchArm (COMMA NEWLINE* matchArm)* COMMA? NEWLINE* RBRACE  # MatchExpr
     | KW_IF expression block KW_ELSE (ifElseChain | block)  # IfExpr
@@ -429,6 +434,9 @@ primaryExpression
     | LPAREN NEWLINE* expression NEWLINE* RPAREN  # ParenExpr
     | LBRACKET NEWLINE* expression NEWLINE* SEMI NEWLINE* expression NEWLINE* RBRACKET  # ArrayRepeatLiteral
     | LBRACKET NEWLINE* (expression (COMMA NEWLINE* expression)* (COMMA NEWLINE*)?)? NEWLINE* RBRACKET  # ArrayLiteral
+    | KW_MATCHES LPAREN expression COMMA NEWLINE* pattern NEWLINE* RPAREN  # MatchesExpr
+    | KW_DBG LPAREN expression RPAREN                                       # DbgExpr
+    | KW_UNREACHABLE LPAREN RPAREN                                          # UnreachableExpr
     ;
 
 identifier

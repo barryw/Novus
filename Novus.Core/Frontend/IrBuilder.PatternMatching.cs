@@ -695,4 +695,66 @@ public partial class IrBuilder
 
         return null;
     }
+
+    /// <summary>
+    /// Compile matches!(expr, pattern) to IR - evaluates to bool
+    /// Lowers to: match expr { pattern => true, _ => false }
+    ///
+    /// TODO: This is a simplified implementation that only handles literal patterns.
+    /// Full pattern matching support will require generating pattern-matching IR.
+    /// </summary>
+    public override object? VisitMatchesExpr([NotNull] NovusParser.MatchesExprContext context)
+    {
+        // Evaluate the expression being matched
+        var exprValue = Visit(context.expression());
+        if (exprValue == null)
+        {
+            return new IrBoolConstant(false);  // Error case
+        }
+
+        var exprIr = exprValue as IrValue;
+        if (exprIr == null)
+        {
+            return new IrBoolConstant(false);  // Error case
+        }
+
+        // Get the pattern
+        var pattern = context.pattern();
+
+        // For now, implement simple pattern matching:
+        // - Wildcard patterns always match (return true)
+        // - Literal patterns do equality comparison
+        // - Other patterns are not yet supported (return false for now)
+
+        var patternText = pattern.GetText();
+
+        // Check for wildcard pattern "_"
+        if (patternText == "_")
+        {
+            return new IrBoolConstant(true);
+        }
+
+        // For simple identifier patterns (variable binding) - always matches
+        // A pattern that is just an identifier (not a type name) binds the value
+        if (!patternText.Contains("(") && !patternText.Contains("::") &&
+            !patternText.Contains("{") && patternText != "true" && patternText != "false")
+        {
+            // This looks like a simple variable binding pattern
+            return new IrBoolConstant(true);
+        }
+
+        // For enum variant patterns like Some(_), Ok(_), etc.
+        // This requires checking the enum tag
+        // TODO: Implement full enum variant pattern matching
+        if (patternText.Contains("(") || patternText.Contains("::"))
+        {
+            // For now, report a warning and return false
+            // Full implementation requires extracting the tag and comparing it
+            return new IrBoolConstant(false);
+        }
+
+        // For literal patterns (integers, booleans, etc.)
+        // TODO: Implement literal comparison
+        return new IrBoolConstant(false);
+    }
 }

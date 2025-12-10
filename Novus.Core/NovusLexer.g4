@@ -61,6 +61,11 @@ KW_NULL     : 'null';
 KW_PANIC    : 'panic';
 KW_ASSERT   : 'assert';
 
+// Macro-like expressions (compile-time transformed)
+KW_MATCHES  : 'matches!';    // matches!(expr, pattern) -> bool
+KW_DBG      : 'dbg!';        // dbg!(expr) -> expr, prints to debug output
+KW_UNREACHABLE : 'unreachable!';  // unreachable!() -> diverges, signals unreachable code
+
 // Primitive type keywords
 KW_U8       : 'u8';
 KW_U16      : 'u16';

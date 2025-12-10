@@ -170,4 +170,19 @@ extern uint32_t __novus_stack_base;   // Top of stack (highest address)
 extern uint32_t __novus_stack_limit;  // Bottom of stack (lowest address)
 extern uint32_t __novus_stack_guard;  // Guard zone size (default 256 bytes)
 
+// ============================================================================
+// dbg!() Macro Support
+// ============================================================================
+// Debug print functions for the dbg!() macro.
+// These print to stdout in the format: [file:line:col] expr = value
+// Each function returns nothing - the compiler generates code to return
+// the original expression value after calling the debug function.
+// ============================================================================
+
+void __novus_dbg_i32(const char* location, const char* expr, int32_t value);
+void __novus_dbg_u32(const char* location, const char* expr, uint32_t value);
+void __novus_dbg_bool(const char* location, const char* expr, int32_t value);
+void __novus_dbg_ptr(const char* location, const char* expr, void* value);
+void __novus_dbg_str(const char* location, const char* expr, const char* value);
+
 #endif // NOVUS_RUNTIME_H

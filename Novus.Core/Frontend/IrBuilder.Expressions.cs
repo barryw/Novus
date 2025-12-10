@@ -4575,18 +4575,63 @@ public partial class IrBuilder
             }
         }
 
-        // Validate that all fields are initialized
+        // Handle struct update syntax (..base)
+        // If a spread expression is present, extract missing fields from it
+        var spreadExpr = context.expression();
+        IrValue? spreadValue = null;
+
+        if (spreadExpr != null)
+        {
+            // Evaluate the spread expression
+            spreadValue = (IrValue?)Visit(spreadExpr);
+            if (spreadValue == null)
+            {
+                var errorLocation = GetLocation(context);
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Invalid spread expression in struct literal",
+                    errorLocation
+                );
+                return null;
+            }
+
+            // Type validation is done in semantic analyzer, but double-check here
+            if (spreadValue.Type is not IrStructType spreadStructType ||
+                spreadStructType.StructName != structType.StructName)
+            {
+                var errorLocation = GetLocation(context);
+                _diagnostics.ReportError(
+                    ErrorCodes.TypeMismatch,
+                    $"Spread expression must be of type '{structName}', got '{spreadValue.Type}'",
+                    errorLocation
+                );
+                return null;
+            }
+        }
+
+        // Fill in missing fields from spread expression, or report error if no spread
         foreach (var field in structType.Fields)
         {
             if (!fieldValues.ContainsKey(field.Name))
             {
-                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
-                _diagnostics.ReportError(
-                    ErrorCodes.InvalidExpressionType,
-                    $"Field '{field.Name}' in struct '{structName}' is not initialized",
-                    errorLocation
-                );
-                return null;
+                if (spreadValue != null)
+                {
+                    // Extract this field from the spread value
+                    var fieldTempName = $"%spread_field_{_tempCounter++}";
+                    var fieldAccess = new IrMemberAccess(fieldTempName, spreadValue, field.Name, field.Type, field.Offset);
+                    Emit(fieldAccess);
+                    fieldValues[field.Name] = new IrVariable(fieldTempName, field.Type);
+                }
+                else
+                {
+                    var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                    _diagnostics.ReportError(
+                        ErrorCodes.InvalidExpressionType,
+                        $"Field '{field.Name}' in struct '{structName}' is not initialized",
+                        errorLocation
+                    );
+                    return null;
+                }
             }
         }
 
@@ -5063,4 +5108,117 @@ public partial class IrBuilder
 
     // NOTE: Hardware DSL methods (VisitCopperExpr, VisitBlitterExpr, VisitAsmExpr, etc.)
     // have been moved to IrBuilder.HardwareDsl.cs for better code organization.
+
+    // ========================================
+    // Macro-like Expression Visitors
+    // ========================================
+
+    /// <summary>
+    /// Compile dbg!(expr) to IR - prints debug info and returns the expression value
+    /// Emits a call to the appropriate __novus_dbg_* function based on the expression type.
+    /// </summary>
+    public override object? VisitDbgExpr([NotNull] NovusParser.DbgExprContext context)
+    {
+        // Evaluate the expression
+        var exprValue = Visit(context.expression());
+        if (exprValue == null)
+        {
+            return null;
+        }
+
+        var exprIr = exprValue as IrValue;
+        if (exprIr == null)
+        {
+            return null;
+        }
+
+        // Get source location for debug output
+        var location = GetLocation(context);
+        var sourceInfo = $"{location.FilePath}:{location.Line}:{location.Column}";
+
+        // Get the original expression text for debug output
+        var exprText = context.expression().GetText();
+
+        // Create string literals for location and expression text
+        var locationLabel = $"_str{_stringCounter++}";
+        var locationLiteral = new IrStringLiteral(sourceInfo, locationLabel);
+        StringLiterals.Add(locationLiteral);
+
+        var exprTextLabel = $"_str{_stringCounter++}";
+        var exprTextLiteral = new IrStringLiteral(exprText, exprTextLabel);
+        StringLiterals.Add(exprTextLiteral);
+
+        // Determine which debug function to call based on the expression type
+        string dbgFuncName;
+        IrValue valueArg = exprIr;
+
+        var exprType = exprIr.Type;
+        if (exprType is IrIntType intType)
+        {
+            if (intType.IsSigned)
+            {
+                dbgFuncName = "__novus_dbg_i32";
+            }
+            else
+            {
+                dbgFuncName = "__novus_dbg_u32";
+            }
+        }
+        else if (exprType is IrBoolType)
+        {
+            dbgFuncName = "__novus_dbg_bool";
+        }
+        else if (exprType is IrPointerType ptrType)
+        {
+            // Check if it's a string (*u8)
+            if (ptrType.PointeeType is IrIntType elemInt && elemInt.SizeInBytes == 1 && !elemInt.IsSigned)
+            {
+                dbgFuncName = "__novus_dbg_str";
+            }
+            else
+            {
+                dbgFuncName = "__novus_dbg_ptr";
+            }
+        }
+        else
+        {
+            // For unsupported types, just return the value without debug output
+            // TODO: Add support for more types (structs, enums, arrays, etc.)
+            return exprIr;
+        }
+
+        // Emit the debug call
+        var dbgCall = new IrCall(dbgFuncName, IrVoidType.Instance, null);
+        dbgCall.Arguments.Add(locationLiteral);
+        dbgCall.Arguments.Add(exprTextLiteral);
+        dbgCall.Arguments.Add(valueArg);
+        Emit(dbgCall);
+
+        // Return the original expression value (pass-through)
+        return exprIr;
+    }
+
+    /// <summary>
+    /// Compile unreachable!() to IR - emits a panic that should never be reached
+    /// </summary>
+    public override object? VisitUnreachableExpr([NotNull] NovusParser.UnreachableExprContext context)
+    {
+        // Get source location
+        var location = GetLocation(context);
+        var sourceInfo = $"{location.FilePath}:{location.Line}:{location.Column}";
+
+        // Create a string literal for the panic message
+        var panicMsgLabel = $"_str{_stringCounter++}";
+        var panicMsgValue = $"unreachable code reached at {sourceInfo}";
+        var panicMsg = new IrStringLiteral(panicMsgValue, panicMsgLabel);
+        StringLiterals.Add(panicMsg);
+
+        // Emit a call to _novus_panic with the message
+        var panicCall = new IrCall("_novus_panic", IrVoidType.Instance, null);
+        panicCall.Arguments.Add(panicMsg);
+        Emit(panicCall);
+
+        // Return a "never" value (the function diverges)
+        return new IrNever();
+    }
 }

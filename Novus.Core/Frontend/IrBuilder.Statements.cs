@@ -3276,4 +3276,177 @@ public partial class IrBuilder
         }
         return result.ToString();
     }
+
+    /// <summary>
+    /// Compile let...else statement: let pattern = expr else { diverging block }
+    /// This desugars to: if pattern matches expr, bind variables; else execute diverging block
+    /// </summary>
+    public override object? VisitLetElseStatement([NotNull] NovusParser.LetElseStatementContext context)
+    {
+        // Set source location for this statement
+        _currentStatementLocation = GetLocation(context);
+
+        // Evaluate the expression
+        var exprValue = Visit(context.expression());
+        if (exprValue is not IrValue exprIr)
+        {
+            return null;
+        }
+
+        var pattern = context.pattern();
+
+        // Create labels for pattern match success and failure
+        var successLabel = $"let_else_ok_{_labelCounter++}";
+        var elseLabel = $"let_else_fail_{_labelCounter++}";
+        var continueLabel = $"let_else_cont_{_labelCounter++}";
+
+        // Generate pattern match code
+        // For simple identifier patterns, this is just binding the variable
+        // For variant patterns (e.g., Some(x)), we need to check the variant and extract data
+
+        if (pattern is NovusParser.IdentifierPatternContext idPattern)
+        {
+            // Simple binding: let x = expr else { ... }
+            // This always succeeds, so the else block is unreachable
+            var name = idPattern.IDENTIFIER().GetText();
+            var localVar = new IrLocalVariable(name, exprIr.Type, false);
+            _currentFunction!.LocalVariables.Add(localVar);
+            _localVariables[name] = localVar;
+
+            // Emit the declaration
+            Emit(new IrLocalDecl(name, exprIr.Type, false, exprIr));
+        }
+        else if (pattern is NovusParser.MutIdentifierPatternContext mutIdPattern)
+        {
+            // Mutable binding: let mut x = expr else { ... }
+            var name = mutIdPattern.IDENTIFIER().GetText();
+            var localVar = new IrLocalVariable(name, exprIr.Type, true);
+            _currentFunction!.LocalVariables.Add(localVar);
+            _localVariables[name] = localVar;
+
+            // Emit the declaration
+            Emit(new IrLocalDecl(name, exprIr.Type, true, exprIr));
+        }
+        else if (pattern is NovusParser.VariantPatternContext variantPattern)
+        {
+            // Enum variant pattern: let Some(value) = expr else { ... }
+            // Generate: if expr.tag == variant_tag then bind data else diverge
+
+            var variantName = variantPattern.variantName().GetText();
+            var variantNameOnly = variantName.Contains("::") ? variantName.Split("::").Last() : variantName;
+
+            // Get the enum type
+            if (exprIr.Type is IrEnumType enumType)
+            {
+                // Find the variant
+                var variant = enumType.Variants.FirstOrDefault(v => v.Name == variantNameOnly);
+                if (variant != null)
+                {
+                    // Check if the enum value matches this variant
+                    var tagResultName = $"_tag_{_tempCounter++}";
+                    Emit(new IrExtractTag(tagResultName, exprIr));
+                    var tagValue = new IrVariable(tagResultName, IrIntType.I32);
+
+                    var tagConstant = new IrConstant(variant.Tag, IrIntType.I32);
+                    var compareResultName = $"_cmp_{_tempCounter++}";
+                    Emit(new IrBinaryOp(compareResultName, IrBinaryOp.OpKind.Eq, tagValue, tagConstant, IrBoolType.Instance));
+                    var compareResult = new IrVariable(compareResultName, IrBoolType.Instance);
+
+                    // Branch: if matches, go to success block; else go to else block
+                    var successBlock = _currentFunction!.CreateBasicBlock(successLabel);
+                    var elseBlock = _currentFunction.CreateBasicBlock(elseLabel);
+                    var continueBlock = _currentFunction.CreateBasicBlock(continueLabel);
+
+                    Emit(new IrConditionalBranch(compareResult, successLabel, elseLabel));
+
+                    // Success block: extract and bind the data
+                    _currentBlock = successBlock;
+
+                    var patternList = variantPattern.patternList();
+                    if (patternList != null)
+                    {
+                        var subPatterns = patternList.pattern();
+                        for (int i = 0; i < subPatterns.Length && i < variant.AssociatedData.Count; i++)
+                        {
+                            var dataType = variant.AssociatedData[i];
+                            BindPatternData(subPatterns[i], exprIr, variantNameOnly, i, dataType);
+                        }
+                    }
+
+                    // Jump to continue block
+                    Emit(new IrBranch(continueLabel));
+
+                    // Else block: execute the diverging code
+                    _currentBlock = elseBlock;
+                    Visit(context.block());
+                    // The else block must diverge, so no need to branch to continue
+
+                    // If else block didn't diverge (error case), add an unreachable marker
+                    if (!CurrentBlockHasTerminator())
+                    {
+                        // Add an unreachable terminator (the semantic analyzer should have caught this)
+                        Emit(new IrBranch(continueLabel));
+                    }
+
+                    // Continue block
+                    _currentBlock = continueBlock;
+                }
+            }
+        }
+        else if (pattern is NovusParser.WildcardPatternContext)
+        {
+            // Wildcard pattern: let _ = expr else { ... }
+            // Always matches, else block is unreachable
+            // Just evaluate the expression for side effects
+        }
+        else
+        {
+            // Other patterns - for now, just visit the else block
+            Visit(context.block());
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Helper to bind pattern data from an enum variant.
+    /// </summary>
+    private void BindPatternData(NovusParser.PatternContext subPattern, IrValue enumValue, string variantName, int dataIndex, IrType dataType)
+    {
+        if (subPattern is NovusParser.IdentifierPatternContext idPattern)
+        {
+            var name = idPattern.IDENTIFIER().GetText();
+            var localVar = new IrLocalVariable(name, dataType, false);
+            _currentFunction!.LocalVariables.Add(localVar);
+            _localVariables[name] = localVar;
+
+            // Extract the data from the enum
+            var extractResultName = $"_extract_{_tempCounter++}";
+            Emit(new IrExtractVariantData(extractResultName, enumValue, variantName, dataIndex, dataType));
+            var extractedValue = new IrVariable(extractResultName, dataType);
+
+            // Emit declaration with extracted value
+            Emit(new IrLocalDecl(name, dataType, false, extractedValue));
+        }
+        else if (subPattern is NovusParser.MutIdentifierPatternContext mutIdPattern)
+        {
+            var name = mutIdPattern.IDENTIFIER().GetText();
+            var localVar = new IrLocalVariable(name, dataType, true);
+            _currentFunction!.LocalVariables.Add(localVar);
+            _localVariables[name] = localVar;
+
+            // Extract the data from the enum
+            var extractResultName = $"_extract_{_tempCounter++}";
+            Emit(new IrExtractVariantData(extractResultName, enumValue, variantName, dataIndex, dataType));
+            var extractedValue = new IrVariable(extractResultName, dataType);
+
+            // Emit declaration with extracted value
+            Emit(new IrLocalDecl(name, dataType, true, extractedValue));
+        }
+        else if (subPattern is NovusParser.WildcardPatternContext)
+        {
+            // Wildcard - don't bind anything
+        }
+        // Other sub-pattern types could be handled here
+    }
 }

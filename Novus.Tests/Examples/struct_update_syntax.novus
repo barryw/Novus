@@ -1,0 +1,39 @@
+// Test struct update syntax (..base)
+struct Point {
+    x: i32,
+    y: i32,
+    z: i32
+}
+
+fn main() -> i32 {
+    let base = Point { x: 10, y: 20, z: 30 }
+
+    // Update just x, keep y and z from base
+    let p1 = Point { x: 100, ..base }
+
+    // Update x and y, keep z from base
+    let p2 = Point { x: 200, y: 300, ..base }
+
+    // Verify values
+    if p1.x != 100 {
+        return 1
+    }
+    if p1.y != 20 {
+        return 2
+    }
+    if p1.z != 30 {
+        return 3
+    }
+
+    if p2.x != 200 {
+        return 4
+    }
+    if p2.y != 300 {
+        return 5
+    }
+    if p2.z != 30 {
+        return 6
+    }
+
+    return 0  // Success
+}
