@@ -27,8 +27,15 @@ public class CodeGenerationPhase : ICompilationPhase
             typeRegistry.RegisterModule(moduleIR.IrModule);
         }
 
+        // Collect all functions for the shared header (including closure functions)
+        var allFunctionsForHeader = context.MainModuleIR.IrModule.Functions.ToList();
+        foreach (var moduleIR in context.AllModulesIR.Values)
+        {
+            allFunctionsForHeader.AddRange(moduleIR.IrModule.Functions);
+        }
+
         // Generate shared types header
-        var sharedTypesHeader = CCodeGenerator.GenerateSharedTypesHeader(typeRegistry);
+        var sharedTypesHeader = CCodeGenerator.GenerateSharedTypesHeader(typeRegistry, allFunctionsForHeader);
 
         // Compute hash of types header
         context.TypesHeaderHash = ComputeStringHash(sharedTypesHeader);
@@ -283,13 +290,14 @@ public class CodeGenerationPhase : ICompilationPhase
         var runtimeDir = Path.Combine(context.CompilerDir, "runtime");
         var runtimeFiles = new[]
         {
-            "runtime_core.c",
-            "runtime_errors.c",
-            "runtime_hwdetect.c",
-            "runtime_fmt.c",
-            "runtime_semaphore.c",
-            "runtime_mmu.c",
-            "runtime_memtrack.c",
+            "runtime_alloc.c",     // Minimal: raw AllocMem/FreeMem wrappers (no deps)
+            "runtime_core.c",      // Core: memset, memcpy, strlen, error display
+            "runtime_errors.c",    // Assert, panic, bounds check, div check
+            "runtime_hwdetect.c",  // CPU, FPU, chipset detection
+            "runtime_fmt.c",       // Integer to string conversions
+            "runtime_semaphore.c", // Semaphore wrappers
+            "runtime_mmu.c",       // MMU detection and null page protection
+            "runtime_memtrack.c",  // Memory tracking for debugging
         };
 
         foreach (var runtimeFile in runtimeFiles)

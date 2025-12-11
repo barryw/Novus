@@ -22,6 +22,7 @@
 ; ============================================================================
 	xdef	___graphics_init	; Initialize Graphics library
 	xdef	___graphics_cleanup	; Cleanup Graphics library
+	xdef	___graphics_ensure	; Ensure Graphics library is open (for stubs)
 
 ; ============================================================================
 ; Data Section
@@ -65,7 +66,7 @@ ___graphics_init:
 	bne.s	.already_open
 
 	; OpenLibrary("graphics.library", 0) - LVO offset -552
-	lea	graphics_name,a1	; Library name (absolute addressing)
+	move.l	#graphics_name,a1	; Library name (absolute addressing)
 	moveq	#0,d0			; Any version
 	jsr	-552(a6)		; Call exec.library OpenLibrary()
 
@@ -107,4 +108,27 @@ ___graphics_cleanup:
 
 .not_open:
 	movem.l	(sp)+,d0/a1/a6		; Restore registers
+	rts
+
+; ----------------------------------------------------------------------------
+; ___graphics_ensure - Ensure Graphics library is open (lazy init)
+; ----------------------------------------------------------------------------
+; Fast check if library is open, initializes if not. Called by stubs.
+; Returns _GfxBase in A6 for immediate use.
+;
+; Input:  None
+; Output: A6 = Graphics library base (for immediate use by stub)
+; Modifies: A6 only - D0-D1/A0-A1 are PRESERVED (stubs need these for params!)
+; ----------------------------------------------------------------------------
+___graphics_ensure:
+	move.l	_GfxBase,a6		; Load GfxBase into A6
+	tst.l	a6			; Test if NULL (doesn't modify d0!)
+	bne.s	.done			; Fast path - already open
+
+	; Need to initialize - save regs and call init
+	movem.l	d0-d1/a0-a1,-(sp)	; Save scratch regs (stubs have params in these!)
+	bsr	___graphics_init	; Initialize (result in d0)
+	move.l	d0,a6			; Move to a6
+	movem.l	(sp)+,d0-d1/a0-a1	; Restore scratch regs
+.done:
 	rts

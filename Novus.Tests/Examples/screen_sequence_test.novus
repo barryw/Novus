@@ -1,0 +1,53 @@
+// Test opening multiple screens in sequence
+// This mimics what screen_builder_example does
+// Run: novus compile screen_sequence_test.novus -o screen_sequence_test --safety-level 0
+
+from std::ui::screen import ScreenHandle, ScreenBuilder
+from std::ffi::dos import Delay
+from std::ffi::graphics import SetAPen, RectFill
+from std::io::file import println
+
+pub fn main() -> i32 {
+    println("=== Screen Sequence Test ===")
+
+    // Example 1: lores() - same as screen_builder_example
+    println("Opening screen 1 via lores()...")
+    let result1 = ScreenHandle::lores("Screen 1 - Lores", 4)
+    match result1 {
+        Result::Ok(screen1) => {
+            println("Screen 1 opened!")
+            let rp1 = screen1.rastport()
+            SetAPen(rp1, 1)
+            RectFill(rp1, 10, 20, 100, 80)
+            Delay(100)
+            println("Closing screen 1...")
+            // screen1 drops here
+        },
+        Result::Err(_) => {
+            println("Screen 1 FAILED!")
+            return 1
+        }
+    }
+
+    println("Screen 1 closed. Now opening screen 2...")
+
+    // Example 2: ScreenBuilder - same as screen_builder_example
+    let result2 = ScreenBuilder::new().title("Screen 2 - Builder").width(320).depth(5).build()
+    match result2 {
+        Result::Ok(screen2) => {
+            println("Screen 2 opened!")
+            let rp2 = screen2.rastport()
+            SetAPen(rp2, 1)
+            RectFill(rp2, 10, 20, 100, 80)
+            Delay(100)
+            println("Closing screen 2...")
+        },
+        Result::Err(_) => {
+            println("Screen 2 FAILED!")
+            return 2
+        }
+    }
+
+    println("All screens opened and closed successfully!")
+    return 0
+}

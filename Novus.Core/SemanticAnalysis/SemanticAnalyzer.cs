@@ -7307,6 +7307,55 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
                 return fpType.ReturnType;
             }
+            else if (variable.Type is IrClosureType closureType)
+            {
+                // Validate argument count for closure call
+                if (argCount != closureType.ParameterTypes.Count)
+                {
+                    var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                    _diagnostics.ReportError(
+                        "E0014",
+                        $"closure expects {closureType.ParameterTypes.Count} argument(s), but {argCount} were provided",
+                        location
+                    );
+                    return closureType.ReturnType;
+                }
+
+                // Validate argument types
+                if (context.argumentList() != null)
+                {
+                    var arguments = context.argumentList().expression();
+                    for (int i = 0; i < arguments.Length; i++)
+                    {
+                        var paramType = closureType.ParameterTypes[i];
+
+                        // Set expected type for bidirectional type checking (enables null inference)
+                        var savedExpectedType = _expectedType;
+                        _expectedType = paramType;
+
+                        var argType = Visit(arguments[i]);
+
+                        // Restore previous expected type
+                        _expectedType = savedExpectedType;
+
+                        if (argType != null && !TypesCompatible(paramType, argType))
+                        {
+                            var location = SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines);
+                            _diagnostics.ReportError(
+                                "E0015",
+                                $"argument {i + 1} type mismatch",
+                                location,
+                                helpTexts: new List<string>
+                                {
+                                    $"expected '{TypeToString(paramType)}', got '{TypeToString(argType)}'"
+                                }
+                            );
+                        }
+                    }
+                }
+
+                return closureType.ReturnType;
+            }
         }
 
         // Check if function exists
@@ -11519,6 +11568,11 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return _analyzer._typeInterner.GetTupleType(elementTypes);
         }
 
+        public IrType GetClosureType(List<IrType> paramTypes, IrType returnType)
+        {
+            return _analyzer._typeInterner.GetClosureType(paramTypes, returnType);
+        }
+
         // Current state (SemanticAnalyzer doesn't track these)
         public IrType? CurrentSelfType => null;
         public Dictionary<string, IrType>? CurrentTypeSubstitutions => null;
@@ -11755,6 +11809,71 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         // unreachable! diverges - it never returns
         // Return IrNeverType which is the "never" type (!)
         return IrNeverType.Instance;
+    }
+
+    /// <summary>
+    /// Type-check closure expressions |x: i32| -> i32 { x + 1 }
+    /// Closures create a new scope for their parameters and analyze the body in that scope.
+    /// </summary>
+    public override IrType? VisitClosureExpr([NotNull] NovusParser.ClosureExprContext context)
+    {
+        var closureExpr = context.closureExpression();
+        if (closureExpr == null)
+        {
+            return null;
+        }
+
+        // Save current variables scope - closures introduce a new scope for parameters
+        var savedVariables = new Dictionary<string, VariableSymbol>(_variables);
+
+        // Parse closure parameters and add them to scope
+        var paramTypes = new List<IrType>();
+        if (closureExpr.closureParameterList() != null)
+        {
+            foreach (var paramCtx in closureExpr.closureParameterList().closureParameter())
+            {
+                if (paramCtx is NovusParser.TypedClosureParamContext typedParam)
+                {
+                    var name = typedParam.IDENTIFIER().GetText();
+                    var type = ParseType(typedParam.type());
+                    var location = SourceLocationHelper.FromToken(typedParam.IDENTIFIER().Symbol, _filePath, _sourceLines);
+
+                    // Add parameter to variables scope
+                    _variables[name] = new VariableSymbol(name, type, IsMutable: false, location, Id: _nextVariableId++);
+                    paramTypes.Add(type);
+                }
+                else if (paramCtx is NovusParser.MutableCaptureParamContext)
+                {
+                    // Mutable captures |mut x| - these are capture specifications, not new parameters
+                    // They reference existing variables from the outer scope
+                }
+                else if (paramCtx is NovusParser.ReferenceCaptureParamContext)
+                {
+                    // Reference captures |&x| - these are capture specifications, not new parameters
+                    // They reference existing variables from the outer scope
+                }
+            }
+        }
+
+        // Parse return type (default to void if not specified)
+        IrType returnType = IrVoidType.Instance;
+        if (closureExpr.type() != null)
+        {
+            returnType = ParseType(closureExpr.type());
+        }
+
+        // Analyze the closure body
+        Visit(closureExpr.block());
+
+        // Restore variables scope
+        _variables.Clear();
+        foreach (var kv in savedVariables)
+        {
+            _variables[kv.Key] = kv.Value;
+        }
+
+        // Return the closure type
+        return _typeInterner.GetClosureType(paramTypes, returnType);
     }
 }
 

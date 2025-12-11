@@ -439,8 +439,9 @@ public partial class CCodeGenerator
     /// Generate shared types header from a type registry.
     /// This header contains all type definitions used across modules.
     /// </summary>
-    public static string GenerateSharedTypesHeader(TypeRegistry typeRegistry)
+    public static string GenerateSharedTypesHeader(TypeRegistry typeRegistry, IEnumerable<IrFunction>? allFunctions = null)
     {
+        allFunctions ??= Enumerable.Empty<IrFunction>();
         var sb = new StringBuilder();
 
         sb.AppendLine("// Novus Standard Library - Shared Type Definitions");
@@ -725,6 +726,57 @@ public partial class CCodeGenerator
             }
         }
 
+        // Closure types (fat pointers)
+        if (typeRegistry.ClosureTypes.Any())
+        {
+            sb.AppendLine("// ============================================================================");
+            sb.AppendLine("// Closure Types (Fat Pointers)");
+            sb.AppendLine("// ============================================================================");
+            sb.AppendLine();
+
+            // Deduplicate closure types by their C type name to prevent redeclaration warnings
+            var seenClosureNames = new HashSet<string>();
+            foreach (var closureType in typeRegistry.ClosureTypes)
+            {
+                var closureName = codegen.GetClosureTypeName(closureType);
+                if (seenClosureNames.Add(closureName))
+                {
+                    codegen.EmitClosureTypeToBuilder(sb, closureType);
+                }
+            }
+        }
+
+        // Forward declarations for closure functions (__closure_N)
+        var closureFunctions = allFunctions.Where(f => f.Name.StartsWith("__closure_")).ToList();
+        if (closureFunctions.Any())
+        {
+            sb.AppendLine("// ============================================================================");
+            sb.AppendLine("// Closure Function Forward Declarations");
+            sb.AppendLine("// ============================================================================");
+            sb.AppendLine();
+            foreach (var closureFunc in closureFunctions)
+            {
+                var returnType = codegen.GetCType(closureFunc.ReturnType);
+                // For forward declaration, use void* for env parameter to match closure struct's fn_ptr type
+                var paramParts = new List<string>();
+                foreach (var param in closureFunc.Parameters)
+                {
+                    if (param.Name == "__env")
+                    {
+                        // Use void* for the env parameter in forward declaration
+                        paramParts.Add("void* __env");
+                    }
+                    else
+                    {
+                        paramParts.Add($"{codegen.GetCType(param.Type)} {param.Name}");
+                    }
+                }
+                var paramList = paramParts.Count > 0 ? string.Join(", ", paramParts) : "void";
+                sb.AppendLine($"extern {returnType} {closureFunc.Name}({paramList});");
+            }
+            sb.AppendLine();
+        }
+
         // Enum types
         if (typeRegistry.EnumTypes.Any())
         {
@@ -799,6 +851,12 @@ public partial class CCodeGenerator
         sb.AppendLine("uint32_t u16_to_string(uint16_t value, uint8_t* buffer, uint32_t buffer_size);");
         sb.AppendLine("uint32_t u32_to_string(uint32_t value, uint8_t* buffer, uint32_t buffer_size);");
         sb.AppendLine("uint32_t u64_to_string(uint64_t value, uint8_t* buffer, uint32_t buffer_size);");
+        sb.AppendLine();
+
+        // Raw memory allocation (used by closures for environment allocation)
+        sb.AppendLine("// Raw memory allocation (used by closures)");
+        sb.AppendLine("extern void* __novus_alloc_raw(uint32_t size, uint32_t flags);");
+        sb.AppendLine("extern void __novus_free_raw(void* ptr, uint32_t size);");
         sb.AppendLine();
 
         // Memory tracking and MMU protection functions (always declared, only linked when used)
@@ -1869,6 +1927,30 @@ public partial class CCodeGenerator
             sb.AppendLine($"    {elementType} __{i};");
         }
         sb.AppendLine($"}} {tupleName};");
+        sb.AppendLine();
+    }
+
+    /// <summary>
+    /// Helper to emit closure type (fat pointer struct) to a StringBuilder.
+    /// Closures are 8-byte fat pointers containing a function pointer and environment pointer.
+    /// </summary>
+    private void EmitClosureTypeToBuilder(StringBuilder sb, IrClosureType closureType)
+    {
+        var closureName = GetClosureTypeName(closureType);
+
+        // Generate function pointer type string for the closure's function
+        // The closure function takes (void* env, param1, param2, ...) and returns the closure's return type
+        var returnType = GetCType(closureType.ReturnType);
+        var paramsWithEnv = new List<string> { "void*" };
+        paramsWithEnv.AddRange(closureType.ParameterTypes.Select(GetCType));
+        var paramStr = string.Join(", ", paramsWithEnv);
+
+        // Emit the closure struct type
+        sb.AppendLine($"// Closure type: closure({string.Join(", ", closureType.ParameterTypes.Select(t => t.Name))}) -> {closureType.ReturnType.Name}");
+        sb.AppendLine($"typedef struct {{");
+        sb.AppendLine($"    {returnType} (*fn_ptr)({paramStr});  // Function pointer (takes env as first arg)");
+        sb.AppendLine($"    void* env_ptr;                       // Environment pointer (null if stateless)");
+        sb.AppendLine($"}} {closureName};");
         sb.AppendLine();
     }
 
@@ -4657,6 +4739,22 @@ public partial class CCodeGenerator
                 EmitDereferenceStore(derefStore);
                 break;
 
+            case IrCreateClosure createClosure:
+                EmitCreateClosure(createClosure);
+                break;
+
+            case IrInvokeClosure invokeClosure:
+                EmitInvokeClosure(invokeClosure);
+                break;
+
+            case IrLoadCapture loadCapture:
+                EmitLoadCapture(loadCapture);
+                break;
+
+            case IrStoreCapture storeCapture:
+                EmitStoreCapture(storeCapture);
+                break;
+
             case IrDefer defer:
                 // IrDefer marker - set the flag to indicate this defer block is now active
                 // Find which defer block this corresponds to
@@ -6669,6 +6767,137 @@ public partial class CCodeGenerator
         };
     }
 
+    /// <summary>
+    /// Emit closure creation code.
+    /// Creates the fat pointer struct and initializes captured variables in the environment.
+    /// </summary>
+    private void EmitCreateClosure(IrCreateClosure createClosure)
+    {
+        var closureType = createClosure.ClosureType;
+        var closureTypeName = GetClosureTypeName(closureType);
+        var resultName = SanitizeVariableName(createClosure.ResultName);
+
+        // Declare the closure variable if needed
+        if (!_declaredVariables.Contains(resultName))
+        {
+            _output.AppendLine($"    {closureTypeName} {resultName};");
+            _declaredVariables.Add(resultName);
+        }
+
+        // Set the function pointer
+        _output.AppendLine($"    {resultName}.fn_ptr = {createClosure.GeneratedFunctionName};");
+
+        // Handle environment
+        if (createClosure.CapturedValues.Count == 0)
+        {
+            // Stateless closure - no environment needed
+            _output.AppendLine($"    {resultName}.env_ptr = NULL;");
+        }
+        else
+        {
+            // Allocate environment struct
+            var envTypeName = closureType.EnvironmentType != null
+                ? MangleName(closureType.EnvironmentType)
+                : $"__closure_env_{createClosure.GeneratedFunctionName}";
+
+            _output.AppendLine($"    {resultName}.env_ptr = __novus_alloc_raw(sizeof(struct {envTypeName}), MEMF_FAST);");
+            _output.AppendLine($"    struct {envTypeName}* __env = (struct {envTypeName}*){resultName}.env_ptr;");
+
+            // Initialize refcount
+            _output.AppendLine($"    __env->__refcount = 1;");
+
+            // Copy captured values into environment
+            foreach (var (name, value, mode) in createClosure.CapturedValues)
+            {
+                var valueExpr = EmitValue(value);
+                if (mode == CaptureMode.ByValue)
+                {
+                    _output.AppendLine($"    __env->{name} = {valueExpr};");
+                }
+                else
+                {
+                    // By-reference or mutable capture - store pointer
+                    _output.AppendLine($"    __env->{name} = &{valueExpr};");
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Emit closure invocation code.
+    /// Calls the closure's function pointer with the environment as the first argument.
+    /// </summary>
+    private void EmitInvokeClosure(IrInvokeClosure invokeClosure)
+    {
+        var closureExpr = EmitValue(invokeClosure.Closure);
+        var closureType = invokeClosure.Closure.Type as IrClosureType;
+
+        // Build argument list - env_ptr first, then user arguments
+        var args = new List<string> { $"{closureExpr}.env_ptr" };
+        foreach (var arg in invokeClosure.Arguments)
+        {
+            args.Add(EmitValue(arg));
+        }
+        var argStr = string.Join(", ", args);
+
+        // Call the function pointer
+        if (invokeClosure.ResultName != null && invokeClosure.ReturnType is not IrVoidType)
+        {
+            var resultName = SanitizeVariableName(invokeClosure.ResultName);
+            if (!_declaredVariables.Contains(resultName))
+            {
+                var decl = GetCVariableDeclaration(invokeClosure.ReturnType, resultName);
+                _output.AppendLine($"    {decl};");
+                _declaredVariables.Add(resultName);
+            }
+            _output.AppendLine($"    {resultName} = {closureExpr}.fn_ptr({argStr});");
+        }
+        else
+        {
+            _output.AppendLine($"    {closureExpr}.fn_ptr({argStr});");
+        }
+    }
+
+    /// <summary>
+    /// Emit load capture - loads a captured value from the environment.
+    /// Called at the start of closure functions to bind captured variables.
+    /// </summary>
+    private void EmitLoadCapture(IrLoadCapture loadCapture)
+    {
+        var resultName = SanitizeVariableName(loadCapture.ResultName);
+        var cType = GetCType(loadCapture.CaptureType);
+
+        // Declare the local variable for the captured value
+        if (!_declaredVariables.Contains(resultName))
+        {
+            _output.AppendLine($"    {GetCVariableDeclaration(loadCapture.CaptureType, resultName)};");
+            _declaredVariables.Add(resultName);
+        }
+
+        // Load from environment (assumes __env parameter is available)
+        if (loadCapture.Mode == CaptureMode.ByValue)
+        {
+            _output.AppendLine($"    {resultName} = __env->{loadCapture.CaptureName};");
+        }
+        else
+        {
+            // By-reference or mutable - dereference the stored pointer
+            _output.AppendLine($"    {resultName} = *__env->{loadCapture.CaptureName};");
+        }
+    }
+
+    /// <summary>
+    /// Emit store capture - stores back to a mutable captured variable.
+    /// Only used for |mut x| captures where x is modified inside the closure.
+    /// </summary>
+    private void EmitStoreCapture(IrStoreCapture storeCapture)
+    {
+        var valueExpr = EmitValue(storeCapture.Value);
+
+        // Store through the pointer in the environment
+        _output.AppendLine($"    *__env->{storeCapture.CaptureName} = {valueExpr};");
+    }
+
     private void EmitMatch(IrMatch match)
     {
         var matchValue = EmitValue(match.MatchValue);
@@ -8496,6 +8725,7 @@ public partial class CCodeGenerator
             IrReferenceType refType => $"{GetCType(refType.PointeeType)}*",  // References as pointers
             IrMutReferenceType mutRefType => $"{GetCType(mutRefType.PointeeType)}*",  // Mut references as pointers
             IrFunctionPointerType fpType => GetFunctionPointerType(fpType),
+            IrClosureType closureType => GetClosureTypeName(closureType),
             IrTupleType tupleType => GetTupleTypeName(tupleType),
             IrGenericType genericType => throw new InvalidOperationException($"Generic type parameter '{genericType.ParameterName}' in {(_currentEmittingStruct != null ? $"struct '{_currentEmittingStruct}'" : _currentEmittingFunction != null ? $"function '{_currentEmittingFunction.Name}'" : "unknown context")} was not substituted during monomorphization. Stack trace will show where this type is being used."),
             IrUnresolvedGenericType unresolvedGeneric => throw new InvalidOperationException($"Unresolved generic type '{unresolvedGeneric.Name}' must be monomorphized before code generation"),
@@ -8512,6 +8742,38 @@ public partial class CCodeGenerator
             ? string.Join(", ", fpType.ParameterTypes.Select(GetCType))
             : "void";
         return $"{returnType} (*)({paramTypes})";
+    }
+
+    /// <summary>
+    /// Get the C struct name for a closure type (fat pointer: fn_ptr + env_ptr).
+    /// Closures are represented as structs with two fields.
+    /// </summary>
+    internal string GetClosureTypeName(IrClosureType closureType)
+    {
+        // Generate a unique struct name based on the signature
+        var paramTypes = closureType.ParameterTypes.Count > 0
+            ? string.Join("_", closureType.ParameterTypes.Select(GetTypeNameForClosure))
+            : "void";
+        var returnType = GetTypeNameForClosure(closureType.ReturnType);
+        return $"__Closure_{paramTypes}_{returnType}";
+    }
+
+    /// <summary>
+    /// Get a simple type name for closure struct naming (alphanumeric only)
+    /// </summary>
+    private string GetTypeNameForClosure(IrType type)
+    {
+        return type switch
+        {
+            IrVoidType => "void",
+            IrBoolType => "bool",
+            IrIntType intType => intType.Name,
+            IrFloatType floatType => floatType.BitWidth == 32 ? "f32" : "f64",
+            IrPointerType ptrType => $"ptr_{GetTypeNameForClosure(ptrType.PointeeType)}",
+            IrStructType structType => MangleName(structType).Replace("::", "_"),
+            IrEnumType enumType => MangleName(enumType).Replace("::", "_"),
+            _ => type.Name.Replace("*", "ptr").Replace(" ", "_").Replace("::", "_")
+        };
     }
 
     /// <summary>

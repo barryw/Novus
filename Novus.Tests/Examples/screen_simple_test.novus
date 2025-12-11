@@ -1,0 +1,30 @@
+// Simple screen test - minimal to debug the crash
+from std::ui::screen import ScreenHandle
+from std::ffi::dos import Delay
+from std::ffi::graphics import SetAPen, RectFill
+
+pub fn main() -> i32 {
+    // Try to open a simple lores screen
+    let result = ScreenHandle::lores("Test Screen", 4)
+
+    match result {
+        Result::Ok(screen) => {
+            // Got a screen - try to draw
+            let rp = screen.rastport()
+
+            // Draw a filled rectangle
+            SetAPen(rp, 1)
+            RectFill(rp, 10, 20, 100, 80)
+
+            // Wait 3 seconds
+            Delay(150)
+
+            // Success
+            return 0
+        },
+        Result::Err(_) => {
+            // Screen open failed
+            return 1
+        }
+    }
+}

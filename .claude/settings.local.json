@@ -71,7 +71,18 @@
       "Bash(nm:*)",
       "Bash(hunk-info:*)",
       "Bash(xargs:*)",
-      "Bash(for id in 372752 dabaf9 bec23d 1b0d04 6ee937 cd3f14 eb45aa 6056c5 22b96a b74e35 a286a2 8daa98 3f5881 a2df3f 2dd816 a1e593 cb5ed0 319d74 4fe8a4 d36dfe 195a3c 7697ec 1f85ea 20f52e f9d44b f618fe e21f9e d9d0eb b0994f dce588 5844b6 7e5753 61b3e4)"
+      "Bash(for id in 372752 dabaf9 bec23d 1b0d04 6ee937 cd3f14 eb45aa 6056c5 22b96a b74e35 a286a2 8daa98 3f5881 a2df3f 2dd816 a1e593 cb5ed0 319d74 4fe8a4 d36dfe 195a3c 7697ec 1f85ea 20f52e f9d44b f618fe e21f9e d9d0eb b0994f dce588 5844b6 7e5753 61b3e4)",
+      "Bash(vlink --version:*)",
+      "Bash(vlink:*)",
+      "Bash(vasm:*)",
+      "Bash(vobjdump:*)",
+      "Bash(/Users/barry/amiga-cc/vbcc//bin/vlink:*)",
+      "Bash(./vlink:*)",
+      "Bash(./vasm:*)",
+      "Bash(/Users/barry/.dotnet/dotnet run:*)",
+      "Bash(/Users/barry/RiderProjects/Novus/vendor/vbcc/bin/vasmm68k_mot:*)",
+      "Bash(/Users/barry/RiderProjects/Novus/vendor/vbcc/bin/vobjdump:*)",
+      "Bash(jobs:*)"
     ],
     "deny": [],
     "ask": []

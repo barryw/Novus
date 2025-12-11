@@ -209,27 +209,5 @@ uint32_t strlen(const char* str) {
     return len;
 }
 
-// ============================================================================
-// Raw Memory Allocation (bypasses tracking)
-// ============================================================================
-// These functions call AllocMem/FreeMem directly without going through the
-// memory tracking system. Used internally by the stdlib for OS structures
-// that need precise control over memory (e.g., FileInfoBlock, message ports).
-
-/**
- * Allocate memory directly (bypasses memory tracking)
- * Use this for stdlib internals where tracking would interfere.
- */
-void* __novus_alloc_raw(uint32_t size, uint32_t flags) {
-    return AllocMem(size, flags);
-}
-
-/**
- * Free memory directly (bypasses memory tracking)
- * Use this to free memory allocated with __novus_alloc_raw.
- */
-void __novus_free_raw(void* ptr, uint32_t size) {
-    if (ptr != NULL) {
-        FreeMem(ptr, size);
-    }
-}
+// Note: __novus_alloc_raw and __novus_free_raw are in runtime_alloc.c
+// to avoid pulling in error handling dependencies

@@ -65,7 +65,7 @@ ___dos_init:
 	bne.s	.already_open
 
 	; OpenLibrary("dos.library", 0) - LVO offset -552
-	lea	dos_name,a1		; Library name (absolute addressing)
+	move.l	#dos_name,a1		; Library name (absolute addressing)
 	moveq	#0,d0			; Any version
 	jsr	-552(a6)		; Call exec.library OpenLibrary()
 

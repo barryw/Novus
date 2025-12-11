@@ -1,0 +1,32 @@
+// Test depth 5 (32 colors) screen
+// Run: novus compile screen_depth5_test.novus -o screen_depth5_test --safety-level 0
+
+from std::ui::screen import ScreenHandle, ScreenBuilder
+from std::ffi::dos import Delay
+from std::ffi::graphics import SetAPen, RectFill
+from std::io::file import println
+
+pub fn main() -> i32 {
+    println("=== Depth 5 Test (32 colors) ===")
+
+    // Test with depth 5
+    println("ScreenBuilder with depth(5)...")
+    let result = ScreenBuilder::new().title("Depth 5 Test").width(320).depth(5).build()
+
+    match result {
+        Result::Ok(screen) => {
+            println("SUCCESS! Depth 5 screen opened.")
+            let rp = screen.rastport()
+            SetAPen(rp, 1)
+            RectFill(rp, 10, 20, 100, 80)
+            Delay(100)
+        },
+        Result::Err(_) => {
+            println("FAILED: Depth 5 screen could not open.")
+            return 1
+        }
+    }
+
+    println("Done.")
+    return 0
+}

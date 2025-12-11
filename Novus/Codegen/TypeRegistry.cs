@@ -11,6 +11,7 @@ public class TypeRegistry
     private readonly List<IrEnumType> _enumTypes = new();
     private readonly List<IrStructType> _structTypes = new();
     private readonly List<IrTupleType> _tupleTypes = new();
+    private readonly List<IrClosureType> _closureTypes = new();
     private bool _needsString = false;
 
     /// <summary>
@@ -311,6 +312,16 @@ public class TypeRegistry
                 CollectEnumTypesFromType(mutRefType.PointeeType, visitedStructs);
                 break;
 
+            case IrClosureType closureType:
+                // Add the closure type and recursively check parameter/return types
+                AddClosureType(closureType);
+                foreach (var paramType in closureType.ParameterTypes)
+                {
+                    CollectEnumTypesFromType(paramType, visitedStructs);
+                }
+                CollectEnumTypesFromType(closureType.ReturnType, visitedStructs);
+                break;
+
             // For other types (primitive, function pointers, etc.) we don't need to recurse
         }
     }
@@ -352,6 +363,10 @@ public class TypeRegistry
         else if (value.Type is IrStructType structType && structType.GenericParameters.Count == 0)
         {
             AddOrUpdateStructType(structType);
+        }
+        else if (value.Type is IrClosureType closureType)
+        {
+            AddClosureType(closureType);
         }
 
         // For tuple literals, also scan element types recursively
@@ -513,5 +528,23 @@ public class TypeRegistry
     public IEnumerable<IrEnumType> EnumTypes => _enumTypes;
     public IEnumerable<IrStructType> StructTypes => _structTypes;
     public IEnumerable<IrTupleType> TupleTypes => _tupleTypes;
+    public IEnumerable<IrClosureType> ClosureTypes => _closureTypes;
     public bool NeedsString => _needsString;
+
+    /// <summary>
+    /// Add a closure type to the registry
+    /// </summary>
+    private void AddClosureType(IrClosureType closureType)
+    {
+        // Check if we already have this closure type (by comparing signatures)
+        var exists = _closureTypes.Any(c =>
+            c.ParameterTypes.Count == closureType.ParameterTypes.Count &&
+            c.ParameterTypes.Zip(closureType.ParameterTypes, (a, b) => a.Name == b.Name).All(x => x) &&
+            c.ReturnType.Name == closureType.ReturnType.Name);
+
+        if (!exists)
+        {
+            _closureTypes.Add(closureType);
+        }
+    }
 }

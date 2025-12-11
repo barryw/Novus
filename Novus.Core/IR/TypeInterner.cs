@@ -18,6 +18,7 @@ public class TypeInterner
     private readonly Dictionary<IrType, IrReferenceType> _referenceTypes = new();
     private readonly Dictionary<IrType, IrMutReferenceType> _mutReferenceTypes = new();
     private readonly Dictionary<FunctionSignature, IrFunctionPointerType> _functionPointerTypes = new();
+    private readonly Dictionary<ClosureSignature, IrClosureType> _closureTypes = new();
     private readonly Dictionary<TupleSignature, IrTupleType> _tupleTypes = new();
     private readonly Dictionary<string, IrStructType> _structTypes = new();
     private readonly Dictionary<string, IrEnumType> _enumTypes = new();
@@ -87,6 +88,21 @@ public class TypeInterner
 
         var newType = new IrFunctionPointerType(parameterTypes, returnType);
         _functionPointerTypes[signature] = newType;
+        return newType;
+    }
+
+    /// <summary>
+    /// Get or create a closure type with the given signature.
+    /// Note: Environment type is set later during closure analysis.
+    /// </summary>
+    public IrClosureType GetClosureType(List<IrType> parameterTypes, IrType returnType, IrStructType? environmentType = null)
+    {
+        var signature = new ClosureSignature(parameterTypes, returnType, environmentType);
+        if (_closureTypes.TryGetValue(signature, out var cached))
+            return cached;
+
+        var newType = new IrClosureType(parameterTypes, returnType, environmentType);
+        _closureTypes[signature] = newType;
         return newType;
     }
 
@@ -177,6 +193,7 @@ public class TypeInterner
         _referenceTypes.Clear();
         _mutReferenceTypes.Clear();
         _functionPointerTypes.Clear();
+        _closureTypes.Clear();
         _tupleTypes.Clear();
         _structTypes.Clear();
         _enumTypes.Clear();
@@ -268,6 +285,60 @@ public class TypeInterner
             foreach (var elem in ElementTypes)
             {
                 hash.Add(elem);
+            }
+            return hash.ToHashCode();
+        }
+    }
+
+    /// <summary>
+    /// Helper struct for closure signature equality
+    /// </summary>
+    private struct ClosureSignature : IEquatable<ClosureSignature>
+    {
+        public List<IrType> ParameterTypes { get; }
+        public IrType ReturnType { get; }
+        public IrStructType? EnvironmentType { get; }
+
+        public ClosureSignature(List<IrType> parameterTypes, IrType returnType, IrStructType? environmentType)
+        {
+            ParameterTypes = parameterTypes;
+            ReturnType = returnType;
+            EnvironmentType = environmentType;
+        }
+
+        public bool Equals(ClosureSignature other)
+        {
+            if (!ReferenceEquals(ReturnType, other.ReturnType))
+                return false;
+
+            if (!ReferenceEquals(EnvironmentType, other.EnvironmentType))
+                return false;
+
+            if (ParameterTypes.Count != other.ParameterTypes.Count)
+                return false;
+
+            for (int i = 0; i < ParameterTypes.Count; i++)
+            {
+                if (!ReferenceEquals(ParameterTypes[i], other.ParameterTypes[i]))
+                    return false;
+            }
+
+            return true;
+        }
+
+        public override bool Equals(object? obj)
+        {
+            return obj is ClosureSignature other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            var hash = new HashCode();
+            hash.Add(ReturnType);
+            hash.Add(EnvironmentType);
+            foreach (var param in ParameterTypes)
+            {
+                hash.Add(param);
             }
             return hash.ToHashCode();
         }

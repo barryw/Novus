@@ -10,7 +10,7 @@ from std::strings::core import Str
 from std::memory::slice import Slice
 from std::ffi::amiga_structs import TagItem, Screen, RastPort, BitMap, ViewPort
 from std::ffi::intuition import OpenScreenTagList, CloseScreen, ScreenToFront, ScreenToBack, MoveScreen, ShowTitle, OpenWindowTagList
-from std::ffi::amiga_consts import TAG_DONE, SA_*, WA_*, WFLG_*, IDCMP_*, CUSTOMSCREEN, OSCAN_TEXT, HIRES_KEY, LORESLACE_KEY, HIRESLACE_KEY
+from std::ffi::amiga_consts import TAG_DONE, SA_*, WA_*, WFLG_*, IDCMP_*, CUSTOMSCREEN, OSCAN_TEXT, HIRES_KEY, LORESLACE_KEY, HIRESLACE_KEY, NTSC_MONITOR_ID
 from std::ui::window import WindowHandle, open_window
 
 // ============================================================================
@@ -225,14 +225,15 @@ impl ScreenHandle {
     /// ```
     @suppress("W0002", "Casting depth to u32 for tag")
     pub fn lores(title: Str, depth: i16) -> Result<ScreenHandle, IntuitionError> {
+        // TODO: Detect PAL/NTSC at runtime
+        // For now, hardcoded to NTSC (200 lines)
         let tags = [
+            TagItem { ti_Tag: SA_DisplayID, ti_Data: NTSC_MONITOR_ID },
             TagItem { ti_Tag: SA_Width, ti_Data: 320 },
-            TagItem { ti_Tag: SA_Height, ti_Data: 256 },
+            TagItem { ti_Tag: SA_Height, ti_Data: 200 },
             TagItem { ti_Tag: SA_Depth, ti_Data: (u32)depth },
             TagItem { ti_Tag: SA_Title, ti_Data: (u32)title.ptr },
             TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
-            TagItem { ti_Tag: SA_Overscan, ti_Data: OSCAN_TEXT },
-            TagItem { ti_Tag: SA_AutoScroll, ti_Data: 0 },
             TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
         ]
 
@@ -251,14 +252,17 @@ impl ScreenHandle {
     /// ```
     @suppress("W0002", "Casting depth to u32 for tag")
     pub fn hires(title: Str, depth: i16) -> Result<ScreenHandle, IntuitionError> {
+        // TODO: Detect PAL/NTSC at runtime
+        // For now, hardcoded to NTSC (200 lines)
+        // NTSC hires = NTSC_MONITOR_ID | HIRES_KEY = 0x00011000 | 0x00008000 = 0x00019000
+        let ntsc_hires: u32 = NTSC_MONITOR_ID | HIRES_KEY
         let tags = [
+            TagItem { ti_Tag: SA_DisplayID, ti_Data: ntsc_hires },
             TagItem { ti_Tag: SA_Width, ti_Data: 640 },
-            TagItem { ti_Tag: SA_Height, ti_Data: 256 },
+            TagItem { ti_Tag: SA_Height, ti_Data: 200 },
             TagItem { ti_Tag: SA_Depth, ti_Data: (u32)depth },
-            TagItem { ti_Tag: SA_DisplayID, ti_Data: HIRES_KEY },
             TagItem { ti_Tag: SA_Title, ti_Data: (u32)title.ptr },
             TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
-            TagItem { ti_Tag: SA_Overscan, ti_Data: OSCAN_TEXT },
             TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
         ]
 
@@ -303,14 +307,17 @@ impl ScreenHandle {
     /// ```
     @suppress("W0002", "Casting depth to u32 for tag")
     pub fn lores_lace(title: Str, depth: i16) -> Result<ScreenHandle, IntuitionError> {
+        // TODO: Detect PAL/NTSC at runtime
+        // For now, hardcoded to NTSC (400 lines interlaced)
+        // NTSC lores lace = NTSC_MONITOR_ID | LORESLACE_KEY
+        let ntsc_lores_lace: u32 = NTSC_MONITOR_ID | LORESLACE_KEY
         let tags = [
+            TagItem { ti_Tag: SA_DisplayID, ti_Data: ntsc_lores_lace },
             TagItem { ti_Tag: SA_Width, ti_Data: 320 },
-            TagItem { ti_Tag: SA_Height, ti_Data: 512 },
+            TagItem { ti_Tag: SA_Height, ti_Data: 400 },
             TagItem { ti_Tag: SA_Depth, ti_Data: (u32)depth },
-            TagItem { ti_Tag: SA_DisplayID, ti_Data: LORESLACE_KEY },
             TagItem { ti_Tag: SA_Title, ti_Data: (u32)title.ptr },
             TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
-            TagItem { ti_Tag: SA_Overscan, ti_Data: OSCAN_TEXT },
             TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
         ]
 
@@ -329,14 +336,17 @@ impl ScreenHandle {
     /// ```
     @suppress("W0002", "Casting depth to u32 for tag")
     pub fn hires_lace(title: Str, depth: i16) -> Result<ScreenHandle, IntuitionError> {
+        // TODO: Detect PAL/NTSC at runtime
+        // For now, hardcoded to NTSC (400 lines interlaced)
+        // NTSC hires lace = NTSC_MONITOR_ID | HIRESLACE_KEY
+        let ntsc_hires_lace: u32 = NTSC_MONITOR_ID | HIRESLACE_KEY
         let tags = [
+            TagItem { ti_Tag: SA_DisplayID, ti_Data: ntsc_hires_lace },
             TagItem { ti_Tag: SA_Width, ti_Data: 640 },
-            TagItem { ti_Tag: SA_Height, ti_Data: 512 },
+            TagItem { ti_Tag: SA_Height, ti_Data: 400 },
             TagItem { ti_Tag: SA_Depth, ti_Data: (u32)depth },
-            TagItem { ti_Tag: SA_DisplayID, ti_Data: HIRESLACE_KEY },
             TagItem { ti_Tag: SA_Title, ti_Data: (u32)title.ptr },
             TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
-            TagItem { ti_Tag: SA_Overscan, ti_Data: OSCAN_TEXT },
             TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
         ]
 
@@ -493,17 +503,19 @@ impl ScreenBuilder {
     /// Returns Err if screen fails to open.
     @suppress("W0002", "Casting values to u32 for tags")
     pub fn build(self) -> Result<ScreenHandle, IntuitionError> {
-        // Build minimal tag array - only include non-default options
-        // This matches the working lores() pattern more closely
+        // TODO: Detect PAL/NTSC at runtime
+        // For now, default to NTSC if no display_id set
+        let display = if self.display_id != 0 { self.display_id } else { NTSC_MONITOR_ID }
+
+        // Use minimal tags that work reliably on NTSC
+        // SA_Overscan, SA_AutoScroll, SA_ShowTitle removed as they may cause issues
         let tags = [
+            TagItem { ti_Tag: SA_DisplayID, ti_Data: display },
             TagItem { ti_Tag: SA_Width, ti_Data: (u32)self.width },
-            TagItem { ti_Tag: SA_Height, ti_Data: (u32)self.height },
+            TagItem { ti_Tag: SA_Height, ti_Data: 200 },
             TagItem { ti_Tag: SA_Depth, ti_Data: (u32)self.depth },
             TagItem { ti_Tag: SA_Title, ti_Data: (u32)self.title_ptr },
             TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
-            TagItem { ti_Tag: SA_Overscan, ti_Data: self.overscan },
-            TagItem { ti_Tag: SA_AutoScroll, ti_Data: if self.autoscroll { 1 } else { 0 } },
-            TagItem { ti_Tag: SA_ShowTitle, ti_Data: if self.show_title { 1 } else { 0 } },
             TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
         ]
 

@@ -33,6 +33,7 @@ public interface ITypeParsingContext
     IrType GetArrayType(IrType elementType, long length);
     IrType GetFunctionPointerType(List<IrType> paramTypes, IrType returnType);
     IrType GetTupleType(List<IrType> elementTypes);
+    IrType GetClosureType(List<IrType> paramTypes, IrType returnType);
 
     // Current state (for generic instantiation)
     IrType? CurrentSelfType { get; }
@@ -148,6 +149,7 @@ public class TypeParser : ITypeSubstitutionEngine
                 NovusParser.UnitTypeContext _ => IrTupleType.Unit,
                 NovusParser.TupleTypeContext tupleCtx => ParseTupleType(tupleCtx),
                 NovusParser.FunctionPointerTypeContext fpCtx => ParseFunctionPointerType(fpCtx),
+                NovusParser.ClosureTypeContext closureCtx => ParseClosureType(closureCtx),
                 NovusParser.SelfTypeContext selfCtx => ResolveSelfType(),
                 NovusParser.PrimitiveTypeContext primCtx => ParsePrimitiveType(primCtx),
                 NovusParser.NamedTypeContext namedCtx => ParseNamedType(namedCtx),
@@ -618,6 +620,26 @@ public class TypeParser : ITypeSubstitutionEngine
         var returnType = context.type() != null ? ParseType(context.type()) : IrVoidType.Instance;
 
         return _context.GetFunctionPointerType(paramTypes, returnType);
+    }
+
+    /// <summary>
+    /// Parse closure type: closure(i32, i32) -> i32
+    /// </summary>
+    private IrType ParseClosureType(NovusParser.ClosureTypeContext context)
+    {
+        var paramTypes = new List<IrType>();
+
+        if (context.typeList() != null)
+        {
+            foreach (var typeCtx in context.typeList().type())
+            {
+                paramTypes.Add(ParseType(typeCtx));
+            }
+        }
+
+        var returnType = context.type() != null ? ParseType(context.type()) : IrVoidType.Instance;
+
+        return _context.GetClosureType(paramTypes, returnType);
     }
 
     /// <summary>

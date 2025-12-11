@@ -193,6 +193,7 @@ type
     | LPAREN RPAREN                                                 # UnitType
     | LPAREN NEWLINE* type (COMMA NEWLINE* type)+ NEWLINE* RPAREN   # TupleType
     | KW_FN LPAREN NEWLINE* typeList? NEWLINE* RPAREN (ARROW type)? # FunctionPointerType
+    | KW_CLOSURE LPAREN NEWLINE* typeList? NEWLINE* RPAREN (ARROW type)?  # ClosureType
     | KW_SELF_TYPE                                                  # SelfType
     | KW_U8                                                         # PrimitiveType
     | KW_U16                                                        # PrimitiveType
@@ -437,10 +438,35 @@ primaryExpression
     | KW_MATCHES LPAREN expression COMMA NEWLINE* pattern NEWLINE* RPAREN  # MatchesExpr
     | KW_DBG LPAREN expression RPAREN                                       # DbgExpr
     | KW_UNREACHABLE LPAREN RPAREN                                          # UnreachableExpr
+    | closureExpression                                                     # ClosureExpr
     ;
 
 identifier
     : IDENTIFIER (COLONCOLON IDENTIFIER)*
+    ;
+
+// Closure expressions: |x: i32, y: i32| -> i32 { x + y }
+// Supports:
+//   - |x: i32| -> i32 { x + 1 }          - with return type
+//   - |x: i32| { x + 1 }                 - without return type (inferred)
+//   - || { 42 }                          - no parameters
+//   - |mut x| { x += 1; x }              - mutable capture (captures by reference)
+closureExpression
+    : PIPE closureParameterList? PIPE (ARROW type)? block
+    ;
+
+closureParameterList
+    : closureParameter (COMMA NEWLINE* closureParameter)*
+    ;
+
+// Closure parameter can be:
+//   - Regular parameter: x: i32
+//   - Mutable capture: mut x (captures existing variable by reference)
+//   - Reference capture: &x (captures by reference for large types)
+closureParameter
+    : KW_MUT IDENTIFIER                    # MutableCaptureParam
+    | AMPERSAND IDENTIFIER                 # ReferenceCaptureParam
+    | IDENTIFIER COLON type                # TypedClosureParam
     ;
 
 arrayLiteralInit

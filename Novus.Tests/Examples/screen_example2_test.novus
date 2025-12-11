@@ -1,0 +1,58 @@
+// Exact reproduction of Example 2 from screen_builder_example
+// Run: novus compile screen_example2_test.novus -o screen_example2_test --safety-level 0
+
+from std::ui::screen import ScreenHandle, ScreenBuilder
+from std::ffi::dos import Delay
+from std::ffi::graphics import SetAPen, RectFill
+from std::io::file import println
+
+pub fn main() -> i32 {
+    println("=== Example 2 Reproduction ===")
+
+    // First do Example 1 like the original
+    println("Example 1: lores()...")
+    let result1 = ScreenHandle::lores("Simple Lores Screen", 4)
+    match result1 {
+        Result::Ok(screen1) => {
+            let rp = screen1.rastport()
+            SetAPen(rp, 1)
+            RectFill(rp, 10, 20, 100, 80)
+            Delay(100)
+            println("Example 1 done, closing...")
+        },
+        Result::Err(_) => {
+            println("Example 1 FAILED!")
+            return 1
+        }
+    }
+
+    // Now Example 2 - exactly as in the original
+    println("Example 2: ScreenBuilder with show_title(false)...")
+    let result2 = ScreenBuilder::new().title("Builder Demo").width(320).depth(5).show_title(false).build()
+
+    match result2 {
+        Result::Ok(screen2) => {
+            println("Example 2 screen opened!")
+            let rp = screen2.rastport()
+            let scr_height = screen2.height()
+            println("Screen height obtained, drawing...")
+
+            let mut y: i16 = 0
+            while y < scr_height {
+                SetAPen(rp, (u32)(y / 8))
+                RectFill(rp, 0, y, 319, y + 7)
+                y = y + 8
+            }
+
+            Delay(100)
+            println("Example 2 done, closing...")
+        },
+        Result::Err(_) => {
+            println("Example 2 FAILED!")
+            return 2
+        }
+    }
+
+    println("All done!")
+    return 0
+}

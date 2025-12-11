@@ -2,15 +2,17 @@
 ; Library: intuition.library
 ; Base: _IntuitionBase
 ; Each function is in its own section for dead code elimination
+; NOTE: Uses lazy initialization via ___intuition_ensure
 
 	xref	_IntuitionBase
+	xref	___intuition_ensure	; Lazy init - opens library if needed, returns base in A6
 
 	section	_OpenIntuition_stub,code
 
 ; VOID OpenIntuition()
 	xdef	_OpenIntuition
 _OpenIntuition:
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-30(a6)
 	rts
 
@@ -20,7 +22,7 @@ _OpenIntuition:
 	xdef	_Intuition
 _Intuition:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-36(a6)
 	rts
 
@@ -32,7 +34,7 @@ _AddGadget:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	move.l	12(sp),d0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-42(a6)
 	rts
 
@@ -42,7 +44,7 @@ _AddGadget:
 	xdef	_ClearDMRequest
 _ClearDMRequest:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-48(a6)
 	rts
 
@@ -52,7 +54,7 @@ _ClearDMRequest:
 	xdef	_ClearMenuStrip
 _ClearMenuStrip:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-54(a6)
 	rts
 
@@ -62,7 +64,7 @@ _ClearMenuStrip:
 	xdef	_ClearPointer
 _ClearPointer:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-60(a6)
 	rts
 
@@ -72,7 +74,7 @@ _ClearPointer:
 	xdef	_CloseScreen
 _CloseScreen:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-66(a6)
 	rts
 
@@ -82,7 +84,7 @@ _CloseScreen:
 	xdef	_CloseWindow
 _CloseWindow:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-72(a6)
 	rts
 
@@ -91,7 +93,7 @@ _CloseWindow:
 ; LONG CloseWorkBench()
 	xdef	_CloseWorkBench
 _CloseWorkBench:
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-78(a6)
 	rts
 
@@ -102,7 +104,7 @@ _CloseWorkBench:
 _CurrentTime:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-84(a6)
 	rts
 
@@ -114,7 +116,7 @@ _DisplayAlert:
 	move.l	4(sp),d0
 	movea.l	8(sp),a0
 	move.l	12(sp),d1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-90(a6)
 	rts
 
@@ -124,7 +126,7 @@ _DisplayAlert:
 	xdef	_DisplayBeep
 _DisplayBeep:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-96(a6)
 	rts
 
@@ -137,7 +139,7 @@ _DoubleClick:
 	move.l	8(sp),d1
 	move.l	12(sp),d2
 	move.l	16(sp),d3
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-102(a6)
 	rts
 
@@ -150,7 +152,7 @@ _DrawBorder:
 	movea.l	8(sp),a1
 	move.l	12(sp),d0
 	move.l	16(sp),d1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-108(a6)
 	rts
 
@@ -163,7 +165,7 @@ _DrawImage:
 	movea.l	8(sp),a1
 	move.l	12(sp),d0
 	move.l	16(sp),d1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-114(a6)
 	rts
 
@@ -174,7 +176,7 @@ _DrawImage:
 _EndRequest:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-120(a6)
 	rts
 
@@ -185,7 +187,7 @@ _EndRequest:
 _GetDefPrefs:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-126(a6)
 	rts
 
@@ -196,7 +198,7 @@ _GetDefPrefs:
 _GetPrefs:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-132(a6)
 	rts
 
@@ -206,7 +208,7 @@ _GetPrefs:
 	xdef	_InitRequester
 _InitRequester:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-138(a6)
 	rts
 
@@ -217,7 +219,7 @@ _InitRequester:
 _ItemAddress:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-144(a6)
 	rts
 
@@ -228,7 +230,7 @@ _ItemAddress:
 _ModifyIDCMP:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-150(a6)
 	rts
 
@@ -245,7 +247,7 @@ _ModifyProp:
 	move.l	24(sp),d2
 	move.l	28(sp),d3
 	move.l	32(sp),d4
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-156(a6)
 	rts
 
@@ -257,7 +259,7 @@ _MoveScreen:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	move.l	12(sp),d1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-162(a6)
 	rts
 
@@ -269,7 +271,7 @@ _MoveWindow:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	move.l	12(sp),d1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-168(a6)
 	rts
 
@@ -281,7 +283,7 @@ _OffGadget:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-174(a6)
 	rts
 
@@ -292,7 +294,7 @@ _OffGadget:
 _OffMenu:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-180(a6)
 	rts
 
@@ -304,7 +306,7 @@ _OnGadget:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-186(a6)
 	rts
 
@@ -315,7 +317,7 @@ _OnGadget:
 _OnMenu:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-192(a6)
 	rts
 
@@ -325,7 +327,7 @@ _OnMenu:
 	xdef	_OpenScreen
 _OpenScreen:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-198(a6)
 	rts
 
@@ -335,7 +337,7 @@ _OpenScreen:
 	xdef	_OpenWindow
 _OpenWindow:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-204(a6)
 	rts
 
@@ -344,7 +346,7 @@ _OpenWindow:
 ; ULONG OpenWorkBench()
 	xdef	_OpenWorkBench
 _OpenWorkBench:
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-210(a6)
 	rts
 
@@ -357,7 +359,7 @@ _PrintIText:
 	movea.l	8(sp),a1
 	move.l	12(sp),d0
 	move.l	16(sp),d1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-216(a6)
 	rts
 
@@ -369,7 +371,7 @@ _RefreshGadgets:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-222(a6)
 	rts
 
@@ -380,7 +382,7 @@ _RefreshGadgets:
 _RemoveGadget:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-228(a6)
 	rts
 
@@ -391,7 +393,7 @@ _RemoveGadget:
 _ReportMouse:
 	move.l	4(sp),d0
 	movea.l	8(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-234(a6)
 	rts
 
@@ -402,7 +404,7 @@ _ReportMouse:
 _Request:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-246(a6)
 	rts
 
@@ -412,7 +414,7 @@ _Request:
 	xdef	_ScreenToBack
 _ScreenToBack:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-252(a6)
 	rts
 
@@ -422,7 +424,7 @@ _ScreenToBack:
 	xdef	_ScreenToFront
 _ScreenToFront:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-258(a6)
 	rts
 
@@ -433,7 +435,7 @@ _ScreenToFront:
 _SetDMRequest:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-264(a6)
 	rts
 
@@ -444,7 +446,7 @@ _SetDMRequest:
 _SetMenuStrip:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-270(a6)
 	rts
 
@@ -459,7 +461,7 @@ _SetPointer:
 	move.l	16(sp),d1
 	move.l	20(sp),d2
 	move.l	24(sp),d3
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-276(a6)
 	rts
 
@@ -471,7 +473,7 @@ _SetWindowTitles:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-282(a6)
 	rts
 
@@ -482,7 +484,7 @@ _SetWindowTitles:
 _ShowTitle:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-288(a6)
 	rts
 
@@ -494,7 +496,7 @@ _SizeWindow:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	move.l	12(sp),d1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-294(a6)
 	rts
 
@@ -503,7 +505,7 @@ _SizeWindow:
 ; struct View * ViewAddress()
 	xdef	_ViewAddress
 _ViewAddress:
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-300(a6)
 	rts
 
@@ -513,7 +515,7 @@ _ViewAddress:
 	xdef	_ViewPortAddress
 _ViewPortAddress:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-306(a6)
 	rts
 
@@ -523,7 +525,7 @@ _ViewPortAddress:
 	xdef	_WindowToBack
 _WindowToBack:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-312(a6)
 	rts
 
@@ -533,7 +535,7 @@ _WindowToBack:
 	xdef	_WindowToFront
 _WindowToFront:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-318(a6)
 	rts
 
@@ -547,7 +549,7 @@ _WindowLimits:
 	move.l	12(sp),d1
 	move.l	16(sp),d2
 	move.l	20(sp),d3
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-324(a6)
 	rts
 
@@ -559,7 +561,7 @@ _SetPrefs:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	move.l	12(sp),d1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-330(a6)
 	rts
 
@@ -569,7 +571,7 @@ _SetPrefs:
 	xdef	_IntuiTextLength
 _IntuiTextLength:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-336(a6)
 	rts
 
@@ -578,7 +580,7 @@ _IntuiTextLength:
 ; BOOL WBenchToBack()
 	xdef	_WBenchToBack
 _WBenchToBack:
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-342(a6)
 	rts
 
@@ -587,7 +589,7 @@ _WBenchToBack:
 ; BOOL WBenchToFront()
 	xdef	_WBenchToFront
 _WBenchToFront:
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-348(a6)
 	rts
 
@@ -604,7 +606,7 @@ _AutoRequest:
 	move.l	24(sp),d1
 	move.l	28(sp),d2
 	move.l	32(sp),d3
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-354(a6)
 	rts
 
@@ -614,7 +616,7 @@ _AutoRequest:
 	xdef	_BeginRefresh
 _BeginRefresh:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-360(a6)
 	rts
 
@@ -630,7 +632,7 @@ _BuildSysRequest:
 	move.l	20(sp),d0
 	move.l	24(sp),d1
 	move.l	28(sp),d2
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-366(a6)
 	rts
 
@@ -641,7 +643,7 @@ _BuildSysRequest:
 _EndRefresh:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-372(a6)
 	rts
 
@@ -651,7 +653,7 @@ _EndRefresh:
 	xdef	_FreeSysRequest
 _FreeSysRequest:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-378(a6)
 	rts
 
@@ -661,7 +663,7 @@ _FreeSysRequest:
 	xdef	_MakeScreen
 _MakeScreen:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-384(a6)
 	rts
 
@@ -670,7 +672,7 @@ _MakeScreen:
 ; LONG RemakeDisplay()
 	xdef	_RemakeDisplay
 _RemakeDisplay:
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-390(a6)
 	rts
 
@@ -679,7 +681,7 @@ _RemakeDisplay:
 ; LONG RethinkDisplay()
 	xdef	_RethinkDisplay
 _RethinkDisplay:
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-396(a6)
 	rts
 
@@ -691,7 +693,7 @@ _AllocRemember:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	move.l	12(sp),d1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-402(a6)
 	rts
 
@@ -702,7 +704,7 @@ _AllocRemember:
 _FreeRemember:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-414(a6)
 	rts
 
@@ -712,7 +714,7 @@ _FreeRemember:
 	xdef	_LockIBase
 _LockIBase:
 	move.l	4(sp),d0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-420(a6)
 	rts
 
@@ -722,7 +724,7 @@ _LockIBase:
 	xdef	_UnlockIBase
 _UnlockIBase:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-426(a6)
 	rts
 
@@ -735,7 +737,7 @@ _GetScreenData:
 	move.l	8(sp),d0
 	move.l	12(sp),d1
 	movea.l	16(sp),a1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-432(a6)
 	rts
 
@@ -748,7 +750,7 @@ _RefreshGList:
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
 	move.l	16(sp),d0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-438(a6)
 	rts
 
@@ -762,7 +764,7 @@ _AddGList:
 	move.l	12(sp),d0
 	move.l	16(sp),d1
 	movea.l	20(sp),a2
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-444(a6)
 	rts
 
@@ -774,7 +776,7 @@ _RemoveGList:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	move.l	12(sp),d0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-450(a6)
 	rts
 
@@ -784,7 +786,7 @@ _RemoveGList:
 	xdef	_ActivateWindow
 _ActivateWindow:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-456(a6)
 	rts
 
@@ -794,7 +796,7 @@ _ActivateWindow:
 	xdef	_RefreshWindowFrame
 _RefreshWindowFrame:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-462(a6)
 	rts
 
@@ -806,7 +808,7 @@ _ActivateGadget:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-468(a6)
 	rts
 
@@ -824,7 +826,7 @@ _NewModifyProp:
 	move.l	28(sp),d3
 	move.l	32(sp),d4
 	move.l	36(sp),d5
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-474(a6)
 	rts
 
@@ -836,7 +838,7 @@ _QueryOverscan:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	move.l	12(sp),d0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-480(a6)
 	rts
 
@@ -847,7 +849,7 @@ _QueryOverscan:
 _MoveWindowInFrontOf:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-486(a6)
 	rts
 
@@ -861,7 +863,7 @@ _ChangeWindowBox:
 	move.l	12(sp),d1
 	move.l	16(sp),d2
 	move.l	20(sp),d3
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-492(a6)
 	rts
 
@@ -871,7 +873,7 @@ _ChangeWindowBox:
 	xdef	_SetEditHook
 _SetEditHook:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-498(a6)
 	rts
 
@@ -882,7 +884,7 @@ _SetEditHook:
 _SetMouseQueue:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-504(a6)
 	rts
 
@@ -892,7 +894,7 @@ _SetMouseQueue:
 	xdef	_ZipWindow
 _ZipWindow:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-510(a6)
 	rts
 
@@ -902,7 +904,7 @@ _ZipWindow:
 	xdef	_LockPubScreen
 _LockPubScreen:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-516(a6)
 	rts
 
@@ -913,7 +915,7 @@ _LockPubScreen:
 _UnlockPubScreen:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-522(a6)
 	rts
 
@@ -922,7 +924,7 @@ _UnlockPubScreen:
 ; struct List * LockPubScreenList()
 	xdef	_LockPubScreenList
 _LockPubScreenList:
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-528(a6)
 	rts
 
@@ -931,7 +933,7 @@ _LockPubScreenList:
 ; VOID UnlockPubScreenList()
 	xdef	_UnlockPubScreenList
 _UnlockPubScreenList:
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-534(a6)
 	rts
 
@@ -942,7 +944,7 @@ _UnlockPubScreenList:
 _NextPubScreen:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-540(a6)
 	rts
 
@@ -952,7 +954,7 @@ _NextPubScreen:
 	xdef	_SetDefaultPubScreen
 _SetDefaultPubScreen:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-546(a6)
 	rts
 
@@ -962,7 +964,7 @@ _SetDefaultPubScreen:
 	xdef	_SetPubScreenModes
 _SetPubScreenModes:
 	move.l	4(sp),d0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-552(a6)
 	rts
 
@@ -973,7 +975,7 @@ _SetPubScreenModes:
 _PubScreenStatus:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-558(a6)
 	rts
 
@@ -983,7 +985,7 @@ _PubScreenStatus:
 	xdef	_ObtainGIRPort
 _ObtainGIRPort:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-564(a6)
 	rts
 
@@ -993,7 +995,7 @@ _ObtainGIRPort:
 	xdef	_ReleaseGIRPort
 _ReleaseGIRPort:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-570(a6)
 	rts
 
@@ -1005,7 +1007,7 @@ _GadgetMouse:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-576(a6)
 	rts
 
@@ -1015,7 +1017,7 @@ _GadgetMouse:
 	xdef	_GetDefaultPubScreen
 _GetDefaultPubScreen:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-582(a6)
 	rts
 
@@ -1028,7 +1030,7 @@ _EasyRequestArgs:
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
 	movea.l	16(sp),a3
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-588(a6)
 	rts
 
@@ -1041,7 +1043,7 @@ _BuildEasyRequestArgs:
 	movea.l	8(sp),a1
 	move.l	12(sp),d0
 	movea.l	16(sp),a3
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-594(a6)
 	rts
 
@@ -1053,7 +1055,7 @@ _SysReqHandler:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	move.l	12(sp),d0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-600(a6)
 	rts
 
@@ -1064,7 +1066,7 @@ _SysReqHandler:
 _OpenWindowTagList:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-606(a6)
 	rts
 
@@ -1075,7 +1077,7 @@ _OpenWindowTagList:
 _OpenScreenTagList:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-612(a6)
 	rts
 
@@ -1090,7 +1092,7 @@ _DrawImageState:
 	move.l	16(sp),d1
 	move.l	20(sp),d2
 	movea.l	24(sp),a2
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-618(a6)
 	rts
 
@@ -1101,7 +1103,7 @@ _DrawImageState:
 _PointInImage:
 	move.l	4(sp),d0
 	movea.l	8(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-624(a6)
 	rts
 
@@ -1114,7 +1116,7 @@ _EraseImage:
 	movea.l	8(sp),a1
 	move.l	12(sp),d0
 	move.l	16(sp),d1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-630(a6)
 	rts
 
@@ -1126,7 +1128,7 @@ _NewObjectA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-636(a6)
 	rts
 
@@ -1136,7 +1138,7 @@ _NewObjectA:
 	xdef	_DisposeObject
 _DisposeObject:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-642(a6)
 	rts
 
@@ -1147,7 +1149,7 @@ _DisposeObject:
 _SetAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-648(a6)
 	rts
 
@@ -1159,7 +1161,7 @@ _GetAttr:
 	move.l	4(sp),d0
 	movea.l	8(sp),a0
 	movea.l	12(sp),a1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-654(a6)
 	rts
 
@@ -1172,7 +1174,7 @@ _SetGadgetAttrsA:
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
 	movea.l	16(sp),a3
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-660(a6)
 	rts
 
@@ -1182,7 +1184,7 @@ _SetGadgetAttrsA:
 	xdef	_NextObject
 _NextObject:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-666(a6)
 	rts
 
@@ -1196,7 +1198,7 @@ _MakeClass:
 	movea.l	12(sp),a2
 	move.l	16(sp),d0
 	move.l	20(sp),d1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-678(a6)
 	rts
 
@@ -1206,7 +1208,7 @@ _MakeClass:
 	xdef	_AddClass
 _AddClass:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-684(a6)
 	rts
 
@@ -1216,7 +1218,7 @@ _AddClass:
 	xdef	_GetScreenDrawInfo
 _GetScreenDrawInfo:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-690(a6)
 	rts
 
@@ -1227,7 +1229,7 @@ _GetScreenDrawInfo:
 _FreeScreenDrawInfo:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-696(a6)
 	rts
 
@@ -1238,7 +1240,7 @@ _FreeScreenDrawInfo:
 _ResetMenuStrip:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-702(a6)
 	rts
 
@@ -1248,7 +1250,7 @@ _ResetMenuStrip:
 	xdef	_RemoveClass
 _RemoveClass:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-708(a6)
 	rts
 
@@ -1258,7 +1260,7 @@ _RemoveClass:
 	xdef	_FreeClass
 _FreeClass:
 	movea.l	4(sp),a0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-714(a6)
 	rts
 
@@ -1270,7 +1272,7 @@ _AllocScreenBuffer:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	move.l	12(sp),d0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-816(a6)
 	rts
 
@@ -1281,7 +1283,7 @@ _AllocScreenBuffer:
 _FreeScreenBuffer:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-822(a6)
 	rts
 
@@ -1292,7 +1294,7 @@ _FreeScreenBuffer:
 _ChangeScreenBuffer:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-828(a6)
 	rts
 
@@ -1304,7 +1306,7 @@ _ScreenDepth:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	movea.l	12(sp),a1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-834(a6)
 	rts
 
@@ -1319,7 +1321,7 @@ _ScreenPosition:
 	move.l	16(sp),d2
 	move.l	20(sp),d3
 	move.l	24(sp),d4
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-840(a6)
 	rts
 
@@ -1335,7 +1337,7 @@ _ScrollWindowRaster:
 	move.l	20(sp),d3
 	move.l	24(sp),d4
 	move.l	28(sp),d5
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-846(a6)
 	rts
 
@@ -1346,7 +1348,7 @@ _ScrollWindowRaster:
 _LendMenus:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-852(a6)
 	rts
 
@@ -1359,7 +1361,7 @@ _DoGadgetMethodA:
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
 	movea.l	16(sp),a3
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-858(a6)
 	rts
 
@@ -1370,7 +1372,7 @@ _DoGadgetMethodA:
 _SetWindowPointerA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-870(a6)
 	rts
 
@@ -1383,7 +1385,7 @@ _TimedDisplayAlert:
 	movea.l	8(sp),a0
 	move.l	12(sp),d1
 	movea.l	16(sp),a1
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-882(a6)
 	rts
 
@@ -1394,7 +1396,7 @@ _TimedDisplayAlert:
 _HelpControl:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
-	movea.l	_IntuitionBase,a6
+	jsr	___intuition_ensure
 	jsr	-888(a6)
 	rts
 

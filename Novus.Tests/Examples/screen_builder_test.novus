@@ -1,0 +1,51 @@
+// Minimal ScreenBuilder test
+// Tests only the ScreenBuilder path without extra examples
+//
+// Run: novus compile screen_builder_test.novus -o screen_builder_test --safety-level 0
+
+from std::ui::screen import ScreenHandle, ScreenBuilder
+from std::ffi::dos import Delay
+from std::ffi::graphics import SetAPen, RectFill
+from std::io::file import print, println
+
+pub fn main() -> i32 {
+    println("=== ScreenBuilder Test ===")
+
+    // First test: can lores() work?
+    println("Test 1: ScreenHandle::lores()...")
+    let result1 = ScreenHandle::lores("Lores Test", 4)
+    match result1 {
+        Result::Ok(screen1) => {
+            println("lores() SUCCESS!")
+            let rp1 = screen1.rastport()
+            SetAPen(rp1, 1)
+            RectFill(rp1, 10, 20, 100, 80)
+            Delay(100)
+        },
+        Result::Err(_) => {
+            println("lores() FAILED!")
+            return 1
+        }
+    }
+
+    // Second test: can ScreenBuilder work?
+    println("Test 2: ScreenBuilder::new().build()...")
+    let result2 = ScreenBuilder::new().title("Builder Test").width(320).depth(4).build()
+
+    match result2 {
+        Result::Ok(screen2) => {
+            println("ScreenBuilder SUCCESS!")
+            let rp2 = screen2.rastport()
+            SetAPen(rp2, 1)
+            RectFill(rp2, 10, 20, 100, 80)
+            Delay(100)
+        },
+        Result::Err(_) => {
+            println("ScreenBuilder FAILED!")
+            return 2
+        }
+    }
+
+    println("All tests passed!")
+    return 0
+}

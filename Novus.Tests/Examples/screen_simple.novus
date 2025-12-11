@@ -1,0 +1,29 @@
+// Simplest possible screen test using ScreenHandle
+// Opens screen, waits, closes - no drawing
+//
+// Run: novus compile screen_simple.novus -o screen_simple --safety-level 0
+
+from std::ffi::dos import Delay
+from std::ui::screen import ScreenHandle
+from std::io::file import println
+
+pub fn main() -> i32 {
+    println("Opening screen via ScreenHandle::lores...")
+
+    let result = ScreenHandle::lores("Simple Screen Test", 4)
+
+    match result {
+        Result::Ok(screen) => {
+            println("Screen opened successfully!")
+            println("Waiting 3 seconds...")
+            Delay(150)
+            println("Closing screen...")
+            // Drop is called automatically here
+            return 0
+        },
+        Result::Err(_) => {
+            println("ERROR: Failed to open screen")
+            return 1
+        }
+    }
+}

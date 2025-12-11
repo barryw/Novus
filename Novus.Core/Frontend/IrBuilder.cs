@@ -36,6 +36,7 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
     private readonly Dictionary<string, bool> _movedVariables = new(); // Track which variables have been moved
 
     private int _staticVarCounter = 0;  // Counter for auto-generated static variables
+    private int _closureCounter = 0;  // Counter for auto-generated closure functions and environment structs
     private readonly Stack<string> _loopExitLabels = new(); // Track loop exit labels for break
     private readonly Stack<string> _loopContinueLabels = new(); // Track loop continue labels for continue
     // For labeled loops: maps label name to (exitLabel, continueLabel)
@@ -231,6 +232,7 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
         public IrType GetArrayType(IrType elementType, long length) => _builder._typeInterner.GetArrayType(elementType, (int)length);
         public IrType GetFunctionPointerType(List<IrType> paramTypes, IrType returnType) => _builder._typeInterner.GetFunctionPointerType(paramTypes, returnType);
         public IrType GetTupleType(List<IrType> elementTypes) => _builder._typeInterner.GetTupleType(elementTypes);
+        public IrType GetClosureType(List<IrType> paramTypes, IrType returnType) => _builder._typeInterner.GetClosureType(paramTypes, returnType);
 
         // Current state
         public IrType? CurrentSelfType => _builder._currentSelfType;

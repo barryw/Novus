@@ -1,0 +1,47 @@
+// Debug screen test - with print statements
+// Test bypassing the std::ui::screen wrapper to debug directly
+from std::ffi::dos import Delay
+from std::ffi::intuition import OpenScreenTagList, CloseScreen
+from std::ffi::amiga_structs import TagItem, Screen
+from std::ffi::amiga_consts import TAG_DONE, SA_Width, SA_Height, SA_Depth, SA_Type, CUSTOMSCREEN
+from std::io::file import write
+
+// Minimal tag constants - hardcoded to avoid any const import issues
+const MY_SA_WIDTH: u32 = $80000023
+const MY_SA_HEIGHT: u32 = $80000024
+const MY_SA_DEPTH: u32 = $80000025
+const MY_SA_TYPE: u32 = $8000002D
+const MY_CUSTOMSCREEN: u32 = 15
+const MY_TAG_DONE: u32 = 0
+
+pub fn main() -> i32 {
+    write("Starting screen test v2...\n")
+
+    // Create tag array using local constants
+    write("Building tag array...\n")
+    let tags = [
+        TagItem { ti_Tag: MY_SA_WIDTH, ti_Data: 320 },
+        TagItem { ti_Tag: MY_SA_HEIGHT, ti_Data: 256 },
+        TagItem { ti_Tag: MY_SA_DEPTH, ti_Data: 4 },
+        TagItem { ti_Tag: MY_SA_TYPE, ti_Data: MY_CUSTOMSCREEN },
+        TagItem { ti_Tag: MY_TAG_DONE, ti_Data: 0 }
+    ]
+
+    // Try opening with explicit tags
+    write("Trying OpenScreenTagList...\n")
+
+    let screen = OpenScreenTagList(null, &tags[0])
+    if screen == null {
+        write("ERROR: OpenScreenTagList returned NULL!\n")
+        return 1
+    }
+
+    write("Screen opened! Waiting 3 seconds...\n")
+    Delay(150)
+
+    write("Closing screen...\n")
+    CloseScreen(screen)
+
+    write("Test complete!\n")
+    return 0
+}

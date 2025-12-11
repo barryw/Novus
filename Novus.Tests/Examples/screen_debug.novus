@@ -1,0 +1,44 @@
+// Minimal screen debug test
+// Tests basic screen opening with debug output
+//
+// Run: novus compile screen_debug.novus -o screen_debug --safety-level 0
+
+from std::ffi::dos import Delay
+from std::ffi::intuition import OpenScreenTagList, CloseScreen
+from std::ffi::amiga_structs import TagItem, Screen
+from std::ffi::amiga_consts import TAG_DONE, SA_*, CUSTOMSCREEN, NTSC_MONITOR_ID
+from std::io::file import print, println
+
+pub fn main() -> i32 {
+    println("=== Screen Debug Test ===")
+
+    // Build tags manually with title bar
+    let title: *u8 = "Screen Debug Test"
+    let tags = [
+        TagItem { ti_Tag: SA_Width, ti_Data: 320 },
+        TagItem { ti_Tag: SA_Height, ti_Data: 200 },
+        TagItem { ti_Tag: SA_Depth, ti_Data: 4 },
+        TagItem { ti_Tag: SA_DisplayID, ti_Data: NTSC_MONITOR_ID },
+        TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
+        TagItem { ti_Tag: SA_Title, ti_Data: (u32)title },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+    ]
+
+    println("Tags created, calling OpenScreenTagList...")
+    let screen = OpenScreenTagList(null, &tags[0])
+
+    if let scr = screen {
+        println("SUCCESS! Screen opened.")
+        println("Waiting 3 seconds...")
+        Delay(150)
+        println("Closing screen...")
+        CloseScreen(scr)
+        println("Screen closed.")
+        println("Done.")
+        return 0
+    }
+
+    println("FAILED: Screen did not open.")
+    println("Done.")
+    return 1
+}

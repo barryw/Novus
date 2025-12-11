@@ -37,17 +37,19 @@ pub fn main() -> i32 {
     // =========================================================================
     // Use ScreenBuilder when you need more options than convenience methods
     // Note: Method chaining must be on the same line in Novus
+    // Note: Don't specify height - let the system determine PAL/NTSC
 
-    let result2 = ScreenBuilder::new().title("Builder Demo").size(320, 256).depth(5).show_title(false).build()
+    let result2 = ScreenBuilder::new().title("Builder Demo").width(320).depth(5).show_title(false).build()
 
     match result2 {
         Result::Ok(screen2) => {
             // Full-screen drawing without title bar interference
             let rp = screen2.rastport()
+            let scr_height = screen2.height()
 
-            // Draw a gradient of colors
+            // Draw a gradient of colors using actual screen height
             let mut y: i16 = 0
-            while y < 256 {
+            while y < scr_height {
                 SetAPen(rp, (u32)(y / 8))  // Cycle through 32 colors
                 RectFill(rp, 0, y, 319, y + 7)
                 y = y + 8
@@ -74,7 +76,7 @@ pub fn main() -> i32 {
             RectFill(rp3, 20, 20, 620, 30)
 
             Move(rp3, 250, 128)
-            Text(rp3, "640x256 HiRes Mode", 18)
+            Text(rp3, "640x200 HiRes Mode", 18)
 
             Delay(100)
         },
@@ -138,10 +140,11 @@ pub fn main() -> i32 {
     match result6 {
         Result::Ok(screen6) => {
             let rp6 = screen6.rastport()
+            let scr_height6 = screen6.height()
 
-            // Draw bars across the full 512 pixel height
+            // Draw bars across the full screen height (512 PAL, 400 NTSC)
             let mut y6: i16 = 0
-            while y6 < 512 {
+            while y6 < scr_height6 {
                 SetAPen(rp6, (u32)((y6 / 32) % 16))
                 RectFill(rp6, 0, y6, 319, y6 + 31)
                 y6 = y6 + 32

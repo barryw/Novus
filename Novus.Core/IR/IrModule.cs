@@ -1258,6 +1258,67 @@ public class IrFunctionPointerType : IrType
 }
 
 /// <summary>
+/// Closure type - function with captured environment (fat pointer)
+/// Size is 8 bytes on 68k: 4-byte function pointer + 4-byte environment pointer
+/// </summary>
+public class IrClosureType : IrType
+{
+    public List<IrType> ParameterTypes { get; }
+    public IrType ReturnType { get; }
+    public IrStructType? EnvironmentType { get; set; }  // null if stateless (no captures)
+    public List<CapturedVariable> CapturedVariables { get; } = new();
+
+    public IrClosureType(List<IrType> parameterTypes, IrType returnType, IrStructType? environmentType = null)
+    {
+        ParameterTypes = parameterTypes;
+        ReturnType = returnType;
+        EnvironmentType = environmentType;
+    }
+
+    /// <summary>
+    /// True if closure has no captures (can be optimized to function pointer)
+    /// </summary>
+    public bool IsStateless => EnvironmentType == null && CapturedVariables.Count == 0;
+
+    public override int SizeInBytes => 8;  // Fat pointer: fn_ptr (4) + env_ptr (4)
+
+    public override string Name
+    {
+        get
+        {
+            var paramStr = ParameterTypes.Count > 0
+                ? string.Join(", ", ParameterTypes.Select(p => p.Name))
+                : "";
+            var retStr = ReturnType is IrVoidType ? "" : $" -> {ReturnType.Name}";
+            return $"closure({paramStr}){retStr}";
+        }
+    }
+}
+
+/// <summary>
+/// Represents a variable captured by a closure
+/// </summary>
+public class CapturedVariable
+{
+    public string Name { get; set; } = "";
+    public IrType Type { get; set; } = IrVoidType.Instance;
+    public CaptureMode Mode { get; set; } = CaptureMode.ByValue;
+}
+
+/// <summary>
+/// How a variable is captured by a closure
+/// </summary>
+public enum CaptureMode
+{
+    /// <summary>Copy the value into the environment struct</summary>
+    ByValue,
+    /// <summary>Store a pointer to the original (for &x captures)</summary>
+    ByReference,
+    /// <summary>Store a pointer allowing mutation (for mut x captures)</summary>
+    Mutable
+}
+
+/// <summary>
 /// Floating point type (f32, f64)
 /// Uses soft-float implementation on 68k
 /// </summary>
@@ -1870,6 +1931,81 @@ public class IrIndirectCall : IrInstruction
         FunctionPointer = functionPointer;
         ReturnType = returnType;
         ResultName = resultName;
+    }
+}
+
+/// <summary>
+/// Closure creation instruction - allocates environment and creates fat pointer
+/// </summary>
+public class IrCreateClosure : IrInstruction
+{
+    public string ResultName { get; set; }
+    public IrClosureType ClosureType { get; set; }
+    public string GeneratedFunctionName { get; set; }  // Name of the generated closure function
+    public List<(string VarName, IrValue Value, CaptureMode Mode)> CapturedValues { get; } = new();
+
+    public IrCreateClosure(string resultName, IrClosureType closureType, string generatedFunctionName)
+    {
+        ResultName = resultName;
+        ClosureType = closureType;
+        GeneratedFunctionName = generatedFunctionName;
+    }
+}
+
+/// <summary>
+/// Closure invocation - extracts function and environment pointers, calls with hidden env parameter
+/// </summary>
+public class IrInvokeClosure : IrInstruction
+{
+    public IrValue Closure { get; set; }  // The closure fat pointer
+    public List<IrValue> Arguments { get; } = new();
+    public IrType ReturnType { get; set; }
+    public string? ResultName { get; set; }  // null for void closures
+
+    public IrInvokeClosure(IrValue closure, IrType returnType, string? resultName = null)
+    {
+        Closure = closure;
+        ReturnType = returnType;
+        ResultName = resultName;
+    }
+}
+
+/// <summary>
+/// Load a captured variable from closure environment
+/// Used inside generated closure functions to access captures
+/// </summary>
+public class IrLoadCapture : IrInstruction
+{
+    public string ResultName { get; set; }
+    public string CaptureName { get; set; }
+    public IrType CaptureType { get; set; }
+    public int FieldOffset { get; set; }  // Offset in environment struct
+    public CaptureMode Mode { get; set; }
+
+    public IrLoadCapture(string resultName, string captureName, IrType captureType, int fieldOffset, CaptureMode mode)
+    {
+        ResultName = resultName;
+        CaptureName = captureName;
+        CaptureType = captureType;
+        FieldOffset = fieldOffset;
+        Mode = mode;
+    }
+}
+
+/// <summary>
+/// Store to a captured variable in closure environment (for mutable captures)
+/// </summary>
+public class IrStoreCapture : IrInstruction
+{
+    public string CaptureName { get; set; }
+    public IrValue Value { get; set; }
+    public int FieldOffset { get; set; }  // Offset in environment struct
+
+    public IrStoreCapture(string captureName, IrValue value, int fieldOffset)
+    {
+        CaptureName = captureName;
+        Value = value;
+        FieldOffset = fieldOffset;
     }
 }
 

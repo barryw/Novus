@@ -1,0 +1,6 @@
+// Basic closure test - captures a variable and uses it
+pub fn main() -> i32 {
+    let y = 10
+    let add_y = |x: i32| -> i32 { x + y }
+    return add_y(5)  // Expected: 15
+}

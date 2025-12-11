@@ -22,8 +22,8 @@ extern pub fn BltBitMap(srcBitMap: *BitMap, xSrc: i16, ySrc: i16, destBitMap: *B
 extern pub fn BltTemplate(source: *u8, xSrc: i16, srcMod: i16, destRP: *RastPort, xDest: i16, yDest: i16, xSize: i16, ySize: i16)
 extern pub fn ClearEOL(rp: *RastPort)
 extern pub fn ClearScreen(rp: *RastPort)
-extern pub fn TextLength(rp: *RastPort, string: *u8, count: u16) -> i16
-extern pub fn Text(rp: *RastPort, string: *u8, count: u16) -> i32
+extern pub fn TextLength(rp: *RastPort, string: *u8, count: u32) -> i16
+extern pub fn Text(rp: *RastPort, string: *u8, count: u32) -> i32
 extern pub fn SetFont(rp: *RastPort, textFont: *TextFont) -> i32
 extern pub fn OpenFont(textAttr: *TextAttr) -> *TextFont
 extern pub fn CloseFont(consuming textFont: *TextFont)
@@ -126,7 +126,7 @@ extern pub fn GfxFree(gfxNodePtr: *u8)
 extern pub fn GfxAssociate(associateNode: *u8, gfxNodePtr: *u8)
 extern pub fn BitMapScale(bitScaleArgs: *BitScaleArgs)
 extern pub fn ScalerDiv(factor: u16, numerator: u16, denominator: u16) -> u16
-extern pub fn TextExtent(rp: *RastPort, string: *u8, count: i16, textExtent: *TextExtent) -> i16
+extern pub fn TextExtent(rp: *RastPort, string: *u8, count: i32, textExtent: *TextExtent) -> i16
 extern pub fn TextFit(rp: *RastPort, string: *u8, strLen: u16, textExtent: *TextExtent, constrainingExtent: *TextExtent, strDirection: i16, constrainingBitWidth: u16, constrainingBitHeight: u16) -> u32
 extern pub fn GfxLookUp(associateNode: *u8) -> *u8
 extern pub fn VideoControl(colorMap: *ColorMap, tagarray: *TagItem) -> i16

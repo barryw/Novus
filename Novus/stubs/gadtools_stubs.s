@@ -2,8 +2,10 @@
 ; Library: gadtools.library
 ; Base: _GadToolsBase
 ; Each function is in its own section for dead code elimination
+; NOTE: Uses lazy initialization via ___gadtools_ensure
 
 	xref	_GadToolsBase
+	xref	___gadtools_ensure	; Lazy init - opens library if needed, returns base in A6
 
 	section	_CreateGadgetA_stub,code
 
@@ -14,7 +16,7 @@ _CreateGadgetA:
 	movea.l	8(sp),a0
 	movea.l	12(sp),a1
 	movea.l	16(sp),a2
-	movea.l	_GadToolsBase,a6
+	jsr	___gadtools_ensure
 	jsr	-30(a6)
 	rts
 
@@ -24,7 +26,7 @@ _CreateGadgetA:
 	xdef	_FreeGadgets
 _FreeGadgets:
 	movea.l	4(sp),a0
-	movea.l	_GadToolsBase,a6
+	jsr	___gadtools_ensure
 	jsr	-42(a6)
 	rts
 
@@ -37,7 +39,7 @@ _GT_SetGadgetAttrsA:
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
 	movea.l	16(sp),a3
-	movea.l	_GadToolsBase,a6
+	jsr	___gadtools_ensure
 	jsr	-48(a6)
 	rts
 
@@ -48,7 +50,7 @@ _GT_SetGadgetAttrsA:
 _CreateMenusA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	movea.l	_GadToolsBase,a6
+	jsr	___gadtools_ensure
 	jsr	-60(a6)
 	rts
 
@@ -58,7 +60,7 @@ _CreateMenusA:
 	xdef	_FreeMenus
 _FreeMenus:
 	movea.l	4(sp),a0
-	movea.l	_GadToolsBase,a6
+	jsr	___gadtools_ensure
 	jsr	-72(a6)
 	rts
 
@@ -70,7 +72,7 @@ _LayoutMenuItemsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
-	movea.l	_GadToolsBase,a6
+	jsr	___gadtools_ensure
 	jsr	-78(a6)
 	rts
 
@@ -82,7 +84,7 @@ _LayoutMenusA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
-	movea.l	_GadToolsBase,a6
+	jsr	___gadtools_ensure
 	jsr	-90(a6)
 	rts
 
@@ -92,7 +94,7 @@ _LayoutMenusA:
 	xdef	_GT_GetIMsg
 _GT_GetIMsg:
 	movea.l	4(sp),a0
-	movea.l	_GadToolsBase,a6
+	jsr	___gadtools_ensure
 	jsr	-102(a6)
 	rts
 
@@ -102,7 +104,7 @@ _GT_GetIMsg:
 	xdef	_GT_ReplyIMsg
 _GT_ReplyIMsg:
 	movea.l	4(sp),a1
-	movea.l	_GadToolsBase,a6
+	jsr	___gadtools_ensure
 	jsr	-108(a6)
 	rts
 
@@ -113,7 +115,7 @@ _GT_ReplyIMsg:
 _GT_RefreshWindow:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	movea.l	_GadToolsBase,a6
+	jsr	___gadtools_ensure
 	jsr	-114(a6)
 	rts
 
@@ -123,7 +125,7 @@ _GT_RefreshWindow:
 	xdef	_GT_BeginRefresh
 _GT_BeginRefresh:
 	movea.l	4(sp),a0
-	movea.l	_GadToolsBase,a6
+	jsr	___gadtools_ensure
 	jsr	-120(a6)
 	rts
 
@@ -134,7 +136,7 @@ _GT_BeginRefresh:
 _GT_EndRefresh:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
-	movea.l	_GadToolsBase,a6
+	jsr	___gadtools_ensure
 	jsr	-126(a6)
 	rts
 
@@ -144,7 +146,7 @@ _GT_EndRefresh:
 	xdef	_GT_FilterIMsg
 _GT_FilterIMsg:
 	movea.l	4(sp),a1
-	movea.l	_GadToolsBase,a6
+	jsr	___gadtools_ensure
 	jsr	-132(a6)
 	rts
 
@@ -154,7 +156,7 @@ _GT_FilterIMsg:
 	xdef	_GT_PostFilterIMsg
 _GT_PostFilterIMsg:
 	movea.l	4(sp),a1
-	movea.l	_GadToolsBase,a6
+	jsr	___gadtools_ensure
 	jsr	-138(a6)
 	rts
 
@@ -164,7 +166,7 @@ _GT_PostFilterIMsg:
 	xdef	_CreateContext
 _CreateContext:
 	movea.l	4(sp),a0
-	movea.l	_GadToolsBase,a6
+	jsr	___gadtools_ensure
 	jsr	-144(a6)
 	rts
 
@@ -179,7 +181,7 @@ _DrawBevelBoxA:
 	move.l	16(sp),d2
 	move.l	20(sp),d3
 	movea.l	24(sp),a1
-	movea.l	_GadToolsBase,a6
+	jsr	___gadtools_ensure
 	jsr	-150(a6)
 	rts
 
@@ -190,7 +192,7 @@ _DrawBevelBoxA:
 _GetVisualInfoA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	movea.l	_GadToolsBase,a6
+	jsr	___gadtools_ensure
 	jsr	-162(a6)
 	rts
 
@@ -200,7 +202,7 @@ _GetVisualInfoA:
 	xdef	_FreeVisualInfo
 _FreeVisualInfo:
 	movea.l	4(sp),a0
-	movea.l	_GadToolsBase,a6
+	jsr	___gadtools_ensure
 	jsr	-174(a6)
 	rts
 
@@ -213,7 +215,7 @@ _GT_GetGadgetAttrsA:
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
 	movea.l	16(sp),a3
-	movea.l	_GadToolsBase,a6
+	jsr	___gadtools_ensure
 	jsr	-216(a6)
 	rts
 

@@ -60,6 +60,7 @@ KW_FALSE    : 'false';
 KW_NULL     : 'null';
 KW_PANIC    : 'panic';
 KW_ASSERT   : 'assert';
+KW_CLOSURE  : 'closure';
 
 // Macro-like expressions (compile-time transformed)
 KW_MATCHES  : 'matches!';    // matches!(expr, pattern) -> bool

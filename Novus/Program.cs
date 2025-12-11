@@ -948,8 +948,15 @@ class Program
                 typeRegistry.RegisterModule(moduleIR.IrModule);
             }
 
+            // Collect all functions for the shared header (including closure functions)
+            var allFunctionsForHeader = mainIR.IrModule.Functions.ToList();
+            foreach (var moduleIR in allModulesIR.Values)
+            {
+                allFunctionsForHeader.AddRange(moduleIR.IrModule.Functions);
+            }
+
             // Generate shared types header
-            var sharedTypesHeader = CCodeGenerator.GenerateSharedTypesHeader(typeRegistry);
+            var sharedTypesHeader = CCodeGenerator.GenerateSharedTypesHeader(typeRegistry, allFunctionsForHeader);
 
             // Determine output directory - NEVER write to repo root
             // Use a dedicated build directory for intermediate files
@@ -1256,6 +1263,7 @@ class Program
             var runtimeDir = Path.Combine(compilerDir, "runtime");
             var runtimeFiles = new[]
             {
+                "runtime_alloc.c",     // Minimal: raw AllocMem/FreeMem wrappers (no deps)
                 "runtime_core.c",      // Core: memset, memcpy, strlen, error display
                 "runtime_errors.c",    // Assert, panic, bounds check, div check
                 "runtime_hwdetect.c",  // CPU, FPU, chipset detection
@@ -1302,7 +1310,7 @@ class Program
             if (!isLibrary && !isDevice)
             {
                 // Only executables need startup code and library initialization
-                var coreFiles = new[] { "novus_startup", "library_bases", "dos_init", "graphics_init", "diskfont_init", "debug_gfxbase" };
+                var coreFiles = new[] { "novus_startup", "library_bases", "dos_init", "graphics_init", "diskfont_init", "intuition_init", "gadtools_init", "debug_gfxbase" };
                 foreach (var coreFile in coreFiles)
                 {
                     var coreSource = Path.Combine(compilerDir, "stubs", $"{coreFile}.s");
@@ -1679,10 +1687,12 @@ ___stack:
             // Scan generated C files for DOS and Intuition library function calls
             // Note: DOS is NOT unconditionally included - only if actually used
             // Also scan stdlib C files to detect library dependencies from stdlib modules
+            // IMPORTANT: Skip runtime files - they're designed for DCE and will only pull in
+            // library deps when actually used. Scanning them would force all libraries.
             var allCFilesToScan = new List<string>(cFiles);
             allCFilesToScan.AddRange(stdlibCFiles);
 
-            foreach (var cFile in allCFilesToScan)
+            foreach (var cFile in allCFilesToScan.Where(f => !Path.GetFileName(f).StartsWith("runtime_")))
             {
                 var cCode = await File.ReadAllTextAsync(cFile);
 
@@ -1698,9 +1708,18 @@ ___stack:
                     Console.WriteLine($"  ✓ Detected DOS library usage in {Path.GetFileName(cFile)}");
                 }
 
-                // Check for Intuition library function calls (used by assert handler)
+                // Check for Intuition library function calls
                 if (cCode.Contains("EasyRequest") ||
-                    cCode.Contains("__novus_assert_failed"))
+                    cCode.Contains("__novus_assert_failed") ||
+                    cCode.Contains("OpenScreen(") ||
+                    cCode.Contains("OpenScreenTagList(") ||
+                    cCode.Contains("CloseScreen(") ||
+                    cCode.Contains("OpenWindow(") ||
+                    cCode.Contains("OpenWindowTagList(") ||
+                    cCode.Contains("CloseWindow(") ||
+                    cCode.Contains("DisplayAlert(") ||
+                    cCode.Contains("AutoRequest(") ||
+                    cCode.Contains("_IntuitionBase"))
                 {
                     requiredLibraries.Add("intuition");
                     Console.WriteLine($"  ✓ Detected Intuition library usage in {Path.GetFileName(cFile)}");

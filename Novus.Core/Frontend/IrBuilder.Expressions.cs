@@ -968,6 +968,43 @@ public partial class IrBuilder
             return null;
         }
 
+        // Check if this is a closure invocation
+        if (funcExpr.Type is IrClosureType closureType)
+        {
+            // Closure call - emit IrInvokeClosure
+            if (arguments.Count != closureType.ParameterTypes.Count)
+            {
+                var errorLocation = GetLocation(context);
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Closure expects {closureType.ParameterTypes.Count} arguments, got {arguments.Count}",
+                    errorLocation
+                );
+                return null;
+            }
+
+            // Semantic analyzer already validates argument types
+
+            returnType = closureType.ReturnType;
+            resultName = returnType is not IrVoidType ? $"%t{_tempCounter++}" : null;
+
+            var closureCall = new IrInvokeClosure(funcExpr, returnType, resultName);
+            closureCall.Location = GetLocation(context);
+            foreach (var arg in arguments)
+            {
+                closureCall.Arguments.Add(arg);
+            }
+
+            _currentBlock!.AddInstruction(closureCall);
+
+            if (resultName != null)
+            {
+                return new IrVariable(resultName, returnType);
+            }
+
+            return null;
+        }
+
         // Direct call - funcExpr should be an identifier
         if (funcExpr is not IrVariable funcVar)
         {
@@ -5220,5 +5257,257 @@ public partial class IrBuilder
 
         // Return a "never" value (the function diverges)
         return new IrNever();
+    }
+
+    // ============================================================================
+    // CLOSURE EXPRESSIONS
+    // ============================================================================
+
+    /// <summary>
+    /// Visit a closure expression: |x: i32, y: i32| -> i32 { x + y }
+    ///
+    /// This generates:
+    /// 1. A closure function (__closure_N) that takes an environment pointer as first parameter
+    /// 2. An environment struct (__closure_N_env) containing captured variables
+    /// 3. An IrCreateClosure instruction to allocate and initialize the closure
+    /// </summary>
+    public override object? VisitClosureExpr([NotNull] NovusParser.ClosureExprContext context)
+    {
+        var closureExpr = context.closureExpression();
+        return CompileClosureExpression(closureExpr);
+    }
+
+    /// <summary>
+    /// Compile a closure expression to IR
+    /// </summary>
+    private IrValue CompileClosureExpression(NovusParser.ClosureExpressionContext context)
+    {
+        var closureId = _closureCounter++;
+        var closureFuncName = $"__closure_{closureId}";
+        var envTypeName = $"__closure_{closureId}_env";
+
+        // Parse closure parameters
+        var closureParams = new List<(string Name, IrType Type, bool IsMutCapture, bool IsRefCapture)>();
+        var explicitMutCaptures = new HashSet<string>();
+        var explicitRefCaptures = new HashSet<string>();
+        var regularParams = new List<(string Name, IrType Type)>();
+
+        var paramListCtx = context.closureParameterList();
+        if (paramListCtx != null)
+        {
+            foreach (var paramCtx in paramListCtx.closureParameter())
+            {
+                if (paramCtx is NovusParser.MutableCaptureParamContext mutCapture)
+                {
+                    // |mut x| - explicit mutable capture
+                    var name = mutCapture.IDENTIFIER().GetText();
+                    explicitMutCaptures.Add(name);
+                }
+                else if (paramCtx is NovusParser.ReferenceCaptureParamContext refCapture)
+                {
+                    // |&x| - explicit reference capture
+                    var name = refCapture.IDENTIFIER().GetText();
+                    explicitRefCaptures.Add(name);
+                }
+                else if (paramCtx is NovusParser.TypedClosureParamContext typedParam)
+                {
+                    // |x: i32| - regular typed parameter (not a capture)
+                    var name = typedParam.IDENTIFIER().GetText();
+                    var paramType = ParseType(typedParam.type());
+                    regularParams.Add((name, paramType));
+                }
+            }
+        }
+
+        // Get current function parameters for capture analysis
+        var currentFunctionParams = _currentFunction?.Parameters.Select(p => p.Name) ?? Enumerable.Empty<string>();
+
+        // Analyze captures - find free variables in the closure body
+        // Pass IrBuilder's _localVariables which contains all in-scope local variables
+        var analyzer = new ClosureAnalyzer(_localVariables, currentFunctionParams);
+
+        // Include explicit mut/ref captures as closure parameter names (they're not regular params)
+        var closureParamNames = regularParams.Select(p => p.Name).ToList();
+
+        var captureInfo = analyzer.Analyze(
+            context.block(),
+            closureParamNames,
+            explicitMutCaptures,
+            explicitRefCaptures);
+
+        // Parse return type (or default to void)
+        IrType returnType = IrVoidType.Instance;
+        if (context.type() != null)
+        {
+            returnType = ParseType(context.type());
+        }
+
+        // Create parameter types for the closure type (visible parameters only)
+        var paramTypes = regularParams.Select(p => p.Type).ToList();
+
+        // Generate environment struct if there are captures
+        IrStructType? envType = null;
+        if (!captureInfo.IsStateless)
+        {
+            envType = captureInfo.GenerateEnvironmentType(closureId.ToString());
+            _module.AddStruct(envType);
+            _symbols.RegisterStruct(envType.StructName, envType);
+        }
+
+        // Create the closure type
+        var closureType = _typeInterner.GetClosureType(paramTypes, returnType, envType);
+
+        // Generate the closure function
+        GenerateClosureFunction(closureFuncName, regularParams, returnType, captureInfo, envType, context.block());
+
+        // Emit IrCreateClosure instruction
+        var resultName = $"%t{_tempCounter++}";
+        var createClosure = new IrCreateClosure(resultName, closureType, closureFuncName);
+
+        // Add captured values
+        foreach (var capture in captureInfo.Captures)
+        {
+            // Get the value to capture
+            IrValue captureValue;
+            if (_localVariables.ContainsKey(capture.Name))
+            {
+                captureValue = new IrVariable(capture.Name, capture.Type);
+            }
+            else if (_currentFunction?.Parameters.Any(p => p.Name == capture.Name) == true)
+            {
+                captureValue = new IrVariable(capture.Name, capture.Type);
+            }
+            else
+            {
+                // Unknown capture - this shouldn't happen if analyzer works correctly
+                var errorLocation = GetLocation(context);
+                _diagnostics.ReportError(
+                    ErrorCodes.VariableNotFound,
+                    $"Unknown capture variable: {capture.Name}",
+                    errorLocation);
+                captureValue = new IrVariable(capture.Name, IrIntType.I32);
+            }
+
+            createClosure.CapturedValues.Add((capture.Name, captureValue, capture.Mode));
+        }
+
+        Emit(createClosure);
+
+        return new IrVariable(resultName, closureType);
+    }
+
+    /// <summary>
+    /// Generate the closure function that will be called when the closure is invoked.
+    /// This function takes an environment pointer as its first parameter.
+    /// </summary>
+    private void GenerateClosureFunction(
+        string funcName,
+        List<(string Name, IrType Type)> parameters,
+        IrType returnType,
+        CaptureInfo captureInfo,
+        IrStructType? envType,
+        NovusParser.BlockContext body)
+    {
+        // Save current function state
+        var savedFunction = _currentFunction;
+        var savedBlock = _currentBlock;
+        var savedLocalVariables = new Dictionary<string, IrLocalVariable>(_localVariables);
+
+        _localVariables.Clear();
+
+        // Create the closure function
+        var closureFunc = new IrFunction(funcName, returnType);
+
+        // Add environment pointer parameter (first, hidden parameter)
+        if (envType != null)
+        {
+            var envPtrType = _typeInterner.GetPointerType(envType);
+            closureFunc.Parameters.Add(new IrParameter("__env", envPtrType));
+        }
+
+        // Add visible parameters
+        foreach (var (name, type) in parameters)
+        {
+            closureFunc.Parameters.Add(new IrParameter(name, type));
+            // Register as local variable
+            var localVar = new IrLocalVariable(name, type, false);
+            closureFunc.LocalVariables.Add(localVar);
+            _localVariables[name] = localVar;
+        }
+
+        _currentFunction = closureFunc;
+        _module.AddFunction(closureFunc);
+
+        // Create entry block
+        var entryBlock = closureFunc.CreateBasicBlock("entry");
+        _currentBlock = entryBlock;
+
+        // Load captured variables from environment
+        if (envType != null && captureInfo.Captures.Count > 0)
+        {
+            int fieldOffset = 4; // Skip refcount
+            foreach (var capture in captureInfo.Captures)
+            {
+                // Determine the actual type stored in the environment
+                var storedType = capture.Mode == CaptureMode.ByValue
+                    ? capture.Type
+                    : _typeInterner.GetPointerType(capture.Type);
+
+                // Register as local variable so closure body can access it
+                // For mutable captures, we'll emit loads/stores through the pointer
+                var localVar = new IrLocalVariable(capture.Name, capture.Type, capture.Mode == CaptureMode.Mutable);
+                closureFunc.LocalVariables.Add(localVar);
+                _localVariables[capture.Name] = localVar;
+
+                // Emit IrLoadCapture to load the captured value
+                var loadCapture = new IrLoadCapture(
+                    capture.Name,
+                    capture.Name,
+                    capture.Type,
+                    fieldOffset,
+                    capture.Mode);
+                Emit(loadCapture);
+
+                // Advance offset (mutable/reference captures store pointers)
+                fieldOffset += storedType.SizeInBytes;
+                // Align to word boundary
+                if (fieldOffset % 2 != 0)
+                    fieldOffset++;
+            }
+        }
+
+        // Visit the closure body and capture the last expression value
+        var bodyResult = Visit(body);
+
+        // Ensure we have a return if the function doesn't naturally end with one
+        if (_currentBlock != null && !CurrentBlockHasTerminator())
+        {
+            if (returnType is IrVoidType)
+            {
+                Emit(new IrReturn(null));
+            }
+            else if (bodyResult is IrValue returnValue)
+            {
+                // For non-void closures, return the last expression value (implicit return)
+                Emit(new IrReturn(returnValue));
+            }
+            else
+            {
+                // Missing return value for non-void closure - emit a warning or error
+                var errorLocation = GetLocation(body);
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    "Closure body must end with an expression for non-void return type",
+                    errorLocation);
+            }
+        }
+
+        // Restore state
+        _localVariables.Clear();
+        foreach (var kv in savedLocalVariables)
+            _localVariables[kv.Key] = kv.Value;
+
+        _currentFunction = savedFunction;
+        _currentBlock = savedBlock;
     }
 }

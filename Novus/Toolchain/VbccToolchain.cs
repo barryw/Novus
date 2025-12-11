@@ -931,7 +931,7 @@ public class VbccToolchain
         {
             ["dos"] = new[] { "_Output", "_Input", "_Error", "_Write", "_Read", "_Printf", "_Open", "_Close", "_CurrentDir", "_CreateDir", "_DeleteFile", "_Execute", "_Delay", "_IoErr", "_Seek", "_Rename", "_Lock", "_UnLock" },
             ["exec"] = new[] { "_AllocMem", "_FreeMem", "_ExecAllocMem", "_ExecFreeMem", "_OpenLibrary", "_CloseLibrary", "_FindTask", "_Wait", "_Signal", "_AllocSignal", "_FreeSignal" },
-            ["intuition"] = new[] { "_OpenWindow", "_CloseWindow", "_OpenScreen", "_CloseScreen", "_DisplayAlert", "_AutoRequest" },
+            ["intuition"] = new[] { "_OpenWindow", "_CloseWindow", "_OpenScreen", "_CloseScreen", "_OpenWindowTagList", "_OpenScreenTagList", "_DisplayAlert", "_AutoRequest" },
             ["graphics"] = new[] { "_LoadRGB4", "_SetRast", "_Move", "_Draw", "_Text", "_OpenFont", "_CloseFont", "_SetAPen", "_SetBPen" },
             ["diskfont"] = new[] { "_OpenDiskFont", "_AvailFonts" },
             ["icon"] = new[] { "_GetDiskObject", "_PutDiskObject", "_FreeDiskObject" },
