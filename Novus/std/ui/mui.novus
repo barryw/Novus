@@ -42,6 +42,36 @@ extern fn MUI_RequestA(app: *u8, window: *u8, flags: u32, title: *u8, gadgets: *
 extern fn DoMethodA(object: *u8, message: *u32) -> u32
 
 // ============================================================================
+// Common Menu IDs - Standard IDs for common menu items
+// ============================================================================
+// These follow a convention: File menu 100-199, Edit menu 200-299, Help menu 900-999
+
+// File/Project menu
+pub const MENU_NEW: u32 = 100
+pub const MENU_OPEN: u32 = 101
+pub const MENU_SAVE: u32 = 102
+pub const MENU_SAVE_AS: u32 = 103
+pub const MENU_CLOSE: u32 = 104
+pub const MENU_QUIT: u32 = 110
+
+// Edit menu
+pub const MENU_CUT: u32 = 200
+pub const MENU_COPY: u32 = 201
+pub const MENU_PASTE: u32 = 202
+pub const MENU_UNDO: u32 = 203
+pub const MENU_REDO: u32 = 204
+pub const MENU_SELECT_ALL: u32 = 205
+pub const MENU_CLEAR: u32 = 206
+
+// Settings menu
+pub const MENU_PREFS: u32 = 300
+pub const MENU_MUI_PREFS: u32 = 301
+
+// Help menu
+pub const MENU_ABOUT: u32 = 900
+pub const MENU_HELP: u32 = 901
+
+// ============================================================================
 // Helper: Tag Builder
 // ============================================================================
 // Simple tag list builder that accumulates tags
@@ -171,26 +201,31 @@ impl MUIAppBuilder {
     }
 
     /// Set application author
+    #[chain]
     pub fn author(&var self, author: Str) {
         self.author = self.alloc_label(author)
     }
 
     /// Set application description
+    #[chain]
     pub fn description(&var self, desc: Str) {
         self.description = self.alloc_label(desc)
     }
 
     /// Set application version string
+    #[chain]
     pub fn version(&var self, version: Str) {
         self.version = self.alloc_label(version)
     }
 
     /// Set application base name (for prefs files)
+    #[chain]
     pub fn base(&var self, base: Str) {
         self.base = self.alloc_label(base)
     }
 
     /// Set the application's menustrip (built from MenuBuilder)
+    #[chain]
     pub fn menustrip(&var self, strip: *u8) {
         self.menustrip_obj = strip
     }
@@ -414,18 +449,27 @@ impl MUIWindowBuilder {
     }
 
     /// Set window ID for state saving
+    #[chain]
     pub fn id(&var self, id: u32) {
         self.id = id
     }
 
     /// Enable/disable close gadget
+    #[chain]
     pub fn close_gadget(&var self, enable: bool) {
         self.close_gadget = enable
     }
 
     /// Enable/disable size gadget
+    #[chain]
     pub fn size_gadget(&var self, enable: bool) {
         self.size_gadget = enable
+    }
+
+    /// Set the root group directly
+    #[chain]
+    pub fn root(&var self, group: *u8) {
+        self.root_group = group
     }
 
     /// Create a vertical group as the root
@@ -436,11 +480,6 @@ impl MUIWindowBuilder {
     /// Create a horizontal group as the root
     pub fn hgroup(&var self) -> MUIGroupBuilder {
         return MUIGroupBuilder::new(self.app_builder, true)
-    }
-
-    /// Set the root group directly
-    pub fn root(&var self, group: *u8) {
-        self.root_group = group
     }
 
     /// Build the window and add it to the application
@@ -515,11 +554,13 @@ impl MUIGroupBuilder {
     }
 
     /// Set frame style
+    #[chain]
     pub fn frame(&var self, frame_type: i32) {
         self.frame = frame_type
     }
 
     /// Set frame title
+    #[chain]
     pub fn frame_title(&var self, title: Str) {
         unsafe {
             self.frame_title = (*self.app_builder).alloc_label(title)
@@ -527,16 +568,19 @@ impl MUIGroupBuilder {
     }
 
     /// Make all children same size
+    #[chain]
     pub fn same_size(&var self) {
         self.same_size = true
     }
 
     /// Set spacing between children
+    #[chain]
     pub fn spacing(&var self, spacing: i32) {
         self.spacing = spacing
     }
 
     /// Add a child object
+    #[chain]
     pub fn child(&var self, obj: *u8) {
         unsafe {
             if self.child_count >= self.child_capacity {
@@ -719,6 +763,7 @@ impl MUIGroupBuilder {
     }
 
     /// Add horizontal space
+    #[chain]
     pub fn hspace(&var self) {
         unsafe {
             var tags = TagBuilder::new()
@@ -730,6 +775,7 @@ impl MUIGroupBuilder {
     }
 
     /// Add vertical space
+    #[chain]
     pub fn vspace(&var self) {
         unsafe {
             var tags = TagBuilder::new()
@@ -741,6 +787,7 @@ impl MUIGroupBuilder {
     }
 
     /// Add a horizontal bar separator
+    #[chain]
     pub fn hbar(&var self) {
         unsafe {
             var tags = TagBuilder::new()
@@ -753,6 +800,7 @@ impl MUIGroupBuilder {
     }
 
     /// Add a vertical bar separator
+    #[chain]
     pub fn vbar(&var self) {
         unsafe {
             var tags = TagBuilder::new()
@@ -1214,7 +1262,8 @@ impl MenuItemBuilder {
         }
     }
 
-    /// Add a regular menu item
+    /// Add a regular menu item (chainable)
+    #[chain]
     pub fn item(&var self, title: Str, shortcut: Str, id: u32) {
         unsafe {
             let title_ptr = self.alloc_label(title)
@@ -1237,7 +1286,8 @@ impl MenuItemBuilder {
         }
     }
 
-    /// Add a checkable menu item
+    /// Add a checkable menu item (chainable)
+    #[chain]
     pub fn checkitem(&var self, title: Str, shortcut: Str, id: u32, checked: bool) {
         unsafe {
             let title_ptr = self.alloc_label(title)
@@ -1264,7 +1314,8 @@ impl MenuItemBuilder {
         }
     }
 
-    /// Add a separator bar
+    /// Add a separator bar (chainable)
+    #[chain]
     pub fn separator(&var self) {
         unsafe {
             // MUI uses NM_BARLABEL (~0) for separators, but in object form
@@ -1452,18 +1503,18 @@ impl MUITabsBuilder {
     }
 
     /// Set whether to draw a frame around the tabs
+    #[chain]
     pub fn frame(&var self, enable: bool) {
         self.frame = enable
     }
 
     /// Add a tab page with a title and content group
+    #[chain]
     pub fn add_tab(&var self, title: Str, content: *u8) {
         unsafe {
-            if self.title_count >= self.title_capacity {
-                return  // Capacity exceeded
-            }
-            if content == (*u8)0 {
-                return  // No content
+            // Skip if at capacity or null content
+            if self.title_count >= self.title_capacity || content == (*u8)0 {
+                return self
             }
 
             // Allocate title string

@@ -1725,6 +1725,53 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             }
         }
 
+        // Handle #[chain] attribute - makes method return &var Self and adds implicit return self
+        if (attributes != null && attributes.Has(KnownAttributes.Chain))
+        {
+            // Validate that the method has &var self parameter
+            bool hasVarSelf = false;
+            if (context.parameterList()?.selfParameter() != null)
+            {
+                var selfParam = context.parameterList().selfParameter();
+                hasVarSelf = selfParam.GetText().StartsWith("&var");
+            }
+
+            if (!hasVarSelf)
+            {
+                _diagnostics.ReportError(
+                    "E0098",
+                    $"#[chain] attribute requires method to have '&var self' parameter",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "#[chain] automatically adds 'return self' for method chaining",
+                        "change the self parameter to '&var self' or remove the #[chain] attribute"
+                    }
+                );
+            }
+            else if (returnType is not IrVoidType)
+            {
+                _diagnostics.ReportError(
+                    "E0098",
+                    $"#[chain] attribute requires method to have no explicit return type",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "#[chain] automatically sets the return type to '&var Self'",
+                        "remove the explicit return type or remove the #[chain] attribute"
+                    }
+                );
+            }
+            else
+            {
+                // Set return type to pointer to the impl type (same as &var self type)
+                if (parameters.Count > 0 && parameters[0].Name == "self")
+                {
+                    returnType = parameters[0].Type;
+                }
+            }
+        }
+
         _functions[mangledName] = new FunctionSymbol(mangledName, returnType, parameters, location, false, genericParams.Count > 0 ? genericParams : null, attributes, hasVariadic);
     }
 
@@ -2419,7 +2466,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         bool allPathsReturn = AnalyzeBlockReturns(context.block());
 
         // Check if function with non-void return type has all paths returning
-        if (_currentFunction.ReturnType is not IrVoidType && !allPathsReturn)
+        // Skip this check for #[chain] methods - they get implicit return self
+        bool isChainMethod = _currentFunction.Attributes?.Has(KnownAttributes.Chain) ?? false;
+        if (_currentFunction.ReturnType is not IrVoidType && !allPathsReturn && !isChainMethod)
         {
             var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
             _diagnostics.ReportError(

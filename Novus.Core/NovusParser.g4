@@ -380,7 +380,7 @@ expression
     : primaryExpression                                     # PrimaryExpr
     | expression COLONCOLON genericTypeArgs                # TurboFishExpr
     | expression COLONCOLON IDENTIFIER                     # PathExpr
-    | expression DOT IDENTIFIER                            # MemberAccessExpr
+    | expression NEWLINE* DOT IDENTIFIER                   # MemberAccessExpr
     | expression LPAREN argumentList? RPAREN               # CallExpr
     | expression LBRACKET expression RBRACKET              # IndexExpr
     | expression PLUSPLUS                                  # PostIncrementExpr

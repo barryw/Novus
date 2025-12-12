@@ -352,12 +352,14 @@ class Program
             var analyzer = new SemanticAnalyzer(inputFile, source, stdLibPath);
             var analysisSucceeded = analyzer.Analyze(compilationUnit);
 
+            // Always print diagnostics (warnings and errors)
+            if (analyzer.Diagnostics.HasErrors || analyzer.Diagnostics.HasWarnings)
+            {
+                Console.WriteLine(analyzer.Diagnostics.FormatDiagnostics());
+            }
+
             if (!analysisSucceeded)
             {
-                if (analyzer.Diagnostics.HasErrors || analyzer.Diagnostics.HasWarnings)
-                {
-                    Console.WriteLine(analyzer.Diagnostics.FormatDiagnostics());
-                }
                 return null;
             }
 
@@ -512,12 +514,14 @@ class Program
             var analyzer = new SemanticAnalyzer(inputFile, source, stdLibPath);
             var analysisSucceeded = analyzer.Analyze(compilationUnit);
 
+            // Always print diagnostics (warnings and errors)
+            if (analyzer.Diagnostics.HasErrors || analyzer.Diagnostics.HasWarnings)
+            {
+                Console.WriteLine(analyzer.Diagnostics.FormatDiagnostics());
+            }
+
             if (!analysisSucceeded)
             {
-                if (analyzer.Diagnostics.HasErrors || analyzer.Diagnostics.HasWarnings)
-                {
-                    Console.WriteLine(analyzer.Diagnostics.FormatDiagnostics());
-                }
                 return null;
             }
 

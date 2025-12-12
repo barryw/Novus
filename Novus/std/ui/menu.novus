@@ -461,6 +461,7 @@ impl MenuHandle {
     }
 
     /// Add a separator bar to this menu
+    #[chain]
     pub fn add_separator(&var self) {
         unsafe {
             // NULL label = separator

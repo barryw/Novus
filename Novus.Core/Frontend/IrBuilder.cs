@@ -639,7 +639,25 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
     {
         if (!CurrentBlockHasTerminator())
         {
-            if (_currentFunction!.ReturnType is not IrVoidType && lastValue != null)
+            // Check for #[chain] attribute - needs implicit return self
+            bool isChainMethod = _currentFunction!.Attributes?.Has(SemanticAnalysis.KnownAttributes.Chain) ?? false;
+
+            if (isChainMethod)
+            {
+                // #[chain] method: return self (reference to the self parameter)
+                var selfParam = _currentFunction.Parameters.FirstOrDefault(p => p.Name == "self");
+                if (selfParam != null)
+                {
+                    var selfValue = new IrVariable("self", selfParam.Type);
+                    _currentBlock!.AddInstruction(new IrReturn(selfValue));
+                }
+                else
+                {
+                    // Fallback to void return if no self parameter (shouldn't happen with semantic validation)
+                    _currentBlock!.AddInstruction(new IrReturn(null));
+                }
+            }
+            else if (_currentFunction!.ReturnType is not IrVoidType && lastValue != null)
             {
                 // Non-void function with expression: return the value
                 _currentBlock!.AddInstruction(new IrReturn(lastValue));
@@ -1006,6 +1024,10 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
                 var function = new IrFunction(mangledName, returnType, visibility, isExtern);
                 function.Location = GetLocation(funcDecl);  // Store source location for debug info
 
+                // Parse and store function attributes (for #[chain], @test, @export, etc.)
+                var methodAttributes = ProcessAndFilterModuleAttributes(funcDecl.attribute());
+                function.Attributes = methodAttributes;
+
                 // Parse parameters (including self)
                 if (funcDecl.parameterList() != null)
                 {
@@ -1016,6 +1038,18 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
 
                     // Add regular and variadic parameters
                     ParseFunctionParameters(funcDecl, function);
+                }
+
+                // Handle #[chain] attribute - set return type to self's pointer type
+                // This must be done AFTER parsing parameters so we have the self type
+                if (methodAttributes.Has(SemanticAnalysis.KnownAttributes.Chain) && returnType is IrVoidType)
+                {
+                    // The self parameter should be a pointer to the implementing type
+                    var selfParam = function.Parameters.FirstOrDefault(p => p.Name == "self");
+                    if (selfParam != null)
+                    {
+                        function.ReturnType = selfParam.Type;
+                    }
                 }
 
                 _module.AddFunction(function);

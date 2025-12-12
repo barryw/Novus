@@ -276,12 +276,26 @@ public partial class IrBuilder
                         var returnType = ParseReturnType(funcDecl.type());
                         var function = new IrFunction(mangledName, returnType, Visibility.Private, false);
 
+                        // Parse and store function attributes (for #[chain], @test, @export, etc.)
+                        var methodAttributes = ProcessAndFilterModuleAttributes(funcDecl.attribute());
+                        function.Attributes = methodAttributes;
+
                         // Parse parameters
                         if (funcDecl.parameterList() != null)
                         {
                             var paramList = funcDecl.parameterList();
                             ParseSelfParameter(paramList.selfParameter(), function, typeName!);
                             ParseFunctionParameters(funcDecl, function);
+                        }
+
+                        // Handle #[chain] attribute - set return type to self's pointer type
+                        if (methodAttributes.Has(SemanticAnalysis.KnownAttributes.Chain) && returnType is IrVoidType)
+                        {
+                            var selfParam = function.Parameters.FirstOrDefault(p => p.Name == "self");
+                            if (selfParam != null)
+                            {
+                                function.ReturnType = selfParam.Type;
+                            }
                         }
 
                         _module.AddFunction(function);
@@ -451,12 +465,26 @@ public partial class IrBuilder
                         var returnType = ParseReturnType(funcDecl.type());
                         var function = new IrFunction(mangledName, returnType, Visibility.Private, false);
 
+                        // Parse and store function attributes (for #[chain], @test, @export, etc.)
+                        var methodAttributes = ProcessAndFilterModuleAttributes(funcDecl.attribute());
+                        function.Attributes = methodAttributes;
+
                         // Parse parameters
                         if (funcDecl.parameterList() != null)
                         {
                             var paramList = funcDecl.parameterList();
                             ParseSelfParameter(paramList.selfParameter(), function, typeName!);
                             ParseFunctionParameters(funcDecl, function);
+                        }
+
+                        // Handle #[chain] attribute - set return type to self's pointer type
+                        if (methodAttributes.Has(SemanticAnalysis.KnownAttributes.Chain) && returnType is IrVoidType)
+                        {
+                            var selfParam = function.Parameters.FirstOrDefault(p => p.Name == "self");
+                            if (selfParam != null)
+                            {
+                                function.ReturnType = selfParam.Type;
+                            }
                         }
 
                         _module.AddFunction(function);
@@ -677,6 +705,10 @@ public partial class IrBuilder
                 var mangledName = GenerateMethodMangledName(typeName!, methodName, isTraitImpl, traitName, traitTypeArgs);
                 var function = new IrFunction(mangledName, returnType, Visibility.Private, false);
 
+                // Parse and store function attributes (for #[chain], @test, @export, etc.)
+                var methodAttributes = ProcessAndFilterModuleAttributes(funcDecl.attribute());
+                function.Attributes = methodAttributes;
+
                 // Parse parameters (including self)
                 if (funcDecl.parameterList() != null)
                 {
@@ -687,6 +719,16 @@ public partial class IrBuilder
 
                     // Add regular and variadic parameters
                     ParseFunctionParameters(funcDecl, function);
+                }
+
+                // Handle #[chain] attribute - set return type to self's pointer type
+                if (methodAttributes.Has(SemanticAnalysis.KnownAttributes.Chain) && returnType is IrVoidType)
+                {
+                    var selfParam = function.Parameters.FirstOrDefault(p => p.Name == "self");
+                    if (selfParam != null)
+                    {
+                        function.ReturnType = selfParam.Type;
+                    }
                 }
 
                 _module.AddFunction(function);
@@ -938,6 +980,10 @@ public partial class IrBuilder
         );
         var function = new IrFunction(mangledMethodName, returnType!, Visibility.Private, false);
 
+        // Parse and store function attributes (for #[chain], @test, @export, etc.)
+        var methodAttributes = ProcessAndFilterModuleAttributes(funcDecl.attribute());
+        function.Attributes = methodAttributes;
+
         // Parse parameters with substitutions
         if (funcDecl.parameterList() != null)
         {
@@ -960,6 +1006,16 @@ public partial class IrBuilder
 
             // Add variadic parameter if present
             ParseVariadicParameter(paramList, function);
+        }
+
+        // Handle #[chain] attribute - set return type to self's pointer type
+        if (methodAttributes.Has(SemanticAnalysis.KnownAttributes.Chain) && returnType is IrVoidType)
+        {
+            var selfParam = function.Parameters.FirstOrDefault(p => p.Name == "self");
+            if (selfParam != null)
+            {
+                function.ReturnType = selfParam.Type;
+            }
         }
 
         _module.AddFunction(function);
@@ -1110,6 +1166,10 @@ public partial class IrBuilder
 
         var function = new IrFunction(mangledName, returnType, Visibility.Private, false);
 
+        // Parse and store function attributes (for #[chain], @test, @export, etc.)
+        var methodAttributes = ProcessAndFilterModuleAttributes(funcDecl.attribute());
+        function.Attributes = methodAttributes;
+
         // Parse parameters with substitutions
         if (funcDecl.parameterList() != null)
         {
@@ -1132,6 +1192,16 @@ public partial class IrBuilder
 
             // Add variadic parameter if present
             ParseVariadicParameter(paramList, function);
+        }
+
+        // Handle #[chain] attribute - set return type to self's pointer type
+        if (methodAttributes.Has(SemanticAnalysis.KnownAttributes.Chain) && returnType is IrVoidType)
+        {
+            var selfParam = function.Parameters.FirstOrDefault(p => p.Name == "self");
+            if (selfParam != null)
+            {
+                function.ReturnType = selfParam.Type;
+            }
         }
 
         // Check if function already exists in module (could be from import or previous instantiation)

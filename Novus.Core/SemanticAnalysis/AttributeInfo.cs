@@ -236,6 +236,10 @@ public static class KnownAttributes
     // Usage: #[derive(Eq, Hash)] or #[derive(Eq)] or #[derive(Hash)]
     public const string Derive = "derive";
 
+    // Method chaining attribute - makes method return &var Self and adds implicit return self
+    // Usage: #[chain] on methods with &var self parameter
+    public const string Chain = "chain";
+
     /// <summary>
     /// All known attribute names for validation
     /// </summary>
@@ -256,7 +260,8 @@ public static class KnownAttributes
         StackSize, Cpu,
         Interrupt, InterruptSafe,
         Atomic, NoInterrupts,
-        Derive
+        Derive,
+        Chain
     };
 
     /// <summary>
