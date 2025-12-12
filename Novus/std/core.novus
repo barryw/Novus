@@ -1037,3 +1037,399 @@ impl Ord for LibraryVersion {
         return (i32)self.patch - (i32)other.patch
     }
 }
+
+// ============================================================================
+// Default - Provides a default value for a type
+// ============================================================================
+
+/// Default trait for types that have a sensible default value
+///
+/// This is used for:
+/// - Initializing collections with default values
+/// - Providing fallback values in generic code
+/// - Struct field defaults with `..Default::default()` pattern
+///
+/// Example:
+/// ```novus
+/// impl Default for MyConfig {
+///     fn default() -> MyConfig {
+///         return MyConfig { timeout: 1000, retries: 3 }
+///     }
+/// }
+///
+/// let config = MyConfig::default()
+/// ```
+pub trait Default {
+    fn default() -> Self
+}
+
+// Default implementations for primitive types
+impl Default for u8 {
+    fn default() -> u8 { return 0u8 }
+}
+
+impl Default for u16 {
+    fn default() -> u16 { return 0u16 }
+}
+
+impl Default for u32 {
+    fn default() -> u32 { return 0u32 }
+}
+
+impl Default for i8 {
+    fn default() -> i8 { return 0i8 }
+}
+
+impl Default for i16 {
+    fn default() -> i16 { return 0i16 }
+}
+
+impl Default for i32 {
+    fn default() -> i32 { return 0i32 }
+}
+
+impl Default for bool {
+    fn default() -> bool { return false }
+}
+
+// Default for Option<T> is None
+impl<T> Default for Option<T> {
+    fn default() -> Option<T> { return Option::None }
+}
+
+// ============================================================================
+// Into<T> - Consuming type conversion (complement to From<T>)
+// ============================================================================
+
+/// Into trait for consuming type conversions
+///
+/// This is the complement to `From<T>`. If you implement `From<T>`,
+/// you get `Into<U>` for free via the blanket implementation.
+///
+/// Prefer implementing `From<T>` over `Into<T>` because:
+/// - `From<T>` is more flexible (can be used with type inference)
+/// - The blanket impl provides `Into` automatically
+///
+/// Example:
+/// ```novus
+/// // If you have: impl From<Str> for String
+/// // You automatically get: impl Into<String> for Str
+///
+/// fn takes_string(s: String) { ... }
+/// let my_str: Str = "hello"
+/// takes_string(my_str.into())  // Converts via Into
+/// ```
+pub trait Into<T> {
+    fn into(consuming self) -> T
+}
+
+// ============================================================================
+// Zero and One - Numeric identity elements
+// ============================================================================
+
+/// Zero trait for types with an additive identity (0)
+///
+/// Used in generic numeric algorithms like sum, accumulation, etc.
+///
+/// Example:
+/// ```novus
+/// fn sum<T: Zero + Add>(values: &[T]) -> T {
+///     var total = T::zero()
+///     for v in values { total = total + v }
+///     return total
+/// }
+/// ```
+pub trait Zero {
+    fn zero() -> Self
+    fn is_zero(&self) -> bool
+}
+
+/// One trait for types with a multiplicative identity (1)
+///
+/// Used in generic numeric algorithms like product, counting, etc.
+///
+/// Example:
+/// ```novus
+/// fn product<T: One + Mul>(values: &[T]) -> T {
+///     var total = T::one()
+///     for v in values { total = total * v }
+///     return total
+/// }
+/// ```
+pub trait One {
+    fn one() -> Self
+}
+
+// Zero implementations for numeric types
+impl Zero for u8 {
+    fn zero() -> u8 { return 0u8 }
+    fn is_zero(&self) -> bool { return *self == 0u8 }
+}
+
+impl Zero for u16 {
+    fn zero() -> u16 { return 0u16 }
+    fn is_zero(&self) -> bool { return *self == 0u16 }
+}
+
+impl Zero for u32 {
+    fn zero() -> u32 { return 0u32 }
+    fn is_zero(&self) -> bool { return *self == 0u32 }
+}
+
+impl Zero for i8 {
+    fn zero() -> i8 { return 0i8 }
+    fn is_zero(&self) -> bool { return *self == 0i8 }
+}
+
+impl Zero for i16 {
+    fn zero() -> i16 { return 0i16 }
+    fn is_zero(&self) -> bool { return *self == 0i16 }
+}
+
+impl Zero for i32 {
+    fn zero() -> i32 { return 0i32 }
+    fn is_zero(&self) -> bool { return *self == 0i32 }
+}
+
+// One implementations for numeric types
+impl One for u8 {
+    fn one() -> u8 { return 1u8 }
+}
+
+impl One for u16 {
+    fn one() -> u16 { return 1u16 }
+}
+
+impl One for u32 {
+    fn one() -> u32 { return 1u32 }
+}
+
+impl One for i8 {
+    fn one() -> i8 { return 1i8 }
+}
+
+impl One for i16 {
+    fn one() -> i16 { return 1i16 }
+}
+
+impl One for i32 {
+    fn one() -> i32 { return 1i32 }
+}
+
+// ============================================================================
+// Bounded - Min/max values for numeric types
+// ============================================================================
+
+/// Bounded trait for types with defined minimum and maximum values
+///
+/// Used for:
+/// - Overflow checking
+/// - Range validation
+/// - Generic clamping functions
+///
+/// Example:
+/// ```novus
+/// fn clamp<T: Ord + Bounded>(value: T, min: T, max: T) -> T {
+///     if value < min { return min }
+///     if value > max { return max }
+///     return value
+/// }
+/// ```
+pub trait Bounded {
+    fn min_value() -> Self
+    fn max_value() -> Self
+}
+
+// Bounded implementations for numeric types
+impl Bounded for u8 {
+    fn min_value() -> u8 { return 0u8 }
+    fn max_value() -> u8 { return 255u8 }
+}
+
+impl Bounded for u16 {
+    fn min_value() -> u16 { return 0u16 }
+    fn max_value() -> u16 { return 65535u16 }
+}
+
+impl Bounded for u32 {
+    fn min_value() -> u32 { return 0u32 }
+    fn max_value() -> u32 { return 4294967295u32 }
+}
+
+impl Bounded for i8 {
+    fn min_value() -> i8 { return -128i8 }
+    fn max_value() -> i8 { return 127i8 }
+}
+
+impl Bounded for i16 {
+    fn min_value() -> i16 { return -32768i16 }
+    fn max_value() -> i16 { return 32767i16 }
+}
+
+impl Bounded for i32 {
+    fn min_value() -> i32 { return -2147483648i32 }
+    fn max_value() -> i32 { return 2147483647i32 }
+}
+
+// ============================================================================
+// Extend<T> - Extend a collection with elements from an iterator
+// ============================================================================
+
+/// Extend trait for adding multiple elements to a collection
+///
+/// This provides a standardized way to add elements from any iterator
+/// to a collection.
+///
+/// Example:
+/// ```novus
+/// var vec1 = Vec::new()
+/// vec1.push(1)
+/// vec1.push(2)
+///
+/// var vec2 = Vec::new()
+/// vec2.push(3)
+/// vec2.push(4)
+///
+/// vec1.extend_from_ptr(&vec2.as_ptr(), vec2.len())  // vec1 is now [1, 2, 3, 4]
+/// ```
+pub trait Extend<T> {
+    /// Extend the collection with elements from the given pointer and count
+    /// Returns true if all elements were added successfully
+    fn extend_from_ptr(&var self, source: *T, count: u32) -> bool
+}
+
+// ============================================================================
+// FromIterator<T> - Build a collection from an iterator
+// ============================================================================
+
+/// FromIterator trait for building collections from an array/slice
+///
+/// This enables creating collections from existing arrays.
+///
+/// Example:
+/// ```novus
+/// // When implemented for Vec<T>:
+/// let numbers = Vec::<i32>::from_slice(&arr[0], arr.len())
+/// ```
+pub trait FromIterator<T> {
+    /// Create a collection from a pointer and count
+    /// Returns None if allocation fails
+    fn from_slice(ptr: *T, count: u32) -> Option<Self>
+}
+
+// ============================================================================
+// TryFrom<T> and TryInto<T> - Fallible type conversions
+// ============================================================================
+
+/// TryFrom trait for fallible type conversions
+///
+/// Use this when a conversion might fail (e.g., parsing strings,
+/// narrowing numeric conversions). The error type E is a trait parameter.
+///
+/// Example:
+/// ```novus
+/// impl TryFrom<Str, ParseError> for i32 {
+///     fn try_from(s: Str) -> Result<i32, ParseError> {
+///         return s.parse_i32()
+///     }
+/// }
+///
+/// let num: Result<i32, ParseError> = i32::try_from("42")
+/// ```
+pub trait TryFrom<T, E> {
+    /// Attempt to convert from T to Self
+    fn try_from(value: T) -> Result<Self, E>
+}
+
+/// TryInto trait for fallible consuming conversions
+///
+/// This is the consuming counterpart to TryFrom.
+/// The error type E is a trait parameter.
+///
+/// Example:
+/// ```novus
+/// let s: Str = "42"
+/// let num: Result<i32, ParseError> = s.try_into()
+/// ```
+pub trait TryInto<T, E> {
+    /// Attempt to convert self into T
+    fn try_into(consuming self) -> Result<T, E>
+}
+
+// ============================================================================
+// Error - Standard error trait
+// ============================================================================
+
+/// Error trait for standardized error handling
+///
+/// All error types in the stdlib should implement this trait to provide
+/// consistent error messages via C-style null-terminated strings.
+///
+/// Example:
+/// ```novus
+/// impl Error for DosError {
+///     fn message(&self) -> *u8 {
+///         match *self {
+///             DosError::NotFound => return "File not found",
+///             _ => return "Unknown error"
+///         }
+///     }
+/// }
+/// ```
+pub trait Error {
+    /// Get a C-style error message pointer (null-terminated)
+    fn message(&self) -> *u8
+}
+
+// ============================================================================
+// Fn, FnMut, FnOnce - Closure/function traits
+// ============================================================================
+
+/// FnOnce trait for callables that can be called at least once
+///
+/// This is the most general function trait. All closures and function
+/// pointers implement FnOnce. Closures that capture by move implement
+/// only FnOnce.
+///
+/// Example:
+/// ```novus
+/// fn call_once<F: FnOnce() -> i32>(f: F) -> i32 {
+///     return f()
+/// }
+/// ```
+pub trait FnOnce<Args, Output> {
+    /// Call the function, consuming it
+    fn call_once(consuming self, args: Args) -> Output
+}
+
+/// FnMut trait for callables that can be called multiple times with mutation
+///
+/// Closures that capture variables by mutable reference implement FnMut.
+/// Conceptually FnMut is a subtrait of FnOnce (any FnMut can be called once).
+///
+/// Example:
+/// ```novus
+/// fn call_mut<F: FnMut() -> i32>(f: &var F) -> i32 {
+///     return f()
+/// }
+/// ```
+pub trait FnMut<Args, Output> {
+    /// Call the function, potentially mutating captured state
+    fn call_mut(&var self, args: Args) -> Output
+}
+
+/// Fn trait for callables that can be called multiple times without mutation
+///
+/// Closures that capture only by shared reference implement Fn.
+/// Conceptually Fn is the most restrictive (any Fn can be used as FnMut or FnOnce).
+///
+/// Example:
+/// ```novus
+/// fn call_fn<F: Fn() -> i32>(f: &F) -> i32 {
+///     return f()
+/// }
+/// ```
+pub trait Fn<Args, Output> {
+    /// Call the function
+    fn call(&self, args: Args) -> Output
+}
