@@ -19,7 +19,7 @@
 //   "COUNT/N/A"                - Required number
 //   "FILES/M"                  - Multiple files
 
-from std::core import Option, Result, Drop, From
+from std::core import Option, Result, Drop, From, Error
 from std::strings::core import Str, String
 from std::collections::vec import Vec
 from std::error::errors import DosError, dos_last_error
@@ -70,6 +70,12 @@ impl ArgsError {
             ArgsError::AllocationFailed => return "Memory allocation failed",
             ArgsError::ArgNotFound => return "Argument not found in template",
         }
+    }
+}
+
+impl Error for ArgsError {
+    fn message(&self) -> *u8 {
+        return ArgsError::message(self)
     }
 }
 

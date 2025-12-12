@@ -33,6 +33,7 @@
 
 from std::core import Result, Option
 from std::error::errors import GraphicsError
+from std::core import Error
 from std::memory::amiga import MemHandle
 from std::ffi::amiga_structs import VSprite, GelsInfo, collTable, RastPort, ViewPort, Bob, AnimOb, AnimComp
 from std::ffi::graphics import InitGels, SortGList, DrawGList, DoCollision, WaitBlit, AddVSprite, RemVSprite, AddBob, RemIBob, SetCollision, AddAnimOb, Animate, GetGBuffers, FreeGBuffers, InitGMasks
@@ -57,10 +58,28 @@ pub enum GelError {
     GetGBuffersFailed,      // CHIP RAM exhausted for animation buffers
 }
 
-// Convert GelError to GraphicsError for unified error handling
 impl GelError {
+    pub fn message(&self) -> *u8 {
+        match *self {
+            GelError::OutOfMemory => return "Out of memory",
+            GelError::ChipRamExhausted => return "Chip RAM exhausted",
+            GelError::InvalidDimensions => return "Invalid GEL dimensions",
+            GelError::AlreadyActive => return "GEL already active",
+            GelError::NotActive => return "GEL not active",
+            GelError::InvalidCollisionType => return "Invalid collision type",
+            GelError::GelsNotInitialized => return "GELs system not initialized",
+            GelError::SentinelCreationFailed => return "Sentinel creation failed",
+            GelError::NoFramesProvided => return "No animation frames provided",
+            GelError::TooManyFrames => return "Too many animation frames",
+            GelError::InvalidSequence => return "Invalid animation sequence",
+            GelError::NotReady => return "Animation not ready",
+            GelError::GetGBuffersFailed => return "Failed to allocate GEL buffers",
+        }
+    }
+
+    // Convert GelError to GraphicsError for unified error handling
     pub fn to_graphics_error(&self) -> GraphicsError {
-        match self {
+        match *self {
             GelError::OutOfMemory => GraphicsError::BitMapAllocFailed,
             GelError::ChipRamExhausted => GraphicsError::BitMapAllocFailed,
             GelError::InvalidDimensions => GraphicsError::InvalidSpriteData,
@@ -75,6 +94,12 @@ impl GelError {
             GelError::NotReady => GraphicsError::SpriteNotAllocated,
             GelError::GetGBuffersFailed => GraphicsError::BitMapAllocFailed,
         }
+    }
+}
+
+impl Error for GelError {
+    fn message(&self) -> *u8 {
+        return GelError::message(self)
     }
 }
 

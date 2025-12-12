@@ -17,7 +17,7 @@
 //   }
 //   // Copper list automatically deactivated and freed when dropped
 
-from std::core import Option, Result, Drop
+from std::core import Option, Result, Drop, Error
 from std::error::errors import GraphicsError
 from std::ffi::exec import AllocVec, FreeVec, CopyMem
 from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR
@@ -41,6 +41,27 @@ pub enum CopperError {
     InvalidSpriteIndex,     // Sprite index out of range (must be 0-7)
     InvalidPlaneIndex,      // Bitplane index out of range (must be 0-7 for AGA, 0-5 for OCS/ECS)
     MisalignedPointer,      // Pointer must be word-aligned (even address)
+}
+
+impl CopperError {
+    pub fn message(&self) -> *u8 {
+        match *self {
+            CopperError::InvalidWaitPosition => return "Invalid wait position",
+            CopperError::BackwardsWait => return "Wait position before previous wait",
+            CopperError::DangerousRegister => return "Attempted write to dangerous register",
+            CopperError::AllocationFailed => return "Chip RAM allocation failed",
+            CopperError::ListAlreadyFinalized => return "Copper list already finalized",
+            CopperError::InvalidSpriteIndex => return "Sprite index out of range (0-7)",
+            CopperError::InvalidPlaneIndex => return "Bitplane index out of range",
+            CopperError::MisalignedPointer => return "Pointer must be word-aligned",
+        }
+    }
+}
+
+impl Error for CopperError {
+    fn message(&self) -> *u8 {
+        return CopperError::message(self)
+    }
 }
 
 /// Copper list builder - constructs copper lists with validation

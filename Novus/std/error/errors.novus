@@ -8,7 +8,7 @@
 // - From<T> conversions allow ergonomic ? operator across subsystems
 // - Raw error codes preserved for debugging
 
-from std::core import From, Option, Result
+from std::core import From, Option, Result, Error
 from std::ffi::dos import IoErr
 
 // ============================================================================
@@ -450,6 +450,40 @@ impl NovusError {
             NovusError::Intuition(err) => return err.message(),
             NovusError::Graphics(err) => return err.message(),
         }
+    }
+}
+
+// ============================================================================
+// Error Trait Implementations
+// ============================================================================
+
+impl Error for DosError {
+    fn message(&self) -> *u8 {
+        return DosError::message(self)
+    }
+}
+
+impl Error for ExecError {
+    fn message(&self) -> *u8 {
+        return ExecError::message(self)
+    }
+}
+
+impl Error for IntuitionError {
+    fn message(&self) -> *u8 {
+        return IntuitionError::message(self)
+    }
+}
+
+impl Error for GraphicsError {
+    fn message(&self) -> *u8 {
+        return GraphicsError::message(self)
+    }
+}
+
+impl Error for NovusError {
+    fn message(&self) -> *u8 {
+        return NovusError::message(self)
     }
 }
 

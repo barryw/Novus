@@ -4,7 +4,7 @@
 // Unified error types for all audio modules (paula, device, ptplayer).
 // Import this module to handle errors from any audio source consistently.
 
-from std::core import Result
+from std::core import Result, Error
 
 // ============================================================================
 // Unified Audio Error
@@ -112,6 +112,46 @@ pub enum AudioError {
 
     /// Failed to copy asset to chip RAM (cache not initialized or out of memory)
     ChipCacheError,
+}
+
+// ============================================================================
+// Error trait implementation
+// ============================================================================
+
+impl AudioError {
+    pub fn message(&self) -> *u8 {
+        match *self {
+            AudioError::InvalidChannel => return "Invalid channel (must be 0-3)",
+            AudioError::InvalidVolume => return "Invalid volume (must be 0-64)",
+            AudioError::InvalidPeriod => return "Invalid period (must be 124-65535)",
+            AudioError::InvalidSampleRate => return "Invalid sample rate",
+            AudioError::SampleNotChipRam => return "Sample not in chip RAM",
+            AudioError::SampleMisaligned => return "Sample not word-aligned",
+            AudioError::SampleTooLong => return "Sample exceeds 128KB",
+            AudioError::SampleTooShort => return "Sample too short",
+            AudioError::NullSampleData => return "Null sample data",
+            AudioError::AllocationFailed => return "Allocation failed",
+            AudioError::NoMsgPort => return "Failed to create message port",
+            AudioError::NoIORequest => return "Failed to create I/O request",
+            AudioError::DeviceOpenFailed => return "Failed to open audio.device",
+            AudioError::NoAllocation => return "No channel allocation",
+            AudioError::AllocFailed => return "Channel allocation failed",
+            AudioError::ChannelStolen => return "Channel stolen",
+            AudioError::DeviceIOError(_) => return "Audio device I/O error",
+            AudioError::ModInitFailed => return "MOD player init failed",
+            AudioError::CiaInstallFailed => return "CIA interrupt install failed",
+            AudioError::InvalidChannelMask => return "Invalid channel mask",
+            AudioError::InvalidSampleNumber => return "Invalid sample number",
+            AudioError::InvalidModuleData => return "Invalid module data",
+            AudioError::ChipCacheError => return "Chip cache error",
+        }
+    }
+}
+
+impl Error for AudioError {
+    fn message(&self) -> *u8 {
+        return AudioError::message(self)
+    }
 }
 
 // ============================================================================

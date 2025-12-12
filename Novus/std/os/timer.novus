@@ -4,7 +4,7 @@
 // High-level wrappers for timer.device
 // For low-level FFI access, use std::ffi::timer_device
 
-from std::core import Option, Result, Drop
+from std::core import Option, Result, Drop, Error
 from std::strings::core import Str
 from std::error::errors import ExecError
 from std::ffi::amiga_structs import timeval, timerequest, IORequest, MsgPort, Message, IOStdReq
@@ -26,6 +26,22 @@ pub enum TimerError {
     NoMemory,
     /// Timer command failed with error code
     CommandFailed(i8),
+}
+
+impl TimerError {
+    pub fn message(&self) -> *u8 {
+        match *self {
+            TimerError::OpenFailed => return "Failed to open timer.device",
+            TimerError::NoMemory => return "Out of memory",
+            TimerError::CommandFailed(_) => return "Timer command failed",
+        }
+    }
+}
+
+impl Error for TimerError {
+    fn message(&self) -> *u8 {
+        return TimerError::message(self)
+    }
 }
 
 // ============================================================================

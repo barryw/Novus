@@ -10,7 +10,7 @@
 //   BlitterOps::draw_line(&var bitmap, 0, 0, 319, 199, $FFFF)?
 //   BlitterOps::copy_masked(&src, &mask, 0, 0, &var dst, 100, 50, 32, 32)?
 
-from std::core import Option, Result, Drop
+from std::core import Option, Result, Drop, Error
 from std::ffi::exec import TypeOfMem
 from std::ffi::amiga_consts import MEMF_CHIP
 from std::ffi::amiga_structs import BitMap
@@ -145,6 +145,25 @@ pub enum BlitterError {
     DepthMismatch,
     /// Operation failed for unknown reason
     OperationFailed,
+}
+
+impl BlitterError {
+    pub fn message(&self) -> *u8 {
+        match *self {
+            BlitterError::NotChipRam => return "Pointer is not in chip RAM",
+            BlitterError::InvalidAlignment => return "Pointer is not word-aligned",
+            BlitterError::InvalidDimensions => return "Dimensions out of valid range",
+            BlitterError::OutOfBounds => return "Rectangle out of bitmap bounds",
+            BlitterError::DepthMismatch => return "Bitmap depths don't match",
+            BlitterError::OperationFailed => return "Blitter operation failed",
+        }
+    }
+}
+
+impl Error for BlitterError {
+    fn message(&self) -> *u8 {
+        return BlitterError::message(self)
+    }
 }
 
 // ============================================================================

@@ -11,7 +11,7 @@
 // - Atomic load/unload of entire banks
 // - Budget tracking and will_fit() checks
 
-from std::core import Result, Option, Drop
+from std::core import Result, Option, Drop, Error
 from std::strings::core import Str
 from std::memory::chip import Priority, ChipAsset, ChipCacheError
 from std::memory::chip_cache import ChipCache
@@ -97,6 +97,24 @@ pub enum BankError {
     AssetNotFound,
     /// Bank has too many entries
     TooManyEntries,
+}
+
+impl BankError {
+    pub fn message(&self) -> *u8 {
+        match *self {
+            BankError::OutOfMemory => return "Out of chip RAM",
+            BankError::NotLoaded => return "Bank not loaded",
+            BankError::AlreadyLoaded => return "Bank already loaded",
+            BankError::AssetNotFound => return "Asset not found in bank",
+            BankError::TooManyEntries => return "Too many bank entries",
+        }
+    }
+}
+
+impl Error for BankError {
+    fn message(&self) -> *u8 {
+        return BankError::message(self)
+    }
 }
 
 // ============================================================================
