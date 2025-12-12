@@ -13,7 +13,7 @@
 // ```novus
 // from std::random import Rng
 //
-// let mut rng = Rng::from_time()  // Seed from system time
+// var rng = Rng::from_time()  // Seed from system time
 // let dice = rng.range_u32(1, 7)  // Roll a d6
 // let coin = rng.bool()           // Flip a coin
 // ```
@@ -31,8 +31,8 @@ from std::hardware::registers import CUSTOM_BASE, VHPOSR
 ///
 /// Example:
 /// ```novus
-/// let mut rng = Rng::new(12345)   // Create with specific seed
-/// let mut rng = Rng::from_time()  // Or auto-seed from system time
+/// var rng = Rng::new(12345)   // Create with specific seed
+/// var rng = Rng::from_time()  // Or auto-seed from system time
 ///
 /// let n = rng.next_u32()          // Get a random u32
 /// let d = rng.range_u32(1, 7)     // Get 1-6 (dice roll)
@@ -49,7 +49,7 @@ impl Rng {
     ///
     /// Example:
     /// ```novus
-    /// let mut rng = Rng::new(42)
+    /// var rng = Rng::new(42)
     /// ```
     pub fn new(seed: u32) -> Rng {
         // Ensure state is never zero (would produce all zeros)
@@ -68,7 +68,7 @@ impl Rng {
     ///
     /// Example:
     /// ```novus
-    /// let mut rng = Rng::from_time()
+    /// var rng = Rng::from_time()
     /// ```
     pub fn from_time() -> Rng {
         // CIA-A base address: $BFE001 (odd bytes only, address bit 0 is A0)
@@ -281,7 +281,7 @@ impl Rng {
 ///
 /// Example:
 /// ```novus
-/// let mut rng = random_rng()
+/// var rng = random_rng()
 /// ```
 pub fn random_rng() -> Rng {
     return Rng::from_time()

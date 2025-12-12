@@ -89,7 +89,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
                 let entries: *HashMapEntry<K, V> = (*HashMapEntry<K, V>)block.ptr()
 
                 // Initialize all entries as Empty
-                let mut i: u32 = 0u32
+                var i: u32 = 0u32
                 while i < capacity {
                     entries[i].state = EntryState::Empty
                     i++
@@ -148,11 +148,11 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
 
         let hash: u32 = key.hash()
         let mask: u32 = self.capacity - 1u32
-        let mut index: u32 = hash & mask
-        let mut tombstone_index: Option<u32> = Option::None
+        var index: u32 = hash & mask
+        var tombstone_index: Option<u32> = Option::None
 
         // Linear probing
-        let mut probes: u32 = 0u32
+        var probes: u32 = 0u32
         while probes < self.capacity {
             let state: EntryState = self.entries[index].state
 
@@ -211,9 +211,9 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
 
         let hash: u32 = key.hash()
         let mask: u32 = self.capacity - 1u32
-        let mut index: u32 = hash & mask
+        var index: u32 = hash & mask
 
-        let mut probes: u32 = 0u32
+        var probes: u32 = 0u32
         while probes < self.capacity {
             let state: EntryState = self.entries[index].state
 
@@ -256,9 +256,9 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
 
         let hash: u32 = key.hash()
         let mask: u32 = self.capacity - 1u32
-        let mut index: u32 = hash & mask
+        var index: u32 = hash & mask
 
-        let mut probes: u32 = 0u32
+        var probes: u32 = 0u32
         while probes < self.capacity {
             let state: EntryState = self.entries[index].state
 
@@ -292,7 +292,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
     ///
     /// This keeps the current capacity but marks all entries as empty.
     pub fn clear(&mut self) {
-        let mut i: u32 = 0u32
+        var i: u32 = 0u32
         while i < self.capacity {
             self.entries[i].state = EntryState::Empty
             i++
@@ -316,7 +316,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
                 block.into_raw()
 
                 // Initialize all new entries as Empty
-                let mut i: u32 = 0u32
+                var i: u32 = 0u32
                 while i < new_capacity {
                     new_entries[i].state = EntryState::Empty
                     i++
@@ -333,7 +333,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
                         Occupied => {
                             // Compute new index using Hash trait
                             let hash: u32 = old_entries[i].key.hash()
-                            let mut index: u32 = hash & mask
+                            var index: u32 = hash & mask
 
                             // Linear probe to find empty slot
                             while new_entries[index].state != EntryState::Empty {
@@ -378,7 +378,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
             return 1u32
         }
 
-        let mut v: u32 = n - 1u32
+        var v: u32 = n - 1u32
         v = v | (v >> 1)
         v = v | (v >> 2)
         v = v | (v >> 4)

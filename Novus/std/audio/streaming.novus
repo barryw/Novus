@@ -23,7 +23,7 @@
 // static song: AudioAsset = []
 //
 // // Use any available channel
-// let mut streamer = AudioStreamer::new(&song.data, song.size, song.period)?
+// var streamer = AudioStreamer::new(&song.data, song.size, song.period)?
 // println!("Using channel {}", streamer.channel())
 // streamer.play(false)?  // false = don't loop
 //
@@ -34,7 +34,7 @@
 // // Streamer cleans up automatically on drop
 //
 // // Or request a specific channel:
-// let mut streamer2 = AudioStreamer::new_on_channel(2, &song.data, song.size, song.period)?
+// var streamer2 = AudioStreamer::new_on_channel(2, &song.data, song.size, song.period)?
 // ```
 
 from std::core import Result, Option, Drop
@@ -84,9 +84,9 @@ const NUM_BUFFERS: u32 = 3
 /// # Usage Pattern
 /// ```novus
 /// // Any available channel:
-/// let mut streamer = AudioStreamer::new(&audio_data, size, period)?
+/// var streamer = AudioStreamer::new(&audio_data, size, period)?
 /// // Or specific channel:
-/// let mut streamer = AudioStreamer::new_on_channel(0, &audio_data, size, period)?
+/// var streamer = AudioStreamer::new_on_channel(0, &audio_data, size, period)?
 ///
 /// streamer.play(loop)?
 /// while streamer.is_playing() {

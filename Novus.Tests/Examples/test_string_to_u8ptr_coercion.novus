@@ -20,7 +20,7 @@ pub fn main() -> i32 {
 
     // Test 2: String → *u8 coercion (calls as_ptr internally)
     let my_string = String::new_from_str("Hello String")
-    let mut result2: u32 = 0
+    var result2: u32 = 0
     match my_string {
         Result::Ok(s) => {
             result2 = takes_pointer(s)

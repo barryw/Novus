@@ -16,7 +16,7 @@
 // static music_data = []
 //
 // // Initialize and play
-// let mut player = ModPlayer::new(true)?  // true = PAL, false = NTSC
+// var player = ModPlayer::new(true)?  // true = PAL, false = NTSC
 // player.init(&music_data, 0)?            // Start at position 0
 // player.play()
 //
@@ -307,7 +307,7 @@ impl ChipAsset for ModAsset {
 /// static explosion: AudioAsset = []
 ///
 /// // Play using AudioChannel with automatic chip RAM management
-/// let mut channel = AudioChannel::acquire(0)?
+/// var channel = AudioChannel::acquire(0)?
 /// channel.play_asset(&explosion, PlaybackMode::OneShot)?
 /// ```
 ///
@@ -561,7 +561,7 @@ impl PlayConfig {
 /// # Example
 /// ```novus
 /// // Create player for PAL system
-/// let mut player = ModPlayer::new(true)?
+/// var player = ModPlayer::new(true)?
 ///
 /// // Load and play a module
 /// player.init(&mod_data, 0)?

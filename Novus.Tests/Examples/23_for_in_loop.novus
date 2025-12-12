@@ -12,7 +12,7 @@ pub fn main() -> i32 {
 
     // Sum all values using for-in loop
     // The for-in loop automatically calls vec.get(index) and vec.len()
-    let mut sum: i32 = 0
+    var sum: i32 = 0
     for value in vec {
         sum += value
     }

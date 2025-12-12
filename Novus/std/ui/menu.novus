@@ -6,7 +6,7 @@
 // ## Design Pattern: Hierarchical Builder → Flat Array
 //
 // The user sees a beautiful hierarchical API:
-//   let mut file_menu = builder.add_menu("File")
+//   var file_menu = builder.add_menu("File")
 //   file_menu.add_item("New")
 //   file_menu.add_item("Open")
 //
@@ -181,7 +181,7 @@ impl GadToolsMenuBuilder {
                 }
 
                 // Copy existing pointers to new memory
-                let mut i: u32 = 0
+                var i: u32 = 0
                 forever {
                     if i >= self.label_count {
                         break
@@ -226,7 +226,7 @@ impl GadToolsMenuBuilder {
                 let old_size = self.entry_count * sizeof_entry
                 let src = (*u8)self.entries
                 let dst = (*u8)new_mem
-                let mut i: u32 = 0
+                var i: u32 = 0
                 forever {
                     if i >= old_size {
                         break
@@ -318,7 +318,7 @@ impl GadToolsMenuBuilder {
             // Copy all entries field-by-field to the NewMenu array
             // Don't copy byte-by-byte because NewMenu and NewMenu might have different layouts in C
             // Manually copy each field to avoid compiler issues with struct access
-            let mut i: u32 = 0
+            var i: u32 = 0
             forever {
                 if i >= count {
                     break
@@ -415,7 +415,7 @@ impl Drop for GadToolsMenuBuilder {
             // Free all tracked label strings if we still own them
             // (ownership is transferred to GadToolsMenuStrip on successful build())
             if self.labels {
-                let mut i: u32 = 0
+                var i: u32 = 0
                 forever {
                     if i >= self.label_count {
                         break
@@ -624,7 +624,7 @@ impl Drop for GadToolsMenuStrip {
             }
             // Free all allocated label strings
             if let labels = self.labels {
-                let mut i: u32 = 0
+                var i: u32 = 0
                 forever {
                     if i >= self.label_count {
                         break

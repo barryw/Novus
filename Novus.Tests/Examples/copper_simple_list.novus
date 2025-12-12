@@ -19,7 +19,7 @@ pub fn main() -> i32 {
     }
 
     // Create a simple copper list that sets the background to blue
-    let mut builder = CopperListBuilder::new()
+    var builder = CopperListBuilder::new()
 
     // Wait for line 0 (top of screen)
     let _ = builder.wait(0, 0)

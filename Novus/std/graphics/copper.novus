@@ -5,7 +5,7 @@
 // and RAII-based resource management.
 //
 // Example:
-//   let mut builder = CopperListBuilder::new()
+//   var builder = CopperListBuilder::new()
 //   builder.wait(0, 0)
 //   builder.move_color(0, rgb12(15, 0, 0))
 //   builder.wait(100, 0)

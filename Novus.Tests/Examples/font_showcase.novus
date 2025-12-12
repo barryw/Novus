@@ -179,7 +179,7 @@ pub fn main() -> i32 {
                     }
                     draw_text_at(rp, 300, 30, "Size comparison:", 16)
 
-                    let mut y: i16 = 50
+                    var y: i16 = 50
 
                     // Topaz 8
                     let t8 = FontHandle::open_rom("topaz.font", 8)

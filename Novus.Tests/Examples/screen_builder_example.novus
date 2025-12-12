@@ -48,7 +48,7 @@ pub fn main() -> i32 {
             let scr_height = screen2.height()
 
             // Draw a gradient of colors using actual screen height
-            let mut y: i16 = 0
+            var y: i16 = 0
             while y < scr_height {
                 SetAPen(rp, (u32)(y / 8))  // Cycle through 32 colors
                 RectFill(rp, 0, y, 319, y + 7)
@@ -143,7 +143,7 @@ pub fn main() -> i32 {
             let scr_height6 = screen6.height()
 
             // Draw bars across the full screen height (512 PAL, 400 NTSC)
-            let mut y6: i16 = 0
+            var y6: i16 = 0
             while y6 < scr_height6 {
                 SetAPen(rp6, (u32)((y6 / 32) % 16))
                 RectFill(rp6, 0, y6, 319, y6 + 31)

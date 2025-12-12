@@ -12,7 +12,7 @@ fn classify_number(n: i32) -> i32 {
 }
 
 pub fn main() -> i32 {
-    let mut total = 0
+    var total = 0
 
     // Test various values
     total = total + classify_number(-5)   // Should be -1

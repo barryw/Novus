@@ -10,7 +10,7 @@
 //   - Program exits with code 1 (failure)
 
 pub fn main() -> i32 {
-    let mut cleanup_executed = 0
+    var cleanup_executed = 0
 
     // Simulate resource allocation
     let resource_handle = 12345

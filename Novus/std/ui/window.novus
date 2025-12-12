@@ -535,13 +535,13 @@ impl WindowHandle {
         unsafe {
             // Extract the actual pointers, using a special marker for "unchanged"
             // We use address -1 (0xFFFFFFFF) to indicate unchanged per NDK docs
-            let mut wtitle: *u8 = (*u8)(-1)
+            var wtitle: *u8 = (*u8)(-1)
             match window_title {
                 Option::Some(s) => { wtitle = s },
                 Option::None => {}
             }
 
-            let mut stitle: *u8 = (*u8)(-1)
+            var stitle: *u8 = (*u8)(-1)
             match screen_title {
                 Option::Some(s) => { stitle = s },
                 Option::None => {}
@@ -1100,7 +1100,7 @@ impl WindowBuilder {
     @suppress("W0002", "Casting values to u32 for tags")
     pub fn build(self) -> Result<WindowHandle, IntuitionError> {
         // Compute final flags
-        let mut final_flags = self.flags
+        var final_flags = self.flags
 
         if self.borderless {
             final_flags = final_flags | WFLG_BORDERLESS

@@ -8,8 +8,8 @@
 
 pub fn main() -> i32 {
     // Basic for loop: sum numbers 0 to 9
-    let mut sum = 0
-    let mut i = 0
+    var sum = 0
+    var i = 0
     while i < 10 {
         sum = sum + i
         i++
@@ -21,8 +21,8 @@ pub fn main() -> i32 {
     }
 
     // For loop with non-unit increment
-    let mut sum2 = 0
-    let mut j = 0
+    var sum2 = 0
+    var j = 0
     while j < 10 {
         sum2 = sum2 + j
         j = j + 2
@@ -34,8 +34,8 @@ pub fn main() -> i32 {
     }
 
     // For loop counting down
-    let mut countdown = 0
-    let mut k = 10
+    var countdown = 0
+    var k = 10
     while k > 0 {
         countdown = countdown + k
         k--
@@ -47,10 +47,10 @@ pub fn main() -> i32 {
     }
 
     // Nested for loops
-    let mut nested = 0
-    let mut x = 0
+    var nested = 0
+    var x = 0
     while x < 3 {
-        let mut y = 0
+        var y = 0
         while y < 3 {
             nested++
             y++

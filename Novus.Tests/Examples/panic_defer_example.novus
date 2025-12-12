@@ -12,7 +12,7 @@
 //   - Program hangs after clicking OK
 
 pub fn validate(x: i32) -> i32 {
-    let mut cleanup_flag = 0
+    var cleanup_flag = 0
 
     // This defer block will execute even when panic occurs
     defer { cleanup_flag = 1 }

@@ -8,7 +8,7 @@
 // ## Design Pattern: Hierarchical Builder → MUI Object Tree
 //
 // The user sees a clean hierarchical API:
-//   let mut app = MUIApp::new("My App")
+//   var app = MUIApp::new("My App")
 //   app.add_window("Main Window", |win| {
 //       win.vgroup(|g| {
 //           g.button(1, "Click Me")
@@ -150,7 +150,7 @@ impl MUIAppBuilder {
                 panic!("Failed to allocate label array")
             }
 
-            let mut builder = MUIAppBuilder {
+            var builder = MUIAppBuilder {
                 title: (*u8)0,
                 author: (*u8)0,
                 description: (*u8)0,
@@ -204,7 +204,7 @@ impl MUIAppBuilder {
     pub fn build(&mut self) -> Result<MUIApp, IntuitionError> {
         unsafe {
             // Build application object
-            let mut tags = TagBuilder::new()
+            var tags = TagBuilder::new()
 
             tags.add(MUIA_Application_Title, (u32)self.title)
 
@@ -227,7 +227,7 @@ impl MUIAppBuilder {
             }
 
             // Add all windows
-            let mut i: u32 = 0
+            var i: u32 = 0
             forever {
                 if i >= self.window_count {
                     break
@@ -248,7 +248,7 @@ impl MUIAppBuilder {
             self.label_count = 0
 
             // Clear windows (they're now owned by app)
-            let mut j: u32 = 0
+            var j: u32 = 0
             forever {
                 if j >= self.window_count {
                     break
@@ -276,7 +276,7 @@ impl MUIAppBuilder {
                     panic!("Failed to resize window array")
                 }
 
-                let mut i: u32 = 0
+                var i: u32 = 0
                 forever {
                     if i >= self.window_count {
                         break
@@ -323,7 +323,7 @@ impl MUIAppBuilder {
                     panic!("Failed to resize label array")
                 }
 
-                let mut i: u32 = 0
+                var i: u32 = 0
                 forever {
                     if i >= self.label_count {
                         break
@@ -348,7 +348,7 @@ impl Drop for MUIAppBuilder {
     fn drop(&mut self) {
         unsafe {
             // Free any windows not transferred
-            let mut i: u32 = 0
+            var i: u32 = 0
             forever {
                 if i >= self.window_count {
                     break
@@ -365,7 +365,7 @@ impl Drop for MUIAppBuilder {
 
             // Free labels if still owned
             if self.labels {
-                let mut j: u32 = 0
+                var j: u32 = 0
                 forever {
                     if j >= self.label_count {
                         break
@@ -450,7 +450,7 @@ impl MUIWindowBuilder {
                 panic!("Window must have a root group")
             }
 
-            let mut tags = TagBuilder::new()
+            var tags = TagBuilder::new()
 
             tags.add(MUIA_Window_Title, (u32)self.title)
             tags.add(MUIA_Window_RootObject, (u32)self.root_group)
@@ -546,7 +546,7 @@ impl MUIGroupBuilder {
                     panic!("Failed to resize children array")
                 }
 
-                let mut i: u32 = 0
+                var i: u32 = 0
                 forever {
                     if i >= self.child_count {
                         break
@@ -598,7 +598,7 @@ impl MUIGroupBuilder {
         unsafe {
             let initial_ptr = (*self.app_builder).alloc_label(initial)
 
-            let mut tags = TagBuilder::new()
+            var tags = TagBuilder::new()
             tags.add(MUIA_Frame, (u32)MUIV_Frame_String)
             tags.add(MUIA_String_Contents, (u32)initial_ptr)
             tags.add(MUIA_String_MaxLen, max_len)
@@ -618,7 +618,7 @@ impl MUIGroupBuilder {
             // For MUI checkmarks, we use an Image with MUII_CheckMark
             let label_ptr = (*self.app_builder).alloc_label(label)
 
-            let mut tags = TagBuilder::new()
+            var tags = TagBuilder::new()
             tags.add(MUIA_Frame, (u32)MUIV_Frame_ImageButton)
             tags.add(MUIA_InputMode, (u32)MUIV_InputMode_Toggle)
             tags.add(MUIA_Image_Spec, (u32)MUII_CheckMark)
@@ -637,7 +637,7 @@ impl MUIGroupBuilder {
     /// Add a slider
     pub fn slider(&mut self, id: u32, min: i32, max: i32, value: i32) -> *u8 {
         unsafe {
-            let mut tags = TagBuilder::new()
+            var tags = TagBuilder::new()
             tags.add(MUIA_Numeric_Min, (u32)min)
             tags.add(MUIA_Numeric_Max, (u32)max)
             tags.add(MUIA_Numeric_Value, (u32)value)
@@ -654,7 +654,7 @@ impl MUIGroupBuilder {
     /// Add a cycle gadget (dropdown)
     pub fn cycle(&mut self, id: u32, entries: **u8) -> *u8 {
         unsafe {
-            let mut tags = TagBuilder::new()
+            var tags = TagBuilder::new()
             tags.add(MUIA_Cycle_Entries, (u32)entries)
             tags.add(MUIA_UserData, id)
 
@@ -670,14 +670,14 @@ impl MUIGroupBuilder {
     pub fn listview(&mut self, id: u32) -> *u8 {
         unsafe {
             // Create the list object first
-            let mut list_tags = TagBuilder::new()
+            var list_tags = TagBuilder::new()
             let list_obj = MUI_NewObjectA("List.mui".ptr, list_tags.finish())
             if !list_obj {
                 return (*u8)0
             }
 
             // Create listview with the list
-            let mut lv_tags = TagBuilder::new()
+            var lv_tags = TagBuilder::new()
             lv_tags.add(MUIA_Listview_List, (u32)list_obj)
             lv_tags.add(MUIA_UserData, id)
 
@@ -694,7 +694,7 @@ impl MUIGroupBuilder {
     /// Add a gauge (progress bar)
     pub fn gauge(&mut self, id: u32, max: i32, horiz: bool) -> *u8 {
         unsafe {
-            let mut tags = TagBuilder::new()
+            var tags = TagBuilder::new()
             tags.add(MUIA_Frame, (u32)MUIV_Frame_Gauge)
             tags.add(MUIA_Gauge_Max, (u32)max)
             tags.add(MUIA_Gauge_Horiz, if horiz { 1 } else { 0 })
@@ -721,7 +721,7 @@ impl MUIGroupBuilder {
     /// Add horizontal space
     pub fn hspace(&mut self) {
         unsafe {
-            let mut tags = TagBuilder::new()
+            var tags = TagBuilder::new()
             let rect = MUI_NewObjectA("Rectangle.mui".ptr, tags.finish())
             if rect {
                 self.child(rect)
@@ -732,7 +732,7 @@ impl MUIGroupBuilder {
     /// Add vertical space
     pub fn vspace(&mut self) {
         unsafe {
-            let mut tags = TagBuilder::new()
+            var tags = TagBuilder::new()
             let rect = MUI_NewObjectA("Rectangle.mui".ptr, tags.finish())
             if rect {
                 self.child(rect)
@@ -743,7 +743,7 @@ impl MUIGroupBuilder {
     /// Add a horizontal bar separator
     pub fn hbar(&mut self) {
         unsafe {
-            let mut tags = TagBuilder::new()
+            var tags = TagBuilder::new()
             tags.add(MUIA_Rectangle_HBar, 1)
             let bar = MUI_NewObjectA("Rectangle.mui".ptr, tags.finish())
             if bar {
@@ -755,7 +755,7 @@ impl MUIGroupBuilder {
     /// Add a vertical bar separator
     pub fn vbar(&mut self) {
         unsafe {
-            let mut tags = TagBuilder::new()
+            var tags = TagBuilder::new()
             tags.add(MUIA_Rectangle_VBar, 1)
             let bar = MUI_NewObjectA("Rectangle.mui".ptr, tags.finish())
             if bar {
@@ -767,7 +767,7 @@ impl MUIGroupBuilder {
     /// Build the group and return the object
     pub fn build(&mut self) -> *u8 {
         unsafe {
-            let mut tags = TagBuilder::new()
+            var tags = TagBuilder::new()
 
             if self.horizontal {
                 tags.add(MUIA_Group_Horiz, 1)
@@ -790,7 +790,7 @@ impl MUIGroupBuilder {
             }
 
             // Add all children
-            let mut i: u32 = 0
+            var i: u32 = 0
             forever {
                 if i >= self.child_count {
                     break
@@ -816,7 +816,7 @@ impl Drop for MUIGroupBuilder {
         unsafe {
             // Dispose any children that weren't transferred
             if self.children {
-                let mut i: u32 = 0
+                var i: u32 = 0
                 forever {
                     if i >= self.child_count {
                         break
@@ -862,7 +862,7 @@ impl MUIApp {
     /// Returns when MUIV_Application_ReturnID_Quit is received
     pub fn run(&self) {
         unsafe {
-            let mut signals: u32 = 0
+            var signals: u32 = 0
 
             forever {
                 let id = self.new_input(&mut signals)
@@ -1031,7 +1031,7 @@ impl Drop for MUIApp {
 
             // Free labels
             if self.labels {
-                let mut i: u32 = 0
+                var i: u32 = 0
                 forever {
                     if i >= self.label_count {
                         break
@@ -1054,7 +1054,7 @@ impl Drop for MUIApp {
 /// Create a simple button
 pub fn make_button(label: *u8) -> *u8 {
     unsafe {
-        let mut tags = TagBuilder::new()
+        var tags = TagBuilder::new()
         tags.add(MUIA_Frame, (u32)MUIV_Frame_Button)
         tags.add(MUIA_Text_Contents, (u32)label)
         tags.add(MUIA_Text_PreParse, (u32)"\033c".ptr)  // Center text
@@ -1068,7 +1068,7 @@ pub fn make_button(label: *u8) -> *u8 {
 /// Create a text label
 pub fn make_text(text: *u8) -> *u8 {
     unsafe {
-        let mut tags = TagBuilder::new()
+        var tags = TagBuilder::new()
         tags.add(MUIA_Text_Contents, (u32)text)
 
         return MUI_NewObjectA("Text.mui".ptr, tags.finish())
@@ -1078,7 +1078,7 @@ pub fn make_text(text: *u8) -> *u8 {
 /// Create a text label with preparse codes
 pub fn make_text_preparse(text: *u8, preparse: *u8) -> *u8 {
     unsafe {
-        let mut tags = TagBuilder::new()
+        var tags = TagBuilder::new()
         tags.add(MUIA_Text_Contents, (u32)text)
         tags.add(MUIA_Text_PreParse, (u32)preparse)
 
@@ -1117,7 +1117,7 @@ extern fn GetAttr(attr_id: u32, object: *u8, storage: *u32) -> u32
 /// Returns the attribute value, also stores it in storage if provided
 pub fn get_attr(obj: *u8, attr: u32, storage: *u32) -> u32 {
     unsafe {
-        let mut value: u32 = 0
+        var value: u32 = 0
         GetAttr(attr, obj, &value)
         if storage {
             *storage = value
@@ -1155,7 +1155,7 @@ pub fn list_redraw(list: *u8, entry: i32) {
 // ============================================================================
 //
 // Usage:
-//   let mut menustrip = MenuBuilder::new()
+//   var menustrip = MenuBuilder::new()
 //
 //   menustrip.menu("Project")
 //       .item("New", "N", MENU_NEW)
@@ -1219,7 +1219,7 @@ impl MenuItemBuilder {
         unsafe {
             let title_ptr = self.alloc_label(title)
 
-            let mut tags = TagBuilder::new()
+            var tags = TagBuilder::new()
             tags.add(MUIA_Menuitem_Title, (u32)title_ptr)
             tags.add(MUIA_UserData, id)
 
@@ -1242,7 +1242,7 @@ impl MenuItemBuilder {
         unsafe {
             let title_ptr = self.alloc_label(title)
 
-            let mut tags = TagBuilder::new()
+            var tags = TagBuilder::new()
             tags.add(MUIA_Menuitem_Title, (u32)title_ptr)
             tags.add(MUIA_UserData, id)
             tags.add(MUIA_Menuitem_Checkit, 1)
@@ -1269,7 +1269,7 @@ impl MenuItemBuilder {
         unsafe {
             // MUI uses NM_BARLABEL (~0) for separators, but in object form
             // we create a menuitem with no title (becomes a bar)
-            let mut tags = TagBuilder::new()
+            var tags = TagBuilder::new()
             tags.add(MUIA_Menuitem_Title, (u32)NM_BARLABEL)
 
             let item = MUI_NewObjectA("Menuitem.mui".ptr, tags.finish())
@@ -1345,7 +1345,7 @@ impl MenuBuilder {
         unsafe {
             let title_ptr = self.alloc_label(title)
 
-            let mut tags = TagBuilder::new()
+            var tags = TagBuilder::new()
             tags.add(MUIA_Menu_Title, (u32)title_ptr)
 
             let menu_obj = MUI_NewObjectA("Menu.mui".ptr, tags.finish())
@@ -1366,10 +1366,10 @@ impl MenuBuilder {
     pub fn build(self) -> *u8 {
         unsafe {
             // Create the menustrip with all menus as children
-            let mut tags = TagBuilder::new()
+            var tags = TagBuilder::new()
 
             // Add all menus as children
-            let mut i: u32 = 0
+            var i: u32 = 0
             forever {
                 if i >= self.menu_count {
                     break
@@ -1406,7 +1406,7 @@ pub const MUIM_Family_Remove: u32 = $8042f8a9
 // a different page (group).
 //
 // Usage:
-//   let mut tabs = MUITabsBuilder::new(app_builder)
+//   var tabs = MUITabsBuilder::new(app_builder)
 //   tabs.add_tab("General", general_group)
 //   tabs.add_tab("Advanced", advanced_group)
 //   tabs.add_tab("About", about_group)
@@ -1490,7 +1490,7 @@ impl MUITabsBuilder {
                 return (*u8)0  // No tabs
             }
 
-            let mut tags = TagBuilder::new()
+            var tags = TagBuilder::new()
 
             // Set titles array (NULL-terminated array of strings)
             tags.add(MUIA_Register_Titles, (u32)self.titles)
@@ -1501,7 +1501,7 @@ impl MUITabsBuilder {
             }
 
             // Add all pages as children
-            let mut i: u32 = 0
+            var i: u32 = 0
             forever {
                 if i >= self.page_count {
                     break
@@ -1532,7 +1532,7 @@ impl Drop for MUITabsBuilder {
             // Free pages array if still owned
             if self.pages != (**u8)0 {
                 // Dispose any pages that weren't transferred
-                let mut i: u32 = 0
+                var i: u32 = 0
                 forever {
                     if i >= self.page_count {
                         break
@@ -1571,7 +1571,7 @@ impl Drop for MUITabsBuilder {
 /// initial is the initially selected entry index (0-based)
 pub fn make_radio(id: u32, entries: **u8, initial: i32) -> *u8 {
     unsafe {
-        let mut tags = TagBuilder::new()
+        var tags = TagBuilder::new()
         tags.add(MUIA_Radio_Entries, (u32)entries)
         tags.add(MUIA_Radio_Active, (u32)initial)
         tags.add(MUIA_UserData, id)
@@ -1601,7 +1601,7 @@ pub fn on_radio(app: &MUIApp, radio: *u8, return_id: u32) {
 /// Create a file requester popup
 pub fn make_file_popup(id: u32) -> *u8 {
     unsafe {
-        let mut tags = TagBuilder::new()
+        var tags = TagBuilder::new()
         tags.add(MUIA_Popasl_Type, ASL_FileRequest)
         tags.add(MUIA_UserData, id)
 
@@ -1612,7 +1612,7 @@ pub fn make_file_popup(id: u32) -> *u8 {
 /// Create a font requester popup
 pub fn make_font_popup(id: u32) -> *u8 {
     unsafe {
-        let mut tags = TagBuilder::new()
+        var tags = TagBuilder::new()
         tags.add(MUIA_Popasl_Type, ASL_FontRequest)
         tags.add(MUIA_UserData, id)
 
@@ -1623,7 +1623,7 @@ pub fn make_font_popup(id: u32) -> *u8 {
 /// Create a screenmode requester popup
 pub fn make_screenmode_popup(id: u32) -> *u8 {
     unsafe {
-        let mut tags = TagBuilder::new()
+        var tags = TagBuilder::new()
         tags.add(MUIA_Popasl_Type, ASL_ScreenModeRequest)
         tags.add(MUIA_UserData, id)
 
@@ -1651,7 +1651,7 @@ pub fn make_screenmode_popup(id: u32) -> *u8 {
 /// max is the maximum value, horiz determines orientation
 pub fn make_progress(id: u32, max: i32, horiz: bool) -> *u8 {
     unsafe {
-        let mut tags = TagBuilder::new()
+        var tags = TagBuilder::new()
         tags.add(MUIA_Frame, (u32)MUIV_Frame_Gauge)
         tags.add(MUIA_Gauge_Max, (u32)max)
         tags.add(MUIA_Gauge_Horiz, if horiz { 1 } else { 0 })
@@ -1665,7 +1665,7 @@ pub fn make_progress(id: u32, max: i32, horiz: bool) -> *u8 {
 /// The info_text can include %ld to show current value
 pub fn make_progress_with_text(id: u32, max: i32, horiz: bool, info_text: *u8) -> *u8 {
     unsafe {
-        let mut tags = TagBuilder::new()
+        var tags = TagBuilder::new()
         tags.add(MUIA_Frame, (u32)MUIV_Frame_Gauge)
         tags.add(MUIA_Gauge_Max, (u32)max)
         tags.add(MUIA_Gauge_Horiz, if horiz { 1 } else { 0 })

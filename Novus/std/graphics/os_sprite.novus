@@ -21,7 +21,7 @@
 //
 // Quick Start:
 //   let sprite_data = SpriteData::from_raw(&CURSOR_DATA, 10)?
-//   let mut cursor = OsSpriteHandle::alloc(screen.viewport(), -1)?
+//   var cursor = OsSpriteHandle::alloc(screen.viewport(), -1)?
 //   cursor.show(&sprite_data, 100, 50)?
 //   cursor.move_to(200, 100)?
 //   // Automatic cleanup via Drop
@@ -59,7 +59,7 @@ impl OsSpriteHandle {
         }
 
         // Initialize SimpleSprite structure
-        let mut simple_sprite = SimpleSprite {
+        var simple_sprite = SimpleSprite {
             posctldata: (*u16)0,
             height: 0u16,
             x: 0u16,

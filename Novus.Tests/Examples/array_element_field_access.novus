@@ -31,7 +31,7 @@ pub fn main() -> i32 {
     if y2 != 60 { return 6 }
 
     // Test 2: Write fields to array elements
-    let mut mutable_points = [
+    var mutable_points = [
         Point { x: 0, y: 0 },
         Point { x: 0, y: 0 }
     ]

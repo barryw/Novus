@@ -20,7 +20,7 @@ pub fn main() -> i32 {
 
     // Initialize all numbers as potentially prime
     write("Initializing sieve...\n")
-    let mut i: u32 = 0
+    var i: u32 = 0
     while i <= max {
         sieve.push(true)
         i++
@@ -35,8 +35,8 @@ pub fn main() -> i32 {
     sieve.set(1, false)
 
     // Sieve of Eratosthenes main algorithm
-    let mut p: u32 = 2
-    let mut sieve_ops: u32 = 0
+    var p: u32 = 2
+    var sieve_ops: u32 = 0
 
     while p * p <= max {
         let ptr = sieve.as_ptr()
@@ -45,7 +45,7 @@ pub fn main() -> i32 {
 
         if check != 0 {
             // p is prime - mark all multiples as composite
-            let mut multiple: u32 = p * p
+            var multiple: u32 = p * p
             while multiple <= max {
                 sieve.set(multiple, false)
                 multiple = multiple + p
@@ -64,8 +64,8 @@ pub fn main() -> i32 {
     write("Counting and displaying primes...\n\n")
 
     // Count and display all primes
-    let mut prime_count: u32 = 0
-    let mut line_count: u32 = 0
+    var prime_count: u32 = 0
+    var line_count: u32 = 0
 
     i = 2
     while i <= max {

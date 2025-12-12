@@ -6,9 +6,9 @@ from std::strings::core import Str
 
 pub fn main() -> i32 {
     // Test 1: break outer while loop
-    let mut count1: i32 = 0
+    var count1: i32 = 0
     outer1: while true {
-        let mut inner: i32 = 0
+        var inner: i32 = 0
         while inner < 5 {
             count1++
             if count1 == 7 {
@@ -24,11 +24,11 @@ pub fn main() -> i32 {
     write("Test 1 PASSED: break outer while\n")
 
     // Test 2: continue outer while loop
-    let mut sum2: i32 = 0
-    let mut i: i32 = 0
+    var sum2: i32 = 0
+    var i: i32 = 0
     outer2: while i < 5 {
         i++
-        let mut j: i32 = 0
+        var j: i32 = 0
         while j < 3 {
             j++
             if i == 3 && j == 2 {
@@ -46,7 +46,7 @@ pub fn main() -> i32 {
     write("Test 2 PASSED: continue outer while\n")
 
     // Test 3: break outer forever loop
-    let mut count3: i32 = 0
+    var count3: i32 = 0
     outer3: forever {
         forever {
             count3++
@@ -62,9 +62,9 @@ pub fn main() -> i32 {
     write("Test 3 PASSED: break outer forever\n")
 
     // Test 4: labeled break with postfix condition
-    let mut count4: i32 = 0
+    var count4: i32 = 0
     outer4: while true {
-        let mut k: i32 = 0
+        var k: i32 = 0
         while k < 100 {
             count4++
             k++
@@ -78,10 +78,10 @@ pub fn main() -> i32 {
     write("Test 4 PASSED: labeled break with postfix\n")
 
     // Test 5: multiple labels
-    let mut result5: i32 = 0
+    var result5: i32 = 0
     outer5: while true {
         middle: while true {
-            let mut x: i32 = 0
+            var x: i32 = 0
             while x < 3 {
                 x++
                 result5++

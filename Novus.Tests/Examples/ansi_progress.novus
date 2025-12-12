@@ -14,7 +14,7 @@ pub fn main() -> i32 {
 
     // Simulate a 20-step progress bar
     let total: u32 = 20u32
-    let mut current: u32 = 0u32
+    var current: u32 = 0u32
 
     while current <= total {
         // Move to beginning of line and clear it
@@ -26,7 +26,7 @@ pub fn main() -> i32 {
         // Filled portion (Pen3 = blue on standard WB)
         write(f"{fg(Pen::Pen3)}")
 
-        let mut j: u32 = 0u32
+        var j: u32 = 0u32
         while j < current {
             write("=")
             j++

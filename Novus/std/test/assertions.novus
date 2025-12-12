@@ -152,7 +152,7 @@ pub fn expect_str_len(s: Str, expected_len: u32, message: *u8) {
 
 // Helper to write Str bytes (handles non-null-terminated strings)
 fn write_str_bytes(s: Str) {
-    let mut i: u32 = 0u32
+    var i: u32 = 0u32
     while i < s.len() {
         let c: u8 = s.as_ptr()[i]
         write("%c", (c as i32))
@@ -462,7 +462,7 @@ pub fn expect_array_eq_i32(actual_ptr: *i32, actual_len: u32, expected_ptr: *i32
         return
     }
 
-    let mut i: u32 = 0u32
+    var i: u32 = 0u32
     while i < actual_len {
         if actual_ptr[i] != expected_ptr[i] {
             __test_record_failure()
@@ -482,7 +482,7 @@ pub fn expect_array_eq_u32(actual_ptr: *u32, actual_len: u32, expected_ptr: *u32
         return
     }
 
-    let mut i: u32 = 0u32
+    var i: u32 = 0u32
     while i < actual_len {
         if actual_ptr[i] != expected_ptr[i] {
             __test_record_failure()
@@ -502,7 +502,7 @@ pub fn expect_array_eq_u8(actual_ptr: *u8, actual_len: u32, expected_ptr: *u8, e
         return
     }
 
-    let mut i: u32 = 0u32
+    var i: u32 = 0u32
     while i < actual_len {
         if actual_ptr[i] != expected_ptr[i] {
             __test_record_failure()
@@ -516,7 +516,7 @@ pub fn expect_array_eq_u8(actual_ptr: *u8, actual_len: u32, expected_ptr: *u8, e
 
 /// Expect array to contain element
 pub fn expect_array_contains_i32(ptr: *i32, len: u32, element: i32, message: *u8) {
-    let mut i: u32 = 0u32
+    var i: u32 = 0u32
     while i < len {
         if ptr[i] == element {
             return  // Found it
@@ -529,7 +529,7 @@ pub fn expect_array_contains_i32(ptr: *i32, len: u32, element: i32, message: *u8
 
 /// Expect array to NOT contain element
 pub fn expect_array_not_contains_i32(ptr: *i32, len: u32, element: i32, message: *u8) {
-    let mut i: u32 = 0u32
+    var i: u32 = 0u32
     while i < len {
         if ptr[i] == element {
             __test_record_failure()

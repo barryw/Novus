@@ -27,7 +27,7 @@ impl Counter {
 }
 
 pub fn main() -> i32 {
-    let mut c: Counter = Counter::new()
+    var c: Counter = Counter::new()
     c.increment()
     c.increment()
     c.increment()

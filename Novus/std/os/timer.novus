@@ -447,7 +447,7 @@ pub fn elapsed_since(start: Duration) -> Result<Duration, TimerError> {
 /// ```novus
 /// from std::os::timer import Interval, Duration
 ///
-/// let mut display_timer = Interval::new(Duration::secs(1))?
+/// var display_timer = Interval::new(Duration::secs(1))?
 ///
 /// loop {
 ///     WaitTOF()
@@ -540,7 +540,7 @@ pub enum WaitResult {
 /// from std::os::timer import AsyncTimer, Duration, WaitResult
 ///
 /// fn main() -> i32 {
-///     let mut timer = AsyncTimer::new()?
+///     var timer = AsyncTimer::new()?
 ///
 ///     loop {
 ///         match timer.wait_or_break(Duration::secs(1)) {
@@ -700,7 +700,7 @@ impl AsyncTimer {
     ///
     /// Example:
     /// ```novus
-    /// let mut timer = AsyncTimer::new()?
+    /// var timer = AsyncTimer::new()?
     ///
     /// loop {
     ///     match timer.wait_or_break(Duration::secs(1)) {

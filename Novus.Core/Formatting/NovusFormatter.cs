@@ -1193,10 +1193,9 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
     {
         EmitHiddenTokensBefore(context);
 
+        // 'let' = immutable, 'var' = mutable (no 'mut' keyword in variable declarations)
         if (context.KW_LET() != null) Write("let ");
         else Write("var ");
-
-        if (context.KW_MUT() != null) Write("mut ");
 
         if (context.IDENTIFIER() != null)
         {
@@ -1456,10 +1455,9 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
 
     private void VisitVariableDeclarationInline(NovusParser.VariableDeclarationContext context)
     {
+        // 'let' = immutable, 'var' = mutable (no 'mut' keyword in variable declarations)
         if (context.KW_LET() != null) Write("let ");
         else Write("var ");
-
-        if (context.KW_MUT() != null) Write("mut ");
 
         if (context.IDENTIFIER() != null)
         {

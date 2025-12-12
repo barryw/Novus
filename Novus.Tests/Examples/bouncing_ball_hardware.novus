@@ -108,7 +108,7 @@ fn main() -> Result<(), GraphicsError> {
     )?
 
     // Allocate hardware sprite channel 0 directly
-    let mut sprite = SpriteHandle::alloc(0)?
+    var sprite = SpriteHandle::alloc(0)?
 
     // Initialize ball physics
     // Screen bounds (PAL: 320x256, NTSC: 320x200)
@@ -119,13 +119,13 @@ fn main() -> Result<(), GraphicsError> {
     let max_y: i16 = 190
 
     // Create ball starting at center with some velocity
-    let mut ball = Ball::new(160, 100, 3, 2)
+    var ball = Ball::new(160, 100, 3, 2)
 
     // Show sprite at initial position
     sprite.show(&sprite_data, ball.x, ball.y)?
 
     // Animation loop (run for ~5 seconds at 50 fps)
-    let mut frame: u32 = 0u32
+    var frame: u32 = 0u32
     while frame < 250u32 {
         // Wait for vertical blank (50 Hz PAL / 60 Hz NTSC)
         WaitTOF()

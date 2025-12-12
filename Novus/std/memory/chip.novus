@@ -246,7 +246,7 @@ pub fn prepare_for_dma_read(ptr: *u8, size: u32) -> *u8 {
         // CachePreDMA returns the physical address (may differ on MMU systems)
         // For DMA reads, flags = 0 (DMA_ReadFromRAM)
         // The size parameter is passed by reference
-        let mut actual_size: u32 = size
+        var actual_size: u32 = size
         return CachePreDMA(ptr, (&mut actual_size) as *u8, DMA_ReadFromRAM)
     }
 }
@@ -262,7 +262,7 @@ pub fn prepare_for_dma_read(ptr: *u8, size: u32) -> *u8 {
 /// On 68000/020/030, this is a no-op.
 pub fn complete_dma_read(ptr: *u8, size: u32) {
     unsafe {
-        let mut actual_size: u32 = size
+        var actual_size: u32 = size
         CachePostDMA(ptr, (&mut actual_size) as *u8, DMA_ReadFromRAM)
     }
 }
@@ -285,7 +285,7 @@ pub fn prepare_for_dma_write(ptr: *u8, size: u32) -> *u8 {
     unsafe {
         // For DMA writes, we need to invalidate the cache
         // CachePreDMA with flags = 0 handles this
-        let mut actual_size: u32 = size
+        var actual_size: u32 = size
         return CachePreDMA(ptr, (&mut actual_size) as *u8, DMA_ReadFromRAM)
     }
 }
@@ -301,7 +301,7 @@ pub fn prepare_for_dma_write(ptr: *u8, size: u32) -> *u8 {
 /// On 68000/020/030, this is a no-op.
 pub fn complete_dma_write(ptr: *u8, size: u32) {
     unsafe {
-        let mut actual_size: u32 = size
+        var actual_size: u32 = size
         CachePostDMA(ptr, (&mut actual_size) as *u8, DMA_ReadFromRAM)
     }
 }

@@ -30,7 +30,7 @@ extern fn write(format: *u8, ...args) -> i32
 //   write_array("Version: %ld.%ld.%ld\n", &args)
 //
 pub fn write_array(format: *u8, args: *i32) -> i32 {
-    let mut result: i32 = 0
+    var result: i32 = 0
     unsafe {
         result = VPrintf(format, args)
     }
@@ -45,7 +45,7 @@ pub fn wait_for_key() {
     let input_handle = Input()
     WaitForChar(input_handle, -1)
     // Read and discard the character
-    let mut buf: [u8; 1] = [0]
+    var buf: [u8; 1] = [0]
     Read(input_handle, &buf[0], 1)
 }
 
@@ -66,7 +66,7 @@ pub fn key_pressed() -> bool {
 pub fn read_key() -> u8 {
     let input_handle = Input()
     WaitForChar(input_handle, -1)
-    let mut buf: [u8; 1] = [0]
+    var buf: [u8; 1] = [0]
     Read(input_handle, &buf[0], 1)
     return buf[0]
 }

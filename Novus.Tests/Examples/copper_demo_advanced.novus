@@ -184,7 +184,7 @@ fn main() -> i32 {
         }
 
         // Build copper list
-        let mut builder = CopperListBuilder::new()
+        var builder = CopperListBuilder::new()
 
         // === WAIT for start of frame ===
         let _ = builder.wait(0, 0)

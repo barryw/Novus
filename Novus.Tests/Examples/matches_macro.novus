@@ -63,9 +63,9 @@ fn main() -> i32 {
 
     // Useful in complex conditions
     let items = [Status::Active, Status::Pending, Status::Inactive]
-    let mut active_count = 0
+    var active_count = 0
 
-    let mut i = 0
+    var i = 0
     while i < 3 {
         if matches!(items[i], Status::Active) {
             active_count = active_count + 1

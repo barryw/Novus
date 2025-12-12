@@ -12,7 +12,7 @@ pub fn main() -> i32 {
     var sieve = Vec::<bool>::new()
 
     // Initialize with all true
-    let mut i: u32 = 0
+    var i: u32 = 0
     while i <= 100 {
         sieve.push(true)
         i++
@@ -23,13 +23,13 @@ pub fn main() -> i32 {
     sieve.set(1, false)
 
     // Sieve of Eratosthenes
-    let mut p: u32 = 2
+    var p: u32 = 2
     while p * p <= 100 {
         let ptr = sieve.as_ptr()
         let is_prime = ptr[p]
         let check = (u32)is_prime
         if check != 0 {
-            let mut m: u32 = p * p
+            var m: u32 = p * p
             while m <= 100 {
                 sieve.set(m, false)
                 m = m + p
@@ -39,7 +39,7 @@ pub fn main() -> i32 {
     }
 
     // Print primes
-    let mut count: u32 = 0
+    var count: u32 = 0
     i = 2
     while i <= 100 {
         let data = sieve.as_ptr()

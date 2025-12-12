@@ -160,7 +160,7 @@ pub fn move_to(row: u32, col: u32) -> String {
     // Convert row to string
     var row_buf = [0u8; 16]
     let row_len = u32_to_string(r, (*u8)&row_buf[0], 16u32)
-    let mut i: u32 = 0u32
+    var i: u32 = 0u32
     while i < row_len {
         result.push_byte(row_buf[i])
         i++
@@ -191,7 +191,7 @@ pub fn cursor_up(n: u32) -> String {
 
     var buf = [0u8; 16]
     let len = u32_to_string(count, (*u8)&buf[0], 16u32)
-    let mut i: u32 = 0u32
+    var i: u32 = 0u32
     while i < len {
         result.push_byte(buf[i])
         i++
@@ -211,7 +211,7 @@ pub fn cursor_down(n: u32) -> String {
 
     var buf = [0u8; 16]
     let len = u32_to_string(count, (*u8)&buf[0], 16u32)
-    let mut i: u32 = 0u32
+    var i: u32 = 0u32
     while i < len {
         result.push_byte(buf[i])
         i++
@@ -231,7 +231,7 @@ pub fn cursor_right(n: u32) -> String {
 
     var buf = [0u8; 16]
     let len = u32_to_string(count, (*u8)&buf[0], 16u32)
-    let mut i: u32 = 0u32
+    var i: u32 = 0u32
     while i < len {
         result.push_byte(buf[i])
         i++
@@ -251,7 +251,7 @@ pub fn cursor_left(n: u32) -> String {
 
     var buf = [0u8; 16]
     let len = u32_to_string(count, (*u8)&buf[0], 16u32)
-    let mut i: u32 = 0u32
+    var i: u32 = 0u32
     while i < len {
         result.push_byte(buf[i])
         i++
@@ -286,7 +286,7 @@ pub fn fg(pen: Pen) -> String {
 
     var buf = [0u8; 16]
     let len = u32_to_string(code, (*u8)&buf[0], 16u32)
-    let mut i: u32 = 0u32
+    var i: u32 = 0u32
     while i < len {
         result.push_byte(buf[i])
         i++
@@ -321,7 +321,7 @@ pub fn bg(pen: Pen) -> String {
 
     var buf = [0u8; 16]
     let len = u32_to_string(code, (*u8)&buf[0], 16u32)
-    let mut i: u32 = 0u32
+    var i: u32 = 0u32
     while i < len {
         result.push_byte(buf[i])
         i++
@@ -437,7 +437,7 @@ impl Ansi {
         if self.codes.len > 0 {
             result.push_byte($9b)  // CSI
 
-            let mut i: u32 = 0u32
+            var i: u32 = 0u32
             while i < self.codes.len {
                 if i > 0 {
                     result.push_byte($3b)  // ';'
@@ -447,7 +447,7 @@ impl Ansi {
                 let c = self.codes.ptr[i]
                 var buf = [0u8; 16]
                 let len = u32_to_string(c, (*u8)&buf[0], 16u32)
-                let mut j: u32 = 0u32
+                var j: u32 = 0u32
                 while j < len {
                     result.push_byte(buf[j])
                     j++

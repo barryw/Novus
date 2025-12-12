@@ -10,7 +10,7 @@
 // from the RastPort and frees the allocated buffers.
 //
 // Example:
-//   let mut area = AreaContext::new(rp, 20)?  // Support up to 20 vertices
+//   var area = AreaContext::new(rp, 20)?  // Support up to 20 vertices
 //   area.begin(100, 100)?                      // Start polygon
 //   area.vertex(150, 50)?                      // Add vertices
 //   area.vertex(200, 100)?
@@ -45,7 +45,7 @@ from std::ffi::amiga_consts import BMA_WIDTH, BMA_HEIGHT
 ///
 /// # Usage Pattern
 /// ```novus
-/// let mut area = AreaContext::new(rp, 20)?
+/// var area = AreaContext::new(rp, 20)?
 /// area.begin(100, 100)?  // First vertex
 /// area.vertex(150, 50)?
 /// area.vertex(200, 100)?

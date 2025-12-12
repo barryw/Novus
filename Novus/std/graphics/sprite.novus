@@ -11,8 +11,8 @@
 //       $0000, $0000   // Terminator
 //   ]
 //
-//   let mut sprite_data = SpriteData::from_raw(&PLAYER_DATA)?
-//   let mut sprite = SpriteHandle::alloc(0)?
+//   var sprite_data = SpriteData::from_raw(&PLAYER_DATA)?
+//   var sprite = SpriteHandle::alloc(0)?
 //   sprite.set_colors(&[Color::rgb(255, 0, 0), Color::rgb(0, 255, 0), Color::rgb(0, 0, 255)])?
 //   sprite.show(&sprite_data, 100, 50)?
 //   sprite.move_to(200, 100)?
@@ -487,7 +487,7 @@ impl SpriteHandle {
     // Note: The caller must allocate the array and pass in the size
     pub fn get_collisions(&self, out_channels: *u8, max_channels: u32) -> u32 {
         let clxdat = read_sprite_collisions()
-        let mut count: u32 = 0
+        var count: u32 = 0
 
         // Check all possible collision pairs
         for other_channel in 0..8 {
@@ -742,8 +742,8 @@ impl AttachedSpriteData {
                             dest23[1] = src[1]
 
                             // Deinterleave scanlines
-                            let mut src_idx = 2u32
-                            let mut dest_idx = 2u32
+                            var src_idx = 2u32
+                            var dest_idx = 2u32
                             for i in 0..num_lines {
                                 dest01[dest_idx] = src[src_idx]       // plane 0
                                 dest01[dest_idx + 1u32] = src[src_idx + 1u32]  // plane 1

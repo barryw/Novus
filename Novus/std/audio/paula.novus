@@ -20,7 +20,7 @@
 // let sample = SampleHandle::from_data(raw_pcm_data, length)?
 //
 // // Acquire a channel and play
-// let mut channel = AudioChannel::acquire(0)?
+// var channel = AudioChannel::acquire(0)?
 // channel.set_volume(64)?
 // channel.play(&sample, PlaybackMode::OneShot)
 //
@@ -97,7 +97,7 @@ pub enum PlaybackMode {
 /// let sample = SampleHandle::from_data(my_pcm_data, 2048)?
 ///
 /// // Play the sample
-/// let mut channel = AudioChannel::acquire(0)?
+/// var channel = AudioChannel::acquire(0)?
 /// channel.play(&sample, PlaybackMode::OneShot)
 ///
 /// // Sample memory automatically freed when handle goes out of scope
@@ -353,7 +353,7 @@ impl Drop for SampleHandle {
 /// # Example
 /// ```novus
 /// // Acquire channel 0 (left speaker)
-/// let mut ch = AudioChannel::acquire(0)?
+/// var ch = AudioChannel::acquire(0)?
 ///
 /// // Configure playback
 /// ch.set_volume(64)?        // Max volume
@@ -743,7 +743,7 @@ impl AudioChannel {
     /// @audio("sound.wav", chip = false)
     /// static sound: AudioAsset = []
     ///
-    /// let mut channel = AudioChannel::acquire(0)?
+    /// var channel = AudioChannel::acquire(0)?
     /// let period = is_pal_system() ? sound.period_pal : sound.period_ntsc
     /// channel.play_asset(sound.data, sound.size, period, PlaybackMode::OneShot)?
     /// // Asset is unpinned and evicted automatically when channel is dropped
@@ -799,7 +799,7 @@ impl AudioChannel {
     /// @audio("sound.wav", chip = false)
     /// static sound: AudioAsset = []
     ///
-    /// let mut channel = AudioChannel::acquire(0)?
+    /// var channel = AudioChannel::acquire(0)?
     /// channel.play_asset_native(
     ///     sound.data, sound.size,
     ///     sound.period_pal, sound.period_ntsc,
@@ -1032,7 +1032,7 @@ pub fn is_pal_system() -> bool {
 /// # Example
 /// ```novus
 /// init_audio()
-/// let mut channel = AudioChannel::acquire(0)?
+/// var channel = AudioChannel::acquire(0)?
 /// ```
 pub fn init_audio() {
     unsafe {
@@ -1057,7 +1057,7 @@ pub fn init_audio() {
 ///
 /// # Example
 /// ```novus
-/// let mut ch = init_channel(0)?
+/// var ch = init_channel(0)?
 /// ch.play(&sample, PlaybackMode::Loop)?
 /// ```
 pub fn init_channel(channel: u8) -> Result<AudioChannel, AudioError> {
@@ -1236,7 +1236,7 @@ impl ChannelMask {
 /// # Example - Stereo playback
 /// ```novus
 /// // Allocate stereo channels (one left, one right)
-/// let mut audio = MultiChannel::acquire_stereo(0)?
+/// var audio = MultiChannel::acquire_stereo(0)?
 ///
 /// // Play sample on both channels
 /// audio.play(&explosion, PlaybackMode::OneShot)?
@@ -1253,7 +1253,7 @@ impl ChannelMask {
 /// ```novus
 /// // Play on channels 0, 2, and 3
 /// let mask = ChannelMask::channel(0).with(2).with(3)
-/// let mut audio = MultiChannel::acquire(mask, 0)?
+/// var audio = MultiChannel::acquire(mask, 0)?
 /// audio.play(&sample, PlaybackMode::Loop)?
 /// ```
 pub struct MultiChannel {

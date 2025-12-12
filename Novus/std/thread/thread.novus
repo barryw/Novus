@@ -58,8 +58,8 @@ const THREAD_COMM_SIZE: u32 = 8
 /// ```novus
 /// fn worker() -> i32 {
 ///     // Do computation (no DOS calls!)
-///     let mut sum: i32 = 0
-///     for let mut i = 0; i < 1000000; i++ {
+///     var sum: i32 = 0
+///     for var i = 0; i < 1000000; i++ {
 ///         sum = sum + i
 ///     }
 ///     return 0

@@ -36,12 +36,12 @@ fn draw_checkerboard(window: &BufferedWindow) {
 
             // Draw checkerboard (32×32 pixel squares)
             let square_size: i16 = 32
-            let mut y: i16 = 0
-            let mut row: i16 = 0
+            var y: i16 = 0
+            var row: i16 = 0
 
             while y < height {
-                let mut x: i16 = 0
-                let mut col: i16 = 0
+                var x: i16 = 0
+                var col: i16 = 0
 
                 while x < width {
                     // Alternate colors based on row+col parity
@@ -122,7 +122,7 @@ pub fn main() -> i32 {
             }
 
             // Event loop
-            let mut event_count: i32 = 0
+            var event_count: i32 = 0
             forever {
                 let event = window.wait_event()
                 event_count = event_count + 1

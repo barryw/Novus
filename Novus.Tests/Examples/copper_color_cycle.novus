@@ -40,14 +40,14 @@ pub fn main() -> i32 {
     ]
 
     // Build ONE copper list with initial color
-    let mut builder = CopperListBuilder::new()
+    var builder = CopperListBuilder::new()
     let _ = builder.wait(0, 0)
     let _ = builder.move_color(0, colors[0])
 
     let build_result = builder.build()
     match build_result {
         Result::Ok(copper_list) => {
-            let mut list = copper_list
+            var list = copper_list
 
             // Activate once at the start
             unsafe {
@@ -55,7 +55,7 @@ pub fn main() -> i32 {
             }
 
             // Cycle through colors 60 times (about 10 seconds at 6fps)
-            let mut frame: u32 = 0
+            var frame: u32 = 0
             while frame < 60 {
                 // Calculate color index (cycles every 16 frames)
                 let color_idx: u32 = frame % 16

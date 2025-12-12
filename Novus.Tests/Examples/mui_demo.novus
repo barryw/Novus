@@ -31,17 +31,17 @@ const GAD_BUSY: u32 = 41
 
 fn main() -> i32 {
     // Create the application
-    let mut app_builder = MUIAppBuilder::new("MUI Demo")
+    var app_builder = MUIAppBuilder::new("MUI Demo")
     app_builder.author("Novus")
     app_builder.description("MUI demonstration with tabs and menus")
     app_builder.version("$VER: mui_demo 1.3 (12.12.2025)")
     app_builder.base("MUIDEMO")
 
     // Build the menu bar
-    let mut menustrip = MenuBuilder::new()
+    var menustrip = MenuBuilder::new()
 
     // Project menu
-    let mut project_menu = menustrip.menu("Project")
+    var project_menu = menustrip.menu("Project")
     project_menu.item("New", "N", MENU_NEW)
     project_menu.item("Open...", "O", MENU_OPEN)
     project_menu.item("Save", "S", MENU_SAVE)
@@ -49,24 +49,24 @@ fn main() -> i32 {
     project_menu.item("Quit", "Q", MENU_QUIT)
 
     // Edit menu
-    let mut edit_menu = menustrip.menu("Edit")
+    var edit_menu = menustrip.menu("Edit")
     edit_menu.item("Cut", "X", MENU_CUT)
     edit_menu.item("Copy", "C", MENU_COPY)
     edit_menu.item("Paste", "V", MENU_PASTE)
 
     // Help menu
-    let mut help_menu = menustrip.menu("Help")
+    var help_menu = menustrip.menu("Help")
     help_menu.item("About...", "?", MENU_ABOUT)
 
     // Set the menustrip on the application
     app_builder.menustrip(menustrip.build())
 
     // Create main window with UI
-    let mut win_builder = app_builder.window("MUI Demo Window")
+    var win_builder = app_builder.window("MUI Demo Window")
     win_builder.id($4D554944)  // 'MUID' - for prefs saving
 
     // Build the UI hierarchy with tabs
-    let mut root = win_builder.vgroup()
+    var root = win_builder.vgroup()
     root.frame(MUIV_Frame_Group)
 
     // Status text at the top
@@ -74,15 +74,15 @@ fn main() -> i32 {
     root.child(status_text)
 
     // Create tabbed pages - each page is created through root's group builders
-    let mut tabs = MUITabsBuilder::new(&app_builder)
+    var tabs = MUITabsBuilder::new(&app_builder)
 
     // === Tab 1: Controls ===
-    let mut controls_group = root.vgroup()
+    var controls_group = root.vgroup()
     controls_group.frame(MUIV_Frame_Group)
     controls_group.frame_title("Basic Controls")
 
     // Add some buttons
-    let mut button_group = controls_group.hgroup()
+    var button_group = controls_group.hgroup()
     button_group.same_size()
     let btn1 = button_group.button(GAD_BUTTON_ONE, "Button 1")
     let btn2 = button_group.button(GAD_BUTTON_TWO, "Button 2")
@@ -90,14 +90,14 @@ fn main() -> i32 {
     controls_group.child(buttons)
 
     // Add a slider with label
-    let mut slider_group = controls_group.hgroup()
+    var slider_group = controls_group.hgroup()
     slider_group.label("Volume:")
     let slider = slider_group.slider(GAD_SLIDER, 0, 100, 50)
     let slider_row = slider_group.build()
     controls_group.child(slider_row)
 
     // Add a string gadget
-    let mut string_group = controls_group.hgroup()
+    var string_group = controls_group.hgroup()
     string_group.label("Name:")
     let string_gad = string_group.string(GAD_STRING, "Type here", 64)
     let string_row = string_group.build()
@@ -109,7 +109,7 @@ fn main() -> i32 {
     let controls_page = controls_group.build()
 
     // === Tab 2: Radio & Progress ===
-    let mut advanced_group = root.vgroup()
+    var advanced_group = root.vgroup()
     advanced_group.frame(MUIV_Frame_Group)
     advanced_group.frame_title("Advanced Controls")
 
@@ -127,7 +127,7 @@ fn main() -> i32 {
     advanced_group.child(progress)
 
     // Busy button
-    let mut busy_group = advanced_group.hgroup()
+    var busy_group = advanced_group.hgroup()
     busy_group.hspace()
     let busy_btn = busy_group.button(GAD_BUSY, "Simulate Work")
     busy_group.hspace()
@@ -137,7 +137,7 @@ fn main() -> i32 {
     let advanced_page = advanced_group.build()
 
     // === Tab 3: About ===
-    let mut about_group = root.vgroup()
+    var about_group = root.vgroup()
     about_group.frame(MUIV_Frame_Group)
 
     about_group.vspace()
@@ -158,7 +158,7 @@ fn main() -> i32 {
 
     // Add quit button at bottom
     root.hbar()
-    let mut quit_group = root.hgroup()
+    var quit_group = root.hgroup()
     quit_group.hspace()
     let quit_btn = quit_group.button(GAD_QUIT, "Quit")
     quit_group.hspace()
@@ -209,8 +209,8 @@ fn main() -> i32 {
             app.open_window(window)
 
             // Run the event loop with custom handling
-            let mut signals: u32 = 0
-            let mut running = true
+            var signals: u32 = 0
+            var running = true
 
             forever {
                 if !running {
@@ -290,7 +290,7 @@ fn main() -> i32 {
                         app_busy(app.app_object(), true)
 
                         // Update progress bar
-                        let mut i: i32 = 0
+                        var i: i32 = 0
                         forever {
                             if i > 100 {
                                 break

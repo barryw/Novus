@@ -70,7 +70,7 @@ impl Ball {
         ctx.circle(self.x, self.y, self.radius)
 
         // Fill the ball
-        let mut r: i16 = self.radius
+        var r: i16 = self.radius
         while r > 0 {
             ctx.circle(self.x, self.y, r)
             r = r - 1
@@ -80,7 +80,7 @@ impl Ball {
 
 /// Simple frame-rate limiting (busy wait)
 fn delay_frames(frames: i32) {
-    let mut i: i32 = 0
+    var i: i32 = 0
     while i < frames {
         WaitTOF()  // Wait for vertical blank (50Hz PAL / 60Hz NTSC)
         i = i + 1
@@ -100,7 +100,7 @@ pub fn main() -> i32 {
 
             // Create ball in center with random-ish velocity
             let (width, height) = window.buffer_size()
-            let mut ball = Ball::new(
+            var ball = Ball::new(
                 width / 2,
                 height / 2,
                 5,  // vx
@@ -115,8 +115,8 @@ pub fn main() -> i32 {
             write("Resize the window - the trail is preserved!\n")
             write("Click close gadget to exit\n\n")
 
-            let mut running: bool = true
-            let mut frame_count: i32 = 0
+            var running: bool = true
+            var frame_count: i32 = 0
 
             while running {
                 // Poll for events (non-blocking)

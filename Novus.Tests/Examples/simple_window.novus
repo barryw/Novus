@@ -21,17 +21,17 @@ pub fn main() -> i32 {
             let screen = window.get_screen()
 
             // Build menus using the hierarchical builder API
-            let mut builder = GadToolsMenuBuilder::new(screen)
+            var builder = GadToolsMenuBuilder::new(screen)
 
             // Add File menu with items
-            let mut file_menu = builder.add_menu("File")
+            var file_menu = builder.add_menu("File")
             file_menu.add_item("New")
             file_menu.add_item("Open")
             file_menu.add_separator()
             file_menu.add_item("Quit")
 
             // Add Edit menu with items
-            let mut edit_menu = builder.add_menu("Edit")
+            var edit_menu = builder.add_menu("Edit")
             edit_menu.add_item("Cut")
             edit_menu.add_item("Copy")
             edit_menu.add_item("Paste")

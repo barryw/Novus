@@ -9,7 +9,7 @@ fn main() -> i32 {
     write("1. Starting\n".ptr)
 
     // Test AllocMem directly
-    let mut ptr: *u8 = (*u8)0
+    var ptr: *u8 = (*u8)0
     unsafe {
         ptr = AllocMem(256, 65537)  // MEMF_PUBLIC | MEMF_CLEAR
     }

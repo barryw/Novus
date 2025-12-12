@@ -18,7 +18,7 @@ pub fn main() -> i32 {
     write("MOD Player Test\n")
     write("===============\n\n")
 
-    let mut player = ModPlayer::new(is_pal)?
+    var player = ModPlayer::new(is_pal)?
     player.init_asset(&music, 0)?
 
     write("Playing: GSLINGER.MOD\n")
@@ -27,9 +27,9 @@ pub fn main() -> i32 {
     player.set_single_play(true)
     player.play()
 
-    let mut timer = AsyncTimer::new()?
-    let mut seconds: u32 = 0
-    let mut user_stopped = false
+    var timer = AsyncTimer::new()?
+    var seconds: u32 = 0
+    var user_stopped = false
 
     while !player.is_finished() {
         match timer.wait_or_break(Duration::secs(1)) {

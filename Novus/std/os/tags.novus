@@ -34,10 +34,10 @@ from std::ffi::amiga_consts import TAG_DONE
 /// // Returns a Vec with your 3 tags + TAG_DONE at the end
 /// ```
 pub fn make_tags(tags_ptr: *TagItem, count: u32) -> Vec<TagItem> {
-    let mut result: Vec<TagItem> = Vec::<TagItem>::new()
+    var result: Vec<TagItem> = Vec::<TagItem>::new()
 
     // Add all user-provided tags
-    let mut i = 0
+    var i = 0
     while i < count {
         let tag = tags_ptr[i]
         result.push(tag)

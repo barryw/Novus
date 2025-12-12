@@ -23,10 +23,10 @@ pub fn main() -> i32 {
 
             // Build menus using the hierarchical GadTools API
             write("Building menus...\n")
-            let mut menu_builder = GadToolsMenuBuilder::new(screen)
+            var menu_builder = GadToolsMenuBuilder::new(screen)
 
             // Project menu - add_menu returns a MenuHandle
-            let mut project_menu = menu_builder.add_menu("Project")
+            var project_menu = menu_builder.add_menu("Project")
             project_menu.add_item("New")
             project_menu.add_item("Open")
             project_menu.add_separator()
@@ -35,14 +35,14 @@ pub fn main() -> i32 {
             project_menu.add_item("Quit")
 
             // Edit menu
-            let mut edit_menu = menu_builder.add_menu("Edit")
+            var edit_menu = menu_builder.add_menu("Edit")
             edit_menu.add_item("Cut")
             edit_menu.add_item("Copy")
             edit_menu.add_item("Paste")
 
             // View menu with sub-items
-            let mut view_menu = menu_builder.add_menu("View")
-            let mut toolbar_item = view_menu.add_item("Toolbar")
+            var view_menu = menu_builder.add_menu("View")
+            var toolbar_item = view_menu.add_item("Toolbar")
             toolbar_item.add_sub_item("Large Icons")
             toolbar_item.add_sub_item("Small Icons")
             view_menu.add_item("Status Bar")

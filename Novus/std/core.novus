@@ -418,7 +418,7 @@ pub trait Drop {
 // impl Hash for Point {
 //     fn hash(&self) -> u32 {
 //         // Combine hashes of x and y coordinates
-//         let mut h: u32 = self.x.hash()
+//         var h: u32 = self.x.hash()
 //         h = h ^ (self.y.hash() * $9e3779b9)
 //         return h
 //     }
@@ -564,7 +564,7 @@ pub trait IndexMut<I, T> {
 impl Hash for u8 {
     fn hash(&self) -> u32 {
         // Mix the bits for better distribution
-        let mut h: u32 = (u32)*self
+        var h: u32 = (u32)*self
         h = h ^ (h >> 4)
         h = h * 2246822507u32
         h = h ^ (h >> 13)
@@ -575,7 +575,7 @@ impl Hash for u8 {
 // Hash for u16
 impl Hash for u16 {
     fn hash(&self) -> u32 {
-        let mut h: u32 = (u32)*self
+        var h: u32 = (u32)*self
         h = h ^ (h >> 8)
         h = h * 2246822507u32
         h = h ^ (h >> 13)
@@ -587,7 +587,7 @@ impl Hash for u16 {
 impl Hash for u32 {
     fn hash(&self) -> u32 {
         // FNV-1a inspired mixing
-        let mut h: u32 = *self
+        var h: u32 = *self
         h = h ^ (h >> 16)
         h = h * 2246822507u32
         h = h ^ (h >> 13)
@@ -602,7 +602,7 @@ impl Hash for i8 {
     fn hash(&self) -> u32 {
         // Cast to u8 first to avoid sign extension, then to u32
         let byte_val: u8 = (u8)*self
-        let mut h: u32 = (u32)byte_val
+        var h: u32 = (u32)byte_val
         h = h ^ (h >> 4)
         h = h * 2246822507u32
         h = h ^ (h >> 13)
@@ -615,7 +615,7 @@ impl Hash for i16 {
     fn hash(&self) -> u32 {
         // Cast to u16 first to avoid sign extension, then to u32
         let short_val: u16 = (u16)*self
-        let mut h: u32 = (u32)short_val
+        var h: u32 = (u32)short_val
         h = h ^ (h >> 8)
         h = h * 2246822507u32
         h = h ^ (h >> 13)
@@ -627,7 +627,7 @@ impl Hash for i16 {
 impl Hash for i32 {
     fn hash(&self) -> u32 {
         // Reinterpret as unsigned
-        let mut h: u32 = (u32)*self
+        var h: u32 = (u32)*self
         h = h ^ (h >> 16)
         h = h * 2246822507u32
         h = h ^ (h >> 13)

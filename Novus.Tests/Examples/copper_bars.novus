@@ -18,7 +18,7 @@ pub fn main() -> i32 {
         WaitTOF()  // This forces the graphics library to be opened
     }
     // Create a copper list that displays color bars
-    let mut builder = CopperListBuilder::new()
+    var builder = CopperListBuilder::new()
 
     // Start at the top of the screen
     let start_line: u16 = 40

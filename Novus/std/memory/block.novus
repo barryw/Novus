@@ -64,7 +64,7 @@ impl MemoryBlock {
             return Option::Some(MemoryBlock { ptr: (*u8)0, size: 0 })
         }
 
-        let mut ptr: *u8 = (*u8)0
+        var ptr: *u8 = (*u8)0
         unsafe {
             ptr = AllocMem(size, flags)
         }
@@ -157,7 +157,7 @@ impl MemoryBlock {
         match new_block_opt {
             Some(mut new_block) => {
                 // Copy old data to new block
-                let mut copy_size: u32 = self.size
+                var copy_size: u32 = self.size
                 if new_size < self.size {
                     copy_size = new_size
                 }

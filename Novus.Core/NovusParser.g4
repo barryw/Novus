@@ -315,9 +315,12 @@ returnStatement
     ;
 
 variableDeclaration
-    : (KW_LET | KW_VAR) KW_MUT? (IDENTIFIER | UNDERSCORE | tuplePattern) (COLON type)? EQ expression
-    | (KW_LET | KW_VAR) KW_MUT? (IDENTIFIER | UNDERSCORE | tuplePattern) COLON type
-    | (KW_LET | KW_VAR) KW_MUT? (IDENTIFIER | UNDERSCORE | tuplePattern)
+    : KW_LET (IDENTIFIER | UNDERSCORE | tuplePattern) (COLON type)? EQ expression    // Immutable binding
+    | KW_LET (IDENTIFIER | UNDERSCORE | tuplePattern) COLON type                      // Immutable, uninitialized
+    | KW_LET (IDENTIFIER | UNDERSCORE | tuplePattern)                                 // Immutable, uninitialized
+    | KW_VAR (IDENTIFIER | UNDERSCORE | tuplePattern) (COLON type)? EQ expression    // Mutable binding
+    | KW_VAR (IDENTIFIER | UNDERSCORE | tuplePattern) COLON type                      // Mutable, uninitialized
+    | KW_VAR (IDENTIFIER | UNDERSCORE | tuplePattern)                                 // Mutable, uninitialized
     ;
 
 tuplePattern

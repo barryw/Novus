@@ -37,7 +37,7 @@ pub fn main() -> i32 {
     let pos = move_to(1, 1)  // Would move to top-left
     write("  move_to(1, 1) = [")
     // Print the bytes in hex-like format
-    let mut i: u32 = 0u32
+    var i: u32 = 0u32
     while i < pos.len() {
         if i > 0 {
             write(" ")

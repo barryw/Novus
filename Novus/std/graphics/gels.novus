@@ -14,15 +14,15 @@
 // - Automatic background save/restore for BOBs
 //
 // VSprite Quick Start:
-//   let mut gels = GelsSystem::init(&rp, &vp)?
-//   let mut vsprite = gels.create_vsprite(16, 16, 4, image_data)?
+//   var gels = GelsSystem::init(&rp, &vp)?
+//   var vsprite = gels.create_vsprite(16, 16, 4, image_data)?
 //   vsprite.show(&mut gels)?
 //   vsprite.move_to(100, 50)
 //   gels.render_frame()  // Sort, draw, and check collisions
 //
 // BOB Quick Start:
-//   let mut gels = GelsSystem::init(&rp, &vp)?
-//   let mut bob = gels.create_bob(32, 32, 4, image_data, shadow_mask)?
+//   var gels = GelsSystem::init(&rp, &vp)?
+//   var bob = gels.create_bob(32, 32, 4, image_data, shadow_mask)?
 //   bob.show(&mut gels)?
 //   bob.move_to(100, 50)
 //   gels.render_frame()  // Sort, draw, and check collisions
@@ -728,7 +728,7 @@ impl BobHandle {
         // Determine flags
         // SAVEBACK = save and restore background
         // OVERLAY = use shadow mask for cookie-cut
-        let mut bob_flags: i16 = (i16)SAVEBACK
+        var bob_flags: i16 = (i16)SAVEBACK
         if image_shadow != null {
             bob_flags = bob_flags | (i16)OVERLAY
         }
@@ -1224,7 +1224,7 @@ impl AnimObBuilder {
     // Build the AnimOb
     pub fn build(&mut self) -> Result<AnimObHandle, GelError> {
         // Count total frames across all sequences
-        let mut total_frames = 0u32
+        var total_frames = 0u32
         for seq_i in 0u32..self.sequence_count {
             unsafe {
                 total_frames = total_frames + self.sequences[seq_i].frame_count
@@ -1306,8 +1306,8 @@ impl AnimObBuilder {
         }
 
         // Build all components
-        let mut comp_idx = 0u32
-        let mut first_comp: *AnimComp = null
+        var comp_idx = 0u32
+        var first_comp: *AnimComp = null
 
         // Get cached gels pointer
         let gels_ptr = self.gels

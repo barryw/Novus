@@ -79,9 +79,9 @@ fn main() -> i32 {
             }
 
             // Test iteration
-            let mut count: u32 = 0u32
-            let mut iter: HashMapIter<u32, u32> = map.iter()
-            let mut done: bool = false
+            var count: u32 = 0u32
+            var iter: HashMapIter<u32, u32> = map.iter()
+            var done: bool = false
             while !done {
                 match iter.next() {
                     Some(kv) => {

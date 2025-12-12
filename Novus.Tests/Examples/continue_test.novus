@@ -6,8 +6,8 @@ from std::strings::core import Str
 
 pub fn main() -> i32 {
     // Test 1: continue in while loop
-    let mut sum1: i32 = 0
-    let mut i: i32 = 0
+    var sum1: i32 = 0
+    var i: i32 = 0
     while i < 10 {
         i++
         if i == 5 {
@@ -23,8 +23,8 @@ pub fn main() -> i32 {
     write("Test 1 PASSED: while continue\n")
 
     // Test 2: continue in for loop
-    let mut sum2: i32 = 0
-    for let mut j = 0; j < 10; j++ {
+    var sum2: i32 = 0
+    for var j = 0; j < 10; j++ {
         if j % 2 == 0 {
             continue  // Skip even numbers
         }
@@ -38,8 +38,8 @@ pub fn main() -> i32 {
     write("Test 2 PASSED: for continue\n")
 
     // Test 3: continue in forever loop
-    let mut sum3: i32 = 0
-    let mut k: i32 = 0
+    var sum3: i32 = 0
+    var k: i32 = 0
     forever {
         k++
         if k > 10 {
@@ -58,8 +58,8 @@ pub fn main() -> i32 {
     write("Test 3 PASSED: forever continue\n")
 
     // Test 4: continue with postfix condition
-    let mut sum4: i32 = 0
-    let mut m: i32 = 0
+    var sum4: i32 = 0
+    var m: i32 = 0
     while m < 10 {
         m++
         continue if m % 3 == 0  // Skip multiples of 3

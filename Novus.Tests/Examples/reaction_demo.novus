@@ -25,21 +25,21 @@ fn main() -> i32 {
     }
 
     // Create builder
-    let mut builder = ReActionBuilder::new(screen)
+    var builder = ReActionBuilder::new(screen)
 
     // Create root vertical layout
-    let mut root = builder.layout(LayoutOrientation::Vertical)
+    var root = builder.layout(LayoutOrientation::Vertical)
     root.space_outer()
 
     // Add a group with some controls
-    let mut group = root.add_layout(LayoutOrientation::Vertical)
+    var group = root.add_layout(LayoutOrientation::Vertical)
     group.with_bevel(BevelStyle::Group).with_label("Options")
 
     group.add_checkbox(GAD_CHECKBOX, "Enable feature")
     group.add_integer(GAD_INTEGER, 100).with_minimum(0).with_maximum(999)
 
     // Add buttons in horizontal layout
-    let mut buttons = root.add_layout(LayoutOrientation::Horizontal)
+    var buttons = root.add_layout(LayoutOrientation::Horizontal)
     buttons.add_button(GAD_OK, "OK")
     buttons.add_button(GAD_CANCEL, "Cancel")
 
@@ -49,7 +49,7 @@ fn main() -> i32 {
     match window_result {
         Result::Ok(window) => {
             // Event loop
-            let mut running = true
+            var running = true
             forever {
                 if !running {
                     break

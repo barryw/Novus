@@ -113,7 +113,7 @@ fn main() -> Result<(), NovusError> {
     let viewport = &(*screen).ViewPort
 
     // Allocate OS sprite (any available sprite)
-    let mut sprite = OsSpriteHandle::alloc(viewport, -1)?
+    var sprite = OsSpriteHandle::alloc(viewport, -1)?
 
     // Initialize ball physics
     let min_x: i16 = 10
@@ -121,13 +121,13 @@ fn main() -> Result<(), NovusError> {
     let min_y: i16 = 10
     let max_y: i16 = 190
 
-    let mut ball = Ball::new(160, 100, 3, 2)
+    var ball = Ball::new(160, 100, 3, 2)
 
     // Show sprite at initial position
     sprite.show(&sprite_data, ball.x, ball.y)?
 
     // Animation loop (run for ~5 seconds at 50 fps)
-    let mut frame: u32 = 0u32
+    var frame: u32 = 0u32
     while frame < 250u32 {
         WaitTOF()
         ball.update(min_x, max_x, min_y, max_y)

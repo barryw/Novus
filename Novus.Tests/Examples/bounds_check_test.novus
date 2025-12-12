@@ -13,7 +13,7 @@ pub fn access_out_of_bounds() -> i32 {
 }
 
 pub fn store_out_of_bounds() -> i32 {
-    let mut arr = [1, 2, 3]
+    var arr = [1, 2, 3]
     arr[5] = 99  // Out of bounds! Should panic with bounds check enabled
     return arr[0]
 }

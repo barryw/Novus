@@ -7,7 +7,7 @@
 // ## Design Pattern: Hierarchical Builder → Flat BOOPSI Objects
 //
 // The user sees a clean hierarchical API:
-//   let mut layout = builder.layout(LayoutOrientation::Vertical)
+//   var layout = builder.layout(LayoutOrientation::Vertical)
 //   layout.add_button(1, "OK")
 //   layout.add_checkbox(2, "Enable")
 //
@@ -233,7 +233,7 @@ impl ReActionBuilder {
 
         unsafe {
             // First pass: create all gadget objects (leaves)
-            let mut i: u32 = 0
+            var i: u32 = 0
             forever {
                 if i >= self.entry_count {
                     break
@@ -276,7 +276,7 @@ impl ReActionBuilder {
 
             // Second pass: create layout objects and add children
             // Process in reverse order so nested layouts work correctly
-            let mut j: i32 = (i32)self.entry_count - 1
+            var j: i32 = (i32)self.entry_count - 1
             forever {
                 if j < 0 {
                     break
@@ -288,7 +288,7 @@ impl ReActionBuilder {
                 match layout_entry.gadget_type {
                     GadgetType::Layout => {
                         // Add LAYOUT_AddChild tags for all children of this layout
-                        let mut k: u32 = 0
+                        var k: u32 = 0
                         forever {
                             if k >= self.entry_count {
                                 break
@@ -354,7 +354,7 @@ impl ReActionBuilder {
             }
 
             // Get the signal mask
-            let mut sig_mask: u32 = 0
+            var sig_mask: u32 = 0
             GetAttr(WINDOW_SigMask, window_obj, (*u8)&sig_mask)
 
             // Transfer ownership to window wrapper
@@ -429,7 +429,7 @@ impl ReActionBuilder {
                 }
 
                 // Copy existing
-                let mut i: u32 = 0
+                var i: u32 = 0
                 forever {
                     if i >= self.label_count {
                         break
@@ -467,7 +467,7 @@ impl ReActionBuilder {
                 let old_size = self.entry_count * @sizeof(GadgetEntry)
                 let src = (*u8)self.entries
                 let dst = (*u8)new_mem
-                let mut i: u32 = 0
+                var i: u32 = 0
                 forever {
                     if i >= old_size {
                         break
@@ -525,7 +525,7 @@ impl ReActionBuilder {
                 let old_size = entry.tag_count * @sizeof(TagItem)
                 let src = (*u8)entry.tags
                 let dst = (*u8)new_mem
-                let mut i: u32 = 0
+                var i: u32 = 0
                 forever {
                     if i >= old_size {
                         break
@@ -564,7 +564,7 @@ impl ReActionBuilder {
                     panic!("Failed to resize radio node array")
                 }
 
-                let mut i: u32 = 0
+                var i: u32 = 0
                 forever {
                     if i >= self.radio_node_count {
                         break
@@ -597,7 +597,7 @@ impl ReActionBuilder {
                     panic!("Failed to resize radio list array")
                 }
 
-                let mut i: u32 = 0
+                var i: u32 = 0
                 forever {
                     if i >= self.radio_list_count {
                         break
@@ -621,7 +621,7 @@ impl ReActionBuilder {
     /// Cleanup objects on failure
     fn cleanup_objects(&mut self) {
         unsafe {
-            let mut i: u32 = 0
+            var i: u32 = 0
             forever {
                 if i >= self.entry_count {
                     break
@@ -642,7 +642,7 @@ impl Drop for ReActionBuilder {
     fn drop(&mut self) {
         unsafe {
             // Free entry tag arrays
-            let mut i: u32 = 0
+            var i: u32 = 0
             forever {
                 if i >= self.entry_count {
                     break
@@ -663,7 +663,7 @@ impl Drop for ReActionBuilder {
 
             // Free labels if still owned
             if self.labels {
-                let mut j: u32 = 0
+                var j: u32 = 0
                 forever {
                     if j >= self.label_count {
                         break
@@ -680,7 +680,7 @@ impl Drop for ReActionBuilder {
 
             // Free radio nodes if still owned
             if self.radio_nodes {
-                let mut k: u32 = 0
+                var k: u32 = 0
                 forever {
                     if k >= self.radio_node_count {
                         break
@@ -697,7 +697,7 @@ impl Drop for ReActionBuilder {
 
             // Free radio lists if still owned
             if self.radio_lists {
-                let mut l: u32 = 0
+                var l: u32 = 0
                 forever {
                     if l >= self.radio_list_count {
                         break
@@ -885,7 +885,7 @@ impl LayoutHandle {
             (*self.builder).track_radio_list(list)
 
             // Create nodes for each option
-            let mut i: u32 = 0
+            var i: u32 = 0
             forever {
                 if i >= options.len {
                     break
@@ -1040,7 +1040,7 @@ impl ReActionWindow {
             Wait(self.sig_mask)
 
             // Handle input - use array so we can get a pointer
-            let mut code: [u16; 1] = [0]
+            var code: [u16; 1] = [0]
             let code_ptr = (*u16)&code[0]
             let handle_msg: [u32; 2] = [WM_HANDLEINPUT, (u32)code_ptr]
 
@@ -1062,7 +1062,7 @@ impl ReActionWindow {
     pub fn poll_event(&self) -> Option<ReActionEvent> {
         unsafe {
             // Use array so we can get a pointer
-            let mut code: [u16; 1] = [0]
+            var code: [u16; 1] = [0]
             let code_ptr = (*u16)&code[0]
             let handle_msg: [u32; 2] = [WM_HANDLEINPUT, (u32)code_ptr]
 
@@ -1105,7 +1105,7 @@ impl ReActionWindow {
     pub fn refresh_layout(&self) {
         unsafe {
             // Get layout from window
-            let mut layout_ptr: u32 = 0
+            var layout_ptr: u32 = 0
             GetAttr(WINDOW_Layout, self.window_obj, (*u8)&layout_ptr)
 
             if layout_ptr != 0 {
@@ -1133,7 +1133,7 @@ impl Drop for ReActionWindow {
 
             // Free labels
             if self.labels {
-                let mut i: u32 = 0
+                var i: u32 = 0
                 forever {
                     if i >= self.label_count {
                         break
@@ -1150,7 +1150,7 @@ impl Drop for ReActionWindow {
 
             // Free radio nodes
             if self.radio_nodes {
-                let mut j: u32 = 0
+                var j: u32 = 0
                 forever {
                     if j >= self.radio_node_count {
                         break
@@ -1167,7 +1167,7 @@ impl Drop for ReActionWindow {
 
             // Free radio lists
             if self.radio_lists {
-                let mut k: u32 = 0
+                var k: u32 = 0
                 forever {
                     if k >= self.radio_list_count {
                         break
