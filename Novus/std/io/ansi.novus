@@ -383,21 +383,25 @@ impl Ansi {
     }
 
     /// Add bold attribute
+    #[chain]
     pub fn bold(&var self) {
         self.codes.push(1u32)
     }
 
     /// Add underline attribute
+    #[chain]
     pub fn underline(&var self) {
         self.codes.push(4u32)
     }
 
     /// Add reverse video attribute
+    #[chain]
     pub fn reverse(&var self) {
         self.codes.push(7u32)
     }
 
     /// Set foreground pen
+    #[chain]
     pub fn fg(&var self, pen: Pen) {
         let code: u32 = match pen {
             Pen::Pen0 => 30u32,
@@ -414,6 +418,7 @@ impl Ansi {
     }
 
     /// Set background pen
+    #[chain]
     pub fn bg(&var self, pen: Pen) {
         let code: u32 = match pen {
             Pen::Pen0 => 40u32,

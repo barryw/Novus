@@ -408,6 +408,7 @@ impl BankBuilder {
     ///     asset.cache_priority()
     /// )
     /// ```
+    #[chain]
     pub fn add_asset(&var self, asset_id: u32, data_ptr: *u8, data_size: u32, priority: Priority) {
         let entry = BankEntry::new(asset_id, data_ptr, data_size, priority)
         // Ignore errors during building - will fail at build() time
@@ -415,6 +416,7 @@ impl BankBuilder {
     }
 
     /// Add an asset with a custom debug name
+    #[chain]
     pub fn add_asset_named(&var self, asset_id: u32, data_ptr: *u8, data_size: u32, priority: Priority, name: Str) {
         var entry = BankEntry::new(asset_id, data_ptr, data_size, priority)
         entry.set_name(name)
@@ -424,6 +426,7 @@ impl BankBuilder {
     /// Add a raw asset (pointer + size) with explicit ID
     ///
     /// Alias for add_asset_named for API compatibility.
+    #[chain]
     pub fn add_raw(&var self, asset_id: u32, ptr: *u8, size: u32, priority: Priority, name: Str) {
         var entry = BankEntry::new(asset_id, ptr, size, priority)
         entry.set_name(name)
@@ -431,11 +434,13 @@ impl BankBuilder {
     }
 
     /// Set default priority for subsequently added assets
+    #[chain]
     pub fn priority(&var self, p: Priority) {
         self.default_priority = p
     }
 
     /// Mark bank as persistent (never auto-unload)
+    #[chain]
     pub fn persistent(&var self, p: bool) {
         self.bank.persistent = p
     }
