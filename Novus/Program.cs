@@ -1310,7 +1310,7 @@ class Program
             if (!isLibrary && !isDevice)
             {
                 // Only executables need startup code and library initialization
-                var coreFiles = new[] { "novus_startup", "library_bases", "dos_init", "graphics_init", "diskfont_init", "intuition_init", "gadtools_init", "debug_gfxbase" };
+                var coreFiles = new[] { "novus_startup", "library_bases", "dos_init", "graphics_init", "diskfont_init", "intuition_init", "gadtools_init", "reaction_init", "mui_init", "debug_gfxbase" };
                 foreach (var coreFile in coreFiles)
                 {
                     var coreSource = Path.Combine(compilerDir, "stubs", $"{coreFile}.s");
@@ -1736,6 +1736,19 @@ ___stack:
                 {
                     requiredLibraries.Add("graphics");
                     Console.WriteLine($"  ✓ Detected Graphics library usage in {Path.GetFileName(cFile)}");
+                }
+
+                // Check for MUI library function calls
+                if (cCode.Contains("MUI_NewObjectA(") ||
+                    cCode.Contains("MUI_DisposeObject(") ||
+                    cCode.Contains("MUI_RequestA(") ||
+                    cCode.Contains("MUI_MakeObjectA(") ||
+                    cCode.Contains("MUI_GetClass(") ||
+                    cCode.Contains("MUI_CreateCustomClass(") ||
+                    cCode.Contains("_MUIMasterBase"))
+                {
+                    requiredLibraries.Add("muimaster");
+                    Console.WriteLine($"  ✓ Detected MUI library usage in {Path.GetFileName(cFile)}");
                 }
             }
 

@@ -635,6 +635,8 @@ pub struct IBox {
     Height: i16,
 }
 
+// Use extern_type since DrawInfo is defined in NDK headers
+#[extern_type]
 pub struct DrawInfo {
     dri_Version: u16,
     dri_NumPens: u16,
@@ -677,6 +679,13 @@ pub struct IntuiText {
 
 // Opaque struct for VisualInfo (screen layout information)
 pub struct VisualInfo {
+    _opaque: u8,
+}
+
+// Opaque struct for IClass (BOOPSI class pointer)
+// Use #[extern_type] since this is defined in NDK headers
+#[extern_type]
+pub struct IClass {
     _opaque: u8,
 }
 

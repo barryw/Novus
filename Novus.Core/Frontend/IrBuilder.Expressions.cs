@@ -3111,9 +3111,10 @@ public partial class IrBuilder
         _currentBlock.AddInstruction(new IrLocalDecl(okValueTemp, okPayloadType, true, defaultValue));
 
         // Create blocks for Ok and Err branches
-        var okBlock = _currentFunction.CreateBasicBlock($"try_ok_{_tempCounter}");
-        var errBlock = _currentFunction.CreateBasicBlock($"try_err_{_tempCounter}");
-        var continueBlock = _currentFunction.CreateBasicBlock($"try_continue_{_tempCounter}");
+        var tryCounter = _tempCounter++;
+        var okBlock = _currentFunction.CreateBasicBlock($"try_ok_{tryCounter}");
+        var errBlock = _currentFunction.CreateBasicBlock($"try_err_{tryCounter}");
+        var continueBlock = _currentFunction.CreateBasicBlock($"try_continue_{tryCounter}");
 
         // Test which variant we have
         var tagTemp = $"%try_tag_{_tempCounter++}";
@@ -3138,7 +3139,7 @@ public partial class IrBuilder
 
         // Ok branch: extract value, store it, and continue
         _currentBlock = okBlock;
-        okBlock.AddInstruction(new IrLabel(okBlock.Label));
+        // NOTE: Don't add IrLabel here - the block's label is emitted by EmitBasicBlock
         var extractedTemp = $"%try_extracted_{_tempCounter++}";
         okBlock.AddInstruction(new IrExtractVariantData(extractedTemp, resultVar, "Ok", 0, okPayloadType));
         okBlock.AddInstruction(new IrStore(okValueTemp, new IrVariable(extractedTemp, okPayloadType)));
@@ -3146,7 +3147,7 @@ public partial class IrBuilder
 
         // Err branch: extract error and handle based on function return type
         _currentBlock = errBlock;
-        errBlock.AddInstruction(new IrLabel(errBlock.Label));
+        // NOTE: Don't add IrLabel here - the block's label is emitted by EmitBasicBlock
         var errValueTemp = $"%try_err_val_{_tempCounter++}";
         errBlock.AddInstruction(new IrExtractVariantData(errValueTemp, resultVar, "Err", 0, sourceErrorType));
         var errVar = new IrVariable(errValueTemp, sourceErrorType);
@@ -3238,7 +3239,7 @@ public partial class IrBuilder
 
         // Continue block: the value from Ok is the result of this expression
         _currentBlock = continueBlock;
-        continueBlock.AddInstruction(new IrLabel(continueBlock.Label));
+        // NOTE: Don't add IrLabel here - the block's label is emitted by EmitBasicBlock
         return new IrVariable(okValueTemp, okPayloadType);
     }
 

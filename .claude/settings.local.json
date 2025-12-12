@@ -82,7 +82,10 @@
       "Bash(/Users/barry/.dotnet/dotnet run:*)",
       "Bash(/Users/barry/RiderProjects/Novus/vendor/vbcc/bin/vasmm68k_mot:*)",
       "Bash(/Users/barry/RiderProjects/Novus/vendor/vbcc/bin/vobjdump:*)",
-      "Bash(jobs:*)"
+      "Bash(jobs:*)",
+      "WebFetch(domain:www.pjhutchison.org)",
+      "WebFetch(domain:d0.se)",
+      "WebFetch(domain:hollywood-mal.com)"
     ],
     "deny": [],
     "ask": []

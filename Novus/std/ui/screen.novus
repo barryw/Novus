@@ -507,8 +507,10 @@ impl ScreenBuilder {
         // For now, default to NTSC if no display_id set
         let display = if self.display_id != 0 { self.display_id } else { NTSC_MONITOR_ID }
 
-        // Use minimal tags that work reliably on NTSC
-        // SA_Overscan, SA_AutoScroll, SA_ShowTitle removed as they may cause issues
+        // Convert booleans to Amiga TRUE/FALSE
+        let show_title_val: u32 = if self.show_title { 1 } else { 0 }
+        let quiet_val: u32 = if self.quiet { 1 } else { 0 }
+
         let tags = [
             TagItem { ti_Tag: SA_DisplayID, ti_Data: display },
             TagItem { ti_Tag: SA_Width, ti_Data: (u32)self.width },
@@ -516,6 +518,8 @@ impl ScreenBuilder {
             TagItem { ti_Tag: SA_Depth, ti_Data: (u32)self.depth },
             TagItem { ti_Tag: SA_Title, ti_Data: (u32)self.title_ptr },
             TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
+            TagItem { ti_Tag: SA_ShowTitle, ti_Data: show_title_val },
+            TagItem { ti_Tag: SA_Quiet, ti_Data: quiet_val },
             TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
         ]
 

@@ -135,6 +135,10 @@ public partial class CCodeGenerator
     // Labels not in this set will be skipped during emission to avoid VBCC warning 148
     private HashSet<string> _reachableLabels = new();
 
+    // Track emitted labels within a function to prevent duplicate emission
+    // (labels can be added both by EmitBasicBlock and IrLabel instructions)
+    private HashSet<string> _emittedLabels = new();
+
     /// <summary>
     /// VBCC WORKAROUND: Track comparison expressions that can be inlined into conditional branches.
     ///
@@ -503,7 +507,24 @@ public partial class CCodeGenerator
         sb.AppendLine("#include <clib/intuition_protos.h>");
         sb.AppendLine("#include <clib/graphics_protos.h>");
         sb.AppendLine("#include <clib/gadtools_protos.h>");
+        sb.AppendLine("#include <clib/alib_protos.h>"); // DoMethodA, etc.
         sb.AppendLine("#include <devices/timer.h>");
+        // ReAction class headers (OS 3.5+) - tag definitions
+        sb.AppendLine("#include <classes/window.h>");
+        sb.AppendLine("#include <gadgets/layout.h>");
+        sb.AppendLine("#include <gadgets/button.h>");
+        sb.AppendLine("#include <gadgets/checkbox.h>");
+        sb.AppendLine("#include <gadgets/integer.h>");
+        sb.AppendLine("#include <gadgets/radiobutton.h>");
+        sb.AppendLine("#include <images/label.h>");
+        // ReAction class protos (for *_GetClass functions)
+        sb.AppendLine("#include <clib/window_protos.h>");
+        sb.AppendLine("#include <clib/layout_protos.h>");
+        sb.AppendLine("#include <clib/button_protos.h>");
+        sb.AppendLine("#include <clib/checkbox_protos.h>");
+        sb.AppendLine("#include <clib/integer_protos.h>");
+        sb.AppendLine("#include <clib/radiobutton_protos.h>");
+        sb.AppendLine("#include <clib/label_protos.h>");
         sb.AppendLine();
         // IMPORTANT: These typedefs must include all structs from the NdkStructs static field.
         // When adding a new NDK struct to NdkStructs, also add its typedef here.
@@ -570,6 +591,11 @@ public partial class CCodeGenerator
         sb.AppendLine("typedef struct Process Process;");
         sb.AppendLine("typedef struct FileInfoBlock FileInfoBlock;");
         sb.AppendLine("typedef struct InfoData InfoData;");
+        // BOOPSI/Intuition types for ReAction GUI
+        sb.AppendLine("typedef struct DrawInfo DrawInfo;");
+        sb.AppendLine("typedef struct IClass IClass;");
+        sb.AppendLine("typedef struct Gadget Gadget;");
+        sb.AppendLine("typedef struct Requester Requester;");
         sb.AppendLine();
         sb.AppendLine("// Sentinel value for \"unchanged\" pointer parameters (used by Amiga API)");
         sb.AppendLine("// Using explicit 32-bit constant to prevent VBCC from treating as 64-bit value");
@@ -639,11 +665,23 @@ public partial class CCodeGenerator
             // CRITICAL: Collect enum types referenced by struct fields
             // This prevents "undefined type" errors when structs use enum types as fields
             var enumsUsedByStructs = new HashSet<IrEnumType>();
+            var enumNamesByStructs = new HashSet<string>(); // Track names in case we have stub instances
             foreach (var structType in userStructs)
             {
                 foreach (var field in structType.Fields)
                 {
-                    codegen.CollectEnumTypesFromType(field.Type, enumsUsedByStructs);
+                    codegen.CollectEnumTypesFromType(field.Type, enumsUsedByStructs, enumNamesByStructs);
+                }
+            }
+
+            // For any enum names we found but didn't get populated instances for,
+            // look them up in the type registry to get the full version
+            foreach (var enumName in enumNamesByStructs)
+            {
+                var canonicalEnum = typeRegistry.EnumTypes.FirstOrDefault(e => e.EnumName == enumName && e.Variants.Count > 0);
+                if (canonicalEnum != null)
+                {
+                    enumsUsedByStructs.Add(canonicalEnum);
                 }
             }
 
@@ -1251,9 +1289,11 @@ public partial class CCodeGenerator
                         // AmigaOS library functions (WaitTOF, AllocMem, etc.) are provided by proto headers
                         // which define macros that expand to inline library calls through the library base.
                         // We skip these because the proto headers already handle them.
+                        // EXCEPTION: MUI functions (MUI_*) are provided by our stubs, not proto headers.
                         bool isAmigaOSFunction = funcName.Length > 0 &&
                                                  char.IsUpper(funcName[0]) &&
                                                  !funcName.StartsWith("__") &&
+                                                 !funcName.StartsWith("MUI_") &&
                                                  !funcObj.IsVariadic;
 
                         if (isAmigaOSFunction)
@@ -1731,6 +1771,13 @@ public partial class CCodeGenerator
     private void EmitEnumTypeToBuilder(StringBuilder sb, IrEnumType enumType)
     {
         var enumName = MangleName(enumType);
+
+        // Skip enums with no variants (stub/placeholder enums)
+        // This can happen when a struct field references an enum type before the enum is fully resolved
+        if (enumType.Variants.Count == 0)
+        {
+            return;
+        }
 
         // Check if this enum has any associated data
         bool hasAnyData = enumType.Variants.Any(v => v.HasAssociatedData);
@@ -2279,15 +2326,31 @@ public partial class CCodeGenerator
     /// </summary>
     internal void CollectEnumTypesFromType(IrType type, HashSet<IrEnumType> enumTypes)
     {
-        CollectEnumTypesFromType(type, enumTypes, new HashSet<string>());
+        CollectEnumTypesFromType(type, enumTypes, new HashSet<string>(), null);
     }
 
-    private void CollectEnumTypesFromType(IrType type, HashSet<IrEnumType> enumTypes, HashSet<string> visitedStructs)
+    /// <summary>
+    /// Recursively collect all enum types from a type, also tracking enum names for fallback resolution
+    /// </summary>
+    internal void CollectEnumTypesFromType(IrType type, HashSet<IrEnumType> enumTypes, HashSet<string>? enumNames)
+    {
+        CollectEnumTypesFromType(type, enumTypes, new HashSet<string>(), enumNames);
+    }
+
+    private void CollectEnumTypesFromType(IrType type, HashSet<IrEnumType> enumTypes, HashSet<string> visitedStructs, HashSet<string>? enumNames)
     {
         switch (type)
         {
             case IrEnumType enumType:
-                enumTypes.Add(enumType);
+                // Track the enum name for fallback resolution (in case this is a stub)
+                enumNames?.Add(enumType.EnumName);
+
+                // Only add enums with variants (skip stubs/placeholders)
+                // This ensures we don't try to emit empty enums that would cause C errors
+                if (enumType.Variants.Count > 0)
+                {
+                    enumTypes.Add(enumType);
+                }
 
                 // Also recursively scan enum variant associated data for nested enum types
                 // This is crucial for types like Result<T, E> where E might be another enum
@@ -2297,7 +2360,7 @@ public partial class CCodeGenerator
                     {
                         foreach (var dataType in variant.AssociatedData)
                         {
-                            CollectEnumTypesFromType(dataType, enumTypes, visitedStructs);
+                            CollectEnumTypesFromType(dataType, enumTypes, visitedStructs, enumNames);
                         }
                     }
                 }
@@ -2305,7 +2368,7 @@ public partial class CCodeGenerator
 
             case IrArrayType arrayType:
                 // Recursively check the element type
-                CollectEnumTypesFromType(arrayType.ElementType, enumTypes, visitedStructs);
+                CollectEnumTypesFromType(arrayType.ElementType, enumTypes, visitedStructs, enumNames);
                 break;
 
             case IrStructType structType:
@@ -2321,23 +2384,23 @@ public partial class CCodeGenerator
                 // Recursively check all field types
                 foreach (var field in structType.Fields)
                 {
-                    CollectEnumTypesFromType(field.Type, enumTypes, visitedStructs);
+                    CollectEnumTypesFromType(field.Type, enumTypes, visitedStructs, enumNames);
                 }
                 break;
 
             case IrPointerType pointerType:
                 // Recursively check the pointee type
-                CollectEnumTypesFromType(pointerType.PointeeType, enumTypes, visitedStructs);
+                CollectEnumTypesFromType(pointerType.PointeeType, enumTypes, visitedStructs, enumNames);
                 break;
 
             case IrReferenceType refType:
                 // Recursively check the pointee type
-                CollectEnumTypesFromType(refType.PointeeType, enumTypes, visitedStructs);
+                CollectEnumTypesFromType(refType.PointeeType, enumTypes, visitedStructs, enumNames);
                 break;
 
             case IrMutReferenceType mutRefType:
                 // Recursively check the pointee type
-                CollectEnumTypesFromType(mutRefType.PointeeType, enumTypes, visitedStructs);
+                CollectEnumTypesFromType(mutRefType.PointeeType, enumTypes, visitedStructs, enumNames);
                 break;
 
             // For other types (primitive, function pointers, etc.) we don't need to recurse
@@ -4491,10 +4554,12 @@ public partial class CCodeGenerator
     {
         // Emit the block's label if it's a target of a branch (not just the entry block)
         // This is needed for derived methods that generate multi-block control flow
-        if (block.Label != "entry" && _reachableLabels.Contains(block.Label))
+        // Skip if label was already emitted (prevents duplicate from IrLabel instructions)
+        if (block.Label != "entry" && _reachableLabels.Contains(block.Label) && !_emittedLabels.Contains(block.Label))
         {
             var labelName = block.Label + _labelSuffix;
             _output.AppendLine($"{labelName}:;");
+            _emittedLabels.Add(block.Label);
         }
 
         // Check if this block has block-scoped variables that need to be declared
@@ -5975,6 +6040,12 @@ public partial class CCodeGenerator
             return;
         }
 
+        // Skip if this label was already emitted (prevents duplicate from EmitBasicBlock)
+        if (_emittedLabels.Contains(label.Name))
+        {
+            return;
+        }
+
         // Append suffix to label name to make it unique across defer block emissions
         var labelName = label.Name + _labelSuffix;
 
@@ -5990,6 +6061,7 @@ public partial class CCodeGenerator
         // Emit label (unindented for C style)
         // Add empty statement to ensure valid C (labels must be followed by a statement)
         _output.AppendLine($"{labelName}:;");
+        _emittedLabels.Add(label.Name);
 
         // DISABLED: Match arm scopes cause variable scoping issues with nested matches
         // Open new scope for match arms
@@ -7429,6 +7501,7 @@ public partial class CCodeGenerator
     private void CollectReachableLabels(IrFunction function)
     {
         _reachableLabels.Clear();
+        _emittedLabels.Clear();  // Also clear emitted labels for the new function
 
         foreach (var block in function.BasicBlocks)
         {

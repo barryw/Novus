@@ -1,0 +1,634 @@
+// MUI (Magic User Interface) Tag Constants for Novus
+// API definitions based on MUI 5.0 public documentation
+// MUI is (c) Stefan Stuntz, Thore Boeckelmann, Jens Maus
+// These are FFI bindings only - MUI library must be installed on the system
+
+// =============================================================================
+// Class Names - Use these string literals directly in MUI_NewObjectA calls:
+//   "Notify.mui", "Family.mui", "Application.mui", "Window.mui", "Area.mui",
+//   "Group.mui", "Rectangle.mui", "Balance.mui", "Image.mui", "Text.mui",
+//   "String.mui", "List.mui", "Listview.mui", "Prop.mui", "Scrollbar.mui",
+//   "Scrollgroup.mui", "Virtgroup.mui", "Cycle.mui", "Radio.mui", "Slider.mui",
+//   "Numeric.mui", "Numericbutton.mui", "Gauge.mui", "Scale.mui",
+//   "Colorfield.mui", "Coloradjust.mui", "Palette.mui", "Popstring.mui",
+//   "Popobject.mui", "Poplist.mui", "Popasl.mui", "Register.mui",
+//   "Menustrip.mui", "Menu.mui", "Menuitem.mui", "Bitmap.mui",
+//   "Bodychunk.mui", "Dtpic.mui", "Aboutmui.mui", "Dataspace.mui"
+// =============================================================================
+
+// =============================================================================
+// Library Specification
+// =============================================================================
+
+pub const MUIMASTER_VMIN: u32 = 20
+
+// =============================================================================
+// Object Types for MUI_MakeObject()
+// =============================================================================
+
+pub const MUIO_Label: i32 = 1
+pub const MUIO_Button: i32 = 2
+pub const MUIO_Checkmark: i32 = 3
+pub const MUIO_Cycle: i32 = 4
+pub const MUIO_Radio: i32 = 5
+pub const MUIO_Slider: i32 = 6
+pub const MUIO_String: i32 = 7
+pub const MUIO_PopButton: i32 = 8
+pub const MUIO_HSpace: i32 = 9
+pub const MUIO_VSpace: i32 = 10
+pub const MUIO_HBar: i32 = 11
+pub const MUIO_VBar: i32 = 12
+pub const MUIO_MenustripNM: i32 = 13
+pub const MUIO_Menuitem: i32 = 14
+pub const MUIO_BarTitle: i32 = 15
+pub const MUIO_NumericButton: i32 = 16
+
+// MUIO_Label flags
+pub const MUIO_Label_SingleFrame: u32 = 1 << 8
+pub const MUIO_Label_DoubleFrame: u32 = 1 << 9
+pub const MUIO_Label_LeftAligned: u32 = 1 << 10
+pub const MUIO_Label_Centered: u32 = 1 << 11
+pub const MUIO_Label_FreeVert: u32 = 1 << 12
+
+// =============================================================================
+// Standard MUI Images & Backgrounds
+// =============================================================================
+
+pub const MUII_WindowBack: i32 = 0
+pub const MUII_RequesterBack: i32 = 1
+pub const MUII_ButtonBack: i32 = 2
+pub const MUII_ListBack: i32 = 3
+pub const MUII_TextBack: i32 = 4
+pub const MUII_PropBack: i32 = 5
+pub const MUII_PopupBack: i32 = 6
+pub const MUII_SelectedBack: i32 = 7
+pub const MUII_ListCursor: i32 = 8
+pub const MUII_ListSelect: i32 = 9
+pub const MUII_ListSelCur: i32 = 10
+pub const MUII_ArrowUp: i32 = 11
+pub const MUII_ArrowDown: i32 = 12
+pub const MUII_ArrowLeft: i32 = 13
+pub const MUII_ArrowRight: i32 = 14
+pub const MUII_CheckMark: i32 = 15
+pub const MUII_RadioButton: i32 = 16
+pub const MUII_Cycle: i32 = 17
+pub const MUII_PopUp: i32 = 18
+pub const MUII_PopFile: i32 = 19
+pub const MUII_PopDrawer: i32 = 20
+pub const MUII_PropKnob: i32 = 21
+pub const MUII_Drawer: i32 = 22
+pub const MUII_HardDisk: i32 = 23
+pub const MUII_Disk: i32 = 24
+pub const MUII_Chip: i32 = 25
+pub const MUII_Volume: i32 = 26
+pub const MUII_RegisterBack: i32 = 27
+pub const MUII_Network: i32 = 28
+pub const MUII_Assign: i32 = 29
+pub const MUII_TapePlay: i32 = 30
+pub const MUII_TapePlayBack: i32 = 31
+pub const MUII_TapePause: i32 = 32
+pub const MUII_TapeStop: i32 = 33
+pub const MUII_TapeRecord: i32 = 34
+pub const MUII_GroupBack: i32 = 35
+pub const MUII_SliderBack: i32 = 36
+pub const MUII_SliderKnob: i32 = 37
+pub const MUII_Close: i32 = 54
+
+// =============================================================================
+// Special Method Values
+// =============================================================================
+
+pub const MUIV_TriggerValue: u32 = $49893131
+pub const MUIV_NotTriggerValue: u32 = $49893133
+pub const MUIV_EveryTime: u32 = $49893131
+
+pub const MUIV_Notify_Self: i32 = 1
+pub const MUIV_Notify_Window: i32 = 2
+pub const MUIV_Notify_Application: i32 = 3
+pub const MUIV_Notify_Parent: i32 = 4
+
+pub const MUIV_Application_ReturnID_Quit: i32 = -1
+
+// =============================================================================
+// Frame Types
+// =============================================================================
+
+pub const MUIV_Frame_None: i32 = 0
+pub const MUIV_Frame_Button: i32 = 1
+pub const MUIV_Frame_ImageButton: i32 = 2
+pub const MUIV_Frame_Text: i32 = 3
+pub const MUIV_Frame_String: i32 = 4
+pub const MUIV_Frame_ReadList: i32 = 5
+pub const MUIV_Frame_InputList: i32 = 6
+pub const MUIV_Frame_Prop: i32 = 7
+pub const MUIV_Frame_Gauge: i32 = 8
+pub const MUIV_Frame_Group: i32 = 9
+pub const MUIV_Frame_PopUp: i32 = 10
+pub const MUIV_Frame_Virtual: i32 = 11
+pub const MUIV_Frame_Slider: i32 = 12
+
+// =============================================================================
+// Input Modes
+// =============================================================================
+
+pub const MUIV_InputMode_None: i32 = 0
+pub const MUIV_InputMode_RelVerify: i32 = 1
+pub const MUIV_InputMode_Immediate: i32 = 2
+pub const MUIV_InputMode_Toggle: i32 = 3
+
+// =============================================================================
+// Font Values
+// =============================================================================
+
+pub const MUIV_Font_Inherit: i32 = 0
+pub const MUIV_Font_Normal: i32 = -1
+pub const MUIV_Font_List: i32 = -2
+pub const MUIV_Font_Tiny: i32 = -3
+pub const MUIV_Font_Fixed: i32 = -4
+pub const MUIV_Font_Title: i32 = -5
+pub const MUIV_Font_Big: i32 = -6
+pub const MUIV_Font_Button: i32 = -7
+
+// =============================================================================
+// Window Position/Size Values
+// =============================================================================
+
+pub const MUIV_Window_LeftEdge_Centered: i32 = -1
+pub const MUIV_Window_LeftEdge_Moused: i32 = -2
+pub const MUIV_Window_TopEdge_Centered: i32 = -1
+pub const MUIV_Window_TopEdge_Moused: i32 = -2
+pub const MUIV_Window_Width_Scaled: i32 = -1000
+pub const MUIV_Window_Width_Default: i32 = -1001
+pub const MUIV_Window_Height_Scaled: i32 = -1000
+pub const MUIV_Window_Height_Default: i32 = -1001
+
+pub const MUIV_Window_ActiveObject_None: i32 = 0
+pub const MUIV_Window_ActiveObject_Next: i32 = -1
+pub const MUIV_Window_ActiveObject_Prev: i32 = -2
+
+// =============================================================================
+// List Values
+// =============================================================================
+
+pub const MUIV_List_Insert_Top: i32 = 0
+pub const MUIV_List_Insert_Active: i32 = -1
+pub const MUIV_List_Insert_Sorted: i32 = -2
+pub const MUIV_List_Insert_Bottom: i32 = -3
+
+pub const MUIV_List_Remove_First: i32 = 0
+pub const MUIV_List_Remove_Active: i32 = -1
+pub const MUIV_List_Remove_Last: i32 = -2
+pub const MUIV_List_Remove_Selected: i32 = -3
+
+pub const MUIV_List_GetEntry_Active: i32 = -1
+pub const MUIV_List_Select_Active: i32 = -1
+pub const MUIV_List_Select_All: i32 = -2
+
+pub const MUIV_List_Redraw_Active: i32 = -1
+pub const MUIV_List_Redraw_All: i32 = -2
+
+// =============================================================================
+// Notify Methods
+// =============================================================================
+
+pub const MUIM_CallHook: u32 = $8042b96b
+pub const MUIM_FindUData: u32 = $8042c196
+pub const MUIM_GetUData: u32 = $8042ed0c
+pub const MUIM_KillNotify: u32 = $8042d240
+pub const MUIM_MultiSet: u32 = $8042d356
+pub const MUIM_NoNotifySet: u32 = $8042216f
+pub const MUIM_Notify: u32 = $8042c9cb
+pub const MUIM_Set: u32 = $8042549a
+pub const MUIM_SetUData: u32 = $8042c920
+pub const MUIM_WriteLong: u32 = $80428d86
+pub const MUIM_WriteString: u32 = $80424bf4
+
+// =============================================================================
+// Application Methods
+// =============================================================================
+
+pub const MUIM_Application_AboutMUI: u32 = $8042d21d
+pub const MUIM_Application_AddInputHandler: u32 = $8042f099
+pub const MUIM_Application_CheckRefresh: u32 = $80424d68
+pub const MUIM_Application_InputBuffered: u32 = $80427e59
+pub const MUIM_Application_Load: u32 = $8042f90d
+pub const MUIM_Application_NewInput: u32 = $80423ba6
+pub const MUIM_Application_OpenConfigWindow: u32 = $804299ba
+pub const MUIM_Application_PushMethod: u32 = $80429ef8
+pub const MUIM_Application_RemInputHandler: u32 = $8042e7af
+pub const MUIM_Application_ReturnID: u32 = $804276ef
+pub const MUIM_Application_Save: u32 = $804227ef
+
+// =============================================================================
+// Window Methods
+// =============================================================================
+
+pub const MUIM_Window_AddEventHandler: u32 = $804203b7
+pub const MUIM_Window_RemEventHandler: u32 = $8042679e
+pub const MUIM_Window_ScreenToBack: u32 = $8042913d
+pub const MUIM_Window_ScreenToFront: u32 = $804227a4
+pub const MUIM_Window_Snapshot: u32 = $8042945e
+pub const MUIM_Window_ToBack: u32 = $8042152e
+pub const MUIM_Window_ToFront: u32 = $8042554f
+
+// =============================================================================
+// Group Methods
+// =============================================================================
+
+pub const MUIM_Group_AddHead: u32 = $8042e200
+pub const MUIM_Group_AddTail: u32 = $8042d752
+pub const MUIM_Group_ExitChange: u32 = $8042d1cc
+pub const MUIM_Group_InitChange: u32 = $80420887
+pub const MUIM_Group_Remove: u32 = $8042f8a9
+pub const MUIM_Group_Sort: u32 = $80427417
+
+// =============================================================================
+// List Methods
+// =============================================================================
+
+pub const MUIM_List_Clear: u32 = $8042ad89
+pub const MUIM_List_Exchange: u32 = $8042468c
+pub const MUIM_List_GetEntry: u32 = $804280ec
+pub const MUIM_List_Insert: u32 = $80426c87
+pub const MUIM_List_InsertSingle: u32 = $804254d5
+pub const MUIM_List_Jump: u32 = $8042baab
+pub const MUIM_List_Move: u32 = $804253c2
+pub const MUIM_List_NextSelected: u32 = $80425f17
+pub const MUIM_List_Redraw: u32 = $80427993
+pub const MUIM_List_Remove: u32 = $8042647e
+pub const MUIM_List_Select: u32 = $804252d8
+
+// =============================================================================
+// Notify Attributes
+// =============================================================================
+
+pub const MUIA_ApplicationObject: u32 = $8042d3ee
+pub const MUIA_AppMessage: u32 = $80421955
+pub const MUIA_HelpLine: u32 = $8042a825
+pub const MUIA_HelpNode: u32 = $80420b85
+pub const MUIA_NoNotify: u32 = $804237f9
+pub const MUIA_ObjectID: u32 = $8042d76e
+pub const MUIA_Parent: u32 = $8042e35f
+pub const MUIA_Revision: u32 = $80427eaa
+pub const MUIA_UserData: u32 = $80420313
+pub const MUIA_Version: u32 = $80422301
+
+// =============================================================================
+// Application Attributes
+// =============================================================================
+
+pub const MUIA_Application_Active: u32 = $804260ab
+pub const MUIA_Application_Author: u32 = $80424842
+pub const MUIA_Application_Base: u32 = $8042e07a
+pub const MUIA_Application_Broker: u32 = $8042dbce
+pub const MUIA_Application_BrokerHook: u32 = $80428f4b
+pub const MUIA_Application_BrokerPort: u32 = $8042e0ad
+pub const MUIA_Application_BrokerPri: u32 = $8042c8d0
+pub const MUIA_Application_Commands: u32 = $80428648
+pub const MUIA_Application_Copyright: u32 = $8042ef4d
+pub const MUIA_Application_Description: u32 = $80421fc6
+pub const MUIA_Application_DiskObject: u32 = $804235cb
+pub const MUIA_Application_DoubleStart: u32 = $80423bc6
+pub const MUIA_Application_DropObject: u32 = $80421266
+pub const MUIA_Application_ForceQuit: u32 = $804257df
+pub const MUIA_Application_HelpFile: u32 = $804293f4
+pub const MUIA_Application_Iconified: u32 = $8042a07f
+pub const MUIA_Application_IconifyTitle: u32 = $80422cb8
+pub const MUIA_Application_MenuAction: u32 = $80428961
+pub const MUIA_Application_MenuHelp: u32 = $8042540b
+pub const MUIA_Application_Menustrip: u32 = $804252d9
+pub const MUIA_Application_RexxHook: u32 = $80427c42
+pub const MUIA_Application_RexxMsg: u32 = $8042fd88
+pub const MUIA_Application_RexxString: u32 = $8042d711
+pub const MUIA_Application_SingleTask: u32 = $8042a2c8
+pub const MUIA_Application_Sleep: u32 = $80425711
+pub const MUIA_Application_Title: u32 = $804281b8
+pub const MUIA_Application_UseCommodities: u32 = $80425ee5
+pub const MUIA_Application_UseRexx: u32 = $80422387
+pub const MUIA_Application_Version: u32 = $8042b33f
+pub const MUIA_Application_Window: u32 = $8042bfe0
+pub const MUIA_Application_WindowList: u32 = $80429abe
+
+// =============================================================================
+// Window Attributes
+// =============================================================================
+
+pub const MUIA_Window_Activate: u32 = $8042d2f
+pub const MUIA_Window_ActiveObject: u32 = $80427925
+pub const MUIA_Window_AltHeight: u32 = $8042cce3
+pub const MUIA_Window_AltLeftEdge: u32 = $80422d65
+pub const MUIA_Window_AltTopEdge: u32 = $8042e99b
+pub const MUIA_Window_AltWidth: u32 = $804260f4
+pub const MUIA_Window_AppWindow: u32 = $804280cf
+pub const MUIA_Window_Backdrop: u32 = $8042c0bb
+pub const MUIA_Window_Borderless: u32 = $80429b79
+pub const MUIA_Window_CloseGadget: u32 = $8042a110
+pub const MUIA_Window_CloseRequest: u32 = $8042e86e
+pub const MUIA_Window_DefaultObject: u32 = $804294d7
+pub const MUIA_Window_DepthGadget: u32 = $80421923
+pub const MUIA_Window_DisableKeys: u32 = $80424c36
+pub const MUIA_Window_DragBar: u32 = $8042045d
+pub const MUIA_Window_DrawInfo: u32 = $80423726
+pub const MUIA_Window_Height: u32 = $80425846
+pub const MUIA_Window_ID: u32 = $804201bd
+pub const MUIA_Window_InputEvent: u32 = $804247d8
+pub const MUIA_Window_IsSubWindow: u32 = $8042b5aa
+pub const MUIA_Window_LeftEdge: u32 = $80426c65
+pub const MUIA_Window_MenuAction: u32 = $80427521
+pub const MUIA_Window_Menustrip: u32 = $8042855e
+pub const MUIA_Window_MouseObject: u32 = $8042bf9b
+pub const MUIA_Window_NoMenus: u32 = $80429df5
+pub const MUIA_Window_Open: u32 = $80428aa0
+pub const MUIA_Window_PublicScreen: u32 = $804278e4
+pub const MUIA_Window_RefWindow: u32 = $804201f4
+pub const MUIA_Window_RootObject: u32 = $8042cba5
+pub const MUIA_Window_Screen: u32 = $8042df4f
+pub const MUIA_Window_ScreenTitle: u32 = $804234b0
+pub const MUIA_Window_SizeGadget: u32 = $8042e33d
+pub const MUIA_Window_SizeRight: u32 = $80424780
+pub const MUIA_Window_Sleep: u32 = $8042e7db
+pub const MUIA_Window_Title: u32 = $8042ad3d
+pub const MUIA_Window_TopEdge: u32 = $80427c66
+pub const MUIA_Window_Width: u32 = $8042dcae
+pub const MUIA_Window_Window: u32 = $80426a42
+
+// =============================================================================
+// Area Attributes
+// =============================================================================
+
+pub const MUIA_Background: u32 = $8042545b
+pub const MUIA_BottomEdge: u32 = $8042e552
+pub const MUIA_ContextMenu: u32 = $8042b704
+pub const MUIA_ControlChar: u32 = $8042120b
+pub const MUIA_CycleChain: u32 = $80421ce7
+pub const MUIA_Disabled: u32 = $80423661
+pub const MUIA_Draggable: u32 = $80420b6e
+pub const MUIA_Dropable: u32 = $8042fbce
+pub const MUIA_FillArea: u32 = $804294a3
+pub const MUIA_FixHeight: u32 = $8042a92b
+pub const MUIA_FixHeightTxt: u32 = $804276f2
+pub const MUIA_FixWidth: u32 = $8042a3f1
+pub const MUIA_FixWidthTxt: u32 = $8042d044
+pub const MUIA_Font: u32 = $8042be50
+pub const MUIA_Frame: u32 = $8042ac64
+pub const MUIA_FrameTitle: u32 = $8042d1c7
+pub const MUIA_Height: u32 = $80423237
+pub const MUIA_HorizWeight: u32 = $80426db9
+pub const MUIA_InnerBottom: u32 = $8042f2c0
+pub const MUIA_InnerLeft: u32 = $804228f8
+pub const MUIA_InnerRight: u32 = $804297ff
+pub const MUIA_InnerTop: u32 = $80421eb6
+pub const MUIA_InputMode: u32 = $8042fb04
+pub const MUIA_LeftEdge: u32 = $8042bec6
+pub const MUIA_MaxHeight: u32 = $804293e4
+pub const MUIA_MaxWidth: u32 = $8042f112
+pub const MUIA_Pressed: u32 = $80423535
+pub const MUIA_RightEdge: u32 = $8042ba82
+pub const MUIA_Selected: u32 = $8042654b
+pub const MUIA_ShortHelp: u32 = $80428fe3
+pub const MUIA_ShowMe: u32 = $80429ba8
+pub const MUIA_ShowSelState: u32 = $8042caac
+pub const MUIA_Timer: u32 = $80426435
+pub const MUIA_TopEdge: u32 = $8042509b
+pub const MUIA_VertWeight: u32 = $804298d0
+pub const MUIA_Weight: u32 = $80421d1f
+pub const MUIA_Width: u32 = $8042b59c
+pub const MUIA_Window: u32 = $80421591
+pub const MUIA_WindowObject: u32 = $8042669e
+
+// =============================================================================
+// Group Attributes
+// =============================================================================
+
+pub const MUIA_Group_ActivePage: u32 = $80424199
+pub const MUIA_Group_Child: u32 = $804226e6
+pub const MUIA_Group_ChildCount: u32 = $80420322
+pub const MUIA_Group_ChildList: u32 = $80424748
+pub const MUIA_Group_Columns: u32 = $8042f416
+pub const MUIA_Group_Forward: u32 = $80421422
+pub const MUIA_Group_Horiz: u32 = $8042536b
+pub const MUIA_Group_HorizSpacing: u32 = $8042c651
+pub const MUIA_Group_LayoutHook: u32 = $8042c3b2
+pub const MUIA_Group_PageMode: u32 = $80421a5f
+pub const MUIA_Group_Rows: u32 = $8042b68f
+pub const MUIA_Group_SameHeight: u32 = $8042037e
+pub const MUIA_Group_SameSize: u32 = $80420860
+pub const MUIA_Group_SameWidth: u32 = $8042b3ec
+pub const MUIA_Group_Spacing: u32 = $8042866d
+pub const MUIA_Group_VertSpacing: u32 = $8042e1bf
+
+// =============================================================================
+// Text Attributes
+// =============================================================================
+
+pub const MUIA_Text_Contents: u32 = $8042f8dc
+pub const MUIA_Text_Copy: u32 = $80427727
+pub const MUIA_Text_HiChar: u32 = $804218ff
+pub const MUIA_Text_PreParse: u32 = $8042566d
+pub const MUIA_Text_SetMax: u32 = $80424d0a
+pub const MUIA_Text_SetMin: u32 = $80424e10
+pub const MUIA_Text_SetVMax: u32 = $80420d8b
+
+// =============================================================================
+// String Attributes
+// =============================================================================
+
+pub const MUIA_String_Accept: u32 = $8042e3e1
+pub const MUIA_String_Acknowledge: u32 = $8042026c
+pub const MUIA_String_AdvanceOnCR: u32 = $804226de
+pub const MUIA_String_AttachedList: u32 = $80420fd2
+pub const MUIA_String_BufferPos: u32 = $80428b6c
+pub const MUIA_String_Contents: u32 = $80428ffd
+pub const MUIA_String_DisplayPos: u32 = $8042ccbf
+pub const MUIA_String_EditHook: u32 = $80424c33
+pub const MUIA_String_Format: u32 = $80427484
+pub const MUIA_String_Integer: u32 = $80426e8a
+pub const MUIA_String_MaxLen: u32 = $80424984
+pub const MUIA_String_Reject: u32 = $8042179c
+pub const MUIA_String_Secret: u32 = $80428769
+
+pub const MUIV_String_Format_Left: i32 = 0
+pub const MUIV_String_Format_Center: i32 = 1
+pub const MUIV_String_Format_Right: i32 = 2
+
+// =============================================================================
+// List Attributes
+// =============================================================================
+
+pub const MUIA_List_Active: u32 = $8042391c
+pub const MUIA_List_AdjustHeight: u32 = $8042850d
+pub const MUIA_List_AdjustWidth: u32 = $8042354a
+pub const MUIA_List_AutoVisible: u32 = $8042a445
+pub const MUIA_List_CompareHook: u32 = $80425c14
+pub const MUIA_List_ConstructHook: u32 = $8042894f
+pub const MUIA_List_DestructHook: u32 = $804297ce
+pub const MUIA_List_DisplayHook: u32 = $8042b4d5
+pub const MUIA_List_DragSortable: u32 = $80426099
+pub const MUIA_List_DropMark: u32 = $8042aba6
+pub const MUIA_List_Entries: u32 = $80421654
+pub const MUIA_List_First: u32 = $804238d4
+pub const MUIA_List_Format: u32 = $80423c0a
+pub const MUIA_List_InsertPosition: u32 = $8042d0cd
+pub const MUIA_List_MinLineHeight: u32 = $8042d1c3
+pub const MUIA_List_MultiTestHook: u32 = $8042c2c6
+pub const MUIA_List_Pool: u32 = $80423431
+pub const MUIA_List_PoolPuddleSize: u32 = $8042a4eb
+pub const MUIA_List_PoolThreshSize: u32 = $8042c48c
+pub const MUIA_List_Quiet: u32 = $8042d8c7
+pub const MUIA_List_ShowDropMarks: u32 = $8042c6f3
+pub const MUIA_List_SourceArray: u32 = $8042c0a0
+pub const MUIA_List_Title: u32 = $80423e66
+pub const MUIA_List_Visible: u32 = $8042191f
+
+// =============================================================================
+// Listview Attributes
+// =============================================================================
+
+pub const MUIA_Listview_ClickColumn: u32 = $8042d1b3
+pub const MUIA_Listview_DefClickColumn: u32 = $8042b296
+pub const MUIA_Listview_DoubleClick: u32 = $80424635
+pub const MUIA_Listview_DragType: u32 = $80425cd3
+pub const MUIA_Listview_Input: u32 = $8042682d
+pub const MUIA_Listview_List: u32 = $8042bcce
+pub const MUIA_Listview_MultiSelect: u32 = $80427e08
+pub const MUIA_Listview_ScrollerPos: u32 = $8042b1b4
+pub const MUIA_Listview_SelectChange: u32 = $8042178f
+
+pub const MUIV_Listview_DragType_None: i32 = 0
+pub const MUIV_Listview_DragType_Immediate: i32 = 1
+
+pub const MUIV_Listview_MultiSelect_None: i32 = 0
+pub const MUIV_Listview_MultiSelect_Default: i32 = 1
+pub const MUIV_Listview_MultiSelect_Shifted: i32 = 2
+pub const MUIV_Listview_MultiSelect_Always: i32 = 3
+
+pub const MUIV_Listview_ScrollerPos_Default: i32 = 0
+pub const MUIV_Listview_ScrollerPos_Left: i32 = 1
+pub const MUIV_Listview_ScrollerPos_Right: i32 = 2
+pub const MUIV_Listview_ScrollerPos_None: i32 = 3
+
+// =============================================================================
+// Cycle Attributes
+// =============================================================================
+
+pub const MUIA_Cycle_Active: u32 = $80421788
+pub const MUIA_Cycle_Entries: u32 = $80420629
+
+// =============================================================================
+// Radio Attributes
+// =============================================================================
+
+pub const MUIA_Radio_Active: u32 = $80429b41
+pub const MUIA_Radio_Entries: u32 = $8042b6a1
+
+// =============================================================================
+// Slider/Numeric Attributes
+// =============================================================================
+
+pub const MUIA_Numeric_CheckAllSizes: u32 = $80421594
+pub const MUIA_Numeric_Default: u32 = $804263e8
+pub const MUIA_Numeric_Format: u32 = $804263e9
+pub const MUIA_Numeric_Max: u32 = $8042d78a
+pub const MUIA_Numeric_Min: u32 = $8042e404
+pub const MUIA_Numeric_Reverse: u32 = $8042f2a0
+pub const MUIA_Numeric_RevLeftRight: u32 = $804294a7
+pub const MUIA_Numeric_RevUpDown: u32 = $804252dd
+pub const MUIA_Numeric_Value: u32 = $8042ae3a
+
+pub const MUIA_Slider_Horiz: u32 = $8042fad1
+pub const MUIA_Slider_Quiet: u32 = $80420b26
+
+// =============================================================================
+// Gauge Attributes
+// =============================================================================
+
+pub const MUIA_Gauge_Current: u32 = $8042f0dd
+pub const MUIA_Gauge_Divide: u32 = $8042d8df
+pub const MUIA_Gauge_Horiz: u32 = $804232dd
+pub const MUIA_Gauge_InfoText: u32 = $8042bf15
+pub const MUIA_Gauge_Max: u32 = $8042bcdb
+
+// =============================================================================
+// Scrollgroup Attributes
+// =============================================================================
+
+pub const MUIA_Scrollgroup_Contents: u32 = $80421261
+pub const MUIA_Scrollgroup_FreeHoriz: u32 = $804292f3
+pub const MUIA_Scrollgroup_FreeVert: u32 = $804224f2
+pub const MUIA_Scrollgroup_HorizBar: u32 = $8042b63d
+pub const MUIA_Scrollgroup_UseWinBorder: u32 = $804284c1
+pub const MUIA_Scrollgroup_VertBar: u32 = $8042cdc0
+
+// =============================================================================
+// Image Attributes
+// =============================================================================
+
+pub const MUIA_Image_FontMatch: u32 = $8042815d
+pub const MUIA_Image_FontMatchHeight: u32 = $80429f26
+pub const MUIA_Image_FreeHoriz: u32 = $8042da84
+pub const MUIA_Image_FreeVert: u32 = $8042ea28
+pub const MUIA_Image_OldImage: u32 = $80424f3d
+pub const MUIA_Image_Spec: u32 = $804233d5
+pub const MUIA_Image_State: u32 = $8042a3ad
+
+// =============================================================================
+// Rectangle Attributes
+// =============================================================================
+
+pub const MUIA_Rectangle_BarTitle: u32 = $80426689
+pub const MUIA_Rectangle_HBar: u32 = $8042c943
+pub const MUIA_Rectangle_VBar: u32 = $80422204
+
+// =============================================================================
+// Menu Attributes
+// =============================================================================
+
+pub const MUIA_Menu_Enabled: u32 = $8042ed48
+pub const MUIA_Menu_Title: u32 = $8042a0e3
+
+pub const MUIA_Menuitem_Checked: u32 = $8042562a
+pub const MUIA_Menuitem_Checkit: u32 = $80425ace
+pub const MUIA_Menuitem_CommandString: u32 = $8042b9cc
+pub const MUIA_Menuitem_Enabled: u32 = $8042ae0f
+pub const MUIA_Menuitem_Exclude: u32 = $80420bc6
+pub const MUIA_Menuitem_Shortcut: u32 = $80422030
+pub const MUIA_Menuitem_Title: u32 = $804218be
+pub const MUIA_Menuitem_Toggle: u32 = $80424d5c
+pub const MUIA_Menuitem_Trigger: u32 = $80426f32
+
+pub const MUIA_Menustrip_Enabled: u32 = $8042815b
+
+// =============================================================================
+// Family Attributes
+// =============================================================================
+
+pub const MUIA_Family_Child: u32 = $8042c696
+pub const MUIA_Family_ChildCount: u32 = $8042b25a
+pub const MUIA_Family_List: u32 = $80424b9e
+
+// =============================================================================
+// Register (Tabs) Attributes
+// =============================================================================
+
+pub const MUIA_Register_Frame: u32 = $8042349b
+pub const MUIA_Register_Titles: u32 = $804297ec
+
+// =============================================================================
+// Radio Attributes
+// =============================================================================
+
+// Note: MUIA_Radio_Active and MUIA_Radio_Entries already defined above
+
+// =============================================================================
+// PopAsl Attributes
+// =============================================================================
+
+pub const MUIA_Popasl_Active: u32 = $80421b37
+pub const MUIA_Popasl_StartHook: u32 = $8042b703
+pub const MUIA_Popasl_StopHook: u32 = $8042d8d2
+pub const MUIA_Popasl_Type: u32 = $8042df3d
+
+// ASL requester types for PopAsl
+pub const ASL_FileRequest: u32 = 0
+pub const ASL_FontRequest: u32 = 1
+pub const ASL_ScreenModeRequest: u32 = 2

@@ -1,0 +1,288 @@
+// =============================================================================
+// NOVUS SYSTEM MONITOR - Language Showcase Application
+// =============================================================================
+// A system monitor demonstrating Novus language features for AmigaOS.
+//
+// Features Demonstrated:
+// - Result<T,E> and pattern matching for error handling
+// - Structs with impl blocks and methods
+// - Enums with pattern matching (SystemCPU, SystemFPU, etc.)
+// - RAII via Drop (WindowHandle auto-closes on exit)
+// - Control flow: match, while, if/else
+// - Extensive stdlib usage (8+ modules)
+// - Hardware detection (CPU, FPU, Chipset, Display)
+// - Memory statistics via AvailMem
+// - Event-driven window handling
+//
+// Compile: novus compile system_monitor.novus -o system_monitor
+// =============================================================================
+
+// Core language features
+from std::core import Result, Option, Drop
+
+// UI and Graphics
+from std::ui::window import WindowHandle, WindowBuilder, WindowEvent
+from std::graphics::draw import DrawContext
+from std::graphics::text import draw_text_at
+
+// Hardware detection
+from std::hardware::chipset import CPU, FPU, CHIPSET, DISPLAY
+from std::hardware::chipset import SystemCPU, SystemFPU, SystemChipset, DisplayType
+
+// System calls
+from std::ffi::exec import AvailMem
+from std::ffi::amiga_consts import MEMF_CHIP, MEMF_FAST, MEMF_TOTAL
+
+// =============================================================================
+// Constants
+// =============================================================================
+
+// Window layout
+const WINDOW_WIDTH: i16 = 320
+const WINDOW_HEIGHT: i16 = 180
+const HEADER_HEIGHT: i16 = 20
+const INFO_PANEL_Y: i16 = 24
+const MEMORY_PANEL_Y: i16 = 72
+const BAR_HEIGHT: i16 = 14
+const BAR_WIDTH: i16 = 180
+const BAR_LEFT: i16 = 90
+const BAR_SPACING: i16 = 24
+
+// =============================================================================
+// System Snapshot - Captures current system state
+// =============================================================================
+
+struct SystemSnapshot {
+    cpu: SystemCPU,
+    fpu: SystemFPU,
+    chipset: SystemChipset,
+    display: DisplayType,
+    chip_total: u32,
+    chip_free: u32,
+    fast_total: u32,
+    fast_free: u32,
+}
+
+impl SystemSnapshot {
+    /// Capture current system information
+    fn capture() -> SystemSnapshot {
+        // Get hardware info
+        let cpu = CPU()
+        let fpu = FPU()
+        let chipset = CHIPSET()
+        let display = DISPLAY()
+
+        // Get memory stats using AvailMem
+        let chip_total = AvailMem(MEMF_CHIP | MEMF_TOTAL)
+        let chip_free = AvailMem(MEMF_CHIP)
+        let fast_total = AvailMem(MEMF_FAST | MEMF_TOTAL)
+        let fast_free = AvailMem(MEMF_FAST)
+
+        return SystemSnapshot {
+            cpu: cpu,
+            fpu: fpu,
+            chipset: chipset,
+            display: display,
+            chip_total: chip_total,
+            chip_free: chip_free,
+            fast_total: fast_total,
+            fast_free: fast_free,
+        }
+    }
+
+    /// Get chip RAM usage as percentage (0-100)
+    fn chip_percent(&self) -> u32 {
+        if self.chip_total == 0 {
+            return 0
+        }
+        let used = self.chip_total - self.chip_free
+        return (used * 100) / self.chip_total
+    }
+
+    /// Get fast RAM usage as percentage (0-100)
+    fn fast_percent(&self) -> u32 {
+        if self.fast_total == 0 {
+            return 0
+        }
+        let used = self.fast_total - self.fast_free
+        return (used * 100) / self.fast_total
+    }
+}
+
+// =============================================================================
+// Drawing Functions
+// =============================================================================
+
+fn draw_header(ctx: &DrawContext) {
+    let rp = ctx.handle()
+
+    // Draw title text
+    ctx.pen(1)  // Standard text color
+    draw_text_at(rp, 80, 14, "NOVUS SYSTEM MONITOR", 20)
+}
+
+fn draw_system_info(ctx: &DrawContext, snapshot: &SystemSnapshot) {
+    let rp = ctx.handle()
+    let y = INFO_PANEL_Y
+
+    // Draw panel border
+    ctx.pen(2)  // Highlight color
+    ctx.outline_rect(4, y - 2, WINDOW_WIDTH - 8, y + 40)
+
+    // CPU info
+    ctx.pen(1)
+    draw_text_at(rp, 12, y + 10, "CPU:", 4)
+
+    // Draw CPU type
+    match snapshot.cpu {
+        SystemCPU::M68000 => draw_text_at(rp, 52, y + 10, "68000", 5),
+        SystemCPU::M68010 => draw_text_at(rp, 52, y + 10, "68010", 5),
+        SystemCPU::M68020 => draw_text_at(rp, 52, y + 10, "68020", 5),
+        SystemCPU::M68030 => draw_text_at(rp, 52, y + 10, "68030", 5),
+        SystemCPU::M68040 => draw_text_at(rp, 52, y + 10, "68040", 5),
+        SystemCPU::M68060 => draw_text_at(rp, 52, y + 10, "68060", 5),
+    }
+
+    // FPU info
+    draw_text_at(rp, 110, y + 10, "FPU:", 4)
+
+    match snapshot.fpu {
+        SystemFPU::None => draw_text_at(rp, 150, y + 10, "None", 4),
+        SystemFPU::M68881 => draw_text_at(rp, 150, y + 10, "68881", 5),
+        SystemFPU::M68882 => draw_text_at(rp, 150, y + 10, "68882", 5),
+        SystemFPU::M68040 => draw_text_at(rp, 150, y + 10, "68040", 5),
+        SystemFPU::M68060 => draw_text_at(rp, 150, y + 10, "68060", 5),
+    }
+
+    // Chipset info
+    draw_text_at(rp, 12, y + 26, "Chipset:", 8)
+
+    match snapshot.chipset {
+        SystemChipset::OCS => draw_text_at(rp, 84, y + 26, "OCS", 3),
+        SystemChipset::ECS => draw_text_at(rp, 84, y + 26, "ECS", 3),
+        SystemChipset::AGA => draw_text_at(rp, 84, y + 26, "AGA", 3),
+    }
+
+    // Display type
+    draw_text_at(rp, 130, y + 26, "Display:", 8)
+
+    match snapshot.display {
+        DisplayType::PAL => draw_text_at(rp, 202, y + 26, "PAL", 3),
+        DisplayType::NTSC => draw_text_at(rp, 202, y + 26, "NTSC", 4),
+    }
+}
+
+fn draw_memory_bar(ctx: &DrawContext, y: i16, label: *u8, label_len: u16,
+                   total: u32, free: u32, fill_color: u8) {
+    let rp = ctx.handle()
+
+    // Draw label
+    ctx.pen(1)
+    draw_text_at(rp, 12, y + 10, label, label_len)
+
+    // Calculate fill width
+    let used = total - free
+    var fill_width: i16 = 0
+    if total > 0 {
+        fill_width = (i16)((used * (u32)BAR_WIDTH) / total)
+    }
+
+    // Draw bar background (empty part)
+    ctx.pen(0)  // Background color
+    ctx.fill_rect(BAR_LEFT, y, BAR_LEFT + BAR_WIDTH - 1, y + BAR_HEIGHT - 1)
+
+    // Draw filled portion
+    if fill_width > 0 {
+        ctx.pen(fill_color)
+        ctx.fill_rect(BAR_LEFT, y, BAR_LEFT + fill_width - 1, y + BAR_HEIGHT - 1)
+    }
+
+    // Draw border
+    ctx.pen(2)  // Highlight color
+    ctx.outline_rect(BAR_LEFT - 1, y - 1, BAR_LEFT + BAR_WIDTH, y + BAR_HEIGHT)
+}
+
+fn draw_memory_panel(ctx: &DrawContext, snapshot: &SystemSnapshot) {
+    let rp = ctx.handle()
+    let y = MEMORY_PANEL_Y
+
+    // Draw panel border
+    ctx.pen(2)
+    ctx.outline_rect(4, y - 2, WINDOW_WIDTH - 8, y + 54)
+
+    // Draw "MEMORY" label
+    ctx.pen(1)
+    draw_text_at(rp, 12, y + 8, "MEMORY", 6)
+
+    // Draw Chip RAM bar (color 3 = typically red/orange)
+    draw_memory_bar(ctx, y + 14, "Chip:", 5,
+                    snapshot.chip_total, snapshot.chip_free, 3)
+
+    // Draw Fast RAM bar (color 1 = typically blue)
+    draw_memory_bar(ctx, y + 14 + BAR_SPACING, "Fast:", 5,
+                    snapshot.fast_total, snapshot.fast_free, 1)
+}
+
+fn draw_footer(ctx: &DrawContext) {
+    let rp = ctx.handle()
+    let y = WINDOW_HEIGHT - 20
+
+    // Draw footer text
+    ctx.pen(1)
+    draw_text_at(rp, 70, y, "Click close to exit", 19)
+}
+
+// =============================================================================
+// Main Entry Point
+// =============================================================================
+
+pub fn main() -> i32 {
+    // Create window on Workbench screen using builder
+    let window_result = WindowBuilder::new().title("System Monitor").position(50, 50).size(WINDOW_WIDTH, WINDOW_HEIGHT).close_gadget(true).drag_bar(true).depth_gadget(true).build()
+
+    match window_result {
+        Result::Err(_) => {
+            return 1
+        },
+        Result::Ok(window) => {
+            // Create drawing context from window's RastPort
+            let ctx_result = DrawContext::from_rastport(window.rastport())
+            match ctx_result {
+                Result::Err(_) => {
+                    return 2
+                },
+                Result::Ok(ctx) => {
+                    // Clear window interior
+                    ctx.pen(0)
+                    ctx.fill_rect(0, 0, WINDOW_WIDTH - 1, WINDOW_HEIGHT - 1)
+
+                    // Capture system snapshot
+                    let snapshot = SystemSnapshot::capture()
+
+                    // Draw all UI elements
+                    draw_header(&ctx)
+                    draw_system_info(&ctx, &snapshot)
+                    draw_memory_panel(&ctx, &snapshot)
+                    draw_footer(&ctx)
+
+                    // Event loop - wait for close gadget
+                    var running = true
+                    while running {
+                        let event = window.wait_event()
+                        match event {
+                            WindowEvent::Close => {
+                                running = false
+                            },
+                            _ => {
+                                // Ignore other events
+                            }
+                        }
+                    }
+                }
+            }
+            // Window auto-closes via Drop
+        }
+    }
+
+    return 0
+}

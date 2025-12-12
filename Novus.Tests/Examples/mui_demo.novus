@@ -1,0 +1,328 @@
+// MUI Demo Application
+// Demonstrates the MUI builder API for Novus with menus, tabs, and event handling
+
+from std::ui::mui import MUIAppBuilder, MUIGroupBuilder, MUIApp
+from std::ui::mui import MenuBuilder, MenuItemBuilder, MUITabsBuilder
+from std::ui::mui import set_attr, set_text, get_attr, make_button, make_text
+from std::ui::mui import make_radio, make_progress, set_progress, app_busy
+from std::ffi::mui_tags import *
+from std::ffi::exec import Wait
+
+// Menu IDs
+const MENU_NEW: u32 = 100
+const MENU_OPEN: u32 = 101
+const MENU_SAVE: u32 = 102
+const MENU_QUIT: u32 = 103
+const MENU_CUT: u32 = 110
+const MENU_COPY: u32 = 111
+const MENU_PASTE: u32 = 112
+const MENU_ABOUT: u32 = 120
+
+// Gadget IDs
+const GAD_QUIT: u32 = 1
+const GAD_BUTTON_ONE: u32 = 10
+const GAD_BUTTON_TWO: u32 = 11
+const GAD_SLIDER: u32 = 20
+const GAD_CHECKBOX: u32 = 21
+const GAD_STRING: u32 = 22
+const GAD_RADIO: u32 = 30
+const GAD_PROGRESS: u32 = 40
+const GAD_BUSY: u32 = 41
+
+fn main() -> i32 {
+    // Create the application
+    let mut app_builder = MUIAppBuilder::new("MUI Demo")
+    app_builder.author("Novus")
+    app_builder.description("MUI demonstration with tabs and menus")
+    app_builder.version("$VER: mui_demo 1.3 (12.12.2025)")
+    app_builder.base("MUIDEMO")
+
+    // Build the menu bar
+    let mut menustrip = MenuBuilder::new()
+
+    // Project menu
+    let mut project_menu = menustrip.menu("Project")
+    project_menu.item("New", "N", MENU_NEW)
+    project_menu.item("Open...", "O", MENU_OPEN)
+    project_menu.item("Save", "S", MENU_SAVE)
+    project_menu.separator()
+    project_menu.item("Quit", "Q", MENU_QUIT)
+
+    // Edit menu
+    let mut edit_menu = menustrip.menu("Edit")
+    edit_menu.item("Cut", "X", MENU_CUT)
+    edit_menu.item("Copy", "C", MENU_COPY)
+    edit_menu.item("Paste", "V", MENU_PASTE)
+
+    // Help menu
+    let mut help_menu = menustrip.menu("Help")
+    help_menu.item("About...", "?", MENU_ABOUT)
+
+    // Set the menustrip on the application
+    app_builder.menustrip(menustrip.build())
+
+    // Create main window with UI
+    let mut win_builder = app_builder.window("MUI Demo Window")
+    win_builder.id($4D554944)  // 'MUID' - for prefs saving
+
+    // Build the UI hierarchy with tabs
+    let mut root = win_builder.vgroup()
+    root.frame(MUIV_Frame_Group)
+
+    // Status text at the top
+    let status_text = make_text("Status: Ready")
+    root.child(status_text)
+
+    // Create tabbed pages - each page is created through root's group builders
+    let mut tabs = MUITabsBuilder::new(&app_builder)
+
+    // === Tab 1: Controls ===
+    let mut controls_group = root.vgroup()
+    controls_group.frame(MUIV_Frame_Group)
+    controls_group.frame_title("Basic Controls")
+
+    // Add some buttons
+    let mut button_group = controls_group.hgroup()
+    button_group.same_size()
+    let btn1 = button_group.button(GAD_BUTTON_ONE, "Button 1")
+    let btn2 = button_group.button(GAD_BUTTON_TWO, "Button 2")
+    let buttons = button_group.build()
+    controls_group.child(buttons)
+
+    // Add a slider with label
+    let mut slider_group = controls_group.hgroup()
+    slider_group.label("Volume:")
+    let slider = slider_group.slider(GAD_SLIDER, 0, 100, 50)
+    let slider_row = slider_group.build()
+    controls_group.child(slider_row)
+
+    // Add a string gadget
+    let mut string_group = controls_group.hgroup()
+    string_group.label("Name:")
+    let string_gad = string_group.string(GAD_STRING, "Type here", 64)
+    let string_row = string_group.build()
+    controls_group.child(string_row)
+
+    // Add a checkbox
+    let checkbox = controls_group.checkbox(GAD_CHECKBOX, "Enable feature", false)
+
+    let controls_page = controls_group.build()
+
+    // === Tab 2: Radio & Progress ===
+    let mut advanced_group = root.vgroup()
+    advanced_group.frame(MUIV_Frame_Group)
+    advanced_group.frame_title("Advanced Controls")
+
+    // Radio buttons - need NULL-terminated array
+    advanced_group.label("Select an option:")
+    let radio_entries: [*u8; 4] = ["Option A".ptr, "Option B".ptr, "Option C".ptr, (*u8)0]
+    let radio = make_radio(GAD_RADIO, &radio_entries[0], 0)
+    advanced_group.child(radio)
+
+    advanced_group.hbar()
+
+    // Progress bar
+    advanced_group.label("Progress:")
+    let progress = make_progress(GAD_PROGRESS, 100, true)
+    advanced_group.child(progress)
+
+    // Busy button
+    let mut busy_group = advanced_group.hgroup()
+    busy_group.hspace()
+    let busy_btn = busy_group.button(GAD_BUSY, "Simulate Work")
+    busy_group.hspace()
+    let busy_row = busy_group.build()
+    advanced_group.child(busy_row)
+
+    let advanced_page = advanced_group.build()
+
+    // === Tab 3: About ===
+    let mut about_group = root.vgroup()
+    about_group.frame(MUIV_Frame_Group)
+
+    about_group.vspace()
+    about_group.label("\033cMUI Demo for Novus")
+    about_group.label("\033cVersion 1.3")
+    about_group.vspace()
+    about_group.label("\033cA modern language for classic Amigas")
+    about_group.vspace()
+
+    let about_page = about_group.build()
+
+    // Add tabs
+    tabs.add_tab("Controls", controls_page)
+    tabs.add_tab("Advanced", advanced_page)
+    tabs.add_tab("About", about_page)
+    let tab_group = tabs.build()
+    root.child(tab_group)
+
+    // Add quit button at bottom
+    root.hbar()
+    let mut quit_group = root.hgroup()
+    quit_group.hspace()
+    let quit_btn = quit_group.button(GAD_QUIT, "Quit")
+    quit_group.hspace()
+    let quit_row = quit_group.build()
+    root.child(quit_row)
+
+    // Finish building the group
+    let root_group = root.build()
+
+    // Set as window root and build window
+    win_builder.root(root_group)
+    let window = win_builder.build()
+
+    // Build the application
+    let app_result = app_builder.build()
+
+    match app_result {
+        Result::Ok(app) => {
+            // Set up window notifications
+            app.on_close(window)
+
+            // Button notifications
+            app.on_button(btn1, GAD_BUTTON_ONE)
+            app.on_button(btn2, GAD_BUTTON_TWO)
+            app.on_button(quit_btn, GAD_QUIT)
+            app.on_button(busy_btn, GAD_BUSY)
+
+            // Gadget change notifications
+            app.on_slider(slider, GAD_SLIDER)
+            app.on_checkbox(checkbox, GAD_CHECKBOX)
+            app.on_string(string_gad, GAD_STRING)
+
+            // Radio notification
+            app.notify_val(radio, MUIA_Radio_Active, MUIV_EveryTime,
+                          app.app_object(), MUIM_Application_ReturnID, GAD_RADIO)
+
+            // Menu notifications
+            app.on_menu(MENU_NEW)
+            app.on_menu(MENU_OPEN)
+            app.on_menu(MENU_SAVE)
+            app.on_menu(MENU_QUIT)
+            app.on_menu(MENU_CUT)
+            app.on_menu(MENU_COPY)
+            app.on_menu(MENU_PASTE)
+            app.on_menu(MENU_ABOUT)
+
+            // Open the window
+            app.open_window(window)
+
+            // Run the event loop with custom handling
+            let mut signals: u32 = 0
+            let mut running = true
+
+            forever {
+                if !running {
+                    break
+                }
+
+                let id = app.run_once(&signals)
+
+                match id {
+                    // Quit events
+                    GAD_QUIT => {
+                        running = false
+                    },
+                    MENU_QUIT => {
+                        running = false
+                    },
+
+                    // Menu events
+                    MENU_NEW => {
+                        set_text(status_text, "Menu: New")
+                    },
+                    MENU_OPEN => {
+                        set_text(status_text, "Menu: Open")
+                    },
+                    MENU_SAVE => {
+                        set_text(status_text, "Menu: Save")
+                    },
+                    MENU_CUT => {
+                        set_text(status_text, "Menu: Cut")
+                    },
+                    MENU_COPY => {
+                        set_text(status_text, "Menu: Copy")
+                    },
+                    MENU_PASTE => {
+                        set_text(status_text, "Menu: Paste")
+                    },
+                    MENU_ABOUT => {
+                        app.request(window, "About".ptr, "MUI Demo\nWritten in Novus\n\nA modern language for classic Amigas".ptr, "OK".ptr)
+                    },
+
+                    // Button events
+                    GAD_BUTTON_ONE => {
+                        set_text(status_text, "Button 1 clicked!")
+                    },
+                    GAD_BUTTON_TWO => {
+                        set_text(status_text, "Button 2 clicked!")
+                    },
+
+                    // Gadget change events
+                    GAD_SLIDER => {
+                        set_text(status_text, "Slider moved!")
+                    },
+                    GAD_CHECKBOX => {
+                        let checked = get_attr(checkbox, MUIA_Selected, (*u32)0)
+                        if checked != 0 {
+                            set_text(status_text, "Feature enabled")
+                        } else {
+                            set_text(status_text, "Feature disabled")
+                        }
+                    },
+                    GAD_STRING => {
+                        set_text(status_text, "Name entered!")
+                    },
+                    GAD_RADIO => {
+                        let selected = get_attr(radio, MUIA_Radio_Active, (*u32)0)
+                        if selected == 0 {
+                            set_text(status_text, "Selected: Option A")
+                        } else if selected == 1 {
+                            set_text(status_text, "Selected: Option B")
+                        } else {
+                            set_text(status_text, "Selected: Option C")
+                        }
+                    },
+                    GAD_BUSY => {
+                        // Simulate work with progress
+                        set_text(status_text, "Working...")
+                        app_busy(app.app_object(), true)
+
+                        // Update progress bar
+                        let mut i: i32 = 0
+                        forever {
+                            if i > 100 {
+                                break
+                            }
+                            set_progress(progress, i)
+                            // Small delay would go here in real app
+                            i = i + 10
+                        }
+
+                        app_busy(app.app_object(), false)
+                        set_text(status_text, "Work complete!")
+                    },
+
+                    _ => {
+                        if id == (u32)MUIV_Application_ReturnID_Quit {
+                            running = false
+                        }
+                    }
+                }
+
+                if running && signals != 0 {
+                    signals = Wait(signals)
+                }
+            }
+
+            // Window and app are cleaned up by Drop
+        },
+        Result::Err(err) => {
+            // Failed to create application
+            return 20
+        }
+    }
+
+    return 0
+}

@@ -24,6 +24,28 @@
 	xdef	_DiskfontBase		; diskfont.library base
 
 ; ============================================================================
+; ReAction Class Library Bases
+; ============================================================================
+; These are BOOPSI class libraries (*.class) for ReAction GUI toolkit.
+; They're opened via OpenLibrary("xxx.class", 44) and provide GetClass functions.
+; ============================================================================
+	xdef	_WindowBase		; window.class base
+	xdef	_LayoutBase		; layout.gadget base
+	xdef	_ButtonBase		; button.gadget base
+	xdef	_CheckBoxBase		; checkbox.gadget base
+	xdef	_IntegerBase		; integer.gadget base
+	xdef	_RadioButtonBase	; radiobutton.gadget base
+	xdef	_LabelBase		; label.image base
+
+; ============================================================================
+; MUI (Magic User Interface) Library Base
+; ============================================================================
+; MUI is a BOOPSI-based GUI toolkit providing advanced widget capabilities.
+; Opened via OpenLibrary("muimaster.library", 20).
+; ============================================================================
+	xdef	_MUIMasterBase		; muimaster.library base
+
+; ============================================================================
 ; Storage (initialized to 0 by loader)
 ; ============================================================================
 _SysBase:
@@ -43,6 +65,30 @@ _GfxBase:
 
 _DiskfontBase:
 	ds.l	1			; Reserve 1 longword for DiskfontBase
+
+; ============================================================================
+; ReAction Class Library Base Storage
+; ============================================================================
+_WindowBase:
+	ds.l	1			; Reserve 1 longword for WindowBase
+_LayoutBase:
+	ds.l	1			; Reserve 1 longword for LayoutBase
+_ButtonBase:
+	ds.l	1			; Reserve 1 longword for ButtonBase
+_CheckBoxBase:
+	ds.l	1			; Reserve 1 longword for CheckBoxBase
+_IntegerBase:
+	ds.l	1			; Reserve 1 longword for IntegerBase
+_RadioButtonBase:
+	ds.l	1			; Reserve 1 longword for RadioButtonBase
+_LabelBase:
+	ds.l	1			; Reserve 1 longword for LabelBase
+
+; ============================================================================
+; MUI Library Base Storage
+; ============================================================================
+_MUIMasterBase:
+	ds.l	1			; Reserve 1 longword for MUIMasterBase
 
 ; ============================================================================
 ; Workbench Startup Support
