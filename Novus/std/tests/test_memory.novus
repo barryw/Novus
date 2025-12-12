@@ -44,8 +44,7 @@ pub fn test_memblock_alloc_clear() {
             let ptr = block.ptr()
             // Check that memory is zeroed
             var all_zero = true
-            var i: u32 = 0
-            while i < 100u32 {
+            while var i < 100u32 {
                 if ptr[i] != 0u8 {
                     all_zero = false
                 }

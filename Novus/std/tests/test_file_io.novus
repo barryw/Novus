@@ -691,8 +691,7 @@ pub fn test_write_read_roundtrip() {
             let write_ptr = write_buf.ptr()
 
             // Fill with test pattern
-            var i: u32 = 0
-            while i < 256u32 {
+            while var i < 256u32 {
                 write_ptr[i] = i as u8
                 i = i + 1u32
             }
@@ -725,8 +724,7 @@ pub fn test_write_read_roundtrip() {
 
                         // Verify pattern
                         var all_match = true
-                        var j: u32 = 0
-                        while j < 256u32 {
+                        while var j < 256u32 {
                             if read_ptr[j] != j as u8 {
                                 all_match = false
                             }
@@ -762,8 +760,7 @@ pub fn test_large_file() {
             let ptr = buf.ptr()
 
             // Fill buffer
-            var i: u32 = 0
-            while i < size {
+            while var i < size {
                 ptr[i] = (i & 255u32) as u8
                 i = i + 1u32
             }

@@ -3,7 +3,7 @@
 // Dynamic data structures and collection types
 
 // Import core types and memory management
-from std::core import Option, Result, Iterable, From, Drop
+from std::core import Option, Result, Iterable, From, Drop, Clone
 from std::memory::block import MemoryBlock
 from std::ffi::exec import CopyMem, FreeMem
 from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
@@ -106,8 +106,7 @@ impl<T> Vec<T> {
                     let new_ptr: *T = (*T)raw_ptr
 
                     // Copy existing elements to new allocation
-                    var i: u32 = 0u32
-                    while i < self.len {
+                    while var i < self.len {
                         new_ptr[i] = self.ptr[i]
                         i++
                     }
@@ -332,8 +331,7 @@ impl<T> Vec<T> {
                 let new_ptr: *T = (*T)raw_ptr
 
                 // Copy existing elements to new allocation
-                var i: u32 = 0u32
-                while i < self.len {
+                while var i < self.len {
                     new_ptr[i] = self.ptr[i]
                     i++
                 }
@@ -406,6 +404,31 @@ impl<T> Drop for Vec<T> {
             self.ptr = 0
             self.len = 0
             self.capacity = 0
+        }
+    }
+}
+
+// Clone for Vec<T> - creates a deep copy
+impl<T> Clone for Vec<T> {
+    fn clone(&self) -> Option<Vec<T>> {
+        if self.len == 0 {
+            return Option::Some(Vec::<T>::new())
+        }
+
+        // Allocate new vector with same capacity
+        match Vec::<T>::with_capacity(self.capacity) {
+            Some(var new_vec) => {
+                // Copy elements
+                while var i < self.len {
+                    let success = new_vec.push(self.ptr[i])
+                    if !success {
+                        return Option::None
+                    }
+                    i++
+                }
+                return Option::Some(new_vec)
+            },
+            None => return Option::None,
         }
     }
 }

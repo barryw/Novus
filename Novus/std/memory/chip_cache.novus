@@ -54,12 +54,11 @@ impl CacheEntry {
     }
 
     fn set_name(&var self, name: Str) {
-        var i: u32 = 0
         var max_len: u32 = MAX_NAME_LEN
         if name.len() < MAX_NAME_LEN {
             max_len = name.len()
         }
-        while i < max_len {
+        while var i < max_len {
             self.debug_name[i] = name.as_ptr()[i]
             i++
         }
@@ -143,8 +142,7 @@ impl ChipCache {
             }
 
             // Initialize all entries
-            var i: u32 = 0
-            while i < MAX_CACHE_ENTRIES {
+            while var i < MAX_CACHE_ENTRIES {
                 g_chip_cache.entries[i] = CacheEntry::new()
                 i++
             }
@@ -191,8 +189,7 @@ impl ChipCache {
             Forbid()
 
             // Check if already cached
-            var i: u32 = 0
-            while i < g_chip_cache.entry_count {
+            while var i < g_chip_cache.entry_count {
                 if g_chip_cache.entries[i].asset_id == asset_id && g_chip_cache.entries[i].is_valid() {
                     // Cache hit
                     g_chip_cache.entries[i].last_access = g_chip_cache.frame_counter
@@ -239,8 +236,7 @@ impl ChipCache {
     pub fn pin(asset_id: u32) {
         unsafe {
             Forbid()
-            var i: u32 = 0
-            while i < g_chip_cache.entry_count {
+            while var i < g_chip_cache.entry_count {
                 if g_chip_cache.entries[i].asset_id == asset_id {
                     g_chip_cache.entries[i].pin_count++
                     Permit()
@@ -259,8 +255,7 @@ impl ChipCache {
     pub fn unpin(asset_id: u32) {
         unsafe {
             Forbid()
-            var i: u32 = 0
-            while i < g_chip_cache.entry_count {
+            while var i < g_chip_cache.entry_count {
                 if g_chip_cache.entries[i].asset_id == asset_id {
                     if g_chip_cache.entries[i].pin_count > 0 {
                         g_chip_cache.entries[i].pin_count--
@@ -278,8 +273,7 @@ impl ChipCache {
     pub fn is_pinned(asset_id: u32) -> bool {
         unsafe {
             Forbid()
-            var i: u32 = 0
-            while i < g_chip_cache.entry_count {
+            while var i < g_chip_cache.entry_count {
                 if g_chip_cache.entries[i].asset_id == asset_id {
                     let result = g_chip_cache.entries[i].pin_count > 0
                     Permit()
@@ -296,8 +290,7 @@ impl ChipCache {
     pub fn pin_count(asset_id: u32) -> u32 {
         unsafe {
             Forbid()
-            var i: u32 = 0
-            while i < g_chip_cache.entry_count {
+            while var i < g_chip_cache.entry_count {
                 if g_chip_cache.entries[i].asset_id == asset_id {
                     let result = g_chip_cache.entries[i].pin_count
                     Permit()
@@ -316,8 +309,7 @@ impl ChipCache {
     pub fn evict(asset_id: u32) -> bool {
         unsafe {
             Forbid()
-            var i: u32 = 0
-            while i < g_chip_cache.entry_count {
+            while var i < g_chip_cache.entry_count {
                 if g_chip_cache.entries[i].asset_id == asset_id {
                     if g_chip_cache.entries[i].pin_count > 0 {
                         Permit()
@@ -363,8 +355,7 @@ impl ChipCache {
             var total_cached: u32 = 0
             var pinned_bytes: u32 = 0
 
-            var i: u32 = 0
-            while i < g_chip_cache.entry_count {
+            while var i < g_chip_cache.entry_count {
                 if g_chip_cache.entries[i].is_valid() {
                     total_cached = total_cached + g_chip_cache.entries[i].size
                     if g_chip_cache.entries[i].pin_count > 0 {
@@ -396,8 +387,7 @@ impl ChipCache {
         unsafe {
             Forbid()
             // Free all entries
-            var i: u32 = 0
-            while i < g_chip_cache.entry_count {
+            while var i < g_chip_cache.entry_count {
                 ChipCache::free_entry(i)
                 i++
             }
@@ -478,8 +468,7 @@ impl ChipCache {
             var best_priority: u32 = 3  // Higher than High
             var best_access: u32 = $FFFFFFFFu32
 
-            var i: u32 = 0
-            while i < g_chip_cache.entry_count {
+            while var i < g_chip_cache.entry_count {
                 let entry = &g_chip_cache.entries[i]
                 if entry.is_valid() && entry.pin_count == 0 {
                     let pri = ChipCache::priority_value(entry.priority)

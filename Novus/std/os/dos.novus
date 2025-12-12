@@ -425,14 +425,13 @@ impl OwnedFileHandle {
             return Result::Ok(0u32)
         }
         // Count bytes read (find null terminator)
-        var count: u32 = 0u32
-        while count < length {
+        while var count < length {
             if buffer[count] == 0u8 {
-                break
+                return Result::Ok(count)
             }
             count = count + 1u32
         }
-        return Result::Ok(count)
+        return Result::Ok(length)
     }
 }
 

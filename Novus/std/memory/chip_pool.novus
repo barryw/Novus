@@ -118,8 +118,7 @@ impl SizePool {
         }
 
         // Find and remove the allocation from tracking
-        var i: u32 = 0
-        while i < self.alloc_count {
+        while var i < self.alloc_count {
             if self.allocs[i].ptr == ptr {
                 let size = self.allocs[i].size
 

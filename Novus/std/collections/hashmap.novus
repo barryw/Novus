@@ -4,7 +4,7 @@
 //
 // This implementation supports any key type that implements Hash + Eq traits.
 
-from std::core import Option, Result, Drop, Hash, Eq
+from std::core import Option, Result, Drop, Hash, Eq, Iterator
 from std::memory::block import MemoryBlock
 from std::ffi::exec import FreeMem
 from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
@@ -89,8 +89,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
                 let entries: *HashMapEntry<K, V> = (*HashMapEntry<K, V>)block.ptr()
 
                 // Initialize all entries as Empty
-                var i: u32 = 0u32
-                while i < capacity {
+                while var i < capacity {
                     entries[i].state = EntryState::Empty
                     i++
                 }
@@ -292,8 +291,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
     ///
     /// This keeps the current capacity but marks all entries as empty.
     pub fn clear(&var self) {
-        var i: u32 = 0u32
-        while i < self.capacity {
+        while var i < self.capacity {
             self.entries[i].state = EntryState::Empty
             i++
         }
@@ -316,8 +314,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
                 block.into_raw()
 
                 // Initialize all new entries as Empty
-                var i: u32 = 0u32
-                while i < new_capacity {
+                while var i < new_capacity {
                     new_entries[i].state = EntryState::Empty
                     i++
                 }
@@ -327,8 +324,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
                 let old_capacity: u32 = self.capacity
                 let mask: u32 = new_capacity - 1u32
 
-                i = 0u32
-                while i < old_capacity {
+                while var i < old_capacity {
                     match old_entries[i].state {
                         Occupied => {
                             // Compute new index using Hash trait
@@ -473,3 +469,6 @@ impl<K, V> HashMapIter<K, V> {
         return Option::None
     }
 }
+
+// NOTE: Iterator trait impl for HashMapIter is pending parser support for nested generics
+// The next() method is available directly on HashMapIter<K, V> above

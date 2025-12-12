@@ -1,0 +1,76 @@
+// Test the while var syntax
+
+fn test_basic_while_var() -> i32 {
+    var sum: i32 = 0
+    while var i < 5 {
+        sum = sum + i
+        i++
+    }
+    return sum  // Should be 0+1+2+3+4 = 10
+}
+
+fn test_while_var_with_type() -> u32 {
+    var sum: u32 = 0u32
+    while var i: u32 < 10u32 {
+        sum = sum + i
+        i++
+    }
+    return sum  // Should be 0+1+2+...+9 = 45
+}
+
+fn test_while_var_greater() -> i32 {
+    var count: i32 = 0
+    // Count up from 0 while it's less than what starts at 5
+    var limit: i32 = 5
+    while var i > 0 {
+        limit--
+        i = limit
+        count++
+    }
+    return count  // Should be 5 (counts while limit > 0)
+}
+
+fn test_while_var_le() -> i32 {
+    var sum: i32 = 0
+    while var i <= 5 {
+        sum = sum + i
+        i++
+    }
+    return sum  // Should be 0+1+2+3+4+5 = 15
+}
+
+fn test_while_var_ge() -> i32 {
+    var sum: i32 = 0
+    var start: i32 = 5
+    while var i >= 1 {
+        i = start
+        start--
+        sum = sum + i
+        if start < 0 {
+            break
+        }
+    }
+    return sum  // 5+4+3+2+1 = 15
+}
+
+fn main() -> i32 {
+    // Test basic while var
+    let result1: i32 = test_basic_while_var()
+    if result1 != 10 {
+        return 1
+    }
+
+    // Test while var with explicit type
+    let result2: u32 = test_while_var_with_type()
+    if result2 != 45u32 {
+        return 2
+    }
+
+    // Test less than or equal
+    let result3: i32 = test_while_var_le()
+    if result3 != 15 {
+        return 3
+    }
+
+    return 0
+}

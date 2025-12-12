@@ -65,12 +65,11 @@ impl BankEntry {
     }
 
     fn set_name(&var self, name: Str) {
-        var i: u32 = 0
         var max_len: u32 = MAX_ENTRY_NAME_LEN
         if name.len() < MAX_ENTRY_NAME_LEN {
             max_len = name.len()
         }
-        while i < max_len {
+        while var i < max_len {
             self.debug_name[i] = name.as_ptr()[i]
             i++
         }
@@ -159,12 +158,11 @@ impl ResourceBank {
         }
 
         // Copy name
-        var i: u32 = 0
         var max_len: u32 = 32
         if name.len() < 32 {
             max_len = name.len()
         }
-        while i < max_len {
+        while var i < max_len {
             bank.name[i] = name.as_ptr()[i]
             i++
         }
@@ -220,8 +218,7 @@ impl ResourceBank {
         self.state = BankState::Loading
 
         // Load each entry via ChipCache
-        var i: u32 = 0
-        while i < self.entry_count {
+        while var i < self.entry_count {
             let entry = &self.entries[i]
             let result = ChipCache::get(
                 entry.asset_id,
@@ -267,8 +264,7 @@ impl ResourceBank {
 
     /// Internal helper to unpin entries up to a count
     fn unload_internal(&var self, count: u32) {
-        var i: u32 = 0
-        while i < count {
+        while var i < count {
             ChipCache::unpin(self.entries[i].asset_id)
             i++
         }
@@ -284,8 +280,7 @@ impl ResourceBank {
         }
 
         // Find the entry
-        var i: u32 = 0
-        while i < self.entry_count {
+        while var i < self.entry_count {
             if self.entries[i].asset_id == asset_id {
                 // Get from cache (should be instant, already loaded)
                 let result = ChipCache::get(
@@ -316,8 +311,7 @@ impl ResourceBank {
             _ => return
         }
 
-        var i: u32 = 0
-        while i < self.entry_count {
+        while var i < self.entry_count {
             ChipCache::pin(self.entries[i].asset_id)
             i++
         }
@@ -330,8 +324,7 @@ impl ResourceBank {
             _ => return
         }
 
-        var i: u32 = 0
-        while i < self.entry_count {
+        while var i < self.entry_count {
             ChipCache::unpin(self.entries[i].asset_id)
             i++
         }

@@ -4212,7 +4212,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         return type is IrPointerType || type is IrIntType;
     }
 
-    public override IrType? VisitWhileStatement([NotNull] NovusParser.WhileStatementContext context)
+    public override IrType? VisitWhileExpr([NotNull] NovusParser.WhileExprContext context)
     {
         var conditionType = Visit(context.expression());
         var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
@@ -4230,6 +4230,81 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 }
             );
         }
+
+        // Enter loop context and track moves in loop body
+        _loopDepth++;
+        EnterBranch(ControlFlowKind.While);
+        AnalyzeBlock(context.block());
+        var loopMoves = ExitBranch();
+        _loopDepth--;
+
+        // Conservative: any move in loop body makes variable moved
+        foreach (var (varId, moveInfo) in loopMoves)
+        {
+            _borrowChecker.RecordLoopMove(varId, new MoveInfo
+            {
+                VariableId = varId,
+                VariableName = moveInfo.VariableName,
+                MoveLocation = moveInfo.MoveLocation,
+                Reason = $"value moved in loop body: {moveInfo.Reason}"
+            });
+        }
+
+        return null;
+    }
+
+    public override IrType? VisitWhileVar([NotNull] NovusParser.WhileVarContext context)
+    {
+        // Analyze the RHS expression to get its type
+        var rhsType = Visit(context.expression());
+        var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+
+        if (rhsType == null)
+        {
+            _diagnostics.ReportError(
+                "E0010",
+                "while var condition RHS must have a valid type",
+                location
+            );
+            return null;
+        }
+
+        // Determine variable type: explicit or inferred from RHS
+        IrType varType;
+        if (context.type() != null)
+        {
+            varType = _typeParser.ParseType(context.type());
+        }
+        else
+        {
+            varType = rhsType;
+        }
+
+        // Verify the variable type is valid for comparison (numeric or pointer)
+        if (!IsNumericType(varType) && varType is not IrPointerType)
+        {
+            _diagnostics.ReportError(
+                "E0010",
+                $"while var loop counter must be a numeric type, found '{TypeToString(varType)}'",
+                location
+            );
+        }
+
+        // Declare the loop variable in a new scope for the while block
+        var varName = context.IDENTIFIER().GetText();
+
+        // Check for shadowing in current scope
+        if (_variables.ContainsKey(varName))
+        {
+            _diagnostics.ReportWarning(
+                "W0005",
+                $"variable '{varName}' shadows an existing variable",
+                location
+            );
+        }
+
+        // Declare the mutable loop variable
+        _variables[varName] = new VariableSymbol(varName, varType, IsMutable: true, location, Id: _nextVariableId++);
 
         // Enter loop context and track moves in loop body
         _loopDepth++;
@@ -7865,17 +7940,27 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
         if (!_functions.ContainsKey(mangledMethodName))
         {
-            var location = SourceLocationHelper.FromContext(memberAccessCtx, _filePath, _sourceLines);
-            _diagnostics.ReportError(
-                "E0053",
-                $"no method named '{methodName}' found for type '{typeName}'",
-                location,
-                helpTexts: new List<string>
-                {
-                    $"consider implementing this method in an impl block: impl {typeName} {{ fn {methodName}(...) {{ ... }} }}"
-                }
-            );
-            return null;
+            // Inherent method not found - try trait implementations
+            // Example: Point implements Clone trait, so p.clone() should find Point_Clone_clone
+            var traitMethodName = _traitResolver.FindTraitMethod(typeName, methodName);
+            if (traitMethodName != null && _functions.ContainsKey(traitMethodName))
+            {
+                mangledMethodName = traitMethodName;
+            }
+            else
+            {
+                var location = SourceLocationHelper.FromContext(memberAccessCtx, _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0053",
+                    $"no method named '{methodName}' found for type '{typeName}'",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        $"consider implementing this method in an impl block: impl {typeName} {{ fn {methodName}(...) {{ ... }} }}"
+                    }
+                );
+                return null;
+            }
         }
 
         var method = _functions[mangledMethodName];
@@ -8304,7 +8389,107 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             }
         }
 
+        // Handle generic types like Option<Self>, Result<Self, E>, Vec<Self>
+        if (type is IrEnumType enumType && enumType.TypeArguments != null && enumType.TypeArguments.Count > 0)
+        {
+            bool anyChanged = false;
+            var newTypeArgs = new List<IrType>();
+            foreach (var typeArg in enumType.TypeArguments)
+            {
+                var substituted = SubstituteSelfType(typeArg, selfType);
+                newTypeArgs.Add(substituted);
+                if (substituted != typeArg)
+                    anyChanged = true;
+            }
+
+            if (anyChanged)
+            {
+                // Create a new enum type with substituted type arguments
+                // We need to create a new monomorphized version with the concrete types
+                var newVariants = new List<IrEnumVariant>();
+                foreach (var variant in enumType.Variants)
+                {
+                    var newData = new List<IrType>();
+                    foreach (var dataType in variant.AssociatedData)
+                    {
+                        newData.Add(SubstituteSelfType(dataType, selfType));
+                    }
+                    newVariants.Add(new IrEnumVariant(variant.Name, variant.Tag, newData));
+                }
+
+                // Build new cache key based on substituted type arguments
+                var typeArgNames = newTypeArgs.Select(t => GetTypeName(t));
+                var newCacheKey = $"{enumType.EnumName}<{string.Join(", ", typeArgNames)}>";
+
+                var newEnum = new IrEnumType(
+                    enumType.EnumName,
+                    newVariants,
+                    null,  // No generic parameters on monomorphized type
+                    newCacheKey,
+                    enumType.Attributes,
+                    enumType.WhereClause,
+                    newTypeArgs
+                );
+
+                return newEnum;
+            }
+        }
+
+        // Handle generic struct types like Vec<Self>
+        if (type is IrStructType structType && structType.TypeArguments != null && structType.TypeArguments.Count > 0)
+        {
+            bool anyChanged = false;
+            var newTypeArgs = new List<IrType>();
+            foreach (var typeArg in structType.TypeArguments)
+            {
+                var substituted = SubstituteSelfType(typeArg, selfType);
+                newTypeArgs.Add(substituted);
+                if (substituted != typeArg)
+                    anyChanged = true;
+            }
+
+            if (anyChanged)
+            {
+                // Create a new struct type with substituted type arguments
+                var newFields = new List<IrStructField>();
+                foreach (var field in structType.Fields)
+                {
+                    var newFieldType = SubstituteSelfType(field.Type, selfType);
+                    newFields.Add(new IrStructField(field.Name, newFieldType));
+                }
+
+                // Build new cache key based on substituted type arguments
+                var typeArgNames = newTypeArgs.Select(t => GetTypeName(t));
+                var newCacheKey = $"{structType.StructName}<{string.Join(", ", typeArgNames)}>";
+
+                var newStruct = new IrStructType(
+                    structType.StructName,
+                    newFields,
+                    null,  // No generic parameters on monomorphized type
+                    newCacheKey,
+                    structType.Attributes,
+                    structType.WhereClause,
+                    newTypeArgs
+                );
+
+                return newStruct;
+            }
+        }
+
         return type;
+    }
+
+    /// <summary>
+    /// Helper to get a type name for cache key generation
+    /// </summary>
+    private string GetTypeName(IrType type)
+    {
+        return type switch
+        {
+            IrEnumType et => et.CacheKey ?? et.Name,
+            IrStructType st => st.CacheKey ?? st.Name,
+            _ => type.Name
+        };
     }
 
     /// <summary>

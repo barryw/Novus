@@ -154,21 +154,19 @@ impl Args {
         }
 
         // Copy template with null terminator
-        var i: u32 = 0
-        while i < template.len() {
+        while var i < template.len() {
             args.template[i] = template.as_ptr()[i]
             i++
         }
-        args.template[i] = 0  // Null terminate
+        args.template[template.len()] = 0  // Null terminate
 
         // Count arguments (number of commas + 1)
         args.arg_count = 1
-        i = 0
-        while i < template.len() {
-            if template.as_ptr()[i] == $2C {  // Comma
+        while var j < template.len() {
+            if template.as_ptr()[j] == $2C {  // Comma
                 args.arg_count++
             }
-            i++
+            j++
         }
 
         if args.arg_count > MAX_ARGS {
@@ -307,8 +305,7 @@ impl Args {
         // Build Vec<Str>
         var result: Vec<Str> = Vec::new()
 
-        var i: u32 = 0
-        while i < count {
+        while var i < count {
             let str_ptr: *u8 = strings_ptr[i]
             let str_opt = Str::from_cstr(str_ptr)
             match str_opt {
@@ -354,12 +351,11 @@ impl Args {
             return -1
         }
 
-        var i: u32 = 0
-        while i < name.len() {
+        while var i < name.len() {
             name_buf[i] = name.as_ptr()[i]
             i++
         }
-        name_buf[i] = 0
+        name_buf[name.len()] = 0
 
         // FindArg returns -1 if not found
         return FindArg((*u8)&name_buf, (*u8)&self.template)
@@ -448,8 +444,7 @@ impl ArgParser {
             return false
         }
 
-        var i: u32 = 0
-        while i < name.len() {
+        while var i < name.len() {
             self.template[self.len] = name.as_ptr()[i]
             self.len++
             i++
@@ -457,14 +452,14 @@ impl ArgParser {
 
         // Add modifier(s)
         let modifier = self.get_modifier(arg_type)
-        i = 0
-        while modifier[i] != 0 {
+        var j: u32 = 0
+        while modifier[j] != 0 {
             if self.len >= 254 {
                 return false
             }
-            self.template[self.len] = modifier[i]
+            self.template[self.len] = modifier[j]
             self.len++
-            i++
+            j++
         }
 
         // Null terminate
@@ -702,8 +697,7 @@ impl WBArgument {
 
         // Convert to String
         var result = String::new()
-        var i: u32 = 0
-        while i < path_len {
+        while var i < path_len {
             if !result.push_byte(path_buf[i]) {
                 return Result::Err(DosError::NoFreeStore)
             }

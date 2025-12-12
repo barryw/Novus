@@ -2,7 +2,7 @@
 // Namespace: std::strings
 // Powerful, ergonomic, Amiga-optimized string types
 
-from std::core import Option, Result, Drop
+from std::core import Option, Result, Drop, Clone, AsRef, Iterator, Write, Ord
 from std::collections::vec import Vec
 from std::memory::block import MemoryBlock
 from std::ffi::exec import FreeMem
@@ -219,8 +219,7 @@ impl Str {
 #endif
 
         // Fallback: byte-by-byte comparison (for 68000/68010 or short strings)
-        var i: u32 = 0u32
-        while i < self.len {
+        while var i < self.len {
             if self.ptr[i] != other.ptr[i] {
                 return false
             }
@@ -239,8 +238,7 @@ impl Str {
             min_len = other.len
         }
 
-        var i: u32 = 0u32
-        while i < min_len {
+        while var i < min_len {
             let a: u8 = self.ptr[i]
             let b: u8 = other.ptr[i]
             if a != b {
@@ -259,8 +257,7 @@ impl Str {
             return false
         }
 
-        var i: u32 = 0u32
-        while i < prefix.len {
+        while var i < prefix.len {
             if self.ptr[i] != prefix.ptr[i] {
                 return false
             }
@@ -277,8 +274,7 @@ impl Str {
         }
 
         let offset: u32 = self.len - suffix.len
-        var i: u32 = 0u32
-        while i < suffix.len {
+        while var i < suffix.len {
             if self.ptr[offset + i] != suffix.ptr[i] {
                 return false
             }
@@ -304,13 +300,10 @@ impl Str {
         }
 
         let last_pos: u32 = self.len - needle.len
-        var i: u32 = 0u32
-
-        while i <= last_pos {
+        while var i <= last_pos {
             // Check if needle matches at position i
-            var j: u32 = 0u32
             var matches: bool = true
-            while j < needle.len {
+            while var j < needle.len {
                 if self.ptr[i + j] != needle.ptr[j] {
                     matches = false
                     j = needle.len  // Break inner loop
@@ -329,8 +322,7 @@ impl Str {
 
     /// Find first occurrence of byte
     pub fn find_byte(&self, byte: u8) -> Option<u32> {
-        var i: u32 = 0u32
-        while i < self.len {
+        while var i < self.len {
             if self.ptr[i] == byte {
                 return Option::Some(i)
             }
@@ -367,8 +359,7 @@ impl Str {
 
     /// Trim whitespace from start
     pub fn trim_start(&self) -> Str {
-        var start: u32 = 0u32
-        while start < self.len {
+        while var start < self.len {
             let ch: u8 = self.ptr[start]
             if ch != $20 && ch != $09 && ch != $0A && ch != $0D {
                 // Not space, tab, LF, or CR - stop trimming
@@ -473,8 +464,7 @@ impl String {
         }
 
         // Copy bytes from Str into Vec
-        var i: u32 = 0u32
-        while i < s.len() {
+        while var i < s.len() {
             let success: bool = string.vec.push(s.as_ptr()[i])
             if !success {
                 return Result::Err(StringError::AllocationFailed)
@@ -517,8 +507,7 @@ impl String {
         }
 
         // Copy bytes from Str
-        var i: u32 = 0u32
-        while i < s.len() {
+        while var i < s.len() {
             let success: bool = self.vec.push(s.as_ptr()[i])
             if !success {
                 return false
@@ -609,8 +598,7 @@ impl NameString {
             return false
         }
 
-        var i: u32 = 0u32
-        while i < s.len() {
+        while var i < s.len() {
             self.buf[self.len + i] = s.as_ptr()[i]
             i++
         }
@@ -670,8 +658,7 @@ impl GadgetString {
             return false
         }
 
-        var i: u32 = 0u32
-        while i < s.len() {
+        while var i < s.len() {
             self.buf[self.len + i] = s.as_ptr()[i]
             i++
         }
@@ -731,8 +718,7 @@ impl PathString {
             return false
         }
 
-        var i: u32 = 0u32
-        while i < s.len() {
+        while var i < s.len() {
             self.buf[self.len + i] = s.as_ptr()[i]
             i++
         }
@@ -789,8 +775,7 @@ impl BStr {
                 ptr[0] = (u8)s.len()
 
                 // Copy string data
-                var i: u32 = 0u32
-                while i < s.len() {
+                while var i < s.len() {
                     ptr[1u32 + i] = s.as_ptr()[i]
                     i++
                 }
@@ -1382,8 +1367,7 @@ impl Str {
 pub fn str_join(parts: *Str, count: u32, separator: Str) -> Result<String, StringError> {
     var result = String::new()
 
-    var i: u32 = 0
-    while i < count {
+    while var i < count {
         if i > 0 && separator.len > 0 {
             if !result.push_str(separator) {
                 return Result::Err(StringError::AllocationFailed)
@@ -1793,4 +1777,217 @@ pub fn path_join(base: Str, component: Str) -> Result<String, StringError> {
     }
 
     return Result::Ok(result)
+}
+
+// ============================================================================
+// Trait Implementations
+// ============================================================================
+
+// Clone for String - creates a deep copy
+impl Clone for String {
+    fn clone(&self) -> Option<String> {
+        match String::new_from_str(self.as_str()) {
+            Result::Ok(s) => return Option::Some(s),
+            Result::Err(_) => return Option::None,
+        }
+    }
+}
+
+// Clone for StringBuilder - creates a deep copy
+impl Clone for StringBuilder {
+    fn clone(&self) -> Option<StringBuilder> {
+        let cap = self.string.capacity()
+        match StringBuilder::with_capacity(cap) {
+            Some(var sb) => {
+                if sb.push_str(self.string.as_str()) {
+                    return Option::Some(sb)
+                }
+                return Option::None
+            },
+            None => return Option::None,
+        }
+    }
+}
+
+// AsRef<Str> for String - view owned string as borrowed slice
+impl AsRef<Str> for String {
+    fn as_ref(&self) -> Str {
+        return self.as_str()
+    }
+}
+
+// AsRef<Str> for StringBuilder - view builder contents as borrowed slice
+impl AsRef<Str> for StringBuilder {
+    fn as_ref(&self) -> Str {
+        return self.string.as_str()
+    }
+}
+
+// AsRef<Str> for PathString - view path string as borrowed slice
+impl AsRef<Str> for PathString {
+    fn as_ref(&self) -> Str {
+        return self.as_str()
+    }
+}
+
+// AsRef<Str> for Str - identity conversion
+impl AsRef<Str> for Str {
+    fn as_ref(&self) -> Str {
+        return Str { ptr: self.ptr, len: self.len }
+    }
+}
+
+// Iterator<Str> for SplitIter - standard iteration protocol
+impl Iterator<Str> for SplitIter {
+    fn next(&var self) -> Option<Str> {
+        if self.done {
+            return Option::None
+        }
+
+        // Find delimiter in remaining string
+        var idx: u32 = 0
+        var found: bool = false
+        while idx < self.remaining.len && !found {
+            if self.remaining.ptr[idx] == self.delimiter {
+                found = true
+            } else {
+                idx++
+            }
+        }
+
+        if found {
+            // Return substring up to delimiter, advance past delimiter
+            let result = Str { ptr: self.remaining.ptr, len: idx }
+            if idx + 1 < self.remaining.len {
+                self.remaining = Str {
+                    ptr: self.remaining.ptr + idx + 1,
+                    len: self.remaining.len - idx - 1,
+                }
+            } else {
+                // Delimiter at end - remaining is empty, but need one more iteration
+                self.remaining = Str { ptr: self.remaining.ptr, len: 0 }
+            }
+            return Option::Some(result)
+        } else {
+            // No delimiter found - return remaining string and mark done
+            self.done = true
+            return Option::Some(self.remaining)
+        }
+    }
+}
+
+// Iterator<Str> for LinesIter - standard iteration protocol
+impl Iterator<Str> for LinesIter {
+    fn next(&var self) -> Option<Str> {
+        if self.done {
+            return Option::None
+        }
+
+        if self.remaining.len == 0 {
+            self.done = true
+            return Option::None
+        }
+
+        // Find line ending (LF, CR, or CRLF)
+        var idx: u32 = 0
+        var found: bool = false
+        var skip: u32 = 1  // How many bytes to skip (1 for LF/CR, 2 for CRLF)
+
+        while idx < self.remaining.len && !found {
+            let ch: u8 = self.remaining.ptr[idx]
+            if ch == $0A {  // LF
+                found = true
+            } else if ch == $0D {  // CR
+                found = true
+                // Check for CRLF
+                if idx + 1 < self.remaining.len && self.remaining.ptr[idx + 1] == $0A {
+                    skip = 2
+                }
+            } else {
+                idx++
+            }
+        }
+
+        if found {
+            // Return line without line ending
+            let result = Str { ptr: self.remaining.ptr, len: idx }
+            let new_start: u32 = idx + skip
+            if new_start < self.remaining.len {
+                self.remaining = Str {
+                    ptr: self.remaining.ptr + new_start,
+                    len: self.remaining.len - new_start,
+                }
+            } else {
+                self.remaining = Str { ptr: self.remaining.ptr, len: 0 }
+            }
+            return Option::Some(result)
+        } else {
+            // No line ending found - return remaining string
+            self.done = true
+            return Option::Some(self.remaining)
+        }
+    }
+}
+
+// Write for String - unified output interface
+impl Write for String {
+    fn write_bytes(&var self, ptr: *u8, len: u32) -> bool {
+        let s = Str::from_raw(ptr, len)
+        return self.push_str(s)
+    }
+
+    fn write_byte(&var self, b: u8) -> bool {
+        return self.push_byte(b)
+    }
+}
+
+// Write for StringBuilder - unified output interface
+impl Write for StringBuilder {
+    fn write_bytes(&var self, ptr: *u8, len: u32) -> bool {
+        let s = Str::from_raw(ptr, len)
+        return self.push_str(s)
+    }
+
+    fn write_byte(&var self, b: u8) -> bool {
+        return self.push_byte(b)
+    }
+}
+
+// Write for PathString - unified output interface
+impl Write for PathString {
+    fn write_bytes(&var self, ptr: *u8, len: u32) -> bool {
+        let s = Str::from_raw(ptr, len)
+        return self.push_str(s)
+    }
+
+    fn write_byte(&var self, b: u8) -> bool {
+        return self.push_byte(b)
+    }
+}
+
+// Ord for Str - lexicographic comparison
+impl Ord for Str {
+    fn cmp(&self, other: &Str) -> i32 {
+        // Compare byte-by-byte up to the shorter length
+        let min_len: u32 = if self.len < other.len { self.len } else { other.len }
+        while var i < min_len {
+            let a: u8 = self.ptr[i]
+            let b: u8 = other.ptr[i]
+            if a < b {
+                return -1
+            }
+            if a > b {
+                return 1
+            }
+            i++
+        }
+        // If all compared bytes are equal, shorter string is less
+        if self.len < other.len {
+            return -1
+        }
+        if self.len > other.len {
+            return 1
+        }
+        return 0
+    }
 }

@@ -2647,6 +2647,9 @@ public partial class CCodeGenerator
     {
         return type switch
         {
+            // Self type is unresolved and should be treated as generic
+            IrSelfType => true,
+            IrGenericType => true,
             IrEnumType enumType => enumType.GenericParameters.Count > 0 ||
                                    (enumType.CacheKey != null && enumType.CacheKey.Contains("<T")),
             IrStructType structType => IsGenericStruct(structType),

@@ -1754,47 +1754,120 @@ public partial class IrBuilder
         // Visit the inner loop - we need to handle this specially since we've already pushed the labels
         if (context.whileStatement() != null)
         {
-            // Visit while statement body directly
             var whileCtx = context.whileStatement();
 
-            // Jump to condition check
-            _currentBlock!.AddInstruction(new IrBranch(continueLabel));
-
-            // Continue label (condition check)
-            _currentBlock!.AddInstruction(new IrLabel(continueLabel));
-            var condition = (IrValue?)Visit(whileCtx.expression());
-            if (condition == null)
+            // Handle the two while statement alternatives
+            if (whileCtx is NovusParser.WhileExprContext whileExprCtx)
             {
-                var errorLocation = GetLocation(whileCtx);
-                _diagnostics.ReportError(
-                    ErrorCodes.InvalidExpressionType,
-                    "While condition expression is null or invalid",
-                    errorLocation
-                );
-                return null;
-            }
-
-            // Automatic pointer-to-bool coercion
-            if (condition.Type is IrPointerType or IrReferenceType or IrMutReferenceType)
-            {
-                var ptrToBoolTemp = $"%t{_tempCounter++}";
-                var zeroValue = new IrConstant(0, IrIntType.U32);
-                var comparison = new IrBinaryOp(ptrToBoolTemp, IrBinaryOp.OpKind.Ne, condition, zeroValue, IrBoolType.Instance);
-                _currentBlock!.AddInstruction(comparison);
-                condition = new IrVariable(ptrToBoolTemp, IrBoolType.Instance);
-            }
-
-            var bodyLabel = $"labeled_{labelName}_body_{_labelCounter - 1}";
-            _currentBlock!.AddInstruction(new IrConditionalBranch(condition, bodyLabel, exitLabel));
-
-            // Body
-            _currentBlock!.AddInstruction(new IrLabel(bodyLabel));
-            Visit(whileCtx.block());
-
-            // Jump back to condition
-            if (!CurrentBlockHasTerminator())
-            {
+                // Standard while expression: while condition { ... }
+                // Jump to condition check
                 _currentBlock!.AddInstruction(new IrBranch(continueLabel));
+
+                // Continue label (condition check)
+                _currentBlock!.AddInstruction(new IrLabel(continueLabel));
+                var condition = (IrValue?)Visit(whileExprCtx.expression());
+                if (condition == null)
+                {
+                    var errorLocation = GetLocation(whileExprCtx);
+                    _diagnostics.ReportError(
+                        ErrorCodes.InvalidExpressionType,
+                        "While condition expression is null or invalid",
+                        errorLocation
+                    );
+                    return null;
+                }
+
+                // Automatic pointer-to-bool coercion
+                if (condition.Type is IrPointerType or IrReferenceType or IrMutReferenceType)
+                {
+                    var ptrToBoolTemp = $"%t{_tempCounter++}";
+                    var zeroValue = new IrConstant(0, IrIntType.U32);
+                    var comparison = new IrBinaryOp(ptrToBoolTemp, IrBinaryOp.OpKind.Ne, condition, zeroValue, IrBoolType.Instance);
+                    _currentBlock!.AddInstruction(comparison);
+                    condition = new IrVariable(ptrToBoolTemp, IrBoolType.Instance);
+                }
+
+                var bodyLabel = $"labeled_{labelName}_body_{_labelCounter - 1}";
+                _currentBlock!.AddInstruction(new IrConditionalBranch(condition, bodyLabel, exitLabel));
+
+                // Body
+                _currentBlock!.AddInstruction(new IrLabel(bodyLabel));
+                Visit(whileExprCtx.block());
+
+                // Jump back to condition
+                if (!CurrentBlockHasTerminator())
+                {
+                    _currentBlock!.AddInstruction(new IrBranch(continueLabel));
+                }
+            }
+            else if (whileCtx is NovusParser.WhileVarContext whileVarCtx)
+            {
+                // Inline variable while: while var i < expr { ... }
+                var varName = whileVarCtx.IDENTIFIER().GetText();
+
+                // Evaluate RHS to determine type
+                var rhsValue = (IrValue?)Visit(whileVarCtx.expression());
+                if (rhsValue == null)
+                {
+                    var errorLocation = GetLocation(whileVarCtx);
+                    _diagnostics.ReportError(
+                        ErrorCodes.InvalidExpressionType,
+                        "While condition RHS expression is null or invalid",
+                        errorLocation
+                    );
+                    return null;
+                }
+
+                // Determine variable type
+                IrType varType = whileVarCtx.type() != null
+                    ? _typeParser.ParseType(whileVarCtx.type())
+                    : rhsValue.Type;
+
+                // Create loop variable initialized to zero
+                var zeroValue = CreateZeroValue(varType);
+                if (zeroValue == null)
+                {
+                    var errorLocation = GetLocation(whileVarCtx);
+                    _diagnostics.ReportError(
+                        ErrorCodes.InvalidExpressionType,
+                        $"Cannot create zero value for type '{varType.Name}'",
+                        errorLocation
+                    );
+                    return null;
+                }
+
+                // Create local variable (scoped to while block)
+                var localVar = new IrLocalVariable(varName, varType, true);
+                _currentFunction!.LocalVariables.Add(localVar);
+                _localVariables[varName] = localVar;
+                Emit(new IrLocalDecl(varName, varType, true, zeroValue));
+
+                // Jump to condition check
+                _currentBlock!.AddInstruction(new IrBranch(continueLabel));
+
+                // Continue label (condition check)
+                _currentBlock!.AddInstruction(new IrLabel(continueLabel));
+
+                // Build comparison
+                var varValue = new IrVariable(varName, varType);
+                var compOp = GetComparisonOp(whileVarCtx.comparisonOp());
+                var conditionTemp = $"%t{_tempCounter++}";
+                var comparison = new IrBinaryOp(conditionTemp, compOp, varValue, rhsValue, IrBoolType.Instance);
+                _currentBlock!.AddInstruction(comparison);
+                var condition = new IrVariable(conditionTemp, IrBoolType.Instance);
+
+                var bodyLabel = $"labeled_{labelName}_body_{_labelCounter - 1}";
+                _currentBlock!.AddInstruction(new IrConditionalBranch(condition, bodyLabel, exitLabel));
+
+                // Body
+                _currentBlock!.AddInstruction(new IrLabel(bodyLabel));
+                Visit(whileVarCtx.block());
+
+                // Jump back to condition
+                if (!CurrentBlockHasTerminator())
+                {
+                    _currentBlock!.AddInstruction(new IrBranch(continueLabel));
+                }
             }
         }
         else if (context.forStatement() != null)
@@ -1866,7 +1939,7 @@ public partial class IrBuilder
         return null;
     }
 
-    public override object? VisitWhileStatement([NotNull] NovusParser.WhileStatementContext context)
+    public override object? VisitWhileExpr([NotNull] NovusParser.WhileExprContext context)
     {
         // Set current statement location for debug symbols
         _currentStatementLocation = GetLocation(context);
@@ -1927,6 +2000,140 @@ public partial class IrBuilder
         _loopExitLabels.Pop();
         _loopContinueLabels.Pop();
         return null;
+    }
+
+    /// <summary>
+    /// Handle while loops with inline variable declaration: while var i < expr { ... }
+    /// The variable is initialized to zero, type-inferred from the RHS, and scoped to the loop.
+    /// </summary>
+    public override object? VisitWhileVar([NotNull] NovusParser.WhileVarContext context)
+    {
+        // Set current statement location for debug symbols
+        _currentStatementLocation = GetLocation(context);
+
+        var condLabel = $"while_cond_{_labelCounter}";
+        var bodyLabel = $"while_body_{_labelCounter}";
+        var endLabel = $"while_end_{_labelCounter}";
+        _labelCounter++;
+
+        // Push exit and continue labels for break/continue statements
+        _loopExitLabels.Push(endLabel);
+        _loopContinueLabels.Push(condLabel); // continue jumps to condition check
+
+        // Get variable name
+        var varName = context.IDENTIFIER().GetText();
+
+        // Evaluate the RHS expression to determine type
+        var rhsValue = (IrValue?)Visit(context.expression());
+        if (rhsValue == null)
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "While condition RHS expression is null or invalid",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Determine variable type: explicit type annotation or inferred from RHS
+        IrType varType;
+        if (context.type() != null)
+        {
+            varType = _typeParser.ParseType(context.type());
+        }
+        else
+        {
+            varType = rhsValue.Type;
+        }
+
+        // Create the loop variable initialized to zero
+        var zeroValue = CreateZeroValue(varType);
+        if (zeroValue == null)
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Cannot create zero value for type '{varType.Name}'",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Create local variable (scoped to while block)
+        var localVar = new IrLocalVariable(varName, varType, true);
+        _currentFunction!.LocalVariables.Add(localVar);
+        _localVariables[varName] = localVar;
+        Emit(new IrLocalDecl(varName, varType, true, zeroValue));
+
+        // Jump to condition check
+        _currentBlock!.AddInstruction(new IrBranch(condLabel));
+
+        // Condition label
+        _currentBlock!.AddInstruction(new IrLabel(condLabel));
+
+        // Build the comparison: var <op> expr
+        var varValue = new IrVariable(varName, varType);
+        var compOp = GetComparisonOp(context.comparisonOp());
+        var conditionTemp = $"%t{_tempCounter++}";
+        var comparison = new IrBinaryOp(conditionTemp, compOp, varValue, rhsValue, IrBoolType.Instance);
+        _currentBlock!.AddInstruction(comparison);
+        var condition = new IrVariable(conditionTemp, IrBoolType.Instance);
+
+        _currentBlock!.AddInstruction(new IrConditionalBranch(condition, bodyLabel, endLabel));
+
+        // Body label
+        _currentBlock!.AddInstruction(new IrLabel(bodyLabel));
+        Visit(context.block());
+
+        // Jump back to condition (only if block doesn't end with return/break)
+        if (!CurrentBlockHasTerminator())
+        {
+            _currentBlock!.AddInstruction(new IrBranch(condLabel));
+        }
+
+        // End label
+        _currentBlock!.AddInstruction(new IrLabel(endLabel));
+
+        // Pop exit and continue labels
+        _loopExitLabels.Pop();
+        _loopContinueLabels.Pop();
+
+        // Remove the variable from scope (it was scoped to the while block)
+        // Note: The symbol table's scope mechanism handles this automatically when
+        // the block is exited, but we should ensure the variable isn't accessible after.
+
+        return null;
+    }
+
+    /// <summary>
+    /// Convert a comparisonOp context to IrBinaryOp.OpKind
+    /// </summary>
+    private IrBinaryOp.OpKind GetComparisonOp(NovusParser.ComparisonOpContext context)
+    {
+        if (context.LESS() != null) return IrBinaryOp.OpKind.Lt;
+        if (context.GREATER() != null) return IrBinaryOp.OpKind.Gt;
+        if (context.LE() != null) return IrBinaryOp.OpKind.Le;
+        if (context.GE() != null) return IrBinaryOp.OpKind.Ge;
+        if (context.EQEQ() != null) return IrBinaryOp.OpKind.Eq;
+        if (context.NE() != null) return IrBinaryOp.OpKind.Ne;
+
+        throw new InvalidOperationException($"Unknown comparison operator: {context.GetText()}");
+    }
+
+    /// <summary>
+    /// Create a zero value for the given type (for initializing loop variables)
+    /// </summary>
+    private IrValue? CreateZeroValue(IrType type)
+    {
+        return type switch
+        {
+            IrIntType intType => new IrConstant(0, intType),
+            IrFloatType floatType => new IrFloatConstant(0.0, floatType),
+            IrBoolType => new IrBoolConstant(false),
+            IrPointerType ptrType => new IrConstant(0, ptrType), // null pointer
+            _ => null // Unsupported type for zero initialization
+        };
     }
 
     public override object? VisitForCStyle([NotNull] NovusParser.ForCStyleContext context)

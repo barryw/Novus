@@ -1419,13 +1419,38 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
         return null;
     }
 
-    public override object? VisitWhileStatement(NovusParser.WhileStatementContext context)
+    public override object? VisitWhileExpr(NovusParser.WhileExprContext context)
     {
         EmitHiddenTokensBefore(context);
         Write("while ");
         Visit(context.expression());
         Write(" ");
         Visit(context.block());
+        return null;
+    }
+
+    public override object? VisitWhileVar(NovusParser.WhileVarContext context)
+    {
+        EmitHiddenTokensBefore(context);
+        Write("while var ");
+        Write(context.IDENTIFIER().GetText());
+        if (context.type() != null)
+        {
+            Write(": ");
+            Visit(context.type());
+        }
+        Write(" ");
+        Visit(context.comparisonOp());
+        Write(" ");
+        Visit(context.expression());
+        Write(" ");
+        Visit(context.block());
+        return null;
+    }
+
+    public override object? VisitComparisonOp(NovusParser.ComparisonOpContext context)
+    {
+        Write(context.GetText());
         return null;
     }
 

@@ -290,6 +290,47 @@ public class TraitResolver
     public IReadOnlyDictionary<string, TraitImplInfo> GetAllImpls() => _traitImpls;
 
     /// <summary>
+    /// Find a trait method for a given type.
+    /// Searches through all trait implementations for the type to find a matching method.
+    /// Returns the mangled method name if found, null otherwise.
+    /// Example: FindTraitMethod("Point", "clone") might return "Point_Clone_clone"
+    /// </summary>
+    public string? FindTraitMethod(string typeName, string methodName)
+    {
+        // Use indexed lookup - O(1) to get the list of trait impls for this type
+        if (!_implsByType.TryGetValue(typeName, out var implKeys))
+        {
+            return null;
+        }
+
+        foreach (var implKey in implKeys)
+        {
+            if (!_traitImpls.TryGetValue(implKey, out var traitImpl))
+            {
+                continue;
+            }
+
+            // Extract base trait name (e.g., "From<DosError>" -> "From")
+            var baseTraitName = traitImpl.TraitName;
+            var genericIndex = baseTraitName.IndexOf('<');
+            if (genericIndex > 0)
+            {
+                baseTraitName = baseTraitName.Substring(0, genericIndex);
+            }
+
+            // Check if this trait has the method we're looking for
+            var trait = _symbols.LookupTrait(baseTraitName);
+            if (trait != null && trait.GetMethod(methodName) != null)
+            {
+                // Return the mangled name: Type_Trait_method
+                return $"{typeName}_{traitImpl.TraitName}_{methodName}";
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Clear all registered trait impls (for testing or reset).
     /// </summary>
     public void Clear()

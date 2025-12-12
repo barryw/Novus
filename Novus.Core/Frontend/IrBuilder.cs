@@ -1013,7 +1013,12 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
                 }
 
                 // Non-generic impl blocks: create function signatures now
-                var returnType = ParseReturnType(funcDecl.type());
+                var returnType = ParseReturnType(funcDecl.type()) ?? IrVoidType.Instance;
+
+                // Substitute Self type in return type (e.g., Option<Self> -> Option<Point>)
+                // This is needed because the return type may contain Self which must be resolved
+                // to the concrete implementing type before being registered
+                returnType = _typeParser.SubstituteGenericTypes(returnType, new Dictionary<string, IrType>());
 
                 // Check for extern, pub, and internal keywords
                 var (visibility, isExtern, _) = AstModifierHelper.ParseModifiers(funcDecl, 4);

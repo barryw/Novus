@@ -859,9 +859,8 @@ impl AudioChannel {
         }
 
         let start = self.volume
-        var i: u32 = 0
 
-        while i < steps {
+        while var i < steps {
             // Linear interpolation
             let progress = ((i + 1) * 100) / steps
             var new_vol: u16 = 0

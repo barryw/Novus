@@ -474,6 +474,9 @@ public class TypeRegistry
     {
         return type switch
         {
+            // Self type is unresolved and should be treated as generic
+            IrSelfType => true,
+            IrGenericType => true,
             IrEnumType enumType => !IsConcreteEnum(enumType),
             IrStructType structType => structType.GenericParameters.Count > 0 ||
                                         (structType.CacheKey != null && structType.CacheKey.Contains("<T")),

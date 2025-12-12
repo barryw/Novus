@@ -209,8 +209,7 @@ pub fn test_string_auto_growth() {
     var s = String::new()
 
     // Push enough data to trigger growth
-    var i: u32 = 0
-    while i < 100u32 {
+    while var i < 100u32 {
         s.push_byte(65u8)  // 'A'
         i = i + 1u32
     }

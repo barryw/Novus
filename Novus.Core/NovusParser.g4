@@ -352,7 +352,13 @@ ifCondition
     ;
 
 whileStatement
-    : KW_WHILE expression block
+    : KW_WHILE expression block                                                              # WhileExpr
+    | KW_WHILE KW_VAR IDENTIFIER (COLON type)? comparisonOp expression block                 # WhileVar
+    ;
+
+// Comparison operators for while var syntax
+comparisonOp
+    : LESS | GREATER | LE | GE | EQEQ | NE
     ;
 
 forStatement

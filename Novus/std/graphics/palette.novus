@@ -241,8 +241,7 @@ pub fn load_palette(vp: *ViewPort, colors: *Color, color_count: u32) -> Result<(
 
                     // Pack colors into table
                     let table_ptr: *u16 = (*u16)table.ptr()
-                    var i: u32 = 0u32
-                    while i < color_count {
+                    while var i < color_count {
                         let color: Color = colors[i]
                         let (r4, g4, b4) = color.to_rgb4()
 
@@ -290,8 +289,7 @@ pub fn load_palette(vp: *ViewPort, colors: *Color, color_count: u32) -> Result<(
                     table_ptr[0u32] = (color_count << 16u32) | 0u32
 
                     // Pack colors
-                    var i: u32 = 0u32
-                    while i < color_count {
+                    while var i < color_count {
                         let color: Color = colors[i]
 
                         // Scale 8-bit to 32-bit

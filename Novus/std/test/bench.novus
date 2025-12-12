@@ -148,8 +148,7 @@ impl BenchRunner {
     @suppress("W0001", "Integer comparisons are safe")
     pub fn run_auto(&self, func: fn()) -> BenchStats {
         // Warmup: run a few times to warm caches
-        var i: u32 = 0
-        while i < 3 {
+        while var i < 3 {
             func()
             i++
         }
@@ -182,8 +181,7 @@ impl BenchRunner {
     @suppress("W0001", "Integer comparisons are safe")
     pub fn run_fixed(&self, func: fn(), iterations: u32) -> BenchStats {
         // Warmup
-        var i: u32 = 0
-        while i < 3 {
+        while var i < 3 {
             func()
             i++
         }
@@ -191,10 +189,9 @@ impl BenchRunner {
         // Time all iterations together for accuracy
         let start = self.now_us()
 
-        i = 0
-        while i < iterations {
+        while var j < iterations {
             func()
-            i++
+            j++
         }
 
         let end = self.now_us()

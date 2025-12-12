@@ -273,7 +273,11 @@ public partial class IrBuilder
                         }
 
                         // Create function
-                        var returnType = ParseReturnType(funcDecl.type());
+                        var returnType = ParseReturnType(funcDecl.type()) ?? IrVoidType.Instance;
+
+                        // Substitute Self type in return type (e.g., Option<Self> -> Option<Point>)
+                        returnType = _typeParser.SubstituteGenericTypes(returnType, new Dictionary<string, IrType>());
+
                         var function = new IrFunction(mangledName, returnType, Visibility.Private, false);
 
                         // Parse and store function attributes (for #[chain], @test, @export, etc.)
@@ -462,7 +466,11 @@ public partial class IrBuilder
                         }
 
                         // Create function
-                        var returnType = ParseReturnType(funcDecl.type());
+                        var returnType = ParseReturnType(funcDecl.type()) ?? IrVoidType.Instance;
+
+                        // Substitute Self type in return type (e.g., Option<Self> -> Option<Point>)
+                        returnType = _typeParser.SubstituteGenericTypes(returnType, new Dictionary<string, IrType>());
+
                         var function = new IrFunction(mangledName, returnType, Visibility.Private, false);
 
                         // Parse and store function attributes (for #[chain], @test, @export, etc.)
@@ -699,7 +707,10 @@ public partial class IrBuilder
                 }
 
                 // For non-generic impl blocks, create the function normally
-                var returnType = ParseReturnType(funcDecl.type());
+                var returnType = ParseReturnType(funcDecl.type()) ?? IrVoidType.Instance;
+
+                // Substitute Self type in return type (e.g., Option<Self> -> Option<Point>)
+                returnType = _typeParser.SubstituteGenericTypes(returnType, new Dictionary<string, IrType>());
 
                 // Methods are registered with mangled names
                 var mangledName = GenerateMethodMangledName(typeName!, methodName, isTraitImpl, traitName, traitTypeArgs);

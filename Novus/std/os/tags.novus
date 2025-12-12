@@ -37,8 +37,7 @@ pub fn make_tags(tags_ptr: *TagItem, count: u32) -> Vec<TagItem> {
     var result: Vec<TagItem> = Vec::<TagItem>::new()
 
     // Add all user-provided tags
-    var i = 0
-    while i < count {
+    while var i < count {
         let tag = tags_ptr[i]
         result.push(tag)
         i++

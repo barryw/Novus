@@ -236,6 +236,17 @@ impl LibraryVersion {
     pub fn patch(self) -> u16 {
         return self.patch
     }
+
+    /// Compare two versions using semantic versioning rules
+    pub fn cmp(&self, other: &LibraryVersion) -> i32 {
+        if self.major != other.major {
+            return (i32)self.major - (i32)other.major
+        }
+        if self.minor != other.minor {
+            return (i32)self.minor - (i32)other.minor
+        }
+        return (i32)self.patch - (i32)other.patch
+    }
 }
 
 // Note: For AmigaOS error types, see std/error.novus
@@ -697,5 +708,332 @@ impl Eq for i32 {
 impl Eq for bool {
     fn eq(&self, other: &bool) -> bool {
         return *self == *other
+    }
+}
+
+// ============================================================================
+// Clone Trait - Explicit Deep Copying
+// ============================================================================
+
+/// Clone provides explicit deep copying for types that need it.
+///
+/// Unlike Copy (implicit bitwise copy), Clone is an explicit operation that
+/// may allocate memory. Types implementing Clone can create independent
+/// duplicates of themselves.
+///
+/// When to implement Clone:
+/// - Types that own heap memory (Vec, String, HashMap)
+/// - Types where copying involves allocation
+/// - Types that need custom copy logic
+///
+/// When NOT to implement Clone:
+/// - Simple value types (use Copy instead)
+/// - Types that shouldn't be duplicated (unique handles, file locks)
+///
+/// Example implementation:
+/// ```novus
+/// impl Clone for String {
+///     fn clone(&self) -> Option<Self> {
+///         var new_string = String::with_capacity(self.len())?
+///         new_string.push_str(self.as_str())
+///         return Option::Some(new_string)
+///     }
+/// }
+/// ```
+///
+/// Example usage:
+/// ```novus
+/// let original = String::from("Hello")
+/// match original.clone() {
+///     Some(var copy) => {
+///         copy.push_str(" World")  // original unchanged
+///     },
+///     None => // handle allocation failure
+/// }
+/// ```
+pub trait Clone {
+    /// Create a deep copy of this value.
+    /// Returns None if cloning fails (e.g., allocation failure).
+    fn clone(&self) -> Option<Self>
+}
+
+// ============================================================================
+// AsRef / AsMut Traits - Zero-Cost View Conversions
+// ============================================================================
+
+/// AsRef provides cheap reference-to-reference conversions.
+///
+/// This trait is used for generic code that can work with both owned types
+/// and borrowed views. It enables functions to accept any type that can
+/// provide a reference to T without allocation.
+///
+/// Common implementations:
+/// - String: AsRef<Str> - view owned string as borrowed slice
+/// - Vec<T>: AsRef<Slice<T>> - view owned vec as borrowed slice
+/// - PathString: AsRef<Str> - view path string as borrowed slice
+///
+/// Example implementation:
+/// ```novus
+/// impl AsRef<Str> for String {
+///     fn as_ref(&self) -> Str {
+///         return self.as_str()
+///     }
+/// }
+/// ```
+///
+/// Example usage:
+/// ```novus
+/// fn process<S: AsRef<Str>>(s: &S) {
+///     let str_view: Str = s.as_ref()
+///     // Works with String, PathString, &Str, etc.
+/// }
+/// ```
+pub trait AsRef<T> {
+    /// Convert this reference to a reference of type T.
+    fn as_ref(&self) -> T
+}
+
+/// AsMut provides cheap mutable reference-to-mutable reference conversions.
+///
+/// This is the mutable counterpart to AsRef, allowing generic code to
+/// work with mutable views of data.
+///
+/// Example implementation:
+/// ```novus
+/// impl AsMut<Slice<u8>> for Vec<u8> {
+///     fn as_mut(&var self) -> Slice<u8> {
+///         return Slice::new(self.ptr, self.len)
+///     }
+/// }
+/// ```
+pub trait AsMut<T> {
+    /// Convert this mutable reference to a mutable reference of type T.
+    fn as_mut(&var self) -> T
+}
+
+// ============================================================================
+// Iterator Trait - Standard Iteration Protocol
+// ============================================================================
+
+/// Iterator provides a standard protocol for sequential iteration.
+///
+/// Unlike Iterable (which uses index-based access for for-in loops),
+/// Iterator represents a stateful cursor through a sequence. This enables
+/// lazy evaluation, custom traversal patterns, and iterator combinators.
+///
+/// Iterators are consumed as they advance - each call to next() moves
+/// the cursor forward and returns the next item.
+///
+/// Types that implement Iterator:
+/// - SplitIter (string splitting)
+/// - LinesIter (line iteration)
+/// - HashMapIter (key-value pairs)
+/// - VecIter (vector elements)
+///
+/// Example implementation:
+/// ```novus
+/// struct RangeIter {
+///     current: u32,
+///     end: u32,
+/// }
+///
+/// impl Iterator<u32> for RangeIter {
+///     fn next(&var self) -> Option<u32> {
+///         if self.current >= self.end {
+///             return Option::None
+///         }
+///         let val = self.current
+///         self.current++
+///         return Option::Some(val)
+///     }
+/// }
+/// ```
+///
+/// Example usage:
+/// ```novus
+/// var iter = string.split(",")
+/// while let Some(part) = iter.next() {
+///     // process each part
+/// }
+/// ```
+pub trait Iterator<T> {
+    /// Advance the iterator and return the next item.
+    /// Returns None when iteration is complete.
+    fn next(&var self) -> Option<T>
+}
+
+// ============================================================================
+// Write Trait - Unified Output Interface
+// ============================================================================
+
+/// Write provides a unified interface for types that accept output.
+///
+/// This trait abstracts over different output destinations (strings, buffers,
+/// files, formatters) allowing generic code that can write to any sink.
+///
+/// Types that implement Write:
+/// - StringBuilder - growable string buffer
+/// - String - append to owned string
+/// - Formatter - format string builder
+/// - StackFormatter - fixed-size stack buffer
+/// - File (future) - file output
+///
+/// Note: We use raw pointer + length instead of Str to avoid circular
+/// dependencies (Str is defined in std::strings which depends on core).
+///
+/// Example implementation:
+/// ```novus
+/// impl Write for StringBuilder {
+///     fn write_bytes(&var self, ptr: *u8, len: u32) -> bool {
+///         // Copy bytes from ptr
+///     }
+///
+///     fn write_byte(&var self, b: u8) -> bool {
+///         return self.push_byte(b)
+///     }
+/// }
+/// ```
+///
+/// Example usage:
+/// ```novus
+/// fn write_header<W: Write>(w: &var W) -> bool {
+///     let msg = "=== Header ===\n"
+///     return w.write_bytes(msg.ptr, msg.len)
+/// }
+/// // Works with StringBuilder, String, File, etc.
+/// ```
+pub trait Write {
+    /// Write bytes from a pointer to this output.
+    /// Returns true on success, false on failure (e.g., buffer full).
+    fn write_bytes(&var self, ptr: *u8, len: u32) -> bool
+
+    /// Write a single byte to this output.
+    /// Returns true on success, false on failure.
+    fn write_byte(&var self, b: u8) -> bool
+}
+
+// ============================================================================
+// Ord Trait - Total Ordering
+// ============================================================================
+
+/// Ord provides total ordering for types where all values are comparable.
+///
+/// Unlike PartialOrd (which allows incomparable values like NaN), Ord
+/// guarantees that any two values can be compared. This is required for
+/// sorted collections, binary search, and min/max operations.
+///
+/// Contract:
+/// - Antisymmetric: if a.cmp(&b) < 0 then b.cmp(&a) > 0
+/// - Transitive: if a.cmp(&b) < 0 and b.cmp(&c) < 0 then a.cmp(&c) < 0
+/// - Total: cmp always returns a valid ordering (never "incomparable")
+///
+/// Types that implement Ord:
+/// - All integer types (u8, u16, u32, i8, i16, i32)
+/// - bool (false < true)
+/// - Str (lexicographic comparison)
+/// - LibraryVersion (semantic versioning order)
+///
+/// Example implementation:
+/// ```novus
+/// impl Ord for LibraryVersion {
+///     fn cmp(&self, other: &LibraryVersion) -> i32 {
+///         if self.major != other.major {
+///             return (i32)self.major - (i32)other.major
+///         }
+///         if self.minor != other.minor {
+///             return (i32)self.minor - (i32)other.minor
+///         }
+///         return (i32)self.patch - (i32)other.patch
+///     }
+/// }
+/// ```
+///
+/// Return value semantics:
+/// - Negative: self < other
+/// - Zero: self == other
+/// - Positive: self > other
+pub trait Ord {
+    /// Compare self with other, returning ordering.
+    /// Returns: negative if self < other, zero if equal, positive if self > other
+    fn cmp(&self, other: &Self) -> i32
+}
+
+// ============================================================================
+// Ord implementations for primitive types
+// ============================================================================
+
+// Ord for u8
+impl Ord for u8 {
+    fn cmp(&self, other: &u8) -> i32 {
+        if *self < *other { return -1 }
+        if *self > *other { return 1 }
+        return 0
+    }
+}
+
+// Ord for u16
+impl Ord for u16 {
+    fn cmp(&self, other: &u16) -> i32 {
+        if *self < *other { return -1 }
+        if *self > *other { return 1 }
+        return 0
+    }
+}
+
+// Ord for u32
+impl Ord for u32 {
+    fn cmp(&self, other: &u32) -> i32 {
+        if *self < *other { return -1 }
+        if *self > *other { return 1 }
+        return 0
+    }
+}
+
+// Ord for i8
+impl Ord for i8 {
+    fn cmp(&self, other: &i8) -> i32 {
+        if *self < *other { return -1 }
+        if *self > *other { return 1 }
+        return 0
+    }
+}
+
+// Ord for i16
+impl Ord for i16 {
+    fn cmp(&self, other: &i16) -> i32 {
+        if *self < *other { return -1 }
+        if *self > *other { return 1 }
+        return 0
+    }
+}
+
+// Ord for i32
+impl Ord for i32 {
+    fn cmp(&self, other: &i32) -> i32 {
+        if *self < *other { return -1 }
+        if *self > *other { return 1 }
+        return 0
+    }
+}
+
+// Ord for bool (false < true)
+impl Ord for bool {
+    fn cmp(&self, other: &bool) -> i32 {
+        let a: i32 = if *self { 1 } else { 0 }
+        let b: i32 = if *other { 1 } else { 0 }
+        return a - b
+    }
+}
+
+// Ord for LibraryVersion (semantic versioning order)
+impl Ord for LibraryVersion {
+    fn cmp(&self, other: &LibraryVersion) -> i32 {
+        if self.major != other.major {
+            return (i32)self.major - (i32)other.major
+        }
+        if self.minor != other.minor {
+            return (i32)self.minor - (i32)other.minor
+        }
+        return (i32)self.patch - (i32)other.patch
     }
 }

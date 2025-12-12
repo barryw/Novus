@@ -515,8 +515,60 @@ fn test() -> i32 {
         var func = tree.functionDeclaration()[0];
         var whileStmt = func.block().statement(0).whileStatement();
         Assert.NotNull(whileStmt);
-        Assert.NotNull(whileStmt.expression());
-        Assert.NotNull(whileStmt.block());
+        // With labeled alternatives, this is now a WhileExprContext
+        var whileExpr = Assert.IsType<NovusParser.WhileExprContext>(whileStmt);
+        Assert.NotNull(whileExpr.expression());
+        Assert.NotNull(whileExpr.block());
+    }
+
+    [Fact]
+    public void Parse_WhileVarStatement_Success()
+    {
+        var source = @"
+fn test() -> i32 {
+    var limit: u32 = 10
+    while var i < limit {
+        i++
+    }
+    return 0
+}";
+        var parser = CreateParser(source);
+        var tree = parser.compilationUnit();
+
+        Assert.Equal(0, parser.NumberOfSyntaxErrors);
+        var func = tree.functionDeclaration()[0];
+        var whileStmt = func.block().statement(1).whileStatement();
+        Assert.NotNull(whileStmt);
+        var whileVar = Assert.IsType<NovusParser.WhileVarContext>(whileStmt);
+        Assert.Equal("i", whileVar.IDENTIFIER().GetText());
+        Assert.NotNull(whileVar.comparisonOp());
+        Assert.NotNull(whileVar.expression());
+        Assert.NotNull(whileVar.block());
+    }
+
+    [Fact]
+    public void Parse_WhileVarWithTypeAnnotation_Success()
+    {
+        var source = @"
+fn test() -> i32 {
+    while var i: i32 < 10 {
+        i++
+    }
+    return 0
+}";
+        var parser = CreateParser(source);
+        var tree = parser.compilationUnit();
+
+        Assert.Equal(0, parser.NumberOfSyntaxErrors);
+        var func = tree.functionDeclaration()[0];
+        var whileStmt = func.block().statement(0).whileStatement();
+        Assert.NotNull(whileStmt);
+        var whileVar = Assert.IsType<NovusParser.WhileVarContext>(whileStmt);
+        Assert.Equal("i", whileVar.IDENTIFIER().GetText());
+        Assert.NotNull(whileVar.type());
+        Assert.NotNull(whileVar.comparisonOp());
+        Assert.NotNull(whileVar.expression());
+        Assert.NotNull(whileVar.block());
     }
 
     [Fact]
