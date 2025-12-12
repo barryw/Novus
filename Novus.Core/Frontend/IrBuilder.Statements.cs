@@ -2323,7 +2323,7 @@ public partial class IrBuilder
         //   }
 
         var itemName = context.IDENTIFIER().GetText();
-        var isMutable = context.KW_MUT() != null;
+        var isMutable = context.KW_VAR() != null;
         var condLabel = $"range_cond_{_labelCounter}";
         var bodyLabel = $"range_body_{_labelCounter}";
         var incrLabel = $"range_incr_{_labelCounter}";
@@ -2653,7 +2653,7 @@ public partial class IrBuilder
 
         // Store the resource in a temporary variable so we can reference it in the deferred drop call
         var tempVarName = $"__using_resource_{_labelCounter++}";
-        var tempVar = new IrLocalVariable(tempVarName, resourceType, true); // Mutable because drop() takes &mut self
+        var tempVar = new IrLocalVariable(tempVarName, resourceType, true); // Mutable because drop() takes &var self
 
         _currentFunction!.LocalVariables.Add(tempVar);
         _localVariables[tempVarName] = tempVar;
@@ -2777,8 +2777,8 @@ public partial class IrBuilder
                 // Check for address-of prefix (&)
                 bool isAddressOf = input.AMPERSAND() != null;
 
-                // Check for mutable binding (mut)
-                bool isMutable = input.KW_MUT() != null;
+                // Check for mutable binding (var)
+                bool isMutable = input.KW_VAR() != null;
 
                 // Get the expression value (either the identifier itself or an assigned expression)
                 IrValue inputValue;
@@ -3316,7 +3316,7 @@ public partial class IrBuilder
             // Emit the declaration
             Emit(new IrLocalDecl(name, exprIr.Type, false, exprIr));
         }
-        else if (pattern is NovusParser.MutIdentifierPatternContext mutIdPattern)
+        else if (pattern is NovusParser.VarIdentifierPatternContext mutIdPattern)
         {
             // Mutable binding: let mut x = expr else { ... }
             var name = mutIdPattern.IDENTIFIER().GetText();
@@ -3428,7 +3428,7 @@ public partial class IrBuilder
             // Emit declaration with extracted value
             Emit(new IrLocalDecl(name, dataType, false, extractedValue));
         }
-        else if (subPattern is NovusParser.MutIdentifierPatternContext mutIdPattern)
+        else if (subPattern is NovusParser.VarIdentifierPatternContext mutIdPattern)
         {
             var name = mutIdPattern.IDENTIFIER().GetText();
             var localVar = new IrLocalVariable(name, dataType, true);

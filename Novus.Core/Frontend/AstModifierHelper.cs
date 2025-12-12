@@ -38,7 +38,7 @@ public static class AstModifierHelper
                 case "internal":
                     visibility = Visibility.Internal;
                     break;
-                case "mut":
+                case "var":
                     isMutable = true;
                     break;
             }

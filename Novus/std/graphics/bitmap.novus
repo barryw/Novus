@@ -96,7 +96,7 @@ impl BitMapHandle {
     ///
     /// This ensures WaitBlit() is called before the bitmap is freed.
     /// Call this after starting any blitter operation that uses this bitmap.
-    pub fn mark_blitter_pending(&mut self) {
+    pub fn mark_blitter_pending(&var self) {
         self.owns_blitter = true
     }
 
@@ -104,7 +104,7 @@ impl BitMapHandle {
     ///
     /// Blocks until the blitter is idle.
     /// This is called automatically by Drop if blitter operations are pending.
-    pub fn wait_blit(&mut self) {
+    pub fn wait_blit(&var self) {
         if self.owns_blitter {
             WaitBlit()
             self.owns_blitter = false
@@ -114,7 +114,7 @@ impl BitMapHandle {
 
 // Automatic cleanup for BitMapHandle (RAII)
 impl Drop for BitMapHandle {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         if let bm = self.bitmap {
             // CRITICAL: Wait for blitter before freeing bitmap
             // If blitter is still using this memory, freeing it
@@ -193,21 +193,21 @@ impl CopperListHandle {
     /// Mark this copper list as active
     ///
     /// Call this after installing the list with LoadView().
-    pub fn mark_active(&mut self) {
+    pub fn mark_active(&var self) {
         self.active = true
     }
 
     /// Mark this copper list as inactive
     ///
     /// Call this after restoring the system copper.
-    pub fn mark_inactive(&mut self) {
+    pub fn mark_inactive(&var self) {
         self.active = false
     }
 
     /// Restore system copper and wait for switch
     ///
     /// This is called automatically by Drop if the list is active.
-    pub fn restore_system(&mut self) {
+    pub fn restore_system(&var self) {
         if self.active {
             LoadView((*View)0)  // null = system copper
             WaitTOF()  // CRITICAL: Wait for vertical blank
@@ -218,7 +218,7 @@ impl CopperListHandle {
 
 // Automatic cleanup for CopperListHandle (RAII)
 impl Drop for CopperListHandle {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         // CRITICAL: If this copper list is active, we must:
         // 1. Restore system copper (LoadView(null))
         // 2. Wait for vertical blank (WaitTOF)

@@ -412,7 +412,7 @@ impl AudioDeviceHandle {
 }
 
 impl Drop for AudioDeviceHandle {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         if let io = self.io_audio {
             unsafe {
                 // Free our channel allocation

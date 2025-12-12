@@ -1151,16 +1151,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         if (!ValidateNotReservedKeyword(name, location, "static variable"))
             return;
 
-        // Check for mut keyword early (used in multiple paths)
-        var isMutable = false;
-        for (int i = 0; i < Math.Min(5, context.ChildCount); i++)
-        {
-            if (context.GetChild(i)?.GetText() == "mut")
-            {
-                isMutable = true;
-                break;
-            }
-        }
+        // Check for var keyword early (used in multiple paths) - indicates static var (mutable)
+        var isMutable = context.KW_VAR() != null;
 
         // Parse attributes to check for special type-altering attributes
         var attributes = ParseAttributes(context.attribute());
@@ -1686,9 +1678,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 // Now wrap in pointer if needed based on parameter form
                 IrType selfType;
                 bool isConsumingSelf = false;
-                if (selfParam.GetText().StartsWith("&mut") || selfParam.GetText().StartsWith("&"))
+                if (selfParam.GetText().StartsWith("&var") || selfParam.GetText().StartsWith("&"))
                 {
-                    // &self or &mut self - use pointer type (& in Novus produces *T, not &T)
+                    // &self or &var self - use pointer type (& in Novus produces *T, not &T)
                     selfType = _typeInterner.GetPointerType(baseType);
                 }
                 else
@@ -3416,7 +3408,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                         helpTexts: new List<string>
                         {
                             $"'{name}' is an immutable reference (&{TypeToString(refType.PointeeType)})",
-                            "consider using a mutable reference (&mut) if you need to modify the value"
+                            "consider using a mutable reference (&var) if you need to modify the value"
                         }
                     );
                     return null;
@@ -4267,13 +4259,13 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
     public override IrType? VisitForInLoop([NotNull] NovusParser.ForInLoopContext context)
     {
-        // for [mut] item in collection { ... }
+        // for [var] item in collection { ... }
         var itemName = context.IDENTIFIER().GetText();
         var collectionType = Visit(context.expression());
         var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
 
         // Check if the binding is mutable
-        var isMutable = context.KW_MUT() != null;
+        var isMutable = context.KW_VAR() != null;
 
         // Determine the item type from the collection type
         IrType itemType = IrIntType.I32; // Default fallback
@@ -4625,7 +4617,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 _variables[name] = new VariableSymbol(name, exprType, false, location);
             }
         }
-        else if (pattern is NovusParser.MutIdentifierPatternContext mutIdPattern)
+        else if (pattern is NovusParser.VarIdentifierPatternContext mutIdPattern)
         {
             // Mutable binding: let mut x = expr else { ... }
             var name = mutIdPattern.IDENTIFIER().GetText();
@@ -5658,7 +5650,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                             _variables[bindingName] = new VariableSymbol(bindingName, bindingType!, false, location);
                         }
                         // Handle mut identifier patterns (e.g., Some(mut x) binds x as mutable)
-                        else if (subPattern is NovusParser.MutIdentifierPatternContext mutIdPattern)
+                        else if (subPattern is NovusParser.VarIdentifierPatternContext mutIdPattern)
                         {
                             var bindingName = mutIdPattern.IDENTIFIER().GetText();
                             var bindingType = variant.AssociatedData[i];
@@ -7779,7 +7771,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             }
             else if (mutRefType.PointeeType is IrGenericType mutRefGenericType)
             {
-                // The receiver is a mutable reference to a generic type parameter (e.g., &mut K in HashMap<K, V>)
+                // The receiver is a mutable reference to a generic type parameter (e.g., &var K in HashMap<K, V>)
                 // We need to check if the type parameter has trait bounds that include this method
                 return HandleTraitMethodCallOnGenericType(callCtx, memberAccessCtx, mutRefGenericType, methodName);
             }
@@ -8912,7 +8904,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
         else if (baseType is IrMutReferenceType mutRefType && mutRefType.PointeeType is IrPointerType mutRefPtrType)
         {
-            // &mut ptr[index] returns the element type
+            // &var ptr[index] returns the element type
             return mutRefPtrType.PointeeType;
         }
         else if (baseType is IrArrayType arrayType)
@@ -8927,7 +8919,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
         else if (baseType is IrMutReferenceType indexMutRefType && indexMutRefType.PointeeType is IrArrayType mutRefArrayType)
         {
-            // &mut array[index] or &mut [T][index] (slice indexing) returns the element type
+            // &var array[index] or &var [T][index] (slice indexing) returns the element type
             return mutRefArrayType.ElementType;
         }
         else
@@ -8957,7 +8949,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     public override IrType? VisitBorrowExpr([NotNull] NovusParser.BorrowExprContext context)
     {
         var exprContext = context.expression();
-        bool isMutable = context.GetChild(1)?.GetText() == "mut";
+        bool isMutable = context.KW_VAR() != null;
 
         // Check if this is a simple identifier (for function pointers)
         if (exprContext.Start.Type == NovusLexer.IDENTIFIER &&
@@ -8981,7 +8973,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return null;
         }
 
-        // Return a reference type: &T for immutable, &mut T for mutable
+        // Return a reference type: &T for immutable, &var T for mutable
         if (isMutable)
         {
             return _typeInterner.GetMutReferenceType(valueType);
@@ -9373,7 +9365,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 location,
                 helpTexts: new List<string>
                 {
-                    "only pointers (*T) and references (&T, &mut T) can be dereferenced"
+                    "only pointers (*T) and references (&T, &var T) can be dereferenced"
                 }
             );
             return IrIntType.I32; // Fallback
@@ -10898,7 +10890,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     /// </summary>
     private bool CanCoerceReferenceToPointer(IrType expectedType, IrType actualType)
     {
-        // Check if expected is *T and actual is &T (or &mut T)
+        // Check if expected is *T and actual is &T (or &var T)
         if (expectedType is IrPointerType ptrType &&
             (actualType is IrReferenceType refType || actualType is IrMutReferenceType mutRefType))
         {
@@ -11267,7 +11259,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     {
         if (type is IrMutReferenceType mutRefType)
         {
-            return $"&mut {TypeToString(mutRefType.PointeeType)}";
+            return $"&var {TypeToString(mutRefType.PointeeType)}";
         }
         if (type is IrReferenceType refType)
         {

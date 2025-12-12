@@ -59,7 +59,7 @@ impl RefreshGuard {
 
 impl Drop for RefreshGuard {
     /// Automatically call EndRefresh when guard goes out of scope
-    fn drop(&mut self) {
+    fn drop(&var self) {
         unsafe { EndRefresh(self.window, 1) }
     }
 }
@@ -113,7 +113,7 @@ pub enum WindowEvent {
 }
 
 impl Display for WindowEvent {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         match *self {
             WindowEvent::Close => {
                 return f.write_str("Close")
@@ -739,7 +739,7 @@ impl WindowHandle {
 
 // Automatic cleanup for WindowHandle (RAII)
 impl Drop for WindowHandle {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         if let w = self.window {
             // CRITICAL: Drain and reply to all pending IDCMP messages
             // before closing the window. Unreplied messages cause

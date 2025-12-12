@@ -53,7 +53,7 @@ impl CacheEntry {
         return self.chip_ptr != (*u8)0
     }
 
-    fn set_name(&mut self, name: Str) {
+    fn set_name(&var self, name: Str) {
         var i: u32 = 0
         var max_len: u32 = MAX_NAME_LEN
         if name.len() < MAX_NAME_LEN {
@@ -110,7 +110,7 @@ pub struct ChipCache {
 
 // Global singleton
 // The compiler will automatically use {0} initialization for this large struct (VBCC workaround)
-static mut g_chip_cache: ChipCache = ChipCache {
+static var g_chip_cache: ChipCache = ChipCache {
     entries: [CacheEntry {
         asset_id: 0,
         source_ptr: (*u8)0,
@@ -523,7 +523,7 @@ impl ChipCache {
             }
 
             if g_chip_cache.entry_count < MAX_CACHE_ENTRIES {
-                var entry = &mut g_chip_cache.entries[g_chip_cache.entry_count]
+                var entry = &var g_chip_cache.entries[g_chip_cache.entry_count]
                 entry.asset_id = asset_id
                 entry.source_ptr = source_ptr
                 entry.chip_ptr = chip_ptr
@@ -542,7 +542,7 @@ impl ChipCache {
     /// Free the memory for an entry (but don't remove from list)
     fn free_entry(idx: u32) {
         unsafe {
-            let entry = &mut g_chip_cache.entries[idx]
+            let entry = &var g_chip_cache.entries[idx]
             if entry.chip_ptr {
                 // CRITICAL: Wait for any Blitter DMA to complete before freeing chip RAM
                 // The asset may have been used by the Blitter even if unpinned

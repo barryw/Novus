@@ -75,7 +75,7 @@ struct Counter {
     value: i32
 }
 impl Counter {
-    fn increment(mut self) -> Counter {
+    fn increment(&var self) -> Counter {
         self.value = self.value + 1
         return self
     }
@@ -99,7 +99,7 @@ struct Counter {
     count: i32
 }
 impl Counter {
-    fn increment(mut self) {
+    fn increment(&var self) {
         self.count = self.count + 1
     }
 }
@@ -504,11 +504,11 @@ impl Config {
     fn new() -> Config {
         return Config { width: 0, height: 0 }
     }
-    fn withWidth(mut self, w: i32) -> Config {
+    fn withWidth(consuming self, w: i32) -> Config {
         self.width = w
         return self
     }
-    fn withHeight(mut self, h: i32) -> Config {
+    fn withHeight(consuming self, h: i32) -> Config {
         self.height = h
         return self
     }

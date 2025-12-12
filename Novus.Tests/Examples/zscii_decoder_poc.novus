@@ -129,7 +129,7 @@ impl ZsciiDecoder {
     }
 
     /// Reset to initial state
-    pub fn reset(&mut self) {
+    pub fn reset(&var self) {
         self.current_alphabet = Alphabet::A0
         self.shift_lock = false
         self.in_10bit_mode = false
@@ -138,7 +138,7 @@ impl ZsciiDecoder {
 
     /// Decode a single Z-character (5 bits)
     /// Returns Some(ascii_char) if a character was produced, None otherwise
-    pub fn decode_zchar(&mut self, zchar: u8) -> Option<u8> {
+    pub fn decode_zchar(&var self, zchar: u8) -> Option<u8> {
         // Handle 10-bit mode (literal ZSCII character)
         if self.in_10bit_mode {
             if self.high_5bits == 0u8 {

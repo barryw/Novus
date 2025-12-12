@@ -978,7 +978,7 @@ public partial class IrBuilder
 
                         // Create placeholder self type (will be replaced during trait impl)
                         IrType selfType;
-                        if (selfText.StartsWith("&mut"))
+                        if (selfText.StartsWith("&var"))
                         {
                             selfType = new IrMutReferenceType(IrVoidType.Instance); // Placeholder
                         }

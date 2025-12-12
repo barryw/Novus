@@ -597,7 +597,7 @@ pub struct ModPlayer {
 }
 
 // Global counter for generating unique asset IDs
-static mut g_next_asset_id: u32 = 1
+static var g_next_asset_id: u32 = 1
 
 /// Generate a unique asset ID for ChipCache
 fn next_asset_id() -> u32 {
@@ -660,7 +660,7 @@ impl ModPlayer {
     ///
     /// # Note
     /// For automatic chip RAM management, use `init_asset()` instead.
-    pub fn init(&mut self, module_data: *u8, start_position: u8) -> Result<(), AudioError> {
+    pub fn init(&var self, module_data: *u8, start_position: u8) -> Result<(), AudioError> {
         if (u32)module_data == 0 {
             return Result::Err(AudioError::InvalidModuleData)
         }
@@ -698,7 +698,7 @@ impl ModPlayer {
     /// player.init_asset(&music, 0)?
     /// player.play()  // Asset is pinned during playback
     /// ```
-    pub fn init_asset(&mut self, asset: &ModAsset, start_position: u8) -> Result<(), AudioError> {
+    pub fn init_asset(&var self, asset: &ModAsset, start_position: u8) -> Result<(), AudioError> {
         // Unpin and release any previously cached asset
         if self.cache_asset_id != 0 {
             ChipCache::unpin(self.cache_asset_id)
@@ -734,7 +734,7 @@ impl ModPlayer {
     /// Start music playback
     ///
     /// Enables the CIA interrupt to call the replayer.
-    pub fn play(&mut self) {
+    pub fn play(&var self) {
         set_mt_enable(1)
         self.is_playing = true
     }
@@ -759,7 +759,7 @@ impl ModPlayer {
     ///     player.tick()  // Fires callbacks if events occurred
     /// }
     /// ```
-    pub fn play_with_config(&mut self, config: &PlayConfig) {
+    pub fn play_with_config(&var self, config: &PlayConfig) {
         self.on_e8_trigger = config.on_e8_trigger
         self.on_song_end = config.on_song_end
         self.reset_callback_state()
@@ -784,7 +784,7 @@ impl ModPlayer {
     ///     render_frame()
     /// }
     /// ```
-    pub fn tick(&mut self) {
+    pub fn tick(&var self) {
         // Check E8 trigger
         if self.on_e8_trigger != 0 {
             let current_e8 = get_mt_e8_trigger()
@@ -808,7 +808,7 @@ impl ModPlayer {
     ///
     /// Disables the CIA interrupt. Music resumes from current position
     /// when play() is called again.
-    pub fn pause(&mut self) {
+    pub fn pause(&var self) {
         set_mt_enable(0)
         self.is_playing = false
     }
@@ -816,7 +816,7 @@ impl ModPlayer {
     /// Stop music playback completely
     ///
     /// Stops all sound output and resets the player state.
-    pub fn stop(&mut self) {
+    pub fn stop(&var self) {
         let custom = (*u8)CUSTOM_BASE
 
         unsafe {
@@ -989,7 +989,7 @@ impl ModPlayer {
     /// instead of looping. You can check `is_finished()` to detect this.
     ///
     /// This must be called before `play()` or `play_with_config()`.
-    pub fn set_single_play(&mut self, enabled: bool) {
+    pub fn set_single_play(&var self, enabled: bool) {
         if enabled {
             // Setting mt_SongEnd to $FF (-1) makes ptplayer stop when song ends
             set_mt_song_end($FF)
@@ -1088,7 +1088,7 @@ impl ModPlayer {
     ///
     /// player.set_on_e8_trigger(&on_sync)
     /// ```
-    pub fn set_on_e8_trigger(&mut self, callback: u32) {
+    pub fn set_on_e8_trigger(&var self, callback: u32) {
         self.on_e8_trigger = callback
     }
 
@@ -1109,7 +1109,7 @@ impl ModPlayer {
     ///
     /// player.set_on_vumeter(&on_vu)
     /// ```
-    pub fn set_on_vumeter(&mut self, callback: u32) {
+    pub fn set_on_vumeter(&var self, callback: u32) {
         self.on_vumeter = callback
     }
 
@@ -1136,7 +1136,7 @@ impl ModPlayer {
     ///
     /// player.set_on_song_end(&on_song_end)
     /// ```
-    pub fn set_on_song_end(&mut self, callback: u32) {
+    pub fn set_on_song_end(&var self, callback: u32) {
         self.on_song_end = callback
     }
 
@@ -1159,7 +1159,7 @@ impl ModPlayer {
     ///     wait_vblank()
     /// }
     /// ```
-    pub fn poll(&mut self) {
+    pub fn poll(&var self) {
         // Check E8 trigger
         if self.on_e8_trigger != 0 {
             let current_e8 = get_mt_e8_trigger()
@@ -1191,14 +1191,14 @@ impl ModPlayer {
     ///
     /// Resets the internal state tracking for callbacks. Call this after
     /// loading a new song to avoid spurious callbacks from stale state.
-    pub fn reset_callback_state(&mut self) {
+    pub fn reset_callback_state(&var self) {
         self.last_e8_value = 0
         self.last_song_end = 0
     }
 }
 
 impl Drop for ModPlayer {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         // Stop any playing music
         self.stop()
 

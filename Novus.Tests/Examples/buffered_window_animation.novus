@@ -39,7 +39,7 @@ impl Ball {
     }
 
     /// Update ball position and handle wall bouncing
-    fn update(&mut self, width: i16, height: i16) {
+    fn update(&var self, width: i16, height: i16) {
         // Update position
         self.x = self.x + self.vx
         self.y = self.y + self.vy
@@ -94,7 +94,7 @@ pub fn main() -> i32 {
     let result = BufferedWindow::new("Bouncing Ball - Resize Me!", 640, 480)
 
     match result {
-        Result::Ok(mut window) => {
+        Result::Ok(var window) => {
             // Clear buffer to black
             window.clear(0)
 

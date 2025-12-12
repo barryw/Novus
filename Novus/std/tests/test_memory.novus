@@ -14,7 +14,7 @@ from std::test::test import expect, expect_true, expect_false, expect_eq_u32, ex
 pub fn test_memblock_alloc() {
     let opt = MemoryBlock::alloc(1024u32, MEMF_PUBLIC)
     match opt {
-        Some(mut block) => {
+        Some(var block) => {
             expect_eq_u32(block.size(), 1024u32, "size is 1024")
             expect_false(block.is_empty(), "block is not empty")
             // Drop will free automatically
@@ -27,7 +27,7 @@ pub fn test_memblock_alloc() {
 pub fn test_memblock_alloc_zero() {
     let opt = MemoryBlock::alloc(0u32, MEMF_PUBLIC)
     match opt {
-        Some(mut block) => {
+        Some(var block) => {
             expect_eq_u32(block.size(), 0u32, "zero size allocation")
             expect_true(block.is_empty(), "zero block is empty")
             // Drop will free automatically
@@ -40,7 +40,7 @@ pub fn test_memblock_alloc_zero() {
 pub fn test_memblock_alloc_clear() {
     let opt = MemoryBlock::alloc(100u32, MEMF_PUBLIC | MEMF_CLEAR)
     match opt {
-        Some(mut block) => {
+        Some(var block) => {
             let ptr = block.ptr()
             // Check that memory is zeroed
             var all_zero = true
@@ -66,7 +66,7 @@ pub fn test_memblock_alloc_clear() {
 pub fn test_memblock_try_alloc() {
     let result = MemoryBlock::try_alloc(512u32, MEMF_PUBLIC)
     match result {
-        Ok(mut block) => {
+        Ok(var block) => {
             expect_eq_u32(block.size(), 512u32, "size is 512")
             // Drop will free automatically
         },
@@ -82,7 +82,7 @@ pub fn test_memblock_try_alloc() {
 pub fn test_memblock_ptr() {
     let opt = MemoryBlock::alloc(64u32, MEMF_PUBLIC)
     match opt {
-        Some(mut block) => {
+        Some(var block) => {
             let ptr = block.ptr()
             // Write and read back
             ptr[0] = 42u8
@@ -99,7 +99,7 @@ pub fn test_memblock_ptr() {
 pub fn test_memblock_size() {
     let opt = MemoryBlock::alloc(256u32, MEMF_PUBLIC)
     match opt {
-        Some(mut block) => {
+        Some(var block) => {
             expect_eq_u32(block.size(), 256u32, "size matches request")
             // Drop will free automatically
         },
@@ -115,7 +115,7 @@ pub fn test_memblock_size() {
 pub fn test_memblock_is_empty_false() {
     let opt = MemoryBlock::alloc(100u32, MEMF_PUBLIC)
     match opt {
-        Some(mut block) => {
+        Some(var block) => {
             expect_false(block.is_empty(), "allocated block not empty")
             // Drop will free automatically
         },
@@ -127,7 +127,7 @@ pub fn test_memblock_is_empty_false() {
 pub fn test_memblock_is_empty_true() {
     let opt = MemoryBlock::alloc(0u32, MEMF_PUBLIC)
     match opt {
-        Some(mut block) => {
+        Some(var block) => {
             expect_true(block.is_empty(), "zero-size block is empty")
             // Drop will free automatically
         },
@@ -143,7 +143,7 @@ pub fn test_memblock_is_empty_true() {
 pub fn test_memblock_into_raw() {
     let opt = MemoryBlock::alloc(128u32, MEMF_PUBLIC)
     match opt {
-        Some(mut block) => {
+        Some(var block) => {
             // Store original values
             let orig_size = block.size()
             let orig_ptr = block.ptr()
@@ -173,7 +173,7 @@ pub fn test_memblock_into_raw() {
 pub fn test_memblock_free() {
     let opt = MemoryBlock::alloc(64u32, MEMF_PUBLIC)
     match opt {
-        Some(mut block) => {
+        Some(var block) => {
             expect_false(block.is_empty(), "before free: not empty")
 
             block.free()
@@ -190,7 +190,7 @@ pub fn test_memblock_free() {
 pub fn test_memblock_free_twice() {
     let opt = MemoryBlock::alloc(32u32, MEMF_PUBLIC)
     match opt {
-        Some(mut block) => {
+        Some(var block) => {
             block.free()
             block.free()  // Should be safe - size is 0 after first free
             expect_true(block.is_empty(), "still empty after double free")
@@ -208,7 +208,7 @@ pub fn test_memblock_free_twice() {
 pub fn test_memblock_resize_grow() {
     let opt = MemoryBlock::alloc(64u32, MEMF_PUBLIC)
     match opt {
-        Some(mut block) => {
+        Some(var block) => {
             // Write some data
             let ptr = block.ptr()
             ptr[0] = 11u8
@@ -236,7 +236,7 @@ pub fn test_memblock_resize_grow() {
 pub fn test_memblock_resize_shrink() {
     let opt = MemoryBlock::alloc(256u32, MEMF_PUBLIC)
     match opt {
-        Some(mut block) => {
+        Some(var block) => {
             // Write data
             let ptr = block.ptr()
             ptr[0] = 100u8
@@ -260,7 +260,7 @@ pub fn test_memblock_resize_shrink() {
 pub fn test_memblock_resize_same() {
     let opt = MemoryBlock::alloc(100u32, MEMF_PUBLIC)
     match opt {
-        Some(mut block) => {
+        Some(var block) => {
             let success = block.resize(100u32, MEMF_PUBLIC)
             expect_true(success, "same-size resize succeeds")
             expect_eq_u32(block.size(), 100u32, "size unchanged")

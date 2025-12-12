@@ -24,10 +24,10 @@ pub static PI_TIMES_100: i32 = 314
 internal static cache_size: i32 = 256
 
 // Private mutable static
-static mut frame_count: i32 = 0
+static var frame_count: i32 = 0
 
 // Public mutable static
-pub static mut global_state: i32 = 42
+pub static var global_state: i32 = 42
 
 pub fn main() -> i32 {
     let total = MAX_COUNT + VERSION + BUFFER_SIZE

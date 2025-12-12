@@ -355,7 +355,7 @@ impl ScreenHandle {
 }
 
 impl Drop for ScreenHandle {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         if let scr = self.screen {
             CloseScreen(scr)
             self.screen = (*Screen)0

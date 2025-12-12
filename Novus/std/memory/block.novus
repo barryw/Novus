@@ -23,7 +23,7 @@ from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, MEMF_CLEAR
 /// ```novus
 /// let block = MemoryBlock::alloc(1024, MEMF_FAST)
 /// match block {
-///     Some(mut b) => {
+///     Some(var b) => {
 ///         defer {
 ///             b.free()
 ///         }
@@ -49,7 +49,7 @@ impl MemoryBlock {
     /// ```novus
     /// let mem = MemoryBlock::alloc(1024, MEMF_FAST)
     /// match mem {
-    ///     Some(mut block) => {
+    ///     Some(var block) => {
     ///         defer {
     ///             block.free()
     ///         }
@@ -124,7 +124,7 @@ impl MemoryBlock {
     /// // block is now "empty" - Drop won't free anything
     /// // caller must manually: FreeMem(ptr, size)
     /// ```
-    pub fn into_raw(&mut self) -> (*u8, u32) {
+    pub fn into_raw(&var self) -> (*u8, u32) {
         let ptr = self.ptr
         let size = self.size
         // Clear our fields so Drop won't free
@@ -137,7 +137,7 @@ impl MemoryBlock {
     /// After calling free(), the block becomes invalid
     ///
     /// NOTE: No size parameter needed! Size is tracked automatically.
-    pub fn free(&mut self) {
+    pub fn free(&var self) {
         if self.size > 0 {
             unsafe { FreeMem(self.ptr, self.size) }
             self.ptr = (*u8)0
@@ -148,14 +148,14 @@ impl MemoryBlock {
     /// Resize the memory block (realloc equivalent)
     /// Returns true on success, false if reallocation fails
     /// On failure, original block is unchanged
-    pub fn resize(&mut self, new_size: u32, flags: u32) -> bool {
+    pub fn resize(&var self, new_size: u32, flags: u32) -> bool {
         if new_size == self.size {
             return true
         }
 
         let new_block_opt = MemoryBlock::alloc(new_size, flags)
         match new_block_opt {
-            Some(mut new_block) => {
+            Some(var new_block) => {
                 // Copy old data to new block
                 var copy_size: u32 = self.size
                 if new_size < self.size {
@@ -186,7 +186,7 @@ impl MemoryBlock {
 
 // Automatic cleanup for MemoryBlock (RAII)
 impl Drop for MemoryBlock {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         self.free()
     }
 }
@@ -205,7 +205,7 @@ impl Drop for MemoryBlock {
 /// ```novus
 /// let buffer = Allocation::new(1024, MEMF_CHIP)
 /// match buffer {
-///     Some(mut alloc) => {
+///     Some(var alloc) => {
 ///         defer {
 ///             alloc.free()
 ///         }
@@ -299,7 +299,7 @@ impl<T> Allocation<T> {
     }
 
     /// Get mutable pointer
-    pub fn as_mut_ptr(&mut self) -> *T {
+    pub fn as_mut_ptr(&var self) -> *T {
         return (*T)self.block.ptr()
     }
 
@@ -310,13 +310,13 @@ impl<T> Allocation<T> {
 
     /// Free the allocation
     /// NOTE: No size parameter needed!
-    pub fn free(&mut self) {
+    pub fn free(&var self) {
         self.block.free()
         self.count = 0
     }
 
     /// Resize allocation to new element count
-    pub fn resize(&mut self, new_count: u32, flags: u32) -> bool {
+    pub fn resize(&var self, new_count: u32, flags: u32) -> bool {
         let element_size: u32 = @sizeof(T)
 
         // Check for overflow: new_count * element_size
@@ -352,7 +352,7 @@ impl<T> Allocation<T> {
 ///
 /// let boxed = Box::new(BigData { buffer: [0; 4096] })
 /// match boxed {
-///     Some(mut b) => {
+///     Some(var b) => {
 ///         defer {
 ///             b.free()
 ///         }
@@ -412,13 +412,13 @@ impl<T> Box<T> {
     }
 
     /// Get mutable reference
-    pub fn get_mut(&mut self) -> *T {
+    pub fn get_mut(&var self) -> *T {
         return self.alloc.as_mut_ptr()
     }
 
     /// Free the box
     /// NOTE: No size parameter needed!
-    pub fn free(&mut self) {
+    pub fn free(&var self) {
         self.alloc.free()
     }
 }

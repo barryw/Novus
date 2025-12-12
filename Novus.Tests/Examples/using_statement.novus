@@ -5,7 +5,7 @@ pub struct Resource {
 }
 
 impl Drop for Resource {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         // Cleanup happens here
         // In a real implementation, this would free resources
     }

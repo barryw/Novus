@@ -487,7 +487,7 @@ struct Container {
 }
 
 impl Container {
-    pub fn set_value(&mut self, v: i32) {
+    pub fn set_value(&var self, v: i32) {
         self.outer.inner.value = v
     }
 }";
@@ -552,7 +552,7 @@ fn takes_inner_ptr(p: *Inner) {
 }
 
 impl Container {
-    pub fn pass_inner(&mut self) {
+    pub fn pass_inner(&var self) {
         takes_inner_ptr(&self.outer.inner)
     }
 }";
@@ -581,7 +581,7 @@ struct Point {
 }
 
 impl Point {
-    pub fn set_x(&mut self, v: i32) {
+    pub fn set_x(&var self, v: i32) {
         self.x = v
     }
 }";
@@ -666,8 +666,8 @@ pub fn divide_void(a: u8, divisor: u8) {
         // Test for bug fix: Module static variables were being shadowed by local variable declarations
         // in functions that used them, causing assignments to update the local instead of the global
         var source = @"
-static mut COUNTER: u32 = 0u32
-static mut INITIALIZED: bool = false
+static var COUNTER: u32 = 0u32
+static var INITIALIZED: bool = false
 
 pub fn init_system() {
     if INITIALIZED {

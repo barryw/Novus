@@ -434,7 +434,7 @@ public partial class IrBuilder
                             bindingName = idPattern.IDENTIFIER().GetText();
                             isMutable = false;
                         }
-                        else if (bindingPattern is NovusParser.MutIdentifierPatternContext mutIdPattern)
+                        else if (bindingPattern is NovusParser.VarIdentifierPatternContext mutIdPattern)
                         {
                             bindingName = mutIdPattern.IDENTIFIER().GetText();
                             isMutable = true;

@@ -385,7 +385,7 @@ pub struct Point {
     y: i32,
 }
 
-pub fn use_mut_ref(p: &mut Point) -> i32 {
+pub fn use_mut_ref(p: &var Point) -> i32 {
     return p.x
 }";
 

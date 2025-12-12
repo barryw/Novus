@@ -25,7 +25,7 @@ pub fn main() -> i32 {
     let player_result = ModPlayer::new(is_pal)
 
     match player_result {
-        Result::Ok(mut player) => {
+        Result::Ok(var player) => {
             // Initialize the module for playback
             let init_result = player.init(&music_data[0], 0)
             match init_result {

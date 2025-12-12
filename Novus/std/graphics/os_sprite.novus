@@ -90,7 +90,7 @@ impl OsSpriteHandle {
     //
     // Example:
     //   sprite.show(&sprite_data, 100, 50)?
-    pub fn show(&mut self, sprite_data: &SpriteData, x: i16, y: i16) -> Result<(), GraphicsError> {
+    pub fn show(&var self, sprite_data: &SpriteData, x: i16, y: i16) -> Result<(), GraphicsError> {
         if !self.is_allocated {
             return Result::Err(GraphicsError::SpriteNotAllocated)
         }
@@ -127,7 +127,7 @@ impl OsSpriteHandle {
     //
     // Example:
     //   sprite.move_to(200, 100)?
-    pub fn move_to(&mut self, x: i16, y: i16) -> Result<(), GraphicsError> {
+    pub fn move_to(&var self, x: i16, y: i16) -> Result<(), GraphicsError> {
         if !self.is_allocated {
             return Result::Err(GraphicsError::SpriteNotAllocated)
         }
@@ -151,7 +151,7 @@ impl OsSpriteHandle {
 
     // Hide sprite by moving it offscreen
     // More efficient than freeing and reallocating
-    pub fn hide(&mut self) -> Result<(), GraphicsError> {
+    pub fn hide(&var self) -> Result<(), GraphicsError> {
         if !self.is_allocated {
             return Result::Err(GraphicsError::SpriteNotAllocated)
         }
@@ -171,7 +171,7 @@ impl OsSpriteHandle {
     //
     // Example:
     //   sprite.set_image(&frame2)?  // Animate to next frame
-    pub fn set_image(&mut self, sprite_data: &SpriteData) -> Result<(), GraphicsError> {
+    pub fn set_image(&var self, sprite_data: &SpriteData) -> Result<(), GraphicsError> {
         if !self.is_allocated {
             return Result::Err(GraphicsError::SpriteNotAllocated)
         }
@@ -218,7 +218,7 @@ impl OsSpriteHandle {
 
     // Manually release sprite back to OS
     // Called automatically by Drop, but can be called early if needed
-    pub fn release(&mut self) {
+    pub fn release(&var self) {
         if self.is_allocated {
             // Hide sprite before freeing
             let _ = self.hide()
@@ -237,7 +237,7 @@ impl OsSpriteHandle {
 // Automatic cleanup via RAII
 // Sprite is freed when handle goes out of scope
 impl Drop for OsSpriteHandle {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         self.release()
     }
 }

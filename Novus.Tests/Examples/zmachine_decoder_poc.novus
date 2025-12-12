@@ -108,7 +108,7 @@ impl ZMemory {
     }
 
     /// Read a byte at the current PC and advance
-    pub fn read_byte(&mut self) -> u8 {
+    pub fn read_byte(&var self) -> u8 {
         if self.pc >= self.size {
             return 0u8
         }
@@ -118,7 +118,7 @@ impl ZMemory {
     }
 
     /// Read a word (big-endian) at the current PC and advance
-    pub fn read_word(&mut self) -> u16 {
+    pub fn read_word(&var self) -> u16 {
         let high: u16 = (u16)self.read_byte()
         let low: u16 = (u16)self.read_byte()
         return (high << 8) | low
@@ -133,7 +133,7 @@ impl ZMemory {
     }
 
     /// Set the PC
-    pub fn set_pc(&mut self, addr: u32) {
+    pub fn set_pc(&var self, addr: u32) {
         self.pc = addr
     }
 
@@ -158,7 +158,7 @@ fn decode_operand_type(bits: u8) -> OperandType {
 }
 
 /// Read an operand based on its type
-fn read_operand(mem: &mut ZMemory, op_type: OperandType) -> Operand {
+fn read_operand(mem: &var ZMemory, op_type: OperandType) -> Operand {
     match op_type {
         Large => {
             let val: u16 = mem.read_word()
@@ -201,7 +201,7 @@ fn get_instruction_form(opcode: u8) -> InstructionForm {
 }
 
 /// Decode a branch offset from the instruction stream
-fn read_branch_offset(mem: &mut ZMemory) -> u16 {
+fn read_branch_offset(mem: &var ZMemory) -> u16 {
     let first: u8 = mem.read_byte()
 
     // Bit 6 = polarity (1 = branch on true)
@@ -220,7 +220,7 @@ fn read_branch_offset(mem: &mut ZMemory) -> u16 {
 }
 
 /// Decode a 2OP instruction (Long form)
-fn decode_long_2op(mem: &mut ZMemory, opcode: u8) -> Instruction {
+fn decode_long_2op(mem: &var ZMemory, opcode: u8) -> Instruction {
     // In long form:
     // Bit 6 = operand 1 type (0=small constant, 1=variable)
     // Bit 5 = operand 2 type (0=small constant, 1=variable)
@@ -286,7 +286,7 @@ fn decode_long_2op(mem: &mut ZMemory, opcode: u8) -> Instruction {
 }
 
 /// Decode a 1OP or 0OP instruction (Short form)
-fn decode_short_op(mem: &mut ZMemory, opcode: u8) -> Instruction {
+fn decode_short_op(mem: &var ZMemory, opcode: u8) -> Instruction {
     // In short form:
     // Bits 4-5 = operand type (3 = no operand = 0OP)
     // Bits 0-3 = opcode number
@@ -343,7 +343,7 @@ fn decode_short_op(mem: &mut ZMemory, opcode: u8) -> Instruction {
 }
 
 /// Decode a single instruction from the memory stream
-pub fn decode_instruction(mem: &mut ZMemory) -> Instruction {
+pub fn decode_instruction(mem: &var ZMemory) -> Instruction {
     let opcode: u8 = mem.read_byte()
     let form: InstructionForm = get_instruction_form(opcode)
 
@@ -423,7 +423,7 @@ pub fn main() -> i32 {
     // Branch: short form, true polarity, offset 10 = 0x4A (0100_1010)
     let test1_data: [u8; 5] = [$01, $05, $05, $4A, $00]
     var mem1 = ZMemory::new(&test1_data[0], 4u32)
-    let instr1: Instruction = decode_instruction(&mut mem1)
+    let instr1: Instruction = decode_instruction(&var mem1)
 
     if get_instruction_kind(&instr1) != 1u8 {
         return 1  // Expected 'je' instruction
@@ -452,7 +452,7 @@ pub fn main() -> i32 {
     // Store: variable 4
     let test2_data: [u8; 4] = [$54, $03, $0A, $04]
     var mem2 = ZMemory::new(&test2_data[0], 4u32)
-    let instr2: Instruction = decode_instruction(&mut mem2)
+    let instr2: Instruction = decode_instruction(&var mem2)
 
     if get_instruction_kind(&instr2) != 3u8 {
         return 10  // Expected 'add' instruction
@@ -477,7 +477,7 @@ pub fn main() -> i32 {
     // rtrue is 0OP:0 = 0xB0 (1011_0000)
     let test3_data: [u8; 1] = [$B0]
     var mem3 = ZMemory::new(&test3_data[0], 1u32)
-    let instr3: Instruction = decode_instruction(&mut mem3)
+    let instr3: Instruction = decode_instruction(&var mem3)
 
     if get_instruction_kind(&instr3) != 13u8 {
         return 20  // Expected 'rtrue' instruction
@@ -487,7 +487,7 @@ pub fn main() -> i32 {
     // rfalse is 0OP:1 = 0xB1 (1011_0001)
     let test4_data: [u8; 1] = [$B1]
     var mem4 = ZMemory::new(&test4_data[0], 1u32)
-    let instr4: Instruction = decode_instruction(&mut mem4)
+    let instr4: Instruction = decode_instruction(&var mem4)
 
     if get_instruction_kind(&instr4) != 14u8 {
         return 21  // Expected 'rfalse' instruction
@@ -499,7 +499,7 @@ pub fn main() -> i32 {
     // Branch: short form, offset 5 = 0x45
     let test5_data: [u8; 3] = [$A0, $02, $45]
     var mem5 = ZMemory::new(&test5_data[0], 3u32)
-    let instr5: Instruction = decode_instruction(&mut mem5)
+    let instr5: Instruction = decode_instruction(&var mem5)
 
     if get_instruction_kind(&instr5) != 9u8 {
         return 30  // Expected 'jz' instruction
@@ -522,7 +522,7 @@ pub fn main() -> i32 {
     // Operand: variable 5
     let test6_data: [u8; 2] = [$A5, $05]
     var mem6 = ZMemory::new(&test6_data[0], 2u32)
-    let instr6: Instruction = decode_instruction(&mut mem6)
+    let instr6: Instruction = decode_instruction(&var mem6)
 
     if get_instruction_kind(&instr6) != 10u8 {
         return 40  // Expected 'inc' instruction
@@ -542,7 +542,7 @@ pub fn main() -> i32 {
     // Operand: variable 7
     let test7_data: [u8; 2] = [$A6, $07]
     var mem7 = ZMemory::new(&test7_data[0], 2u32)
-    let instr7: Instruction = decode_instruction(&mut mem7)
+    let instr7: Instruction = decode_instruction(&var mem7)
 
     if get_instruction_kind(&instr7) != 11u8 {
         return 50  // Expected 'dec' instruction
@@ -562,7 +562,7 @@ pub fn main() -> i32 {
     // Operand: 42
     let test8_data: [u8; 2] = [$9B, $2A]
     var mem8 = ZMemory::new(&test8_data[0], 2u32)
-    let instr8: Instruction = decode_instruction(&mut mem8)
+    let instr8: Instruction = decode_instruction(&var mem8)
 
     if get_instruction_kind(&instr8) != 19u8 {
         return 60  // Expected 'ret' instruction

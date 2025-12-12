@@ -85,7 +85,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
         let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
 
         match block_opt {
-            Some(mut block) => {
+            Some(var block) => {
                 let entries: *HashMapEntry<K, V> = (*HashMapEntry<K, V>)block.ptr()
 
                 // Initialize all entries as Empty
@@ -132,7 +132,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
     /// If the key already exists, the value is updated and the old value is returned.
     /// Returns None if this is a new key, or Some(old_value) if updating.
     /// Returns None on allocation failure during resize (map unchanged).
-    pub fn insert(&mut self, key: K, value: V) -> Option<V> {
+    pub fn insert(&var self, key: K, value: V) -> Option<V> {
         // Check if we need to resize (load factor > 70%)
         let load: u32 = (self.len + self.tombstones + 1u32) * 10u32
         let threshold: u32 = self.capacity * 7u32
@@ -249,7 +249,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
     /// Remove a key-value pair from the map
     ///
     /// Returns Some(value) if the key was found and removed, None otherwise.
-    pub fn remove(&mut self, key: &K) -> Option<V> {
+    pub fn remove(&var self, key: &K) -> Option<V> {
         if self.len == 0u32 {
             return Option::None
         }
@@ -291,7 +291,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
     /// Remove all entries from the map
     ///
     /// This keeps the current capacity but marks all entries as empty.
-    pub fn clear(&mut self) {
+    pub fn clear(&var self) {
         var i: u32 = 0u32
         while i < self.capacity {
             self.entries[i].state = EntryState::Empty
@@ -302,14 +302,14 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
     }
 
     /// Internal: Resize the hash table to a new capacity
-    fn resize(&mut self, new_capacity: u32) -> bool {
+    fn resize(&var self, new_capacity: u32) -> bool {
         let entry_size: u32 = @sizeof(HashMapEntry<K, V>)
         let bytes_needed: u32 = new_capacity * entry_size
 
         let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
 
         match block_opt {
-            Some(mut block) => {
+            Some(var block) => {
                 let new_entries: *HashMapEntry<K, V> = (*HashMapEntry<K, V>)block.ptr()
 
                 // Take ownership of memory before block goes out of scope
@@ -388,7 +388,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
     }
 
     /// Free the map's memory
-    pub fn drop(&mut self) {
+    pub fn drop(&var self) {
         if self.capacity > 0u32 {
             let entry_size: u32 = @sizeof(HashMapEntry<K, V>)
             let bytes: u32 = self.capacity * entry_size
@@ -415,7 +415,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
 
 // Automatic cleanup for HashMap (RAII)
 impl<K, V> Drop for HashMap<K, V> where K: Hash + Eq {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         if self.capacity > 0u32 {
             let entry_size: u32 = @sizeof(HashMapEntry<K, V>)
             let bytes: u32 = self.capacity * entry_size
@@ -452,7 +452,7 @@ impl<K, V> HashMapIter<K, V> {
     /// Get the next key-value pair
     ///
     /// Returns Some(KeyValue) if there are more entries, None when done.
-    pub fn next(&mut self) -> Option<KeyValue<K, V>> {
+    pub fn next(&var self) -> Option<KeyValue<K, V>> {
         while self.current < self.capacity {
             let idx: u32 = self.current
             self.current++

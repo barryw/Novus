@@ -231,7 +231,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    var mut x = 10
+    var x = 10
     defer x = 20
     return x
 }";
@@ -251,7 +251,7 @@ fn cleanup(x: *i32) {
 }
 
 pub fn main() -> i32 {
-    var mut value = 42
+    var value = 42
     defer cleanup(&value)
     return value
 }";

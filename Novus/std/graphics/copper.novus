@@ -86,7 +86,7 @@ impl CopperListBuilder {
 
     /// Resize internal buffer (called automatically when needed)
     @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
-    fn grow(&mut self) -> bool {
+    fn grow(&var self) -> bool {
         if self.finalized {
             return false
         }
@@ -127,7 +127,7 @@ impl CopperListBuilder {
     ///
     /// Returns error if position is invalid or goes backwards.
     @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
-    pub fn wait(&mut self, vpos: u16, hpos: u16) -> Result<(), CopperError> {
+    pub fn wait(&var self, vpos: u16, hpos: u16) -> Result<(), CopperError> {
         // wait() without blitter synchronization
         return self.wait_internal(vpos, hpos, false)
     }
@@ -144,7 +144,7 @@ impl CopperListBuilder {
     ///
     /// Returns error if position is invalid or goes backwards.
     @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
-    pub fn wait_with_blitter(&mut self, vpos: u16, hpos: u16) -> Result<(), CopperError> {
+    pub fn wait_with_blitter(&var self, vpos: u16, hpos: u16) -> Result<(), CopperError> {
         // wait() WITH blitter synchronization
         return self.wait_internal(vpos, hpos, true)
     }
@@ -153,7 +153,7 @@ impl CopperListBuilder {
     ///
     /// - wait_blitter: If true, BFD=0 (wait for blitter). If false, BFD=1 (don't wait).
     @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
-    fn wait_internal(&mut self, vpos: u16, hpos: u16, wait_blitter: bool) -> Result<(), CopperError> {
+    fn wait_internal(&var self, vpos: u16, hpos: u16, wait_blitter: bool) -> Result<(), CopperError> {
         if self.finalized {
             return Result::Err(CopperError::ListAlreadyFinalized)
         }
@@ -234,7 +234,7 @@ impl CopperListBuilder {
     ///
     /// Returns error if position is invalid.
     @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
-    pub fn skip(&mut self, vpos: u16, hpos: u16) -> Result<(), CopperError> {
+    pub fn skip(&var self, vpos: u16, hpos: u16) -> Result<(), CopperError> {
         if self.finalized {
             return Result::Err(CopperError::ListAlreadyFinalized)
         }
@@ -291,7 +291,7 @@ impl CopperListBuilder {
     ///
     /// Returns error if register is dangerous.
     @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
-    pub fn move_register(&mut self, reg_addr: u32, value: u16) -> Result<(), CopperError> {
+    pub fn move_register(&var self, reg_addr: u32, value: u16) -> Result<(), CopperError> {
         if self.finalized {
             return Result::Err(CopperError::ListAlreadyFinalized)
         }
@@ -331,7 +331,7 @@ impl CopperListBuilder {
     ///
     /// - index: Color register index (0-31)
     /// - color: 12-bit RGB value (use rgb12() function to construct)
-    pub fn move_color(&mut self, index: u8, color: u16) -> Result<(), CopperError> {
+    pub fn move_color(&var self, index: u8, color: u16) -> Result<(), CopperError> {
         let reg_addr: u32 = color_register(index)
         return self.move_register(reg_addr, color)
     }
@@ -357,7 +357,7 @@ impl CopperListBuilder {
     ///
     /// Returns error if sprite index is out of range or pointer is misaligned.
     @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
-    pub fn move_sprite_ptr(&mut self, sprite: u8, addr: *u8) -> Result<(), CopperError> {
+    pub fn move_sprite_ptr(&var self, sprite: u8, addr: *u8) -> Result<(), CopperError> {
         // Validate sprite index
         if sprite > 7 {
             return Result::Err(CopperError::InvalidSpriteIndex)
@@ -418,7 +418,7 @@ impl CopperListBuilder {
     ///
     /// Returns error if plane index is out of range or pointer is misaligned.
     @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
-    pub fn move_bitplane_ptr(&mut self, plane: u8, addr: *u8) -> Result<(), CopperError> {
+    pub fn move_bitplane_ptr(&var self, plane: u8, addr: *u8) -> Result<(), CopperError> {
         // Validate bitplane index
         // TODO: Could check actual chipset and enforce 0-5 for OCS/ECS, 0-7 for AGA
         // For now, allow 0-7 (AGA max) and let hardware ignore planes 6-7 on OCS/ECS
@@ -463,7 +463,7 @@ impl CopperListBuilder {
     ///
     /// Waits for the start of vertical blank (line 262 on NTSC, 312 on PAL).
     /// Uses conservative NTSC value for compatibility.
-    pub fn wait_vblank(&mut self) -> Result<(), CopperError> {
+    pub fn wait_vblank(&var self) -> Result<(), CopperError> {
         return self.wait(262, 0)
     }
 
@@ -495,7 +495,7 @@ impl CopperListBuilder {
     ///
     /// After calling build(), the builder cannot be modified.
     @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
-    pub fn build(&mut self) -> Result<CopperListHandle, CopperError> {
+    pub fn build(&var self) -> Result<CopperListHandle, CopperError> {
         if self.finalized {
             return Result::Err(CopperError::ListAlreadyFinalized)
         }
@@ -543,7 +543,7 @@ impl CopperListBuilder {
 
 // Automatic cleanup for builder
 impl Drop for CopperListBuilder {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         if self.capacity > 0 {
             unsafe {
                 let mem: *u8 = (*u8)self.instructions
@@ -596,7 +596,7 @@ impl CopperListHandle {
     /// This is unsafe because it directly modifies copper list memory.
     /// The caller must ensure the instruction index is valid and points to a color MOVE.
     @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
-    pub fn update_color_at(&mut self, instruction_idx: u32, new_color: u16) {
+    pub fn update_color_at(&var self, instruction_idx: u32, new_color: u16) {
         unsafe {
             // Wait for vertical blank to avoid glitches from copper reading while we write
             WaitTOF()
@@ -624,7 +624,7 @@ impl CopperListHandle {
     /// SAFETY: This directly writes to hardware registers.
     /// The copper list must remain valid for as long as it's active.
     /// You should keep the CopperList handle in scope.
-    pub fn activate(&mut self) {
+    pub fn activate(&var self) {
         unsafe {
             // Save the current view so we can restore it later
             self.saved_view = ViewAddress()
@@ -674,7 +674,7 @@ impl CopperListHandle {
     /// # Safety
     /// This is unsafe because it directly writes to hardware registers.
     /// The caller must ensure the new copper list remains valid.
-    pub fn switch_to(&mut self, new_list: &CopperListHandle) {
+    pub fn switch_to(&var self, new_list: &CopperListHandle) {
         unsafe {
             // Wait for current copper to finish current frame
             WaitTOF()
@@ -707,7 +707,7 @@ impl CopperListHandle {
     /// drop the old one without restoring the workbench view.
     /// The copper hardware is already pointing at a different list, so we
     /// just need to prevent Drop from restoring the view.
-    pub fn deactivate_without_restore(&mut self) {
+    pub fn deactivate_without_restore(&var self) {
         self.active = false
     }
 
@@ -715,7 +715,7 @@ impl CopperListHandle {
     ///
     /// This is called automatically by Drop, but you can call it manually
     /// if you want to restore the system copper before the handle is dropped.
-    pub fn deactivate(&mut self) {
+    pub fn deactivate(&var self) {
         if self.active {
             unsafe {
                 // Disable copper DMA before restoring view
@@ -736,7 +736,7 @@ impl CopperListHandle {
 
 // Automatic cleanup for copper list
 impl Drop for CopperListHandle {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         // CRITICAL: Restore system copper before freeing memory!
         if self.active {
             unsafe {

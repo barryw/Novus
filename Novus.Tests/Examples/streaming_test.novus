@@ -38,7 +38,7 @@ pub fn main() -> i32 {
     let streamer_result = AudioStreamer::new_stereo(music.data, music.size, period, music.sample_rate)
 
     match streamer_result {
-        Result::Ok(mut streamer) => {
+        Result::Ok(var streamer) => {
 
             // Start playing (no loop)
             let play_result = streamer.play(false)

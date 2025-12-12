@@ -452,7 +452,7 @@ pub fn increment_ref(x: &i32) -> i32 {
     public void CCodeGen_MutableReference_GeneratesPointer()
     {
         var source = @"
-pub fn increment_mut(x: &mut i32) -> i32 {
+pub fn increment_mut(x: &var i32) -> i32 {
     *x = *x + 1
     return *x
 }";

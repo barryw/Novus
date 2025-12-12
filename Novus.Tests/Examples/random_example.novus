@@ -70,7 +70,7 @@ fn main() -> i32 {
     }
     print("\n")
 
-    shuffle_u32((*u32)&numbers, 10u32, &mut rng)
+    shuffle_u32((*u32)&numbers, 10u32, &var rng)
 
     print("After shuffle:  ")
     i = 0u32

@@ -170,13 +170,13 @@ impl Counter {
         Counter { value: 0 }
     }
 
-    fn increment(&mut self) {
+    fn increment(&var self) {
         self.value = self.value + 1;
     }
 }
 
 fn main() {
-    let mut c = Counter::new();
+    var c = Counter::new();
     c.increment();
 }";
 

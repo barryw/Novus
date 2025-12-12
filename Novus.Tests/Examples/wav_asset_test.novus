@@ -63,7 +63,7 @@ pub fn main() -> i32 {
     write("Playing chip RAM sample...\n")
     let ch_result = AudioChannel::acquire(0)
     match ch_result {
-        Result::Ok(mut channel) => {
+        Result::Ok(var channel) => {
             channel.set_volume(64)
 
             // Get the correct period for the current system
@@ -99,7 +99,7 @@ pub fn main() -> i32 {
     write("\nPlaying fast RAM sample (automatic chip RAM copy)...\n")
     let ch2_result = AudioChannel::acquire(0)
     match ch2_result {
-        Result::Ok(mut channel) => {
+        Result::Ok(var channel) => {
             channel.set_volume(64)
 
             // Use play_asset_native - handles chip RAM automatically!

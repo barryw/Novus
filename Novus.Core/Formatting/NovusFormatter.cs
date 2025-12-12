@@ -518,7 +518,7 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
         if (context.KW_INTERNAL() != null) Write("internal ");
 
         Write("static ");
-        if (context.KW_MUT() != null) Write("mut ");
+        if (context.KW_VAR() != null) Write("var ");
         Write(context.IDENTIFIER().GetText());
 
         if (context.type() != null)
@@ -656,7 +656,7 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
         if (context.GetText().StartsWith("&"))
         {
             Write("&");
-            if (context.KW_MUT() != null) Write("mut ");
+            if (context.KW_VAR() != null) Write("var ");
             Write("self");
         }
         else
@@ -1034,7 +1034,7 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
     public override object? VisitReferenceType(NovusParser.ReferenceTypeContext context)
     {
         Write("&");
-        if (context.KW_MUT() != null) Write("mut ");
+        if (context.KW_VAR() != null) Write("var ");
         Visit(context.type());
         return null;
     }
@@ -1534,7 +1534,7 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
     {
         EmitHiddenTokensBefore(context);
         Write("for ");
-        if (context.KW_MUT() != null) Write("mut ");
+        if (context.KW_VAR() != null) Write("var ");
         Write(context.IDENTIFIER().GetText());
         Write(" in ");
         Visit(context.expression());
@@ -2014,9 +2014,9 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
         return null;
     }
 
-    public override object? VisitMutIdentifierPattern(NovusParser.MutIdentifierPatternContext context)
+    public override object? VisitVarIdentifierPattern(NovusParser.VarIdentifierPatternContext context)
     {
-        Write("mut ");
+        Write("var ");
         Write(context.IDENTIFIER().GetText());
         return null;
     }
@@ -2181,7 +2181,7 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
     public override object? VisitBorrowExpr(NovusParser.BorrowExprContext context)
     {
         Write("&");
-        if (context.KW_MUT() != null) Write("mut ");
+        if (context.KW_VAR() != null) Write("var ");
         Visit(context.expression());
         return null;
     }

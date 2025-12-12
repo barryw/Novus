@@ -441,7 +441,7 @@ fn main() -> i32 {
     {
         var source = @"
 fn main() -> i32 {
-    let mut x: i32 = 42
+    var x: i32 = 42
     x = 100
     return x
 }";
@@ -460,7 +460,7 @@ fn main() -> i32 {
     {
         var source = @"
 fn main() -> i32 {
-    let mut x: i32 = 10
+    var x: i32 = 10
     x += 5
     return x
 }";
@@ -518,7 +518,7 @@ fn get_element(arr: [i32; 5], idx: i32) -> i32 {
     public void BuildIr_ArrayIndexAssignment_CreatesIndexStoreInstruction()
     {
         var source = @"
-fn set_element(mut arr: [i32; 5], idx: i32, value: i32) -> i32 {
+fn set_element(arr: [i32; 5], idx: i32, value: i32) -> i32 {
     arr[idx] = value
     return 0
 }";
@@ -982,7 +982,7 @@ fn borrow(x: &i32) -> i32 {
     public void BuildIr_MutableReferenceType_AllowsMutation()
     {
         var source = @"
-fn increment(x: &mut i32) -> i32 {
+fn increment(x: &var i32) -> i32 {
     *x = *x + 1
     return *x
 }";

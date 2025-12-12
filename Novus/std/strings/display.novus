@@ -20,7 +20,7 @@ extern fn u64_to_string(value: u64, buffer: *u8, buffer_size: u32) -> u32
 
 // i8 implementations
 impl Display for i8 {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         var buffer = [0; 16]
         let len = i8_to_string(*self, (*u8)&buffer[0], 16)
         return f.write_str(Str::from_raw((*u8)&buffer[0], len))
@@ -28,7 +28,7 @@ impl Display for i8 {
 }
 
 impl Debug for i8 {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         var buffer = [0; 16]
         let len = i8_to_string(*self, (*u8)&buffer[0], 16)
         return f.write_str(Str::from_raw((*u8)&buffer[0], len))
@@ -37,7 +37,7 @@ impl Debug for i8 {
 
 // i16 implementations
 impl Display for i16 {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         var buffer = [0; 16]
         let len = i16_to_string(*self, (*u8)&buffer[0], 16)
         return f.write_str(Str::from_raw((*u8)&buffer[0], len))
@@ -45,7 +45,7 @@ impl Display for i16 {
 }
 
 impl Debug for i16 {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         var buffer = [0; 16]
         let len = i16_to_string(*self, (*u8)&buffer[0], 16)
         return f.write_str(Str::from_raw((*u8)&buffer[0], len))
@@ -54,7 +54,7 @@ impl Debug for i16 {
 
 // i32 implementations
 impl Display for i32 {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         var buffer = [0; 16]
         let len = i32_to_string(*self, (*u8)&buffer[0], 16)
         return f.write_str(Str::from_raw((*u8)&buffer[0], len))
@@ -62,7 +62,7 @@ impl Display for i32 {
 }
 
 impl Debug for i32 {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         var buffer = [0; 16]
         let len = i32_to_string(*self, (*u8)&buffer[0], 16)
         return f.write_str(Str::from_raw((*u8)&buffer[0], len))
@@ -71,7 +71,7 @@ impl Debug for i32 {
 
 // i64 implementations
 impl Display for i64 {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         var buffer = [0; 32]
         let len = i64_to_string(*self, (*u8)&buffer[0], 32)
         return f.write_str(Str::from_raw((*u8)&buffer[0], len))
@@ -79,7 +79,7 @@ impl Display for i64 {
 }
 
 impl Debug for i64 {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         var buffer = [0; 32]
         let len = i64_to_string(*self, (*u8)&buffer[0], 32)
         return f.write_str(Str::from_raw((*u8)&buffer[0], len))
@@ -88,7 +88,7 @@ impl Debug for i64 {
 
 // u8 implementations
 impl Display for u8 {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         var buffer = [0; 16]
         let len = u8_to_string(*self, (*u8)&buffer[0], 16)
         return f.write_str(Str::from_raw((*u8)&buffer[0], len))
@@ -96,7 +96,7 @@ impl Display for u8 {
 }
 
 impl Debug for u8 {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         var buffer = [0; 16]
         let len = u8_to_string(*self, (*u8)&buffer[0], 16)
         return f.write_str(Str::from_raw((*u8)&buffer[0], len))
@@ -105,7 +105,7 @@ impl Debug for u8 {
 
 // u16 implementations
 impl Display for u16 {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         var buffer = [0; 16]
         let len = u16_to_string(*self, (*u8)&buffer[0], 16)
         return f.write_str(Str::from_raw((*u8)&buffer[0], len))
@@ -113,7 +113,7 @@ impl Display for u16 {
 }
 
 impl Debug for u16 {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         var buffer = [0; 16]
         let len = u16_to_string(*self, (*u8)&buffer[0], 16)
         return f.write_str(Str::from_raw((*u8)&buffer[0], len))
@@ -122,7 +122,7 @@ impl Debug for u16 {
 
 // u32 implementations
 impl Display for u32 {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         var buffer = [0; 16]
         let len = u32_to_string(*self, (*u8)&buffer[0], 16)
         return f.write_str(Str::from_raw((*u8)&buffer[0], len))
@@ -130,7 +130,7 @@ impl Display for u32 {
 }
 
 impl Debug for u32 {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         var buffer = [0; 16]
         let len = u32_to_string(*self, (*u8)&buffer[0], 16)
         return f.write_str(Str::from_raw((*u8)&buffer[0], len))
@@ -139,7 +139,7 @@ impl Debug for u32 {
 
 // u64 implementations
 impl Display for u64 {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         var buffer = [0; 32]
         let len = u64_to_string(*self, (*u8)&buffer[0], 32)
         return f.write_str(Str::from_raw((*u8)&buffer[0], len))
@@ -147,7 +147,7 @@ impl Display for u64 {
 }
 
 impl Debug for u64 {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         var buffer = [0; 32]
         let len = u64_to_string(*self, (*u8)&buffer[0], 32)
         return f.write_str(Str::from_raw((*u8)&buffer[0], len))
@@ -156,20 +156,20 @@ impl Debug for u64 {
 
 // bool implementations
 impl Display for bool {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         return f.write_str(if *self { "true" } else { "false" })
     }
 }
 
 impl Debug for bool {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         return f.write_str(if *self { "true" } else { "false" })
     }
 }
 
 // Str implementations - string slices just write themselves directly
 impl Display for Str {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         // Work around: create a copy of the Str by accessing fields
         let str_copy = Str::from_raw(self.ptr, self.len)
         return f.write_str(str_copy)
@@ -177,7 +177,7 @@ impl Display for Str {
 }
 
 impl Debug for Str {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         // For debug, we could add quotes, but for now just use Display
         // Work around: create a copy of the Str by accessing fields
         let str_copy = Str::from_raw(self.ptr, self.len)
@@ -187,13 +187,13 @@ impl Debug for Str {
 
 // String implementations - owned strings convert to Str and write
 impl Display for String {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         return f.write_str(self.as_str())
     }
 }
 
 impl Debug for String {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         // For debug, we could add quotes, but for now just use Display
         return f.write_str(self.as_str())
     }

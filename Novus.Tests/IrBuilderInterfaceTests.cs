@@ -207,7 +207,7 @@ public class IrBuilderInterfaceTests
     public void SymbolTableResolver_ResolveVariable_LocalFirst()
     {
         var symbols = new SymbolTable();
-        var dummyLocation = new SourceLocation("test.novus", 1, 1, 1, "let mut x: i32 = 0");
+        var dummyLocation = new SourceLocation("test.novus", 1, 1, 1, "var x: i32 = 0");
         var localLookup = new Func<string, VariableSymbol?>(name =>
             name == "x" ? new VariableSymbol("x", IrIntType.I32, true, dummyLocation) : null);
 
@@ -451,7 +451,7 @@ public class IrBuilderInterfaceTests
         var diagnostics = new DiagnosticBag();
         var checker = new DefaultTypeChecker(diagnostics);
 
-        var result = checker.GetUnaryOperationResultType(IrIntType.I32, "&mut");
+        var result = checker.GetUnaryOperationResultType(IrIntType.I32, "&var");
 
         Assert.NotNull(result);
         Assert.IsType<IrMutReferenceType>(result);

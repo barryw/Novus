@@ -362,7 +362,7 @@ impl TimerHandle {
 
 // Automatic cleanup for TimerHandle (RAII)
 impl Drop for TimerHandle {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         if let req = self.timereq {
             // Close device first
             unsafe {
@@ -485,7 +485,7 @@ impl Interval {
     /// When it returns `true`, the timer resets for the next interval.
     ///
     /// This is designed to be called every frame in a game loop.
-    pub fn tick(&mut self) -> Result<bool, TimerError> {
+    pub fn tick(&var self) -> Result<bool, TimerError> {
         let current = self.timer.get_time()?
         let elapsed = current.sub(self.last_tick)
 
@@ -499,7 +499,7 @@ impl Interval {
     /// Reset the interval timer
     ///
     /// The next tick will be relative to now.
-    pub fn reset(&mut self) -> Result<(), TimerError> {
+    pub fn reset(&var self) -> Result<(), TimerError> {
         self.last_tick = self.timer.get_time()?
         return Result::Ok(())
     }
@@ -626,7 +626,7 @@ impl AsyncTimer {
     ///
     /// The timer will signal the message port when it expires.
     /// Use `check()` to see if it's done, or `wait()` to block.
-    pub fn start(&mut self, duration: Duration) {
+    pub fn start(&var self, duration: Duration) {
         // If there's a pending request, we need to wait for it first
         if self.pending {
             self.wait_for_completion()
@@ -645,7 +645,7 @@ impl AsyncTimer {
     ///
     /// Returns true if the timer has completed since `start()` was called.
     /// If true, the timer is ready for another `start()` call.
-    pub fn check(&mut self) -> bool {
+    pub fn check(&var self) -> bool {
         if !self.pending {
             return false
         }
@@ -665,7 +665,7 @@ impl AsyncTimer {
     /// Wait for the timer to complete (blocking)
     ///
     /// Blocks until the currently started timer expires.
-    pub fn wait(&mut self) {
+    pub fn wait(&var self) {
         if !self.pending {
             return
         }
@@ -673,7 +673,7 @@ impl AsyncTimer {
     }
 
     /// Internal: wait for and clean up the pending IO request
-    fn wait_for_completion(&mut self) {
+    fn wait_for_completion(&var self) {
         if !self.pending {
             return
         }
@@ -711,7 +711,7 @@ impl AsyncTimer {
     /// }
     /// ```
     @suppress("W0002", "Safe: signal masks are u32, Wait expects i32 but values are equivalent for signal bits")
-    pub fn wait_or_break(&mut self, duration: Duration) -> WaitResult {
+    pub fn wait_or_break(&var self, duration: Duration) -> WaitResult {
         // Start the timer
         self.start(duration)
 
@@ -745,7 +745,7 @@ impl AsyncTimer {
     /// Abort any pending timer request
     ///
     /// Safe to call even if no request is pending.
-    pub fn abort(&mut self) {
+    pub fn abort(&var self) {
         if !self.pending {
             return
         }
@@ -766,7 +766,7 @@ impl AsyncTimer {
     /// If you need time queries during async waits, create a separate `TimerHandle`.
     ///
     /// Returns `TimerError::CommandFailed(-1)` if called while pending.
-    pub fn get_time(&mut self) -> Result<Duration, TimerError> {
+    pub fn get_time(&var self) -> Result<Duration, TimerError> {
         // Cannot use the same IORequest for DoIO while SendIO is pending
         // This would corrupt the pending request
         if self.pending {
@@ -788,7 +788,7 @@ impl AsyncTimer {
 
 // Automatic cleanup for AsyncTimer (RAII)
 impl Drop for AsyncTimer {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         // Abort any pending request first
         self.abort()
 

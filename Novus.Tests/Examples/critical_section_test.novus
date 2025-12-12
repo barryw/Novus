@@ -10,7 +10,7 @@
 from std::sync::critical import CriticalSection, InterruptSection
 
 // Simulate a shared data structure (in real code, this would be accessed by multiple tasks)
-static mut shared_counter: i32 = 0
+static var shared_counter: i32 = 0
 
 // Function that safely increments a shared counter
 fn safe_increment() -> i32 {

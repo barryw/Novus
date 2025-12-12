@@ -103,7 +103,7 @@ impl ChipBuffer {
     ///
     /// Flushes the CPU data cache after copying to ensure DMA hardware
     /// sees the correct data on 68040/68060 systems.
-    pub fn copy_from(&mut self, src: *u8, len: u32) {
+    pub fn copy_from(&var self, src: *u8, len: u32) {
         if len > self.size {
             return
         }
@@ -126,7 +126,7 @@ impl ChipBuffer {
 }
 
 impl Drop for ChipBuffer {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         if self.ptr {
             unsafe {
                 FreeMem(self.ptr, self.size)
@@ -247,7 +247,7 @@ pub fn prepare_for_dma_read(ptr: *u8, size: u32) -> *u8 {
         // For DMA reads, flags = 0 (DMA_ReadFromRAM)
         // The size parameter is passed by reference
         var actual_size: u32 = size
-        return CachePreDMA(ptr, (&mut actual_size) as *u8, DMA_ReadFromRAM)
+        return CachePreDMA(ptr, (&var actual_size) as *u8, DMA_ReadFromRAM)
     }
 }
 
@@ -263,7 +263,7 @@ pub fn prepare_for_dma_read(ptr: *u8, size: u32) -> *u8 {
 pub fn complete_dma_read(ptr: *u8, size: u32) {
     unsafe {
         var actual_size: u32 = size
-        CachePostDMA(ptr, (&mut actual_size) as *u8, DMA_ReadFromRAM)
+        CachePostDMA(ptr, (&var actual_size) as *u8, DMA_ReadFromRAM)
     }
 }
 
@@ -286,7 +286,7 @@ pub fn prepare_for_dma_write(ptr: *u8, size: u32) -> *u8 {
         // For DMA writes, we need to invalidate the cache
         // CachePreDMA with flags = 0 handles this
         var actual_size: u32 = size
-        return CachePreDMA(ptr, (&mut actual_size) as *u8, DMA_ReadFromRAM)
+        return CachePreDMA(ptr, (&var actual_size) as *u8, DMA_ReadFromRAM)
     }
 }
 
@@ -302,7 +302,7 @@ pub fn prepare_for_dma_write(ptr: *u8, size: u32) -> *u8 {
 pub fn complete_dma_write(ptr: *u8, size: u32) {
     unsafe {
         var actual_size: u32 = size
-        CachePostDMA(ptr, (&mut actual_size) as *u8, DMA_ReadFromRAM)
+        CachePostDMA(ptr, (&var actual_size) as *u8, DMA_ReadFromRAM)
     }
 }
 

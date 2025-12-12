@@ -1042,7 +1042,7 @@ impl AudioStreamer {
     ///
     /// # Arguments
     /// * `loop_playback` - If true, restart from beginning when done
-    pub fn play(&mut self, loop_playback: bool) -> Result<(), AudioError> {
+    pub fn play(&var self, loop_playback: bool) -> Result<(), AudioError> {
         self.loop_playback = loop_playback
         self.pending_count = 0
         self.reached_end = false
@@ -1082,7 +1082,7 @@ impl AudioStreamer {
     ///
     /// This checks if a buffer finished and re-queues it with fresh data.
     /// Call this at least once per frame (every 20ms at 50Hz).
-    pub fn tick(&mut self) -> Result<(), AudioError> {
+    pub fn tick(&var self) -> Result<(), AudioError> {
         if !self.is_playing {
             return Result::Ok(())
         }
@@ -1223,7 +1223,7 @@ impl AudioStreamer {
     }
 
     /// Stop playback
-    pub fn stop(&mut self) {
+    pub fn stop(&var self) {
         if !self.is_playing {
             return
         }
@@ -1299,7 +1299,7 @@ impl AudioStreamer {
     }
 
     /// Set volume (0-64)
-    pub fn set_volume(&mut self, volume: u16) -> Result<(), AudioError> {
+    pub fn set_volume(&var self, volume: u16) -> Result<(), AudioError> {
         if volume > 64 {
             return Result::Err(AudioError::InvalidVolume)
         }
@@ -1377,7 +1377,7 @@ impl AudioStreamer {
     // ========================================================================
 
     /// Fill a buffer with data from the source
-    fn fill_buffer(&mut self, idx: u8) -> Result<(), AudioError> {
+    fn fill_buffer(&var self, idx: u8) -> Result<(), AudioError> {
         let buffer = self.get_buffer(idx)
 
         // Calculate how much data is left
@@ -1470,7 +1470,7 @@ impl AudioStreamer {
 
     /// Start async playback of a buffer
     /// For stereo mode, sends CMD_WRITE to both left and right channels
-    fn start_buffer_playback(&mut self, idx: u8) -> Result<(), AudioError> {
+    fn start_buffer_playback(&var self, idx: u8) -> Result<(), AudioError> {
         let buffer = self.get_buffer(idx)
         let io_left = self.get_io(idx)
 
@@ -1512,7 +1512,7 @@ impl AudioStreamer {
 }
 
 impl Drop for AudioStreamer {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         // Stop playback first
         self.is_playing = false
 

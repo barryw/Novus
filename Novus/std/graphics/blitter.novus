@@ -5,10 +5,10 @@
 // Uses direct hardware access for optimal performance.
 //
 // Example:
-//   BlitterOps::copy_rect(&src_bitmap, 0, 0, &mut dst_bitmap, 100, 50, 64, 32)?
-//   BlitterOps::fill_rect(&mut bitmap, 10, 10, 100, 50, $AAAA)?
-//   BlitterOps::draw_line(&mut bitmap, 0, 0, 319, 199, $FFFF)?
-//   BlitterOps::copy_masked(&src, &mask, 0, 0, &mut dst, 100, 50, 32, 32)?
+//   BlitterOps::copy_rect(&src_bitmap, 0, 0, &var dst_bitmap, 100, 50, 64, 32)?
+//   BlitterOps::fill_rect(&var bitmap, 10, 10, 100, 50, $AAAA)?
+//   BlitterOps::draw_line(&var bitmap, 0, 0, 319, 199, $FFFF)?
+//   BlitterOps::copy_masked(&src, &mask, 0, 0, &var dst, 100, 50, 32, 32)?
 
 from std::core import Option, Result, Drop
 from std::ffi::exec import TypeOfMem
@@ -238,7 +238,7 @@ impl Drop for BlitterGuard {
     ///
     /// This waits for the blitter to complete (WaitBlit) and then releases
     /// ownership (DisownBlitter), ensuring safe cleanup even in error paths.
-    fn drop(&mut self) {
+    fn drop(&var self) {
         if self.acquired {
             WaitBlit()
             DisownBlitter()
@@ -268,7 +268,7 @@ impl BlitHandle {
     }
 
     /// Wait for the blitter to finish
-    pub fn wait(&mut self) {
+    pub fn wait(&var self) {
         if self.owns_blitter {
             WaitBlit()
         }
@@ -286,7 +286,7 @@ impl BlitHandle {
 }
 
 impl Drop for BlitHandle {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         if self.owns_blitter {
             WaitBlit()
             DisownBlitter()
@@ -324,7 +324,7 @@ impl BlitterOps {
     @suppress("W0001", "Integer calculations are safe")
     pub fn copy_rect(
         src: &BitMapHandle, sx: u16, sy: u16,
-        dst: &mut BitMapHandle, dx: u16, dy: u16,
+        dst: &var BitMapHandle, dx: u16, dy: u16,
         width: u16, height: u16
     ) -> Result<(), BlitterError> {
         return BlitterOps::copy_rect_op(src, sx, sy, dst, dx, dy, width, height, BlitOp::Copy)
@@ -334,7 +334,7 @@ impl BlitterOps {
     @suppress("W0001", "Integer calculations are safe")
     pub fn copy_rect_op(
         src: &BitMapHandle, sx: u16, sy: u16,
-        dst: &mut BitMapHandle, dx: u16, dy: u16,
+        dst: &var BitMapHandle, dx: u16, dy: u16,
         width: u16, height: u16,
         op: BlitOp
     ) -> Result<(), BlitterError> {
@@ -541,7 +541,7 @@ impl BlitterOps {
     pub fn copy_masked(
         src: &BitMapHandle, mask: &BitMapHandle,
         sx: u16, sy: u16,
-        dst: &mut BitMapHandle, dx: u16, dy: u16,
+        dst: &var BitMapHandle, dx: u16, dy: u16,
         width: u16, height: u16
     ) -> Result<(), BlitterError> {
         let src_bm: *BitMap = src.handle()
@@ -688,7 +688,7 @@ impl BlitterOps {
     /// For multi-color fills, call multiple times with different patterns per plane.
     @suppress("W0001", "Integer calculations are safe")
     pub fn fill_rect(
-        dst: &mut BitMapHandle,
+        dst: &var BitMapHandle,
         x: u16, y: u16,
         width: u16, height: u16,
         pattern: u16
@@ -783,7 +783,7 @@ impl BlitterOps {
 
     /// Clear a rectangular region to zero (all planes)
     pub fn clear_rect(
-        dst: &mut BitMapHandle,
+        dst: &var BitMapHandle,
         x: u16, y: u16,
         width: u16, height: u16
     ) -> Result<(), BlitterError> {
@@ -792,7 +792,7 @@ impl BlitterOps {
 
     /// Set a rectangular region to all 1s (all planes)
     pub fn set_rect(
-        dst: &mut BitMapHandle,
+        dst: &var BitMapHandle,
         x: u16, y: u16,
         width: u16, height: u16
     ) -> Result<(), BlitterError> {
@@ -802,7 +802,7 @@ impl BlitterOps {
     /// Fill a single bitplane with a pattern
     @suppress("W0001", "Integer calculations are safe")
     pub fn fill_plane(
-        dst: &mut BitMapHandle,
+        dst: &var BitMapHandle,
         plane_num: u8,
         x: u16, y: u16,
         width: u16, height: u16,
@@ -901,7 +901,7 @@ impl BlitterOps {
     ///   pattern: Line pattern ($FFFF for solid, $AAAA for dashed)
     @suppress("W0001", "Line calculations are safe")
     pub fn draw_line(
-        dst: &mut BitMapHandle,
+        dst: &var BitMapHandle,
         x1: i16, y1: i16,
         x2: i16, y2: i16,
         pattern: u16
@@ -912,7 +912,7 @@ impl BlitterOps {
     /// Draw an XOR line (toggles pixels - useful for cursors and rubber-banding)
     @suppress("W0001", "Line calculations are safe")
     pub fn draw_line_xor(
-        dst: &mut BitMapHandle,
+        dst: &var BitMapHandle,
         x1: i16, y1: i16,
         x2: i16, y2: i16,
         pattern: u16
@@ -923,7 +923,7 @@ impl BlitterOps {
     /// Internal line drawing implementation
     @suppress("W0001", "Line calculations are safe")
     fn draw_line_internal(
-        dst: &mut BitMapHandle,
+        dst: &var BitMapHandle,
         x1: i16, y1: i16,
         x2: i16, y2: i16,
         pattern: u16,
@@ -1119,7 +1119,7 @@ impl BlitterOps {
     @suppress("W0001", "Integer calculations are safe")
     pub fn copy_shifted(
         src: &BitMapHandle, sx: u16, sy: u16,
-        dst: &mut BitMapHandle, dx: u16, dy: u16,
+        dst: &var BitMapHandle, dx: u16, dy: u16,
         width: u16, height: u16,
         shift: u8
     ) -> Result<(), BlitterError> {
@@ -1243,7 +1243,7 @@ impl BlitterOps {
     /// Invert a rectangular region (toggle all bits in all planes)
     @suppress("W0001", "Integer calculations are safe")
     pub fn invert_rect(
-        dst: &mut BitMapHandle,
+        dst: &var BitMapHandle,
         x: u16, y: u16,
         width: u16, height: u16
     ) -> Result<(), BlitterError> {

@@ -17,7 +17,7 @@ impl Counter {
         }
     }
 
-    fn increment(&mut self) {
+    fn increment(&var self) {
         self.value++
     }
 

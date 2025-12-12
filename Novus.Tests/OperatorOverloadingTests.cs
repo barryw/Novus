@@ -494,7 +494,7 @@ struct MyArray {
 }
 
 impl IndexMut<u32, i32> for MyArray {
-    fn index_set(&mut self, idx: u32, value: i32) {
+    fn index_set(&var self, idx: u32, value: i32) {
         self.data[idx] = value
     }
 }
@@ -514,7 +514,7 @@ fn main() -> i32 {
     {
         var source = @"
 pub trait IndexMut<I, T> {
-    fn index_set(&mut self, idx: I, value: T)
+    fn index_set(&var self, idx: I, value: T)
 }
 
 struct MyArray {
@@ -523,7 +523,7 @@ struct MyArray {
 }
 
 impl IndexMut<u32, i32> for MyArray {
-    fn index_set(&mut self, idx: u32, value: i32) {
+    fn index_set(&var self, idx: u32, value: i32) {
         self.data[idx] = value
     }
 }

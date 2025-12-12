@@ -81,7 +81,7 @@ constDeclaration
     ;
 
 staticDeclaration
-    : attribute* (KW_PUB | KW_INTERNAL)? KW_STATIC KW_MUT? IDENTIFIER (COLON type)? EQ expression NEWLINE*
+    : attribute* (KW_PUB | KW_INTERNAL)? KW_STATIC KW_VAR? IDENTIFIER (COLON type)? EQ expression NEWLINE*
     ;
 
 globalVariableDeclaration
@@ -108,7 +108,7 @@ variadicParameter
     ;
 
 selfParameter
-    : AMPERSAND KW_MUT? KW_SELF
+    : AMPERSAND KW_VAR? KW_SELF
     | KW_CONSUMING? KW_SELF
     ;
 
@@ -186,7 +186,7 @@ traitBound
     ;
 
 type
-    : AMPERSAND KW_MUT? type                                        # ReferenceType
+    : AMPERSAND KW_VAR? type                                        # ReferenceType
     | STAR type                                                     # PointerType
     | LBRACKET NEWLINE* type NEWLINE* SEMI NEWLINE* expression NEWLINE* RBRACKET  # ArrayTypeWithSize
     | LBRACKET NEWLINE* type NEWLINE* RBRACKET                      # ArrayTypeInferred
@@ -285,7 +285,7 @@ pattern
     | AMPERSAND pattern                          # ReferencePattern
     | variantName LPAREN patternList? RPAREN    # VariantPattern
     | IDENTIFIER COLONCOLON IDENTIFIER (COLONCOLON IDENTIFIER)*  # SimpleVariantPattern
-    | KW_MUT IDENTIFIER                          # MutIdentifierPattern
+    | KW_VAR IDENTIFIER                          # VarIdentifierPattern
     | IDENTIFIER                                 # IdentifierPattern
     | INTEGER_LITERAL                            # LiteralPattern
     | HEX_LITERAL                                # LiteralPattern
@@ -357,7 +357,7 @@ whileStatement
 
 forStatement
     : KW_FOR (variableDeclaration | assignmentStatement) SEMI expression SEMI assignmentStatement block  # ForCStyle
-    | KW_FOR KW_MUT? IDENTIFIER KW_IN expression block                                                   # ForInLoop
+    | KW_FOR KW_VAR? IDENTIFIER KW_IN expression block                                                   # ForInLoop
     ;
 
 foreverStatement
@@ -388,7 +388,7 @@ expression
     | expression QUESTION                                  # TryExpr
     | expression KW_AS type                                # AsCastExpr
     | LPAREN type RPAREN expression                        # CastExpr
-    | AMPERSAND KW_MUT? expression                         # BorrowExpr
+    | AMPERSAND KW_VAR? expression                         # BorrowExpr
     | (BANG | TILDE | MINUS) expression                    # UnaryExpr
     | PLUSPLUS expression                                  # PreIncrementExpr
     | MINUSMINUS expression                                # PreDecrementExpr
@@ -464,10 +464,10 @@ closureParameterList
 
 // Closure parameter can be:
 //   - Regular parameter: x: i32
-//   - Mutable capture: mut x (captures existing variable by reference)
+//   - Mutable capture: var x (captures existing variable by reference)
 //   - Reference capture: &x (captures by reference for large types)
 closureParameter
-    : KW_MUT IDENTIFIER                    # MutableCaptureParam
+    : KW_VAR IDENTIFIER                    # MutableCaptureParam
     | AMPERSAND IDENTIFIER                 # ReferenceCaptureParam
     | IDENTIFIER COLON type                # TypedClosureParam
     ;
@@ -517,9 +517,9 @@ asmInputList
 // Examples:
 //   x in d0              - simple input
 //   &buffer in a0        - address of variable
-//   mut counter in d0 out d0  - mutable with writeback
+//   var counter in d0 out d0  - mutable with writeback
 asmInput
-    : AMPERSAND? KW_MUT? IDENTIFIER (EQ NEWLINE* expression)? asmRegisterBinding? asmOutputBinding?
+    : AMPERSAND? KW_VAR? IDENTIFIER (EQ NEWLINE* expression)? asmRegisterBinding? asmOutputBinding?
     ;
 
 asmRegisterBinding

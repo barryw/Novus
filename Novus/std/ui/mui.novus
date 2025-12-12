@@ -69,7 +69,7 @@ impl TagBuilder {
         }
     }
 
-    fn add(&mut self, tag: u32, data: u32) {
+    fn add(&var self, tag: u32, data: u32) {
         unsafe {
             if self.count >= self.capacity - 1 {
                 // Resize
@@ -92,18 +92,18 @@ impl TagBuilder {
         }
     }
 
-    fn finish(&mut self) -> *TagItem {
+    fn finish(&var self) -> *TagItem {
         self.add(TAG_DONE, 0)
         return self.tags
     }
 
-    fn clear(&mut self) {
+    fn clear(&var self) {
         self.count = 0
     }
 }
 
 impl Drop for TagBuilder {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         unsafe {
             if self.tags {
                 FreeVec((*u8)self.tags)
@@ -171,37 +171,37 @@ impl MUIAppBuilder {
     }
 
     /// Set application author
-    pub fn author(&mut self, author: Str) {
+    pub fn author(&var self, author: Str) {
         self.author = self.alloc_label(author)
     }
 
     /// Set application description
-    pub fn description(&mut self, desc: Str) {
+    pub fn description(&var self, desc: Str) {
         self.description = self.alloc_label(desc)
     }
 
     /// Set application version string
-    pub fn version(&mut self, version: Str) {
+    pub fn version(&var self, version: Str) {
         self.version = self.alloc_label(version)
     }
 
     /// Set application base name (for prefs files)
-    pub fn base(&mut self, base: Str) {
+    pub fn base(&var self, base: Str) {
         self.base = self.alloc_label(base)
     }
 
     /// Set the application's menustrip (built from MenuBuilder)
-    pub fn menustrip(&mut self, strip: *u8) {
+    pub fn menustrip(&var self, strip: *u8) {
         self.menustrip_obj = strip
     }
 
     /// Create a window and return a builder for it
-    pub fn window(&mut self, title: Str) -> MUIWindowBuilder {
+    pub fn window(&var self, title: Str) -> MUIWindowBuilder {
         return MUIWindowBuilder::new(self, title)
     }
 
     /// Build the application
-    pub fn build(&mut self) -> Result<MUIApp, IntuitionError> {
+    pub fn build(&var self) -> Result<MUIApp, IntuitionError> {
         unsafe {
             // Build application object
             var tags = TagBuilder::new()
@@ -267,7 +267,7 @@ impl MUIAppBuilder {
     }
 
     /// Add a window object to the app
-    fn add_window(&mut self, window: *u8) {
+    fn add_window(&var self, window: *u8) {
         unsafe {
             if self.window_count >= self.window_capacity {
                 let new_capacity = self.window_capacity * 2
@@ -297,7 +297,7 @@ impl MUIAppBuilder {
     }
 
     /// Allocate a null-terminated label string
-    fn alloc_label(&mut self, label: Str) -> *u8 {
+    fn alloc_label(&var self, label: Str) -> *u8 {
         unsafe {
             let size = label.len + 1
             let mem = AllocVec(size, MEMF_PUBLIC | MEMF_CLEAR)
@@ -314,7 +314,7 @@ impl MUIAppBuilder {
         }
     }
 
-    fn track_label(&mut self, label: *u8) {
+    fn track_label(&var self, label: *u8) {
         unsafe {
             if self.label_count >= self.label_capacity {
                 let new_capacity = self.label_capacity * 2
@@ -345,7 +345,7 @@ impl MUIAppBuilder {
 }
 
 impl Drop for MUIAppBuilder {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         unsafe {
             // Free any windows not transferred
             var i: u32 = 0
@@ -414,37 +414,37 @@ impl MUIWindowBuilder {
     }
 
     /// Set window ID for state saving
-    pub fn id(&mut self, id: u32) {
+    pub fn id(&var self, id: u32) {
         self.id = id
     }
 
     /// Enable/disable close gadget
-    pub fn close_gadget(&mut self, enable: bool) {
+    pub fn close_gadget(&var self, enable: bool) {
         self.close_gadget = enable
     }
 
     /// Enable/disable size gadget
-    pub fn size_gadget(&mut self, enable: bool) {
+    pub fn size_gadget(&var self, enable: bool) {
         self.size_gadget = enable
     }
 
     /// Create a vertical group as the root
-    pub fn vgroup(&mut self) -> MUIGroupBuilder {
+    pub fn vgroup(&var self) -> MUIGroupBuilder {
         return MUIGroupBuilder::new(self.app_builder, false)
     }
 
     /// Create a horizontal group as the root
-    pub fn hgroup(&mut self) -> MUIGroupBuilder {
+    pub fn hgroup(&var self) -> MUIGroupBuilder {
         return MUIGroupBuilder::new(self.app_builder, true)
     }
 
     /// Set the root group directly
-    pub fn root(&mut self, group: *u8) {
+    pub fn root(&var self, group: *u8) {
         self.root_group = group
     }
 
     /// Build the window and add it to the application
-    pub fn build(&mut self) -> *u8 {
+    pub fn build(&var self) -> *u8 {
         unsafe {
             if !self.root_group {
                 panic!("Window must have a root group")
@@ -515,29 +515,29 @@ impl MUIGroupBuilder {
     }
 
     /// Set frame style
-    pub fn frame(&mut self, frame_type: i32) {
+    pub fn frame(&var self, frame_type: i32) {
         self.frame = frame_type
     }
 
     /// Set frame title
-    pub fn frame_title(&mut self, title: Str) {
+    pub fn frame_title(&var self, title: Str) {
         unsafe {
             self.frame_title = (*self.app_builder).alloc_label(title)
         }
     }
 
     /// Make all children same size
-    pub fn same_size(&mut self) {
+    pub fn same_size(&var self) {
         self.same_size = true
     }
 
     /// Set spacing between children
-    pub fn spacing(&mut self, spacing: i32) {
+    pub fn spacing(&var self, spacing: i32) {
         self.spacing = spacing
     }
 
     /// Add a child object
-    pub fn child(&mut self, obj: *u8) {
+    pub fn child(&var self, obj: *u8) {
         unsafe {
             if self.child_count >= self.child_capacity {
                 let new_capacity = self.child_capacity * 2
@@ -567,7 +567,7 @@ impl MUIGroupBuilder {
     }
 
     /// Add a button
-    pub fn button(&mut self, id: u32, label: Str) -> *u8 {
+    pub fn button(&var self, id: u32, label: Str) -> *u8 {
         unsafe {
             let label_ptr = (*self.app_builder).alloc_label(label)
 
@@ -582,7 +582,7 @@ impl MUIGroupBuilder {
     }
 
     /// Add a text label
-    pub fn label(&mut self, text: Str) -> *u8 {
+    pub fn label(&var self, text: Str) -> *u8 {
         unsafe {
             let text_ptr = (*self.app_builder).alloc_label(text)
             let text_obj = make_text(text_ptr)
@@ -594,7 +594,7 @@ impl MUIGroupBuilder {
     }
 
     /// Add a string gadget
-    pub fn string(&mut self, id: u32, initial: Str, max_len: u32) -> *u8 {
+    pub fn string(&var self, id: u32, initial: Str, max_len: u32) -> *u8 {
         unsafe {
             let initial_ptr = (*self.app_builder).alloc_label(initial)
 
@@ -613,7 +613,7 @@ impl MUIGroupBuilder {
     }
 
     /// Add a checkbox
-    pub fn checkbox(&mut self, id: u32, label: Str, checked: bool) -> *u8 {
+    pub fn checkbox(&var self, id: u32, label: Str, checked: bool) -> *u8 {
         unsafe {
             // For MUI checkmarks, we use an Image with MUII_CheckMark
             let label_ptr = (*self.app_builder).alloc_label(label)
@@ -635,7 +635,7 @@ impl MUIGroupBuilder {
     }
 
     /// Add a slider
-    pub fn slider(&mut self, id: u32, min: i32, max: i32, value: i32) -> *u8 {
+    pub fn slider(&var self, id: u32, min: i32, max: i32, value: i32) -> *u8 {
         unsafe {
             var tags = TagBuilder::new()
             tags.add(MUIA_Numeric_Min, (u32)min)
@@ -652,7 +652,7 @@ impl MUIGroupBuilder {
     }
 
     /// Add a cycle gadget (dropdown)
-    pub fn cycle(&mut self, id: u32, entries: **u8) -> *u8 {
+    pub fn cycle(&var self, id: u32, entries: **u8) -> *u8 {
         unsafe {
             var tags = TagBuilder::new()
             tags.add(MUIA_Cycle_Entries, (u32)entries)
@@ -667,7 +667,7 @@ impl MUIGroupBuilder {
     }
 
     /// Add a listview
-    pub fn listview(&mut self, id: u32) -> *u8 {
+    pub fn listview(&var self, id: u32) -> *u8 {
         unsafe {
             // Create the list object first
             var list_tags = TagBuilder::new()
@@ -692,7 +692,7 @@ impl MUIGroupBuilder {
     }
 
     /// Add a gauge (progress bar)
-    pub fn gauge(&mut self, id: u32, max: i32, horiz: bool) -> *u8 {
+    pub fn gauge(&var self, id: u32, max: i32, horiz: bool) -> *u8 {
         unsafe {
             var tags = TagBuilder::new()
             tags.add(MUIA_Frame, (u32)MUIV_Frame_Gauge)
@@ -709,17 +709,17 @@ impl MUIGroupBuilder {
     }
 
     /// Add a nested vertical group
-    pub fn vgroup(&mut self) -> MUIGroupBuilder {
+    pub fn vgroup(&var self) -> MUIGroupBuilder {
         return MUIGroupBuilder::new(self.app_builder, false)
     }
 
     /// Add a nested horizontal group
-    pub fn hgroup(&mut self) -> MUIGroupBuilder {
+    pub fn hgroup(&var self) -> MUIGroupBuilder {
         return MUIGroupBuilder::new(self.app_builder, true)
     }
 
     /// Add horizontal space
-    pub fn hspace(&mut self) {
+    pub fn hspace(&var self) {
         unsafe {
             var tags = TagBuilder::new()
             let rect = MUI_NewObjectA("Rectangle.mui".ptr, tags.finish())
@@ -730,7 +730,7 @@ impl MUIGroupBuilder {
     }
 
     /// Add vertical space
-    pub fn vspace(&mut self) {
+    pub fn vspace(&var self) {
         unsafe {
             var tags = TagBuilder::new()
             let rect = MUI_NewObjectA("Rectangle.mui".ptr, tags.finish())
@@ -741,7 +741,7 @@ impl MUIGroupBuilder {
     }
 
     /// Add a horizontal bar separator
-    pub fn hbar(&mut self) {
+    pub fn hbar(&var self) {
         unsafe {
             var tags = TagBuilder::new()
             tags.add(MUIA_Rectangle_HBar, 1)
@@ -753,7 +753,7 @@ impl MUIGroupBuilder {
     }
 
     /// Add a vertical bar separator
-    pub fn vbar(&mut self) {
+    pub fn vbar(&var self) {
         unsafe {
             var tags = TagBuilder::new()
             tags.add(MUIA_Rectangle_VBar, 1)
@@ -765,7 +765,7 @@ impl MUIGroupBuilder {
     }
 
     /// Build the group and return the object
-    pub fn build(&mut self) -> *u8 {
+    pub fn build(&var self) -> *u8 {
         unsafe {
             var tags = TagBuilder::new()
 
@@ -812,7 +812,7 @@ impl MUIGroupBuilder {
 }
 
 impl Drop for MUIGroupBuilder {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         unsafe {
             // Dispose any children that weren't transferred
             if self.children {
@@ -865,7 +865,7 @@ impl MUIApp {
             var signals: u32 = 0
 
             forever {
-                let id = self.new_input(&mut signals)
+                let id = self.new_input(&var signals)
 
                 if id == (u32)MUIV_Application_ReturnID_Quit {
                     break
@@ -1021,7 +1021,7 @@ impl MUIApp {
 }
 
 impl Drop for MUIApp {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         unsafe {
             // Dispose application (this disposes all windows and children)
             if self.app {
@@ -1196,7 +1196,7 @@ impl MenuItemBuilder {
     }
 
     /// Allocate and track a label string
-    fn alloc_label(&mut self, text: Str) -> *u8 {
+    fn alloc_label(&var self, text: Str) -> *u8 {
         unsafe {
             let len = (u32)text.len() + 1
             let ptr = (*u8)AllocVec(len, MEMF_PUBLIC)
@@ -1215,7 +1215,7 @@ impl MenuItemBuilder {
     }
 
     /// Add a regular menu item
-    pub fn item(&mut self, title: Str, shortcut: Str, id: u32) {
+    pub fn item(&var self, title: Str, shortcut: Str, id: u32) {
         unsafe {
             let title_ptr = self.alloc_label(title)
 
@@ -1238,7 +1238,7 @@ impl MenuItemBuilder {
     }
 
     /// Add a checkable menu item
-    pub fn checkitem(&mut self, title: Str, shortcut: Str, id: u32, checked: bool) {
+    pub fn checkitem(&var self, title: Str, shortcut: Str, id: u32, checked: bool) {
         unsafe {
             let title_ptr = self.alloc_label(title)
 
@@ -1265,7 +1265,7 @@ impl MenuItemBuilder {
     }
 
     /// Add a separator bar
-    pub fn separator(&mut self) {
+    pub fn separator(&var self) {
         unsafe {
             // MUI uses NM_BARLABEL (~0) for separators, but in object form
             // we create a menuitem with no title (becomes a bar)
@@ -1323,7 +1323,7 @@ impl MenuBuilder {
     }
 
     /// Allocate and track a label string
-    fn alloc_label(&mut self, text: Str) -> *u8 {
+    fn alloc_label(&var self, text: Str) -> *u8 {
         unsafe {
             let len = (u32)text.len() + 1
             let ptr = (*u8)AllocVec(len, MEMF_PUBLIC)
@@ -1341,7 +1341,7 @@ impl MenuBuilder {
     }
 
     /// Add a new menu to the menustrip and return a builder for its items
-    pub fn menu(&mut self, title: Str) -> MenuItemBuilder {
+    pub fn menu(&var self, title: Str) -> MenuItemBuilder {
         unsafe {
             let title_ptr = self.alloc_label(title)
 
@@ -1452,12 +1452,12 @@ impl MUITabsBuilder {
     }
 
     /// Set whether to draw a frame around the tabs
-    pub fn frame(&mut self, enable: bool) {
+    pub fn frame(&var self, enable: bool) {
         self.frame = enable
     }
 
     /// Add a tab page with a title and content group
-    pub fn add_tab(&mut self, title: Str, content: *u8) {
+    pub fn add_tab(&var self, title: Str, content: *u8) {
         unsafe {
             if self.title_count >= self.title_capacity {
                 return  // Capacity exceeded
@@ -1484,7 +1484,7 @@ impl MUITabsBuilder {
     }
 
     /// Build the Register object
-    pub fn build(&mut self) -> *u8 {
+    pub fn build(&var self) -> *u8 {
         unsafe {
             if self.title_count == 0 {
                 return (*u8)0  // No tabs
@@ -1527,7 +1527,7 @@ impl MUITabsBuilder {
 }
 
 impl Drop for MUITabsBuilder {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         unsafe {
             // Free pages array if still owned
             if self.pages != (**u8)0 {

@@ -81,7 +81,7 @@ pub fn CHIP_RAM() -> MemoryInfo {
 
 // Display trait implementations for hardware enums
 impl Display for SystemCPU {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         return match *self {
             SystemCPU::M68000 => f.write_str("68000"),
             SystemCPU::M68010 => f.write_str("68010"),
@@ -94,7 +94,7 @@ impl Display for SystemCPU {
 }
 
 impl Display for SystemFPU {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         return match *self {
             SystemFPU::None => f.write_str("None"),
             SystemFPU::M68881 => f.write_str("68881"),
@@ -106,7 +106,7 @@ impl Display for SystemFPU {
 }
 
 impl Display for SystemChipset {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         return match *self {
             SystemChipset::OCS => f.write_str("OCS"),
             SystemChipset::ECS => f.write_str("ECS"),
@@ -116,7 +116,7 @@ impl Display for SystemChipset {
 }
 
 impl Display for DisplayType {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         return match *self {
             DisplayType::PAL => f.write_str("PAL"),
             DisplayType::NTSC => f.write_str("NTSC"),

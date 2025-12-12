@@ -24,8 +24,8 @@ extern fn __novus_test_get_panic_message() -> *u8
 // ============================================================================
 
 // Global mutable state for test results (accessed by generated test runner)
-static mut __test_failures: u32 = 0
-static mut __test_current_name: *u8 = null
+static var __test_failures: u32 = 0
+static var __test_current_name: *u8 = null
 
 // Called by generated test runner before each test
 pub fn __test_begin(name: *u8) {

@@ -27,7 +27,7 @@ from std::ffi::exec import FreeVec
 from std::hardware::chipset import DisplayType, DISPLAY
 
 // Track if sprite DMA has been enabled
-static mut DMA_ENABLED: bool = false
+static var DMA_ENABLED: bool = false
 
 // Initialize the sprite system - enables sprite DMA
 // PAL/NTSC detection is handled automatically by std::hardware::chipset::DISPLAY()
@@ -147,7 +147,7 @@ impl SpriteData {
 
 // RAII cleanup - free allocated CHIP RAM when sprite data goes out of scope
 impl Drop for SpriteData {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         if self.owns_memory {
             // Free allocated CHIP RAM
             unsafe {
@@ -160,7 +160,7 @@ impl Drop for SpriteData {
 }
 
 // Global sprite channel allocation bitmap (bit N = sprite N allocated)
-static mut SPRITE_CHANNELS_ALLOCATED: u8 = 0
+static var SPRITE_CHANNELS_ALLOCATED: u8 = 0
 
 // Manages a single hardware sprite channel (0-7)
 pub struct SpriteHandle {
@@ -204,7 +204,7 @@ impl SpriteHandle {
 
     // Show sprite at position
     // WARNING: sprite must remain valid (not dropped) while in use by hardware
-    pub fn show(&mut self, sprite: &SpriteData, x: i16, y: i16) -> Result<(), GraphicsError> {
+    pub fn show(&var self, sprite: &SpriteData, x: i16, y: i16) -> Result<(), GraphicsError> {
         if !self.is_allocated {
             return Result::Err(GraphicsError::SpriteNotAllocated)
         }
@@ -243,7 +243,7 @@ impl SpriteHandle {
     }
 
     // Move sprite to new position
-    pub fn move_to(&mut self, x: i16, y: i16) -> Result<(), GraphicsError> {
+    pub fn move_to(&var self, x: i16, y: i16) -> Result<(), GraphicsError> {
         if !self.is_allocated {
             return Result::Err(GraphicsError::SpriteNotAllocated)
         }
@@ -291,7 +291,7 @@ impl SpriteHandle {
     }
 
     // Hide sprite (move offscreen)
-    pub fn hide(&mut self) -> Result<(), GraphicsError> {
+    pub fn hide(&var self) -> Result<(), GraphicsError> {
         self.visible = false
         self.move_to(-100, -100)?
         return Result::Ok(())
@@ -308,7 +308,7 @@ impl SpriteHandle {
     }
 
     // Move sprite by relative offset
-    pub fn move_by(&mut self, dx: i16, dy: i16) -> Result<(), GraphicsError> {
+    pub fn move_by(&var self, dx: i16, dy: i16) -> Result<(), GraphicsError> {
         let new_x = self.pos_x + dx
         let new_y = self.pos_y + dy
         return self.move_to(new_x, new_y)
@@ -332,7 +332,7 @@ impl SpriteHandle {
 
     // Change sprite image (for animation)
     // WARNING: sprite must remain valid (not dropped) while in use by hardware
-    pub fn set_image(&mut self, sprite: &SpriteData) -> Result<(), GraphicsError> {
+    pub fn set_image(&var self, sprite: &SpriteData) -> Result<(), GraphicsError> {
         if !self.is_allocated {
             return Result::Err(GraphicsError::SpriteNotAllocated)
         }
@@ -373,7 +373,7 @@ impl SpriteHandle {
     //
     // Setting colors for sprite 0 will affect sprite 1, and vice versa.
     // Same applies to all other pairs (2+3, 4+5, 6+7).
-    pub fn set_colors(&mut self, colors: &[Color; 3]) -> Result<(), GraphicsError> {
+    pub fn set_colors(&var self, colors: &[Color; 3]) -> Result<(), GraphicsError> {
 
         let base_color: i32 = match self.channel {
             0 | 1 => 17,
@@ -569,7 +569,7 @@ impl SpriteHandle {
     }
 
     // Release the sprite channel
-    pub fn release(&mut self) {
+    pub fn release(&var self) {
         if self.is_allocated {
             let _ = self.hide()
             unsafe {
@@ -585,7 +585,7 @@ impl SpriteHandle {
 }
 
 impl Drop for SpriteHandle {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         self.release()
     }
 }
@@ -616,7 +616,7 @@ impl AttachedSpriteHandle {
     }
 
     // Show attached sprite at position
-    pub fn show(&mut self, sprite: &AttachedSpriteData, x: i16, y: i16) -> Result<(), GraphicsError> {
+    pub fn show(&var self, sprite: &AttachedSpriteData, x: i16, y: i16) -> Result<(), GraphicsError> {
         // Show even sprite (planes 0 and 1)
         self.sprite0.show(&sprite.plane01, x, y)?
 
@@ -637,14 +637,14 @@ impl AttachedSpriteHandle {
     }
 
     // Move attached sprite
-    pub fn move_to(&mut self, x: i16, y: i16) -> Result<(), GraphicsError> {
+    pub fn move_to(&var self, x: i16, y: i16) -> Result<(), GraphicsError> {
         self.sprite0.move_to(x, y)?
         self.sprite1.move_to(x, y)?
         return Result::Ok(())
     }
 
     // Hide attached sprite
-    pub fn hide(&mut self) -> Result<(), GraphicsError> {
+    pub fn hide(&var self) -> Result<(), GraphicsError> {
         self.sprite0.hide()?
         self.sprite1.hide()?
         return Result::Ok(())
@@ -656,14 +656,14 @@ impl AttachedSpriteHandle {
     }
 
     // Change sprite image (for animation)
-    pub fn set_image(&mut self, sprite: &AttachedSpriteData) -> Result<(), GraphicsError> {
+    pub fn set_image(&var self, sprite: &AttachedSpriteData) -> Result<(), GraphicsError> {
         self.sprite0.set_image(&sprite.plane01)?
         self.sprite1.set_image(&sprite.plane23)?
         return Result::Ok(())
     }
 
     // Set colors (15 colors + transparent)
-    pub fn set_colors(&mut self, colors: &[Color; 15]) -> Result<(), GraphicsError> {
+    pub fn set_colors(&var self, colors: &[Color; 15]) -> Result<(), GraphicsError> {
         // Attached sprites use colors 16-31
         // Convert reference to pointer so we can index it
         let colors_ptr: *Color = (*Color)colors

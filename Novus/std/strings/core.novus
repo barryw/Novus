@@ -511,7 +511,7 @@ impl String {
 
     /// Push a string slice onto the end
     /// Returns true on success, false if allocation failed
-    pub fn push_str(&mut self, s: Str) -> bool {
+    pub fn push_str(&var self, s: Str) -> bool {
         if s.is_empty() {
             return true
         }
@@ -531,22 +531,22 @@ impl String {
 
     /// Push a single byte onto the end
     /// Returns true on success, false if allocation failed
-    pub fn push_byte(&mut self, byte: u8) -> bool {
+    pub fn push_byte(&var self, byte: u8) -> bool {
         return self.vec.push(byte)
     }
 
     /// Clear the string (keeps capacity)
-    pub fn clear(&mut self) {
+    pub fn clear(&var self) {
         self.vec.clear()
     }
 
     /// Reserve additional capacity
-    pub fn reserve(&mut self, additional: u32) -> bool {
+    pub fn reserve(&var self, additional: u32) -> bool {
         return self.vec.reserve(additional)
     }
 
     /// Get mutable pointer to underlying buffer
-    pub fn as_mut_ptr(&mut self) -> *u8 {
+    pub fn as_mut_ptr(&var self) -> *u8 {
         return (*u8)self.vec.as_mut_ptr()
     }
 
@@ -557,14 +557,14 @@ impl String {
 
     /// Manually free the string's memory
     /// Call this when you need explicit cleanup (e.g., in tests)
-    pub fn drop(&mut self) {
+    pub fn drop(&var self) {
         self.vec.drop()
     }
 }
 
 // Automatic cleanup for String (RAII)
 impl Drop for String {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         self.vec.drop()
     }
 }
@@ -600,11 +600,11 @@ impl NameString {
         return Str::from_raw((*u8)(&self.buf), self.len)
     }
 
-    pub fn as_mut_ptr(&mut self) -> *u8 {
+    pub fn as_mut_ptr(&var self) -> *u8 {
         return (*u8)(&self.buf)
     }
 
-    pub fn push_str(&mut self, s: Str) -> bool {
+    pub fn push_str(&var self, s: Str) -> bool {
         if self.len + s.len() > 32 {
             return false
         }
@@ -619,7 +619,7 @@ impl NameString {
         return true
     }
 
-    pub fn push_byte(&mut self, byte: u8) -> bool {
+    pub fn push_byte(&var self, byte: u8) -> bool {
         if self.len >= 32 {
             return false
         }
@@ -629,7 +629,7 @@ impl NameString {
         return true
     }
 
-    pub fn clear(&mut self) {
+    pub fn clear(&var self) {
         self.len = 0
     }
 }
@@ -661,11 +661,11 @@ impl GadgetString {
         return Str::from_raw((*u8)(&self.buf), self.len)
     }
 
-    pub fn as_mut_ptr(&mut self) -> *u8 {
+    pub fn as_mut_ptr(&var self) -> *u8 {
         return (*u8)(&self.buf)
     }
 
-    pub fn push_str(&mut self, s: Str) -> bool {
+    pub fn push_str(&var self, s: Str) -> bool {
         if self.len + s.len() > 128 {
             return false
         }
@@ -680,7 +680,7 @@ impl GadgetString {
         return true
     }
 
-    pub fn push_byte(&mut self, byte: u8) -> bool {
+    pub fn push_byte(&var self, byte: u8) -> bool {
         if self.len >= 128 {
             return false
         }
@@ -690,7 +690,7 @@ impl GadgetString {
         return true
     }
 
-    pub fn clear(&mut self) {
+    pub fn clear(&var self) {
         self.len = 0
     }
 }
@@ -722,11 +722,11 @@ impl PathString {
         return Str::from_raw((*u8)(&self.buf), self.len)
     }
 
-    pub fn as_mut_ptr(&mut self) -> *u8 {
+    pub fn as_mut_ptr(&var self) -> *u8 {
         return (*u8)(&self.buf)
     }
 
-    pub fn push_str(&mut self, s: Str) -> bool {
+    pub fn push_str(&var self, s: Str) -> bool {
         if self.len + s.len() > 256 {
             return false
         }
@@ -741,7 +741,7 @@ impl PathString {
         return true
     }
 
-    pub fn push_byte(&mut self, byte: u8) -> bool {
+    pub fn push_byte(&var self, byte: u8) -> bool {
         if self.len >= 256 {
             return false
         }
@@ -751,7 +751,7 @@ impl PathString {
         return true
     }
 
-    pub fn clear(&mut self) {
+    pub fn clear(&var self) {
         self.len = 0
     }
 }
@@ -781,7 +781,7 @@ impl BStr {
         let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(total_bytes, MEMF_PUBLIC)
 
         match block_opt {
-            Some(mut block) => {
+            Some(var block) => {
                 // Take ownership of the raw pointer so MemoryBlock's Drop won't free it
                 let (ptr, _size) = block.into_raw()
 
@@ -1134,7 +1134,7 @@ impl SplitIter {
     }
 
     /// Get next substring
-    pub fn next(&mut self) -> Option<Str> {
+    pub fn next(&var self) -> Option<Str> {
         if self.done {
             return Option::None
         }
@@ -1187,7 +1187,7 @@ impl LinesIter {
     }
 
     /// Get next line
-    pub fn next(&mut self) -> Option<Str> {
+    pub fn next(&var self) -> Option<Str> {
         if self.done {
             return Option::None
         }
@@ -1439,23 +1439,23 @@ impl StringBuilder {
     }
 
     /// Append a string slice
-    pub fn push_str(&mut self, s: Str) -> bool {
+    pub fn push_str(&var self, s: Str) -> bool {
         return self.string.push_str(s)
     }
 
     /// Append a single byte
-    pub fn push_byte(&mut self, byte: u8) -> bool {
+    pub fn push_byte(&var self, byte: u8) -> bool {
         return self.string.push_byte(byte)
     }
 
     /// Append a character (Latin-1)
-    pub fn push_char(&mut self, ch: u8) -> bool {
+    pub fn push_char(&var self, ch: u8) -> bool {
         return self.string.push_byte(ch)
     }
 
     /// Append formatted integer (signed)
     @suppress("W0002", "Safe: i32 division and modulo produce i32 results within range")
-    pub fn push_i32(&mut self, value: i32) -> bool {
+    pub fn push_i32(&var self, value: i32) -> bool {
         // Handle zero specially
         if value == 0 {
             return self.string.push_byte($30)  // '0'
@@ -1511,7 +1511,7 @@ impl StringBuilder {
     }
 
     /// Append formatted integer (unsigned)
-    pub fn push_u32(&mut self, value: u32) -> bool {
+    pub fn push_u32(&var self, value: u32) -> bool {
         // Handle zero specially
         if value == 0 {
             return self.string.push_byte($30)  // '0'
@@ -1536,7 +1536,7 @@ impl StringBuilder {
     }
 
     /// Append formatted hex (lowercase)
-    pub fn push_hex(&mut self, value: u32) -> bool {
+    pub fn push_hex(&var self, value: u32) -> bool {
         // Handle zero specially
         if value == 0 {
             return self.string.push_byte($30)  // '0'
@@ -1565,7 +1565,7 @@ impl StringBuilder {
     }
 
     /// Append formatted hex (uppercase)
-    pub fn push_hex_upper(&mut self, value: u32) -> bool {
+    pub fn push_hex_upper(&var self, value: u32) -> bool {
         // Handle zero specially
         if value == 0 {
             return self.string.push_byte($30)  // '0'
@@ -1594,7 +1594,7 @@ impl StringBuilder {
     }
 
     /// Append formatted boolean ("true" or "false")
-    pub fn push_bool(&mut self, value: bool) -> bool {
+    pub fn push_bool(&var self, value: bool) -> bool {
         let s = Str::from_raw(if value { "true" } else { "false" }, if value { 4u32 } else { 5u32 })
         return self.string.push_str(s)
     }
@@ -1615,7 +1615,7 @@ impl StringBuilder {
     }
 
     /// Clear contents (keeps capacity)
-    pub fn clear(&mut self) {
+    pub fn clear(&var self) {
         self.string.clear()
     }
 
@@ -1626,7 +1626,7 @@ impl StringBuilder {
 
     /// Manually free the builder's memory
     /// Call this when you need explicit cleanup (e.g., in tests)
-    pub fn drop(&mut self) {
+    pub fn drop(&var self) {
         self.string.drop()
     }
 }

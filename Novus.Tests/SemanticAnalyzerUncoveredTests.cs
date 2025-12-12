@@ -100,7 +100,7 @@ pub fn test() -> i32 {
     {
         var source = @"
 pub fn test() -> i32 {
-    var mut x: i32 = 42
+    var x: i32 = 42
     defer {
         x = 0
     }
@@ -132,7 +132,7 @@ pub fn test() -> i32 {
     {
         var source = @"
 pub fn test() -> i32 {
-    var mut x: i32 = 1
+    var x: i32 = 1
     defer {
         x = x + 1
     }
@@ -154,8 +154,8 @@ pub fn test() -> i32 {
     {
         var source = @"
 pub fn test() -> i32 {
-    var mut sum: i32 = 0
-    for var mut i: i32 = 0; i < 10; i = i + 1 {
+    var sum: i32 = 0
+    for var i: i32 = 0; i < 10; i = i + 1 {
         sum = sum + i
     }
     return sum
@@ -170,7 +170,7 @@ pub fn test() -> i32 {
         var source = @"
 pub fn test() -> i32 {
     var arr = [1, 2, 3, 4, 5]
-    var mut sum: i32 = 0
+    var sum: i32 = 0
     for x in arr {
         sum = sum + x
     }
@@ -186,7 +186,7 @@ pub fn test() -> i32 {
         var source = @"
 pub fn test() -> i32 {
     var arr = [1, 2, 3]
-    for mut x in arr {
+    for var x in arr {
         x = x * 2
     }
     return 0
@@ -278,8 +278,8 @@ pub fn test() -> i32 {
     {
         var source = @"
 pub fn test() -> i32 {
-    var mut x: i32 = 42
-    var r: &mut i32 = &mut x
+    var x: i32 = 42
+    var r: &var i32 = &var x
     *r = 100
     return x
 }";
@@ -302,7 +302,7 @@ pub fn test(r: &i32) -> i32 {
     public void Analyze_DereferenceMutableReference_NoErrors()
     {
         var source = @"
-pub fn test(r: &mut i32) -> void {
+pub fn test(r: &var i32) -> void {
     *r = 42
 }";
         var diagnostics = Analyze(source);
@@ -318,7 +318,7 @@ pub fn test(r: &mut i32) -> void {
     {
         var source = @"
 pub fn test() -> i32 {
-    var mut x: i32 = 0
+    var x: i32 = 0
     return ++x
 }";
         var diagnostics = Analyze(source);
@@ -330,7 +330,7 @@ pub fn test() -> i32 {
     {
         var source = @"
 pub fn test() -> i32 {
-    var mut x: i32 = 0
+    var x: i32 = 0
     return x++
 }";
         var diagnostics = Analyze(source);
@@ -342,7 +342,7 @@ pub fn test() -> i32 {
     {
         var source = @"
 pub fn test() -> i32 {
-    var mut x: i32 = 10
+    var x: i32 = 10
     return --x
 }";
         var diagnostics = Analyze(source);
@@ -354,7 +354,7 @@ pub fn test() -> i32 {
     {
         var source = @"
 pub fn test() -> i32 {
-    var mut x: i32 = 10
+    var x: i32 = 10
     return x--
 }";
         var diagnostics = Analyze(source);
@@ -571,7 +571,7 @@ pub fn test() -> i32 {
     {
         var source = @"
 pub fn test() -> i32 {
-    var mut arr = [1, 2, 3, 4, 5]
+    var arr = [1, 2, 3, 4, 5]
     arr[2] = 100
     return arr[2]
 }";

@@ -147,7 +147,7 @@ impl StreamBufferSet {
     /// # Returns
     /// * `Ok(())` on success
     /// * `Err` if allocation fails (will free any partially allocated buffers)
-    pub fn allocate(&mut self, count: u8, size: u32) -> Result<(), ChipCacheError> {
+    pub fn allocate(&var self, count: u8, size: u32) -> Result<(), ChipCacheError> {
         if count == 0 || count > 4 {
             return Result::Err(ChipCacheError::OutOfMemory)
         }
@@ -183,10 +183,10 @@ impl StreamBufferSet {
     }
 
     /// Free all allocated buffers
-    pub fn free(&mut self) {
+    pub fn free(&var self) {
         var i: u8 = 0
         while i < self.buffer_count {
-            let buf = &mut self.buffers[(u32)i]
+            let buf = &var self.buffers[(u32)i]
             if buf.chip_ptr {
                 let _ = ChipPool::free(buf.chip_ptr)
                 buf.chip_ptr = (*u8)0
@@ -217,11 +217,11 @@ impl StreamBufferSet {
     }
 
     /// Get a mutable buffer by index
-    pub fn get_mut(&mut self, idx: u8) -> Option<&mut StreamBuffer> {
+    pub fn get_mut(&var self, idx: u8) -> Option<&var StreamBuffer> {
         if idx >= self.buffer_count {
             return Option::None
         }
-        return Option::Some(&mut self.buffers[(u32)idx])
+        return Option::Some(&var self.buffers[(u32)idx])
     }
 
     /// Fill a buffer from a source
@@ -238,7 +238,7 @@ impl StreamBufferSet {
     /// # Returns
     /// * `Ok(bytes_copied)` - Number of bytes copied
     /// * `Err` if buffer index invalid or source exhausted
-    pub fn fill(&mut self, idx: u8, source: *u8, source_size: u32, offset: u32) -> Result<u32, ChipCacheError> {
+    pub fn fill(&var self, idx: u8, source: *u8, source_size: u32, offset: u32) -> Result<u32, ChipCacheError> {
         if idx >= self.buffer_count {
             return Result::Err(ChipCacheError::OutOfMemory)  // Invalid index
         }
@@ -247,7 +247,7 @@ impl StreamBufferSet {
             return Result::Err(ChipCacheError::OutOfMemory)  // No more data
         }
 
-        let buf = &mut self.buffers[(u32)idx]
+        let buf = &var self.buffers[(u32)idx]
         let remaining = source_size - offset
 
         // Calculate how much to copy
@@ -299,7 +299,7 @@ impl StreamBufferSet {
 }
 
 impl Drop for StreamBufferSet {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         self.free()
     }
 }
@@ -374,7 +374,7 @@ impl ChipStream {
     }
 
     /// Set whether to loop when reaching end
-    pub fn set_looping(&mut self, looping: bool) {
+    pub fn set_looping(&var self, looping: bool) {
         self.looping = looping
     }
 
@@ -384,7 +384,7 @@ impl ChipStream {
     }
 
     /// Reset stream to beginning
-    pub fn reset(&mut self) {
+    pub fn reset(&var self) {
         self.current_idx = 0
         self.fill_offset = 0
         self.play_offset = 0
@@ -393,7 +393,7 @@ impl ChipStream {
     /// Fill all buffers initially
     ///
     /// Call this before starting playback to prime all buffers.
-    pub fn fill_all(&mut self) -> Result<(), ChipCacheError> {
+    pub fn fill_all(&var self) -> Result<(), ChipCacheError> {
         var i: u8 = 0
         while i < self.buffers.count() {
             self.fill_buffer(i)?
@@ -404,7 +404,7 @@ impl ChipStream {
     }
 
     /// Fill a specific buffer
-    fn fill_buffer(&mut self, idx: u8) -> Result<u32, ChipCacheError> {
+    fn fill_buffer(&var self, idx: u8) -> Result<u32, ChipCacheError> {
         if self.fill_offset >= self.source_size {
             if self.looping {
                 self.fill_offset = 0
@@ -448,7 +448,7 @@ impl ChipStream {
     ///
     /// Call this when the current buffer finishes playing.
     /// Returns Ok(true) if more data available, Ok(false) if stream ended.
-    pub fn advance(&mut self) -> Result<bool, ChipCacheError> {
+    pub fn advance(&var self) -> Result<bool, ChipCacheError> {
         // Track played position
         let buf_filled = self.current_buffer_filled()
         self.play_offset = self.play_offset + buf_filled

@@ -27,7 +27,7 @@ fn main() -> i32 {
                     // Test 2: Copy rect
                     let copy_result = BlitterOps::copy_rect(
                         &src, 0, 0,
-                        &mut dst_mut, 100, 50,
+                        &var dst_mut, 100, 50,
                         64, 32
                     )
 
@@ -40,7 +40,7 @@ fn main() -> i32 {
 
                     // Test 3: Clear rect
                     let clear_result = BlitterOps::clear_rect(
-                        &mut dst_mut, 0, 0, 320, 200
+                        &var dst_mut, 0, 0, 320, 200
                     )
 
                     match clear_result {
@@ -52,7 +52,7 @@ fn main() -> i32 {
 
                     // Test 4: Fill rect with pattern (no FillMode parameter now)
                     let fill_result = BlitterOps::fill_rect(
-                        &mut dst_mut, 10, 10, 100, 50,
+                        &var dst_mut, 10, 10, 100, 50,
                         $AAAA
                     )
 
@@ -65,7 +65,7 @@ fn main() -> i32 {
 
                     // Test 5: Draw line
                     let line_result = BlitterOps::draw_line(
-                        &mut dst_mut,
+                        &var dst_mut,
                         0, 0,
                         319, 199,
                         $FFFF
@@ -81,7 +81,7 @@ fn main() -> i32 {
                     // Test 6: Copy with XOR operation
                     let xor_result = BlitterOps::copy_rect_op(
                         &src, 0, 0,
-                        &mut dst_mut, 50, 50,
+                        &var dst_mut, 50, 50,
                         32, 32,
                         BlitOp::Xor
                     )
@@ -95,7 +95,7 @@ fn main() -> i32 {
 
                     // Test 7: Draw XOR line (for cursors)
                     let xor_line_result = BlitterOps::draw_line_xor(
-                        &mut dst_mut,
+                        &var dst_mut,
                         100, 0,
                         100, 199,
                         $FFFF
@@ -110,7 +110,7 @@ fn main() -> i32 {
 
                     // Test 8: Invert rect
                     let invert_result = BlitterOps::invert_rect(
-                        &mut dst_mut, 50, 50, 100, 100
+                        &var dst_mut, 50, 50, 100, 100
                     )
 
                     match invert_result {

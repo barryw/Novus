@@ -84,13 +84,13 @@ impl SizePool {
         }
     }
 
-    fn init(&mut self, block_size: u32, puddle_size: u32) -> bool {
+    fn init(&var self, block_size: u32, puddle_size: u32) -> bool {
         self.block_size = block_size
         self.pool_header = CreatePool(MEMF_CHIP, puddle_size, THRESHOLD)
         return self.pool_header != (*u8)0
     }
 
-    fn alloc(&mut self) -> Option<*u8> {
+    fn alloc(&var self) -> Option<*u8> {
         if !self.pool_header {
             return Option::None
         }
@@ -112,7 +112,7 @@ impl SizePool {
         return Option::Some(ptr)
     }
 
-    fn free(&mut self, ptr: *u8) -> bool {
+    fn free(&var self, ptr: *u8) -> bool {
         if !self.pool_header || !ptr {
             return false
         }
@@ -145,7 +145,7 @@ impl SizePool {
         return false  // Not found in this pool
     }
 
-    fn shutdown(&mut self) {
+    fn shutdown(&var self) {
         if self.pool_header {
             // DeletePool frees all memory at once - no need to free individually
             DeletePool(self.pool_header)
@@ -189,7 +189,7 @@ pub struct ChipPool {
 }
 
 // Global singleton instance
-static mut g_chip_pool: ChipPool = ChipPool {
+static var g_chip_pool: ChipPool = ChipPool {
     small_pool: SizePool {
         pool_header: (*u8)0,
         block_size: 0,

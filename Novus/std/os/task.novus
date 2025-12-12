@@ -35,7 +35,7 @@ from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
 /// }
 ///
 /// impl TaskRunner for Counter {
-///     fn tick(&mut self) -> bool {
+///     fn tick(&var self) -> bool {
 ///         self.count++
 ///         return self.count < 100
 ///     }
@@ -48,7 +48,7 @@ from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
 ///         return 0
 ///     }
 ///
-///     fn cleanup(&mut self) {
+///     fn cleanup(&var self) {
 ///         // cleanup code
 ///     }
 /// }
@@ -56,7 +56,7 @@ from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
 pub trait TaskRunner {
     /// Called when task signals arrive
     /// Return true to continue, false to exit
-    fn tick(&mut self) -> bool
+    fn tick(&var self) -> bool
 
     /// Optional: tick interval for timer-based tasks
     /// Return Some(duration) for periodic execution
@@ -70,7 +70,7 @@ pub trait TaskRunner {
 
     /// Optional: cleanup when task exits
     /// Called after tick() returns false or break signal received
-    fn cleanup(&mut self)
+    fn cleanup(&var self)
 }
 
 // ============================================================================
@@ -109,7 +109,7 @@ impl ProcessHandle {
     /// Wait for the task to complete
     /// Returns 0 on success
     /// Note: This blocks the calling task
-    pub fn wait(&mut self) -> i32 {
+    pub fn wait(&var self) -> i32 {
         if !self.is_running {
             return 0
         }
@@ -156,7 +156,7 @@ impl Drop for ProcessHandle {
     /// ProcessHandle does NOT kill the process on drop.
     /// The process continues running independently.
     /// Use break_ctrl_c() and wait() for graceful termination.
-    fn drop(&mut self) {
+    fn drop(&var self) {
         // Just clear our reference - process continues running
         // DOS owns the process memory and handles cleanup
         self.process = (*u8)0

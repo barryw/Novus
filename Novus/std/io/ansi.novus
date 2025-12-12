@@ -371,7 +371,7 @@ pub struct Ansi {
 
 // Automatic cleanup for Ansi - frees the internal Vec when going out of scope
 impl Drop for Ansi {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         self.codes.drop()
     }
 }
@@ -383,22 +383,22 @@ impl Ansi {
     }
 
     /// Add bold attribute
-    pub fn bold(&mut self) {
+    pub fn bold(&var self) {
         self.codes.push(1u32)
     }
 
     /// Add underline attribute
-    pub fn underline(&mut self) {
+    pub fn underline(&var self) {
         self.codes.push(4u32)
     }
 
     /// Add reverse video attribute
-    pub fn reverse(&mut self) {
+    pub fn reverse(&var self) {
         self.codes.push(7u32)
     }
 
     /// Set foreground pen
-    pub fn fg(&mut self, pen: Pen) {
+    pub fn fg(&var self, pen: Pen) {
         let code: u32 = match pen {
             Pen::Pen0 => 30u32,
             Pen::Pen1 => 31u32,
@@ -414,7 +414,7 @@ impl Ansi {
     }
 
     /// Set background pen
-    pub fn bg(&mut self, pen: Pen) {
+    pub fn bg(&var self, pen: Pen) {
         let code: u32 = match pen {
             Pen::Pen0 => 40u32,
             Pen::Pen1 => 41u32,

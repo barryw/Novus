@@ -38,7 +38,7 @@ pub fn main() -> i32 {
         var source = @"
 pub fn main() -> i32 {
     var x = 42
-    let r: &mut i32 = &mut x
+    let r: &var i32 = &var x
     return 0
 }";
         var module = BuildIr(source);
@@ -65,7 +65,7 @@ pub fn main() -> i32 {
         var source = @"
 pub fn main() -> i32 {
     var x = 42
-    let r: &mut i32 = &mut x
+    let r: &var i32 = &var x
     *r = 100
     return x
 }";
@@ -92,12 +92,12 @@ pub fn main() -> i32 {
     public void BuildIr_ReferenceAsParameter_Mutable_Compiles()
     {
         var source = @"
-fn increment(r: &mut i32) {
+fn increment(r: &var i32) {
     *r = *r + 1
 }
 pub fn main() -> i32 {
     var x = 42
-    increment(&mut x)
+    increment(&var x)
     return x
 }";
         var module = BuildIr(source);
@@ -210,7 +210,7 @@ struct Counter {
     count: i32
 }
 impl Counter {
-    fn increment(&mut self) {
+    fn increment(&var self) {
         (*self).count = (*self).count + 1
     }
 }
@@ -229,7 +229,7 @@ pub fn main() -> i32 {
         var source = @"
 pub fn main() -> i32 {
     var x = 10
-    let r: &mut i32 = &mut x
+    let r: &var i32 = &var x
     *r += 5
     return x
 }";

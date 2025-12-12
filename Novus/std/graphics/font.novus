@@ -287,7 +287,7 @@ impl FontHandle {
 }
 
 impl Drop for FontHandle {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         if self.font {
             CloseFont(self.font)
         }

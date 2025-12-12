@@ -33,7 +33,7 @@ impl Ball {
         }
     }
 
-    fn update(&mut self, min_x: i16, max_x: i16, min_y: i16, max_y: i16) {
+    fn update(&var self, min_x: i16, max_x: i16, min_y: i16, max_y: i16) {
         // Update position
         self.x = self.x + self.vx
         self.y = self.y + self.vy

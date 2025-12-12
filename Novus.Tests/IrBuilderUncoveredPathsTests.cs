@@ -310,7 +310,7 @@ fn main() -> i32 {
     {
         var source = @"
 trait Drop {
-    fn drop(&mut self)
+    fn drop(&var self)
 }
 
 struct Resource {
@@ -318,7 +318,7 @@ struct Resource {
 }
 
 impl Drop for Resource {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         return
     }
 }
@@ -604,7 +604,7 @@ struct Counter {
 }
 
 impl Counter {
-    fn increment(&mut self) {
+    fn increment(&var self) {
         self.count = self.count + 1
         return
     }

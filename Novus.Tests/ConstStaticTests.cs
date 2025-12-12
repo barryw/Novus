@@ -122,7 +122,7 @@ pub fn main() -> i32 {
     public void BuildIr_StaticMutable_Compiles()
     {
         var source = @"
-static mut GLOBAL_STATE: i32 = 0
+static var GLOBAL_STATE: i32 = 0
 pub fn main() -> i32 {
     GLOBAL_STATE = 42
     return GLOBAL_STATE
@@ -189,7 +189,7 @@ pub fn main() -> i32 {
     public void BuildIr_StaticAcrossFunctions_Compiles()
     {
         var source = @"
-static mut CALL_COUNT: i32 = 0
+static var CALL_COUNT: i32 = 0
 fn increment() {
     CALL_COUNT = CALL_COUNT + 1
 }

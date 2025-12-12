@@ -106,7 +106,7 @@ pub struct GadToolsMenuBuilder {
 impl GadToolsMenuBuilder {
     /// Internal helper to allocate and copy a string label
     /// Returns null-terminated C string pointer, or panics on failure
-    fn alloc_label(&mut self, label: Str) -> *u8 {
+    fn alloc_label(&var self, label: Str) -> *u8 {
         unsafe {
             let len = label.len
             let size = len + 1
@@ -168,7 +168,7 @@ impl GadToolsMenuBuilder {
     }
 
     /// Internal helper to track an allocated label pointer
-    fn track_label(&mut self, label: *u8) {
+    fn track_label(&var self, label: *u8) {
         unsafe {
             // Check if we need to resize the label array
             if self.label_count >= self.label_capacity {
@@ -208,7 +208,7 @@ impl GadToolsMenuBuilder {
     }
 
     /// Internal helper to append a NewMenu to the array
-    fn push_entry_fields(&mut self, nm_type: u8, label: *u8, commkey: *u8, flags: u16, mutual: i32, userdata: *u8) {
+    fn push_entry_fields(&var self, nm_type: u8, label: *u8, commkey: *u8, flags: u16, mutual: i32, userdata: *u8) {
         unsafe {
             // Check if we need to resize
             if self.entry_count >= self.entry_capacity {
@@ -262,29 +262,29 @@ impl GadToolsMenuBuilder {
     }
 
     /// Internal helper to set command key on the last entry
-    fn set_last_entry_commkey(&mut self, commkey: *u8) {
+    fn set_last_entry_commkey(&var self, commkey: *u8) {
         unsafe {
             if self.entry_count > 0 {
                 let idx = self.entry_count - 1
-                let entry_ptr = &mut self.entries[idx]
+                let entry_ptr = &var self.entries[idx]
                 entry_ptr.nm_CommKey = commkey
             }
         }
     }
 
     /// Internal helper to add flags to the last entry
-    fn add_last_entry_flags(&mut self, flags: u16) {
+    fn add_last_entry_flags(&var self, flags: u16) {
         unsafe {
             if self.entry_count > 0 {
                 let idx = self.entry_count - 1
-                let entry_ptr = &mut self.entries[idx]
+                let entry_ptr = &var self.entries[idx]
                 entry_ptr.nm_Flags = entry_ptr.nm_Flags | flags
             }
         }
     }
 
     /// Add a menu (returns a handle to add items to it)
-    pub fn add_menu(&mut self, title: Str) -> MenuHandle {
+    pub fn add_menu(&var self, title: Str) -> MenuHandle {
         let label_ptr = self.alloc_label(title)
 
         // Add menu entry with individual fields to avoid struct alignment issues
@@ -296,7 +296,7 @@ impl GadToolsMenuBuilder {
     }
 
     /// Build the menu strip (allocates NewMenu array and creates menus)
-    pub fn build(&mut self) -> Result<GadToolsMenuStrip, IntuitionError> {
+    pub fn build(&var self) -> Result<GadToolsMenuStrip, IntuitionError> {
         // Add terminator entry
         unsafe {
             self.push_entry_fields((u8)NM_END, (*u8)0, (*u8)0, 0, 0, (*u8)0)
@@ -401,7 +401,7 @@ impl GadToolsMenuBuilder {
 }
 
 impl Drop for GadToolsMenuBuilder {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         unsafe {
             // Free the entries array if we still own it
             if self.entries {
@@ -447,7 +447,7 @@ pub struct MenuHandle {
 
 impl MenuHandle {
     /// Add an item to this menu (returns a handle to add sub-items or modifiers)
-    pub fn add_item(&mut self, label: Str) -> MenuItemHandle {
+    pub fn add_item(&var self, label: Str) -> MenuItemHandle {
         unsafe {
             let label_ptr = (*self.builder).alloc_label(label)
 
@@ -461,7 +461,7 @@ impl MenuHandle {
     }
 
     /// Add a separator bar to this menu
-    pub fn add_separator(&mut self) {
+    pub fn add_separator(&var self) {
         unsafe {
             // NULL label = separator
             (*self.builder).push_entry_fields((u8)NM_ITEM, (*u8)0, (*u8)0, 0, 0, (*u8)0)
@@ -479,7 +479,7 @@ pub struct MenuItemHandle {
 
 impl MenuItemHandle {
     /// Add a sub-item under this item
-    pub fn add_sub_item(&mut self, label: Str) -> MenuItemHandle {
+    pub fn add_sub_item(&var self, label: Str) -> MenuItemHandle {
         unsafe {
             let label_ptr = (*self.builder).alloc_label(label)
 
@@ -501,7 +501,7 @@ impl MenuItemHandle {
     /// ```novus
     /// file_menu.add_item("Save").with_command_key('S')  // Amiga-S
     /// ```
-    pub fn with_command_key(&mut self, key: u8) -> MenuItemHandle {
+    pub fn with_command_key(&var self, key: u8) -> MenuItemHandle {
         unsafe {
             // Allocate a 2-byte string: key + null terminator
             let key_mem = AllocVec(2, MEMF_PUBLIC | MEMF_CLEAR)
@@ -531,7 +531,7 @@ impl MenuItemHandle {
     /// ```novus
     /// options_menu.add_item("Enable Feature").with_checkmark()
     /// ```
-    pub fn with_checkmark(&mut self) -> MenuItemHandle {
+    pub fn with_checkmark(&var self) -> MenuItemHandle {
         unsafe {
             (*self.builder).add_last_entry_flags((u16)CHECKIT)
         }
@@ -548,7 +548,7 @@ impl MenuItemHandle {
     /// ```novus
     /// options_menu.add_item("Enable Feature").with_checkmark().checked()
     /// ```
-    pub fn checked(&mut self) -> MenuItemHandle {
+    pub fn checked(&var self) -> MenuItemHandle {
         unsafe {
             (*self.builder).add_last_entry_flags((u16)CHECKED)
         }
@@ -604,7 +604,7 @@ impl GadToolsMenuStrip {
 }
 
 impl Drop for GadToolsMenuStrip {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         unsafe {
             // Free visual info first
             if let vi = self.visual_info {

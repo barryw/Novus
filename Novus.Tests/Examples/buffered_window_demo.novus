@@ -99,7 +99,7 @@ pub fn main() -> i32 {
     let result = BufferedWindow::new("Buffered Window Demo - Resize Me!", 640, 480)
 
     match result {
-        Result::Ok(mut window) => {
+        Result::Ok(var window) => {
             // Draw initial checkerboard
             write("Drawing initial checkerboard...\n")
             draw_checkerboard(&window)

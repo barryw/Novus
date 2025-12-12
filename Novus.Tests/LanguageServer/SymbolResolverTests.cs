@@ -281,7 +281,7 @@ fn main() {
     public void FindSymbolAtPosition_GlobalVariable_ReturnsGlobalVariable()
     {
         var source = @"
-let mut global_count: i32 = 0;
+var global_count: i32 = 0;
 
 fn increment() {
     global_count = global_count + 1;

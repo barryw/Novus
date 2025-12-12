@@ -861,7 +861,7 @@ impl Point {
         return self.x
     }
 
-    pub fn set_x(&mut self, value: i32) {
+    pub fn set_x(&var self, value: i32) {
         self.x = value
     }
 }";

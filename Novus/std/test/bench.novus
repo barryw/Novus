@@ -286,7 +286,7 @@ fn int_sqrt(n: u32) -> u32 {
 // ============================================================================
 
 /// Global benchmark runner instance
-static mut __bench_runner: *BenchRunner = (*BenchRunner)0
+static var __bench_runner: *BenchRunner = (*BenchRunner)0
 
 /// Initialize the benchmark runner (called once at start)
 /// Returns 0 on success, 1 on failure

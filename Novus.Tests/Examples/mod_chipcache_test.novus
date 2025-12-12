@@ -25,7 +25,7 @@ pub fn main() -> i32 {
 
     let player_result = ModPlayer::new(is_pal)
     match player_result {
-        Result::Ok(mut player) => {
+        Result::Ok(var player) => {
             write("Initializing (copying to chip RAM)...\n")
 
             let init_result = player.init_asset(&music, 0)

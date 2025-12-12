@@ -45,7 +45,7 @@ from std::memory::chip import is_chip_ram, ChipCacheError, Priority
 from std::memory::chip_cache import ChipCache
 
 // Global counter for generating unique asset IDs for audio samples
-static mut g_audio_next_asset_id: u32 = $10000  // Start high to avoid collision with MOD IDs
+static var g_audio_next_asset_id: u32 = $10000  // Start high to avoid collision with MOD IDs
 
 
 /// Generate a unique asset ID for ChipCache
@@ -325,7 +325,7 @@ impl SampleHandle {
 }
 
 impl Drop for SampleHandle {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         // Only free if we own the memory (allocated via from_data/from_data_with_rate)
         // from_chip_ram() sets owns_data=false since caller manages that memory
         if self.owns_data && (u32)self.data != 0 {
@@ -442,7 +442,7 @@ impl AudioChannel {
     /// # Returns
     /// * `Ok(())` - Period updated
     /// * `Err(AudioError::InvalidPeriod)` - Period < 124
-    pub fn set_period(&mut self, period: u16) -> Result<(), AudioError> {
+    pub fn set_period(&var self, period: u16) -> Result<(), AudioError> {
         if !is_valid_period(period) {
             return Result::Err(AudioError::InvalidPeriod)
         }
@@ -473,7 +473,7 @@ impl AudioChannel {
     /// // Set to 22050 Hz on PAL
     /// channel.set_sample_rate(22050, true)?
     /// ```
-    pub fn set_sample_rate(&mut self, hz: u32, pal: bool) -> Result<(), AudioError> {
+    pub fn set_sample_rate(&var self, hz: u32, pal: bool) -> Result<(), AudioError> {
         match period_from_hz(hz, pal) {
             Option::Some(period) => {
                 self.period = period
@@ -501,7 +501,7 @@ impl AudioChannel {
     /// // Auto-detect system and set rate
     /// channel.set_sample_rate_auto(22050)?
     /// ```
-    pub fn set_sample_rate_auto(&mut self, hz: u32) -> Result<(), AudioError> {
+    pub fn set_sample_rate_auto(&var self, hz: u32) -> Result<(), AudioError> {
         return self.set_sample_rate(hz, is_pal_system())
     }
 
@@ -524,7 +524,7 @@ impl AudioChannel {
     /// # Returns
     /// * `Ok(())` - Volume updated
     /// * `Err(AudioError::InvalidVolume)` - Volume > 64
-    pub fn set_volume(&mut self, volume: u16) -> Result<(), AudioError> {
+    pub fn set_volume(&var self, volume: u16) -> Result<(), AudioError> {
         if !is_valid_volume(volume) {
             return Result::Err(AudioError::InvalidVolume)
         }
@@ -571,7 +571,7 @@ impl AudioChannel {
     /// delay(Duration::millis(explosion_sound.duration_ms(true)))
     /// channel.stop()
     /// ```
-    pub fn play(&mut self, sample: &SampleHandle, mode: PlaybackMode) -> Result<(), AudioError> {
+    pub fn play(&var self, sample: &SampleHandle, mode: PlaybackMode) -> Result<(), AudioError> {
         // Validate sample pointer is word-aligned
         let addr = (u32)sample.ptr()
         if (addr & 1) != 0 {
@@ -631,7 +631,7 @@ impl AudioChannel {
     /// // Sample recorded at 22050 Hz - play at correct pitch
     /// channel.play_native(&sample, PlaybackMode::Loop, true)?
     /// ```
-    pub fn play_native(&mut self, sample: &SampleHandle, mode: PlaybackMode, pal: bool) -> Result<(), AudioError> {
+    pub fn play_native(&var self, sample: &SampleHandle, mode: PlaybackMode, pal: bool) -> Result<(), AudioError> {
         if pal {
             self.period = sample.period_pal()
         } else {
@@ -649,7 +649,7 @@ impl AudioChannel {
     /// // Play at correct pitch for current system
     /// channel.play_native_auto(&sample, PlaybackMode::Loop)?
     /// ```
-    pub fn play_native_auto(&mut self, sample: &SampleHandle, mode: PlaybackMode) -> Result<(), AudioError> {
+    pub fn play_native_auto(&var self, sample: &SampleHandle, mode: PlaybackMode) -> Result<(), AudioError> {
         return self.play_native(sample, mode, is_pal_system())
     }
 
@@ -667,7 +667,7 @@ impl AudioChannel {
     /// # Safety
     /// The pointer MUST be in chip RAM (address < $200000) and word-aligned.
     /// The caller must ensure the data remains valid during playback.
-    pub fn play_raw(&mut self, chip_ptr: *u8, length_words: u16, period: u16, mode: PlaybackMode) -> Result<(), AudioError> {
+    pub fn play_raw(&var self, chip_ptr: *u8, length_words: u16, period: u16, mode: PlaybackMode) -> Result<(), AudioError> {
         let addr = (u32)chip_ptr
 
         // Validate chip RAM range
@@ -748,7 +748,7 @@ impl AudioChannel {
     /// channel.play_asset(sound.data, sound.size, period, PlaybackMode::OneShot)?
     /// // Asset is unpinned and evicted automatically when channel is dropped
     /// ```
-    pub fn play_asset(&mut self, data: *u8, size: u32, period: u16, mode: PlaybackMode) -> Result<(), AudioError> {
+    pub fn play_asset(&var self, data: *u8, size: u32, period: u16, mode: PlaybackMode) -> Result<(), AudioError> {
         // Unpin and release any previously cached asset
         if self.cache_asset_id != 0 {
             ChipCache::unpin(self.cache_asset_id)
@@ -806,7 +806,7 @@ impl AudioChannel {
     ///     PlaybackMode::OneShot
     /// )?
     /// ```
-    pub fn play_asset_native(&mut self, data: *u8, size: u32, period_pal: u16, period_ntsc: u16, mode: PlaybackMode) -> Result<(), AudioError> {
+    pub fn play_asset_native(&var self, data: *u8, size: u32, period_pal: u16, period_ntsc: u16, mode: PlaybackMode) -> Result<(), AudioError> {
         let period = if is_pal_system() { period_pal } else { period_ntsc }
         return self.play_asset(data, size, period, mode)
     }
@@ -815,7 +815,7 @@ impl AudioChannel {
     ///
     /// Disables audio DMA for this channel, clears any pending audio
     /// interrupt, and sets volume to 0 to prevent residual noise.
-    pub fn stop(&mut self) {
+    pub fn stop(&var self) {
         if self.active {
             unsafe {
                 // Disable DMA for this channel (no SETCLR = clear bit)
@@ -852,7 +852,7 @@ impl AudioChannel {
     /// // Fade out over 10 steps
     /// channel.fade_to(0, 10, || delay(Duration::millis(50)))
     /// ```
-    pub fn fade_to(&mut self, target: u16, steps: u32, delay_fn: fn()) {
+    pub fn fade_to(&var self, target: u16, steps: u32, delay_fn: fn()) {
         if steps == 0 {
             let _ = self.set_volume(target)
             return
@@ -899,7 +899,7 @@ impl AudioChannel {
 }
 
 impl Drop for AudioChannel {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         // Always stop playback when the handle is dropped
         // This prevents orphaned DMA that could play garbage
         self.stop()
@@ -1441,7 +1441,7 @@ impl MultiChannel {
     ///
     /// This is the common case - same volume on all channels.
     /// Note: Volume changes take effect on the next play() call.
-    pub fn set_volume(&mut self, volume: u16) -> Result<(), AudioError> {
+    pub fn set_volume(&var self, volume: u16) -> Result<(), AudioError> {
         if !is_valid_volume(volume) {
             return Result::Err(AudioError::InvalidVolume)
         }
@@ -1464,7 +1464,7 @@ impl MultiChannel {
     /// # Arguments
     /// * `channel` - Channel number (0-3)
     /// * `volume` - Volume level (0-64)
-    pub fn set_channel_volume(&mut self, channel: u8, volume: u16) -> Result<(), AudioError> {
+    pub fn set_channel_volume(&var self, channel: u8, volume: u16) -> Result<(), AudioError> {
         if channel > 3 {
             return Result::Err(AudioError::InvalidChannel)
         }
@@ -1490,7 +1490,7 @@ impl MultiChannel {
     /// Set period for all allocated channels
     ///
     /// Note: Period changes take effect on the next play() call.
-    pub fn set_period(&mut self, period: u16) -> Result<(), AudioError> {
+    pub fn set_period(&var self, period: u16) -> Result<(), AudioError> {
         if !is_valid_period(period) {
             return Result::Err(AudioError::InvalidPeriod)
         }
@@ -1506,7 +1506,7 @@ impl MultiChannel {
     }
 
     /// Set sample rate for all channels (converts to period)
-    pub fn set_sample_rate(&mut self, hz: u32, pal: bool) -> Result<(), AudioError> {
+    pub fn set_sample_rate(&var self, hz: u32, pal: bool) -> Result<(), AudioError> {
         match period_from_hz(hz, pal) {
             Option::Some(period) => {
                 return self.set_period(period)
@@ -1521,7 +1521,7 @@ impl MultiChannel {
     ///
     /// The sample is played on every channel we have allocated using audio.device.
     /// All channels use the same sample data but can have different volumes.
-    pub fn play(&mut self, sample: &SampleHandle, mode: PlaybackMode) -> Result<(), AudioError> {
+    pub fn play(&var self, sample: &SampleHandle, mode: PlaybackMode) -> Result<(), AudioError> {
         let addr = (u32)sample.ptr()
         if (addr & 1) != 0 {
             return Result::Err(AudioError::SampleMisaligned)
@@ -1578,14 +1578,14 @@ impl MultiChannel {
     }
 
     /// Play a sample at its native sample rate
-    pub fn play_native(&mut self, sample: &SampleHandle, mode: PlaybackMode, pal: bool) -> Result<(), AudioError> {
+    pub fn play_native(&var self, sample: &SampleHandle, mode: PlaybackMode, pal: bool) -> Result<(), AudioError> {
         let period = if pal { sample.period_pal() } else { sample.period_ntsc() }
         self.set_period(period)?
         return self.play(sample, mode)
     }
 
     /// Play raw audio data from chip RAM
-    pub fn play_raw(&mut self, chip_ptr: *u8, length_bytes: u32, period: u16, mode: PlaybackMode) -> Result<(), AudioError> {
+    pub fn play_raw(&var self, chip_ptr: *u8, length_bytes: u32, period: u16, mode: PlaybackMode) -> Result<(), AudioError> {
         let addr = (u32)chip_ptr
 
         if addr >= $00200000 {
@@ -1646,7 +1646,7 @@ impl MultiChannel {
     }
 
     /// Stop playback on all channels
-    pub fn stop(&mut self) {
+    pub fn stop(&var self) {
         if self.active {
             // Abort any pending I/O using audio.device
             let io = self.io_audio
@@ -1667,7 +1667,7 @@ impl MultiChannel {
 }
 
 impl Drop for MultiChannel {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         // Stop any active playback
         self.stop()
 

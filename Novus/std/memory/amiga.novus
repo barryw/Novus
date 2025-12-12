@@ -85,7 +85,7 @@ impl MemHandle {
 }
 
 impl Drop for MemHandle {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         if self.ptr {
             FreeVec(self.ptr)
         }

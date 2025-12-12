@@ -204,7 +204,7 @@ impl ReActionBuilder {
     }
 
     /// Create the root layout and return a handle
-    pub fn layout(&mut self, orientation: LayoutOrientation) -> LayoutHandle {
+    pub fn layout(&var self, orientation: LayoutOrientation) -> LayoutHandle {
         let orient_val = match orientation {
             LayoutOrientation::Horizontal => LAYOUT_ORIENT_HORIZ,
             LayoutOrientation::Vertical => LAYOUT_ORIENT_VERT,
@@ -224,7 +224,7 @@ impl ReActionBuilder {
     }
 
     /// Build the window with all gadgets
-    pub fn build(&mut self, title: Str) -> Result<ReActionWindow, IntuitionError> {
+    pub fn build(&var self, title: Str) -> Result<ReActionWindow, IntuitionError> {
         // Allocate title string
         let title_ptr = self.alloc_label(title)
 
@@ -239,7 +239,7 @@ impl ReActionBuilder {
                     break
                 }
 
-                let entry = &mut self.entries[i]
+                let entry = &var self.entries[i]
                 match entry.gadget_type {
                     GadgetType::Button => {
                         self.finalize_entry_tags(i)
@@ -283,7 +283,7 @@ impl ReActionBuilder {
                 }
 
                 let idx = (u32)j
-                let layout_entry = &mut self.entries[idx]
+                let layout_entry = &var self.entries[idx]
 
                 match layout_entry.gadget_type {
                     GadgetType::Layout => {
@@ -394,7 +394,7 @@ impl ReActionBuilder {
     // ========================================================================
 
     /// Allocate a null-terminated copy of a string label
-    fn alloc_label(&mut self, label: Str) -> *u8 {
+    fn alloc_label(&var self, label: Str) -> *u8 {
         unsafe {
             let len = label.len
             let size = len + 1
@@ -416,7 +416,7 @@ impl ReActionBuilder {
     }
 
     /// Track a label allocation
-    fn track_label(&mut self, label: *u8) {
+    fn track_label(&var self, label: *u8) {
         unsafe {
             if self.label_count >= self.label_capacity {
                 // Resize
@@ -451,7 +451,7 @@ impl ReActionBuilder {
     }
 
     /// Add a new entry and return its index
-    fn add_entry(&mut self, gtype: GadgetType, id: u32, parent: i32) -> u32 {
+    fn add_entry(&var self, gtype: GadgetType, id: u32, parent: i32) -> u32 {
         unsafe {
             if self.entry_count >= self.entry_capacity {
                 // Resize
@@ -492,7 +492,7 @@ impl ReActionBuilder {
             }
 
             let idx = self.entry_count
-            let entry = &mut self.entries[idx]
+            let entry = &var self.entries[idx]
             entry.gadget_type = gtype
             entry.id = id
             entry.parent_index = parent
@@ -507,9 +507,9 @@ impl ReActionBuilder {
     }
 
     /// Add a tag to an entry's tag array
-    fn add_tag_to_entry(&mut self, entry_idx: u32, tag: u32, data: u32) {
+    fn add_tag_to_entry(&var self, entry_idx: u32, tag: u32, data: u32) {
         unsafe {
-            let entry = &mut self.entries[entry_idx]
+            let entry = &var self.entries[entry_idx]
 
             if entry.tag_count >= entry.tag_capacity {
                 // Resize
@@ -548,12 +548,12 @@ impl ReActionBuilder {
     }
 
     /// Finalize entry tags by adding TAG_DONE
-    fn finalize_entry_tags(&mut self, entry_idx: u32) {
+    fn finalize_entry_tags(&var self, entry_idx: u32) {
         self.add_tag_to_entry(entry_idx, TAG_DONE, 0)
     }
 
     /// Track a radio button node
-    fn track_radio_node(&mut self, node: *Node) {
+    fn track_radio_node(&var self, node: *Node) {
         unsafe {
             if self.radio_node_count >= self.radio_node_capacity {
                 let new_capacity = self.radio_node_capacity * 2
@@ -586,7 +586,7 @@ impl ReActionBuilder {
     }
 
     /// Track a radio list header
-    fn track_radio_list(&mut self, list: *List) {
+    fn track_radio_list(&var self, list: *List) {
         unsafe {
             if self.radio_list_count >= self.radio_list_capacity {
                 let new_capacity = self.radio_list_capacity * 2
@@ -619,7 +619,7 @@ impl ReActionBuilder {
     }
 
     /// Cleanup objects on failure
-    fn cleanup_objects(&mut self) {
+    fn cleanup_objects(&var self) {
         unsafe {
             var i: u32 = 0
             forever {
@@ -639,7 +639,7 @@ impl ReActionBuilder {
 }
 
 impl Drop for ReActionBuilder {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         unsafe {
             // Free entry tag arrays
             var i: u32 = 0
@@ -732,7 +732,7 @@ pub struct LayoutHandle {
 
 impl LayoutHandle {
     /// Enable outer spacing
-    pub fn space_outer(&mut self) -> LayoutHandle {
+    pub fn space_outer(&var self) -> LayoutHandle {
         unsafe {
             (*self.builder).add_tag_to_entry(self.entry_index, LAYOUT_SpaceOuter, 1)
         }
@@ -743,7 +743,7 @@ impl LayoutHandle {
     }
 
     /// Set bevel style
-    pub fn with_bevel(&mut self, style: BevelStyle) -> LayoutHandle {
+    pub fn with_bevel(&var self, style: BevelStyle) -> LayoutHandle {
         let bevel_val = match style {
             BevelStyle::None => BVS_NONE,
             BevelStyle::Thin => BVS_THIN,
@@ -761,7 +761,7 @@ impl LayoutHandle {
     }
 
     /// Set layout label
-    pub fn with_label(&mut self, label: Str) -> LayoutHandle {
+    pub fn with_label(&var self, label: Str) -> LayoutHandle {
         unsafe {
             let label_ptr = (*self.builder).alloc_label(label)
             (*self.builder).add_tag_to_entry(self.entry_index, LAYOUT_Label, (u32)label_ptr)
@@ -773,7 +773,7 @@ impl LayoutHandle {
     }
 
     /// Add a nested layout
-    pub fn add_layout(&mut self, orientation: LayoutOrientation) -> LayoutHandle {
+    pub fn add_layout(&var self, orientation: LayoutOrientation) -> LayoutHandle {
         let orient_val = match orientation {
             LayoutOrientation::Horizontal => LAYOUT_ORIENT_HORIZ,
             LayoutOrientation::Vertical => LAYOUT_ORIENT_VERT,
@@ -793,7 +793,7 @@ impl LayoutHandle {
     }
 
     /// Add a button
-    pub fn add_button(&mut self, id: u32, label: Str) -> GadgetHandle {
+    pub fn add_button(&var self, id: u32, label: Str) -> GadgetHandle {
         unsafe {
             let parent = (i32)self.entry_index
             let idx = (*self.builder).add_entry(GadgetType::Button, id, parent)
@@ -811,7 +811,7 @@ impl LayoutHandle {
     }
 
     /// Add a checkbox
-    pub fn add_checkbox(&mut self, id: u32, label: Str) -> GadgetHandle {
+    pub fn add_checkbox(&var self, id: u32, label: Str) -> GadgetHandle {
         unsafe {
             let parent = (i32)self.entry_index
             let idx = (*self.builder).add_entry(GadgetType::Checkbox, id, parent)
@@ -829,7 +829,7 @@ impl LayoutHandle {
     }
 
     /// Add an integer gadget
-    pub fn add_integer(&mut self, id: u32, initial: i32) -> GadgetHandle {
+    pub fn add_integer(&var self, id: u32, initial: i32) -> GadgetHandle {
         unsafe {
             let parent = (i32)self.entry_index
             let idx = (*self.builder).add_entry(GadgetType::Integer, id, parent)
@@ -846,7 +846,7 @@ impl LayoutHandle {
     }
 
     /// Add a label (non-interactive text)
-    pub fn add_label(&mut self, text: Str) -> GadgetHandle {
+    pub fn add_label(&var self, text: Str) -> GadgetHandle {
         unsafe {
             let parent = (i32)self.entry_index
             let idx = (*self.builder).add_entry(GadgetType::Label, 0, parent)
@@ -863,7 +863,7 @@ impl LayoutHandle {
     }
 
     /// Add a radio button group
-    pub fn add_radiobutton(&mut self, id: u32, options: Slice<Str>) -> GadgetHandle {
+    pub fn add_radiobutton(&var self, id: u32, options: Slice<Str>) -> GadgetHandle {
         unsafe {
             let parent = (i32)self.entry_index
             let idx = (*self.builder).add_entry(GadgetType::RadioButton, id, parent)
@@ -932,7 +932,7 @@ pub struct GadgetHandle {
 
 impl GadgetHandle {
     /// Set the gadget as disabled
-    pub fn disabled(&mut self) -> GadgetHandle {
+    pub fn disabled(&var self) -> GadgetHandle {
         unsafe {
             (*self.builder).add_tag_to_entry(self.entry_index, GA_Disabled, 1)
         }
@@ -943,7 +943,7 @@ impl GadgetHandle {
     }
 
     /// Set the gadget as read-only
-    pub fn read_only(&mut self) -> GadgetHandle {
+    pub fn read_only(&var self) -> GadgetHandle {
         unsafe {
             (*self.builder).add_tag_to_entry(self.entry_index, GA_ReadOnly, 1)
         }
@@ -954,7 +954,7 @@ impl GadgetHandle {
     }
 
     /// Set checkbox initially selected
-    pub fn selected(&mut self) -> GadgetHandle {
+    pub fn selected(&var self) -> GadgetHandle {
         unsafe {
             (*self.builder).add_tag_to_entry(self.entry_index, GA_Selected, 1)
         }
@@ -965,7 +965,7 @@ impl GadgetHandle {
     }
 
     /// Set integer minimum value
-    pub fn with_minimum(&mut self, min: i32) -> GadgetHandle {
+    pub fn with_minimum(&var self, min: i32) -> GadgetHandle {
         unsafe {
             (*self.builder).add_tag_to_entry(self.entry_index, INTEGER_Minimum, (u32)min)
         }
@@ -976,7 +976,7 @@ impl GadgetHandle {
     }
 
     /// Set integer maximum value
-    pub fn with_maximum(&mut self, max: i32) -> GadgetHandle {
+    pub fn with_maximum(&var self, max: i32) -> GadgetHandle {
         unsafe {
             (*self.builder).add_tag_to_entry(self.entry_index, INTEGER_Maximum, (u32)max)
         }
@@ -1116,7 +1116,7 @@ impl ReActionWindow {
 }
 
 impl Drop for ReActionWindow {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         unsafe {
             // Close window via WM_CLOSE
             if self.window {

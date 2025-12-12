@@ -62,7 +62,7 @@ pub fn capabilities() -> MMUCapabilities {
 
 // Display trait implementation for SystemMMU
 impl Display for SystemMMU {
-    fn fmt(&self, f: &mut Formatter) -> bool {
+    fn fmt(&self, f: &var Formatter) -> bool {
         return match *self {
             SystemMMU::None => f.write_str("None"),
             SystemMMU::M68851 => f.write_str("68851 PMMU"),

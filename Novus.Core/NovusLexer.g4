@@ -22,7 +22,7 @@ KW_EXTERN   : 'extern';
 KW_VAR      : 'var';
 KW_AT       : 'at';
 KW_LET      : 'let';
-KW_MUT      : 'mut';
+// KW_MUT removed - use KW_VAR for mutability everywhere
 KW_FN         : 'fn';
 KW_IMPL       : 'impl';
 KW_SELF       : 'self';
@@ -235,7 +235,7 @@ ASM_HDR_COLON       : ':' -> type(COLON);
 // Keywords needed in asm header
 ASM_HDR_IN          : 'in' -> type(KW_IN);
 ASM_HDR_OUT         : 'out';  // 'out' is only a keyword in ASM_HEADER_MODE
-ASM_HDR_MUT         : 'mut' -> type(KW_MUT);
+ASM_HDR_VAR         : 'var' -> type(KW_VAR);
 ASM_HDR_USE         : 'use' -> type(KW_USE);
 ASM_HDR_SIZEOF      : 'sizeof' -> type(KW_SIZEOF);
 ASM_HDR_OFFSETOF    : 'offsetof' -> type(KW_OFFSETOF);

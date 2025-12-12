@@ -325,7 +325,7 @@ impl SignalHandle {
 
 // Automatic cleanup for SignalHandle (RAII)
 impl Drop for SignalHandle {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         if self.sigbit >= 0 {
             FreeSignal(self.sigbit)
             self.sigbit = -1
@@ -438,7 +438,7 @@ impl MsgPortHandle {
 
 // Automatic cleanup for MsgPort (RAII)
 impl Drop for MsgPortHandle {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         if let p = self.port {
             self.drain_messages()
 
@@ -553,7 +553,7 @@ impl SemaphoreHandle {
 
 // Automatic cleanup for SemaphoreHandle (RAII)
 impl Drop for SemaphoreHandle {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         if (u32)self.sem != 0 {
             // Free the allocated semaphore memory
             let sem_size: u32 = @sizeof(SignalSemaphore)
@@ -575,7 +575,7 @@ pub struct SemaphoreGuard {
 
 // Automatic release for SemaphoreGuard (RAII)
 impl Drop for SemaphoreGuard {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         if (u32)self.sem != 0 {
             unsafe {
                 __novus_release_semaphore(self.sem)

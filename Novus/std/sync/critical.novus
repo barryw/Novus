@@ -120,7 +120,7 @@ impl CriticalSection {
 }
 
 impl Drop for CriticalSection {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         Permit()
     }
 }
@@ -206,7 +206,7 @@ impl InterruptSection {
 }
 
 impl Drop for InterruptSection {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         unsafe {
             Enable()
         }

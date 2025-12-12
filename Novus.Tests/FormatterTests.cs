@@ -354,10 +354,10 @@ from std::core import Result";
     [Fact]
     public void Format_MutableReference_ProperSpacing()
     {
-        var source = "fn test(x: &mut i32) { *x = 42 }";
+        var source = "fn test(x: &var i32) { *x = 42 }";
         var result = Format(source);
 
-        Assert.Contains("x: &mut i32", result);
+        Assert.Contains("x: &var i32", result);
     }
 
     [Fact]
@@ -553,10 +553,10 @@ fn main() { }";
     [Fact]
     public void Format_StaticDeclaration_ProperFormat()
     {
-        var source = "static mut COUNTER:i32=0";
+        var source = "static var COUNTER:i32=0";
         var result = Format(source);
 
-        Assert.Contains("static mut COUNTER: i32 = 0", result);
+        Assert.Contains("static var COUNTER: i32 = 0", result);
     }
 
     // ==================== Trait Tests ====================

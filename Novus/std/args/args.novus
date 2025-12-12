@@ -368,7 +368,7 @@ impl Args {
 
 // RAII cleanup - free RDArgs structure
 impl Drop for Args {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         if (u32)self.rdargs != 0 {
             FreeArgs(self.rdargs)
             self.rdargs = (*RDArgs)0
@@ -433,7 +433,7 @@ impl ArgParser {
     /// Add argument to template
     ///
     /// Returns true on success, false if template buffer full.
-    pub fn add(&mut self, name: Str, arg_type: ArgType) -> bool {
+    pub fn add(&var self, name: Str, arg_type: ArgType) -> bool {
         // Check if we need a comma
         if self.len > 0 {
             if self.len >= 254 {
@@ -611,7 +611,7 @@ impl WorkbenchStartup {
     ///
     /// Use this if you're handling the reply manually or passing
     /// ownership elsewhere.
-    pub fn suppress_reply(&mut self) {
+    pub fn suppress_reply(&var self) {
         self.needs_reply = false
     }
 }
@@ -619,7 +619,7 @@ impl WorkbenchStartup {
 // IMPORTANT: Reply to Workbench startup message on drop
 // This is REQUIRED - the Workbench waits for this reply!
 impl Drop for WorkbenchStartup {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         if self.needs_reply && (u32)self.msg != 0 {
             // Forbid/Permit not needed - ReplyMsg is atomic
             ReplyMsg((*Message)self.msg)

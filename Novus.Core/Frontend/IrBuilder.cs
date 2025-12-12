@@ -1366,7 +1366,7 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
         }
         else if (typeContext is NovusParser.ReferenceTypeContext refCtx)
         {
-            // &T or &mut T - extract from T
+            // &T or &var T - extract from T
             dependencies.UnionWith(ExtractTypeNameDependencies(refCtx.type()));
         }
         else if (typeContext is NovusParser.ArrayTypeWithSizeContext arrayCtx)

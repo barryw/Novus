@@ -64,7 +64,7 @@ impl BankEntry {
         }
     }
 
-    fn set_name(&mut self, name: Str) {
+    fn set_name(&var self, name: Str) {
         var i: u32 = 0
         var max_len: u32 = MAX_ENTRY_NAME_LEN
         if name.len() < MAX_ENTRY_NAME_LEN {
@@ -210,7 +210,7 @@ impl ResourceBank {
     ///
     /// This pins all assets via ChipCache's reference counting.
     /// Assets shared with other banks will have their pin count incremented.
-    pub fn load(&mut self) -> Result<(), BankError> {
+    pub fn load(&var self) -> Result<(), BankError> {
         match self.state {
             BankState::Loaded => return Result::Err(BankError::AlreadyLoaded),
             BankState::Loading => return Result::Err(BankError::AlreadyLoaded),
@@ -254,7 +254,7 @@ impl ResourceBank {
     ///
     /// Decrements pin count for each asset. Assets shared with other
     /// loaded banks will remain in chip RAM.
-    pub fn unload(&mut self) {
+    pub fn unload(&var self) {
         match self.state {
             BankState::Loaded => {},
             BankState::Loading => {},
@@ -266,7 +266,7 @@ impl ResourceBank {
     }
 
     /// Internal helper to unpin entries up to a count
-    fn unload_internal(&mut self, count: u32) {
+    fn unload_internal(&var self, count: u32) {
         var i: u32 = 0
         while i < count {
             ChipCache::unpin(self.entries[i].asset_id)
@@ -346,7 +346,7 @@ impl ResourceBank {
     }
 
     /// Add an entry to the bank (internal, used by builder)
-    fn add_entry(&mut self, entry: BankEntry) -> Result<(), BankError> {
+    fn add_entry(&var self, entry: BankEntry) -> Result<(), BankError> {
         if self.entry_count >= MAX_BANK_ENTRIES {
             return Result::Err(BankError::TooManyEntries)
         }
@@ -359,7 +359,7 @@ impl ResourceBank {
 }
 
 impl Drop for ResourceBank {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         // Unload when bank goes out of scope
         self.unload()
     }
@@ -408,14 +408,14 @@ impl BankBuilder {
     ///     asset.cache_priority()
     /// )
     /// ```
-    pub fn add_asset(&mut self, asset_id: u32, data_ptr: *u8, data_size: u32, priority: Priority) {
+    pub fn add_asset(&var self, asset_id: u32, data_ptr: *u8, data_size: u32, priority: Priority) {
         let entry = BankEntry::new(asset_id, data_ptr, data_size, priority)
         // Ignore errors during building - will fail at build() time
         let _ = self.bank.add_entry(entry)
     }
 
     /// Add an asset with a custom debug name
-    pub fn add_asset_named(&mut self, asset_id: u32, data_ptr: *u8, data_size: u32, priority: Priority, name: Str) {
+    pub fn add_asset_named(&var self, asset_id: u32, data_ptr: *u8, data_size: u32, priority: Priority, name: Str) {
         var entry = BankEntry::new(asset_id, data_ptr, data_size, priority)
         entry.set_name(name)
         let _ = self.bank.add_entry(entry)
@@ -424,26 +424,26 @@ impl BankBuilder {
     /// Add a raw asset (pointer + size) with explicit ID
     ///
     /// Alias for add_asset_named for API compatibility.
-    pub fn add_raw(&mut self, asset_id: u32, ptr: *u8, size: u32, priority: Priority, name: Str) {
+    pub fn add_raw(&var self, asset_id: u32, ptr: *u8, size: u32, priority: Priority, name: Str) {
         var entry = BankEntry::new(asset_id, ptr, size, priority)
         entry.set_name(name)
         let _ = self.bank.add_entry(entry)
     }
 
     /// Set default priority for subsequently added assets
-    pub fn priority(&mut self, p: Priority) {
+    pub fn priority(&var self, p: Priority) {
         self.default_priority = p
     }
 
     /// Mark bank as persistent (never auto-unload)
-    pub fn persistent(&mut self, p: bool) {
+    pub fn persistent(&var self, p: bool) {
         self.bank.persistent = p
     }
 
     /// Build the resource bank
     ///
     /// Returns the bank or an error if configuration is invalid.
-    pub fn build(&mut self) -> Result<ResourceBank, BankError> {
+    pub fn build(&var self) -> Result<ResourceBank, BankError> {
         if self.bank.entry_count == 0 {
             // Empty bank is allowed but unusual
         }

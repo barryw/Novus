@@ -140,8 +140,8 @@ pub fn max(a: i32, b: i32) -> i32 {
     {
         var source = @"
 pub fn count_to(n: i32) -> i32 {
-    let mut sum: i32 = 0
-    let mut i: i32 = 0
+    var sum: i32 = 0
+    var i: i32 = 0
     while i < n {
         sum = sum + i
         i = i + 1

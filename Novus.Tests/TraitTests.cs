@@ -40,7 +40,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 trait Iterator<T> {
-    fn next(&mut self) -> T
+    fn next(&var self) -> T
 }
 pub fn main() -> i32 {
     return 0
@@ -60,7 +60,7 @@ pub fn main() -> i32 {
 trait Drawable {
     fn draw(self) -> i32
     fn clear(self) -> i32
-    fn update(&mut self) -> i32
+    fn update(&var self) -> i32
 }
 pub fn main() -> i32 {
     return 0
@@ -106,13 +106,13 @@ pub fn main() -> i32 {
     {
         var source = @"
 trait Iterator<T> {
-    fn next(&mut self) -> T
+    fn next(&var self) -> T
 }
 struct Counter {
     count: i32
 }
 impl Iterator<i32> for Counter {
-    fn next(&mut self) -> i32 {
+    fn next(&var self) -> i32 {
         self.count = self.count + 1
         return self.count
     }
@@ -163,19 +163,19 @@ pub fn main() -> i32 {
     {
         var source = @"
 trait Incrementable {
-    fn increment(&mut self) -> i32
+    fn increment(&var self) -> i32
 }
 struct Counter {
     value: i32
 }
 impl Incrementable for Counter {
-    fn increment(&mut self) -> i32 {
+    fn increment(&var self) -> i32 {
         self.value = self.value + 1
         return self.value
     }
 }
 pub fn main() -> i32 {
-    let mut c = Counter { value: 0 }
+    var c = Counter { value: 0 }
     return 0
 }";
         var module = BuildIr(source);

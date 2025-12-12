@@ -16,14 +16,14 @@
 // VSprite Quick Start:
 //   var gels = GelsSystem::init(&rp, &vp)?
 //   var vsprite = gels.create_vsprite(16, 16, 4, image_data)?
-//   vsprite.show(&mut gels)?
+//   vsprite.show(&var gels)?
 //   vsprite.move_to(100, 50)
 //   gels.render_frame()  // Sort, draw, and check collisions
 //
 // BOB Quick Start:
 //   var gels = GelsSystem::init(&rp, &vp)?
 //   var bob = gels.create_bob(32, 32, 4, image_data, shadow_mask)?
-//   bob.show(&mut gels)?
+//   bob.show(&var gels)?
 //   bob.move_to(100, 50)
 //   gels.render_frame()  // Sort, draw, and check collisions
 //
@@ -232,7 +232,7 @@ impl GelsSystem {
     // the callback registered for type A is called.
     //
     // Callback signature: fn(sprite_a: *VSprite, sprite_b: *VSprite)
-    pub fn set_collision(&mut self, type_num: u8, callback: *u8) -> Result<(), GelError> {
+    pub fn set_collision(&var self, type_num: u8, callback: *u8) -> Result<(), GelError> {
         if !self.initialized {
             return Result::Err(GelError::GelsNotInitialized)
         }
@@ -248,7 +248,7 @@ impl GelsSystem {
 
     // Sort GEL list by Y position
     // Called automatically by render_frame()
-    pub fn sort(&mut self) {
+    pub fn sort(&var self) {
         if !self.initialized {
             return
         }
@@ -257,7 +257,7 @@ impl GelsSystem {
 
     // Draw all VSprites and BOBs
     // Called automatically by render_frame()
-    pub fn draw(&mut self) {
+    pub fn draw(&var self) {
         if !self.initialized {
             return
         }
@@ -268,7 +268,7 @@ impl GelsSystem {
 
     // Check for collisions and call registered callbacks
     // Called automatically by render_frame()
-    pub fn do_collision(&mut self) {
+    pub fn do_collision(&var self) {
         if !self.initialized {
             return
         }
@@ -277,7 +277,7 @@ impl GelsSystem {
 
     // Complete render frame: sort, draw, animate, and check collisions
     // Call this once per frame in your game loop
-    pub fn render_frame(&mut self) {
+    pub fn render_frame(&var self) {
         if !self.initialized {
             return
         }
@@ -303,7 +303,7 @@ impl GelsSystem {
     }
 
     // Set clipping boundaries for collision detection
-    pub fn set_bounds(&mut self, left: i16, right: i16, top: i16, bottom: i16) {
+    pub fn set_bounds(&var self, left: i16, right: i16, top: i16, bottom: i16) {
         if !self.initialized {
             return
         }
@@ -354,12 +354,12 @@ impl GelsSystem {
     }
 
     // Internal: increment active count (called by VSpriteHandle)
-    pub fn inc_active(&mut self) {
+    pub fn inc_active(&var self) {
         self.active_count++
     }
 
     // Internal: decrement active count (called by VSpriteHandle)
-    pub fn dec_active(&mut self) {
+    pub fn dec_active(&var self) {
         if self.active_count > 0u32 {
             self.active_count--
         }
@@ -368,7 +368,7 @@ impl GelsSystem {
 
 // RAII cleanup for GelsSystem
 impl Drop for GelsSystem {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         if !self.initialized {
             return
         }
@@ -411,7 +411,7 @@ pub enum VSpriteState {
 // Manages a single VSprite with RAII cleanup.
 // State machine: Created -> show() -> Active -> hide() -> Created
 //
-// Note: The show/hide methods take &mut GelsSystem because method calls
+// Note: The show/hide methods take &var GelsSystem because method calls
 // through raw pointers are not supported in Novus.
 pub struct VSpriteHandle {
     vsprite: *VSprite,            // VSprite structure (CHIP RAM)
@@ -489,7 +489,7 @@ impl VSpriteHandle {
     }
 
     // Add VSprite to GEL list (make it visible)
-    pub fn show(&mut self, gels: &mut GelsSystem) -> Result<(), GelError> {
+    pub fn show(&var self, gels: &var GelsSystem) -> Result<(), GelError> {
         match self.state {
             VSpriteState::Active => return Result::Err(GelError::AlreadyActive),
             VSpriteState::Created => {
@@ -503,7 +503,7 @@ impl VSpriteHandle {
     }
 
     // Remove VSprite from GEL list (make it invisible)
-    pub fn hide(&mut self, gels: &mut GelsSystem) -> Result<(), GelError> {
+    pub fn hide(&var self, gels: &var GelsSystem) -> Result<(), GelError> {
         match self.state {
             VSpriteState::Created => return Result::Err(GelError::NotActive),
             VSpriteState::Active => {
@@ -517,7 +517,7 @@ impl VSpriteHandle {
     }
 
     // Move VSprite to absolute position
-    pub fn move_to(&mut self, x: i16, y: i16) {
+    pub fn move_to(&var self, x: i16, y: i16) {
         unsafe {
             *self.vsprite.X = x
             *self.vsprite.Y = y
@@ -530,7 +530,7 @@ impl VSpriteHandle {
     }
 
     // Move by relative offset
-    pub fn move_by(&mut self, dx: i16, dy: i16) {
+    pub fn move_by(&var self, dx: i16, dy: i16) {
         unsafe {
             *self.vsprite.X = self.vsprite.X + dx
             *self.vsprite.Y = self.vsprite.Y + dy
@@ -545,7 +545,7 @@ impl VSpriteHandle {
     // Example:
     //   // This is a player (type 0), it detects enemies (type 1) and bullets (type 2)
     //   sprite.set_collision_masks(1 << COLL_PLAYER, (1 << COLL_ENEMY) | (1 << COLL_BULLET))
-    pub fn set_collision_masks(&mut self, me_mask: u16, hit_mask: u16) {
+    pub fn set_collision_masks(&var self, me_mask: u16, hit_mask: u16) {
         unsafe {
             *self.vsprite.MeMask = me_mask
             *self.vsprite.HitMask = hit_mask
@@ -572,7 +572,7 @@ impl VSpriteHandle {
     }
 
     // Set image data pointer (for animation)
-    pub fn set_image(&mut self, image_data: *u8) {
+    pub fn set_image(&var self, image_data: *u8) {
         self.image_data = image_data
         unsafe {
             *self.vsprite.ImageData = (*i16)image_data
@@ -580,7 +580,7 @@ impl VSpriteHandle {
     }
 
     // Set collision mask data (for pixel-perfect collision)
-    pub fn set_collision_mask(&mut self, mask_data: *u8) {
+    pub fn set_collision_mask(&var self, mask_data: *u8) {
         self.coll_mask = mask_data
         unsafe {
             *self.vsprite.CollMask = (*i16)mask_data
@@ -588,7 +588,7 @@ impl VSpriteHandle {
     }
 
     // Set flags
-    pub fn set_flags(&mut self, flags: i16) {
+    pub fn set_flags(&var self, flags: i16) {
         unsafe {
             *self.vsprite.Flags = flags
         }
@@ -605,7 +605,7 @@ impl VSpriteHandle {
 // a reference to it. The user should call hide() before dropping if they want
 // accurate tracking. The sprite is still properly removed from the GEL list.
 impl Drop for VSpriteHandle {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         // If active, remove from GEL list first
         match self.state {
             VSpriteState::Active => {
@@ -781,7 +781,7 @@ impl BobHandle {
     }
 
     // Add BOB to GEL list (make it visible)
-    pub fn show(&mut self, gels: &mut GelsSystem) -> Result<(), GelError> {
+    pub fn show(&var self, gels: &var GelsSystem) -> Result<(), GelError> {
         match self.state {
             BobState::Active => return Result::Err(GelError::AlreadyActive),
             BobState::Created => {
@@ -796,7 +796,7 @@ impl BobHandle {
 
     // Remove BOB from GEL list (make it invisible)
     // Unlike VSprites, BOBs require WaitBlit for background restore
-    pub fn hide(&mut self, gels: &mut GelsSystem) -> Result<(), GelError> {
+    pub fn hide(&var self, gels: &var GelsSystem) -> Result<(), GelError> {
         match self.state {
             BobState::Created => return Result::Err(GelError::NotActive),
             BobState::Active => {
@@ -811,7 +811,7 @@ impl BobHandle {
     }
 
     // Move BOB to absolute position
-    pub fn move_to(&mut self, x: i16, y: i16) {
+    pub fn move_to(&var self, x: i16, y: i16) {
         unsafe {
             *self.vsprite.X = x
             *self.vsprite.Y = y
@@ -824,7 +824,7 @@ impl BobHandle {
     }
 
     // Move by relative offset
-    pub fn move_by(&mut self, dx: i16, dy: i16) {
+    pub fn move_by(&var self, dx: i16, dy: i16) {
         unsafe {
             *self.vsprite.X = self.vsprite.X + dx
             *self.vsprite.Y = self.vsprite.Y + dy
@@ -832,7 +832,7 @@ impl BobHandle {
     }
 
     // Set collision masks
-    pub fn set_collision_masks(&mut self, me_mask: u16, hit_mask: u16) {
+    pub fn set_collision_masks(&var self, me_mask: u16, hit_mask: u16) {
         unsafe {
             *self.vsprite.MeMask = me_mask
             *self.vsprite.HitMask = hit_mask
@@ -864,7 +864,7 @@ impl BobHandle {
     }
 
     // Set image data pointer (for animation)
-    pub fn set_image(&mut self, image_data: *u8) {
+    pub fn set_image(&var self, image_data: *u8) {
         self.image_data = image_data
         unsafe {
             *self.vsprite.ImageData = (*i16)image_data
@@ -872,7 +872,7 @@ impl BobHandle {
     }
 
     // Set shadow mask pointer (for animation with different masks)
-    pub fn set_shadow(&mut self, image_shadow: *u8) {
+    pub fn set_shadow(&var self, image_shadow: *u8) {
         self.image_shadow = image_shadow
         unsafe {
             *self.bob.ImageShadow = (*i16)image_shadow
@@ -895,7 +895,7 @@ impl BobHandle {
 
 // RAII cleanup for BobHandle
 impl Drop for BobHandle {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         // If active, remove from GEL list first
         match self.state {
             BobState::Active => {
@@ -1004,7 +1004,7 @@ pub struct SequenceHandle {
 
 impl SequenceHandle {
     // Add a frame to this sequence
-    pub fn add_frame(&mut self, width_pixels: u16, height: u16, depth: u16, image_data: *u8, shadow_mask: *u8) -> FrameHandle {
+    pub fn add_frame(&var self, width_pixels: u16, height: u16, depth: u16, image_data: *u8, shadow_mask: *u8) -> FrameHandle {
         // Get sequence data pointer
         let builder_ptr = self.builder
         let seq_idx = self.sequence_idx
@@ -1053,7 +1053,7 @@ impl SequenceHandle {
     }
 
     // Make this sequence loop back to first frame
-    pub fn set_looping(&mut self) {
+    pub fn set_looping(&var self) {
         let builder_ptr = self.builder
         let seq_idx = self.sequence_idx
         unsafe {
@@ -1064,7 +1064,7 @@ impl SequenceHandle {
     }
 
     // Chain to another sequence when this completes
-    pub fn set_chain_to(&mut self, target_sequence: u32) {
+    pub fn set_chain_to(&var self, target_sequence: u32) {
         let builder_ptr = self.builder
         let seq_idx = self.sequence_idx
         unsafe {
@@ -1084,7 +1084,7 @@ pub struct FrameHandle {
 
 impl FrameHandle {
     // Set frame duration in ticks
-    pub fn set_duration(&mut self, ticks: i16) {
+    pub fn set_duration(&var self, ticks: i16) {
         let builder_ptr = self.builder
         let seq_idx = self.sequence_idx
         let frm_idx = self.frame_idx
@@ -1098,7 +1098,7 @@ impl FrameHandle {
     }
 
     // Set position offset from AnimOb
-    pub fn set_offset(&mut self, x_trans: i16, y_trans: i16) {
+    pub fn set_offset(&var self, x_trans: i16, y_trans: i16) {
         let builder_ptr = self.builder
         let seq_idx = self.sequence_idx
         let frm_idx = self.frame_idx
@@ -1113,7 +1113,7 @@ impl FrameHandle {
     }
 
     // Set AnimCRoutine callback
-    pub fn set_on_enter(&mut self, routine: *u8) {
+    pub fn set_on_enter(&var self, routine: *u8) {
         let builder_ptr = self.builder
         let seq_idx = self.sequence_idx
         let frm_idx = self.frame_idx
@@ -1127,7 +1127,7 @@ impl FrameHandle {
     }
 
     // Set collision masks for this frame
-    pub fn set_collision_masks(&mut self, me_mask: u16, hit_mask: u16) {
+    pub fn set_collision_masks(&var self, me_mask: u16, hit_mask: u16) {
         let builder_ptr = self.builder
         let seq_idx = self.sequence_idx
         let frm_idx = self.frame_idx
@@ -1165,30 +1165,30 @@ impl AnimObBuilder {
     }
 
     // Set initial position (pixels)
-    pub fn set_position(&mut self, x: i16, y: i16) {
+    pub fn set_position(&var self, x: i16, y: i16) {
         self.x = x
         self.y = y
     }
 
     // Set velocity (raw 6.10 fixed-point)
-    pub fn set_velocity(&mut self, x_vel: i16, y_vel: i16) {
+    pub fn set_velocity(&var self, x_vel: i16, y_vel: i16) {
         self.x_vel = x_vel
         self.y_vel = y_vel
     }
 
     // Set acceleration
-    pub fn set_acceleration(&mut self, x_accel: i16, y_accel: i16) {
+    pub fn set_acceleration(&var self, x_accel: i16, y_accel: i16) {
         self.x_accel = x_accel
         self.y_accel = y_accel
     }
 
     // Set AnimORoutine callback
-    pub fn set_on_animate(&mut self, routine: *u8) {
+    pub fn set_on_animate(&var self, routine: *u8) {
         self.ob_routine = routine
     }
 
     // Add a new sequence
-    pub fn add_sequence(&mut self) -> SequenceHandle {
+    pub fn add_sequence(&var self) -> SequenceHandle {
         if self.sequence_count >= self.sequence_capacity {
             // Return handle to last sequence if at capacity
             return SequenceHandle {
@@ -1222,7 +1222,7 @@ impl AnimObBuilder {
     }
 
     // Build the AnimOb
-    pub fn build(&mut self) -> Result<AnimObHandle, GelError> {
+    pub fn build(&var self) -> Result<AnimObHandle, GelError> {
         // Count total frames across all sequences
         var total_frames = 0u32
         for seq_i in 0u32..self.sequence_count {
@@ -1321,17 +1321,17 @@ impl AnimObBuilder {
 
             for frame_i in 0u32..seq_frame_count {
                 // Get frame data from unsafe block
-                var mut frame_width: u16 = 0u16
-                var mut frame_height: u16 = 0u16
-                var mut frame_depth: u16 = 0u16
-                var mut frame_image: *u8 = null
-                var mut frame_shadow: *u8 = null
-                var mut frame_duration: i16 = 0
-                var mut frame_x_trans: i16 = 0
-                var mut frame_y_trans: i16 = 0
-                var mut frame_c_routine: *u8 = null
-                var mut frame_me_mask: u16 = 0u16
-                var mut frame_hit_mask: u16 = 0u16
+                var frame_width: u16 = 0u16
+                var frame_height: u16 = 0u16
+                var frame_depth: u16 = 0u16
+                var frame_image: *u8 = null
+                var frame_shadow: *u8 = null
+                var frame_duration: i16 = 0
+                var frame_x_trans: i16 = 0
+                var frame_y_trans: i16 = 0
+                var frame_c_routine: *u8 = null
+                var frame_me_mask: u16 = 0u16
+                var frame_hit_mask: u16 = 0u16
 
                 unsafe {
                     let seq_for_frame = &sequences_ptr[seq_i]
@@ -1400,7 +1400,7 @@ impl AnimObBuilder {
                 }
 
                 // Initialize Bob
-                var mut bob_flags: i16 = (i16)SAVEBACK
+                var bob_flags: i16 = (i16)SAVEBACK
                 if frame_shadow != null {
                     bob_flags = bob_flags | (i16)OVERLAY
                 }
@@ -1530,7 +1530,7 @@ pub struct AnimObHandle {
 
 impl AnimObHandle {
     // Add to GEL list and start animating
-    pub fn show(&mut self, gels: &mut GelsSystem) -> Result<(), GelError> {
+    pub fn show(&var self, gels: &var GelsSystem) -> Result<(), GelError> {
         match self.state {
             AnimObState::Active => return Result::Err(GelError::AlreadyActive),
             AnimObState::Building => return Result::Err(GelError::NotReady),
@@ -1558,7 +1558,7 @@ impl AnimObHandle {
     }
 
     // Remove from GEL list
-    pub fn hide(&mut self, gels: &mut GelsSystem) -> Result<(), GelError> {
+    pub fn hide(&var self, gels: &var GelsSystem) -> Result<(), GelError> {
         match self.state {
             AnimObState::Ready => return Result::Err(GelError::NotActive),
             AnimObState::Building => return Result::Err(GelError::NotReady),
@@ -1602,7 +1602,7 @@ impl AnimObHandle {
     }
 
     // Move to absolute pixel position
-    pub fn move_to(&mut self, x: i16, y: i16) {
+    pub fn move_to(&var self, x: i16, y: i16) {
         let fp_shift = 6
         unsafe {
             *self.anim_ob.AnX = x << fp_shift
@@ -1619,7 +1619,7 @@ impl AnimObHandle {
     }
 
     // Move by relative offset
-    pub fn move_by(&mut self, dx: i16, dy: i16) {
+    pub fn move_by(&var self, dx: i16, dy: i16) {
         let fp_shift = 6
         unsafe {
             *self.anim_ob.AnX = self.anim_ob.AnX + (dx << fp_shift)
@@ -1628,7 +1628,7 @@ impl AnimObHandle {
     }
 
     // Set velocity (raw fixed-point)
-    pub fn set_velocity(&mut self, x_vel: i16, y_vel: i16) {
+    pub fn set_velocity(&var self, x_vel: i16, y_vel: i16) {
         unsafe {
             *self.anim_ob.XVel = x_vel
             *self.anim_ob.YVel = y_vel
@@ -1636,7 +1636,7 @@ impl AnimObHandle {
     }
 
     // Set velocity in pixels per frame (convenience)
-    pub fn set_velocity_pixels(&mut self, x: i16, y: i16) {
+    pub fn set_velocity_pixels(&var self, x: i16, y: i16) {
         let fp_shift = 6
         self.set_velocity(x << fp_shift, y << fp_shift)
     }
@@ -1647,7 +1647,7 @@ impl AnimObHandle {
     }
 
     // Set acceleration
-    pub fn set_acceleration(&mut self, x_accel: i16, y_accel: i16) {
+    pub fn set_acceleration(&var self, x_accel: i16, y_accel: i16) {
         unsafe {
             *self.anim_ob.XAccel = x_accel
             *self.anim_ob.YAccel = y_accel
@@ -1660,7 +1660,7 @@ impl AnimObHandle {
     }
 
     // Set collision masks for all components
-    pub fn set_collision_masks(&mut self, me_mask: u16, hit_mask: u16) {
+    pub fn set_collision_masks(&var self, me_mask: u16, hit_mask: u16) {
         for i in 0u32..self.comp_count {
             unsafe {
                 *self.comp_data[i].vsprite.MeMask = me_mask
@@ -1701,7 +1701,7 @@ impl AnimObHandle {
 
 // RAII cleanup for AnimObHandle
 impl Drop for AnimObHandle {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         // If active, remove from GEL list
         match self.state {
             AnimObState::Active => {
@@ -1751,12 +1751,12 @@ impl Drop for AnimObHandle {
 // GelsSystem animation extensions
 impl GelsSystem {
     // Create a new animation builder
-    pub fn create_anim_builder(&mut self) -> AnimObBuilder {
+    pub fn create_anim_builder(&var self) -> AnimObBuilder {
         return AnimObBuilder::new(self)
     }
 
     // Advance all animations (called by render_frame)
-    pub fn animate(&mut self) {
+    pub fn animate(&var self) {
         if !self.initialized {
             return
         }

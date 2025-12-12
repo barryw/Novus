@@ -264,7 +264,7 @@ impl AreaContext {
     // ========================================================================
 
     /// Begin a new filled polygon at (x, y).
-    pub fn begin(&mut self, x: i16, y: i16) -> Result<(), GraphicsError> {
+    pub fn begin(&var self, x: i16, y: i16) -> Result<(), GraphicsError> {
         if !self.attached {
             return Result::Err(GraphicsError::InvalidRastPort)
         }
@@ -276,12 +276,12 @@ impl AreaContext {
     }
 
     /// Begin a new polygon at a Point.
-    pub fn begin_at(&mut self, p: &Point) -> Result<(), GraphicsError> {
+    pub fn begin_at(&var self, p: &Point) -> Result<(), GraphicsError> {
         return self.begin(p.x, p.y)
     }
 
     /// Add a vertex to the current polygon.
-    pub fn vertex(&mut self, x: i16, y: i16) -> Result<(), GraphicsError> {
+    pub fn vertex(&var self, x: i16, y: i16) -> Result<(), GraphicsError> {
         if !self.attached {
             return Result::Err(GraphicsError::InvalidRastPort)
         }
@@ -293,12 +293,12 @@ impl AreaContext {
     }
 
     /// Add a vertex at a Point.
-    pub fn vertex_at(&mut self, p: &Point) -> Result<(), GraphicsError> {
+    pub fn vertex_at(&var self, p: &Point) -> Result<(), GraphicsError> {
         return self.vertex(p.x, p.y)
     }
 
     /// Close and fill the current polygon.
-    pub fn end_fill(&mut self) -> Result<(), GraphicsError> {
+    pub fn end_fill(&var self) -> Result<(), GraphicsError> {
         if !self.attached {
             return Result::Err(GraphicsError::InvalidRastPort)
         }
@@ -314,7 +314,7 @@ impl AreaContext {
     // ========================================================================
 
     /// Draw a filled ellipse.
-    pub fn ellipse_fill(&mut self, cx: i16, cy: i16, rx: i16, ry: i16) -> Result<(), GraphicsError> {
+    pub fn ellipse_fill(&var self, cx: i16, cy: i16, rx: i16, ry: i16) -> Result<(), GraphicsError> {
         if !self.attached {
             return Result::Err(GraphicsError::InvalidRastPort)
         }
@@ -330,17 +330,17 @@ impl AreaContext {
     }
 
     /// Draw a filled ellipse from an Ellipse shape.
-    pub fn ellipse_shape_fill(&mut self, e: &Ellipse) -> Result<(), GraphicsError> {
+    pub fn ellipse_shape_fill(&var self, e: &Ellipse) -> Result<(), GraphicsError> {
         return self.ellipse_fill(e.center.x, e.center.y, e.radius_x, e.radius_y)
     }
 
     /// Draw a filled circle.
-    pub fn circle_fill(&mut self, cx: i16, cy: i16, radius: i16) -> Result<(), GraphicsError> {
+    pub fn circle_fill(&var self, cx: i16, cy: i16, radius: i16) -> Result<(), GraphicsError> {
         return self.ellipse_fill(cx, cy, radius, radius)
     }
 
     /// Draw a filled circle at a Point.
-    pub fn circle_fill_at(&mut self, center: &Point, radius: i16) -> Result<(), GraphicsError> {
+    pub fn circle_fill_at(&var self, center: &Point, radius: i16) -> Result<(), GraphicsError> {
         return self.ellipse_fill(center.x, center.y, radius, radius)
     }
 
@@ -368,7 +368,7 @@ impl AreaContext {
     // ========================================================================
 
     /// Detach from the RastPort without dropping.
-    pub fn detach(&mut self) {
+    pub fn detach(&var self) {
         if !self.attached {
             return
         }
@@ -385,7 +385,7 @@ impl AreaContext {
 }
 
 impl Drop for AreaContext {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         self.detach()
     }
 }

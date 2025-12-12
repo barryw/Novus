@@ -112,7 +112,7 @@ impl Rng {
     /// ```novus
     /// let value = rng.next_u32()
     /// ```
-    pub fn next_u32(&mut self) -> u32 {
+    pub fn next_u32(&var self) -> u32 {
         // xorshift32 algorithm
         var x = self.state
         x = x ^ (x << 13)
@@ -128,7 +128,7 @@ impl Rng {
     /// ```novus
     /// let value = rng.next_u16()
     /// ```
-    pub fn next_u16(&mut self) -> u16 {
+    pub fn next_u16(&var self) -> u16 {
         return (u16)(self.next_u32() >> 16)
     }
 
@@ -138,7 +138,7 @@ impl Rng {
     /// ```novus
     /// let value = rng.next_u8()
     /// ```
-    pub fn next_u8(&mut self) -> u8 {
+    pub fn next_u8(&var self) -> u8 {
         return (u8)(self.next_u32() >> 24)
     }
 
@@ -148,7 +148,7 @@ impl Rng {
     /// ```novus
     /// let value = rng.next_i32()
     /// ```
-    pub fn next_i32(&mut self) -> i32 {
+    pub fn next_i32(&var self) -> i32 {
         return (i32)self.next_u32()
     }
 
@@ -160,7 +160,7 @@ impl Rng {
     ///     // 50% chance
     /// }
     /// ```
-    pub fn next_bool(&mut self) -> bool {
+    pub fn next_bool(&var self) -> bool {
         // Use high bit for best distribution
         // 0x80000000 = 1 << 31
         let high_bit: u32 = (u32)1 << 31
@@ -180,7 +180,7 @@ impl Rng {
     /// let index = rng.range_u32(0, array.len())
     /// ```
     @suppress("W0002", "Arithmetic operations are safe within validated range")
-    pub fn range_u32(&mut self, min: u32, max: u32) -> u32 {
+    pub fn range_u32(&var self, min: u32, max: u32) -> u32 {
         if min >= max {
             return min
         }
@@ -218,7 +218,7 @@ impl Rng {
     /// let offset = rng.range_i32(-10, 11)  // Returns -10 to 10
     /// ```
     @suppress("W0002", "Casts are safe within validated range")
-    pub fn range_i32(&mut self, min: i32, max: i32) -> i32 {
+    pub fn range_i32(&var self, min: i32, max: i32) -> i32 {
         if min >= max {
             return min
         }
@@ -237,7 +237,7 @@ impl Rng {
     /// let buffer: [u8; 64]
     /// rng.fill_bytes(&buffer, 64)
     /// ```
-    pub fn fill_bytes(&mut self, buffer: *u8, len: u32) {
+    pub fn fill_bytes(&var self, buffer: *u8, len: u32) {
         var i: u32 = 0
 
         // Fill 4 bytes at a time while we can
@@ -266,7 +266,7 @@ impl Rng {
     ///
     /// Internal helper for shuffle operations.
     /// Returns a value in [0, n)
-    fn random_index(&mut self, n: u32) -> u32 {
+    fn random_index(&var self, n: u32) -> u32 {
         return self.range_u32(0, n)
     }
 }
@@ -329,7 +329,7 @@ pub fn random_range(min: u32, max: u32) -> u32 {
 /// // ... initialize deck ...
 /// shuffle_u32(&deck, 52, &rng)
 /// ```
-pub fn shuffle_u32(arr: *u32, len: u32, rng: &mut Rng) {
+pub fn shuffle_u32(arr: *u32, len: u32, rng: &var Rng) {
     if len <= 1 {
         return
     }
@@ -354,7 +354,7 @@ pub fn shuffle_u32(arr: *u32, len: u32, rng: &mut Rng) {
 /// let bytes: [u8; 256]
 /// shuffle_u8(&bytes, 256, &rng)
 /// ```
-pub fn shuffle_u8(arr: *u8, len: u32, rng: &mut Rng) {
+pub fn shuffle_u8(arr: *u8, len: u32, rng: &var Rng) {
     if len <= 1 {
         return
     }
@@ -379,7 +379,7 @@ pub fn shuffle_u8(arr: *u8, len: u32, rng: &mut Rng) {
 /// let values: [i32; 100]
 /// shuffle_i32(&values, 100, &rng)
 /// ```
-pub fn shuffle_i32(arr: *i32, len: u32, rng: &mut Rng) {
+pub fn shuffle_i32(arr: *i32, len: u32, rng: &var Rng) {
     if len <= 1 {
         return
     }
@@ -410,7 +410,7 @@ pub fn shuffle_i32(arr: *i32, len: u32, rng: &mut Rng) {
 /// let index = random_index(array_len, &rng)
 /// let selected = array[index]
 /// ```
-pub fn random_index(len: u32, rng: &mut Rng) -> u32 {
+pub fn random_index(len: u32, rng: &var Rng) -> u32 {
     return rng.range_u32(0, len)
 }
 
@@ -421,7 +421,7 @@ pub fn random_index(len: u32, rng: &mut Rng) -> u32 {
 /// let colors = [0xFF0000, 0x00FF00, 0x0000FF]
 /// let random_color = pick_u32(&colors, 3, &rng)
 /// ```
-pub fn pick_u32(arr: *u32, len: u32, rng: &mut Rng) -> u32 {
+pub fn pick_u32(arr: *u32, len: u32, rng: &var Rng) -> u32 {
     if len == 0 {
         return 0
     }
@@ -436,7 +436,7 @@ pub fn pick_u32(arr: *u32, len: u32, rng: &mut Rng) -> u32 {
 /// let options = [1, 2, 3, 4, 5, 6]
 /// let roll = pick_u8(&options, 6, &rng)
 /// ```
-pub fn pick_u8(arr: *u8, len: u32, rng: &mut Rng) -> u8 {
+pub fn pick_u8(arr: *u8, len: u32, rng: &var Rng) -> u8 {
     if len == 0 {
         return 0
     }

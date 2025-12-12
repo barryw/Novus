@@ -354,7 +354,7 @@ pub trait From<T> {
 // without requiring manual cleanup in every code path.
 //
 // Requirements:
-// - drop(&mut self): Clean up the resource
+// - drop(&var self): Clean up the resource
 //
 // The drop() method is called automatically by the compiler:
 // - At the end of a block scope
@@ -369,7 +369,7 @@ pub trait From<T> {
 // Example implementation:
 // ```novus
 // impl Drop for MemoryBlock {
-//     fn drop(&mut self) {
+//     fn drop(&var self) {
 //         if self.size > 0 {
 //             unsafe { FreeMem(self.ptr, self.size) }
 //             self.ptr = (*u8)0
@@ -396,7 +396,7 @@ pub trait From<T> {
 // - Use unsafe for operations that cannot fail
 // - Avoid cyclic references (future: use weak references)
 pub trait Drop {
-    fn drop(&mut self)
+    fn drop(&var self)
 }
 
 // ============================================================================
@@ -542,13 +542,13 @@ pub trait Index<I, T> {
 // Example implementation:
 // ```novus
 // impl IndexMut<u32, i32> for MyArray {
-//     fn index_set(&mut self, idx: u32, value: i32) {
+//     fn index_set(&var self, idx: u32, value: i32) {
 //         self.data[idx] = value
 //     }
 // }
 // ```
 pub trait IndexMut<I, T> {
-    fn index_set(&mut self, idx: I, value: T)
+    fn index_set(&var self, idx: I, value: T)
 }
 
 // ============================================================================

@@ -31,7 +31,7 @@ impl SimpleBlitterGuard {
 }
 
 impl Drop for SimpleBlitterGuard {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         if self.acquired {
             WaitBlit()
             DisownBlitter()

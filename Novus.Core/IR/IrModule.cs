@@ -1226,7 +1226,7 @@ public class IrMutReferenceType : IrType
     }
 
     public override int SizeInBytes => 4; // References are 32-bit addresses on 68k
-    public override string Name => $"&mut {PointeeType.Name}";
+    public override string Name => $"&var {PointeeType.Name}";
 }
 
 /// <summary>
@@ -1646,7 +1646,7 @@ public class IrStructType : IrType
             return type;
         }
 
-        // Handle mutable reference types (e.g., &mut T -> &mut i32)
+        // Handle mutable reference types (e.g., &var T -> &var i32)
         if (type is IrMutReferenceType mutRefType)
         {
             var substitutedInner = SubstituteType(mutRefType.PointeeType, substitutions);
@@ -1816,7 +1816,7 @@ public class IrFunctionAddress : IrValue
 
 /// <summary>
 /// Borrow value - represents a reference to another value
-/// Created by & or &mut expressions
+/// Created by & or &var expressions
 /// </summary>
 public class IrBorrowValue : IrValue
 {

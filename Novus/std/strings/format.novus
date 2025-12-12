@@ -27,7 +27,7 @@ impl StackFormatter {
 
     // Write a string slice to the formatter
     // Returns true on success, false if buffer is full
-    pub fn write_str(&mut self, s: Str) -> bool {
+    pub fn write_str(&var self, s: Str) -> bool {
         let bytes_needed = s.len
         if self.len + bytes_needed > 256u32 {
             return false  // Buffer full
@@ -45,7 +45,7 @@ impl StackFormatter {
 
     // Write a single character to the formatter
     // Returns true on success, false if buffer is full
-    pub fn write_char(&mut self, c: u8) -> bool {
+    pub fn write_char(&var self, c: u8) -> bool {
         if self.len >= 256u32 {
             return false  // Buffer full
         }
@@ -89,13 +89,13 @@ impl Formatter {
 
     // Write a string slice to the formatter
     // Returns true on success, false on allocation failure
-    pub fn write_str(&mut self, s: Str) -> bool {
+    pub fn write_str(&var self, s: Str) -> bool {
         self.buffer.push_str(s)
     }
 
     // Write a single character to the formatter
     // Returns true on success, false on allocation failure
-    pub fn write_char(&mut self, c: u8) -> bool {
+    pub fn write_char(&var self, c: u8) -> bool {
         self.buffer.push_byte(c)
     }
 
@@ -114,12 +114,12 @@ impl Formatter {
 // Types should implement Display for how they want to appear to end users
 // Returns true on success, false on allocation failure
 pub trait Display {
-    fn fmt(&self, f: &mut Formatter) -> bool
+    fn fmt(&self, f: &var Formatter) -> bool
 }
 
 // Debug trait - for programmer-facing debug output
 // Types should implement Debug for detailed inspection/debugging
 // Returns true on success, false on allocation failure
 pub trait Debug {
-    fn fmt(&self, f: &mut Formatter) -> bool
+    fn fmt(&self, f: &var Formatter) -> bool
 }

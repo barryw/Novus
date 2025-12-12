@@ -122,7 +122,7 @@ public class CopyTypeTests
         var code = @"
             fn test() {
                 let x: i32 = 0
-                var mut i: i32 = 0
+                var i: i32 = 0
                 while i < 10 {
                     let y = x    // Copy each iteration
                     i = i + 1

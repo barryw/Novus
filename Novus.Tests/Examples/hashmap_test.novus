@@ -9,7 +9,7 @@ fn main() -> i32 {
     let map_opt: Option<HashMap<u32, u32>> = HashMap::<u32, u32>::new()
 
     match map_opt {
-        Some(mut map) => {
+        Some(var map) => {
             // Insert some values
             map.insert(1u32, 100u32)
             map.insert(2u32, 200u32)

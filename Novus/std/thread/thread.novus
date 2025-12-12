@@ -87,7 +87,7 @@ impl ThreadHandle {
     /// Wait for the thread to complete and free its resources
     /// Returns 0 on success
     /// Note: This blocks the calling task until thread exits
-    pub fn wait(&mut self) -> i32 {
+    pub fn wait(&var self) -> i32 {
         if !self.is_running {
             return 0
         }
@@ -131,7 +131,7 @@ impl ThreadHandle {
 
     /// Free all thread resources
     /// Called after thread has terminated and signaled us
-    fn free_resources(&mut self) {
+    fn free_resources(&var self) {
         // Free the communication data
         if (u32)self.comm != 0 {
             unsafe {
@@ -166,7 +166,7 @@ impl ThreadHandle {
     }
 
     /// Clean up thread resources - waits if still running
-    pub fn cleanup(&mut self) {
+    pub fn cleanup(&var self) {
         if self.is_running {
             // Must wait for thread to finish before freeing
             self.wait()
@@ -178,7 +178,7 @@ impl ThreadHandle {
 }
 
 impl Drop for ThreadHandle {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         self.cleanup()
     }
 }

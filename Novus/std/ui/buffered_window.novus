@@ -223,7 +223,7 @@ impl BufferedWindow {
     ///     ...
     /// }
     /// ```
-    pub fn wait_event(&mut self) -> WindowEvent {
+    pub fn wait_event(&var self) -> WindowEvent {
         let event = self.window.wait_event()
 
         match event {
@@ -266,7 +266,7 @@ impl BufferedWindow {
     ///
     /// Like wait_event() but returns None if no events are pending.
     /// Also handles REFRESHWINDOW and NEWSIZE automatically.
-    pub fn poll_event(&mut self) -> Option<WindowEvent> {
+    pub fn poll_event(&var self) -> Option<WindowEvent> {
         let event_opt = self.window.poll_event()
 
         match event_opt {
@@ -315,7 +315,7 @@ impl BufferedWindow {
     /// The old buffer contents are LOST. Redraw after resizing.
     ///
     /// Returns Err if buffer allocation fails (rare - out of memory).
-    fn resize_buffer(&mut self, new_width: i16, new_height: i16) -> Result<(), GraphicsError> {
+    fn resize_buffer(&var self, new_width: i16, new_height: i16) -> Result<(), GraphicsError> {
         // Don't resize if dimensions haven't changed
         if new_width == self.width && new_height == self.height {
             return Result::Ok(())
@@ -381,7 +381,7 @@ impl BufferedWindow {
 
 // Automatic cleanup for BufferedWindow (RAII)
 impl Drop for BufferedWindow {
-    fn drop(&mut self) {
+    fn drop(&var self) {
         // Check if buffer is non-null
         if self.buffer {
             unsafe {

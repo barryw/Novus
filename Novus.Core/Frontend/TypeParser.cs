@@ -185,14 +185,14 @@ public class TypeParser : ITypeSubstitutionEngine
     }
 
     /// <summary>
-    /// Parse reference type: &T or &mut T
+    /// Parse reference type: &T or &var T
     /// </summary>
     private IrType ParseReferenceType(NovusParser.ReferenceTypeContext context)
     {
         var pointeeType = ParseType(context.type());
 
-        // Check if this is a mutable reference (&mut T) or immutable reference (&T)
-        bool isMutable = context.GetChild(1)?.GetText() == "mut";
+        // Check if this is a mutable reference (&var T) or immutable reference (&T)
+        bool isMutable = context.KW_VAR() != null;
 
         return isMutable
             ? _context.GetMutReferenceType(pointeeType)
@@ -1389,7 +1389,7 @@ public class TypeParser : ITypeSubstitutionEngine
         }
         else if (type is IrMutReferenceType mutRefType)
         {
-            return $"&mut {GetTypeCacheKey(mutRefType.PointeeType)}";
+            return $"&var {GetTypeCacheKey(mutRefType.PointeeType)}";
         }
         else
         {

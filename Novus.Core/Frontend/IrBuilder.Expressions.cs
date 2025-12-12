@@ -910,7 +910,7 @@ public partial class IrBuilder
                     continue;
                 }
 
-                // Coercion: &T → *T or &mut T → *T when parameter expects a pointer
+                // Coercion: &T → *T or &var T → *T when parameter expects a pointer
                 if (paramType is IrPointerType expectedPtrType &&
                     (argValue.Type is IrReferenceType argRefType || argValue.Type is IrMutReferenceType argMutRefType))
                 {
@@ -1287,7 +1287,7 @@ public partial class IrBuilder
             var paramType = function.Parameters[i].Type;
             var argValue = arguments[i];
 
-            // Coercion: &T → *T or &mut T → *T when parameter expects a pointer
+            // Coercion: &T → *T or &var T → *T when parameter expects a pointer
             if (paramType is IrPointerType expectedPtrType &&
                 (argValue.Type is IrReferenceType argRefType || argValue.Type is IrMutReferenceType argMutRefType))
             {
@@ -1420,7 +1420,7 @@ public partial class IrBuilder
         }
 
         // Try to infer generic type from the method arguments
-        // For Vec::push(&mut self, value: T), paramContexts contains just [value: T]
+        // For Vec::push(&var self, value: T), paramContexts contains just [value: T]
         // methodArgs contains the user-provided arguments (not including self)
         // So paramContexts[0] corresponds to methodArgs[0]
 
@@ -1725,7 +1725,7 @@ public partial class IrBuilder
             }
             else if (mutRefType.PointeeType is IrGenericType genericType)
             {
-                // Handle generic type parameters (e.g., &mut K where K: Hash)
+                // Handle generic type parameters (e.g., &var K where K: Hash)
                 // During monomorphization, substitute K with concrete type from _currentTypeSubstitutions
                 if (_currentTypeSubstitutions != null && _currentTypeSubstitutions.TryGetValue(genericType.ParameterName, out var concreteType))
                 {
@@ -1806,7 +1806,7 @@ public partial class IrBuilder
             {
                 monomorphizedStruct = receiverStruct;
             }
-            // Check if receiver is a pointer to a monomorphized struct (&Vec<i32>, &mut Vec<i32>)
+            // Check if receiver is a pointer to a monomorphized struct (&Vec<i32>, &var Vec<i32>)
             else if (receiverType is IrPointerType ptrType && ptrType.PointeeType is IrStructType pointeeStruct && pointeeStruct.CacheKey != null)
             {
                 monomorphizedStruct = pointeeStruct;
@@ -1816,7 +1816,7 @@ public partial class IrBuilder
             {
                 monomorphizedStruct = refPointeeStruct;
             }
-            // Check if receiver is a mutable reference to a monomorphized struct (&mut Vec<i32>)
+            // Check if receiver is a mutable reference to a monomorphized struct (&var Vec<i32>)
             else if (receiverType is IrMutReferenceType mutRefType && mutRefType.PointeeType is IrStructType mutRefPointeeStruct && mutRefPointeeStruct.CacheKey != null)
             {
                 monomorphizedStruct = mutRefPointeeStruct;
@@ -1826,7 +1826,7 @@ public partial class IrBuilder
             {
                 monomorphizedEnum = receiverEnum;
             }
-            // Check if receiver is a pointer to a monomorphized enum (&Option<i32>, &mut Option<i32>)
+            // Check if receiver is a pointer to a monomorphized enum (&Option<i32>, &var Option<i32>)
             else if (receiverType is IrPointerType ptrType2 && ptrType2.PointeeType is IrEnumType pointeeEnum && pointeeEnum.CacheKey != null)
             {
                 monomorphizedEnum = pointeeEnum;
@@ -1836,7 +1836,7 @@ public partial class IrBuilder
             {
                 monomorphizedEnum = refPointeeEnum;
             }
-            // Check if receiver is a mutable reference to a monomorphized enum (&mut Option<i32>)
+            // Check if receiver is a mutable reference to a monomorphized enum (&var Option<i32>)
             else if (receiverType is IrMutReferenceType mutRefType2 && mutRefType2.PointeeType is IrEnumType mutRefPointeeEnum && mutRefPointeeEnum.CacheKey != null)
             {
                 monomorphizedEnum = mutRefPointeeEnum;
@@ -1969,7 +1969,7 @@ public partial class IrBuilder
         }
 
         // Build arguments list: [receiver, ...user_args]
-        // Check if we need to borrow the receiver (for &self or &mut self)
+        // Check if we need to borrow the receiver (for &self or &var self)
         IrValue receiverArg = receiver;
         if (method.Parameters.Count > 0)
         {
@@ -2118,8 +2118,8 @@ public partial class IrBuilder
     {
         var exprContext = context.expression();
 
-        // Check if this is a mutable borrow (&mut) or immutable borrow (&)
-        bool isMutable = context.GetChild(1)?.GetText() == "mut";
+        // Check if this is a mutable borrow (&var) or immutable borrow (&)
+        bool isMutable = context.KW_VAR() != null;
 
         // Handle function pointers specially (backward compatibility)
         if (exprContext.Start.Type == NovusLexer.IDENTIFIER &&
@@ -2551,8 +2551,8 @@ public partial class IrBuilder
             return false;
         }
 
-        // Build arguments: borrow base (&mut self), index value, value to set
-        // IndexMut::index_set takes &mut self, idx, and value
+        // Build arguments: borrow base (&var self), index value, value to set
+        // IndexMut::index_set takes &var self, idx, and value
         var baseBorrowed = new IrBorrowValue(baseExpr, _typeInterner.GetMutReferenceType(baseExpr.Type), true);
 
         // Create the call (index_set returns void)

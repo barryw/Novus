@@ -157,7 +157,7 @@ public class DefaultTypeChecker : ITypeChecker
             "*" when operandType is IrReferenceType rt => rt.PointeeType,
             "*" when operandType is IrMutReferenceType mrt => mrt.PointeeType,
             "&" => new IrReferenceType(operandType),
-            "&mut" => new IrMutReferenceType(operandType),
+            "&var" => new IrMutReferenceType(operandType),
             _ => null
         };
     }

@@ -193,7 +193,7 @@ public partial class IrBuilder
         _currentBlock = deferBlock;
 
         // Generate call to var.drop()
-        // This desugars to: Type_drop(&mut var)
+        // This desugars to: Type_drop(&var var)
         string typeName;
         if (type is IrStructType structType)
         {

@@ -116,7 +116,7 @@ public partial class IrBuilder
             }
             else
             {
-                // Parse the expression and call expr.fmt(&mut f)
+                // Parse the expression and call expr.fmt(&var f)
                 EmitFormatExpression(formatterVarName, formatterType, segment.Expression);
             }
         }
@@ -274,11 +274,11 @@ public partial class IrBuilder
                 return;
             }
 
-            // Call expr.fmt(&mut formatter)
+            // Call expr.fmt(&var formatter)
             // First parameter is &self (the expression value)
             var exprBorrow = new IrBorrowValue(exprValue, fmtMethod.Parameters[0].Type, false);
 
-            // Second parameter is &mut Formatter
+            // Second parameter is &var Formatter
             var formatterVarRef = new IrVariable(formatterVarName, formatterType);
             var formatterBorrow = new IrBorrowValue(formatterVarRef, fmtMethod.Parameters[1].Type, true);
 
@@ -595,10 +595,10 @@ public partial class IrBuilder
         // Create a variable reference to the loaded vec field
         var vecVarRef = new IrVariable(vecTempName, vecField.Type);
 
-        // Create a mutable borrow of the vec for calling drop(&mut self)
+        // Create a mutable borrow of the vec for calling drop(&var self)
         var vecMutBorrow = new IrBorrowValue(vecVarRef, new IrMutReferenceType(vecField.Type), isMutable: true);
 
-        // Call Vec_u8_drop(&mut string.vec)
+        // Call Vec_u8_drop(&var string.vec)
         var dropCall = new IrCall(dropMethodName, IrVoidType.Instance, null);
         dropCall.Arguments.Add(vecMutBorrow);
         _currentBlock!.AddInstruction(dropCall);

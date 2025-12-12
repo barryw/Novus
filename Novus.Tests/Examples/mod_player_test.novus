@@ -124,7 +124,7 @@ pub fn main() -> i32 {
     let player_result = ModPlayer::new(is_pal)
 
     match player_result {
-        Result::Ok(mut player) => {
+        Result::Ok(var player) => {
             PutStr("CIA interrupt installed OK\n")
 
             // Check mt_Enable before init
