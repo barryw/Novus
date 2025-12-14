@@ -1,0 +1,36 @@
+// Simple Async Sleep Test
+// Tests the basic async runtime with a single sleep
+//
+// Expected output:
+//   Starting async test...
+//   Sleeping for 2 seconds...
+//   Done!
+//
+// The key thing: CPU usage should be near zero while sleeping.
+// We're using Exec Wait(), not busy-polling.
+
+from std::core import Result
+from std::async::executor import block_on_sleep, ExecutorError
+from std::async::sleep import sleep
+from std::os::timer import Duration
+from std::io::file import write
+
+fn main() -> i32 {
+    write("Starting async test...\n")
+    write("Sleeping for 2 seconds...\n")
+
+    // Create a sleep future for 2 seconds
+    let sleep_future = sleep(Duration::secs(2))
+
+    // Run it to completion
+    match block_on_sleep(sleep_future) {
+        Result::Ok(_) => {
+            write("Done!\n")
+            return 0
+        },
+        Result::Err(e) => {
+            write("Error: %s\n", e.message())
+            return 1
+        }
+    }
+}

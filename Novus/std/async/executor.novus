@@ -1,0 +1,210 @@
+// Novus Standard Library - Async Executor
+// Namespace: std::async::executor
+//
+// The executor runs futures to completion using AmigaOS Exec signals.
+// It's the bridge between the Future abstraction and the OS primitives.
+//
+// Unlike thread-pool executors in other languages, this executor:
+// - Runs on a single AmigaOS task
+// - Uses Wait() to sleep when no futures are ready (zero CPU when idle)
+// - Wakes up via Exec signals when async operations complete
+//
+// Note: Until trait bounds are implemented, this module provides concrete
+// executor functions for specific future types (Sleep).
+
+from std::core import Option, Result, Drop, Error
+from std::async::future import Future, Poll, Context, Waker
+from std::async::sleep import Sleep
+from std::ffi::exec import FindTask, Wait, SetSignal, AllocSignal, FreeSignal
+from std::ffi::amiga_structs import Task
+from std::ffi::amiga_consts import SIGBREAKF_CTRL_C
+
+// ============================================================================
+// Executor Errors
+// ============================================================================
+
+/// Errors that can occur when running futures
+pub enum ExecutorError {
+    /// Failed to allocate a signal for the executor
+    NoSignal,
+    /// User pressed Ctrl-C during execution
+    Interrupted,
+}
+
+impl ExecutorError {
+    pub fn message(&self) -> *u8 {
+        match *self {
+            ExecutorError::NoSignal => return "Failed to allocate signal",
+            ExecutorError::Interrupted => return "Interrupted by Ctrl-C",
+        }
+    }
+}
+
+impl Error for ExecutorError {
+    fn message(&self) -> *u8 {
+        return ExecutorError::message(self)
+    }
+}
+
+// ============================================================================
+// block_on_sleep - Run a Sleep future to completion
+// ============================================================================
+
+/// Run a Sleep future to completion, blocking the current task until done.
+///
+/// This is the entry point for running sleep futures. It:
+/// 1. Allocates an Exec signal for wakeups
+/// 2. Polls the future in a loop
+/// 3. Calls Wait() when the future returns Pending
+/// 4. Returns when the sleep completes
+///
+/// # Example
+///
+/// ```novus
+/// from std::async import block_on_sleep, sleep
+/// from std::os::timer import Duration
+///
+/// fn main() -> i32 {
+///     // Run async sleep
+///     match block_on_sleep(sleep(Duration::secs(2))) {
+///         Result::Ok(_) => write("Slept for 2 seconds!\n"),
+///         Result::Err(e) => write("Error: %s\n", e.message())
+///     }
+///     return 0
+/// }
+/// ```
+@suppress("W0002", "Safe: signal operations use valid signal bits")
+pub fn block_on_sleep(sleep_future: Sleep) -> Result<(), ExecutorError> {
+    // Allocate a signal for this executor
+    let signal_bit = AllocSignal(-1)
+    if signal_bit == -1 {
+        return Result::Err(ExecutorError::NoSignal)
+    }
+
+    // Get current task
+    let task = FindTask((*u8)0)
+
+    // Create waker and context
+    let waker = Waker::new(task, signal_bit)
+    var ctx = Context::new(waker)
+
+    // Calculate signal mask
+    let signal_mask = 1u32 << (u32)signal_bit
+
+    // Pin the future (it's on our stack, we won't move it)
+    var pinned = sleep_future
+
+    // Poll loop - runs until Ready or interrupted
+    while true {
+        match pinned.poll(&var ctx) {
+            Poll::Ready(value) => {
+                // Future completed!
+                FreeSignal(signal_bit)
+                return Result::Ok(value)
+            },
+            Poll::Pending => {
+                // Wait for signal (this is where we sleep - zero CPU)
+                // Also check for Ctrl-C so we can be interrupted
+                let combined = signal_mask | SIGBREAKF_CTRL_C
+                let received = (u32)Wait((i32)combined)
+
+                // Check if we got Ctrl-C
+                if (received & SIGBREAKF_CTRL_C) != 0 {
+                    FreeSignal(signal_bit)
+                    return Result::Err(ExecutorError::Interrupted)
+                }
+
+                // Signal received, loop back and poll again
+            }
+        }
+    }
+
+    // Unreachable - the while loop only exits via return
+    unreachable!()
+}
+
+/// Run a Sleep future to completion, ignoring Ctrl-C interrupts.
+///
+/// Use this when you need the future to complete no matter what.
+/// Be careful - the only way to stop is for the future to complete
+/// or the program to be killed.
+@suppress("W0002", "Safe: signal operations use valid signal bits")
+pub fn block_on_sleep_uninterruptible(sleep_future: Sleep) -> Result<(), ExecutorError> {
+    // Allocate a signal for this executor
+    let signal_bit = AllocSignal(-1)
+    if signal_bit == -1 {
+        return Result::Err(ExecutorError::NoSignal)
+    }
+
+    // Get current task
+    let task = FindTask((*u8)0)
+
+    // Create waker and context
+    let waker = Waker::new(task, signal_bit)
+    var ctx = Context::new(waker)
+
+    // Calculate signal mask
+    let signal_mask = 1u32 << (u32)signal_bit
+
+    // Pin the future
+    var pinned = sleep_future
+
+    // Poll loop - runs until Ready
+    while true {
+        match pinned.poll(&var ctx) {
+            Poll::Ready(value) => {
+                FreeSignal(signal_bit)
+                return Result::Ok(value)
+            },
+            Poll::Pending => {
+                // Wait for signal only (no Ctrl-C check)
+                Wait((i32)signal_mask)
+            }
+        }
+    }
+
+    // Unreachable - the while loop only exits via return
+    unreachable!()
+}
+
+// ============================================================================
+// poll_sleep_once - Poll a Sleep future once without blocking
+// ============================================================================
+
+/// Poll a Sleep future exactly once and return immediately.
+///
+/// This is useful when you want to check if a sleep is done
+/// without blocking. Returns true if the sleep completed.
+///
+/// # Example
+///
+/// ```novus
+/// // In a game loop, check if delay is done
+/// if poll_sleep_once(&var my_sleep) {
+///     // Sleep completed
+///     do_next_thing()
+/// } else {
+///     // Still waiting
+///     update_animation()
+/// }
+/// ```
+@suppress("W0002", "Safe: signal operations use valid signal bits")
+pub fn poll_sleep_once(sleep_future: &var Sleep) -> bool {
+    // Allocate a temporary signal
+    let signal_bit = AllocSignal(-1)
+    if signal_bit == -1 {
+        return false
+    }
+
+    let task = FindTask((*u8)0)
+    let waker = Waker::new(task, signal_bit)
+    var ctx = Context::new(waker)
+
+    let is_done = match sleep_future.poll(&var ctx) {
+        Poll::Ready(_) => true,
+        Poll::Pending => false
+    }
+
+    FreeSignal(signal_bit)
+    return is_done
+}

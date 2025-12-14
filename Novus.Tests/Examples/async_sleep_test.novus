@@ -1,0 +1,92 @@
+// Async Sleep Test
+// Tests the basic async runtime with a countdown timer using raw poll loops
+//
+// Expected output:
+//   Async sleep test starting...
+//   5...
+//   4...
+//   3...
+//   2...
+//   1...
+//   Blast off!
+//   Total time: ~5 seconds
+//
+// The key thing: CPU usage should be near zero while sleeping.
+// We're using Exec Wait(), not busy-polling.
+
+from std::core import Result, Option
+from std::async::sleep import sleep, Sleep
+from std::async::future import Poll, Context, Waker
+from std::os::timer import Duration, TimerHandle
+from std::io::file import write
+from std::ffi::exec import FindTask, AllocSignal, FreeSignal, Wait, SIGBREAKF_CTRL_C
+
+fn main() -> i32 {
+    write("Async sleep test starting...\n")
+
+    // Get start time for measuring total duration
+    let timer_result = TimerHandle::microhz()
+    match timer_result {
+        Result::Err(e) => {
+            write("Failed to open timer: %s\n", e.message())
+            return 1
+        },
+        Result::Ok(_) => {}
+    }
+    let timer = timer_result.unwrap()
+    let start = timer.get_time().unwrap()
+
+    // Allocate a signal for the executor
+    let signal_bit = AllocSignal(-1)
+    if signal_bit == -1 {
+        write("Failed to allocate signal\n")
+        return 1
+    }
+
+    let task = FindTask((*u8)0)
+    let waker = Waker::new(task, signal_bit)
+    var ctx = Context::new(waker)
+    let signal_mask = 1u32 << (u32)signal_bit
+
+    // Run countdown with 5 sleep cycles
+    var count = 5
+    while count > 0 {
+        write("%ld...\n", count)
+        count = count - 1
+
+        // Create and poll a sleep future for 1 second
+        var sleep_future = sleep(Duration::secs(1))
+
+        // Poll until ready
+        while true {
+            match sleep_future.poll(&var ctx) {
+                Poll::Ready(_) => {
+                    // Sleep completed
+                    break
+                },
+                Poll::Pending => {
+                    // Wait for signal or Ctrl+C
+                    let combined = signal_mask | SIGBREAKF_CTRL_C
+                    let received = (u32)Wait((i32)combined)
+                    if (received & SIGBREAKF_CTRL_C) != 0 {
+                        FreeSignal(signal_bit)
+                        write("Interrupted!\n")
+                        return 1
+                    }
+                }
+            }
+        }
+    }
+
+    write("Blast off!\n")
+
+    FreeSignal(signal_bit)
+
+    // Get end time and report
+    let end = timer.get_time().unwrap()
+    let elapsed = end.sub(start)
+    write("Total time: %lu.%03lu seconds\n",
+        elapsed.get_secs(),
+        elapsed.get_micros() / 1000)
+    return 0
+}

@@ -1,0 +1,269 @@
+// Novus Standard Library - Async Sleep
+// Namespace: std::async::sleep
+//
+// Non-blocking sleep using timer.device.
+// The CPU sleeps during the wait - zero busy-polling.
+
+from std::core import Option, Result, Drop
+from std::async::future import Future, Poll, Context, Waker
+from std::os::timer import Duration, TimerError
+from std::ffi::amiga_structs import timeval, timerequest, IORequest, MsgPort
+from std::ffi::exec import CreateIORequest, DeleteIORequest, CreateMsgPort, DeleteMsgPort
+from std::ffi::exec import OpenDevice, CloseDevice, SendIO, CheckIO, WaitIO, AbortIO, Signal
+from std::ffi::amiga_consts import UNIT_MICROHZ, TR_ADDREQUEST
+
+// ============================================================================
+// Sleep Future
+// ============================================================================
+
+/// A future that completes after a duration has elapsed.
+///
+/// This is the async equivalent of `TimerHandle::delay()`, but it doesn't
+/// block - instead, it returns `Poll::Pending` and signals the executor
+/// when the time is up.
+///
+/// # Example
+///
+/// ```novus
+/// async fn delayed_hello() {
+///     write("Hello...\n")
+///     sleep(Duration::secs(2)).await
+///     write("...World!\n")
+/// }
+/// ```
+pub struct Sleep {
+    duration: Duration,
+    timereq: *timerequest,
+    port: *MsgPort,
+    state: SleepState,
+}
+
+enum SleepState {
+    /// Not yet started
+    Init,
+    /// Timer request sent, waiting for completion
+    Waiting,
+    /// Completed (or failed to start)
+    Done,
+}
+
+impl Sleep {
+    /// Create a new sleep future for the given duration.
+    ///
+    /// The timer doesn't start until the future is first polled.
+    pub fn new(duration: Duration) -> Sleep {
+        return Sleep {
+            duration: duration,
+            timereq: (*timerequest)0,
+            port: (*MsgPort)0,
+            state: SleepState::Init,
+        }
+    }
+
+    /// Initialize timer resources (called on first poll)
+    fn init_timer(&var self) -> bool {
+        // Create message port
+        let port = CreateMsgPort()
+        if (u32)port == 0 {
+            self.state = SleepState::Done
+            return false
+        }
+        self.port = port
+
+        // Create IORequest
+        let req = CreateIORequest(port, @sizeof(timerequest))
+        if (u32)req == 0 {
+            DeleteMsgPort(port)
+            self.port = (*MsgPort)0
+            self.state = SleepState::Done
+            return false
+        }
+        self.timereq = (*timerequest)req
+
+        // Open timer.device
+        unsafe {
+            let ioreq_ptr = &self.timereq.tr_node
+            let ioreq = (*IORequest)ioreq_ptr
+            let error = OpenDevice("timer.device", UNIT_MICROHZ, ioreq, 0)
+            if error != 0 {
+                DeleteIORequest((*u8)self.timereq)
+                DeleteMsgPort(self.port)
+                self.timereq = (*timerequest)0
+                self.port = (*MsgPort)0
+                self.state = SleepState::Done
+                return false
+            }
+        }
+
+        return true
+    }
+
+    /// Start the async timer request
+    fn start_timer(&var self) {
+        // Set up the timer request
+        self.timereq.tr_node.io_Command = TR_ADDREQUEST
+        self.timereq.tr_time = timeval {
+            tv_secs: self.duration.get_secs(),
+            tv_micro: self.duration.get_micros(),
+        }
+
+        // The reply will come to our port, which will signal the waker's task
+        // We need to set up the port to signal the correct task/signal
+        // For now, we rely on the executor checking our port
+
+        // Send the request (non-blocking)
+        let ioreq_ptr = &self.timereq.tr_node
+        let ioreq = (*IORequest)ioreq_ptr
+        SendIO(ioreq)
+
+        self.state = SleepState::Waiting
+    }
+
+    /// Check if the timer has completed
+    fn check_done(&var self) -> bool {
+        if (u32)self.timereq == 0 {
+            return true  // Failed to init, consider "done"
+        }
+
+        let ioreq_ptr = &self.timereq.tr_node
+        let ioreq = (*IORequest)ioreq_ptr
+        if (u32)CheckIO(ioreq) != 0 {
+            // Timer completed - clean up the request
+            WaitIO(ioreq)
+            self.state = SleepState::Done
+            return true
+        }
+        return false
+    }
+
+    /// Clean up timer resources
+    fn cleanup(&var self) {
+        if (u32)self.timereq != 0 {
+            let ioreq_ptr = &self.timereq.tr_node
+            let ioreq = (*IORequest)ioreq_ptr
+
+            // Abort if still pending
+            if matches!(self.state, SleepState::Waiting) {
+                AbortIO(ioreq)
+                WaitIO(ioreq)
+            }
+
+            // Close device
+            unsafe {
+                CloseDevice(ioreq)
+            }
+
+            // Free request
+            DeleteIORequest((*u8)self.timereq)
+            self.timereq = (*timerequest)0
+        }
+
+        if (u32)self.port != 0 {
+            DeleteMsgPort(self.port)
+            self.port = (*MsgPort)0
+        }
+    }
+
+    /// Poll helper for Init state
+    fn poll_init(&var self, ctx: &var Context) -> Poll<()> {
+        // First poll - initialize and start
+        if !self.init_timer() {
+            // Failed to init, complete immediately (with implicit error)
+            return Poll::Ready(())
+        }
+        // Wire up our port to signal the waker
+        // The MsgPort has mp_SigTask and mp_SigBit we can set
+        let waker = ctx.waker()
+        self.port.mp_SigTask = (*u8)waker.task()
+        self.port.mp_SigBit = (u8)waker.signal_bit()
+
+        self.start_timer()
+
+        return Poll::Pending
+    }
+
+    /// Poll helper for Waiting state
+    fn poll_waiting(&var self) -> Poll<()> {
+        // Check if timer completed
+        if self.check_done() {
+            return Poll::Ready(())
+        }
+        return Poll::Pending
+    }
+
+    /// Poll the sleep future to check if the timer has elapsed.
+    ///
+    /// Returns `Poll::Ready(())` when the sleep is complete.
+    /// Returns `Poll::Pending` if still waiting.
+    pub fn poll(&var self, ctx: &var Context) -> Poll<()> {
+        match self.state {
+            SleepState::Init => return self.poll_init(ctx),
+            SleepState::Waiting => return self.poll_waiting(),
+            SleepState::Done => return Poll::Ready(()),
+        }
+    }
+}
+
+impl Future<()> for Sleep {
+    fn poll(&var self, ctx: &var Context) -> Poll<()> {
+        match self.state {
+            SleepState::Init => return self.poll_init(ctx),
+            SleepState::Waiting => return self.poll_waiting(),
+            SleepState::Done => return Poll::Ready(()),
+        }
+    }
+}
+
+impl Drop for Sleep {
+    fn drop(&var self) {
+        self.cleanup()
+    }
+}
+
+// ============================================================================
+// Convenience function
+// ============================================================================
+
+/// Create a sleep future for the given duration.
+///
+/// This is the primary way to pause async execution.
+///
+/// # Example
+///
+/// ```novus
+/// from std::async import block_on, sleep
+/// from std::os::timer import Duration
+///
+/// fn main() -> i32 {
+///     block_on(async {
+///         write("Starting countdown...\n")
+///
+///         while var i = 5; i > 0 {
+///             write("%ld...\n", i)
+///             sleep(Duration::secs(1)).await
+///             i--
+///         }
+///
+///         write("Blast off!\n")
+///     })
+///     return 0
+/// }
+/// ```
+pub fn sleep(duration: Duration) -> Sleep {
+    return Sleep::new(duration)
+}
+
+/// Sleep for the given number of seconds
+pub fn sleep_secs(secs: u32) -> Sleep {
+    return Sleep::new(Duration::secs(secs))
+}
+
+/// Sleep for the given number of milliseconds
+pub fn sleep_millis(ms: u32) -> Sleep {
+    return Sleep::new(Duration::millis(ms))
+}
+
+/// Sleep for the given number of microseconds
+pub fn sleep_micros(us: u32) -> Sleep {
+    return Sleep::new(Duration::micros(us))
+}

@@ -1,0 +1,49 @@
+// Novus Standard Library - Async Module
+// Namespace: std::async
+//
+// Asynchronous programming primitives for AmigaOS.
+//
+// This module provides async/await support built on AmigaOS's native
+// signal-based I/O system. When your code awaits, the CPU actually sleeps
+// (via Exec Wait()) - no busy polling, no wasted cycles.
+//
+// # Quick Start
+//
+// ```novus
+// from std::async import block_on, sleep
+// from std::os::timer import Duration
+//
+// fn main() -> i32 {
+//     block_on(async {
+//         write("Hello...\n")
+//         sleep(Duration::secs(2)).await
+//         write("World!\n")
+//     })?
+//     return 0
+// }
+// ```
+//
+// # How It Works
+//
+// 1. `async fn` compiles to a state machine (no heap allocation)
+// 2. `.await` polls the inner future
+// 3. If not ready, the executor calls `Wait()` on Exec signals
+// 4. When timer.device/dos.library/etc signals completion, Wait() returns
+// 5. The future is polled again
+//
+// This means async Novus code:
+// - Uses zero CPU while waiting
+// - Integrates with all AmigaOS async I/O (timers, files, devices)
+// - Has zero allocation overhead per await point
+// - Cleans up deterministically (no GC)
+
+// Re-export core types
+pub use std::async::future::Future, Poll, Context, Waker
+pub use std::async::future::Ready, Pending, ready, pending
+
+// Re-export executor
+pub use std::async::executor::block_on_sleep, block_on_sleep_uninterruptible, poll_sleep_once
+pub use std::async::executor::ExecutorError
+
+// Re-export sleep
+pub use std::async::sleep::Sleep, sleep, sleep_secs, sleep_millis, sleep_micros

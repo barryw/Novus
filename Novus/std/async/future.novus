@@ -1,0 +1,259 @@
+// Novus Standard Library - Async/Await Core
+// Namespace: std::async::future
+//
+// Core traits and types for asynchronous programming on AmigaOS.
+// Built on top of Exec signals and message ports for true non-blocking I/O.
+//
+// This is NOT cooperative multitasking emulation - it leverages AmigaOS's
+// native preemptive multitasking and signal-based I/O completion.
+
+from std::core import Option, Result
+from std::ffi::exec import Signal
+from std::ffi::amiga_structs import Task
+
+// ============================================================================
+// Poll - Result of polling a future
+// ============================================================================
+
+/// The result of polling a Future
+///
+/// When you poll a future, it either:
+/// - `Ready(value)` - The future completed with this value
+/// - `Pending` - The future is not ready yet, will signal when ready
+pub enum Poll<T> {
+    /// The future completed successfully with value T
+    Ready(T),
+    /// The future is not ready; it has registered a wakeup signal
+    Pending,
+}
+
+impl<T> Poll<T> {
+    /// Returns true if this is Poll::Ready
+    pub fn is_ready(&self) -> bool {
+        match self {
+            Poll::Ready(_) => return true,
+            Poll::Pending => return false,
+        }
+    }
+
+    /// Returns true if this is Poll::Pending
+    pub fn is_pending(&self) -> bool {
+        match self {
+            Poll::Ready(_) => return false,
+            Poll::Pending => return true,
+        }
+    }
+
+    /// Unwrap the ready value, panics if Pending
+    pub fn unwrap(self) -> T {
+        match self {
+            Poll::Ready(value) => return value,
+            Poll::Pending => {
+                panic!("Poll::unwrap called on Pending")
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Waker - How futures signal they're ready to be polled again
+// ============================================================================
+
+/// A Waker tells the executor that a future is ready to make progress.
+///
+/// On AmigaOS, this wraps an Exec signal. When the async operation completes
+/// (timer fires, I/O finishes, message arrives), it signals this bit,
+/// which wakes up the executor's Wait() call.
+pub struct Waker {
+    /// The task to signal (from FindTask(null) for current task)
+    task: *Task,
+    /// Which signal bit to use (0-31)
+    signal_bit: i8,
+}
+
+impl Waker {
+    /// Create a waker for the current task with the given signal bit
+    pub fn new(task: *Task, signal_bit: i8) -> Waker {
+        return Waker { task: task, signal_bit: signal_bit }
+    }
+
+    /// Get the signal mask for this waker (1 << signal_bit)
+    @suppress("W0002", "Safe: signal_bit is 0-31, shift produces valid mask")
+    pub fn signal_mask(&self) -> u32 {
+        return 1u32 << (u32)self.signal_bit
+    }
+
+    /// Get the signal bit
+    pub fn signal_bit(&self) -> i8 {
+        return self.signal_bit
+    }
+
+    /// Get the task pointer
+    pub fn task(&self) -> *Task {
+        return self.task
+    }
+
+    /// Wake the task by signaling it
+    ///
+    /// This is called by async primitives (timers, I/O) when they complete.
+    pub fn wake(&self) {
+        // Signal the task - this is what makes Wait() return
+        Signal(self.task, self.signal_mask())
+    }
+}
+
+// ============================================================================
+// Context - Passed to Future::poll()
+// ============================================================================
+
+/// Context provides the waker to futures during polling.
+///
+/// When a future returns Poll::Pending, it must have arranged for
+/// the waker to be signaled when it's ready to make progress.
+pub struct Context {
+    waker: Waker,
+}
+
+impl Context {
+    /// Create a new context with the given waker
+    pub fn new(waker: Waker) -> Context {
+        return Context { waker: waker }
+    }
+
+    /// Get the waker by value (it's small, just copy it)
+    pub fn waker(&self) -> Waker {
+        return self.waker
+    }
+}
+
+// ============================================================================
+// Future - The core async trait
+// ============================================================================
+
+/// A Future represents an asynchronous computation.
+///
+/// Unlike other languages where futures are heap-allocated and garbage collected,
+/// Novus futures are:
+/// - Stack allocated (or embedded in parent futures)
+/// - Zero-cost: no allocation per await point
+/// - Deterministic: cleaned up when they go out of scope
+///
+/// # How it works on AmigaOS
+///
+/// 1. You call `future.poll(ctx)`
+/// 2. If ready, it returns `Poll::Ready(value)`
+/// 3. If not ready:
+///    - The future sets up an AmigaOS signal (via timer.device, dos.library, etc.)
+///    - Returns `Poll::Pending`
+///    - When the signal fires, the executor's Wait() returns
+///    - The executor polls the future again
+///
+/// # Example implementation
+///
+/// ```novus
+/// struct SleepFuture {
+///     timer: AsyncTimer,
+///     started: bool,
+/// }
+///
+/// impl Future<()> for SleepFuture {
+///     fn poll(&var self, ctx: &var Context) -> Poll<()> {
+///         if !self.started {
+///             self.timer.start(self.duration)
+///             self.started = true
+///             return Poll::Pending
+///         }
+///
+///         if self.timer.check() {
+///             return Poll::Ready(())
+///         }
+///         Poll::Pending
+///     }
+/// }
+/// ```
+pub trait Future<T> {
+    /// Poll the future to see if it's ready.
+    ///
+    /// - Returns `Poll::Ready(value)` if the future has completed
+    /// - Returns `Poll::Pending` if the future is not ready
+    ///
+    /// When returning `Pending`, the future MUST arrange for
+    /// `ctx.waker().wake()` to be called when it can make progress.
+    fn poll(&var self, ctx: &var Context) -> Poll<T>
+}
+
+// ============================================================================
+// Ready - A future that's immediately ready
+// ============================================================================
+
+/// A future that immediately resolves to a value.
+///
+/// Useful for returning a value from an async context without actually
+/// doing any async work.
+///
+/// ```novus
+/// async fn get_cached_or_load() -> i32 {
+///     if let Some(cached) = cache.get() {
+///         return ready(cached).await  // No actual async work
+///     }
+///     load_from_disk().await
+/// }
+/// ```
+pub struct Ready<T> {
+    value: Option<T>,
+    completed: bool,
+}
+
+impl<T> Ready<T> {
+    pub fn new(value: T) -> Ready<T> {
+        return Ready { value: Option::Some(value), completed: false }
+    }
+}
+
+impl<T> Future<T> for Ready<T> {
+    fn poll(&var self, ctx: &var Context) -> Poll<T> {
+        if self.completed {
+            panic!("Ready polled after completion")
+        }
+        self.completed = true
+        match self.value {
+            Option::Some(v) => return Poll::Ready(v),
+            Option::None => {
+                panic!("Ready has no value")
+            }
+        }
+    }
+}
+
+/// Create a future that's immediately ready with the given value
+pub fn ready<T>(value: T) -> Ready<T> {
+    return Ready::new(value)
+}
+
+// ============================================================================
+// Pending - A future that's never ready (useful for select!)
+// ============================================================================
+
+/// A future that never completes.
+///
+/// Useful as a placeholder or in select! when you want to disable a branch.
+pub struct Pending<T> {
+    _phantom: u8,  // Zero-sized placeholder
+}
+
+impl<T> Pending<T> {
+    pub fn new() -> Pending<T> {
+        return Pending { _phantom: 0 }
+    }
+}
+
+impl<T> Future<T> for Pending<T> {
+    fn poll(&var self, ctx: &var Context) -> Poll<T> {
+        return Poll::Pending
+    }
+}
+
+/// Create a future that never completes
+pub fn pending<T>() -> Pending<T> {
+    return Pending::new()
+}
