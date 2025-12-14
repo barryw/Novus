@@ -5241,20 +5241,21 @@ public partial class IrBuilder
     /// </summary>
     public override object? VisitUnreachableExpr([NotNull] NovusParser.UnreachableExprContext context)
     {
-        // Get source location
+        // Get source location for error reporting
         var location = GetLocation(context);
-        var sourceInfo = $"{location.FilePath}:{location.Line}:{location.Column}";
 
-        // Create a string literal for the panic message
-        var panicMsgLabel = $"_str{_stringCounter++}";
-        var panicMsgValue = $"unreachable code reached at {sourceInfo}";
-        var panicMsg = new IrStringLiteral(panicMsgValue, panicMsgLabel);
-        StringLiterals.Add(panicMsg);
-
-        // Emit a call to _novus_panic with the message
-        var panicCall = new IrCall("_novus_panic", IrVoidType.Instance, null);
-        panicCall.Arguments.Add(panicMsg);
-        Emit(panicCall);
+        // Emit an IrPanic instruction (same as panic!() statement)
+        var panicInst = new IrPanic(
+            "unreachable code reached",
+            new SourceLocation(
+                location.FilePath,
+                location.Line,
+                location.Column,
+                context.GetText().Length,
+                context.Start.InputStream.ToString() ?? ""
+            )
+        );
+        Emit(panicInst);
 
         // Return a "never" value (the function diverges)
         return new IrNever();

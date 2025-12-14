@@ -598,6 +598,7 @@ impl Point {
     {
         // Regression test for division-by-zero check with non-int return types
         // Previously generated "return 1;" for tuple-returning functions, causing VBCC errors
+        // Note: Tuples now use __out parameter like structs/enums, so error path is plain "return;"
         var source = @"
 pub fn divide_values(a: u8, b: u8, divisor: u8) -> (u8, u8) {
     let x = a / divisor
@@ -614,8 +615,9 @@ pub fn divide_values(a: u8, b: u8, divisor: u8) -> (u8, u8) {
         // Should NOT have "return 1;" which is invalid for tuple return type
         Assert.DoesNotContain("return 1;", code);
 
-        // Should have zero-initialized tuple return after error path (VBCC compatible)
-        Assert.Contains("return (Tuple_u8_u8){0};", code);
+        // Tuples now use __out parameter (like structs/enums), so error path just returns
+        // The error has already been reported by __novus_div_check
+        Assert.Contains("return;", code);
     }
 
     [Fact]

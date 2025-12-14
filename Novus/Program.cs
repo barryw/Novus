@@ -1018,6 +1018,12 @@ class Program
             // Collect all code generators for statement-level debug symbol collection
             var allCodeGenerators = new List<CCodeGenerator>();
 
+            // Track monomorphized functions across all modules to generate each one exactly once
+            // Key: mangled function name, Value: (module name, function)
+            // IMPORTANT: This must be declared BEFORE processing any modules so that
+            // monomorphized functions from main module are tracked and not duplicated in library modules
+            var generatedMonomorphizedFunctions = new Dictionary<string, (string moduleName, IrFunction function, CCodeGenerator codegen)>();
+
             // Main module: generate one C file per function (consistent with library modules)
             var mainFunctions = mainIR.IrModule.Functions
                 .Where(f => !f.IsExtern && f.BasicBlocks.Count > 0)
@@ -1045,6 +1051,16 @@ class Program
 
                 foreach (var function in generableMainFunctions)
                 {
+                    // Check if this is a monomorphized function (trait method or static generic function)
+                    bool isMonomorphized = mainCodegen.IsMonomorphizedFunction(function);
+                    var mangledName = mainCodegen.MangleName(function);
+
+                    if (isMonomorphized)
+                    {
+                        // Track this monomorphized function so library modules don't duplicate it
+                        generatedMonomorphizedFunctions[mangledName] = (baseName, function, mainCodegen);
+                    }
+
                     var functionCCode = mainCodegen.GenerateFunctionFile(function);
                     // Always write the C file (even if it's a stub that panics)
                     // This ensures linking succeeds even if the function isn't called
@@ -1141,10 +1157,6 @@ class Program
                     }
                 }
             }
-
-            // Track monomorphized functions across all modules to generate each one exactly once
-            // Key: mangled function name, Value: (module name, function)
-            var generatedMonomorphizedFunctions = new Dictionary<string, (string moduleName, IrFunction function, CCodeGenerator codegen)>();
 
             // Library modules: generate one C file per function
             foreach (var (modulePath, moduleIR) in allModulesIR)

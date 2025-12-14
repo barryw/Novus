@@ -112,6 +112,8 @@ public partial class CCodeGenerator
     private Dictionary<string, HashSet<string>>? _currentBlockScopedVars;
     private Dictionary<string, (IrType Type, bool IsArray, int ArraySize)>? _currentLocalDeclVars;
     private Dictionary<string, IrType>? _currentStoredVars;
+    // Arrays that should be declared as 'static' because they're filled with compile-time constants
+    private HashSet<string>? _currentStaticConstArrays;
 
     // Liveness-based variable slot mapping for stack usage reduction
     // Maps IR variable names to shared slot names (e.g., "_formatter0" -> "_slot_StackFormatter_0")
@@ -235,6 +237,75 @@ public partial class CCodeGenerator
         _output.AppendLine($"        static const {elementType} __init[{size}] = {initValue};");
         _output.AppendLine($"        __novus_memcpy((uint8_t*){destExpr}, (const uint8_t*)__init, sizeof({destExpr}));");
         _output.AppendLine($"    }}");
+    }
+
+    /// <summary>
+    /// VBCC_004 FIX: Emits field-by-field assignment for nested enum values.
+    /// Compound literals like (EnumType){ .tag = ..., .data = { ... } } cause misalignment on 68k.
+    /// This method emits separate assignments for tag and data fields instead.
+    /// </summary>
+    /// <param name="destExpr">Destination expression (e.g., "varName.data.Err._0")</param>
+    /// <param name="nestedEnumValue">The nested enum value to emit</param>
+    private void EmitNestedEnumFieldByField(string destExpr, IrEnumValue nestedEnumValue)
+    {
+        var nestedEnumType = nestedEnumValue.Type as IrEnumType;
+        if (nestedEnumType == null)
+            throw new InvalidOperationException("EnumValue must have IrEnumType");
+
+        var nestedEnumName = MangleName(nestedEnumType);
+        bool nestedHasAnyData = nestedEnumType.Variants.Any(v => v.HasAssociatedData);
+
+        if (nestedHasAnyData)
+        {
+            // Emit tag assignment
+            _output.AppendLine($"    {destExpr}.tag = {nestedEnumName}_{nestedEnumValue.VariantName};");
+
+            // Emit associated data assignments if present
+            if (nestedEnumValue.AssociatedValues.Count > 0)
+            {
+                // Check if this is a unit type
+                bool nestedIsUnitType = nestedEnumValue.AssociatedValues.Count == 1 &&
+                                        nestedEnumValue.AssociatedValues[0].Type is IrTupleType unitTupleType &&
+                                        unitTupleType.ElementTypes.Count == 0;
+
+                if (!nestedIsUnitType)
+                {
+                    for (int j = 0; j < nestedEnumValue.AssociatedValues.Count; j++)
+                    {
+                        // Recursively handle nested struct literals
+                        if (nestedEnumValue.AssociatedValues[j] is IrStructLiteral nestedNestedStructLit)
+                        {
+                            foreach (var kvp in nestedNestedStructLit.FieldValues)
+                            {
+                                var fieldValue = EmitValue(kvp.Value);
+                                _output.AppendLine($"    {destExpr}.data.{nestedEnumValue.VariantName}._{j}.{kvp.Key} = {fieldValue};");
+                            }
+                        }
+                        // Recursively handle nested enum literals
+                        else if (nestedEnumValue.AssociatedValues[j] is IrEnumValue nestedNestedEnumValue)
+                        {
+                            EmitNestedEnumFieldByField($"{destExpr}.data.{nestedEnumValue.VariantName}._{j}", nestedNestedEnumValue);
+                        }
+                        else
+                        {
+                            var assocValue = EmitValue(nestedEnumValue.AssociatedValues[j]);
+                            _output.AppendLine($"    {destExpr}.data.{nestedEnumValue.VariantName}._{j} = {assocValue};");
+                        }
+                    }
+                }
+                else
+                {
+                    // Unit type - set dummy field
+                    _output.AppendLine($"    {destExpr}.data.{nestedEnumValue.VariantName}._dummy = 0;");
+                }
+            }
+        }
+        else
+        {
+            // For enums without associated data, just assign the whole thing
+            // (it's just a single integer value, no compound literal needed)
+            _output.AppendLine($"    {destExpr} = {nestedEnumName}_{nestedEnumValue.VariantName};");
+        }
     }
 
     /// <summary>
@@ -1000,8 +1071,9 @@ public partial class CCodeGenerator
         sb.AppendLine("// Function declarations for symbol table");
         foreach (var (func, cName) in functionsWithLocations)
         {
-            // Just declare as void function - we only need the address
-            sb.AppendLine($"extern void {cName}(void);");
+            // Declare with unspecified parameters (K&R style) - we only need the address
+            // Using () instead of (void) because we don't know the actual signature
+            sb.AppendLine($"extern void {cName}();");
         }
         sb.AppendLine();
 
@@ -1071,10 +1143,19 @@ public partial class CCodeGenerator
     /// </summary>
     private static string MangleNameStatic(string name)
     {
-        // Replace :: with _ for namespaced names
-        // Replace < and > with _ for generic instantiations
-        // Replace & and * for reference/pointer types in generic params
-        return name.Replace("::", "_").Replace("<", "_").Replace(">", "_").Replace(",", "_").Replace(" ", "").Replace("&", "ref_").Replace("*", "ptr_");
+        // Must match MangleName exactly - handle all the same cases
+        // Generic names like "From<DosError>" become "From_DosError"
+        // Unit type like "Result<(), Error>" becomes "Result_unit_Error"
+        return name.Replace("::", "_")
+                   .Replace("()", "unit")    // Handle unit type before removing parens
+                   .Replace("<", "_")
+                   .Replace(">", "")
+                   .Replace(",", "_")
+                   .Replace("&", "ref_")
+                   .Replace("*", "ptr_")
+                   .Replace("(", "")         // Remove any remaining parens
+                   .Replace(")", "")
+                   .Replace(" ", "");
     }
 
     /// <summary>
@@ -1318,7 +1399,7 @@ public partial class CCodeGenerator
 
                     // VBCC FIX: Use output parameter for struct/enum returns EXCEPT for extern functions
                     // Extern functions use their actual C signatures (e.g., runtime functions return enums directly)
-                    var isStructOrEnumReturn = funcObj.ReturnType is IrStructType or IrEnumType;
+                    var isStructOrEnumReturn = funcObj.ReturnType is IrStructType or IrEnumType or IrTupleType;
                     var shouldUseOutParam = isStructOrEnumReturn && !funcObj.IsExtern;
                     var returnTypeStr2 = shouldUseOutParam ? "void" : GetCType(funcObj.ReturnType);
                     var parameters2 = GetParameterList(funcObj, shouldUseOutParam);
@@ -1374,7 +1455,7 @@ public partial class CCodeGenerator
                     }
 
                     // Apply VBCC out-parameter workaround for struct/enum returns
-                    var isStructOrEnumReturn = returnType is IrStructType or IrEnumType;
+                    var isStructOrEnumReturn = returnType is IrStructType or IrEnumType or IrTupleType;
                     var returnTypeStr = isStructOrEnumReturn ? "void" : GetCType(returnType);
                     var paramTypes = arguments.Select(arg => GetCType(arg.Type)).ToList();
 
@@ -1450,8 +1531,9 @@ public partial class CCodeGenerator
         // Labels not targeted by any branch will be skipped during emission (VBCC warning 148)
         CollectReachableLabels(function);
 
-        // VBCC FIX: For struct/enum returns on 68k, use output parameter pattern
-        var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType;
+        // VBCC FIX: For struct/enum/tuple returns on 68k, use output parameter pattern
+        // VBCC can't reliably return structs by value on 68k
+        var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType or IrTupleType or IrTupleType;
         var shouldUseOutParam = isStructOrEnumReturn;
         var returnType = shouldUseOutParam ? "void" : GetCType(function.ReturnType);
         var parameters = GetParameterList(function, shouldUseOutParam);
@@ -1488,7 +1570,7 @@ public partial class CCodeGenerator
             // 1. Structs/enums MUST use {0} for 68k alignment (VBCC ensures 2-byte alignment for initialized data)
             // 2. Primitives should also be zero-initialized as defense against liveness analysis bugs
             // This prevents UB from uninitialized variable access if control flow analysis is incorrect.
-            var decl = (slotType is IrEnumType || slotType is IrStructType)
+            var decl = (slotType is IrEnumType || slotType is IrStructType || slotType is IrTupleType)
                 ? GetCVariableDeclaration(slotType, slotName, "= {0}")
                 : GetCVariableDeclaration(slotType, slotName, "= 0");
 
@@ -1580,6 +1662,12 @@ public partial class CCodeGenerator
             }
         }
 
+        // LIFETIME FIX: Analyze which arrays are filled with compile-time constant values
+        // via IrIndexStore instructions. Such arrays can be made 'static' to ensure they
+        // live for the entire program duration - critical when passed to external functions
+        // (like MUI's make_radio) that may store pointers to the array.
+        var staticConstArrays = AnalyzeStaticConstantArrays(function, localDeclVars);
+
         // Emit declarations for variables referenced by defer blocks
         // These must be declared at function scope so defer cleanup can access them
         // even if they're originally declared in inner scopes (e.g., match arms)
@@ -1610,14 +1698,20 @@ public partial class CCodeGenerator
                 // Array declarations need special syntax
                 var arrayType = (IrArrayType)varType;
                 var elementType = GetCType(arrayType.ElementType);
-                targetBuilder.AppendLine($"    {elementType} {varName}[{arraySize}];");
+
+                // LIFETIME FIX: Arrays filled with compile-time constants should be 'static'
+                // to ensure they persist for the entire program duration. This is critical
+                // when the array is passed to external functions (like MUI's make_radio)
+                // that may store pointers to the array.
+                var staticPrefix = staticConstArrays.Contains(varName) ? "static " : "";
+                targetBuilder.AppendLine($"    {staticPrefix}{elementType} {varName}[{arraySize}];");
             }
             else
             {
                 // CRITICAL FIX FOR 68K ALIGNMENT:
-                // Structs and enums MUST use {0} initializer to guarantee proper alignment on 68000.
+                // Structs, enums, and tuples MUST use {0} initializer to guarantee proper alignment on 68000.
                 // VBCC ensures 2-byte alignment for initialized structs/enums, preventing Guru Meditation.
-                var decl = (varType is IrEnumType || varType is IrStructType)
+                var decl = (varType is IrEnumType || varType is IrStructType || varType is IrTupleType)
                     ? GetCVariableDeclaration(varType, varName, "= {0}")
                     : GetCVariableDeclaration(varType, varName);
 
@@ -1633,8 +1727,8 @@ public partial class CCodeGenerator
             if (!localDeclVars.ContainsKey(varName))
             {
                 // CRITICAL FIX FOR 68K ALIGNMENT:
-                // Structs and enums MUST use {0} initializer to guarantee proper alignment on 68000.
-                var decl = (varType is IrEnumType || varType is IrStructType)
+                // Structs, enums, and tuples MUST use {0} initializer to guarantee proper alignment on 68000.
+                var decl = (varType is IrEnumType || varType is IrStructType || varType is IrTupleType)
                     ? GetCVariableDeclaration(varType, varName, "= {0}")
                     : GetCVariableDeclaration(varType, varName);
 
@@ -3970,7 +4064,7 @@ public partial class CCodeGenerator
             foreach (var (funcName, (returnType, paramTypes)) in crossModuleCalls)
             {
                 // VBCC FIX: Match function definition signature (use void + __out for struct/enum returns)
-                var isStructOrEnumReturn = returnType is IrStructType or IrEnumType;
+                var isStructOrEnumReturn = returnType is IrStructType or IrEnumType or IrTupleType;
                 var cReturnType = isStructOrEnumReturn ? "void" : GetCType(returnType);
 
                 // Build parameter list with __out if needed
@@ -4003,7 +4097,7 @@ public partial class CCodeGenerator
         foreach (var function in implementedFunctions)
         {
             // VBCC FIX: Match function definition signature (use void + __out for struct/enum returns)
-            var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType;
+            var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType or IrTupleType;
             var shouldUseOutParam = isStructOrEnumReturn;
             var returnType = shouldUseOutParam ? "void" : GetCType(function.ReturnType);
             var parameters = GetParameterList(function, shouldUseOutParam);
@@ -4289,8 +4383,9 @@ public partial class CCodeGenerator
         // Labels not targeted by any branch will be skipped during emission (VBCC warning 148)
         CollectReachableLabels(function);
 
-        // VBCC FIX: For struct/enum returns on 68k, use output parameter pattern
-        var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType;
+        // VBCC FIX: For struct/enum/tuple returns on 68k, use output parameter pattern
+        // VBCC can't reliably return structs by value on 68k
+        var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType or IrTupleType or IrTupleType;
         var shouldUseOutParam = isStructOrEnumReturn;
         var returnType = shouldUseOutParam ? "void" : GetCType(function.ReturnType);
         var parameters = GetParameterList(function, shouldUseOutParam);
@@ -4373,7 +4468,7 @@ public partial class CCodeGenerator
             // 1. Structs/enums MUST use {0} for 68k alignment (VBCC ensures 2-byte alignment for initialized data)
             // 2. Primitives should also be zero-initialized as defense against liveness analysis bugs
             // This prevents UB from uninitialized variable access if control flow analysis is incorrect.
-            var decl = (slotType is IrEnumType || slotType is IrStructType)
+            var decl = (slotType is IrEnumType || slotType is IrStructType || slotType is IrTupleType)
                 ? GetCVariableDeclaration(slotType, slotName, "= {0}")
                 : GetCVariableDeclaration(slotType, slotName, "= 0");
 
@@ -4439,6 +4534,12 @@ public partial class CCodeGenerator
             }
         }
 
+        // LIFETIME FIX: Analyze which arrays are filled with compile-time constant values
+        // via IrIndexStore instructions. Such arrays can be made 'static' to ensure they
+        // live for the entire program duration - critical when passed to external functions
+        // (like MUI's make_radio) that may store pointers to the array.
+        var staticConstArrays = AnalyzeStaticConstantArrays(function, localDeclVars);
+
         // Pre-declare ONLY function-scoped variables at function start
         // Variables that are only used in one block will be declared in that block
         foreach (var (varName, varInfo) in localDeclVars)
@@ -4453,7 +4554,10 @@ public partial class CCodeGenerator
             {
                 var arrayType = (IrArrayType)varType;
                 var elementType = GetCType(arrayType.ElementType);
-                _output.AppendLine($"    {elementType} {varName}[{arraySize}];");
+
+                // LIFETIME FIX: Arrays filled with compile-time constants should be 'static'
+                var staticPrefix = staticConstArrays.Contains(varName) ? "static " : "";
+                _output.AppendLine($"    {staticPrefix}{elementType} {varName}[{arraySize}];");
             }
             else
             {
@@ -4461,9 +4565,9 @@ public partial class CCodeGenerator
                 var cType = GetCType(varType);
 
                 // CRITICAL FIX FOR 68K ALIGNMENT:
-                // Enums and structs MUST be initialized to force VBCC to align them properly
+                // Enums, structs, and tuples MUST be initialized to force VBCC to align them properly
                 // VBCC FIX: Split declaration and memset onto separate lines for compatibility
-                if (varType is IrEnumType || varType is IrStructType)
+                if (varType is IrEnumType || varType is IrStructType || varType is IrTupleType)
                 {
                     _output.AppendLine($"    {decl};");
                     _output.AppendLine($"    __novus_memset(&{varName}, 0, sizeof({cType}));");
@@ -4482,8 +4586,8 @@ public partial class CCodeGenerator
             if (!localDeclVars.ContainsKey(varName) && functionScopedVars.Contains(varName))
             {
                 // CRITICAL FIX FOR 68K ALIGNMENT:
-                // Structs and enums MUST use {0} initializer to guarantee proper alignment on 68000.
-                var decl = (varType is IrEnumType || varType is IrStructType)
+                // Structs, enums, and tuples MUST use {0} initializer to guarantee proper alignment on 68000.
+                var decl = (varType is IrEnumType || varType is IrStructType || varType is IrTupleType)
                     ? GetCVariableDeclaration(varType, varName, "= {0}")
                     : GetCVariableDeclaration(varType, varName);
 
@@ -4496,6 +4600,7 @@ public partial class CCodeGenerator
         _currentBlockScopedVars = blockScopedVars;
         _currentLocalDeclVars = localDeclVars;
         _currentStoredVars = storedVars;
+        _currentStaticConstArrays = staticConstArrays;
 
         // MMU protection: Initialize at start of main() if memory tracking is enabled
         if (_safetyLevel.EnableMemoryTracking() && funcName == "main")
@@ -4521,6 +4626,7 @@ public partial class CCodeGenerator
         _currentBlockScopedVars = null;
         _currentLocalDeclVars = null;
         _currentStoredVars = null;
+        _currentStaticConstArrays = null;
         _variableToSlot = null;
         _slotTypes = null;
 
@@ -4592,7 +4698,10 @@ public partial class CCodeGenerator
                     {
                         var arrayType = (IrArrayType)varType;
                         var elementType = GetCType(arrayType.ElementType);
-                        _output.AppendLine($"        {elementType} {varName}[{arraySize}];");
+
+                        // LIFETIME FIX: Arrays filled with compile-time constants should be 'static'
+                        var staticPrefix = (_currentStaticConstArrays?.Contains(varName) ?? false) ? "static " : "";
+                        _output.AppendLine($"        {staticPrefix}{elementType} {varName}[{arraySize}];");
                     }
                     else
                     {
@@ -4601,7 +4710,7 @@ public partial class CCodeGenerator
 
                         // CRITICAL FIX FOR 68K ALIGNMENT
                         // VBCC FIX: Split declaration and memset onto separate lines for compatibility
-                        if (varType is IrEnumType || varType is IrStructType)
+                        if (varType is IrEnumType || varType is IrStructType || varType is IrTupleType)
                         {
                             _output.AppendLine($"        {decl};");
                             _output.AppendLine($"        __novus_memset(&{varName}, 0, sizeof({cType}));");
@@ -4617,8 +4726,8 @@ public partial class CCodeGenerator
                 else if (_currentStoredVars != null && _currentStoredVars.TryGetValue(varName, out var varType2))
                 {
                     // CRITICAL FIX FOR 68K ALIGNMENT:
-                    // Structs and enums MUST use {0} initializer to guarantee proper alignment on 68000.
-                    var decl = (varType2 is IrEnumType || varType2 is IrStructType)
+                    // Structs, enums, and tuples MUST use {0} initializer to guarantee proper alignment on 68000.
+                    var decl = (varType2 is IrEnumType || varType2 is IrStructType || varType2 is IrTupleType)
                         ? GetCVariableDeclaration(varType2, varName, "= {0}")
                         : GetCVariableDeclaration(varType2, varName);
 
@@ -5119,6 +5228,11 @@ public partial class CCodeGenerator
                                         _output.AppendLine($"    {varName}.data.{enumValueAssign.VariantName}._{i}.{kvp.Key} = {fieldValue};");
                                     }
                                 }
+                                // VBCC_004: Compound literals cause misalignment on 68k - emit field-by-field for nested enum literals
+                                else if (enumValueAssign.AssociatedValues[i] is IrEnumValue nestedEnumValueAssign)
+                                {
+                                    EmitNestedEnumFieldByField($"{varName}.data.{enumValueAssign.VariantName}._{i}", nestedEnumValueAssign);
+                                }
                                 else
                                 {
                                     var assocValue = EmitValue(enumValueAssign.AssociatedValues[i]);
@@ -5180,10 +5294,10 @@ public partial class CCodeGenerator
                 if (initValue == null && localDecl.InitialValue != null)
                     initValue = EmitValue(localDecl.InitialValue);
 
-                // For struct/enum types that were pre-declared with {0} initializer, don't emit a `= 0` assignment.
+                // For struct/enum/tuple types that were pre-declared with {0} initializer, don't emit a `= 0` assignment.
                 // The variable was already zero-initialized, and `structVar = 0` is invalid C.
                 // Match result variables are initialized this way by the IR builder when we don't know the type yet.
-                if ((localDecl.Type is IrEnumType || localDecl.Type is IrStructType) &&
+                if ((localDecl.Type is IrEnumType || localDecl.Type is IrStructType || localDecl.Type is IrTupleType) &&
                     localDecl.InitialValue is IrConstant constVal &&
                     constVal.Value is long longVal && longVal == 0)
                 {
@@ -5194,7 +5308,15 @@ public partial class CCodeGenerator
                 else if (localDecl.InitialValue != null && TypeRequiresMemcpy(localDecl.InitialValue.Type))
                 {
                     var cType = GetCType(localDecl.Type);
-                    _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}, (uint8_t*)&{initValue}, sizeof({cType}));");
+
+                    // BUG FIX: Check if source is a pointer-converted parameter.
+                    // These are already pointers in C (e.g., Sleep* sleep_future), so we should
+                    // use them directly instead of taking their address with &.
+                    var sourceIsPointerConvertedParam = localDecl.InitialValue is IrVariable srcVar &&
+                                                        _pointerConvertedParameters.Contains(srcVar.Name);
+                    var sourceAddr = sourceIsPointerConvertedParam ? $"(uint8_t*){initValue}" : $"(uint8_t*)&{initValue}";
+
+                    _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}, {sourceAddr}, sizeof({cType}));");
 
                     // CRITICAL FIX: Implement move semantics when copying from ANY local variable.
                     // When the source is a local variable (including slot variables and pattern-bound
@@ -5210,7 +5332,9 @@ public partial class CCodeGenerator
                     if ((sourceIsLocalVar || sourceIsSlot) && TypeContainsDroppableContent(localDecl.Type))
                     {
                         _output.AppendLine($"    /* Move semantics: zero source to prevent double-free */");
-                        _output.AppendLine($"    __novus_memset(&{initValue}, 0, sizeof({cType}));");
+                        // Use same address expression for memset
+                        var zeroAddr = sourceIsPointerConvertedParam ? initValue : $"&{initValue}";
+                        _output.AppendLine($"    __novus_memset({zeroAddr}, 0, sizeof({cType}));");
                     }
                 }
                 else
@@ -5256,9 +5380,17 @@ public partial class CCodeGenerator
                 var elementType = GetCType(arrayType.ElementType);
                 var size = arrayType.Length;
 
-                // Use standard C array initializer syntax: Type name[size] = { elem1, elem2, ... };
+                // LIFETIME FIX: Arrays initialized with compile-time constants should be 'static'
+                // to ensure they live for the entire program duration. This is critical when
+                // the array is passed to external functions (like MUI's make_radio) that
+                // may store pointers to the array. Without 'static', the array would be
+                // stack-allocated and become invalid when the function returns.
+                var isConstantArray = IsCompileTimeConstantArray(arrayLiteral);
+                var staticPrefix = isConstantArray ? "static " : "";
+
+                // Use standard C array initializer syntax: [static] Type name[size] = { elem1, elem2, ... };
                 // This works correctly with VBCC for all types including structs
-                _output.AppendLine($"    {elementType} {varName}[{size}] = {initValue};");
+                _output.AppendLine($"    {staticPrefix}{elementType} {varName}[{size}] = {initValue};");
             }
             // VBCC FIX: For struct literals, declare variable then assign fields individually
             // This avoids VBCC C99 compound literal incompatibility
@@ -5333,6 +5465,11 @@ public partial class CCodeGenerator
                                         var fieldValue = EmitValue(kvp.Value);
                                         _output.AppendLine($"    {varName}.data.{enumValueDecl.VariantName}._{i}.{kvp.Key} = {fieldValue};");
                                     }
+                                }
+                                // VBCC_004: Compound literals cause misalignment on 68k - emit field-by-field for nested enum literals
+                                else if (enumValueDecl.AssociatedValues[i] is IrEnumValue nestedEnumValueDecl)
+                                {
+                                    EmitNestedEnumFieldByField($"{varName}.data.{enumValueDecl.VariantName}._{i}", nestedEnumValueDecl);
                                 }
                                 else
                                 {
@@ -5497,6 +5634,11 @@ public partial class CCodeGenerator
                                     var fieldValue = EmitValue(kvp.Value);
                                     _output.AppendLine($"    {varName}.data.{enumValue.VariantName}._{i}.{kvp.Key} = {fieldValue};");
                                 }
+                            }
+                            // VBCC_004: Compound literals cause misalignment on 68k - emit field-by-field for nested enum literals
+                            else if (enumValue.AssociatedValues[i] is IrEnumValue nestedEnumValueStore)
+                            {
+                                EmitNestedEnumFieldByField($"{varName}.data.{enumValue.VariantName}._{i}", nestedEnumValueStore);
                             }
                             else
                             {
@@ -5899,7 +6041,7 @@ public partial class CCodeGenerator
 
         // VBCC FIX: For struct/enum returns on 68k, use output parameter pattern to avoid vbcc bugs
         // BUT: Extern functions use their actual C signatures and return values directly
-        var isStructOrEnumReturn = call.ReturnType is IrStructType or IrEnumType;
+        var isStructOrEnumReturn = call.ReturnType is IrStructType or IrEnumType or IrTupleType;
         var shouldUseOutParam = isStructOrEnumReturn && (function == null || !function.IsExtern);
 
         // WORKAROUND: Strip type suffixes from cross-module function calls BEFORE mangling
@@ -6125,6 +6267,17 @@ public partial class CCodeGenerator
 
     private void EmitReturn(IrReturn returnInst)
     {
+        // CRITICAL FIX: Handle IrNever (unreachable!() or panic!()) specially.
+        // The panic has already been emitted, and the function will never return.
+        // We still need to emit the return statement to satisfy C semantics,
+        // but we don't emit any cleanup since panic handles that.
+        if (returnInst.Value is IrNever)
+        {
+            // Just emit a comment - the panic call already handles everything
+            _output.AppendLine("    /* unreachable - panic already called */");
+            return;
+        }
+
         // CRITICAL FIX: The order of operations for return is:
         // 1. Deactivate defers for moved variables
         // 2. For struct/enum returns: COPY RETURN VALUE TO __out FIRST
@@ -6147,7 +6300,7 @@ public partial class CCodeGenerator
         {
             // VBCC FIX: For struct/enum returns, write to output parameter instead of returning directly
             var isStructOrEnumReturn = _currentEmittingFunction != null &&
-                                      (_currentEmittingFunction.ReturnType is IrStructType or IrEnumType);
+                                      (_currentEmittingFunction.ReturnType is IrStructType or IrEnumType or IrTupleType);
             var shouldUseOutParam = isStructOrEnumReturn;
 
             if (shouldUseOutParam)
@@ -6294,6 +6447,11 @@ public partial class CCodeGenerator
                                                 }
                                             }
                                         }
+                                    }
+                                    // VBCC_004: Compound literals cause misalignment on 68k - emit field-by-field for nested enum literals
+                                    else if (enumValue.AssociatedValues[i] is IrEnumValue nestedEnumValueReturn)
+                                    {
+                                        EmitNestedEnumFieldByField($"__out->data.{enumValue.VariantName}._{i}", nestedEnumValueReturn);
                                     }
                                     else
                                     {
@@ -6450,7 +6608,7 @@ public partial class CCodeGenerator
         if (returnInst.Value != null)
         {
             var isStructOrEnumReturn = _currentEmittingFunction != null &&
-                                      (_currentEmittingFunction.ReturnType is IrStructType or IrEnumType);
+                                      (_currentEmittingFunction.ReturnType is IrStructType or IrEnumType or IrTupleType);
 
             if (isStructOrEnumReturn)
             {
@@ -6473,7 +6631,7 @@ public partial class CCodeGenerator
             {
                 _output.AppendLine("    return;");
             }
-            else if (_currentEmittingFunction?.ReturnType is IrStructType or IrEnumType)
+            else if (_currentEmittingFunction?.ReturnType is IrStructType or IrEnumType or IrTupleType)
             {
                 // For struct/enum returns (which use __out parameter), just return;
                 _output.AppendLine("    return;");
@@ -6512,18 +6670,11 @@ public partial class CCodeGenerator
             // Void function: just return
             _output.AppendLine($"{indent}return;");
         }
-        else if (returnType is IrStructType or IrEnumType)
+        else if (returnType is IrStructType or IrEnumType or IrTupleType)
         {
-            // Struct/enum returns use __out parameter, so C function is void
-            // Just return without a value
+            // Struct/enum/tuple returns use __out parameter, so C function is void
+            // Just return without a value (error has already been reported)
             _output.AppendLine($"{indent}return;");
-        }
-        else if (returnType is IrTupleType tupleType && tupleType.ElementTypes.Count > 0)
-        {
-            // Tuples return directly by value (NOT via __out parameter)
-            // Use compound literal initialization for proper struct initialization
-            var cType = GetCType(returnType);
-            _output.AppendLine($"{indent}return ({cType}){{0}};  // Zero-initialized after error");
         }
         else
         {
@@ -8095,6 +8246,7 @@ public partial class CCodeGenerator
             IrFieldReference fieldRef => EmitFieldReference(fieldRef),  // Field reference for borrowing
             IrIndexedFieldAccess indexedField => EmitIndexedFieldAccess(indexedField),
             IrGenericAssociatedFunction genericFunc => throw new InvalidOperationException($"Generic associated function '{genericFunc.TypeName}::{genericFunc.MethodName}' must be monomorphized to a concrete function before code generation"),
+            IrNever _ => "/* unreachable */",  // Never type - code is unreachable after panic
             _ => throw new NotSupportedException($"Unsupported value type: {value.GetType().Name}")
         };
     }
@@ -8282,6 +8434,244 @@ public partial class CCodeGenerator
                 return false;
         }
         return true;
+    }
+
+    /// <summary>
+    /// Check if an array literal contains only compile-time constant values.
+    /// Arrays with only compile-time constants can be made 'static' to ensure
+    /// they live for the entire program duration. This is critical when the
+    /// array is passed to external functions (like MUI's make_radio) that
+    /// store pointers to the array - if the array were stack-allocated,
+    /// it would become invalid when the function returns.
+    /// </summary>
+    private bool IsCompileTimeConstantArray(IrArrayLiteral arrayLit)
+    {
+        foreach (var elem in arrayLit.Elements)
+        {
+            if (!IsCompileTimeConstant(elem))
+                return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Check if a value is a compile-time constant (can be placed in static storage).
+    /// </summary>
+    private bool IsCompileTimeConstant(IrValue value)
+    {
+        return value switch
+        {
+            // Integer constants (including null pointers represented as 0)
+            IrConstant => true,
+
+            // Float constants
+            IrFloatConstant => true,
+
+            // Bool constants
+            IrBoolConstant => true,
+
+            // Fixed-point constants
+            IrFixedConstant => true,
+
+            // String literals are in the data section, so their pointers are constant
+            IrStringLiteral => true,
+
+            // Cast of a compile-time constant is still constant
+            IrCastValue castValue => IsCompileTimeConstant(castValue.Value),
+
+            // Nested arrays - all elements must be constant
+            IrArrayLiteral nestedArray => IsCompileTimeConstantArray(nestedArray),
+
+            // Function addresses are compile-time constants
+            IrFunctionAddress => true,
+
+            // Variables are NOT compile-time constants (we need to trace through to their values)
+            // However, we handle the special case of slot variables in AnalyzeStaticConstantArrays
+            _ => false
+        };
+    }
+
+    /// <summary>
+    /// Analyzes a function to find arrays that are filled with compile-time constant values.
+    /// This checks both:
+    /// 1. IrLocalDecl instructions with IrArrayLiteral initial values
+    /// 2. Arrays filled via IrIndexStore instructions
+    ///
+    /// Such arrays can be made 'static' to ensure they persist for the entire program duration.
+    /// This is critical for arrays passed to external functions (like MUI's make_radio)
+    /// that may store pointers to the array - without 'static', the array would be
+    /// stack-allocated and become invalid when the function returns.
+    /// </summary>
+    private HashSet<string> AnalyzeStaticConstantArrays(
+        IrFunction function,
+        Dictionary<string, (IrType Type, bool IsArray, int ArraySize)> localDeclVars)
+    {
+        var result = new HashSet<string>();
+
+        // Track which values are assigned to slot variables
+        // Key: slot variable name (sanitized), Value: the value assigned to it
+        var slotValues = new Dictionary<string, IrValue>();
+
+        // Check arrays declared with IrArrayLiteral initial values
+        foreach (var block in function.BasicBlocks)
+        {
+            foreach (var instruction in block.Instructions)
+            {
+                if (instruction is IrLocalDecl localDecl &&
+                    localDecl.Type is IrArrayType &&
+                    localDecl.InitialValue is IrArrayLiteral arrayLiteral)
+                {
+                    var varName = SanitizeVariableName(localDecl.Name);
+
+                    // Check if this array is in our local declarations
+                    if (!localDeclVars.ContainsKey(varName))
+                        continue;
+
+                    // Check if all elements are compile-time constants
+                    // For IrVariable elements that reference temps (%t), check if the
+                    // array literal source expression elements were constants
+                    bool allConstant = true;
+                    int elemIdx = 0;
+                    foreach (var elem in arrayLiteral.Elements)
+                    {
+                        var isConst = IsCompileTimeConstant(elem);  // First check direct constants
+                        if (!isConst && elem is IrVariable varElem)
+                        {
+                            // For temp variables, we need to check if they were assigned constant values
+                            // Unfortunately, the IR doesn't preserve this information.
+                            // We'll check if the slot (after sanitization) would be assigned a constant
+                            // by checking if ALL elements are temp variables that map to slots.
+                            // This is conservative: we assume arrays of temps initialized with
+                            // expressions like "string".ptr are constant because the string
+                            // literals are in static storage.
+                            var sanitizedElemName = SanitizeVariableName(varElem.Name);
+                            // If this variable maps to a slot, check if it's a simple temp
+                            if (sanitizedElemName.StartsWith("_slot_") && varElem.Name.StartsWith("%"))
+                            {
+                                // Temp variables that map to slots are typically results of
+                                // constant expression evaluation (like "string".ptr)
+                                // Check if the slot type is a pointer type (likely from string.ptr)
+                                if (varElem.Type is IrPointerType)
+                                {
+                                    isConst = true; // Assume constant for pointer temps
+                                }
+                            }
+                        }
+
+                        if (!isConst)
+                        {
+                            allConstant = false;
+                            break;
+                        }
+                        elemIdx++;
+                    }
+
+                    if (allConstant)
+                    {
+                        result.Add(varName);
+                    }
+                }
+            }
+        }
+
+        // THIRD PASS: Check arrays filled via IrIndexStore instructions
+        var arrayStores = new Dictionary<string, List<(int Index, IrValue Value)>>();
+        foreach (var block in function.BasicBlocks)
+        {
+            foreach (var instruction in block.Instructions)
+            {
+                if (instruction is IrIndexStore indexStore)
+                {
+                    // Get the array variable name
+                    string? arrayVarName = null;
+                    if (indexStore.Array is IrVariable arrayVar)
+                    {
+                        arrayVarName = SanitizeVariableName(arrayVar.Name);
+                    }
+
+                    if (arrayVarName == null)
+                        continue;
+
+                    // Get the index value
+                    if (indexStore.Index is not IrConstant indexConst)
+                        continue; // Non-constant index - can't analyze
+
+                    var index = (int)indexConst.Value;
+
+                    // Check if this array is in our local declarations
+                    if (!localDeclVars.ContainsKey(arrayVarName))
+                        continue;
+
+                    // Add to tracking
+                    if (!arrayStores.ContainsKey(arrayVarName))
+                        arrayStores[arrayVarName] = new List<(int, IrValue)>();
+
+                    arrayStores[arrayVarName].Add((index, indexStore.Value));
+                }
+            }
+        }
+
+        // Analyze arrays filled via IrIndexStore
+        foreach (var (arrayName, stores) in arrayStores)
+        {
+            // Skip if already marked as static from IrArrayLiteral
+            if (result.Contains(arrayName))
+                continue;
+
+            if (!localDeclVars.TryGetValue(arrayName, out var varInfo))
+                continue;
+
+            if (!varInfo.IsArray)
+                continue;
+
+            var arraySize = varInfo.ArraySize;
+
+            // Check if we have stores for all elements
+            if (stores.Count != arraySize)
+                continue; // Not all elements are explicitly set
+
+            // Check if all stored values are compile-time constants
+            bool allConstant = true;
+            foreach (var (_, value) in stores)
+            {
+                if (!IsCompileTimeConstantValue(value, slotValues))
+                {
+                    allConstant = false;
+                    break;
+                }
+            }
+
+            if (allConstant)
+            {
+                result.Add(arrayName);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Checks if a value is a compile-time constant, following through slot variable
+    /// assignments to find the actual value.
+    /// </summary>
+    private bool IsCompileTimeConstantValue(IrValue value, Dictionary<string, IrValue> slotValues)
+    {
+        // Direct constants
+        if (IsCompileTimeConstant(value))
+            return true;
+
+        // Slot variable - follow through to the assigned value
+        // Use sanitized name since slotValues keys are sanitized
+        if (value is IrVariable varRef)
+        {
+            var sanitizedName = SanitizeVariableName(varRef.Name);
+            if (sanitizedName.StartsWith("_slot_") && slotValues.TryGetValue(sanitizedName, out var slotValue))
+            {
+                return IsCompileTimeConstantValue(slotValue, slotValues);
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

@@ -429,13 +429,37 @@ public class VbccToolchain
         var output = new StringBuilder();
         var labelCount = 0;
         var debugDirectivePattern = new System.Text.RegularExpressions.Regex(@"^\s*debug\s+(\d+)");
+        var sectionDirectivePattern = new System.Text.RegularExpressions.Regex(@"^\s*section\s+""(DATA|BSS)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         var injectedLabels = new HashSet<string>(); // Track which labels we've already injected
         var markerIndex = 0; // Current marker we're trying to inject
+        var inCodeSection = true; // Track if we're in the CODE section
 
         foreach (var line in asmLines)
         {
+            // Check if we're about to leave the CODE section
+            // If so, inject any remaining markers NOW, before switching sections
+            if (inCodeSection && sectionDirectivePattern.IsMatch(line))
+            {
+                // Inject all remaining markers before leaving CODE section
+                while (markerIndex < debugMarkers.Count)
+                {
+                    var marker = debugMarkers[markerIndex];
+                    if (!injectedLabels.Contains(marker.LabelName))
+                    {
+                        // Emit the label as a global symbol so it appears in the symbol table
+                        output.AppendLine($"\txdef\t_{marker.LabelName}");
+                        output.AppendLine($"_{marker.LabelName}:");
+                        output.AppendLine($"; Source: {marker.FileName}:{marker.NovusLine}");
+                        labelCount++;
+                        injectedLabels.Add(marker.LabelName);
+                    }
+                    markerIndex++;
+                }
+                inCodeSection = false;
+            }
+
             var match = debugDirectivePattern.Match(line);
-            if (match.Success && markerIndex < debugMarkers.Count)
+            if (match.Success && markerIndex < debugMarkers.Count && inCodeSection)
             {
                 var debugLineNum = int.Parse(match.Groups[1].Value);
 
@@ -459,20 +483,24 @@ public class VbccToolchain
         }
 
         // Handle any remaining markers that didn't find a debug directive
-        // This can happen if the marker is after all debug directives
-        while (markerIndex < debugMarkers.Count)
+        // This shouldn't happen if we injected them before the section change,
+        // but as a safety net, inject them here with an explicit CODE section
+        if (markerIndex < debugMarkers.Count)
         {
-            var marker = debugMarkers[markerIndex];
-            if (!injectedLabels.Contains(marker.LabelName))
+            output.AppendLine("\tsection\t\"CODE\",code"); // Ensure we're in CODE section
+            while (markerIndex < debugMarkers.Count)
             {
-                // Append at the end (before any trailing sections)
-                output.AppendLine($"\txdef\t_{marker.LabelName}");
-                output.AppendLine($"_{marker.LabelName}:");
-                output.AppendLine($"; Source: {marker.FileName}:{marker.NovusLine}");
-                labelCount++;
-                injectedLabels.Add(marker.LabelName);
+                var marker = debugMarkers[markerIndex];
+                if (!injectedLabels.Contains(marker.LabelName))
+                {
+                    output.AppendLine($"\txdef\t_{marker.LabelName}");
+                    output.AppendLine($"_{marker.LabelName}:");
+                    output.AppendLine($"; Source: {marker.FileName}:{marker.NovusLine}");
+                    labelCount++;
+                    injectedLabels.Add(marker.LabelName);
+                }
+                markerIndex++;
             }
-            markerIndex++;
         }
 
         if (labelCount > 0)
