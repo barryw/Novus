@@ -263,7 +263,8 @@ pub fn neq_test(a: i32, b: i32) -> bool {
         var module = BuildIR(source);
         var code = GenerateCCode(module);
 
-        Assert.Contains("!=", code);
+        // The comparison is wrapped in a helper function for VBCC workaround
+        Assert.Contains("__novus_cmp_ne_i32", code);
     }
 
     [Fact]
@@ -727,10 +728,11 @@ pub fn increment_counter() -> u32 {
     }
 
     /// <summary>
-    /// Test for VBCC comparison inlining workaround.
+    /// Test for VBCC comparison workaround.
     /// VBCC has a bug where it can move stack cleanup between comparison and branch,
-    /// clobbering condition flags. We work around this by inlining comparisons into if().
-    /// See CCodeGenerator._inlineableComparisons for full documentation.
+    /// clobbering condition flags. We work around this by using comparison helper functions
+    /// that force sequence points. The comparisons are inlined into if() statements.
+    /// See CCodeGenerator for full documentation.
     /// </summary>
     [Fact]
     public void CCodeGen_VbccWorkaround_ComparisonsAreInlinedIntoConditionals()
@@ -749,18 +751,15 @@ pub fn compare_and_branch(a: i32, b: i32) -> i32 {
         var module = BuildIR(source);
         var code = GenerateCCode(module);
 
-        // The comparison should be inlined into the if() statement
-        // We should see: if (a == b) or if (_slot... == _slot...)
-        // We should NOT see: bool cond = a == b; if (cond)
-
-        // Check that if statements contain comparison operators directly
-        Assert.Matches(@"if\s*\([^)]*==", code);  // if (...==...)
-        Assert.Matches(@"if\s*\([^)]*<", code);   // if (...<...)
+        // The comparison should use helper functions for VBCC workaround
+        // These are inlined into if() statements
+        Assert.Matches(@"if\s*\(__novus_cmp_eq_i32", code);  // if (__novus_cmp_eq_i32(...))
+        Assert.Matches(@"if\s*\(__novus_cmp_ne_i32", code);  // if (__novus_cmp_ne_i32(...)) for < comparison
     }
 
     /// <summary>
-    /// Test that comparison inlining state is properly reset between functions.
-    /// This verifies that _inlineableComparisons.Clear() is called in EmitFunction.
+    /// Test that comparison state is properly reset between functions.
+    /// This verifies that comparison-related state is cleared in EmitFunction.
     /// </summary>
     [Fact]
     public void CCodeGen_VbccWorkaround_ComparisonStateResetBetweenFunctions()
@@ -786,7 +785,8 @@ pub fn second_func(y: i32) -> bool {
         Assert.Contains("first_func", code);
         Assert.Contains("second_func", code);
 
-        // The second function should have its comparison inlined
-        Assert.Matches(@"if\s*\([^)]*>", code);
+        // The second function should have its comparison using the helper function
+        // For > 0, it's converted to __novus_cmp_ne_i32((y > 0), 0)
+        Assert.Matches(@"if\s*\(__novus_cmp_ne_i32", code);
     }
 }
