@@ -59,12 +59,12 @@ pub fn test_draw_pen_get_set() {
                 Result::Ok(ctx) => {
                     // Set pen to color 1
                     ctx.pen(1)
-                    let pen = ctx.get_pen()
+                    let pen = ctx.pen_color()
                     expect_eq_u32((u32)pen, 1u32, "get_pen returns set value")
 
                     // Set to color 2
                     ctx.pen(2)
-                    let pen2 = ctx.get_pen()
+                    let pen2 = ctx.pen_color()
                     expect_eq_u32((u32)pen2, 2u32, "get_pen returns new value")
                 },
                 Result::Err(_) => expect(false, "context should create")
@@ -84,7 +84,7 @@ pub fn test_draw_bg_pen_get_set() {
             match ctx_result {
                 Result::Ok(ctx) => {
                     ctx.bg_pen(2)
-                    let bg = ctx.get_bg_pen()
+                    let bg = ctx.bg_pen_color()
                     expect_eq_u32((u32)bg, 2u32, "get_bg_pen returns set value")
                 },
                 Result::Err(_) => expect(false, "context should create")
@@ -104,7 +104,7 @@ pub fn test_draw_mode_get_set() {
             match ctx_result {
                 Result::Ok(ctx) => {
                     ctx.mode(DrawMode::Jam2)
-                    let mode = ctx.get_mode()
+                    let mode = ctx.draw_mode()
                     match mode {
                         DrawMode::Jam2 => expect(true, "mode is Jam2"),
                         _ => expect(false, "mode should be Jam2")

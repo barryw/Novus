@@ -954,7 +954,7 @@ impl ModPlayer {
     /// points in the song for visual synchronization.
     ///
     /// The value persists until the next E8 command. Reset to 0 on init.
-    pub fn get_e8_trigger(&self) -> u8 {
+    pub fn e8_trigger(&self) -> u8 {
         return get_mt_e8_trigger()
     }
 
@@ -965,7 +965,7 @@ impl ModPlayer {
     /// - Bits 0-6: Number of times the song has looped
     ///
     /// Reset to 0 on init.
-    pub fn get_song_end(&self) -> u8 {
+    pub fn song_end(&self) -> u8 {
         return get_mt_song_end()
     }
 
@@ -1008,19 +1008,19 @@ impl ModPlayer {
     /// without clearing.
     ///
     /// Useful for visual effects synced to the beat.
-    pub fn get_vumeter(&self) -> u8 {
+    pub fn vumeter(&self) -> u8 {
         return get_mt_vumeter()
     }
 
     /// Peek at VU meter without clearing
     ///
-    /// Same as `get_vumeter()` but doesn't clear the value.
+    /// Same as `vumeter()` but doesn't clear the value.
     pub fn peek_vumeter(&self) -> u8 {
         return peek_mt_vumeter()
     }
 
     /// Get the number of channels dedicated to music
-    pub fn get_music_channel_count(&self) -> u8 {
+    pub fn music_channel_count(&self) -> u8 {
         return get_mt_music_channels()
     }
 

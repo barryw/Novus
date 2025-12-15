@@ -227,9 +227,9 @@ pub fn main() -> i32 {
                     write("Querying pen state...\n")
 
                     ctx.pens(1, 2)  // Set fg=1, bg=2
-                    let fg = ctx.get_pen()
-                    let bg = ctx.get_bg_pen()
-                    let mode = ctx.get_mode()
+                    let fg = ctx.pen_color()
+                    let bg = ctx.bg_pen_color()
+                    let mode = ctx.draw_mode()
 
                     // ========================================================
                     // Section 10: Cursor Operations

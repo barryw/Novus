@@ -82,7 +82,7 @@ extern pub fn InitBitMap(bitMap: *BitMap, depth: i8, width: i16, height: i16)
 extern pub fn ScrollRaster(rp: *RastPort, dx: i16, dy: i16, xMin: i16, yMin: i16, xMax: i16, yMax: i16)
 extern pub fn WaitBOVP(vp: *ViewPort)
 extern pub fn GetSprite(sprite: *SimpleSprite, num: i16) -> i16
-extern pub fn FreeSprite(consuming num: i16)
+extern pub fn FreeSprite(num: i16)
 extern pub fn ChangeSprite(vp: *ViewPort, sprite: *SimpleSprite, newData: *u8)
 extern pub fn MoveSprite(vp: *ViewPort, sprite: *SimpleSprite, x: i16, y: i16)
 extern pub fn LockLayerRom(layer: *Layer)

@@ -1,5 +1,5 @@
 // MUI Demo Application - Demonstrates the MUI builder API for Novus
-from std::ui::mui import MUIAppBuilder, MUIGroupBuilder, MUIApp, MenuBuilder, MenuItemBuilder
+from std::ui::mui import MUIAppBuilder, MUIGroupBuilder, MUIApp, MenuBuilder, MenuItemBuilder, MenuStrip
 from std::ui::mui import MUITabsBuilder, set_attr, set_text, get_attr, make_button, make_text
 from std::ui::mui import make_radio, make_progress, set_progress, app_busy
 from std::ui::mui import MENU_NEW, MENU_OPEN, MENU_SAVE, MENU_QUIT, MENU_CUT, MENU_COPY, MENU_PASTE, MENU_ABOUT
@@ -49,7 +49,7 @@ fn build_menustrip() -> *u8 {
     menustrip
         .menu("Help")
         .item("About...", "?", MENU_ABOUT)
-    return menustrip.build()
+    return menustrip.build().ptr()
 }
 
 fn build_controls_tab(root: *MUIGroupBuilder) -> (*u8, *u8, *u8, *u8, *u8, *u8) {

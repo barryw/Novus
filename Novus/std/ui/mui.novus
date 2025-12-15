@@ -1234,42 +1234,22 @@ pub fn list_redraw(list: *u8, entry: i32) {
 /// Menu item builder - accumulates items for a single menu
 pub struct MenuItemBuilder {
     menu_obj: *u8           // The Menu object we're adding items to
-    labels: **u8            // Track allocated labels for cleanup
-    label_count: u32
-    label_capacity: u32
+    parent: *MenuBuilder    // Parent menu builder that tracks labels
 }
 
 impl MenuItemBuilder {
     /// Create a new menu item builder for a menu object
-    fn new(menu_obj: *u8) -> MenuItemBuilder {
-        unsafe {
-            let capacity: u32 = 16
-            let labels = (**u8)AllocVec(capacity * 4, MEMF_PUBLIC | MEMF_CLEAR)
-            return MenuItemBuilder {
-                menu_obj: menu_obj,
-                labels: labels,
-                label_count: 0,
-                label_capacity: capacity,
-            }
+    fn new(menu_obj: *u8, parent: *MenuBuilder) -> MenuItemBuilder {
+        return MenuItemBuilder {
+            menu_obj: menu_obj,
+            parent: parent,
         }
     }
 
-    /// Allocate and track a label string
+    /// Allocate and track a label string (delegates to parent MenuBuilder)
     fn alloc_label(&var self, text: Str) -> *u8 {
         unsafe {
-            let len = (u32)text.len() + 1
-            let ptr = (*u8)AllocVec(len, MEMF_PUBLIC)
-            if ptr != (*u8)0 {
-                CopyMem(text.ptr, ptr, (u32)text.len())
-                ptr[text.len()] = 0
-
-                // Track for cleanup
-                if self.label_count < self.label_capacity {
-                    self.labels[self.label_count] = ptr
-                    self.label_count++
-                }
-            }
-            return ptr
+            return (*self.parent).alloc_label(text)
         }
     }
 
@@ -1420,12 +1400,13 @@ impl MenuBuilder {
                 }
             }
 
-            return MenuItemBuilder::new(menu_obj)
+            return MenuItemBuilder::new(menu_obj, self)
         }
     }
 
     /// Build the complete menustrip object
-    pub fn build(self) -> *u8 {
+    /// Returns a MenuStrip wrapper that owns the labels and frees them on Drop
+    pub fn build(consuming self) -> MenuStrip {
         unsafe {
             // Create the menustrip with all menus as children
             var tags = TagBuilder::new()
@@ -1444,13 +1425,56 @@ impl MenuBuilder {
 
             let strip = MUI_NewObjectA("Menustrip.mui".ptr, tags.finish())
 
-            // Note: Don't free menus array - the menustrip now owns the menu objects
-            // The labels will be freed when the menustrip is disposed
+            // Free the menus tracking array (MUI now owns the menu objects)
             if self.menus != (**u8)0 {
                 FreeVec((*u8)self.menus)
             }
 
-            return strip
+            // Return wrapper that owns the labels
+            return MenuStrip {
+                obj: strip,
+                labels: self.labels,
+                label_count: self.label_count,
+            }
+        }
+    }
+}
+
+/// Wrapper for MUI menustrip that owns allocated label strings
+/// Drop frees the labels when the menustrip is no longer needed
+pub struct MenuStrip {
+    obj: *u8
+    labels: **u8
+    label_count: u32
+}
+
+impl MenuStrip {
+    /// Get the raw MUI menustrip object pointer
+    pub fn ptr(&self) -> *u8 {
+        return self.obj
+    }
+}
+
+impl Drop for MenuStrip {
+    fn drop(&var self) {
+        unsafe {
+            // Free all tracked label strings
+            if self.labels != (**u8)0 {
+                var i: u32 = 0
+                forever {
+                    if i >= self.label_count {
+                        break
+                    }
+                    if self.labels[i] != (*u8)0 {
+                        FreeVec(self.labels[i])
+                    }
+                    i++
+                }
+                FreeVec((*u8)self.labels)
+                self.labels = (**u8)0
+            }
+            // Note: We don't dispose the MUI object here - it's owned by the MUIApp
+            // and will be disposed when the app is disposed
         }
     }
 }

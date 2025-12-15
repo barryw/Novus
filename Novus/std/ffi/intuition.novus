@@ -129,12 +129,12 @@ extern pub fn NextObject(objectPtrPtr: *u8) -> *u8
 extern pub fn MakeClass(classID: *u8, superClassID: *u8, superClassPtr: *IClass, instanceSize: u16, flags: u32) -> *IClass
 extern pub fn AddClass(classPtr: *IClass)
 extern pub fn GetScreenDrawInfo(screen: *Screen) -> *DrawInfo
-extern pub fn FreeScreenDrawInfo(consuming screen: *Screen, drawInfo: *DrawInfo)
+extern pub fn FreeScreenDrawInfo(screen: *Screen, consuming drawInfo: *DrawInfo)
 extern pub fn ResetMenuStrip(window: *Window, menu: *Menu) -> i16
 extern pub fn RemoveClass(classPtr: *IClass)
 extern pub fn FreeClass(consuming classPtr: *IClass) -> i16
 extern pub fn AllocScreenBuffer(sc: *Screen, bm: *BitMap, flags: u32) -> *ScreenBuffer
-extern pub fn FreeScreenBuffer(consuming sc: *Screen, sb: *ScreenBuffer)
+extern pub fn FreeScreenBuffer(sc: *Screen, consuming sb: *ScreenBuffer)
 extern pub fn ChangeScreenBuffer(sc: *Screen, sb: *ScreenBuffer) -> u32
 extern pub fn ScreenDepth(screen: *Screen, flags: u32, reserved: *u8)
 extern pub fn ScreenPosition(screen: *Screen, flags: u32, x1: i32, y1: i32, x2: i32, y2: i32)
@@ -146,13 +146,3 @@ extern pub fn SetWindowPointerA(win: *Window, taglist: *TagItem)
 // Varargs function SetWindowPointer skipped - needs manual implementation
 extern pub fn TimedDisplayAlert(alertNumber: u32, string: *u8, height: u16, time: u32) -> i16
 extern pub fn HelpControl(win: *Window, flags: u32)
-
-// Opaque Intuition menu structures (defined in NDK headers)
-pub struct Menu {
-    _opaque: u8
-}
-
-pub struct MenuItem {
-    _opaque: u8
-}
-

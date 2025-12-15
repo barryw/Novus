@@ -667,8 +667,16 @@ pub struct IntuiText {
     NextText: *IntuiText,
 }
 
-// MenuItem and Menu are NDK Intuition structs - forward-declared automatically
-// DO NOT define them here or they will conflict with NDK headers
+// Menu and MenuItem are NDK Intuition structs - defined as extern types
+#[extern_type]
+pub struct Menu {
+    _opaque: u8,
+}
+
+#[extern_type]
+pub struct MenuItem {
+    _opaque: u8,
+}
 
 // ============================================================================
 // GadTools Menu Structs

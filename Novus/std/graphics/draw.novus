@@ -141,19 +141,19 @@ impl DrawContext {
     }
 
     /// Get the current foreground pen color index.
-    pub fn get_pen(&self) -> u8 {
+    pub fn pen_color(&self) -> u8 {
         let pen: u32 = GetAPen(self.rp)
         return (u8)pen
     }
 
     /// Get the current background pen color index.
-    pub fn get_bg_pen(&self) -> u8 {
+    pub fn bg_pen_color(&self) -> u8 {
         let pen: u32 = GetBPen(self.rp)
         return (u8)pen
     }
 
     /// Get the current draw mode.
-    pub fn get_mode(&self) -> DrawMode {
+    pub fn draw_mode(&self) -> DrawMode {
         let mode: u32 = GetDrMd(self.rp)
         return DrawMode::from_raw((u8)mode)
     }
@@ -328,7 +328,7 @@ impl DrawContext {
 
     /// Clear the entire RastPort to the current background pen.
     pub fn clear_to_background(&self) {
-        let bg: u8 = self.get_bg_pen()
+        let bg: u8 = self.bg_pen_color()
         SetRast(self.rp, (u32)bg)
     }
 

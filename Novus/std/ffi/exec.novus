@@ -62,9 +62,9 @@ extern pub fn SetExcept(newSignals: u32, signalSet: u32) -> u32
 extern pub fn Wait(signalSet: u32) -> u32
 extern pub fn Signal(task: *Task, signalSet: u32)
 extern pub fn AllocSignal(signalNum: i8) -> i8
-extern pub fn FreeSignal(consuming signalNum: i8)
+extern pub fn FreeSignal(signalNum: i8)
 extern pub fn AllocTrap(trapNum: i32) -> i32
-extern pub fn FreeTrap(consuming trapNum: i32)
+extern pub fn FreeTrap(trapNum: i32)
 extern pub fn AddPort(port: *MsgPort)
 extern pub fn RemPort(port: *MsgPort)
 extern pub fn PutMsg(port: *MsgPort, message: *Message)

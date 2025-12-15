@@ -506,7 +506,7 @@ impl AudioChannel {
     }
 
     /// Get the current period setting
-    pub fn get_period(&self) -> u16 {
+    pub fn period(&self) -> u16 {
         return self.period
     }
 
@@ -539,7 +539,7 @@ impl AudioChannel {
     }
 
     /// Get the current volume setting (0-64)
-    pub fn get_volume(&self) -> u16 {
+    pub fn volume(&self) -> u16 {
         return self.volume
     }
 
@@ -1479,7 +1479,7 @@ impl MultiChannel {
     }
 
     /// Get volume for a specific channel
-    pub fn get_channel_volume(&self, channel: u8) -> u16 {
+    pub fn channel_volume(&self, channel: u8) -> u16 {
         if channel > 3 {
             return 0
         }
