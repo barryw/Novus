@@ -32,7 +32,7 @@ _CreateServerA:
 _DisposeServer:
 	movea.l	4(sp),a0
 	movea.l	_AmlBase,a6
-	jsr	-48(a6)
+	jsr	-42(a6)
 	rts
 
 	section	_SetServerAttrsA_stub,code
@@ -43,7 +43,7 @@ _SetServerAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-54(a6)
+	jsr	-48(a6)
 	rts
 
 	section	_GetServerAttrsA_stub,code
@@ -54,7 +54,7 @@ _GetServerAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-66(a6)
+	jsr	-54(a6)
 	rts
 
 	section	_GetServerHeaders_stub,code
@@ -65,7 +65,7 @@ _GetServerHeaders:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	movea.l	_AmlBase,a6
-	jsr	-78(a6)
+	jsr	-60(a6)
 	rts
 
 	section	_GetServerArticles_stub,code
@@ -78,7 +78,7 @@ _GetServerArticles:
 	movea.l	12(sp),a2
 	move.l	16(sp),d0
 	movea.l	_AmlBase,a6
-	jsr	-84(a6)
+	jsr	-66(a6)
 	rts
 
 	section	_CreateFolderA_stub,code
@@ -89,7 +89,7 @@ _CreateFolderA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-90(a6)
+	jsr	-72(a6)
 	rts
 
 	section	_DisposeFolder_stub,code
@@ -99,7 +99,7 @@ _CreateFolderA:
 _DisposeFolder:
 	movea.l	4(sp),a0
 	movea.l	_AmlBase,a6
-	jsr	-102(a6)
+	jsr	-78(a6)
 	rts
 
 	section	_OpenFolderA_stub,code
@@ -110,7 +110,7 @@ _OpenFolderA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-108(a6)
+	jsr	-84(a6)
 	rts
 
 	section	_SaveFolder_stub,code
@@ -120,7 +120,7 @@ _OpenFolderA:
 _SaveFolder:
 	movea.l	4(sp),a0
 	movea.l	_AmlBase,a6
-	jsr	-120(a6)
+	jsr	-90(a6)
 	rts
 
 	section	_RemFolder_stub,code
@@ -130,7 +130,7 @@ _SaveFolder:
 _RemFolder:
 	movea.l	4(sp),a0
 	movea.l	_AmlBase,a6
-	jsr	-126(a6)
+	jsr	-96(a6)
 	rts
 
 	section	_SetFolderAttrsA_stub,code
@@ -141,7 +141,7 @@ _SetFolderAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-132(a6)
+	jsr	-102(a6)
 	rts
 
 	section	_GetFolderAttrsA_stub,code
@@ -152,7 +152,7 @@ _GetFolderAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-144(a6)
+	jsr	-108(a6)
 	rts
 
 	section	_AddFolderArticle_stub,code
@@ -164,7 +164,7 @@ _AddFolderArticle:
 	move.l	8(sp),d0
 	movea.l	12(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-156(a6)
+	jsr	-114(a6)
 	rts
 
 	section	_RemFolderArticle_stub,code
@@ -175,7 +175,7 @@ _RemFolderArticle:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-162(a6)
+	jsr	-120(a6)
 	rts
 
 	section	_ReadFolderSpool_stub,code
@@ -187,7 +187,7 @@ _ReadFolderSpool:
 	movea.l	8(sp),a1
 	move.l	12(sp),d0
 	movea.l	_AmlBase,a6
-	jsr	-168(a6)
+	jsr	-126(a6)
 	rts
 
 	section	_WriteFolderSpool_stub,code
@@ -199,7 +199,7 @@ _WriteFolderSpool:
 	movea.l	8(sp),a1
 	move.l	12(sp),d0
 	movea.l	_AmlBase,a6
-	jsr	-174(a6)
+	jsr	-132(a6)
 	rts
 
 	section	_ScanFolderIndex_stub,code
@@ -211,7 +211,7 @@ _ScanFolderIndex:
 	movea.l	8(sp),a1
 	move.l	12(sp),d0
 	movea.l	_AmlBase,a6
-	jsr	-180(a6)
+	jsr	-138(a6)
 	rts
 
 	section	_ExpungeFolder_stub,code
@@ -223,7 +223,7 @@ _ExpungeFolder:
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
 	movea.l	_AmlBase,a6
-	jsr	-186(a6)
+	jsr	-144(a6)
 	rts
 
 	section	_CreateFolderIndex_stub,code
@@ -233,7 +233,7 @@ _ExpungeFolder:
 _CreateFolderIndex:
 	movea.l	4(sp),a0
 	movea.l	_AmlBase,a6
-	jsr	-192(a6)
+	jsr	-150(a6)
 	rts
 
 	section	_SortFolderIndex_stub,code
@@ -244,7 +244,7 @@ _SortFolderIndex:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	movea.l	_AmlBase,a6
-	jsr	-198(a6)
+	jsr	-156(a6)
 	rts
 
 	section	_CreateArticleA_stub,code
@@ -255,7 +255,7 @@ _CreateArticleA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-204(a6)
+	jsr	-162(a6)
 	rts
 
 	section	_DisposeArticle_stub,code
@@ -265,7 +265,7 @@ _CreateArticleA:
 _DisposeArticle:
 	movea.l	4(sp),a0
 	movea.l	_AmlBase,a6
-	jsr	-216(a6)
+	jsr	-168(a6)
 	rts
 
 	section	_OpenArticle_stub,code
@@ -278,7 +278,7 @@ _OpenArticle:
 	move.l	12(sp),d0
 	move.l	16(sp),d1
 	movea.l	_AmlBase,a6
-	jsr	-222(a6)
+	jsr	-174(a6)
 	rts
 
 	section	_CopyArticle_stub,code
@@ -289,7 +289,7 @@ _CopyArticle:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-228(a6)
+	jsr	-180(a6)
 	rts
 
 	section	_SetArticleAttrsA_stub,code
@@ -300,7 +300,7 @@ _SetArticleAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-234(a6)
+	jsr	-186(a6)
 	rts
 
 	section	_GetArticleAttrsA_stub,code
@@ -311,7 +311,7 @@ _GetArticleAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-246(a6)
+	jsr	-192(a6)
 	rts
 
 	section	_SendArticle_stub,code
@@ -323,7 +323,7 @@ _SendArticle:
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
 	movea.l	_AmlBase,a6
-	jsr	-258(a6)
+	jsr	-198(a6)
 	rts
 
 	section	_AddArticlePartA_stub,code
@@ -335,7 +335,7 @@ _AddArticlePartA:
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
 	movea.l	_AmlBase,a6
-	jsr	-264(a6)
+	jsr	-204(a6)
 	rts
 
 	section	_RemArticlePart_stub,code
@@ -346,7 +346,7 @@ _RemArticlePart:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	movea.l	_AmlBase,a6
-	jsr	-276(a6)
+	jsr	-210(a6)
 	rts
 
 	section	_GetArticlePart_stub,code
@@ -357,7 +357,7 @@ _GetArticlePart:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	movea.l	_AmlBase,a6
-	jsr	-282(a6)
+	jsr	-216(a6)
 	rts
 
 	section	_GetArticlePartAttrsA_stub,code
@@ -368,7 +368,7 @@ _GetArticlePartAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-288(a6)
+	jsr	-222(a6)
 	rts
 
 	section	_SetArticlePartAttrsA_stub,code
@@ -379,7 +379,7 @@ _SetArticlePartAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-300(a6)
+	jsr	-228(a6)
 	rts
 
 	section	_CreateArticlePartA_stub,code
@@ -390,7 +390,7 @@ _CreateArticlePartA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-312(a6)
+	jsr	-234(a6)
 	rts
 
 	section	_DisposeArticlePart_stub,code
@@ -400,7 +400,7 @@ _CreateArticlePartA:
 _DisposeArticlePart:
 	movea.l	4(sp),a0
 	movea.l	_AmlBase,a6
-	jsr	-324(a6)
+	jsr	-240(a6)
 	rts
 
 	section	_GetArticlePartDataA_stub,code
@@ -412,7 +412,7 @@ _GetArticlePartDataA:
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
 	movea.l	_AmlBase,a6
-	jsr	-330(a6)
+	jsr	-246(a6)
 	rts
 
 	section	_SetArticlePartDataA_stub,code
@@ -423,7 +423,7 @@ _SetArticlePartDataA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-342(a6)
+	jsr	-252(a6)
 	rts
 
 	section	_CreateAddressEntryA_stub,code
@@ -433,7 +433,7 @@ _SetArticlePartDataA:
 _CreateAddressEntryA:
 	movea.l	4(sp),a0
 	movea.l	_AmlBase,a6
-	jsr	-354(a6)
+	jsr	-258(a6)
 	rts
 
 	section	_DisposeAddressEntry_stub,code
@@ -443,7 +443,7 @@ _CreateAddressEntryA:
 _DisposeAddressEntry:
 	movea.l	4(sp),a0
 	movea.l	_AmlBase,a6
-	jsr	-366(a6)
+	jsr	-264(a6)
 	rts
 
 	section	_OpenAddressEntry_stub,code
@@ -454,7 +454,7 @@ _OpenAddressEntry:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	movea.l	_AmlBase,a6
-	jsr	-372(a6)
+	jsr	-270(a6)
 	rts
 
 	section	_SaveAddressEntry_stub,code
@@ -465,7 +465,7 @@ _SaveAddressEntry:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-378(a6)
+	jsr	-276(a6)
 	rts
 
 	section	_RemAddressEntry_stub,code
@@ -476,7 +476,7 @@ _RemAddressEntry:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-384(a6)
+	jsr	-282(a6)
 	rts
 
 	section	_GetAddressEntryAttrsA_stub,code
@@ -487,7 +487,7 @@ _GetAddressEntryAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-390(a6)
+	jsr	-288(a6)
 	rts
 
 	section	_SetAddressEntryAttrsA_stub,code
@@ -498,7 +498,7 @@ _SetAddressEntryAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-402(a6)
+	jsr	-294(a6)
 	rts
 
 	section	_MatchAddressA_stub,code
@@ -509,7 +509,7 @@ _MatchAddressA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-414(a6)
+	jsr	-300(a6)
 	rts
 
 	section	_FindAddressEntryA_stub,code
@@ -520,7 +520,7 @@ _FindAddressEntryA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-426(a6)
+	jsr	-306(a6)
 	rts
 
 	section	_HuntAddressEntryA_stub,code
@@ -531,7 +531,7 @@ _HuntAddressEntryA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-438(a6)
+	jsr	-312(a6)
 	rts
 
 	section	_ScanAddressIndex_stub,code
@@ -544,7 +544,7 @@ _ScanAddressIndex:
 	move.l	12(sp),d0
 	move.l	16(sp),d1
 	movea.l	_AmlBase,a6
-	jsr	-450(a6)
+	jsr	-318(a6)
 	rts
 
 	section	_AddCustomField_stub,code
@@ -556,7 +556,7 @@ _AddCustomField:
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
 	movea.l	_AmlBase,a6
-	jsr	-456(a6)
+	jsr	-324(a6)
 	rts
 
 	section	_RemCustomField_stub,code
@@ -567,7 +567,7 @@ _RemCustomField:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-462(a6)
+	jsr	-330(a6)
 	rts
 
 	section	_GetCustomFieldData_stub,code
@@ -578,7 +578,7 @@ _GetCustomFieldData:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-468(a6)
+	jsr	-336(a6)
 	rts
 
 	section	_CreateDecoderA_stub,code
@@ -588,7 +588,7 @@ _GetCustomFieldData:
 _CreateDecoderA:
 	movea.l	4(sp),a0
 	movea.l	_AmlBase,a6
-	jsr	-474(a6)
+	jsr	-342(a6)
 	rts
 
 	section	_DisposeDecoder_stub,code
@@ -598,7 +598,7 @@ _CreateDecoderA:
 _DisposeDecoder:
 	movea.l	4(sp),a0
 	movea.l	_AmlBase,a6
-	jsr	-486(a6)
+	jsr	-348(a6)
 	rts
 
 	section	_GetDecoderAttrsA_stub,code
@@ -609,7 +609,7 @@ _GetDecoderAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-492(a6)
+	jsr	-354(a6)
 	rts
 
 	section	_SetDecoderAttrsA_stub,code
@@ -620,7 +620,7 @@ _SetDecoderAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmlBase,a6
-	jsr	-504(a6)
+	jsr	-360(a6)
 	rts
 
 	section	_Decode_stub,code
@@ -631,7 +631,7 @@ _Decode:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	movea.l	_AmlBase,a6
-	jsr	-516(a6)
+	jsr	-366(a6)
 	rts
 
 	section	_Encode_stub,code
@@ -642,6 +642,6 @@ _Encode:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	movea.l	_AmlBase,a6
-	jsr	-522(a6)
+	jsr	-372(a6)
 	rts
 

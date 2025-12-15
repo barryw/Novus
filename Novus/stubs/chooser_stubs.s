@@ -31,7 +31,7 @@ _AllocChooserNodeA:
 _FreeChooserNode:
 	movea.l	4(sp),a0
 	movea.l	_ChooserBase,a6
-	jsr	-48(a6)
+	jsr	-42(a6)
 	rts
 
 	section	_SetChooserNodeAttrsA_stub,code
@@ -42,7 +42,7 @@ _SetChooserNodeAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_ChooserBase,a6
-	jsr	-54(a6)
+	jsr	-48(a6)
 	rts
 
 	section	_GetChooserNodeAttrsA_stub,code
@@ -53,6 +53,6 @@ _GetChooserNodeAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_ChooserBase,a6
-	jsr	-66(a6)
+	jsr	-54(a6)
 	rts
 

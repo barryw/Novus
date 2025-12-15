@@ -27,7 +27,7 @@ _CreateGadgetA:
 _FreeGadgets:
 	movea.l	4(sp),a0
 	jsr	___gadtools_ensure
-	jsr	-42(a6)
+	jsr	-36(a6)
 	rts
 
 	section	_GT_SetGadgetAttrsA_stub,code
@@ -40,7 +40,7 @@ _GT_SetGadgetAttrsA:
 	movea.l	12(sp),a2
 	movea.l	16(sp),a3
 	jsr	___gadtools_ensure
-	jsr	-48(a6)
+	jsr	-42(a6)
 	rts
 
 	section	_CreateMenusA_stub,code
@@ -51,7 +51,7 @@ _CreateMenusA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	jsr	___gadtools_ensure
-	jsr	-60(a6)
+	jsr	-48(a6)
 	rts
 
 	section	_FreeMenus_stub,code
@@ -61,7 +61,7 @@ _CreateMenusA:
 _FreeMenus:
 	movea.l	4(sp),a0
 	jsr	___gadtools_ensure
-	jsr	-72(a6)
+	jsr	-54(a6)
 	rts
 
 	section	_LayoutMenuItemsA_stub,code
@@ -73,7 +73,7 @@ _LayoutMenuItemsA:
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
 	jsr	___gadtools_ensure
-	jsr	-78(a6)
+	jsr	-60(a6)
 	rts
 
 	section	_LayoutMenusA_stub,code
@@ -85,7 +85,7 @@ _LayoutMenusA:
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
 	jsr	___gadtools_ensure
-	jsr	-90(a6)
+	jsr	-66(a6)
 	rts
 
 	section	_GT_GetIMsg_stub,code
@@ -95,7 +95,7 @@ _LayoutMenusA:
 _GT_GetIMsg:
 	movea.l	4(sp),a0
 	jsr	___gadtools_ensure
-	jsr	-102(a6)
+	jsr	-72(a6)
 	rts
 
 	section	_GT_ReplyIMsg_stub,code
@@ -105,7 +105,7 @@ _GT_GetIMsg:
 _GT_ReplyIMsg:
 	movea.l	4(sp),a1
 	jsr	___gadtools_ensure
-	jsr	-108(a6)
+	jsr	-78(a6)
 	rts
 
 	section	_GT_RefreshWindow_stub,code
@@ -116,7 +116,7 @@ _GT_RefreshWindow:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	jsr	___gadtools_ensure
-	jsr	-114(a6)
+	jsr	-84(a6)
 	rts
 
 	section	_GT_BeginRefresh_stub,code
@@ -126,7 +126,7 @@ _GT_RefreshWindow:
 _GT_BeginRefresh:
 	movea.l	4(sp),a0
 	jsr	___gadtools_ensure
-	jsr	-120(a6)
+	jsr	-90(a6)
 	rts
 
 	section	_GT_EndRefresh_stub,code
@@ -137,7 +137,7 @@ _GT_EndRefresh:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	jsr	___gadtools_ensure
-	jsr	-126(a6)
+	jsr	-96(a6)
 	rts
 
 	section	_GT_FilterIMsg_stub,code
@@ -147,7 +147,7 @@ _GT_EndRefresh:
 _GT_FilterIMsg:
 	movea.l	4(sp),a1
 	jsr	___gadtools_ensure
-	jsr	-132(a6)
+	jsr	-102(a6)
 	rts
 
 	section	_GT_PostFilterIMsg_stub,code
@@ -157,7 +157,7 @@ _GT_FilterIMsg:
 _GT_PostFilterIMsg:
 	movea.l	4(sp),a1
 	jsr	___gadtools_ensure
-	jsr	-138(a6)
+	jsr	-108(a6)
 	rts
 
 	section	_CreateContext_stub,code
@@ -167,7 +167,7 @@ _GT_PostFilterIMsg:
 _CreateContext:
 	movea.l	4(sp),a0
 	jsr	___gadtools_ensure
-	jsr	-144(a6)
+	jsr	-114(a6)
 	rts
 
 	section	_DrawBevelBoxA_stub,code
@@ -182,7 +182,7 @@ _DrawBevelBoxA:
 	move.l	20(sp),d3
 	movea.l	24(sp),a1
 	jsr	___gadtools_ensure
-	jsr	-150(a6)
+	jsr	-120(a6)
 	rts
 
 	section	_GetVisualInfoA_stub,code
@@ -193,7 +193,7 @@ _GetVisualInfoA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	jsr	___gadtools_ensure
-	jsr	-162(a6)
+	jsr	-126(a6)
 	rts
 
 	section	_FreeVisualInfo_stub,code
@@ -203,7 +203,7 @@ _GetVisualInfoA:
 _FreeVisualInfo:
 	movea.l	4(sp),a0
 	jsr	___gadtools_ensure
-	jsr	-174(a6)
+	jsr	-132(a6)
 	rts
 
 	section	_GT_GetGadgetAttrsA_stub,code
@@ -216,6 +216,6 @@ _GT_GetGadgetAttrsA:
 	movea.l	12(sp),a2
 	movea.l	16(sp),a3
 	jsr	___gadtools_ensure
-	jsr	-216(a6)
+	jsr	-174(a6)
 	rts
 

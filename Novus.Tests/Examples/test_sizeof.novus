@@ -1,0 +1,19 @@
+// Test to verify struct sizes
+from std::ffi::amiga_structs import Task, Process, MsgPort, Node, List
+from std::ffi::dos import VPrintf
+
+pub fn main() -> i32 {
+    let node_size = @sizeof(Node)
+    let list_size = @sizeof(List)
+    let task_size = @sizeof(Task)
+    let msgport_size = @sizeof(MsgPort)
+    let process_size = @sizeof(Process)
+
+    VPrintf("sizeof(Node) = %ld\n", &node_size)
+    VPrintf("sizeof(List) = %ld\n", &list_size)
+    VPrintf("sizeof(Task) = %ld\n", &task_size)
+    VPrintf("sizeof(MsgPort) = %ld\n", &msgport_size)
+    VPrintf("sizeof(Process) = %ld\n", &process_size)
+
+    return 0
+}

@@ -354,7 +354,7 @@ _AllocNamedObjectA:
 _AttemptRemNamedObject:
 	movea.l	4(sp),a0
 	movea.l	_UtilityBase,a6
-	jsr	-240(a6)
+	jsr	-234(a6)
 	rts
 
 	section	_FindNamedObject_stub,code
@@ -366,7 +366,7 @@ _FindNamedObject:
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
 	movea.l	_UtilityBase,a6
-	jsr	-246(a6)
+	jsr	-240(a6)
 	rts
 
 	section	_FreeNamedObject_stub,code
@@ -376,7 +376,7 @@ _FindNamedObject:
 _FreeNamedObject:
 	movea.l	4(sp),a0
 	movea.l	_UtilityBase,a6
-	jsr	-252(a6)
+	jsr	-246(a6)
 	rts
 
 	section	_NamedObjectName_stub,code
@@ -386,7 +386,7 @@ _FreeNamedObject:
 _NamedObjectName:
 	movea.l	4(sp),a0
 	movea.l	_UtilityBase,a6
-	jsr	-258(a6)
+	jsr	-252(a6)
 	rts
 
 	section	_ReleaseNamedObject_stub,code
@@ -396,7 +396,7 @@ _NamedObjectName:
 _ReleaseNamedObject:
 	movea.l	4(sp),a0
 	movea.l	_UtilityBase,a6
-	jsr	-264(a6)
+	jsr	-258(a6)
 	rts
 
 	section	_RemNamedObject_stub,code
@@ -407,7 +407,7 @@ _RemNamedObject:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_UtilityBase,a6
-	jsr	-270(a6)
+	jsr	-264(a6)
 	rts
 
 	section	_GetUniqueID_stub,code
@@ -416,6 +416,6 @@ _RemNamedObject:
 	xdef	_GetUniqueID
 _GetUniqueID:
 	movea.l	_UtilityBase,a6
-	jsr	-276(a6)
+	jsr	-270(a6)
 	rts
 

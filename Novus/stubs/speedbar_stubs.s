@@ -32,7 +32,7 @@ _AllocSpeedButtonNodeA:
 _FreeSpeedButtonNode:
 	movea.l	4(sp),a0
 	movea.l	_SpeedBarBase,a6
-	jsr	-48(a6)
+	jsr	-42(a6)
 	rts
 
 	section	_SetSpeedButtonNodeAttrsA_stub,code
@@ -43,7 +43,7 @@ _SetSpeedButtonNodeAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_SpeedBarBase,a6
-	jsr	-54(a6)
+	jsr	-48(a6)
 	rts
 
 	section	_GetSpeedButtonNodeAttrsA_stub,code
@@ -54,6 +54,6 @@ _GetSpeedButtonNodeAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_SpeedBarBase,a6
-	jsr	-66(a6)
+	jsr	-54(a6)
 	rts
 

@@ -9,11 +9,11 @@ from std::core import Option, Result, Drop
 from std::strings::core import Str
 from std::error::errors import DosError
 from std::os::timer import TimerHandle, Duration
-from std::ffi::amiga_structs import Task, MsgPort, TagItem
+from std::ffi::amiga_structs import Task, MsgPort, TagItem, Message, Process
 from std::ffi::dos import CreateNewProc, CheckSignal, Input, Output
 from std::ffi::exec import AllocMem, FreeMem, Wait, Signal, FindTask, SetSignal
 from std::ffi::amiga_consts import NP_Entry, NP_StackSize, NP_Name, NP_Priority
-from std::ffi::amiga_consts import NP_NotifyOnDeath, NP_Synchronous, NP_Cli
+from std::ffi::amiga_consts import NP_NotifyOnDeath, NP_Synchronous, NP_ExitData
 from std::ffi::amiga_consts import NP_Input, NP_Output, NP_CloseInput, NP_CloseOutput
 from std::ffi::amiga_consts import SIGBREAKF_CTRL_C, SIGBREAKF_CTRL_D
 from std::ffi::amiga_consts import SIGBREAKF_CTRL_E, SIGBREAKF_CTRL_F
@@ -195,9 +195,46 @@ impl Drop for ProcessHandle {
 /// let handle = spawn_task_fn("Worker", my_worker, 8192)?
 /// ```
 pub fn spawn_task_fn(name: Str, entry: fn() -> i32, stack_size: u32) -> Result<ProcessHandle, DosError> {
+    return spawn_task_fn_impl(name, entry, Option::None, stack_size)
+}
+
+/// Spawn a task with a data pointer passed via startup message.
+///
+/// This uses the AmigaOS WBStartup protocol: the parent sends a message to the
+/// child's pr_MsgPort containing the data pointer. The child retrieves it by
+/// calling receive_startup_data() at the beginning of its entry function.
+///
+/// This is the standard AmigaOS pattern for passing arbitrary data to spawned
+/// processes, used by Workbench and all proper AmigaOS applications.
+///
+/// Example:
+/// ```novus
+/// fn worker() -> i32 {
+///     from std::os::task import receive_startup_data
+///
+///     // Get data pointer passed from parent
+///     let port_opt = receive_startup_data()
+///     let port = match port_opt {
+///         Option::Some(ptr) => (*MsgPort)ptr,
+///         Option::None => return 1,
+///     }
+///
+///     // ... use port ...
+///     return 0
+/// }
+///
+/// let (tx, rx) = bounded_channel::<i32>()?
+/// let port_ptr = (*u8)rx.port()
+/// let handle = spawn_task_fn_with_ptr("Worker", worker, port_ptr, 8192)?
+/// ```
+pub fn spawn_task_fn_with_ptr(name: Str, entry: fn() -> i32, data: *u8, stack_size: u32) -> Result<ProcessHandle, DosError> {
+    return spawn_task_fn_impl(name, entry, Option::Some(data), stack_size)
+}
+
+fn spawn_task_fn_impl(name: Str, entry: fn() -> i32, data: Option<*u8>, stack_size: u32) -> Result<ProcessHandle, DosError> {
     // Allocate tag list
-    // Need: Entry, Name, StackSize, Priority, Cli, Output, CloseOutput, Input, CloseInput, NotifyOnDeath, TAG_DONE
-    let tag_count: u32 = 12
+    // Need: Entry, Name, StackSize, Priority, Output, CloseOutput, Input, CloseInput, NotifyOnDeath, TAG_DONE
+    let tag_count: u32 = 11
     let tag_size = tag_count * @sizeof(TagItem)
 
     let tag_mem = unsafe { AllocMem(tag_size, MEMF_PUBLIC | MEMF_CLEAR) }
@@ -226,9 +263,9 @@ pub fn spawn_task_fn(name: Str, entry: fn() -> i32, stack_size: u32) -> Result<P
     set_tag(tag_ptr, idx, NP_Priority, 0)
     idx++
 
-    // Make this a CLI process so it has proper I/O context
-    set_tag(tag_ptr, idx, NP_Cli, 1)
-    idx++
+    // Don't use NP_Cli - we don't need CLI features and it reserves pr_MsgPort
+    // for DOS packet I/O which prevents us from using WBStartup-style messages.
+    // The process still gets I/O handles via NP_Input/NP_Output.
 
     // Pass parent's output handle to child for DOS functions like VPrintf
     let parent_output = (u32)Output()
@@ -252,10 +289,21 @@ pub fn spawn_task_fn(name: Str, entry: fn() -> i32, stack_size: u32) -> Result<P
     set_tag(tag_ptr, idx, NP_NotifyOnDeath, 1)
     idx++
 
+    // If we have data to pass, use NP_ExitData tag to store it in pr_ExitData field.
+    // This avoids using pr_MsgPort which is reserved for DOS packet I/O and uses
+    // SIGF_DOS (signal bit 8). Sending messages to pr_MsgPort can corrupt DOS state.
+    match data {
+        Option::Some(data_ptr) => {
+            set_tag(tag_ptr, idx, NP_ExitData, (u32)data_ptr)
+            idx++
+        },
+        Option::None => {}
+    }
+
     // Terminate tag list
     set_tag(tag_ptr, idx, 0, 0)
 
-    // Create the process
+    // Create the child process
     let process = CreateNewProc(tag_ptr)
 
     // Free tag memory
@@ -264,14 +312,14 @@ pub fn spawn_task_fn(name: Str, entry: fn() -> i32, stack_size: u32) -> Result<P
     }
 
     // Check result - CreateNewProc returns null on failure
-    if (u32)process != 0 {
-        return Result::Ok(ProcessHandle {
-            process: process,
-            is_running: true
-        })
+    if (u32)process == 0 {
+        return Result::Err(DosError::Unknown)
     }
 
-    return Result::Err(DosError::Unknown)
+    return Result::Ok(ProcessHandle {
+        process: process,
+        is_running: true
+    })
 }
 
 /// Helper to set a tag in the tag array
@@ -281,6 +329,46 @@ fn set_tag(tags: *TagItem, index: u32, tag: u32, data: u32) {
     let tag_ref = tag_ptr
     tag_ref.ti_Tag = tag
     tag_ref.ti_Data = data
+}
+
+/// Receive startup data sent by the parent process.
+///
+/// Call this at the beginning of your task's entry function if the task was
+/// spawned with spawn_task_fn_with_ptr(). This retrieves the data pointer
+/// that was passed via the startup message.
+///
+/// This function blocks until the startup message arrives (which should be
+/// immediate if the parent sent it).
+///
+/// Returns Some(ptr) if data was sent, None if no startup message or timeout.
+///
+/// Example:
+/// ```novus
+/// fn worker() -> i32 {
+///     // Get data pointer from parent
+///     let data_opt = receive_startup_data()
+///     let port = match data_opt {
+///         Option::Some(ptr) => (*MsgPort)ptr,
+///         Option::None => return 1,  // Error - no data received
+///     }
+///
+///     // ... use port ...
+///     return 0
+/// }
+/// ```
+pub fn receive_startup_data() -> Option<*u8> {
+    // Get our process structure
+    let me = (*Process)FindTask((*u8)0)
+
+    // Read data pointer from pr_ExitData field
+    // This was set via NP_ExitData tag when the process was created
+    let data = me.pr_ExitData
+
+    if data == 0 {
+        return Option::None
+    }
+
+    return Option::Some((*u8)data)
 }
 
 // ============================================================================

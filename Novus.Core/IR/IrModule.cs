@@ -400,7 +400,29 @@ public class IrModule
 
             return false;
         }
+
+        // Tuples need Drop if ANY of their elements implement Drop
+        if (type is IrTupleType tupleType)
+        {
+            return TupleNeedsDrop(tupleType);
+        }
+
         // Only struct types can implement Drop (primitives, pointers, etc. don't need cleanup)
+        return false;
+    }
+
+    /// <summary>
+    /// Check if a tuple type needs Drop (i.e., contains any elements that implement Drop)
+    /// </summary>
+    public bool TupleNeedsDrop(IrTupleType tupleType)
+    {
+        foreach (var elementType in tupleType.ElementTypes)
+        {
+            if (TypeImplementsDrop(elementType))
+            {
+                return true;
+            }
+        }
         return false;
     }
 

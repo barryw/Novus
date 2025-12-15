@@ -1,0 +1,281 @@
+// File Copy with MUI Progress Bar
+//
+// Demonstrates file copying with a real GUI progress indicator.
+// Shows:
+// - MUI builder API
+// - Progress bar updates during file operation
+// - Cancel button handling
+// - Proper Amiga resource management
+
+from std::core import Result, Option
+from std::ui::mui import MUIAppBuilder, MUIGroupBuilder, MUIApp
+from std::ui::mui import set_text, make_text, make_progress, set_progress
+from std::ffi::mui_tags import MUIV_Frame_Group, MUIA_Application_Sleep, MUIV_Application_ReturnID_Quit
+from std::ffi::dos import Open, Close, Seek, IoErr, Read, Write, DeleteFile
+from std::ffi::exec import Wait, AllocMem, FreeMem, SetSignal
+from std::ffi::amiga_consts import MEMF_PUBLIC
+from std::ffi::amiga_consts import MODE_OLDFILE, MODE_NEWFILE, OFFSET_END, OFFSET_BEGINNING
+
+// Gadget IDs
+const GAD_COPY: u32 = 1
+const GAD_CANCEL: u32 = 2
+
+// Copy buffer size - 32KB chunks
+const BUFFER_SIZE: u32 = 32768
+
+// Error codes
+const ERR_EMPTY_FILE: i32 = -1
+const ERR_CANCELLED: i32 = -2
+const ERR_OUT_OF_MEMORY: i32 = -3
+
+struct CopyState {
+    window: *u8,
+    status_text: *u8,
+    progress: *u8,
+    copy_btn: *u8,
+    cancel_btn: *u8,
+    cancelled: bool,
+}
+
+fn update_status(state: *CopyState, msg: Str) {
+    set_text((*state).status_text, msg)
+}
+
+fn update_progress(state: *CopyState, percent: i32) {
+    set_progress((*state).progress, percent)
+}
+
+fn check_cancelled(state: *CopyState, app: *MUIApp) -> bool {
+    // Process any pending MUI events to check for cancel button
+    var signals: u32 = 0
+    let id = (*app).run_once(&signals)
+    if id == GAD_CANCEL {
+        set_cancelled(state, true)
+    }
+    return (*state).cancelled
+}
+
+fn set_cancelled(state: *CopyState, val: bool) {
+    state.cancelled = val
+}
+
+fn copy_file(state: *CopyState, app: *MUIApp, src_path: *u8, dst_path: *u8) -> Result<u32, i32> {
+    update_status(state, "Opening source file...")
+    update_progress(state, 0)
+
+    // Open source file
+    let src_fh = Open(src_path, MODE_OLDFILE)
+    if (u32)src_fh == 0 {
+        update_status(state, "Error: Cannot open source file")
+        return Result::Err(IoErr())
+    }
+
+    // Get file size by seeking to end
+    Seek(src_fh, 0, OFFSET_END)
+    let file_size = (u32)Seek(src_fh, 0, OFFSET_BEGINNING)
+
+    if file_size == 0 {
+        Close(src_fh)
+        update_status(state, "Error: Source file is empty")
+        return Result::Err(ERR_EMPTY_FILE)
+    }
+
+    update_status(state, "Creating destination file...")
+
+    // Delete any existing destination file first (ignore errors - file may not exist)
+    DeleteFile(dst_path)
+
+    // Open destination file
+    let dst_fh = Open(dst_path, MODE_NEWFILE)
+    if (u32)dst_fh == 0 {
+        let err = IoErr()
+        update_status(state, "Error: Cannot create destination")
+        Close(src_fh)
+        return Result::Err(err)
+    }
+
+    // Allocate copy buffer
+    let buffer = unsafe { AllocMem(BUFFER_SIZE, MEMF_PUBLIC) }
+    if (u32)buffer == 0 {
+        update_status(state, "Error: Out of memory")
+        Close(dst_fh)
+        Close(src_fh)
+        return Result::Err(ERR_OUT_OF_MEMORY)
+    }
+
+    update_status(state, "Copying...")
+
+    // Copy loop with progress
+    var bytes_copied: u32 = 0
+    var last_percent: i32 = -1
+    var error: i32 = 0
+
+    while bytes_copied < file_size {
+        // Check for cancel
+        if check_cancelled(state, app) {
+            update_status(state, "Cancelled by user")
+            error = ERR_CANCELLED
+            break
+        }
+
+        // Read a chunk
+        let to_read = if file_size - bytes_copied < BUFFER_SIZE {
+            file_size - bytes_copied
+        } else {
+            BUFFER_SIZE
+        }
+
+        let bytes_read = Read(src_fh, buffer, (i32)to_read)
+        if bytes_read < 0 {
+            error = IoErr()
+            update_status(state, "Error: Read failed")
+            break
+        }
+
+        if bytes_read == 0 {
+            break
+        }
+
+        // Write the chunk
+        let bytes_written = Write(dst_fh, buffer, bytes_read)
+        if bytes_written != bytes_read {
+            error = IoErr()
+            update_status(state, "Error: Write failed")
+            break
+        }
+
+        bytes_copied = bytes_copied + (u32)bytes_read
+
+        // Update progress display
+        let percent = if file_size > 0 {
+            (i32)((bytes_copied * 100) / file_size)
+        } else {
+            100
+        }
+
+        if percent != last_percent {
+            update_progress(state, percent)
+            last_percent = percent
+        }
+    }
+
+    // Cleanup
+    unsafe { FreeMem(buffer, BUFFER_SIZE) }
+    Close(dst_fh)
+    Close(src_fh)
+
+    if error != 0 {
+        return Result::Err(error)
+    }
+
+    update_status(state, "Copy complete!")
+    return Result::Ok(bytes_copied)
+}
+
+fn setup_notifications(app: *MUIApp, state: *CopyState) {
+    // Note: on_close is now automatic in open_window()
+    (*app).on_button(state.copy_btn, GAD_COPY)
+    (*app).on_button(state.cancel_btn, GAD_CANCEL)
+}
+
+fn run_event_loop(app: *MUIApp, state: *CopyState) {
+    var signals: u32 = 0
+    var running = true
+
+    // Source and destination paths
+    let src_path = "DH0:Barry/testfile_10mb.dat".ptr
+    let dst_path = "RAM:testfile_copy.dat".ptr
+
+    forever {
+        if !running { break }
+
+        let id = (*app).run_once(&signals)
+
+        match id {
+            GAD_COPY => {
+                set_cancelled(state, false)
+                update_progress(state, 0)
+                let result = copy_file(state, app, src_path, dst_path)
+                // Result is handled in copy_file - status messages already set
+                // Leave progress bar at 100% on completion
+            },
+            GAD_CANCEL => {
+                set_cancelled(state, true)
+            },
+            _ => {
+                if id == (u32)MUIV_Application_ReturnID_Quit {
+                    running = false
+                }
+            }
+        }
+
+        if running && signals != 0 {
+            signals = Wait(signals)
+        }
+    }
+}
+
+fn main() -> i32 {
+    // Build application
+    var app_builder = MUIAppBuilder::new("File Copy")
+    app_builder
+        .author("Novus")
+        .version("$VER: file_copy_mui 1.0 (14.12.2025)")
+        .base("FILECOPY")
+
+    // Build window
+    var win_builder = app_builder.window("File Copy with Progress")
+    win_builder.id($46435059)  // 'FCPY'
+
+    var root = win_builder.vgroup()
+    root.frame(MUIV_Frame_Group)
+
+    // Info text
+    root.label("File Copy Demo")
+    root.label("Copies DH0:Barry/testfile_10mb.dat to RAM:")
+    root.hbar()
+
+    // Status text
+    let status_text = make_text("Ready to copy")
+    root.child(status_text)
+
+    // Progress bar
+    let progress = make_progress(100, 100, true)
+    root.child(progress)
+
+    root.hbar()
+
+    // Button row
+    var btn_row = root.hgroup()
+    btn_row.same_size()
+    let copy_btn = btn_row.button(GAD_COPY, "Copy")
+    let cancel_btn = btn_row.button(GAD_CANCEL, "Cancel")
+    root.child(btn_row.build())
+
+    // Finalize window and app
+    win_builder.root(root.build())
+    let window = win_builder.build()
+    let app_result = app_builder.build()
+
+    match app_result {
+        Result::Ok(app) => {
+            var state = CopyState {
+                window: window,
+                status_text: status_text,
+                progress: progress,
+                copy_btn: copy_btn,
+                cancel_btn: cancel_btn,
+                cancelled: false,
+            }
+
+            setup_notifications(&app, &state)
+            app.open_window(window)
+            run_event_loop(&app, &state)
+        },
+        Result::Err(err) => {
+            return 20
+        }
+    }
+
+    return 0
+}

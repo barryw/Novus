@@ -150,7 +150,9 @@ public static class TestCommand
             }
 
             // Determine output directory
-            var outputDir = options.OutputDir ?? Path.Combine(targetPath, "tests");
+            // If targetPath is a file, use its directory; if it's a directory, use targetPath
+            var baseDir = File.Exists(targetPath) ? Path.GetDirectoryName(targetPath)! : targetPath;
+            var outputDir = options.OutputDir ?? Path.Combine(baseDir, "tests");
             Directory.CreateDirectory(outputDir);
 
             // Generate test runner source (pass all tests - generator handles skipped ones)
@@ -442,6 +444,14 @@ public static class TestCommand
                 sb.AppendLine($"    }}");
                 sb.AppendLine($"    total++");
             }
+
+            // Ctrl-C check disabled for now - was triggering false positives
+            // sb.AppendLine($"    // Check for Ctrl-C to allow breaking out of hung tests");
+            // sb.AppendLine($"    if should_exit() {{");
+            // sb.AppendLine($"        write(\"\\n\\nTests interrupted by Ctrl-C\\n\")");
+            // sb.AppendLine($"        clear_break_signals()");
+            // sb.AppendLine($"        return 130");  // Standard exit code for SIGINT
+            // sb.AppendLine($"    }}");
             sb.AppendLine();
         }
 

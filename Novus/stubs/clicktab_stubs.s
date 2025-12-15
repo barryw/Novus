@@ -31,7 +31,7 @@ _AllocClickTabNodeA:
 _FreeClickTabNode:
 	movea.l	4(sp),a0
 	movea.l	_ClickTabBase,a6
-	jsr	-48(a6)
+	jsr	-42(a6)
 	rts
 
 	section	_SetClickTabNodeAttrsA_stub,code
@@ -42,7 +42,7 @@ _SetClickTabNodeAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_ClickTabBase,a6
-	jsr	-54(a6)
+	jsr	-48(a6)
 	rts
 
 	section	_GetClickTabNodeAttrsA_stub,code
@@ -53,6 +53,6 @@ _GetClickTabNodeAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_ClickTabBase,a6
-	jsr	-66(a6)
+	jsr	-54(a6)
 	rts
 

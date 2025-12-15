@@ -1,0 +1,35 @@
+// Simple test to verify match statements work without spawning
+
+from std::core import Option
+from std::ffi::dos import VPrintf
+
+pub fn main() -> i32 {
+    VPrintf("Test: starting\n", (*u8)0)
+
+    // Test with Some
+    let data: Option<*u8> = Option::Some((*u8)12345)
+
+    match data {
+        Option::Some(ptr) => {
+            VPrintf("Test: got Some\n", (*u8)0)
+        },
+        Option::None => {
+            VPrintf("Test: got None\n", (*u8)0)
+        }
+    }
+
+    // Test with None
+    let data2: Option<*u8> = Option::None
+
+    match data2 {
+        Option::Some(ptr) => {
+            VPrintf("Test: got Some (unexpected)\n", (*u8)0)
+        },
+        Option::None => {
+            VPrintf("Test: got None (expected)\n", (*u8)0)
+        }
+    }
+
+    VPrintf("Test: done\n", (*u8)0)
+    return 0
+}

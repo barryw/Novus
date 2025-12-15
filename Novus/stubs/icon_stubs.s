@@ -150,7 +150,7 @@ _IconControlA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_IconBase,a6
-	jsr	-162(a6)
+	jsr	-156(a6)
 	rts
 
 	section	_DrawIconStateA_stub,code
@@ -166,7 +166,7 @@ _DrawIconStateA:
 	move.l	24(sp),d2
 	movea.l	28(sp),a3
 	movea.l	_IconBase,a6
-	jsr	-174(a6)
+	jsr	-162(a6)
 	rts
 
 	section	_GetIconRectangleA_stub,code
@@ -180,7 +180,7 @@ _GetIconRectangleA:
 	movea.l	16(sp),a3
 	movea.l	20(sp),a4
 	movea.l	_IconBase,a6
-	jsr	-186(a6)
+	jsr	-168(a6)
 	rts
 
 	section	_NewDiskObject_stub,code
@@ -190,7 +190,7 @@ _GetIconRectangleA:
 _NewDiskObject:
 	move.l	4(sp),d0
 	movea.l	_IconBase,a6
-	jsr	-198(a6)
+	jsr	-174(a6)
 	rts
 
 	section	_GetIconTagList_stub,code
@@ -201,7 +201,7 @@ _GetIconTagList:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_IconBase,a6
-	jsr	-204(a6)
+	jsr	-180(a6)
 	rts
 
 	section	_PutIconTagList_stub,code
@@ -213,7 +213,7 @@ _PutIconTagList:
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
 	movea.l	_IconBase,a6
-	jsr	-216(a6)
+	jsr	-186(a6)
 	rts
 
 	section	_LayoutIconA_stub,code
@@ -225,7 +225,7 @@ _LayoutIconA:
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
 	movea.l	_IconBase,a6
-	jsr	-228(a6)
+	jsr	-192(a6)
 	rts
 
 	section	_ChangeToSelectedIconColor_stub,code
@@ -235,6 +235,6 @@ _LayoutIconA:
 _ChangeToSelectedIconColor:
 	movea.l	4(sp),a0
 	movea.l	_IconBase,a6
-	jsr	-240(a6)
+	jsr	-198(a6)
 	rts
 

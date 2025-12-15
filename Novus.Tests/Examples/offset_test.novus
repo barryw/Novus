@@ -1,0 +1,32 @@
+// Test actual struct offsets
+
+from std::ffi::dos import VPrintf, Delay
+from std::ffi::exec import FindTask
+from std::ffi::amiga_structs import Process, Task, MsgPort, Node, List
+
+pub fn main() -> i32 {
+    // Print sizes
+    var node_size: u32 = @sizeof(Node)
+    var list_size: u32 = @sizeof(List)
+    var task_size: u32 = @sizeof(Task)
+    var msgport_size: u32 = @sizeof(MsgPort)
+    var process_size: u32 = @sizeof(Process)
+
+    VPrintf("Node=%ld\n", (*u8)&node_size)
+    VPrintf("List=%ld\n", (*u8)&list_size)
+    VPrintf("Task=%ld\n", (*u8)&task_size)
+    VPrintf("MsgPort=%ld\n", (*u8)&msgport_size)
+    VPrintf("Process=%ld\n", (*u8)&process_size)
+
+    // Get our process
+    let me = (*Process)FindTask((*u8)0)
+    var me_val: u32 = (u32)me
+    VPrintf("ME=%08lx\n", (*u8)&me_val)
+
+    // Calculate pr_MsgPort offset
+    var port_ptr: u32 = (u32)(*u8)&me.pr_MsgPort
+    var offset: u32 = port_ptr - me_val
+    VPrintf("pr_MsgPort offset=%ld\n", (*u8)&offset)
+
+    return 0
+}

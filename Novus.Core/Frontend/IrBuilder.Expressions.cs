@@ -32,14 +32,46 @@ public partial class IrBuilder
         // Check if this is a call to a generic function template (before evaluating funcExpr)
         // Generic functions aren't in _module.Functions yet, so we need to check the template dictionary
         string? genericFuncName = null;
+        List<IrType>? explicitTypeArgs = null;
+
         if (context.expression() is NovusParser.PrimaryExprContext primaryCtx &&
             primaryCtx.primaryExpression() is NovusParser.IdentifierExprContext identExpr)
         {
             genericFuncName = identExpr.identifier().GetText();
         }
+        // Handle turbofish syntax: channel::<T>() - the expression is a TurboFishExpr
+        else if (context.expression() is NovusParser.TurboFishExprContext turboFishCtx)
+        {
+            // Extract the function name from the inner expression
+            var innerExpr = turboFishCtx.expression();
+            if (innerExpr is NovusParser.PrimaryExprContext innerPrimaryCtx &&
+                innerPrimaryCtx.primaryExpression() is NovusParser.IdentifierExprContext innerIdentExpr)
+            {
+                genericFuncName = innerIdentExpr.identifier().GetText();
 
-        var funcExpr = (IrValue?)Visit(context.expression());
-        if (funcExpr == null)
+                // Parse the explicit type arguments
+                explicitTypeArgs = new List<IrType>();
+                var typeArgsCtx = turboFishCtx.genericTypeArgs();
+                if (typeArgsCtx != null)
+                {
+                    foreach (var typeCtx in typeArgsCtx.typeList().type())
+                    {
+                        var parsedType = ParseType(typeCtx);
+                        explicitTypeArgs.Add(parsedType);
+                    }
+                }
+            }
+        }
+
+        // For turbofish calls, we don't need to visit the expression - we already have the function name
+        // and explicit type args. Visiting would return an IrTurboFishType which we can't use directly.
+        IrValue? funcExpr = null;
+        if (explicitTypeArgs == null || explicitTypeArgs.Count == 0)
+        {
+            funcExpr = (IrValue?)Visit(context.expression());
+        }
+        // Only report null error if we're not in turbofish mode (turbofish doesn't need funcExpr)
+        if (funcExpr == null && (explicitTypeArgs == null || explicitTypeArgs.Count == 0))
         {
             var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
@@ -128,10 +160,10 @@ public partial class IrBuilder
         // so we can check the actual parameter types and only coerce when needed
 
         // If it's a generic function template, infer types and instantiate
-        if (genericFuncName != null && _genericFunctionTemplates.ContainsKey(genericFuncName))
+        if (genericFuncName != null && _genericInstantiator.TryGetFunctionTemplate(genericFuncName, out var templateFromCache) && templateFromCache != null)
         {
             // Get template and parse parameters
-            var template = _genericFunctionTemplates[genericFuncName];
+            var template = templateFromCache;
 
             // Save and clear type substitutions so we get the generic template types
             var savedTypeSubstitutions = _currentTypeSubstitutions;
@@ -162,17 +194,43 @@ public partial class IrBuilder
             // Restore type substitutions
             _currentTypeSubstitutions = savedTypeSubstitutions;
 
-            // Infer types
-            var typeSubstitutions = InferGenericFunctionTypes(template.GenericParams, templateParams, arguments);
-            if (typeSubstitutions == null)
+            // Build type substitutions - either from explicit type args (turbofish) or inference
+            Dictionary<string, IrType>? typeSubstitutions;
+
+            if (explicitTypeArgs != null && explicitTypeArgs.Count > 0)
             {
-                var errorLocation = GetLocation(context);
-                _diagnostics.ReportError(
-                    ErrorCodes.InvalidExpressionType,
-                    $"Cannot infer type arguments for '{genericFuncName}'",
-                    errorLocation
-                );
-                return null;
+                // Use explicit type arguments (turbofish syntax: channel::<T>())
+                if (explicitTypeArgs.Count != template.GenericParams.Count)
+                {
+                    var errorLocation = GetLocation(context);
+                    _diagnostics.ReportError(
+                        ErrorCodes.InvalidExpressionType,
+                        $"Wrong number of type arguments for '{genericFuncName}': expected {template.GenericParams.Count}, got {explicitTypeArgs.Count}",
+                        errorLocation
+                    );
+                    return null;
+                }
+
+                typeSubstitutions = new Dictionary<string, IrType>();
+                for (int i = 0; i < template.GenericParams.Count; i++)
+                {
+                    typeSubstitutions[template.GenericParams[i]] = explicitTypeArgs[i];
+                }
+            }
+            else
+            {
+                // Infer types from arguments
+                typeSubstitutions = InferGenericFunctionTypes(template.GenericParams, templateParams, arguments);
+                if (typeSubstitutions == null)
+                {
+                    var errorLocation = GetLocation(context);
+                    _diagnostics.ReportError(
+                        ErrorCodes.InvalidExpressionType,
+                        $"Cannot infer type arguments for '{genericFuncName}'",
+                        errorLocation
+                    );
+                    return null;
+                }
             }
 
             // Instantiate
@@ -4465,6 +4523,88 @@ public partial class IrBuilder
         {
             // Use the expected monomorphized type (e.g., Vec<i32>)
             structType = expectedStruct;
+        }
+        // If inside a generic function being monomorphized, apply type substitutions to generic structs
+        else if (baseStructType.GenericParameters.Count > 0 &&
+                 _currentTypeSubstitutions != null &&
+                 _currentTypeSubstitutions.Count > 0)
+        {
+            // Check if any of the struct's generic parameters can be substituted
+            var canSubstitute = baseStructType.GenericParameters.Any(p => _currentTypeSubstitutions.ContainsKey(p));
+            if (canSubstitute)
+            {
+                // Build type arguments from substitutions
+                var typeArgs = new List<IrType>();
+                foreach (var param in baseStructType.GenericParameters)
+                {
+                    if (_currentTypeSubstitutions.TryGetValue(param, out var substitutedType))
+                    {
+                        typeArgs.Add(substitutedType);
+                    }
+                    else
+                    {
+                        // Keep original generic type if no substitution exists
+                        typeArgs.Add(new IrGenericType(param));
+                    }
+                }
+
+                // Check if all type arguments are concrete (no remaining generic types)
+                bool allConcrete = typeArgs.All(t => !(t is IrGenericType));
+
+                if (allConcrete)
+                {
+                    // Build cache key
+                    var typeArgKeys = typeArgs.Select(t => GetTypeCacheKey(t));
+                    var cacheKey = $"{baseStructType.StructName}<{string.Join(",", typeArgKeys)}>";
+
+                    // Check cache first
+                    var cachedStruct = _symbols.LookupMonomorphizedStruct(cacheKey);
+                    if (cachedStruct != null)
+                    {
+                        structType = cachedStruct;
+                    }
+                    else
+                    {
+                        // Create monomorphized struct manually
+                        var substitutions = new Dictionary<string, IrType>();
+                        for (int i = 0; i < baseStructType.GenericParameters.Count; i++)
+                        {
+                            substitutions[baseStructType.GenericParameters[i]] = typeArgs[i];
+                        }
+
+                        // Create monomorphized fields
+                        var monomorphizedFields = new List<IrStructField>();
+                        foreach (var origField in baseStructType.Fields)
+                        {
+                            var fieldType = _typeParser.SubstituteGenericTypes(origField.Type, substitutions);
+                            monomorphizedFields.Add(new IrStructField(origField.Name, fieldType));
+                        }
+
+                        // Create monomorphized struct with TypeArguments set for method resolution
+                        structType = new IrStructType(
+                            baseStructType.StructName,
+                            monomorphizedFields,
+                            genericParams: null,
+                            cacheKey,
+                            typeArguments: typeArgs);
+
+                        // Force field offset calculation
+                        _ = structType.SizeInBytes;
+
+                        // Cache for future use
+                        _symbols.RegisterMonomorphizedStruct(cacheKey, structType);
+                    }
+                }
+                else
+                {
+                    // Still has generic types, use base
+                    structType = baseStructType;
+                }
+            }
+            else
+            {
+                structType = baseStructType;
+            }
         }
         else
         {

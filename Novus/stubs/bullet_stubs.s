@@ -43,7 +43,7 @@ _ObtainInfoA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_BulletBase,a6
-	jsr	-54(a6)
+	jsr	-48(a6)
 	rts
 
 	section	_ReleaseInfoA_stub,code
@@ -54,6 +54,6 @@ _ReleaseInfoA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_BulletBase,a6
-	jsr	-66(a6)
+	jsr	-54(a6)
 	rts
 

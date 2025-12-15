@@ -32,7 +32,7 @@ _AllocListBrowserNodeA:
 _FreeListBrowserNode:
 	movea.l	4(sp),a0
 	movea.l	_ListBrowserBase,a6
-	jsr	-48(a6)
+	jsr	-42(a6)
 	rts
 
 	section	_SetListBrowserNodeAttrsA_stub,code
@@ -43,7 +43,7 @@ _SetListBrowserNodeAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_ListBrowserBase,a6
-	jsr	-54(a6)
+	jsr	-48(a6)
 	rts
 
 	section	_GetListBrowserNodeAttrsA_stub,code
@@ -54,7 +54,7 @@ _GetListBrowserNodeAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_ListBrowserBase,a6
-	jsr	-66(a6)
+	jsr	-54(a6)
 	rts
 
 	section	_ListBrowserSelectAll_stub,code
@@ -64,7 +64,7 @@ _GetListBrowserNodeAttrsA:
 _ListBrowserSelectAll:
 	movea.l	4(sp),a0
 	movea.l	_ListBrowserBase,a6
-	jsr	-78(a6)
+	jsr	-60(a6)
 	rts
 
 	section	_ShowListBrowserNodeChildren_stub,code
@@ -75,7 +75,7 @@ _ShowListBrowserNodeChildren:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	movea.l	_ListBrowserBase,a6
-	jsr	-84(a6)
+	jsr	-66(a6)
 	rts
 
 	section	_HideListBrowserNodeChildren_stub,code
@@ -85,7 +85,7 @@ _ShowListBrowserNodeChildren:
 _HideListBrowserNodeChildren:
 	movea.l	4(sp),a0
 	movea.l	_ListBrowserBase,a6
-	jsr	-90(a6)
+	jsr	-72(a6)
 	rts
 
 	section	_ShowAllListBrowserChildren_stub,code
@@ -95,7 +95,7 @@ _HideListBrowserNodeChildren:
 _ShowAllListBrowserChildren:
 	movea.l	4(sp),a0
 	movea.l	_ListBrowserBase,a6
-	jsr	-96(a6)
+	jsr	-78(a6)
 	rts
 
 	section	_HideAllListBrowserChildren_stub,code
@@ -105,7 +105,7 @@ _ShowAllListBrowserChildren:
 _HideAllListBrowserChildren:
 	movea.l	4(sp),a0
 	movea.l	_ListBrowserBase,a6
-	jsr	-102(a6)
+	jsr	-84(a6)
 	rts
 
 	section	_FreeListBrowserList_stub,code
@@ -115,7 +115,7 @@ _HideAllListBrowserChildren:
 _FreeListBrowserList:
 	movea.l	4(sp),a0
 	movea.l	_ListBrowserBase,a6
-	jsr	-108(a6)
+	jsr	-90(a6)
 	rts
 
 	section	_AllocLBColumnInfoA_stub,code
@@ -126,7 +126,7 @@ _AllocLBColumnInfoA:
 	move.l	4(sp),d0
 	movea.l	8(sp),a0
 	movea.l	_ListBrowserBase,a6
-	jsr	-114(a6)
+	jsr	-96(a6)
 	rts
 
 	section	_SetLBColumnInfoAttrsA_stub,code
@@ -137,7 +137,7 @@ _SetLBColumnInfoAttrsA:
 	movea.l	4(sp),a1
 	movea.l	8(sp),a0
 	movea.l	_ListBrowserBase,a6
-	jsr	-126(a6)
+	jsr	-102(a6)
 	rts
 
 	section	_GetLBColumnInfoAttrsA_stub,code
@@ -148,7 +148,7 @@ _GetLBColumnInfoAttrsA:
 	movea.l	4(sp),a1
 	movea.l	8(sp),a0
 	movea.l	_ListBrowserBase,a6
-	jsr	-138(a6)
+	jsr	-108(a6)
 	rts
 
 	section	_FreeLBColumnInfo_stub,code
@@ -158,7 +158,7 @@ _GetLBColumnInfoAttrsA:
 _FreeLBColumnInfo:
 	movea.l	4(sp),a0
 	movea.l	_ListBrowserBase,a6
-	jsr	-150(a6)
+	jsr	-114(a6)
 	rts
 
 	section	_ListBrowserClearAll_stub,code
@@ -168,6 +168,6 @@ _FreeLBColumnInfo:
 _ListBrowserClearAll:
 	movea.l	4(sp),a0
 	movea.l	_ListBrowserBase,a6
-	jsr	-156(a6)
+	jsr	-120(a6)
 	rts
 

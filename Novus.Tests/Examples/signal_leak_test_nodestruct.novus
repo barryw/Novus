@@ -1,0 +1,37 @@
+// Test for signal leaks in bounded channel creation/destruction
+// This version does NOT manually destructure tuples - testing automatic tuple drop
+
+from std::core import Result, Option
+from std::error::errors import DosError
+from std::sync::channel import bounded_channel, BoundedSender, BoundedReceiver
+from std::ffi::dos import VPrintf
+
+pub fn main() -> i32 {
+    VPrintf("Signal leak test (NO destructuring) - creating/destroying bounded channels\n", (*u8)0)
+
+    var i: i32 = 0
+    while i < 100 {
+        var iter: i32 = i + 1
+        VPrintf("Iteration %ld: creating channel... ", (*u8)&iter)
+
+        let result = bounded_channel::<i32>()
+        match result {
+            Result::Err(_) => {
+                VPrintf("FAILED to create channel!\n", (*u8)0)
+                return 1
+            },
+            Result::Ok(pair) => {
+                // Deliberately NOT destructuring - testing automatic tuple drop
+                // Previously this would leak signals and fail around iteration 9
+                VPrintf("OK, dropping... ", (*u8)0)
+                // pair goes out of scope here - should auto-drop both tx and rx
+            }
+        }
+
+        VPrintf("done\n", (*u8)0)
+        i = i + 1
+    }
+
+    VPrintf("All 100 iterations succeeded - automatic tuple drop works!\n", (*u8)0)
+    return 0
+}

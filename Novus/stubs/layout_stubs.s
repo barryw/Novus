@@ -96,6 +96,6 @@ _RefreshPageGadget:
 	movea.l	12(sp),a2
 	movea.l	16(sp),a3
 	movea.l	_LayoutBase,a6
-	jsr	-78(a6)
+	jsr	-72(a6)
 	rts
 

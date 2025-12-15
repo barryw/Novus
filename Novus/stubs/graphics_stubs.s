@@ -1296,7 +1296,7 @@ _OpenMonitor:
 	movea.l	4(sp),a1
 	move.l	8(sp),d0
 	jsr	___graphics_ensure
-	jsr	-720(a6)
+	jsr	-714(a6)
 	rts
 
 	section	_CloseMonitor_stub,code
@@ -1306,7 +1306,7 @@ _OpenMonitor:
 _CloseMonitor:
 	movea.l	4(sp),a0
 	jsr	___graphics_ensure
-	jsr	-726(a6)
+	jsr	-720(a6)
 	rts
 
 	section	_FindDisplayInfo_stub,code
@@ -1316,7 +1316,7 @@ _CloseMonitor:
 _FindDisplayInfo:
 	move.l	4(sp),d0
 	jsr	___graphics_ensure
-	jsr	-732(a6)
+	jsr	-726(a6)
 	rts
 
 	section	_NextDisplayInfo_stub,code
@@ -1326,7 +1326,7 @@ _FindDisplayInfo:
 _NextDisplayInfo:
 	move.l	4(sp),d0
 	jsr	___graphics_ensure
-	jsr	-738(a6)
+	jsr	-732(a6)
 	rts
 
 	section	_GetDisplayInfoData_stub,code
@@ -1340,7 +1340,7 @@ _GetDisplayInfoData:
 	move.l	16(sp),d1
 	move.l	20(sp),d2
 	jsr	___graphics_ensure
-	jsr	-762(a6)
+	jsr	-756(a6)
 	rts
 
 	section	_FontExtent_stub,code
@@ -1351,7 +1351,7 @@ _FontExtent:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	jsr	___graphics_ensure
-	jsr	-768(a6)
+	jsr	-762(a6)
 	rts
 
 	section	_ReadPixelLine8_stub,code
@@ -1366,7 +1366,7 @@ _ReadPixelLine8:
 	movea.l	20(sp),a2
 	movea.l	24(sp),a1
 	jsr	___graphics_ensure
-	jsr	-774(a6)
+	jsr	-768(a6)
 	rts
 
 	section	_WritePixelLine8_stub,code
@@ -1381,7 +1381,7 @@ _WritePixelLine8:
 	movea.l	20(sp),a2
 	movea.l	24(sp),a1
 	jsr	___graphics_ensure
-	jsr	-780(a6)
+	jsr	-774(a6)
 	rts
 
 	section	_ReadPixelArray8_stub,code
@@ -1397,7 +1397,7 @@ _ReadPixelArray8:
 	movea.l	24(sp),a2
 	movea.l	28(sp),a1
 	jsr	___graphics_ensure
-	jsr	-786(a6)
+	jsr	-780(a6)
 	rts
 
 	section	_WritePixelArray8_stub,code
@@ -1413,7 +1413,7 @@ _WritePixelArray8:
 	movea.l	24(sp),a2
 	movea.l	28(sp),a1
 	jsr	___graphics_ensure
-	jsr	-792(a6)
+	jsr	-786(a6)
 	rts
 
 	section	_GetVPModeID_stub,code
@@ -1423,7 +1423,7 @@ _WritePixelArray8:
 _GetVPModeID:
 	movea.l	4(sp),a0
 	jsr	___graphics_ensure
-	jsr	-798(a6)
+	jsr	-792(a6)
 	rts
 
 	section	_ModeNotAvailable_stub,code
@@ -1433,7 +1433,7 @@ _GetVPModeID:
 _ModeNotAvailable:
 	move.l	4(sp),d0
 	jsr	___graphics_ensure
-	jsr	-804(a6)
+	jsr	-798(a6)
 	rts
 
 	section	_EraseRect_stub,code
@@ -1447,7 +1447,7 @@ _EraseRect:
 	move.l	16(sp),d2
 	move.l	20(sp),d3
 	jsr	___graphics_ensure
-	jsr	-816(a6)
+	jsr	-810(a6)
 	rts
 
 	section	_ExtendFont_stub,code
@@ -1458,7 +1458,7 @@ _ExtendFont:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	jsr	___graphics_ensure
-	jsr	-822(a6)
+	jsr	-816(a6)
 	rts
 
 	section	_StripFont_stub,code
@@ -1468,7 +1468,7 @@ _ExtendFont:
 _StripFont:
 	movea.l	4(sp),a0
 	jsr	___graphics_ensure
-	jsr	-834(a6)
+	jsr	-822(a6)
 	rts
 
 	section	_CalcIVG_stub,code
@@ -1479,7 +1479,7 @@ _CalcIVG:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	jsr	___graphics_ensure
-	jsr	-840(a6)
+	jsr	-828(a6)
 	rts
 
 	section	_AttachPalExtra_stub,code
@@ -1490,7 +1490,7 @@ _AttachPalExtra:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	jsr	___graphics_ensure
-	jsr	-846(a6)
+	jsr	-834(a6)
 	rts
 
 	section	_ObtainBestPenA_stub,code
@@ -1504,7 +1504,7 @@ _ObtainBestPenA:
 	move.l	16(sp),d3
 	movea.l	20(sp),a1
 	jsr	___graphics_ensure
-	jsr	-852(a6)
+	jsr	-840(a6)
 	rts
 
 	section	_SetRGB32_stub,code
@@ -1518,7 +1518,7 @@ _SetRGB32:
 	move.l	16(sp),d2
 	move.l	20(sp),d3
 	jsr	___graphics_ensure
-	jsr	-870(a6)
+	jsr	-852(a6)
 	rts
 
 	section	_GetAPen_stub,code
@@ -1528,7 +1528,7 @@ _SetRGB32:
 _GetAPen:
 	movea.l	4(sp),a0
 	jsr	___graphics_ensure
-	jsr	-876(a6)
+	jsr	-858(a6)
 	rts
 
 	section	_GetBPen_stub,code
@@ -1538,7 +1538,7 @@ _GetAPen:
 _GetBPen:
 	movea.l	4(sp),a0
 	jsr	___graphics_ensure
-	jsr	-882(a6)
+	jsr	-864(a6)
 	rts
 
 	section	_GetDrMd_stub,code
@@ -1548,7 +1548,7 @@ _GetBPen:
 _GetDrMd:
 	movea.l	4(sp),a0
 	jsr	___graphics_ensure
-	jsr	-888(a6)
+	jsr	-870(a6)
 	rts
 
 	section	_GetOutlinePen_stub,code
@@ -1558,7 +1558,7 @@ _GetDrMd:
 _GetOutlinePen:
 	movea.l	4(sp),a0
 	jsr	___graphics_ensure
-	jsr	-894(a6)
+	jsr	-876(a6)
 	rts
 
 	section	_LoadRGB32_stub,code
@@ -1569,7 +1569,7 @@ _LoadRGB32:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	jsr	___graphics_ensure
-	jsr	-900(a6)
+	jsr	-882(a6)
 	rts
 
 	section	_SetChipRev_stub,code
@@ -1579,7 +1579,7 @@ _LoadRGB32:
 _SetChipRev:
 	move.l	4(sp),d0
 	jsr	___graphics_ensure
-	jsr	-906(a6)
+	jsr	-888(a6)
 	rts
 
 	section	_SetABPenDrMd_stub,code
@@ -1592,7 +1592,7 @@ _SetABPenDrMd:
 	move.l	12(sp),d1
 	move.l	16(sp),d2
 	jsr	___graphics_ensure
-	jsr	-912(a6)
+	jsr	-894(a6)
 	rts
 
 	section	_GetRGB32_stub,code
@@ -1605,7 +1605,7 @@ _GetRGB32:
 	move.l	12(sp),d1
 	movea.l	16(sp),a1
 	jsr	___graphics_ensure
-	jsr	-918(a6)
+	jsr	-900(a6)
 	rts
 
 	section	_AllocBitMap_stub,code
@@ -1619,7 +1619,7 @@ _AllocBitMap:
 	move.l	16(sp),d3
 	movea.l	20(sp),a0
 	jsr	___graphics_ensure
-	jsr	-936(a6)
+	jsr	-918(a6)
 	rts
 
 	section	_FreeBitMap_stub,code
@@ -1629,7 +1629,7 @@ _AllocBitMap:
 _FreeBitMap:
 	movea.l	4(sp),a0
 	jsr	___graphics_ensure
-	jsr	-942(a6)
+	jsr	-924(a6)
 	rts
 
 	section	_GetExtSpriteA_stub,code
@@ -1640,7 +1640,7 @@ _GetExtSpriteA:
 	movea.l	4(sp),a2
 	movea.l	8(sp),a1
 	jsr	___graphics_ensure
-	jsr	-948(a6)
+	jsr	-930(a6)
 	rts
 
 	section	_CoerceMode_stub,code
@@ -1652,7 +1652,7 @@ _CoerceMode:
 	move.l	8(sp),d0
 	move.l	12(sp),d1
 	jsr	___graphics_ensure
-	jsr	-960(a6)
+	jsr	-936(a6)
 	rts
 
 	section	_ChangeVPBitMap_stub,code
@@ -1664,7 +1664,7 @@ _ChangeVPBitMap:
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
 	jsr	___graphics_ensure
-	jsr	-966(a6)
+	jsr	-942(a6)
 	rts
 
 	section	_ReleasePen_stub,code
@@ -1675,7 +1675,7 @@ _ReleasePen:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	jsr	___graphics_ensure
-	jsr	-972(a6)
+	jsr	-948(a6)
 	rts
 
 	section	_ObtainPen_stub,code
@@ -1690,7 +1690,7 @@ _ObtainPen:
 	move.l	20(sp),d3
 	move.l	24(sp),d4
 	jsr	___graphics_ensure
-	jsr	-978(a6)
+	jsr	-954(a6)
 	rts
 
 	section	_GetBitMapAttr_stub,code
@@ -1701,7 +1701,7 @@ _GetBitMapAttr:
 	movea.l	4(sp),a0
 	move.l	8(sp),d1
 	jsr	___graphics_ensure
-	jsr	-984(a6)
+	jsr	-960(a6)
 	rts
 
 	section	_AllocDBufInfo_stub,code
@@ -1711,7 +1711,7 @@ _GetBitMapAttr:
 _AllocDBufInfo:
 	movea.l	4(sp),a0
 	jsr	___graphics_ensure
-	jsr	-990(a6)
+	jsr	-966(a6)
 	rts
 
 	section	_FreeDBufInfo_stub,code
@@ -1721,7 +1721,7 @@ _AllocDBufInfo:
 _FreeDBufInfo:
 	movea.l	4(sp),a1
 	jsr	___graphics_ensure
-	jsr	-996(a6)
+	jsr	-972(a6)
 	rts
 
 	section	_SetOutlinePen_stub,code
@@ -1732,7 +1732,7 @@ _SetOutlinePen:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	jsr	___graphics_ensure
-	jsr	-1002(a6)
+	jsr	-978(a6)
 	rts
 
 	section	_SetWriteMask_stub,code
@@ -1743,7 +1743,7 @@ _SetWriteMask:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	jsr	___graphics_ensure
-	jsr	-1008(a6)
+	jsr	-984(a6)
 	rts
 
 	section	_SetMaxPen_stub,code
@@ -1754,7 +1754,7 @@ _SetMaxPen:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	jsr	___graphics_ensure
-	jsr	-1014(a6)
+	jsr	-990(a6)
 	rts
 
 	section	_SetRGB32CM_stub,code
@@ -1768,7 +1768,7 @@ _SetRGB32CM:
 	move.l	16(sp),d2
 	move.l	20(sp),d3
 	jsr	___graphics_ensure
-	jsr	-1020(a6)
+	jsr	-996(a6)
 	rts
 
 	section	_ScrollRasterBF_stub,code
@@ -1784,7 +1784,7 @@ _ScrollRasterBF:
 	move.l	24(sp),d4
 	move.l	28(sp),d5
 	jsr	___graphics_ensure
-	jsr	-1026(a6)
+	jsr	-1002(a6)
 	rts
 
 	section	_FindColor_stub,code
@@ -1798,7 +1798,7 @@ _FindColor:
 	move.l	16(sp),d3
 	move.l	20(sp),d4
 	jsr	___graphics_ensure
-	jsr	-1032(a6)
+	jsr	-1008(a6)
 	rts
 
 	section	_AllocSpriteDataA_stub,code
@@ -1809,7 +1809,7 @@ _AllocSpriteDataA:
 	movea.l	4(sp),a2
 	movea.l	8(sp),a1
 	jsr	___graphics_ensure
-	jsr	-1044(a6)
+	jsr	-1020(a6)
 	rts
 
 	section	_ChangeExtSpriteA_stub,code
@@ -1822,7 +1822,7 @@ _ChangeExtSpriteA:
 	movea.l	12(sp),a2
 	movea.l	16(sp),a3
 	jsr	___graphics_ensure
-	jsr	-1056(a6)
+	jsr	-1026(a6)
 	rts
 
 	section	_FreeSpriteData_stub,code
@@ -1832,7 +1832,7 @@ _ChangeExtSpriteA:
 _FreeSpriteData:
 	movea.l	4(sp),a2
 	jsr	___graphics_ensure
-	jsr	-1068(a6)
+	jsr	-1032(a6)
 	rts
 
 	section	_SetRPAttrsA_stub,code
@@ -1843,7 +1843,7 @@ _SetRPAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	jsr	___graphics_ensure
-	jsr	-1074(a6)
+	jsr	-1038(a6)
 	rts
 
 	section	_GetRPAttrsA_stub,code
@@ -1854,7 +1854,7 @@ _GetRPAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	jsr	___graphics_ensure
-	jsr	-1086(a6)
+	jsr	-1044(a6)
 	rts
 
 	section	_BestModeIDA_stub,code
@@ -1864,7 +1864,7 @@ _GetRPAttrsA:
 _BestModeIDA:
 	movea.l	4(sp),a0
 	jsr	___graphics_ensure
-	jsr	-1098(a6)
+	jsr	-1050(a6)
 	rts
 
 	section	_WriteChunkyPixels_stub,code
@@ -1880,6 +1880,6 @@ _WriteChunkyPixels:
 	movea.l	24(sp),a2
 	move.l	28(sp),d4
 	jsr	___graphics_ensure
-	jsr	-1110(a6)
+	jsr	-1056(a6)
 	rts
 

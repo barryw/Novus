@@ -896,8 +896,19 @@ impl MUIApp {
         return self.app
     }
 
-    /// Open a window by pointer
+    /// Open a window with automatic close-to-quit behavior
+    /// This is the recommended default for simple applications.
+    /// When the user clicks the close gadget, the app will quit.
     pub fn open_window(&self, window: *u8) {
+        self.on_close(window)
+        set_attr(window, MUIA_Window_Open, 1)
+    }
+
+    /// Open a window without automatic close handling
+    /// Use this when you need custom close behavior (e.g., "Save changes?" dialogs).
+    /// You must set up your own close notification using on_close_return()
+    /// and handle the event in your event loop.
+    pub fn open_window_custom(&self, window: *u8) {
         set_attr(window, MUIA_Window_Open, 1)
     }
 

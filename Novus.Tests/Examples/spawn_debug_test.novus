@@ -1,0 +1,90 @@
+// Debug test - narrow down where crash occurs
+
+from std::core import Result
+from std::error::errors import DosError
+from std::os::task import spawn_task_fn
+from std::ffi::dos import VPrintf, Delay
+from std::ffi::exec import AllocMem, FreeMem, MEMF_PUBLIC, MEMF_CLEAR
+from std::ffi::amiga_structs import Process, Message
+
+fn worker() -> i32 {
+    VPrintf("W1\n", (*u8)0)
+    Delay(50)
+    VPrintf("W2\n", (*u8)0)
+    return 0
+}
+
+pub fn main() -> i32 {
+    VPrintf("1\n", (*u8)0)
+    Delay(25)
+
+    let result = spawn_task_fn("Worker", worker, 8192)
+    var process: *u8 = (*u8)0
+
+    VPrintf("2\n", (*u8)0)
+    Delay(25)
+
+    match result {
+        Result::Err(_) => {
+            VPrintf("ERR\n", (*u8)0)
+            return 1
+        },
+        Result::Ok(handle) => {
+            VPrintf("3\n", (*u8)0)
+            process = handle.process
+        }
+    }
+
+    Delay(25)
+    VPrintf("4\n", (*u8)0)
+    Delay(25)
+
+    // Allocate message
+    let msg_size: u32 = 24
+    let msg_mem = unsafe { AllocMem(msg_size, MEMF_PUBLIC | MEMF_CLEAR) }
+
+    VPrintf("5\n", (*u8)0)
+    Delay(25)
+
+    if (u32)msg_mem == 0 {
+        VPrintf("ALLOC FAIL\n", (*u8)0)
+        return 1
+    }
+
+    VPrintf("6\n", (*u8)0)
+    Delay(25)
+
+    let msg = (*Message)msg_mem
+
+    VPrintf("7\n", (*u8)0)
+    Delay(25)
+
+    msg.mn_Node.ln_Type = 5
+
+    VPrintf("8\n", (*u8)0)
+    Delay(25)
+
+    msg.mn_ReplyPort = (*MsgPort)0
+
+    VPrintf("9\n", (*u8)0)
+    Delay(25)
+
+    msg.mn_Length = (u16)msg_size
+
+    VPrintf("10\n", (*u8)0)
+    Delay(25)
+
+    let child_proc = (*Process)process
+
+    VPrintf("11\n", (*u8)0)
+    Delay(25)
+
+    // This is probably where it crashes
+    // PutMsg(&child_proc.pr_MsgPort, msg)
+
+    VPrintf("12-SKIPPED PUTMSG\n", (*u8)0)
+    Delay(100)
+
+    VPrintf("DONE\n", (*u8)0)
+    return 0
+}

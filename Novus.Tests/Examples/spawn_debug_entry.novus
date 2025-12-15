@@ -1,0 +1,45 @@
+// Debug: print the entry address being used
+
+from std::core import Result
+from std::error::errors import DosError
+from std::os::task import spawn_task_fn
+from std::ffi::dos import VPrintf, Delay
+
+fn worker() -> i32 {
+    // This should never run based on our tests
+    return 0
+}
+
+pub fn main() -> i32 {
+    VPrintf("M: starting\n", (*u8)0)
+
+    // Get function address the same way spawn_task_fn_impl does
+    let entry: fn() -> i32 = worker
+    let entry_addr = *(*u32)&entry
+
+    var addr_val: u32 = entry_addr
+    VPrintf("Entry addr: %08lx\n", (*u8)&addr_val)
+
+    // Also print the address of main for comparison
+    let main_fn: fn() -> i32 = main
+    let main_addr = *(*u32)&main_fn
+    var main_val: u32 = main_addr
+    VPrintf("Main addr: %08lx\n", (*u8)&main_val)
+
+    let result = spawn_task_fn("DebugWorker", worker, 8192)
+
+    match result {
+        Result::Err(_) => {
+            VPrintf("M: spawn failed\n", (*u8)0)
+            return 1
+        },
+        Result::Ok(handle) => {
+            var proc_val: u32 = (u32)handle.process
+            VPrintf("M: proc=%08lx\n", (*u8)&proc_val)
+        }
+    }
+
+    Delay(50)
+    VPrintf("M: done\n", (*u8)0)
+    return 0
+}

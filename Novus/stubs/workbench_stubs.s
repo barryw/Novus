@@ -26,7 +26,7 @@ _AddAppWindowA:
 _RemoveAppWindow:
 	movea.l	4(sp),a0
 	movea.l	_WorkbenchBase,a6
-	jsr	-60(a6)
+	jsr	-54(a6)
 	rts
 
 	section	_AddAppIconA_stub,code
@@ -42,7 +42,7 @@ _AddAppIconA:
 	movea.l	24(sp),a3
 	movea.l	28(sp),a4
 	movea.l	_WorkbenchBase,a6
-	jsr	-66(a6)
+	jsr	-60(a6)
 	rts
 
 	section	_RemoveAppIcon_stub,code
@@ -52,7 +52,7 @@ _AddAppIconA:
 _RemoveAppIcon:
 	movea.l	4(sp),a0
 	movea.l	_WorkbenchBase,a6
-	jsr	-78(a6)
+	jsr	-66(a6)
 	rts
 
 	section	_AddAppMenuItemA_stub,code
@@ -66,7 +66,7 @@ _AddAppMenuItemA:
 	movea.l	16(sp),a1
 	movea.l	20(sp),a2
 	movea.l	_WorkbenchBase,a6
-	jsr	-84(a6)
+	jsr	-72(a6)
 	rts
 
 	section	_RemoveAppMenuItem_stub,code
@@ -76,7 +76,7 @@ _AddAppMenuItemA:
 _RemoveAppMenuItem:
 	movea.l	4(sp),a0
 	movea.l	_WorkbenchBase,a6
-	jsr	-96(a6)
+	jsr	-78(a6)
 	rts
 
 	section	_WBInfo_stub,code
@@ -88,7 +88,7 @@ _WBInfo:
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
 	movea.l	_WorkbenchBase,a6
-	jsr	-108(a6)
+	jsr	-90(a6)
 	rts
 
 	section	_OpenWorkbenchObjectA_stub,code
@@ -99,7 +99,7 @@ _OpenWorkbenchObjectA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_WorkbenchBase,a6
-	jsr	-114(a6)
+	jsr	-96(a6)
 	rts
 
 	section	_CloseWorkbenchObjectA_stub,code
@@ -110,7 +110,7 @@ _CloseWorkbenchObjectA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_WorkbenchBase,a6
-	jsr	-126(a6)
+	jsr	-102(a6)
 	rts
 
 	section	_WorkbenchControlA_stub,code
@@ -121,7 +121,7 @@ _WorkbenchControlA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_WorkbenchBase,a6
-	jsr	-138(a6)
+	jsr	-108(a6)
 	rts
 
 	section	_AddAppWindowDropZoneA_stub,code
@@ -134,7 +134,7 @@ _AddAppWindowDropZoneA:
 	move.l	12(sp),d1
 	movea.l	16(sp),a1
 	movea.l	_WorkbenchBase,a6
-	jsr	-150(a6)
+	jsr	-114(a6)
 	rts
 
 	section	_RemoveAppWindowDropZone_stub,code
@@ -145,7 +145,7 @@ _RemoveAppWindowDropZone:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_WorkbenchBase,a6
-	jsr	-162(a6)
+	jsr	-120(a6)
 	rts
 
 	section	_ChangeWorkbenchSelectionA_stub,code
@@ -157,7 +157,7 @@ _ChangeWorkbenchSelectionA:
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
 	movea.l	_WorkbenchBase,a6
-	jsr	-168(a6)
+	jsr	-126(a6)
 	rts
 
 	section	_MakeWorkbenchObjectVisibleA_stub,code
@@ -168,6 +168,6 @@ _MakeWorkbenchObjectVisibleA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_WorkbenchBase,a6
-	jsr	-180(a6)
+	jsr	-132(a6)
 	rts
 

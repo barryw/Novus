@@ -1,0 +1,68 @@
+// Test NP_ExitData parameter passing
+//
+// Spawns a task that receives a pointer via NP_ExitData tag.
+
+from std::core import Result
+from std::os::task import spawn_task_fn_with_ptr, ProcessHandle
+from std::ffi::exec import Wait, GetMsg, ReplyMsg, FindTask, CreateMsgPort, DeleteMsgPort
+from std::ffi::amiga_structs import MsgPort, Message, Process
+from std::io::file import write
+
+fn responder_task() -> i32 {
+    // Get our process structure
+    let me = (*Process)FindTask(null)
+
+    // Extract the port pointer from pr_ExitData (passed via NP_ExitData tag)
+    let port = (*MsgPort)me.pr_ExitData
+
+    if (u32)port == 0 {
+        return 1
+    }
+
+    // Wait for a channel message on the provided port
+    let signal_bit = port.mp_SigBit
+    let signal_mask = (u32)1 << (u32)signal_bit
+    Wait(signal_mask)
+
+    // Get the message
+    let msg = GetMsg(port)
+    if (u32)msg == 0 {
+        return 1
+    }
+
+    // Reply to it immediately
+    ReplyMsg(msg)
+
+    return 0
+}
+
+fn main() -> i32 {
+    write("Testing NP_ExitData parameter passing...\n")
+
+    // Create a message port
+    let port = CreateMsgPort()
+    if (u32)port == 0 {
+        write("Failed to create port\n")
+        return 1
+    }
+
+    write("Port created\n")
+
+    // Spawn task with port pointer
+    let result = spawn_task_fn_with_ptr("ExitDataTest", responder_task, (*u8)port, 16384)
+    match result {
+        Result::Err(_) => {
+            write("Failed to spawn task\n")
+            DeleteMsgPort(port)
+            return 1
+        },
+        Result::Ok(handle) => {
+            write("Task spawned successfully\n")
+        }
+    }
+
+    // Clean up
+    DeleteMsgPort(port)
+    write("Done\n")
+    return 0
+}

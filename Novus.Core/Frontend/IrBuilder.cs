@@ -1261,6 +1261,11 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
 
     private void ExtractGenericTypeMapping(IrType baseType, IrType monomorphizedType, Dictionary<string, IrType> substitutions)
     {
+        ExtractGenericTypeMappingInternal(baseType, monomorphizedType, substitutions, new HashSet<string>());
+    }
+
+    private void ExtractGenericTypeMappingInternal(IrType baseType, IrType monomorphizedType, Dictionary<string, IrType> substitutions, HashSet<string> visited)
+    {
         switch (baseType)
         {
             case IrGenericType gt:
@@ -1273,24 +1278,24 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
 
             case IrPointerType basePtrType when monomorphizedType is IrPointerType monoPtrType:
                 // Recurse into pointer pointee types
-                ExtractGenericTypeMapping(basePtrType.PointeeType, monoPtrType.PointeeType, substitutions);
+                ExtractGenericTypeMappingInternal(basePtrType.PointeeType, monoPtrType.PointeeType, substitutions, visited);
                 break;
 
             case IrMutReferenceType baseRefType when monomorphizedType is IrMutReferenceType monoRefType:
                 // Recurse into mutable reference types
-                ExtractGenericTypeMapping(baseRefType.PointeeType, monoRefType.PointeeType, substitutions);
+                ExtractGenericTypeMappingInternal(baseRefType.PointeeType, monoRefType.PointeeType, substitutions, visited);
                 break;
 
             case IrReferenceType baseRefType when monomorphizedType is IrReferenceType monoRefType:
                 // Recurse into immutable reference types
-                ExtractGenericTypeMapping(baseRefType.PointeeType, monoRefType.PointeeType, substitutions);
+                ExtractGenericTypeMappingInternal(baseRefType.PointeeType, monoRefType.PointeeType, substitutions, visited);
                 break;
 
             case IrArrayType baseArrayType when monomorphizedType is IrArrayType monoArrayType:
                 // Recurse into array element types
                 if (baseArrayType.Length == monoArrayType.Length)
                 {
-                    ExtractGenericTypeMapping(baseArrayType.ElementType, monoArrayType.ElementType, substitutions);
+                    ExtractGenericTypeMappingInternal(baseArrayType.ElementType, monoArrayType.ElementType, substitutions, visited);
                 }
                 break;
 
@@ -1300,9 +1305,18 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
                 if (baseStructType.StructName == monoStructType.StructName &&
                     baseStructType.Fields.Count == monoStructType.Fields.Count)
                 {
+                    // Use a unique key for this struct type to detect cycles
+                    var structKey = baseStructType.CacheKey ?? baseStructType.StructName;
+                    if (visited.Contains(structKey))
+                    {
+                        // Already visited this struct type - avoid infinite recursion
+                        break;
+                    }
+                    visited.Add(structKey);
+
                     for (int i = 0; i < baseStructType.Fields.Count; i++)
                     {
-                        ExtractGenericTypeMapping(baseStructType.Fields[i].Type, monoStructType.Fields[i].Type, substitutions);
+                        ExtractGenericTypeMappingInternal(baseStructType.Fields[i].Type, monoStructType.Fields[i].Type, substitutions, visited);
                     }
                 }
                 break;
@@ -1313,6 +1327,15 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
                 if (baseEnumType.EnumName == monoEnumType.EnumName &&
                     baseEnumType.Variants.Count == monoEnumType.Variants.Count)
                 {
+                    // Use a unique key for this enum type to detect cycles
+                    var enumKey = baseEnumType.CacheKey ?? baseEnumType.EnumName;
+                    if (visited.Contains(enumKey))
+                    {
+                        // Already visited this enum type - avoid infinite recursion
+                        break;
+                    }
+                    visited.Add(enumKey);
+
                     for (int i = 0; i < baseEnumType.Variants.Count; i++)
                     {
                         var baseVariant = baseEnumType.Variants[i];
@@ -1323,7 +1346,7 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
                         {
                             for (int j = 0; j < baseVariant.AssociatedData.Count; j++)
                             {
-                                ExtractGenericTypeMapping(baseVariant.AssociatedData[j], monoVariant.AssociatedData[j], substitutions);
+                                ExtractGenericTypeMappingInternal(baseVariant.AssociatedData[j], monoVariant.AssociatedData[j], substitutions, visited);
                             }
                         }
                     }

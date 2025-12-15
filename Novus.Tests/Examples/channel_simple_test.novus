@@ -1,0 +1,34 @@
+// Simple channel test - minimal
+
+from std::core import Result, Option
+from std::error::errors import DosError
+from std::sync::channel import channel, Sender, Receiver
+from std::io::file import write
+
+fn main() -> i32 {
+    write("Simple channel test\n")
+
+    let result = channel::<i32>()
+    match result {
+        Result::Err(_) => {
+            write("Failed to create channel\n")
+            return 1
+        },
+        Result::Ok(pair) => {
+            let (tx, rx) = pair
+            tx.send(42)
+
+            match rx.try_recv() {
+                Option::Some(val) => {
+                    write("Got: %ld\n", val)
+                },
+                Option::None => {
+                    write("No value\n")
+                }
+            }
+        }
+    }
+
+    write("Done\n")
+    return 0
+}

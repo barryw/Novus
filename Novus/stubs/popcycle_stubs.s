@@ -31,7 +31,7 @@ _AllocPopCycleNodeA:
 _FreePopCycleNode:
 	movea.l	4(sp),a0
 	movea.l	_PopCycleBase,a6
-	jsr	-48(a6)
+	jsr	-42(a6)
 	rts
 
 	section	_SetPopCycleNodeAttrsA_stub,code
@@ -42,7 +42,7 @@ _SetPopCycleNodeAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_PopCycleBase,a6
-	jsr	-54(a6)
+	jsr	-48(a6)
 	rts
 
 	section	_GetPopCycleNodeAttrsA_stub,code
@@ -53,6 +53,6 @@ _GetPopCycleNodeAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_PopCycleBase,a6
-	jsr	-66(a6)
+	jsr	-54(a6)
 	rts
 

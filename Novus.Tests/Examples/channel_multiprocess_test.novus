@@ -1,0 +1,204 @@
+// Multi-Process Channel Test
+//
+// Demonstrates message passing between parent and child processes.
+// Uses a public named message port so the child can find the parent's port.
+//
+// Expected output:
+//   Starting multi-process channel test...
+//   Spawning worker...
+//   Worker: Starting
+//   Worker: Sending progress 0
+//   Progress: 0%
+//   Worker: Sending progress 10
+//   Progress: 10%
+//   ...
+//   Worker: Done
+//   All done!
+
+from std::core import Result, Option
+from std::os::task import spawn_task_fn, ProcessHandle
+from std::os::timer import Duration, TimerHandle
+from std::ffi::exec import Wait, CreateMsgPort, DeleteMsgPort, PutMsg, GetMsg, FindPort
+from std::ffi::exec import AllocMem, FreeMem, Forbid, Permit, FindTask
+from std::ffi::exec import AddPort, RemPort
+from std::ffi::amiga_structs import MsgPort, Message, Node, Task
+from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
+from std::io::file import write
+
+// Message type for progress updates
+struct ProgressMsg {
+    percent: i32,
+    done: bool,
+}
+
+// Channel message = Message header + payload
+const MSG_SIZE: u32 = 24  // sizeof(Message) + sizeof(ProgressMsg), aligned
+
+// Port name that child will look for
+fn get_port_name() -> *u8 {
+    return "NovusChannelTest".ptr
+}
+
+fn send_progress(port: *MsgPort, percent: i32, done: bool) {
+    let msg_mem = unsafe { AllocMem(MSG_SIZE, MEMF_PUBLIC | MEMF_CLEAR) }
+    if (u32)msg_mem == 0 {
+        return
+    }
+
+    let msg = (*Message)msg_mem
+    msg.mn_Node.ln_Type = 5  // NT_MESSAGE
+    msg.mn_ReplyPort = (*MsgPort)0
+    msg.mn_Length = (u16)MSG_SIZE
+
+    // Write payload after Message header
+    let percent_ptr = (*i32)((u32)msg + 14)
+    let done_ptr = (*bool)((u32)msg + 18)
+    *percent_ptr = percent
+    *done_ptr = done
+
+    PutMsg(port, msg)
+}
+
+fn recv_progress(port: *MsgPort) -> Option<ProgressMsg> {
+    let msg = GetMsg(port)
+    if (u32)msg == 0 {
+        return Option::None
+    }
+
+    let percent_ptr = (*i32)((u32)msg + 14)
+    let done_ptr = (*bool)((u32)msg + 18)
+    let result = ProgressMsg {
+        percent: *percent_ptr,
+        done: *done_ptr,
+    }
+
+    unsafe { FreeMem((*u8)msg, MSG_SIZE) }
+    return Option::Some(result)
+}
+
+fn worker_entry() -> i32 {
+    write("Worker: Starting\n")
+
+    // Find the parent's port by name
+    // Need to wait a moment and retry since parent might not have added it yet
+    var port: *MsgPort = (*MsgPort)0
+    var attempts: i32 = 0
+    while (u32)port == 0 && attempts < 50 {
+        Forbid()
+        port = FindPort(get_port_name())
+        Permit()
+        if (u32)port == 0 {
+            // Small delay before retry
+            let timer_result = TimerHandle::microhz()
+            match timer_result {
+                Result::Ok(t) => {
+                    t.delay(Duration::millis(10))
+                },
+                Result::Err(_) => {}
+            }
+        }
+        attempts = attempts + 1
+    }
+
+    if (u32)port == 0 {
+        write("Worker: Could not find parent port!\n")
+        return 1
+    }
+
+    write("Worker: Found parent port\n")
+
+    // Open timer for delays
+    let timer_result = TimerHandle::microhz()
+    match timer_result {
+        Result::Err(_) => {
+            write("Worker: Failed to open timer\n")
+            return 1
+        },
+        Result::Ok(timer) => {
+            var progress: i32 = 0
+            while progress <= 100 {
+                write("Worker: Sending progress %ld\n", progress)
+                send_progress(port, progress, progress >= 100)
+
+                timer.delay(Duration::millis(200))
+                progress = progress + 10
+            }
+        }
+    }
+
+    write("Worker: Done\n")
+    return 0
+}
+
+fn main() -> i32 {
+    write("Starting multi-process channel test...\n")
+
+    // Create message port
+    let port = CreateMsgPort()
+    if (u32)port == 0 {
+        write("Failed to create message port\n")
+        return 1
+    }
+
+    // Make it a public named port so child can find it
+    port.mp_Node.ln_Name = get_port_name()
+    port.mp_Node.ln_Pri = 0
+
+    // Add to public port list
+    Forbid()
+    AddPort(port)
+    Permit()
+
+    write("Port created and made public\n")
+
+    // Get signal mask
+    let signal_bit = port.mp_SigBit
+    let signal_mask = (u32)1 << (u32)signal_bit
+
+    write("Spawning worker...\n")
+
+    let spawn_result = spawn_task_fn("ChannelWorker", worker_entry, 16384)
+    match spawn_result {
+        Result::Err(e) => {
+            write("Failed to spawn worker\n")
+            Forbid()
+            RemPort(port)
+            Permit()
+            DeleteMsgPort(port)
+            return 1
+        },
+        Result::Ok(handle) => {
+            var running = true
+            while running {
+                // Wait for messages
+                Wait(signal_mask)
+
+                // Process all pending
+                var has_more = true
+                while has_more {
+                    match recv_progress(port) {
+                        Option::Some(msg) => {
+                            write("Progress: %ld%%\n", msg.percent)
+                            if msg.done {
+                                running = false
+                            }
+                        },
+                        Option::None => {
+                            has_more = false
+                        },
+                    }
+                }
+            }
+        }
+    }
+
+    // Remove from public list before deleting
+    Forbid()
+    RemPort(port)
+    Permit()
+
+    DeleteMsgPort(port)
+
+    write("All done!\n")
+    return 0
+}

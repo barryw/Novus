@@ -1,0 +1,15 @@
+// Test importing just Duration struct
+
+from std::ffi::dos import VPrintf
+
+// Define our own Duration to avoid importing from timer
+struct MyDuration {
+    secs: u32,
+    micros: u32,
+}
+
+pub fn main() -> i32 {
+    VPrintf("Duration struct works\n", (*u8)0)
+    let d = MyDuration { secs: 1, micros: 0 }
+    return 0
+}

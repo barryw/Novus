@@ -83,7 +83,7 @@ _AddTimerInt:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_LowLevelBase,a6
-	jsr	-84(a6)
+	jsr	-78(a6)
 	rts
 
 	section	_RemTimerInt_stub,code
@@ -93,7 +93,7 @@ _AddTimerInt:
 _RemTimerInt:
 	movea.l	4(sp),a1
 	movea.l	_LowLevelBase,a6
-	jsr	-90(a6)
+	jsr	-84(a6)
 	rts
 
 	section	_StopTimerInt_stub,code
@@ -103,7 +103,7 @@ _RemTimerInt:
 _StopTimerInt:
 	movea.l	4(sp),a1
 	movea.l	_LowLevelBase,a6
-	jsr	-96(a6)
+	jsr	-90(a6)
 	rts
 
 	section	_StartTimerInt_stub,code
@@ -115,7 +115,7 @@ _StartTimerInt:
 	move.l	8(sp),d0
 	move.l	12(sp),d1
 	movea.l	_LowLevelBase,a6
-	jsr	-102(a6)
+	jsr	-96(a6)
 	rts
 
 	section	_ElapsedTime_stub,code
@@ -125,7 +125,7 @@ _StartTimerInt:
 _ElapsedTime:
 	movea.l	4(sp),a0
 	movea.l	_LowLevelBase,a6
-	jsr	-108(a6)
+	jsr	-102(a6)
 	rts
 
 	section	_AddVBlankInt_stub,code
@@ -136,7 +136,7 @@ _AddVBlankInt:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_LowLevelBase,a6
-	jsr	-114(a6)
+	jsr	-108(a6)
 	rts
 
 	section	_RemVBlankInt_stub,code
@@ -146,7 +146,7 @@ _AddVBlankInt:
 _RemVBlankInt:
 	movea.l	4(sp),a1
 	movea.l	_LowLevelBase,a6
-	jsr	-120(a6)
+	jsr	-114(a6)
 	rts
 
 	section	_SetJoyPortAttrsA_stub,code
@@ -157,6 +157,6 @@ _SetJoyPortAttrsA:
 	move.l	4(sp),d0
 	movea.l	8(sp),a1
 	movea.l	_LowLevelBase,a6
-	jsr	-138(a6)
+	jsr	-132(a6)
 	rts
 

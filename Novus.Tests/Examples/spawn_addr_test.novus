@@ -1,0 +1,63 @@
+// Test address computation for pr_MsgPort
+
+from std::core import Result
+from std::error::errors import DosError
+from std::os::task import spawn_task_fn
+from std::ffi::dos import VPrintf, Delay
+from std::ffi::amiga_structs import Process
+
+fn worker() -> i32 {
+    VPrintf("W-START\n", (*u8)0)
+    Delay(100)
+    VPrintf("W-END\n", (*u8)0)
+    return 0
+}
+
+pub fn main() -> i32 {
+    VPrintf("1\n", (*u8)0)
+
+    let result = spawn_task_fn("Worker", worker, 8192)
+    var process: *u8 = (*u8)0
+
+    match result {
+        Result::Err(_) => {
+            VPrintf("ERR\n", (*u8)0)
+            return 1
+        },
+        Result::Ok(handle) => {
+            VPrintf("2\n", (*u8)0)
+            process = handle.process
+        }
+    }
+
+    VPrintf("3\n", (*u8)0)
+    Delay(25)
+
+    // Print the process pointer
+    var proc_val: u32 = (u32)process
+    VPrintf("PROC=%08lx\n", (*u8)&proc_val)
+    Delay(10)
+
+    // Compute address of pr_MsgPort manually
+    var port_addr: u32 = (u32)process + 92
+    VPrintf("PORT=%08lx\n", (*u8)&port_addr)
+    Delay(10)
+
+    // Get address via struct field access - use *u8 pointer
+    let child_proc = (*Process)process
+    var pval: u32 = (u32)(*u8)&child_proc.pr_MsgPort
+    VPrintf("PTR=%08lx\n", (*u8)&pval)
+    Delay(10)
+
+    // Check if they match
+    if port_addr == pval {
+        VPrintf("MATCH\n", (*u8)0)
+    } else {
+        VPrintf("MISMATCH!\n", (*u8)0)
+    }
+
+    VPrintf("DONE\n", (*u8)0)
+    Delay(100)
+
+    return 0
+}

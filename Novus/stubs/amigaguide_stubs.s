@@ -44,7 +44,7 @@ _OpenAmigaGuideAsyncA:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	movea.l	_AmigaGuideBase,a6
-	jsr	-66(a6)
+	jsr	-60(a6)
 	rts
 
 	section	_CloseAmigaGuide_stub,code
@@ -54,7 +54,7 @@ _OpenAmigaGuideAsyncA:
 _CloseAmigaGuide:
 	movea.l	4(sp),a0
 	movea.l	_AmigaGuideBase,a6
-	jsr	-78(a6)
+	jsr	-66(a6)
 	rts
 
 	section	_AmigaGuideSignal_stub,code
@@ -64,7 +64,7 @@ _CloseAmigaGuide:
 _AmigaGuideSignal:
 	movea.l	4(sp),a0
 	movea.l	_AmigaGuideBase,a6
-	jsr	-84(a6)
+	jsr	-72(a6)
 	rts
 
 	section	_GetAmigaGuideMsg_stub,code
@@ -74,7 +74,7 @@ _AmigaGuideSignal:
 _GetAmigaGuideMsg:
 	movea.l	4(sp),a0
 	movea.l	_AmigaGuideBase,a6
-	jsr	-90(a6)
+	jsr	-78(a6)
 	rts
 
 	section	_ReplyAmigaGuideMsg_stub,code
@@ -84,7 +84,7 @@ _GetAmigaGuideMsg:
 _ReplyAmigaGuideMsg:
 	movea.l	4(sp),a0
 	movea.l	_AmigaGuideBase,a6
-	jsr	-96(a6)
+	jsr	-84(a6)
 	rts
 
 	section	_SetAmigaGuideContextA_stub,code
@@ -96,7 +96,7 @@ _SetAmigaGuideContextA:
 	move.l	8(sp),d0
 	move.l	12(sp),d1
 	movea.l	_AmigaGuideBase,a6
-	jsr	-102(a6)
+	jsr	-90(a6)
 	rts
 
 	section	_SendAmigaGuideContextA_stub,code
@@ -107,7 +107,7 @@ _SendAmigaGuideContextA:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	movea.l	_AmigaGuideBase,a6
-	jsr	-114(a6)
+	jsr	-96(a6)
 	rts
 
 	section	_SendAmigaGuideCmdA_stub,code
@@ -119,7 +119,7 @@ _SendAmigaGuideCmdA:
 	move.l	8(sp),d0
 	move.l	12(sp),d1
 	movea.l	_AmigaGuideBase,a6
-	jsr	-126(a6)
+	jsr	-102(a6)
 	rts
 
 	section	_SetAmigaGuideAttrsA_stub,code
@@ -130,7 +130,7 @@ _SetAmigaGuideAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmigaGuideBase,a6
-	jsr	-138(a6)
+	jsr	-108(a6)
 	rts
 
 	section	_GetAmigaGuideAttr_stub,code
@@ -142,7 +142,7 @@ _GetAmigaGuideAttr:
 	movea.l	8(sp),a0
 	movea.l	12(sp),a1
 	movea.l	_AmigaGuideBase,a6
-	jsr	-150(a6)
+	jsr	-114(a6)
 	rts
 
 	section	_LoadXRef_stub,code
@@ -153,7 +153,7 @@ _LoadXRef:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmigaGuideBase,a6
-	jsr	-162(a6)
+	jsr	-126(a6)
 	rts
 
 	section	_ExpungeXRef_stub,code
@@ -162,7 +162,7 @@ _LoadXRef:
 	xdef	_ExpungeXRef
 _ExpungeXRef:
 	movea.l	_AmigaGuideBase,a6
-	jsr	-168(a6)
+	jsr	-132(a6)
 	rts
 
 	section	_AddAmigaGuideHostA_stub,code
@@ -174,7 +174,7 @@ _AddAmigaGuideHostA:
 	move.l	8(sp),d0
 	movea.l	12(sp),a1
 	movea.l	_AmigaGuideBase,a6
-	jsr	-174(a6)
+	jsr	-138(a6)
 	rts
 
 	section	_RemoveAmigaGuideHostA_stub,code
@@ -185,7 +185,7 @@ _RemoveAmigaGuideHostA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AmigaGuideBase,a6
-	jsr	-186(a6)
+	jsr	-144(a6)
 	rts
 
 	section	_GetAmigaGuideString_stub,code
@@ -195,6 +195,6 @@ _RemoveAmigaGuideHostA:
 _GetAmigaGuideString:
 	move.l	4(sp),d0
 	movea.l	_AmigaGuideBase,a6
-	jsr	-258(a6)
+	jsr	-210(a6)
 	rts
 

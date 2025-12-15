@@ -1,0 +1,34 @@
+// Test spawning a worker that does nothing - just prints and exits
+
+from std::core import Result
+from std::error::errors import DosError
+from std::os::task import spawn_task_fn
+from std::ffi::dos import VPrintf, Delay
+
+fn worker() -> i32 {
+    VPrintf("Worker: running\n", (*u8)0)
+    return 0
+}
+
+pub fn main() -> i32 {
+    VPrintf("Main: starting\n", (*u8)0)
+
+    VPrintf("Main: spawning worker\n", (*u8)0)
+
+    let result = spawn_task_fn("NoopWorker", worker, 8192)
+    match result {
+        Result::Err(_) => {
+            VPrintf("Main: spawn failed\n", (*u8)0)
+            return 1
+        },
+        Result::Ok(handle) => {
+            VPrintf("Main: spawn succeeded\n", (*u8)0)
+        }
+    }
+
+    // Give worker time to run
+    Delay(100)
+
+    VPrintf("Main: done\n", (*u8)0)
+    return 0
+}

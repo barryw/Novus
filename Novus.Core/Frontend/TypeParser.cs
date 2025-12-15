@@ -365,6 +365,10 @@ public class TypeParser : ITypeSubstitutionEngine
             placeholderStruct.Fields.Add(field);
         }
 
+        // IMPORTANT: Set TypeArguments so that BuildStructTypeSubstitutions can use them
+        // to determine the T -> concrete_type mapping for method instantiation
+        placeholderStruct.TypeArguments = typeArgs;
+
         // Force calculation of field offsets only if fully monomorphized
         // If still contains generic types, offset calculation will happen later
         if (fullyMonomorphized)
@@ -838,6 +842,29 @@ public class TypeParser : ITypeSubstitutionEngine
             {
                 return _context.GetArrayType(substitutedElement, arrayType.Length);
             }
+        }
+
+        // Tuple type substitution - tuples are special structs with element types
+        if (type is IrTupleType tupleType)
+        {
+            bool anyChanged = false;
+            var substitutedElements = new List<IrType>();
+
+            foreach (var elementType in tupleType.ElementTypes)
+            {
+                var substitutedElement = SubstituteGenericTypesInternal(elementType, substitutions, visitedStructs);
+                substitutedElements.Add(substitutedElement);
+                if (!TypesAreEqual(substitutedElement, elementType))
+                {
+                    anyChanged = true;
+                }
+            }
+
+            if (anyChanged)
+            {
+                return _context.GetTupleType(substitutedElements);
+            }
+            return tupleType;
         }
 
         // Struct type substitution (recursive field substitution)

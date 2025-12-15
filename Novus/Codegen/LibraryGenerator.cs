@@ -687,14 +687,14 @@ public class LibraryGenerator
         sb.AppendLine();
         sb.AppendLine($"// Internal function to increment call counter");
         sb.AppendLine($"void {_libraryStruct.StructName}_IncrementCallCount(struct {structName}* base) {{");
-        sb.AppendLine("    if (base != NULL) {");
+        sb.AppendLine("    if (base) {");
         sb.AppendLine("        base->__call_count++;");
         sb.AppendLine("    }");
         sb.AppendLine("}");
         sb.AppendLine();
         sb.AppendLine($"// Auto-generated function to get total library function calls");
         sb.AppendLine($"uint32_t {_libraryStruct.StructName}_GetCallCount(struct {structName}* base) {{");
-        sb.AppendLine("    if (base == NULL) return 0;");
+        sb.AppendLine("    if (!base) return 0;");
         sb.AppendLine("    return base->__call_count;");
         sb.AppendLine("}");
         sb.AppendLine();

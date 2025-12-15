@@ -236,7 +236,7 @@ _OpenCatalogA:
 _OpenLocale:
 	movea.l	4(sp),a0
 	movea.l	_LocaleBase,a6
-	jsr	-162(a6)
+	jsr	-156(a6)
 	rts
 
 	section	_ParseDate_stub,code
@@ -249,7 +249,7 @@ _ParseDate:
 	movea.l	12(sp),a2
 	movea.l	16(sp),a3
 	movea.l	_LocaleBase,a6
-	jsr	-168(a6)
+	jsr	-162(a6)
 	rts
 
 	section	_StrConvert_stub,code
@@ -263,7 +263,7 @@ _StrConvert:
 	move.l	16(sp),d0
 	move.l	20(sp),d1
 	movea.l	_LocaleBase,a6
-	jsr	-180(a6)
+	jsr	-174(a6)
 	rts
 
 	section	_StrnCmp_stub,code
@@ -277,6 +277,6 @@ _StrnCmp:
 	move.l	16(sp),d0
 	move.l	20(sp),d1
 	movea.l	_LocaleBase,a6
-	jsr	-186(a6)
+	jsr	-180(a6)
 	rts
 

@@ -1,0 +1,102 @@
+// Test NP_ExitData without any messaging
+
+from std::ffi::dos import VPrintf, Delay, CreateNewProc, Output, Input
+from std::ffi::exec import AllocMem, FreeMem, FindTask
+from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
+from std::ffi::amiga_consts import NP_Entry, NP_StackSize, NP_Name, NP_ExitData
+from std::ffi::amiga_consts import NP_Output, NP_Input, NP_CloseOutput, NP_CloseInput
+from std::ffi::amiga_structs import TagItem, Process
+
+fn worker() -> i32 {
+    VPrintf("W: started\n", (*u8)0)
+
+    // Get our process structure
+    let me = (*Process)FindTask((*u8)0)
+
+    // Read pr_ExitData
+    let data = me.pr_ExitData
+    var data_val: u32 = (u32)data
+    VPrintf("W: pr_ExitData=%08lx\n", (*u8)&data_val)
+
+    VPrintf("W: done\n", (*u8)0)
+    return 0
+}
+
+pub fn main() -> i32 {
+    VPrintf("M: starting\n", (*u8)0)
+
+    // Allocate tags - need more now
+    let tag_size: u32 = 10 * 8  // 10 tags * 8 bytes each
+    let tag_mem = unsafe { AllocMem(tag_size, MEMF_PUBLIC | MEMF_CLEAR) }
+    if (u32)tag_mem == 0 {
+        VPrintf("M: alloc fail\n", (*u8)0)
+        return 1
+    }
+
+    let tags = (*TagItem)tag_mem
+    var idx: u32 = 0
+
+    // NP_Entry - get function address
+    var worker_fn: fn() -> i32 = worker
+    let entry_addr = *(*u32)&worker_fn
+    tags[idx].ti_Tag = NP_Entry
+    tags[idx].ti_Data = entry_addr
+    idx = idx + 1
+
+    // NP_Name
+    let name: *u8 = "TestWorker\0"
+    tags[idx].ti_Tag = NP_Name
+    tags[idx].ti_Data = (u32)name
+    idx = idx + 1
+
+    // NP_StackSize
+    tags[idx].ti_Tag = NP_StackSize
+    tags[idx].ti_Data = 8192
+    idx = idx + 1
+
+    // Share parent's output
+    tags[idx].ti_Tag = NP_Output
+    tags[idx].ti_Data = (u32)Output()
+    idx = idx + 1
+
+    tags[idx].ti_Tag = NP_CloseOutput
+    tags[idx].ti_Data = 0
+    idx = idx + 1
+
+    // Share parent's input
+    tags[idx].ti_Tag = NP_Input
+    tags[idx].ti_Data = (u32)Input()
+    idx = idx + 1
+
+    tags[idx].ti_Tag = NP_CloseInput
+    tags[idx].ti_Data = 0
+    idx = idx + 1
+
+    // NP_ExitData - pass a test value (12345 decimal)
+    tags[idx].ti_Tag = NP_ExitData
+    tags[idx].ti_Data = 12345
+    idx = idx + 1
+
+    // End tag
+    tags[idx].ti_Tag = 0
+    tags[idx].ti_Data = 0
+
+    VPrintf("M: creating process\n", (*u8)0)
+    let proc = CreateNewProc(tags)
+
+    unsafe { FreeMem(tag_mem, tag_size) }
+
+    if (u32)proc == 0 {
+        VPrintf("M: create fail\n", (*u8)0)
+        return 1
+    }
+
+    var proc_val: u32 = (u32)proc
+    VPrintf("M: proc=%08lx\n", (*u8)&proc_val)
+
+    // Wait for child to finish
+    Delay(100)
+
+    VPrintf("M: done\n", (*u8)0)
+    return 0
+}

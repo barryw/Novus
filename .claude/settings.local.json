@@ -85,7 +85,12 @@
       "Bash(jobs:*)",
       "WebFetch(domain:www.pjhutchison.org)",
       "WebFetch(domain:d0.se)",
-      "WebFetch(domain:hollywood-mal.com)"
+      "WebFetch(domain:hollywood-mal.com)",
+      "Bash(tee:*)",
+      "Bash(echo:*)",
+      "Bash(dd:*)",
+      "Bash(./Novus/bin/Debug/net9.0/novus compile:*)",
+      "Bash(/Users/barry/RiderProjects/Novus/Novus/bin/Release/net9.0/novus compile:*)"
     ],
     "deny": [],
     "ask": []

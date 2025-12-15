@@ -831,6 +831,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 continue;
             }
 
+            // Handle generic parameters if present (e.g., fn channel<T>() -> Result<..., T>)
+            // Must register generic params BEFORE parsing return type since it may reference them
+            var genericParams = AstParsingHelpers.ParseGenericParameters(funcDecl.genericParams(), _genericParams);
+
             // Parse function signature
             var returnType = ParseReturnType(funcDecl.type());
             var parameters = new List<ParameterSymbol>();
@@ -862,10 +866,20 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 }
             }
 
-            // Register the function as extern
+            // Register the function (may be extern or generic)
             var funcLocation = SourceLocationHelper.FromToken(funcDecl.IDENTIFIER().Symbol, modulePath, new string[] { });
-            _functions[funcName] = new FunctionSymbol(funcName, returnType, parameters, funcLocation, IsExtern: true, IsVariadic: hasVariadic);
+            _functions[funcName] = new FunctionSymbol(
+                funcName, returnType, parameters, funcLocation,
+                IsExtern: isExtern,
+                GenericParameters: genericParams.Count > 0 ? genericParams : null,
+                IsVariadic: hasVariadic);
             _importedNames[funcName] = moduleNamespace;
+
+            // Clear generic params from scope after function registration
+            foreach (var paramName in genericParams)
+            {
+                _genericParams.Remove(paramName);
+            }
         }
 
         // Register imported global variables in symbol table
@@ -6548,6 +6562,25 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return pointeeType != null ? _typeInterner.GetPointerType(pointeeType) : null;
         }
 
+        // Handle tuple types: (Type1, Type2, ...)
+        if (key.StartsWith("(") && key.EndsWith(")"))
+        {
+            // Extract the inner part: "Type1, Type2, ..."
+            var innerPart = key.Substring(1, key.Length - 2);
+            var elementStrings = SplitTypeArgs(innerPart);
+
+            var elementTypes = new List<IrType>();
+            foreach (var elemStr in elementStrings)
+            {
+                var elemType = ParseTypeFromCacheKeyRecursive(elemStr);
+                if (elemType == null) return null;
+                elementTypes.Add(elemType);
+            }
+
+            // Create a tuple struct type (uses synthesized struct name)
+            return _typeInterner.GetTupleType(elementTypes);
+        }
+
         // Handle generic types (Name<Args>)
         if (key.Contains("<"))
         {
@@ -7079,6 +7112,99 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 // No expected type or not compatible - return the function's declared return type
                 return resultType;
             }
+        }
+
+        // Handle turbofish syntax: func::<T>() for standalone generic functions
+        if (funcExpr is NovusParser.TurboFishExprContext turboFishCtx)
+        {
+            // Extract the function name from the inner expression
+            var innerExpr = turboFishCtx.expression();
+            if (innerExpr is NovusParser.PrimaryExprContext innerPrimaryCtx &&
+                innerPrimaryCtx.primaryExpression() is NovusParser.IdentifierExprContext innerIdentExpr)
+            {
+                var turboFishFuncName = innerIdentExpr.identifier().GetText();
+
+                // Parse the explicit type arguments
+                var explicitTypeArgs = new List<IrType>();
+                var typeArgsCtx = turboFishCtx.genericTypeArgs();
+                if (typeArgsCtx != null)
+                {
+                    foreach (var typeCtx in typeArgsCtx.typeList().type())
+                    {
+                        var parsedType = _typeParser.ParseType(typeCtx);
+                        explicitTypeArgs.Add(parsedType);
+                    }
+                }
+
+                // Look up the generic function
+                if (_functions.TryGetValue(turboFishFuncName, out var funcSymbol) &&
+                    funcSymbol.GenericParameters != null && funcSymbol.GenericParameters.Count > 0)
+                {
+                    // Validate type argument count
+                    if (explicitTypeArgs.Count != funcSymbol.GenericParameters.Count)
+                    {
+                        var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                        _diagnostics.ReportError(
+                            "E0012",
+                            $"wrong number of type arguments for '{turboFishFuncName}': expected {funcSymbol.GenericParameters.Count}, got {explicitTypeArgs.Count}",
+                            location
+                        );
+                        return null;
+                    }
+
+                    // Build type substitutions from explicit type args
+                    var substitutions = new Dictionary<string, IrType>();
+                    for (int i = 0; i < funcSymbol.GenericParameters.Count; i++)
+                    {
+                        substitutions[funcSymbol.GenericParameters[i]] = explicitTypeArgs[i];
+                    }
+
+                    // Validate arguments if present
+                    if (context.argumentList() != null)
+                    {
+                        var paramIndex = 0;
+                        foreach (var argCtx in context.argumentList().expression())
+                        {
+                            if (paramIndex < funcSymbol.Parameters.Count)
+                            {
+                                var expectedParamType = _typeParser.SubstituteGenericTypes(
+                                    funcSymbol.Parameters[paramIndex].Type, substitutions);
+                                var savedExpected = _expectedType;
+                                _expectedType = expectedParamType;
+                                Visit(argCtx);
+                                _expectedType = savedExpected;
+                            }
+                            else
+                            {
+                                Visit(argCtx);
+                            }
+                            paramIndex++;
+                        }
+                    }
+
+                    // Monomorphize and return the substituted return type
+                    var monomorphizedFunc = MonomorphizeFunction(funcSymbol, substitutions);
+                    return monomorphizedFunc.ReturnType;
+                }
+
+                // Not a generic function - report error
+                var errLocation = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0012",
+                    $"'{turboFishFuncName}' is not a generic function",
+                    errLocation
+                );
+                return null;
+            }
+
+            // Turbofish on something other than an identifier
+            var loc = SourceLocationHelper.FromContext(funcExpr, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0012",
+                "turbofish syntax requires a function identifier",
+                loc
+            );
+            return null;
         }
 
         // The function name should be in a primary expression (identifier)

@@ -1,0 +1,101 @@
+// Minimal test for bounded channel handoff
+
+from std::core import Result, Option
+from std::error::errors import DosError
+from std::sync::channel import bounded_channel, BoundedSender, BoundedReceiver
+from std::sync::channel import PortHandoff, PortOwnership, complete_handoff
+from std::os::task import spawn_task_fn_with_ptr, receive_startup_data
+from std::ffi::exec import Wait, GetMsg, ReplyMsg
+from std::ffi::dos import VPrintf
+from std::ffi::amiga_structs import MsgPort, Message
+
+fn responder_task() -> i32 {
+    VPrintf("Child: started\n", (*u8)0)
+
+    // Get handoff pointer from parent
+    let handoff_opt = receive_startup_data()
+    let handoff = match handoff_opt {
+        Option::Some(ptr) => (*PortHandoff)ptr,
+        Option::None => {
+            VPrintf("Child: no startup data!\n", (*u8)0)
+            return 1
+        }
+    }
+    VPrintf("Child: got handoff\n", (*u8)0)
+
+    // Complete the handoff - takes over port and signals parent we're ready
+    let ownership = match complete_handoff(handoff) {
+        Option::Some(o) => o,
+        Option::None => {
+            VPrintf("Child: complete_handoff failed!\n", (*u8)0)
+            return 1
+        }
+    }
+    VPrintf("Child: handoff complete, waiting for message\n", (*u8)0)
+
+    // Wait for a channel message
+    Wait(ownership.signal())
+    VPrintf("Child: woke from Wait\n", (*u8)0)
+
+    // Get the message
+    let msg = GetMsg(ownership.port())
+    if (u32)msg == 0 {
+        VPrintf("Child: GetMsg returned null!\n", (*u8)0)
+        return 1
+    }
+    VPrintf("Child: got message, replying\n", (*u8)0)
+
+    // Reply to it immediately
+    ReplyMsg(msg)
+    VPrintf("Child: replied, exiting\n", (*u8)0)
+
+    return 0
+    // ownership dropped here - frees signal bit and port memory
+}
+
+pub fn main() -> i32 {
+    VPrintf("Main: creating bounded channel\n", (*u8)0)
+
+    let result = bounded_channel::<i32>()
+    if result.is_err() {
+        VPrintf("Main: failed to create channel\n", (*u8)0)
+        return 1
+    }
+
+    var (tx, rx) = result.unwrap()
+    VPrintf("Main: channel created\n", (*u8)0)
+
+    // Create handoff structure
+    var handoff = PortHandoff::new(rx.port())
+    VPrintf("Main: handoff created\n", (*u8)0)
+
+    // Detach the port from rx - child will own it
+    rx.detach()
+    VPrintf("Main: port detached from rx\n", (*u8)0)
+
+    // Spawn task
+    VPrintf("Main: spawning responder\n", (*u8)0)
+    let spawn_result = spawn_task_fn_with_ptr("Responder", responder_task, (*u8)&handoff, 8192)
+    if spawn_result.is_err() {
+        VPrintf("Main: failed to spawn\n", (*u8)0)
+        return 1
+    }
+    VPrintf("Main: spawn succeeded\n", (*u8)0)
+
+    // Wait for child to complete handoff
+    VPrintf("Main: waiting for child ready\n", (*u8)0)
+    handoff.wait_for_ready()
+    VPrintf("Main: child is ready\n", (*u8)0)
+
+    // Now send
+    VPrintf("Main: sending 999\n", (*u8)0)
+    let sent = tx.send(999)
+    if sent {
+        VPrintf("Main: send succeeded\n", (*u8)0)
+    } else {
+        VPrintf("Main: send failed\n", (*u8)0)
+    }
+
+    VPrintf("Main: done\n", (*u8)0)
+    return 0
+}

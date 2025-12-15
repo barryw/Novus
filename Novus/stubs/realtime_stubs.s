@@ -42,7 +42,7 @@ _CreatePlayerA:
 _DeletePlayer:
 	movea.l	4(sp),a0
 	movea.l	_RealTimeBase,a6
-	jsr	-54(a6)
+	jsr	-48(a6)
 	rts
 
 	section	_SetPlayerAttrsA_stub,code
@@ -53,7 +53,7 @@ _SetPlayerAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_RealTimeBase,a6
-	jsr	-60(a6)
+	jsr	-54(a6)
 	rts
 
 	section	_SetConductorState_stub,code
@@ -65,7 +65,7 @@ _SetConductorState:
 	move.l	8(sp),d0
 	move.l	12(sp),d1
 	movea.l	_RealTimeBase,a6
-	jsr	-72(a6)
+	jsr	-60(a6)
 	rts
 
 	section	_ExternalSync_stub,code
@@ -77,7 +77,7 @@ _ExternalSync:
 	move.l	8(sp),d0
 	move.l	12(sp),d1
 	movea.l	_RealTimeBase,a6
-	jsr	-78(a6)
+	jsr	-66(a6)
 	rts
 
 	section	_NextConductor_stub,code
@@ -87,7 +87,7 @@ _ExternalSync:
 _NextConductor:
 	movea.l	4(sp),a0
 	movea.l	_RealTimeBase,a6
-	jsr	-84(a6)
+	jsr	-72(a6)
 	rts
 
 	section	_FindConductor_stub,code
@@ -97,7 +97,7 @@ _NextConductor:
 _FindConductor:
 	movea.l	4(sp),a0
 	movea.l	_RealTimeBase,a6
-	jsr	-90(a6)
+	jsr	-78(a6)
 	rts
 
 	section	_GetPlayerAttrsA_stub,code
@@ -108,6 +108,6 @@ _GetPlayerAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_RealTimeBase,a6
-	jsr	-96(a6)
+	jsr	-84(a6)
 	rts
 

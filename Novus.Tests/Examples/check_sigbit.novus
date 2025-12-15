@@ -1,0 +1,26 @@
+// Check what signal bit pr_MsgPort uses
+
+from std::ffi::dos import VPrintf
+from std::ffi::exec import FindTask
+from std::ffi::amiga_structs import Process, MsgPort
+
+pub fn main() -> i32 {
+    VPrintf("1-START\n", (*u8)0)
+
+    // Get our own Process structure
+    let me = (*Process)FindTask((*u8)0)
+
+    // Get pr_MsgPort
+    let my_port = &me.pr_MsgPort
+
+    // Print the signal bit
+    var sigbit: u32 = (u32)my_port.mp_SigBit
+    VPrintf("SIGBIT=%ld\n", (*u8)&sigbit)
+
+    // Print flags
+    var flags: u32 = (u32)my_port.mp_Flags
+    VPrintf("FLAGS=%ld\n", (*u8)&flags)
+
+    VPrintf("DONE\n", (*u8)0)
+    return 0
+}

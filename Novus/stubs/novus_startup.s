@@ -55,17 +55,17 @@ _start:
 	jsr	-294(a6)		; FindTask() - LVO -294
 	move.l	d0,a4			; Save Process pointer in a4
 
-	; Check pr_CLI field in Process structure (offset 156)
-	move.l	156(a4),d0		; Get pr_CLI field
+	; Check pr_CLI field in Process structure (offset 172)
+	move.l	172(a4),d0		; Get pr_CLI field
 	bne.s	.cli_startup		; If non-zero, we're CLI
 
 	; Workbench startup - get WBStartup message
-	; The message is at our Process's message port (pr_MsgPort at offset 76)
-	lea	76(a4),a0		; a0 = &pr_MsgPort
+	; The message is at our Process's message port (pr_MsgPort at offset 92)
+	lea	92(a4),a0		; a0 = &pr_MsgPort
 	movea.l	_SysBase,a6		; Get exec.library base
 	jsr	-384(a6)		; WaitPort() - LVO -384
 
-	lea	76(a4),a0		; a0 = &pr_MsgPort again
+	lea	92(a4),a0		; a0 = &pr_MsgPort again
 	movea.l	_SysBase,a6		; Get exec.library base
 	jsr	-372(a6)		; GetMsg() - LVO -372
 

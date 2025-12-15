@@ -1750,6 +1750,22 @@ public partial class IrBuilder
                 continue;
             }
 
+            // Check if this is a generic function - must parse generic params BEFORE return type
+            // because the return type may reference generic parameters (e.g., fn channel<T>() -> Result<(Sender<T>, Receiver<T>), E>)
+            var genericParams = ParseGenericParameters(funcDecl.genericParams(), registerInSymbolTable: true);
+
+            if (genericParams.Count > 0)
+            {
+                // This is a generic function - register as template for later instantiation
+                var templateConstants = GetConstantsAsTuples();
+                var template = new Generics.GenericTemplate(genericParams, funcDecl, templateConstants);
+                _genericInstantiator.RegisterFunctionTemplate(funcName, template);
+
+                // Clear generic params from symbol table
+                _symbols.ClearGenericParameters();
+                continue; // Don't add to _module.Functions yet
+            }
+
             // Parse function signature
             var returnType = ParseReturnType(funcDecl.type());
             // Only mark as extern if it's truly an extern function (FFI)

@@ -32,7 +32,7 @@ _AllocRadioButtonNodeA:
 _FreeRadioButtonNode:
 	movea.l	4(sp),a0
 	movea.l	_RadioButtonBase,a6
-	jsr	-48(a6)
+	jsr	-42(a6)
 	rts
 
 	section	_SetRadioButtonNodeAttrsA_stub,code
@@ -43,7 +43,7 @@ _SetRadioButtonNodeAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_RadioButtonBase,a6
-	jsr	-54(a6)
+	jsr	-48(a6)
 	rts
 
 	section	_GetRadioButtonNodeAttrsA_stub,code
@@ -54,6 +54,6 @@ _GetRadioButtonNodeAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_RadioButtonBase,a6
-	jsr	-66(a6)
+	jsr	-54(a6)
 	rts
 

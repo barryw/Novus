@@ -1,0 +1,77 @@
+// Channel API Test
+//
+// Test for channel creation using turbofish syntax and receive methods.
+// Tests: channel::<T>(), send(), try_recv(), signal mask.
+
+from std::core import Result, Option
+from std::error::errors import DosError
+from std::sync::channel import channel, Sender, Receiver
+from std::io::file import write
+
+fn main() -> i32 {
+    write("Channel API Test\n")
+    write("================\n\n")
+
+    write("Testing channel creation with turbofish syntax...\n")
+
+    // Test basic channel creation with turbofish
+    let result = channel::<i32>()
+    match result {
+        Result::Err(_) => {
+            write("FAIL: Could not create channel\n")
+            return 1
+        },
+        Result::Ok(pair) => {
+            let (tx, rx) = pair
+
+            write("PASS: Channel created successfully\n")
+
+            // Test sending a value
+            tx.send(42)
+            write("Sent value 42\n")
+
+            // Test try_recv - should get the value we just sent
+            let recv_result = rx.try_recv()
+            match recv_result {
+                Option::None => {
+                    write("FAIL: try_recv returned None but value was sent\n")
+                    return 2
+                },
+                Option::Some(value) => {
+                    if value == 42 {
+                        write("PASS: try_recv received 42\n")
+                    } else {
+                        write("FAIL: try_recv received wrong value\n")
+                        return 3
+                    }
+                }
+            }
+
+            // Test signal mask access
+            let mask = rx.signal()
+            if mask > 0 {
+                write("PASS: Got valid signal mask\n")
+            } else {
+                write("FAIL: Invalid signal mask\n")
+                return 4
+            }
+
+            // Test try_recv on empty channel - should return None
+            let empty_result = rx.try_recv()
+            match empty_result {
+                Option::None => {
+                    write("PASS: try_recv on empty channel returned None\n")
+                },
+                Option::Some(_) => {
+                    write("FAIL: try_recv should have returned None\n")
+                    return 5
+                }
+            }
+
+            write("\nAll tests passed!\n")
+        }
+    }
+
+    write("\nDone!\n")
+    return 0
+}

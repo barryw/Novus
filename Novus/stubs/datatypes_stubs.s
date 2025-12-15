@@ -24,7 +24,7 @@ _ObtainDataTypeA:
 _ReleaseDataType:
 	movea.l	4(sp),a0
 	movea.l	_DataTypesBase,a6
-	jsr	-48(a6)
+	jsr	-42(a6)
 	rts
 
 	section	_NewDTObjectA_stub,code
@@ -35,7 +35,7 @@ _NewDTObjectA:
 	move.l	4(sp),d0
 	movea.l	8(sp),a0
 	movea.l	_DataTypesBase,a6
-	jsr	-54(a6)
+	jsr	-48(a6)
 	rts
 
 	section	_DisposeDTObject_stub,code
@@ -45,7 +45,7 @@ _NewDTObjectA:
 _DisposeDTObject:
 	movea.l	4(sp),a0
 	movea.l	_DataTypesBase,a6
-	jsr	-66(a6)
+	jsr	-54(a6)
 	rts
 
 	section	_SetDTAttrsA_stub,code
@@ -58,7 +58,7 @@ _SetDTAttrsA:
 	movea.l	12(sp),a2
 	movea.l	16(sp),a3
 	movea.l	_DataTypesBase,a6
-	jsr	-72(a6)
+	jsr	-60(a6)
 	rts
 
 	section	_GetDTAttrsA_stub,code
@@ -69,7 +69,7 @@ _GetDTAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a2
 	movea.l	_DataTypesBase,a6
-	jsr	-84(a6)
+	jsr	-66(a6)
 	rts
 
 	section	_AddDTObject_stub,code
@@ -82,7 +82,7 @@ _AddDTObject:
 	movea.l	12(sp),a2
 	move.l	16(sp),d0
 	movea.l	_DataTypesBase,a6
-	jsr	-96(a6)
+	jsr	-72(a6)
 	rts
 
 	section	_RefreshDTObjectA_stub,code
@@ -95,7 +95,7 @@ _RefreshDTObjectA:
 	movea.l	12(sp),a2
 	movea.l	16(sp),a3
 	movea.l	_DataTypesBase,a6
-	jsr	-102(a6)
+	jsr	-78(a6)
 	rts
 
 	section	_DoAsyncLayout_stub,code
@@ -106,7 +106,7 @@ _DoAsyncLayout:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_DataTypesBase,a6
-	jsr	-120(a6)
+	jsr	-84(a6)
 	rts
 
 	section	_DoDTMethodA_stub,code
@@ -119,7 +119,7 @@ _DoDTMethodA:
 	movea.l	12(sp),a2
 	movea.l	16(sp),a3
 	movea.l	_DataTypesBase,a6
-	jsr	-126(a6)
+	jsr	-90(a6)
 	rts
 
 	section	_RemoveDTObject_stub,code
@@ -130,7 +130,7 @@ _RemoveDTObject:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_DataTypesBase,a6
-	jsr	-138(a6)
+	jsr	-96(a6)
 	rts
 
 	section	_GetDTMethods_stub,code
@@ -140,7 +140,7 @@ _RemoveDTObject:
 _GetDTMethods:
 	movea.l	4(sp),a0
 	movea.l	_DataTypesBase,a6
-	jsr	-144(a6)
+	jsr	-102(a6)
 	rts
 
 	section	_GetDTTriggerMethods_stub,code
@@ -150,7 +150,7 @@ _GetDTMethods:
 _GetDTTriggerMethods:
 	movea.l	4(sp),a0
 	movea.l	_DataTypesBase,a6
-	jsr	-150(a6)
+	jsr	-108(a6)
 	rts
 
 	section	_PrintDTObjectA_stub,code
@@ -163,7 +163,7 @@ _PrintDTObjectA:
 	movea.l	12(sp),a2
 	movea.l	16(sp),a3
 	movea.l	_DataTypesBase,a6
-	jsr	-156(a6)
+	jsr	-114(a6)
 	rts
 
 	section	_ObtainDTDrawInfoA_stub,code
@@ -174,7 +174,7 @@ _ObtainDTDrawInfoA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_DataTypesBase,a6
-	jsr	-168(a6)
+	jsr	-120(a6)
 	rts
 
 	section	_DrawDTObjectA_stub,code
@@ -192,7 +192,7 @@ _DrawDTObjectA:
 	move.l	32(sp),d5
 	movea.l	36(sp),a2
 	movea.l	_DataTypesBase,a6
-	jsr	-180(a6)
+	jsr	-126(a6)
 	rts
 
 	section	_ReleaseDTDrawInfo_stub,code
@@ -203,7 +203,7 @@ _ReleaseDTDrawInfo:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_DataTypesBase,a6
-	jsr	-192(a6)
+	jsr	-132(a6)
 	rts
 
 	section	_GetDTString_stub,code
@@ -213,6 +213,6 @@ _ReleaseDTDrawInfo:
 _GetDTString:
 	move.l	4(sp),d0
 	movea.l	_DataTypesBase,a6
-	jsr	-198(a6)
+	jsr	-138(a6)
 	rts
 

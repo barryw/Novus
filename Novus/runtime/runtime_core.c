@@ -69,6 +69,28 @@ char* strcpy_helper(char* dest, const char* src) {
     return dest;
 }
 
+/**
+ * VBCC WORKAROUND: Comparison functions that force sequence points.
+ *
+ * VBCC's optimizer can move stack cleanup (addq.w #4,sp) between a comparison
+ * and its branch instruction, clobbering the CPU condition flags. Using
+ * function calls creates sequence points that prevent this reordering.
+ */
+int32_t __novus_is_null(void* ptr)
+{
+    return ptr == NULL ? 1 : 0;
+}
+
+int32_t __novus_cmp_eq_i32(int32_t a, int32_t b)
+{
+    return a == b ? 1 : 0;
+}
+
+int32_t __novus_cmp_ne_i32(int32_t a, int32_t b)
+{
+    return a != b ? 1 : 0;
+}
+
 // Simple integer to string helper
 void int_to_str(char* buf, int32_t num) {
     char temp[12];

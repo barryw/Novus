@@ -1,0 +1,453 @@
+// Comprehensive Channel Test Suite
+//
+// Tests all three channel types (unbounded, bounded, oneshot) across:
+// - Creation and basic send/recv
+// - Multiple messages and FIFO ordering
+// - Non-blocking try_recv behavior
+// - Signal mask integration
+// - Drain functionality
+// - Edge cases (empty channel, double send, etc.)
+//
+// Run with: novus test channel_comprehensive_test.novus
+
+from std::core import Result, Option
+from std::error::errors import DosError
+from std::sync::channel import channel, bounded_channel, oneshot
+from std::sync::channel import Sender, Receiver, BoundedSender, BoundedReceiver
+from std::sync::channel import OneshotSender, OneshotReceiver
+from std::sync::channel import PortHandoff, PortOwnership, complete_handoff
+from std::test::test import expect, expect_true, expect_false, expect_eq_i32, fail
+from std::os::task import spawn_task_fn_with_ptr, ProcessHandle, receive_startup_data
+from std::ffi::exec import Wait, GetMsg, ReplyMsg, FindTask, WaitPort, FreeMem
+from std::ffi::amiga_structs import MsgPort, Message, Process
+
+// ============================================================================
+// Bounded channel responder task
+// ============================================================================
+
+fn bounded_responder_task() -> i32 {
+    // Get handoff pointer from parent
+    let handoff_opt = receive_startup_data()
+    let handoff = match handoff_opt {
+        Option::Some(ptr) => (*PortHandoff)ptr,
+        Option::None => return 1
+    }
+
+    // Complete the handoff - takes over port and signals parent we're ready
+    // PortOwnership tracks the signal bit and frees it on drop
+    let ownership = match complete_handoff(handoff) {
+        Option::Some(o) => o,
+        Option::None => return 1
+    }
+
+    // Wait for a channel message
+    Wait(ownership.signal())
+
+    // Get the message
+    let msg = GetMsg(ownership.port())
+    if (u32)msg == 0 {
+        return 1
+    }
+
+    // Reply to it immediately
+    ReplyMsg(msg)
+
+    return 0
+    // ownership is dropped here, freeing the signal bit
+}
+
+// ============================================================================
+// Unbounded Channel Tests
+// ============================================================================
+
+@test("Create unbounded channel")
+pub fn test_unbounded_creation() {
+    let result = channel::<i32>()
+    match result {
+        Result::Err(_) => fail("Failed to create channel"),
+        Result::Ok(pair) => {
+            // Must destructure to ensure Drop is called on inner elements
+            let (_tx, _rx) = pair
+        }
+    }
+}
+
+@test("Unbounded: send and receive a value")
+pub fn test_unbounded_send_recv() {
+    let (tx, rx) = channel::<i32>().unwrap()
+
+    tx.send(42)
+
+    match rx.try_recv() {
+        Option::None => fail("try_recv returned None after send"),
+        Option::Some(value) => expect_eq_i32(value, 42, "received value")
+    }
+}
+
+@test("Unbounded: FIFO ordering of messages")
+pub fn test_unbounded_fifo_ordering() {
+    let (tx, rx) = channel::<i32>().unwrap()
+
+    // Send multiple values in order
+    tx.send(10)
+    tx.send(20)
+    tx.send(30)
+    tx.send(40)
+
+    // Receive and verify FIFO order
+    match rx.try_recv() {
+        Option::Some(v) => expect_eq_i32(v, 10, "first value"),
+        Option::None => fail("first recv returned None")
+    }
+
+    match rx.try_recv() {
+        Option::Some(v) => expect_eq_i32(v, 20, "second value"),
+        Option::None => fail("second recv returned None")
+    }
+
+    match rx.try_recv() {
+        Option::Some(v) => expect_eq_i32(v, 30, "third value"),
+        Option::None => fail("third recv returned None")
+    }
+
+    match rx.try_recv() {
+        Option::Some(v) => expect_eq_i32(v, 40, "fourth value"),
+        Option::None => fail("fourth recv returned None")
+    }
+}
+
+@test("Unbounded: try_recv on empty channel returns None")
+pub fn test_unbounded_empty_channel() {
+    let (tx, rx) = channel::<i32>().unwrap()
+
+    match rx.try_recv() {
+        Option::None => {}, // Expected
+        Option::Some(_) => fail("try_recv returned Some on empty channel")
+    }
+}
+
+@test("Unbounded: signal mask is valid")
+pub fn test_unbounded_signal_mask() {
+    let (tx, rx) = channel::<i32>().unwrap()
+
+    let mask = rx.signal()
+
+    // Mask should be non-zero (Amiga has 32 signal bits, so mask can be up to 1<<31)
+    expect_true(mask > 0, "signal mask is non-zero")
+
+    // Verify it's a power of 2 (only one bit set)
+    let is_power_of_2 = (mask & (mask - 1)) == 0
+    expect_true(is_power_of_2, "signal mask is a power of 2")
+}
+
+@test("Unbounded: drain processes all messages")
+pub fn test_unbounded_drain() {
+    let (tx, rx) = channel::<i32>().unwrap()
+
+    tx.send(100)
+    tx.send(200)
+    tx.send(300)
+
+    // Drain them manually (lambdas need to capture context which is complex)
+    var sum: i32 = 0
+    var draining = true
+    while draining {
+        match rx.try_recv() {
+            Option::Some(value) => {
+                sum = sum + value
+            },
+            Option::None => {
+                draining = false
+            }
+        }
+    }
+
+    expect_eq_i32(sum, 600, "sum of drained values")
+}
+
+@test("Unbounded: sender clone works")
+pub fn test_unbounded_sender_clone() {
+    let (tx, rx) = channel::<i32>().unwrap()
+
+    let tx2 = tx.clone()
+
+    tx.send(111)
+    tx2.send(222)
+
+    // Both should be received
+    var got_first = false
+    var got_second = false
+
+    match rx.try_recv() {
+        Option::Some(v) => {
+            if v == 111 { got_first = true }
+        },
+        Option::None => {}
+    }
+
+    match rx.try_recv() {
+        Option::Some(v) => {
+            if v == 222 { got_second = true }
+        },
+        Option::None => {}
+    }
+
+    expect_true(got_first, "got value from original sender")
+    expect_true(got_second, "got value from cloned sender")
+}
+
+@test("Unbounded: multiple recv on empty channel returns None")
+pub fn test_unbounded_multiple_recv_on_empty() {
+    let (tx, rx) = channel::<i32>().unwrap()
+
+    tx.send(999)
+
+    // Receive it
+    match rx.try_recv() {
+        Option::Some(_) => {},
+        Option::None => {
+            fail("First recv failed")
+            return
+        }
+    }
+
+    // Now channel is empty - all try_recv should return None
+    match rx.try_recv() {
+        Option::Some(_) => fail("Second recv got Some from empty channel"),
+        Option::None => {}
+    }
+
+    match rx.try_recv() {
+        Option::Some(_) => fail("Third recv got Some from empty channel"),
+        Option::None => {}
+    }
+
+    match rx.try_recv() {
+        Option::Some(_) => fail("Fourth recv got Some from empty channel"),
+        Option::None => {}
+    }
+}
+
+// ============================================================================
+// Bounded Channel Tests
+// ============================================================================
+
+@test("Create bounded channel")
+pub fn test_bounded_creation() {
+    let result = bounded_channel::<i32>()
+    match result {
+        Result::Err(_) => fail("Failed to create bounded channel"),
+        Result::Ok(pair) => {
+            // Must destructure to ensure Drop is called on inner elements
+            let (_tx, _rx) = pair
+        }
+    }
+}
+
+@test("Bounded: send and receive a value")
+pub fn test_bounded_send_recv() {
+    let (tx, rx) = bounded_channel::<i32>().unwrap()
+
+    // Use try_send to avoid blocking in single-process test
+    let sent = tx.try_send(55)
+    expect_true(sent, "try_send returned true")
+
+    match rx.try_recv() {
+        Option::None => fail("try_recv returned None"),
+        Option::Some(value) => expect_eq_i32(value, 55, "received value")
+    }
+}
+
+@test("Bounded: FIFO ordering with try_send")
+pub fn test_bounded_fifo_ordering() {
+    let (tx, rx) = bounded_channel::<i32>().unwrap()
+
+    // Use try_send to avoid blocking in single-process test
+    tx.try_send(1)
+    tx.try_send(2)
+    tx.try_send(3)
+
+    // Receive in order
+    let v1 = rx.try_recv()
+    let v2 = rx.try_recv()
+    let v3 = rx.try_recv()
+
+    match v1 {
+        Option::Some(v) => expect_eq_i32(v, 1, "first value"),
+        Option::None => fail("first recv failed")
+    }
+
+    match v2 {
+        Option::Some(v) => expect_eq_i32(v, 2, "second value"),
+        Option::None => fail("second recv failed")
+    }
+
+    match v3 {
+        Option::Some(v) => expect_eq_i32(v, 3, "third value"),
+        Option::None => fail("third recv failed")
+    }
+}
+
+@test("Bounded: try_recv on empty channel returns None")
+pub fn test_bounded_empty_channel() {
+    let (tx, rx) = bounded_channel::<i32>().unwrap()
+
+    match rx.try_recv() {
+        Option::None => {}, // Expected
+        Option::Some(_) => fail("Got value from empty channel")
+    }
+}
+
+@test("Bounded: signal mask is valid")
+pub fn test_bounded_signal_mask() {
+    let (tx, rx) = bounded_channel::<i32>().unwrap()
+
+    let mask = rx.signal()
+
+    expect_true(mask > 0, "signal mask is non-zero")
+
+    // Verify it's a power of 2 (only one bit set)
+    let is_power_of_2 = (mask & (mask - 1)) == 0
+    expect_true(is_power_of_2, "signal mask is a power of 2")
+}
+
+@test("Bounded: blocking send with responder task")
+pub fn test_bounded_blocking_send() {
+    var (tx, rx) = bounded_channel::<i32>().unwrap()
+
+    // Create handoff structure - this handles the race-free port transfer
+    var handoff = PortHandoff::new(rx.port())
+
+    // Detach the port from rx - child will own it now
+    // This prevents rx.drop() from calling DeleteMsgPort on a port
+    // that the child has taken over
+    rx.detach()
+
+    // Spawn task with the handoff pointer
+    let spawn_result = spawn_task_fn_with_ptr("BoundedResponder", bounded_responder_task, (*u8)&handoff, 8192)
+    match spawn_result {
+        Result::Err(_) => {
+            fail("Failed to spawn responder task")
+            return
+        },
+        Result::Ok(handle) => {
+            // Wait for child to complete the handoff (take over port and signal us)
+            // This is race-free - no arbitrary delays needed!
+            handoff.wait_for_ready()
+
+            // Now send - this will block until the task replies
+            let sent = tx.send(999)
+            expect_true(sent, "blocking send succeeded")
+        }
+    }
+}
+
+// ============================================================================
+// Oneshot Channel Tests
+// ============================================================================
+
+@test("Create oneshot channel")
+pub fn test_oneshot_creation() {
+    let result = oneshot::<i32>()
+    match result {
+        Result::Err(_) => fail("Failed to create oneshot"),
+        Result::Ok(pair) => {
+            // Must destructure to ensure Drop is called on inner elements
+            let (_tx, _rx) = pair
+        }
+    }
+}
+
+@test("Oneshot: send and receive a value")
+pub fn test_oneshot_send_recv() {
+    let (tx, rx) = oneshot::<i32>().unwrap()
+
+    let sent = tx.send(777)
+    expect_true(sent, "send returned true")
+
+    match rx.try_recv() {
+        Option::None => fail("try_recv returned None"),
+        Option::Some(value) => expect_eq_i32(value, 777, "received value")
+    }
+}
+
+@test("Oneshot: can only send once")
+pub fn test_oneshot_single_send_only() {
+    let (tx, rx) = oneshot::<i32>().unwrap()
+
+    let first = tx.send(888)
+    let second = tx.send(999)
+
+    expect_true(first, "first send succeeded")
+    expect_false(second, "second send failed")
+}
+
+@test("Oneshot: can only receive once")
+pub fn test_oneshot_single_recv_only() {
+    let (tx, rx) = oneshot::<i32>().unwrap()
+
+    tx.send(123)
+
+    let first = rx.try_recv()
+    let second = rx.try_recv()
+
+    match first {
+        Option::Some(v) => expect_eq_i32(v, 123, "first recv got value"),
+        Option::None => fail("first recv failed")
+    }
+
+    match second {
+        Option::None => {}, // Expected
+        Option::Some(_) => fail("second recv got value")
+    }
+}
+
+@test("Oneshot: try_recv on empty channel returns None")
+pub fn test_oneshot_empty_channel() {
+    let (tx, rx) = oneshot::<i32>().unwrap()
+
+    match rx.try_recv() {
+        Option::None => {}, // Expected
+        Option::Some(_) => fail("Got value without send")
+    }
+}
+
+@test("Oneshot: is_sent tracks send state")
+pub fn test_oneshot_is_sent() {
+    let (tx, rx) = oneshot::<i32>().unwrap()
+
+    let before = tx.is_sent()
+    tx.send(456)
+    let after = tx.is_sent()
+
+    expect_false(before, "is_sent false before send")
+    expect_true(after, "is_sent true after send")
+}
+
+@test("Oneshot: is_complete tracks receive state")
+pub fn test_oneshot_is_complete() {
+    let (tx, rx) = oneshot::<i32>().unwrap()
+
+    let before = rx.is_complete()
+    tx.send(654)
+    let middle = rx.is_complete()
+    rx.try_recv()
+    let after = rx.is_complete()
+
+    expect_false(before, "is_complete false before recv")
+    expect_false(middle, "is_complete false after send but before recv")
+    expect_true(after, "is_complete true after recv")
+}
+
+@test("Oneshot: signal mask is valid")
+pub fn test_oneshot_signal_mask() {
+    let (tx, rx) = oneshot::<i32>().unwrap()
+
+    let mask = rx.signal()
+
+    expect_true(mask > 0, "signal mask is non-zero")
+
+    // Verify it's a power of 2 (only one bit set)
+    let is_power_of_2 = (mask & (mask - 1)) == 0
+    expect_true(is_power_of_2, "signal mask is a power of 2")
+}

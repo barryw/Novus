@@ -1,0 +1,36 @@
+// Test for signal leaks in bounded channel creation/destruction
+
+from std::core import Result, Option
+from std::error::errors import DosError
+from std::sync::channel import bounded_channel, BoundedSender, BoundedReceiver
+from std::ffi::dos import VPrintf
+
+pub fn main() -> i32 {
+    VPrintf("Signal leak test - creating/destroying bounded channels\n", (*u8)0)
+
+    var i: i32 = 0
+    while i < 100 {
+        var iter: i32 = i + 1
+        VPrintf("Iteration %ld: creating channel... ", (*u8)&iter)
+
+        let result = bounded_channel::<i32>()
+        match result {
+            Result::Err(_) => {
+                VPrintf("FAILED to create channel!\n", (*u8)0)
+                return 1
+            },
+            Result::Ok(pair) => {
+                // Explicitly destructure to ensure Drop is called on each
+                let (tx, rx) = pair
+                VPrintf("OK, dropping... ", (*u8)0)
+                // tx and rx go out of scope here
+            }
+        }
+
+        VPrintf("done\n", (*u8)0)
+        i = i + 1
+    }
+
+    VPrintf("All 100 iterations succeeded!\n", (*u8)0)
+    return 0
+}

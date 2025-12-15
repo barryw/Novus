@@ -117,6 +117,14 @@ void __novus_memset(void* dest, int value, uint32_t n);
 void __novus_memcpy(uint8_t* dest, const uint8_t* src, uint32_t n);
 uint32_t strlen(const char* str);
 
+// VBCC WORKAROUND: Comparison functions that force sequence points.
+// VBCC's optimizer can move stack cleanup between a comparison and its branch,
+// clobbering condition flags. Using function calls creates sequence points
+// that prevent this reordering.
+int32_t __novus_is_null(void* ptr);     // Returns 1 if ptr is NULL
+int32_t __novus_cmp_eq_i32(int32_t a, int32_t b);  // Returns 1 if a == b
+int32_t __novus_cmp_ne_i32(int32_t a, int32_t b);  // Returns 1 if a != b
+
 // Raw memory allocation (bypasses tracking)
 // Use for stdlib internals where tracking would interfere
 void* __novus_alloc_raw(uint32_t size, uint32_t flags);

@@ -405,7 +405,7 @@ _Request:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	jsr	___intuition_ensure
-	jsr	-246(a6)
+	jsr	-240(a6)
 	rts
 
 	section	_ScreenToBack_stub,code
@@ -415,7 +415,7 @@ _Request:
 _ScreenToBack:
 	movea.l	4(sp),a0
 	jsr	___intuition_ensure
-	jsr	-252(a6)
+	jsr	-246(a6)
 	rts
 
 	section	_ScreenToFront_stub,code
@@ -425,7 +425,7 @@ _ScreenToBack:
 _ScreenToFront:
 	movea.l	4(sp),a0
 	jsr	___intuition_ensure
-	jsr	-258(a6)
+	jsr	-252(a6)
 	rts
 
 	section	_SetDMRequest_stub,code
@@ -436,7 +436,7 @@ _SetDMRequest:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	jsr	___intuition_ensure
-	jsr	-264(a6)
+	jsr	-258(a6)
 	rts
 
 	section	_SetMenuStrip_stub,code
@@ -447,7 +447,7 @@ _SetMenuStrip:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	jsr	___intuition_ensure
-	jsr	-270(a6)
+	jsr	-264(a6)
 	rts
 
 	section	_SetPointer_stub,code
@@ -462,7 +462,7 @@ _SetPointer:
 	move.l	20(sp),d2
 	move.l	24(sp),d3
 	jsr	___intuition_ensure
-	jsr	-276(a6)
+	jsr	-270(a6)
 	rts
 
 	section	_SetWindowTitles_stub,code
@@ -474,7 +474,7 @@ _SetWindowTitles:
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
 	jsr	___intuition_ensure
-	jsr	-282(a6)
+	jsr	-276(a6)
 	rts
 
 	section	_ShowTitle_stub,code
@@ -485,7 +485,7 @@ _ShowTitle:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	jsr	___intuition_ensure
-	jsr	-288(a6)
+	jsr	-282(a6)
 	rts
 
 	section	_SizeWindow_stub,code
@@ -497,7 +497,7 @@ _SizeWindow:
 	move.l	8(sp),d0
 	move.l	12(sp),d1
 	jsr	___intuition_ensure
-	jsr	-294(a6)
+	jsr	-288(a6)
 	rts
 
 	section	_ViewAddress_stub,code
@@ -506,7 +506,7 @@ _SizeWindow:
 	xdef	_ViewAddress
 _ViewAddress:
 	jsr	___intuition_ensure
-	jsr	-300(a6)
+	jsr	-294(a6)
 	rts
 
 	section	_ViewPortAddress_stub,code
@@ -516,7 +516,7 @@ _ViewAddress:
 _ViewPortAddress:
 	movea.l	4(sp),a0
 	jsr	___intuition_ensure
-	jsr	-306(a6)
+	jsr	-300(a6)
 	rts
 
 	section	_WindowToBack_stub,code
@@ -526,7 +526,7 @@ _ViewPortAddress:
 _WindowToBack:
 	movea.l	4(sp),a0
 	jsr	___intuition_ensure
-	jsr	-312(a6)
+	jsr	-306(a6)
 	rts
 
 	section	_WindowToFront_stub,code
@@ -536,7 +536,7 @@ _WindowToBack:
 _WindowToFront:
 	movea.l	4(sp),a0
 	jsr	___intuition_ensure
-	jsr	-318(a6)
+	jsr	-312(a6)
 	rts
 
 	section	_WindowLimits_stub,code
@@ -550,7 +550,7 @@ _WindowLimits:
 	move.l	16(sp),d2
 	move.l	20(sp),d3
 	jsr	___intuition_ensure
-	jsr	-324(a6)
+	jsr	-318(a6)
 	rts
 
 	section	_SetPrefs_stub,code
@@ -562,7 +562,7 @@ _SetPrefs:
 	move.l	8(sp),d0
 	move.l	12(sp),d1
 	jsr	___intuition_ensure
-	jsr	-330(a6)
+	jsr	-324(a6)
 	rts
 
 	section	_IntuiTextLength_stub,code
@@ -572,7 +572,7 @@ _SetPrefs:
 _IntuiTextLength:
 	movea.l	4(sp),a0
 	jsr	___intuition_ensure
-	jsr	-336(a6)
+	jsr	-330(a6)
 	rts
 
 	section	_WBenchToBack_stub,code
@@ -581,7 +581,7 @@ _IntuiTextLength:
 	xdef	_WBenchToBack
 _WBenchToBack:
 	jsr	___intuition_ensure
-	jsr	-342(a6)
+	jsr	-336(a6)
 	rts
 
 	section	_WBenchToFront_stub,code
@@ -590,7 +590,7 @@ _WBenchToBack:
 	xdef	_WBenchToFront
 _WBenchToFront:
 	jsr	___intuition_ensure
-	jsr	-348(a6)
+	jsr	-342(a6)
 	rts
 
 	section	_AutoRequest_stub,code
@@ -607,7 +607,7 @@ _AutoRequest:
 	move.l	28(sp),d2
 	move.l	32(sp),d3
 	jsr	___intuition_ensure
-	jsr	-354(a6)
+	jsr	-348(a6)
 	rts
 
 	section	_BeginRefresh_stub,code
@@ -617,7 +617,7 @@ _AutoRequest:
 _BeginRefresh:
 	movea.l	4(sp),a0
 	jsr	___intuition_ensure
-	jsr	-360(a6)
+	jsr	-354(a6)
 	rts
 
 	section	_BuildSysRequest_stub,code
@@ -633,7 +633,7 @@ _BuildSysRequest:
 	move.l	24(sp),d1
 	move.l	28(sp),d2
 	jsr	___intuition_ensure
-	jsr	-366(a6)
+	jsr	-360(a6)
 	rts
 
 	section	_EndRefresh_stub,code
@@ -644,7 +644,7 @@ _EndRefresh:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	jsr	___intuition_ensure
-	jsr	-372(a6)
+	jsr	-366(a6)
 	rts
 
 	section	_FreeSysRequest_stub,code
@@ -654,7 +654,7 @@ _EndRefresh:
 _FreeSysRequest:
 	movea.l	4(sp),a0
 	jsr	___intuition_ensure
-	jsr	-378(a6)
+	jsr	-372(a6)
 	rts
 
 	section	_MakeScreen_stub,code
@@ -664,7 +664,7 @@ _FreeSysRequest:
 _MakeScreen:
 	movea.l	4(sp),a0
 	jsr	___intuition_ensure
-	jsr	-384(a6)
+	jsr	-378(a6)
 	rts
 
 	section	_RemakeDisplay_stub,code
@@ -673,7 +673,7 @@ _MakeScreen:
 	xdef	_RemakeDisplay
 _RemakeDisplay:
 	jsr	___intuition_ensure
-	jsr	-390(a6)
+	jsr	-384(a6)
 	rts
 
 	section	_RethinkDisplay_stub,code
@@ -682,7 +682,7 @@ _RemakeDisplay:
 	xdef	_RethinkDisplay
 _RethinkDisplay:
 	jsr	___intuition_ensure
-	jsr	-396(a6)
+	jsr	-390(a6)
 	rts
 
 	section	_AllocRemember_stub,code
@@ -694,7 +694,7 @@ _AllocRemember:
 	move.l	8(sp),d0
 	move.l	12(sp),d1
 	jsr	___intuition_ensure
-	jsr	-402(a6)
+	jsr	-396(a6)
 	rts
 
 	section	_FreeRemember_stub,code
@@ -705,7 +705,7 @@ _FreeRemember:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	jsr	___intuition_ensure
-	jsr	-414(a6)
+	jsr	-408(a6)
 	rts
 
 	section	_LockIBase_stub,code
@@ -715,7 +715,7 @@ _FreeRemember:
 _LockIBase:
 	move.l	4(sp),d0
 	jsr	___intuition_ensure
-	jsr	-420(a6)
+	jsr	-414(a6)
 	rts
 
 	section	_UnlockIBase_stub,code
@@ -725,7 +725,7 @@ _LockIBase:
 _UnlockIBase:
 	movea.l	4(sp),a0
 	jsr	___intuition_ensure
-	jsr	-426(a6)
+	jsr	-420(a6)
 	rts
 
 	section	_GetScreenData_stub,code
@@ -738,7 +738,7 @@ _GetScreenData:
 	move.l	12(sp),d1
 	movea.l	16(sp),a1
 	jsr	___intuition_ensure
-	jsr	-432(a6)
+	jsr	-426(a6)
 	rts
 
 	section	_RefreshGList_stub,code
@@ -751,7 +751,7 @@ _RefreshGList:
 	movea.l	12(sp),a2
 	move.l	16(sp),d0
 	jsr	___intuition_ensure
-	jsr	-438(a6)
+	jsr	-432(a6)
 	rts
 
 	section	_AddGList_stub,code
@@ -765,7 +765,7 @@ _AddGList:
 	move.l	16(sp),d1
 	movea.l	20(sp),a2
 	jsr	___intuition_ensure
-	jsr	-444(a6)
+	jsr	-438(a6)
 	rts
 
 	section	_RemoveGList_stub,code
@@ -777,7 +777,7 @@ _RemoveGList:
 	movea.l	8(sp),a1
 	move.l	12(sp),d0
 	jsr	___intuition_ensure
-	jsr	-450(a6)
+	jsr	-444(a6)
 	rts
 
 	section	_ActivateWindow_stub,code
@@ -787,7 +787,7 @@ _RemoveGList:
 _ActivateWindow:
 	movea.l	4(sp),a0
 	jsr	___intuition_ensure
-	jsr	-456(a6)
+	jsr	-450(a6)
 	rts
 
 	section	_RefreshWindowFrame_stub,code
@@ -797,7 +797,7 @@ _ActivateWindow:
 _RefreshWindowFrame:
 	movea.l	4(sp),a0
 	jsr	___intuition_ensure
-	jsr	-462(a6)
+	jsr	-456(a6)
 	rts
 
 	section	_ActivateGadget_stub,code
@@ -809,7 +809,7 @@ _ActivateGadget:
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
 	jsr	___intuition_ensure
-	jsr	-468(a6)
+	jsr	-462(a6)
 	rts
 
 	section	_NewModifyProp_stub,code
@@ -827,7 +827,7 @@ _NewModifyProp:
 	move.l	32(sp),d4
 	move.l	36(sp),d5
 	jsr	___intuition_ensure
-	jsr	-474(a6)
+	jsr	-468(a6)
 	rts
 
 	section	_QueryOverscan_stub,code
@@ -839,7 +839,7 @@ _QueryOverscan:
 	movea.l	8(sp),a1
 	move.l	12(sp),d0
 	jsr	___intuition_ensure
-	jsr	-480(a6)
+	jsr	-474(a6)
 	rts
 
 	section	_MoveWindowInFrontOf_stub,code
@@ -850,7 +850,7 @@ _MoveWindowInFrontOf:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	jsr	___intuition_ensure
-	jsr	-486(a6)
+	jsr	-480(a6)
 	rts
 
 	section	_ChangeWindowBox_stub,code
@@ -864,7 +864,7 @@ _ChangeWindowBox:
 	move.l	16(sp),d2
 	move.l	20(sp),d3
 	jsr	___intuition_ensure
-	jsr	-492(a6)
+	jsr	-486(a6)
 	rts
 
 	section	_SetEditHook_stub,code
@@ -874,7 +874,7 @@ _ChangeWindowBox:
 _SetEditHook:
 	movea.l	4(sp),a0
 	jsr	___intuition_ensure
-	jsr	-498(a6)
+	jsr	-492(a6)
 	rts
 
 	section	_SetMouseQueue_stub,code
@@ -885,7 +885,7 @@ _SetMouseQueue:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	jsr	___intuition_ensure
-	jsr	-504(a6)
+	jsr	-498(a6)
 	rts
 
 	section	_ZipWindow_stub,code
@@ -895,7 +895,7 @@ _SetMouseQueue:
 _ZipWindow:
 	movea.l	4(sp),a0
 	jsr	___intuition_ensure
-	jsr	-510(a6)
+	jsr	-504(a6)
 	rts
 
 	section	_LockPubScreen_stub,code
@@ -905,7 +905,7 @@ _ZipWindow:
 _LockPubScreen:
 	movea.l	4(sp),a0
 	jsr	___intuition_ensure
-	jsr	-516(a6)
+	jsr	-510(a6)
 	rts
 
 	section	_UnlockPubScreen_stub,code
@@ -916,7 +916,7 @@ _UnlockPubScreen:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	jsr	___intuition_ensure
-	jsr	-522(a6)
+	jsr	-516(a6)
 	rts
 
 	section	_LockPubScreenList_stub,code
@@ -925,7 +925,7 @@ _UnlockPubScreen:
 	xdef	_LockPubScreenList
 _LockPubScreenList:
 	jsr	___intuition_ensure
-	jsr	-528(a6)
+	jsr	-522(a6)
 	rts
 
 	section	_UnlockPubScreenList_stub,code
@@ -934,7 +934,7 @@ _LockPubScreenList:
 	xdef	_UnlockPubScreenList
 _UnlockPubScreenList:
 	jsr	___intuition_ensure
-	jsr	-534(a6)
+	jsr	-528(a6)
 	rts
 
 	section	_NextPubScreen_stub,code
@@ -945,7 +945,7 @@ _NextPubScreen:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	jsr	___intuition_ensure
-	jsr	-540(a6)
+	jsr	-534(a6)
 	rts
 
 	section	_SetDefaultPubScreen_stub,code
@@ -955,7 +955,7 @@ _NextPubScreen:
 _SetDefaultPubScreen:
 	movea.l	4(sp),a0
 	jsr	___intuition_ensure
-	jsr	-546(a6)
+	jsr	-540(a6)
 	rts
 
 	section	_SetPubScreenModes_stub,code
@@ -965,7 +965,7 @@ _SetDefaultPubScreen:
 _SetPubScreenModes:
 	move.l	4(sp),d0
 	jsr	___intuition_ensure
-	jsr	-552(a6)
+	jsr	-546(a6)
 	rts
 
 	section	_PubScreenStatus_stub,code
@@ -976,7 +976,7 @@ _PubScreenStatus:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	jsr	___intuition_ensure
-	jsr	-558(a6)
+	jsr	-552(a6)
 	rts
 
 	section	_ObtainGIRPort_stub,code
@@ -986,7 +986,7 @@ _PubScreenStatus:
 _ObtainGIRPort:
 	movea.l	4(sp),a0
 	jsr	___intuition_ensure
-	jsr	-564(a6)
+	jsr	-558(a6)
 	rts
 
 	section	_ReleaseGIRPort_stub,code
@@ -996,7 +996,7 @@ _ObtainGIRPort:
 _ReleaseGIRPort:
 	movea.l	4(sp),a0
 	jsr	___intuition_ensure
-	jsr	-570(a6)
+	jsr	-564(a6)
 	rts
 
 	section	_GadgetMouse_stub,code
@@ -1008,7 +1008,7 @@ _GadgetMouse:
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
 	jsr	___intuition_ensure
-	jsr	-576(a6)
+	jsr	-570(a6)
 	rts
 
 	section	_GetDefaultPubScreen_stub,code
@@ -1273,7 +1273,7 @@ _AllocScreenBuffer:
 	movea.l	8(sp),a1
 	move.l	12(sp),d0
 	jsr	___intuition_ensure
-	jsr	-816(a6)
+	jsr	-768(a6)
 	rts
 
 	section	_FreeScreenBuffer_stub,code
@@ -1284,7 +1284,7 @@ _FreeScreenBuffer:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	jsr	___intuition_ensure
-	jsr	-822(a6)
+	jsr	-774(a6)
 	rts
 
 	section	_ChangeScreenBuffer_stub,code
@@ -1295,7 +1295,7 @@ _ChangeScreenBuffer:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	jsr	___intuition_ensure
-	jsr	-828(a6)
+	jsr	-780(a6)
 	rts
 
 	section	_ScreenDepth_stub,code
@@ -1307,7 +1307,7 @@ _ScreenDepth:
 	move.l	8(sp),d0
 	movea.l	12(sp),a1
 	jsr	___intuition_ensure
-	jsr	-834(a6)
+	jsr	-786(a6)
 	rts
 
 	section	_ScreenPosition_stub,code
@@ -1322,7 +1322,7 @@ _ScreenPosition:
 	move.l	20(sp),d3
 	move.l	24(sp),d4
 	jsr	___intuition_ensure
-	jsr	-840(a6)
+	jsr	-792(a6)
 	rts
 
 	section	_ScrollWindowRaster_stub,code
@@ -1338,7 +1338,7 @@ _ScrollWindowRaster:
 	move.l	24(sp),d4
 	move.l	28(sp),d5
 	jsr	___intuition_ensure
-	jsr	-846(a6)
+	jsr	-798(a6)
 	rts
 
 	section	_LendMenus_stub,code
@@ -1349,7 +1349,7 @@ _LendMenus:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	jsr	___intuition_ensure
-	jsr	-852(a6)
+	jsr	-804(a6)
 	rts
 
 	section	_DoGadgetMethodA_stub,code
@@ -1362,7 +1362,7 @@ _DoGadgetMethodA:
 	movea.l	12(sp),a2
 	movea.l	16(sp),a3
 	jsr	___intuition_ensure
-	jsr	-858(a6)
+	jsr	-810(a6)
 	rts
 
 	section	_SetWindowPointerA_stub,code
@@ -1373,7 +1373,7 @@ _SetWindowPointerA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	jsr	___intuition_ensure
-	jsr	-870(a6)
+	jsr	-816(a6)
 	rts
 
 	section	_TimedDisplayAlert_stub,code
@@ -1386,7 +1386,7 @@ _TimedDisplayAlert:
 	move.l	12(sp),d1
 	movea.l	16(sp),a1
 	jsr	___intuition_ensure
-	jsr	-882(a6)
+	jsr	-822(a6)
 	rts
 
 	section	_HelpControl_stub,code
@@ -1397,6 +1397,6 @@ _HelpControl:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	jsr	___intuition_ensure
-	jsr	-888(a6)
+	jsr	-828(a6)
 	rts
 

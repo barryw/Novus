@@ -52,7 +52,7 @@ _AllocAslRequest:
 _FreeAslRequest:
 	movea.l	4(sp),a0
 	movea.l	_AslBase,a6
-	jsr	-60(a6)
+	jsr	-54(a6)
 	rts
 
 	section	_AslRequest_stub,code
@@ -63,7 +63,7 @@ _AslRequest:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_AslBase,a6
-	jsr	-66(a6)
+	jsr	-60(a6)
 	rts
 
 	section	_AbortAslRequest_stub,code
@@ -73,7 +73,7 @@ _AslRequest:
 _AbortAslRequest:
 	movea.l	4(sp),a0
 	movea.l	_AslBase,a6
-	jsr	-90(a6)
+	jsr	-78(a6)
 	rts
 
 	section	_ActivateAslRequest_stub,code
@@ -83,6 +83,6 @@ _AbortAslRequest:
 _ActivateAslRequest:
 	movea.l	4(sp),a0
 	movea.l	_AslBase,a6
-	jsr	-96(a6)
+	jsr	-84(a6)
 	rts
 

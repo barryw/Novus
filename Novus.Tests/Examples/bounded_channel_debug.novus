@@ -1,0 +1,117 @@
+// Debug test for bounded channel with spawned responder
+
+from std::core import Result, Option
+from std::error::errors import DosError
+from std::sync::channel import bounded_channel, BoundedSender, BoundedReceiver
+from std::os::task import spawn_task_fn_with_ptr, receive_startup_data
+from std::ffi::exec import Wait, GetMsg, ReplyMsg, FindTask, AllocSignal, FreeSignal
+from std::ffi::dos import VPrintf, Delay
+from std::ffi::amiga_structs import MsgPort, Message, Task
+
+fn responder_task() -> i32 {
+    VPrintf("Child: started\n", (*u8)0)
+
+    // Get data pointer from parent
+    let port_opt = receive_startup_data()
+    if port_opt.is_none() {
+        VPrintf("Child: no startup data!\n", (*u8)0)
+        return 1
+    }
+
+    let port = (*MsgPort)port_opt.unwrap()
+    VPrintf("Child: got port pointer\n", (*u8)0)
+
+    // CRITICAL: The port was created by the parent, so mp_SigTask points to parent
+    // and mp_SigBit is allocated from parent's signals. We need to take over the port.
+
+    // Get our own task pointer
+    let my_task = FindTask((*u8)0)
+    VPrintf("Child: my task pointer obtained\n", (*u8)0)
+
+    // Allocate our own signal bit
+    let my_signal = AllocSignal(-1)
+    if my_signal == -1 {
+        VPrintf("Child: failed to allocate signal!\n", (*u8)0)
+        return 1
+    }
+    var my_sig_print: i32 = (i32)my_signal
+    VPrintf("Child: allocated signal bit %ld\n", (*u8)&my_sig_print)
+
+    // Take over the port - point it to us with our signal
+    port.mp_SigTask = (*u8)my_task
+    port.mp_SigBit = (u8)my_signal
+    VPrintf("Child: took over port\n", (*u8)0)
+
+    // Now we can wait on OUR signal bit
+    let signal_mask = (u32)1 << (u32)my_signal
+    VPrintf("Child: waiting on signal bit %ld\n", (*u8)&my_sig_print)
+
+    Wait(signal_mask)
+    VPrintf("Child: woke from Wait\n", (*u8)0)
+
+    // Get the message
+    let msg = GetMsg(port)
+    if (u32)msg == 0 {
+        VPrintf("Child: GetMsg returned NULL!\n", (*u8)0)
+        return 1
+    }
+    VPrintf("Child: got message\n", (*u8)0)
+
+    // Check reply port
+    let reply_port = msg.mn_ReplyPort
+    if (u32)reply_port == 0 {
+        VPrintf("Child: message has no reply port!\n", (*u8)0)
+        return 1
+    }
+    VPrintf("Child: reply port is set, calling ReplyMsg\n", (*u8)0)
+
+    // Reply to it
+    ReplyMsg(msg)
+    VPrintf("Child: replied, exiting\n", (*u8)0)
+
+    return 0
+}
+
+pub fn main() -> i32 {
+    VPrintf("Main: creating bounded channel\n", (*u8)0)
+
+    let chan_result = bounded_channel::<i32>()
+    if chan_result.is_err() {
+        VPrintf("Main: failed to create channel\n", (*u8)0)
+        return 1
+    }
+
+    let (tx, rx) = chan_result.unwrap()
+    VPrintf("Main: channel created\n", (*u8)0)
+
+    // Get the receiver's port to pass to child
+    let port_ptr = (*u8)rx.port()
+    var port_val: u32 = (u32)port_ptr
+    VPrintf("Main: got receiver port: %lx\n", (*u8)&port_val)
+
+    // Spawn the responder task
+    VPrintf("Main: spawning responder\n", (*u8)0)
+    let spawn_result = spawn_task_fn_with_ptr("Responder", responder_task, port_ptr, 8192)
+    if spawn_result.is_err() {
+        VPrintf("Main: failed to spawn\n", (*u8)0)
+        return 1
+    }
+    VPrintf("Main: spawn succeeded\n", (*u8)0)
+
+    // Give child time to start
+    VPrintf("Main: delaying to let child start\n", (*u8)0)
+    Delay(25)
+
+    // Now send - this should block until child replies
+    VPrintf("Main: calling tx.send(999)\n", (*u8)0)
+    let sent = tx.send(999)
+
+    if sent {
+        VPrintf("Main: send returned true\n", (*u8)0)
+    } else {
+        VPrintf("Main: send returned false\n", (*u8)0)
+    }
+
+    VPrintf("Main: done\n", (*u8)0)
+    return 0
+}

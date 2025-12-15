@@ -47,7 +47,7 @@ _RL_DisposeObject:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_ResourceBase,a6
-	jsr	-54(a6)
+	jsr	-48(a6)
 	rts
 
 	section	_RL_NewGroupA_stub,code
@@ -59,7 +59,7 @@ _RL_NewGroupA:
 	move.l	8(sp),d0
 	movea.l	12(sp),a1
 	movea.l	_ResourceBase,a6
-	jsr	-60(a6)
+	jsr	-54(a6)
 	rts
 
 	section	_RL_DisposeGroup_stub,code
@@ -70,7 +70,7 @@ _RL_DisposeGroup:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_ResourceBase,a6
-	jsr	-72(a6)
+	jsr	-60(a6)
 	rts
 
 	section	_RL_GetObjectArray_stub,code
@@ -82,7 +82,7 @@ _RL_GetObjectArray:
 	movea.l	8(sp),a1
 	move.l	12(sp),d0
 	movea.l	_ResourceBase,a6
-	jsr	-78(a6)
+	jsr	-66(a6)
 	rts
 
 	section	_RL_SetResourceScreen_stub,code
@@ -93,6 +93,6 @@ _RL_SetResourceScreen:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	_ResourceBase,a6
-	jsr	-84(a6)
+	jsr	-72(a6)
 	rts
 
