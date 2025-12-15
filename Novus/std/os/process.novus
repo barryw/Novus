@@ -113,109 +113,109 @@ impl ProcessBuilder {
     }
 
     /// Set the entry point function (required)
-    #[chain]
+    @chain
     pub fn set_entry(&var self, func: *u8) {
         self.entry = (u32)func
     }
 
     /// Set the process name
-    #[chain]
+    @chain
     pub fn set_name(&var self, name: Str) {
         self.name = name.as_cstr()
     }
 
     /// Set the stack size in bytes (default: 4096)
-    #[chain]
+    @chain
     pub fn set_stack_size(&var self, size: u32) {
         self.stack_size = size
     }
 
     /// Set the task priority (-128 to 127, default: 0)
-    #[chain]
+    @chain
     pub fn set_priority(&var self, pri: i8) {
         self.priority = pri
     }
 
     /// Set input file handle
-    #[chain]
+    @chain
     pub fn set_input(&var self, fh: i32) {
         self.input = fh
     }
 
     /// Set output file handle
-    #[chain]
+    @chain
     pub fn set_output(&var self, fh: i32) {
         self.output = fh
     }
 
     /// Set error file handle
-    #[chain]
+    @chain
     pub fn set_error(&var self, fh: i32) {
         self.error = fh
     }
 
     /// Set whether to close input handle on exit
-    #[chain]
+    @chain
     pub fn set_close_input(&var self, close: bool) {
         self.close_input = close
     }
 
     /// Set whether to close output handle on exit
-    #[chain]
+    @chain
     pub fn set_close_output(&var self, close: bool) {
         self.close_output = close
     }
 
     /// Set whether to close error handle on exit
-    #[chain]
+    @chain
     pub fn set_close_error(&var self, close: bool) {
         self.close_error = close
     }
 
     /// Set current directory lock
-    #[chain]
+    @chain
     pub fn set_current_dir(&var self, lock: i32) {
         self.current_dir = lock
     }
 
     /// Set home directory lock
-    #[chain]
+    @chain
     pub fn set_home_dir(&var self, lock: i32) {
         self.home_dir = lock
     }
 
     /// Set whether to copy local shell variables
-    #[chain]
+    @chain
     pub fn set_copy_vars(&var self, copy: bool) {
         self.copy_vars = copy
     }
 
     /// Set whether to create as CLI process
-    #[chain]
+    @chain
     pub fn set_cli(&var self, is_cli: bool) {
         self.is_cli = is_cli
     }
 
     /// Set window pointer for system requesters
-    #[chain]
+    @chain
     pub fn set_window(&var self, win: *u8) {
         self.window_ptr = win
     }
 
     /// Set console handler task
-    #[chain]
+    @chain
     pub fn set_console(&var self, task: *u8) {
         self.console_task = task
     }
 
     /// Set whether to notify parent on exit
-    #[chain]
+    @chain
     pub fn set_notify_on_death(&var self, notify: bool) {
         self.notify_on_death = notify
     }
 
     /// Set whether to wait synchronously for completion
-    #[chain]
+    @chain
     pub fn set_synchronous(&var self, sync: bool) {
         self.synchronous = sync
     }

@@ -47,7 +47,7 @@ extern pub fn IsInteractive(file: i32) -> i32
 extern pub fn Execute(string: *u8, file: i32, file2: i32) -> i32
 extern pub fn AllocDosObject(_type: u32, tags: *TagItem) -> *u8
 // Varargs function AllocDosObjectTags skipped - needs manual implementation
-extern pub fn FreeDosObject(_type: u32, consuming ptr: u32, ptr: *u8)
+extern pub fn FreeDosObject(_type: u32, consuming ptr: *u8)
 extern pub fn DoPkt(port: *MsgPort, action: i32, arg1: i32, arg2: i32, arg3: i32, arg4: i32, arg5: i32) -> i32
 extern pub fn SendPkt(dp: *DosPacket, port: *MsgPort, replyport: *MsgPort)
 extern pub fn WaitPkt() -> *DosPacket

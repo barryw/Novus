@@ -168,12 +168,8 @@ impl FontHandle {
     ///
     /// Transfers ownership to the caller. The caller is responsible
     /// for calling CloseFont() when done.
-    pub fn into_raw(self) -> *TextFont {
-        let ptr: *TextFont = self.font
-        // Note: We need a way to prevent drop from running
-        // For now, set to null before returning
-        // This requires mutable self which Novus might not support yet
-        return ptr
+    pub fn into_raw(consuming self) -> *TextFont {
+        return self.font
     }
 
     /// Get the raw font pointer (borrow).

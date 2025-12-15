@@ -223,17 +223,17 @@ impl LibraryVersion {
     }
 
     /// Get the major version number
-    pub fn major(self) -> u16 {
+    pub fn major(&self) -> u16 {
         return self.major
     }
 
     /// Get the minor version number
-    pub fn minor(self) -> u16 {
+    pub fn minor(&self) -> u16 {
         return self.minor
     }
 
     /// Get the patch version number
-    pub fn patch(self) -> u16 {
+    pub fn patch(&self) -> u16 {
         return self.patch
     }
 

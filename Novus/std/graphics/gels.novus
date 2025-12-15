@@ -1078,7 +1078,7 @@ impl SequenceHandle {
     }
 
     // Make this sequence loop back to first frame
-    #[chain]
+    @chain
     pub fn set_looping(&var self) {
         let builder_ptr = self.builder
         let seq_idx = self.sequence_idx
@@ -1090,7 +1090,7 @@ impl SequenceHandle {
     }
 
     // Chain to another sequence when this completes
-    #[chain]
+    @chain
     pub fn set_chain_to(&var self, target_sequence: u32) {
         let builder_ptr = self.builder
         let seq_idx = self.sequence_idx
@@ -1111,7 +1111,7 @@ pub struct FrameHandle {
 
 impl FrameHandle {
     // Set frame duration in ticks
-    #[chain]
+    @chain
     pub fn set_duration(&var self, ticks: i16) {
         let builder_ptr = self.builder
         let seq_idx = self.sequence_idx
@@ -1126,7 +1126,7 @@ impl FrameHandle {
     }
 
     // Set position offset from AnimOb
-    #[chain]
+    @chain
     pub fn set_offset(&var self, x_trans: i16, y_trans: i16) {
         let builder_ptr = self.builder
         let seq_idx = self.sequence_idx
@@ -1142,7 +1142,7 @@ impl FrameHandle {
     }
 
     // Set AnimCRoutine callback
-    #[chain]
+    @chain
     pub fn set_on_enter(&var self, routine: *u8) {
         let builder_ptr = self.builder
         let seq_idx = self.sequence_idx
@@ -1157,7 +1157,7 @@ impl FrameHandle {
     }
 
     // Set collision masks for this frame
-    #[chain]
+    @chain
     pub fn set_collision_masks(&var self, me_mask: u16, hit_mask: u16) {
         let builder_ptr = self.builder
         let seq_idx = self.sequence_idx
@@ -1196,28 +1196,28 @@ impl AnimObBuilder {
     }
 
     // Set initial position (pixels)
-    #[chain]
+    @chain
     pub fn set_position(&var self, x: i16, y: i16) {
         self.x = x
         self.y = y
     }
 
     // Set velocity (raw 6.10 fixed-point)
-    #[chain]
+    @chain
     pub fn set_velocity(&var self, x_vel: i16, y_vel: i16) {
         self.x_vel = x_vel
         self.y_vel = y_vel
     }
 
     // Set acceleration
-    #[chain]
+    @chain
     pub fn set_acceleration(&var self, x_accel: i16, y_accel: i16) {
         self.x_accel = x_accel
         self.y_accel = y_accel
     }
 
     // Set AnimORoutine callback
-    #[chain]
+    @chain
     pub fn set_on_animate(&var self, routine: *u8) {
         self.ob_routine = routine
     }
@@ -1637,7 +1637,7 @@ impl AnimObHandle {
     }
 
     // Move to absolute pixel position
-    #[chain]
+    @chain
     pub fn move_to(&var self, x: i16, y: i16) {
         let fp_shift = 6
         unsafe {
@@ -1655,7 +1655,7 @@ impl AnimObHandle {
     }
 
     // Move by relative offset
-    #[chain]
+    @chain
     pub fn move_by(&var self, dx: i16, dy: i16) {
         let fp_shift = 6
         unsafe {
@@ -1665,7 +1665,7 @@ impl AnimObHandle {
     }
 
     // Set velocity (raw fixed-point)
-    #[chain]
+    @chain
     pub fn set_velocity(&var self, x_vel: i16, y_vel: i16) {
         unsafe {
             *self.anim_ob.XVel = x_vel
@@ -1674,7 +1674,7 @@ impl AnimObHandle {
     }
 
     // Set velocity in pixels per frame (convenience)
-    #[chain]
+    @chain
     pub fn set_velocity_pixels(&var self, x: i16, y: i16) {
         let fp_shift = 6
         self.set_velocity(x << fp_shift, y << fp_shift)
@@ -1686,7 +1686,7 @@ impl AnimObHandle {
     }
 
     // Set acceleration
-    #[chain]
+    @chain
     pub fn set_acceleration(&var self, x_accel: i16, y_accel: i16) {
         unsafe {
             *self.anim_ob.XAccel = x_accel
@@ -1700,7 +1700,7 @@ impl AnimObHandle {
     }
 
     // Set collision masks for all components
-    #[chain]
+    @chain
     pub fn set_collision_masks(&var self, me_mask: u16, hit_mask: u16) {
         for i in 0u32..self.comp_count {
             unsafe {

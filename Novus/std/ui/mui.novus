@@ -201,31 +201,31 @@ impl MUIAppBuilder {
     }
 
     /// Set application author
-    #[chain]
+    @chain
     pub fn author(&var self, author: Str) {
         self.author = self.alloc_label(author)
     }
 
     /// Set application description
-    #[chain]
+    @chain
     pub fn description(&var self, desc: Str) {
         self.description = self.alloc_label(desc)
     }
 
     /// Set application version string
-    #[chain]
+    @chain
     pub fn version(&var self, version: Str) {
         self.version = self.alloc_label(version)
     }
 
     /// Set application base name (for prefs files)
-    #[chain]
+    @chain
     pub fn base(&var self, base: Str) {
         self.base = self.alloc_label(base)
     }
 
     /// Set the application's menustrip (built from MenuBuilder)
-    #[chain]
+    @chain
     pub fn menustrip(&var self, strip: *u8) {
         self.menustrip_obj = strip
     }
@@ -449,25 +449,25 @@ impl MUIWindowBuilder {
     }
 
     /// Set window ID for state saving
-    #[chain]
+    @chain
     pub fn id(&var self, id: u32) {
         self.id = id
     }
 
     /// Enable/disable close gadget
-    #[chain]
+    @chain
     pub fn close_gadget(&var self, enable: bool) {
         self.close_gadget = enable
     }
 
     /// Enable/disable size gadget
-    #[chain]
+    @chain
     pub fn size_gadget(&var self, enable: bool) {
         self.size_gadget = enable
     }
 
     /// Set the root group directly
-    #[chain]
+    @chain
     pub fn root(&var self, group: *u8) {
         self.root_group = group
     }
@@ -554,13 +554,13 @@ impl MUIGroupBuilder {
     }
 
     /// Set frame style
-    #[chain]
+    @chain
     pub fn frame(&var self, frame_type: i32) {
         self.frame = frame_type
     }
 
     /// Set frame title
-    #[chain]
+    @chain
     pub fn frame_title(&var self, title: Str) {
         unsafe {
             self.frame_title = (*self.app_builder).alloc_label(title)
@@ -568,19 +568,19 @@ impl MUIGroupBuilder {
     }
 
     /// Make all children same size
-    #[chain]
+    @chain
     pub fn same_size(&var self) {
         self.same_size = true
     }
 
     /// Set spacing between children
-    #[chain]
+    @chain
     pub fn spacing(&var self, spacing: i32) {
         self.spacing = spacing
     }
 
     /// Add a child object
-    #[chain]
+    @chain
     pub fn child(&var self, obj: *u8) {
         unsafe {
             if self.child_count >= self.child_capacity {
@@ -763,7 +763,7 @@ impl MUIGroupBuilder {
     }
 
     /// Add horizontal space
-    #[chain]
+    @chain
     pub fn hspace(&var self) {
         unsafe {
             var tags = TagBuilder::new()
@@ -775,7 +775,7 @@ impl MUIGroupBuilder {
     }
 
     /// Add vertical space
-    #[chain]
+    @chain
     pub fn vspace(&var self) {
         unsafe {
             var tags = TagBuilder::new()
@@ -787,7 +787,7 @@ impl MUIGroupBuilder {
     }
 
     /// Add a horizontal bar separator
-    #[chain]
+    @chain
     pub fn hbar(&var self) {
         unsafe {
             var tags = TagBuilder::new()
@@ -800,7 +800,7 @@ impl MUIGroupBuilder {
     }
 
     /// Add a vertical bar separator
-    #[chain]
+    @chain
     pub fn vbar(&var self) {
         unsafe {
             var tags = TagBuilder::new()
@@ -1274,7 +1274,7 @@ impl MenuItemBuilder {
     }
 
     /// Add a regular menu item (chainable)
-    #[chain]
+    @chain
     pub fn item(&var self, title: Str, shortcut: Str, id: u32) {
         unsafe {
             let title_ptr = self.alloc_label(title)
@@ -1298,7 +1298,7 @@ impl MenuItemBuilder {
     }
 
     /// Add a checkable menu item (chainable)
-    #[chain]
+    @chain
     pub fn checkitem(&var self, title: Str, shortcut: Str, id: u32, checked: bool) {
         unsafe {
             let title_ptr = self.alloc_label(title)
@@ -1326,7 +1326,7 @@ impl MenuItemBuilder {
     }
 
     /// Add a separator bar (chainable)
-    #[chain]
+    @chain
     pub fn separator(&var self) {
         unsafe {
             // MUI uses NM_BARLABEL (~0) for separators, but in object form
@@ -1514,13 +1514,13 @@ impl MUITabsBuilder {
     }
 
     /// Set whether to draw a frame around the tabs
-    #[chain]
+    @chain
     pub fn frame(&var self, enable: bool) {
         self.frame = enable
     }
 
     /// Add a tab page with a title and content group
-    #[chain]
+    @chain
     pub fn add_tab(&var self, title: Str, content: *u8) {
         unsafe {
             // Skip if at capacity or null content
