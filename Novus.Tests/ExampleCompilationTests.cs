@@ -11,12 +11,14 @@ namespace Novus.Tests;
 /// - Most examples use --emit-asm to test parsing/IR/codegen without VBCC
 /// - A representative subset uses full VBCC compilation (marked with FullCompilation trait)
 ///
-/// NOTE: These tests use --use-stdlib-cache which is thread-safe because:
-/// 1. The stdlib cache is pre-built before tests run (via StdlibCacheFixture)
-/// 2. Each test writes to a unique output file in /tmp
-/// 3. Cache reads are idempotent
+/// NOTE: These tests do NOT use --use-stdlib-cache to avoid race conditions.
+/// Each test compiles fresh to ensure consistent results. The performance
+/// cost is acceptable because:
+/// 1. Most tests use --emit-asm which skips VBCC entirely
+/// 2. Full compilation tests are a small subset
+/// 3. Fresh compilation ensures no stale cache artifacts
 /// </summary>
-public class ExampleCompilationTests : IClassFixture<StdlibCacheFixture>
+public class ExampleCompilationTests
 {
     // Examples that get full VBCC compilation (representative subset for linking tests)
     private static readonly HashSet<string> FullCompilationExamples = new(StringComparer.OrdinalIgnoreCase)
@@ -113,7 +115,7 @@ public class ExampleCompilationTests : IClassFixture<StdlibCacheFixture>
         var startInfo = new ProcessStartInfo
         {
             FileName = "dotnet",
-            Arguments = $"\"{compilerPath}\" \"{inputFile}\" -o \"{outputFile}\" --use-stdlib-cache --emit-asm",
+            Arguments = $"\"{compilerPath}\" \"{inputFile}\" -o \"{outputFile}\" --emit-asm",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -174,7 +176,7 @@ public class ExampleCompilationTests : IClassFixture<StdlibCacheFixture>
         var startInfo = new ProcessStartInfo
         {
             FileName = "dotnet",
-            Arguments = $"\"{compilerPath}\" \"{inputFile}\" -o \"{outputFile}\" --use-stdlib-cache",
+            Arguments = $"\"{compilerPath}\" \"{inputFile}\" -o \"{outputFile}\"",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,

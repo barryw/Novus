@@ -238,10 +238,10 @@ public static class StdlibBuildCommand
             Console.WriteLine($"  Source and destination are the same, skipping copy");
         }
 
-        // Write manifest
+        // Write manifest atomically to prevent race conditions
         var manifestPath = Path.Combine(outputDir, "manifest.json");
         var manifestJson = JsonSerializer.Serialize(manifest, StdlibManifestJsonContext.Default.StdlibManifest);
-        await File.WriteAllTextAsync(manifestPath, manifestJson);
+        await AtomicCacheWriter.WriteFileAtomicallyAsync(manifestPath, manifestJson);
 
         if (verbose)
         {
@@ -694,10 +694,10 @@ public static class StdlibBuildCommand
             }
         }
 
-        // Write manifest
+        // Write manifest atomically to prevent race conditions
         var manifestPath = Path.Combine(stdlibPrecompiledDir, "manifest.json");
         var manifestJson = JsonSerializer.Serialize(manifest, StdlibManifestJsonContext.Default.StdlibManifest);
-        await File.WriteAllTextAsync(manifestPath, manifestJson);
+        await AtomicCacheWriter.WriteFileAtomicallyAsync(manifestPath, manifestJson);
     }
 }
 

@@ -1485,10 +1485,18 @@ ___stack:
             // ============================================================================
             // OPTIMIZATION: Use pre-compiled stdlib .o files if available
             // Auto-compile stdlib on first use for this CPU/mode combination
+            //
+            // BULLETPROOF CACHING: Uses file-based locking and atomic writes to prevent
+            // race conditions when multiple compilations run in parallel.
             // ============================================================================
 
             var buildModeStr = options.BuildMode == BuildMode.Release ? "release" : "debug";
-            var stdlibPrecompiledDir = Path.Combine(compilerDir, "stdlib", assemblyCpu, buildModeStr);
+            var stdlibCacheRootDir = Path.Combine(compilerDir, "stdlib");
+            var stdlibPrecompiledDir = Path.Combine(stdlibCacheRootDir, assemblyCpu, buildModeStr);
+
+            // Create cache lock manager for cross-process synchronization
+            Directory.CreateDirectory(stdlibCacheRootDir);
+            using var cacheLockManager = new CacheLockManager(stdlibCacheRootDir);
 
             // Check if stdlib cache should be used
             // By default, always rebuild stdlib fresh to avoid stale cache issues
@@ -1500,15 +1508,26 @@ ___stack:
             bool needsRebuild = forceRebuildAndCache
                 || !useCache
                 || !Directory.Exists(stdlibPrecompiledDir)
+                || !AtomicCacheWriter.IsCacheComplete(stdlibPrecompiledDir)  // Check completion marker
                 || Commands.StdlibBuildCommand.NeedsRebuild(compilerDir, assemblyCpu, options.BuildMode, CODEGEN_VERSION, out cacheInvalidReason);
 
             // CRITICAL FIX: If stdlib cache is stale, delete ALL cached .o files
             // This prevents using stale object files with old constant values
+            // Use locking to prevent race conditions during cache invalidation
             if (needsRebuild && Directory.Exists(stdlibPrecompiledDir))
             {
                 var reason = cacheInvalidReason ?? (forceRebuildAndCache ? "forced rebuild" : "cache not used by default");
                 Console.WriteLine($"\n⚠ Stdlib cache invalidated: {reason}");
                 Console.WriteLine($"  Clearing cached stdlib objects for {assemblyCpu}/{buildModeStr}...");
+
+                // Acquire lock before modifying cache
+                var lockName = $"stdlib-{assemblyCpu}-{buildModeStr}";
+                using var cacheLock = await cacheLockManager.AcquireLockAsync(lockName, TimeSpan.FromSeconds(30));
+                if (cacheLock == null)
+                {
+                    Console.WriteLine($"  Warning: Could not acquire cache lock - another process may be building stdlib");
+                }
+
                 try
                 {
                     // Delete all .o files in the cache directory
@@ -1522,6 +1541,12 @@ ___stack:
                     if (File.Exists(manifestPath))
                     {
                         File.Delete(manifestPath);
+                    }
+                    // Delete the completion marker
+                    var completionMarker = Path.Combine(stdlibPrecompiledDir, ".complete");
+                    if (File.Exists(completionMarker))
+                    {
+                        File.Delete(completionMarker);
                     }
                     Console.WriteLine($"  ✓ Deleted {cachedOFiles.Length} stale object file(s)");
                 }
@@ -1601,47 +1626,77 @@ ___stack:
             {
                 Console.WriteLine($"\nUsing pre-compiled stdlib modules ({stdlibCFiles.Count} files)...");
 
-                // Map stdlib C files to their corresponding .o files
-                var precompiledFiles = new HashSet<string>();
-                foreach (var cFile in stdlibCFiles)
+                // CRITICAL: Validate types header hash before using cached stdlib
+                // If the types header changed (ABI change), we MUST recompile
+                var cachedTypesHashPath = Path.Combine(stdlibPrecompiledDir, "novus_types.h.hash");
+                var typesHeaderValid = false;
+                if (File.Exists(cachedTypesHashPath))
                 {
-                    var cFileName = Path.GetFileNameWithoutExtension(cFile);
-                    var precompiledObj = Path.Combine(stdlibPrecompiledDir, $"{cFileName}.o");
-
-                    if (File.Exists(precompiledObj))
+                    try
                     {
-                        objectFiles.Add(precompiledObj);
-                        precompiledFiles.Add(cFileName);
+                        var cachedTypesHash = await File.ReadAllTextAsync(cachedTypesHashPath);
+                        typesHeaderValid = cachedTypesHash.Trim() == typesHeaderHash;
+                        if (!typesHeaderValid)
+                        {
+                            Console.WriteLine($"  ⚠ Types header changed (ABI change) - must recompile stdlib");
+                        }
+                    }
+                    catch
+                    {
+                        // Hash file read failed - invalidate cache
                     }
                 }
 
-                Console.WriteLine($"  ✓ Linked {precompiledFiles.Count} pre-compiled stdlib object files");
-
-                // If some stdlib files are missing from precompiled dir, compile and cache them
-                if (precompiledFiles.Count < stdlibCFiles.Count)
+                // If types header is invalid, force rebuild
+                if (!typesHeaderValid)
                 {
-                    Console.WriteLine($"  → Compiling {stdlibCFiles.Count - precompiledFiles.Count} missing stdlib files...");
-
-                    // Compile missing stdlib files
+                    usePrecompiledStdlib = false;
+                    needsRebuild = true;
+                }
+                else
+                {
+                    // Map stdlib C files to their corresponding .o files
+                    var precompiledFiles = new HashSet<string>();
                     foreach (var cFile in stdlibCFiles)
                     {
                         var cFileName = Path.GetFileNameWithoutExtension(cFile);
-                        if (!precompiledFiles.Contains(cFileName))
+                        var precompiledObj = Path.Combine(stdlibPrecompiledDir, $"{cFileName}.o");
+
+                        if (File.Exists(precompiledObj))
                         {
-                            var objFile = Path.Combine(outputDir, cFileName + ".o");
-                            Console.WriteLine($"    → {Path.GetFileName(cFile)}");
-
-                            if (!await toolchain.CompileToObject(cFile, objFile, assemblyCpu, options.OptimizationLevel, options.BuildMode))
-                            {
-                                Console.WriteLine($"\n✗ Failed to compile {Path.GetFileName(cFile)}");
-                                return 1;
-                            }
-
-                            objectFiles.Add(objFile);
-                            stdlibOFilesToCache.Add((cFile, objFile));  // Mark for caching
+                            objectFiles.Add(precompiledObj);
+                            precompiledFiles.Add(cFileName);
                         }
                     }
-                }
+
+                    Console.WriteLine($"  ✓ Linked {precompiledFiles.Count} pre-compiled stdlib object files");
+
+                    // If some stdlib files are missing from precompiled dir, compile and cache them
+                    if (precompiledFiles.Count < stdlibCFiles.Count)
+                    {
+                        Console.WriteLine($"  → Compiling {stdlibCFiles.Count - precompiledFiles.Count} missing stdlib files...");
+
+                        // Compile missing stdlib files
+                        foreach (var cFile in stdlibCFiles)
+                        {
+                            var cFileName = Path.GetFileNameWithoutExtension(cFile);
+                            if (!precompiledFiles.Contains(cFileName))
+                            {
+                                var objFile = Path.Combine(outputDir, cFileName + ".o");
+                                Console.WriteLine($"    → {Path.GetFileName(cFile)}");
+
+                                if (!await toolchain.CompileToObject(cFile, objFile, assemblyCpu, options.OptimizationLevel, options.BuildMode))
+                                {
+                                    Console.WriteLine($"\n✗ Failed to compile {Path.GetFileName(cFile)}");
+                                    return 1;
+                                }
+
+                                objectFiles.Add(objFile);
+                                stdlibOFilesToCache.Add((cFile, objFile));  // Mark for caching
+                            }
+                        }
+                    }
+                }  // end if typesHeaderValid
             }
             else if (stdlibCFiles.Count > 0)
             {
@@ -1665,29 +1720,55 @@ ___stack:
             }
 
             // Cache any newly compiled stdlib .o files (from either path above)
+            // Use locking and atomic writes to prevent race conditions
             if (stdlibOFilesToCache.Count > 0)
             {
                 Console.WriteLine($"\n  ✓ Caching {stdlibOFilesToCache.Count} stdlib object files for future builds...");
-                Directory.CreateDirectory(stdlibPrecompiledDir);
 
-                foreach (var (source, obj) in stdlibOFilesToCache)
+                // Acquire lock before writing to cache
+                var lockName = $"stdlib-{assemblyCpu}-{buildModeStr}";
+                using var cacheLock = await cacheLockManager.AcquireLockAsync(lockName, TimeSpan.FromSeconds(60));
+                if (cacheLock == null)
                 {
-                    var cachedPath = Path.Combine(stdlibPrecompiledDir, Path.GetFileName(obj));
-                    File.Copy(obj, cachedPath, overwrite: true);
+                    Console.WriteLine($"  Warning: Could not acquire cache lock - skipping cache write");
                 }
+                else
+                {
+                    // Use atomic cache writer to ensure all-or-nothing cache updates
+                    await AtomicCacheWriter.WriteAtomicallyAsync(stdlibPrecompiledDir, async tempDir =>
+                    {
+                        // Copy all object files to temp directory
+                        foreach (var (source, obj) in stdlibOFilesToCache)
+                        {
+                            var cachedPath = Path.Combine(tempDir, Path.GetFileName(obj));
+                            File.Copy(obj, cachedPath, overwrite: true);
+                        }
 
-                // Write manifest with source file hashes for cache invalidation
-                var stdlibSourcePaths = allModulesIR
-                    .Where(kvp => kvp.Key.Contains("/std/"))
-                    .Select(kvp => kvp.Key)
-                    .ToList();
+                        // CRITICAL: Store the types header with the cache
+                        // This ensures cache invalidation when types header changes (ABI change)
+                        var cachedTypesHeaderPath = Path.Combine(tempDir, "novus_types.h");
+                        await File.WriteAllTextAsync(cachedTypesHeaderPath, sharedTypesHeader);
 
-                await Commands.StdlibBuildCommand.WriteManifest(
-                    stdlibPrecompiledDir,
-                    assemblyCpu,
-                    options.BuildMode,
-                    stdlibSourcePaths,
-                    CODEGEN_VERSION);
+                        // Store the types header hash for validation
+                        var cachedTypesHashPath = Path.Combine(tempDir, "novus_types.h.hash");
+                        await File.WriteAllTextAsync(cachedTypesHashPath, typesHeaderHash);
+
+                        // Write manifest with source file hashes for cache invalidation
+                        var stdlibSourcePaths = allModulesIR
+                            .Where(kvp => kvp.Key.Contains("/std/"))
+                            .Select(kvp => kvp.Key)
+                            .ToList();
+
+                        await Commands.StdlibBuildCommand.WriteManifest(
+                            tempDir,
+                            assemblyCpu,
+                            options.BuildMode,
+                            stdlibSourcePaths,
+                            CODEGEN_VERSION);
+                    });
+
+                    Console.WriteLine($"  ✓ Cache written atomically with types header");
+                }
             }
 
             // ============================================================================
