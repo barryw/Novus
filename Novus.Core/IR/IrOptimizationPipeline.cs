@@ -155,7 +155,21 @@ public class IrOptimizationPipeline
                 }
             }
 
-            // Phase 6: Dead code elimination
+            // Phase 6: Dead store elimination
+            if (_level >= OptimizationLevel.O1)
+            {
+                var dse = new DeadStoreElimination(_function);
+                int count = dse.Eliminate();
+                stats.DeadStoreEliminations += count;
+                if (count > 0)
+                {
+                    changed = true;
+                    if (_options.Verbose)
+                        Console.WriteLine($"  Dead Store Elimination: {count} eliminations");
+                }
+            }
+
+            // Phase 7: Dead code elimination
             if (_level >= OptimizationLevel.O1)
             {
                 var dce = new DeadCodeElimination(_function);
@@ -169,7 +183,7 @@ public class IrOptimizationPipeline
                 }
             }
 
-            // Phase 7: 68k Peephole Optimization
+            // Phase 8: 68k Peephole Optimization
             if (_level >= OptimizationLevel.O2)
             {
                 var peephole = new M68kPeepholeOptimization(_function, _options.CpuTarget);
@@ -312,6 +326,7 @@ public class OptimizationStatistics
     public int StrengthReductions { get; set; }
     public int ConstantPropagations { get; set; }
     public int CopyPropagations { get; set; }
+    public int DeadStoreEliminations { get; set; }
     public int DeadCodeEliminations { get; set; }
     public bool SSAConstructed { get; set; }
     public bool SSADestroyed { get; set; }
@@ -344,6 +359,9 @@ public class OptimizationStatistics
 
         if (CopyPropagations > 0)
             sb.AppendLine($"  Copy Propagations: {CopyPropagations}");
+
+        if (DeadStoreEliminations > 0)
+            sb.AppendLine($"  Dead Store Eliminations: {DeadStoreEliminations}");
 
         if (DeadCodeEliminations > 0)
             sb.AppendLine($"  Dead Code Eliminations: {DeadCodeEliminations}");

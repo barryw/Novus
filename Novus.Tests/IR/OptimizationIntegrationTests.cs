@@ -233,11 +233,11 @@ public class OptimizationIntegrationTests
         var constantProp = new ConstantPropagation(function);
         constantProp.Propagate();
 
-        // Verify: condition should fold to true (1L)
-        var branch = entry.Instructions[3] as IrConditionalBranch;
-        var condConst = branch!.Condition as IrConstant;
-        Assert.NotNull(condConst);
-        Assert.Equal(1L, condConst.Value); // true
+        // Verify: condition folds to true, so conditional branch is replaced with
+        // unconditional branch to "then" block
+        var branch = entry.Instructions[3] as IrBranch;
+        Assert.NotNull(branch);
+        Assert.Equal("then", branch.Target);
 
         // Return values should remain as constants
         var thenRet = thenBlock.Instructions[^1] as IrReturn;
@@ -422,10 +422,10 @@ public class OptimizationIntegrationTests
         var constantProp = new ConstantPropagation(function);
         constantProp.Propagate();
 
-        // Verify: condition should fold to true (1L)
-        var branch = entry.Instructions[2] as IrConditionalBranch;
-        var condConst = branch!.Condition as IrConstant;
-        Assert.NotNull(condConst);
-        Assert.Equal(1L, condConst.Value); // true
+        // Verify: condition folds to true, so conditional branch is replaced with
+        // unconditional branch to "then" block
+        var branch = entry.Instructions[2] as IrBranch;
+        Assert.NotNull(branch);
+        Assert.Equal("then", branch.Target);
     }
 }

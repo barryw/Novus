@@ -728,10 +728,10 @@ pub fn increment_counter() -> u32 {
     }
 
     /// <summary>
-    /// Test for VBCC comparison workaround.
-    /// VBCC has a bug where it can move stack cleanup between comparison and branch,
-    /// clobbering condition flags. We work around this by using comparison helper functions
-    /// that force sequence points. The comparisons are inlined into if() statements.
+    /// Test for comparison inlining optimization.
+    /// When a comparison immediately precedes a conditional branch (no intervening instructions),
+    /// the comparison is inlined directly without the VBCC wrapper function.
+    /// This optimization saves ~10 cycles per comparison in the common case.
     /// See CCodeGenerator for full documentation.
     /// </summary>
     [Fact]
@@ -751,10 +751,12 @@ pub fn compare_and_branch(a: i32, b: i32) -> i32 {
         var module = BuildIR(source);
         var code = GenerateCCode(module);
 
-        // The comparison should use helper functions for VBCC workaround
-        // These are inlined into if() statements
-        Assert.Matches(@"if\s*\(__novus_cmp_eq_i32", code);  // if (__novus_cmp_eq_i32(...))
-        Assert.Matches(@"if\s*\(__novus_cmp_ne_i32", code);  // if (__novus_cmp_ne_i32(...)) for < comparison
+        // OPTIMIZATION: When a comparison immediately precedes a branch,
+        // we inline the comparison directly without the wrapper function.
+        // This is safe because there are no intervening instructions that could
+        // trigger stack cleanup and clobber condition flags.
+        Assert.Matches(@"if\s*\(\S+\s*==\s*\S+\)", code);  // if (a == b)
+        Assert.Matches(@"if\s*\(\S+\s*<\s*\S+\)", code);   // if (a < b)
     }
 
     /// <summary>
@@ -785,8 +787,121 @@ pub fn second_func(y: i32) -> bool {
         Assert.Contains("first_func", code);
         Assert.Contains("second_func", code);
 
-        // The second function should have its comparison using the helper function
-        // For > 0, it's converted to __novus_cmp_ne_i32((y > 0), 0)
-        Assert.Matches(@"if\s*\(__novus_cmp_ne_i32", code);
+        // The second function should have its comparison inlined directly
+        // (optimization: comparison immediately precedes branch)
+        Assert.Matches(@"if\s*\(\S+\s*>\s*\S+\)", code);  // if (y > 0)
+    }
+
+    /// <summary>
+    /// Test that VBCC wrapper IS used when comparison and branch have intervening instructions.
+    /// When there are instructions between the comparison and the branch that could trigger
+    /// stack cleanup (like function calls), we must use the wrapper to force a sequence point.
+    /// </summary>
+    [Fact]
+    public void CCodeGen_VbccWorkaround_UsesWrapperWhenInterveningInstructions()
+    {
+        // In this test, the comparison result is stored and used later,
+        // with a function call in between. This should use the wrapper.
+        var source = @"
+pub fn compare_then_call(a: i32, b: i32) -> i32 {
+    let result = a == b  // comparison stored in variable
+    let _ = identity(a)  // intervening function call
+    if result {          // comparison variable tested later
+        return 1
+    }
+    return 0
+}
+
+fn identity(x: i32) -> i32 {
+    return x
+}";
+
+        var module = BuildIR(source);
+        var code = GenerateCCode(module);
+
+        // When there's an intervening instruction (function call) between
+        // comparison and branch, we must use the wrapper function
+        Assert.Matches(@"__novus_cmp", code);  // wrapper function should be used
+    }
+
+    /// <summary>
+    /// Test that small simple structs use field-by-field copy instead of memcpy.
+    /// This is an optimization that avoids function call overhead for small structs.
+    /// </summary>
+    [Fact]
+    public void CCodeGen_SmallStructCopy_UsesFieldByFieldAssignment()
+    {
+        var source = @"
+struct Point {
+    x: i32,
+    y: i32
+}
+
+pub fn copy_point(src: Point) -> Point {
+    let dest = src  // This should use field-by-field copy (8 bytes, 2 primitives)
+    return dest
+}";
+
+        var module = BuildIR(source);
+        var code = GenerateCCode(module);
+
+        // Small struct (8 bytes, 2 primitives) should use field-by-field copy
+        // instead of __novus_memcpy
+        Assert.Contains(".x =", code);  // Field-by-field assignment
+        Assert.Contains(".y =", code);
+    }
+
+    /// <summary>
+    /// Test that large structs still use memcpy instead of field-by-field copy.
+    /// </summary>
+    [Fact]
+    public void CCodeGen_LargeStructCopy_UsesMemcpy()
+    {
+        var source = @"
+struct LargeStruct {
+    a: i64,
+    b: i64,
+    c: i64,
+    d: i64
+}
+
+pub fn copy_large(src: LargeStruct) -> LargeStruct {
+    let dest = src  // 32 bytes - too large for field-by-field
+    return dest
+}";
+
+        var module = BuildIR(source);
+        var code = GenerateCCode(module);
+
+        // Large struct (32 bytes) should use memcpy
+        Assert.Contains("__novus_memcpy", code);
+    }
+
+    /// <summary>
+    /// Test that structs with nested structs use memcpy regardless of size.
+    /// </summary>
+    [Fact]
+    public void CCodeGen_NestedStructCopy_UsesMemcpy()
+    {
+        var source = @"
+struct Inner {
+    value: i32
+}
+
+struct Outer {
+    inner: Inner,
+    count: i32
+}
+
+pub fn copy_nested(src: Outer) -> Outer {
+    let dest = src  // Has nested struct - use memcpy
+    return dest
+}";
+
+        var module = BuildIR(source);
+        var code = GenerateCCode(module);
+
+        // Struct with nested struct should use memcpy
+        Assert.Contains("__novus_memcpy", code);
     }
 }

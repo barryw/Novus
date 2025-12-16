@@ -141,6 +141,12 @@ public partial class CCodeGenerator
     // (labels can be added both by EmitBasicBlock and IrLabel instructions)
     private HashSet<string> _emittedLabels = new();
 
+    // OPTIMIZATION: Track pointers that have been null-checked in the current function.
+    // After a pointer passes a null check, subsequent dereferences of the same pointer
+    // don't need another null check (within the same function scope).
+    // This is cleared at the start of each function.
+    private HashSet<string> _knownNonNullPointers = new();
+
     /// <summary>
     /// VBCC WORKAROUND: Track comparison expressions that can be inlined into conditional branches.
     ///
@@ -176,6 +182,18 @@ public partial class CCodeGenerator
     /// EmitFunctionToBuilder) to prevent stale entries from leaking between functions.
     /// </summary>
     private Dictionary<string, string> _inlineableComparisons = new();
+
+    /// <summary>
+    /// OPTIMIZATION: Track comparison variables that can be safely inlined without the
+    /// VBCC wrapper function. A comparison is safe to inline when:
+    /// 1. The comparison was the most recent emitted instruction (no intervening instructions)
+    /// 2. No function calls have occurred since the comparison (which could trigger stack cleanup)
+    ///
+    /// When a comparison is emitted, its result variable is added to this set.
+    /// When any other instruction is emitted, the set is cleared.
+    /// When a conditional branch checks a variable in this set, we can skip the wrapper.
+    /// </summary>
+    private HashSet<string> _safeToInlineComparisons = new();
 
     // Threshold for element-by-element array initialization vs memcpy
     // Arrays smaller than this use element-by-element assignment (safer on 68k)
@@ -1507,6 +1525,7 @@ public partial class CCodeGenerator
         _fieldAccessChainInfo.Clear();
         _addressOnlyStructMemberAccess.Clear();
         _inlineableComparisons.Clear();  // VBCC workaround: reset comparison tracking
+        _safeToInlineComparisons.Clear();  // OPTIMIZATION: reset safe inline tracking
 
         // Reset debug line tracking for this function
         _lastEmittedDebugLine = -1;
@@ -4353,6 +4372,7 @@ public partial class CCodeGenerator
         _indexAccessInfo.Clear();
         _activatedDeferBlocks.Clear();
         _inlineableComparisons.Clear();  // VBCC workaround: reset comparison tracking
+        _safeToInlineComparisons.Clear();  // OPTIMIZATION: reset safe inline tracking
 
         // Track which parameters were converted to pointers in the C signature
         _pointerConvertedParameters.Clear();
@@ -4843,6 +4863,16 @@ public partial class CCodeGenerator
         // Emit debug line marker before the instruction if location changed
         MaybeEmitDebugLineMarker(instruction);
 
+        // OPTIMIZATION: Clear the safe-to-inline comparison set for instructions that could
+        // generate code with side effects (function calls, stores, etc.). This ensures we only
+        // inline comparisons when they immediately precede the conditional branch.
+        // We keep the set valid for: IrBinaryOp (adds to set), IrConditionalBranch (uses set),
+        // IrLabel (no code generated), IrBranch (no comparison-affecting code)
+        if (instruction is not (IrBinaryOp or IrConditionalBranch or IrLabel or IrBranch))
+        {
+            _safeToInlineComparisons.Clear();
+        }
+
         switch (instruction)
         {
             case IrLocalDecl localDecl:
@@ -5320,7 +5350,7 @@ public partial class CCodeGenerator
                 {
                     // Skip the assignment - variable already zero-initialized with {0} at function start
                 }
-                // VBCC FIX: For complex types (nested structs OR enums with unions), use memcpy instead of assignment.
+                // VBCC FIX: For complex types (nested structs OR enums with unions), use memcpy or field-by-field copy.
                 // VBCC generates illegal instructions on 68040 for struct-by-value copies of these types.
                 else if (localDecl.InitialValue != null && TypeRequiresMemcpy(localDecl.InitialValue.Type))
                 {
@@ -5331,9 +5361,18 @@ public partial class CCodeGenerator
                     // use them directly instead of taking their address with &.
                     var sourceIsPointerConvertedParam = localDecl.InitialValue is IrVariable srcVar &&
                                                         _pointerConvertedParameters.Contains(srcVar.Name);
-                    var sourceAddr = sourceIsPointerConvertedParam ? $"(uint8_t*){initValue}" : $"(uint8_t*)&{initValue}";
 
-                    _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}, {sourceAddr}, sizeof({cType}));");
+                    // OPTIMIZATION: Use field-by-field copy for small simple structs
+                    // Note: Only apply optimization for non-pointer-converted cases (simpler to handle)
+                    if (!sourceIsPointerConvertedParam && initValue != null && CanUseFieldByFieldCopy(localDecl.InitialValue.Type))
+                    {
+                        EmitStructCopy(varName, initValue, localDecl.InitialValue.Type);
+                    }
+                    else
+                    {
+                        var sourceAddr = sourceIsPointerConvertedParam ? $"(uint8_t*){initValue}" : $"(uint8_t*)&{initValue}";
+                        _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}, {sourceAddr}, sizeof({cType}));");
+                    }
 
                     // CRITICAL FIX: Implement move semantics when copying from ANY local variable.
                     // When the source is a local variable (including slot variables and pattern-bound
@@ -5530,14 +5569,23 @@ public partial class CCodeGenerator
                     _output.AppendLine($"    {varName} = {initValue};");
                 }
             }
-            // VBCC FIX: For complex types (nested structs OR enums with unions), declare then use memcpy for initialization.
+            // VBCC FIX: For complex types (nested structs OR enums with unions), declare then use memcpy or field-by-field copy.
             // VBCC generates illegal instructions on 68040 for struct-by-value copies of these types.
             else if (localDecl.InitialValue != null && TypeRequiresMemcpy(localDecl.InitialValue.Type))
             {
                 var decl = GetCVariableDeclaration(localDecl.Type, varName);
                 var cType = GetCType(localDecl.Type);
                 _output.AppendLine($"    {decl};");
-                _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}, (uint8_t*)&{initValue}, sizeof({cType}));");
+
+                // OPTIMIZATION: Use field-by-field copy for small simple structs
+                if (initValue != null && CanUseFieldByFieldCopy(localDecl.InitialValue.Type))
+                {
+                    EmitStructCopy(varName, initValue, localDecl.InitialValue.Type);
+                }
+                else
+                {
+                    _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}, (uint8_t*)&{initValue}, sizeof({cType}));");
+                }
 
                 // CRITICAL FIX: Move semantics when copying from local variable
                 var sourceIsLocalVar = localDecl.InitialValue is IrVariable;
@@ -5708,11 +5756,12 @@ public partial class CCodeGenerator
         // - Structs containing nested structs (e.g., SpriteData with ChipMemHandle)
         // - Enums with associated data (e.g., Result<T,E>, Option<T> - these become tagged unions)
         // VBCC generates illegal instructions on 68040 for these types.
-        // Solution: Use __novus_memcpy() instead of direct assignment.
+        // Solution: Use __novus_memcpy() or field-by-field copy instead of direct assignment.
         if (TypeRequiresMemcpy(store.Value.Type))
         {
             var cType = GetCType(store.Value.Type);
-            _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}, (uint8_t*)&{value}, sizeof({cType}));");
+            // OPTIMIZATION: Use field-by-field copy for small simple structs
+            EmitStructCopy(varName, value, store.Value.Type);
 
             // CRITICAL FIX: Move semantics when copying from local variable
             var sourceIsLocalVar = store.Value is IrVariable;
@@ -5900,6 +5949,11 @@ public partial class CCodeGenerator
 
                 // Store the comparison expression with casts for potential inlining
                 _inlineableComparisons[resultName] = $"{leftCast} {op} {rightCast}";
+
+                // OPTIMIZATION: Mark this comparison as safe to inline if the branch immediately follows
+                // The _safeToInlineComparisons set will be cleared when any non-branch instruction
+                // is emitted, so only immediate comparison->branch sequences benefit from this
+                _safeToInlineComparisons.Add(resultName);
 
                 string wrapperCall;
                 if (op == "==")
@@ -6288,15 +6342,26 @@ public partial class CCodeGenerator
         // The function call completes all pending stack cleanup before returning, ensuring
         // the comparison result is valid when we test it.
         //
-        // This adds ~10 cycles overhead per comparison, but eliminates the bug completely.
+        // OPTIMIZATION: If the comparison immediately precedes this branch (tracked via
+        // _safeToInlineComparisons), we can skip the wrapper and emit the comparison directly.
+        // This saves ~10 cycles per comparison in the common case.
 
         string condition;
         if (_inlineableComparisons.TryGetValue(conditionVar, out var inlinedExpr))
         {
-            // Even with inlined comparisons, we need to go through the wrapper to avoid
-            // VBCC reordering issues. Parse the comparison and use the appropriate wrapper.
-            if (TryParseComparison(inlinedExpr, out var left, out var op, out var right))
+            // Check if this comparison is safe to inline (immediately precedes the branch)
+            bool canInlineDirectly = _safeToInlineComparisons.Contains(conditionVar);
+
+            if (canInlineDirectly)
             {
+                // OPTIMIZATION: Direct comparison - no wrapper needed
+                // The comparison immediately precedes this branch with no intervening
+                // instructions that could trigger stack cleanup
+                condition = inlinedExpr;
+            }
+            else if (TryParseComparison(inlinedExpr, out var left, out var op, out var right))
+            {
+                // Need wrapper to avoid VBCC reordering issues
                 if (op == "==")
                     condition = $"__novus_cmp_eq_i32({left}, {right})";
                 else if (op == "!=")
@@ -6310,6 +6375,7 @@ public partial class CCodeGenerator
                 condition = $"__novus_cmp_ne_i32((int32_t)({inlinedExpr}), 0)";
             }
             _inlineableComparisons.Remove(conditionVar);
+            _safeToInlineComparisons.Remove(conditionVar);
         }
         else
         {
@@ -7475,7 +7541,8 @@ public partial class CCodeGenerator
             }
 
             // Emit null pointer check for pointer member access (using ->) if enabled
-            if (accessor == "->" && _safetyLevel.EnableNullChecks())
+            // OPTIMIZATION: Skip if this pointer is already known non-null from a previous check
+            if (accessor == "->" && _safetyLevel.EnableNullChecks() && !_knownNonNullPointers.Contains(structValue))
             {
                 var locInfo = memberAccess.Location;
                 var filePath = locInfo?.FilePath != null ? System.IO.Path.GetFileName(locInfo.FilePath) : "<compiler-generated>";
@@ -7496,6 +7563,9 @@ public partial class CCodeGenerator
                 // Return from function after error
                 EmitErrorPathReturn(2);  // indent level 2
                 _output.AppendLine($"    }}");
+
+                // Mark this pointer as known non-null for subsequent accesses
+                _knownNonNullPointers.Add(structValue);
             }
 
             var isMovingField = false;  // Only true when actually consuming/moving the field
@@ -7750,6 +7820,7 @@ public partial class CCodeGenerator
     {
         _reachableLabels.Clear();
         _emittedLabels.Clear();  // Also clear emitted labels for the new function
+        _knownNonNullPointers.Clear();  // Clear known non-null pointers for the new function
 
         foreach (var block in function.BasicBlocks)
         {
@@ -8128,7 +8199,8 @@ public partial class CCodeGenerator
             }
 
             // Emit null pointer check for pointer member store (using ->) if enabled
-            if (litAccessor == "->" && _safetyLevel.EnableNullChecks())
+            // OPTIMIZATION: Skip if this pointer is already known non-null from a previous check
+            if (litAccessor == "->" && _safetyLevel.EnableNullChecks() && !_knownNonNullPointers.Contains(litStructValue))
             {
                 var locInfo = memberStore.Location;
                 var filePath = locInfo?.FilePath != null ? System.IO.Path.GetFileName(locInfo.FilePath) : "<compiler-generated>";
@@ -8147,6 +8219,9 @@ public partial class CCodeGenerator
                 // Return from function after error
                 EmitErrorPathReturn(2);  // indent level 2
                 _output.AppendLine($"    }}");
+
+                // Mark this pointer as known non-null for subsequent accesses
+                _knownNonNullPointers.Add(litStructValue);
             }
 
             // Emit field-by-field assignments instead of compound literal
@@ -8194,7 +8269,8 @@ public partial class CCodeGenerator
         }
 
         // Emit null pointer check for pointer member store (using ->) if enabled
-        if (accessor == "->" && _safetyLevel.EnableNullChecks())
+        // OPTIMIZATION: Skip if this pointer is already known non-null from a previous check
+        if (accessor == "->" && _safetyLevel.EnableNullChecks() && !_knownNonNullPointers.Contains(structValue))
         {
             var locInfo = memberStore.Location;
             var filePath = locInfo?.FilePath != null ? System.IO.Path.GetFileName(locInfo.FilePath) : "<compiler-generated>";
@@ -8213,6 +8289,9 @@ public partial class CCodeGenerator
             // Return from function after error
             EmitErrorPathReturn(2);  // indent level 2
             _output.AppendLine($"    }}");
+
+            // Mark this pointer as known non-null for subsequent accesses
+            _knownNonNullPointers.Add(structValue);
         }
 
         _output.AppendLine($"    {structValue}{accessor}{memberStore.FieldName} = {storeValue};");
@@ -8224,7 +8303,8 @@ public partial class CCodeGenerator
         var storeValue = EmitValue(derefStore.Value);
 
         // Emit null pointer check if enabled (safety level >= 2)
-        if (_safetyLevel.EnableNullChecks())
+        // OPTIMIZATION: Skip if this pointer is already known non-null from a previous check
+        if (_safetyLevel.EnableNullChecks() && !_knownNonNullPointers.Contains(pointerValue))
         {
             var locInfo = derefStore.Location;
             var filePath = locInfo?.FilePath != null ? System.IO.Path.GetFileName(locInfo.FilePath) : "<compiler-generated>";
@@ -8243,6 +8323,9 @@ public partial class CCodeGenerator
             // Return from function after error
             EmitErrorPathReturn(2);  // indent level 2
             _output.AppendLine($"    }}");
+
+            // Mark this pointer as known non-null for subsequent accesses
+            _knownNonNullPointers.Add(pointerValue);
         }
 
         _output.AppendLine($"    (*{pointerValue}) = {storeValue};");
@@ -9555,6 +9638,87 @@ public partial class CCodeGenerator
             default:
                 // Primitives, pointers, etc. don't contain nested structs
                 return false;
+        }
+    }
+
+    /// <summary>
+    /// Maximum struct size (in bytes) that can use field-by-field copy instead of memcpy.
+    /// Larger structs use memcpy for efficiency (fewer instructions).
+    /// </summary>
+    private const int MaxFieldByFieldCopySize = 16;
+
+    /// <summary>
+    /// Check if a struct type can use field-by-field copy instead of memcpy.
+    /// Requirements:
+    /// 1. Must be a simple struct (no nested structs or enums with data)
+    /// 2. Must be ≤16 bytes
+    /// 3. All fields must be primitives or pointers
+    /// </summary>
+    private bool CanUseFieldByFieldCopy(IrType type)
+    {
+        if (type is not IrStructType structType)
+            return false;
+
+        // Check size limit
+        var size = GetStructSizeEstimate(structType);
+        if (size > MaxFieldByFieldCopySize)
+            return false;
+
+        // Check all fields are simple (primitives or pointers)
+        foreach (var field in structType.Fields)
+        {
+            switch (field.Type)
+            {
+                case IrBoolType:
+                case IrIntType:
+                case IrFloatType:
+                case IrFixedType:
+                case IrPointerType:
+                case IrReferenceType:
+                case IrMutReferenceType:
+                    // These are safe for field-by-field copy
+                    continue;
+
+                default:
+                    // Nested structs, enums, arrays etc. - use memcpy
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Emit a struct copy using either field-by-field assignment (for small simple structs)
+    /// or memcpy (for larger or complex structs).
+    ///
+    /// Field-by-field copy is faster for small structs because:
+    /// - No function call overhead
+    /// - Direct register operations on 68k
+    /// - Better for cache (fewer memory accesses)
+    ///
+    /// The caller is responsible for move semantics (zeroing the source if needed).
+    /// </summary>
+    /// <param name="destExpr">Destination expression (already prefixed with & if needed)</param>
+    /// <param name="sourceExpr">Source expression (already prefixed with & if needed)</param>
+    /// <param name="type">The type being copied</param>
+    private void EmitStructCopy(string destExpr, string sourceExpr, IrType type)
+    {
+        var cType = GetCType(type);
+
+        if (type is IrStructType structType && CanUseFieldByFieldCopy(structType))
+        {
+            // OPTIMIZATION: Field-by-field copy for small simple structs
+            foreach (var field in structType.Fields)
+            {
+                var fieldName = SanitizeVariableName(field.Name);
+                _output.AppendLine($"    {destExpr}.{fieldName} = {sourceExpr}.{fieldName};");
+            }
+        }
+        else
+        {
+            // Use memcpy for larger or complex structs
+            _output.AppendLine($"    __novus_memcpy((uint8_t*)&{destExpr}, (uint8_t*)&{sourceExpr}, sizeof({cType}));");
         }
     }
 

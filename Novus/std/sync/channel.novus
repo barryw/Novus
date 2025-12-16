@@ -88,7 +88,7 @@ from std::error::errors import DosError
 from std::ffi::amiga_structs import MsgPort, Message, Node, Task
 from std::ffi::exec import CreateMsgPort, DeleteMsgPort, PutMsg, GetMsg, ReplyMsg, Wait, Signal
 from std::ffi::exec import AllocMem, FreeMem, FindTask, AllocSignal, FreeSignal
-from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
+from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR, MEMF_FAST
 
 // ============================================================================
 // Cross-Process Port Helpers
@@ -431,7 +431,7 @@ impl<T> Sender<T> {
     pub fn send(&self, value: T) {
         // Allocate message with space for payload
         let size = Sender::<T>::msg_size()
-        let msg_mem = unsafe { AllocMem(size, MEMF_PUBLIC | MEMF_CLEAR) }
+        let msg_mem = unsafe { AllocMem(size, MEMF_FAST | MEMF_CLEAR) }
         if (u32)msg_mem == 0 {
             // Allocation failed - silently drop the message
             // In a more robust implementation, we'd return Result
@@ -692,7 +692,7 @@ impl<T> BoundedSender<T> {
     pub fn send(&self, value: T) -> bool {
         // Allocate message with space for payload
         let size = BoundedSender::<T>::msg_size()
-        let msg_mem = unsafe { AllocMem(size, MEMF_PUBLIC | MEMF_CLEAR) }
+        let msg_mem = unsafe { AllocMem(size, MEMF_FAST | MEMF_CLEAR) }
         if (u32)msg_mem == 0 {
             return false
         }
@@ -736,7 +736,7 @@ impl<T> BoundedSender<T> {
     pub fn try_send(&self, value: T) -> bool {
         // Allocate message with space for payload
         let size = BoundedSender::<T>::msg_size()
-        let msg_mem = unsafe { AllocMem(size, MEMF_PUBLIC | MEMF_CLEAR) }
+        let msg_mem = unsafe { AllocMem(size, MEMF_FAST | MEMF_CLEAR) }
         if (u32)msg_mem == 0 {
             return false
         }
@@ -1051,7 +1051,7 @@ impl<T> OneshotSender<T> {
         }
 
         let size = OneshotSender::<T>::msg_size()
-        let msg_mem = unsafe { AllocMem(size, MEMF_PUBLIC | MEMF_CLEAR) }
+        let msg_mem = unsafe { AllocMem(size, MEMF_FAST | MEMF_CLEAR) }
         if (u32)msg_mem == 0 {
             return false
         }

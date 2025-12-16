@@ -229,6 +229,35 @@ public class ConstantPropagation
                     {
                         condBranch.Condition = newCond;
                         changed = true;
+
+                        // ENHANCEMENT: If condition is now constant, simplify to unconditional branch
+                        if (newCond is IrConstant condConst)
+                        {
+                            // Constant condition - replace with unconditional branch
+                            if (condConst.Value != 0)
+                            {
+                                // Always true - branch to true target
+                                return new IrBranch(condBranch.TrueTarget);
+                            }
+                            else
+                            {
+                                // Always false - branch to false target
+                                return new IrBranch(condBranch.FalseTarget);
+                            }
+                        }
+
+                        // Also check for boolean constants
+                        if (newCond is IrBoolConstant boolConst)
+                        {
+                            if (boolConst.Value)
+                            {
+                                return new IrBranch(condBranch.TrueTarget);
+                            }
+                            else
+                            {
+                                return new IrBranch(condBranch.FalseTarget);
+                            }
+                        }
                     }
                     break;
                 }

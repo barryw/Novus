@@ -237,10 +237,11 @@ public class ConstantPropagationTests
     }
 
     [Fact]
-    public void Propagate_ConditionalBranch_PropagatesCondition()
+    public void Propagate_ConditionalBranch_SimplifiesWithConstantTrue()
     {
         // Test: x = true; if (x) then ... else ...
-        // Expected: condition becomes constant true
+        // Expected: conditional branch is simplified to unconditional branch to "then"
+        // because constant propagation now replaces constant-condition branches
 
         var function = new IrFunction("test", IrIntType.I32);
         var entry = new IrBasicBlock("entry");
@@ -264,12 +265,77 @@ public class ConstantPropagationTests
         var propagation = new ConstantPropagation(function);
         propagation.Propagate();
 
-        // Conditional branch should use constant
-        var branch = entry.Instructions[2] as IrConditionalBranch;
+        // Conditional branch should be replaced with unconditional branch to "then"
+        var branch = entry.Instructions[2] as IrBranch;
         Assert.NotNull(branch);
-        Assert.IsType<IrConstant>(branch.Condition);
-        var constant = branch.Condition as IrConstant;
-        Assert.Equal(1L, constant!.Value);
+        Assert.Equal("then", branch.Target);
+    }
+
+    [Fact]
+    public void Propagate_ConditionalBranch_SimplifiesWithConstantFalse()
+    {
+        // Test: x = false; if (x) then ... else ...
+        // Expected: conditional branch is simplified to unconditional branch to "else"
+
+        var function = new IrFunction("test", IrIntType.I32);
+        var entry = new IrBasicBlock("entry");
+        var thenBlock = new IrBasicBlock("then");
+        var elseBlock = new IrBasicBlock("else");
+
+        entry.Instructions.Add(new IrLabel("entry"));
+        entry.Instructions.Add(new IrLocalDecl("x", IrBoolType.Instance, false, new IrConstant(0L, IrBoolType.Instance)));
+        entry.Instructions.Add(new IrConditionalBranch(new IrVariable("x", IrBoolType.Instance), "then", "else"));
+
+        thenBlock.Instructions.Add(new IrLabel("then"));
+        thenBlock.Instructions.Add(new IrReturn(new IrConstant(1, IrIntType.I32)));
+
+        elseBlock.Instructions.Add(new IrLabel("else"));
+        elseBlock.Instructions.Add(new IrReturn(new IrConstant(0, IrIntType.I32)));
+
+        function.BasicBlocks.Add(entry);
+        function.BasicBlocks.Add(thenBlock);
+        function.BasicBlocks.Add(elseBlock);
+
+        var propagation = new ConstantPropagation(function);
+        propagation.Propagate();
+
+        // Conditional branch should be replaced with unconditional branch to "else"
+        var branch = entry.Instructions[2] as IrBranch;
+        Assert.NotNull(branch);
+        Assert.Equal("else", branch.Target);
+    }
+
+    [Fact]
+    public void Propagate_ConditionalBranch_NonConstant_RemainsBranch()
+    {
+        // Test: if (y) then ... else ... (where y is a parameter, not constant)
+        // Expected: conditional branch remains unchanged
+
+        var function = new IrFunction("test", IrIntType.I32);
+        function.Parameters.Add(new IrParameter("y", IrBoolType.Instance));
+        var entry = new IrBasicBlock("entry");
+        var thenBlock = new IrBasicBlock("then");
+        var elseBlock = new IrBasicBlock("else");
+
+        entry.Instructions.Add(new IrLabel("entry"));
+        entry.Instructions.Add(new IrConditionalBranch(new IrVariable("y", IrBoolType.Instance), "then", "else"));
+
+        thenBlock.Instructions.Add(new IrLabel("then"));
+        thenBlock.Instructions.Add(new IrReturn(new IrConstant(1, IrIntType.I32)));
+
+        elseBlock.Instructions.Add(new IrLabel("else"));
+        elseBlock.Instructions.Add(new IrReturn(new IrConstant(0, IrIntType.I32)));
+
+        function.BasicBlocks.Add(entry);
+        function.BasicBlocks.Add(thenBlock);
+        function.BasicBlocks.Add(elseBlock);
+
+        var propagation = new ConstantPropagation(function);
+        propagation.Propagate();
+
+        // Conditional branch should remain (parameter is not constant)
+        var branch = entry.Instructions[1] as IrConditionalBranch;
+        Assert.NotNull(branch);
     }
 
     [Fact]

@@ -294,7 +294,8 @@ public class IrOptimizationPipelineTests
         var pipeline = new IrOptimizationPipeline(function, OptimizationLevel.O1);
         var stats = pipeline.Run();
 
-        // Should eliminate dead code
-        Assert.True(stats.DeadCodeEliminations > 0);
+        // Should eliminate dead code - either DSE or DCE will remove the unused y
+        Assert.True(stats.DeadCodeEliminations > 0 || stats.DeadStoreEliminations > 0,
+            "Expected either DeadCodeEliminations or DeadStoreEliminations to remove unused variable");
     }
 }
