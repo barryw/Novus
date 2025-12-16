@@ -976,8 +976,11 @@ class Program
                 // These can cause linker to pick up old object files with different static data
                 CleanupStaleBuildDirectories();
 
-                // Output is in current directory - use /tmp/novus-build-{pid} for intermediate files
-                outputDir = Path.Combine(Path.GetTempPath(), $"novus-build-{Environment.ProcessId}");
+                // Output is in current directory - use /tmp/novus-build-{pid}-{guid} for intermediate files
+                // Include GUID to prevent race conditions when multiple compilations run in parallel
+                // within the same process (e.g., parallel test execution)
+                var uniqueId = Guid.NewGuid().ToString("N")[..8];
+                outputDir = Path.Combine(Path.GetTempPath(), $"novus-build-{Environment.ProcessId}-{uniqueId}");
                 Directory.CreateDirectory(outputDir);
             }
             else
@@ -2166,7 +2169,6 @@ ___stack:
         {
             var tempPath = Path.GetTempPath();
             var currentPid = Environment.ProcessId;
-            var currentBuildDir = $"novus-build-{currentPid}";
 
             // Find all novus-build-* directories
             var buildDirs = Directory.GetDirectories(tempPath, "novus-build-*");
@@ -2176,37 +2178,43 @@ ___stack:
             {
                 var dirName = Path.GetFileName(dir);
 
-                // Don't delete our own build directory
-                if (dirName == currentBuildDir)
-                    continue;
-
-                // Extract PID from directory name
-                if (dirName.StartsWith("novus-build-") &&
-                    int.TryParse(dirName.Substring("novus-build-".Length), out var pid))
+                // Extract PID from directory name (format: novus-build-{pid} or novus-build-{pid}-{guid})
+                if (dirName.StartsWith("novus-build-"))
                 {
-                    // Check if the process is still running
-                    bool processRunning = false;
-                    try
-                    {
-                        var process = System.Diagnostics.Process.GetProcessById(pid);
-                        processRunning = !process.HasExited;
-                    }
-                    catch
-                    {
-                        // Process doesn't exist - safe to delete
-                        processRunning = false;
-                    }
+                    var remainder = dirName.Substring("novus-build-".Length);
+                    // Handle both old format (pid only) and new format (pid-guid)
+                    var pidPart = remainder.Contains('-') ? remainder.Split('-')[0] : remainder;
 
-                    if (!processRunning)
+                    if (int.TryParse(pidPart, out var pid))
                     {
+                        // Don't delete directories from our own process
+                        if (pid == currentPid)
+                            continue;
+
+                        // Check if the process is still running
+                        bool processRunning = false;
                         try
                         {
-                            Directory.Delete(dir, recursive: true);
-                            deletedCount++;
+                            var process = System.Diagnostics.Process.GetProcessById(pid);
+                            processRunning = !process.HasExited;
                         }
                         catch
                         {
-                            // Best effort - might be locked by another process
+                            // Process doesn't exist - safe to delete
+                            processRunning = false;
+                        }
+
+                        if (!processRunning)
+                        {
+                            try
+                            {
+                                Directory.Delete(dir, recursive: true);
+                                deletedCount++;
+                            }
+                            catch
+                            {
+                                // Best effort - might be locked by another process
+                            }
                         }
                     }
                 }

@@ -1,0 +1,48 @@
+// Regression test for tuple destructuring with Drop types
+// This test verifies that when a tuple containing Drop-able types is destructured,
+// only the destructured variables are dropped, not the original tuple fields.
+// Previously this caused a double-free bug (guru 80000004 on Amiga).
+
+extern fn write(format: *u8, ...args) -> i32
+
+// A simple struct with Drop to verify cleanup happens exactly once
+pub struct TestResource {
+    name: *u8,
+    id: u32
+}
+
+impl Drop for TestResource {
+    fn drop(&var self) {
+        // In a real scenario this would free resources
+        // For the test, we just verify this is called
+        write("  Dropping resource: %lu\n", self.id)
+    }
+}
+
+// Create a tuple containing resources
+fn create_pair() -> (TestResource, TestResource) {
+    let a = TestResource { name: "first" as *u8, id: 1u32 }
+    let b = TestResource { name: "second" as *u8, id: 2u32 }
+    return (a, b)
+}
+
+fn main() -> i32 {
+    write("=== Tuple Destructure Drop Test ===\n\n")
+    
+    write("Creating pair...\n")
+    let pair = create_pair()
+    
+    write("Destructuring pair...\n")
+    // This used to cause double-drop: both (_first, _second) AND (pair.__0, pair.__1) 
+    // would get Drop calls, causing a double-free crash
+    let (_first, _second) = pair
+    
+    write("After destructure - resources should drop once each at scope exit\n")
+    
+    // _first and _second go out of scope here
+    // Each should be dropped exactly ONCE
+    // If we see "Dropping resource: X" twice for the same ID, the bug is back
+    
+    write("\n=== Test Complete ===\n")
+    return 0
+}

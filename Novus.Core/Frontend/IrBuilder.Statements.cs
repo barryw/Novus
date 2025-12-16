@@ -335,6 +335,75 @@ public partial class IrBuilder
             }
         }
 
+        // CRITICAL FIX: If the tuple value is a variable (not a temporary expression result),
+        // we need to deactivate its Drop defer block because ownership has been transferred
+        // to the destructured element variables. Without this, both the original tuple
+        // and the destructured variables would be dropped, causing a double-free.
+        if (value is IrVariable sourceVar)
+        {
+            // Find and remove the defer block for the source variable
+            // The defer block label starts with "autoclean_{varName}_"
+            if (_scopeDeferStack.Count > 0)
+            {
+                var currentScopeDefers = _scopeDeferStack.Peek();
+                var deferToRemove = currentScopeDefers.FirstOrDefault(
+                    d => d.Label.StartsWith($"autoclean_{sourceVar.Name}_"));
+                if (deferToRemove != null)
+                {
+                    currentScopeDefers.Remove(deferToRemove);
+                    // Also remove from function-level defers to prevent it being emitted elsewhere
+                    _currentFunction!.DeferredBlocks.Remove(deferToRemove);
+                    // Mark as emitted to prevent any other code path from emitting it
+                    _emittedDeferBlocks.Add(deferToRemove);
+                }
+            }
+
+            // Also check function-level defers if not in a scope or not found in current scope
+            if (_currentFunction != null)
+            {
+                var functionLevelDefer = _currentFunction.DeferredBlocks.FirstOrDefault(
+                    d => d.Label.StartsWith($"autoclean_{sourceVar.Name}_"));
+                if (functionLevelDefer != null)
+                {
+                    _currentFunction.DeferredBlocks.Remove(functionLevelDefer);
+                    _emittedDeferBlocks.Add(functionLevelDefer);
+
+                    // CRITICAL: Also remove the IrDefer instruction from ALL blocks
+                    // (including the current block that's still being built)
+                    // This instruction tells the C code generator to activate the defer flag
+                    // We need to remove it so the defer doesn't get activated in the generated code
+
+                    // First check all completed basic blocks
+                    foreach (var block in _currentFunction.BasicBlocks)
+                    {
+                        var deferInstructionsToRemove = block.Instructions
+                            .OfType<IrDefer>()
+                            .Where(defer => defer.DeferredBlock == functionLevelDefer)
+                            .ToList();
+
+                        foreach (var deferInst in deferInstructionsToRemove)
+                        {
+                            block.Instructions.Remove(deferInst);
+                        }
+                    }
+
+                    // Also check the current block being built (if different from BasicBlocks)
+                    if (_currentBlock != null && !_currentFunction.BasicBlocks.Contains(_currentBlock))
+                    {
+                        var currentBlockDefers = _currentBlock.Instructions
+                            .OfType<IrDefer>()
+                            .Where(defer => defer.DeferredBlock == functionLevelDefer)
+                            .ToList();
+
+                        foreach (var deferInst in currentBlockDefers)
+                        {
+                            _currentBlock.Instructions.Remove(deferInst);
+                        }
+                    }
+                }
+            }
+        }
+
         return null;
     }
 
