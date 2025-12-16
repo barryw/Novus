@@ -61,12 +61,23 @@ pub fn main() -> i32 {
         Assert.Equal("Sortable", sortedListStruct.WhereClause.Constraints[0].Bounds[0].TraitName);
     }
 
-    [Fact(Skip = "Generic functions are not added to module.Functions during BuildModule - they're instantiated on demand")]
-    public void WhereClause_FunctionConstraint_ParsesCorrectly()
+    [Fact(Skip = "Generic function constraint checking not yet implemented - constraints on generic functions are parsed but not validated during monomorphization")]
+    public void WhereClause_GenericFunctionConstraint_ViolationProducesError()
     {
+        // TODO: Implement constraint checking for generic functions.
+        // Currently ValidateGenericConstraints is called for struct and enum types
+        // but NOT during generic function monomorphization.
+        //
+        // This test should pass once constraint checking is added to:
+        // - SemanticAnalyzer.MonomorphizeFunction()
+        // - or GenericInstantiatorImpl.InstantiateFunction()
         var source = @"
 pub trait Sortable {
     fn compare() -> i32
+}
+
+pub struct Window {
+    width: u32,
 }
 
 pub fn sortItems<T>(items: *T, count: u32) -> i32 where T: Sortable {
@@ -74,16 +85,52 @@ pub fn sortItems<T>(items: *T, count: u32) -> i32 where T: Sortable {
 }
 
 pub fn main() -> i32 {
-    return 0
+    let w = Window { width: 100 }
+    return sortItems::<Window>(&w, 1u32)
 }";
         var (module, diagnostics) = BuildIrWithDiagnostics(source);
-        Assert.NotNull(module);
 
-        var sortFunc = module.Functions.FirstOrDefault(f => f.Name == "sortItems");
-        Assert.NotNull(sortFunc);
-        Assert.NotNull(sortFunc.WhereClause);
-        Assert.Single(sortFunc.WhereClause.Constraints);
-        Assert.Equal("T", sortFunc.WhereClause.Constraints[0].TypeParameter);
+        // Should have error E0100: Window does not implement Sortable
+        var constraintError = diagnostics.Diagnostics.Where(d => d.IsError).FirstOrDefault(e => e.Code == "E0100");
+        Assert.NotNull(constraintError);
+        Assert.Contains("Window", constraintError.Message);
+        Assert.Contains("Sortable", constraintError.Message);
+    }
+
+    [Fact]
+    public void WhereClause_GenericFunctionConstraint_SatisfiedNoError()
+    {
+        // This test verifies that valid generic function calls compile without errors.
+        // Note: Constraint checking for generic functions is not yet implemented,
+        // so this test passes trivially (no constraint errors are ever produced).
+        var source = @"
+pub trait Sortable {
+    fn compare() -> i32
+}
+
+pub struct Counter {
+    value: u32,
+}
+
+impl Sortable for Counter {
+    fn compare() -> i32 {
+        return 0
+    }
+}
+
+pub fn sortItems<T>(items: *T, count: u32) -> i32 where T: Sortable {
+    return 0
+}
+
+pub fn main() -> i32 {
+    let c = Counter { value: 42 }
+    return sortItems::<Counter>(&c, 1u32)
+}";
+        var (module, diagnostics) = BuildIrWithDiagnostics(source);
+
+        // Should NOT have constraint violation error
+        var constraintError = diagnostics.Diagnostics.Where(d => d.IsError).FirstOrDefault(e => e.Code == "E0100");
+        Assert.Null(constraintError);
     }
 
     [Fact]
