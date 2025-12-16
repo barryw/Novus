@@ -17,7 +17,9 @@ public partial class IrBuilder
         var templateKey = $"{typeName}::{methodName}";
         // Capture current constants dictionary (make a copy so imports don't affect templates)
         var templateConstants = GetConstantsAsTuples();
-        var template = new Generics.GenericTemplate(genericParams, funcDecl, templateConstants);
+        // Parse where clause for constraint checking during monomorphization
+        var whereClause = AstParsingHelpers.ParseWhereClause(funcDecl.whereClause());
+        var template = new Generics.GenericTemplate(genericParams, funcDecl, templateConstants, whereClause);
         _genericInstantiator.RegisterMethodTemplate(templateKey, template);
     }
 

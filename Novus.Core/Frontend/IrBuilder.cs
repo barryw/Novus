@@ -911,7 +911,9 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
             if (genericParams.Count > 0)
             {
                 var templateConstants = GetConstantsAsTuples();
-                var template = new Generics.GenericTemplate(genericParams, funcContext, templateConstants);
+                // Parse where clause for constraint checking during monomorphization
+                var whereClause = AstParsingHelpers.ParseWhereClause(funcContext.whereClause());
+                var template = new Generics.GenericTemplate(genericParams, funcContext, templateConstants, whereClause);
                 _genericInstantiator.RegisterFunctionTemplate(name, template);
                 continue; // Don't add to _module.Functions yet
             }

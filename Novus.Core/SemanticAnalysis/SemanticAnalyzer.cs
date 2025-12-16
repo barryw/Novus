@@ -1432,6 +1432,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
         // Handle generic parameters if present (e.g., fn identity<T>(x: T) -> T)
         var genericParams = AstParsingHelpers.ParseGenericParameters(context.genericParams(), _genericParams);
+        // Parse where clause for constraint checking during monomorphization
+        var whereClause = AstParsingHelpers.ParseWhereClause(context.whereClause());
 
         // Set flag to skip type validation for extern functions (FFI types may not be imported)
         if (isExtern)
@@ -1483,7 +1485,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             _parsingExternFunction = false;
         }
 
-        _functions[name] = new FunctionSymbol(name, returnType, parameters, location, isExtern, genericParams.Count > 0 ? genericParams : null, attributes, hasVariadic);
+        _functions[name] = new FunctionSymbol(name, returnType, parameters, location, isExtern, genericParams.Count > 0 ? genericParams : null, attributes, hasVariadic, whereClause);
 
         // Clear generic params from scope after function registration
         foreach (var paramName in genericParams)
@@ -6748,9 +6750,17 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     /// </summary>
     /// <param name="genericFunc">The generic function template to specialize</param>
     /// <param name="substitutions">Mapping from type parameter names to concrete types</param>
-    /// <returns>A fully concrete (non-generic) function symbol</returns>
-    private FunctionSymbol MonomorphizeFunction(FunctionSymbol genericFunc, Dictionary<string, IrType> substitutions)
+    /// <returns>A fully concrete (non-generic) function symbol, or null if constraint validation failed</returns>
+    private FunctionSymbol? MonomorphizeFunction(FunctionSymbol genericFunc, Dictionary<string, IrType> substitutions)
     {
+        // Validate generic constraints before monomorphization
+        if (!ValidateGenericConstraints(genericFunc.WhereClause, genericFunc.GenericParameters!,
+            substitutions.Values.ToList(), genericFunc.Location))
+        {
+            // Error already reported by ValidateGenericConstraints
+            return null;
+        }
+
         // Create cache key: FunctionName<TypeArg1,TypeArg2,...>
         var typeArgKeys = genericFunc.GenericParameters!.Select(p =>
             substitutions.ContainsKey(p) ? GetTypeCacheKey(substitutions[p]) : p);
@@ -7184,6 +7194,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
                     // Monomorphize and return the substituted return type
                     var monomorphizedFunc = MonomorphizeFunction(funcSymbol, substitutions);
+                    if (monomorphizedFunc == null)
+                    {
+                        return null; // Constraint validation failed, error already reported
+                    }
                     return monomorphizedFunc.ReturnType;
                 }
 
@@ -7692,7 +7706,12 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             }
 
             // Monomorphize the function
-            function = MonomorphizeFunction(function, substitutions);
+            var monomorphized = MonomorphizeFunction(function, substitutions);
+            if (monomorphized == null)
+            {
+                return null; // Constraint validation failed, error already reported
+            }
+            function = monomorphized;
             // Continue with monomorphized function for validation and return type
         }
 
@@ -12238,7 +12257,8 @@ public record FunctionSymbol(
     bool IsExtern = false,
     List<string>? GenericParameters = null,  // Generic type parameters (e.g., ["T"] for Option::FromPointer)
     AttributeCollection? Attributes = null,  // Function attributes (@inline, @test, etc.)
-    bool IsVariadic = false  // true if function accepts variable number of arguments (...)
+    bool IsVariadic = false,  // true if function accepts variable number of arguments (...)
+    IrWhereClause? WhereClause = null  // Generic type constraints (e.g., where T: Sortable)
 );
 public record ParameterSymbol(string Name, IrType Type, SourceLocation Location, bool IsVariadic = false, bool IsConsuming = false);
 public record VariableSymbol(

@@ -61,16 +61,12 @@ pub fn main() -> i32 {
         Assert.Equal("Sortable", sortedListStruct.WhereClause.Constraints[0].Bounds[0].TraitName);
     }
 
-    [Fact(Skip = "Generic function constraint checking not yet implemented - constraints on generic functions are parsed but not validated during monomorphization")]
+    [Fact]
     public void WhereClause_GenericFunctionConstraint_ViolationProducesError()
     {
-        // TODO: Implement constraint checking for generic functions.
-        // Currently ValidateGenericConstraints is called for struct and enum types
-        // but NOT during generic function monomorphization.
-        //
-        // This test should pass once constraint checking is added to:
-        // - SemanticAnalyzer.MonomorphizeFunction()
-        // - or GenericInstantiatorImpl.InstantiateFunction()
+        // Test that constraint checking works for generic functions.
+        // ValidateGenericConstraints is now called during generic function
+        // monomorphization in GenericInstantiatorImpl.InstantiateFunction()
         var source = @"
 pub trait Sortable {
     fn compare() -> i32
@@ -101,8 +97,7 @@ pub fn main() -> i32 {
     public void WhereClause_GenericFunctionConstraint_SatisfiedNoError()
     {
         // This test verifies that valid generic function calls compile without errors.
-        // Note: Constraint checking for generic functions is not yet implemented,
-        // so this test passes trivially (no constraint errors are ever produced).
+        // Constraint checking validates that the type implements the required trait.
         var source = @"
 pub trait Sortable {
     fn compare() -> i32

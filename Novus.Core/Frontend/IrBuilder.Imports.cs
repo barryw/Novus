@@ -1758,7 +1758,9 @@ public partial class IrBuilder
             {
                 // This is a generic function - register as template for later instantiation
                 var templateConstants = GetConstantsAsTuples();
-                var template = new Generics.GenericTemplate(genericParams, funcDecl, templateConstants);
+                // Parse where clause for constraint checking during monomorphization
+                var whereClause = AstParsingHelpers.ParseWhereClause(funcDecl.whereClause());
+                var template = new Generics.GenericTemplate(genericParams, funcDecl, templateConstants, whereClause);
                 _genericInstantiator.RegisterFunctionTemplate(funcName, template);
 
                 // Clear generic params from symbol table

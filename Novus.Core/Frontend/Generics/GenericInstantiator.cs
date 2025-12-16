@@ -10,7 +10,8 @@ namespace Novus.Frontend.Generics;
 public record GenericTemplate(
     List<string> GenericParams,
     NovusParser.FunctionDeclarationContext Context,
-    Dictionary<string, (IrType Type, object Value)> Constants
+    Dictionary<string, (IrType Type, object Value)> Constants,
+    IrWhereClause? WhereClause = null  // Generic type constraints (e.g., where T: Sortable)
 );
 
 /// <summary>

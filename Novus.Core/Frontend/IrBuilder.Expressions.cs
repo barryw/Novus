@@ -1465,7 +1465,7 @@ public partial class IrBuilder
             return null;
         }
 
-        var (genericParams, funcDecl, _) = template;
+        var (genericParams, funcDecl, _, _) = template;
 
         // Parse the method's parameter types from the template
         // Note: 'self' parameter is handled specially in the grammar and may not be in parameterList

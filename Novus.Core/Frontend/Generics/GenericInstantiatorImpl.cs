@@ -44,7 +44,7 @@ public class GenericInstantiatorImpl : IGenericInstantiator
             return null; // No template found
         }
 
-        var (genericParams, funcDecl, templateConstants) = template;
+        var (genericParams, funcDecl, templateConstants, _) = template;
 
         // Restore constants from template
         _context.RestoreConstantsFromTuples(templateConstants);
@@ -236,7 +236,7 @@ public class GenericInstantiatorImpl : IGenericInstantiator
             return null; // No template found
         }
 
-        var (genericParams, funcDecl, templateConstants) = template;
+        var (genericParams, funcDecl, templateConstants, _) = template;
 
         // Build type substitution map
         var baseEnum = _context.LookupEnum(baseTypeName);
@@ -405,7 +405,13 @@ public class GenericInstantiatorImpl : IGenericInstantiator
             return null; // No template found
         }
 
-        var (genericParams, funcDecl, templateConstants) = template;
+        var (genericParams, funcDecl, templateConstants, whereClause) = template;
+
+        // Validate generic constraints before instantiation
+        if (!ValidateGenericConstraints(functionName, whereClause, genericParams, typeSubstitutions, funcDecl))
+        {
+            return null; // Constraint validation failed, error already reported
+        }
 
         // Build instantiation key
         var instantiationKey = InstantiationKeyBuilder.BuildFunctionKey(functionName, typeSubstitutions);
@@ -512,6 +518,90 @@ public class GenericInstantiatorImpl : IGenericInstantiator
         }
     }
 
+    /// <summary>
+    /// Validate that type substitutions satisfy all constraints in the where clause.
+    /// Reports E0100 errors for any constraint violations.
+    /// </summary>
+    /// <param name="functionName">Name of the function being instantiated (for error messages)</param>
+    /// <param name="whereClause">The where clause constraints to validate</param>
+    /// <param name="genericParams">The generic parameter names</param>
+    /// <param name="typeSubstitutions">The concrete types being substituted</param>
+    /// <param name="funcDecl">The function declaration context (for source location)</param>
+    /// <returns>True if all constraints are satisfied, false otherwise</returns>
+    private bool ValidateGenericConstraints(
+        string functionName,
+        IrWhereClause? whereClause,
+        List<string> genericParams,
+        Dictionary<string, IrType> typeSubstitutions,
+        NovusParser.FunctionDeclarationContext funcDecl)
+    {
+        if (whereClause == null || whereClause.Constraints.Count == 0)
+            return true;
+
+        var allSatisfied = true;
+
+        foreach (var constraint in whereClause.Constraints)
+        {
+            // Get the concrete type for this constrained parameter
+            if (!typeSubstitutions.TryGetValue(constraint.TypeParameter, out var concreteType))
+                continue;
+
+            // Check each trait bound
+            foreach (var bound in constraint.Bounds)
+            {
+                if (!TypeImplementsTrait(concreteType, bound.TraitName))
+                {
+                    // Get source location from function declaration
+                    var location = new SourceLocation(
+                        _context.InputFilePath ?? "unknown",
+                        funcDecl.Start.Line,
+                        funcDecl.Start.Column + 1,
+                        funcDecl.Stop.Column - funcDecl.Start.Column + 1,
+                        ""
+                    );
+
+                    _context.ReportError(
+                        "E0100",
+                        $"type '{GetTypeName(concreteType)}' does not implement trait '{bound.TraitName}' " +
+                        $"(required by constraint on '{constraint.TypeParameter}' in function '{functionName}')",
+                        location
+                    );
+                    allSatisfied = false;
+                }
+            }
+        }
+
+        return allSatisfied;
+    }
+
+    /// <summary>
+    /// Check if a type implements a specific trait.
+    /// Uses the module's trait impl registry.
+    /// </summary>
+    private bool TypeImplementsTrait(IrType type, string traitName)
+    {
+        var typeName = GetTypeName(type);
+        return _context.Module.GetTraitImpl(traitName, typeName) != null;
+    }
+
+    /// <summary>
+    /// Get the base type name for trait lookup.
+    /// </summary>
+    private string GetTypeName(IrType type)
+    {
+        return type switch
+        {
+            IrStructType structType => structType.StructName,
+            IrEnumType enumType => enumType.EnumName,
+            IrPointerType ptrType => GetTypeName(ptrType.PointeeType),
+            IrArrayType arrayType => GetTypeName(arrayType.ElementType),
+            IrIntType intType => intType.IsSigned ? $"i{intType.BitWidth}" : $"u{intType.BitWidth}",
+            IrBoolType => "bool",
+            IrTupleType tupleType => $"({string.Join(", ", tupleType.ElementTypes.Select(GetTypeName))})",
+            _ => type.Name
+        };
+    }
+
     public void RegisterMethodTemplate(string templateKey, GenericTemplate template)
     {
         _cache.RegisterMethodTemplate(templateKey, template);
@@ -573,7 +663,7 @@ public class GenericInstantiatorImpl : IGenericInstantiator
             return null; // No template found
         }
 
-        var (genericParams, funcDecl, _) = template;
+        var (genericParams, funcDecl, _, _) = template;
 
         // Save existing generic parameters before registering new ones
         var savedGenericParams = new Dictionary<string, IrGenericType>();
