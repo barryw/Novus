@@ -762,6 +762,26 @@ class Program
                 return 1;
             }
 
+            // Check for test file compiled with 'compile' instead of 'test'
+            // If the file has @test functions but no main(), suggest using 'novus test'
+            if (!mainIR.HasMain)
+            {
+                var testFunctions = mainIR.IrModule.GetTestFunctions();
+                if (testFunctions.Count > 0)
+                {
+                    Console.WriteLine($"\n✗ Error: File has {testFunctions.Count} @test function(s) but no main() function.");
+                    Console.WriteLine();
+                    Console.WriteLine("  This file appears to be a test file. Use 'novus test' instead:");
+                    Console.WriteLine($"    novus test {options.InputFile}");
+                    Console.WriteLine();
+                    Console.WriteLine("  The 'novus test' command will:");
+                    Console.WriteLine("    - Discover all @test functions");
+                    Console.WriteLine("    - Generate a test runner main()");
+                    Console.WriteLine("    - Compile to an executable that runs all tests");
+                    return 1;
+                }
+            }
+
             // Record dependencies from the main module
             foreach (var import in mainIR.ImportedModules)
             {

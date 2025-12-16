@@ -69,6 +69,9 @@ public class ExampleCompilationTests
             // - WBStartup: C code generation forward declaration issues
             .Where(name => !name.StartsWith("workbench_startup", StringComparison.OrdinalIgnoreCase))
             .Where(name => name != "test_amiga_abi")
+            // Exclude test framework examples (these use @test and have no main())
+            // They should be run with 'novus test', not 'novus compile'
+            .Where(name => !name.StartsWith("test_framework", StringComparison.OrdinalIgnoreCase))
             .OrderBy(name => name);
     }
 
