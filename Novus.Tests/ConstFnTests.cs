@@ -332,6 +332,97 @@ pub fn main() -> i32 {
     }
 
     [Fact]
+    public void ConstFnValidation_CallingNonConstFn_Error()
+    {
+        var source = @"
+fn impure(x: i32) -> i32 {
+    return x
+}
+
+const fn calls_impure(x: i32) -> i32 {
+    return impure(x)
+}
+
+pub fn main() -> i32 {
+    return 0
+}";
+        var module = BuildIr(source);
+
+        var func = module.Functions.First(f => f.Name == "calls_impure");
+        var errors = ConstFnEvaluator.ValidateConstFn(func, module);
+
+        Assert.Single(errors);
+        Assert.Contains("cannot call non-const function 'impure'", errors[0]);
+    }
+
+    [Fact]
+    public void ConstFnValidation_CallingConstFn_NoError()
+    {
+        var source = @"
+const fn helper(x: i32) -> i32 {
+    return x * 2
+}
+
+const fn calls_const(x: i32) -> i32 {
+    return helper(x) + 1
+}
+
+pub fn main() -> i32 {
+    return 0
+}";
+        var module = BuildIr(source);
+
+        var func = module.Functions.First(f => f.Name == "calls_const");
+        var errors = ConstFnEvaluator.ValidateConstFn(func, module);
+
+        Assert.Empty(errors);
+    }
+
+    [Fact]
+    public void ConstFnValidation_WithConditional_NoError()
+    {
+        var source = @"
+const fn max(a: i32, b: i32) -> i32 {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+pub fn main() -> i32 {
+    return 0
+}";
+        var module = BuildIr(source);
+
+        var func = module.Functions.First(f => f.Name == "max");
+        var errors = ConstFnEvaluator.ValidateConstFn(func, module);
+
+        Assert.Empty(errors);
+    }
+
+    [Fact]
+    public void ConstFnValidation_Recursive_NoError()
+    {
+        var source = @"
+const fn factorial(n: i32) -> i32 {
+    if n <= 1 {
+        return 1
+    }
+    return n * factorial(n - 1)
+}
+
+pub fn main() -> i32 {
+    return 0
+}";
+        var module = BuildIr(source);
+
+        var func = module.Functions.First(f => f.Name == "factorial");
+        var errors = ConstFnEvaluator.ValidateConstFn(func, module);
+
+        Assert.Empty(errors);
+    }
+
+    [Fact]
     public void SemanticAnalyzer_RegularFn_RegistersFunction()
     {
         // Test two functions to ensure both get registered

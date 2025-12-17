@@ -1259,11 +1259,42 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
             _currentSelfType = null;
         }
 
-        // Pass 6.5: Evaluate deferred constants that contain const fn calls
-        // Now that all function bodies are built, we can evaluate const fn calls
+        // Pass 6.5: Validate const fn purity
+        // Now that all function bodies are built, we can validate that const fn functions are pure
+        ValidateConstFnPurity();
+
+        // Pass 6.6: Evaluate deferred constants that contain const fn calls
+        // Now that all function bodies are built and validated, we can evaluate const fn calls
         EvaluateDeferredConstants();
 
         return _module;
+    }
+
+    /// <summary>
+    /// Validate that all const fn functions are pure (have no side effects).
+    /// Reports errors for any const fn that reads/writes global variables,
+    /// calls non-const functions, or performs other impure operations.
+    /// </summary>
+    private void ValidateConstFnPurity()
+    {
+        foreach (var function in _module.Functions)
+        {
+            if (!function.IsConstFn) continue;
+            if (function.IsExtern) continue; // Extern const fn are trusted
+            if (function.BasicBlocks.Count == 0) continue; // No body to validate
+
+            var errors = SemanticAnalysis.ConstFnEvaluator.ValidateConstFn(function, _module);
+
+            foreach (var error in errors)
+            {
+                var location = function.Location ?? new SourceLocation("", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.ConstFnPurityViolation,
+                    error,
+                    location
+                );
+            }
+        }
     }
 
 

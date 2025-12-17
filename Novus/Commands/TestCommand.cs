@@ -160,10 +160,9 @@ public static class TestCommand
                 return 0;
             }
 
-            // Determine output directory
-            // If targetPath is a file, use its directory; if it's a directory, use targetPath
-            var baseDir = File.Exists(targetPath) ? Path.GetDirectoryName(targetPath)! : targetPath;
-            var outputDir = options.OutputDir ?? Path.Combine(baseDir, "tests");
+            // Output to current directory by default (like a normal tool)
+            // User can specify --output-dir if they want a different location
+            var outputDir = options.OutputDir ?? Directory.GetCurrentDirectory();
             Directory.CreateDirectory(outputDir);
 
             // Generate test runner source (pass all tests - generator handles skipped ones)
@@ -377,9 +376,10 @@ public static class TestCommand
         foreach (var group in testsByFile)
         {
             // Copy source file to output directory for compilation
+            // We need to copy because the test runner is compiled from the output directory
             var sourceFileName = Path.GetFileName(group.Key);
             var destPath = Path.Combine(outputDir, sourceFileName);
-            if (group.Key != destPath)
+            if (!Path.GetFullPath(group.Key).Equals(Path.GetFullPath(destPath), StringComparison.OrdinalIgnoreCase))
             {
                 File.Copy(group.Key, destPath, overwrite: true);
             }

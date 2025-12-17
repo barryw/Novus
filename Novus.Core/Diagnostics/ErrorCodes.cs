@@ -185,4 +185,17 @@ public static class ErrorCodes
     public const string AsmConstantNotFound = "E3802";
     public const string AsmConstantNotInteger = "E3803";
     public const string AsmUnrecognizedUseItem = "E3804";
+
+    // ========================================================================
+    // E39XX: Const Fn Errors
+    // ========================================================================
+    public const string ConstFnPurityViolation = "E3900";
+    public const string ConstFnCannotCallNonConst = "E3901";
+    public const string ConstFnCannotAccessGlobal = "E3902";
+    public const string ConstFnCannotUseDefer = "E3903";
+    public const string ConstFnCannotUsePanic = "E3904";
+    public const string ConstFnCannotUsePointerWrite = "E3905";
+    public const string ConstFnCannotUseHardware = "E3906";
+    public const string ConstFnCannotUseClosure = "E3907";
+    public const string ConstFnCannotUseInlineAsm = "E3908";
 }

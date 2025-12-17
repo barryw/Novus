@@ -536,8 +536,12 @@ public class ConstFnEvaluator
 
     /// <summary>
     /// Validate that a function can be a const fn (has no disallowed operations).
+    /// This performs comprehensive purity checking to ensure the function has no side effects.
     /// </summary>
-    public static List<string> ValidateConstFn(IrFunction function)
+    /// <param name="function">The function to validate</param>
+    /// <param name="module">The module containing all functions (needed for checking callee constness)</param>
+    /// <returns>List of validation errors (empty if function is valid)</returns>
+    public static List<string> ValidateConstFn(IrFunction function, IrModule? module = null)
     {
         var errors = new List<string>();
 
@@ -547,27 +551,228 @@ public class ConstFnEvaluator
             return errors;
         }
 
+        // Track which values come from global variables (for transitive checking)
+        var globalVarReferences = new HashSet<string>();
+
         foreach (var block in function.BasicBlocks)
         {
             foreach (var instruction in block.Instructions)
             {
-                switch (instruction)
-                {
-                    case IrDefer:
-                        errors.Add("defer is not allowed in const fn");
-                        break;
-                    case IrPanic:
-                        errors.Add("panic! is not allowed in const fn");
-                        break;
-                    case IrDereferenceStore:
-                        errors.Add("Pointer writes are not allowed in const fn");
-                        break;
-                    // Note: IrCall validation would require checking if the callee is also const
-                    // This is done at evaluation time, not validation time
-                }
+                // Check instruction for purity violations
+                ValidateInstruction(instruction, function, module, errors, globalVarReferences);
+
+                // Also check any IrValue operands within the instruction
+                ValidateInstructionOperands(instruction, function, errors, globalVarReferences);
             }
         }
 
         return errors;
+    }
+
+    /// <summary>
+    /// Validate a single instruction for const fn purity.
+    /// </summary>
+    private static void ValidateInstruction(
+        IrInstruction instruction,
+        IrFunction function,
+        IrModule? module,
+        List<string> errors,
+        HashSet<string> globalVarReferences)
+    {
+        switch (instruction)
+        {
+            case IrDefer:
+                errors.Add($"const fn '{function.Name}': defer is not allowed in const fn");
+                break;
+
+            case IrPanic:
+                errors.Add($"const fn '{function.Name}': panic! is not allowed in const fn");
+                break;
+
+            case IrDereferenceStore derefStore:
+                errors.Add($"const fn '{function.Name}': pointer writes are not allowed in const fn");
+                break;
+
+            case IrHardwareWrite:
+                errors.Add($"const fn '{function.Name}': hardware register writes are not allowed in const fn");
+                break;
+
+            case IrHardwareRead:
+                errors.Add($"const fn '{function.Name}': hardware register reads are not allowed in const fn");
+                break;
+
+            case IrInlineAsm:
+                errors.Add($"const fn '{function.Name}': inline assembly is not allowed in const fn");
+                break;
+
+            case IrCreateClosure:
+                errors.Add($"const fn '{function.Name}': closures are not allowed in const fn");
+                break;
+
+            case IrInvokeClosure:
+                errors.Add($"const fn '{function.Name}': closure invocation is not allowed in const fn");
+                break;
+
+            case IrIndirectCall:
+                errors.Add($"const fn '{function.Name}': indirect function calls (function pointers) are not allowed in const fn");
+                break;
+
+            case IrCall call:
+                // Check if callee is a const fn
+                if (module != null)
+                {
+                    var callee = module.GetFunction(call.FunctionName);
+                    if (callee != null && !callee.IsConstFn)
+                    {
+                        errors.Add($"const fn '{function.Name}': cannot call non-const function '{call.FunctionName}'");
+                    }
+                }
+                break;
+
+            // IrStore stores to local variables by name - globals are handled via IrDereferenceStore
+            // The Value operand is already checked in ValidateInstructionOperands
+
+            case IrMemberStore memberStore:
+                // Check if the struct being modified is a global
+                if (IsGlobalVariableAccess(memberStore.Struct, globalVarReferences))
+                {
+                    errors.Add($"const fn '{function.Name}': cannot modify field '{memberStore.FieldName}' of global variable");
+                }
+                break;
+
+            case IrIndexStore indexStore:
+                // Check if the array being modified is a global
+                if (IsGlobalVariableAccess(indexStore.Array, globalVarReferences))
+                {
+                    errors.Add($"const fn '{function.Name}': cannot modify element of global array");
+                }
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Validate operands within an instruction for global variable reads.
+    /// </summary>
+    private static void ValidateInstructionOperands(
+        IrInstruction instruction,
+        IrFunction function,
+        List<string> errors,
+        HashSet<string> globalVarReferences)
+    {
+        // Extract all IrValue operands from the instruction
+        var operands = GetInstructionOperands(instruction);
+
+        foreach (var operand in operands)
+        {
+            ValidateValue(operand, function, errors, globalVarReferences);
+        }
+    }
+
+    /// <summary>
+    /// Validate a value for const fn purity (checks for global variable reads).
+    /// </summary>
+    private static void ValidateValue(
+        IrValue? value,
+        IrFunction function,
+        List<string> errors,
+        HashSet<string> globalVarReferences)
+    {
+        if (value == null) return;
+
+        switch (value)
+        {
+            case IrGlobalVariable globalVar:
+                errors.Add($"const fn '{function.Name}': cannot read global variable '{globalVar.Name}'");
+                globalVarReferences.Add(globalVar.Name);
+                break;
+
+            case IrCopperListData:
+                errors.Add($"const fn '{function.Name}': copper list data is not allowed in const fn");
+                break;
+
+            case IrBlitterOpData:
+                errors.Add($"const fn '{function.Name}': blitter operations are not allowed in const fn");
+                break;
+
+            case IrFunctionAddress funcAddr:
+                // Function addresses are okay for const fn - they're compile-time constants
+                // But we should verify the referenced function exists
+                break;
+
+            case IrCastValue castValue:
+                ValidateValue(castValue.Value, function, errors, globalVarReferences);
+                break;
+
+            case IrBorrowValue borrowValue:
+                ValidateValue(borrowValue.BorrowedValue, function, errors, globalVarReferences);
+                break;
+
+            case IrDereferenceValue derefValue:
+                ValidateValue(derefValue.PointerValue, function, errors, globalVarReferences);
+                break;
+
+            case IrStructLiteral structLit:
+                foreach (var fieldValue in structLit.FieldValues.Values)
+                {
+                    ValidateValue(fieldValue, function, errors, globalVarReferences);
+                }
+                break;
+
+            case IrTupleLiteral tupleLit:
+                foreach (var elem in tupleLit.Elements)
+                {
+                    ValidateValue(elem, function, errors, globalVarReferences);
+                }
+                break;
+
+            case IrArrayLiteral arrayLit:
+                foreach (var elem in arrayLit.Elements)
+                {
+                    ValidateValue(elem, function, errors, globalVarReferences);
+                }
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Check if a value represents access to a global variable (directly or indirectly).
+    /// </summary>
+    private static bool IsGlobalVariableAccess(IrValue? value, HashSet<string> globalVarReferences)
+    {
+        if (value == null) return false;
+
+        return value switch
+        {
+            IrGlobalVariable => true,
+            IrVariable varRef => globalVarReferences.Contains(varRef.Name),
+            IrCastValue castValue => IsGlobalVariableAccess(castValue.Value, globalVarReferences),
+            IrBorrowValue borrowValue => IsGlobalVariableAccess(borrowValue.BorrowedValue, globalVarReferences),
+            IrDereferenceValue derefValue => IsGlobalVariableAccess(derefValue.PointerValue, globalVarReferences),
+            _ => false
+        };
+    }
+
+    /// <summary>
+    /// Extract all IrValue operands from an instruction.
+    /// </summary>
+    private static IEnumerable<IrValue?> GetInstructionOperands(IrInstruction instruction)
+    {
+        return instruction switch
+        {
+            IrReturn ret => new IrValue?[] { ret.Value },
+            IrBinaryOp binOp => new IrValue?[] { binOp.Left, binOp.Right },
+            IrCall call => call.Arguments.Cast<IrValue?>(),
+            IrStore store => new IrValue?[] { store.Value },
+            IrLocalDecl localDecl => new IrValue?[] { localDecl.InitialValue },
+            IrConditionalBranch condBranch => new IrValue?[] { condBranch.Condition },
+            IrDereferenceStore derefStore => new IrValue?[] { derefStore.Pointer, derefStore.Value },
+            IrMemberAccess memberAccess => new IrValue?[] { memberAccess.Struct },
+            IrMemberStore memberStore => new IrValue?[] { memberStore.Struct, memberStore.Value },
+            IrIndexAccess indexAccess => new IrValue?[] { indexAccess.Array, indexAccess.Index },
+            IrIndexStore indexStore => new IrValue?[] { indexStore.Array, indexStore.Index, indexStore.Value },
+            IrAssert assertInst => new IrValue?[] { assertInst.Condition },
+            IrIndirectCall indirectCall => indirectCall.Arguments.Cast<IrValue?>().Prepend(indirectCall.FunctionPointer),
+            _ => Array.Empty<IrValue?>()
+        };
     }
 }
