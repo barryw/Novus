@@ -1,11 +1,16 @@
 // Test: const fn (compile-time evaluated functions)
-// This demonstrates the const fn feature for Novus.
+// Run with: novus test test_const_fn.novus
 //
+// This demonstrates the const fn feature for Novus.
 // A const fn is a function that can be evaluated at compile-time when
 // called with constant arguments. This enables compile-time computation
 // for constants, array sizes, and other places that require constant values.
 
-from std::io::file import println
+from std::test::test import expect_eq_i32, expect_true
+
+// ============================================================================
+// Const Function Definitions
+// ============================================================================
 
 // Simple const fn - pure arithmetic
 // Note: "double" is a reserved C keyword, so we use "times_two" instead
@@ -77,7 +82,10 @@ const fn pow(base: i32, exp: i32) -> i32 {
     return base * pow(base, exp - 1)
 }
 
-// Use const fn results in constant expressions
+// ============================================================================
+// Compile-time evaluated constants using const fn
+// ============================================================================
+
 const WIDTH: i32 = 320
 const HEIGHT: i32 = 200
 const DOUBLED_WIDTH: i32 = times_two(WIDTH)    // = 640, evaluated at compile time
@@ -85,75 +93,101 @@ const BUFFER_SIZE: i32 = add(WIDTH, HEIGHT)    // = 520, evaluated at compile ti
 const FIB_8: i32 = fib(8)                      // = 21, compile-time recursive evaluation
 const CLAMPED_VALUE: i32 = clamp(999, 0, 100)  // = 100, uses nested const fn calls
 
-pub fn main() -> i32 {
-    println("Testing const fn:")
+// ============================================================================
+// Test Cases
+// ============================================================================
 
-    // Test times_two
-    let d = times_two(21)
-    println("times_two(21) = 42")
+@test("times_two multiplies by 2")
+pub fn test_times_two() {
+    expect_eq_i32(times_two(21), 42, "times_two(21)")
+    expect_eq_i32(times_two(0), 0, "times_two(0)")
+    expect_eq_i32(times_two(-5), -10, "times_two(-5)")
+}
 
-    // Test add
-    let sum = add(10, 20)
-    println("add(10, 20) = 30")
+@test("add sums two numbers")
+pub fn test_add() {
+    expect_eq_i32(add(10, 20), 30, "add(10, 20)")
+    expect_eq_i32(add(-5, 5), 0, "add(-5, 5)")
+    expect_eq_i32(add(0, 0), 0, "add(0, 0)")
+}
 
-    // Test complex_calc
-    let c = complex_calc(10)  // 10 * 5 = 50
-    println("complex_calc(10) = 50")
+@test("complex_calc computes x * 5 using local variables")
+pub fn test_complex_calc() {
+    expect_eq_i32(complex_calc(10), 50, "complex_calc(10)")
+    expect_eq_i32(complex_calc(1), 5, "complex_calc(1)")
+    expect_eq_i32(complex_calc(0), 0, "complex_calc(0)")
+}
 
-    // Test max/min
-    let mx = max(15, 7)
-    let mn = min(15, 7)
-    println("max(15, 7) = 15")
-    println("min(15, 7) = 7")
+@test("max returns the larger value")
+pub fn test_max() {
+    expect_eq_i32(max(15, 7), 15, "max(15, 7)")
+    expect_eq_i32(max(7, 15), 15, "max(7, 15)")
+    expect_eq_i32(max(5, 5), 5, "max(5, 5)")
+    expect_eq_i32(max(-10, -5), -5, "max(-10, -5)")
+}
 
-    // Test times_four (calls times_two twice)
-    let q = times_four(5)  // times_two(times_two(5)) = times_two(10) = 20
-    println("times_four(5) = 20")
+@test("min returns the smaller value")
+pub fn test_min() {
+    expect_eq_i32(min(15, 7), 7, "min(15, 7)")
+    expect_eq_i32(min(7, 15), 7, "min(7, 15)")
+    expect_eq_i32(min(5, 5), 5, "min(5, 5)")
+    expect_eq_i32(min(-10, -5), -10, "min(-10, -5)")
+}
 
-    // Test clamp
-    let clamped = clamp(150, 0, 100)  // clamps 150 to range [0, 100] = 100
-    println("clamp(150, 0, 100) = 100")
+@test("times_four calls times_two twice")
+pub fn test_times_four() {
+    expect_eq_i32(times_four(5), 20, "times_four(5)")
+    expect_eq_i32(times_four(1), 4, "times_four(1)")
+    expect_eq_i32(times_four(0), 0, "times_four(0)")
+}
 
-    // Test fibonacci
-    let f10 = fib(10)  // fib(10) = 55
-    println("fib(10) = 55")
+@test("clamp restricts value to range [low, high]")
+pub fn test_clamp() {
+    expect_eq_i32(clamp(150, 0, 100), 100, "clamp above high")
+    expect_eq_i32(clamp(-50, 0, 100), 0, "clamp below low")
+    expect_eq_i32(clamp(50, 0, 100), 50, "clamp in range")
+    expect_eq_i32(clamp(0, 0, 100), 0, "clamp at low")
+    expect_eq_i32(clamp(100, 0, 100), 100, "clamp at high")
+}
 
-    // Test abs
-    let a = abs(-42)
-    println("abs(-42) = 42")
+@test("fib computes Fibonacci numbers recursively")
+pub fn test_fib() {
+    expect_eq_i32(fib(0), 0, "fib(0)")
+    expect_eq_i32(fib(1), 1, "fib(1)")
+    expect_eq_i32(fib(2), 1, "fib(2)")
+    expect_eq_i32(fib(5), 5, "fib(5)")
+    expect_eq_i32(fib(10), 55, "fib(10)")
+}
 
-    // Test pow
-    let p = pow(2, 8)  // 2^8 = 256
-    println("pow(2, 8) = 256")
+@test("abs returns absolute value")
+pub fn test_abs() {
+    expect_eq_i32(abs(-42), 42, "abs(-42)")
+    expect_eq_i32(abs(42), 42, "abs(42)")
+    expect_eq_i32(abs(0), 0, "abs(0)")
+}
 
-    // Using compile-time evaluated constants
-    println("")
-    println("Compile-time evaluated constants:")
-    println("WIDTH = 320")
-    println("HEIGHT = 200")
-    println("DOUBLED_WIDTH = 640")
-    println("BUFFER_SIZE = 520")
-    println("FIB_8 = 21")
-    println("CLAMPED_VALUE = 100")
+@test("pow computes base^exp")
+pub fn test_pow() {
+    expect_eq_i32(pow(2, 0), 1, "pow(2, 0)")
+    expect_eq_i32(pow(2, 1), 2, "pow(2, 1)")
+    expect_eq_i32(pow(2, 8), 256, "pow(2, 8)")
+    expect_eq_i32(pow(3, 3), 27, "pow(3, 3)")
+    expect_eq_i32(pow(10, 2), 100, "pow(10, 2)")
+}
 
-    // Verify the constants have correct values
-    if DOUBLED_WIDTH != 640 {
-        println("ERROR: DOUBLED_WIDTH should be 640")
-        return 1
-    }
-    if BUFFER_SIZE != 520 {
-        println("ERROR: BUFFER_SIZE should be 520")
-        return 1
-    }
-    if FIB_8 != 21 {
-        println("ERROR: FIB_8 should be 21")
-        return 1
-    }
-    if CLAMPED_VALUE != 100 {
-        println("ERROR: CLAMPED_VALUE should be 100")
-        return 1
-    }
+@test("compile-time constants are evaluated correctly")
+pub fn test_compile_time_constants() {
+    expect_eq_i32(WIDTH, 320, "WIDTH")
+    expect_eq_i32(HEIGHT, 200, "HEIGHT")
+    expect_eq_i32(DOUBLED_WIDTH, 640, "DOUBLED_WIDTH = times_two(320)")
+    expect_eq_i32(BUFFER_SIZE, 520, "BUFFER_SIZE = add(320, 200)")
+    expect_eq_i32(FIB_8, 21, "FIB_8 = fib(8)")
+    expect_eq_i32(CLAMPED_VALUE, 100, "CLAMPED_VALUE = clamp(999, 0, 100)")
+}
 
-    println("All const fn evaluations correct!")
-    return 0
+@test("const fn with comparison operators")
+pub fn test_comparisons() {
+    expect_true(max(10, 5) > min(10, 5), "max > min")
+    expect_true(abs(-10) == abs(10), "abs symmetry")
+    expect_true(times_two(5) == times_four(5) / 2, "times_two vs times_four")
 }
