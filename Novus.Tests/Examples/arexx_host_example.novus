@@ -1,0 +1,81 @@
+// ARexx Host Example
+// Demonstrates how to create an ARexx port to receive commands from other applications.
+//
+// Run this program, then from another shell or ARexx script:
+//   rx "address NOVUS_DEMO 'HELLO World'"
+//   rx "address NOVUS_DEMO 'QUIT'"
+
+from std::ipc::arexx import ARexxPort, ARexxCommand, ARexxError
+from std::core import Result, Option
+from std::strings::core import Str
+from std::io::file import print, println
+
+fn handle_command(cmd: &ARexxCommand) -> bool {
+    let cmd_str = cmd.command()
+
+    // Check for QUIT command (case-insensitive)
+    if cmd_str.eq_ignore_case("QUIT") {
+        println("Received QUIT command, exiting...")
+        return false  // Stop the main loop
+    }
+
+    // Check for HELLO command (case-insensitive)
+    if cmd_str.starts_with_ignore_case("HELLO") {
+        print("Hello command received: ")
+        println(cmd_str.ptr)
+        return true
+    }
+
+    // Unknown command
+    print("Unknown command: ")
+    println(cmd_str.ptr)
+    return true  // Continue running
+}
+
+fn main() -> i32 {
+    println("ARexx Host Example")
+    println("Creating ARexx port 'NOVUS_DEMO'...")
+
+    // Create an ARexx port
+    var port_result = ARexxPort::create("NOVUS_DEMO")
+    match port_result {
+        Result::Ok(port) => {
+            var p = port
+            println("Port created successfully!")
+            println("Send commands via: rx \"address NOVUS_DEMO 'COMMAND'\"")
+            println("Send QUIT to exit")
+            println("")
+
+            var running = true
+            while running {
+                // Check for incoming commands (non-blocking)
+                match p.get_command() {
+                    Option::Some(cmd) => {
+                        // Process the command
+                        running = handle_command(&cmd)
+
+                        // Reply with success
+                        p.reply_ok(&cmd)
+                    },
+                    Option::None => {
+                        // No command waiting - could do other work here
+                        // For this example, we'll just wait for a command
+                        let cmd = p.wait_command()
+                        running = handle_command(&cmd)
+                        p.reply_ok(&cmd)
+                    },
+                }
+            }
+
+            println("Shutting down...")
+            // Port is automatically cleaned up via Drop
+        },
+        Result::Err(err) => {
+            print("Failed to create port: ")
+            println(err.message())
+            return 1
+        },
+    }
+
+    return 0
+}

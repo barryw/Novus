@@ -16,6 +16,7 @@
 ; ============================================================================
 	xref	_DOSBase		; Provided by library_bases.s
 	xref	_SysBase		; Provided by library_bases.s
+	xref	___novus_library_not_found	; Error handler in runtime_errors.c
 
 ; ============================================================================
 ; Exports
@@ -69,6 +70,10 @@ ___dos_init:
 	moveq	#0,d0			; Any version
 	jsr	-552(a6)		; Call exec.library OpenLibrary()
 
+	; Check if OpenLibrary failed
+	tst.l	d0
+	beq.s	.library_failed
+
 	; Store result in _DOSBase
 	move.l	d0,_DOSBase
 
@@ -77,6 +82,19 @@ ___dos_init:
 	move.l	_DOSBase,d0
 
 	movem.l	(sp)+,d1/a0-a1/a6	; Restore registers
+	rts
+
+.library_failed:
+	; Call error handler: __novus_library_not_found(name, version)
+	movem.l	(sp)+,d1/a0-a1/a6	; Restore registers first
+
+	clr.l	-(sp)			; Push version = 0 (any version)
+	pea	dos_name		; Push library name pointer
+	jsr	___novus_library_not_found
+	addq.l	#8,sp			; Clean up stack
+
+	; Return 0 (but we likely won't get here as error handler may exit)
+	moveq	#0,d0
 	rts
 
 ; ----------------------------------------------------------------------------

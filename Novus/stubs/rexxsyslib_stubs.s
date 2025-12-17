@@ -2,8 +2,10 @@
 ; Library: rexxsyslib.library
 ; Base: _RexxSysBase
 ; Each function is in its own section for dead code elimination
+; NOTE: Uses lazy initialization via ___rexxsyslib_ensure
 
 	xref	_RexxSysBase
+	xref	___rexxsyslib_ensure	; Lazy init - opens library if needed, returns base in A6
 
 	section	_CreateArgstring_stub,code
 
@@ -12,7 +14,7 @@
 _CreateArgstring:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
-	movea.l	_RexxSysBase,a6
+	jsr	___rexxsyslib_ensure
 	jsr	-126(a6)
 	rts
 
@@ -22,7 +24,7 @@ _CreateArgstring:
 	xdef	_DeleteArgstring
 _DeleteArgstring:
 	movea.l	4(sp),a0
-	movea.l	_RexxSysBase,a6
+	jsr	___rexxsyslib_ensure
 	jsr	-132(a6)
 	rts
 
@@ -32,7 +34,7 @@ _DeleteArgstring:
 	xdef	_LengthArgstring
 _LengthArgstring:
 	movea.l	4(sp),a0
-	movea.l	_RexxSysBase,a6
+	jsr	___rexxsyslib_ensure
 	jsr	-138(a6)
 	rts
 
@@ -44,7 +46,7 @@ _CreateRexxMsg:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	move.l	12(sp),d0
-	movea.l	_RexxSysBase,a6
+	jsr	___rexxsyslib_ensure
 	jsr	-144(a6)
 	rts
 
@@ -54,7 +56,7 @@ _CreateRexxMsg:
 	xdef	_DeleteRexxMsg
 _DeleteRexxMsg:
 	movea.l	4(sp),a0
-	movea.l	_RexxSysBase,a6
+	jsr	___rexxsyslib_ensure
 	jsr	-150(a6)
 	rts
 
@@ -65,7 +67,7 @@ _DeleteRexxMsg:
 _ClearRexxMsg:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
-	movea.l	_RexxSysBase,a6
+	jsr	___rexxsyslib_ensure
 	jsr	-156(a6)
 	rts
 
@@ -77,7 +79,7 @@ _FillRexxMsg:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	move.l	12(sp),d1
-	movea.l	_RexxSysBase,a6
+	jsr	___rexxsyslib_ensure
 	jsr	-162(a6)
 	rts
 
@@ -87,7 +89,7 @@ _FillRexxMsg:
 	xdef	_IsRexxMsg
 _IsRexxMsg:
 	movea.l	4(sp),a0
-	movea.l	_RexxSysBase,a6
+	jsr	___rexxsyslib_ensure
 	jsr	-168(a6)
 	rts
 
@@ -97,7 +99,7 @@ _IsRexxMsg:
 	xdef	_LockRexxBase
 _LockRexxBase:
 	move.l	4(sp),d0
-	movea.l	_RexxSysBase,a6
+	jsr	___rexxsyslib_ensure
 	jsr	-450(a6)
 	rts
 
@@ -107,7 +109,6 @@ _LockRexxBase:
 	xdef	_UnlockRexxBase
 _UnlockRexxBase:
 	move.l	4(sp),d0
-	movea.l	_RexxSysBase,a6
+	jsr	___rexxsyslib_ensure
 	jsr	-456(a6)
 	rts
-

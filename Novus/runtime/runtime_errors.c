@@ -257,6 +257,58 @@ void __novus_div_check(int32_t divisor, const char* file, int32_t line)
 }
 
 // ============================================================================
+// Library-Not-Found Handler
+// ============================================================================
+// Called from assembly stubs when OpenLibrary returns NULL.
+// Displays a helpful error message and exits gracefully.
+
+/**
+ * Library-not-found error handler
+ * Called by assembly stubs when a required library cannot be opened.
+ * Shows a helpful dialog explaining what's missing.
+ *
+ * @param library_name Name of the library that couldn't be loaded
+ * @param version Minimum version that was requested (0 = any version)
+ */
+void __novus_library_not_found(const char* library_name, int32_t version)
+{
+    char version_str[12];
+    char* ptr = error_buffer;
+
+    if (version > 0) {
+        int_to_str(version_str, version);
+    }
+
+    // Build the error message
+    ptr = strcpy_helper(ptr, "Required library not found!\n\n");
+    ptr = strcpy_helper(ptr, "Library: ");
+    ptr = strcpy_helper(ptr, library_name);
+
+    if (version > 0) {
+        ptr = strcpy_helper(ptr, "\nVersion: ");
+        ptr = strcpy_helper(ptr, version_str);
+        ptr = strcpy_helper(ptr, " or higher");
+    }
+
+    ptr = strcpy_helper(ptr, "\n\nPlease install this library in\n");
+    ptr = strcpy_helper(ptr, "LIBS: and try again.");
+
+    display_error_requester(AO_LibraryNotFound);
+
+    // Exit the program with an error code
+    // We can't continue if a required library is missing
+    {
+        struct Library* dosBase;
+        dosBase = OpenLibrary("dos.library", 0L);
+        if (dosBase != NULL) {
+            // Return to DOS with error code 20 (FAIL)
+            CloseLibrary(dosBase);
+        }
+    }
+    // Note: The stub will exit after we return
+}
+
+// ============================================================================
 // Stack Overflow Detection
 // ============================================================================
 

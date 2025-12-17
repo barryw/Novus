@@ -4,13 +4,25 @@ using Xunit;
 namespace Novus.Tests;
 
 /// <summary>
+/// Collection definition that disables parallelization for compilation tests.
+/// Tests in this collection run sequentially to avoid cache corruption.
+/// </summary>
+[CollectionDefinition("SequentialCompilation", DisableParallelization = true)]
+public class SequentialCompilationCollection
+{
+    // This class has no code, it's just used to define the collection
+}
+
+/// <summary>
 /// Tests that ensure generated code assembles and links successfully
 /// These are critical smoke tests to catch codegen regressions
 ///
-/// NOTE: These tests do NOT use --use-stdlib-cache to avoid race conditions
-/// with parallel test execution. Each test does a fresh stdlib build which is
-/// slower but more reliable.
+/// NOTE: These tests MUST NOT run in parallel with other CompilationTests
+/// because they invoke the compiler which writes to shared cache directories.
+/// The DisableParallelization attribute prevents xUnit from running these
+/// tests concurrently within the collection.
 /// </summary>
+[Collection("SequentialCompilation")]
 public class CompilationTests
 {
     [Theory]

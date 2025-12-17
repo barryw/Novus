@@ -16,6 +16,7 @@
 ; ============================================================================
 	xref	_GadToolsBase		; Provided by library_bases.s
 	xref	_SysBase		; Provided by library_bases.s
+	xref	___novus_library_not_found	; Error handler in runtime_errors.c
 
 ; ============================================================================
 ; Exports
@@ -70,6 +71,10 @@ ___gadtools_init:
 	moveq	#0,d0			; Any version
 	jsr	-552(a6)		; Call exec.library OpenLibrary()
 
+	; Check if OpenLibrary failed
+	tst.l	d0
+	beq.s	.library_failed
+
 	; Store result in _GadToolsBase
 	move.l	d0,_GadToolsBase
 
@@ -78,6 +83,19 @@ ___gadtools_init:
 	move.l	_GadToolsBase,d0
 
 	movem.l	(sp)+,d1/a0-a1/a6	; Restore registers
+	rts
+
+.library_failed:
+	; Call error handler: __novus_library_not_found(name, version)
+	movem.l	(sp)+,d1/a0-a1/a6	; Restore registers first
+
+	clr.l	-(sp)			; Push version = 0 (any version)
+	pea	gadtools_name		; Push library name pointer
+	jsr	___novus_library_not_found
+	addq.l	#8,sp			; Clean up stack
+
+	; Return 0 (but we likely won't get here as error handler may exit)
+	moveq	#0,d0
 	rts
 
 ; ----------------------------------------------------------------------------

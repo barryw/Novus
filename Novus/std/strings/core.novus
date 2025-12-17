@@ -270,6 +270,44 @@ impl Str {
         return (i32)self.len - (i32)other.len
     }
 
+    /// Case-insensitive equality check
+    ///
+    /// Compares two strings ignoring ASCII case (a-z == A-Z).
+    /// Only converts ASCII letters; other characters are compared as-is.
+    ///
+    /// # Example
+    /// ```novus
+    /// let a = "Hello"
+    /// let b = "HELLO"
+    /// if a.eq_ignore_case(b) {
+    ///     println("Equal!")  // Will print
+    /// }
+    /// ```
+    pub fn eq_ignore_case(&self, other: Str) -> bool {
+        if self.len != other.len {
+            return false
+        }
+
+        for i in 0u32..self.len {
+            var ca = self.ptr[i]
+            var cb = other.ptr[i]
+
+            // Convert lowercase ASCII to uppercase
+            if ca >= $61 && ca <= $7A {
+                ca = ca - $20
+            }
+            if cb >= $61 && cb <= $7A {
+                cb = cb - $20
+            }
+
+            if ca != cb {
+                return false
+            }
+        }
+
+        return true
+    }
+
     /// Check if string starts with prefix
     pub fn starts_with(&self, prefix: Str) -> bool {
         if prefix.len > self.len {
@@ -298,6 +336,32 @@ impl Str {
                 return false
             }
             i++
+        }
+
+        return true
+    }
+
+    /// Check if string starts with prefix (case-insensitive)
+    pub fn starts_with_ignore_case(&self, prefix: Str) -> bool {
+        if prefix.len > self.len {
+            return false
+        }
+
+        for i in 0u32..prefix.len {
+            var ca = self.ptr[i]
+            var cb = prefix.ptr[i]
+
+            // Convert lowercase ASCII to uppercase
+            if ca >= $61 && ca <= $7A {
+                ca = ca - $20
+            }
+            if cb >= $61 && cb <= $7A {
+                cb = cb - $20
+            }
+
+            if ca != cb {
+                return false
+            }
         }
 
         return true

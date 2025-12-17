@@ -586,6 +586,10 @@ public partial class CCodeGenerator
         sb.AppendLine("#include <graphics/text.h>");
         sb.AppendLine("#include <utility/tagitem.h>");
         sb.AppendLine("#include <dos/dos.h>");
+        // Rexx headers for ARexx support
+        sb.AppendLine("#include <rexx/storage.h>");
+        sb.AppendLine("#include <rexx/rxslib.h>");
+        sb.AppendLine("#include <clib/rexxsyslib_protos.h>");
         sb.AppendLine();
         sb.AppendLine("// AmigaOS clib prototype headers - compiler-neutral function declarations");
         sb.AppendLine("// Note: We use clib protos instead of proto/ headers because NDK3.9 proto");
@@ -685,6 +689,10 @@ public partial class CCodeGenerator
         sb.AppendLine("typedef struct IClass IClass;");
         sb.AppendLine("typedef struct Gadget Gadget;");
         sb.AppendLine("typedef struct Requester Requester;");
+        // Rexx types for ARexx support
+        sb.AppendLine("typedef struct RexxMsg RexxMsg;");
+        sb.AppendLine("typedef struct RexxArg RexxArg;");
+        sb.AppendLine("typedef struct RxsLib RxsLib;");
         sb.AppendLine();
         sb.AppendLine("// Sentinel value for \"unchanged\" pointer parameters (used by Amiga API)");
         sb.AppendLine("// Using explicit 32-bit constant to prevent VBCC from treating as 64-bit value");

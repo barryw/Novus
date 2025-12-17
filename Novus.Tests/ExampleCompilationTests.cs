@@ -17,7 +17,12 @@ namespace Novus.Tests;
 /// 1. Most tests use --emit-asm which skips VBCC entirely
 /// 2. Full compilation tests are a small subset
 /// 3. Fresh compilation ensures no stale cache artifacts
+///
+/// IMPORTANT: This collection runs sequentially (DisableParallelization = true)
+/// because the compiler writes to shared cache directories and parallel
+/// execution causes race conditions and cache corruption.
 /// </summary>
+[Collection("SequentialCompilation")]
 public class ExampleCompilationTests
 {
     // Examples that get full VBCC compilation (representative subset for linking tests)
@@ -72,6 +77,11 @@ public class ExampleCompilationTests
             // Exclude test framework examples (these use @test and have no main())
             // They should be run with 'novus test', not 'novus compile'
             .Where(name => !name.StartsWith("test_framework", StringComparison.OrdinalIgnoreCase))
+            // Exclude additional @test-only files
+            .Where(name => name != "test_file_io")
+            .Where(name => name != "channel_comprehensive_test")
+            .Where(name => name != "extended_assertions_test")
+            .Where(name => name != "str_equals_test")
             .OrderBy(name => name);
     }
 

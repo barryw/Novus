@@ -10,8 +10,9 @@ from std::strings::core import Str
 from std::memory::slice import Slice
 from std::ffi::amiga_structs import TagItem, Screen, RastPort, BitMap, ViewPort
 from std::ffi::intuition import OpenScreenTagList, CloseScreen, ScreenToFront, ScreenToBack, MoveScreen, ShowTitle, OpenWindowTagList
-from std::ffi::amiga_consts import TAG_DONE, SA_*, WA_*, WFLG_*, IDCMP_*, CUSTOMSCREEN, OSCAN_TEXT, HIRES_KEY, LORESLACE_KEY, HIRESLACE_KEY, NTSC_MONITOR_ID
+from std::ffi::amiga_consts import TAG_DONE, SA_*, WA_*, WFLG_*, IDCMP_*, CUSTOMSCREEN, OSCAN_TEXT, HIRES_KEY, LORESLACE_KEY, HIRESLACE_KEY, NTSC_MONITOR_ID, PAL_MONITOR_ID
 from std::ui::window import WindowHandle, open_window
+from std::hardware::chipset import DISPLAY, DisplayType
 
 // ============================================================================
 // ScreenHandle - RAII wrapper for Intuition screens
@@ -225,12 +226,21 @@ impl ScreenHandle {
     /// ```
     @suppress("W0002", "Casting depth to u32 for tag")
     pub fn lores(title: Str, depth: i16) -> Result<ScreenHandle, IntuitionError> {
-        // TODO: Detect PAL/NTSC at runtime
-        // For now, hardcoded to NTSC (200 lines)
+        // Auto-detect PAL/NTSC at runtime
+        let display_type = DISPLAY()
+        let monitor_id = match display_type {
+            DisplayType::PAL => PAL_MONITOR_ID,
+            DisplayType::NTSC => NTSC_MONITOR_ID,
+        }
+        let height: u32 = match display_type {
+            DisplayType::PAL => 256,
+            DisplayType::NTSC => 200,
+        }
+
         let tags = [
-            TagItem { ti_Tag: SA_DisplayID, ti_Data: NTSC_MONITOR_ID },
+            TagItem { ti_Tag: SA_DisplayID, ti_Data: monitor_id },
             TagItem { ti_Tag: SA_Width, ti_Data: 320 },
-            TagItem { ti_Tag: SA_Height, ti_Data: 200 },
+            TagItem { ti_Tag: SA_Height, ti_Data: height },
             TagItem { ti_Tag: SA_Depth, ti_Data: (u32)depth },
             TagItem { ti_Tag: SA_Title, ti_Data: (u32)title.ptr },
             TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
@@ -252,14 +262,22 @@ impl ScreenHandle {
     /// ```
     @suppress("W0002", "Casting depth to u32 for tag")
     pub fn hires(title: Str, depth: i16) -> Result<ScreenHandle, IntuitionError> {
-        // TODO: Detect PAL/NTSC at runtime
-        // For now, hardcoded to NTSC (200 lines)
-        // NTSC hires = NTSC_MONITOR_ID | HIRES_KEY = 0x00011000 | 0x00008000 = 0x00019000
-        let ntsc_hires: u32 = NTSC_MONITOR_ID | HIRES_KEY
+        // Auto-detect PAL/NTSC at runtime
+        let display_type = DISPLAY()
+        let monitor_id = match display_type {
+            DisplayType::PAL => PAL_MONITOR_ID,
+            DisplayType::NTSC => NTSC_MONITOR_ID,
+        }
+        let height: u32 = match display_type {
+            DisplayType::PAL => 256,
+            DisplayType::NTSC => 200,
+        }
+        let display_id: u32 = monitor_id | HIRES_KEY
+
         let tags = [
-            TagItem { ti_Tag: SA_DisplayID, ti_Data: ntsc_hires },
+            TagItem { ti_Tag: SA_DisplayID, ti_Data: display_id },
             TagItem { ti_Tag: SA_Width, ti_Data: 640 },
-            TagItem { ti_Tag: SA_Height, ti_Data: 200 },
+            TagItem { ti_Tag: SA_Height, ti_Data: height },
             TagItem { ti_Tag: SA_Depth, ti_Data: (u32)depth },
             TagItem { ti_Tag: SA_Title, ti_Data: (u32)title.ptr },
             TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
@@ -307,14 +325,22 @@ impl ScreenHandle {
     /// ```
     @suppress("W0002", "Casting depth to u32 for tag")
     pub fn lores_lace(title: Str, depth: i16) -> Result<ScreenHandle, IntuitionError> {
-        // TODO: Detect PAL/NTSC at runtime
-        // For now, hardcoded to NTSC (400 lines interlaced)
-        // NTSC lores lace = NTSC_MONITOR_ID | LORESLACE_KEY
-        let ntsc_lores_lace: u32 = NTSC_MONITOR_ID | LORESLACE_KEY
+        // Auto-detect PAL/NTSC at runtime
+        let display_type = DISPLAY()
+        let monitor_id = match display_type {
+            DisplayType::PAL => PAL_MONITOR_ID,
+            DisplayType::NTSC => NTSC_MONITOR_ID,
+        }
+        let height: u32 = match display_type {
+            DisplayType::PAL => 512,   // PAL interlaced: 256 * 2
+            DisplayType::NTSC => 400,  // NTSC interlaced: 200 * 2
+        }
+        let display_id: u32 = monitor_id | LORESLACE_KEY
+
         let tags = [
-            TagItem { ti_Tag: SA_DisplayID, ti_Data: ntsc_lores_lace },
+            TagItem { ti_Tag: SA_DisplayID, ti_Data: display_id },
             TagItem { ti_Tag: SA_Width, ti_Data: 320 },
-            TagItem { ti_Tag: SA_Height, ti_Data: 400 },
+            TagItem { ti_Tag: SA_Height, ti_Data: height },
             TagItem { ti_Tag: SA_Depth, ti_Data: (u32)depth },
             TagItem { ti_Tag: SA_Title, ti_Data: (u32)title.ptr },
             TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
@@ -336,14 +362,22 @@ impl ScreenHandle {
     /// ```
     @suppress("W0002", "Casting depth to u32 for tag")
     pub fn hires_lace(title: Str, depth: i16) -> Result<ScreenHandle, IntuitionError> {
-        // TODO: Detect PAL/NTSC at runtime
-        // For now, hardcoded to NTSC (400 lines interlaced)
-        // NTSC hires lace = NTSC_MONITOR_ID | HIRESLACE_KEY
-        let ntsc_hires_lace: u32 = NTSC_MONITOR_ID | HIRESLACE_KEY
+        // Auto-detect PAL/NTSC at runtime
+        let display_type = DISPLAY()
+        let monitor_id = match display_type {
+            DisplayType::PAL => PAL_MONITOR_ID,
+            DisplayType::NTSC => NTSC_MONITOR_ID,
+        }
+        let height: u32 = match display_type {
+            DisplayType::PAL => 512,   // PAL interlaced: 256 * 2
+            DisplayType::NTSC => 400,  // NTSC interlaced: 200 * 2
+        }
+        let display_id: u32 = monitor_id | HIRESLACE_KEY
+
         let tags = [
-            TagItem { ti_Tag: SA_DisplayID, ti_Data: ntsc_hires_lace },
+            TagItem { ti_Tag: SA_DisplayID, ti_Data: display_id },
             TagItem { ti_Tag: SA_Width, ti_Data: 640 },
-            TagItem { ti_Tag: SA_Height, ti_Data: 400 },
+            TagItem { ti_Tag: SA_Height, ti_Data: height },
             TagItem { ti_Tag: SA_Depth, ti_Data: (u32)depth },
             TagItem { ti_Tag: SA_Title, ti_Data: (u32)title.ptr },
             TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
@@ -503,9 +537,25 @@ impl ScreenBuilder {
     /// Returns Err if screen fails to open.
     @suppress("W0002", "Casting values to u32 for tags")
     pub fn build(self) -> Result<ScreenHandle, IntuitionError> {
-        // TODO: Detect PAL/NTSC at runtime
-        // For now, default to NTSC if no display_id set
-        let display = if self.display_id != 0 { self.display_id } else { NTSC_MONITOR_ID }
+        // Auto-detect PAL/NTSC at runtime if no display_id explicitly set
+        let display_type = DISPLAY()
+        let default_monitor = match display_type {
+            DisplayType::PAL => PAL_MONITOR_ID,
+            DisplayType::NTSC => NTSC_MONITOR_ID,
+        }
+        let display = if self.display_id != 0 { self.display_id } else { default_monitor }
+
+        // Use builder's height, or auto-detect default based on PAL/NTSC
+        let height: u32 = if self.height != 256 {
+            // User explicitly set height, use it
+            (u32)self.height
+        } else {
+            // Default height - use PAL/NTSC appropriate value
+            match display_type {
+                DisplayType::PAL => 256,
+                DisplayType::NTSC => 200,
+            }
+        }
 
         // Convert booleans to Amiga TRUE/FALSE
         let show_title_val: u32 = if self.show_title { 1 } else { 0 }
@@ -514,7 +564,7 @@ impl ScreenBuilder {
         let tags = [
             TagItem { ti_Tag: SA_DisplayID, ti_Data: display },
             TagItem { ti_Tag: SA_Width, ti_Data: (u32)self.width },
-            TagItem { ti_Tag: SA_Height, ti_Data: 200 },
+            TagItem { ti_Tag: SA_Height, ti_Data: height },
             TagItem { ti_Tag: SA_Depth, ti_Data: (u32)self.depth },
             TagItem { ti_Tag: SA_Title, ti_Data: (u32)self.title_ptr },
             TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },

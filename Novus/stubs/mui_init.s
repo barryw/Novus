@@ -16,6 +16,7 @@
 ; ============================================================================
 	xref	_MUIMasterBase		; Provided by library_bases.s
 	xref	_SysBase		; Provided by library_bases.s
+	xref	___novus_library_not_found	; Error handler in runtime_errors.c
 
 ; ============================================================================
 ; Exports
@@ -70,6 +71,11 @@ ___mui_init:
 	move.l	#muimaster_name,a1	; Library name (absolute addressing)
 	moveq	#MUI_VERSION,d0
 	jsr	-552(a6)		; OpenLibrary
+
+	; Check if OpenLibrary failed
+	tst.l	d0
+	beq.s	.library_failed
+
 	move.l	d0,_MUIMasterBase
 
 .already_open:
@@ -77,6 +83,19 @@ ___mui_init:
 	move.l	_MUIMasterBase,d0
 
 	movem.l	(sp)+,d1/a0-a1/a6
+	rts
+
+.library_failed:
+	; Call error handler: __novus_library_not_found(name, version)
+	movem.l	(sp)+,d1/a0-a1/a6	; Restore registers first
+
+	move.l	#MUI_VERSION,-(sp)	; Push version = 20
+	pea	muimaster_name		; Push library name pointer
+	jsr	___novus_library_not_found
+	addq.l	#8,sp			; Clean up stack
+
+	; Return 0 (but we likely won't get here as error handler may exit)
+	moveq	#0,d0
 	rts
 
 ; ----------------------------------------------------------------------------

@@ -1349,7 +1349,7 @@ class Program
             if (!isLibrary && !isDevice)
             {
                 // Only executables need startup code and library initialization
-                var coreFiles = new[] { "novus_startup", "library_bases", "dos_init", "graphics_init", "diskfont_init", "intuition_init", "gadtools_init", "reaction_init", "mui_init", "debug_gfxbase" };
+                var coreFiles = new[] { "novus_startup", "library_bases", "dos_init", "graphics_init", "diskfont_init", "intuition_init", "gadtools_init", "reaction_init", "mui_init", "rexxsyslib_init", "debug_gfxbase" };
                 foreach (var coreFile in coreFiles)
                 {
                     var coreSource = Path.Combine(compilerDir, "stubs", $"{coreFile}.s");
@@ -1869,6 +1869,21 @@ ___stack:
                 {
                     requiredLibraries.Add("muimaster");
                     Console.WriteLine($"  ✓ Detected MUI library usage in {Path.GetFileName(cFile)}");
+                }
+
+                // Check for ARexx library function calls
+                if (cCode.Contains("CreateRexxMsg(") ||
+                    cCode.Contains("DeleteRexxMsg(") ||
+                    cCode.Contains("CreateArgstring(") ||
+                    cCode.Contains("DeleteArgstring(") ||
+                    cCode.Contains("LengthArgstring(") ||
+                    cCode.Contains("IsRexxMsg(") ||
+                    cCode.Contains("ClearRexxMsg(") ||
+                    cCode.Contains("FillRexxMsg(") ||
+                    cCode.Contains("_RexxSysBase"))
+                {
+                    requiredLibraries.Add("rexxsyslib");
+                    Console.WriteLine($"  ✓ Detected ARexx library usage in {Path.GetFileName(cFile)}");
                 }
             }
 

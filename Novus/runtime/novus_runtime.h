@@ -75,6 +75,7 @@ typedef unsigned long long uint64_t;
 #define AO_NullPointer    (0x0000000A)
 #define AO_StackOverflow  (0x0000000B)
 #define AO_InterruptPanic (0x0000000C)
+#define AO_LibraryNotFound (0x0000000D)
 
 // ============================================================================
 // Interrupt Context Detection
@@ -135,6 +136,10 @@ extern char error_buffer[512];
 char* strcpy_helper(char* dest, const char* src);
 void int_to_str(char* buf, int32_t num);
 void display_error_requester(uint32_t alert_code);
+
+// Library-not-found error handler - displays helpful message and exits
+// Called from assembly stubs when OpenLibrary returns NULL
+void __novus_library_not_found(const char* library_name, int32_t version);
 
 // Test mode support for should_panic tests
 // When test mode is enabled, __novus_panic() sets flags instead of showing dialog

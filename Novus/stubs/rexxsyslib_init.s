@@ -1,12 +1,12 @@
 ; ============================================================================
-; Graphics Library Initialization for Novus
+; RexxSysLib Library Initialization for Novus
 ; ============================================================================
-; Provides automatic graphics.library opening/closing for Novus programs
+; Provides automatic rexxsyslib.library opening/closing for Novus programs
 ;
 ; This module exports initialization functions that are called by the
-; program to set up graphics.library access.
+; program to set up rexxsyslib.library access.
 ;
-; Required by: graphics_stubs.s (all Graphics function stubs need _GfxBase)
+; Required by: rexxsyslib_stubs.s (all ARexx function stubs need _RexxSysBase)
 ; ============================================================================
 
 	section	"CODE",code
@@ -14,24 +14,27 @@
 ; ============================================================================
 ; External References
 ; ============================================================================
-	xref	_GfxBase		; Provided by library_bases.s
 	xref	_SysBase		; Provided by library_bases.s
 	xref	___novus_library_not_found	; Error handler in runtime_errors.c
 
 ; ============================================================================
 ; Exports
 ; ============================================================================
-	xdef	___graphics_init	; Initialize Graphics library
-	xdef	___graphics_cleanup	; Cleanup Graphics library
-	xdef	___graphics_ensure	; Ensure Graphics library is open (for stubs)
+	xdef	_RexxSysBase		; Library base pointer
+	xdef	___rexxsyslib_init	; Initialize RexxSysLib library
+	xdef	___rexxsyslib_cleanup	; Cleanup RexxSysLib library
+	xdef	___rexxsyslib_ensure	; Ensure RexxSysLib library is open (for stubs)
 
 ; ============================================================================
 ; Data Section
 ; ============================================================================
 	section	data,data
 
-graphics_name:
-	dc.b	'graphics.library',0	; Library name string
+_RexxSysBase:
+	dc.l	0			; Library base pointer (initialized to NULL)
+
+rexxsyslib_name:
+	dc.b	'rexxsyslib.library',0	; Library name string
 	even				; Word align
 
 ; ============================================================================
@@ -40,15 +43,15 @@ graphics_name:
 	section	"CODE",code
 
 ; ----------------------------------------------------------------------------
-; ___graphics_init - Initialize Graphics library
+; ___rexxsyslib_init - Initialize RexxSysLib library
 ; ----------------------------------------------------------------------------
-; Opens graphics.library and stores the base pointer in _GfxBase
+; Opens rexxsyslib.library and stores the base pointer in _RexxSysBase
 ;
 ; Input:  None
-; Output: D0 = Graphics library base (0 if failed)
+; Output: D0 = RexxSysLib library base (0 if failed)
 ; Modifies: D0 (all other registers preserved)
 ; ----------------------------------------------------------------------------
-___graphics_init:
+___rexxsyslib_init:
 	movem.l	d1/a0-a1/a6,-(sp)	; Save registers
 
 	; Initialize SysBase if not already done
@@ -56,18 +59,18 @@ ___graphics_init:
 	bne.s	.sysbase_ok
 	move.l	4.w,a6			; Get exec.library base from absolute address 4
 	move.l	a6,_SysBase		; Store it for future use
-	bra.s	.check_graphics
+	bra.s	.check_rexxsyslib
 
 .sysbase_ok:
 	move.l	d0,a6			; Use existing SysBase
 
-.check_graphics:
-	; Check if GfxBase already initialized
-	move.l	_GfxBase,d0
+.check_rexxsyslib:
+	; Check if RexxSysBase already initialized
+	move.l	_RexxSysBase,d0
 	bne.s	.already_open
 
-	; OpenLibrary("graphics.library", 0) - LVO offset -552
-	move.l	#graphics_name,a1	; Library name (absolute addressing)
+	; OpenLibrary("rexxsyslib.library", 0) - LVO offset -552
+	move.l	#rexxsyslib_name,a1	; Library name (absolute addressing)
 	moveq	#0,d0			; Any version
 	jsr	-552(a6)		; Call exec.library OpenLibrary()
 
@@ -75,22 +78,24 @@ ___graphics_init:
 	tst.l	d0
 	beq.s	.library_failed
 
-	; Store result in _GfxBase
-	move.l	d0,_GfxBase
+	; Store result in _RexxSysBase
+	move.l	d0,_RexxSysBase
 
 .already_open:
-	; Return GfxBase in d0
-	move.l	_GfxBase,d0
+	; Return RexxSysBase in d0
+	move.l	_RexxSysBase,d0
 
 	movem.l	(sp)+,d1/a0-a1/a6	; Restore registers
 	rts
 
 .library_failed:
 	; Call error handler: __novus_library_not_found(name, version)
+	; Arguments: library name (const char*), version (int32_t)
+	; Stack: push version first (rightmost arg), then name
 	movem.l	(sp)+,d1/a0-a1/a6	; Restore registers first
 
 	clr.l	-(sp)			; Push version = 0 (any version)
-	pea	graphics_name		; Push library name pointer
+	pea	rexxsyslib_name		; Push library name pointer
 	jsr	___novus_library_not_found
 	addq.l	#8,sp			; Clean up stack
 
@@ -99,53 +104,53 @@ ___graphics_init:
 	rts
 
 ; ----------------------------------------------------------------------------
-; ___graphics_cleanup - Cleanup Graphics library
+; ___rexxsyslib_cleanup - Cleanup RexxSysLib library
 ; ----------------------------------------------------------------------------
-; Closes graphics.library if it was opened
+; Closes rexxsyslib.library if it was opened
 ;
 ; Input:  None
 ; Output: None
 ; Modifies: None (all registers preserved)
 ; ----------------------------------------------------------------------------
-___graphics_cleanup:
+___rexxsyslib_cleanup:
 	movem.l	d0/a1/a6,-(sp)		; Save registers
 
-	; Check if GfxBase is initialized
-	move.l	_GfxBase,d0
+	; Check if RexxSysBase is initialized
+	move.l	_RexxSysBase,d0
 	beq.s	.not_open		; Skip if not open
 
 	; Get exec.library base
 	move.l	4.w,a6
 
-	; CloseLibrary(GfxBase) - LVO offset -414
-	move.l	_GfxBase,a1		; Library base to close
+	; CloseLibrary(RexxSysBase) - LVO offset -414
+	move.l	_RexxSysBase,a1		; Library base to close
 	jsr	-414(a6)		; Call exec.library CloseLibrary()
 
-	; Clear GfxBase
-	clr.l	_GfxBase
+	; Clear RexxSysBase
+	clr.l	_RexxSysBase
 
 .not_open:
 	movem.l	(sp)+,d0/a1/a6		; Restore registers
 	rts
 
 ; ----------------------------------------------------------------------------
-; ___graphics_ensure - Ensure Graphics library is open (lazy init)
+; ___rexxsyslib_ensure - Ensure RexxSysLib library is open (lazy init)
 ; ----------------------------------------------------------------------------
 ; Fast check if library is open, initializes if not. Called by stubs.
-; Returns _GfxBase in A6 for immediate use.
+; Returns _RexxSysBase in A6 for immediate use.
 ;
 ; Input:  None
-; Output: A6 = Graphics library base (for immediate use by stub)
+; Output: A6 = RexxSysLib library base (for immediate use by stub)
 ; Modifies: A6 only - D0-D1/A0-A1 are PRESERVED (stubs need these for params!)
 ; ----------------------------------------------------------------------------
-___graphics_ensure:
-	move.l	_GfxBase,a6		; Load GfxBase into A6
+___rexxsyslib_ensure:
+	move.l	_RexxSysBase,a6		; Load RexxSysBase into A6
 	tst.l	a6			; Test if NULL (doesn't modify d0!)
 	bne.s	.done			; Fast path - already open
 
 	; Need to initialize - save regs and call init
 	movem.l	d0-d1/a0-a1,-(sp)	; Save scratch regs (stubs have params in these!)
-	bsr	___graphics_init	; Initialize (result in d0)
+	bsr	___rexxsyslib_init	; Initialize (result in d0)
 	move.l	d0,a6			; Move to a6
 	movem.l	(sp)+,d0-d1/a0-a1	; Restore scratch regs
 .done:
