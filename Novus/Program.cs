@@ -1125,12 +1125,11 @@ class Program
                 Console.WriteLine($"  → {baseName} ({mainFunctions.Count} function{(mainFunctions.Count > 1 ? "s" : "")})");
             }
 
-            // For libraries, generate A6 wrapper assembly and interface files
-            // (isLibrary/isDevice will be defined later in the assembly section)
+            // For libraries and devices, generate A6 wrapper assembly and interface files
             var projectType = options.ProjectType.ToLowerInvariant();
-            if (projectType == "library" || projectType == "device")
+            if (projectType == "library")
             {
-                var libraryGen = new LibraryGenerator(mainIR.IrModule);
+                var libraryGen = new LibraryGenerator(mainIR.IrModule, options.PackageVersion);
                 if (libraryGen.IsLibrary)
                 {
                     // Generate A6 wrappers
@@ -1178,6 +1177,46 @@ class Program
                         cFiles.Add(lifecycleCFile);
                         Console.WriteLine($"  → {Path.GetFileName(lifecycleCFile)} (lifecycle functions)");
                     }
+                }
+            }
+            else if (projectType == "device")
+            {
+                var deviceGen = new DeviceGenerator(mainIR.IrModule, options.PackageVersion);
+                if (deviceGen.IsDevice)
+                {
+                    Console.WriteLine($"  [DEVICE] Generating {deviceGen.GetDeviceName()} boilerplate...");
+
+                    // Generate A6 wrappers for device functions
+                    var wrapperAsm = deviceGen.GenerateA6Wrappers();
+                    var wrapperAsmFile = Path.Combine(outputDir, $"{baseName}_wrappers.s");
+                    await File.WriteAllTextAsync(wrapperAsmFile, wrapperAsm);
+                    Console.WriteLine($"  → {Path.GetFileName(wrapperAsmFile)} (A6 wrappers)");
+
+                    // Generate C header
+                    var cHeader = deviceGen.GenerateCHeader();
+                    var headerFile = Path.Combine(outputDir, $"{baseName}.h");
+                    await File.WriteAllTextAsync(headerFile, cHeader);
+                    Console.WriteLine($"  → {Path.GetFileName(headerFile)} (C header)");
+
+                    // Generate Novus FFI binding
+                    var novusFfi = deviceGen.GenerateNovusFFI();
+                    var ffiFile = Path.Combine(outputDir, $"{baseName}.novus");
+                    await File.WriteAllTextAsync(ffiFile, novusFfi);
+                    Console.WriteLine($"  → {Path.GetFileName(ffiFile)} (Novus FFI)");
+
+                    // Generate lifecycle functions (DevInit, DevOpen, DevClose, DevExpunge, BeginIO, AbortIO)
+                    var lifecycleCCode = deviceGen.GenerateLifecycleFunctions();
+                    if (!string.IsNullOrEmpty(lifecycleCCode))
+                    {
+                        var lifecycleCFile = Path.Combine(outputDir, $"{baseName}_lifecycle.c");
+                        await File.WriteAllTextAsync(lifecycleCFile, lifecycleCCode);
+                        cFiles.Add(lifecycleCFile);
+                        Console.WriteLine($"  → {Path.GetFileName(lifecycleCFile)} (lifecycle functions)");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("  [WARNING] Device project has no @device attribute on any struct");
                 }
             }
 

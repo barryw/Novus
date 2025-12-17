@@ -175,6 +175,16 @@ public static class KnownAttributes
     public const string LibExpunge = "libexpunge";
     public const string LibInit = "libinit";
 
+    // Device attributes
+    public const string Device = "device";
+    public const string DeviceCmd = "devicecmd";    // Mark function as device command handler
+    public const string DeviceOpen = "deviceopen";
+    public const string DeviceClose = "deviceclose";
+    public const string DeviceExpunge = "deviceexpunge";
+    public const string DeviceInit = "deviceinit";
+    public const string BeginIO = "beginio";        // Mark as BeginIO handler
+    public const string AbortIO = "abortio";        // Mark as AbortIO handler
+
     // Code generation attributes
     public const string Inline = "inline";
     public const string NoInline = "noinline";
@@ -246,6 +256,7 @@ public static class KnownAttributes
     public static readonly HashSet<string> All = new()
     {
         Library, LibFunc, LibOpen, LibClose, LibExpunge, LibInit,
+        Device, DeviceCmd, DeviceOpen, DeviceClose, DeviceExpunge, DeviceInit, BeginIO, AbortIO,
         Inline, NoInline, Packed, Align,
         Test, Bench, Benchmark,
         Deprecated, Since, Experimental,
