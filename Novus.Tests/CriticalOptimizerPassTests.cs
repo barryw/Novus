@@ -370,11 +370,11 @@ public class CriticalOptimizerPassTests
     }
 
     [Fact]
-    public void ConstantPropagation_InheritsBasicBlockPassBase()
+    public void ConstantPropagation_ImplementsIBasicBlockPass()
     {
         var pass = new ConstantPropagationPass();
 
-        Assert.IsAssignableFrom<BasicBlockPassBase>(pass);
+        Assert.IsAssignableFrom<IBasicBlockPass>(pass);
     }
 
     #endregion

@@ -820,4 +820,271 @@ public class OptimizerPassComprehensiveTests
     }
 
     #endregion
+
+    #region ConstantPropagation Const Fn Optimization Tests
+
+    /// <summary>
+    /// Helper to create a simple const fn for testing.
+    /// const fn double(x: i32) -> i32 { x * 2 }
+    /// </summary>
+    private IrFunction CreateDoubleConstFn()
+    {
+        var function = new IrFunction("double", IrIntType.I32) { IsConstFn = true };
+        function.Parameters.Add(new IrParameter("x", IrIntType.I32));
+
+        var block = new IrBasicBlock("entry");
+        block.Instructions.Add(new IrBinaryOp("%result", IrBinaryOp.OpKind.Mul,
+            new IrVariable("x", IrIntType.I32),
+            new IrConstant(2, IrIntType.I32),
+            IrIntType.I32));
+        block.Instructions.Add(new IrReturn(new IrVariable("%result", IrIntType.I32)));
+
+        function.BasicBlocks.Add(block);
+        return function;
+    }
+
+    /// <summary>
+    /// Helper to create a simple const fn: const fn add(a: i32, b: i32) -> i32 { a + b }
+    /// </summary>
+    private IrFunction CreateAddConstFn()
+    {
+        var function = new IrFunction("add", IrIntType.I32) { IsConstFn = true };
+        function.Parameters.Add(new IrParameter("a", IrIntType.I32));
+        function.Parameters.Add(new IrParameter("b", IrIntType.I32));
+
+        var block = new IrBasicBlock("entry");
+        block.Instructions.Add(new IrBinaryOp("%result", IrBinaryOp.OpKind.Add,
+            new IrVariable("a", IrIntType.I32),
+            new IrVariable("b", IrIntType.I32),
+            IrIntType.I32));
+        block.Instructions.Add(new IrReturn(new IrVariable("%result", IrIntType.I32)));
+
+        function.BasicBlocks.Add(block);
+        return function;
+    }
+
+    [Fact]
+    public void ConstantPropagation_ConstFnCall_WithConstantArgs_IsEvaluatedAtCompileTime()
+    {
+        // Create module with const fn double(x) = x * 2
+        var module = new IrModule();
+        module.Functions.Add(CreateDoubleConstFn());
+
+        // Create main function: let y = double(5)
+        var mainFn = new IrFunction("main", IrIntType.I32);
+        var block = new IrBasicBlock("entry");
+
+        var call = new IrCall("double", IrIntType.I32, "%y");
+        call.Arguments.Add(new IrConstant(5, IrIntType.I32));
+        block.Instructions.Add(call);
+        block.Instructions.Add(new IrReturn(new IrVariable("%y", IrIntType.I32)));
+
+        mainFn.BasicBlocks.Add(block);
+        module.Functions.Add(mainFn);
+
+        // Run constant propagation
+        var pass = new ConstantPropagationPass();
+        var changed = pass.Run(module);
+
+        // The call should be replaced with a store of constant 10
+        Assert.True(changed);
+        var firstInstr = mainFn.BasicBlocks[0].Instructions[0];
+        Assert.IsType<IrStore>(firstInstr);
+        var store = (IrStore)firstInstr;
+        Assert.Equal("%y", store.VariableName);
+        Assert.IsType<IrConstant>(store.Value);
+        Assert.Equal(10L, ((IrConstant)store.Value).Value);
+    }
+
+    [Fact]
+    public void ConstantPropagation_ConstFnCall_WithNonConstantArgs_IsNotEvaluated()
+    {
+        // Create module with const fn double(x) = x * 2
+        var module = new IrModule();
+        module.Functions.Add(CreateDoubleConstFn());
+
+        // Create main function: let y = double(param)  -- param is not constant
+        var mainFn = new IrFunction("main", IrIntType.I32);
+        mainFn.Parameters.Add(new IrParameter("param", IrIntType.I32));
+
+        var block = new IrBasicBlock("entry");
+        var call = new IrCall("double", IrIntType.I32, "%y");
+        call.Arguments.Add(new IrVariable("param", IrIntType.I32));
+        block.Instructions.Add(call);
+        block.Instructions.Add(new IrReturn(new IrVariable("%y", IrIntType.I32)));
+
+        mainFn.BasicBlocks.Add(block);
+        module.Functions.Add(mainFn);
+
+        // Run constant propagation
+        var pass = new ConstantPropagationPass();
+        var changed = pass.Run(module);
+
+        // The call should NOT be replaced (args aren't constant)
+        Assert.False(changed);
+        var firstInstr = mainFn.BasicBlocks[0].Instructions[0];
+        Assert.IsType<IrCall>(firstInstr);
+    }
+
+    [Fact]
+    public void ConstantPropagation_ConstFnCall_DoesNotClearConstantValues()
+    {
+        // Create module with const fn double(x) = x * 2
+        var module = new IrModule();
+        module.Functions.Add(CreateDoubleConstFn());
+
+        // Create main function:
+        // let x = 5;
+        // let y = double(x);  -- const fn, should not clear x's constant tracking
+        // let z = x + 1;      -- should still propagate x = 5
+        var mainFn = new IrFunction("main", IrIntType.I32);
+        var block = new IrBasicBlock("entry");
+
+        block.Instructions.Add(new IrLocalDecl("x", IrIntType.I32, false, new IrConstant(5, IrIntType.I32)));
+
+        var call = new IrCall("double", IrIntType.I32, "%y");
+        call.Arguments.Add(new IrVariable("x", IrIntType.I32));
+        block.Instructions.Add(call);
+
+        block.Instructions.Add(new IrBinaryOp("%z", IrBinaryOp.OpKind.Add,
+            new IrVariable("x", IrIntType.I32),
+            new IrConstant(1, IrIntType.I32),
+            IrIntType.I32));
+
+        block.Instructions.Add(new IrReturn(new IrVariable("%z", IrIntType.I32)));
+
+        mainFn.BasicBlocks.Add(block);
+        module.Functions.Add(mainFn);
+
+        // Run constant propagation
+        var pass = new ConstantPropagationPass();
+        var changed = pass.Run(module);
+
+        // x should still be propagated to the binary op
+        Assert.True(changed);
+        var binOp = (IrBinaryOp)mainFn.BasicBlocks[0].Instructions[2];
+        Assert.IsType<IrConstant>(binOp.Left);
+        Assert.Equal(5L, ((IrConstant)binOp.Left).Value);
+    }
+
+    [Fact]
+    public void ConstantPropagation_NonConstFnCall_ClearsConstantValues()
+    {
+        // Create module with a regular (non-const) function
+        var module = new IrModule();
+        var nonConstFn = new IrFunction("side_effect_fn", IrIntType.I32);
+        nonConstFn.BasicBlocks.Add(new IrBasicBlock("entry"));
+        nonConstFn.BasicBlocks[0].Instructions.Add(new IrReturn(new IrConstant(0, IrIntType.I32)));
+        module.Functions.Add(nonConstFn);
+
+        // Create main function:
+        // let x = 5;
+        // side_effect_fn();  -- non-const fn, should clear constant tracking
+        // let z = x + 1;     -- should NOT propagate x = 5
+        var mainFn = new IrFunction("main", IrIntType.I32);
+        var block = new IrBasicBlock("entry");
+
+        block.Instructions.Add(new IrLocalDecl("x", IrIntType.I32, false, new IrConstant(5, IrIntType.I32)));
+        block.Instructions.Add(new IrCall("side_effect_fn", IrIntType.I32));
+        block.Instructions.Add(new IrBinaryOp("%z", IrBinaryOp.OpKind.Add,
+            new IrVariable("x", IrIntType.I32),
+            new IrConstant(1, IrIntType.I32),
+            IrIntType.I32));
+        block.Instructions.Add(new IrReturn(new IrVariable("%z", IrIntType.I32)));
+
+        mainFn.BasicBlocks.Add(block);
+        module.Functions.Add(mainFn);
+
+        // Run constant propagation
+        var pass = new ConstantPropagationPass();
+        var changed = pass.Run(module);
+
+        // x should NOT be propagated (non-const fn might have modified it)
+        var binOp = (IrBinaryOp)mainFn.BasicBlocks[0].Instructions[2];
+        Assert.IsType<IrVariable>(binOp.Left);
+    }
+
+    [Fact]
+    public void ConstantPropagation_ConstFnCall_Memoization_CachesResults()
+    {
+        // Create module with const fn add(a, b) = a + b
+        var module = new IrModule();
+        module.Functions.Add(CreateAddConstFn());
+
+        // Create main function with two identical calls:
+        // let x = add(3, 4);
+        // let y = add(3, 4);  -- should use cached result
+        var mainFn = new IrFunction("main", IrIntType.I32);
+        var block = new IrBasicBlock("entry");
+
+        var call1 = new IrCall("add", IrIntType.I32, "%x");
+        call1.Arguments.Add(new IrConstant(3, IrIntType.I32));
+        call1.Arguments.Add(new IrConstant(4, IrIntType.I32));
+        block.Instructions.Add(call1);
+
+        var call2 = new IrCall("add", IrIntType.I32, "%y");
+        call2.Arguments.Add(new IrConstant(3, IrIntType.I32));
+        call2.Arguments.Add(new IrConstant(4, IrIntType.I32));
+        block.Instructions.Add(call2);
+
+        block.Instructions.Add(new IrReturn(new IrVariable("%y", IrIntType.I32)));
+
+        mainFn.BasicBlocks.Add(block);
+        module.Functions.Add(mainFn);
+
+        // Run constant propagation
+        var pass = new ConstantPropagationPass();
+        var changed = pass.Run(module);
+
+        Assert.True(changed);
+
+        // Both calls should be replaced with stores of constant 7
+        var store1 = (IrStore)mainFn.BasicBlocks[0].Instructions[0];
+        var store2 = (IrStore)mainFn.BasicBlocks[0].Instructions[1];
+
+        Assert.Equal(7L, ((IrConstant)store1.Value).Value);
+        Assert.Equal(7L, ((IrConstant)store2.Value).Value);
+    }
+
+    [Fact]
+    public void ConstantPropagation_ConstFnCall_PropagatesResultThroughLaterUses()
+    {
+        // Create module with const fn double(x) = x * 2
+        var module = new IrModule();
+        module.Functions.Add(CreateDoubleConstFn());
+
+        // Create main function:
+        // let x = double(5);  -- evaluates to 10
+        // let y = x + 1;      -- should use 10
+        // return y;           -- should use 11 (after constant folding would run)
+        var mainFn = new IrFunction("main", IrIntType.I32);
+        var block = new IrBasicBlock("entry");
+
+        var call = new IrCall("double", IrIntType.I32, "%x");
+        call.Arguments.Add(new IrConstant(5, IrIntType.I32));
+        block.Instructions.Add(call);
+
+        block.Instructions.Add(new IrBinaryOp("%y", IrBinaryOp.OpKind.Add,
+            new IrVariable("%x", IrIntType.I32),
+            new IrConstant(1, IrIntType.I32),
+            IrIntType.I32));
+
+        block.Instructions.Add(new IrReturn(new IrVariable("%y", IrIntType.I32)));
+
+        mainFn.BasicBlocks.Add(block);
+        module.Functions.Add(mainFn);
+
+        // Run constant propagation
+        var pass = new ConstantPropagationPass();
+        var changed = pass.Run(module);
+
+        Assert.True(changed);
+
+        // The result of double(5) = 10 should be propagated to the binary op
+        var binOp = (IrBinaryOp)mainFn.BasicBlocks[0].Instructions[1];
+        Assert.IsType<IrConstant>(binOp.Left);
+        Assert.Equal(10L, ((IrConstant)binOp.Left).Value);
+    }
+
+    #endregion
 }

@@ -1,3 +1,5 @@
+using Novus.SemanticAnalysis;
+
 namespace Novus.IR;
 
 /// <summary>
@@ -13,6 +15,7 @@ namespace Novus.IR;
 /// 1. Find all variables defined as constants
 /// 2. Replace all uses of those variables with the constant value
 /// 3. Perform constant folding on binary operations when both operands are constant
+/// 4. Evaluate const fn calls with constant arguments at compile time
 ///
 /// Example:
 ///   x_0 = 5
@@ -24,11 +27,20 @@ namespace Novus.IR;
 ///   y_0 = 8          // 5 + 3 folded
 ///   z_0 = 16         // 8 * 2 folded
 ///
+/// Const fn optimization:
+///   const fn double(x: i32) -> i32 { x * 2 }
+///   y = double(5)    // Call with constant arg
+///
+/// After const fn evaluation:
+///   y = 10           // Evaluated at compile time
+///
 /// Combined with DCE, the x_0 and y_0 definitions may also be eliminated if unused elsewhere.
 /// </summary>
 public class ConstantPropagation
 {
     private readonly IrFunction _function;
+    private readonly IrModule? _module;
+    private ConstFnEvaluator? _constFnEvaluator;
 
     /// <summary>
     /// Map from variable SSA name to its constant value (if known)
@@ -36,13 +48,32 @@ public class ConstantPropagation
     private Dictionary<string, IrConstant> _constantValues = new();
 
     /// <summary>
+    /// Cache of const fn call results: (functionName, args) -> result
+    /// This enables memoization of repeated const fn calls
+    /// </summary>
+    private Dictionary<string, IrConstant> _constFnCache = new();
+
+    /// <summary>
     /// Track which instructions were modified (for iteration)
     /// </summary>
     private bool _madeChanges = false;
 
-    public ConstantPropagation(IrFunction function)
+    /// <summary>
+    /// Statistics for const fn optimizations
+    /// </summary>
+    public int ConstFnEvaluations { get; private set; }
+    public int ConstFnCacheHits { get; private set; }
+
+    public ConstantPropagation(IrFunction function, IrModule? module = null)
     {
         _function = function;
+        _module = module;
+
+        // Create const fn evaluator if we have a module
+        if (_module != null)
+        {
+            _constFnEvaluator = new ConstFnEvaluator(_module);
+        }
     }
 
     /// <summary>
@@ -95,8 +126,11 @@ public class ConstantPropagation
                         break;
 
                     case IrCall call when call.ResultName != null:
-                        // Calls are generally not constant (unless proven pure and with constant args)
-                        // For now, we don't propagate through calls
+                        // Check if this is a const fn call with all constant arguments
+                        if (TryEvaluateConstFnCall(call, out var constResult))
+                        {
+                            _constantValues[call.ResultName] = constResult!;
+                        }
                         break;
                 }
             }
@@ -264,6 +298,7 @@ public class ConstantPropagation
 
             case IrCall call:
                 {
+                    // Propagate constants in arguments
                     for (int i = 0; i < call.Arguments.Count; i++)
                     {
                         var newArg = PropagateInValue(call.Arguments[i]);
@@ -272,6 +307,13 @@ public class ConstantPropagation
                             call.Arguments[i] = newArg;
                             changed = true;
                         }
+                    }
+
+                    // Try to evaluate const fn call at compile time
+                    if (call.ResultName != null && TryEvaluateConstFnCall(call, out var constResult))
+                    {
+                        // Replace the call with a constant store
+                        return new IrStore(call.ResultName, constResult!);
                     }
                     break;
                 }
@@ -481,5 +523,92 @@ public class ConstantPropagation
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Try to evaluate a const fn call at compile time.
+    /// Returns true if the call was evaluated and provides the result.
+    /// </summary>
+    private bool TryEvaluateConstFnCall(IrCall call, out IrConstant? result)
+    {
+        result = null;
+
+        // Need module and evaluator to evaluate const fn calls
+        if (_module == null || _constFnEvaluator == null)
+            return false;
+
+        // Look up the function
+        var function = _module.Functions.FirstOrDefault(f => f.Name == call.FunctionName);
+        if (function == null || !function.IsConstFn)
+            return false;
+
+        // Check if all arguments are constants (after propagation)
+        var constArgs = new List<object?>();
+        foreach (var arg in call.Arguments)
+        {
+            var propagated = PropagateInValue(arg);
+            if (propagated is IrConstant constant)
+            {
+                constArgs.Add(constant.Value);
+            }
+            else if (propagated is IrBoolConstant boolConst)
+            {
+                constArgs.Add(boolConst.Value ? 1L : 0L);
+            }
+            else
+            {
+                // Non-constant argument - can't evaluate at compile time
+                return false;
+            }
+        }
+
+        // Create cache key for memoization
+        var cacheKey = $"{call.FunctionName}({string.Join(",", constArgs)})";
+
+        // Check cache first
+        if (_constFnCache.TryGetValue(cacheKey, out var cached))
+        {
+            result = cached;
+            ConstFnCacheHits++;
+            return true;
+        }
+
+        // Evaluate the const fn
+        var evalResult = _constFnEvaluator.Evaluate(call.FunctionName, constArgs);
+        if (!evalResult.Success)
+        {
+            // Evaluation failed (e.g., infinite loop, stack overflow)
+            return false;
+        }
+
+        // Convert result to IrConstant
+        if (evalResult.Value is long longVal)
+        {
+            result = new IrConstant(longVal, evalResult.ValueType ?? call.ReturnType ?? new IrIntType(32, true));
+        }
+        else if (evalResult.Value is int intVal)
+        {
+            result = new IrConstant(intVal, evalResult.ValueType ?? call.ReturnType ?? new IrIntType(32, true));
+        }
+        else if (evalResult.Value is bool boolVal)
+        {
+            result = new IrConstant(boolVal ? 1 : 0, evalResult.ValueType ?? IrBoolType.Instance);
+        }
+        else if (evalResult.Value == null)
+        {
+            // Void return or null - can't propagate
+            return false;
+        }
+        else
+        {
+            // Unsupported result type
+            return false;
+        }
+
+        // Cache the result
+        _constFnCache[cacheKey] = result;
+        ConstFnEvaluations++;
+
+        return true;
     }
 }

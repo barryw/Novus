@@ -632,4 +632,114 @@ fn ackermann(m: i32, n: i32) -> i32 {
     }
 
     #endregion
+
+    #region Const Fn Inlining Tests
+
+    [Fact]
+    public void IsInlinable_SmallConstFn_ReturnsTrue()
+    {
+        var source = @"
+const fn double(x: i32) -> i32 {
+    return x * 2
+}";
+        var module = BuildIR(source);
+        var pass = new InlineExpansionPass();
+        var func = module.Functions.First(f => f.Name == "double");
+
+        var result = pass.IsInlinable(func);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void IsInlinable_ConstFn_LargerThreshold_ReturnsTrue()
+    {
+        // Create a const fn that's larger than MaxInlineInstructions (20) but smaller than MaxConstFnInlineInstructions (50)
+        var source = @"
+const fn process(x: i32) -> i32 {
+    let a = x + 1
+    let b = a + 2
+    let c = b + 3
+    let d = c + 4
+    let e = d + 5
+    let f = e + 6
+    let g = f + 7
+    let h = g + 8
+    let i = h + 9
+    let j = i + 10
+    return j
+}";
+        var module = BuildIR(source);
+        var pass = new InlineExpansionPass();
+        var func = module.Functions.First(f => f.Name == "process");
+
+        var result = pass.IsInlinable(func);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void IsInlinable_ConstFnWithNoInline_ReturnsFalse()
+    {
+        var source = @"
+@noinline
+const fn double(x: i32) -> i32 {
+    return x * 2
+}";
+        var module = BuildIR(source);
+        var pass = new InlineExpansionPass();
+        var func = module.Functions.First(f => f.Name == "double");
+
+        var result = pass.IsInlinable(func);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void IsInlinable_RecursiveConstFn_ReturnsFalse()
+    {
+        var source = @"
+const fn factorial(n: i32) -> i32 {
+    if n <= 1 {
+        return 1
+    }
+    return n * factorial(n - 1)
+}";
+        var module = BuildIR(source);
+        var pass = new InlineExpansionPass();
+        var func = module.Functions.First(f => f.Name == "factorial");
+
+        var result = pass.IsInlinable(func);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void Transform_ConstFnCall_IsInlined()
+    {
+        var source = @"
+const fn double(x: i32) -> i32 {
+    return x * 2
+}
+
+fn main() -> i32 {
+    let result = double(5)
+    return result
+}";
+        var module = BuildIR(source);
+        var pass = new InlineExpansionPass();
+
+        var changed = pass.Transform(module);
+
+        Assert.True(changed);
+
+        // The call to double should be inlined
+        var mainFn = module.Functions.First(f => f.Name == "main");
+        var hasDoubleCall = mainFn.BasicBlocks
+            .SelectMany(b => b.Instructions)
+            .Any(i => i is IrCall call && call.FunctionName == "double");
+        Assert.False(hasDoubleCall, "The call to double should have been inlined");
+    }
+
+    #endregion
 }

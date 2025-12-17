@@ -10,13 +10,15 @@ namespace Novus.Transforms.Passes;
 /// Inlining Strategy:
 /// 1. Functions with @inline attribute are ALWAYS inlined (forced inlining)
 /// 2. Functions with @noinline attribute are NEVER inlined
-/// 3. Small functions (&lt; 20 instructions) may be inlined heuristically
-/// 4. Recursive functions are never inlined
-/// 5. Functions with complex control flow (> 3 basic blocks) are not inlined
+/// 3. const fn functions are aggressively inlined (up to 50 instructions)
+/// 4. Small functions (&lt; 20 instructions) may be inlined heuristically
+/// 5. Recursive functions are never inlined
+/// 6. Functions with complex control flow (> 3 basic blocks) are not inlined
 /// </summary>
 public class InlineExpansionPass : TransformPassBase
 {
     private const int MaxInlineInstructions = 20; // Don't inline functions larger than this
+    private const int MaxConstFnInlineInstructions = 50; // Larger threshold for const fn
     private const int MaxInlineDepth = 3; // Prevent excessive inlining
     private const int MaxForcedInlineInstructions = 100; // Max size for @inline functions
 
@@ -192,6 +194,9 @@ public class InlineExpansionPass : TransformPassBase
         // Check for @inline attribute - force inlining (with size limit)
         bool forceInline = function.Attributes?.Has(KnownAttributes.Inline) == true;
 
+        // const fn functions are ideal for inlining - no side effects
+        bool isConstFn = function.IsConstFn;
+
         // Don't inline entry points (even with @inline)
         if (function.Name == "main")
         {
@@ -205,7 +210,8 @@ public class InlineExpansionPass : TransformPassBase
         }
 
         // Don't inline exported functions (they may be called externally)
-        if (function.IsExported || function.Visibility == Visibility.Public)
+        // Exception: const fn can still be inlined at call sites within the module
+        if ((function.IsExported || function.Visibility == Visibility.Public) && !isConstFn)
         {
             return false;
         }
@@ -227,6 +233,21 @@ public class InlineExpansionPass : TransformPassBase
                 return false;
             }
             // @inline functions can have more complex control flow
+            return true;
+        }
+
+        // For const fn, use a larger threshold - they're pure and safe to inline
+        if (isConstFn)
+        {
+            if (instructionCount > MaxConstFnInlineInstructions)
+            {
+                return false;
+            }
+            // const fn can have slightly more complex control flow
+            if (function.BasicBlocks.Count > 5)
+            {
+                return false;
+            }
             return true;
         }
 
