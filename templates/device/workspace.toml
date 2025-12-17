@@ -1,0 +1,7 @@
+[workspace]
+name = "{{PROJECT_NAME}}"
+description = "AmigaOS device driver"
+version = "1.0.0"
+
+# Member projects (directory names)
+members = ["device", "example"]

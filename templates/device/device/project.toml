@@ -1,0 +1,9 @@
+[package]
+name = "{{PROJECT_NAME}}"
+version = "1.0.0"
+type = "device"
+entry = "./src/dev.novus"
+
+[build]
+target_cpu = "68020"
+fpu = "auto"

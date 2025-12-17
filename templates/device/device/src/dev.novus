@@ -1,0 +1,256 @@
+// {{PROJECT_NAME}}.device - AmigaOS device driver
+//
+// This device uses the @device attribute to automatically generate:
+//   - DevInit, DevOpen, DevClose, DevExpunge (lifecycle functions)
+//   - DevBeginIO (command dispatcher)
+//   - DevAbortIO (abort handler)
+//   - Unit management (per-unit state)
+//   - ROMTag for exec.library scanning
+//
+// You implement command handlers using @devicecmd attributes.
+// The compiler generates the dispatcher that routes io_Command to your handlers.
+
+from std::ffi::amiga_structs import IORequest, Unit
+from std::ffi::amiga_consts import IOERR_NOCMD
+
+// ============================================================================
+// Device Base Structure
+// ============================================================================
+// The @device attribute marks this struct as the device base.
+//
+// Parameters:
+//   name  - Device filename (must end with ".device")
+//   units - Maximum number of units this device supports (default: 1)
+//
+// The compiler generates a device base structure that includes:
+//   - struct Device dev          (standard Exec device header)
+//   - BPTR dev_SegList           (segment list for unloading)
+//   - Unit* dev_Units[N]         (per-unit state pointers)
+//   - Statistics counters
+//   - Your custom fields below
+
+@device(name = "{{PROJECT_NAME}}.device", units = 4)
+pub struct MyDevice {
+    // Add custom device state fields here.
+    // These are allocated once when the device is loaded and persist
+    // until the device is expunged from memory.
+    //
+    // Example fields:
+    initialized: bool,
+    buffer_ptr: *u8,
+    buffer_size: u32,
+}
+
+// ============================================================================
+// Custom Command Constants
+// ============================================================================
+// Standard commands (CMD_*) are 0-8. Your custom commands start at 9 (CMD_NONSTD).
+
+pub const CMD_MYDEVICE_STATUS: u16 = 9
+pub const CMD_MYDEVICE_CONFIG: u16 = 10
+
+// ============================================================================
+// Command Handlers
+// ============================================================================
+// Mark functions with @devicecmd to register them as command handlers.
+// The BeginIO dispatcher calls these based on ioReq->io_Command.
+//
+// Handler signature:
+//   fn handler(ioReq: *IORequest, base: *MyDevice) -> i8
+//
+// Return values:
+//   0 = success (IOERR_SUCCESS)
+//   -1 = open failed (IOERR_OPENFAIL)
+//   -2 = aborted (IOERR_ABORTED)
+//   -3 = unknown command (IOERR_NOCMD)
+//   -4 = bad length (IOERR_BADLENGTH)
+//   -5 = bad address (IOERR_BADADDRESS)
+//   -6 = unit busy (IOERR_UNITBUSY)
+
+impl MyDevice {
+    // ========================================================================
+    // STANDARD COMMAND HANDLERS
+    // ========================================================================
+    // Implement handlers for standard Exec commands as needed.
+
+    // CMD_RESET (1) - Reset device to initial state
+    @devicecmd(cmd = "CMD_RESET")
+    pub fn cmd_reset(ioReq: *IORequest, base: *MyDevice) -> i8 {
+        unsafe {
+            (*base).initialized = false
+            (*base).buffer_ptr = null
+            (*base).buffer_size = 0
+        }
+        return 0  // Success
+    }
+
+    // CMD_READ (2) - Read data from device
+    @devicecmd(cmd = "CMD_READ")
+    pub fn cmd_read(ioReq: *IORequest, base: *MyDevice) -> i8 {
+        // Access IORequest fields:
+        //   ioReq->io_Data   - destination buffer pointer
+        //   ioReq->io_Length - requested read length
+        //   ioReq->io_Actual - set this to actual bytes read
+
+        // TODO: Implement your read logic here
+        // Example:
+        // unsafe {
+        //     let data = (*ioReq).io_Data
+        //     let len = (*ioReq).io_Length
+        //     // ... copy data to buffer ...
+        //     (*ioReq).io_Actual = bytes_read
+        // }
+
+        return (i8)IOERR_NOCMD  // Not implemented yet
+    }
+
+    // CMD_WRITE (3) - Write data to device
+    @devicecmd(cmd = "CMD_WRITE")
+    pub fn cmd_write(ioReq: *IORequest, base: *MyDevice) -> i8 {
+        // Access IORequest fields:
+        //   ioReq->io_Data   - source buffer pointer
+        //   ioReq->io_Length - data length
+        //   ioReq->io_Actual - set this to actual bytes written
+
+        // TODO: Implement your write logic here
+
+        return (i8)IOERR_NOCMD  // Not implemented yet
+    }
+
+    // ========================================================================
+    // CUSTOM COMMAND HANDLERS
+    // ========================================================================
+    // Your device-specific commands start at CMD_NONSTD (9).
+
+    // Custom status command - returns device status
+    // quick = true means this can complete immediately without waiting
+    @devicecmd(cmd = 9, quick = true)
+    pub fn cmd_status(ioReq: *IORequest, base: *MyDevice) -> i8 {
+        // Return device status in io_Actual
+        unsafe {
+            if (*base).initialized {
+                (*ioReq).io_Actual = 1
+            } else {
+                (*ioReq).io_Actual = 0
+            }
+        }
+        return 0  // Success
+    }
+
+    // Custom config command - configure device
+    @devicecmd(cmd = 10)
+    pub fn cmd_config(ioReq: *IORequest, base: *MyDevice) -> i8 {
+        // Use io_Data as configuration pointer
+        // Use io_Length as configuration size
+
+        unsafe {
+            (*base).initialized = true
+        }
+
+        return 0  // Success
+    }
+
+    // ========================================================================
+    // OPTIONAL LIFECYCLE OVERRIDES
+    // ========================================================================
+    // The compiler auto-generates lifecycle functions. You only need to
+    // implement them if you require custom initialization or cleanup logic.
+    //
+    // Unlike libraries, devices have these lifecycle functions:
+    //   - dev_init()    - Called when device first loads
+    //   - dev_open()    - Called for each OpenDevice()
+    //   - dev_close()   - Called for each CloseDevice()
+    //   - dev_expunge() - Called when device should unload
+    //
+    // BeginIO and AbortIO are generated automatically based on your
+    // @devicecmd handlers - you don't need to implement them directly.
+
+    /*
+    // dev_init() -> bool
+    // ------------------
+    // Called ONCE when the device is first loaded into memory.
+    //
+    // Use for:
+    //   - Initialize device state fields
+    //   - Allocate global resources
+    //   - Open other libraries/devices this device depends on
+    //   - Initialize hardware
+    //
+    // Returns:
+    //   true = initialization succeeded
+    //   false = initialization failed (device won't load)
+    //
+    pub fn dev_init() -> bool {
+        // Initialize your custom fields here
+        // self.initialized = false
+        // self.buffer_ptr = null
+
+        return true
+    }
+    */
+
+    /*
+    // dev_open(unit: u32) -> i8
+    // -------------------------
+    // Called every time a program calls OpenDevice() on this device.
+    //
+    // Parameters:
+    //   unit - The unit number being opened (0 to units-1)
+    //
+    // Returns:
+    //   0 = success
+    //   IOERR_OPENFAIL = failure
+    //
+    // Use for:
+    //   - Allocate per-unit resources
+    //   - Initialize hardware for this unit
+    //   - Validate unit number
+    //
+    pub fn dev_open(unit: u32) -> i8 {
+        // Unit validation is handled automatically
+        // Add per-unit initialization here if needed
+        return 0
+    }
+    */
+
+    /*
+    // dev_close(unit: u32)
+    // --------------------
+    // Called every time a program calls CloseDevice() on this device.
+    //
+    // Parameters:
+    //   unit - The unit number being closed
+    //
+    // Use for:
+    //   - Free per-unit resources allocated in dev_open
+    //   - Shutdown hardware for this unit
+    //
+    pub fn dev_close(unit: u32) {
+        // Add per-unit cleanup here if needed
+    }
+    */
+
+    /*
+    // dev_expunge() -> bool
+    // ---------------------
+    // Called when the system wants to remove the device from memory.
+    //
+    // Returns:
+    //   true = can expunge (no units open)
+    //   false = cannot expunge yet (units still open)
+    //
+    // Use for:
+    //   - Free all allocated memory
+    //   - Close all opened libraries
+    //   - Shutdown hardware completely
+    //
+    pub fn dev_expunge() -> bool {
+        // Free global resources allocated in dev_init
+        // if self.buffer_ptr != null {
+        //     free_mem(self.buffer_ptr, self.buffer_size)
+        // }
+
+        return true
+    }
+    */
+}

@@ -1,0 +1,124 @@
+// {{PROJECT_NAME}}-example - Example program using {{PROJECT_NAME}}.device
+//
+// This demonstrates how to:
+//   - Open a device with OpenDevice()
+//   - Send commands using DoIO()
+//   - Close the device with CloseDevice()
+//   - Properly manage IORequest and MsgPort resources
+
+from std::io import println, print
+from std::ffi::exec import OpenDevice, CloseDevice, DoIO
+from std::ffi::exec import CreateMsgPort, DeleteMsgPort
+from std::ffi::exec import CreateIORequest, DeleteIORequest
+from std::ffi::amiga_structs import IORequest, MsgPort
+
+// Import device-specific constants
+// (These match the constants defined in dev.novus)
+const CMD_RESET: u16 = 1
+const CMD_STATUS: u16 = 9
+const CMD_CONFIG: u16 = 10
+
+pub fn main() -> i32 {
+    println("{{PROJECT_NAME}}.device Example")
+    println("================================")
+    println("")
+
+    // Step 1: Create a message port for device replies
+    print("Creating message port... ")
+    let port = CreateMsgPort()
+    if (u32)port == 0 {
+        println("FAILED!")
+        return 1
+    }
+    println("OK")
+
+    // Step 2: Create an IORequest for communicating with the device
+    print("Creating IORequest... ")
+    let req = CreateIORequest(port, @sizeof(IORequest))
+    if (u32)req == 0 {
+        println("FAILED!")
+        DeleteMsgPort(port)
+        return 1
+    }
+    println("OK")
+
+    // Step 3: Open the device (unit 0)
+    print("Opening {{PROJECT_NAME}}.device unit 0... ")
+    let error = OpenDevice("{{PROJECT_NAME}}.device".as_cstr(), 0, req, 0)
+    if error != 0 {
+        println("FAILED!")
+        println("Make sure {{PROJECT_NAME}}.device is in DEVS:")
+        DeleteIORequest(req)
+        DeleteMsgPort(port)
+        return 1
+    }
+    println("OK")
+
+    // Step 4: Send commands to the device
+    println("")
+    println("Sending commands:")
+
+    // Reset the device
+    print("  CMD_RESET... ")
+    unsafe {
+        (*req).io_Command = CMD_RESET
+    }
+    let result = DoIO(req)
+    if result == 0 {
+        println("OK")
+    } else {
+        print("Error: ")
+        // Note: println with i8 not yet supported, just show OK/fail
+        println("FAILED")
+    }
+
+    // Configure the device
+    print("  CMD_CONFIG... ")
+    unsafe {
+        (*req).io_Command = CMD_CONFIG
+        (*req).io_Data = null
+        (*req).io_Length = 0
+    }
+    let result2 = DoIO(req)
+    if result2 == 0 {
+        println("OK")
+    } else {
+        println("FAILED")
+    }
+
+    // Get device status
+    print("  CMD_STATUS... ")
+    unsafe {
+        (*req).io_Command = CMD_STATUS
+    }
+    let result3 = DoIO(req)
+    if result3 == 0 {
+        print("OK (status = ")
+        unsafe {
+            if (*req).io_Actual == 1 {
+                print("initialized")
+            } else {
+                print("not initialized")
+            }
+        }
+        println(")")
+    } else {
+        println("FAILED")
+    }
+
+    // Step 5: Close the device
+    println("")
+    print("Closing device... ")
+    CloseDevice(req)
+    println("OK")
+
+    // Step 6: Clean up resources
+    print("Cleaning up... ")
+    DeleteIORequest(req)
+    DeleteMsgPort(port)
+    println("OK")
+
+    println("")
+    println("Example completed successfully!")
+    return 0
+}
