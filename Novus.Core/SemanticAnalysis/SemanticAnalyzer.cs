@@ -2520,9 +2520,156 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             _genericParams.Remove(paramName);
         }
 
+        // Validate const fn purity (check for forbidden operations)
+        if (_currentFunction.IsConstFn)
+        {
+            ValidateConstFnPurity(context.block(), name);
+        }
+
         _currentFunction = null;
         _currentFunctionSuppressedWarnings.Clear();
         return null;
+    }
+
+    /// <summary>
+    /// Validates that a const fn body doesn't contain forbidden operations.
+    /// </summary>
+    private void ValidateConstFnPurity(NovusParser.BlockContext block, string functionName)
+    {
+        var visitor = new ConstFnPurityVisitor(this, functionName);
+        visitor.Visit(block);
+    }
+
+    /// <summary>
+    /// AST visitor that checks for const fn purity violations.
+    /// </summary>
+    private class ConstFnPurityVisitor : NovusParserBaseVisitor<object?>
+    {
+        private readonly SemanticAnalyzer _analyzer;
+        private readonly string _functionName;
+
+        public ConstFnPurityVisitor(SemanticAnalyzer analyzer, string functionName)
+        {
+            _analyzer = analyzer;
+            _functionName = functionName;
+        }
+
+        public override object? VisitDeferExpression(NovusParser.DeferExpressionContext context)
+        {
+            var location = SourceLocationHelper.FromContext(context, _analyzer._filePath, _analyzer._sourceLines);
+            _analyzer._diagnostics.ReportError(
+                ErrorCodes.ConstFnCannotUseDefer,
+                $"const fn '{_functionName}': defer statements are not allowed in const fn",
+                location
+            );
+            return base.VisitDeferExpression(context);
+        }
+
+        public override object? VisitDeferBlock(NovusParser.DeferBlockContext context)
+        {
+            var location = SourceLocationHelper.FromContext(context, _analyzer._filePath, _analyzer._sourceLines);
+            _analyzer._diagnostics.ReportError(
+                ErrorCodes.ConstFnCannotUseDefer,
+                $"const fn '{_functionName}': defer blocks are not allowed in const fn",
+                location
+            );
+            return base.VisitDeferBlock(context);
+        }
+
+        public override object? VisitPanicStatement(NovusParser.PanicStatementContext context)
+        {
+            var location = SourceLocationHelper.FromContext(context, _analyzer._filePath, _analyzer._sourceLines);
+            _analyzer._diagnostics.ReportError(
+                ErrorCodes.ConstFnCannotUsePanic,
+                $"const fn '{_functionName}': panic! is not allowed in const fn",
+                location
+            );
+            return base.VisitPanicStatement(context);
+        }
+
+        public override object? VisitAsmBlock(NovusParser.AsmBlockContext context)
+        {
+            var location = SourceLocationHelper.FromContext(context, _analyzer._filePath, _analyzer._sourceLines);
+            _analyzer._diagnostics.ReportError(
+                ErrorCodes.ConstFnCannotUseInlineAsm,
+                $"const fn '{_functionName}': inline assembly is not allowed in const fn",
+                location
+            );
+            return base.VisitAsmBlock(context);
+        }
+
+        public override object? VisitIdentifierExpr(NovusParser.IdentifierExprContext context)
+        {
+            // Check for global variable access
+            // IdentifierExprContext has identifier() which returns IdentifierContext
+            var identifier = context.identifier();
+            if (identifier != null)
+            {
+                // Get the first IDENTIFIER token (simple variable name, not paths like Foo::Bar)
+                var name = identifier.IDENTIFIER(0)?.GetText();
+                if (name != null && _analyzer._globalVariables.ContainsKey(name))
+                {
+                    var location = SourceLocationHelper.FromContext(context, _analyzer._filePath, _analyzer._sourceLines);
+                    _analyzer._diagnostics.ReportError(
+                        ErrorCodes.ConstFnCannotAccessGlobal,
+                        $"const fn '{_functionName}': cannot access global variable '{name}'",
+                        location
+                    );
+                }
+            }
+            return base.VisitIdentifierExpr(context);
+        }
+
+        public override object? VisitAssignmentStatement(NovusParser.AssignmentStatementContext context)
+        {
+            // Check for assignment to global variable
+            // AssignmentStatementContext has IDENTIFIER() directly
+            var identifier = context.IDENTIFIER();
+            if (identifier != null)
+            {
+                var name = identifier.GetText();
+                if (_analyzer._globalVariables.ContainsKey(name))
+                {
+                    var location = SourceLocationHelper.FromContext(context, _analyzer._filePath, _analyzer._sourceLines);
+                    _analyzer._diagnostics.ReportError(
+                        ErrorCodes.ConstFnCannotAccessGlobal,
+                        $"const fn '{_functionName}': cannot write to global variable '{name}'",
+                        location
+                    );
+                }
+            }
+            return base.VisitAssignmentStatement(context);
+        }
+
+        public override object? VisitCallExpr(NovusParser.CallExprContext context)
+        {
+            // Check for non-const function calls
+            // CallExpr has: expression '(' argumentList? ')'
+            // We need to get the function name from the expression
+            var expr = context.expression();
+            if (expr is NovusParser.PrimaryExprContext primary)
+            {
+                var primaryExpr = primary.primaryExpression();
+                if (primaryExpr is NovusParser.IdentifierExprContext identExpr)
+                {
+                    var identifier = identExpr.identifier();
+                    var funcName = identifier?.IDENTIFIER(0)?.GetText();
+                    if (funcName != null && _analyzer._functions.TryGetValue(funcName, out var func))
+                    {
+                        if (!func.IsConstFn && !func.IsExtern)
+                        {
+                            var location = SourceLocationHelper.FromContext(context, _analyzer._filePath, _analyzer._sourceLines);
+                            _analyzer._diagnostics.ReportError(
+                                ErrorCodes.ConstFnCannotCallNonConst,
+                                $"const fn '{_functionName}': cannot call non-const function '{funcName}'",
+                                location
+                            );
+                        }
+                    }
+                }
+            }
+            return base.VisitCallExpr(context);
+        }
     }
 
     /// <summary>
