@@ -6610,6 +6610,34 @@ public partial class CCodeGenerator
                                     {
                                         EmitNestedEnumFieldByField($"__out->data.{enumValue.VariantName}._{i}", nestedEnumValueReturn);
                                     }
+                                    // VBCC 68K FIX: Tuple literals also cause misalignment on 68040 - emit field-by-field
+                                    else if (enumValue.AssociatedValues[i] is IrTupleLiteral tupleLitReturn)
+                                    {
+                                        var returnTupleType = tupleLitReturn.Type as IrTupleType;
+                                        if (returnTupleType != null && returnTupleType.ElementTypes.Count > 0)
+                                        {
+                                            for (int elemIdx = 0; elemIdx < tupleLitReturn.Elements.Count; elemIdx++)
+                                            {
+                                                var elemValue = EmitValue(tupleLitReturn.Elements[elemIdx]);
+                                                var elemType = tupleLitReturn.Elements[elemIdx].Type;
+                                                if (TypeRequiresMemcpy(elemType))
+                                                {
+                                                    var elemCType = GetCType(elemType);
+                                                    _output.AppendLine($"    __novus_memcpy((uint8_t*)&__out->data.{enumValue.VariantName}._{i}.__{elemIdx}, (uint8_t*)&{elemValue}, sizeof({elemCType}));");
+                                                }
+                                                else
+                                                {
+                                                    _output.AppendLine($"    __out->data.{enumValue.VariantName}._{i}.__{elemIdx} = {elemValue};");
+                                                }
+                                                var elemSourceIsLocalVar = tupleLitReturn.Elements[elemIdx] is IrVariable;
+                                                if (elemSourceIsLocalVar && TypeContainsDroppableContent(elemType))
+                                                {
+                                                    var elemCType = GetCType(elemType);
+                                                    _output.AppendLine($"    __novus_memset(&{elemValue}, 0, sizeof({elemCType}));");
+                                                }
+                                            }
+                                        }
+                                    }
                                     else
                                     {
                                         var assocValue = EmitValue(enumValue.AssociatedValues[i]);
@@ -9625,6 +9653,12 @@ public partial class CCodeGenerator
                 // ALL structs need memcpy - VBCC generates bad code even for simple structs
                 // when they're extracted from unions or passed around
                 return true;
+
+            case IrTupleType tupleType:
+                // Tuples are emitted as structs in C, so they also need memcpy to avoid
+                // struct-by-value assignment which causes alignment faults on 68040.
+                // Empty tuples (unit type) don't need special handling.
+                return tupleType.ElementTypes.Count > 0;
 
             case IrEnumType enumType:
                 // Enums with associated data become tagged unions in C.

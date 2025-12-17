@@ -54,6 +54,17 @@ public static class TestCommand
             var compilerDir = AppContext.BaseDirectory;
             var stdLibPath = Path.Combine(compilerDir, "std");
 
+            // Check for stale stdlib source copies and auto-refresh if needed
+            var staleFiles = StdlibBuildCommand.FindStaleSourceCopies(compilerDir);
+            if (staleFiles.Count > 0)
+            {
+                if (options.Verbose)
+                {
+                    Console.WriteLine($"Found {staleFiles.Count} stale stdlib source file(s), refreshing...");
+                }
+                StdlibBuildCommand.RefreshBinStdlib(compilerDir, options.Verbose);
+            }
+
             // Collect all source files to scan for tests
             var sourceFiles = new List<string>();
 
