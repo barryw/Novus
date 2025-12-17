@@ -92,6 +92,10 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
     private readonly CircularImportDetector _circularImportDetector; // Detect circular import dependencies
     private readonly TypeInterner _typeInterner = new(); // Type interning for efficient type equality
 
+    // Deferred constants that contain const fn calls
+    // These are evaluated in a later pass after function bodies are built
+    private readonly List<(NovusParser.ConstDeclarationContext Context, Visibility Visibility)> _deferredConstants = new();
+
     // Track active type substitutions during generic method instantiation
     // Key: generic param name (e.g., "T"), Value: concrete type (e.g., i32)
     private Dictionary<string, IrType>? _currentTypeSubstitutions = null;
@@ -921,10 +925,11 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
             // Non-generic function: register normally
             var returnType = ParseReturnType(funcContext.type());
 
-            // Check for extern, pub, and internal keywords
-            var (visibility, isExtern, _) = AstModifierHelper.ParseModifiers(funcContext, 4);
+            // Check for extern, pub, internal, and const keywords
+            var (visibility, isExtern, _, isConstFn) = AstModifierHelper.ParseModifiers(funcContext, 5);
 
             var function = new IrFunction(name, returnType, visibility, isExtern);
+            function.IsConstFn = isConstFn;  // Mark as const fn if 'const' keyword is present
             function.Location = GetLocation(funcContext);  // Store source location for debug info
 
             // Parse and store function attributes (for @test, @export, etc.)
@@ -1022,13 +1027,14 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
                 // to the concrete implementing type before being registered
                 returnType = _typeParser.SubstituteGenericTypes(returnType, new Dictionary<string, IrType>());
 
-                // Check for extern, pub, and internal keywords
-                var (visibility, isExtern, _) = AstModifierHelper.ParseModifiers(funcDecl, 4);
+                // Check for extern, pub, internal, and const keywords
+                var (visibility, isExtern, _, isConstFn) = AstModifierHelper.ParseModifiers(funcDecl, 5);
 
                 // Methods are registered with mangled names
                 var mangledName = GenerateMethodMangledName(typeName!, methodName, isTraitImpl, traitName, traitTypeArgs);
 
                 var function = new IrFunction(mangledName, returnType, visibility, isExtern);
+                function.IsConstFn = isConstFn;  // Mark as const fn if 'const' keyword is present
                 function.Location = GetLocation(funcDecl);  // Store source location for debug info
 
                 // Parse and store function attributes (for #[chain], @test, @export, etc.)
@@ -1252,6 +1258,10 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
             // Clear Self type after processing impl block
             _currentSelfType = null;
         }
+
+        // Pass 6.5: Evaluate deferred constants that contain const fn calls
+        // Now that all function bodies are built, we can evaluate const fn calls
+        EvaluateDeferredConstants();
 
         return _module;
     }

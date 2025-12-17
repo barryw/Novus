@@ -370,9 +370,10 @@ public partial class IrBuilder
                             // Parse and add the function
                             var returnType = ParseReturnType(funcDecl.type());
 
-                            var (visibility, isExtern, _) = AstModifierHelper.ParseModifiers(funcDecl, 4);
+                            var (visibility, isExtern, _, isConstFn) = AstModifierHelper.ParseModifiers(funcDecl, 5);
 
                             var function = new IrFunction(funcName, returnType, visibility, isExtern);
+                            function.IsConstFn = isConstFn;
 
                             // Parse parameters
                             ParseFunctionParameters(funcDecl, function);

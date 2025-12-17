@@ -21,7 +21,7 @@ using Novus.Frontend;
 // Parser Rules
 
 compilationUnit
-    : NEWLINE* importDeclaration* reexportDeclaration* (constDeclaration | staticDeclaration | globalVariableDeclaration | structDeclaration | enumDeclaration | traitDeclaration | implDeclaration | functionDeclaration)* EOF
+    : NEWLINE* importDeclaration* reexportDeclaration* (functionDeclaration | constDeclaration | staticDeclaration | globalVariableDeclaration | structDeclaration | enumDeclaration | traitDeclaration | implDeclaration)* EOF
     ;
 
 attribute
@@ -89,7 +89,7 @@ globalVariableDeclaration
     ;
 
 functionDeclaration
-    : attribute* KW_EXTERN? (KW_PUB | KW_INTERNAL)? KW_FN IDENTIFIER genericParams? LPAREN parameterList? RPAREN (ARROW type)? whereClause? (block | SEMI)? NEWLINE*
+    : attribute* KW_EXTERN? (KW_PUB | KW_INTERNAL)? KW_CONST? KW_FN IDENTIFIER genericParams? LPAREN parameterList? RPAREN (ARROW type)? whereClause? (block | SEMI)? NEWLINE*
     ;
 
 parameterList

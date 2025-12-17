@@ -146,8 +146,8 @@ public static class AstParsingHelpers
     /// </summary>
     /// <param name="context">The parser context to examine</param>
     /// <param name="maxChildrenToCheck">Maximum number of children to check for modifiers</param>
-    /// <returns>Tuple of (visibility, isExtern, isMutable)</returns>
-    public static (Visibility Visibility, bool IsExtern, bool IsMutable) ParseModifiers(
+    /// <returns>Tuple of (visibility, isExtern, isMutable, isConst)</returns>
+    public static (Visibility Visibility, bool IsExtern, bool IsMutable, bool IsConst) ParseModifiers(
         Antlr4.Runtime.ParserRuleContext context,
         int maxChildrenToCheck = 4)
     {

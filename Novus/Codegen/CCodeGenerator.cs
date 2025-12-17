@@ -1367,11 +1367,12 @@ public partial class CCodeGenerator
             sb.AppendLine();
         }
 
-        // Emit string literals (if any)
-        if (_stringLiterals.Count > 0)
+        // Emit only string literals used by this function
+        var usedStringLabels = GetUsedStringLiteralLabels(function);
+        if (usedStringLabels.Count > 0)
         {
             sb.AppendLine("// String literals");
-            foreach (var literal in _stringLiterals)
+            foreach (var literal in _stringLiterals.Where(l => usedStringLabels.Contains(l.Label)))
             {
                 var escaped = EscapeString(literal.Value);
                 sb.AppendLine($"static const char {literal.Label}[] = \"{escaped}\";");
@@ -3113,6 +3114,111 @@ public partial class CCodeGenerator
         }
 
         return called;
+    }
+
+    /// <summary>
+    /// Collect string literals used by a function.
+    /// Scans all instructions and their operands for IrStringLiteral references.
+    /// </summary>
+    private HashSet<string> GetUsedStringLiteralLabels(IrFunction function)
+    {
+        var usedLabels = new HashSet<string>();
+
+        void ScanValue(IrValue? value)
+        {
+            if (value == null) return;
+
+            switch (value)
+            {
+                case IrStringLiteral stringLit:
+                    usedLabels.Add(stringLit.Label);
+                    break;
+                case IrCastValue castValue:
+                    ScanValue(castValue.Value);
+                    break;
+                case IrBorrowValue borrowValue:
+                    ScanValue(borrowValue.BorrowedValue);
+                    break;
+                case IrDereferenceValue derefValue:
+                    ScanValue(derefValue.PointerValue);
+                    break;
+                case IrStructLiteral structLit:
+                    foreach (var fieldValue in structLit.FieldValues.Values)
+                        ScanValue(fieldValue);
+                    break;
+                case IrEnumConstructor:
+                    // Unit variant - no associated data
+                    break;
+                case IrEnumValue enumValue:
+                    foreach (var assocVal in enumValue.AssociatedValues)
+                        ScanValue(assocVal);
+                    break;
+                case IrTupleLiteral tupleLit:
+                    foreach (var elem in tupleLit.Elements)
+                        ScanValue(elem);
+                    break;
+                case IrArrayLiteral arrayLit:
+                    foreach (var elem in arrayLit.Elements)
+                        ScanValue(elem);
+                    break;
+            }
+        }
+
+        foreach (var block in function.BasicBlocks)
+        {
+            foreach (var instruction in block.Instructions)
+            {
+                switch (instruction)
+                {
+                    case IrCall call:
+                        foreach (var arg in call.Arguments)
+                            ScanValue(arg);
+                        break;
+                    case IrStore store:
+                        ScanValue(store.Value);
+                        break;
+                    case IrLocalDecl localDecl:
+                        ScanValue(localDecl.InitialValue);
+                        break;
+                    case IrReturn ret:
+                        ScanValue(ret.Value);
+                        break;
+                    case IrBinaryOp binOp:
+                        ScanValue(binOp.Left);
+                        ScanValue(binOp.Right);
+                        break;
+                    case IrConditionalBranch condBranch:
+                        ScanValue(condBranch.Condition);
+                        break;
+                    case IrIndexAccess indexAccess:
+                        ScanValue(indexAccess.Array);
+                        ScanValue(indexAccess.Index);
+                        break;
+                    case IrIndexStore indexStore:
+                        ScanValue(indexStore.Array);
+                        ScanValue(indexStore.Index);
+                        ScanValue(indexStore.Value);
+                        break;
+                    case IrMemberAccess memberAccess:
+                        ScanValue(memberAccess.Struct);
+                        break;
+                    case IrMemberStore memberStore:
+                        ScanValue(memberStore.Struct);
+                        ScanValue(memberStore.Value);
+                        break;
+                    case IrDereferenceStore derefStore:
+                        ScanValue(derefStore.Pointer);
+                        ScanValue(derefStore.Value);
+                        break;
+                    // IrPanic.Message is a string, not an IrValue - no scanning needed
+                    case IrAssert assert:
+                        ScanValue(assert.Condition);
+                        break;
+                }
+            }
+        }
+
+        return usedLabels;
     }
 
     public string Generate()

@@ -1,0 +1,159 @@
+// Test: const fn (compile-time evaluated functions)
+// This demonstrates the const fn feature for Novus.
+//
+// A const fn is a function that can be evaluated at compile-time when
+// called with constant arguments. This enables compile-time computation
+// for constants, array sizes, and other places that require constant values.
+
+from std::io::file import println
+
+// Simple const fn - pure arithmetic
+// Note: "double" is a reserved C keyword, so we use "times_two" instead
+const fn times_two(x: i32) -> i32 {
+    return x * 2
+}
+
+// Const fn with multiple parameters
+const fn add(a: i32, b: i32) -> i32 {
+    return a + b
+}
+
+// Const fn with local variables
+const fn complex_calc(x: i32) -> i32 {
+    let doubled = x * 2
+    let tripled = x * 3
+    return doubled + tripled  // x * 5
+}
+
+// Const fn with conditionals
+const fn max(a: i32, b: i32) -> i32 {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+const fn min(a: i32, b: i32) -> i32 {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+// Const fn calling another const fn
+const fn times_four(x: i32) -> i32 {
+    return times_two(times_two(x))
+}
+
+// Public const fn for library use
+pub const fn clamp(value: i32, low: i32, high: i32) -> i32 {
+    return min(max(value, low), high)
+}
+
+// Fibonacci (const fn can use recursion with bounded depth)
+const fn fib(n: i32) -> i32 {
+    if n <= 1 {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
+// Absolute value
+const fn abs(x: i32) -> i32 {
+    if x < 0 {
+        return -x
+    }
+    return x
+}
+
+// Power function (x^n for small n)
+const fn pow(base: i32, exp: i32) -> i32 {
+    if exp == 0 {
+        return 1
+    }
+    if exp == 1 {
+        return base
+    }
+    return base * pow(base, exp - 1)
+}
+
+// Use const fn results in constant expressions
+const WIDTH: i32 = 320
+const HEIGHT: i32 = 200
+const DOUBLED_WIDTH: i32 = times_two(WIDTH)    // = 640, evaluated at compile time
+const BUFFER_SIZE: i32 = add(WIDTH, HEIGHT)    // = 520, evaluated at compile time
+const FIB_8: i32 = fib(8)                      // = 21, compile-time recursive evaluation
+const CLAMPED_VALUE: i32 = clamp(999, 0, 100)  // = 100, uses nested const fn calls
+
+pub fn main() -> i32 {
+    println("Testing const fn:")
+
+    // Test times_two
+    let d = times_two(21)
+    println("times_two(21) = 42")
+
+    // Test add
+    let sum = add(10, 20)
+    println("add(10, 20) = 30")
+
+    // Test complex_calc
+    let c = complex_calc(10)  // 10 * 5 = 50
+    println("complex_calc(10) = 50")
+
+    // Test max/min
+    let mx = max(15, 7)
+    let mn = min(15, 7)
+    println("max(15, 7) = 15")
+    println("min(15, 7) = 7")
+
+    // Test times_four (calls times_two twice)
+    let q = times_four(5)  // times_two(times_two(5)) = times_two(10) = 20
+    println("times_four(5) = 20")
+
+    // Test clamp
+    let clamped = clamp(150, 0, 100)  // clamps 150 to range [0, 100] = 100
+    println("clamp(150, 0, 100) = 100")
+
+    // Test fibonacci
+    let f10 = fib(10)  // fib(10) = 55
+    println("fib(10) = 55")
+
+    // Test abs
+    let a = abs(-42)
+    println("abs(-42) = 42")
+
+    // Test pow
+    let p = pow(2, 8)  // 2^8 = 256
+    println("pow(2, 8) = 256")
+
+    // Using compile-time evaluated constants
+    println("")
+    println("Compile-time evaluated constants:")
+    println("WIDTH = 320")
+    println("HEIGHT = 200")
+    println("DOUBLED_WIDTH = 640")
+    println("BUFFER_SIZE = 520")
+    println("FIB_8 = 21")
+    println("CLAMPED_VALUE = 100")
+
+    // Verify the constants have correct values
+    if DOUBLED_WIDTH != 640 {
+        println("ERROR: DOUBLED_WIDTH should be 640")
+        return 1
+    }
+    if BUFFER_SIZE != 520 {
+        println("ERROR: BUFFER_SIZE should be 520")
+        return 1
+    }
+    if FIB_8 != 21 {
+        println("ERROR: FIB_8 should be 21")
+        return 1
+    }
+    if CLAMPED_VALUE != 100 {
+        println("ERROR: CLAMPED_VALUE should be 100")
+        return 1
+    }
+
+    println("All const fn evaluations correct!")
+    return 0
+}

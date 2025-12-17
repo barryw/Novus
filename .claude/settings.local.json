@@ -98,7 +98,9 @@
       "Bash(timeout 300 dotnet test:*)",
       "Bash(timeout 240 dotnet test:*)",
       "Bash(timeout 360 dotnet test:*)",
-      "Bash(timeout 600 dotnet test:*)"
+      "Bash(timeout 600 dotnet test:*)",
+      "Bash(timeout 30 dotnet test:*)",
+      "Bash(m68k-amigaos-nm:*)"
     ],
     "deny": [],
     "ask": []

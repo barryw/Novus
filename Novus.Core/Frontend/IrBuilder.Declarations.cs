@@ -84,7 +84,7 @@ public partial class IrBuilder
         var name = context.IDENTIFIER().GetText();
 
         // Check for pub/internal keywords
-        var (visibility, _, _) = AstModifierHelper.ParseModifiers(context, 3);
+        var (visibility, _, _, _) = AstModifierHelper.ParseModifiers(context, 3);
 
         // Evaluate the constant expression using the evaluator
         var valueExpr = context.expression();
@@ -115,6 +115,127 @@ public partial class IrBuilder
             // Also store in the IR module for code generator access
             _module.Constants[name] = (visibility, type, value);
         }
+        else if (evaluator.HasDeferredFunctionCall)
+        {
+            // This constant contains a const fn call - defer to later pass
+            _deferredConstants.Add((context, visibility));
+        }
+    }
+
+    /// <summary>
+    /// Evaluate deferred constants that contain const fn calls.
+    /// Called after function bodies are built so that const fn IR is available.
+    /// </summary>
+    private void EvaluateDeferredConstants()
+    {
+        if (_deferredConstants.Count == 0)
+            return;
+
+        // Create a ConstFnEvaluator to interpret const functions
+        var constFnEvaluator = new ConstFnEvaluator(_module);
+
+        // Callback to evaluate const fn calls
+        ConstFnCallResult? EvaluateConstFnCall(string functionName, List<int> arguments)
+        {
+            // Find the const function
+            var function = _module.Functions.FirstOrDefault(f => f.Name == functionName && f.IsConstFn);
+            if (function == null)
+            {
+                // Not a const fn - could be a regular function
+                return null;
+            }
+
+            // Convert int arguments to object? for the evaluator
+            var args = arguments.Select(a => (object?)((long)a)).ToList();
+            var result = constFnEvaluator.Evaluate(functionName, args);
+
+            if (result.Success)
+            {
+                // Convert the result back to int
+                if (result.Value is long longVal)
+                {
+                    return ConstFnCallResult.Ok((int)longVal);
+                }
+                else if (result.Value is int intVal)
+                {
+                    return ConstFnCallResult.Ok(intVal);
+                }
+                else if (result.Value is bool boolVal)
+                {
+                    return ConstFnCallResult.Ok(boolVal ? 1 : 0);
+                }
+                // Other types - try to convert
+                if (result.Value != null)
+                {
+                    try
+                    {
+                        return ConstFnCallResult.Ok(Convert.ToInt32(result.Value));
+                    }
+                    catch
+                    {
+                        return ConstFnCallResult.Err($"Const fn '{functionName}' returned non-integer value");
+                    }
+                }
+                return ConstFnCallResult.Ok(0); // void return
+            }
+            else
+            {
+                return ConstFnCallResult.Err(result.Error ?? "Unknown error evaluating const fn");
+            }
+        }
+
+        // Evaluate each deferred constant
+        foreach (var (context, visibility) in _deferredConstants)
+        {
+            var name = context.IDENTIFIER().GetText();
+            var valueExpr = context.expression();
+            var constantValues = GetConstantValues();
+
+            var evaluator = new SemanticAnalysis.ConstantExpressionEvaluator(
+                constantValues,
+                error => _diagnostics.ReportError(
+                    "E0034",
+                    error,
+                    GetLocation(context)
+                ),
+                EvaluateConstFnCall
+            );
+
+            int? value = evaluator.Visit(valueExpr);
+
+            if (value != null)
+            {
+                // Handle type - either explicit or inferred
+                IrType type;
+                if (context.type() != null)
+                {
+                    type = ParseType(context.type());
+                }
+                else
+                {
+                    type = IrIntType.I32;
+                }
+
+                _symbols.RegisterConstant(name, type, value);
+                _module.Constants[name] = (visibility, type, value);
+            }
+            else
+            {
+                // Error - couldn't evaluate the constant
+                _diagnostics.ReportError(
+                    "E0032",
+                    $"could not evaluate constant '{name}' at compile time",
+                    GetLocation(context),
+                    helpTexts: new List<string>
+                    {
+                        "constants can only call const fn functions",
+                        "ensure all functions called are declared with 'const fn'"
+                    }
+                );
+            }
+        }
+
+        _deferredConstants.Clear();
     }
 
     private void RegisterStatic(NovusParser.StaticDeclarationContext context)
@@ -153,7 +274,7 @@ public partial class IrBuilder
         }
 
         // Check for pub/internal/mut keywords
-        var (visibility, _, isMutable) = AstModifierHelper.ParseModifiers(context, 5);
+        var (visibility, _, isMutable, _) = AstModifierHelper.ParseModifiers(context, 5);
 
         // Evaluate the initial value expression
         var valueExpr = context.expression();
@@ -198,7 +319,7 @@ public partial class IrBuilder
     /// </summary>
     private void RegisterStaticAudio(string name, SemanticAnalysis.AttributeInfo audioAttr, NovusParser.StaticDeclarationContext context)
     {
-        var (visibility, _, _) = AstModifierHelper.ParseModifiers(context, 5);
+        var (visibility, _, _, _) = AstModifierHelper.ParseModifiers(context, 5);
 
         // Get the file path from the first positional argument
         if (audioAttr.PositionalArgs.Count == 0)
@@ -320,7 +441,7 @@ public partial class IrBuilder
     /// </summary>
     private void RegisterStaticAudioRaw(string name, SemanticAnalysis.AttributeInfo audioRawAttr, NovusParser.StaticDeclarationContext context)
     {
-        var (visibility, _, _) = AstModifierHelper.ParseModifiers(context, 5);
+        var (visibility, _, _, _) = AstModifierHelper.ParseModifiers(context, 5);
 
         // Get the file path from the first positional argument
         if (audioRawAttr.PositionalArgs.Count == 0)
@@ -409,7 +530,7 @@ public partial class IrBuilder
     /// </summary>
     private void RegisterStaticMod(string name, SemanticAnalysis.AttributeInfo modAttr, NovusParser.StaticDeclarationContext context)
     {
-        var (visibility, _, _) = AstModifierHelper.ParseModifiers(context, 5);
+        var (visibility, _, _, _) = AstModifierHelper.ParseModifiers(context, 5);
 
         // Get the file path from the first positional argument
         if (modAttr.PositionalArgs.Count == 0)

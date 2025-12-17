@@ -20,7 +20,7 @@ public partial class IrBuilder
         var returnType = ParseReturnType(context.type());
 
         // Parse visibility, extern flag, and other modifiers
-        var (visibility, isExtern, _) = AstModifierHelper.ParseModifiers(context, 3);
+        var (visibility, isExtern, _, _) = AstModifierHelper.ParseModifiers(context, 5);
 
         var function = new IrFunction(name, returnType, visibility, isExtern);
         _module.AddFunction(function);

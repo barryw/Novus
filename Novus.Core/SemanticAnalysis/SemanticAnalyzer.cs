@@ -1053,13 +1053,25 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
         if (value == null)
         {
+            // Check if the expression contains a deferred function call (const fn)
+            // These will be evaluated later during IR building when the const fn bodies are available
+            if (evaluator.HasDeferredFunctionCall)
+            {
+                // At this point, functions haven't been registered yet (they're in a later pass),
+                // so we can't validate that the function is a const fn here.
+                // The IrBuilder will validate and evaluate this constant later.
+                // Use placeholder value (0) - actual evaluation happens in IrBuilder.
+                _symbols.RegisterConstant(name, new ConstantSymbol(name, type, 0, location, isDeferredConstFn: true));
+                return;
+            }
+
             _diagnostics.ReportError(
                 "E0032",
                 $"constant value must be a compile-time constant expression",
                 location,
                 helpTexts: new List<string>
                 {
-                    "supported: integer/hex/binary literals, constant references, bitwise ops (|, &, ^, <<, >>, ~), arithmetic, struct literals"
+                    "supported: integer/hex/binary literals, constant references, bitwise ops (|, &, ^, <<, >>, ~), arithmetic, struct literals, const fn calls"
                 }
             );
             return;
@@ -1380,6 +1392,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         // Check if function is extern by looking for 'extern' keyword
         var isExtern = context.KW_EXTERN() != null;
 
+        // Check if function is a const fn
+        var isConstFn = Frontend.AstModifierHelper.IsConstFn(context);
+
         // Check for duplicate function names
         if (_functions.ContainsKey(name))
         {
@@ -1485,7 +1500,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             _parsingExternFunction = false;
         }
 
-        _functions[name] = new FunctionSymbol(name, returnType, parameters, location, isExtern, genericParams.Count > 0 ? genericParams : null, attributes, hasVariadic, whereClause);
+        _functions[name] = new FunctionSymbol(name, returnType, parameters, location, isExtern, genericParams.Count > 0 ? genericParams : null, attributes, hasVariadic, whereClause, isConstFn);
 
         // Clear generic params from scope after function registration
         foreach (var paramName in genericParams)
@@ -12258,7 +12273,8 @@ public record FunctionSymbol(
     List<string>? GenericParameters = null,  // Generic type parameters (e.g., ["T"] for Option::FromPointer)
     AttributeCollection? Attributes = null,  // Function attributes (@inline, @test, etc.)
     bool IsVariadic = false,  // true if function accepts variable number of arguments (...)
-    IrWhereClause? WhereClause = null  // Generic type constraints (e.g., where T: Sortable)
+    IrWhereClause? WhereClause = null,  // Generic type constraints (e.g., where T: Sortable)
+    bool IsConstFn = false  // true if function is declared with 'const fn'
 );
 public record ParameterSymbol(string Name, IrType Type, SourceLocation Location, bool IsVariadic = false, bool IsConsuming = false);
 public record VariableSymbol(
@@ -12277,5 +12293,6 @@ public record ConstantSymbol(
     IrType Type,
     object Value,
     SourceLocation Location,
-    AttributeCollection? Attributes = null  // Constant attributes
+    AttributeCollection? Attributes = null,  // Constant attributes
+    bool isDeferredConstFn = false  // true if this constant contains const fn calls that need deferred evaluation
 );

@@ -15,14 +15,15 @@ public static class AstModifierHelper
     /// </summary>
     /// <param name="context">The AST context to examine</param>
     /// <param name="maxChildren">Maximum number of children to examine (default 5)</param>
-    /// <returns>Tuple containing visibility, extern flag, and mutable flag</returns>
-    public static (Visibility visibility, bool isExtern, bool isMutable) ParseModifiers(
+    /// <returns>Tuple containing visibility, extern flag, mutable flag, and const flag</returns>
+    public static (Visibility visibility, bool isExtern, bool isMutable, bool isConst) ParseModifiers(
         IParseTree context,
         int maxChildren = 5)
     {
         var visibility = Visibility.Private;
         bool isExtern = false;
         bool isMutable = false;
+        bool isConst = false;
 
         for (int i = 0; i < Math.Min(maxChildren, context.ChildCount); i++)
         {
@@ -41,10 +42,13 @@ public static class AstModifierHelper
                 case "var":
                     isMutable = true;
                     break;
+                case "const":
+                    isConst = true;
+                    break;
             }
         }
 
-        return (visibility, isExtern, isMutable);
+        return (visibility, isExtern, isMutable, isConst);
     }
 
     /// <summary>
@@ -83,7 +87,15 @@ public static class AstModifierHelper
     /// </summary>
     public static (bool IsPub, bool IsExtern) GetFunctionVisibility(NovusParser.FunctionDeclarationContext context)
     {
-        var (visibility, isExtern, _) = ParseModifiers(context, 3);
+        var (visibility, isExtern, _, _) = ParseModifiers(context, 5);
         return (visibility == Visibility.Public, isExtern);
+    }
+
+    /// <summary>
+    /// Check if a function declaration has the 'const' modifier (const fn)
+    /// </summary>
+    public static bool IsConstFn(NovusParser.FunctionDeclarationContext context)
+    {
+        return HasModifier(context, "const", 5);
     }
 }
