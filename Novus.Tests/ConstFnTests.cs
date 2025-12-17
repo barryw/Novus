@@ -423,6 +423,53 @@ pub fn main() -> i32 {
     }
 
     [Fact]
+    public void ConstFnValidation_ReadingGlobalVariable_Error()
+    {
+        var source = @"
+static var counter: i32 = 0
+
+const fn read_global() -> i32 {
+    return counter
+}
+
+pub fn main() -> i32 {
+    return 0
+}";
+        var module = BuildIr(source);
+
+        var func = module.Functions.First(f => f.Name == "read_global");
+        var errors = ConstFnEvaluator.ValidateConstFn(func, module);
+
+        Assert.Single(errors);
+        Assert.Contains("cannot read global variable 'counter'", errors[0]);
+    }
+
+    [Fact]
+    public void ConstFnValidation_WritingGlobalVariable_Error()
+    {
+        var source = @"
+static var counter: i32 = 0
+
+const fn write_global() -> i32 {
+    counter = 42
+    return 0
+}
+
+pub fn main() -> i32 {
+    return 0
+}";
+        var module = BuildIr(source);
+
+        var func = module.Functions.First(f => f.Name == "write_global");
+        var errors = ConstFnEvaluator.ValidateConstFn(func, module);
+
+        // Should have at least one error about global variable access
+        Assert.NotEmpty(errors);
+        Assert.True(errors.Any(e => e.Contains("global variable")),
+            $"Expected error about global variable, got: {string.Join(", ", errors)}");
+    }
+
+    [Fact]
     public void SemanticAnalyzer_RegularFn_RegistersFunction()
     {
         // Test two functions to ensure both get registered

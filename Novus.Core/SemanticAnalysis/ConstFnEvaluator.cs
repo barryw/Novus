@@ -629,8 +629,13 @@ public class ConstFnEvaluator
                 }
                 break;
 
-            // IrStore stores to local variables by name - globals are handled via IrDereferenceStore
-            // The Value operand is already checked in ValidateInstructionOperands
+            case IrStore store:
+                // Check if storing to a static/global variable (by name)
+                if (module != null && IsStaticVariableName(store.VariableName, module))
+                {
+                    errors.Add($"const fn '{function.Name}': cannot write to global variable '{store.VariableName}'");
+                }
+                break;
 
             case IrMemberStore memberStore:
                 // Check if the struct being modified is a global
@@ -750,6 +755,14 @@ public class ConstFnEvaluator
             IrDereferenceValue derefValue => IsGlobalVariableAccess(derefValue.PointerValue, globalVarReferences),
             _ => false
         };
+    }
+
+    /// <summary>
+    /// Check if a variable name refers to a static/global variable in the module.
+    /// </summary>
+    private static bool IsStaticVariableName(string varName, IrModule module)
+    {
+        return module.StaticVariables.Any(sv => sv.Name == varName);
     }
 
     /// <summary>
