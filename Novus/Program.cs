@@ -369,10 +369,15 @@ class Program
             irBuilder.SetInputFilePath(inputFile);
             var module = irBuilder.BuildModule(compilationUnit);
 
+            // Always print diagnostics (warnings and errors) from IR building
+            if (irBuilder.Diagnostics.HasErrors || irBuilder.Diagnostics.HasWarnings)
+            {
+                Console.WriteLine(irBuilder.Diagnostics.FormatDiagnostics());
+            }
+
             // Check for IR building errors
             if (irBuilder.Diagnostics.HasErrors)
             {
-                Console.WriteLine(irBuilder.Diagnostics.FormatDiagnostics());
                 return null;
             }
 

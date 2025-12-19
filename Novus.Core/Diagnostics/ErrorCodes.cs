@@ -155,12 +155,15 @@ public static class ErrorCodes
     public const string UnknownAttribute = "E3501";
     public const string AttributeOverride = "W3502";  // Warning: attribute overrides project/CLI settings
     public const string UnknownDeriveTrait = "E3503";  // Unknown trait in #[derive(...)]
+    public const string AssetWarning = "W3504";  // Warning: asset-related warnings (e.g., high sample rate)
 
     // ========================================================================
     // E36XX: File/Resource Errors
     // ========================================================================
     public const string FileNotFound = "E3600";
     public const string FileReadError = "E3601";
+    public const string AssetSampleRateTooHigh = "E3602";
+    public const string AssetSampleRateTooLow = "E3603";
 
     // ========================================================================
     // E37XX: Hardware/DSL Errors (Copper, Blitter, Chipset)

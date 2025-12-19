@@ -1,6 +1,92 @@
 namespace Novus.Assets;
 
 /// <summary>
+/// Paula audio chip hardware limits.
+/// </summary>
+public static class PaulaLimits
+{
+    /// <summary>
+    /// PAL clock frequency (Hz).
+    /// </summary>
+    public const int PalClock = 3546895;
+
+    /// <summary>
+    /// NTSC clock frequency (Hz).
+    /// </summary>
+    public const int NtscClock = 3579545;
+
+    /// <summary>
+    /// Minimum period value (hardware limit).
+    /// </summary>
+    public const int MinPeriod = 124;
+
+    /// <summary>
+    /// Maximum practical sample rate for PAL (~28.6 kHz).
+    /// </summary>
+    public const int MaxSampleRatePal = PalClock / MinPeriod; // ~28603 Hz
+
+    /// <summary>
+    /// Maximum practical sample rate for NTSC (~28.9 kHz).
+    /// </summary>
+    public const int MaxSampleRateNtsc = NtscClock / MinPeriod; // ~28867 Hz
+
+    /// <summary>
+    /// Maximum sample rate before error (use PAL as the limit since it's lower).
+    /// </summary>
+    public const int MaxSampleRate = 28000;
+
+    /// <summary>
+    /// Sample rate threshold for warning (diminishing returns above this).
+    /// </summary>
+    public const int WarnSampleRate = 22050;
+
+    /// <summary>
+    /// Default sample rate when not specified.
+    /// </summary>
+    public const int DefaultSampleRate = 11025;
+}
+
+/// <summary>
+/// Validation message severity.
+/// </summary>
+public enum ValidationSeverity
+{
+    Warning,
+    Error
+}
+
+/// <summary>
+/// A validation message with severity.
+/// </summary>
+public class ValidationMessage
+{
+    public ValidationSeverity Severity { get; set; }
+    public string Message { get; set; } = "";
+
+    public static ValidationMessage Warning(string message) => new() { Severity = ValidationSeverity.Warning, Message = message };
+    public static ValidationMessage Error(string message) => new() { Severity = ValidationSeverity.Error, Message = message };
+}
+
+/// <summary>
+/// Result of asset validation.
+/// </summary>
+public class AssetValidationResult
+{
+    public List<ValidationMessage> Messages { get; set; } = new();
+
+    public bool HasErrors => Messages.Any(m => m.Severity == ValidationSeverity.Error);
+    public bool HasWarnings => Messages.Any(m => m.Severity == ValidationSeverity.Warning);
+
+    public IEnumerable<ValidationMessage> Errors => Messages.Where(m => m.Severity == ValidationSeverity.Error);
+    public IEnumerable<ValidationMessage> Warnings => Messages.Where(m => m.Severity == ValidationSeverity.Warning);
+
+    /// <summary>
+    /// Get the first error message, or null if no errors.
+    /// </summary>
+    public string? FirstError => Errors.FirstOrDefault()?.Message;
+}
+
+/// <summary>
 /// Result of asset conversion.
 /// </summary>
 public class AssetConversionResult
@@ -29,6 +115,11 @@ public class AssetConversionResult
     /// Whether the conversion produced a simple byte array vs a struct with metadata.
     /// </summary>
     public bool IsRawData => StructTypeName == null;
+
+    /// <summary>
+    /// Warnings generated during conversion.
+    /// </summary>
+    public List<string> Warnings { get; set; } = new();
 }
 
 /// <summary>
@@ -53,9 +144,9 @@ public interface IAssetConverter
 
     /// <summary>
     /// Validate that the file can be converted with the given options.
-    /// Returns null if valid, or an error message if invalid.
+    /// Returns validation result with warnings and errors.
     /// </summary>
-    string? Validate(string filePath, EmbedOptions options);
+    AssetValidationResult Validate(string filePath, EmbedOptions options);
 }
 
 /// <summary>
@@ -119,14 +210,17 @@ public static class AssetConverterRegistry
     /// <summary>
     /// Validate an asset file.
     /// </summary>
-    public static string? ValidateAsset(string filePath, EmbedOptions options)
+    public static AssetValidationResult ValidateAsset(string filePath, EmbedOptions options)
     {
         var type = options.GetEffectiveType();
         var converter = GetConverter(type);
 
         if (converter == null)
         {
-            return $"No converter available for asset type: {type}";
+            return new AssetValidationResult
+            {
+                Messages = { ValidationMessage.Error($"No converter available for asset type: {type}") }
+            };
         }
 
         return converter.Validate(filePath, options);
@@ -156,14 +250,16 @@ public class RawAssetConverter : IAssetConverter
         };
     }
 
-    public string? Validate(string filePath, EmbedOptions options)
+    public AssetValidationResult Validate(string filePath, EmbedOptions options)
     {
+        var result = new AssetValidationResult();
+
         if (!File.Exists(filePath))
         {
-            return $"File not found: {filePath}";
+            result.Messages.Add(ValidationMessage.Error($"File not found: {filePath}"));
         }
 
-        return null;
+        return result;
     }
 }
 
@@ -185,10 +281,9 @@ public class AudioAssetConverter : IAssetConverter
             ChannelMode = options.ChannelMode
         };
 
-        if (options.SampleRate.HasValue)
-        {
-            audioOptions.TargetSampleRate = options.SampleRate.Value;
-        }
+        // Apply sample rate: use specified value or default to 11025
+        var targetSampleRate = options.SampleRate ?? PaulaLimits.DefaultSampleRate;
+        audioOptions.TargetSampleRate = targetSampleRate;
 
         // Perform conversion
         var result = Audio.AudioConverter.ConvertFile(filePath, audioOptions);
@@ -200,7 +295,7 @@ public class AudioAssetConverter : IAssetConverter
         // Determine struct type based on chip placement
         var structType = options.ChipRam ? "AudioSample" : "AudioAsset";
 
-        return new AssetConversionResult
+        var conversionResult = new AssetConversionResult
         {
             Data = result.Data,
             RequiresChipRam = options.ChipRam,
@@ -215,27 +310,70 @@ public class AudioAssetConverter : IAssetConverter
                 ["duration_ms"] = result.DurationMs
             }
         };
+
+        // Add warning if sample rate is high (only if explicitly specified)
+        if (options.SampleRate.HasValue && options.SampleRate.Value > PaulaLimits.WarnSampleRate)
+        {
+            conversionResult.Warnings.Add(
+                $"Sample rate {options.SampleRate.Value} Hz exceeds {PaulaLimits.WarnSampleRate} Hz. " +
+                $"Higher rates consume more DMA bandwidth with minimal audible improvement on Amiga hardware. " +
+                $"Consider using {PaulaLimits.DefaultSampleRate} Hz for better performance.");
+        }
+
+        return conversionResult;
     }
 
-    public string? Validate(string filePath, EmbedOptions options)
+    public AssetValidationResult Validate(string filePath, EmbedOptions options)
     {
+        var result = new AssetValidationResult();
+
         if (!File.Exists(filePath))
         {
-            return $"Audio file not found: {filePath}";
+            result.Messages.Add(ValidationMessage.Error($"Audio file not found: {filePath}"));
+            return result;
         }
 
         var format = Audio.AudioConverter.DetectFormat(filePath);
         if (format == Audio.AudioFormat.Unknown)
         {
-            return $"Unsupported audio format: {Path.GetExtension(filePath)}";
+            result.Messages.Add(ValidationMessage.Error($"Unsupported audio format: {Path.GetExtension(filePath)}"));
+            return result;
         }
 
         if (format == Audio.AudioFormat.Mod)
         {
-            return "MOD files should use AssetType.Mod, not AssetType.Audio";
+            result.Messages.Add(ValidationMessage.Error("MOD files should use AssetType.Mod, not AssetType.Audio"));
+            return result;
         }
 
-        return null;
+        // Validate sample rate if specified
+        if (options.SampleRate.HasValue)
+        {
+            var sampleRate = options.SampleRate.Value;
+
+            if (sampleRate > PaulaLimits.MaxSampleRate)
+            {
+                result.Messages.Add(ValidationMessage.Error(
+                    $"Sample rate {sampleRate} Hz exceeds Paula's maximum of {PaulaLimits.MaxSampleRate} Hz. " +
+                    $"The Amiga's audio hardware cannot play samples faster than ~28 kHz. " +
+                    $"Use sample_rate = {PaulaLimits.WarnSampleRate} or lower."));
+            }
+            else if (sampleRate > PaulaLimits.WarnSampleRate)
+            {
+                result.Messages.Add(ValidationMessage.Warning(
+                    $"Sample rate {sampleRate} Hz exceeds {PaulaLimits.WarnSampleRate} Hz. " +
+                    $"Higher rates consume more DMA bandwidth with minimal audible improvement on Amiga hardware. " +
+                    $"Consider using {PaulaLimits.DefaultSampleRate} Hz for better performance."));
+            }
+
+            if (sampleRate < 1000)
+            {
+                result.Messages.Add(ValidationMessage.Error(
+                    $"Sample rate {sampleRate} Hz is too low. Minimum practical rate is 1000 Hz."));
+            }
+        }
+
+        return result;
     }
 }
 
@@ -270,11 +408,14 @@ public class ModAssetConverter : IAssetConverter
         };
     }
 
-    public string? Validate(string filePath, EmbedOptions options)
+    public AssetValidationResult Validate(string filePath, EmbedOptions options)
     {
+        var result = new AssetValidationResult();
+
         if (!File.Exists(filePath))
         {
-            return $"MOD file not found: {filePath}";
+            result.Messages.Add(ValidationMessage.Error($"MOD file not found: {filePath}"));
+            return result;
         }
 
         try
@@ -284,10 +425,10 @@ public class ModAssetConverter : IAssetConverter
         }
         catch (Exception ex)
         {
-            return ex.Message;
+            result.Messages.Add(ValidationMessage.Error(ex.Message));
         }
 
-        return null;
+        return result;
     }
 
     private void ValidateModFormat(byte[] data, string filePath)

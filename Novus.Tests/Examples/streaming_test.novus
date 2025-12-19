@@ -16,9 +16,9 @@ from std::ffi::graphics import WaitTOF
 // ============================================================================
 
 // This file is ~31 seconds at 44.1kHz stereo - way too big for chip RAM!
-// The compiler converts it to 11kHz mono 8-bit (~340KB)
+// The compiler converts it to 11kHz mono 8-bit by default (~340KB)
 // AudioStreamer handles playback via triple-buffering in STEREO
-@embed("invention.wav", chip = false, sample_rate = 11025)
+@embed("invention.wav", chip = false)
 static music: AudioAsset = []
 
 // ============================================================================

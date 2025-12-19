@@ -548,6 +548,37 @@ public partial class IrBuilder
         // Determine asset type (explicit or auto-detected)
         var assetType = options.GetEffectiveType();
 
+        // Validate the asset before processing
+        var validationResult = AssetConverterRegistry.ValidateAsset(resolvedPath, options);
+
+        // Report any validation errors
+        foreach (var error in validationResult.Errors)
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidAttribute,
+                error.Message,
+                errorLocation
+            );
+        }
+
+        // Report any validation warnings
+        foreach (var warning in validationResult.Warnings)
+        {
+            var warningLocation = GetLocation(context);
+            _diagnostics.ReportWarning(
+                ErrorCodes.AssetWarning,
+                warning.Message,
+                warningLocation
+            );
+        }
+
+        // If there were errors, don't proceed with embedding
+        if (validationResult.HasErrors)
+        {
+            return;
+        }
+
         // Delegate to the appropriate handler based on asset type
         switch (assetType)
         {
@@ -634,10 +665,8 @@ public partial class IrBuilder
         // Build conversion options from embed options
         var conversionOptions = new Audio.AudioConverter.ConversionOptions();
 
-        if (options.SampleRate.HasValue)
-        {
-            conversionOptions.TargetSampleRate = options.SampleRate.Value;
-        }
+        // Apply sample rate: use specified value or default to 11025 Hz
+        conversionOptions.TargetSampleRate = options.SampleRate ?? PaulaLimits.DefaultSampleRate;
 
         conversionOptions.Normalize = options.Normalize;
         conversionOptions.TrimSilence = options.TrimSilence;
