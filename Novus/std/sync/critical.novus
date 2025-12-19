@@ -57,7 +57,8 @@
 // ```
 
 from std::core import Drop
-from std::ffi::exec import Forbid, Permit, Disable, Enable
+from std::ffi::exec import Forbid, Permit, Disable, Enable, FindTask
+from std::ffi::amiga_structs import Task
 
 // ============================================================================
 // CriticalSection - Task Switching Protection (Forbid/Permit)
@@ -110,12 +111,15 @@ impl CriticalSection {
     /// Note: This is informational only - you should use RAII guards instead
     /// of manually checking and calling Forbid/Permit.
     pub fn is_forbidden() -> bool {
-        // Get current task and check tc_TDNestCnt
-        // If >= 0, we're in a Forbid state
-        // This requires accessing the Task structure, which we'll implement
-        // when we have proper Task introspection support
-        // For now, return false as a safe default
-        return false
+        // Get current task (pass null to get our own task)
+        let task = FindTask(null)
+        if task == null {
+            return false
+        }
+        // tc_TDNestCnt starts at -1 (not forbidden)
+        // After Forbid(), it becomes 0 or higher
+        // >= 0 means we're in a Forbid state
+        return (*task).tc_TDNestCnt >= 0
     }
 }
 
@@ -196,12 +200,15 @@ impl InterruptSection {
     /// Note: This is informational only - you should use RAII guards instead
     /// of manually checking and calling Disable/Enable.
     pub fn is_disabled() -> bool {
-        // Get current task and check tc_IDNestCnt
-        // If >= 0, interrupts are disabled
-        // This requires accessing the Task structure, which we'll implement
-        // when we have proper Task introspection support
-        // For now, return false as a safe default
-        return false
+        // Get current task (pass null to get our own task)
+        let task = FindTask(null)
+        if task == null {
+            return false
+        }
+        // tc_IDNestCnt starts at -1 (interrupts enabled)
+        // After Disable(), it becomes 0 or higher
+        // >= 0 means interrupts are disabled
+        return (*task).tc_IDNestCnt >= 0
     }
 }
 

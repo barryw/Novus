@@ -33,6 +33,8 @@
 from std::core import Option, Result, Drop
 from std::strings::core import Str
 from std::ffi::exec import AllocVec, FreeVec, CopyMem, FreeMem
+from std::ffi::graphics import WaitBlit
+from std::sync::critical import CriticalSection
 from std::ffi::exec import CreateMsgPort, DeleteMsgPort, CreateIORequest, DeleteIORequest
 from std::ffi::exec import OpenDevice, CloseDevice, DoIO, BeginIO, AbortIO, WaitIO
 from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR, DMAF_SETCLR, DMAF_MASTER
@@ -49,12 +51,15 @@ static var g_audio_next_asset_id: u32 = $10000  // Start high to avoid collision
 
 
 /// Generate a unique asset ID for ChipCache
+/// Thread-safe: uses CriticalSection RAII guard to prevent race conditions
 fn next_audio_asset_id() -> u32 {
+    let _guard = CriticalSection::enter()
     unsafe {
         let id = g_audio_next_asset_id
         g_audio_next_asset_id++
         return id
     }
+    // Permit() called automatically when _guard drops
 }
 
 // ============================================================================
@@ -581,6 +586,8 @@ impl AudioChannel {
         unsafe {
             // If already playing, stop DMA first to avoid glitches
             if self.active {
+                // Wait for blitter to complete - audio DMA and blitter can share chip RAM
+                WaitBlit()
                 let dma_bit = channel_dma_bit(self.channel)
                 let dmacon = (*u16)(CUSTOM_BASE + DMACON)
                 *dmacon = dma_bit  // Clear DMA (no SETCLR)
@@ -690,6 +697,8 @@ impl AudioChannel {
         unsafe {
             // If already playing, stop DMA first to avoid glitches
             if self.active {
+                // Wait for blitter to complete - audio DMA and blitter can share chip RAM
+                WaitBlit()
                 let dma_bit = channel_dma_bit(self.channel)
                 let dmacon = (*u16)(CUSTOM_BASE + DMACON)
                 *dmacon = dma_bit  // Clear DMA (no SETCLR)
@@ -818,6 +827,8 @@ impl AudioChannel {
     pub fn stop(&var self) {
         if self.active {
             unsafe {
+                // Wait for blitter to complete - audio DMA and blitter can share chip RAM
+                WaitBlit()
                 // Disable DMA for this channel (no SETCLR = clear bit)
                 let dma_bit = channel_dma_bit(self.channel)
                 let dmacon = (*u16)(CUSTOM_BASE + DMACON)
