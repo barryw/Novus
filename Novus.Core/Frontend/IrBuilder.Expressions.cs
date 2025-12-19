@@ -4161,6 +4161,57 @@ public partial class IrBuilder
         return new IrBoolConstant(value);
     }
 
+    public override object? VisitCharLiteral([NotNull] NovusParser.CharLiteralContext context)
+    {
+        var text = context.CHAR_LITERAL().GetText();
+        // Remove surrounding quotes: 'X' -> X
+        var charContent = text.Substring(1, text.Length - 2);
+
+        byte charValue;
+        if (charContent.StartsWith("\\"))
+        {
+            // Handle escape sequences
+            if (charContent.Length >= 2)
+            {
+                switch (charContent[1])
+                {
+                    case 'n': charValue = (byte)'\n'; break;
+                    case 't': charValue = (byte)'\t'; break;
+                    case 'r': charValue = (byte)'\r'; break;
+                    case '0': charValue = 0; break;
+                    case '\\': charValue = (byte)'\\'; break;
+                    case '\'': charValue = (byte)'\''; break;
+                    case '"': charValue = (byte)'"'; break;
+                    case 'b': charValue = (byte)'\b'; break;
+                    case 'f': charValue = (byte)'\f'; break;
+                    case 'x' when charContent.Length >= 4:
+                        // Hex escape: \xAB
+                        var hexStr = charContent.Substring(2, 2);
+                        charValue = Convert.ToByte(hexStr, 16);
+                        break;
+                    default:
+                        // Unknown escape, treat as the character after backslash
+                        charValue = (byte)charContent[1];
+                        break;
+                }
+            }
+            else
+            {
+                charValue = (byte)'\\';
+            }
+        }
+        else if (charContent.Length > 0)
+        {
+            charValue = (byte)charContent[0];
+        }
+        else
+        {
+            charValue = 0;
+        }
+
+        return new IrConstant(charValue, IrIntType.U8);
+    }
+
     public override object? VisitNullLiteral([NotNull] NovusParser.NullLiteralContext context)
     {
         // null keyword is syntactic sugar for integer literal 0

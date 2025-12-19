@@ -1,0 +1,43 @@
+/// Test char literal support
+/// @test
+
+fn main() -> i32 {
+    // Basic char literal
+    let a: u8 = 'A'
+    
+    // Escape sequences
+    let newline: u8 = '\n'
+    let tab: u8 = '\t'
+    let null_byte: u8 = '\0'
+    let backslash: u8 = '\\'
+    let single_quote: u8 = '\''
+    let double_quote: u8 = '\"'
+    let backspace: u8 = '\b'
+    let form_feed: u8 = '\f'
+    let carriage_return: u8 = '\r'
+    
+    // Hex escape
+    let hex_a: u8 = '\x41'  // 'A' = 65 = 0x41
+    
+    // Verify values
+    if a != 65 {
+        return 1
+    }
+    if newline != 10 {
+        return 2
+    }
+    if tab != 9 {
+        return 3
+    }
+    if null_byte != 0 {
+        return 4
+    }
+    if hex_a != 65 {
+        return 5
+    }
+    if a != hex_a {
+        return 6
+    }
+    
+    return 0
+}

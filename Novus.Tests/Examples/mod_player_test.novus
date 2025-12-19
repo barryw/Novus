@@ -25,7 +25,7 @@ fn wait_for_key() {
 }
 
 // Embed the MOD file at compile time - automatically placed in chip RAM
-@mod("GSLINGER.MOD")
+@embed("GSLINGER.MOD")
 static music_data: [u8] = []
 
 fn print_hex(value: u32) {

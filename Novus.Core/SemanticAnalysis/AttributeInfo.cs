@@ -222,10 +222,8 @@ public static class KnownAttributes
     // Diagnostic attributes
     public const string Suppress = "suppress";
 
-    // Audio asset attributes
-    public const string Audio = "audio";         // Compile-time audio conversion: @audio("file.wav", sample_rate: 11025)
-    public const string AudioRaw = "audio_raw";  // Raw PCM include: @audio_raw("file.raw", sample_rate: 8000)
-    public const string Mod = "mod";             // ProTracker module include: @mod("music.mod")
+    // Asset embedding attribute
+    public const string Embed = "embed";         // Unified asset embedding: @embed("file.mod", chip = false)
 
     // Memory section attributes
     public const string ChipRam = "chip_ram";    // Force static into chip RAM
@@ -266,7 +264,7 @@ public static class KnownAttributes
         Export,
         ExternType,
         Suppress,
-        Audio, AudioRaw, Mod,
+        Embed,
         ChipRam,
         StackSize, Cpu,
         Interrupt, InterruptSafe,

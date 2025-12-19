@@ -18,7 +18,7 @@ from std::hardware::chipset import DISPLAY, DisplayType
 
 // Embed WAV file in fast RAM (chip = false)
 // The data will be copied to chip RAM at runtime when played
-@audio("beep.wav", chip = false)
+@embed("beep.wav", chip = false)
 static beep_fast: AudioAsset = []
 
 // ============================================================================
@@ -27,7 +27,7 @@ static beep_fast: AudioAsset = []
 
 // Embed WAV file directly in chip RAM (chip = true is default)
 // No runtime copy needed, but uses precious chip RAM at load time
-@audio("beep.wav")
+@embed("beep.wav")
 static beep_chip: AudioSample = []
 
 // ============================================================================

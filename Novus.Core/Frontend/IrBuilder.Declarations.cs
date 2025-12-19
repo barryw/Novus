@@ -1,3 +1,4 @@
+using Novus.Assets;
 using Novus.Diagnostics;
 using Novus.Frontend.Generics;
 using Novus.IR;
@@ -246,30 +247,14 @@ public partial class IrBuilder
         // Also filters out module-level attributes (stack_size, cpu) and applies them to the module
         var attributes = ProcessAndFilterModuleAttributes(context.attribute());
 
-        // Check for audio-related attributes
-        var audioAttr = attributes.Get(SemanticAnalysis.KnownAttributes.Audio);
-        var audioRawAttr = attributes.Get(SemanticAnalysis.KnownAttributes.AudioRaw);
-        var modAttr = attributes.Get(SemanticAnalysis.KnownAttributes.Mod);
+        // Check for asset embedding attribute
+        var embedAttr = attributes.Get(SemanticAnalysis.KnownAttributes.Embed);
         var chipRamAttr = attributes.Get(SemanticAnalysis.KnownAttributes.ChipRam);
 
-        // Handle @audio attribute - compile-time audio conversion
-        if (audioAttr != null)
+        // Handle @embed attribute - unified asset embedding with auto-detection
+        if (embedAttr != null)
         {
-            RegisterStaticAudio(name, audioAttr, context);
-            return;
-        }
-
-        // Handle @audio_raw attribute - raw PCM include
-        if (audioRawAttr != null)
-        {
-            RegisterStaticAudioRaw(name, audioRawAttr, context);
-            return;
-        }
-
-        // Handle @mod attribute - MOD file include
-        if (modAttr != null)
-        {
-            RegisterStaticMod(name, modAttr, context);
+            RegisterStaticEmbed(name, embedAttr, context);
             return;
         }
 
@@ -312,318 +297,6 @@ public partial class IrBuilder
             _module.StaticVariables.Add(staticVar);
         }
     }
-
-    /// <summary>
-    /// Register a static audio sample with compile-time conversion.
-    /// Handles @audio("file.wav", sample_rate: 11025, normalize: true) attribute.
-    /// </summary>
-    private void RegisterStaticAudio(string name, SemanticAnalysis.AttributeInfo audioAttr, NovusParser.StaticDeclarationContext context)
-    {
-        var (visibility, _, _, _) = AstModifierHelper.ParseModifiers(context, 5);
-
-        // Get the file path from the first positional argument
-        if (audioAttr.PositionalArgs.Count == 0)
-        {
-            var errorLocation = GetLocation(context);
-            _diagnostics.ReportError(
-                ErrorCodes.InvalidAttribute,
-                "@audio attribute requires a file path as the first argument",
-                errorLocation
-            );
-            return;
-        }
-
-        var filePath = audioAttr.PositionalArgs[0]?.ToString();
-        if (string.IsNullOrEmpty(filePath))
-        {
-            var errorLocation = GetLocation(context);
-            _diagnostics.ReportError(
-                ErrorCodes.InvalidAttribute,
-                "@audio attribute requires a non-empty file path",
-                errorLocation
-            );
-            return;
-        }
-
-        // Resolve path relative to input file
-        var resolvedPath = ResolveAssetPath(filePath);
-        if (!System.IO.File.Exists(resolvedPath))
-        {
-            var errorLocation = GetLocation(context);
-            _diagnostics.ReportError(
-                ErrorCodes.FileNotFound,
-                $"Audio file not found: {resolvedPath}",
-                errorLocation
-            );
-            return;
-        }
-
-        // Build conversion options from attribute arguments
-        var options = new Audio.AudioConverter.ConversionOptions();
-
-        if (audioAttr.GetInt("sample_rate") is int targetRate)
-        {
-            options.TargetSampleRate = targetRate;
-        }
-
-        if (audioAttr.GetBool("normalize") is bool normalize)
-        {
-            options.Normalize = normalize;
-        }
-
-        if (audioAttr.GetBool("trim_silence") is bool trimSilence)
-        {
-            options.TrimSilence = trimSilence;
-        }
-
-        if (audioAttr.GetString("channel") is string channel)
-        {
-            options.ChannelMode = channel;
-        }
-
-        // Perform the audio conversion
-        Audio.AudioConverter.ConversionResult? result;
-        try
-        {
-            result = Audio.AudioConverter.ConvertFile(resolvedPath, options);
-        }
-        catch (Exception ex)
-        {
-            var errorLocation = GetLocation(context);
-            _diagnostics.ReportError(
-                ErrorCodes.FileReadError,
-                $"Failed to convert audio file '{resolvedPath}': {ex.Message}",
-                errorLocation
-            );
-            return;
-        }
-
-        if (result == null)
-        {
-            var errorLocation = GetLocation(context);
-            _diagnostics.ReportError(
-                ErrorCodes.FileReadError,
-                $"Audio conversion returned no data for '{resolvedPath}'",
-                errorLocation
-            );
-            return;
-        }
-
-        // Check for chip = false parameter (defaults to true for direct chip RAM placement)
-        // When chip = false, sample data goes to fast RAM and must be copied to chip RAM at runtime
-        var useChipRam = true;
-        if (audioAttr.NamedArgs.TryGetValue("chip", out var chipArg) && chipArg is bool chipBool)
-        {
-            useChipRam = chipBool;
-        }
-
-        var section = useChipRam ? MemorySection.Chip : MemorySection.Default;
-
-        // Create static byte array for sample data (chip or fast RAM)
-        var dataName = useChipRam ? $"{name}_data" : $"{name}_data";
-        CreateStaticAudioData(dataName, result.Data, visibility, section);
-
-        if (useChipRam)
-        {
-            // Create the AudioSample struct with metadata (data in chip RAM)
-            CreateStaticAudioSample(name, dataName, result, visibility);
-        }
-        else
-        {
-            // Create an AudioAsset struct for automatic chip RAM management
-            CreateStaticAudioAsset(name, dataName, result, visibility);
-        }
-    }
-
-    /// <summary>
-    /// Register a static audio sample from raw PCM data.
-    /// Handles @audio_raw("file.raw", sample_rate: 8000) attribute.
-    /// </summary>
-    private void RegisterStaticAudioRaw(string name, SemanticAnalysis.AttributeInfo audioRawAttr, NovusParser.StaticDeclarationContext context)
-    {
-        var (visibility, _, _, _) = AstModifierHelper.ParseModifiers(context, 5);
-
-        // Get the file path from the first positional argument
-        if (audioRawAttr.PositionalArgs.Count == 0)
-        {
-            var errorLocation = GetLocation(context);
-            _diagnostics.ReportError(
-                ErrorCodes.InvalidAttribute,
-                "@audio_raw attribute requires a file path as the first argument",
-                errorLocation
-            );
-            return;
-        }
-
-        var filePath = audioRawAttr.PositionalArgs[0]?.ToString();
-        if (string.IsNullOrEmpty(filePath))
-        {
-            var errorLocation = GetLocation(context);
-            _diagnostics.ReportError(
-                ErrorCodes.InvalidAttribute,
-                "@audio_raw attribute requires a non-empty file path",
-                errorLocation
-            );
-            return;
-        }
-
-        // Resolve path relative to input file
-        var resolvedPath = ResolveAssetPath(filePath);
-        if (!System.IO.File.Exists(resolvedPath))
-        {
-            var errorLocation = GetLocation(context);
-            _diagnostics.ReportError(
-                ErrorCodes.FileNotFound,
-                $"Raw audio file not found: {resolvedPath}",
-                errorLocation
-            );
-            return;
-        }
-
-        // Read raw PCM data
-        byte[] data;
-        try
-        {
-            data = System.IO.File.ReadAllBytes(resolvedPath);
-        }
-        catch (Exception ex)
-        {
-            var errorLocation = GetLocation(context);
-            _diagnostics.ReportError(
-                ErrorCodes.FileReadError,
-                $"Failed to read raw audio file '{resolvedPath}': {ex.Message}",
-                errorLocation
-            );
-            return;
-        }
-
-        // Get sample rate from attribute (required for raw files)
-        var sampleRate = audioRawAttr.GetInt("sample_rate") ?? 8000;
-
-        // Pad to even length
-        if (data.Length % 2 != 0)
-        {
-            var paddedData = new byte[data.Length + 1];
-            Array.Copy(data, paddedData, data.Length);
-            data = paddedData;
-        }
-
-        // Create conversion result with the raw data
-        var result = new Audio.AudioConverter.ConversionResult
-        {
-            Data = data,
-            OriginalSampleRate = sampleRate,
-            FinalSampleRate = sampleRate
-        };
-
-        // Create static byte array for sample data
-        var dataName = $"{name}_data";
-        CreateStaticAudioData(dataName, result.Data, visibility);
-
-        // Create the AudioSample struct with metadata
-        CreateStaticAudioSample(name, dataName, result, visibility);
-    }
-
-    /// <summary>
-    /// Register a static MOD file include.
-    /// Handles @mod("music.mod") attribute.
-    /// </summary>
-    private void RegisterStaticMod(string name, SemanticAnalysis.AttributeInfo modAttr, NovusParser.StaticDeclarationContext context)
-    {
-        var (visibility, _, _, _) = AstModifierHelper.ParseModifiers(context, 5);
-
-        // Get the file path from the first positional argument
-        if (modAttr.PositionalArgs.Count == 0)
-        {
-            var errorLocation = GetLocation(context);
-            _diagnostics.ReportError(
-                ErrorCodes.InvalidAttribute,
-                "@mod attribute requires a file path as the first argument",
-                errorLocation
-            );
-            return;
-        }
-
-        var filePath = modAttr.PositionalArgs[0]?.ToString();
-        if (string.IsNullOrEmpty(filePath))
-        {
-            var errorLocation = GetLocation(context);
-            _diagnostics.ReportError(
-                ErrorCodes.InvalidAttribute,
-                "@mod attribute requires a non-empty file path",
-                errorLocation
-            );
-            return;
-        }
-
-        // Resolve path relative to input file
-        var resolvedPath = ResolveAssetPath(filePath);
-        if (!System.IO.File.Exists(resolvedPath))
-        {
-            var errorLocation = GetLocation(context);
-            _diagnostics.ReportError(
-                ErrorCodes.FileNotFound,
-                $"MOD file not found: {resolvedPath}",
-                errorLocation
-            );
-            return;
-        }
-
-        // Read MOD file data
-        byte[] data;
-        try
-        {
-            data = System.IO.File.ReadAllBytes(resolvedPath);
-        }
-        catch (Exception ex)
-        {
-            var errorLocation = GetLocation(context);
-            _diagnostics.ReportError(
-                ErrorCodes.FileReadError,
-                $"Failed to read MOD file '{resolvedPath}': {ex.Message}",
-                errorLocation
-            );
-            return;
-        }
-
-        // Pad to even length if needed
-        if (data.Length % 2 != 0)
-        {
-            var paddedData = new byte[data.Length + 1];
-            Array.Copy(data, paddedData, data.Length);
-            data = paddedData;
-        }
-
-        // Check for chip = false parameter (defaults to true for backwards compatibility)
-        // When chip = false, asset goes to fast RAM and must use ChipCache for DMA
-        var useChipRam = true;
-        if (modAttr.NamedArgs.TryGetValue("chip", out var chipArg) && chipArg is bool chipBool)
-        {
-            useChipRam = chipBool;
-        }
-
-        var section = useChipRam ? MemorySection.Chip : MemorySection.Default;
-
-        // Create static byte array for MOD data (internal, with _data suffix when chip=false)
-        var dataName = useChipRam ? name : name + "_data";
-        var arrayType = new IrArrayType(IrIntType.U8, data.Length);
-        var arrayLiteral = new IrArrayLiteral(arrayType);
-        foreach (var b in data)
-        {
-            arrayLiteral.Elements.Add(new IrConstant(b, IrIntType.U8));
-        }
-
-        var staticVar = new IrStaticVariable(dataName, arrayType, visibility, false, arrayLiteral, section);
-        _module.StaticVariables.Add(staticVar);
-
-        // When chip=false, also create a ModAsset struct with pointer and size
-        // This allows automatic chip RAM management via init_asset()
-        if (!useChipRam)
-        {
-            CreateStaticModAsset(name, dataName, data.Length, visibility);
-        }
-    }
-
     /// <summary>
     /// Create a static ModAsset struct that references MOD data.
     /// </summary>
@@ -834,6 +507,302 @@ public partial class IrBuilder
 
         // Fall back to current directory
         return assetPath;
+    }
+
+    /// <summary>
+    /// Register a static asset embedding using the unified @embed attribute.
+    /// Auto-detects asset type from file extension unless explicitly specified.
+    /// Handles @embed("file.mod"), @embed("file.wav", chip=false), etc.
+    /// </summary>
+    private void RegisterStaticEmbed(string name, SemanticAnalysis.AttributeInfo embedAttr, NovusParser.StaticDeclarationContext context)
+    {
+        var (visibility, _, _, _) = AstModifierHelper.ParseModifiers(context, 5);
+
+        // Parse embed options from attribute
+        var options = EmbedOptions.FromAttribute(embedAttr);
+
+        if (string.IsNullOrEmpty(options.FilePath))
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidAttribute,
+                "@embed attribute requires a file path as the first argument",
+                errorLocation
+            );
+            return;
+        }
+
+        // Resolve path relative to input file
+        var resolvedPath = ResolveAssetPath(options.FilePath);
+        if (!System.IO.File.Exists(resolvedPath))
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.FileNotFound,
+                $"Embedded file not found: {resolvedPath}",
+                errorLocation
+            );
+            return;
+        }
+
+        // Determine asset type (explicit or auto-detected)
+        var assetType = options.GetEffectiveType();
+
+        // Delegate to the appropriate handler based on asset type
+        switch (assetType)
+        {
+            case AssetType.Mod:
+                RegisterStaticEmbedMod(name, resolvedPath, options, visibility, context);
+                break;
+
+            case AssetType.Audio:
+                RegisterStaticEmbedAudio(name, resolvedPath, options, visibility, context);
+                break;
+
+            case AssetType.Raw:
+            default:
+                RegisterStaticEmbedRaw(name, resolvedPath, options, visibility, context);
+                break;
+
+            // Future asset types can be added here:
+            // case AssetType.Bitmap:
+            // case AssetType.Sprite:
+            // case AssetType.Palette:
+            // etc.
+        }
+    }
+
+    /// <summary>
+    /// Embed a MOD file via @embed.
+    /// </summary>
+    private void RegisterStaticEmbedMod(string name, string resolvedPath, EmbedOptions options, Visibility visibility, NovusParser.StaticDeclarationContext context)
+    {
+        // Read MOD file data
+        byte[] data;
+        try
+        {
+            data = System.IO.File.ReadAllBytes(resolvedPath);
+        }
+        catch (Exception ex)
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.FileReadError,
+                $"Failed to read MOD file '{resolvedPath}': {ex.Message}",
+                errorLocation
+            );
+            return;
+        }
+
+        // Pad to even length if needed
+        if (data.Length % 2 != 0)
+        {
+            var paddedData = new byte[data.Length + 1];
+            Array.Copy(data, paddedData, data.Length);
+            data = paddedData;
+        }
+
+        // Determine memory section based on chip parameter
+        // MOD files require chip RAM by default unless explicitly set to false
+        var useChipRam = options.ChipRam;
+        var section = useChipRam ? MemorySection.Chip : MemorySection.Default;
+
+        // Create static byte array for MOD data
+        var dataName = useChipRam ? name : name + "_data";
+        var arrayType = new IrArrayType(IrIntType.U8, data.Length);
+        var arrayLiteral = new IrArrayLiteral(arrayType);
+        foreach (var b in data)
+        {
+            arrayLiteral.Elements.Add(new IrConstant(b, IrIntType.U8));
+        }
+
+        var staticVar = new IrStaticVariable(dataName, arrayType, visibility, false, arrayLiteral, section);
+        _module.StaticVariables.Add(staticVar);
+
+        // When chip=false, create a ModAsset struct for automatic chip RAM management
+        if (!useChipRam)
+        {
+            CreateStaticModAsset(name, dataName, data.Length, visibility);
+        }
+    }
+
+    /// <summary>
+    /// Embed an audio file via @embed with automatic WAV/AIFF conversion.
+    /// </summary>
+    private void RegisterStaticEmbedAudio(string name, string resolvedPath, EmbedOptions options, Visibility visibility, NovusParser.StaticDeclarationContext context)
+    {
+        // Build conversion options from embed options
+        var conversionOptions = new Audio.AudioConverter.ConversionOptions();
+
+        if (options.SampleRate.HasValue)
+        {
+            conversionOptions.TargetSampleRate = options.SampleRate.Value;
+        }
+
+        conversionOptions.Normalize = options.Normalize;
+        conversionOptions.TrimSilence = options.TrimSilence;
+        conversionOptions.ChannelMode = options.ChannelMode;
+
+        // Perform the audio conversion
+        Audio.AudioConverter.ConversionResult? result;
+        try
+        {
+            result = Audio.AudioConverter.ConvertFile(resolvedPath, conversionOptions);
+        }
+        catch (Exception ex)
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.FileReadError,
+                $"Failed to convert audio file '{resolvedPath}': {ex.Message}",
+                errorLocation
+            );
+            return;
+        }
+
+        if (result == null)
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.FileReadError,
+                $"Audio conversion returned no data for '{resolvedPath}'",
+                errorLocation
+            );
+            return;
+        }
+
+        // Determine memory section based on chip parameter
+        // Audio samples require chip RAM by default for Paula DMA
+        var useChipRam = options.ChipRam;
+        var section = useChipRam ? MemorySection.Chip : MemorySection.Default;
+
+        // Create static byte array for sample data
+        var dataName = $"{name}_data";
+        CreateStaticAudioData(dataName, result.Data, visibility, section);
+
+        if (useChipRam)
+        {
+            // Create the AudioSample struct (data in chip RAM, ready to use)
+            CreateStaticAudioSample(name, dataName, result, visibility);
+        }
+        else
+        {
+            // Create an AudioAsset struct for automatic chip RAM management
+            CreateStaticAudioAsset(name, dataName, result, visibility);
+        }
+    }
+
+    /// <summary>
+    /// Embed raw binary data via @embed.
+    /// Creates a RawAsset struct for automatic chip RAM management when chip=false,
+    /// or a direct byte array in chip RAM when chip=true.
+    /// </summary>
+    private void RegisterStaticEmbedRaw(string name, string resolvedPath, EmbedOptions options, Visibility visibility, NovusParser.StaticDeclarationContext context)
+    {
+        // Read raw binary data
+        byte[] data;
+        try
+        {
+            data = System.IO.File.ReadAllBytes(resolvedPath);
+        }
+        catch (Exception ex)
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.FileReadError,
+                $"Failed to read file '{resolvedPath}': {ex.Message}",
+                errorLocation
+            );
+            return;
+        }
+
+        // Pad to even length if needed (for word alignment on 68k)
+        if (data.Length % 2 != 0)
+        {
+            var paddedData = new byte[data.Length + 1];
+            Array.Copy(data, paddedData, data.Length);
+            data = paddedData;
+        }
+
+        // For raw data, default to fast RAM unless explicitly requesting chip RAM
+        // Raw data by default doesn't need DMA access
+        bool useChipRam;
+        if (options.ChipRamExplicit)
+        {
+            // User explicitly specified chip=true or chip=false, respect that
+            useChipRam = options.ChipRam;
+        }
+        else
+        {
+            // No explicit chip parameter - raw data defaults to fast RAM
+            useChipRam = false;
+        }
+
+        var section = useChipRam ? MemorySection.Chip : MemorySection.Default;
+
+        // Create static byte array
+        var dataName = useChipRam ? name : name + "_data";
+        var arrayType = new IrArrayType(IrIntType.U8, data.Length);
+        var arrayLiteral = new IrArrayLiteral(arrayType);
+        foreach (var b in data)
+        {
+            arrayLiteral.Elements.Add(new IrConstant(b, IrIntType.U8));
+        }
+
+        var staticVar = new IrStaticVariable(dataName, arrayType, visibility, false, arrayLiteral, section);
+        _module.StaticVariables.Add(staticVar);
+
+        // When not in chip RAM, create a RawAsset struct for automatic chip RAM management
+        if (!useChipRam)
+        {
+            CreateStaticRawAsset(name, dataName, data.Length, visibility);
+        }
+    }
+
+    /// <summary>
+    /// Create a static RawAsset struct that references raw binary data.
+    /// Used for automatic chip RAM management of raw embedded data.
+    /// </summary>
+    private void CreateStaticRawAsset(string name, string dataName, int dataLength, Visibility visibility)
+    {
+        // RawAsset struct layout (compatible with ModAsset):
+        // - data: *u8 (pointer to the data array)
+        // - size: u32 (size in bytes)
+
+        // Try to look up the real RawAsset struct from imports, fall back to ModAsset layout
+        var rawAssetStruct = _symbols.LookupStruct("RawAsset");
+        if (rawAssetStruct == null)
+        {
+            // RawAsset not imported - create an anonymous struct type with the same layout
+            var fields = new List<IrStructField>
+            {
+                new IrStructField("data", new IrPointerType(IrIntType.U8)),
+                new IrStructField("size", IrIntType.U32)
+            };
+            rawAssetStruct = new IrStructType("RawAsset", fields);
+        }
+        // Always add to module structs so code generator can emit the typedef
+        if (!_module.Structs.Any(s => s.StructName == rawAssetStruct.StructName))
+        {
+            _module.AddStruct(rawAssetStruct);
+        }
+
+        // Build field values dictionary
+        var dataArrayType = new IrArrayType(IrIntType.U8, dataLength);
+        var dataArrayRef = new IrGlobalVariable(dataName, dataArrayType);
+        var dataPtr = new IrCastValue(dataArrayRef, dataArrayType, new IrPointerType(IrIntType.U8));
+
+        var fieldValues = new Dictionary<string, IrValue>
+        {
+            { "data", dataPtr },
+            { "size", new IrConstant((uint)dataLength, IrIntType.U32) }
+        };
+
+        // Create the struct literal with field values
+        var structLiteral = new IrStructLiteral(rawAssetStruct, fieldValues);
+
+        var assetVar = new IrStaticVariable(name, rawAssetStruct, visibility, false, structLiteral, MemorySection.Default);
+        _module.StaticVariables.Add(assetVar);
     }
 
     private void RegisterExternalVariable(NovusParser.GlobalVariableDeclarationContext context)

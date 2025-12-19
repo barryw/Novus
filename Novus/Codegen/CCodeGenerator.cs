@@ -7756,7 +7756,13 @@ public partial class CCodeGenerator
                 // - Enums with associated data (e.g., Result<T,E>, Option<T> - these become tagged unions)
                 // VBCC generates illegal instructions on 68040 for these types.
                 // Solution: Use __novus_memcpy() instead of direct assignment.
-                bool useMemcpy = TypeRequiresMemcpy(memberAccess.FieldType);
+                //
+                // EXCEPTION: Array fields decay to pointers in C. When accessing an array field,
+                // the result is a pointer, and we should use direct assignment (array decay),
+                // NOT memcpy. Using memcpy would incorrectly copy the first bytes of the array
+                // into the pointer variable instead of getting the array's address.
+                bool isArrayField = memberAccess.FieldType is IrArrayType;
+                bool useMemcpy = !isArrayField && TypeRequiresMemcpy(memberAccess.FieldType);
 
                 if (useMemcpy)
                 {
@@ -7773,7 +7779,8 @@ public partial class CCodeGenerator
                 }
                 else
                 {
-                    // For simple types and structs without nested structs, direct assignment works
+                    // For simple types, arrays (which decay to pointers), and structs without nested structs,
+                    // direct assignment works correctly
                     if (alreadyDeclared)
                     {
                         _output.AppendLine($"    {resultName} = {structValue}{accessor}{memberAccess.FieldName};");

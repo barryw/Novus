@@ -9,7 +9,7 @@ from std::io::file import write
 from std::os::timer import AsyncTimer, Duration, WaitResult, TimerError
 
 // Embed MOD in fast RAM
-@mod("GSLINGER.MOD", chip = false)
+@embed("GSLINGER.MOD", chip = false)
 static music: [u8] = []
 
 pub fn main() -> i32 {

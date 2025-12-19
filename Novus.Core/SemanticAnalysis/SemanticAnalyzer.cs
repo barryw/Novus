@@ -1,6 +1,7 @@
 using Antlr4.Runtime;
 using Antlr4.Runtime.Misc;
 using Antlr4.Runtime.Tree;
+using Novus.Assets;
 using Novus.Diagnostics;
 using Novus.Frontend;
 using Novus.Frontend.Generics;
@@ -1183,36 +1184,76 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         // Parse attributes to check for special type-altering attributes
         var attributes = ParseAttributes(context.attribute());
 
-        // Check for @mod attribute with chip = false, which produces a ModAsset struct
-        var modAttr = attributes.Get(KnownAttributes.Mod);
-        if (modAttr != null)
+        // Check for @embed attribute - unified asset embedding
+        var embedAttr = attributes.Get(KnownAttributes.Embed);
+        if (embedAttr != null)
         {
-            // Check if chip = false (defaults to true)
+            // Get file path to determine asset type
+            var filePath = embedAttr.PositionalArgs.Count > 0 ? embedAttr.PositionalArgs[0]?.ToString() : null;
+
+            // Determine if chip RAM is used (defaults to true for DMA assets, false for raw)
             var useChipRam = true;
-            if (modAttr.NamedArgs.TryGetValue("chip", out var chipArg) && chipArg is bool chipBool)
+            if (embedAttr.NamedArgs.TryGetValue("chip", out var chipArg) && chipArg is bool chipBool)
             {
                 useChipRam = chipBool;
             }
 
-            if (!useChipRam)
+            // When chip=false, we create an asset struct for automatic chip RAM management
+            if (!useChipRam && !string.IsNullOrEmpty(filePath))
             {
-                // @mod with chip=false produces a ModAsset struct
-                // Look up ModAsset from imports, or create a placeholder struct type
-                IrType? modAssetType = _symbols.LookupStruct("ModAsset");
-                if (modAssetType == null)
+                // Detect asset type from extension
+                var assetType = Assets.AssetTypeDetector.GetDefaultType(filePath);
+
+                IrType? structType = null;
+                switch (assetType)
                 {
-                    // Create a placeholder struct with the expected layout
-                    var fields = new List<IrStructField>
-                    {
-                        new IrStructField("data", new IrPointerType(IrIntType.U8)),
-                        new IrStructField("size", IrIntType.U32)
-                    };
-                    modAssetType = new IrStructType("ModAsset", fields);
+                    case Assets.AssetType.Mod:
+                        structType = _symbols.LookupStruct("ModAsset");
+                        if (structType == null)
+                        {
+                            var fields = new List<IrStructField>
+                            {
+                                new IrStructField("data", new IrPointerType(IrIntType.U8)),
+                                new IrStructField("size", IrIntType.U32)
+                            };
+                            structType = new IrStructType("ModAsset", fields);
+                        }
+                        break;
+
+                    case Assets.AssetType.Audio:
+                        structType = _symbols.LookupStruct("AudioAsset");
+                        if (structType == null)
+                        {
+                            var fields = new List<IrStructField>
+                            {
+                                new IrStructField("data", new IrPointerType(IrIntType.U8)),
+                                new IrStructField("size", IrIntType.U32),
+                                new IrStructField("sample_rate", IrIntType.U32),
+                                new IrStructField("period_pal", IrIntType.U16),
+                                new IrStructField("period_ntsc", IrIntType.U16)
+                            };
+                            structType = new IrStructType("AudioAsset", fields);
+                        }
+                        break;
+
+                    case Assets.AssetType.Raw:
+                    default:
+                        structType = _symbols.LookupStruct("RawAsset");
+                        if (structType == null)
+                        {
+                            var fields = new List<IrStructField>
+                            {
+                                new IrStructField("data", new IrPointerType(IrIntType.U8)),
+                                new IrStructField("size", IrIntType.U32)
+                            };
+                            structType = new IrStructType("RawAsset", fields);
+                        }
+                        break;
                 }
 
-                if (!_globalVariables.ContainsKey(name))
+                if (structType != null && !_globalVariables.ContainsKey(name))
                 {
-                    _globalVariables[name] = new VariableSymbol(name, modAssetType, IsMutable: isMutable, location, Id: _nextVariableId++);
+                    _globalVariables[name] = new VariableSymbol(name, structType, IsMutable: isMutable, location, Id: _nextVariableId++);
                 }
                 return;
             }
@@ -8818,6 +8859,12 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     public override IrType? VisitBoolLiteral([NotNull] NovusParser.BoolLiteralContext context)
     {
         return IrBoolType.Instance;
+    }
+
+    public override IrType? VisitCharLiteral([NotNull] NovusParser.CharLiteralContext context)
+    {
+        // Character literals are always u8
+        return IrIntType.U8;
     }
 
     public override IrType? VisitNullLiteral([NotNull] NovusParser.NullLiteralContext context)

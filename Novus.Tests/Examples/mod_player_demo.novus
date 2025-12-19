@@ -14,7 +14,7 @@ from std::hardware::chipset import DISPLAY, DisplayType
 from std::ffi::graphics import WaitTOF
 
 // Embed the MOD file at compile time - automatically placed in chip RAM
-@mod("GSLINGER.MOD")
+@embed("GSLINGER.MOD")
 static music_data: [u8] = []
 
 pub fn main() -> i32 {

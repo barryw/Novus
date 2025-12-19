@@ -77,8 +77,9 @@ public class ExampleCompilationTests
             // Exclude test framework examples (these use @test and have no main())
             // They should be run with 'novus test', not 'novus compile'
             .Where(name => !name.StartsWith("test_framework", StringComparison.OrdinalIgnoreCase))
-            // Exclude additional @test-only files
+            // Exclude additional @test-only files (these have @test functions and no main())
             .Where(name => name != "test_file_io")
+            .Where(name => name != "test_const_fn")
             .Where(name => name != "channel_comprehensive_test")
             .Where(name => name != "extended_assertions_test")
             .Where(name => name != "str_equals_test")

@@ -1,5 +1,5 @@
-// MOD Player Chip Cache Test
-// Demonstrates storing MOD in fast RAM with automatic chip RAM copy on play
+// @embed attribute test for MOD files
+// Demonstrates the unified asset embedding system
 
 from std::core import Result
 from std::audio::ptplayer import ModPlayer, ModAsset
@@ -8,13 +8,13 @@ from std::hardware::chipset import DISPLAY, DisplayType
 from std::memory::chip import is_chip_ram
 from std::io::file import write, wait_for_key
 
-// Embed MOD in fast RAM (chip = false)
-// init_asset() will copy to chip RAM automatically when played
+// Embed MOD in fast RAM using @embed (auto-detects .mod extension)
+// chip=false means it goes to fast RAM with automatic chip RAM copy on play
 @embed("GSLINGER.MOD", chip = false)
 static music: [u8] = []
 
 pub fn main() -> i32 {
-    write("MOD Chip Cache Test\n\n")
+    write("@embed MOD Test\n\n")
 
     let is_pal = DISPLAY() == DisplayType::PAL
     write("Display: %s\n", if is_pal { "PAL" } else { "NTSC" })
