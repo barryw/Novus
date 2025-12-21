@@ -9,7 +9,7 @@ pub fn main() -> i32 {
     VPrintf("1-START\n", (*u8)0)
 
     // Get our own Process structure
-    let me = (*Process)FindTask((*u8)0)
+    let me = (*Process)FindTask(null)
     var me_val: u32 = (u32)me
     VPrintf("ME=%08lx\n", (*u8)&me_val)
 
@@ -25,7 +25,7 @@ pub fn main() -> i32 {
 
     let msg = (*Message)msg_mem
     msg.mn_Node.ln_Type = 5  // NT_MESSAGE
-    msg.mn_ReplyPort = (*MsgPort)0  // No reply expected
+    msg.mn_ReplyPort = null  // No reply expected
     msg.mn_Length = (u16)msg_size
 
     VPrintf("3-MSG SETUP\n", (*u8)0)

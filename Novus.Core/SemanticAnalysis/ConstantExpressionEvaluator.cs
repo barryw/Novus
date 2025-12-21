@@ -79,7 +79,16 @@ public class ConstantExpressionEvaluator : NovusParserBaseVisitor<int?>
     public override int? VisitHexLiteral([NotNull] NovusParser.HexLiteralContext context)
     {
         var text = context.HEX_LITERAL().GetText();
-        text = text.TrimStart('$');
+        // Handle both '$' and '0x'/'0X' prefixes
+        if (text.StartsWith("0x") || text.StartsWith("0X"))
+        {
+            text = text[2..];
+        }
+        else
+        {
+            text = text.TrimStart('$');
+        }
+        text = text.Replace("_", "");
         text = System.Text.RegularExpressions.Regex.Replace(text, @"(u8|u16|u32|u64|i8|i16|i32|i64)$", "");
 
         if (int.TryParse(text, NumberStyles.HexNumber, null, out var value))

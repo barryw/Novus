@@ -61,10 +61,10 @@ impl MemoryBlock {
     pub fn alloc(size: u32, flags: u32) -> Option<MemoryBlock> {
         if size == 0 {
             // Zero-size allocation returns valid empty block
-            return Option::Some(MemoryBlock { ptr: (*u8)0, size: 0 })
+            return Option::Some(MemoryBlock { ptr: null, size: 0 })
         }
 
-        var ptr: *u8 = (*u8)0
+        var ptr: *u8 = null
         unsafe {
             ptr = AllocMem(size, flags)
         }
@@ -128,7 +128,7 @@ impl MemoryBlock {
         let ptr = self.ptr
         let size = self.size
         // Clear our fields so Drop won't free
-        self.ptr = (*u8)0
+        self.ptr = null
         self.size = 0
         return (ptr, size)
     }
@@ -140,7 +140,7 @@ impl MemoryBlock {
     pub fn free(&var self) {
         if self.size > 0 {
             unsafe { FreeMem(self.ptr, self.size) }
-            self.ptr = (*u8)0
+            self.ptr = null
             self.size = 0
         }
     }
@@ -227,7 +227,7 @@ impl<T> Allocation<T> {
     pub fn new(count: u32, flags: u32) -> Option<Allocation<T>> {
         if count == 0 {
             return Option::Some(Allocation {
-                block: MemoryBlock { ptr: (*u8)0, size: 0 },
+                block: MemoryBlock { ptr: null, size: 0 },
                 count: 0,
             })
         }
@@ -256,7 +256,7 @@ impl<T> Allocation<T> {
     pub fn try_new(count: u32, flags: u32) -> Result<Allocation<T>, ExecError> {
         if count == 0 {
             let empty_alloc = Allocation {
-                block: MemoryBlock { ptr: (*u8)0, size: 0 },
+                block: MemoryBlock { ptr: null, size: 0 },
                 count: 0,
             }
             return Result::Ok(empty_alloc)
@@ -331,6 +331,13 @@ impl<T> Allocation<T> {
             return true
         }
         return false
+    }
+}
+
+// Automatic cleanup for Allocation<T> (RAII)
+impl<T> Drop for Allocation<T> {
+    fn drop(&var self) {
+        self.free()
     }
 }
 
@@ -420,6 +427,13 @@ impl<T> Box<T> {
     /// NOTE: No size parameter needed!
     pub fn free(&var self) {
         self.alloc.free()
+    }
+}
+
+// Automatic cleanup for Box<T> (RAII)
+impl<T> Drop for Box<T> {
+    fn drop(&var self) {
+        self.free()
     }
 }
 

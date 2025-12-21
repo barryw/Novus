@@ -103,6 +103,10 @@ public class TypeParser : ITypeSubstitutionEngine
 {
     private readonly ITypeParsingContext _context;
 
+    // Track in-progress struct monomorphizations to detect when incomplete placeholders are being accessed
+    // Key: cache key (e.g., "Vec<i32>"), Value: the placeholder struct being populated
+    private readonly Dictionary<string, IrStructType> _inProgressStructs = new();
+
     public TypeParser(ITypeParsingContext context)
     {
         _context = context;
@@ -286,10 +290,44 @@ public class TypeParser : ITypeSubstitutionEngine
     /// </summary>
     private IrType MonomorphizeStruct(IrStructType structType, NovusParser.NamedTypeContext context)
     {
-        // First, create a preliminary cache key to check if we're already processing this type
+        // First, create a preliminary cache key using raw text to check for cycles
         // This prevents infinite recursion when the struct's type arguments reference the struct itself
-        var typeArgNames = context.genericTypeArgs()!.typeList()!.type().Select(t => t.GetText());
-        var preliminaryCacheKey = $"{structType.StructName}<{string.Join(",", typeArgNames)}>";
+        var rawTypeArgNames = context.genericTypeArgs()!.typeList()!.type().Select(t => t.GetText());
+        var rawPreliminaryCacheKey = $"{structType.StructName}<{string.Join(",", rawTypeArgNames)}>";
+
+        // If we have type substitutions, compute the "true" cache key by substituting generic params
+        // This ensures Vec<T> with T=i32 maps to Vec<i32>, not Vec<T>
+        string preliminaryCacheKey = rawPreliminaryCacheKey;
+        if (_context.CurrentTypeSubstitutions != null && _context.CurrentTypeSubstitutions.Count > 0)
+        {
+            var substitutedArgNames = context.genericTypeArgs()!.typeList()!.type().Select(t => {
+                var rawText = t.GetText();
+                // Simple case: the type arg itself is a generic parameter (e.g., "T")
+                if (_context.CurrentTypeSubstitutions.TryGetValue(rawText, out var substitutedType))
+                {
+                    return GetTypeCacheKey(substitutedType);
+                }
+                // Check if raw text contains any generic parameters needing substitution
+                bool needsSubstitution = _context.CurrentTypeSubstitutions.Keys.Any(k => rawText.Contains(k));
+                if (needsSubstitution)
+                {
+                    // Complex case: the type arg contains generic parameters (e.g., "HashMap<K,V>")
+                    // We can't parse it yet (would cause infinite recursion), so do string substitution
+                    var substitutedText = rawText;
+                    foreach (var kvp in _context.CurrentTypeSubstitutions)
+                    {
+                        // Replace generic param with its concrete type's cache key
+                        // Be careful to replace whole words only (K but not KV)
+                        var pattern = $@"\b{kvp.Key}\b";
+                        substitutedText = System.Text.RegularExpressions.Regex.Replace(
+                            substitutedText, pattern, GetTypeCacheKey(kvp.Value));
+                    }
+                    return substitutedText;
+                }
+                return rawText;
+            });
+            preliminaryCacheKey = $"{structType.StructName}<{string.Join(",", substitutedArgNames)}>";
+        }
 
         // Check cache first - this catches already-completed monomorphizations
         var cached = _context.LookupMonomorphizedStruct(preliminaryCacheKey);
@@ -316,6 +354,11 @@ public class TypeParser : ITypeSubstitutionEngine
             typeArgs.Add(ParseType(typeCtx));
         }
 
+        // IMPORTANT: Set TypeArguments immediately after parsing so any code that looks up
+        // this struct from the cache gets a struct with TypeArguments populated
+        // This MUST happen BEFORE any other code can use the cached struct for method instantiation
+        placeholderStruct.TypeArguments = typeArgs;
+
         // Create final cache key using actual parsed types
         var typeArgKeys = typeArgs.Select(t => GetTypeCacheKey(t));
         var finalCacheKey = $"{structType.StructName}<{string.Join(",", typeArgKeys)}>";
@@ -328,6 +371,14 @@ public class TypeParser : ITypeSubstitutionEngine
             {
                 return cached;
             }
+        }
+
+        // Validate type argument count matches generic parameter count
+        if (typeArgs.Count != structType.GenericParameters.Count)
+        {
+            throw new ArgumentException(
+                $"Type argument count mismatch for struct '{structType.StructName}': " +
+                $"expected {structType.GenericParameters.Count} type arguments, got {typeArgs.Count}");
         }
 
         // Create monomorphized struct with concrete types
@@ -346,11 +397,6 @@ public class TypeParser : ITypeSubstitutionEngine
             var fieldType = SubstituteGenericTypes(origField.Type, typeSubstitutions);
             monomorphizedFields.Add(new IrStructField(origField.Name, fieldType));
 
-            // DEBUG
-            if (structType.StructName == "KeyValue")
-            {
-            }
-
             // Check if field type is still generic
             if (ContainsGenericTypes(fieldType))
             {
@@ -365,9 +411,7 @@ public class TypeParser : ITypeSubstitutionEngine
             placeholderStruct.Fields.Add(field);
         }
 
-        // IMPORTANT: Set TypeArguments so that BuildStructTypeSubstitutions can use them
-        // to determine the T -> concrete_type mapping for method instantiation
-        placeholderStruct.TypeArguments = typeArgs;
+        // Note: TypeArguments was already set immediately after parsing type args (line 322)
 
         // Force calculation of field offsets only if fully monomorphized
         // If still contains generic types, offset calculation will happen later
@@ -389,9 +433,6 @@ public class TypeParser : ITypeSubstitutionEngine
         // This adds the struct to the module so it gets emitted in code generation
         // Partially monomorphized structs (like HashMapEntry<K,V> during HashMap<K,V> processing)
         // will be finalized later when they're fully instantiated with concrete types
-        if (placeholderStruct.StructName == "KeyValue")
-        {
-        }
         if (fullyMonomorphized)
         {
             _context.FinalizeMonomorphizedStruct(placeholderStruct);
@@ -485,6 +526,14 @@ public class TypeParser : ITypeSubstitutionEngine
             }
         }
 
+        // Validate type argument count matches generic parameter count
+        if (typeArgs.Count != enumType.GenericParameters.Count)
+        {
+            throw new ArgumentException(
+                $"Type argument count mismatch for enum '{enumType.EnumName}': " +
+                $"expected {enumType.GenericParameters.Count} type arguments, got {typeArgs.Count}");
+        }
+
         // Create monomorphized enum with concrete types
         var typeSubstitutions = new Dictionary<string, IrType>();
         for (int i = 0; i < enumType.GenericParameters.Count; i++)
@@ -523,9 +572,12 @@ public class TypeParser : ITypeSubstitutionEngine
             placeholderEnum.Variants.Add(variant);
         }
 
-        // If we used a different final cache key, register under that too
+        // If we used a different final cache key, update the enum and register under that too
         if (finalCacheKey != preliminaryCacheKey)
         {
+            // IMPORTANT: Update the enum's CacheKey to use the final (correct) cache key
+            // The preliminary cache key was based on raw text, but the final one is based on actual types
+            placeholderEnum.CacheKey = finalCacheKey;
             _context.RegisterMonomorphizedEnum(finalCacheKey, placeholderEnum);
         }
 
@@ -763,6 +815,23 @@ public class TypeParser : ITypeSubstitutionEngine
                    enumA.GenericParameters.Count == enumB.GenericParameters.Count;
         }
 
+        // Tuple types: compare element types recursively
+        if (a is IrTupleType tupleA && b is IrTupleType tupleB)
+        {
+            if (tupleA.ElementTypes.Count != tupleB.ElementTypes.Count)
+            {
+                return false;
+            }
+            for (int i = 0; i < tupleA.ElementTypes.Count; i++)
+            {
+                if (!TypesAreEqual(tupleA.ElementTypes[i], tupleB.ElementTypes[i]))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         // For primitive types, reference equality should have caught it
         // but as a fallback, we consider them equal by default
         return false;
@@ -801,15 +870,9 @@ public class TypeParser : ITypeSubstitutionEngine
         // Pointer type substitution
         if (type is IrPointerType ptrType)
         {
-            if (ptrType.PointeeType is IrStructType st && st.StructName == "HashMapEntry")
-            {
-            }
             var substitutedPointee = SubstituteGenericTypesInternal(ptrType.PointeeType, substitutions, visitedStructs);
             if (substitutedPointee != ptrType.PointeeType)
             {
-                if (ptrType.PointeeType is IrStructType st2 && st2.StructName == "HashMapEntry")
-                {
-                }
                 return _context.GetPointerType(substitutedPointee);
             }
         }
@@ -932,10 +995,6 @@ public class TypeParser : ITypeSubstitutionEngine
             // This can happen when a struct is referenced in a field like `entries: *HashMapEntry<K,V>`
             // The HashMapEntry gets a CacheKey of "HashMapEntry<K,V>" but TypeArguments is null/empty
             // We need to check if the CacheKey contains any of the substitution keys
-            if (structType.StructName == "HashMapEntry")
-            {
-            }
-
             if (!needsParameterSubstitution && structType.GenericParameters.Count == 0 &&
                 (structType.TypeArguments == null || structType.TypeArguments.Count == 0) &&
                 structType.CacheKey != null && structType.CacheKey.Contains('<'))
@@ -982,8 +1041,6 @@ public class TypeParser : ITypeSubstitutionEngine
                     {
                         // Build the new cache key with substituted types
                         var newCacheKey = $"{structType.StructName}<{string.Join(",", newTypeArgKeys)}>";
-
-                        // DEBUG
 
                         // Check cache first
                         var cachedSubstituted = _context.LookupMonomorphizedStruct(newCacheKey);
@@ -1095,8 +1152,6 @@ public class TypeParser : ITypeSubstitutionEngine
                         }
                     }
                     cacheKey = $"{structType.StructName}<{string.Join(",", typeArgKeys)}>";
-
-                    // DEBUG: Log the substitution
                 }
                 // Case 2: We started with an already-monomorphized struct (has TypeArguments) and substituted within it
                 else if (structType.TypeArguments != null && structType.TypeArguments.Count > 0)
@@ -1112,8 +1167,6 @@ public class TypeParser : ITypeSubstitutionEngine
                         typeArgKeys.Add(GetTypeCacheKey(substitutedTypeArg));
                     }
                     cacheKey = $"{structType.StructName}<{string.Join(",", typeArgKeys)}>";
-
-                    // DEBUG: Log the substitution
                 }
 
                 // Check cache first to avoid creating duplicate structs

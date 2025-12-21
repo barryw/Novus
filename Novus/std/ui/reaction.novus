@@ -244,27 +244,27 @@ impl ReActionBuilder {
                     GadgetType::Button => {
                         self.finalize_entry_tags(i)
                         let class_ptr = BUTTON_GetClass()
-                        entry.object = NewObjectA((*IClass)class_ptr, (*u8)0, entry.tags)
+                        entry.object = NewObjectA((*IClass)class_ptr, null, entry.tags)
                     },
                     GadgetType::Checkbox => {
                         self.finalize_entry_tags(i)
                         let class_ptr = CHECKBOX_GetClass()
-                        entry.object = NewObjectA((*IClass)class_ptr, (*u8)0, entry.tags)
+                        entry.object = NewObjectA((*IClass)class_ptr, null, entry.tags)
                     },
                     GadgetType::Integer => {
                         self.finalize_entry_tags(i)
                         let class_ptr = INTEGER_GetClass()
-                        entry.object = NewObjectA((*IClass)class_ptr, (*u8)0, entry.tags)
+                        entry.object = NewObjectA((*IClass)class_ptr, null, entry.tags)
                     },
                     GadgetType::RadioButton => {
                         self.finalize_entry_tags(i)
                         let class_ptr = RADIOBUTTON_GetClass()
-                        entry.object = NewObjectA((*IClass)class_ptr, (*u8)0, entry.tags)
+                        entry.object = NewObjectA((*IClass)class_ptr, null, entry.tags)
                     },
                     GadgetType::Label => {
                         self.finalize_entry_tags(i)
                         let class_ptr = LABEL_GetClass()
-                        entry.object = NewObjectA((*IClass)class_ptr, (*u8)0, entry.tags)
+                        entry.object = NewObjectA((*IClass)class_ptr, null, entry.tags)
                     },
                     _ => {
                         // Layout handled in second pass
@@ -307,7 +307,7 @@ impl ReActionBuilder {
                         // Finalize and create the layout
                         self.finalize_entry_tags(idx)
                         let class_ptr = LAYOUT_GetClass()
-                        layout_entry.object = NewObjectA((*IClass)class_ptr, (*u8)0, layout_entry.tags)
+                        layout_entry.object = NewObjectA((*IClass)class_ptr, null, layout_entry.tags)
                     },
                     _ => {}
                 }
@@ -336,7 +336,7 @@ impl ReActionBuilder {
                 TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
             ]
 
-            let window_obj = NewObjectA((*IClass)window_class, (*u8)0, &window_tags[0])
+            let window_obj = NewObjectA((*IClass)window_class, null, &window_tags[0])
             if !window_obj {
                 // Cleanup gadgets
                 self.cleanup_objects()
@@ -366,11 +366,11 @@ impl ReActionBuilder {
             let radio_list_count = self.radio_list_count
 
             // Clear builder ownership
-            self.labels = (**u8)0
+            self.labels = null
             self.label_count = 0
-            self.radio_nodes = (**Node)0
+            self.radio_nodes = null
             self.radio_node_count = 0
-            self.radio_lists = (**List)0
+            self.radio_lists = null
             self.radio_list_count = 0
 
             return Result::Ok(ReActionWindow {
@@ -496,7 +496,7 @@ impl ReActionBuilder {
             entry.gadget_type = gtype
             entry.id = id
             entry.parent_index = parent
-            entry.object = (*u8)0
+            entry.object = null
             entry.tags = (*TagItem)tag_mem
             entry.tag_count = 0
             entry.tag_capacity = tag_capacity
@@ -878,7 +878,7 @@ impl LayoutHandle {
             // Initialize list (equivalent to NewList macro)
             // lh_Head = &lh_Tail, lh_Tail = NULL, lh_TailPred = &lh_Head
             list.lh_TailPred = (*Node)list_mem
-            list.lh_Tail = (*Node)0
+            list.lh_Tail = null
             // lh_Head points to lh_Tail field (offset 4 bytes from list start)
             let tail_addr = list_mem + 4
             list.lh_Head = (*Node)tail_addr
@@ -1109,7 +1109,7 @@ impl ReActionWindow {
             GetAttr(WINDOW_Layout, self.window_obj, (*u8)&layout_ptr)
 
             if layout_ptr != 0 {
-                RethinkLayout((*Gadget)layout_ptr, self.window, (*Requester)0, 1)
+                RethinkLayout((*Gadget)layout_ptr, self.window, null, 1)
             }
         }
     }
@@ -1122,13 +1122,13 @@ impl Drop for ReActionWindow {
             if self.window {
                 let close_msg: [u32; 1] = [WM_CLOSE]
                 DoMethodA(self.window_obj, &close_msg[0])
-                self.window = (*Window)0
+                self.window = null
             }
 
             // Dispose window object (this disposes all child gadgets)
             if self.window_obj {
                 DisposeObject(self.window_obj)
-                self.window_obj = (*u8)0
+                self.window_obj = null
             }
 
             // Free labels

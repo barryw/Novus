@@ -131,7 +131,7 @@ impl Drop for ChipBuffer {
             unsafe {
                 FreeMem(self.ptr, self.size)
             }
-            self.ptr = (*u8)0
+            self.ptr = null
             self.size = 0
         }
     }

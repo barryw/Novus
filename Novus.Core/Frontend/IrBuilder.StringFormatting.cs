@@ -537,10 +537,10 @@ public partial class IrBuilder
     /// Emit a Drop call for a temporary String value used in f-strings.
     /// This is necessary because String contains Vec&lt;u8&gt; which owns heap memory.
     ///
-    /// NOTE: We call Vec_u8_drop directly on the String's vec field rather than
-    /// String_Drop_drop because String intentionally doesn't implement Drop.
-    /// This is due to a compiler bug where defer cleanup runs before return
-    /// value is copied out, causing double-free when functions return String.
+    /// NOTE: We call Vec_u8_drop directly on the String's vec field because
+    /// at this point in f-string processing, we have a temporary string value
+    /// and want to avoid the overhead of looking up String_Drop_drop when we
+    /// know the inner Vec is what needs freeing.
     /// </summary>
     private void EmitDropForTemporaryString(IrValue stringValue)
     {

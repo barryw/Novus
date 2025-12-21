@@ -45,10 +45,10 @@ impl NewMenu {
         return NewMenu {
             nm_Type: (u8)NM_TITLE,
             nm_Label: label,
-            nm_CommKey: (*u8)0,
+            nm_CommKey: null,
             nm_Flags: 0,
             nm_MutualExclude: 0,
-            nm_UserData: (*u8)0
+            nm_UserData: null
         }
     }
 
@@ -56,10 +56,10 @@ impl NewMenu {
         return NewMenu {
             nm_Type: (u8)NM_ITEM,
             nm_Label: label,
-            nm_CommKey: (*u8)0,
+            nm_CommKey: null,
             nm_Flags: 0,
             nm_MutualExclude: 0,
-            nm_UserData: (*u8)0
+            nm_UserData: null
         }
     }
 
@@ -67,21 +67,21 @@ impl NewMenu {
         return NewMenu {
             nm_Type: (u8)NM_SUB,
             nm_Label: label,
-            nm_CommKey: (*u8)0,
+            nm_CommKey: null,
             nm_Flags: 0,
             nm_MutualExclude: 0,
-            nm_UserData: (*u8)0
+            nm_UserData: null
         }
     }
 
     fn new_end() -> NewMenu {
         return NewMenu {
             nm_Type: (u8)NM_END,
-            nm_Label: (*u8)0,
-            nm_CommKey: (*u8)0,
+            nm_Label: null,
+            nm_CommKey: null,
             nm_Flags: 0,
             nm_MutualExclude: 0,
-            nm_UserData: (*u8)0
+            nm_UserData: null
         }
     }
 }
@@ -288,7 +288,7 @@ impl GadToolsMenuBuilder {
         let label_ptr = self.alloc_label(title)
 
         // Add menu entry with individual fields to avoid struct alignment issues
-        self.push_entry_fields((u8)NM_TITLE, label_ptr, (*u8)0, 0, 0, (*u8)0)
+        self.push_entry_fields((u8)NM_TITLE, label_ptr, null, 0, 0, null)
 
         return MenuHandle {
             builder: self
@@ -299,7 +299,7 @@ impl GadToolsMenuBuilder {
     pub fn build(&var self) -> Result<GadToolsMenuStrip, IntuitionError> {
         // Add terminator entry
         unsafe {
-            self.push_entry_fields((u8)NM_END, (*u8)0, (*u8)0, 0, 0, (*u8)0)
+            self.push_entry_fields((u8)NM_END, null, null, 0, 0, null)
         }
 
         // Calculate size for NewMenu array
@@ -342,7 +342,7 @@ impl GadToolsMenuBuilder {
             }
 
             // Create menus from NewMenu array
-            let menu = CreateMenusA(menu_array, (*TagItem)0)
+            let menu = CreateMenusA(menu_array, null)
             if !menu {
                 let mem_to_free = (*u8)menu_array
                 FreeVec(mem_to_free)
@@ -350,7 +350,7 @@ impl GadToolsMenuBuilder {
             }
 
             // Get visual info for screen
-            let vi = GetVisualInfoA(self.screen, (*TagItem)0)
+            let vi = GetVisualInfoA(self.screen, null)
             if !vi {
                 FreeMenus(menu)
                 let mem_to_free = (*u8)menu_array
@@ -359,7 +359,7 @@ impl GadToolsMenuBuilder {
             }
 
             // Layout menus
-            let result = LayoutMenusA(menu, vi, (*TagItem)0)
+            let result = LayoutMenusA(menu, vi, null)
             if result == 0 {
                 FreeVisualInfo(vi)
                 FreeMenus(menu)
@@ -374,7 +374,7 @@ impl GadToolsMenuBuilder {
             let label_count = self.label_count
 
             // Clear builder's label tracking so it doesn't free them
-            self.labels = (**u8)0
+            self.labels = null
             self.label_count = 0
             self.label_capacity = 0
 
@@ -383,7 +383,7 @@ impl GadToolsMenuBuilder {
             if self.entries {
                 let entries_mem = (*u8)self.entries
                 FreeVec(entries_mem)
-                self.entries = (*NewMenu)0
+                self.entries = null
                 self.entry_count = 0
                 self.entry_capacity = 0
             }
@@ -407,7 +407,7 @@ impl Drop for GadToolsMenuBuilder {
             if self.entries {
                 let mem_to_free = (*u8)self.entries
                 FreeVec(mem_to_free)
-                self.entries = (*NewMenu)0
+                self.entries = null
                 self.entry_count = 0
                 self.entry_capacity = 0
             }
@@ -429,7 +429,7 @@ impl Drop for GadToolsMenuBuilder {
                 // Free the label pointer array itself
                 let label_mem = (*u8)self.labels
                 FreeVec(label_mem)
-                self.labels = (**u8)0
+                self.labels = null
                 self.label_count = 0
                 self.label_capacity = 0
             }
@@ -452,7 +452,7 @@ impl MenuHandle {
             let label_ptr = (*self.builder).alloc_label(label)
 
             // Add menu item with individual fields to avoid struct alignment issues
-            (*self.builder).push_entry_fields((u8)NM_ITEM, label_ptr, (*u8)0, 0, 0, (*u8)0)
+            (*self.builder).push_entry_fields((u8)NM_ITEM, label_ptr, null, 0, 0, null)
 
             return MenuItemHandle {
                 builder: self.builder
@@ -465,7 +465,7 @@ impl MenuHandle {
     pub fn add_separator(&var self) {
         unsafe {
             // NULL label = separator
-            (*self.builder).push_entry_fields((u8)NM_ITEM, (*u8)0, (*u8)0, 0, 0, (*u8)0)
+            (*self.builder).push_entry_fields((u8)NM_ITEM, null, null, 0, 0, null)
         }
     }
 }
@@ -485,7 +485,7 @@ impl MenuItemHandle {
             let label_ptr = (*self.builder).alloc_label(label)
 
             // Add sub-item with individual fields to avoid struct alignment issues
-            (*self.builder).push_entry_fields((u8)NM_SUB, label_ptr, (*u8)0, 0, 0, (*u8)0)
+            (*self.builder).push_entry_fields((u8)NM_SUB, label_ptr, null, 0, 0, null)
 
             return MenuItemHandle {
                 builder: self.builder
@@ -610,18 +610,18 @@ impl Drop for GadToolsMenuStrip {
             // Free visual info first
             if let vi = self.visual_info {
                 FreeVisualInfo(vi)
-                self.visual_info = (*VisualInfo)0
+                self.visual_info = null
             }
             // Free the menu structures
             if let menu = self.menu {
                 FreeMenus(menu)
-                self.menu = (*Menu)0
+                self.menu = null
             }
             // Free the NewMenu array
             if let arr = self.menu_array {
                 let mem_to_free = (*u8)arr
                 FreeVec(mem_to_free)
-                self.menu_array = (*NewMenu)0
+                self.menu_array = null
             }
             // Free all allocated label strings
             if let labels = self.labels {
@@ -639,7 +639,7 @@ impl Drop for GadToolsMenuStrip {
                 // Free the label pointer array itself
                 let label_mem = (*u8)labels
                 FreeVec(label_mem)
-                self.labels = (**u8)0
+                self.labels = null
                 self.label_count = 0
             }
         }

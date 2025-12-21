@@ -1,0 +1,50 @@
+// Test 0x hex literal support
+// Both $ and 0x prefixes should work
+
+from std::io::file import write
+
+pub fn main() -> i32 {
+    // Test basic 0x hex literals
+    let a: u32 = 0xFFu32
+    let b: u32 = 0xffu32
+    let c: u32 = 0xDEADBEEFu32
+    let d: u32 = 0x1234_5678u32
+
+    // Test with type suffixes
+    let e: u8 = 0xFFu8
+    let f: u16 = 0x1234u16
+    let g: u32 = 0xABCDu32
+    let h: i32 = 0x7FFFFFFFi32
+
+    // Compare with $ prefix (should be identical)
+    let i: u32 = $FFu32
+    let j: u32 = $DEADBEEFu32
+
+    // Verify equality
+    if a != i {
+        write("FAIL: 0xFF != $FF\n")
+        return 1
+    }
+
+    if c != j {
+        write("FAIL: 0xDEADBEEF != $DEADBEEF\n")
+        return 1
+    }
+
+    // Test in expressions
+    let mask: u32 = 0xFF00 | 0x00FF
+    if mask != 0xFFFF {
+        write("FAIL: 0xFF00 | 0x00FF != 0xFFFF\n")
+        return 1
+    }
+
+    // Test bit operations
+    let shifted: u32 = 0x1 << 8
+    if shifted != 0x100 {
+        write("FAIL: 0x1 << 8 != 0x100\n")
+        return 1
+    }
+
+    write("PASS: All 0x hex literal tests passed\n")
+    return 0
+}

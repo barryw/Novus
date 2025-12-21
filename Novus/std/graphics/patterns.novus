@@ -177,7 +177,7 @@ pub fn clear_fill_pattern(rp: *RastPort) {
     }
     unsafe {
         let rp_ref = rp
-        rp_ref.AreaPtrn = (*u16)0
+        rp_ref.AreaPtrn = null
         rp_ref.AreaPtSz = 0
     }
 }
@@ -188,7 +188,7 @@ pub fn has_fill_pattern(rp: *RastPort) -> bool {
         return false
     }
     unsafe {
-        return (*rp).AreaPtrn != (*u16)0 && (*rp).AreaPtSz >= 0
+        return (*rp).AreaPtrn != null && (*rp).AreaPtSz >= 0
     }
 }
 

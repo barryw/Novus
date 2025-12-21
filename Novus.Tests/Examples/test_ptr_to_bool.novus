@@ -2,7 +2,7 @@
 
 pub fn main() -> i32 {
     // Test 1: null pointer should be false
-    let null_ptr: *i32 = (*i32)0
+    let null_ptr: *i32 = null
 
     if null_ptr {
         return 1  // Error: null pointer should be falsy

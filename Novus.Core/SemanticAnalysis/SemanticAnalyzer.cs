@@ -29,6 +29,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     private readonly HashSet<string> _importedModules = new(); // Track which modules have been imported (by path)
     private FunctionSymbol? _currentFunction;
     private IrWhereClause? _currentStructWhereClause; // Track where clause for current struct/impl block
+    private IrWhereClause? _currentFunctionWhereClause; // Track where clause for current function
     private int _loopDepth = 0; // Track loop nesting for break validation
     private readonly string _stdLibPath; // Path to standard library
     private Dictionary<string, bool>? _preprocessorConstants; // Preprocessor constants for imports
@@ -1541,7 +1542,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             _parsingExternFunction = false;
         }
 
-        _functions[name] = new FunctionSymbol(name, returnType, parameters, location, isExtern, genericParams.Count > 0 ? genericParams : null, attributes, hasVariadic, whereClause, isConstFn);
+        _functions[name] = new FunctionSymbol(name, returnType, parameters, location, isExtern, genericParams.Count > 0 ? genericParams : null, attributes, hasVariadic, null, whereClause, isConstFn);
 
         // Clear generic params from scope after function registration
         foreach (var paramName in genericParams)
@@ -1670,6 +1671,13 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         var methodName = context.IDENTIFIER().GetText();
         var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
 
+        // Parse method-level generic parameters (e.g., <E> in fn ok_or<E>)
+        // These need to be registered BEFORE parsing parameter types and return type
+        var methodGenericParams = AstParsingHelpers.ParseGenericParameters(context.genericParams(), _genericParams);
+
+        // Parse method-level where clause (e.g., where T: Eq)
+        var whereClause = AstParsingHelpers.ParseWhereClause(context.whereClause());
+
         // Parse attributes (including @suppress for warnings)
         var attributes = ParseAttributes(context.attribute());
 
@@ -1706,6 +1714,11 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     (originalLocation, $"previous definition of '{methodName}' here")
                 }
             );
+            // Clear method-level generic params before returning
+            foreach (var param in methodGenericParams)
+            {
+                _genericParams.Remove(param);
+            }
             return;
         }
 
@@ -1844,7 +1857,15 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             }
         }
 
-        _functions[mangledName] = new FunctionSymbol(mangledName, returnType, parameters, location, false, genericParams.Count > 0 ? genericParams : null, attributes, hasVariadic);
+        // Store both impl-level and method-level generic params in the symbol
+        var allGenericParams = genericParams.Count > 0 ? genericParams : null;
+        _functions[mangledName] = new FunctionSymbol(mangledName, returnType, parameters, location, false, allGenericParams, attributes, hasVariadic, methodGenericParams.Count > 0 ? methodGenericParams : null, whereClause);
+
+        // Clear method-level generic params from scope
+        foreach (var param in methodGenericParams)
+        {
+            _genericParams.Remove(param);
+        }
     }
 
     /// <summary>
@@ -2418,6 +2439,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         _currentFunction = _functions[mangledName];
+        _currentFunctionWhereClause = _currentFunction.WhereClause; // Track method-level where clause
         _variables.Clear();
         _borrowChecker.Reset(); // Reset move tracking for new method
 
@@ -2468,6 +2490,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         _currentFunction = null;
+        _currentFunctionWhereClause = null;
         _currentFunctionSuppressedWarnings.Clear();
     }
 
@@ -2475,6 +2498,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     {
         var name = context.IDENTIFIER().GetText();
         _currentFunction = _functions[name];
+        _currentFunctionWhereClause = _currentFunction.WhereClause; // Track method-level where clause
         _variables.Clear();
         _borrowChecker.Reset(); // Reset move tracking for new function
         _dropScopes.Clear(); // Reset drop tracking for new function
@@ -2518,6 +2542,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         if (_currentFunction.IsExtern)
         {
             _currentFunction = null;
+            _currentFunctionWhereClause = null;
             _currentFunctionSuppressedWarnings.Clear();
             return null;
         }
@@ -2568,6 +2593,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         _currentFunction = null;
+        _currentFunctionWhereClause = null;
         _currentFunctionSuppressedWarnings.Clear();
         return null;
     }
@@ -4939,8 +4965,19 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         AnalyzeLetElsePattern(pattern, exprType, location);
 
         // Visit the else block - it must diverge
-        // TODO: Verify that the else block actually diverges
         Visit(context.block());
+
+        // Verify that the else block actually diverges
+        var elseBlock = context.block();
+        if (!AnalyzeBlockReturns(elseBlock))
+        {
+            var elseLocation = SourceLocationHelper.FromContext(elseBlock, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0021",
+                "else block in let...else must diverge (return, break, continue, or panic)",
+                elseLocation
+            );
+        }
 
         return null;
     }
@@ -8841,10 +8878,19 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     }
 
     /// <summary>
-    /// Get the trait bounds for a generic type parameter from the current context
+    /// Get the trait bounds for a generic type parameter from the current context.
+    /// Checks both function-level and struct/impl-level where clauses.
     /// </summary>
     private List<IrTraitBound>? GetBoundsForGenericParameter(string paramName)
     {
+        // Check the current function's where clause first (method-level bounds)
+        if (_currentFunctionWhereClause != null)
+        {
+            var bounds = _currentFunctionWhereClause.GetBoundsFor(paramName);
+            if (bounds.Count > 0)
+                return bounds;
+        }
+
         // Check the current struct/impl being analyzed (if any)
         if (_currentStructWhereClause != null)
         {
@@ -10845,7 +10891,16 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
     private IrType ParseAndValidateHexLiteral(ParserRuleContext context, string text)
     {
-        text = text[1..].Replace("_", ""); // Remove $ prefix and underscores
+        // Remove hex prefix ('$' or '0x'/'0X') and underscores
+        if (text.StartsWith("0x") || text.StartsWith("0X"))
+        {
+            text = text[2..].Replace("_", "");
+        }
+        else
+        {
+            // Must be '$' prefix
+            text = text[1..].Replace("_", "");
+        }
         var (type, numberText) = ExtractTypeSuffix(text);
 
         try
@@ -11559,6 +11614,15 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
         if (traitName == null)
             return false;
+
+        // For generic type parameters, check if they have a trait bound from the where clause
+        if (type is IrGenericType genericType)
+        {
+            var bounds = GetBoundsForGenericParameter(genericType.ParameterName);
+            var requiredTrait = traitName; // Copy to local for lambda capture
+            if (bounds != null && bounds.Any(b => b.TraitName == requiredTrait))
+                return true;
+        }
 
         // Get the base type name for trait lookup
         string typeName = GetBaseTypeNameForTraitLookup(type);
@@ -12356,6 +12420,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     /// </summary>
     public override IrType? VisitMatchesExpr([NotNull] NovusParser.MatchesExprContext context)
     {
+        var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+
         // Analyze the expression being matched
         var exprType = Visit(context.expression());
         if (exprType == null)
@@ -12363,10 +12429,78 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return null; // Error already reported
         }
 
-        // TODO: Validate the pattern against the expression type
+        // Auto-dereference pointer and reference types for matching
+        var actualExprType = exprType;
+        if (exprType is IrPointerType ptrType)
+        {
+            actualExprType = ptrType.PointeeType;
+        }
+        else if (exprType is IrReferenceType refType)
+        {
+            actualExprType = refType.PointeeType;
+        }
+        else if (exprType is IrMutReferenceType mutRefType)
+        {
+            actualExprType = mutRefType.PointeeType;
+        }
+
+        // Validate pattern is compatible with expression type
+        var pattern = context.pattern();
+        if (pattern != null)
+        {
+            ValidateMatchesPattern(pattern, actualExprType, location);
+        }
 
         // matches! always returns bool
         return IrBoolType.Instance;
+    }
+
+    /// <summary>
+    /// Validate that a pattern in matches!(expr, pattern) is compatible with the expression type.
+    /// </summary>
+    private void ValidateMatchesPattern(NovusParser.PatternContext pattern, IrType exprType, SourceLocation location)
+    {
+        // Handle variant patterns like Some(x) or None
+        if (pattern is NovusParser.VariantPatternContext variantPattern)
+        {
+            var variantName = variantPattern.variantName()?.GetText();
+
+            if (variantName != null)
+            {
+                // Check if expression type is an enum
+                if (exprType is not IrEnumType enumType)
+                {
+                    _diagnostics.ReportError(
+                        "E0022",
+                        $"cannot use variant pattern '{variantName}' on non-enum type '{exprType}'",
+                        location
+                    );
+                    return;
+                }
+
+                // Look up the enum and check if the variant exists
+                var actualEnum = !string.IsNullOrEmpty(enumType.CacheKey)
+                    ? _symbols.LookupMonomorphizedEnum(enumType.CacheKey) ?? enumType
+                    : _symbols.LookupEnum(enumType.EnumName) ?? enumType;
+
+                // Extract just the variant name (e.g., "Some" from "Option::Some")
+                var simpleVariantName = variantName.Contains("::")
+                    ? variantName.Split("::").Last()
+                    : variantName;
+
+                if (!actualEnum.Variants.Any(v => v.Name == simpleVariantName))
+                {
+                    _diagnostics.ReportError(
+                        "E0023",
+                        $"enum '{enumType.EnumName}' has no variant named '{simpleVariantName}'",
+                        location
+                    );
+                }
+            }
+        }
+        // Wildcard patterns are always valid
+        // Literal patterns (integers, strings) would need type checking against exprType
+        // For now, we trust the pattern is valid for other pattern types
     }
 
     /// <summary>
@@ -12464,9 +12598,10 @@ public record FunctionSymbol(
     List<ParameterSymbol> Parameters,
     SourceLocation Location,
     bool IsExtern = false,
-    List<string>? GenericParameters = null,  // Generic type parameters (e.g., ["T"] for Option::FromPointer)
+    List<string>? GenericParameters = null,  // Type-level generic parameters (e.g., ["T"] for impl<T> Option<T>)
     AttributeCollection? Attributes = null,  // Function attributes (@inline, @test, etc.)
     bool IsVariadic = false,  // true if function accepts variable number of arguments (...)
+    List<string>? MethodGenericParameters = null,  // Method-level generic parameters (e.g., ["E"] for fn ok_or<E>)
     IrWhereClause? WhereClause = null,  // Generic type constraints (e.g., where T: Sortable)
     bool IsConstFn = false  // true if function is declared with 'const fn'
 );

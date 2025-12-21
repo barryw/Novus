@@ -389,13 +389,13 @@ impl Drop for TimerHandle {
 
             // Delete IORequest
             DeleteIORequest((*u8)req)
-            self.timereq = (*timerequest)0
+            self.timereq = null
         }
 
         if let port = self.port {
             // Delete message port
             DeleteMsgPort(port)
-            self.port = (*MsgPort)0
+            self.port = null
         }
     }
 }
@@ -818,13 +818,13 @@ impl Drop for AsyncTimer {
 
             // Delete IORequest
             DeleteIORequest((*u8)req)
-            self.timereq = (*timerequest)0
+            self.timereq = null
         }
 
         if let port = self.port {
             // Delete message port
             DeleteMsgPort(port)
-            self.port = (*MsgPort)0
+            self.port = null
         }
     }
 }

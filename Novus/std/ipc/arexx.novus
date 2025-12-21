@@ -205,7 +205,7 @@ impl ARexxPort {
 
         // Extract command string
         let cmd_argstring = msg.rm_Args[0]
-        var cmd_str = Str { ptr: (*u8)0, len: 0 }
+        var cmd_str = Str { ptr: null, len: 0 }
         if cmd_argstring != null {
             let cmd_len = LengthArgstring(cmd_argstring)
             cmd_str = Str { ptr: cmd_argstring, len: cmd_len }
@@ -334,7 +334,7 @@ pub fn arexx_call(target: Str, command: Str) -> Result<Str, ARexxError> {
     let reply = (*RexxMsg)GetMsg(reply_port)
 
     // Get result
-    var result_str = Str { ptr: (*u8)0, len: 0 }
+    var result_str = Str { ptr: null, len: 0 }
     var error_code: i32 = 0
     if reply != null {
         let rc = reply.rm_Result1

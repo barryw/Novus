@@ -43,7 +43,7 @@ fn main() -> i32 {
         return 1
     }
 
-    let task = FindTask((*u8)0)
+    let task = FindTask(null)
     let waker = Waker::new(task, signal_bit)
     var ctx = Context::new(waker)
     let signal_mask = 1u32 << (u32)signal_bit

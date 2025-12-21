@@ -125,7 +125,7 @@ impl Drop for BitMapHandle {
 
             // Now safe to free the bitmap
             FreeBitMap(bm)
-            self.bitmap = (*BitMap)0
+            self.bitmap = null
         }
     }
 }
@@ -209,7 +209,7 @@ impl CopperListHandle {
     /// This is called automatically by Drop if the list is active.
     pub fn restore_system(&var self) {
         if self.active {
-            LoadView((*View)0)  // null = system copper
+            LoadView(null)  // null = system copper
             WaitTOF()  // CRITICAL: Wait for vertical blank
             self.active = false
         }
@@ -224,7 +224,7 @@ impl Drop for CopperListHandle {
         // 2. Wait for vertical blank (WaitTOF)
         // Otherwise the copper will read freed memory!
         if self.active {
-            LoadView((*View)0)  // null = restore system copper
+            LoadView(null)  // null = restore system copper
             WaitTOF()  // Wait for copper to switch
         }
         // memory.drop() called automatically (RAII composition!)

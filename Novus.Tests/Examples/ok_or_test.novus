@@ -1,0 +1,93 @@
+// Test ok_or method on Option<T>
+// This tests generic methods on generic enums
+
+from std::core import Option, Result
+from std::io::file import write
+
+pub enum TestError {
+    NotFound,
+    Invalid,
+}
+
+fn test_some_ok_or() -> bool {
+    // Test that Some(v).ok_or(err) returns Ok(v)
+    let opt: Option<i32> = Option::Some(42)
+    let result = opt.ok_or(TestError::NotFound)
+
+    match result {
+        Result::Ok(v) => {
+            if v != 42 {
+                write("FAIL: ok_or returned wrong value\n")
+                return false
+            }
+            return true
+        },
+        Result::Err(_) => {
+            write("FAIL: ok_or returned Err for Some\n")
+            return false
+        }
+    }
+}
+
+fn test_none_ok_or() -> bool {
+    // Test that None.ok_or(err) returns Err(err)
+    let opt: Option<i32> = Option::None
+    let result = opt.ok_or(TestError::Invalid)
+
+    match result {
+        Result::Ok(_) => {
+            write("FAIL: ok_or returned Ok for None\n")
+            return false
+        },
+        Result::Err(_) => {
+            // Got Err as expected
+            return true
+        }
+    }
+}
+
+fn test_ok_or_with_different_types() -> bool {
+    // Test with different Option and Error types
+    let opt: Option<u32> = Option::Some(100u32)
+    let result = opt.ok_or(TestError::NotFound)
+
+    if !result.is_ok() {
+        write("FAIL: ok_or should return Ok for Some\n")
+        return false
+    }
+
+    let opt2: Option<u32> = Option::None
+    let result2 = opt2.ok_or(TestError::NotFound)
+
+    if !result2.is_err() {
+        write("FAIL: ok_or should return Err for None\n")
+        return false
+    }
+
+    return true
+}
+
+pub fn main() -> i32 {
+    write("Testing Option::ok_or:\n")
+
+    write("  Some.ok_or: ")
+    if !test_some_ok_or() {
+        return 1
+    }
+    write("PASS\n")
+
+    write("  None.ok_or: ")
+    if !test_none_ok_or() {
+        return 1
+    }
+    write("PASS\n")
+
+    write("  Different types: ")
+    if !test_ok_or_with_different_types() {
+        return 1
+    }
+    write("PASS\n")
+
+    write("All ok_or tests PASSED!\n")
+    return 0
+}

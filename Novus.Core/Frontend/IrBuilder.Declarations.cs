@@ -20,7 +20,9 @@ public partial class IrBuilder
         var templateConstants = GetConstantsAsTuples();
         // Parse where clause for constraint checking during monomorphization
         var whereClause = AstParsingHelpers.ParseWhereClause(funcDecl.whereClause());
-        var template = new Generics.GenericTemplate(genericParams, funcDecl, templateConstants, whereClause);
+        // Extract method-level generic parameters (e.g., <E> in fn ok_or<E>)
+        var methodGenericParams = AstParsingHelpers.ParseGenericParameters(funcDecl.genericParams());
+        var template = new Generics.GenericTemplate(genericParams, funcDecl, templateConstants, whereClause, methodGenericParams);
         _genericInstantiator.RegisterMethodTemplate(templateKey, template);
     }
 

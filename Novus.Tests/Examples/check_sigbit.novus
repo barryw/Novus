@@ -8,7 +8,7 @@ pub fn main() -> i32 {
     VPrintf("1-START\n", (*u8)0)
 
     // Get our own Process structure
-    let me = (*Process)FindTask((*u8)0)
+    let me = (*Process)FindTask(null)
 
     // Get pr_MsgPort
     let my_port = &me.pr_MsgPort

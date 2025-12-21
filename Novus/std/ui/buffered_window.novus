@@ -388,12 +388,12 @@ impl Drop for BufferedWindow {
                 // CRITICAL: Wait for blitter before freeing bitmap
                 WaitBlit()
                 FreeBitMap(self.buffer)
-                self.buffer = (*BitMap)0
+                self.buffer = null
 
                 // Free RastPort memory
                 if self.buffer_rp {
                     FreeVec((*u8)self.buffer_rp)
-                    self.buffer_rp = (*RastPort)0
+                    self.buffer_rp = null
                 }
             }
         }

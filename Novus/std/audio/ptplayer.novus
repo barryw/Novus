@@ -669,7 +669,7 @@ impl ModPlayer {
 
         unsafe {
             // Initialize with NULL samples pointer (samples are in the MOD file)
-            __novus_mt_init(custom, module_data, (*u8)0, start_position)
+            __novus_mt_init(custom, module_data, null, start_position)
         }
 
         return Result::Ok(())

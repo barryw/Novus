@@ -88,9 +88,11 @@ impl Str {
     ///
     /// Returns None if ptr is null
     pub fn from_cstr(ptr: *u8) -> Option<Str> {
-        // Check for null pointer by casting to u32
-        let ptr_addr: u32 = (u32)ptr
-        return if ptr_addr == 0u32 { Option::None } else { Option::Some(Str { ptr: ptr, len: strlen(ptr) }) }
+        // Check for null pointer before calling strlen
+        if (u32)ptr == 0 {
+            return Option::None
+        }
+        return Option::Some(Str { ptr: ptr, len: strlen(ptr) })
     }
 
     /// Get the length of the string in bytes
@@ -900,14 +902,30 @@ impl BStr {
         return Str::from_raw(data_ptr, len)
     }
 
-    /// Free the BCPL string memory
-    pub fn drop(&self) {
+    /// Free the BCPL string memory (deprecated - use Drop trait instead)
+    pub fn free(&self) {
         let ptr: *u8 = self.as_ptr()
-        let len: u32 = self.len()
-        let total_bytes: u32 = 1u32 + len
+        if (u32)ptr != 0 {
+            let len: u32 = self.len()
+            let total_bytes: u32 = 1u32 + len
+            unsafe {
+                FreeMem(ptr, total_bytes)
+            }
+        }
+    }
+}
 
-        unsafe {
-            FreeMem(ptr, total_bytes)
+// Automatic cleanup for BStr (RAII)
+impl Drop for BStr {
+    fn drop(&var self) {
+        let ptr: *u8 = self.as_ptr()
+        if (u32)ptr != 0 {
+            let len: u32 = self.len()
+            let total_bytes: u32 = 1u32 + len
+            unsafe {
+                FreeMem(ptr, total_bytes)
+            }
+            self.bptr = 0
         }
     }
 }

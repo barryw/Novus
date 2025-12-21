@@ -82,7 +82,7 @@ pub fn block_on_sleep(sleep_future: Sleep) -> Result<(), ExecutorError> {
     }
 
     // Get current task
-    let task = FindTask((*u8)0)
+    let task = FindTask(null)
 
     // Create waker and context
     let waker = Waker::new(task, signal_bit)
@@ -137,7 +137,7 @@ pub fn block_on_sleep_uninterruptible(sleep_future: Sleep) -> Result<(), Executo
     }
 
     // Get current task
-    let task = FindTask((*u8)0)
+    let task = FindTask(null)
 
     // Create waker and context
     let waker = Waker::new(task, signal_bit)
@@ -196,7 +196,7 @@ pub fn poll_sleep_once(sleep_future: &var Sleep) -> bool {
         return false
     }
 
-    let task = FindTask((*u8)0)
+    let task = FindTask(null)
     let waker = Waker::new(task, signal_bit)
     var ctx = Context::new(waker)
 

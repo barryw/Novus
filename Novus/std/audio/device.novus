@@ -427,12 +427,12 @@ impl Drop for AudioDeviceHandle {
                 // Free IORequest
                 DeleteIORequest((*u8)io)
             }
-            self.io_audio = (*IOAudio)0
+            self.io_audio = null
         }
 
         if let port = self.port {
             DeleteMsgPort(port)
-            self.port = (*MsgPort)0
+            self.port = null
         }
     }
 }

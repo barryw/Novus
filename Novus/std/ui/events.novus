@@ -737,7 +737,7 @@ impl Drop for WindowHandle {
             // CRITICAL: Drain and reply to all pending IDCMP messages
             // before closing the window. Unreplied messages cause
             // system hangs and crashes.
-            var user_port: *MsgPort = (*MsgPort)0
+            var user_port: *MsgPort = null
 
             unsafe {
                 user_port = (*w).UserPort
@@ -757,7 +757,7 @@ impl Drop for WindowHandle {
                 CloseWindow(w)
             }
 
-            self.window = (*Window)0
+            self.window = null
         }
     }
 }

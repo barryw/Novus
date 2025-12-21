@@ -765,7 +765,7 @@ impl Drop for WindowHandle {
                 CloseWindow(w)
             }
 
-            self.window = (*Window)0
+            self.window = null
         }
     }
 }
@@ -918,8 +918,8 @@ impl WindowBuilder {
             min_height: 20,
             max_width: 0,
             max_height: 0,
-            title_ptr: (*u8)0,
-            screen_ptr: (*Screen)0,
+            title_ptr: null,
+            screen_ptr: null,
             flags: 0,
             idcmp: IDCMP_CLOSEWINDOW,
             borderless: false,

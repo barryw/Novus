@@ -56,11 +56,11 @@ struct PoolAlloc {
 
 impl PoolAlloc {
     fn new() -> PoolAlloc {
-        return PoolAlloc { ptr: (*u8)0, size: 0 }
+        return PoolAlloc { ptr: null, size: 0 }
     }
 
     fn is_valid(&self) -> bool {
-        return self.ptr != (*u8)0
+        return self.ptr != null
     }
 }
 
@@ -76,7 +76,7 @@ struct SizePool {
 impl SizePool {
     fn new() -> SizePool {
         return SizePool {
-            pool_header: (*u8)0,
+            pool_header: null,
             block_size: 0,
             allocs: [PoolAlloc::new(); 64],
             alloc_count: 0,
@@ -87,7 +87,7 @@ impl SizePool {
     fn init(&var self, block_size: u32, puddle_size: u32) -> bool {
         self.block_size = block_size
         self.pool_header = CreatePool(MEMF_CHIP, puddle_size, THRESHOLD)
-        return self.pool_header != (*u8)0
+        return self.pool_header != null
     }
 
     fn alloc(&var self) -> Option<*u8> {
@@ -148,7 +148,7 @@ impl SizePool {
         if self.pool_header {
             // DeletePool frees all memory at once - no need to free individually
             DeletePool(self.pool_header)
-            self.pool_header = (*u8)0
+            self.pool_header = null
             self.alloc_count = 0
             self.total_allocated = 0
         }
@@ -192,28 +192,28 @@ static var g_chip_pool: ChipPool = ChipPool {
     small_pool: SizePool {
         pool_header: (*u8)0,
         block_size: 0,
-        allocs: [PoolAlloc { ptr: (*u8)0, size: 0 }; 64],
+        allocs: [PoolAlloc { ptr: null, size: 0 }; 64],
         alloc_count: 0,
         total_allocated: 0,
     },
     medium_pool: SizePool {
         pool_header: (*u8)0,
         block_size: 0,
-        allocs: [PoolAlloc { ptr: (*u8)0, size: 0 }; 64],
+        allocs: [PoolAlloc { ptr: null, size: 0 }; 64],
         alloc_count: 0,
         total_allocated: 0,
     },
     large_pool: SizePool {
         pool_header: (*u8)0,
         block_size: 0,
-        allocs: [PoolAlloc { ptr: (*u8)0, size: 0 }; 64],
+        allocs: [PoolAlloc { ptr: null, size: 0 }; 64],
         alloc_count: 0,
         total_allocated: 0,
     },
     huge_pool: SizePool {
         pool_header: (*u8)0,
         block_size: 0,
-        allocs: [PoolAlloc { ptr: (*u8)0, size: 0 }; 64],
+        allocs: [PoolAlloc { ptr: null, size: 0 }; 64],
         alloc_count: 0,
         total_allocated: 0,
     },

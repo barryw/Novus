@@ -129,7 +129,7 @@ from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR, MEMF_FAST
 /// ```
 pub fn take_over_port(port: *MsgPort) -> u32 {
     // Get our own task pointer
-    let my_task = FindTask((*u8)0)
+    let my_task = FindTask(null)
 
     // Allocate our own signal bit (-1 means any available)
     let my_signal = AllocSignal(-1)
@@ -211,7 +211,7 @@ impl PortHandoff {
     /// Call this in the parent process before spawning the child.
     /// The parent must keep this structure alive until `wait_for_ready()` returns.
     pub fn new(port: *MsgPort) -> PortHandoff {
-        let parent = (*Task)FindTask((*u8)0)
+        let parent = (*Task)FindTask(null)
 
         // Allocate a signal bit for the child to use to notify us
         let sig_bit = AllocSignal(-1)
@@ -304,7 +304,7 @@ impl Drop for PortOwnership {
         // already freed above (and it was allocated by a different task anyway)
         if (u32)self.port != 0 {
             unsafe { FreeMem((*u8)self.port, @sizeof(MsgPort)) }
-            self.port = (*MsgPort)0
+            self.port = null
         }
     }
 }
@@ -346,7 +346,7 @@ pub fn complete_handoff(handoff: *PortHandoff) -> Option<PortOwnership> {
     let port = handoff.port
 
     // Get our own task pointer
-    let my_task = FindTask((*u8)0)
+    let my_task = FindTask(null)
 
     // Allocate our own signal bit (-1 means any available)
     let my_signal = AllocSignal(-1)
@@ -428,21 +428,21 @@ impl<T> Sender<T> {
     ///
     /// This is non-blocking - it returns immediately after queuing the message.
     /// The receiver will be signaled automatically.
-    pub fn send(&self, value: T) {
+    ///
+    /// Returns true if sent successfully, false if allocation failed.
+    pub fn send(&self, value: T) -> bool {
         // Allocate message with space for payload
         let size = Sender::<T>::msg_size()
         let msg_mem = unsafe { AllocMem(size, MEMF_FAST | MEMF_CLEAR) }
         if (u32)msg_mem == 0 {
-            // Allocation failed - silently drop the message
-            // In a more robust implementation, we'd return Result
-            return
+            return false
         }
 
         let msg = (*Message)msg_mem
 
         // Initialize message header
         msg.mn_Node.ln_Type = 5  // NT_MESSAGE
-        msg.mn_ReplyPort = (*MsgPort)0  // No reply expected
+        msg.mn_ReplyPort = null  // No reply expected
         msg.mn_Length = (u16)size
 
         // Copy payload data
@@ -451,6 +451,7 @@ impl<T> Sender<T> {
 
         // Send it - receiver will be signaled
         PutMsg(self.port, msg)
+        return true
     }
 
     /// Clone this sender to create another sender to the same channel.
@@ -610,7 +611,7 @@ impl<T> Drop for Receiver<T> {
         // Delete the message port
         if (u32)self.port != 0 {
             DeleteMsgPort(self.port)
-            self.port = (*MsgPort)0
+            self.port = null
         }
     }
 }
@@ -780,7 +781,7 @@ impl<T> Drop for BoundedSender<T> {
                 }
             }
             DeleteMsgPort(self.reply_port)
-            self.reply_port = (*MsgPort)0
+            self.reply_port = null
         }
     }
 }
@@ -816,7 +817,7 @@ impl<T> BoundedReceiver<T> {
         // Acknowledge previous message if any
         if (u32)self.pending_msg != 0 {
             ReplyMsg(self.pending_msg)
-            self.pending_msg = (*Message)0
+            self.pending_msg = null
         }
 
         // Wait for a message
@@ -850,7 +851,7 @@ impl<T> BoundedReceiver<T> {
         // Acknowledge previous message if any
         if (u32)self.pending_msg != 0 {
             ReplyMsg(self.pending_msg)
-            self.pending_msg = (*Message)0
+            self.pending_msg = null
         }
 
         let msg = GetMsg(self.port)
@@ -919,7 +920,7 @@ impl<T> BoundedReceiver<T> {
             FreeSignal((i8)sig_bit)
         }
 
-        self.port = (*MsgPort)0
+        self.port = null
         self.signal_mask = 0
         return p
     }
@@ -935,7 +936,7 @@ impl<T> Drop for BoundedReceiver<T> {
         // Reply to pending message if any
         if (u32)self.pending_msg != 0 {
             ReplyMsg(self.pending_msg)
-            self.pending_msg = (*Message)0
+            self.pending_msg = null
         }
 
         // Drain remaining messages
@@ -957,7 +958,7 @@ impl<T> Drop for BoundedReceiver<T> {
 
         if (u32)self.port != 0 {
             DeleteMsgPort(self.port)
-            self.port = (*MsgPort)0
+            self.port = null
         }
     }
 }
@@ -1009,7 +1010,7 @@ pub fn bounded_channel<T>() -> Result<(BoundedSender<T>, BoundedReceiver<T>), Do
     let receiver = BoundedReceiver {
         port: recv_port,
         signal_mask: recv_signal,
-        pending_msg: (*Message)0,
+        pending_msg: null,
     }
 
     return Result::Ok((sender, receiver))
@@ -1058,7 +1059,7 @@ impl<T> OneshotSender<T> {
 
         let msg = (*Message)msg_mem
         msg.mn_Node.ln_Type = 5
-        msg.mn_ReplyPort = (*MsgPort)0
+        msg.mn_ReplyPort = null
         msg.mn_Length = (u16)size
 
         let data_ptr = OneshotSender::<T>::msg_data(msg)
@@ -1165,7 +1166,7 @@ impl<T> Drop for OneshotReceiver<T> {
 
         if (u32)self.port != 0 {
             DeleteMsgPort(self.port)
-            self.port = (*MsgPort)0
+            self.port = null
         }
     }
 }

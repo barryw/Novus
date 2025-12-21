@@ -327,7 +327,9 @@ public partial class IrBuilder
                     }
 
                     // Create new struct type with concrete types (no generic parameters)
-                    monomorphizedStruct = new IrStructType(baseStruct.StructName, monomorphizedFields, null, cacheKey);
+                    // IMPORTANT: Pass typeArgs as the last parameter so TypeArguments is properly set
+                    // This is needed for InstantiateGenericMethod to correctly build type substitutions
+                    monomorphizedStruct = new IrStructType(baseStruct.StructName, monomorphizedFields, null, cacheKey, null, null, typeArgs);
 
                     // Force calculation of field offsets only if fully monomorphized
                     if (fullyMonomorphized)
@@ -1465,7 +1467,7 @@ public partial class IrBuilder
             return null;
         }
 
-        var (genericParams, funcDecl, _, _) = template;
+        var (genericParams, funcDecl, _, _, _) = template;
 
         // Parse the method's parameter types from the template
         // Note: 'self' parameter is handled specially in the grammar and may not be in parameterList
@@ -4788,7 +4790,8 @@ public partial class IrBuilder
                         }
 
                         // Create new struct type with concrete types
-                        structType = new IrStructType(baseStructType.StructName, monomorphizedFields, null, cacheKey);
+                        // IMPORTANT: Pass typeArgs so InstantiateGenericMethod can build type substitutions
+                        structType = new IrStructType(baseStructType.StructName, monomorphizedFields, null, cacheKey, null, null, typeArgs);
 
                         // Force calculation of field offsets only if fully monomorphized
                         if (fullyMonomorphized)
@@ -4990,7 +4993,8 @@ public partial class IrBuilder
                 }
 
                 // Create monomorphized struct type
-                vecType = new IrStructType(baseStructType.StructName, monomorphizedFields, null, cacheKey);
+                // IMPORTANT: Pass typeArgs so InstantiateGenericMethod can build type substitutions
+                vecType = new IrStructType(baseStructType.StructName, monomorphizedFields, null, cacheKey, null, null, typeArgs);
                 _ = vecType.SizeInBytes; // Force size calculation
 
                 // Cache it

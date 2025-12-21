@@ -92,7 +92,7 @@ impl ProcessBuilder {
     pub fn new() -> ProcessBuilder {
         return ProcessBuilder {
             entry: 0,
-            name: (*u8)0,
+            name: null,
             stack_size: 4096,
             priority: 0,
             input: 0,
@@ -105,8 +105,8 @@ impl ProcessBuilder {
             home_dir: 0,
             copy_vars: false,
             is_cli: false,
-            window_ptr: (*u8)0,
-            console_task: (*u8)0,
+            window_ptr: null,
+            console_task: null,
             notify_on_death: false,
             synchronous: false
         }

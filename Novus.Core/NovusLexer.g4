@@ -109,6 +109,7 @@ BINARY_LITERAL
 
 HEX_LITERAL
     : '$' [0-9A-Fa-f]+ ('_' [0-9A-Fa-f]+)* ('u8' | 'u16' | 'u32' | 'u64' | 'i8' | 'i16' | 'i32' | 'i64')?
+    | '0' [xX] [0-9A-Fa-f]+ ('_' [0-9A-Fa-f]+)* ('u8' | 'u16' | 'u32' | 'u64' | 'i8' | 'i16' | 'i32' | 'i64')?
     ;
 
 F_STRING_LITERAL
@@ -476,12 +477,14 @@ ASM_REGISTER
 ASM_IMMEDIATE
     : '#' '-'? [0-9]+
     | '#' '$' [0-9A-Fa-f]+
+    | '#' '0' [xX] [0-9A-Fa-f]+
     | '#' '%' [01]+
     | '#' [a-zA-Z_][a-zA-Z0-9_]*  // Symbolic immediate (e.g., #sizeof_Player, #MY_CONST)
     ;
 
 ASM_HEX
     : '$' [0-9A-Fa-f]+
+    | '0' [xX] [0-9A-Fa-f]+
     ;
 
 ASM_BINARY_NUM

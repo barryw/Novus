@@ -186,7 +186,7 @@ impl FontHandle {
     /// Returns the previous font pointer (not owned).
     pub fn apply_to(&self, rp: *RastPort) -> *TextFont {
         if !rp {
-            return (*TextFont)0
+            return null
         }
         unsafe {
             let old_font: *TextFont = (*rp).Font

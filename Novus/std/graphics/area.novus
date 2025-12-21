@@ -377,8 +377,8 @@ impl AreaContext {
         }
         unsafe {
             let rp_ref = self.rp
-            rp_ref.AreaInfo = (*u8)0
-            rp_ref.TmpRas = (*u8)0
+            rp_ref.AreaInfo = null
+            rp_ref.TmpRas = null
         }
         self.attached = false
     }

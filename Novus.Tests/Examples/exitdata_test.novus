@@ -11,7 +11,7 @@ fn worker() -> i32 {
     VPrintf("W: started\n", (*u8)0)
 
     // Get our process structure
-    let me = (*Process)FindTask((*u8)0)
+    let me = (*Process)FindTask(null)
 
     // Read pr_ExitData
     let data = me.pr_ExitData

@@ -110,7 +110,7 @@ fn test_blitter_operations() -> Result<(), BlitterError> {
         return Result::Err(BlitterError::NotChipRam)
     }
 
-    let null_ptr: *u8 = (*u8)0
+    let null_ptr: *u8 = null
 
     var src_bm: BitMap = BitMap {
         BytesPerRow: bytes_per_row,

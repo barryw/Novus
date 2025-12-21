@@ -6,7 +6,7 @@ from std::ffi::exec import FindTask
 pub fn main() -> i32 {
     VPrintf("1\n", (*u8)0)
 
-    let me = FindTask((*u8)0)
+    let me = FindTask(null)
     var me_val: u32 = (u32)me
 
     VPrintf("ME=%08lx\n", (*u8)&me_val)

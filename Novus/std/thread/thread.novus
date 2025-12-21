@@ -137,7 +137,7 @@ impl ThreadHandle {
             unsafe {
                 FreeMem(self.comm, THREAD_COMM_SIZE)
             }
-            self.comm = (*u8)0
+            self.comm = null
         }
 
         // Free the stack memory
@@ -145,7 +145,7 @@ impl ThreadHandle {
             unsafe {
                 FreeMem(self.stack_mem, self.stack_size)
             }
-            self.stack_mem = (*u8)0
+            self.stack_mem = null
         }
 
         // Free the Task structure
@@ -153,7 +153,7 @@ impl ThreadHandle {
             unsafe {
                 FreeMem((*u8)self.task, @sizeof(Task))
             }
-            self.task = (*Task)0
+            self.task = null
         }
 
         // Free our signal
@@ -256,7 +256,7 @@ pub fn spawn_thread(name: Str, entry: fn() -> i32, stack_size: u32) -> Result<Th
     // Set up communication data using raw memory access
     // ThreadComm layout: bytes 0-3 = parent_task, byte 4 = death_signal
     let parent_task_ptr = (**Task)comm
-    *parent_task_ptr = FindTask((*u8)0)  // Get our own task
+    *parent_task_ptr = FindTask(null)  // Get our own task
     let signal_ptr = (*i8)((u32)comm + 4)
     *signal_ptr = signal
 
@@ -281,7 +281,7 @@ pub fn spawn_thread(name: Str, entry: fn() -> i32, stack_size: u32) -> Result<Th
     let tail_addr = (*u8)&mem_list.lh_Tail
     let head_addr = (*u8)&mem_list.lh_Head
     mem_list.lh_Head = (*Node)tail_addr
-    mem_list.lh_Tail = (*Node)0
+    mem_list.lh_Tail = null
     mem_list.lh_TailPred = (*Node)head_addr
     mem_list.lh_Type = 0
 
@@ -301,7 +301,7 @@ pub fn spawn_thread(name: Str, entry: fn() -> i32, stack_size: u32) -> Result<Th
     let entry_addr = (*u8)fn_addr_value
 
     // FinalPC - we don't use it since run_thread_loop handles cleanup
-    let final_addr = (*u8)0
+    let final_addr = null
 
     // Add the task to the system
     let result = AddTask(task, entry_addr, final_addr)
@@ -367,7 +367,7 @@ pub fn run_thread_loop(thread_signals: u32, state: *u8, tick_fn: fn(*u8) -> bool
     }
 
     // Get our task and communication data
-    let my_task = FindTask((*u8)0)
+    let my_task = FindTask(null)
     let comm = my_task.tc_UserData
 
     // CRITICAL: Forbid() prevents task switching, so the parent cannot wake up
@@ -390,7 +390,7 @@ pub fn run_thread_loop(thread_signals: u32, state: *u8, tick_fn: fn(*u8) -> bool
     // CRITICAL: Call RemTask(NULL) to remove ourselves from the system
     // This never returns - the task is deleted immediately
     // Because we called Forbid(), the parent won't run until we're fully removed
-    RemTask((*Task)0)
+    RemTask(null)
 
     // Wait forever - RemTask doesn't return but we must not execute past it
     // This prevents RTS to garbage after RemTask

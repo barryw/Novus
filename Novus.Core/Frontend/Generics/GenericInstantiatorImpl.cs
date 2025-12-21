@@ -44,7 +44,7 @@ public class GenericInstantiatorImpl : IGenericInstantiator
             return null; // No template found
         }
 
-        var (genericParams, funcDecl, templateConstants, _) = template;
+        var (genericParams, funcDecl, templateConstants, _, _) = template;
 
         // Restore constants from template
         _context.RestoreConstantsFromTuples(templateConstants);
@@ -236,7 +236,7 @@ public class GenericInstantiatorImpl : IGenericInstantiator
             return null; // No template found
         }
 
-        var (genericParams, funcDecl, templateConstants, _) = template;
+        var (genericParams, funcDecl, templateConstants, _, methodGenericParams) = template;
 
         // Build type substitution map
         var baseEnum = _context.LookupEnum(baseTypeName);
@@ -256,7 +256,7 @@ public class GenericInstantiatorImpl : IGenericInstantiator
             typeSubstitutions = new Dictionary<string, IrType>();
         }
 
-        // Verify all generic parameters were resolved
+        // Verify all enum-level generic parameters were resolved
         foreach (var genericParam in baseEnum.GenericParameters)
         {
             if (!typeSubstitutions.ContainsKey(genericParam))
@@ -270,18 +270,112 @@ public class GenericInstantiatorImpl : IGenericInstantiator
             }
         }
 
-        // Build instantiation key
-        var instantiationKey = $"{monomorphizedEnum.CacheKey}::{methodName}";
+        // Handle method-level generic parameters (e.g., <E> in fn ok_or<E>(self, err: E) -> Result<T, E>)
+        if (methodGenericParams != null && methodGenericParams.Count > 0)
+        {
+            // Register method-level generic parameters temporarily so we can parse parameter types
+            var savedGenericParams = new Dictionary<string, IrGenericType>();
+            foreach (var methodParam in methodGenericParams)
+            {
+                var existing = _context.LookupGenericParameter(methodParam);
+                if (existing != null)
+                {
+                    savedGenericParams[methodParam] = existing;
+                }
+                _context.RegisterGenericParameter(methodParam, new IrGenericType(methodParam));
+            }
+
+            try
+            {
+                // Parse template parameter types to infer method-level generics from arguments
+                var templateParams = new List<IrParameter>();
+                if (funcDecl.parameterList() != null)
+                {
+                    var paramList = funcDecl.parameterList();
+
+                    foreach (var paramCtx in paramList.parameter())
+                    {
+                        var paramName = paramCtx.IDENTIFIER().GetText();
+                        var paramType = _context.ParseType(paramCtx.type());
+                        templateParams.Add(new IrParameter(paramName, paramType));
+                    }
+                }
+
+                // Infer method-level generics from arguments
+                // Arguments MAY include 'self' as first argument - we need to detect this
+                // Check if first argument is the receiver (self) by comparing its type with the monomorphized enum
+                var hasSelfParameter = funcDecl.parameterList()?.selfParameter() != null;
+                var firstArgIsSelf = hasSelfParameter && arguments.Count > 0 &&
+                    (arguments[0].Type.Equals(monomorphizedEnum) ||
+                     (arguments[0].Type is IrPointerType ptr && ptr.PointeeType.Equals(monomorphizedEnum)));
+                var nonSelfArguments = firstArgIsSelf
+                    ? arguments.Skip(1).ToList()
+                    : arguments;
+
+                for (int i = 0; i < templateParams.Count && i < nonSelfArguments.Count; i++)
+                {
+                    TypeSubstitutionHelper.ExtractGenericTypeMapping(
+                        templateParams[i].Type,
+                        nonSelfArguments[i].Type,
+                        typeSubstitutions);
+                }
+
+                // Verify all method-level generic parameters were resolved
+                foreach (var methodParam in methodGenericParams)
+                {
+                    if (!typeSubstitutions.ContainsKey(methodParam))
+                    {
+                        var errorLocation = new SourceLocation(_context.InputFilePath ?? "unknown", 0, 0, 0, "");
+                        _context.ReportError(
+                            ErrorCodes.GenericParameterNotFound,
+                            $"Cannot infer type for method generic parameter '{methodParam}' in {baseTypeName}::{methodName}",
+                            errorLocation);
+                        return null;
+                    }
+                }
+            }
+            finally
+            {
+                // Restore generic parameters
+                foreach (var methodParam in methodGenericParams)
+                {
+                    if (savedGenericParams.TryGetValue(methodParam, out var saved))
+                    {
+                        _context.RegisterGenericParameter(methodParam, saved);
+                    }
+                }
+            }
+        }
+
+        // Build instantiation key - include method-level generics in the key
+        var allTypeArgKeys = new List<string>();
+        foreach (var p in genericParams)
+        {
+            if (typeSubstitutions.TryGetValue(p, out var subst))
+            {
+                allTypeArgKeys.Add(_context.GetTypeCacheKey(subst));
+            }
+        }
+        if (methodGenericParams != null)
+        {
+            foreach (var p in methodGenericParams)
+            {
+                if (typeSubstitutions.TryGetValue(p, out var subst))
+                {
+                    allTypeArgKeys.Add(_context.GetTypeCacheKey(subst));
+                }
+            }
+        }
+        var instantiationKey = $"{monomorphizedEnum.CacheKey}::{methodName}::{string.Join(",", allTypeArgKeys)}";
 
         // Check if already instantiated
         if (_cache.IsMethodInstantiated(instantiationKey))
         {
             // Already generated, look it up
-            var typeArgKeys = genericParams.Select(p => _context.GetTypeCacheKey(typeSubstitutions[p])).ToList();
             var cachedMangledName = InstantiationKeyBuilder.BuildEnumMethodMangledName(
                 baseTypeName,
                 methodName,
-                typeArgKeys);
+                allTypeArgKeys);
             return _context.Module.GetFunction(cachedMangledName);
         }
 
@@ -302,12 +396,11 @@ public class GenericInstantiatorImpl : IGenericInstantiator
             }
             returnType = _context.SubstitutionEngine.SubstituteGenericTypes(returnType, typeSubstitutions);
 
-            // Create mangled name from type arguments
-            var typeArgKeys = genericParams.Select(p => _context.GetTypeCacheKey(typeSubstitutions[p])).ToList();
+            // Create mangled name from all type arguments (enum-level + method-level)
             var mangledName = InstantiationKeyBuilder.BuildEnumMethodMangledName(
                 baseTypeName,
                 methodName,
-                typeArgKeys);
+                allTypeArgKeys);
 
             var function = new IrFunction(mangledName, returnType, Visibility.Private, false);
 
@@ -405,7 +498,7 @@ public class GenericInstantiatorImpl : IGenericInstantiator
             return null; // No template found
         }
 
-        var (genericParams, funcDecl, templateConstants, whereClause) = template;
+        var (genericParams, funcDecl, templateConstants, whereClause, _) = template;
 
         // Validate generic constraints before instantiation
         if (!ValidateGenericConstraints(functionName, whereClause, genericParams, typeSubstitutions, funcDecl))
@@ -663,7 +756,7 @@ public class GenericInstantiatorImpl : IGenericInstantiator
             return null; // No template found
         }
 
-        var (genericParams, funcDecl, _, _) = template;
+        var (genericParams, funcDecl, _, _, _) = template;
 
         // Save existing generic parameters before registering new ones
         var savedGenericParams = new Dictionary<string, IrGenericType>();

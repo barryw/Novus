@@ -10,8 +10,8 @@ pub struct Record {
 pub fn main() -> i32 {
     // Create array of structs with pointer fields
     let records = [
-        Record { id: 1, name: (*u8)0, data: (*u8)0 },
-        Record { id: 2, name: (*u8)0, data: (*u8)0 }
+        Record { id: 1, name: null, data: null },
+        Record { id: 2, name: null, data: null }
     ]
 
     // Test reading pointer fields from array elements
@@ -30,7 +30,7 @@ pub fn main() -> i32 {
 
     // Test writing to pointer fields
     var mut_records = [
-        Record { id: 0, name: (*u8)0, data: (*u8)0 }
+        Record { id: 0, name: null, data: null }
     ]
 
     let test_addr1: *u8 = (*u8)4096  // 0x1000

@@ -2,14 +2,10 @@
 // Tests for std::collections::vec::Vec (dynamic array)
 //
 // Run with: novus test Novus/std/tests/test_vec.novus
-//
-// NOTE: Some tests are disabled due to a compiler bug with generic
-// monomorphization when Vec::with_capacity is used inside match arms
-// TODO: Re-enable once compiler bug is fixed
 
 from std::collections::vec import Vec
 from std::core import Option
-from std::test::test import expect, expect_true, expect_false, expect_eq_u32, expect_eq_i32
+from std::test::test import expect, expect_true, expect_false, expect_eq_u32, expect_eq_i32, expect_eq_u8, expect_eq_bool
 
 // ============================================================================
 // Creation Tests
@@ -586,6 +582,136 @@ pub fn test_vec_capacity_grows() {
     v.drop()
 }
 
-// NOTE: Tests for Vec::with_capacity and Vec with different types (u32, u8, bool)
-// are disabled due to a compiler bug with generic monomorphization.
-// TODO: Re-enable once compiler bug is fixed
+// ============================================================================
+// with_capacity Tests
+// ============================================================================
+
+@test("Vec::with_capacity allocates capacity")
+pub fn test_vec_with_capacity() {
+    match Vec::<i32>::with_capacity(10u32) {
+        Some(var v) => {
+            expect_eq_u32(v.capacity(), 10u32, "capacity is 10")
+            expect_eq_u32(v.len(), 0u32, "len is 0")
+            expect_true(v.is_empty(), "vec is empty")
+            v.drop()
+        },
+        None => expect(false, "with_capacity should succeed")
+    }
+}
+
+@test("Vec::with_capacity zero returns empty vec")
+pub fn test_vec_with_capacity_zero() {
+    match Vec::<i32>::with_capacity(0u32) {
+        Some(v) => {
+            expect_eq_u32(v.capacity(), 0u32, "capacity is 0")
+            expect_eq_u32(v.len(), 0u32, "len is 0")
+        },
+        None => expect(false, "with_capacity(0) should succeed")
+    }
+}
+
+@test("Vec::with_capacity can push elements")
+pub fn test_vec_with_capacity_push() {
+    match Vec::<i32>::with_capacity(5u32) {
+        Some(var v) => {
+            v.push(10)
+            v.push(20)
+            v.push(30)
+
+            expect_eq_u32(v.len(), 3u32, "len is 3")
+            expect_true(v.capacity() >= 5u32, "capacity is at least 5")
+
+            let g = v.get(1u32)
+            match g {
+                Some(val) => expect_eq_i32(val, 20, "element 1 is 20"),
+                None => expect(false, "should have element 1")
+            }
+
+            v.drop()
+        },
+        None => expect(false, "with_capacity should succeed")
+    }
+}
+
+// ============================================================================
+// Different Type Tests (u32, u8, bool)
+// ============================================================================
+
+@test("Vec<u32> works correctly")
+pub fn test_vec_u32() {
+    var v = Vec::<u32>::new()
+
+    v.push(100u32)
+    v.push(200u32)
+    v.push(300u32)
+
+    expect_eq_u32(v.len(), 3u32, "len is 3")
+
+    let g = v.get(1u32)
+    match g {
+        Some(val) => expect_eq_u32(val, 200u32, "element 1 is 200"),
+        None => expect(false, "should have element 1")
+    }
+
+    v.drop()
+}
+
+@test("Vec<u8> works correctly")
+pub fn test_vec_u8() {
+    var v = Vec::<u8>::new()
+
+    v.push(10u8)
+    v.push(20u8)
+    v.push(30u8)
+
+    expect_eq_u32(v.len(), 3u32, "len is 3")
+
+    let p = v.pop()
+    match p {
+        Some(val) => expect_eq_u8(val, 30u8, "popped value is 30"),
+        None => expect(false, "should have popped value")
+    }
+
+    v.drop()
+}
+
+@test("Vec<bool> works correctly")
+pub fn test_vec_bool() {
+    var v = Vec::<bool>::new()
+
+    v.push(true)
+    v.push(false)
+    v.push(true)
+
+    expect_eq_u32(v.len(), 3u32, "len is 3")
+
+    let g = v.get(1u32)
+    match g {
+        Some(val) => expect_false(val, "element 1 is false"),
+        None => expect(false, "should have element 1")
+    }
+
+    v.drop()
+}
+
+// ============================================================================
+// with_capacity in match arms (regression test for compiler bug)
+// ============================================================================
+
+@test("Vec::with_capacity works inside match arms")
+pub fn test_vec_with_capacity_in_match() {
+    let x: i32 = 5
+    match x {
+        5 => {
+            match Vec::<i32>::with_capacity(10u32) {
+                Some(var v) => {
+                    v.push(100)
+                    expect_eq_u32(v.len(), 1u32, "len is 1")
+                    v.drop()
+                },
+                None => expect(false, "with_capacity should succeed")
+            }
+        },
+        _ => expect(false, "should match 5")
+    }
+}

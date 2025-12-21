@@ -153,7 +153,7 @@ impl Args {
 
         // Copy template into struct
         var args = Args {
-            rdargs: (*RDArgs)0,
+            rdargs: null,
             results: [0i32; 32],
             arg_count: 0,
             template: [0u8; 256],
@@ -180,7 +180,7 @@ impl Args {
         }
 
         // Call ReadArgs
-        let rdargs_result = ReadArgs((*u8)&args.template, (*u8)&args.results, (*RDArgs)0)
+        let rdargs_result = ReadArgs((*u8)&args.template, (*u8)&args.results, null)
         if (u32)rdargs_result == 0 {
             // ReadArgs failed - get error from DOS
             let err = dos_last_error()
@@ -373,7 +373,7 @@ impl Drop for Args {
     fn drop(&var self) {
         if (u32)self.rdargs != 0 {
             FreeArgs(self.rdargs)
-            self.rdargs = (*RDArgs)0
+            self.rdargs = null
         }
     }
 }
@@ -528,7 +528,7 @@ impl ArgParser {
 /// ```
 pub fn is_workbench() -> bool {
     // Get our process
-    let task = FindTask((*u8)0)
+    let task = FindTask(null)
     if (u32)task == 0 {
         return false
     }
@@ -624,7 +624,7 @@ impl Drop for WorkbenchStartup {
         if self.needs_reply && (u32)self.msg != 0 {
             // Forbid/Permit not needed - ReplyMsg is atomic
             ReplyMsg((*Message)self.msg)
-            self.msg = (*WBStartup)0
+            self.msg = null
         }
     }
 }

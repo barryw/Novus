@@ -113,9 +113,12 @@ public partial class IrBuilder
                     return true;
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Log the error for debugging
+                // Log the exception for debugging - Drop instantiation failures can indicate
+                // issues with generic type substitution or method lookup
+                var failedTypeName = structType?.StructName ?? enumType?.EnumName ?? "unknown";
+                System.Diagnostics.Debug.WriteLine($"Failed to ensure Drop method for {failedTypeName}: {ex.Message}");
                 return false;
             }
         }
@@ -362,33 +365,50 @@ public partial class IrBuilder
 
     /// <summary>
     /// Handle nested tuple drop - when a tuple element is itself a tuple.
+    /// This method takes an IrValue representing the access path to the nested tuple,
+    /// allowing proper chaining for deeply nested tuples like ((String, Vec), i32).
     /// </summary>
     private void InjectNestedTupleElementDrops(IrBasicBlock deferBlock, string parentTupleVar, int elementIndex, IrTupleType nestedTupleType)
     {
-        // For nested tuples, we access the parent tuple's element and then drop each of its elements
-        // that implement Drop, in reverse order
-        for (int i = nestedTupleType.ElementTypes.Count - 1; i >= 0; i--)
+        // Build the access to the nested tuple: parentTuple.__elementIndex
+        // We need to know the parent tuple's type to create the access
+        // For now, create a synthetic parent tuple type containing the nested type at this index
+        var parentTupleVarRef = new IrVariable(parentTupleVar, nestedTupleType);
+
+        // Create the access to the nested tuple element from the parent
+        var nestedTupleAccess = new IrTupleElementAccess(
+            new IrVariable(parentTupleVar, new IrTupleType(new List<IrType> { nestedTupleType })),
+            elementIndex,
+            nestedTupleType);
+
+        // Recursively drop elements of the nested tuple
+        InjectNestedTupleElementDropsWithAccess(deferBlock, nestedTupleAccess, nestedTupleType);
+    }
+
+    /// <summary>
+    /// Recursively inject drop calls for a nested tuple, given an IrValue that represents
+    /// the access path to that tuple. This enables arbitrary nesting depth.
+    /// </summary>
+    private void InjectNestedTupleElementDropsWithAccess(IrBasicBlock deferBlock, IrValue tupleAccess, IrTupleType tupleType)
+    {
+        // Drop elements in reverse order (LIFO)
+        for (int i = tupleType.ElementTypes.Count - 1; i >= 0; i--)
         {
-            var elementType = nestedTupleType.ElementTypes[i];
+            var elementType = tupleType.ElementTypes[i];
 
             if (!_module.TypeImplementsDrop(elementType))
             {
                 continue;
             }
 
+            // Access this element: tupleAccess.__i
+            var innerElementAccess = new IrTupleElementAccess(tupleAccess, i, elementType);
+
             // Handle deeply nested tuples recursively
             if (elementType is IrTupleType deeplyNestedTuple)
             {
-                // This gets complex - for deeply nested tuples we'd need to chain the accesses
-                // For now, create a synthetic access chain
-                // Access: parentTuple.__elementIndex.__i
-                var parentTupleVar_ = new IrVariable(parentTupleVar,
-                    new IrTupleType(new List<IrType> { nestedTupleType })); // Approximate parent type
-                var nestedAccess = new IrTupleElementAccess(parentTupleVar_, elementIndex, nestedTupleType);
-
-                // Now recursively drop the deeply nested tuple's elements
-                // This is getting complex - for now just log and skip deeply nested tuples
-                // TODO: Full support for arbitrarily nested tuples
+                // Recursively handle the deeply nested tuple
+                InjectNestedTupleElementDropsWithAccess(deferBlock, innerElementAccess, deeplyNestedTuple);
                 continue;
             }
 
@@ -414,18 +434,7 @@ public partial class IrBuilder
                 continue;
             }
 
-            // Access chain: parentTuple.__elementIndex (to get the nested tuple)
-            // Then: nestedTuple.__i (to get the element)
-            var parentTupleVarRef = new IrVariable(parentTupleVar,
-                new IrTupleType(nestedTupleType.ElementTypes)); // Use the actual parent type
-
-            // First access the nested tuple element from parent
-            var nestedTupleAccess = new IrTupleElementAccess(parentTupleVarRef, elementIndex, nestedTupleType);
-
-            // Then access the element within the nested tuple
-            var innerElementAccess = new IrTupleElementAccess(nestedTupleAccess, i, elementType);
-
-            // Borrow the inner element mutably for drop()
+            // Borrow the element mutably for drop()
             var elementBorrow = new IrBorrowValue(innerElementAccess, new IrMutReferenceType(elementType), isMutable: true);
 
             // Create the drop() call

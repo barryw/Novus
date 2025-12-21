@@ -37,8 +37,8 @@ impl CacheEntry {
     fn new() -> CacheEntry {
         return CacheEntry {
             asset_id: 0,
-            source_ptr: (*u8)0,
-            chip_ptr: (*u8)0,
+            source_ptr: null,
+            chip_ptr: null,
             size: 0,
             priority: Priority::Low,  // Use Low (0) for default to enable all-zero optimization
             pin_count: 0,
@@ -50,7 +50,7 @@ impl CacheEntry {
     }
 
     fn is_valid(&self) -> bool {
-        return self.chip_ptr != (*u8)0
+        return self.chip_ptr != null
     }
 
     fn set_name(&var self, name: Str) {
@@ -112,8 +112,8 @@ pub struct ChipCache {
 static var g_chip_cache: ChipCache = ChipCache {
     entries: [CacheEntry {
         asset_id: 0,
-        source_ptr: (*u8)0,
-        chip_ptr: (*u8)0,
+        source_ptr: null,
+        chip_ptr: null,
         size: 0,
         priority: Priority::Low,
         pin_count: 0,
@@ -542,7 +542,7 @@ impl ChipCache {
                 } else {
                     FreeMem(entry.chip_ptr, entry.size)
                 }
-                entry.chip_ptr = (*u8)0
+                entry.chip_ptr = null
             }
         }
     }

@@ -181,12 +181,12 @@ impl MUIAppBuilder {
             }
 
             var builder = MUIAppBuilder {
-                title: (*u8)0,
-                author: (*u8)0,
-                description: (*u8)0,
-                version: (*u8)0,
-                base: (*u8)0,
-                menustrip_obj: (*u8)0,
+                title: null,
+                author: null,
+                description: null,
+                version: null,
+                base: null,
+                menustrip_obj: null,
                 windows: (**u8)win_mem,
                 window_count: 0,
                 window_capacity: win_capacity,
@@ -279,7 +279,7 @@ impl MUIAppBuilder {
             // Transfer ownership
             let labels = self.labels
             let label_count = self.label_count
-            self.labels = (**u8)0
+            self.labels = null
             self.label_count = 0
 
             // Clear windows (they're now owned by app)
@@ -288,7 +288,7 @@ impl MUIAppBuilder {
                 if j >= self.window_count {
                     break
                 }
-                self.windows[j] = (*u8)0
+                self.windows[j] = null
                 j++
             }
             self.window_count = 0
@@ -438,7 +438,7 @@ impl MUIWindowBuilder {
             return MUIWindowBuilder {
                 app_builder: app,
                 title: title_ptr,
-                root_group: (*u8)0,
+                root_group: null,
                 id: 0,
                 close_gadget: true,
                 size_gadget: true,
@@ -546,7 +546,7 @@ impl MUIGroupBuilder {
                 child_count: 0,
                 child_capacity: capacity,
                 frame: -1,  // -1 = not set
-                frame_title: (*u8)0,
+                frame_title: null,
                 same_size: false,
                 spacing: -1,
             }
@@ -717,7 +717,7 @@ impl MUIGroupBuilder {
             var list_tags = TagBuilder::new()
             let list_obj = MUI_NewObjectA("List.mui".ptr, list_tags.finish())
             if !list_obj {
-                return (*u8)0
+                return null
             }
 
             // Create listview with the list
@@ -851,7 +851,7 @@ impl MUIGroupBuilder {
 
             // Free children array (objects are now owned by group)
             FreeVec((*u8)self.children)
-            self.children = (**u8)0
+            self.children = null
             self.child_count = 0
 
             return group
@@ -1074,7 +1074,7 @@ impl MUIApp {
     /// Request (show message box)
     pub fn request(&self, window: *u8, title: *u8, message: *u8, gadgets: *u8) -> i32 {
         unsafe {
-            return MUI_RequestA(self.app, window, 0, title, gadgets, message, (*u32)0)
+            return MUI_RequestA(self.app, window, 0, title, gadgets, message, null)
         }
     }
 }
@@ -1085,7 +1085,7 @@ impl Drop for MUIApp {
             // Dispose application (this disposes all windows and children)
             if self.app {
                 MUI_DisposeObject(self.app)
-                self.app = (*u8)0
+                self.app = null
             }
 
             // Free labels
@@ -1269,7 +1269,7 @@ impl MenuItemBuilder {
             }
 
             let item = MUI_NewObjectA("Menuitem.mui".ptr, tags.finish())
-            if item != (*u8)0 {
+            if item != null {
                 // Add to menu using MUIA_Family_Child
                 let add_msg: [u32; 3] = [MUIM_Family_AddTail, (u32)item, (u32)0]
                 DoMethodA(self.menu_obj, &add_msg[0])
@@ -1298,7 +1298,7 @@ impl MenuItemBuilder {
             }
 
             let item = MUI_NewObjectA("Menuitem.mui".ptr, tags.finish())
-            if item != (*u8)0 {
+            if item != null {
                 let add_msg: [u32; 3] = [MUIM_Family_AddTail, (u32)item, (u32)0]
                 DoMethodA(self.menu_obj, &add_msg[0])
             }
@@ -1315,7 +1315,7 @@ impl MenuItemBuilder {
             tags.add(MUIA_Menuitem_Title, (u32)NM_BARLABEL)
 
             let item = MUI_NewObjectA("Menuitem.mui".ptr, tags.finish())
-            if item != (*u8)0 {
+            if item != null {
                 let add_msg: [u32; 3] = [MUIM_Family_AddTail, (u32)item, (u32)0]
                 DoMethodA(self.menu_obj, &add_msg[0])
             }
@@ -1369,7 +1369,7 @@ impl MenuBuilder {
         unsafe {
             let len = (u32)text.len() + 1
             let ptr = (*u8)AllocVec(len, MEMF_PUBLIC)
-            if ptr != (*u8)0 {
+            if ptr != null {
                 CopyMem(text.ptr, ptr, (u32)text.len())
                 ptr[text.len()] = 0
 
@@ -1393,7 +1393,7 @@ impl MenuBuilder {
             let menu_obj = MUI_NewObjectA("Menu.mui".ptr, tags.finish())
 
             // Track this menu
-            if menu_obj != (*u8)0 {
+            if menu_obj != null {
                 if self.menu_count < self.menu_capacity {
                     self.menus[self.menu_count] = menu_obj
                     self.menu_count++
@@ -1417,7 +1417,7 @@ impl MenuBuilder {
                 if i >= self.menu_count {
                     break
                 }
-                if self.menus[i] != (*u8)0 {
+                if self.menus[i] != null {
                     tags.add(MUIA_Family_Child, (u32)self.menus[i])
                 }
                 i++
@@ -1426,7 +1426,7 @@ impl MenuBuilder {
             let strip = MUI_NewObjectA("Menustrip.mui".ptr, tags.finish())
 
             // Free the menus tracking array (MUI now owns the menu objects)
-            if self.menus != (**u8)0 {
+            if self.menus != null {
                 FreeVec((*u8)self.menus)
             }
 
@@ -1459,19 +1459,19 @@ impl Drop for MenuStrip {
     fn drop(&var self) {
         unsafe {
             // Free all tracked label strings
-            if self.labels != (**u8)0 {
+            if self.labels != null {
                 var i: u32 = 0
                 forever {
                     if i >= self.label_count {
                         break
                     }
-                    if self.labels[i] != (*u8)0 {
+                    if self.labels[i] != null {
                         FreeVec(self.labels[i])
                     }
                     i++
                 }
                 FreeVec((*u8)self.labels)
-                self.labels = (**u8)0
+                self.labels = null
             }
             // Note: We don't dispose the MUI object here - it's owned by the MUIApp
             // and will be disposed when the app is disposed
@@ -1548,7 +1548,7 @@ impl MUITabsBuilder {
     pub fn add_tab(&var self, title: Str, content: *u8) {
         unsafe {
             // Skip if at capacity or null content
-            if self.title_count >= self.title_capacity || content == (*u8)0 {
+            if self.title_count >= self.title_capacity || content == null {
                 return self
             }
 
@@ -1559,7 +1559,7 @@ impl MUITabsBuilder {
             self.titles[self.title_count] = title_ptr
             self.title_count++
             // Keep NULL terminator
-            self.titles[self.title_count] = (*u8)0
+            self.titles[self.title_count] = null
 
             // Add page to pages array
             if self.page_count < self.page_capacity {
@@ -1573,7 +1573,7 @@ impl MUITabsBuilder {
     pub fn build(&var self) -> *u8 {
         unsafe {
             if self.title_count == 0 {
-                return (*u8)0  // No tabs
+                return null  // No tabs
             }
 
             var tags = TagBuilder::new()
@@ -1592,7 +1592,7 @@ impl MUITabsBuilder {
                 if i >= self.page_count {
                     break
                 }
-                if self.pages[i] != (*u8)0 {
+                if self.pages[i] != null {
                     tags.add(MUIA_Group_Child, (u32)self.pages[i])
                 }
                 i++
@@ -1604,7 +1604,7 @@ impl MUITabsBuilder {
             // Note: titles array is NOT freed - Register needs it to stay valid
             // The strings themselves are tracked by app_builder
             FreeVec((*u8)self.pages)
-            self.pages = (**u8)0
+            self.pages = null
             self.page_count = 0
 
             return reg_obj
@@ -1616,14 +1616,14 @@ impl Drop for MUITabsBuilder {
     fn drop(&var self) {
         unsafe {
             // Free pages array if still owned
-            if self.pages != (**u8)0 {
+            if self.pages != null {
                 // Dispose any pages that weren't transferred
                 var i: u32 = 0
                 forever {
                     if i >= self.page_count {
                         break
                     }
-                    if self.pages[i] != (*u8)0 {
+                    if self.pages[i] != null {
                         MUI_DisposeObject(self.pages[i])
                     }
                     i++
@@ -1632,7 +1632,7 @@ impl Drop for MUITabsBuilder {
             }
 
             // Free titles array
-            if self.titles != (**u8)0 {
+            if self.titles != null {
                 FreeVec((*u8)self.titles)
             }
         }

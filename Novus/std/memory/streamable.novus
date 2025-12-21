@@ -82,7 +82,7 @@ pub struct StreamBuffer {
 impl StreamBuffer {
     fn new() -> StreamBuffer {
         return StreamBuffer {
-            chip_ptr: (*u8)0,
+            chip_ptr: null,
             size: 0,
             filled: 0,
             source_offset: 0,
@@ -91,7 +91,7 @@ impl StreamBuffer {
 
     /// Check if buffer is allocated
     pub fn is_allocated(&self) -> bool {
-        return self.chip_ptr != (*u8)0
+        return self.chip_ptr != null
     }
 
     /// Get chip RAM pointer
@@ -189,7 +189,7 @@ impl StreamBufferSet {
             let buf = &var self.buffers[(u32)i]
             if buf.chip_ptr {
                 let _ = ChipPool::free(buf.chip_ptr)
-                buf.chip_ptr = (*u8)0
+                buf.chip_ptr = null
                 buf.size = 0
             }
             i++
@@ -422,7 +422,7 @@ impl ChipStream {
     pub fn current_buffer(&self) -> *u8 {
         match self.buffers.get(self.current_idx) {
             Option::Some(buf) => buf.ptr(),
-            Option::None => (*u8)0,
+            Option::None => null,
         }
     }
 

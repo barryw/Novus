@@ -47,7 +47,7 @@ fn send_progress(port: *MsgPort, percent: i32, done: bool) {
 
     let msg = (*Message)msg_mem
     msg.mn_Node.ln_Type = 5  // NT_MESSAGE
-    msg.mn_ReplyPort = (*MsgPort)0
+    msg.mn_ReplyPort = null
     msg.mn_Length = (u16)MSG_SIZE
 
     // Write payload after Message header
@@ -81,7 +81,7 @@ fn worker_entry() -> i32 {
 
     // Find the parent's port by name
     // Need to wait a moment and retry since parent might not have added it yet
-    var port: *MsgPort = (*MsgPort)0
+    var port: *MsgPort = null
     var attempts: i32 = 0
     while (u32)port == 0 && attempts < 50 {
         Forbid()

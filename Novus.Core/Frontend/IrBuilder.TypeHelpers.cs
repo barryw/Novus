@@ -238,8 +238,16 @@ public partial class IrBuilder
 
     private (long value, IrType type) ParseHexLiteral(string text)
     {
-        // Remove '$' prefix and underscores
-        text = text[1..].Replace("_", "");
+        // Remove hex prefix ('$' or '0x'/'0X') and underscores
+        if (text.StartsWith("0x") || text.StartsWith("0X"))
+        {
+            text = text[2..].Replace("_", "");
+        }
+        else
+        {
+            // Must be '$' prefix
+            text = text[1..].Replace("_", "");
+        }
 
         // Extract type suffix and hex part
         var (hexText, type) = ExtractIntegerTypeSuffix(text, IrIntType.I32);

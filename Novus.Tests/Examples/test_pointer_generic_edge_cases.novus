@@ -11,7 +11,7 @@ pub fn test_simple_pointer() -> Option<*i32> {
 
 // Test 2: Multiple indirection levels (**)
 pub fn test_double_pointer() -> Option<**u8> {
-    let ptr: **u8 = (**u8)0
+    let ptr: **u8 = null
     if let p = ptr {
         return Option::Some(p)
     }

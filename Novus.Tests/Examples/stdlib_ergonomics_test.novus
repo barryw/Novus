@@ -1,0 +1,236 @@
+// Test new stdlib ergonomics features
+// Tests: 0x hex literals, ok_or, LibraryHandle, MsgPortHandle.signal_mask
+
+from std::core import Option, Result
+from std::os::exec import LibraryHandle, MsgPortHandle, SignalHandle
+from std::error::errors import ExecError
+from std::io::file import write
+from std::sync::critical import CriticalSection
+
+// ============================================================================
+// Test 0x hex literals
+// ============================================================================
+
+fn test_hex_literals() -> bool {
+    // Test 0x and $ are equivalent
+    let a: u32 = 0xFFu32
+    let b: u32 = $FFu32
+
+    if a != b {
+        write("FAIL: 0xFF != $FF\n")
+        return false
+    }
+
+    // Test 0x with underscores
+    let c: u32 = 0xDEAD_BEEFu32
+    if c != 3735928559u32 {
+        write("FAIL: 0xDEAD_BEEF != 3735928559\n")
+        return false
+    }
+
+    // Test lowercase
+    let d: u32 = 0xabcdu32
+    if d != 43981u32 {
+        write("FAIL: 0xabcd != 43981\n")
+        return false
+    }
+
+    write("  0x hex literals: PASS\n")
+    return true
+}
+
+// ============================================================================
+// Test Option helpers
+// ============================================================================
+
+/// Helper to convert Option to Result (until generic methods are fully supported)
+fn option_to_result(opt: Option<i32>, err: ExecError) -> Result<i32, ExecError> {
+    match opt {
+        Option::Some(v) => return Result::Ok(v),
+        Option::None => return Result::Err(err)
+    }
+}
+
+fn test_option_helpers() -> bool {
+    // Test Some converts to Ok
+    let some_val: Option<i32> = Option::Some(42)
+    let result = option_to_result(some_val, ExecError::NoMem)
+
+    match result {
+        Result::Ok(v) => {
+            if v != 42 {
+                write("FAIL: option_to_result returned wrong value\n")
+                return false
+            }
+        },
+        Result::Err(_) => {
+            write("FAIL: option_to_result returned Err for Some\n")
+            return false
+        }
+    }
+
+    // Test None converts to Err
+    let none_val: Option<i32> = Option::None
+    let result2 = option_to_result(none_val, ExecError::BadSignal)
+
+    match result2 {
+        Result::Ok(_) => {
+            write("FAIL: option_to_result returned Ok for None\n")
+            return false
+        },
+        Result::Err(_) => {
+            // Expected
+        }
+    }
+
+    // Test Option::contains
+    let opt: Option<i32> = Option::Some(42)
+    if !opt.contains(42) {
+        write("FAIL: Option::contains returned false for matching value\n")
+        return false
+    }
+
+    write("  Option helpers: PASS\n")
+    return true
+}
+
+// ============================================================================
+// Test CriticalSection RAII
+// ============================================================================
+
+fn test_critical_section() -> bool {
+    // Test that CriticalSection can be entered and exited
+    {
+        let _guard = CriticalSection::enter()
+        // In critical section
+        var x: i32 = 0
+        x = x + 1
+        // CriticalSection dropped here, Permit() called
+    }
+
+    // Test nested critical sections
+    {
+        let _guard1 = CriticalSection::enter()
+        {
+            let _guard2 = CriticalSection::enter()
+            // Doubly nested
+        }
+        // Still in outer critical section
+    }
+
+    write("  CriticalSection: PASS\n")
+    return true
+}
+
+// ============================================================================
+// Test MsgPortHandle
+// ============================================================================
+
+fn test_msgport_handle() -> Result<bool, ExecError> {
+    // Create a message port
+    let port = MsgPortHandle::create()?
+
+    // Test signal_bit and signal_mask
+    let bit = port.signal_bit()
+    let mask = port.signal_mask()
+
+    // Verify mask is a single bit set
+    if mask == 0u32 {
+        write("FAIL: signal_mask returned 0\n")
+        return Result::Ok(false)
+    }
+
+    // Verify mask corresponds to bit
+    // Since we have a lookup table, verify the pattern
+    var expected_mask: u32 = 1u32
+    var i: u8 = 0
+    while i < bit {
+        expected_mask = expected_mask * 2u32
+        i = i + 1u8
+    }
+
+    if mask != expected_mask {
+        write("FAIL: signal_mask doesn't match signal_bit\n")
+        return Result::Ok(false)
+    }
+
+    // Port automatically cleaned up here
+    write("  MsgPortHandle: PASS\n")
+    return Result::Ok(true)
+}
+
+// ============================================================================
+// Test SignalHandle
+// ============================================================================
+
+fn test_signal_handle() -> Result<bool, ExecError> {
+    // Allocate a signal
+    let sig = SignalHandle::alloc()?
+
+    // Test bit and mask
+    let bit = sig.bit()
+    let mask = sig.mask()
+
+    // Verify valid signal bit (0-31)
+    if bit < 0 {
+        write("FAIL: signal bit is negative\n")
+        return Result::Ok(false)
+    }
+
+    // Verify mask is non-zero
+    if mask == 0u32 {
+        write("FAIL: signal mask is 0\n")
+        return Result::Ok(false)
+    }
+
+    // Signal automatically freed here
+    write("  SignalHandle: PASS\n")
+    return Result::Ok(true)
+}
+
+// ============================================================================
+// Main
+// ============================================================================
+
+pub fn main() -> i32 {
+    write("Testing stdlib ergonomics:\n")
+
+    if !test_hex_literals() {
+        return 1
+    }
+
+    if !test_option_helpers() {
+        return 1
+    }
+
+    if !test_critical_section() {
+        return 1
+    }
+
+    match test_msgport_handle() {
+        Result::Ok(passed) => {
+            if !passed {
+                return 1
+            }
+        },
+        Result::Err(_) => {
+            write("FAIL: MsgPortHandle test failed with error\n")
+            return 1
+        }
+    }
+
+    match test_signal_handle() {
+        Result::Ok(passed) => {
+            if !passed {
+                return 1
+            }
+        },
+        Result::Err(_) => {
+            write("FAIL: SignalHandle test failed with error\n")
+            return 1
+        }
+    }
+
+    write("All stdlib ergonomics tests PASSED!\n")
+    return 0
+}

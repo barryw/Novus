@@ -60,7 +60,7 @@ impl OsSpriteHandle {
 
         // Initialize SimpleSprite structure
         var simple_sprite = SimpleSprite {
-            posctldata: (*u16)0,
+            posctldata: null,
             height: 0u16,
             x: 0u16,
             y: 0u16,

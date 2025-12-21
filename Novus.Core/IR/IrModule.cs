@@ -1623,7 +1623,8 @@ public class IrStructType : IrType
         // Build cache key (e.g., "Vec<i32>")
         var cacheKey = $"{genericStruct.StructName}<{string.Join(",", typeArgs.Select(t => t.Name))}>";
 
-        return new IrStructType(genericStruct.StructName, monomorphizedFields, new List<string>(), cacheKey);
+        // IMPORTANT: Pass typeArgs as typeArguments so InstantiateGenericMethod can use them
+        return new IrStructType(genericStruct.StructName, monomorphizedFields, new List<string>(), cacheKey, null, null, typeArgs);
     }
 
     private static IrType SubstituteType(IrType type, Dictionary<string, IrType> substitutions)
@@ -1721,7 +1722,13 @@ public class IrStructType : IrType
 
                 if (newCacheKey != nestedStruct.CacheKey || fieldsChanged)
                 {
-                    return new IrStructType(nestedStruct.StructName, substitutedFields, new List<string>(), newCacheKey);
+                    // Build typeArguments from the substitutions applied to the original type arguments
+                    List<IrType>? newTypeArgs = null;
+                    if (nestedStruct.TypeArguments != null && nestedStruct.TypeArguments.Count > 0)
+                    {
+                        newTypeArgs = nestedStruct.TypeArguments.Select(ta => SubstituteType(ta, substitutions)).ToList();
+                    }
+                    return new IrStructType(nestedStruct.StructName, substitutedFields, new List<string>(), newCacheKey, null, null, newTypeArgs);
                 }
             }
         }

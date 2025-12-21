@@ -54,8 +54,8 @@ impl Sleep {
     pub fn new(duration: Duration) -> Sleep {
         return Sleep {
             duration: duration,
-            timereq: (*timerequest)0,
-            port: (*MsgPort)0,
+            timereq: null,
+            port: null,
             state: SleepState::Init,
         }
     }
@@ -74,7 +74,7 @@ impl Sleep {
         let req = CreateIORequest(port, @sizeof(timerequest))
         if (u32)req == 0 {
             DeleteMsgPort(port)
-            self.port = (*MsgPort)0
+            self.port = null
             self.state = SleepState::Done
             return false
         }
@@ -88,8 +88,8 @@ impl Sleep {
             if error != 0 {
                 DeleteIORequest((*u8)self.timereq)
                 DeleteMsgPort(self.port)
-                self.timereq = (*timerequest)0
-                self.port = (*MsgPort)0
+                self.timereq = null
+                self.port = null
                 self.state = SleepState::Done
                 return false
             }
@@ -155,12 +155,12 @@ impl Sleep {
 
             // Free request
             DeleteIORequest((*u8)self.timereq)
-            self.timereq = (*timerequest)0
+            self.timereq = null
         }
 
         if (u32)self.port != 0 {
             DeleteMsgPort(self.port)
-            self.port = (*MsgPort)0
+            self.port = null
         }
     }
 

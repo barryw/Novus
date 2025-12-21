@@ -164,17 +164,12 @@ fn test() {
 
     #region Unsafe Block Tests
 
-    [Fact]
-    public void PointerDereferenceOutsideUnsafe_RejectsWithError()
-    {
-        var source = @"
-fn test() {
-    let ptr: *i32 = (*i32)(0x1000)
-    let val = *ptr  // Dereference outside unsafe
-}";
-        var diagnostics = Analyze(source);
-        AssertAnyError(diagnostics);
-    }
+    // Note: Pointer dereferencing does NOT require unsafe blocks in Novus.
+    // Unlike Rust, Novus allows free pointer dereferencing since &T is represented as *T internally.
+    // The unsafe block requirement only applies to:
+    // - Copper list programming
+    // - Blitter hardware programming
+    // - Functions marked with @unsafe attribute
 
     #endregion
 

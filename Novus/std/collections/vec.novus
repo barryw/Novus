@@ -19,9 +19,8 @@ pub struct Vec<T> {
 impl<T> Vec<T> {
     // Create an empty vector with zero capacity
     pub fn new() -> Vec<T> {
-        //  Note: Using 0 for null pointer - type inference will make it *T
         return Vec {
-            ptr: 0,
+            ptr: null,
             len: 0,
             capacity: 0,
         }
@@ -31,7 +30,7 @@ impl<T> Vec<T> {
     // Returns None if allocation fails
     pub fn with_capacity(capacity: u32) -> Option<Vec<T>> {
         if capacity == 0 {
-            return Option::Some(Vec { ptr: 0, len: 0, capacity: 0 })
+            return Option::Some(Vec { ptr: null, len: 0, capacity: 0 })
         }
 
         let element_size: u32 = @sizeof(T)
@@ -312,7 +311,7 @@ impl<T> Vec<T> {
                 unsafe {
                     FreeMem(mem, bytes)
                 }
-                self.ptr = 0
+                self.ptr = null
                 self.capacity = 0
             }
             return true
@@ -366,8 +365,7 @@ impl<T> Vec<T> {
                 FreeMem(mem, bytes)
             }
 
-            // Reset to null pointer (0 with type inference)
-            self.ptr = 0
+            self.ptr = null
             self.len = 0
             self.capacity = 0
         }
@@ -401,7 +399,7 @@ impl<T> Drop for Vec<T> {
             let bytes: u32 = self.capacity * element_size
             let mem: *u8 = (*u8)(self.ptr)
             unsafe { FreeMem(mem, bytes) }
-            self.ptr = 0
+            self.ptr = null
             self.len = 0
             self.capacity = 0
         }

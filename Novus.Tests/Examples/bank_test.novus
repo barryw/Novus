@@ -211,7 +211,7 @@ fn main() -> i32 {
     let ptr_result = level1.get_by_id(asset1.get_id())
     match ptr_result {
         Option::Some(ptr) => {
-            if ptr == (*u8)0 {
+            if ptr == null {
                 return 15
             }
         },

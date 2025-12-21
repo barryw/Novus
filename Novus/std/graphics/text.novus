@@ -240,10 +240,10 @@ pub fn reset_text_style(rp: *RastPort) {
 /// Returns the previous font for restoration.
 pub fn set_font(rp: *RastPort, font: *TextFont) -> *TextFont {
     if !rp {
-        return (*TextFont)0
+        return null
     }
     if !font {
-        return (*TextFont)0
+        return null
     }
     unsafe {
         let old_font: *TextFont = (*rp).Font
@@ -255,7 +255,7 @@ pub fn set_font(rp: *RastPort, font: *TextFont) -> *TextFont {
 /// Get the current font from a RastPort.
 pub fn get_font(rp: *RastPort) -> *TextFont {
     if !rp {
-        return (*TextFont)0
+        return null
     }
     unsafe {
         return (*rp).Font

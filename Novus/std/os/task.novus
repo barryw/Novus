@@ -159,7 +159,7 @@ impl Drop for ProcessHandle {
     fn drop(&var self) {
         // Just clear our reference - process continues running
         // DOS owns the process memory and handles cleanup
-        self.process = (*u8)0
+        self.process = null
         self.is_running = false
     }
 }
@@ -358,7 +358,7 @@ fn set_tag(tags: *TagItem, index: u32, tag: u32, data: u32) {
 /// ```
 pub fn receive_startup_data() -> Option<*u8> {
     // Get our process structure
-    let me = (*Process)FindTask((*u8)0)
+    let me = (*Process)FindTask(null)
 
     // Read data pointer from pr_ExitData field
     // This was set via NP_ExitData tag when the process was created

@@ -8,10 +8,11 @@ namespace Novus.Frontend.Generics;
 /// Template information for generic functions (standalone and methods)
 /// </summary>
 public record GenericTemplate(
-    List<string> GenericParams,
+    List<string> GenericParams,  // Type-level generics (e.g., T in impl<T> Option<T>)
     NovusParser.FunctionDeclarationContext Context,
     Dictionary<string, (IrType Type, object Value)> Constants,
-    IrWhereClause? WhereClause = null  // Generic type constraints (e.g., where T: Sortable)
+    IrWhereClause? WhereClause = null,  // Generic type constraints (e.g., where T: Sortable)
+    List<string>? MethodGenericParams = null  // Method-level generics (e.g., E in fn ok_or<E>)
 );
 
 /// <summary>

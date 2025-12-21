@@ -36,7 +36,7 @@ pub fn alert(title: *u8, message: *u8) {
     // NULL window = center on default public screen
     // NULL idcmpPtr = we don't care about IDCMP
     // NULL args = no printf-style arguments
-    EasyRequestArgs((*Window)0, &es, (*u8)0, (*u8)0)
+    EasyRequestArgs(null, &es, null, null)
 }
 
 /// Display an alert dialog with a custom button label.
@@ -59,7 +59,7 @@ pub fn alert_with_button(title: *u8, message: *u8, button: *u8) {
         es_GadgetFormat: button,
     }
 
-    EasyRequestArgs((*Window)0, &es, (*u8)0, (*u8)0)
+    EasyRequestArgs(null, &es, null, null)
 }
 
 // ============================================================================
@@ -95,7 +95,7 @@ pub fn confirm(title: *u8, message: *u8) -> bool {
     // EasyRequest returns:
     // - 1 for leftmost button (Yes)
     // - 0 for rightmost button (No)
-    let result = EasyRequestArgs((*Window)0, &es, (*u8)0, (*u8)0)
+    let result = EasyRequestArgs(null, &es, null, null)
     return result == 1
 }
 
@@ -125,7 +125,7 @@ pub fn confirm_with_buttons(title: *u8, message: *u8, buttons: *u8) -> bool {
         es_GadgetFormat: buttons,
     }
 
-    let result = EasyRequestArgs((*Window)0, &es, (*u8)0, (*u8)0)
+    let result = EasyRequestArgs(null, &es, null, null)
     return result == 1
 }
 
@@ -167,7 +167,7 @@ pub fn save_dialog(title: *u8, message: *u8) -> i32 {
     // - 1 = Save (leftmost)
     // - 2 = Don't Save (middle)
     // - 0 = Cancel (rightmost, always returns 0)
-    return EasyRequestArgs((*Window)0, &es, (*u8)0, (*u8)0)
+    return EasyRequestArgs(null, &es, null, null)
 }
 
 /// Display a choice dialog with custom buttons.
@@ -200,7 +200,7 @@ pub fn choice(title: *u8, message: *u8, buttons: *u8) -> i32 {
         es_GadgetFormat: buttons,
     }
 
-    return EasyRequestArgs((*Window)0, &es, (*u8)0, (*u8)0)
+    return EasyRequestArgs(null, &es, null, null)
 }
 
 // ============================================================================
@@ -222,7 +222,7 @@ pub fn alert_on(window: *Window, title: *u8, message: *u8) {
         es_GadgetFormat: "OK",
     }
 
-    EasyRequestArgs(window, &es, (*u8)0, (*u8)0)
+    EasyRequestArgs(window, &es, null, null)
 }
 
 /// Display a confirmation dialog centered on a specific window.
@@ -243,7 +243,7 @@ pub fn confirm_on(window: *Window, title: *u8, message: *u8) -> bool {
         es_GadgetFormat: "Yes|No",
     }
 
-    let result = EasyRequestArgs(window, &es, (*u8)0, (*u8)0)
+    let result = EasyRequestArgs(window, &es, null, null)
     return result == 1
 }
 
@@ -266,7 +266,7 @@ pub fn choice_on(window: *Window, title: *u8, message: *u8, buttons: *u8) -> i32
         es_GadgetFormat: buttons,
     }
 
-    return EasyRequestArgs(window, &es, (*u8)0, (*u8)0)
+    return EasyRequestArgs(window, &es, null, null)
 }
 
 // ============================================================================
@@ -316,7 +316,7 @@ pub fn retry_dialog(title: *u8, message: *u8) -> RetryChoice {
         es_GadgetFormat: "Retry|Ignore|Abort",
     }
 
-    let result = EasyRequestArgs((*Window)0, &es, (*u8)0, (*u8)0)
+    let result = EasyRequestArgs(null, &es, null, null)
     match result {
         1 => RetryChoice::Retry,
         2 => RetryChoice::Ignore,

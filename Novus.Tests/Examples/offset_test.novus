@@ -19,7 +19,7 @@ pub fn main() -> i32 {
     VPrintf("Process=%ld\n", (*u8)&process_size)
 
     // Get our process
-    let me = (*Process)FindTask((*u8)0)
+    let me = (*Process)FindTask(null)
     var me_val: u32 = (u32)me
     VPrintf("ME=%08lx\n", (*u8)&me_val)
 

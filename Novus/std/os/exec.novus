@@ -13,6 +13,7 @@ from std::ffi::amiga_structs import *
 from std::ffi::exec import AllocMem, FreeMem, AllocVec, FreeVec, CopyMem
 from std::ffi::exec import FindTask, SetTaskPri, AllocSignal, FreeSignal, Wait, Signal
 from std::ffi::exec import Forbid, Permit, Disable, Enable
+from std::ffi::exec import OpenLibrary, CloseLibrary
 from std::ffi::exec import CreateMsgPort, DeleteMsgPort, GetMsg, PutMsg, ReplyMsg
 from std::ffi::exec import InitSemaphore, ObtainSemaphore, ReleaseSemaphore, AttemptSemaphore, ObtainSemaphoreShared, AttemptSemaphoreShared
 from std::ffi::exec import __novus_init_semaphore, __novus_obtain_semaphore, __novus_release_semaphore, __novus_attempt_semaphore, __novus_obtain_semaphore_shared, __novus_attempt_semaphore_shared
@@ -40,7 +41,7 @@ from std::ffi::amiga_consts import MEMF_ANY, MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, 
 /// }
 /// ```
 pub fn get_current_task() -> Option<*Task> {
-    if let task = FindTask((*u8)0) {
+    if let task = FindTask(null) {
         return Option::Some(task)
     }
     return Option::None
@@ -433,7 +434,42 @@ impl MsgPortHandle {
         }
     }
 
-    // TODO: drain_with() method removed - requires generic trait bounds support (where F: Fn(...))
+    /// Get the signal bit for this port
+    ///
+    /// Returns the signal bit number (0-31) that this port uses.
+    pub fn signal_bit(&self) -> u8 {
+        return (*self.port).mp_SigBit
+    }
+
+    /// Get the signal mask for this port
+    ///
+    /// Returns a bitmask suitable for passing to Wait() or Signal().
+    /// This is (1 << signal_bit).
+    ///
+    /// Example:
+    /// ```novus
+    /// let port = MsgPortHandle::create()?
+    /// let mask = port.signal_mask()
+    /// Wait(mask)  // Wait for message to arrive
+    /// let msg = port.get_msg()
+    /// ```
+    pub fn signal_mask(&self) -> u32 {
+        // Use lookup table to avoid shift operator issues
+        let shifts = [
+            1u32, 2u32, 4u32, 8u32, 16u32, 32u32, 64u32, 128u32,
+            256u32, 512u32, 1024u32, 2048u32, 4096u32, 8192u32, 16384u32, 32768u32,
+            65536u32, 131072u32, 262144u32, 524288u32, 1048576u32, 2097152u32, 4194304u32, 8388608u32,
+            16777216u32, 33554432u32, 67108864u32, 134217728u32, 268435456u32, 536870912u32, 1073741824u32, 2147483648u32
+        ]
+        return shifts[(u32)(*self.port).mp_SigBit]
+    }
+
+    /// Wait for a message to arrive on this port
+    ///
+    /// Blocks until a message is available. Returns the signal mask that was received.
+    pub fn wait(&self) -> u32 {
+        return Wait(self.signal_mask())
+    }
 }
 
 // Automatic cleanup for MsgPort (RAII)
@@ -444,7 +480,7 @@ impl Drop for MsgPortHandle {
 
             // Now safe to delete the port
             DeleteMsgPort(p)
-            self.port = (*MsgPort)0
+            self.port = null
         }
     }
 }
@@ -560,7 +596,7 @@ impl Drop for SemaphoreHandle {
             unsafe {
                 FreeMem(self.sem, sem_size)
             }
-            self.sem = (*u8)0
+            self.sem = null
         }
     }
 }
@@ -580,7 +616,101 @@ impl Drop for SemaphoreGuard {
             unsafe {
                 __novus_release_semaphore(self.sem)
             }
-            self.sem = (*u8)0
+            self.sem = null
+        }
+    }
+}
+
+// ============================================================================
+// Library Handle - RAII wrapper for AmigaOS shared libraries
+// ============================================================================
+
+/// LibraryHandle - RAII wrapper for AmigaOS shared libraries
+///
+/// Automatically closes the library when it goes out of scope.
+/// This prevents library leaks which can consume system resources.
+///
+/// Example:
+/// ```novus
+/// fn use_graphics_library() -> Result<(), ExecError> {
+///     let gfx = LibraryHandle::open("graphics.library", 39)?
+///
+///     // Use gfx.base() to get the library base pointer for FFI calls
+///     let base = gfx.base()
+///
+///     // Library automatically closed when gfx goes out of scope!
+///     return Result::Ok(())
+/// }
+/// ```
+pub struct LibraryHandle {
+    base: *Library,
+    version: u32
+}
+
+impl LibraryHandle {
+    /// Open a shared library by name and minimum version
+    ///
+    /// Returns Err if the library cannot be opened (not found, version too old).
+    ///
+    /// Example:
+    /// ```novus
+    /// let intuition = LibraryHandle::open("intuition.library", 37)?
+    /// let graphics = LibraryHandle::open("graphics.library", 39)?
+    /// ```
+    pub fn open(name: Str, version: u32) -> Result<LibraryHandle, ExecError> {
+        let base = unsafe { OpenLibrary(name.as_cstr(), version) }
+        if !base {
+            return Result::Err(ExecError::LibraryNotFound)
+        }
+        return Result::Ok(LibraryHandle { base: base, version: version })
+    }
+
+    /// Open a library with no version requirement
+    ///
+    /// Use this only when you need any version of the library.
+    /// Prefer open() with a specific version for safety.
+    pub fn open_any(name: Str) -> Result<LibraryHandle, ExecError> {
+        return LibraryHandle::open(name, 0)
+    }
+
+    /// Get the library base pointer for FFI calls
+    ///
+    /// This is the value typically passed to library functions that
+    /// need the library base (e.g., IntuitionBase, GfxBase).
+    pub fn base(&self) -> *Library {
+        return self.base
+    }
+
+    /// Get the minimum version that was requested when opening
+    pub fn version(&self) -> u32 {
+        return self.version
+    }
+
+    /// Create LibraryHandle from raw pointer (takes ownership)
+    ///
+    /// The library will be automatically closed when dropped.
+    /// Only use this if you own the library and it should be closed.
+    ///
+    /// DO NOT use for system-opened libraries or libraries from
+    /// other tasks/processes.
+    pub fn from_raw(base: *Library, version: u32) -> LibraryHandle {
+        return LibraryHandle { base: base, version: version }
+    }
+
+    /// Extract raw pointer and prevent automatic close
+    ///
+    /// This transfers ownership to the caller. The caller is responsible
+    /// for closing the library manually with CloseLibrary().
+    pub fn into_raw(consuming self) -> *Library {
+        return self.base
+    }
+}
+
+impl Drop for LibraryHandle {
+    fn drop(&var self) {
+        if let b = self.base {
+            unsafe { CloseLibrary(b) }
+            self.base = null
         }
     }
 }

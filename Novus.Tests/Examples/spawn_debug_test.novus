@@ -19,7 +19,7 @@ pub fn main() -> i32 {
     Delay(25)
 
     let result = spawn_task_fn("Worker", worker, 8192)
-    var process: *u8 = (*u8)0
+    var process: *u8 = null
 
     VPrintf("2\n", (*u8)0)
     Delay(25)
@@ -64,7 +64,7 @@ pub fn main() -> i32 {
     VPrintf("8\n", (*u8)0)
     Delay(25)
 
-    msg.mn_ReplyPort = (*MsgPort)0
+    msg.mn_ReplyPort = null
 
     VPrintf("9\n", (*u8)0)
     Delay(25)

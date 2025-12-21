@@ -392,7 +392,7 @@ impl Drop for ScreenHandle {
     fn drop(&var self) {
         if let scr = self.screen {
             CloseScreen(scr)
-            self.screen = (*Screen)0
+            self.screen = null
         }
     }
 }
@@ -441,7 +441,7 @@ impl ScreenBuilder {
             width: 320,
             height: 256,
             depth: 3,
-            title_ptr: (*u8)0,
+            title_ptr: null,
             behind: false,
             quiet: false,
             show_title: true,
