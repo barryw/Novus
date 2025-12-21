@@ -5,8 +5,9 @@
 // Pools minimize fragmentation through puddle-based allocation.
 
 from std::core import Result, Option, Drop
-from std::ffi::exec import CreatePool, DeletePool, AllocPooled, FreePooled, AvailMem, Forbid, Permit
+from std::ffi::exec import CreatePool, DeletePool, AllocPooled, FreePooled, AvailMem
 from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR, MEMF_LARGEST
+from std::sync::critical import CriticalSection
 
 // ============================================================================
 // Pool Size Classes
@@ -292,16 +293,15 @@ impl ChipPool {
     /// The actual allocated size may be larger (rounded up to size class).
     /// For sizes > 32KB, returns None (use direct AllocMem instead).
     ///
-    /// Note: Uses Forbid/Permit for defense-in-depth interrupt safety.
-    /// Nested Forbid/Permit is safe (reference counted by Exec).
+    /// Note: Uses CriticalSection for safe task-switching protection.
+    /// Nested critical sections are safe (reference counted by Exec).
     pub fn alloc(size: u32) -> Option<*u8> {
         if size == 0 {
             return Option::None
         }
 
         unsafe {
-            Forbid()
-            defer { Permit() }
+            let _guard = CriticalSection::enter()
 
             if !g_chip_pool.initialized {
                 if !ChipPool::init() {
@@ -332,16 +332,15 @@ impl ChipPool {
     /// Returns true if the pointer was found and freed.
     /// Returns false if the pointer wasn't from this pool.
     ///
-    /// Note: Uses Forbid/Permit for defense-in-depth interrupt safety.
-    /// Nested Forbid/Permit is safe (reference counted by Exec).
+    /// Note: Uses CriticalSection for safe task-switching protection.
+    /// Nested critical sections are safe (reference counted by Exec).
     pub fn free(ptr: *u8) -> bool {
         if !ptr {
             return false
         }
 
         unsafe {
-            Forbid()
-            defer { Permit() }
+            let _guard = CriticalSection::enter()
 
             if !g_chip_pool.initialized {
                 return false

@@ -6,11 +6,12 @@
 
 from std::core import Result, Option, Drop
 from std::strings::core import Str
-from std::ffi::exec import AllocMem, FreeMem, CopyMem, TypeOfMem, AvailMem, Forbid, Permit
+from std::ffi::exec import AllocMem, FreeMem, CopyMem, TypeOfMem, AvailMem
 from std::ffi::graphics import WaitBlit
 from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR, MEMF_LARGEST
 from std::memory::chip import Priority, ChipAsset, ChipCacheError, is_chip_ram, copy_to_chip
 from std::memory::chip_pool import ChipPool, PoolSizeClass, POOL_HUGE_SIZE
+from std::sync::critical import CriticalSection
 
 // ============================================================================
 // Cache Entry
@@ -172,7 +173,7 @@ impl ChipCache {
     /// If not, allocates chip RAM and copies the data.
     /// May evict other assets if chip RAM is low.
     ///
-    /// Note: This function uses Forbid()/Permit() to ensure interrupt safety
+    /// Note: This function uses CriticalSection for safe task-switching protection
     /// when modifying the global cache state.
     pub fn get(asset_id: u32, source_ptr: *u8, size: u32, priority: Priority, name: Str) -> Result<*u8, ChipCacheError> {
         unsafe {
@@ -185,8 +186,8 @@ impl ChipCache {
                 return Result::Ok(source_ptr)
             }
 
-            // Forbid task switching while accessing global cache
-            Forbid()
+            // Use RAII guard for safe critical section
+            let _guard = CriticalSection::enter()
 
             // Check if already cached
             while var i < g_chip_cache.entry_count {
@@ -194,9 +195,7 @@ impl ChipCache {
                     // Cache hit
                     g_chip_cache.entries[i].last_access = g_chip_cache.frame_counter
                     g_chip_cache.cache_hits++
-                    let result = g_chip_cache.entries[i].chip_ptr
-                    Permit()
-                    return Result::Ok(result)
+                    return Result::Ok(g_chip_cache.entries[i].chip_ptr)
                 }
                 i++
             }
@@ -204,11 +203,10 @@ impl ChipCache {
             // Cache miss - need to allocate
             g_chip_cache.cache_misses++
 
-            // Try to allocate chip RAM (eviction happens inside Forbid)
+            // Try to allocate chip RAM (eviction happens inside critical section)
             let alloc_result = ChipCache::allocate_chip_ram(size)
             match alloc_result {
                 Result::Err(e) => {
-                    Permit()
                     return Result::Err(e)
                 },
                 Result::Ok(chip_ptr) => {
@@ -221,7 +219,6 @@ impl ChipCache {
                     // Add to cache
                     ChipCache::add_entry(asset_id, source_ptr, chip_ptr, size, priority, pooled, name)
 
-                    Permit()
                     return Result::Ok(chip_ptr)
                 }
             }
@@ -235,16 +232,14 @@ impl ChipCache {
     /// balanced by an unpin() call.
     pub fn pin(asset_id: u32) {
         unsafe {
-            Forbid()
+            let _guard = CriticalSection::enter()
             while var i < g_chip_cache.entry_count {
                 if g_chip_cache.entries[i].asset_id == asset_id {
                     g_chip_cache.entries[i].pin_count++
-                    Permit()
                     return
                 }
                 i++
             }
-            Permit()
         }
     }
 
@@ -254,34 +249,29 @@ impl ChipCache {
     /// Only unpins when count reaches zero.
     pub fn unpin(asset_id: u32) {
         unsafe {
-            Forbid()
+            let _guard = CriticalSection::enter()
             while var i < g_chip_cache.entry_count {
                 if g_chip_cache.entries[i].asset_id == asset_id {
                     if g_chip_cache.entries[i].pin_count > 0 {
                         g_chip_cache.entries[i].pin_count--
                     }
-                    Permit()
                     return
                 }
                 i++
             }
-            Permit()
         }
     }
 
     /// Check if an asset is pinned (pin_count > 0)
     pub fn is_pinned(asset_id: u32) -> bool {
         unsafe {
-            Forbid()
+            let _guard = CriticalSection::enter()
             while var i < g_chip_cache.entry_count {
                 if g_chip_cache.entries[i].asset_id == asset_id {
-                    let result = g_chip_cache.entries[i].pin_count > 0
-                    Permit()
-                    return result
+                    return g_chip_cache.entries[i].pin_count > 0
                 }
                 i++
             }
-            Permit()
             return false
         }
     }
@@ -289,16 +279,13 @@ impl ChipCache {
     /// Get the current pin count for an asset
     pub fn pin_count(asset_id: u32) -> u32 {
         unsafe {
-            Forbid()
+            let _guard = CriticalSection::enter()
             while var i < g_chip_cache.entry_count {
                 if g_chip_cache.entries[i].asset_id == asset_id {
-                    let result = g_chip_cache.entries[i].pin_count
-                    Permit()
-                    return result
+                    return g_chip_cache.entries[i].pin_count
                 }
                 i++
             }
-            Permit()
             return 0
         }
     }
@@ -308,21 +295,18 @@ impl ChipCache {
     /// Returns true if the asset was evicted, false if not found or pinned.
     pub fn evict(asset_id: u32) -> bool {
         unsafe {
-            Forbid()
+            let _guard = CriticalSection::enter()
             while var i < g_chip_cache.entry_count {
                 if g_chip_cache.entries[i].asset_id == asset_id {
                     if g_chip_cache.entries[i].pin_count > 0 {
-                        Permit()
                         return false  // Can't evict pinned asset
                     }
                     ChipCache::free_entry(i)
                     ChipCache::remove_entry(i)
-                    Permit()
                     return true
                 }
                 i++
             }
-            Permit()
             return false
         }
     }
@@ -332,7 +316,7 @@ impl ChipCache {
     /// Useful for level transitions or scene changes.
     pub fn clear_unpinned() {
         unsafe {
-            Forbid()
+            let _guard = CriticalSection::enter()
             var i: u32 = 0
             while i < g_chip_cache.entry_count {
                 if g_chip_cache.entries[i].pin_count == 0 && g_chip_cache.entries[i].is_valid() {
@@ -343,14 +327,13 @@ impl ChipCache {
                     i++
                 }
             }
-            Permit()
         }
     }
 
     /// Get cache statistics
     pub fn stats() -> CacheStats {
         unsafe {
-            Forbid()
+            let _guard = CriticalSection::enter()
             var pinned_entries: u32 = 0
             var total_cached: u32 = 0
             var pinned_bytes: u32 = 0
@@ -366,7 +349,7 @@ impl ChipCache {
                 i++
             }
 
-            let result = CacheStats {
+            return CacheStats {
                 entries: g_chip_cache.entry_count,
                 pinned_entries: pinned_entries,
                 total_cached: total_cached,
@@ -377,15 +360,13 @@ impl ChipCache {
                 cache_misses: g_chip_cache.cache_misses,
                 evictions: g_chip_cache.evictions,
             }
-            Permit()
-            return result
         }
     }
 
     /// Shutdown the cache and free all memory
     pub fn shutdown() {
         unsafe {
-            Forbid()
+            let _guard = CriticalSection::enter()
             // Free all entries
             while var i < g_chip_cache.entry_count {
                 ChipCache::free_entry(i)
@@ -396,7 +377,6 @@ impl ChipCache {
 
             // Shutdown the pool
             ChipPool::shutdown()
-            Permit()
         }
     }
 
