@@ -6,11 +6,13 @@ namespace Novus.Tests;
 /// <summary>
 /// Collection definition that disables parallelization for compilation tests.
 /// Tests in this collection run sequentially to avoid cache corruption.
+/// The StdlibCacheFixture ensures stdlib is pre-compiled before tests run.
 /// </summary>
 [CollectionDefinition("SequentialCompilation", DisableParallelization = true)]
-public class SequentialCompilationCollection
+public class SequentialCompilationCollection : ICollectionFixture<StdlibCacheFixture>
 {
     // This class has no code, it's just used to define the collection
+    // The StdlibCacheFixture will be created once and shared across all tests in this collection
 }
 
 /// <summary>
@@ -51,7 +53,8 @@ public class CompilationTests
         var startInfo = new ProcessStartInfo
         {
             FileName = "dotnet",
-            Arguments = $"\"{compilerPath}\" compile \"{inputFile}\" -o \"{outputFile}\"",
+            // Use --use-stdlib-cache to reuse pre-compiled stdlib objects
+            Arguments = $"\"{compilerPath}\" compile \"{inputFile}\" -o \"{outputFile}\" --use-stdlib-cache",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,

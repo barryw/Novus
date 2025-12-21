@@ -10,13 +10,9 @@ namespace Novus.Tests;
 /// Strategy for fast tests:
 /// - Most examples use --emit-asm to test parsing/IR/codegen without VBCC
 /// - A representative subset uses full VBCC compilation (marked with FullCompilation trait)
+/// - Full compilation tests use --use-stdlib-cache to reuse pre-compiled stdlib objects
 ///
-/// NOTE: These tests do NOT use --use-stdlib-cache to avoid race conditions.
-/// Each test compiles fresh to ensure consistent results. The performance
-/// cost is acceptable because:
-/// 1. Most tests use --emit-asm which skips VBCC entirely
-/// 2. Full compilation tests are a small subset
-/// 3. Fresh compilation ensures no stale cache artifacts
+/// The stdlib cache is built once before the test run by StdlibCacheFixture.
 ///
 /// IMPORTANT: This collection runs sequentially (DisableParallelization = true)
 /// because the compiler writes to shared cache directories and parallel
@@ -190,7 +186,8 @@ public class ExampleCompilationTests
         var startInfo = new ProcessStartInfo
         {
             FileName = "dotnet",
-            Arguments = $"\"{compilerPath}\" \"{inputFile}\" -o \"{outputFile}\"",
+            // Use --use-stdlib-cache to reuse pre-compiled stdlib objects
+            Arguments = $"\"{compilerPath}\" \"{inputFile}\" -o \"{outputFile}\" --use-stdlib-cache",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,

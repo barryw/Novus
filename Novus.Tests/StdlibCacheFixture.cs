@@ -93,12 +93,5 @@ public class StdlibCacheFixture : IDisposable
     }
 }
 
-/// <summary>
-/// Collection definition for tests that need stdlib cache.
-/// All tests in this collection will share a single StdlibCacheFixture instance.
-/// </summary>
-[CollectionDefinition("StdlibCache")]
-public class StdlibCacheCollection : ICollectionFixture<StdlibCacheFixture>
-{
-    // This class has no code, it's just used to define the collection
-}
+// Note: The StdlibCacheFixture is used by SequentialCompilationCollection in CompilationTests.cs
+// This provides stdlib caching for all compilation tests that use [Collection("SequentialCompilation")]
